@@ -19,7 +19,7 @@ ingest.c	av_dict_set	call	"protocol_whitelist" = "tcp"
 ingest.c	av_dict_set	call	"rtsp_flags" = "listen"
 ingest.c	av_dict_set_int	call	"listen_timeout" = g_listen_timeout_s
 ingest.c	av_dict_set_int	call	"min_frag_duration" = *
-ingest.c	avformat_alloc_output_context2	call	*
+ingest.c	avformat_alloc_output_context2	call	&c->out, NULL, "mp4", NULL
 ingest.c	avformat_open_input	call	*
 ingest.c	avformat_write_header	call	*
 ipc.c	fopen	call	path, "a"
@@ -30,8 +30,7 @@ sink.c	open	call	dir, O_RDONLY|O_DIRECTORY|O_CLOEXEC
 sink.c	open	call	s->part, O_WRONLY|O_CREAT|O_EXCL|O_APPEND|O_CLOEXEC, 0600
 sink.c	unlink	call	s->part
 sink.c	unlink	call	s->part
-capture_worker.c	g_mux_extra	mention	3
+capture_worker.c	g_mux_extra	mention	2
 ingest.c	g_mux_extra	mention	2
-ipc.c	g_mux_extra	mention	1
 ipc.c	link	mention	3
 worker.h	g_mux_extra	mention	1

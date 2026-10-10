@@ -108,6 +108,8 @@ describe('A. where a removal may happen: below the configured store root, one pa
   it('the layout the store scan reads: SESSION-<sessionId>/ is a package, a bare <sessionId>/ folder is not (D133 (2))', () => {
     folder(store, 'SESSION-SES-20261009-0001'); // v2: session-manifest.json only
     const v1 = folder(store, 'SESSION-SES-20260930-0004');
+    // A v1 package holds `manifest.json` and NO `session-manifest.json` (the helper writes one: fix pass F-M7, R88-11 - a folder with both is a v2 folder and reads UNKNOWN).
+    rmSync(join(v1, 'session-manifest.json'));
     writeFileSync(join(v1, 'manifest.json'), JSON.stringify({ integrity: 'DEMO_PACKAGE' }));
     folder(store, 'SES-20261009-0002'); // the live media directory of a session: every package file, the wrong folder
     const scan = readEvidenceStore(store);

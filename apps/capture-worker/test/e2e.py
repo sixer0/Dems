@@ -156,6 +156,17 @@ def series(runs):
     add("m5_warn_silent_disconnect_never_switch", ["m5warn"])
     add("m5_rate_limit_reported", ["m5rate", "--ppm", "-8000"])
     add("neg_m5_rate_inside_the_range", ["m5rate", "--ppm", "-2000", "--expect-fail", "--must-fail-on", "rate_limit_warning_raised_and_named"], "FAIL")
+    # Fix pass F-M3 (code review of row 63; ruling D179), once each (decision D122):
+    #   R63-02  the fragment size bound on an oversized GOP: every durable fragment inside the bound, no sample lost, the
+    #           chain whole; its control is the proof build with the rule off (fragments above the bound are written);
+    #   R63-12  the wiring of the clock floor in the ingest: a camera 1.5 s behind is anchored and its offset reported, one
+    #           3 s behind is given up by the FLOOR; its control is the proof build that judges the floor and does not act;
+    #   R63-11  a repeated timestamp moved by the monotonic guard is counted and logged.
+    add("r63_02_fragment_size_bound", ["fragbound"])
+    add("neg_r63_02_no_size_bound", ["fragbound", "--variant", "nobound", "--expect-fail", "--must-fail-on", "every_durable_fragment_inside_the_bound,fragments_were_closed_at_the_bound_and_say_so,size_bound_warning_once_per_camera", "--may-fail-on", "every_camera_gop_starts_a_fragment_again"], "FAIL")
+    add("r63_12_clock_floor_wiring", ["srcam", "--mode", "behind"])
+    add("neg_r63_12_floor_not_acted_on", ["srcam", "--mode", "behind", "--variant", "nofloor", "--expect-fail", "--must-fail-on", "camera_3000ms_behind_is_given_up_by_the_clock_floor"], "FAIL")
+    add("r63_11_moved_timestamp_is_said", ["srcam", "--mode", "retime"])
     # Row 59, M3-MG-1: after every capture session of the series, 0 media in git (its control is inside the check).
     add("mg1_no_media_in_git", ["mg1"], sensitive=False)
     # Row 62: only with M3_WORKER_PROPOSED=<a worker built OUTSIDE the tree from a proposed change> - the same four

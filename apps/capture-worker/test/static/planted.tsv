@@ -50,3 +50,11 @@ F-10	ingest.c	static void planted_f10_d(AVDictionary **d, const char *k) { av_di
 F-10	ingest.c	static void planted_f10_e(AVDictionary **d, const char *s) { av_dict_parse_string(d, s, "=", ":", 0); }
 F-10	ingest.c	static void planted_f10_f(AVDictionary **d) { av_dict_set(d, "frag_duration", "1", 0); }
 F-10	ingest.c	static const char *planted_f10_g = PLANTED_STR(negative_cts_offsets);
+# Fix pass F-M3, review R63-08: the four evasions that passed both nets (each shown to pass on the tree at abf742f).
+R-6	sink.c	%:define PLANTED_DIGLUE(a, b) a %:%: b
+R-6	sink.c	static int planted_r63_label(const char *, int, ...) __asm__("_open");
+R-6	sink.c	static int planted_r63_alias(const char *p) __attribute__((weakref("creat")));
+R-6	sink.c	static int planted_r63_removefile(const char *p) { return removefile(p, 0, 0); }
+F-10	ingest.c	static int planted_r63_muxer(AVFormatContext **c) { return avformat_alloc_output_context2(c, NULL, "segment", NULL); }
+F-10	ingest.c	static int planted_r63_named(AVFormatContext **c, const char *file) { return avformat_alloc_output_context2(c, NULL, "mp4", file); }
+R-6	sink.c	static const char planted_r63_trigraph[] = "what??!";

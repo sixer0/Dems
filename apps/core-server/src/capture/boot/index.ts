@@ -27,6 +27,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { CAPTURE_IPC_DEFAULTS } from '@dems/capture-protocol';
+import { isDevelopmentKeySubject } from '@dems/shared/evidence-verify';
 import { factDoorsOf } from '../../engine';
 import { inspectProgram, type ProgramInspector } from '../adapters/local';
 import { captureOperationDecisionOf, type CaptureOperationDecision } from '../fence/operation';
@@ -88,6 +89,8 @@ export interface CaptureBootMount {
   readonly inspect?: ProgramInspector;
   readonly probeEvidenceVolume?: (directory: string) => EvidenceVolumeFacts;
   readonly signingKeyProblem?: (directory: string, now: number) => string | null;
+  /** Another reader of "the stored signing key is a development key", for tests. Default: the certificate of the store. */
+  readonly signingKeyIsDevelopment?: (directory: string, now: number) => boolean;
   readonly launcher?: WorkerLauncher;
   readonly helloTimeoutMs?: number;
   /** Where the measured figures go (CS-09). Default: the engine's fact door `applyStorageVolume`, when an engine runs behind the seam. */
@@ -130,6 +133,19 @@ function storedSigningKeyProblem(directory: string, now: number): string | null 
   }
 }
 
+/**
+ * True when the certificate of the stored signing key carries the development-key mark (the unit
+ * `provisionDevelopmentSigningKey` writes; the verifier reads the same mark from the certificate).
+ * A key that does not load is not "development": check 4 has refused it before this is asked.
+ */
+function storedSigningKeyIsDevelopment(directory: string, now: number): boolean {
+  try {
+    return isDevelopmentKeySubject(loadSoftwareSigner({ dir: directory, now }).certificate.subject);
+  } catch {
+    return false;
+  }
+}
+
 /** Mounts the boot checks on the app: the control and the boot step. Called once, by the capture unit, after the fence. */
 export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootMount): CaptureBootControl {
   const decision = captureOperationDecisionOf(app.config);
@@ -155,6 +171,7 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
         inspect: mount.inspect ?? inspectProgram,
         probeEvidenceVolume: () => (mount.probeEvidenceVolume ?? probeEvidenceVolume)(mediaStoreDir),
         signingKeyProblem: () => (mount.signingKeyProblem ?? storedSigningKeyProblem)(`${dataDir}/${SIGNING_STORE_SUBPATH}`, app.clock.now()),
+        signingKeyIsDevelopment: () => (mount.signingKeyIsDevelopment ?? storedSigningKeyIsDevelopment)(`${dataDir}/${SIGNING_STORE_SUBPATH}`, app.clock.now()),
         handshake,
         sinks: mount.sinks,
       });

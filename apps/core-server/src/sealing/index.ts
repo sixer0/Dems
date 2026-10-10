@@ -19,5 +19,9 @@ export { SPEAKER_LABELS_UNAVAILABLE_FLAG, SealedTranscriptDocumentSchema, readSe
 export * from './pipeline/contract';
 export { SEALING_PROGRESS_INTERVAL_MS, TRANSCRIPT_POLL_MS, TRANSCRIPT_RETRIES_PER_RUN, createSealingPipeline } from './pipeline/pipeline';
 export * from './pipeline/controller';
+// Fix pass F-M7b (R88-02 (a) + (c)): the bounded retry and the terminal UNSEALABLE outcome of a failed seal.
+export * from './pipeline/way-out';
+// Fix pass F-M7c (R88-05, R88-15): the plaintext a sealed session left - proven removal, quarantine with a notice, orphans, the sweep of a start.
+export { SEALING_ORPHANS_DIR, finishSealedPlaintext, removeSealedOrphans, sealedSessionHoldsPlaintext, sweepSealedSession, type FinishPlaintextInput, type FinishPlaintextResult, type KeptPlaintextFile, type KeptPlaintextNote, type SealedSessionSweepPorts, type SealedSessionSweepResult, type SealedTrackRecord } from './pipeline/sealed-plaintext';
 export * from './signing';
 export { durableMediaOnDisk, listPackageFiles, wholeFragmentsOnDisk } from './pipeline/camera-files';

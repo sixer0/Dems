@@ -59,6 +59,22 @@
  * not yet known durable; RECOVERY reads the file (the file is the truth, the frame is a hint).
  * A sync that fails ends the writer with a fatal error and no checkpoint is given for what it
  * should have covered.
+ *
+ * THE LEVEL IS STATED, NEVER ASSUMED (review R63-09; fix pass F-M3). A volume that does not know the
+ * full sync answers ENOTSUP / EINVAL / ENOTTY and gets fsync() - on macOS NOT through the drive's
+ * cache. Until this fix that fallback was silent: the log and the session said F_FULLFSYNC. Now the
+ * level each sync ACHIEVED is kept: the first sync of the file (data, and the directory of the final
+ * name: the weaker of the two) decides `sync_level`, which the first durable fragment states
+ * (FIRST_DURABLE_FRAGMENT.syncLevel); a later sync of the same file that reaches only a WEAKER level
+ * is a failed sync (WRITER_SYNC_LEVEL_CHANGED): no checkpoint, fatal - never a quieter durability.
+ *
+ * THE SIZE BOUND (review R63-02; ruling D179). No fragment above `max_fragment_bytes` is ever
+ * written: the seal and the verifier open one fragment in memory and refuse a larger one, so such a
+ * fragment would make the whole recording unsealable. The ingest closes the open fragment before
+ * it can pass the bound (ingest.c, "write_bounded_locked"); THIS is the backstop that holds whatever
+ * the estimate there did: a fragment above the bound is refused before any byte of it is written
+ * (WRITER_FRAGMENT_TOO_LARGE, fatal), and the file keeps its durable prefix. PEND_LIMIT is the
+ * compiled sanity cap of what the writer holds in memory, not the bound.
  */
 #include "worker.h"
 
@@ -74,11 +90,12 @@
 #include <time.h>
 #include <unistd.h>
 
-#define PEND_LIMIT ((size_t)256 * 1024 * 1024)
+#define PEND_LIMIT ((size_t)MAX_FRAGMENT_BYTES_CEILING)
 
 typedef struct SinkJob { struct SinkJob *next; Checkpoint cp; } SinkJob;
 
 long (*sink_fault_hook)(Sink *s, int64_t fragment_no, size_t len) = NULL;
+int (*sink_full_sync_hook)(int fd) = NULL;
 
 void sink_init(Sink *s, const char *path) {
     memset(s, 0, sizeof *s);
@@ -299,22 +316,35 @@ static int parse_moof(const Sink *s, Span moof, FragInfo *out) {
 }
 
 /* ---------------------------------------------------------------- the disk */
-const char *sink_sync_level(void) {
+const char *sink_sync_wanted(void) {
 #ifdef F_FULLFSYNC
     return "F_FULLFSYNC";
 #else
-    return "fsync";
+    return "FSYNC";
 #endif
 }
 
-/* The strongest sync the platform has. A file system that does not know F_FULLFSYNC gets fsync(). */
+const char *sink_sync_level(const Sink *s) {
+#ifdef DEMS_PROOF_SILENT_SYNC_FALLBACK      /* PROOF / RED RUN ONLY: the level as it was claimed before fix pass F-M3 (what the build wants) */
+    (void)s;
+    return sink_sync_wanted();
+#else
+    int level = atomic_load(&s->sync_level);
+    return level == SYNC_FULL ? "F_FULLFSYNC" : level == SYNC_FSYNC ? "FSYNC" : "NOT_YET";
+#endif
+}
+
+/* The strongest sync the platform has. A file system that does not know F_FULLFSYNC gets fsync().
+ * Returns the level it ACHIEVED (SYNC_FULL or SYNC_FSYNC), or an AVERROR: the caller states the level. */
 static int full_sync(int fd) {
 #ifdef F_FULLFSYNC
-    if (fcntl(fd, F_FULLFSYNC) == 0) return 0;
+    int refused = sink_full_sync_hook ? sink_full_sync_hook(fd) : 0;
+    if (refused) errno = refused;
+    else if (fcntl(fd, F_FULLFSYNC) == 0) return SYNC_FULL;
     if (errno != ENOTSUP && errno != EINVAL && errno != ENOTTY) return AVERROR(errno);
 #endif
     for (;;) {
-        if (fsync(fd) == 0) return 0;
+        if (fsync(fd) == 0) return SYNC_FSYNC;
         if (errno != EINTR) return AVERROR(errno);
     }
 }
@@ -328,7 +358,7 @@ static int sync_dir(const char *path) {
     if (slash == dir) slash[1] = 0; else *slash = 0;
     int fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (fd < 0) return AVERROR(errno);
-    int r = full_sync(fd);
+    int r = full_sync(fd);                                  /* the level of the directory's sync, or an AVERROR */
     close(fd);
     return r;
 }
@@ -361,7 +391,7 @@ static void truncate_back(Sink *s) {
     off_t good = (off_t)atomic_load(&s->bytes);
     /* Only what THIS write added is cut: the length never goes below the last good one, and a
      * file that is not longer than it is not touched. */
-    if (fstat(s->fd, &st) == 0 && st.st_size > good && ftruncate(s->fd, good) == 0) full_sync(s->fd);
+    if (fstat(s->fd, &st) == 0 && st.st_size > good && ftruncate(s->fd, good) == 0) (void)full_sync(s->fd);
 #else
     (void)s;
 #endif
@@ -382,16 +412,29 @@ static void *sync_main(void *arg) {
         s->job_head = s->job_tail = NULL;
         pthread_mutex_unlock(&s->sync_mx);
         if (!batch) return NULL;                            /* closing, and nothing waits */
-        int r = atomic_load(&s->async_failed);
+        int r = atomic_load(&s->async_failed), level = SYNC_NOT_YET;
         const char *code = NULL;
         /* 1. the data of every fragment of the batch (they were all written before this point) */
-        if (!r && (r = full_sync(s->fd)) < 0) code = "WRITER_SYNC_FAILED";
+        if (!r) { if ((level = full_sync(s->fd)) < 0) { r = level; code = "WRITER_SYNC_FAILED"; } }
         if (!r && !s->linked) {
             /* 2. the final name, exclusive by construction; 3. the directory; 4. the temporary name goes */
             if (link(s->part, s->path) < 0) { r = AVERROR(errno); code = "OUTPUT_LINK_FAILED"; }   /* EEXIST: something is there; it is not touched */
-            else { s->linked = 1; if ((r = sync_dir(s->path)) < 0) code = "WRITER_DIR_SYNC_FAILED"; }
+            else {
+                s->linked = 1;
+                int dir = sync_dir(s->path);
+                if (dir < 0) { r = dir; code = "WRITER_DIR_SYNC_FAILED"; }
+                else if (dir > level) level = dir;          /* the name is only as durable as the weaker of the two */
+            }
             unlink(s->part);
         }
+#ifndef DEMS_PROOF_SILENT_SYNC_FALLBACK
+        /* THE LEVEL (R63-09): the first sync of the file decides it; a later one that is weaker is a failed sync. */
+        if (!r) {
+            int was = atomic_load(&s->sync_level);
+            if (was == SYNC_NOT_YET) atomic_store(&s->sync_level, level);
+            else if (level > was) { r = AVERROR(EIO); code = "WRITER_SYNC_LEVEL_CHANGED"; }
+        }
+#endif
         if (r < 0) {
             int was = 0;
             if (atomic_compare_exchange_strong(&s->async_failed, &was, r) && s->on_sync_failure) s->on_sync_failure(s->opaque, code, r);
@@ -436,6 +479,10 @@ static int append_fragment(Sink *s, uint8_t *frag, size_t moof_len, size_t moof_
     int first = s->fd < 0, r;
     FragInfo info;
     Span moof = { frag + moof_header, moof_len - moof_header };
+#ifndef DEMS_PROOF_NO_FRAGMENT_BOUND        /* PROOF BUILD ONLY: the negative control of the size bound (the rule off) */
+    /* THE SIZE BOUND (R63-02): refused before a byte of it is written; the file keeps its durable prefix. */
+    if (s->max_fragment_bytes && len > s->max_fragment_bytes) return fail(s, "WRITER_FRAGMENT_TOO_LARGE", AVERROR(EFBIG));
+#endif
     if (parse_moof(s, moof, &info) < 0) return fail(s, "WRITER_MOOF_UNREADABLE", AVERROR_INVALIDDATA);
     /* The zero-gap rule: fragment numbers are 1, 2, 3 ... of this file. */
     if (info.seq != s->next_index) return fail(s, "WRITER_SEQUENCE_GAP", AVERROR_INVALIDDATA);

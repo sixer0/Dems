@@ -101,7 +101,7 @@ describe('a session', () => {
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, sessionId: null, workerPid: null, lastCrash: null });
     expect(clock.armed()).toEqual([]);
     // No session: a stop is nothing to do. Another session's ID is unknown while one is open.
-    await expect(supervisor.stop(SESSION, 'STOPPED')).resolves.toBeUndefined();
+    await expect(supervisor.stop(SESSION, 'STOPPED')).resolves.toEqual({ clean: true, down: null });
     await supervisor.start(SESSION, capturePlan());
     expect(await refusalOf(supervisor.stop('S-OTHER', 'STOPPED'))).toBe(CaptureRefusal.SESSION_UNKNOWN);
   });

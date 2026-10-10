@@ -248,7 +248,8 @@ describe('a confirmed switch (ux §3.2 steps 1-4; operation 81)', () => {
     expect(activeOf(sim)).toBe('MIC-02')
     const rows = switchRows(sim)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ actorId: OPERATOR_IDS.BUDI, details: { fromInputId: 'MIC-01', toInputId: 'MIC-02', deviceId: 'MIC-02' } })
+    // Fix pass F-M5 (review R74-05): the keys of contract C3 §5.2 (it pinned the simulator's own `fromInputId` / `toInputId` / `deviceId`).
+    expect(rows[0]).toMatchObject({ actorId: OPERATOR_IDS.BUDI, details: { fromInput: 'MIC-01', toInput: 'MIC-02' } })
     // The toggle now names the other input; the band has the interval the switch opened; the timeline names both inputs.
     await waitFor(() => expect(within(audio).getByTestId('sm-audio-switch')).toHaveTextContent('Switch to MIC 1'))
     await waitFor(() => expect(within(audio).getByTestId('audio-source-band')).toHaveAttribute('data-segments', '2'))

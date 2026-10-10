@@ -44,6 +44,7 @@ import type { ErrorLog } from '../../plugins/logger';
 import type { FinalizeTranscriptResult, FinalizedTranscript, SttConfigSnapshot } from '../finalize-transcript/contract';
 import type { StepTimer } from '../finalize-transcript/bounds';
 import type { SealingStepJournal } from '../step-journal';
+import type { KeptPlaintextNote } from './sealed-plaintext';
 
 /** The six normal-path steps, in pipeline order (the fallback steps of OD-21 are not built). */
 export const SEALING_STEP_ORDER = ['CLOSE_TRACKS', 'FINALIZE_HASHES', 'FINALIZE_TRANSCRIPT', 'BUILD_MANIFEST', 'SIGN_MANIFEST', 'STORE_SEALED_PACKAGE'] as const satisfies readonly FinalizationStep[];
@@ -58,6 +59,15 @@ export type SealingStepId = (typeof SEALING_STEP_ORDER)[number];
  * `SealingFailure.FRAGMENT_TOO_LARGE` before a sealed byte is written and before anything is signed.
  */
 export const SEALING_MAX_FRAGMENT_BYTES = VERIFY_MAX_OPEN_FRAGMENT_BYTES;
+
+/**
+ * THE QUARANTINE (fix pass F-M7; decision D178, R88-02 / R88-05): `<mediaStoreRoot>/.quarantine/<sessionId>/`,
+ * owner-only. A recording file the Core could NOT seal - a camera file left out of a seal, a file
+ * under a recording's name that is not the recording the package sealed, every recording of a
+ * session that cannot be sealed at all - is MOVED there, never deleted and never left inside a
+ * sealed package. A folder here is REAL evidence for the reset guard and is listed at every boot.
+ */
+export const SEALING_QUARANTINE_DIR = '.quarantine';
 
 /** Why this run seals: a clean stop, or the durable prefix of a recording that did not end by a stop (OD-08). */
 export type SealCause = 'STOPPED' | 'INTERRUPTED';
@@ -89,6 +99,12 @@ export const SealingFailure = {
   MANIFEST_NOT_REPRODUCIBLE: 'MANIFEST_NOT_REPRODUCIBLE',
   /** The signer refused or its signature did not verify. */
   SIGNER_FAILED: 'SIGNER_FAILED',
+  /**
+   * Every source of the session is of class PRODUCTION and the signing key is a DEVELOPMENT key
+   * (fix pass F-M7, R88-08 (3)): nothing is signed. The boot check refuses such a key in a
+   * production Core, so a running Core never reaches this; the pipeline holds the rule itself.
+   */
+  DEVELOPMENT_KEY_FOR_PRODUCTION_SOURCES: 'DEVELOPMENT_KEY_FOR_PRODUCTION_SOURCES',
   /** A file the package does not declare is in the folder. */
   PACKAGE_NOT_CLEAN: 'PACKAGE_NOT_CLEAN',
   /** A file of the package could not be read or written. */
@@ -97,6 +113,12 @@ export const SealingFailure = {
   JOURNAL_FAILED: 'JOURNAL_FAILED',
   /** The engine refused the progress or the completion. */
   ENGINE_REFUSED: 'ENGINE_REFUSED',
+  /**
+   * NO camera file of the session validates (R88-02 (c)): nothing can be sealed, now or by another
+   * attempt. The composition ends the session as INCOMPLETE / UNSEALABLE and moves its recordings
+   * to the quarantine.
+   */
+  NOTHING_SEALABLE: 'NOTHING_SEALABLE',
   /** A step failed for a reason it does not name (a defect: the cause is in the error log). */
   STEP_FAILED: 'SEALING_STEP_FAILED',
 } as const;
@@ -106,6 +128,18 @@ export type SealingFailure = (typeof SealingFailure)[keyof typeof SealingFailure
 const RETRIABLE: readonly SealingFailure[] = [SealingFailure.STORAGE_FAILED, SealingFailure.SIGNER_FAILED, SealingFailure.ENGINE_REFUSED, SealingFailure.JOURNAL_FAILED, SealingFailure.FRAGMENT_NOT_OPENABLE, SealingFailure.SEALER_FAILED, SealingFailure.TRANSCRIPT_STEP_FAILED];
 
 export type SealingDetail = Readonly<Record<string, string | number | boolean | null>>;
+
+/**
+ * CAUSES CONFINED TO ONE CAMERA FILE (R88-02 (b)): the file is not there although rows say it
+ * recorded, holds no whole fragment, is not what its rows say, lost durable bytes, or holds a
+ * fragment the verifier could not open. RULING D183 (fix pass F-M7b): when the fragments BEFORE the
+ * first bad one validate (box walk + the recording-time rows and chain), that DURABLE PREFIX is
+ * sealed, as an INTERRUPTED recording with `truncated` on its last fragment (`ClosedTrack.partial`);
+ * only a file with NO valid fragment is left out. Either way the whole original file goes to the
+ * quarantine after the seal. Only when no file has a valid fragment does the step fail
+ * (`NOTHING_SEALABLE`).
+ */
+export const CONFINED_TO_ONE_CAMERA_FILE: readonly SealingFailure[] = [SealingFailure.CAMERA_FILE_UNUSABLE, SealingFailure.FRAGMENT_MISMATCH, SealingFailure.DURABLE_BYTES_MISSING, SealingFailure.FRAGMENT_TOO_LARGE];
 
 /** Every failure of a step. Fixed text; `detail` holds identifiers, counts and codes - never a path, a hash of evidence or transcript text. */
 export class SealingError extends Error {
@@ -140,6 +174,8 @@ export function sealingFailureReason(code: SealingFailure, detail: SealingDetail
       const mib = (bytes: unknown): string => (typeof bytes === 'number' ? `${(bytes / (1024 * 1024)).toFixed(1)} MiB` : 'unknown size');
       return `Fragment ${typeof detail.seq === 'number' ? detail.seq : '?'} of camera file${track} is too large to be verified (${mib(detail.bytes)}, limit ${mib(detail.limitBytes)}): the camera's keyframe interval or bitrate is too high. This session cannot be sealed.`;
     }
+    case SealingFailure.NOTHING_SEALABLE:
+      return 'No camera file of this session can be sealed: the session is closed as incomplete and its recordings are kept in the quarantine folder.';
     case SealingFailure.CAMERA_FILE_CHANGED:
       return `Camera file${track} changed while it was sealed: the seal stopped.`;
     case SealingFailure.FRAGMENT_NOT_SEALED:
@@ -151,6 +187,8 @@ export function sealingFailureReason(code: SealingFailure, detail: SealingDetail
     case SealingFailure.MANIFEST_INVALID:
     case SealingFailure.MANIFEST_NOT_REPRODUCIBLE:
       return 'The manifest could not be built from the session record: nothing was signed.';
+    case SealingFailure.DEVELOPMENT_KEY_FOR_PRODUCTION_SOURCES:
+      return 'The evidence signing key is a DEVELOPMENT key and this session was recorded from production devices: nothing was signed. The Core needs its production signing key.';
     case SealingFailure.SIGNER_FAILED:
       return 'The evidence signing key could not sign: nothing was signed. The seal can be tried again.';
     case SealingFailure.PACKAGE_NOT_CLEAN:
@@ -163,6 +201,23 @@ export function sealingFailureReason(code: SealingFailure, detail: SealingDetail
     default:
       return 'The seal stopped for a reason the Core does not name. It is in the error log.';
   }
+}
+
+/**
+ * WHAT AN OPERATOR READS OF A SEAL THAT WENT ON WITHOUT A CAMERA, OR WITH THE PREFIX OF A CAMERA
+ * FILE ONLY (fix passes F-M7, F-M7b): the `detail` of the DONE step CLOSE_TRACKS in the session
+ * record. One sentence per camera; never a path or a hash.
+ */
+export function sealingOmittedNotice(omitted: readonly OmittedTrack[], partial: readonly { readonly trackId: string; readonly code: string; readonly sealedFragments: number }[] = []): string | null {
+  if (omitted.length === 0 && partial.length === 0) return null;
+  return [
+    ...omitted.map((entry) =>
+      entry.code === null
+        ? `Camera ${entry.trackId} recorded nothing: the session is sealed with the camera file it has.`
+        : `Camera file ${entry.trackId} could not be sealed (${entry.reason}) and is left out: the recording is sealed as interrupted, and that file is kept in the quarantine folder.`,
+    ),
+    ...partial.map((entry) => `Camera file ${entry.trackId} is sealed up to fragment ${entry.sealedFragments} only (${entry.code}): the recording is sealed as interrupted, and the whole original file is kept in the quarantine folder.`),
+  ].join(' ');
 }
 
 /**
@@ -299,6 +354,13 @@ export interface SealEngine {
    * The last step then commits nothing again; it finishes its bookkeeping.
    */
   isSealed(sessionId: string, manifestSha256: string): boolean;
+  /**
+   * Fix pass F-M7c (R88-05 (c)): a plaintext file of a SEALED session had to be kept. ONE alert +
+   * ONE audit row naming the session (the engine's sealing notice door); resolves false when the
+   * engine holds that notice already. Called BEFORE the file is moved to the quarantine: a
+   * rejection moves nothing. Absent (a test's engine): a file that must be kept fails the step.
+   */
+  noteKeptPlaintext?(note: KeptPlaintextNote): Promise<boolean>;
 }
 
 export interface SealingPorts {
@@ -315,6 +377,8 @@ export interface SealingPorts {
   readonly packageDir: (sessionId: string) => string;
   /** A folder on the SAME volume, outside every package, for files being written and for names moved out of a package. */
   readonly stagingDir: (sessionId: string) => string;
+  /** `<mediaStoreRoot>/.quarantine/<sessionId>` (`SEALING_QUARANTINE_DIR`), on the SAME volume: where a recording file the Core could not seal is moved. Absolute. */
+  readonly quarantineDir: (sessionId: string) => string;
   /** The persistent error log of the Core. */
   readonly log: ErrorLog;
   /** Epoch milliseconds: the Core clock. */
@@ -349,6 +413,28 @@ export interface ClosedTrack {
   readonly orphansMoved: number;
   /** What the step computed while it sealed; FINALIZE_HASHES must find the same from the sealed file. */
   readonly hashes: HashedTrack;
+  /**
+   * THE FILE FAILED VALIDATION PART-WAY AND ONLY ITS DURABLE PREFIX IS SEALED (fix pass F-M7b;
+   * ruling D183): the failure that ended the prefix and the number of the first fragment that is
+   * NOT sealed. Absent for a file that is sealed as far as it holds whole fragments. A track with
+   * this member makes the seal an INTERRUPTED one, and the WHOLE original recording file is moved
+   * to the quarantine after the item is committed - it is never removed as "the sealed plaintext".
+   */
+  readonly partial?: { readonly code: SealingFailure; readonly reason: string; readonly firstBadSeq: number };
+}
+
+/**
+ * One camera of the session that is NOT in the seal (the checkpoint of CLOSE_TRACKS; F-M7).
+ * `NOT_RECORDED`: no recording file and no fragment row - the camera never recorded (a one-camera
+ * session, D72(k)); the seal is not interrupted by it. Every other reason is a failure confined to
+ * that file (`CONFINED_TO_ONE_CAMERA_FILE`): the seal is INTERRUPTED and the file, when one is
+ * there, goes to the quarantine after the item is committed.
+ */
+export interface OmittedTrack {
+  readonly trackId: VideoTrackId;
+  /** The failure code, or null for `NOT_RECORDED`. */
+  readonly code: SealingFailure | null;
+  readonly reason: string;
 }
 
 /** One camera file as FINALIZE_HASHES found it (the checkpoint of the step; manifest fields 44-50). */

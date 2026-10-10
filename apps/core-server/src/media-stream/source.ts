@@ -41,6 +41,8 @@ export const MediaSourceFailure = {
   /** The manifest on disk is not the one that was sealed for this item (hash, digest of record, item, session). */
   MANIFEST_NOT_OF_ITEM: 'MANIFEST_NOT_OF_ITEM',
   CAMERA_FILE_MISSING: 'CAMERA_FILE_MISSING',
+  /** The sealed manifest names no camera file of that ID: a package of ONE camera has one file (fix pass F-M8; `tracks[]` of 1 or 2). */
+  CAMERA_FILE_NOT_IN_PACKAGE: 'CAMERA_FILE_NOT_IN_PACKAGE',
   /** The file on disk is not as long as its sealed record says. */
   CAMERA_FILE_SIZE_MISMATCH: 'CAMERA_FILE_SIZE_MISMATCH',
   FRAGMENT_TABLE_INVALID: 'FRAGMENT_TABLE_INVALID',
@@ -117,6 +119,8 @@ export async function planMediaFile(ports: MediaSourcePorts, item: Pick<MediaIte
 
   const track = manifest.tracks.find((candidate) => candidate.trackId === trackId);
   const file = manifest.files.find((candidate) => candidate.trackId === trackId);
+  // A package of one camera holds one file: asking for the other is no defect of the package.
+  if (track === undefined && file === undefined) throw new MediaSourceError(MediaSourceFailure.CAMERA_FILE_NOT_IN_PACKAGE, { trackId });
   if (track === undefined || file === undefined) throw new MediaSourceError(MediaSourceFailure.FRAGMENT_TABLE_INVALID, { trackId });
   const path = cameraFilePath(trackId);
   const onDisk = await ports.reader.entry(path);

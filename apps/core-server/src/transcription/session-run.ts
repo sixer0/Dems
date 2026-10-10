@@ -138,6 +138,12 @@ export interface SessionRunDeps {
   /** `fire` once after `ms`, unless the returned function was called first. */
   readonly timer: { after(ms: number, fire: () => void): () => void };
   readonly stepIntervalMs?: number;
+  /**
+   * Removes the scratch folder of a session - its raw PCM tap first of all (R80-04). Called for a
+   * FAILED START, with or without a run: nothing was recorded, nothing of it is needed, and the
+   * next start of that session ID must find its tap path free. Never throws.
+   */
+  discardScratch?(sessionId: string): void;
 }
 
 export interface SessionRuns {
@@ -158,6 +164,11 @@ export interface SessionRuns {
   idle(): Promise<void>;
   /** Ends every run: no step is started any more and every open session is closed. For a shutdown. */
   shutdown(): void;
+  /**
+   * THE SESSION IS OVER FOR THE TRANSCRIBER (R80-04): its runner is stopped for good, its session
+   * closed and its run forgotten. Called before the scratch folder of a sealed session is removed.
+   */
+  discard(sessionId: string): void;
 }
 
 interface Run {
@@ -189,6 +200,18 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
     const dir = deps.scratchDirFor(sessionId);
     return { json: join(dir, TRANSCRIPT_DOCUMENT_FILE), srt: join(dir, TRANSCRIPT_SRT_FILE), vtt: join(dir, TRANSCRIPT_VTT_FILE) };
   };
+
+  /**
+   * Stops the session's own runner for good (R80-03): nothing of it writes a checkpoint or a chunk
+   * row any more, whatever a step that is still under way gets as an answer.
+   */
+  function stop(run: Run): void {
+    try {
+      run.session?.stop();
+    } catch (error) {
+      deps.report('error', SessionRunCode.STEP_FAILED, 'the transcriber session could not be stopped', run.sessionId, {}, error);
+    }
+  }
 
   function close(run: Run): void {
     if (run.closed || run.session === null) return;
@@ -287,7 +310,9 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
     const ended = run.ended as Run['ended'];
     if (ended !== null && !ended.recorded) {
       run.phase = 'ABANDONED';
+      stop(run);
       close(run);
+      deps.discardScratch?.(run.sessionId);
       return;
     }
     run.phase = 'RUNNING';
@@ -337,13 +362,20 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
 
     end(sessionId, how) {
       const run = runs.get(sessionId);
+      // A failed start of a session no run was begun for (the worker never acknowledged): its tap folder goes all the same (R80-04).
+      if (run === undefined && !how.recorded) deps.discardScratch?.(sessionId);
       if (run === undefined || run.ended !== null) return;
       run.ended = how;
       if (!how.recorded) {
-        // A FAILED START: nothing was recorded. Whatever step is under way ends by itself; no other is started.
+        // A FAILED START: nothing was recorded. The step under way is stopped (R80-03: its late answer writes nothing); no other is started.
         if (run.phase === 'RUNNING') run.phase = 'ABANDONED';
+        stop(run);
         run.wake?.();
-        if (run.opening === null) close(run);
+        // Still opening: `open` abandons the session and removes its scratch when it gets there.
+        if (run.opening === null) {
+          close(run);
+          deps.discardScratch?.(sessionId);
+        }
         return;
       }
       // The tap is whole: the loop takes its final steps now.
@@ -386,8 +418,10 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
     async closeOut(sessionId, chunkCode) {
       const run = runs.get(sessionId);
       if (run === undefined || run.session === null) return { kind: 'NOT_READY' };
-      // The session's own runner is stepped no more: whatever its engine answers from here on is dropped by its loop.
+      // THE SESSION'S OWN RUNNER IS STOPPED (R80-03): it is stepped no more, and whatever its engine
+      // answers from here on writes neither the checkpoint nor a chunk row. Only then is the closing runner built.
       run.phase = 'CLOSED_OUT';
+      stop(run);
       run.wake?.();
       close(run);
       if (!(await run.session.closeOut(chunkCode))) return { kind: 'NOT_READY' };
@@ -404,9 +438,20 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
       }
     },
 
+    discard(sessionId) {
+      const run = runs.get(sessionId);
+      if (run === undefined) return;
+      if (run.phase !== 'COMPLETE' && run.phase !== 'NOT_OPENED' && run.phase !== 'ABANDONED') run.phase = 'CLOSED_OUT';
+      stop(run);
+      run.wake?.();
+      close(run);
+      runs.delete(sessionId);
+    },
+
     shutdown() {
       down = true;
       for (const run of runs.values()) {
+        stop(run);
         run.wake?.();
         close(run);
       }

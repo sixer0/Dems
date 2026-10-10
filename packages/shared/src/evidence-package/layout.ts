@@ -9,6 +9,22 @@ export const MANIFEST_V2_VERSION = 2;
 export const PACKAGE_FOLDER_PREFIX = 'SESSION-';
 export const VIDEO_TRACK_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
 export type PackageVideoTrackId = (typeof VIDEO_TRACK_IDS)[number];
+/**
+ * THE TRACK LIST OF ONE SEALED PACKAGE (spec §B.4, erratum of fix pass F-M7 / decision D178): the
+ * camera files that EXIST - one or two, each once, VIDEO-01 before VIDEO-02. A session that
+ * recorded with one camera is sealed with that one file; the camera that is absent is the track ID
+ * the list does not hold. Never none, never a third, never another order.
+ */
+export function isSealedTrackList(trackIds: readonly string[]): trackIds is readonly PackageVideoTrackId[] {
+  if (trackIds.length < 1 || trackIds.length > VIDEO_TRACK_IDS.length) return false;
+  let last = -1;
+  for (const trackId of trackIds) {
+    const at = (VIDEO_TRACK_IDS as readonly string[]).indexOf(trackId);
+    if (at <= last) return false;
+    last = at;
+  }
+  return true;
+}
 export const SESSION_AUDIO_TRACK_ID = 'AUDIO-01';
 export const CAMERA_FILE_MEDIA_TYPE = 'video/mp4';
 
@@ -57,13 +73,17 @@ export function exportArchivePath(exportId: string): string {
   return `${PackageFile.EXPORT_DIR}/${exportId}.zip`;
 }
 
-/** Every clear file a sealed package declares; the transcript files only when STT was enabled. */
-export function declaredPackageFiles(options: { transcript: boolean }): readonly string[] {
+/**
+ * Every clear file a sealed package declares; the transcript files only when STT was enabled. The
+ * camera files are those of `tracks` (the manifest's own track list, F-M7 R88-01); without a list -
+ * a caller that has no manifest to read - both camera files are declared.
+ */
+export function declaredPackageFiles(options: { transcript: boolean; tracks?: readonly PackageVideoTrackId[] }): readonly string[] {
   return Object.freeze([
     PackageFile.MANIFEST,
     PackageFile.SIGNATURE,
     PackageFile.CERTIFICATE,
-    ...VIDEO_TRACK_IDS.map(cameraFilePath),
+    ...(options.tracks ?? VIDEO_TRACK_IDS).map(cameraFilePath),
     PackageFile.FRAGMENTS_JSON,
     ...(options.transcript
       ? [PackageFile.TRANSCRIPT_JSON, PackageFile.TRANSCRIPT_SRT, PackageFile.TRANSCRIPT_VTT, PackageFile.TRANSCRIPT_REVISIONS]

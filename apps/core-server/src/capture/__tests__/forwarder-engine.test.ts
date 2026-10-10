@@ -184,29 +184,34 @@ describe('worker frames, through the supervisor and the forwarder, into a real s
     expect(h.ignored).toEqual([]);
   });
 
-  it('CONTROL: the same frames with track IDs (VIDEO-0x) do NOT reach a device: the telemetry entries are ignored and named, the warning is refused as a protocol violation', async () => {
+  it('CONTROL: the same frames with track IDs (VIDEO-0x) do NOT reach a device: the telemetry frame ends the worker before any entry is handed on, the warning is refused as a protocol violation', async () => {
     const h = await joined();
     await h.telemetry();
-    const before = h.state();
-
-    await h.telemetry({ cam02: CaptureIngestState.ENDED, cameraIds: ['VIDEO-01', 'VIDEO-02'] });
-    expect(h.camera('CAM-02')).toEqual({ device: 'LIVE', slot: 'LIVE', online: true });
-    expect(h.state().captureDevices).toBe(before.captureDevices);
-    expect(h.ignored).toEqual(['ingest:VIDEO-01', 'ingest:VIDEO-02', 'fragments:VIDEO-01', 'fragments:VIDEO-02']);
-
-    // The very same frame in the Core's vocabulary does reach it.
+    // A frame in the Core's vocabulary reaches its device.
     await h.telemetry({ cam02: CaptureIngestState.ENDED });
     expect(h.camera('CAM-02')).toEqual({ device: 'LOST', slot: 'LOST', online: false });
+    const before = h.state();
 
-    // A warning about a track ID never reaches the engine: the supervisor ends that worker for it.
-    const audit = h.state().audit;
-    await h.warn(CaptureWarningCode.CAPTURE_FAULT, 'VIDEO-02');
-    expect(h.down).toEqual([['PROTOCOL_VIOLATION', 'WARNING_SUBJECT_UNKNOWN']]);
-    expect(h.faults()).toEqual([]);
-    expect(h.state().audit).toBe(audit);
+    // The same kind of frame with track IDs. Since fix pass F-M3 (review R63-05; ruling D179) a telemetry frame that
+    // names a device outside the plan never reaches the forwarder: the supervisor ends that worker, as it does for a
+    // warning. Nothing changes, and there is nothing left for the host to ignore.
+    await h.telemetry({ cam02: CaptureIngestState.CONNECTED, cameraIds: ['VIDEO-01', 'VIDEO-02'] });
+    expect(h.down).toEqual([['PROTOCOL_VIOLATION', 'TELEMETRY_SUBJECT_UNKNOWN']]);
+    expect(h.camera('CAM-02')).toEqual({ device: 'LOST', slot: 'LOST', online: false });
+    expect(h.state().captureDevices).toBe(before.captureDevices);
+    expect(h.ignored).toEqual([]);
+
+    // A warning about a track ID never reaches the engine either: the supervisor ends that worker for it.
+    const w = await joined();
+    await w.telemetry();
+    const audit = w.state().audit;
+    await w.warn(CaptureWarningCode.CAPTURE_FAULT, 'VIDEO-02');
+    expect(w.down).toEqual([['PROTOCOL_VIOLATION', 'WARNING_SUBJECT_UNKNOWN']]);
+    expect(w.faults()).toEqual([]);
+    expect(w.state().audit).toBe(audit);
     // And the engine's own answer to one, were it ever handed on (the simulator refuses it).
-    expect(() => h.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: 'VIDEO-02' })).toThrow(/VIDEO-02/);
-    expect(() => h.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: 'CAM-02' })).not.toThrow();
+    expect(() => w.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: 'VIDEO-02' })).toThrow(/VIDEO-02/);
+    expect(() => w.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: 'CAM-02' })).not.toThrow();
   });
 });
 

@@ -131,6 +131,8 @@ export const VERIFY_FAILURES = {
   CERTIFICATE_HASH_MISMATCH: { check: 'V-13', failureClass: 'TAMPERED' },
   CERTIFICATE_NOT_VALID_AT_SIGNING: { check: 'V-13', failureClass: 'TAMPERED' },
   CERTIFICATE_NOT_TRUSTED: { check: 'V-13', failureClass: 'TAMPERED' },
+  /** Manifest field 25 / 26 (`device.certificate.subject` / `.serialNumber`) is not what the certificate itself says (F-M7 R88-08). */
+  CERTIFICATE_SUBJECT_MISMATCH: { check: 'V-13', failureClass: 'TAMPERED' },
   // V-14
   DECLARED_FILE_MISSING: { check: 'V-14', failureClass: 'MISSING' },
   DECLARED_FILE_UNREADABLE: { check: 'V-14', failureClass: 'UNREADABLE' },
@@ -358,9 +360,11 @@ export interface PackageVerifyResult {
     readonly keyId: string | null;
     readonly simulated: boolean | null;
     /**
-     * The certificate subject the manifest records (field 25) carries the development-key mark
-     * (`DEVELOPMENT_KEY_SUBJECT_MARK`; decision D147). A FACT ABOUT THE KEY, not a verdict: `ok`
-     * above passes or fails on its own merits. Null when no manifest could be read.
+     * The subject of the CERTIFICATE THAT VERIFIED THE SIGNATURE carries the development-key mark
+     * (`DEVELOPMENT_KEY_SUBJECT_MARK`; decisions D147, D178 / F-M7 R88-08). A FACT ABOUT THE KEY,
+     * not a verdict. `true` / `false` ONLY when the manifest is the signed one and its certificate
+     * holds (V-01, V-03, V-09 and V-13 passed) and the reader stated the certificate's subject.
+     * `null` otherwise: NOT ESTABLISHED - never `false` from bytes that were not verified.
      */
     readonly developmentKey: boolean | null;
     /** OD-03: the stored-bytes checks (V-04, V-06, V-07) need no key of any kind. */
@@ -370,7 +374,64 @@ export interface PackageVerifyResult {
   readonly interrupted: boolean;
   /** True when the plaintext hashes were computed (a session key was there). */
   readonly plaintextChecked: boolean;
+  /**
+   * WHAT THE FORMAT DOES NOT COVER (fix pass F-M7, R88-06): named statements that fail nothing and
+   * are never collapsed by a report. Every v2 result carries `AUDIT_EXTRACT_NOT_SIGNED`.
+   */
+  readonly notices: readonly VerifyNotice[];
 }
+
+/**
+ * THE NOTICES OF A v2 RESULT. `AUDIT_EXTRACT_NOT_SIGNED`: `audit-session-extract.jsonl` is a
+ * declared file of the package (V-14 asks that it is there) and NO member of the manifest holds
+ * its hash, so its CONTENT is covered by no hash and no signature: it can be altered and all 15
+ * checks pass. Until a manifest revision gives it a field, a verifier says so, every time.
+ */
+export const VERIFY_NOTICE = { AUDIT_EXTRACT_NOT_SIGNED: 'AUDIT_EXTRACT_NOT_SIGNED', EXPORT_FOLDER_UNEXPECTED_FILE: 'EXPORT_FOLDER_UNEXPECTED_FILE', REVISION_APPEND_PENDING: 'REVISION_APPEND_PENDING' } as const;
+export type VerifyNoticeCode = (typeof VERIFY_NOTICE)[keyof typeof VERIFY_NOTICE];
+export interface VerifyNotice {
+  readonly code: VerifyNoticeCode;
+  /** The report line (English; a client shows its own wording by the code). */
+  readonly report: string;
+}
+/**
+ * `EXPORT_FOLDER_UNEXPECTED_FILE` (fix pass F-M7b; controller decision D185 (a)). V-14 does not
+ * judge what lies under `export/`: an export is derived and lies beside the sealed set (spec §A.1,
+ * §G). The FINISHED artefacts of an export are expected there (`EXPORT_ARTEFACT_NAME`); anything
+ * else - a `.partial` a stopped export left, a name no export writes, anything in a sub-folder -
+ * is said by this ONE notice, which fails nothing. Present only when there is such a file.
+ */
+export const EXPORT_ARTEFACT_NAME = /^(?:EXP-[0-9]{6}\.(?:zip|manifest\.json|manifest\.sig)|export-manifest\.(?:json|sig))$/;
+/** A file name that may be PRINTED in the notice: a plain name of a closed alphabet. Any other name is counted, never shown. */
+export const EXPORT_NOTICE_PRINTABLE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** How many names the notice prints before "and N more". */
+export const EXPORT_NOTICE_MAX_NAMES = 3;
+
+/** The report line of `EXPORT_FOLDER_UNEXPECTED_FILE` for the paths (relative to `export/`) that are no finished export. */
+export function exportFolderNoticeReport(unexpected: readonly string[]): string {
+  const printable = unexpected.filter((name) => EXPORT_NOTICE_PRINTABLE_NAME.test(name)).sort();
+  const shown = printable.slice(0, EXPORT_NOTICE_MAX_NAMES);
+  const more = unexpected.length - shown.length;
+  const names = shown.length === 0 ? '' : ` (${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''})`;
+  return `Export folder: ${unexpected.length} file${unexpected.length === 1 ? '' : 's'} that ${unexpected.length === 1 ? 'is' : 'are'} no finished export${names}. ${unexpected.length === 1 ? 'It is' : 'They are'} not part of the sealed package.`;
+}
+
+/**
+ * `REVISION_APPEND_PENDING` (fix pass F-M7c; controller decision D187). The revision writer of the
+ * Core stages the next revision list under THIS EXACT NAME in the package folder before it commits
+ * the revision (the table is the journal; a staged file is judged against the table at a start).
+ * While it lies there the package is intact: the name is no V-14 failure, it is said by this ONE
+ * notice, which fails nothing. Only this name, and only in a package that declares a transcript:
+ * every other unexpected name is `UNEXPECTED_FILE` as before. V-11 reads the committed list only.
+ */
+export const REVISION_APPEND_PENDING_FILE = 'transcript/transcript-revisions.json.next';
+/** THE WORDING SOURCE of the notice: the report line both clients draw. */
+export const REVISION_APPEND_PENDING_REPORT = 'A transcript revision is being written; verify again shortly.';
+
+export const AUDIT_EXTRACT_NOT_SIGNED_REPORT = Object.freeze({
+  PRESENT: 'Audit extract: present, NOT covered by the package signature.',
+  MISSING: 'Audit extract: missing; it is NOT covered by the package signature.',
+});
 
 // ── Ports ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -420,6 +481,16 @@ export interface CertificateFacts {
   /** Epoch milliseconds. */
   readonly notBefore: number;
   readonly notAfter: number;
+  /**
+   * The subject of the certificate ITSELF, in the text form manifest field 25 holds
+   * (`CN=...,OU=...,O=...`), and its serial number as field 26 holds it (upper-case hex). Fix pass
+   * F-M7 (R88-08): V-13 holds the two manifest fields to them, and the development-key mark is
+   * read from THIS subject - the certificate that verified the signature - never from the
+   * manifest's text. A reader that cannot state them leaves them out: nothing is compared, and
+   * the mark is then "not established" (null), never `false`.
+   */
+  readonly subject?: string | null;
+  readonly serialNumber?: string | null;
 }
 
 /** Parses a PEM certificate and checks its self-signature. null: not a certificate, or the self-signature fails. */

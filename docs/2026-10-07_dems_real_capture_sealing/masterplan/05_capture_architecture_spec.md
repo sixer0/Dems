@@ -1075,6 +1075,21 @@ to 10 s with the AU2-08 long-GOP camera). Every later sample is exact, so the AV
 unaffected. Nothing in this spec pinned edit-list or negative-timestamp handling before this
 erratum.
 
+**Erratum PE-R63-13 (2026-10-10; fix pass F-M3, code review row 63 finding R63-13; decisions D126, D130, D179).**
+The paragraph above describes a keyframe from BEFORE T0. The case measured in D130 ("1 without
+timestamp + 29 before start") is another cause and is stated here: the camera's first keyframe
+arrived AFTER T0 but before the camera's first RTCP sender report, so the receiver handed it over
+WITHOUT a timestamp; it cannot be placed, and every frame up to the next keyframe cannot start a
+file. That is delivered post-T0 video that is not recorded, and it also grows with the camera's GOP
+(up to 10 s with the AU2-08 camera). It is reported, not hidden: `FIRST_VIDEO_SAMPLE.skipped` counts
+the packets by reason, and `skippedSpanMs` is the span from the FIRST skipped packet to the first
+written sample - camera time from the first skipped packet that had a timestamp, PLUS the
+untimestamped lead before it, taken from the host's clock (arrival of the first such packet to the
+arrival of the first packet with a timestamp) and never less than the count of those packets times
+the stream's nominal frame period. Until this fix only the first part was counted, so a camera
+whose first sender report came late stated a short span for a long hole
+(`apps/capture-worker/src/anchor.c` `skipped_span_ms`; unit check `anchor_test.c` (4)).
+
 | Item | Rule for row 58 | Evidence |
 |---|---|---|
 | Evaluate `delay_moov` | Row 58 evaluates `+frag_keyframe+delay_moov+default_base_moof` — the only tested variant that times the first sample correctly (first video packet pts 31359, duration 1800; AAC priming trimmed by an edit list; offsets 80.0045 / −79.9955 ms; audio still byte-identical in both files; decode rc 0) — **against the S1 checks**: the file shape (the file is 0 bytes until the first fragment is cut, the `moov` depends on the first fragment, edit lists are present and readers must honour them, a camera that never sends a keyframe leaves no `moov` until close), the **running hash / fragment chain** (§C.3) and the **tail validation** (§C.5, AU2-08) | pair-111 §6 (`delegation_progress/pair_111_navigator.md:308-330`); D66 |
@@ -1150,6 +1165,30 @@ Evidence media streaming is NM-11 (register §B.6), M8. Range requests map to th
 whole fragment and serves the sub-range. This is cleaner than CTR subsampling because GCM needs no
 16-byte block alignment (contrast F-51). Per-fragment tags are verified before the bytes are
 served. Latency of this path is HYPOTHESIS until M8 (section J, H-3).
+
+**Erratum CAP-M7-01 (rulings D147, D148, D178; review row 88, finding R88-04; fix pass F-M7) —
+§D.1 to §D.3 describe the SEALED camera file, not the recording.** Where §D.1 says the camera file
+at rest is GCM ciphertext "written by the writer", and §D.3 that `recording_fragments.sha256` is the
+stored-bytes digest, read:
+
+- **§D.1** The worker writes the recording in PLAINTEXT (`SESSION-<sessionId>/VIDEO-0n.mp4`, 0600,
+  in a 0700 folder). The Core encrypts at SEAL time: `CLOSE_TRACKS` writes the sealed file
+  `fragments/VIDEO-0n.mp4`, one AES-256-GCM message per fragment at the same offsets. The plaintext
+  recording is removed after the item is committed. Until then - and for as long as a seal has not
+  succeeded - the recording is plaintext on the media store root.
+- **§D.2** The session key `KID-<sessionId>` is created at the first sealed fragment of the session
+  (at seal time, not at session start). The IV is 96 random bits per message: uniqueness under a
+  key is probabilistic ("provably never reused" does not hold); nothing counts the messages of a
+  key across process restarts. Key destruction is not built (class C).
+- **§D.3** The two recorded hashes: at RECORDING time the rows of `recording_fragments` hold the
+  digest and the chain of the PLAINTEXT bytes (D148); the stored-bytes digest, chain and prefix of
+  the manifest are made at seal time over the sealed bytes, and the row's digest becomes the
+  fragment's `sha256Plain`.
+- **§H (media root)** The media store root (and its `.quarantine` folder, where recordings the Core
+  could not seal are moved, D178) must be owner-only: a real-mode boot refuses any permission bit
+  for group or others (`CAPTURE_EVIDENCE_STORE_UNUSABLE` / `READABLE_BY_OTHERS`). The transcriber
+  data directory (`<data directory>/transcriber`, the PCM tap of a session) is plaintext audio
+  under the same rule (owner of that check: the transcription unit; request filed by F-M7).
 
 ---
 
@@ -1342,6 +1381,38 @@ them. `app.ts` and `index.ts` get **no** edit from R-9..R-11: the adapters are r
 existing `capture` unit, and the search, connect and notification operations live in the already
 registered `modules/capture-config`. **Planned P25 edit count after this delta: 18** (8 `app.ts`,
 8 `config.ts`, 2 `index.ts`).
+
+**Erratum PE-R63-14 (2026-10-10; fix pass F-M3, code review row 63 finding R63-14; decision D179) -
+the record of the waiver brought up to the code of commit `abf742f`.** The count lines above
+("14, all landed", "planned 18") are the state of 2026-10-09 and are superseded by this paragraph.
+`git diff 9d3a1ef..abf742f --numstat`: `app.ts` 29 added / 0 removed, `config.ts` 69 / 0,
+`index.ts` 2 / 0. Every added line is inside one of OD-14's four categories (module registration,
+the `capture` seam, capture config keys, supervisor start / stop); no stage, route, boot order or
+existing seam changed (review 16 §2, "P25 edits against OD-14": PASS WITH FINDINGS).
+
+| Edits | File | Category | What | Authority | State |
+|---|---|---|---|---|---|
+| 1-6 | `app.ts` | module registration, the `capture` seam | the unit `capture`, `modules/capture-config`, the seam in three places, the decorator | OD-14 | landed (row 57) |
+| 7-10 | `config.ts` | capture config keys | `DEMS_CAPTURE_MODE`, `DEMS_CAPTURE_WORKER` | OD-14; PE-128-61 | landed (row 58) |
+| 11-12 | `index.ts` | supervisor start / stop | `app.capture.boot()` / `shutdown()` | OD-14; PE-57-01 | landed (row 57) |
+| 13-14 | `app.ts` | module registration | `modules/stt-config` (import + unit line) | D68; PE-57-08 | landed (row 113) |
+| 15-18 | `config.ts` | capture config keys | `DEMS_CAPTURE_DEV_SOURCES`, `DEMS_CAPTURE_HELPER_FFMPEG` in the four places of edits 7-10 | D73, D72(l); PE-123-13 | **landed** (row 136; "planned" above is superseded) |
+| 19-22 | `app.ts` | module registration | `modules/capture-discovery` (row 132), `modules/capture-inputs` (row 133): two imports, two unit lines, one header line | D114 | landed |
+| 23-24 | `app.ts` | module registration | `modules/evidence-export` (operation 87): import + unit line | D143 (row 91) | landed |
+| 25-26 | `app.ts` | module registration | `modules/media-stream` (operation 88, the evidence media route): import + unit line | D140 (row 90) | landed |
+| 27-28 | `app.ts` | module registration | `modules/transcripts` (operations 84-86): import + unit line | D146 (integration pass D4) | landed |
+| 29-30 | `app.ts` | module registration | `modules/sealing` (operation 83, the mount of the sealing composition): import + unit line | D147 (E) (row 82b) | landed |
+
+**P25 edit count: 30, all landed.** Edits 23-30 are NUMBERED HERE FOR THE FIRST TIME: until this
+erratum their authority stood only in comments of the pin test. They have no line in the header of
+`app.ts` (a header line would itself be an edit of the frozen file; none is added by this pass).
+**THE SINGLE SOURCE OF THE WAIVED LINES** is the list `WAIVED` of
+`apps/core-server/src/capture/__tests__/static.test.ts` ("app.ts: every added line is a waived
+one") and its counterpart for `config.ts`: with exactly those lines taken out, each frozen file is
+byte-equal to the file of plan row W08 (digest pins, with positive controls). A line of any module
+that is not in that list fails there; this table is the record of WHY each line is in it, and must
+be extended in the same change that extends the list. Row 63's acceptance text "12/12" and the
+"14/14" of the self-check table below are the counts of earlier revisions.
 
 ---
 

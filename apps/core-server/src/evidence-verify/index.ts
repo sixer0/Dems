@@ -172,7 +172,8 @@ export function corePorts(packageDir: string, opener: FragmentOpener | null, chu
       try {
         // Parses, and checks the self-signature (signer unit). The key ID is a label here.
         const certificate = readSigningCertificate(pemText, 'PACKAGE-CERTIFICATE');
-        return { publicKey: certificate.publicKey, notBefore: certificate.notBefore, notAfter: certificate.notAfter };
+        // The subject and the serial number are the certificate's OWN (F-M7 R88-08): V-13 holds manifest fields 25 / 26 to them.
+        return { publicKey: certificate.publicKey, notBefore: certificate.notBefore, notAfter: certificate.notAfter, subject: certificate.subject, serialNumber: certificate.serialNumber };
       } catch {
         return null;
       }
@@ -248,8 +249,11 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       tracks: report.sources.tracks.map((track) => ({ ...track, trackId: track.trackId as 'VIDEO-01' | 'VIDEO-02' })),
       audioIntervals: report.sources.audioIntervals.map((interval) => ({ ...interval })),
     },
-    // Decision D147: the development-key fact, when a manifest was read. Never part of `signatureOk`.
-    ...(report.signature.developmentKey === null ? {} : { signature: { developmentKey: report.signature.developmentKey } }),
+    // Decisions D147, D178 (F-M7 R88-08): the development-key fact of the certificate that verified the signature;
+    // `null` = not established (never `false` from an unverified package). Never part of `signatureOk`.
+    signature: { developmentKey: report.signature.developmentKey },
+    // R88-06: what the format does not cover, said on every v2 answer.
+    notices: report.notices.map((notice) => ({ ...notice })),
   };
 }
 

@@ -13,7 +13,8 @@
  * | `connectRefusal` | Which explained state of ux §8d.5 a refusal is |
  * | `OUTCOME_TONE`, `outcomeRole` | How each of the five outcomes is drawn (ux §8d.4). A failed test is a result, not an error |
  *
- * **Where the typed user name and password are.** In the form state of the open dialog, and in the
+ * **Where the typed user name and password are.** In the two uncontrolled inputs of the open dialog
+ * (no form library, no React state, no `value` attribute: fix F-M4, finding R69-04), and in the
  * arguments of the one call that sends them. This file keeps neither: a failure it returns holds the
  * status, the codes and (for the presenter) the failed call, which carries the Core's envelope and
  * never the request body. No query, no mutation cache, no log record, no error and no URL ever

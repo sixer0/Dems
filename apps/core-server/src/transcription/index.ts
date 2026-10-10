@@ -46,7 +46,8 @@
  * WHAT THE SEAL CALLS (`src/sealing-host`): `runs.availability`, `runs.assemble`, `runs.closeOut`,
  * `runs.locate`, and `manifestSnapshot(sessionId)`.
  */
-import { mkdirSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
 import { SttConnectionDetailCode } from '@dems/shared/api';
 import { SerialQueue, createEngineGuard, type ChunkMirror, type DocumentInterval, type FetchLike, type SpeakerEmbeddingEngine, type TranscriberLog } from '@dems/transcriber';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
@@ -57,6 +58,7 @@ import { revealSttCredential, type RevealedSttCredential } from './credential-re
 import { readTranscriberHost, sessionScratchDir, sessionTapPath, type TranscriberHost } from './host';
 import { createCoreTranscriberLog } from './log';
 import { createCoreSttProbe } from './probe';
+import { ScratchRemovalRefusal, ensureSessionScratch, listSessionScratch, removeSessionScratch } from './scratch';
 import { openSessionTranscription, type CaptureFacts, type EnabledSessionTranscription, type OpenSessionOptions, type SessionTranscription } from './session';
 import { createModelProvenanceProvider, type ModelProvenanceAnswer } from './model-provenance';
 import { createSessionRuns, type SessionRuns } from './session-run';
@@ -69,14 +71,18 @@ export { REVEAL_STT_CREDENTIAL, SttCredentialRevealError, revealSttCredential, t
 export {
   TRANSCRIBER_HOST_FILE,
   TRANSCRIBER_HOST_FOLDER,
+  TRANSCRIBER_SCRATCH_FOLDER,
+  TRANSCRIPTION_SESSIONS_FOLDER,
   TRANSCRIPTION_TAP_FILE,
   TranscriberHostError,
   readTranscriberHost,
   sessionScratchDir,
   sessionTapPath,
+  transcriberScratchRoot,
   type TranscriberHost,
 } from './host';
 export { createCoreTranscriberLog } from './log';
+export { ScratchRemovalRefusal, ensureSessionScratch, listSessionScratch, removeSessionScratch, type ScratchRemoval } from './scratch';
 export { GPU_BACKEND_MARKERS, SttProbeDetailCode, cpuOnlyBuildOf, createCoreSttProbe, type CoreProbeDeps, type CpuOnlyVerdict } from './probe';
 export {
   CHECKPOINT_RECOVERY_LIMIT,
@@ -150,8 +156,9 @@ export interface TranscriptionControl {
    * starts nothing: that is `sessionStartCommitted`, after the commit.
    *
    * The stored configuration is read on the runtime pool, outside `db`: a configuration that
-   * cannot be read, or is not seeded, is an outcome with a code (the session then has NO snapshot
-   * and is never transcribed), and the start goes on. A statement that fails ON `db` is the
+   * cannot be read, or is not seeded, is an outcome with a code. THE CALLER REFUSES THE START on
+   * every failing outcome (`capture-session`: `503 STT_SNAPSHOT_NOT_STORED`, decision D163) - no
+   * session of a real capture mode records without its snapshot. A statement that fails ON `db` is the
    * outcome `SNAPSHOT_STORE_FAILED` - and has ended the caller's transaction, as any failed
    * statement of a unit does: such a start cannot commit. Never throws.
    */
@@ -167,6 +174,17 @@ export interface TranscriptionControl {
   tapPathFor(sessionId: string): Promise<string | null>;
   /** Where the checkpoint and the three transcript files of a session are. */
   scratchDirFor(sessionId: string): string;
+  /**
+   * THE SESSION'S TRANSCRIBER SCRATCH IS REMOVED (R80-04; `scratch.ts`): its raw PCM tap, the chunk
+   * files, the checkpoint and the assembled files. The run of the session is stopped and forgotten
+   * first. `why` is a code for the log (`SEALED`, `FAILED_START`, `SEALED_AT_BOOT`). Resolves true
+   * when a folder was removed; false when there was none. A refusal of the containment rule, or of
+   * the file system, removes nothing and is written to the log and the persistent error log
+   * (`TRANSCRIBER_SCRATCH_NOT_REMOVED`). Idempotent; never throws.
+   */
+  discardSessionScratch(sessionId: string, why: string): boolean;
+  /** AT A START OF THE CORE: removes the scratch of every session `sealed` answers true for. Returns the session IDs removed. Never throws. */
+  sweepSessionScratch(sealed: (sessionId: string) => boolean): string[];
   openSession(sessionId: string, options?: OpenSessionOptions): Promise<SessionTranscription>;
   /** Returns the function that removes the listener. */
   onSessionWarning(listener: (warning: SttSessionWarning) => void): () => void;
@@ -181,7 +199,8 @@ export interface TranscriptionControl {
 /** What the app must offer. Structural: the scaffold's `FastifyInstance` has all of it. */
 export interface TranscriptionHost {
   readonly stages: object;
-  readonly config: { readonly dataDir: string; readonly captureMode: 'simulated' | 'real' };
+  /** `mediaStoreDir`: the media store root of THIS Core (one per database) - the per-session scratch is keyed by it (ruling D180). Absent (a test's app): the configuration's default, `<dataDir>/media/sessions`. */
+  readonly config: { readonly dataDir: string; readonly mediaStoreDir?: string; readonly captureMode: 'simulated' | 'real' };
   readonly log: { info(fields: Record<string, unknown>, message: string): void; warn(fields: Record<string, unknown>, message: string): void; error(fields: Record<string, unknown>, message: string): void };
   readonly errorLog: { append(entry: { level: 'error' | 'warn'; source: string; message: string; code?: string; context?: Readonly<Record<string, string | number | boolean | null>> }): void };
   readonly clock: { now(): number };
@@ -253,6 +272,8 @@ function directoryIsThere(path: string): boolean {
 export function mountTranscription(app: TranscriptionHost, deps: MountTranscriptionDeps): TranscriptionControl {
   if (controls.has(app.stages)) throw new Error('the transcription composition was mounted twice');
   const { dataDir, captureMode } = app.config;
+  // D180 (fix pass F-M7c): everything per session is below the media store root of this Core, never below the shared data directory.
+  const mediaStoreDir = app.config.mediaStoreDir ?? join(dataDir, 'media', 'sessions');
   // Decided once, like the Core credential store: a data directory that appears later is not adopted.
   const mounted = directoryIsThere(dataDir);
   const transcriberLog: TranscriberLog = createCoreTranscriberLog({ log: app.log, errorLog: app.errorLog, now: () => app.clock.now() });
@@ -357,24 +378,49 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
   /** What a taken snapshot starts, once it is committed: the scratch directory and the one background check. */
   const checked = new Set<string>();
   const started = (snapshot: SttSessionSnapshot): void => {
-    if (!snapshot.enabled || !mounted || checked.has(snapshot.sessionId)) return;
-    checked.add(snapshot.sessionId);
+    if (!snapshot.enabled || !mounted) return;
     try {
       // The directory of the tap and of the checkpoint: private, below the git-ignored data directory.
-      mkdirSync(sessionScratchDir(dataDir, snapshot.sessionId), { recursive: true, mode: 0o700 });
+      // At EVERY start: the folder of a start that failed was removed with its tap (R80-04).
+      ensureSessionScratch(mediaStoreDir, snapshot.sessionId);
     } catch {
       // The tap then cannot be written: the capture worker records without it and says so (tapActive false).
     }
+    // The one background check of the backend: once per session and process.
+    if (checked.has(snapshot.sessionId)) return;
+    checked.add(snapshot.sessionId);
     checkAtSessionStart(snapshot);
   };
 
+  /** The rows of `session_audio_intervals` of a session, in media time: for its runner (R80-02) and for its document. */
+  const intervalsOf = async (sessionId: string): Promise<readonly DocumentInterval[]> => {
+    const { rows } = (await app.db.pool.query(READ_SESSION_INTERVALS_FOR_TRANSCRIPT, [sessionId])) as unknown as { rows: { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null }[] };
+    return rows.map((row) => ({ source: row.mic_device_id, fromMs: Number(row.from_media_ms), toMs: row.to_media_ms === null ? null : Number(row.to_media_ms) }));
+  };
+
   const openSession = (sessionId: string, options?: OpenSessionOptions): Promise<SessionTranscription> =>
-    openSessionTranscription({ dataDir, host, snapshots, reveal, openEncrypted, engineGuard: createEngineGuard, capture: app.capture, mirror, transcriberLog, queue, now: () => app.clock.now(), fetchImpl: deps.fetchImpl }, sessionId, options);
+    openSessionTranscription({ mediaStoreDir, host, snapshots, reveal, openEncrypted, engineGuard: createEngineGuard, capture: app.capture, mirror, transcriberLog, queue, now: () => app.clock.now(), fetchImpl: deps.fetchImpl, intervals: intervalsOf }, sessionId, options);
 
   // ONE provider per app: the hash of a model file is taken once per file and process.
   const provenance = createModelProvenanceProvider({ statedVersions: () => host().modelVersions });
   const productionProvenance = (session: EnabledSessionTranscription): Promise<ModelProvenanceAnswer> =>
     provenance.of({ backend: session.config.backend, model: session.adapter.model, modelPath: session.config.backend === 'cpu-local' ? session.config.modelPath : null });
+
+  /** R80-04: removes the scratch folder of one session by the containment rule; what is refused is logged and persisted. */
+  const removeScratch = (sessionId: string, why: string): boolean => {
+    if (!mounted) return false;
+    const outcome = removeSessionScratch(mediaStoreDir, sessionId);
+    if (outcome.removed) {
+      app.log.info({ code: 'TRANSCRIBER_SCRATCH_REMOVED', source: `${SOURCE}.scratch`, sessionId, why }, 'the transcriber scratch of the session, its raw audio tap included, was removed');
+      return true;
+    }
+    if (outcome.refusal !== ScratchRemovalRefusal.ABSENT) {
+      const message = 'the transcriber scratch of the session was NOT removed: its raw audio tap may still be on the disk in the clear';
+      app.log.error({ code: 'TRANSCRIBER_SCRATCH_NOT_REMOVED', source: `${SOURCE}.scratch`, sessionId, why, refusal: outcome.refusal }, message);
+      app.errorLog.append({ level: 'error', source: `${SOURCE}.scratch`, message, code: 'TRANSCRIBER_SCRATCH_NOT_REMOVED', context: { correlationId: sessionId, why, refusal: outcome.refusal } });
+    }
+    return false;
+  };
 
   const runs: SessionRuns = createSessionRuns({
     // An app without a data directory has no transcriber: nothing is opened for any session.
@@ -383,14 +429,12 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
       const snapshot = await snapshots.get(sessionId);
       return snapshot === null ? { state: 'NO_SNAPSHOT', snapshot: null } : !snapshot.enabled ? { state: 'DISABLED', snapshot } : { state: 'UNAVAILABLE', snapshot, code: 'TRANSCRIBER_NOT_MOUNTED' };
     },
-    scratchDirFor: (sessionId) => sessionScratchDir(dataDir, sessionId),
+    scratchDirFor: (sessionId) => sessionScratchDir(mediaStoreDir, sessionId),
     modelProvenance: deps.modelProvenance ?? productionProvenance,
     speakerEngine: deps.speakerEngine ?? (() => null),
-    async intervals(sessionId): Promise<readonly DocumentInterval[]> {
-      const { rows } = (await app.db.pool.query(READ_SESSION_INTERVALS_FOR_TRANSCRIPT, [sessionId])) as unknown as { rows: { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null }[] };
-      return rows.map((row) => ({ source: row.mic_device_id, fromMs: Number(row.from_media_ms), toMs: row.to_media_ms === null ? null : Number(row.to_media_ms) }));
-    },
+    intervals: intervalsOf,
     transcriberLog,
+    discardScratch: (sessionId) => void removeScratch(sessionId, 'FAILED_START'),
     report(level, code, message, sessionId, more = {}, error) {
       const errorName = error instanceof Error ? error.name : undefined;
       const fields = { code, source: `${SOURCE}.sessionRun`, sessionId, ...more, ...(errorName === undefined ? {} : { errorName }) };
@@ -444,9 +488,31 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
     },
     async tapPathFor(sessionId) {
       const snapshot = await snapshots.get(sessionId);
-      return snapshot === null || !snapshot.enabled || !mounted ? null : sessionTapPath(dataDir, sessionId);
+      return snapshot === null || !snapshot.enabled || !mounted ? null : sessionTapPath(mediaStoreDir, sessionId);
     },
-    scratchDirFor: (sessionId) => sessionScratchDir(dataDir, sessionId),
+    scratchDirFor: (sessionId) => sessionScratchDir(mediaStoreDir, sessionId),
+    discardSessionScratch(sessionId, why) {
+      try {
+        runs.discard(sessionId);
+      } catch {
+        // The run could not be ended: the folder is removed all the same (a stopped or absent runner writes nothing).
+      }
+      return removeScratch(sessionId, why);
+    },
+    sweepSessionScratch(sealed) {
+      if (!mounted) return [];
+      const removed: string[] = [];
+      for (const sessionId of listSessionScratch(mediaStoreDir)) {
+        let is = false;
+        try {
+          is = sealed(sessionId);
+        } catch {
+          is = false;
+        }
+        if (is && control.discardSessionScratch(sessionId, 'SEALED_AT_BOOT')) removed.push(sessionId);
+      }
+      return removed;
+    },
     openSession,
     onSessionWarning(listener) {
       listeners.add(listener);

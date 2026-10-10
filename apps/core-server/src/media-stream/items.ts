@@ -49,3 +49,17 @@ export async function readMediaItem(reader: MediaItemReader, evidenceId: string)
     manifestSha256: text(row['manifest_hash']),
   };
 }
+
+/**
+ * R93-08 (fix pass F-M8): is the sign-in session a media answer was started in still open? One row
+ * by its key, read while a long answer is in flight, so that a stream is cut when its session is
+ * signed out, expires or is ended with its operator. It names the ID and `ended_at` and nothing
+ * else of the session: never its token hash.
+ */
+export const READ_SESSION_OPEN = 'SELECT 1 AS open FROM public.auth_sessions WHERE id::text = $1 AND ended_at IS NULL';
+
+/** True while the session of that ID is open. */
+export async function readSessionOpen(reader: MediaItemReader, sessionId: string): Promise<boolean> {
+  const { rows } = await reader.query(READ_SESSION_OPEN, [sessionId]);
+  return rows.length > 0;
+}

@@ -141,7 +141,9 @@ describe('SH-06/SH-08 mic switch (register SH-06/SH-08; op 81; OD-09)', () => {
     // One AUDIO_SOURCE_SWITCHED audit row carrying the sending device id (E-30).
     const audit = next.audit.rows.at(-1);
     expect(audit?.type).toBe('AUDIO_SOURCE_SWITCHED');
-    expect(audit?.details).toMatchObject({ fromInputId: 'MIC-01', toInputId: 'MIC-02', deviceId: 'MIC-02' });
+    // Fix pass F-M5 (review R74-05): the keys of contract C3 §5.2 (it pinned the simulator's own `fromInputId` / `toInputId` / `deviceId`).
+    expect(audit?.details).toMatchObject({ fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 0 });
+    expect(Object.keys(audit?.details ?? {}).sort()).toEqual(['fromInput', 'fromMs', 'toInput', 'toMs']);
     // It never touches the interview-role copy of the mics (only the capture role / active input).
     expect(next.mics).toBe(before.mics);
   });

@@ -150,6 +150,40 @@ reader using `fragments.json` cannot be fed altered IV/tag/keyId without breakin
 stored-bytes hash are checkable on the ciphertext with no session key; the plaintext hash is checkable
 only after decryption (export path, §G). This is the two-hash rule of `D-DB-02` and RF-6.
 
+**Erratum PE-M7-02 (rulings D147, D148, D160, D167, D178; review row 88, finding R88-04; fix pass
+F-M7) — WHEN the camera file becomes ciphertext, and what is plaintext until then.** The table
+above states the SEALED package. It does not state the time before the seal, and three limits are
+now part of this spec:
+
+1. **Encryption happens at SEAL time, by the Core (D147).** The capture worker writes the recording
+   `SESSION-<sessionId>/VIDEO-0n.mp4` in PLAINTEXT (file mode 0600, folder 0700). In the sealing
+   step `CLOSE_TRACKS` the Core writes the sealed camera file `fragments/VIDEO-0n.mp4` (the init
+   segment clear, each fragment one AES-256-GCM message at the same offset) and
+   `fragments/fragments.json`. The plaintext recording is removed by `STORE_SEALED_PACKAGE`, AFTER
+   the item is committed, and only when its bytes hash to the manifest's `tracks[].sha256Plain`.
+   **From the start of a session until its seal completes, its recordings lie on the media store
+   root in plaintext.** A session whose seal failed keeps them there until the seal succeeds.
+2. **Recording-time digests are plaintext digests (D148).** `recording_fragments.sha256` and
+   `.chain_hash` are the digest and chain of the worker's PLAINTEXT bytes (dbc-3 §B.6 reads
+   "stored bytes": at recording time the stored bytes are plaintext). The manifest's
+   `files[].fragments[].sha256` / `chainHash` / `prefixSha256` are computed at seal time over the
+   SEALED bytes; the recording-time digest of a fragment is the manifest's `sha256Plain`. The two
+   chains are different values by construction; `FINALIZE_HASHES` ties them (it opens every sealed
+   range and holds it to the row).
+3. **What protects the plaintext meanwhile.** Only file-system permissions: the media store root
+   must be OWNER-ONLY - a real-mode boot refuses a root with any permission bit for group or
+   others (`CAPTURE_EVIDENCE_STORE_UNUSABLE`, reason `READABLE_BY_OTHERS`; the Core creates it
+   0700). The session key is not on the media branch (§A.3 table, row "session key").
+4. **Recordings the Core could not seal (D178).** A camera file left out of a seal, a file under a
+   recording's name that is not the recording the package sealed, and the recordings of a session
+   that cannot be sealed at all are MOVED - never deleted - to
+   `<media root>/.quarantine/<sessionId>/` (0700 / 0600). They are plaintext, they are real
+   evidence for the reset guard (a quarantined folder blocks a reset), and they are no part of
+   any package. Retention and release of the quarantine are an operator procedure (docs row 96).
+5. **Limits carried from D160 / D167 unchanged:** the transcript model provenance of a server
+   backend is the server's word (§B.7, PE-D9-01); the kill matrix proves in-process stops at the
+   step hooks, not a power loss inside a step (§H.3).
+
 ### A.4 What the export contains (OD-16) — see §G
 
 The exported package is a **decrypted copy** of the camera files plus `session-manifest.json` and
@@ -256,6 +290,34 @@ Open, not decided here: the demo generator (row 82c) writes `H.264 + AAC-LC` in 
 demo packages, which is neither form.
 
 **Erratum PE-124-03 (D73, D80 (9); D66, D72 (e)).** Three more fields belong to each `tracks[]` record: **124 `tracks[].sourceClass`**, **127 `tracks[].firstVideoSamplePts`** and **128 `tracks[].firstVideoSampleTimescale`** (§B.12).
+
+**Erratum PE-M7-01 (D178; review row 88, finding R88-01; fix pass F-M7) — `tracks[]` of 1 or 2,
+not "exactly 2".** The heading and the first sentence of this section said "exactly 2 rows"; a
+session that recorded with ONE camera is a valid session (`01_specs.md` R-10, D72(k)) and its
+recording must be sealable. The rule is now:
+
+- `tracks[]` holds one record per camera file that EXISTS in the package: **1 or 2** records, each
+  track once, `VIDEO-01` before `VIDEO-02`. `files[]` (§B.6) holds exactly the same track IDs in the
+  same order, and `audio.containsIn` (§B.5) names at least one and only tracks of `tracks[]`.
+  Zero records, a third record, a repeated track or another order is refused by the schema.
+- **No new manifest field** (119 sealed + 9 export fields stay). The camera that is absent is
+  stated by existing members: it is the `VIDEO-0n` that `tracks[]` does not hold; the
+  `CLOSE_TRACKS` record of `sealing.steps[]` carries `checkpoint.absentTracks` (the track IDs, only
+  when one is absent) inside the signed body; and `audit-session-extract.jsonl` holds the session's
+  `CAPTURE_DEVICE_UNREACHABLE` row (`degraded: true`) of the start.
+- A camera that **never recorded** (no recording file and no row of `recording_fragments`) is
+  absent and the seal is NOT interrupted by it. A camera file that exists but cannot be sealed
+  (no whole fragment, not what its rows say, durable bytes missing, a fragment above the verify
+  bound, gone although rows exist) is left out as well, and then `timeline.interrupted` is `true`
+  and every sealed fragment says `interrupted: true` (§E.4); that file is moved to
+  `<media root>/.quarantine/<sessionId>/` and is never part of the package.
+- Verify: V-02, V-04, V-06, V-07 run over the files the manifest lists (1 or 2); V-14 declares the
+  camera files of `tracks[]` only, so a second camera file put beside a one-camera package is
+  `UNEXPECTED_FILE`; V-15 holds for one track. Operation 41 answers one `files[]` entry.
+- Readers: the evidence item's `tracks` has 1 or 2 entries (operation 28 / 29); a media session
+  (operation 88) for the absent file and an export (operations 42 / 87) of a one-camera package
+  are M8's (request lines filed by fix pass F-M7).
+- Database contract dbc-3 §B.12: no constraint counts the rows of `evidence_tracks`; nothing changes.
 
 ### B.5 Session audio track and source intervals (10 fields)
 
@@ -910,7 +972,27 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | Consequence for wording | A report or a client never states "recorded from production devices" as a verified fact; it states "declared as production devices by the Core that sealed this package" (§D.1) | this row |
 | On this computer | A development-mode session (D74 (2)) and every session on fixtures seal with `developmentSources = true`. In this phase `developmentSources = false` cannot occur: no all-`PRODUCTION` package can be sealed (D86 C-5); check `M7-SEC-SRC-2` (**erratum PE-128-69**) | `cap §A.1`; D74 (2); `specs` R-9 |
 
+
+### H.6 Limits stated by fix pass F-M7 (review row 88; decision D178) **Erratum PE-M7-03**
+
+| Limit | Statement |
+|---|---|
+| Plaintext until sealed (D147) | See erratum PE-M7-02 in §A.3: a recording is plaintext on the media store root from the start of its session until its seal completes; protection is the owner-only root. A stolen or imaged disk exposes every unsealed session and the quarantine. |
+| The audit extract is not signed (R88-06) | `audit-session-extract.jsonl` is a declared file (V-14 asks that it is there) and NO manifest field holds its hash: its content is covered by no hash and no signature. Every v2 verify result carries the notice `AUDIT_EXTRACT_NOT_SIGNED` ("Audit extract: present, NOT covered by the package signature."); it fails nothing. **Open decision:** one field in the next manifest revision (the extract's SHA-256), checked like V-10. |
+| The development-key mark (R88-08) | It is read from the certificate that VERIFIED the signature; V-13 holds manifest fields 25 / 26 to that certificate (`CERTIFICATE_SUBJECT_MISMATCH`); the answer is `null` ("not established") unless V-01, V-03, V-09 and V-13 passed. A production Core does not boot with a development signing key (`CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION`), and the seal refuses to sign a package of all-PRODUCTION sources with one. It is still a statement of the certificate: a key holder who makes a certificate WITHOUT the unit is caught only by the trusted-certificate anchor (§C.3), as §H.5 says of the source mark. |
+| One-camera packages (R88-01) | See erratum PE-M7-01 in §B.4. |
+| Random IVs (R88-13) | The GCM IV is 96 random bits per message; uniqueness under one session key is probabilistic, not provable. The message count per key is a few thousand, far inside the bound for random nonces. Nothing counts messages across process restarts. |
+| The manifest's inputs are frozen (R88-03) | The whole input of the manifest is written into the `BUILD_MANIFEST` checkpoint before the first digest; a resumed seal builds from it. The manifest therefore states the session record as it was at the FIRST build (time-source lock, software version, operator and camera names), which for a seal resumed after an upgrade is the earlier state. |
+
 ---
+
+### H.7 Limits and rules stated by fix pass F-M7c (review row 88; decisions D180, D186, D187) **Erratum PE-M7-04**
+
+1. **The IV rule (R88-13).** Every sealed fragment is one AES-256-GCM message with a RANDOM 96-bit IV. Uniqueness of an IV under one session key is **probabilistic, not proven**: the Core refuses a repeat only inside one process. The bound is the number of messages per key: the fragments of ONE session (a re-run of CLOSE_TRACKS seals them again under the same key), a few thousand at most, far inside the random-nonce bound of GCM. A demo reseed adds nothing to it: the key of each reseeded session is destroyed and a fresh one is made. No text of this spec may say "provably never reused".
+2. **Where a session key lives (D180).** `keyId` stays `KID-<sessionId>` (field 77, the AAD). The Core keeps the key per MEDIA STORE ROOT: `<data directory>/credential-store/session-keys-<scope>/`, `<scope>` = the first 32 hex characters of SHA-256 over the resolved root. Two databases with equal session IDs therefore hold two keys. A key an earlier build left in the shared folder `credential-store/keys/` is opened for reading only. Moving a media store to another path requires renaming its key folder to the new scope.
+3. **Plaintext after a SEALED outcome (R88-05, R88-15).** A plaintext recording is removed only by proof (ev §E, row 82c), and when the removal runs in a later attempt than the seal the sealed file is decrypted and compared again first. A file under a recording's name that cannot be proven is moved to `<store>/.quarantine/<sessionId>/` with one CRITICAL alert and one audit row (`FAULT_RAISED`, `details.reason: SEALED_PLAINTEXT_QUARANTINED`). Orphan part files of a dead worker are removed once their session is sealed.
+4. **`transcript/transcript-revisions.json.next` (D187).** This exact name is the staged revision list of a write under way: verify reports the notice `REVISION_APPEND_PENDING` and V-14 does not fail on it. Every other undeclared name is `UNEXPECTED_FILE`. V-11 reads the committed list only.
+5. **The transcriber scratch (D180).** `<store>/.transcriber/sessions/<sessionId>/` - a hidden folder of the store root, no package folder; removed when the session is sealed; moved to the quarantine with the recordings of an UNSEALABLE session.
 
 ## I. Self-gate (row-32 Verification, stated explicitly)
 

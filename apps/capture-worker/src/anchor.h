@@ -90,6 +90,18 @@ void clock_floor_init(ClockFloor *f);
 void clock_floor_add(ClockFloor *f, double lag_ms);
 /* 1 when the floor is inside +-CLOCK_SANITY_MS, or nothing was seen yet. No allowance. */
 int clock_floor_sane(const ClockFloor *f);
+/* HOW MUCH DELIVERED VIDEO A CAMERA FILE DOES NOT HOLD BEFORE ITS FIRST SAMPLE (review R63-13; spec C.4,
+ * erratum of fix pass F-M3), in ms. Two parts:
+ *   camera_span_us   camera time from the first skipped packet that HAD a timestamp to the first written sample;
+ *   the lead         the `lead_packets` skipped packets that came BEFORE that one have no camera time (they
+ *                    arrived before the camera's first sender report). Their span is taken from the host's
+ *                    clock - `lead_arrival_us`, from the arrival of the first of them to the arrival of the
+ *                    first packet with a timestamp - and is never less than their count times the stream's
+ *                    nominal frame period (`frame_period_us`, 0 when the stream states none): packets that
+ *                    waited inside the receiver are handed over at once, so their arrivals alone say too little.
+ * Until this fix only the first part was counted: a camera whose first sender report came seconds after it
+ * began to send stated a short span for a long hole. */
+int64_t skipped_span_ms(int64_t camera_span_us, int64_t lead_packets, int64_t lead_arrival_us, int64_t frame_period_us);
 /* Fitted change of the per-second best lag in parts per million; 0 with *fitted = 0 before CLOCK_TREND_MIN_SPAN_S. */
 double trend_ppm(const ClockTrend *t, int *fitted);
 

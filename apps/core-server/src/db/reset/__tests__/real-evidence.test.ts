@@ -98,6 +98,9 @@ describe('the refusal message and its log details', () => {
       storeRoot: '/store',
       storePresent: true,
       realRows: 1,
+      // Fix pass F-M7 (R88-09): sessions that recorded and are not sealed, and quarantined folders; `storeUnreadable` only when the store could not be listed.
+      unsealedSessions: 0,
+      quarantinedFolders: 0,
       // dbc-4 §N.10 (row 129): the two counts of the development-package exemption.
       developmentUnproven: 0,
       developmentPackages: 0,

@@ -213,10 +213,30 @@ describe('completeSeal: the item of the real package', () => {
     expect(h.state().audit.rows.filter((row) => row.type === 'RECOVERY_COMPLETED' && row.sessionId === sessionId)).toHaveLength(1);
   });
 
+  it.each([['VIDEO-01' as const], ['VIDEO-02' as const]])('F-M7 R88-01: a session that recorded with ONE camera file (%s) is sealed with that file: the item lists it alone', (trackId) => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const at = h.clock.now() + 200;
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { tracks: [{ trackId, sizeBytes: 4_000, sha256: hex('01') }] })));
+    const item = h.state().evidence.at(-1);
+    expect(h.state().session).toMatchObject({ state: 'SEALED', sealedAt: at });
+    expect(item?.tracks.map((track) => [track.trackId, track.label, track.sizeBytes])).toEqual([[trackId, trackId === 'VIDEO-01' ? 'Camera 1' : 'Camera 2', 4_000]]);
+    expect(item?.sizeBytes).toBe(4_000);
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    expect(h.state().audit.rows.filter((row) => row.type === 'EVIDENCE_SEALED' && row.sessionId === sessionId)[0]?.details).toMatchObject({ tracks: 1 });
+    // The Core is free again: a sealed session blocks no new one.
+    expect(() => h.sim.actions.createSession({ ...INPUT, caseNumber: 'LP/2026/1001-0009' })).not.toThrow();
+  });
+
   it.each([
     ['a manifest digest that is no SHA-256', { manifestSha256: 'abc' }],
     ['a simulated-length signature', { signature: { value: hex('cd'), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' as const } }],
-    ['one camera file only', { tracks: [{ trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }] }],
+    // Fix pass F-M7 (R88-01, D178): ONE camera file is a sealed package (the case below proves it); these are not.
+    ['no camera file', { tracks: [] }],
+    ['the two camera files in the wrong order', { tracks: [{ trackId: 'VIDEO-02' as const, sizeBytes: 1, sha256: hex('02') }, { trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }] }],
+    ['one camera file twice', { tracks: [{ trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }, { trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: hex('01') }] }],
     ['a camera file without a hash', { tracks: [{ trackId: 'VIDEO-01' as const, sizeBytes: 1, sha256: '' }, { trackId: 'VIDEO-02' as const, sizeBytes: 1, sha256: hex('02') }] }],
     ['another session', { sessionId: 'SES-20990101-0001' }],
   ])('refuses %s and seals nothing', (_name, overrides) => {

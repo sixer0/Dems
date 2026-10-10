@@ -26,7 +26,7 @@ import {
 import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
-import { DeviceSourceBadge } from './source-badge'
+import { DeviceSourceBadge, LocalMicrophoneLimit } from './source-badge'
 import { isDevelopmentSource, useRealCapture } from './source-class'
 
 /** The fixed sentence of the page's own record when a selector command fails for a reason the presenter left to the page. */
@@ -314,6 +314,8 @@ function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMi
         <StateChips online={line.online} />
         <DeviceSourceBadge device={device} testId={`selector-badge-${line.inputId}`} />
       </div>
+      {/* R69-07 (D161): the limit of this Mac's microphone, on the line where it is chosen. */}
+      <LocalMicrophoneLimit device={device} place={`selector-${line.inputId}`} className="dev-sel-reason" />
       {primary ? null : (
         <div className="dev-sel-edit">
           <Button

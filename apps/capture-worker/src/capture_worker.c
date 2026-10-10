@@ -39,6 +39,7 @@ atomic_int g_stop;
 atomic_int g_stop_ingest;
 int g_listen_timeout_s = DEFAULT_INGEST_OPEN_WINDOW_MS / 1000;
 int g_mic_silence_dbfs = DEFAULT_MIC_SILENCE_DBFS, g_mic_silence_ms = DEFAULT_MIC_SILENCE_MS, g_mic_disconnect_ms = DEFAULT_MIC_DISCONNECT_MS;
+int g_max_fragment_bytes = DEFAULT_MAX_FRAGMENT_BYTES;
 #ifdef DEMS_PROOF_MUX_EXTRA
 const char *g_mux_extra = DEMS_PROOF_MUX_EXTRA;     /* PROOF BUILD: the negative control of the AV checks */
 #else
@@ -163,6 +164,7 @@ static const char *take_plan(Session *s, const JNode *plan) {
         snprintf(cam->track_id, sizeof cam->track_id, "%s", track->str);
         snprintf(cam->url, sizeof cam->url, "%s", url->str);
         sink_init(&cam->sink, out->str);
+        cam->sink.max_fragment_bytes = (size_t)g_max_fragment_bytes;       /* R63-02: the writer refuses a larger fragment before it writes it */
     }
     if (s->cam[1].present && (s->cam[0].port == s->cam[1].port || !strcmp(s->cam[0].device_id, s->cam[1].device_id) || !strcmp(s->cam[0].track_id, s->cam[1].track_id) || !strcmp(s->cam[0].sink.path, s->cam[1].sink.path))) return "PLAN_INVALID";
 
@@ -228,10 +230,13 @@ static const char *session_start(const JNode *msg) {
     if (refusal) return refusal;
     int r = open_encoder(&S);
     if (r < 0) { fatal("main", "ENCODER_OPEN_FAILED", r); return "ENCODER_OPEN_FAILED"; }
-    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync\":\"%s\",\"gop_bound_ms\":%d,"
-         "\"ingest_open_window_ms\":%d,\"mic_silence_dbfs\":%d,\"mic_silence_ms\":%d,\"mic_disconnect_ms\":%d",
-         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_level(), S.fragment_target_ms,
-         g_listen_timeout_s * 1000, g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms);
+    /* `sync_wanted` is what the build asks for; the level a file really got is said with its first durable fragment
+     * (R63-09). `gop_frames_target` is the plan's target for streams DEMS encodes itself: nothing is enforced from
+     * it on a copied stream (spec C.1; review R63-18) - the observed interval is measured and reported instead. */
+    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync_wanted\":\"%s\",\"gop_bound_ms\":%d,\"gop_frames_target\":%d,"
+         "\"ingest_open_window_ms\":%d,\"mic_silence_dbfs\":%d,\"mic_silence_ms\":%d,\"mic_disconnect_ms\":%d,\"max_fragment_bytes\":%d",
+         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_wanted(), S.fragment_target_ms, S.gop_frames,
+         g_listen_timeout_s * 1000, g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, g_max_fragment_bytes);
     for (int i = 0; i < NCAM; i++) {
         Cam *c = &S.cam[i];
         if (!c->present) continue;
@@ -281,9 +286,11 @@ static void session_close(void) {
         int r = cam_close(c);
         if (r < 0) fatal("main", "OUTPUT_CLOSE_FAILED", r);
         logj("info", "main", "camera_summary",
-             "\"cam\":%d,\"video_packets\":%lld,\"audio_packets\":%lld,\"fragments\":%lld,\"durable_fragments\":%lld,\"bytes\":%lld,\"dropped_no_pts\":%lld,\"dropped_prearm\":%lld,\"dropped_prestart\":%lld,\"dropped_unanchored\":%lld,\"first_video_pts\":%lld",
+             "\"cam\":%d,\"video_packets\":%lld,\"audio_packets\":%lld,\"fragments\":%lld,\"durable_fragments\":%lld,\"bytes\":%lld,\"dropped_no_pts\":%lld,\"dropped_prearm\":%lld,\"dropped_prestart\":%lld,\"dropped_unanchored\":%lld,\"first_video_pts\":%lld,"
+             "\"retimed\":%lld,\"size_bound_cuts\":%lld,\"realign_cuts\":%lld,\"sync\":\"%s\"",
              i + 1, (long long)atomic_load(&c->v_written), (long long)atomic_load(&c->a_written), (long long)atomic_load(&c->sink.fragments), (long long)atomic_load(&c->sink.durable_fragments), (long long)atomic_load(&c->sink.bytes), (long long)atomic_load(&c->v_dropped_no_pts),
-             (long long)atomic_load(&c->v_dropped_prearm), (long long)atomic_load(&c->v_dropped_prestart), (long long)atomic_load(&c->v_dropped_unanchored), (long long)(c->started ? c->first_pts : -1));
+             (long long)atomic_load(&c->v_dropped_prearm), (long long)atomic_load(&c->v_dropped_prestart), (long long)atomic_load(&c->v_dropped_unanchored), (long long)(c->started ? c->first_pts : -1),
+             (long long)atomic_load(&c->v_retimed), (long long)c->size_cuts, (long long)c->realign_cuts, sink_sync_level(&c->sink));
     }
     if (S.enc) avcodec_free_context(&S.enc);
     session_running = 0;
@@ -349,6 +356,7 @@ static void usage(void) {
         "usage: capture-worker --log <file.jsonl> [--heartbeat-ms <50..10000>]\n"
         "                      [--ingest-open-window-ms <1000..600000, whole seconds>]   (default 15000; --listen-timeout-s <1..600> is the same setting in seconds)\n"
         "                      [--mic-silence-dbfs <-120..0>] [--mic-silence-ms <100..600000, step 100>] [--mic-disconnect-ms <100..600000, step 100>]\n"
+        "                      [--max-fragment-bytes <1048576..268435456>]   (default 67108864: the bound of the seal; an open fragment is closed before it passes it)\n"
         "                      [--audio-manifest <file.jsonl>]   (diagnostic: one line per encoder packet, hashes only)\n"
         "The session is not an argument: it arrives as START on standard input (@dems/capture-protocol).\n";
     if (write(STDERR_FILENO, text, sizeof text - 1) < 0) return;
@@ -360,20 +368,22 @@ int main(int argc, char **argv) {
     for (int fd = 0; fd <= 2; fd++)
         if (fcntl(fd, F_GETFD) < 0 && errno == EBADF && open("/dev/null", fd == 0 ? O_RDONLY : O_WRONLY) != fd) return EXIT_USAGE;
 
-    int heartbeat_ms = 500, bad_setting = 0;
+    int heartbeat_ms = 500, bad_setting = 0, listen_timeout_s = 0;
     const char *log_path = NULL, *manifest_path = NULL;
     for (int i = 1; i < argc; i++) {
         const char *k = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!v) { usage(); return EXIT_USAGE; }
         i++;
         if (!strcmp(k, "--log")) log_path = v;
-        else if (!strcmp(k, "--heartbeat-ms")) heartbeat_ms = atoi(v);
-        else if (!strcmp(k, "--listen-timeout-s")) g_listen_timeout_s = atoi(v);
+        /* Whole numbers inside their range and nothing after them, like the named settings (review R63-18: these two were read with atoi). */
+        else if (!strcmp(k, "--heartbeat-ms")) bad_setting |= whole_number(v, 50, 10000, 1, &heartbeat_ms);
+        else if (!strcmp(k, "--listen-timeout-s")) { bad_setting |= whole_number(v, 1, 600, 1, &listen_timeout_s); g_listen_timeout_s = listen_timeout_s; }
         /* The named settings (protocol version 4, CAPTURE_WORKER_SETTINGS): whole numbers inside their range, on their step. */
         else if (!strcmp(k, "--ingest-open-window-ms")) { int ms; bad_setting |= whole_number(v, 1000, 600000, 1000, &ms); g_listen_timeout_s = ms / 1000; }
         else if (!strcmp(k, "--mic-silence-dbfs")) bad_setting |= whole_number(v, -120, 0, 1, &g_mic_silence_dbfs);
         else if (!strcmp(k, "--mic-silence-ms")) bad_setting |= whole_number(v, 100, 600000, 100, &g_mic_silence_ms);
         else if (!strcmp(k, "--mic-disconnect-ms")) bad_setting |= whole_number(v, 100, 600000, 100, &g_mic_disconnect_ms);
+        else if (!strcmp(k, "--max-fragment-bytes")) bad_setting |= whole_number(v, MIN_MAX_FRAGMENT_BYTES, MAX_FRAGMENT_BYTES_CEILING, 1, &g_max_fragment_bytes);
         else if (!strcmp(k, "--audio-manifest")) manifest_path = v;
         else { usage(); return EXIT_USAGE; }
     }
@@ -397,8 +407,23 @@ int main(int argc, char **argv) {
 #ifdef DEMS_PROOF_WRITE_FAULT
     sink_fault_hook = proof_write_fault;
 #endif
-    logj("info", "main", "worker_starting", "\"version\":\"%s\",\"protocol\":%d,\"heartbeat_ms\":%d,\"proof_build\":%s", WORKER_VERSION, CAPTURE_PROTOCOL_VERSION, heartbeat_ms, g_mux_extra ? "true" : "false");
-    if (ipc_start(heartbeat_ms) < 0) { logj("error", "main", "THREAD_CREATE_FAILED", "%s", ""); log_close(); return EXIT_FATAL; }
+#ifdef DEMS_PROOF_BUILD
+    static const int proof_build = 1;
+#else
+    static const int proof_build = 0;
+#endif
+    logj("info", "main", "worker_starting", "\"version\":\"%s\",\"protocol\":%d,\"heartbeat_ms\":%d,\"proof_build\":%s", WORKER_VERSION, CAPTURE_PROTOCOL_VERSION, heartbeat_ms, proof_build ? "true" : "false");
+    /* THE libavformat PIN AT RUN TIME (review R63-07): on another library than the one this binary was verified
+     * against the worker does not start. It says so INSTEAD of HELLO - one CRASH frame with the name - and exits. */
+    unsigned lavf_running = 0, lavf_verified = 0;
+    if (lavf_runtime_mismatch(&lavf_running, &lavf_verified)) {
+        logj("error", "main", "LIBAVFORMAT_VERSION_MISMATCH", "\"running\":\"%u.%u.%u\",\"verified\":\"%u.%u.%u\"", lavf_running >> 16, (lavf_running >> 8) & 255, lavf_running & 255, lavf_verified >> 16, (lavf_verified >> 8) & 255, lavf_verified & 255);
+        if (ipc_start(heartbeat_ms, "LIBAVFORMAT_VERSION_MISMATCH") == 0) ipc_stop();
+        logj("error", "main", "worker_exit", "\"rc\":%d,\"code\":\"%s\"", EXIT_FATAL, "LIBAVFORMAT_VERSION_MISMATCH");
+        log_close();
+        return EXIT_FATAL;
+    }
+    if (ipc_start(heartbeat_ms, NULL) < 0) { logj("error", "main", "THREAD_CREATE_FAILED", "%s", ""); log_close(); return EXIT_FATAL; }
 
     /* The command loop. Lines are bounded: a frame of the protocol fits 4 bytes per character. */
     static char in[4 * MAX_FRAME_CHARS + 2];

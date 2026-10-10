@@ -71,6 +71,7 @@ function scene(overrides: Partial<Omit<CaptureBootDeps, 'sinks'>> & { readonly c
     inspect: () => (calls.push('inspect'), overrides.program ?? goodProgram()),
     probeEvidenceVolume: () => (calls.push('volume'), overrides.volume ?? goodVolume()),
     signingKeyProblem: () => (calls.push('key'), null),
+    signingKeyIsDevelopment: () => false,
     handshake: async () => (calls.push('handshake'), overrides.hello ?? HELLO),
     ...overrides,
     sinks: recorded.sinks,
@@ -170,7 +171,8 @@ describe('M3-BC-1: what a real start is refused for (one refusal each)', () => {
 
   it('a worker of another protocol version, and a program that does not answer', async () => {
     expect((await refusalOf(scene({ hello: { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION - 1, workerVersion: 'capture-worker/0.2.0' } }).deps)).code).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
-    for (const failure of Object.values(HandshakeFailure)) {
+    // Pin by delta (fix pass F-M7c, D188 (a)): MEDIA_LIBRARY_MISMATCH is a worker that DID answer - it has its own named refusal (asserted below).
+    for (const failure of Object.values(HandshakeFailure).filter((value) => value !== HandshakeFailure.MEDIA_LIBRARY_MISMATCH)) {
       const refused = await refusalOf(scene({ hello: { outcome: 'NONE', failure } }).deps);
       expect([refused.code, refused.reason]).toEqual([CaptureBootRefusal.WORKER_NO_HANDSHAKE, failure]);
     }
@@ -248,5 +250,101 @@ describe('what a refusal says', () => {
       expect(failure.message, code).toMatch(/ Reason: REASON_CODE\.$/);
       expect(failure.message, code).not.toMatch(/\/Users\/|\/opt\/|\/private\//);
     }
+  });
+});
+
+// ── Fix pass F-M7 (review row 88; decision D178) ─────────────────────────────────────────────────
+describe('F-M7 R88-04: the evidence store root is OWNER-ONLY (recordings lie there in plaintext until they are sealed, D147)', () => {
+  it.each([
+    [0o750, 'READABLE_BY_OTHERS'],
+    [0o705, 'READABLE_BY_OTHERS'],
+    [0o755, 'READABLE_BY_OTHERS'],
+    [0o710, 'READABLE_BY_OTHERS'],
+    [0o770, 'WRITABLE_BY_OTHERS'],
+    [0o777, 'WRITABLE_BY_OTHERS'],
+  ] as const)('a store root with mode %o is refused: %s', (mode, problem) => {
+    expect(evidenceStoreProblemOf(goodVolume({ mode }))).toBe(problem);
+  });
+
+  it('CONTROL: 0700 is the store the Core makes and accepts', () => {
+    expect(evidenceStoreProblemOf(goodVolume({ mode: 0o700 }))).toBeNull();
+  });
+
+  it('a real-mode boot on a store that others can read is REFUSED by name, before the signing key is read and before the worker is started', async () => {
+    const { deps, calls, recorded } = scene({ volume: goodVolume({ mode: 0o755 }) });
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_EVIDENCE_STORE_UNUSABLE', reason: 'READABLE_BY_OTHERS' });
+    expect(calls).toEqual(['inspect', 'volume']);
+    expect(recorded.persisted.at(-1)).toMatchObject({ level: 'error', code: 'CAPTURE_EVIDENCE_STORE_UNUSABLE' });
+    // The operator-facing text of the refusal says what lies there and how to close it.
+    expect(failure.message).toMatch(/owner-only|chmod 700/);
+  });
+});
+
+describe('F-M7 R88-08 (3): a development signing key never signs for a production Core', () => {
+  it('REAL_PRODUCTION with a signing key whose certificate carries the development mark: the boot is REFUSED by name, the worker is not started', async () => {
+    const { deps, calls, recorded } = scene({ signingKeyIsDevelopment: () => (calls.push('dev?'), true) } as never);
+    expect(deps.decision.operation).toBe('REAL_PRODUCTION');
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION' });
+    expect(calls).not.toContain('handshake');
+    expect(recorded.persisted.at(-1)).toMatchObject({ level: 'error', code: 'CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION' });
+  });
+
+  it('CONTROL: REAL_DEVELOPMENT accepts the development key; REAL_PRODUCTION accepts a key without the mark', async () => {
+    const development = scene({ config: { captureDevSources: true }, signingKeyIsDevelopment: () => true } as never);
+    expect(development.deps.decision.operation).toBe('REAL_DEVELOPMENT');
+    await expect(runCaptureBootChecks(development.deps)).resolves.toMatchObject({ operation: 'REAL_DEVELOPMENT' });
+    const production = scene({ signingKeyIsDevelopment: () => false } as never);
+    await expect(runCaptureBootChecks(production.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+  });
+});
+
+// ── Fix pass F-M7c (item 2; decisions D178, D180) ────────────────────────────────────────────────
+describe('F-M7c: the hidden folders of the evidence store are OWNER-ONLY too (quarantined recordings and the transcriber scratch are plaintext)', () => {
+  const folder = (name: string, over: Partial<{ directory: boolean; ownerUid: number | null; mode: number | null }> = {}) => ({ name, directory: true, ownerUid: 501, mode: 0o700, ...over });
+
+  it.each([
+    ['.quarantine', 0o750, 'QUARANTINE_READABLE_BY_OTHERS'],
+    ['.quarantine', 0o701, 'QUARANTINE_READABLE_BY_OTHERS'],
+    ['.transcriber', 0o755, 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS'],
+    ['.transcriber/sessions', 0o710, 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS'],
+  ] as const)('%s with mode %o is refused: %s', (name, mode, problem) => {
+    expect(evidenceStoreProblemOf(goodVolume({ privateFolders: [folder(name, { mode })] }))).toBe(problem);
+  });
+
+  it('a hidden folder that is a LINK or a file (not a directory), or of another user, is refused the same way', () => {
+    expect(evidenceStoreProblemOf(goodVolume({ privateFolders: [folder('.quarantine', { directory: false })] }))).toBe('QUARANTINE_READABLE_BY_OTHERS');
+    expect(evidenceStoreProblemOf(goodVolume({ privateFolders: [folder('.transcriber', { ownerUid: 0 })] }))).toBe('TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS');
+  });
+
+  it('CONTROL: folders that are 0700 directories of the server, and a store with none of them, are accepted', () => {
+    expect(evidenceStoreProblemOf(goodVolume({ privateFolders: [folder('.quarantine'), folder('.transcriber'), folder('.transcriber/sessions')] }))).toBeNull();
+    expect(evidenceStoreProblemOf(goodVolume({ privateFolders: [] }))).toBeNull();
+    expect(evidenceStoreProblemOf(goodVolume({}))).toBeNull();
+  });
+
+  it('a real-mode boot with a quarantine others can read is REFUSED by name before the signing key is read and the worker is started', async () => {
+    const { deps, calls } = scene({ volume: goodVolume({ privateFolders: [folder('.quarantine', { mode: 0o755 })] }) });
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_EVIDENCE_STORE_UNUSABLE', reason: 'QUARANTINE_READABLE_BY_OTHERS' });
+    expect(calls).toEqual(['inspect', 'volume']);
+  });
+});
+
+// ── Fix pass F-M7c (controller decision D188 (a)) ────────────────────────────────────────────────
+describe('D188 (a): a worker whose media library is not the verified one is a NAMED boot refusal', () => {
+  it('the handshake says MEDIA_LIBRARY_MISMATCH: the boot is refused as CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH with the sentence an installer needs - not as "no HELLO"', async () => {
+    const { deps, recorded } = scene({ hello: { outcome: 'NONE', failure: HandshakeFailure.MEDIA_LIBRARY_MISMATCH } });
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH', reason: 'LIBAVFORMAT_VERSION_MISMATCH' });
+    expect(failure.message).toMatch(/libavformat/);
+    expect(failure.message).toMatch(/make -C apps\/capture-worker/);
+    expect(recorded.persisted.at(-1)).toMatchObject({ level: 'error', code: 'CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH' });
+  });
+
+  it('CONTROL: every other handshake failure is still CAPTURE_WORKER_NO_HANDSHAKE with its reason', async () => {
+    const { deps } = scene({ hello: { outcome: 'NONE', failure: HandshakeFailure.EXITED } });
+    expect(await refusalOf(deps)).toMatchObject({ code: 'CAPTURE_WORKER_NO_HANDSHAKE', reason: 'EXITED' });
   });
 });

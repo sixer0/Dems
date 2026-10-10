@@ -149,6 +149,7 @@ def main():
     ap.add_argument("--clock-step-ms", type=float, default=0.0, help="the wall clock steps by this much ...")
     ap.add_argument("--clock-step-at-s", type=float, default=0.0, help="... this many seconds after the epoch")
     ap.add_argument("--delay-ms", type=float, default=0.0, help="every frame reaches the network this long after it left the sensor")
+    ap.add_argument("--repeat-ts-at", type=int, default=0, help="frame N carries the RTP timestamp of frame N-1 (a camera that repeats a timestamp; review R63-11)")
     a = ap.parse_args()
     if not a.url.startswith("rtsp://127.0.0.1:"):
         die(2, "the URL must be rtsp://127.0.0.1:<port>/<name>")
@@ -190,7 +191,7 @@ def main():
     base, seq, sent_packets, sent_octets, max_late, reports = 90000, 1, 0, 0, 0, 0
     for k, picture in enumerate(pictures):
         true_k = a.epoch_us + int(k * FRAME_US * rate + 0.5)
-        ts = base + k * RTP_PER_FRAME
+        ts = base + (k - 1 if a.repeat_ts_at and k == a.repeat_ts_at else k) * RTP_PER_FRAME
         wait = true_k + delay_us - real_us()
         if wait > 0:
             time.sleep(wait / 1e6)

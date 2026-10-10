@@ -17,6 +17,11 @@ interface Bed {
   readonly host: EvidenceExportHost;
   readonly failures: Parameters<EvidenceExportHost['recordFailure']>[0][];
   readonly errors: Parameters<EvidenceExportHost['reportError']>[0][];
+  /** R93-03: what the jobs told the engine's export door, in order. */
+  readonly completions: Parameters<EvidenceExportHost['completeExport']>[0][];
+  /** R93-11: the reasons of `EVIDENCE_EXPORT_FAILED` rows the trail still holds, by job ID. */
+  readonly recordedFailures: Map<string, string>;
+  failCompletion: boolean;
   readonly requests: Map<string, ExportRequestRecord>;
   /** The deferred starts of jobs: the test runs them when it wants. */
   readonly pending: (() => void)[];
@@ -28,9 +33,13 @@ function bed(built: BuiltPackage, ports: Partial<ExportPorts> = {}): Bed {
   const errors: Bed['errors'] = [];
   const requests = new Map<string, ExportRequestRecord>();
   const pending: (() => void)[] = [];
+  const completions: Bed['completions'] = [];
   const self: Bed = {
     failures,
     errors,
+    completions,
+    recordedFailures: new Map(),
+    failCompletion: false,
     requests,
     pending,
     failRecording: false,
@@ -45,6 +54,11 @@ function bed(built: BuiltPackage, ports: Partial<ExportPorts> = {}): Bed {
         failures.push(failure);
       },
       reportError: (entry) => void errors.push(entry),
+      completeExport: async (completion) => {
+        if (self.failCompletion) throw new Error('the database is away');
+        completions.push(completion);
+      },
+      failureOf: (jobId) => self.recordedFailures.get(jobId) ?? null,
       defer: (work) => void pending.push(work),
     },
   };
@@ -257,5 +271,116 @@ describe('the request directory over the engine state', () => {
     expect(directory.requestOf('EXP-000099')).toBeNull();
     expect(directory.sealOf('EV-20260930-0004')).toEqual({ manifestHash: 'a'.repeat(64), signatureValue: 'b'.repeat(128) });
     expect(directory.sealOf('EV-20260930-0009')).toBeNull();
+  });
+});
+
+// Fix pass F-M8 (review findings R93-03, R93-11; ruling D178).
+describe('R93-03: custody is written when the job has COMPLETED, never before and never for a failed job', () => {
+  it('nothing is told to the engine while the job is queued; ONE completion with the operator and the destination of the request when the archive exists', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    const runtime = createEvidenceExportRuntime(test.host);
+    test.requests.set('EXP-000032', requestRow(built, 'EXP-000032'));
+    await runtime.begin(built.item.evidenceId)?.accepted({ exportId: 'EXP-000032', kind: 'PACKAGE', deferred: true });
+    expect(test.completions).toEqual([]);
+    start(test);
+    await runtime.idle();
+    expect((await runtime.job('EXPJ-000032'))?.status).toBe('COMPLETE');
+    expect(existsSync(built.path('export/EXP-000032.zip'))).toBe(true);
+    expect(test.completions).toEqual([{ evidenceId: built.item.evidenceId, exportId: 'EXP-000032', operatorId: 'OPR-002', destination: 'Case file transfer' }]);
+  });
+
+  it('a job that fails tells the engine nothing: the item keeps its status, the one record is the failure row', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    const runtime = createEvidenceExportRuntime(test.host);
+    test.requests.set('EXP-000033', requestRow(built, 'EXP-000033', 'COMPOSITE'));
+    await runtime.begin(built.item.evidenceId)?.accepted({ exportId: 'EXP-000033', kind: 'COMPOSITE', deferred: true });
+    start(test);
+    await runtime.idle();
+    expect(await runtime.job('EXPJ-000033')).toMatchObject({ status: 'FAILED', failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED' });
+    expect(test.completions).toEqual([]);
+    expect(test.failures).toHaveLength(1);
+  });
+
+  it('a completion that cannot be recorded leaves the export COMPLETE (the archive exists) and says so in the persistent error log', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    test.failCompletion = true;
+    const runtime = createEvidenceExportRuntime(test.host);
+    test.requests.set('EXP-000032', requestRow(built, 'EXP-000032'));
+    await runtime.begin(built.item.evidenceId)?.accepted({ exportId: 'EXP-000032', kind: 'PACKAGE', deferred: true });
+    start(test);
+    await runtime.idle();
+    expect((await runtime.job('EXPJ-000032'))?.status).toBe('COMPLETE');
+    expect(test.errors.map((entry) => entry.code)).toEqual(['EXPORT_COMPLETION_NOT_RECORDED']);
+    expect(test.failures).toEqual([]);
+  });
+
+  it('a DEFERRED request no job can be queued for ends FAILED with its row (EXPORT_NOT_QUEUED): it never stays open', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    const runtime = createEvidenceExportRuntime(test.host);
+    const other = 'EV-20260930-0004';
+    test.requests.set('EXP-000050', { ...requestRow(built, 'EXP-000050'), evidenceId: other });
+    expect(await runtime.begin(other)?.accepted({ exportId: 'EXP-000050', kind: 'PACKAGE', deferred: true })).toBe('NOT_A_REAL_PACKAGE');
+    expect(test.failures).toEqual([{ jobId: 'EXPJ-000050', evidenceId: other, kind: 'PACKAGE', reason: 'EXPORT_NOT_QUEUED', operatorId: 'OPR-002' }]);
+    expect(await runtime.job('EXPJ-000050')).toMatchObject({ status: 'FAILED', failureReason: 'EXPORT_NOT_QUEUED' });
+    expect(runtime.inProgress(other)).toBe(false);
+    expect(test.completions).toEqual([]);
+  });
+});
+
+describe('R93-11: the request of a job and the reason of a failure outlive a busy trail', () => {
+  it('a queued job keeps the request it was handed: the row leaving the ring before the job runs does not fail it', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    const runtime = createEvidenceExportRuntime(test.host);
+    test.requests.set('EXP-000032', requestRow(built, 'EXP-000032'));
+    await runtime.begin(built.item.evidenceId)?.accepted({ exportId: 'EXP-000032', kind: 'PACKAGE' });
+    // A thousand playback rows later the ring does not hold the request any more.
+    test.requests.clear();
+    start(test);
+    await runtime.idle();
+    expect(await runtime.job('EXPJ-000032')).toMatchObject({ status: 'COMPLETE' });
+    expect(test.failures).toEqual([]);
+  });
+
+  it('after a restart a job that FAILED is answered with the reason of its failure row, not with EXPORT_INTERRUPTED', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    test.requests.set('EXP-000033', requestRow(built, 'EXP-000033', 'COMPOSITE'));
+    test.recordedFailures.set('EXPJ-000033', 'COMPOSITE_ENCODER_NOT_SELECTED');
+    // A new runtime: the server started again, the job map is empty.
+    expect(await createEvidenceExportRuntime(test.host).job('EXPJ-000033')).toMatchObject({ status: 'FAILED', failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED', kind: 'COMPOSITE' });
+    test.recordedFailures.clear();
+    expect(await createEvidenceExportRuntime(test.host).job('EXPJ-000033')).toMatchObject({ status: 'FAILED', failureReason: 'EXPORT_INTERRUPTED' });
+  });
+
+  // Closing pass F-X: the host answers from the STORED rows (a read of the database: a promise, and it can fail).
+  it('a host that reads the stored rows: its answers are awaited, and a read that fails is not answered as "no such job"', async () => {
+    const built = await buildPackage();
+    const test = bed(built);
+    const stored: EvidenceExportHost = {
+      ...test.host,
+      requestOf: async (exportId) => (exportId === 'EXP-000033' ? requestRow(built, 'EXP-000033', 'COMPOSITE') : null),
+      failureOf: async (jobId) => (jobId === 'EXPJ-000033' ? 'COMPOSITE_ENCODER_NOT_SELECTED' : null),
+    };
+    expect(await createEvidenceExportRuntime(stored).job('EXPJ-000033')).toMatchObject({ status: 'FAILED', failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED', kind: 'COMPOSITE', createdAt: EXPORTED_AT - 1_000 });
+    expect(await createEvidenceExportRuntime(stored).job('EXPJ-000099')).toBeNull();
+
+    const down: EvidenceExportHost = { ...test.host, requestOf: async () => Promise.reject(new Error('the database is away')) };
+    await expect(createEvidenceExportRuntime(down).job('EXPJ-000033')).rejects.toThrow('the database is away');
+    // A request that is handed over while the rows cannot be read: the job is queued, reads again when it runs, and ends FAILED with its row - never open, never outside its failure path.
+    const runtime = createEvidenceExportRuntime(down);
+    expect(await runtime.begin(built.item.evidenceId)?.accepted({ exportId: 'EXP-000034', kind: 'PACKAGE', deferred: true })).toBe('QUEUED');
+    start(test);
+    await runtime.idle();
+    expect(await runtime.job('EXPJ-000034')).toMatchObject({ status: 'FAILED', failureReason: 'EXPORT_REQUEST_NOT_FOUND' });
+    expect(test.failures).toEqual([{ jobId: 'EXPJ-000034', evidenceId: built.item.evidenceId, kind: 'PACKAGE', reason: 'EXPORT_REQUEST_NOT_FOUND', operatorId: null }]);
+    expect(test.errors.map((entry) => [entry.source, entry.code])).toEqual([
+      ['evidence-export.jobs.accepted', 'EXPORT_REQUEST_NOT_READ'],
+      ['evidence-export.jobs.run', 'EXPORT_REQUEST_NOT_READ'],
+    ]);
   });
 });

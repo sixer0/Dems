@@ -39,7 +39,15 @@ import { z } from 'zod';
 
 export const TRANSCRIBER_HOST_FOLDER = 'transcriber';
 export const TRANSCRIBER_HOST_FILE = 'host.json';
-/** Where the transcript work of the sessions lives, below the data directory (git-ignored, OD-25). */
+/**
+ * Where the transcript work of the sessions lives: `<mediaStoreRoot>/.transcriber/sessions/<id>`
+ * (fix pass F-M7c; ruling D180). PER DATABASE: every Core has its own media store root, while the
+ * data directory is shared by every lane of an installation - under it two databases with equal
+ * session IDs shared one tap path, and a reset of one removed the live folder of the other. A
+ * hidden folder of the store root, like `.sealing` and `.quarantine`: no package folder, under the
+ * root's owner-only boot rule, on the volume of the recordings.
+ */
+export const TRANSCRIBER_SCRATCH_FOLDER = '.transcriber';
 export const TRANSCRIPTION_SESSIONS_FOLDER = 'sessions';
 export const TRANSCRIPTION_TAP_FILE = 'tap.pcm';
 /** A host file larger than this is not one. */
@@ -90,19 +98,24 @@ export interface TranscriberHost {
   readonly vad: SileroVadRuntime | null;
   /** `cpuLocal.modelVersions`: model identifier -> the version the host states for it. Empty: none stated. */
   readonly modelVersions: Readonly<Record<string, string>>;
-  /** `<dataDir>/transcriber`. */
+  /** `<dataDir>/transcriber`: the host file and the engine's own work folder. Holds nothing per session (D180). */
   readonly root: string;
 }
 
-/** `<dataDir>/transcriber/sessions/<sessionId>`: the checkpoint, the three transcript files and `work/`. */
-export function sessionScratchDir(dataDir: string, sessionId: string): string {
+/** `<mediaStoreRoot>/.transcriber`: the scratch root of ONE Core (one database). */
+export function transcriberScratchRoot(mediaStoreDir: string): string {
+  return join(mediaStoreDir, TRANSCRIBER_SCRATCH_FOLDER);
+}
+
+/** `<mediaStoreRoot>/.transcriber/sessions/<sessionId>`: the tap, the checkpoint, the three transcript files and `work/`. */
+export function sessionScratchDir(mediaStoreDir: string, sessionId: string): string {
   if (!/^SES-[0-9]{8}-[0-9]{4}$/.test(sessionId)) throw new TranscriberHostError('SESSION_ID_INVALID');
-  return join(dataDir, TRANSCRIBER_HOST_FOLDER, TRANSCRIPTION_SESSIONS_FOLDER, sessionId);
+  return join(transcriberScratchRoot(mediaStoreDir), TRANSCRIPTION_SESSIONS_FOLDER, sessionId);
 }
 
 /** The PCM tap of a session: the path the capture plan names as `pcmTapPath` when its snapshot enables STT. */
-export function sessionTapPath(dataDir: string, sessionId: string): string {
-  return join(sessionScratchDir(dataDir, sessionId), TRANSCRIPTION_TAP_FILE);
+export function sessionTapPath(mediaStoreDir: string, sessionId: string): string {
+  return join(sessionScratchDir(mediaStoreDir, sessionId), TRANSCRIPTION_TAP_FILE);
 }
 
 function physicalCores(): number {

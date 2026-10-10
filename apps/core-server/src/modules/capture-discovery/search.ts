@@ -47,7 +47,7 @@ import {
   type CaptureDiscoverySearch,
 } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
-import { DiscoveryNotRunError, sourceClassOf, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../capture/adapters';
+import { DiscoveryNotRunError, connectionTargetOf, sourceClassOf, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../capture/adapters';
 import type { AuditEntry } from '../../core';
 import { SearchBound, type SearchLimiter } from './limits';
 import { registeredIndexOf, type RegisteredCamera, type RegisteredIndex } from './registered';
@@ -120,6 +120,13 @@ export interface SearchRunner {
 const SOURCE = 'captureDiscovery.search';
 const searchIdOf = (sequence: number): string => `DSC-${String(sequence).padStart(6, '0')}`;
 
+/** The `connectionTarget` member of a candidate that is testable and has a target; nothing otherwise. */
+function targetMemberOf(candidate: WsDiscoveryResult['candidates'][number]): { connectionTarget?: string } {
+  if (!candidate.testable || candidate.conflict) return {};
+  const target = connectionTargetOf(candidate);
+  return target === null ? {} : { connectionTarget: target };
+}
+
 /** A candidate of the adapter as the contract lists it. The store adds the ID, `lastTest` and `adoptable`. */
 function foundOf(result: WsDiscoveryResult, index: RegisteredIndex): FoundCandidate[] {
   return result.candidates.map((candidate) => {
@@ -137,6 +144,8 @@ function foundOf(result: WsDiscoveryResult, index: RegisteredIndex): FoundCandid
       deviceId: device?.deviceId ?? null,
       // A conflicting answer is listed and never testable (SEC35-28 (1)); so is one without a service address of its own host.
       testable: candidate.testable && !candidate.conflict && candidate.serviceAddress !== null,
+      // What the operator confirms before a test (finding R69-12): the adapter's own text of the target it will contact. Absent when there is none.
+      ...targetMemberOf(candidate),
       conflict: candidate.conflict,
       addressChanged: candidate.addressChanged,
       camera: candidate,

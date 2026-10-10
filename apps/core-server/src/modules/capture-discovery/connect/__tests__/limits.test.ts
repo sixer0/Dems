@@ -54,6 +54,49 @@ describe('the values are the contract\'s, read by name (C3 §7; D86 C-2)', () =>
   });
 });
 
+// Fix F-M4 follow-up (decision D181, ruling 3; erratum PE-FM4-03 of 03 §7): the guard counts
+// REJECTED CREDENTIAL-BEARING REQUESTS, not outcomes. A test that ended AUTHENTICATION_FAILED with
+// 0 such requests (the camera offered only a sign-in method the Core refuses: nothing was sent)
+// cannot be a guess and never moves the operator towards a lock-out.
+describe('D181 (3): a test in which no credential was sent is not counted by the lock-out guard', () => {
+  it('ten AUTHENTICATION_FAILED tests with 0 rejected requests never close the host; the same number of real rejections does (control)', () => {
+    const f = fixture();
+    for (let index = 0; index < 10; index += 1) {
+      clearMinute(f);
+      expect(run(f, HOST, session(), AUTHENTICATION_FAILED, 0)).toEqual({ guardTripped: false, failedAttemptsRemaining: 2 });
+    }
+    expect(f.limits.remaining(HOST)).toBe(2);
+    clearMinute(f);
+    expect(f.limits.refusal(HOST, session())).toBeNull();
+
+    const control = fixture();
+    const verdicts = [];
+    for (let index = 0; index < 2; index += 1) {
+      clearMinute(control);
+      verdicts.push(run(control, HOST, session(), AUTHENTICATION_FAILED, 1));
+    }
+    expect(verdicts).toEqual([{ guardTripped: false, failedAttemptsRemaining: 1 }, { guardTripped: true, failedAttemptsRemaining: 0 }]);
+    clearMinute(control);
+    expect(control.limits.refusal(HOST, session())).not.toBeNull();
+  });
+
+  it('a not-counted test does not forgive either: one real rejection, then one test with nothing sent, then one real rejection closes the host', () => {
+    const f = fixture();
+    clearMinute(f);
+    expect(run(f, HOST, session(), AUTHENTICATION_FAILED, 1).failedAttemptsRemaining).toBe(1);
+    clearMinute(f);
+    expect(run(f, HOST, session(), AUTHENTICATION_FAILED, 0)).toEqual({ guardTripped: false, failedAttemptsRemaining: 1 });
+    clearMinute(f);
+    expect(run(f, HOST, session(), AUTHENTICATION_FAILED, 1)).toEqual({ guardTripped: true, failedAttemptsRemaining: 0 });
+  });
+
+  it('an adapter that does not count its requests (null) is counted as one rejection: unknown is never "nothing was sent"', () => {
+    const f = fixture();
+    clearMinute(f);
+    expect(f.limits.begin(HOST, session()).end(AUTHENTICATION_FAILED, null).failedAttemptsRemaining).toBe(1);
+  });
+});
+
 describe('M4-SEC-CONN-4: the lock-out guard', () => {
   it('two refused credentials on one host close it; the second is the one that trips the guard; a third test is refused', () => {
     const f = fixture();
@@ -89,9 +132,12 @@ describe('M4-SEC-CONN-4: the lock-out guard', () => {
     expect(run(f, HOST, session(), AUTHENTICATION_FAILED, 2)).toEqual({ guardTripped: true, failedAttemptsRemaining: 0 });
     clearMinute(f);
     expect(f.limits.refusal(HOST, session())?.reason).toBe(CaptureDiscoveryReason.CONNECTION_TEST_LOCKOUT_GUARD);
-    // A failed outcome whose count is unknown or 0 still counts once: never less than what a camera may have counted.
+    // A failed outcome whose count is UNKNOWN still counts once: never less than what a camera may have counted.
+    // Until decision D181 (ruling 3) a count of 0 was pinned here as one failure too; 0 now means "no credential was
+    // sent" and is not counted (the cases of "D181 (3)" above).
     const g = fixture();
-    expect(run(g, HOST, session(), AUTHENTICATION_FAILED, 0)).toEqual({ guardTripped: false, failedAttemptsRemaining: 1 });
+    expect(run(g, HOST, session(), AUTHENTICATION_FAILED, 0)).toEqual({ guardTripped: false, failedAttemptsRemaining: 2 });
+    expect(run(g, HOST, session(), AUTHENTICATION_FAILED, Number.NaN)).toEqual({ guardTripped: false, failedAttemptsRemaining: 1 });
     expect(run(g, HOST, session(), AUTHENTICATION_FAILED, Number.NaN)).toEqual({ guardTripped: true, failedAttemptsRemaining: 0 });
   });
 

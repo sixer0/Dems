@@ -21,7 +21,9 @@ import {
   CAPTURE_PROTOCOL_VERSION,
   CaptureIngestState,
   CaptureMicRole,
+  CaptureSyncLevel,
   CaptureWarningReason,
+  LIBAVFORMAT_VERSION_MISMATCH,
   SupervisorMessageType,
   WorkerMessageType,
   type CapturePlan,
@@ -108,14 +110,35 @@ export function manualCaptureTimers(start = 1_760_000_000_000): ManualCaptureTim
 export interface FakeWorkerBehaviour {
   /** Says `HELLO` by itself when it is started. Default true. */
   hello: boolean;
+  /**
+   * A worker that runs on another libavformat than it was verified against (fix pass F-M3, review
+   * R63-07): it writes ONE frame INSTEAD of `HELLO` - `CRASH` with the code
+   * `LIBAVFORMAT_VERSION_MISMATCH` and no session - and exits 70. Default false.
+   */
+  libavformatMismatch: boolean;
   /** The protocol version its `HELLO` names. */
   protocolVersion: number;
+  /**
+   * The version word its `HELLO` names. Default: a RELEASE word (`capture-worker/<n>.<n>.<n>`): the
+   * supervisor holds every `HELLO` to that allowlist (review R63-04), so a fake that is to record
+   * names itself like a release worker - with the word of the worker of this tree
+   * (`apps/capture-worker/src/worker.h` `WORKER_VERSION`; `src/capture/__tests__/tidy-fy.test.ts`
+   * holds the two equal). A test of the refusal says another word.
+   */
+  workerVersion: string;
   /** `true`: acknowledges `START`; a code: refuses it with that code; `false`: never answers. */
   ackStart: boolean | string;
   /** The same for `SWITCH_AUDIO_SOURCE`. */
   ackSwitch: boolean | string;
   /** Acknowledges `STOP` and exits with code 0. Default true. `false`: ignores `STOP` (a hung worker). */
   exitOnStop: boolean;
+  /**
+   * A worker that began an audio timeline (it wrote an `AUDIO_SOURCE_INTERVAL`) writes
+   * `AUDIO_TIMELINE_END` before it exits on `STOP`, as the real worker does (`audio.c`: "absent only
+   * when the worker was killed"). Default true. `false`: it exits 0 without it (review R63-01: such
+   * a stop is not clean). A test that wrote the end itself is left alone.
+   */
+  timelineEndOnStop: boolean;
   /** Exits when it is killed. Default true. `false`: the exit is the test's to send (`exit`). */
   exitOnKill: boolean;
   /** `send` does not resolve until `releaseSends()`: a worker whose input pipe is full. */
@@ -124,10 +147,13 @@ export interface FakeWorkerBehaviour {
 
 const DEFAULT_BEHAVIOUR: FakeWorkerBehaviour = {
   hello: true,
+  libavformatMismatch: false,
   protocolVersion: CAPTURE_PROTOCOL_VERSION,
+  workerVersion: 'capture-worker/0.5.0',
   ackStart: true,
   ackSwitch: true,
   exitOnStop: true,
+  timelineEndOnStop: true,
   exitOnKill: true,
   holdSends: false,
 };
@@ -153,13 +179,28 @@ export class FakeWorkerProcess implements WorkerChannel {
   private startsServed = 0;
   private counter = 0;
   private recordSeq = 0;
+  /** The sequence number of the last record it said, however the test numbered it. */
+  private lastSaidSeq = 0;
+  /** It wrote an audio-source interval / the end of the audio timeline. */
+  private timelineOpen = false;
+  private timelineEnded = false;
+  /** The newest sample an interval of it began at: the end it writes is never before it. */
+  private timelineSamples = 0;
+  /** The cameras whose fragment-size-bound warning was said: once per camera. */
+  private readonly sizeBoundSaid = new Set<string>();
 
   constructor(launch: WorkerLaunch, handlers: WorkerChannelHandlers, behaviour: FakeWorkerBehaviour) {
     this.pid = nextPid += 1;
     this.launch = launch;
     this.handlers = handlers;
     this.behaviour = { ...behaviour };
-    if (this.behaviour.hello) queueMicrotask(() => this.hello());
+    if (this.behaviour.libavformatMismatch) {
+      queueMicrotask(() => {
+        // Before any session: the frame names none (`sessionId: null`), as `capture_worker.c` writes it.
+        this.handlers.message({ v: CAPTURE_PROTOCOL_VERSION, sessionId: null, type: WorkerMessageType.CRASH, code: LIBAVFORMAT_VERSION_MISMATCH, signal: null, exitCode: 70 });
+        this.exit(70);
+      });
+    } else if (this.behaviour.hello) queueMicrotask(() => this.hello());
   }
 
   // ── What the supervisor does to it ─────────────────────────────────────────────────────────
@@ -188,11 +229,19 @@ export class FakeWorkerProcess implements WorkerChannel {
     if (this.exited) return;
     const sessionless = message.type === WorkerMessageType.HELLO || message.type === WorkerMessageType.HEARTBEAT || message.type === WorkerMessageType.ACK;
     const full = { v: CAPTURE_PROTOCOL_VERSION, ...(sessionless ? {} : { sessionId }), ...message } as WorkerMessage;
+    if (full.type === WorkerMessageType.RECORD) {
+      this.lastSaidSeq = full.seq;
+      if (full.record.kind === 'AUDIO_SOURCE_INTERVAL') {
+        this.timelineOpen = true;
+        this.timelineSamples = Math.max(this.timelineSamples, full.record.fromSample);
+      }
+      if (full.record.kind === 'AUDIO_TIMELINE_END') this.timelineEnded = true;
+    }
     this.handlers.message(full);
   }
 
-  hello(protocolVersion: number = this.behaviour.protocolVersion): void {
-    this.say({ type: WorkerMessageType.HELLO, protocolVersion, workerVersion: 'fake-worker' });
+  hello(protocolVersion: number = this.behaviour.protocolVersion, workerVersion: string = this.behaviour.workerVersion): void {
+    this.say({ type: WorkerMessageType.HELLO, protocolVersion, workerVersion });
   }
 
   /** A heartbeat with the next counter, or with the one given (a stale one, for instance). */
@@ -201,14 +250,17 @@ export class FakeWorkerProcess implements WorkerChannel {
     this.say({ type: WorkerMessageType.HEARTBEAT, counter: counter ?? this.counter });
   }
 
-  /** A telemetry frame; `count` is what the test tells frames apart by. */
-  telemetry(count: number): void {
+  /**
+   * A telemetry frame; `count` is what the test tells frames apart by. `clocks`: what the worker
+   * measured of each camera that delivers video (`lagMs` = arrival time minus camera time).
+   */
+  telemetry(count: number, clocks: ReadonlyArray<{ readonly deviceId: string; readonly lagMs: number; readonly trendPpm?: number | null; readonly nearBound?: boolean }> = []): void {
     this.say({
       type: WorkerMessageType.TELEMETRY,
       levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 0 }],
       ingest: [{ deviceId: 'CAM-01', state: CaptureIngestState.CONNECTED }],
       fragments: [{ deviceId: 'CAM-01', count, bytes: count * 1_000 }],
-      clocks: [],
+      clocks: clocks.map((clock) => ({ deviceId: clock.deviceId, lagMs: clock.lagMs, trendPpm: clock.trendPpm ?? null, nearBound: clock.nearBound ?? false })),
       tapActive: false,
     });
   }
@@ -234,9 +286,33 @@ export class FakeWorkerProcess implements WorkerChannel {
     this.say({ type: WorkerMessageType.RECORD, seq: seq ?? this.recordSeq, record });
   }
 
-  /** The first fragment of a camera file reached the disk. */
-  firstDurableFragment(deviceId = 'CAM-01', bytes = 5_131): void {
-    this.record({ kind: 'FIRST_DURABLE_FRAGMENT', deviceId, bytes });
+  /**
+   * The first fragment of a camera file reached the disk. The worker of this tree always states the
+   * sync level it ACHIEVED (fix pass F-M3, review R63-09): the full sync unless the test says the
+   * volume took only `fsync`; `null` writes the record without the member (an older worker).
+   */
+  firstDurableFragment(deviceId = 'CAM-01', bytes = 5_131, syncLevel: CaptureSyncLevel | null = CaptureSyncLevel.FULL): void {
+    this.record({ kind: 'FIRST_DURABLE_FRAGMENT', deviceId, bytes, ...(syncLevel === null ? {} : { syncLevel }) });
+  }
+
+  /**
+   * A fragment of a camera file was closed at the size bound (`ingest.c`: the advisory warning
+   * `FRAGMENT_SIZE_BOUND_REACHED`, ACTIVE, ONCE per camera and never CLEARED). A second call for
+   * the same camera says nothing, as the worker says nothing.
+   */
+  fragmentSizeBound(deviceId = 'CAM-01'): void {
+    if (this.sizeBoundSaid.has(deviceId)) return;
+    this.sizeBoundSaid.add(deviceId);
+    this.say({ type: WorkerMessageType.WARNING, code: 'CAPTURE_FAULT', reason: CaptureWarningReason.FRAGMENT_SIZE_BOUND_REACHED, state: 'ACTIVE', subject: deviceId });
+  }
+
+  /**
+   * The worker gives up by itself, as the real one does: ONE `CRASH` frame with its own code, then
+   * the exit with that code (70 for every failure of the worker's own; `capture_worker.c`).
+   */
+  crash(code: string, exitCode = 70): void {
+    this.say({ type: WorkerMessageType.CRASH, code, signal: null, exitCode });
+    this.exit(exitCode);
   }
 
   /** Answers a command. Default: the last one received. */
@@ -282,6 +358,10 @@ export class FakeWorkerProcess implements WorkerChannel {
       answer(this.behaviour.ackSwitch);
     } else if (this.behaviour.exitOnStop) {
       this.ack(true, undefined, message);
+      // The real worker joins its filtering thread on STOP: the end of the audio timeline leaves before the process does.
+      if (this.behaviour.timelineEndOnStop && this.timelineOpen && !this.timelineEnded) {
+        this.say({ type: WorkerMessageType.RECORD, seq: this.lastSaidSeq + 1, record: { kind: 'AUDIO_TIMELINE_END', samples: this.timelineSamples + CAPTURE_AUDIO_SAMPLE_RATE_HZ, sampleRateHz: CAPTURE_AUDIO_SAMPLE_RATE_HZ, intervals: 1 } });
+      }
       this.exit(0);
     }
   }

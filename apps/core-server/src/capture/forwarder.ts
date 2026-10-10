@@ -49,10 +49,42 @@
  * (`raiseCaptureWarningTransition`) writes the two members into the alert's params and the
  * FAULT_RAISED details once it takes them; until then it reads `code` and `subject` only.
  *
+ * A WORKER THE SUPERVISOR ENDED FOR WHAT IT SAID IS NAMED (tidy pass F-Y; review R63-05, ruling D179).
+ * Since fix pass F-M3 the supervisor ends a worker whose TELEMETRY names a device outside the
+ * session's plan (`PROTOCOL_VIOLATION` / `TELEMETRY_SUBJECT_UNKNOWN`) and one that says it switched
+ * the microphone although no command asked for it (`SWITCH_NOT_COMMANDED`). When that down is the END
+ * of the session's worker, the supervisor's own `CAPTURE_FAULT` that follows is raised with
+ * `reason: <that code>` (`SUPERVISOR_REFUSAL_REASONS`, each with its sentence in the shared wording
+ * source): the operator reads WHY the capture was stopped, not "stopped unexpectedly". Only the
+ * reason: `evidenceFiles` belongs to a failed start, and such a session may hold durable media.
+ * The codes are the supervisor's own literals, never text of the worker.
+ *
  * ADVISORY REASONS ARE NOT FAULTS (decision D127 (2)). `KEYFRAME_INTERVAL_ABOVE_BOUND` says the
  * camera RECORDS and a crash would lose more than the fragment target: it raises no fault (the
- * camera is not shown as faulted for the session). What the operator is told is the `notice` of
- * the record `KEYFRAME_INTERVAL`, which carries the number.
+ * camera is not shown as faulted for the session). THE OPERATOR IS TOLD BY A NAMED ADVISORY ALERT
+ * (review row 63 R63-03, decision D179; the shared advisory notices of ruling D144 (4)), raised the
+ * way pass D9 raises `MIC_RATE_AT_LIMIT`:
+ *
+ *   advisory                          raised at                                   resolved at
+ *   KEYFRAME_INTERVAL_ABOVE_BOUND     the worker's ACTIVE warning of that reason,  the end of the session's capture
+ *                                     or the record `KEYFRAME_INTERVAL` above      (the worker never clears it)
+ *                                     the bound - whichever comes first, once
+ *   FRAGMENT_SIZE_BOUND_REACHED       the worker's ACTIVE warning of that reason   the end of the session's capture
+ *                                     (once per camera; closing pass F-X)          (the worker never clears it)
+ *   AV_OFFSET_NEAR_BOUND              `clocks[].nearBound` true in the telemetry   `nearBound` false, or the end
+ *   MIC_RATE_AT_LIMIT                 the worker's ACTIVE warning of that reason   its CLEARED, or the end
+ *
+ * Each is one `SYSTEM` alert (INFO) on the device, with `params.reason`; none is a fault, writes an
+ * audit row, moves a device state, fails a start or switches a source. "The end" is the supervisor
+ * leaving the session (IDLE, FAULTED, CLOSED) or another session reaching RECORDING. The `notice`
+ * of the record still carries the number to the log.
+ *
+ * A CAMERA THAT DID NOT CONNECT IS NOT A CRITICAL FAULT OF THE CAPTURE (review row 74 R74-03; ux
+ * §8e.2, §8g.3). The worker's `CAMERA_NOT_CONNECTED` names a camera of the plan that did not
+ * connect within the ingest-open window. When another camera records, that is a DEGRADED start: a
+ * WARNING naming the camera, raised by the notices unit from the capture session's event
+ * (`src/capture-notices/session-start.ts`). When none connects the session is a failed start with
+ * ONE critical alert, the capture-wide one. So this reason raises no fault here in either case.
  *
  * NOTICES (level `warn`, written by the capture unit to the log and the persistent error log):
  *   the keyframe interval above the bound (the record), a camera clock near the AV bound (the
@@ -86,6 +118,13 @@ export interface FailedStartKeys {
   readonly reason: string;
   readonly evidenceFiles: 0;
 }
+/**
+ * The refusals of the supervisor that end a worker and are said to the operator by name (tidy pass
+ * F-Y): `WorkerDown.detail` of a `PROTOCOL_VIOLATION`. Each has a sentence in
+ * `@dems/shared/sim` `capture-fault-wording.ts`.
+ */
+export const SUPERVISOR_REFUSAL_REASONS: readonly string[] = Object.freeze(['TELEMETRY_SUBJECT_UNKNOWN', 'SWITCH_NOT_COMMANDED']);
+
 /** What the forwarder raises: the fault of a warning, with the keys of a failed start when it is one. */
 export type ForwardedFaultWarning = CaptureFaultWarningInput & Partial<FailedStartKeys>;
 
@@ -188,14 +227,17 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
   let subjectMissingSaid: string | null = null;
   /** The session that last reached `RECORDING`: the stale faults are cleared once per session (R-4). */
   let recording: string | null = null;
-  /** The microphones whose rate-limit advice this forwarder raised and has not resolved: device ID -> the session (correlation ID). */
-  const advised = new Map<string, string>();
+  /** The advice this forwarder raised and has not resolved, by reason and device: the session it was raised in. */
+  const advised = new Map<string, { readonly advice: CaptureAdvisoryNotice; readonly sessionId: string; readonly correlationId: string }>();
+  const adviceKey = (reason: CaptureAdvisoryReason, subject: string): string => `${reason}|${subject}`;
   /** `code|correlationId|deviceId` of the level notices whose condition holds now: one notice per episode. */
   const noticed = new Set<string>();
   /** The session (by correlation ID) of which a durable-fragment record was seen: it holds evidence. */
   let durable: string | null = null;
   /** The session whose worker ended for good with a final crash code while nothing was durable, and that code. */
   let failedStart: { readonly correlationId: string; readonly reason: string } | null = null;
+  /** The session whose worker the supervisor ended for good for a NAMED refusal (`SUPERVISOR_REFUSAL_REASONS`), and that name. */
+  let refused: { readonly correlationId: string; readonly reason: string } | null = null;
 
   function clear(host: CaptureEngine, entry: Raised): void {
     if (raised.get(keyOf(entry.warning, entry.reason)) === entry) raised.delete(keyOf(entry.warning, entry.reason));
@@ -204,10 +246,11 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
       .catch((err: unknown) => report({ source: 'capture.forwarder', code: ForwarderReportCode.CLEAR_FAILED, sessionId: entry.sessionId, correlationId: entry.correlationId, err }));
   }
 
-  function raise(host: CaptureEngine, warning: CaptureFaultWarningInput, reason: string, ids: { readonly sessionId: string; readonly correlationId: string }, keys: FailedStartKeys | null = null): void {
+  function raise(host: CaptureEngine, warning: CaptureFaultWarningInput, reason: string, ids: { readonly sessionId: string; readonly correlationId: string }, keys: FailedStartKeys | null = null, named: string | null = null): void {
     // The engine's key is (kind, reason, device): a `CAPTURE_FAULT` is raised with the worker's reason,
     // or with the final crash code of a failed start; `MIC_SILENT` has one cause and names none.
-    const engineReason = keys !== null ? keys.reason : warning.code === CaptureWarningCode.CAPTURE_FAULT && reason !== '' ? reason : null;
+    // ... or with the name of what the supervisor refused (tidy pass F-Y).
+    const engineReason = keys !== null ? keys.reason : named !== null ? named : warning.code === CaptureWarningCode.CAPTURE_FAULT && reason !== '' ? reason : null;
     const known: ForwardedFaultWarning = engineReason === null ? warning : { ...warning, reason: engineReason };
     // The file count belongs to the raise alone: a later clear names the fault, not its facts.
     const entry: Raised = { warning: known, reason, sessionId: ids.sessionId, correlationId: ids.correlationId, clearedAt: null };
@@ -230,46 +273,64 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     }
   }
 
-  /**
-   * THE WORKER'S WARNING `MIC_RATE_AT_LIMIT` IS ADVICE, NOT A FAULT (integration pass D9, item 6;
-   * ruling D144 (4); the advisory notice of `@dems/shared/sim` `capture-notices.ts`). The worker
-   * says it as a protocol-4 WARNING whose reason names the condition and whose subject is the
-   * microphone. Forwarded as a bare `CAPTURE_FAULT` the operator saw a faulted microphone with no
-   * reason. Here it becomes the NAMED advisory alert (`SYSTEM`, INFO, `params.reason:
-   * MIC_RATE_AT_LIMIT`, target = the microphone's device ID): raised at ACTIVE, resolved at
-   * CLEARED and when another session records. It raises no fault, writes no audit row, moves no
-   * device state - and it NEVER switches the source (OD-11): this unit has no door that could.
-   */
-  function advise(host: CaptureEngine, event: { readonly subject: string | null; readonly state: CaptureWarningState; readonly sessionId: string; readonly correlationId: string }): void {
-    const ids = { sessionId: event.sessionId, correlationId: event.correlationId };
-    if (event.subject === null) {
-      // No microphone is named: there is nothing to put the advice on. Said once per session.
-      if (subjectMissingSaid !== event.correlationId) {
-        subjectMissingSaid = event.correlationId;
-        report({ source: 'capture.forwarder', code: ForwarderReportCode.SUBJECT_MISSING, ...ids, err: new Error('a MIC_RATE_AT_LIMIT warning names no microphone: no advice is raised') });
-      }
-      return;
-    }
-    const subject = event.subject;
-    const advice: CaptureAdvisoryNotice = { code: CaptureAdvisoryReason.MIC_RATE_AT_LIMIT, subject };
-    if (event.state === CaptureWarningState.CLEARED) {
-      if (advised.get(subject) !== event.correlationId) return;
-      advised.delete(subject);
-      resolveAdvice(host, advice, ids);
-      return;
-    }
+  type Ids = { readonly sessionId: string; readonly correlationId: string };
+
+  /** Raises the named advisory alert of (reason, device) once per session: while it is held, a repeated statement writes nothing. */
+  function adviseOn(host: CaptureEngine, reason: CaptureAdvisoryReason, subject: string, ids: Ids): void {
+    const key = adviceKey(reason, subject);
     // Still advised for this session: the engine holds one alert per (reason, device); nothing is written.
-    if (advised.get(subject) === event.correlationId) return;
-    advised.set(subject, event.correlationId);
+    if (advised.get(key)?.correlationId === ids.correlationId) return;
+    const entry = { advice: { code: reason, subject } satisfies CaptureAdvisoryNotice, sessionId: ids.sessionId, correlationId: ids.correlationId };
+    advised.set(key, entry);
     Promise.resolve()
-      .then(() => host.raiseCaptureWarning({ ...advice, sessionId: event.sessionId }))
+      .then(() => host.raiseCaptureWarning({ ...entry.advice, sessionId: ids.sessionId }))
       .catch((err: unknown) => {
-        if (advised.get(subject) === event.correlationId) advised.delete(subject);
-        report({ source: 'capture.forwarder', code: ForwarderReportCode.ADVISORY_FAILED, ...ids, err });
+        // What the engine did not raise is not held: the next statement of the condition asks again.
+        if (advised.get(key) === entry) advised.delete(key);
+        report({ source: 'capture.forwarder', code: ForwarderReportCode.ADVISORY_FAILED, sessionId: ids.sessionId, correlationId: ids.correlationId, err });
       });
   }
 
-  function resolveAdvice(host: CaptureEngine, advice: CaptureAdvisoryNotice, ids: { readonly sessionId: string; readonly correlationId: string }): void {
+  /** Resolves the advice of (reason, device) when this session raised it. */
+  function adviseOff(host: CaptureEngine, reason: CaptureAdvisoryReason, subject: string, ids: Ids): void {
+    const key = adviceKey(reason, subject);
+    const entry = advised.get(key);
+    if (entry === undefined || entry.correlationId !== ids.correlationId) return;
+    advised.delete(key);
+    resolveAdvice(host, entry.advice, ids);
+  }
+
+  /** The capture of the advised session is over: every advice of it is resolved (it is no fault, so `clearCaptureFaults` does not). */
+  function resolveEveryAdvice(host: CaptureEngine): void {
+    for (const entry of advised.values()) resolveAdvice(host, entry.advice, entry);
+    advised.clear();
+  }
+
+  /**
+   * THE WORKER'S WARNING `MIC_RATE_AT_LIMIT` IS ADVICE, NOT A FAULT (integration pass D9, item 6;
+   * ruling D144 (4); the advisory notice of `@dems/shared/sim` `capture-notices.ts`), and so is
+   * `KEYFRAME_INTERVAL_ABOVE_BOUND` (decision D127 (2); review R63-03). The worker says each as a
+   * protocol-4 WARNING whose reason names the condition and whose subject is the device. Here it
+   * becomes the NAMED advisory alert (`SYSTEM`, INFO, `params.reason`, target = the device ID):
+   * raised at ACTIVE, resolved at CLEARED and when the capture of the session ends. It raises no
+   * fault, writes no audit row, moves no device state - and it NEVER switches the source (OD-11):
+   * this unit has no door that could.
+   */
+  function advise(host: CaptureEngine, reason: CaptureAdvisoryReason, event: { readonly subject: string | null; readonly state: CaptureWarningState; readonly sessionId: string; readonly correlationId: string }): void {
+    const ids = { sessionId: event.sessionId, correlationId: event.correlationId };
+    if (event.subject === null) {
+      // No device is named: there is nothing to put the advice on. Said once per session.
+      if (subjectMissingSaid !== event.correlationId) {
+        subjectMissingSaid = event.correlationId;
+        report({ source: 'capture.forwarder', code: ForwarderReportCode.SUBJECT_MISSING, ...ids, err: new Error(`a ${reason} warning names no device: no advice is raised`) });
+      }
+      return;
+    }
+    if (event.state === CaptureWarningState.CLEARED) adviseOff(host, reason, event.subject, ids);
+    else adviseOn(host, reason, event.subject, ids);
+  }
+
+  function resolveAdvice(host: CaptureEngine, advice: CaptureAdvisoryNotice, ids: Ids): void {
     Promise.resolve()
       .then(() => host.clearCaptureWarning(advice))
       .catch((err: unknown) => report({ source: 'capture.forwarder', code: ForwarderReportCode.ADVISORY_CLEAR_FAILED, ...ids, err }));
@@ -296,6 +357,11 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     const host = engine();
     if (host === null) return;
     settle(host);
+    // R63-03: a camera clock near the audio / video bound is ADVICE the operator sees, raised once per episode.
+    for (const clock of clocks) {
+      if (clock.nearBound) adviseOn(host, CaptureAdvisoryReason.AV_OFFSET_NEAR_BOUND, clock.deviceId, ids);
+      else adviseOff(host, CaptureAdvisoryReason.AV_OFFSET_NEAR_BOUND, clock.deviceId, ids);
+    }
     // Not returned: the supervisor's queue does not wait for the engine.
     Promise.resolve()
       .then(() => host.applyCaptureTelemetry({ levels, ingest, fragments }))
@@ -314,13 +380,22 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
   });
 
   const offWarning = capture.on('warning', (event) => {
-    // D127 (2): an advisory reason is not a fault. The record of the same condition carries the number.
-    if (event.reason !== null && (ADVISORY_WARNING_REASONS as readonly CaptureWarningReason[]).includes(event.reason)) return;
     const host = engine();
+    // D127 (2): an advisory reason is not a fault. R63-03: it is the named advisory alert of the camera.
+    if (event.reason !== null && (ADVISORY_WARNING_REASONS as readonly CaptureWarningReason[]).includes(event.reason)) {
+      // The advisory reasons with a shared notice; another one (a later protocol) is said by its record or by its own row.
+      if (host !== null && event.reason === CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND) advise(host, CaptureAdvisoryReason.KEYFRAME_INTERVAL_ABOVE_BOUND, event);
+      // Ruling D179 (a), closing pass F-X: a fragment closed at the size bound is told the same way. Matched by the reason's
+      // NAME, so a worker of a protocol that does not know the reason simply never says it.
+      else if (host !== null && (event.reason as string) === CaptureAdvisoryReason.FRAGMENT_SIZE_BOUND_REACHED) advise(host, CaptureAdvisoryReason.FRAGMENT_SIZE_BOUND_REACHED, event);
+      return;
+    }
+    // R74-03: a camera that did not connect is the WARNING of a degraded start (the notices unit), never a critical fault of the camera.
+    if (event.reason === CaptureWarningReason.CAMERA_NOT_CONNECTED) return;
     if (host === null) return;
     // Pass D9: the rate-limit condition of a microphone is advice with its own named alert, never a fault.
     if (event.reason === CaptureWarningReason.MIC_RATE_AT_LIMIT) {
-      advise(host, event);
+      advise(host, CaptureAdvisoryReason.MIC_RATE_AT_LIMIT, event);
       return;
     }
     if (event.code === CaptureWarningCode.MIC_SILENT && event.subject === null) {
@@ -339,6 +414,8 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
       event.source === 'supervisor' && event.code === CaptureWarningCode.CAPTURE_FAULT && event.subject === null && failedStart !== null && failedStart.correlationId === event.correlationId && durable !== event.correlationId
         ? { reason: failedStart.reason, evidenceFiles: 0 }
         : null;
+    // The supervisor's own fault of the session whose worker it just ended for a named refusal (tidy pass F-Y).
+    const named: string | null = keys === null && event.source === 'supervisor' && event.code === CaptureWarningCode.CAPTURE_FAULT && event.subject === null && refused !== null && refused.correlationId === event.correlationId ? refused.reason : null;
     if (event.state === CaptureWarningState.CLEARED) {
       // Another cause on the same device is another entry and another fault of the engine: it stays.
       if (known === undefined || known.correlationId !== event.correlationId) return;
@@ -350,7 +427,7 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     if (known !== undefined && known.correlationId !== event.correlationId) {
       // R-3: the same fault of ANOTHER session is a new occurrence: the held one ends, then this one is raised.
       clear(host, known);
-      raise(host, warning, reason, event, keys);
+      raise(host, warning, reason, event, keys, named);
       return;
     }
     if (known !== undefined) {
@@ -358,13 +435,15 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
       known.clearedAt = null;
       return;
     }
-    raise(host, warning, reason, event, keys);
+    raise(host, warning, reason, event, keys, named);
   });
 
   const offDown = capture.on('workerDown', (event) => {
     // The END of a session's worker (no restart follows) with a code a new worker would repeat.
     const code = event.down.detail;
     failedStart = event.restartInMs === null && code !== null && FINAL_CRASH_CODES.includes(code) ? { correlationId: event.correlationId, reason: code } : null;
+    // The END of a session's worker because the supervisor refused what it said, by the supervisor's own name for it.
+    refused = event.restartInMs === null && event.down.code === 'PROTOCOL_VIOLATION' && code !== null && SUPERVISOR_REFUSAL_REASONS.includes(code) ? { correlationId: event.correlationId, reason: code } : null;
   });
 
   const offRecord = capture.on('record', (event) => {
@@ -372,9 +451,18 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     if ((DURABLE_RECORD_KINDS as readonly string[]).includes(record.kind)) durable = event.correlationId;
     if (record.kind !== CaptureRecordKind.KEYFRAME_INTERVAL || !record.aboveBound) return;
     notice({ code: CaptureNoticeCode.KEYFRAME_INTERVAL_ABOVE_BOUND, sessionId: event.sessionId, correlationId: event.correlationId, deviceId: record.deviceId, value: record.observedMs, bound: record.boundMs });
+    // R63-03: the record of an interval that completed above the bound raises the same advice when no warning did.
+    const host = engine();
+    if (host !== null) adviseOn(host, CaptureAdvisoryReason.KEYFRAME_INTERVAL_ABOVE_BOUND, record.deviceId, event);
   });
 
   const offPhase = capture.on('phase', (event) => {
+    // The supervisor left the session (a stop, a fault for good, a shutdown): its advice is over.
+    if (event.phase === 'IDLE' || event.phase === 'FAULTED' || event.phase === 'CLOSED') {
+      const ended = engine();
+      if (ended !== null) resolveEveryAdvice(ended);
+      return;
+    }
     if (event.phase !== 'RECORDING' || recording === event.correlationId) return;
     // A NEW session records (R-4): every capture fault of the sessions before it is over - what
     // this table holds and what a Core that went down left raised in the engine. One call clears
@@ -384,8 +472,7 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     const host = engine();
     if (host === null) return;
     // The advice of the sessions before it is over as well: it is no fault, so the call below does not resolve it.
-    for (const subject of advised.keys()) resolveAdvice(host, { code: CaptureAdvisoryReason.MIC_RATE_AT_LIMIT, subject }, event);
-    advised.clear();
+    resolveEveryAdvice(host);
     raised.clear();
     Promise.resolve()
       .then(() => host.clearCaptureFaults())

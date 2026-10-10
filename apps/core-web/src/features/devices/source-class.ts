@@ -54,8 +54,8 @@ export function sourceKindKey(
 
 /**
  * The 'is on' fact of a local device (C3 §2.6 erratum PE-128-38, SEC35-44 (4)): `sourceOpen: true`
- * while the Core holds this Mac's camera or microphone open. The member is specified and not yet in
- * the shared slice schema, so it is read as an optional member: absent = not on.
+ * while the Core holds this Mac's camera or microphone open. An OPTIONAL member of a device of the
+ * shared `captureDevices` slice (`packages/shared/src/api/state-slices.ts`): absent = not on.
  */
 export function isLocalSourceOn(device: (CaptureDevice & { readonly sourceOpen?: boolean }) | undefined): boolean {
   return device !== undefined && device.adapter === LOCAL_DEVICE_ADAPTER && device.sourceOpen === true

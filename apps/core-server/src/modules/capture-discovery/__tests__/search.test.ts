@@ -4,7 +4,7 @@
 // The count of `discover` calls stands for "datagrams": the adapter sends none unless it is called.
 import { CAPTURE_DISCOVERY_WINDOW_MS, CaptureDiscoveryReason } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
-import { CaptureAdapterKind, DiscoveryNotRunError, type OnvifCandidate, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../../capture/adapters';
+import { CaptureAdapterKind, DiscoveryNotRunError, connectionTargetOf, type OnvifCandidate, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../../capture/adapters';
 import type { AuditEntry } from '../../../core';
 import { SERVER_AUDIT_DETAIL_RULES } from '../../../core';
 import { adoptionAddressOf, createCandidateStore, createSearchLimiter, createSearchRunner, registeredIndexOf, type RegisteredCamera, type SearchClosed, type SearchRequest } from '../index';
@@ -365,8 +365,22 @@ describe('the candidates of the contract (C3 §2.6 `CaptureCandidate`; D83 D-DB-
       ['192.0.2.25', 'ONVIF_RTSP', 'PRODUCTION', false, false],
     ]);
     expect([state.truncated, state.search?.responderCount]).toEqual([true, 300]);
-    // The announced texts are carried as the adapter cleaned them; no service address is in the answer.
+    // The announced texts are carried as the adapter cleaned them.
     expect(state.candidates[0]).toMatchObject({ vendor: 'Vendor', model: 'Model', name: 'Camera', endpointRef: 'urn:uuid:192.0.2.20' });
-    expect(JSON.stringify(state)).not.toContain('device_service');
+    // Fix F-M4 (finding R69-12; decision D178): until then this case pinned "no service address is in
+    // the answer". The operator confirms the FULL target the Core will connect to, so a testable
+    // candidate now carries it - scheme, host, port, path, as the test uses them - and a candidate
+    // that is not testable carries none.
+    expect(state.candidates.map((candidate) => candidate.connectionTarget ?? null)).toEqual([
+      connectionTargetOf(answer('192.0.2.20')),
+      connectionTargetOf(answer('127.0.0.1', { adapterKind: CaptureAdapterKind.FAKE })),
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(state.candidates[0]?.connectionTarget).toMatch(/^http:\/\/192\.0\.2\.20:\d+\//);
+    for (const candidate of state.candidates) expect('connectionTarget' in candidate).toBe(candidate.testable);
   });
 });

@@ -44,6 +44,11 @@ VARIANTS = {"worker": WORKER, "negctl": os.path.join(BUILD, "capture-worker-negc
             "skeleton": os.path.join(BUILD, "capture-worker-skeleton111"), "norefusal": os.path.join(BUILD, "capture-worker-norefusal"), "nocomp": os.path.join(BUILD, "capture-worker-nocomp")}
 CAM, MIC = os.path.join(BUILD, "fake_cam"), os.path.join(BUILD, "fake_mic")
 VARIANTS["intervalskew"] = os.path.join(BUILD, "capture-worker-intervalskew")     # row 71: the interval record of a switch names a sample one chunk late
+# Fix pass F-M3 (review 16): the clock floor judged but not acted on (R63-12), and no fragment size bound (R63-02).
+# Both are PROOF builds: they say so in HELLO and are driven by THIS script only - the supervisor refuses them.
+VARIANTS.update({"nofloor": os.path.join(BUILD, "capture-worker-nofloor"), "nobound": os.path.join(BUILD, "capture-worker-nobound")})
+if os.environ.get("M3_WORKER_BEFORE"):          # a worker built from an EARLIER tree, outside this one: the red run of a new check
+    VARIANTS["before"] = os.environ["M3_WORKER_BEFORE"]
 DRIVER = os.path.join(REPO, "apps", "core-server", "test", "support", "capture-session-driver.ts")
 PORT_MIN, PORT_MAX = 8554, 8564                      # CAPTURE_MEDIA_PORT_MIN/MAX: every fixture and worker listener (SEC35-23)
 RESERVED_PORTS = (8554, 8556, 8558)                  # the Android emulators' gRPC endpoints on this host: never touched
@@ -387,7 +392,7 @@ def start_sources(d, truth, plan, procs, mic_seconds, mic_extra=()):
     for c, pc in zip(truth["cams"], plan["cameras"]):
         cp = spawn([CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]),
                     "--drift-ppm", str(c["drift_ppm"]), "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]),
-                    "--gop", str(truth.get("gop", FPS))],
+                    "--gop", str(truth.get("gop", FPS))] + list(truth.get("cam_extra", ())),
                    stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "cam%d.err" % c["cam"]), "w"))
         procs.append(cp)
         cps.append(cp)
@@ -1607,6 +1612,16 @@ SR_MODES = {     # per camera: the arguments of the fixture; `base` = the case o
     "step": {"base": "long20", "cams": [{"delay-ms": 35.0, "clock-step-ms": 100.0, "clock-step-at-s": 8.0}, {"delay-ms": 35.0}]},
     # F-6: camera 1's wall clock is 10 s ahead from the start: beyond any delay, so it is given up, not recorded at a wrong time.
     "offset": {"base": "long", "cams": [{"clock-offset-ms": 10000.0}, {}]},
+    # Fix pass F-M3, review R63-12 / carried question 4: THE WIRING OF THE CLOCK FLOOR IN THE INGEST. Camera 1's wall
+    # clock is 1.5 s BEHIND: inside the 2 s gross-error bound, so it is anchored - at its own clock, 1.5 s away from
+    # the truth - and the offset is REPORTED (TELEMETRY clocks[].lagMs, the worker's `camera_clock_floor` line); it is
+    # NOT corrected. Camera 2's is 3 s behind: the fixture connects seconds before it sends, so the allowance of the
+    # anchoring hides the offset and the camera IS anchored; the floor - the smallest lag of every packet, judged
+    # without allowance one second into the stream - gives it up by name. The proof build `nofloor` keeps it.
+    "behind": {"base": "long", "cams": [{"clock-offset-ms": -1500.0}, {"clock-offset-ms": -3000.0}]},
+    # Fix pass F-M3, review R63-11: camera 1 repeats ONE RTP timestamp (frame 120 carries the time of frame 119).
+    # The monotonic guard moves that sample; the worker now SAYS so (`video_timestamp_moved`, `retimed` of the summary).
+    "retime": {"base": "long", "cams": [{"repeat-ts-at": 120}, {}]},
 }
 
 
@@ -1631,7 +1646,10 @@ def cmd_srcam(a):
        mode delay : nearBound stays false for a correct clock behind a steady 35 ms delay; lagMs reports the delay.
        mode step  : nearBound becomes true for the camera whose clock stepped by 60 ms, and only for that one.
        mode offset: a camera whose wall clock is 10 s off is given up with CAMERA_CLOCK_OUT_OF_BOUND and leaves no
-                    video at a wrong time; the other camera records, the worker exits 0."""
+                    video at a wrong time; the other camera records, the worker exits 0.
+       mode behind: (R63-12) a camera 1.5 s behind is anchored and its offset reported; one 3 s behind is given up by
+                    the clock FLOOR (not at anchoring: its allowance hid the offset). Control: --variant nofloor.
+       mode retime: (R63-11) a repeated RTP timestamp is moved by the monotonic guard, and that is counted and logged."""
     global start_sources
     binary = VARIANTS[a.variant]
     d = rundir(a.name, fresh=True)
@@ -1725,6 +1743,35 @@ def cmd_srcam(a):
         v("near_bound_false_before_the_step", len(near("CAM-01", 3, 8)) > 20 and not any(r[2] for r in near("CAM-01", None, 60)))
         v("near_bound_true_after_a_clock_step", len(near("CAM-01", 74, stream_end - 1)) > 20 and all(r[2] for r in near("CAM-01", 74, stream_end - 1)))
         v("near_bound_false_for_the_steady_camera", len(near("CAM-02", None, stream_end - 1)) > 100 and not any(r[2] for r in near("CAM-02", None, stream_end - 1)))
+    if a.mode == "behind":
+        floor = {str(l.get("source")).rpartition(".")[2]: l for l in log if l.get("rule") == "floor"}      # the judgement of the floor, one line per camera
+        res["clock_floor"] = {k: {"message": l["message"], "lag_ms": l.get("lag_ms"), "bound_ms": l.get("bound_ms"), "packets": l.get("packets")} for k, l in floor.items()}
+        res["warnings"] = sorted((x["code"], x["reason"], x["subject"]) for x in info["warnings"])
+        res["given_up"] = [str(l.get("source")).rpartition(".")[2] for l in log if l["message"] == "CAMERA_CLOCK_OUT_OF_BOUND"]
+        lag1 = [r[1] for r in near("CAM-01", 5, stream_end - 1)]
+        res["lag_of_the_camera_1_5_s_behind_ms"] = {"frames": len(lag1), "min": min(lag1) if lag1 else None, "max": max(lag1) if lag1 else None}
+        # 1.5 s behind: ANCHORED (it records), the floor judged it sane, and the offset is in the telemetry and in the log.
+        v("camera_1500ms_behind_is_anchored_and_records", any(x["source"].endswith("ingest1") for x in res["anchored"]) and "ingest1" not in res["given_up"]
+          and os.path.exists(paths[0]) and len(P111.probe_packets(paths[0], "v:0")) > 100 and not any(w_[2] == "CAM-01" and w_[1] != "CAMERA_STREAM_ENDED" for w_ in res["warnings"]))
+        v("its_offset_is_reported_not_corrected", len(lag1) > 20 and all(1500.0 <= x <= 1500.0 + 100.0 for x in lag1)
+          and floor.get("ingest1", {}).get("message") == "camera_clock_floor" and 1500.0 <= float(floor["ingest1"].get("lag_ms", 0)) <= 1600.0)
+        # 3 s behind: given up BY THE FLOOR (the line of the floor's judgement says out of bound), by name, once.
+        v("camera_3000ms_behind_is_given_up_by_the_clock_floor", floor.get("ingest2", {}).get("message") == "camera_clock_out_of_bound" and 3000.0 <= float(floor["ingest2"].get("lag_ms", 0)) <= 3200.0
+          and res["given_up"] == ["ingest2"] and ("CAPTURE_FAULT", "CAMERA_CLOCK_OUT_OF_BOUND", "CAM-02") in res["warnings"])
+        # What review note R63-16 says and this check MEASURES (not a criterion): the video of the given-up camera that was placed before the floor judged it.
+        res["video_packets_of_the_given_up_camera"] = len(P111.probe_packets(paths[1], "v:0")) if os.path.exists(paths[1]) else 0
+        v("the_given_up_camera_was_anchored_first", any(x["source"].endswith("ingest2") for x in res["anchored"]))       # else the floor was never asked: the allowance did not hide the offset
+    if a.mode == "retime":
+        moved = [l for l in log if l["message"] == "video_timestamp_moved"]
+        summary = {l.get("cam"): l.get("retimed") for l in log if l["message"] == "camera_summary"}
+        res["video_timestamp_moved"] = [{k: l.get(k) for k in ("source", "dts_in", "dts", "pts_in", "pts", "video_packets")} for l in moved]
+        res["retimed"] = summary
+        v("sources_exit_0", rc.get("cam1") == 0 and rc.get("cam2") == 0)
+        v("a_moved_timestamp_is_logged_once_with_its_numbers", len(moved) == 1 and str(moved[0].get("source")).endswith("ingest1") and moved[0].get("dts", 0) > moved[0].get("dts_in", 1 << 62))
+        v("the_summary_counts_the_moved_samples", summary.get(1) == 1)
+        v("CONTROL_the_camera_with_plain_timestamps_counts_none", summary.get(2) == 0)
+        dts = [int(p["dts"]) for p in P111.probe_packets(paths[0], "v:0")] if os.path.exists(paths[0]) else []
+        v("the_file_time_never_goes_backwards", len(dts) > 100 and all(y > x for x, y in zip(dts, dts[1:])))
     if a.mode == "offset":
         given_up = [l for l in log if l["message"] == "CAMERA_CLOCK_OUT_OF_BOUND"]
         res["given_up"] = given_up
@@ -1796,6 +1843,7 @@ def tail_check(path, records=None):
 
 
 SAME = ("index", "start", "len", "fragSha256", "chainSha256", "prefixSha256")
+SEAL_MAX_FRAGMENT_BYTES = 64 * 1024 * 1024           # SEALING_MAX_FRAGMENT_BYTES = VERIFY_MAX_OPEN_FRAGMENT_BYTES: what the worker runs with by default
 
 
 def writer_criteria(v, res, d, paths, records, truth, log=None):
@@ -1826,6 +1874,10 @@ def writer_criteria(v, res, d, paths, records, truth, log=None):
         v("media_time_equals_the_file_walk", len(tc.get("fragments", [])) == len(cps) > 0 and all(f["media"] == {"mediaStartMs": c["mediaStartMs"], "mediaDurationMs": c["mediaDurationMs"], "keyframe": c["keyframe"]} for f, c in zip(tc["fragments"], cps))
           and all(c["keyframe"] == (o["video_samples"] > 0) for c, o in zip(cps, own["fragments"])))
         v("first_durable_fragment_is_the_first_checkpoint", len(first) == 1 and len(first_cp) == 1 and bool(cps) and first[0]["record"]["bytes"] == cps[0]["start"] + cps[0]["len"] and first_cp[0]["seq"] > first[0]["seq"])     # before it; a record of the other camera may lie between the two
+        # Fix pass F-M3: every durable fragment is inside the bound of the seal (R63-02), and the first durable fragment states the sync level it got (R63-09).
+        v("every_durable_fragment_inside_the_seal_bound", all(c["len"] <= SEAL_MAX_FRAGMENT_BYTES for c in cps))
+        v("first_durable_fragment_states_its_sync_level", len(first) == 1 and first[0]["record"].get("syncLevel") in ("F_FULLFSYNC", "FSYNC"))
+        out[name]["sync_level"] = first[0]["record"].get("syncLevel") if first else None
         v("durable_instants_grow", all(b["durableAt"] >= a_["durableAt"] for a_, b in zip(cps, cps[1:])) and all(abs(c["durableAt"] / 1000.0 - time.time()) < 3600 for c in cps))
         v("keyframe_interval_reported", len(kf) == 1 and kf[0]["boundMs"] == 2000 and kf[0]["intervals"] >= 1 and abs(kf[0]["observedMs"] - gop_ms) <= GOP_TOLERANCE * gop_ms
           and kf[0]["aboveBound"] == (gop_ms > 2000 * (1 + GOP_TOLERANCE)) and said_above == kf[0]["aboveBound"])
@@ -2107,6 +2159,77 @@ def cmd_replay(a):
 MEDIA_IN_STATUS = r"\.(mp4|m4a|m4s|mov|mkv|aac|wav|pcm|s16|h264|264|part)$"
 
 
+def cmd_fragbound(a):
+    """Fix pass F-M3, review R63-02 (ruling D179): NO FRAGMENT THE WORKER MAKES DURABLE IS ABOVE THE BOUND OF THE SEAL.
+    A generated source with an OVERSIZED group of pictures (pseudo-random pictures, a keyframe every 5 s: several
+    megabytes per GOP) through the built worker, started with a bound of --bound bytes (the product passes 64 MiB;
+    the rule is the same at any number, and 2 MiB is reached within one GOP of this source):
+      - every durable fragment (every checkpoint, and every moof+mdat of the closed file) is inside the bound;
+      - the source IS oversized: fragments were closed at the bound - they are the ones whose video does not start on
+        a keyframe, and each says so (`keyframe: false`), as the Core's own box walk reads it from the file;
+      - no sample is lost: every video frame the worker took is in the file, one frame apart, and the file decodes;
+      - the chain is whole: checkpoints contiguous, the running hash is the closed file re-hashed, tail validation clean;
+      - the warning FRAGMENT_SIZE_BOUND_REACHED is raised once per camera, about that camera.
+    NEGATIVE CONTROL: --variant nobound (the proof build with the rule off): fragments above the bound are written."""
+    binary = VARIANTS[a.variant]
+    d = rundir(a.name, fresh=True)
+    truth = build_truth("long", gop=250)
+    truth["cam_extra"] = ["--noise", "1"]
+    a.worker_args = ("--max-fragment-bytes", str(a.bound))
+    w, plan, info, _ = run_session(a, d, binary, truth)
+    frame_stats(w, info)
+    paths = [c["outputPath"] for c in plan["cameras"]]
+    log, records = worker_log(d), [f for _, f in w.of("RECORD")]
+    res = {"check": "review R63-02: the fragment size bound (bound %d bytes, source GOP 250 frames of noise)" % a.bound, "run": a.name, "variant": a.variant, "bound_bytes": a.bound, "info": info}
+    v, rc = Crit(), info.get("rc") or {}
+    v("worker_exit_0", rc.get("worker") == 0 and not info["crash"])
+    v("sources_exit_0", rc.get("cam1") == 0 and rc.get("cam2") == 0)
+    v("frames_clean", info["first_frame_is_hello"] and not info["lines_that_are_no_frame"])
+    summary = {l.get("cam"): l for l in log if l["message"] == "camera_summary"}
+    warned = sorted((x["code"], x["reason"], x["state"], x["subject"]) for x in info["warnings"] if x["reason"] == "FRAGMENT_SIZE_BOUND_REACHED")
+    res["warnings"], out = warned, {}
+    for i, p in enumerate(paths):
+        dev, name = "CAM-0%d" % (i + 1), os.path.basename(p)
+        if not os.path.exists(p):
+            v("camera_file_exists", False)
+            continue
+        cps, own = checkpoints_of(records, dev), rehash(p)
+        tc = tail_check(p, cps)
+        video = P111.probe_packets(p, "v:0")
+        dts = [int(x["dts"]) for x in video]
+        step = sorted(y - x for x, y in zip(dts, dts[1:]))
+        cut = [c for c, o in zip(cps, own["fragments"]) if o["video_samples"] > 0 and not c["keyframe"]]
+        camera_gops = len(video) / 250.0                     # the camera sends a keyframe every 250 frames
+        gop_bytes = int(own["bytes"] / camera_gops) if camera_gops else 0       # the bytes of ONE camera GOP in this file (video and its share of audio)
+        aligned = [c for c, o in zip(cps, own["fragments"]) if o["video_samples"] > 0 and c["keyframe"]]
+        ok_play, rep_play = playable_own_timebase(p)
+        out[name] = {"checkpoints": len(cps), "fragments_in_file": len(own["fragments"]), "largest_fragment_bytes": max([o["len"] for o in own["fragments"]] or [0]), "largest_checkpoint_bytes": max([c["len"] for c in cps] or [0]),
+                     "fragments_closed_at_the_bound": len(cut), "fragments_that_start_on_a_keyframe": len(aligned), "bytes_of_one_camera_gop": gop_bytes, "camera_gops": round(camera_gops, 2),
+                     "worker_realign_cuts": (summary.get(i + 1) or {}).get("realign_cuts"), "video_packets_in_file": len(video), "worker_video_packets": (summary.get(i + 1) or {}).get("video_packets"),
+                     "worker_size_bound_cuts": (summary.get(i + 1) or {}).get("size_bound_cuts"), "frame_step_ticks_min_max": [step[0], step[-1]] if step else None,
+                     "tail_validation": {k: tc.get(k) for k in ("ok", "flags", "state", "comparison", "error") if k in tc}, "decode": {k: rep_play.get(k) for k in ("playable", "decode_at_file_timebase_rc", "video_dts_strictly_increasing")} if rep_play else None}
+        v("every_durable_fragment_inside_the_bound", bool(cps) and all(c["len"] <= a.bound for c in cps) and all(o["len"] <= a.bound for o in own["fragments"]))
+        v("the_source_gop_is_above_the_bound", gop_bytes > 2 * a.bound)                                   # else the check says nothing
+        # After a cut at the bound the next keyframe begins a fragment again: every whole camera GOP of the file starts one.
+        v("every_camera_gop_starts_a_fragment_again", len(aligned) >= int(camera_gops))
+        v("fragments_were_closed_at_the_bound_and_say_so", len(cut) >= 1 and (summary.get(i + 1) or {}).get("size_bound_cuts", 0) >= 1
+          and len(tc.get("fragments", [])) == len(cps) and all(f["media"]["keyframe"] == c["keyframe"] for f, c in zip(tc["fragments"], cps)))
+        # Every frame the worker took is in the file, one frame after the other. The FIRST step is the held first frame
+        # (spec C.4: the first sample is held from file time 0), not a gap: it is left out.
+        later = sorted(y - x for x, y in zip(dts[1:], dts[2:]))
+        v("no_sample_lost", len(video) > 300 and len(video) == (summary.get(i + 1) or {}).get("video_packets") and bool(later) and later[0] == later[-1] == 90000 // FPS and ok_play)
+        v("checkpoints_contiguous", bool(cps) and [c["index"] for c in cps] == list(range(1, len(cps) + 1)) and cps[0]["start"] == own["init_bytes"] and all(b["start"] == a_["start"] + a_["len"] for a_, b in zip(cps, cps[1:])))
+        v("running_hash_equals_closed_file_rehash", len(cps) == len(own["fragments"]) > 0 and all(c[k] == o[k] for c, o in zip(cps, own["fragments"]) for k in SAME)
+          and cps[-1]["prefixSha256"] == own["whole_file_sha256"] and own["tiles_exactly"] and own["only_fragments_after_init"])
+        v("tail_validation_clean_and_matches_records", tc.get("ok") is True and tc.get("flags") == [] and (tc.get("comparison") or {}).get("verdict") == "MATCH" and tc["comparison"]["matched"] == len(cps))
+        v("size_bound_warning_once_per_camera", warned.count(("CAPTURE_FAULT", "FRAGMENT_SIZE_BOUND_REACHED", "ACTIVE", dev)) == 1)
+    res["files"] = out
+    # The cameras RECORD to their last frame: nothing but the two advisories, and the end of each stream when its camera leaves.
+    v("no_warning_but_the_two_advisories_and_the_stream_end", all(x["reason"] in ("FRAGMENT_SIZE_BOUND_REACHED", "KEYFRAME_INTERVAL_ABOVE_BOUND", "CAMERA_STREAM_ENDED") for x in info["warnings"]))
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
+
+
 def media_lines(porcelain):
     import re
     return [l for l in porcelain.splitlines() if re.search(MEDIA_IN_STATUS, l.strip().strip('"'), re.I)]
@@ -2184,6 +2307,8 @@ def main():
     case("writefault", cmd_writefault)
     case("replay", cmd_replay, control={"choices": ["flip"], "default": None}, other={"default": None})
     case("mg1", cmd_mg1)
+    # Fix pass F-M3 (review R63-02): the fragment size bound on an oversized GOP; control: --variant nobound.
+    case("fragbound", cmd_fragbound, bound={"type": int, "default": 2 * 1024 * 1024, "help": "the bound the worker is started with, in bytes (the product passes 64 MiB)"})
     # Row 71 (worker half): the microphone switch, its interval records and the warnings (test/m5mic.py).
     case("m5switch", m5("cmd_switch"))
     case("m5gap", m5("cmd_gap"), control={"choices": ["cut1000"], "default": None})

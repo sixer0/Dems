@@ -112,6 +112,15 @@ export const EVIDENCE_MEDIA_SESSION_TTL_MS = 60_000;
  */
 export const EVIDENCE_MEDIA_TOKEN_PREFIX = 'mts_';
 /**
+ * Fixed prefix of the signed DOWNLOAD token of a finished export (fix pass F-M8, ruling D178): the
+ * last path segment of the registry-external `GET /exports/<token>` that operation 87 names in its
+ * optional `download` member. Same construction, binding and TTL as the media session token; the
+ * shared blanking rule knows it (`redaction.ts`), and it never enters a log or an audit row.
+ */
+export const EVIDENCE_EXPORT_DOWNLOAD_TOKEN_PREFIX = 'exs_';
+/** The path the download route is served under: `/exports/<token>`. Same origin as the API. */
+export const EVIDENCE_EXPORT_DOWNLOAD_ROUTE_PREFIX = '/exports';
+/**
  * Id of the separate media-session signing key (SEC35-12): held in the Core credential store,
  * never the evidence `Signer` key, never in a log or an audit row.
  */

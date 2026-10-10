@@ -58,6 +58,11 @@ export const WorkerDownCode = {
   PROTOCOL_MISMATCH: 'PROTOCOL_MISMATCH',
   /** `HELLO` carries the proof-build mark: a negative control of the capture checks, never recorded with. Not retried. */
   PROOF_BUILD: 'CAPTURE_WORKER_PROOF_BUILD',
+  /**
+   * `HELLO` names a version that is not a release word (`capture-worker/<n>.<n>.<n>` exactly): the
+   * allowlist of the boot check, held for EVERY `HELLO` of every session (review R63-04). Not retried.
+   */
+  VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
   /** A line that is no frame of the protocol. */
   PROTOCOL_VIOLATION: 'PROTOCOL_VIOLATION',
   /** `START` was answered with `ok=false`. */
@@ -68,6 +73,11 @@ export const WorkerDownCode = {
   HEARTBEAT_TIMEOUT: 'HEARTBEAT_TIMEOUT',
   /** The process ended, or said `CRASH`, while its session was open. */
   EXITED: 'EXITED',
+  /**
+   * A `stop` was waiting for the worker to flush and exit, the stop grace ran out, and the
+   * supervisor KILLED it (review R63-01): whatever fragment was still open is not on the disk.
+   */
+  STOP_TIMEOUT: 'STOP_TIMEOUT',
 } as const;
 export type WorkerDownCode = (typeof WorkerDownCode)[keyof typeof WorkerDownCode];
 
@@ -154,8 +164,12 @@ export interface CaptureSupervisor {
   shutdown(): Promise<void>;
   /** One session = one worker process and one file per camera. Resolves when the worker acknowledged `START`. */
   start(sessionId: string, plan: CapturePlan): Promise<void>;
-  /** Stops the session's worker and waits for it to exit. Resolves at once when no session is open. */
-  stop(sessionId: string, reason: CaptureStopReason): Promise<void>;
+  /**
+   * Stops the session's worker and waits for it to exit. Resolves at once when no session is open.
+   * Resolves with HOW the stop ended (`CaptureStopOutcome`): a caller that seals the recording must
+   * read `clean` - a stop that is not clean is an interrupted recording, never a normal one.
+   */
+  stop(sessionId: string, reason: CaptureStopReason): Promise<CaptureStopOutcome>;
   /**
    * The operator's switch (never automatic, OD-11). Resolves when the worker acknowledged it, with
    * the `AUDIO_SOURCE_INTERVAL` record of that switch (the interval it opened: microphone, first
@@ -165,6 +179,27 @@ export interface CaptureSupervisor {
   status(): CaptureStatus;
   /** Returns the function that removes the listener. */
   on<Name extends CaptureEventName>(event: Name, listener: CaptureListener<Name>): () => void;
+}
+
+/**
+ * HOW A STOP ENDED (review R63-01; ruling D179). A stop is CLEAN only when the session's worker
+ * acknowledged the `STOP`, wrote the record that ends the audio timeline it had begun, and exited
+ * with code 0 and no signal. Anything else - a `CRASH` frame while it closed (a failed final sync,
+ * a file that could not be closed), a non-zero exit, an exit without the acknowledgement, the kill
+ * at the stop grace, or a worker that was already down for good - is NOT clean: the recording was
+ * INTERRUPTED and `down` names the cause. The same `down` is `status().lastCrash`, and - when the
+ * worker went down DURING this stop - it was said as a `workerDown` event (`restartInMs: null`)
+ * before the phase went idle. A session whose worker never recorded (it was stopped before it
+ * acknowledged `START`), and a call when no session is open, have nothing to interrupt: clean.
+ *
+ * WHO ACTS ON IT: the capture-session unit maps a stop that is not clean to its `INTERRUPTED`
+ * hand-off, so that the seal takes the durable-prefix path and the manifest says interrupted
+ * (OD-08). The supervisor only states the fact.
+ */
+export interface CaptureStopOutcome {
+  readonly clean: boolean;
+  /** Why the stop is not clean; null when it is. */
+  readonly down: WorkerDown | null;
 }
 
 /** Refusals of the supervisor. `code` is one of `CaptureRefusal`. */

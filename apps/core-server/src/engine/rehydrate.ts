@@ -29,7 +29,7 @@ import {
 import { sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { UnitContext } from '../core';
-import { DURABLE_SLICE_KEYS, MappingError, fromRows, type DurableSliceKey, type DurableSlices, type StoredRows } from '../db/mapping';
+import { DURABLE_SLICE_KEYS, MappingError, fromRows, type DurableSliceKey, type DurableSlices, type FromRowsOptions, type StoredRows } from '../db/mapping';
 import { activeSession, auditLog, authSessions, biometricTokens, events, hardwareSnapshot, pairedDevices, pairingCodes } from '../db/schema';
 import { readStoredRows } from '../db/store';
 import { EngineError } from './errors';
@@ -114,10 +114,10 @@ export async function readNewestStoredInstant(unit: Pick<UnitContext, 'db'>): Pr
  * then the pipeline's own refusal (503 `NOT_READY`, reported once as an outage, with
  * `ready.database` following the probe), not a failed read of some table.
  */
-export async function readStored(unit: UnitContext): Promise<StoredState> {
+export async function readStored(unit: UnitContext, options: FromRowsOptions = {}): Promise<StoredState> {
   await unit.audit.head();
   const rows = await readStoredRows(unit.db);
-  return storedStateOf(rows, await readNewestStoredInstant(unit));
+  return storedStateOf(rows, await readNewestStoredInstant(unit), options);
 }
 
 /**
@@ -125,10 +125,11 @@ export async function readStored(unit: UnitContext): Promise<StoredState> {
  * `newestStoredInstant` is what `readNewestStoredInstant` answered; without it the floor of the
  * clock is the engine's own last committed instant.
  */
-export function storedStateOf(rows: StoredRows, newestStoredInstant = 0): StoredState {
+export function storedStateOf(rows: StoredRows, newestStoredInstant = 0, options: FromRowsOptions = {}): StoredState {
   let slices: DurableSlices;
   try {
-    slices = fromRows(rows);
+    // Device-list block (fix F-M4, finding R69-03): `options` carries the device-list rule of the running capture operation.
+    slices = fromRows(rows, options);
   } catch (error) {
     if (error instanceof MappingError) {
       throw new EngineError(

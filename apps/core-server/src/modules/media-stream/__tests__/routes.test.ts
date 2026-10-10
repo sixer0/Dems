@@ -544,3 +544,56 @@ describe('a fragment whose tag fails is never served (capture spec §D.4)', () =
     expect((await media.fetch(session.url, `bytes=${HEADER + 2 * FRAGMENT}-${HEADER + 2 * FRAGMENT + 9}`)).statusCode).toBe(206);
   });
 });
+
+// Fix pass F-M8 (review finding R93-08): an answer in flight ends with its sign-in session.
+describe('R93-08: a stream in flight is cut when its sign-in session ends', () => {
+  // A file of 20 sealed fragments: more pieces than one check interval.
+  const LONG = { fragments: 20 } as const;
+  const LONG_SIZE = HEADER + 20 * FRAGMENT + 17;
+
+  it('CONTROL: while the session is open the whole range is served, and the session is asked for again while the answer runs', async () => {
+    const media = await build(LONG);
+    media.actAs(INVESTIGATOR);
+    const session = await sessionOf(media);
+    const whole = await media.fetch(session.url, 'bytes=0-');
+    expect([whole.statusCode, whole.rawPayload.byteLength]).toEqual([206, LONG_SIZE]);
+    expect(media.signIn.asked).toBeGreaterThanOrEqual(2);
+  });
+
+  it('signed out while the answer runs: the stream stops within one check interval - fewer bytes than the length that was told, no fragment behind the cut is opened - and the stop is audited', async () => {
+    const media = await build(LONG);
+    media.actAs(INVESTIGATOR);
+    const session = await sessionOf(media);
+    const plain = await plaintextOf(media, session);
+    media.opened.length = 0;
+    media.signIn.open = false;
+    const before = media.appended.length;
+    let received: Buffer = Buffer.alloc(0);
+    try {
+      received = (await media.fetch(session.url, 'bytes=0-')).rawPayload;
+    } catch {
+      // The connection was destroyed: the in-process client reports it as a failure of the request.
+    }
+    // At most the pieces of ONE interval (8): the clear header and seven fragments.
+    expect(received.byteLength).toBeLessThanOrEqual(HEADER + 8 * FRAGMENT);
+    expect(received.byteLength).toBeLessThan(LONG_SIZE);
+    expect(received.equals(plain.subarray(0, received.byteLength))).toBe(true);
+    expect(Math.max(0, ...media.opened)).toBeLessThanOrEqual(9);
+    const rows = media.appended.slice(before);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ unit: 'mediaStream.served', type: 'EVIDENCE_MEDIA_SERVED', severity: 'WARNING', message: 'Media stream stopped: VIDEO-01 (MEDIA_SESSION_ENDED)' });
+    const details = (rows[0]?.details ?? {}) as { bytesServed?: number };
+    expect(details.bytesServed).toBeLessThan(LONG_SIZE);
+    // Not an integrity failure: the persistent error log holds no entry for it.
+    expect(media.errors.filter((entry) => entry['source'] === 'mediaStream.serve')).toEqual([]);
+  });
+
+  it('a short answer (fewer pieces than one interval) is not asked at all: a seek costs no extra read', async () => {
+    const media = await build();
+    media.actAs(INVESTIGATOR);
+    const session = await sessionOf(media);
+    media.signIn.asked = 0;
+    expect((await media.fetch(session.url, `bytes=${HEADER}-${HEADER + 9}`)).statusCode).toBe(206);
+    expect(media.signIn.asked).toBe(0);
+  });
+});

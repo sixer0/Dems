@@ -133,7 +133,13 @@ const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
  * route outside the registry. The guard gives it the rule of operation 88, the operation that issues its sessions.
  */
 const MEDIA_ROUTE = routeKey('GET', '/media/{token}');
-const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE];
+/**
+ * Task 3 fix pass F-M8 (review finding R93-05; controller ruling D178): `GET /exports/{token}`, the signed download of
+ * a finished export, is the third route outside the registry (the contract totals do not move). The guard gives it the
+ * rule of operation 87, the operation that names the signed path.
+ */
+const EXPORT_DOWNLOAD_ROUTE = routeKey('GET', '/exports/{token}');
+const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_DOWNLOAD_ROUTE];
 
 /**
  * The 14 registry routes whose handlers land with later rows (R4, ruling D44): ops 76-80 and 89
@@ -482,8 +488,9 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // moved while the registry grew; it is reached only once nothing is unrouted, and then it is 98.)
     // Row 90 (ruling D140): and the evidence media route - two routes outside the registry, 99 in all.
     expect(router).toHaveLength(REGISTRY_ROUTES.length + EXTERNAL_ROUTES.length);
-    expect(router).toHaveLength(99);
-    expect(new Set(router).size).toBe(99);
+    // Fix pass F-M8 (ruling D178): and the export download route - three routes outside the registry, 100 in all.
+    expect(router).toHaveLength(100);
+    expect(new Set(router).size).toBe(100);
     expect(router.filter((route) => !REGISTRY_ROUTES.includes(route)).sort()).toEqual([...EXTERNAL_ROUTES].sort());
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
@@ -494,6 +501,11 @@ describe('AC-B-09: every registered route is an operation, every operation is re
       if (routeKey(rule.method, templateOf(rule.url)) === MEDIA_ROUTE) {
         // Ruling D140: the rule of operation 88, under the route's own name.
         expect(rule.marker).toBe(describeCoreApiAccess(operationOf('createEvidenceMediaSession').access));
+        continue;
+      }
+      if (routeKey(rule.method, templateOf(rule.url)) === EXPORT_DOWNLOAD_ROUTE) {
+        // Ruling D178: the rule of operation 87, under the route's own name.
+        expect(rule.marker).toBe(describeCoreApiAccess(operationOf('getEvidenceExportJob').access));
         continue;
       }
       const operation = operationOf(rule.operationId);
@@ -1138,11 +1150,35 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'createTranscriptRevision', supervisor, 'an item the Core does not have', { id: UNKNOWN, payload: revise }, 404, 'NOT_FOUND');
     await expectCall(main, 'createTranscriptRevision', supervisor, 'a revision without a reason', { id, payload: { baseRevision: 1, changes: revise.changes } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'createTranscriptRevision', web.TECHNICIAN, 'a role without TRANSCRIPT_REVISE', { id, payload: { ...revise, baseRevision: 1 } }, 403, 'NOT_PERMITTED');
+    // The case scope of REAL evidence (SEC35-16; review finding R93-02, fix F-M6; closing pass F-X): an operator who
+    // neither holds the case nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason:
+    // EVIDENCE_CASE_SCOPE` on operations 84, 85, 86 and 88. Every seeded role holds EVIDENCE_VIEW, so the TECHNICIAN
+    // reaches the scope on 84 / 86 / 88; on 85 the scope is reached only by a holder of TRANSCRIPT_REVISE who is not
+    // the case's investigator: the TECHNICIAN while it covers as an INVESTIGATOR (the role is read per request).
+    const SCOPE = { reason: 'EVIDENCE_CASE_SCOPE' };
+    const scoped = async (operationId: string, caller: Caller, note: string, options: Options): Promise<void> => {
+      const refused = await expectCall(main, operationId, caller, note, options, 403, 'NOT_PERMITTED');
+      if (detailsOf(refused)['reason'] !== SCOPE.reason) misses.push(`${operationId} (${note}): 403 with details.reason ${JSON.stringify(detailsOf(refused)['reason'])}; the specification says ${SCOPE.reason}`);
+    };
+    await scoped('getTranscript', web.TECHNICIAN, 'REAL evidence of a case the caller does not hold', { id });
+    await scoped('listTranscriptRevisions', web.TECHNICIAN, 'REAL evidence of a case the caller does not hold', { id });
+    await scoped('createEvidenceMediaSession', web.TECHNICIAN, 'REAL evidence of a case the caller does not hold', { id, payload: { fileId: 'VIDEO-01' } });
+    const coverId = operatorIdOf('TECHNICIAN');
+    await expectCall(main, 'assignUserRole', supervisor, 'the TECHNICIAN covers as an INVESTIGATOR', { id: coverId, payload: { role: 'INVESTIGATOR', reason: 'Covers the interview shift this week' } }, 200);
+    await scoped('createTranscriptRevision', web.TECHNICIAN, 'an INVESTIGATOR who does not hold the case', { id, payload: { ...revise, baseRevision: 1 } });
+    await expectCall(main, 'assignUserRole', supervisor, 'and is a TECHNICIAN again', { id: coverId, payload: { role: 'TECHNICIAN' } }, 200);
+    // CONTROL of the scope: an item that is not REAL evidence has none - the same TECHNICIAN reads past it (409: no document).
+    await expectCall(main, 'getTranscript', web.TECHNICIAN, 'an item that is not REAL evidence has no case scope', { id: withoutTranscript }, 409, 'TRANSCRIPT_NOT_READY');
+    // Operations 42 and 87 and the two registry-external routes (`GET /media/{token}`, `GET /exports/{token}`) hold the
+    // SAME predicate, but no seeded role can reach it through this walk: EVIDENCE_EXPORT is the SUPERVISOR's alone, who
+    // always passes, and both tokens are bound to the operator they were issued to. Their refusals are pinned at the
+    // routes: `modules/evidence-export/__tests__/{routes,download}.test.ts`, `modules/media-stream/__tests__/routes.test.ts`.
     // The machine transcript is the same after the revision: only the head moved.
     const after = bodyOf<{ sha256: string; revision: number; segments: Array<{ text: string }> }>(await expectCall(main, 'getTranscript', supervisor, 'the machine transcript after a revision', { id }, 200));
     expect([after.sha256, after.revision, after.segments.map((segment) => segment.text)]).toEqual([document.sha256, 1, document.segments.map((segment) => segment.text)]);
 
-    const listed = await expectCall(main, 'listTranscriptRevisions', web.TECHNICIAN, 'the one revision, with its changes', { id }, 200);
+    // (Read by the case's holder: since R93-02 a TECHNICIAN is refused this REAL item, see the scope walk above.)
+    const listed = await expectCall(main, 'listTranscriptRevisions', investigator, 'the one revision, with its changes', { id }, 200);
     expect(bodyOf<{ items: Array<{ number: number; changes: Array<{ to: string }> }> }>(listed).items.map((item) => [item.number, item.changes[0]?.to])).toEqual([[1, 'Terima kasih, Bu.']]);
     await expectCall(main, 'listTranscriptRevisions', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
     await expectCall(main, 'listTranscriptRevisions', supervisor, 'an item sealed without a machine transcript document', { id: withoutTranscript }, 409, 'TRANSCRIPT_NOT_READY');

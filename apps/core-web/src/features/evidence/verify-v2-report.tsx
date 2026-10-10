@@ -1,7 +1,7 @@
 import { Alert, Chip } from '@heroui/react'
 import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Row, type V2Sources, type VerifyV2Answer } from './verify-v2'
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2'
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer
@@ -31,6 +31,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
   return (
     <div className="flex flex-col gap-3" data-testid="evidence-verify-v2" data-verdict={answer.verdict} data-overall={answer.overall ?? undefined}>
       {answer.sources !== null ? <SourcesLine sources={answer.sources} /> : null}
+      {answer.signingKey === 'DEVELOPMENT' || answer.signingKey === 'NOT_ESTABLISHED' ? <SigningKeyLine state={answer.signingKey} /> : null}
       {answer.transcriptState !== null ? (
         <p className="evi-caption inline-flex items-center gap-2" data-testid="evidence-v2-transcript-state" data-code={answer.transcriptState}>
           <FileText className="size-4 shrink-0" aria-hidden="true" />
@@ -81,6 +82,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
       ) : null}
 
       {answer.checks !== null ? <CheckReport checks={answer.checks} /> : null}
+      {answer.notices.length > 0 ? <Notices notices={answer.notices} /> : null}
     </div>
   )
 }
@@ -93,6 +95,42 @@ const SOURCE_INTERVALS_SHOWN = 8
  * words (never colour alone); "not trustworthy" is a danger Alert; the declared production line is
  * plain text. `role="status"`: it is a statement about the package, not an error of this run.
  */
+/**
+ * THE SIGNING-KEY LINE (fix pass F-M7, R88-07; D178), directly after the source line and never
+ * collapsed. A development key is a warning on a result that passed as on one that failed; a key
+ * that is not established is said in the danger tone. A key without the mark draws nothing.
+ */
+function SigningKeyLine({ state }: { state: Exclude<V2SigningKey, 'NOT_DEVELOPMENT'> }) {
+  const { t } = useTranslation()
+  const development = state === 'DEVELOPMENT'
+  const Icon = development ? FlaskConical : ShieldQuestion
+  return (
+    <Alert status={development ? 'warning' : 'danger'} role="status" data-testid="evidence-v2-signing-key" data-signing-key={state}>
+      <Alert.Indicator>
+        <Icon className="size-4" aria-hidden="true" />
+      </Alert.Indicator>
+      <Alert.Content>
+        <Alert.Title>{t(V2_SIGNING_KEY_LINE[state])}</Alert.Title>
+      </Alert.Content>
+    </Alert>
+  )
+}
+
+/** WHAT THE PACKAGE SIGNATURE DOES NOT COVER (R88-06): each statement of the verifier, with the Core's own line. */
+function Notices({ notices }: { notices: readonly V2Notice[] }) {
+  const { t } = useTranslation()
+  return (
+    <section className="flex flex-col gap-1" data-testid="evidence-v2-notices" aria-label={t('evidence.verifyV2Key.noticesTitle')}>
+      <p className="evi-caption evi-strong">{t('evidence.verifyV2Key.noticesTitle')}</p>
+      {notices.map((notice) => (
+        <p key={notice.code} className="evi-caption" role="note" data-testid={`evidence-v2-notice-${notice.code}`}>
+          {notice.report}
+        </p>
+      ))}
+    </section>
+  )
+}
+
 function SourcesLine({ sources }: { sources: V2Sources }) {
   const { t } = useTranslation()
   const line = t(V2_SOURCES_LINE[sources.state])

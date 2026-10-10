@@ -21,6 +21,7 @@
  * rollback then removes the item too.
  */
 import type { EvidenceItemBody } from '@dems/shared/api';
+import type { CompleteSealInput } from '@dems/shared/sim';
 import type { SealedTranscript } from '../../modules/transcripts';
 import { FinalizeTranscriptError, FinalizeTranscriptFailure, type FinalizedTranscript, type ManifestTranscriptBlock } from './contract';
 
@@ -66,8 +67,10 @@ const SLICE_STATE = { ASSEMBLED: 'READY', PARTIAL: 'PARTIAL', DISABLED: 'DISABLE
 
 /**
  * THE SUMMARY IS A PROJECTION OF THE MANIFEST'S TRANSCRIPT BLOCK, and of nothing else but the
- * head of the revision chain: what the list pane shows is what was signed. A reader that has the
- * sealed manifest (row 85) and the seal itself (row 82) call the same function.
+ * head of the revision chain: what the list pane shows is what was signed. Its two callers (fix
+ * pass F-M6, R80-01): THE SEAL (`sealInputWithTranscriptSummary` below, in the unit that commits
+ * the item) and the boot step that reads the sealed manifest back after a start of the Core
+ * (`modules/transcripts/heads.ts`; no column holds the summary).
  *
  *   manifest `ASSEMBLED` -> `READY`     every chunk committed
  *   manifest `PARTIAL`   -> `PARTIAL`   with `failedChunks`, and `backendUnreachable` when so
@@ -90,4 +93,13 @@ export function evidenceTranscriptSummary(manifest: ManifestTranscriptBlock, rev
     ...(manifest.failedChunks === null ? {} : { failedChunks: manifest.failedChunks }),
     backendUnreachable: manifest.backendUnreachable,
   };
+}
+
+/**
+ * THE SEAL'S INPUT WITH THE SUMMARY OF ITS ITEM (fix pass F-M6, R80-01): what the composition
+ * hands the engine's `completeSeal`, so the item is committed and published WITH its transcript
+ * state - a client never sees a sealed item of a Core without one. Head 0: a seal has no revision.
+ */
+export function sealInputWithTranscriptSummary(input: CompleteSealInput, transcript: FinalizedTranscript): CompleteSealInput {
+  return { ...input, transcript: evidenceTranscriptSummary(transcript.manifest, 0) };
 }

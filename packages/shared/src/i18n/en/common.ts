@@ -5,6 +5,8 @@
  * vocabulary (roles, audit types, fault kinds, …) from `src/sim/vocabulary.ts` as read on
  * 2026-10-01 02:36 WIB, so `t('common.auditType.' + row.type)` needs no lookup table.
  */
+import { CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, CAPTURE_FAULT_UNKNOWN_SENTENCES } from '../../sim/capture-fault-wording';
+import { SEAL_UNSEALABLE_SENTENCE } from '../../sim/seal-unsealable';
 import type { ResourceTree } from '../resource-tree';
 
 export const common = {
@@ -993,5 +995,96 @@ export const common = {
       OTHER: 'Registered device',
     },
     detailLabel: 'Details of {{name}}',
+  },
+
+  /**
+   * Fix F-M4 (code review row 69, findings R69-01 and R69-07; decision D178): what a client says
+   * BEFORE it asks the Core for a pre-check on a selector that names a camera or a microphone of
+   * the Mac that runs the Core (adapter `LOCAL_DEVICE`). The pre-check opens that device, so the
+   * operator confirms first; without the confirmation nothing is sent. `web` is the console on the
+   * Core Mac itself ("this Mac's", the wording of D83); `mobile` is the tablet and the phone
+   * ("the Core Mac's"). `{{camera}}` / `{{microphone}}` are the device ids of the selector lines.
+   * `microphoneLimit` is the short form of `developmentRoster.limits.localMicrophone`, shown where
+   * the operator chooses or checks that microphone.
+   */
+  localSourceNotice: {
+    title: 'Turn on a local device',
+    web: {
+      camera: "This will turn on this Mac's camera ({{camera}}).",
+      microphone: "This will turn on this Mac's microphone ({{microphone}}).",
+      both: "This will turn on this Mac's camera ({{camera}}) and microphone ({{microphone}}).",
+    },
+    mobile: {
+      camera: "This will turn on the Core Mac's camera ({{camera}}).",
+      microphone: "This will turn on the Core Mac's microphone ({{microphone}}).",
+      both: "This will turn on the Core Mac's camera ({{camera}}) and microphone ({{microphone}}).",
+    },
+    body: 'The device check opens the device. Nothing is sent to the Core until you confirm.',
+    confirm: 'Turn on and run the check',
+    cancel: 'Not now',
+    notStarted: 'The device check was not started again by itself, because it turns on a local device.',
+    runCheck: 'Run the device check',
+    microphoneLimit: 'Not fit for recording yet. Use it for development checks only.',
+  },
+
+  /**
+   * Fix F-M4 (code review row 69, findings R69-12 and R69-13; decision D178), the connect dialog of
+   * the web console. `confirm` replaces `captureConnect.confirmDevice` where the Core sent the full
+   * target: the operator confirms the scheme, the host, the port and the path the Core will use.
+   * `schemeNotAllowed*` word an AUTHENTICATION_FAILED test whose reason is `SCHEME_NOT_ALLOWED`:
+   * the credential was not sent, so the sentence never says the camera refused it.
+   */
+  captureConnectTarget: {
+    label: 'The Core will connect to',
+    confirm: 'I have checked that {{target}} is this camera',
+    schemeNotAllowed: 'This camera only accepts a sign-in method that this system does not use. The password was not sent.',
+    schemeNotAllowedDetail: 'A camera with this setting cannot be connected by this version of the system. Typing the password again does not help.',
+    schemeNotAllowedShort: 'Sign-in method not supported',
+  },
+
+  /**
+   * Fix F-M4 follow-up (decision D181, ruling 7): what a client says BEFORE it asks the Core to
+   * start a recording on a selector that names a camera or a microphone of the Mac that runs the
+   * Core. A recording keeps the device on until it ends, so this notice is shown at every start
+   * press - also when the pre-check notice (`localSourceNotice`) was confirmed in the same flow.
+   * Without the confirmation nothing is sent. `web` / `mobile` and the interpolations as there.
+   */
+  localSourceStartNotice: {
+    title: 'Turn on a local device for the recording',
+    web: {
+      camera: "This will turn on this Mac's camera ({{camera}}) and keep it on until the recording ends.",
+      microphone: "This will turn on this Mac's microphone ({{microphone}}) and keep it on until the recording ends.",
+      both: "This will turn on this Mac's camera ({{camera}}) and microphone ({{microphone}}) and keep them on until the recording ends.",
+    },
+    mobile: {
+      camera: "This will turn on the Core Mac's camera ({{camera}}) and keep it on until the recording ends.",
+      microphone: "This will turn on the Core Mac's microphone ({{microphone}}) and keep it on until the recording ends.",
+      both: "This will turn on the Core Mac's camera ({{camera}}) and microphone ({{microphone}}) and keep them on until the recording ends.",
+    },
+    body: 'Nothing is sent to the Core until you confirm.',
+    confirm: 'Turn on and start recording',
+    cancel: 'Not now',
+  },
+
+  /**
+   * Fix pass F-M5 (review R74-03): the sentence of a capture fault BY ITS REASON
+   * (`params.reason` of a `CAPTURE_FAULT` / `MIC_SILENT` alert and of the capture advisories).
+   * This block IS the table of `sim/capture-fault-wording.ts` (imported, never copied): a client
+   * that translates `common.captureFault.reason.<REASON>` with `{ device }` and one that calls
+   * `captureFaultSentence` read the same words. `unknown`: a reason without a sentence, with its
+   * code. `noReason`: no reason at all.
+   */
+  captureFault: {
+    reason: CAPTURE_FAULT_SENTENCES,
+    unknown: CAPTURE_FAULT_UNKNOWN_SENTENCES,
+    noReason: CAPTURE_FAULT_NO_REASON_SENTENCES,
+  },
+  /**
+   * Fix pass F-M7b (review R88-02 (c)): the STATE of a recording the Core could not seal. This IS
+   * the sentence of `sim/seal-unsealable.ts` (imported, never copied): the alert of the Core, the
+   * Finalizing view and the Recovery view read the same words. `{{cause}}`: the code of the cause.
+   */
+  sealUnsealable: {
+    notice: SEAL_UNSEALABLE_SENTENCE,
   },
 } as const satisfies ResourceTree;

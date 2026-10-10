@@ -70,6 +70,8 @@ export interface MediaApp {
   readonly items: Map<string, MediaItem>;
   /** The persistent error log entries. */
   readonly errors: Array<Record<string, unknown>>;
+  /** R93-08: what the stand-in for "is the sign-in session still open?" answers (no database here), and how often it was asked. */
+  readonly signIn: { open: boolean; asked: number };
   actAs(principal: Principal): void;
   /** Operation 88. */
   open(body?: unknown, evidenceId?: string): Promise<LightMyRequestResponse>;
@@ -141,10 +143,15 @@ export async function mediaApp(options: MediaAppOptions = {}): Promise<MediaApp>
     [EVIDENCE_ID, { evidenceId: EVIDENCE_ID, sessionId: SESSION_ID, investigatorId: 'OPR-001', real: true, manifestSha256: built.manifest.manifestSha256 }],
   ]);
   const opened: number[] = [];
+  const signIn = { open: true, asked: 0 };
   const own = mediaStream(app).parts();
   mediaStream(app).replaceForTest({
     packageDirOf: (sessionId) => (sessionId === SESSION_ID ? built.dir : null),
     readItem: async (_request, evidenceId) => items.get(evidenceId) ?? null,
+    sessionOpen: async () => {
+      signIn.asked += 1;
+      return signIn.open;
+    },
     opener: {
       hasKey: (keyId) => own.opener.hasKey(keyId),
       open(record, stored) {
@@ -164,6 +171,7 @@ export async function mediaApp(options: MediaAppOptions = {}): Promise<MediaApp>
     opened,
     items,
     errors,
+    signIn,
     actAs: (principal) => void (current = principal),
     open: (body, evidenceId) =>
       app.inject({ method: 'POST', url: sessionsPath(evidenceId), headers: { origin: WEB_ORIGIN, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, ...(body === undefined ? {} : { payload: JSON.stringify(body) }) }),

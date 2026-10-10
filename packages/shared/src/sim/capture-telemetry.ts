@@ -70,8 +70,11 @@ export function captureDurableOf(session: Pick<ActiveSession, 'captureDurable'> 
  * THE SEAM of `captureDurable`: what the capture supervisor reports (`status().durable`) becomes
  * the member of the open session's payload. Returns THE SAME state when no session records or the
  * member holds that value already, so a repeated report publishes nothing. Never moves the
- * session state and writes no audit row. Not hosted as an action yet: row 71 calls it from the
- * engine host with `false` at the accepted start and `true` at the first durable fragment.
+ * session state and writes no audit row.
+ * NOT CALLED BY PRODUCTION CODE (review R74-16): row 71 was built on the two transitions of
+ * `capture-session.ts` that name their session (`captureConnectingTransition`,
+ * `captureDurableOfSessionTransition`), which a late report of an ended capture cannot move. This
+ * one is kept for its test and for a caller that holds no session ID; it is no part of the path.
  */
 export function captureDurableTransition(state: SimState, durable: boolean): SimState {
   const session = state.session;

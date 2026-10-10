@@ -149,6 +149,30 @@ export function deviceSourceFieldsOf(operation: CaptureOperation, adapterKind: C
   return Object.freeze({ adapter: adapterKind, sourceClass, listed: !(operation === CaptureOperation.REAL_PRODUCTION && sourceClass === CaptureSourceClass.DEVELOPMENT) });
 }
 
+/**
+ * THE device-list rule of a running Core, for the reader of the STORED registry (review row 69,
+ * finding R69-03; decision D178): the one caller of `deviceSourceFieldsOf(...).listed`. A stored
+ * camera or microphone of a development kind (`LOCAL_DEVICE`, `FAKE`) is in no device list of a
+ * `REAL_PRODUCTION` Core - a database that once booted `REAL_DEVELOPMENT` keeps the rows of this
+ * Mac's camera and microphone, and they must not be offered there. The row stays stored: a
+ * development boot lists it again.
+ *
+ * Cameras and microphones only: the switch is no capture source, carries no class and no badge
+ * (`sourceFactsOf` of the devices module classes the same two), so it is listed as stored. A kind
+ * outside the closed set cannot be classed and is not listed in `REAL_PRODUCTION` (fail closed).
+ * `SIMULATED`: every stored kind is inert and listed (D83 O-2) - the rule is `null`, nothing is
+ * filtered.
+ */
+export function storedDeviceListingOf(operation: CaptureOperation): ((device: { readonly kind: string; readonly adapterKind: string }) => boolean) | null {
+  if (operation === CaptureOperation.SIMULATED) return null;
+  const kinds: readonly string[] = Object.values(CaptureAdapterKind);
+  return (device) => {
+    if (device.kind !== 'CAMERA' && device.kind !== 'MIC') return true;
+    if (!kinds.includes(device.adapterKind)) return operation !== CaptureOperation.REAL_PRODUCTION;
+    return deviceSourceFieldsOf(operation, device.adapterKind as CaptureAdapterKind).listed;
+  };
+}
+
 /** What the development badge says under the device's name. The clients own the words (`ux` §8f). */
 export const DevelopmentSourceLabel = { LOCAL_CAMERA: 'LOCAL_CAMERA', LOCAL_MICROPHONE: 'LOCAL_MICROPHONE', TEST_SOURCE: 'TEST_SOURCE' } as const;
 export type DevelopmentSourceLabel = (typeof DevelopmentSourceLabel)[keyof typeof DevelopmentSourceLabel];

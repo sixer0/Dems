@@ -9,7 +9,16 @@
  *
  * THE KEY IS MADE HERE, ONCE. The first fragment of a session creates its key; every later call -
  * the next fragment, and a `CLOSE_TRACKS` that runs again after a stop of the process - opens the
- * same key. A key is never replaced: `create` refuses a session that has one.
+ * same key. A key is never replaced: `create` refuses a session that has one. The key is THIS
+ * Core's own - kept per media store root (ruling D180; fix pass F-M7c): a key another database's
+ * Core made for an equal session ID is never sealed with.
+ *
+ * THE IV RULE, STATED HONESTLY (R88-13): every fragment gets a RANDOM 96-bit IV. Uniqueness under
+ * one key is PROBABILISTIC, not proven: the memo below refuses a repeat inside one process only.
+ * What bounds the risk is the number of messages per key - the fragments of ONE session (a
+ * re-run of CLOSE_TRACKS seals them again under the same key) - a few thousand, far inside the
+ * random-nonce bound of GCM. A demo reseed never adds to it: `renewSessionKey` destroys the old
+ * key and the reseed seals under a fresh one.
  *
  * NO KEY CROSSES THE PORT, and none is kept: a key is opened for ONE fragment and its in-memory
  * copy is overwritten when that fragment is sealed. What is kept per session is the list of the
@@ -34,7 +43,11 @@ export function coreFragmentSealer(app: CredentialStoreHost): SessionFragmentSea
       if (opened.status !== 'READY') throw new CredentialStoreError(CredentialStoreFailure.STORE_UNAVAILABLE);
       const keys = opened.store.sessionKeys;
       const keyId = sessionKeyIdOf(sessionId);
-      const key = keys.has(keyId) ? keys.open(keyId) : keys.create(sessionId);
+      // THIS Core's own key (D180; fix pass F-M7c): a key of the shared folder of an earlier build is never sealed with.
+      const made = !keys.owns(keyId);
+      const key = made ? keys.create(sessionId) : keys.open(keyId);
+      // A NEW key starts with no nonce used: the memo of a key that was destroyed (a reseed) is dropped, so it never grows over keys that are gone (R88-13).
+      if (made) used.delete(keyId);
       try {
         const sealed = createFragmentSealer(key).seal(position, plaintext);
         const nonces = used.get(keyId) ?? new Set<string>();
@@ -47,4 +60,18 @@ export function coreFragmentSealer(app: CredentialStoreHost): SessionFragmentSea
       }
     },
   };
+}
+
+/**
+ * A FRESH KEY FOR A SESSION THAT IS SEALED AGAIN FROM NOTHING (fix pass F-M7c, R88-13 second half;
+ * the demo reseed, D171 E3-4): this Core's own key `KID-<sessionId>` is DESTROYED, so the next seal
+ * of that session ID makes a new one - no IV can repeat under one key however often a database is
+ * reseeded. What the old key sealed is unreadable from then on: the caller replaces those packages.
+ * A key of the shared folder of an earlier build is not this Core's and is not touched. True when
+ * a key was destroyed. Throws the store's own error when the store cannot be used.
+ */
+export function renewSessionKey(host: CredentialStoreHost, sessionId: string): boolean {
+  const opened = coreCredentialStore(host);
+  if (opened.status !== 'READY') throw new CredentialStoreError(CredentialStoreFailure.STORE_UNAVAILABLE);
+  return opened.store.sessionKeys.destroy(sessionKeyIdOf(sessionId));
 }

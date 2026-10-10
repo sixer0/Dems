@@ -25,7 +25,8 @@
  * | Only the PATH of the answered `url` is used (`/media/mts_…`), resolved against this console's own origin | `mediaPathOf`: the media route asks for the operator's session cookie, so the request must be same-origin (dev: the `/media` entry of the Vite proxy) |
  * | One session per camera file: the body `{ fileId }` | `requestMediaSession`. The member is being added to the contract (optional); a registry that does not know it yet makes the typed client refuse the body, and the request is then sent without one (the Core opens VIDEO-01) |
  * | The token lives 60 s; an answer in flight is not cut, every NEW range request after it is refused | `mediaSessionStale`: the player renews before it seeks or starts on a stale session, and after a media error |
- * | A fragment that fails its tag: `409 MEDIA_NOT_AVAILABLE`, `details { reason: FRAGMENT_NOT_AUTHENTIC, fileId, seq }` | `integrityOf`: the refusal `INTEGRITY` with the file and the fragment — an integrity failure of the recording, never a player error |
+ * | A fragment that fails its tag is refused by the MEDIA ROUTE (`409`, read by the media element, which cannot read a body) | Operation 88 opens no fragment and never answers it (review finding R93-12): this file reads no such refusal. The player stops at the place and points to Verify |
+ * | A package of ONE camera has one file | `openMediaSessions(…, fileIds)`: only the files the item names are asked for; `409 … CAMERA_FILE_NOT_IN_PACKAGE` for the other is not a failure |
  */
 import type { WebLive } from '@/runtime'
 import { CAMERA_FILE_IDS, type CameraFileId } from './item-v2'
@@ -68,8 +69,6 @@ export class MediaSession {
 export type MediaSessionRefusal =
   /** `409 MEDIA_NOT_AVAILABLE`: a fixed message, no player (UX §6.5). */
   | 'NOT_AVAILABLE'
-  /** `409 MEDIA_NOT_AVAILABLE` with `details.reason: FRAGMENT_NOT_AUTHENTIC`: the recording failed its integrity check. */
-  | 'INTEGRITY'
   /** `403`. */
   | 'NOT_PERMITTED'
   /** Anything else: an outage, a time-out, a 404, an answer that is not a session. */
@@ -80,8 +79,6 @@ export interface MediaSessionFailure {
   readonly refusal: MediaSessionRefusal
   readonly status: number | null
   readonly code: string
-  /** The file and the fragment an INTEGRITY refusal names, as far as it names them. */
-  readonly integrity: { readonly fileId: string | null; readonly seq: number | null } | null
   /** The failed call (the Core's envelope; it holds no URL), for the presenter. null: the answer was not a usable session. */
   readonly failure: CoreFailure | null
 }
@@ -102,11 +99,13 @@ export function mediaPathOf(url: unknown): string | null {
   return /^\/media\/mts_[A-Za-z0-9_-]+$/.test(parsed.pathname) && parsed.search === '' && parsed.hash === '' ? parsed.pathname : null
 }
 
-/** What a 409 says of a failed fragment, or null. */
-export function integrityOf(status: number | null, code: string, details: unknown): MediaSessionFailure['integrity'] {
-  const record = (typeof details === 'object' && details !== null ? details : {}) as { reason?: unknown; fileId?: unknown; seq?: unknown }
-  if (status !== 409 || code !== 'MEDIA_NOT_AVAILABLE' || record.reason !== 'FRAGMENT_NOT_AUTHENTIC') return null
-  return { fileId: isCameraFile(record.fileId) ? record.fileId : null, seq: typeof record.seq === 'number' && Number.isInteger(record.seq) && record.seq >= 0 ? record.seq : null }
+/** `details.reason` of the 409 for a camera file the sealed package does not hold (a package of one camera). */
+export const CAMERA_FILE_NOT_IN_PACKAGE = 'CAMERA_FILE_NOT_IN_PACKAGE'
+
+/** The camera files an item names (`files[]` of 1 or 2), in file order; both when the item names none. */
+export function cameraFilesOf(item: { readonly files: readonly { readonly trackId: string }[] }): readonly CameraFileId[] {
+  const named = CAMERA_FILE_IDS.filter((fileId) => item.files.some((file) => file.trackId === fileId))
+  return named.length > 0 ? named : CAMERA_FILE_IDS
 }
 
 type SessionCall = ReturnType<WebLive['client']['call']>
@@ -128,15 +127,13 @@ async function callForFile(live: WebLive, evidenceId: string, fileId: CameraFile
 export async function requestMediaSession(live: WebLive, evidenceId: string, fileId: CameraFileId): Promise<MediaSessionAnswer> {
   const answer = await callForFile(live, evidenceId, fileId)
   if (!answer.ok) {
-    const integrity = integrityOf(answer.status, answer.error.code, answer.error.details)
-    const refusal: MediaSessionRefusal =
-      integrity !== null ? 'INTEGRITY' : answer.status === 409 && answer.error.code === 'MEDIA_NOT_AVAILABLE' ? 'NOT_AVAILABLE' : answer.status === 403 ? 'NOT_PERMITTED' : 'FAILED'
-    return { ok: false, refusal, status: answer.status, code: answer.error.code, integrity, failure: answer }
+    const refusal: MediaSessionRefusal = answer.status === 409 && answer.error.code === 'MEDIA_NOT_AVAILABLE' ? 'NOT_AVAILABLE' : answer.status === 403 ? 'NOT_PERMITTED' : 'FAILED'
+    return { ok: false, refusal, status: answer.status, code: answer.error.code, failure: answer }
   }
   const data = answer.data as { fileId?: unknown; url?: unknown; expiresAt?: unknown }
   const path = mediaPathOf(data.url)
   if (!isCameraFile(data.fileId) || path === null || typeof data.expiresAt !== 'number') {
-    return { ok: false, refusal: 'FAILED', status: answer.status, code: 'MEDIA_SESSION_UNUSABLE', integrity: null, failure: null }
+    return { ok: false, refusal: 'FAILED', status: answer.status, code: 'MEDIA_SESSION_UNUSABLE', failure: null }
   }
   return { ok: true, session: new MediaSession(data.fileId, path, data.expiresAt) }
 }
@@ -149,15 +146,20 @@ export interface OpenedMediaSessions {
 }
 
 /**
- * Opens the sessions of both camera files: one request per file, at most two in all. A failed
+ * Opens the sessions of the camera files of an item (one or two): one request per file. A failed
  * first request ends it (no second request after a refusal). When the second answer names the
  * file already open, that file keeps its first session and the other file stays closed.
  */
-export async function openMediaSessions(live: WebLive, evidenceId: string): Promise<OpenedMediaSessions> {
+export async function openMediaSessions(live: WebLive, evidenceId: string, fileIds: readonly CameraFileId[] = CAMERA_FILE_IDS): Promise<OpenedMediaSessions> {
   const sessions: Partial<Record<CameraFileId, MediaSession>> = {}
-  for (const fileId of CAMERA_FILE_IDS) {
+  for (const fileId of fileIds) {
     const answer = await requestMediaSession(live, evidenceId, fileId)
-    if (!answer.ok) return { sessions, failure: answer }
+    if (!answer.ok) {
+      // A package of one camera: the file that is not in it is no failure of the one that is.
+      const reason = (answer.failure?.error.details as { reason?: unknown } | undefined)?.reason
+      if (answer.status === 409 && reason === CAMERA_FILE_NOT_IN_PACKAGE && Object.keys(sessions).length > 0) continue
+      return { sessions, failure: answer }
+    }
     sessions[answer.session.fileId] ??= answer.session
   }
   return { sessions, failure: null }

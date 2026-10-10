@@ -258,6 +258,8 @@ describe('static rules of the folder (AC-C-53, MD-6, TS-15; rules 1 and 2 of the
     // and the transcript (84, 86, 85). Each goes through `useWebLive()`'s client, as operation 40 does.
     expect(clientCalls).toEqual([
       "export-job.ts: client.call('getEvidenceExportJob'",
+      // Fix pass F-M8 (R93-05): the ONE fresh read at the press of "Download export" (its signed path is never cached).
+      "export-job.ts: client.call('getEvidenceExportJob'",
       "media-session.ts: client.call('createEvidenceMediaSession'",
       "media-session.ts: client.call('createEvidenceMediaSession'",
       "transcript.ts: client.call('getTranscript'",

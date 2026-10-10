@@ -142,9 +142,10 @@ export function createProcessLauncher(options: ProcessLauncherOptions): WorkerLa
 }
 
 /**
- * The launcher of a server that has no worker command. This build has none yet: the capture
- * configuration keys (worker path, capture mode) are the next row's (spec §I edits 7 to 10). A
- * session start then fails at once and cleanly with `CAPTURE_FAULT`, and is not retried.
+ * The launcher of a server that has no worker command: capture mode `simulated` (the default), or
+ * mode `real` without `config.captureWorkerPath` (`index.ts` chooses; brought up to date by fix
+ * pass F-M3, review R63-17). A session start then fails at once and cleanly with `CAPTURE_FAULT`,
+ * and is not retried.
  */
 export const unconfiguredLauncher: WorkerLauncher = () => {
   throw new WorkerLaunchError(WorkerDownCode.NOT_CONFIGURED, 'no capture worker is configured', false);

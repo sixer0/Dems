@@ -20,6 +20,14 @@
  *                                 row with `degraded: true`. A pre-check notice of that camera
  *                                 that is still active is replaced by it (one active alert per
  *                                 device: the session start is the newer fact)
+ *   CAMERA_NOT_CONNECTED          the WORKER says a camera of the plan did not connect within the
+ *                                 ingest-open window (protocol 4; fix pass F-M5, review R74-03).
+ *                                 Remembered with the cameras that were not opened: the same ONE
+ *                                 WARNING per camera, announced when the session records - at
+ *                                 once when it records already. The capture forwarder raises no
+ *                                 critical fault for this reason, so a degraded start is a warning
+ *                                 (ux §8e.2, §8g.3) and one event is one alert. Such a camera is
+ *                                 not "connected": an earlier warning of it is not resolved
  *   DURABLE, a camera connected   the SESSION_START warning an earlier session left for that
  *                                 camera is resolved (D72(h): "the capture side, when that camera
  *                                 connects in a later session"), unless a fault names the camera now
@@ -49,6 +57,7 @@ export type SessionStartEvent =
   | { readonly type: 'CONNECTING'; readonly sessionId: string }
   | { readonly type: 'STARTED'; readonly sessionId: string; readonly cameras: readonly string[]; readonly camerasNotOpened: readonly string[] }
   | { readonly type: 'DURABLE'; readonly sessionId: string }
+  | { readonly type: 'CAMERA_NOT_CONNECTED'; readonly sessionId: string; readonly deviceId: string }
   | { readonly type: 'FAILED_START'; readonly sessionId: string; readonly cause: string | null }
   | { readonly type: 'INTERRUPTED' | 'STOPPED'; readonly sessionId: string };
 
@@ -103,11 +112,20 @@ export function createSessionStartWatch(options: SessionStartWatchOptions): Sess
    * and whether its cameras were announced. DURABLE may come BEFORE STARTED (the first camera
    * delivers a fragment while the second one is still being opened), so both orders announce once.
    */
-  let current: { readonly sessionId: string; cameras: readonly string[] | null; camerasNotOpened: readonly string[]; durable: boolean; announced: boolean } | null = null;
+  let current: { readonly sessionId: string; cameras: readonly string[] | null; camerasNotOpened: readonly string[]; durable: boolean; announced: boolean; readonly notConnected: Set<string>; readonly warned: Set<string> } | null = null;
   const of = (sessionId: string): NonNullable<typeof current> => {
-    if (current === null || current.sessionId !== sessionId) current = { sessionId, cameras: null, camerasNotOpened: [], durable: false, announced: false };
+    if (current === null || current.sessionId !== sessionId) current = { sessionId, cameras: null, camerasNotOpened: [], durable: false, announced: false, notConnected: new Set(), warned: new Set() };
     return current;
   };
+
+  /** The ONE warning of a camera the session records without. Once per camera and session. */
+  async function warn(session: NonNullable<typeof current>, state: SessionStartState, deviceId: string): Promise<void> {
+    if (session.warned.has(deviceId)) return;
+    session.warned.add(deviceId);
+    // One active alert per device: the pre-check's notice of the same camera gives way to the newer fact.
+    if (unreachableNoticeOf(state, deviceId)?.phase === CaptureUnreachablePhase.PRECHECK) await notifier.deviceReachable(deviceId, CaptureUnreachablePhase.PRECHECK);
+    await notifier.notifyCameraNotConnected({ deviceId, sessionId: session.sessionId });
+  }
 
   const report = (entry: Omit<NoticeReport, 'source' | 'searchId'>): void => {
     try {
@@ -136,16 +154,14 @@ export function createSessionStartWatch(options: SessionStartWatchOptions): Sess
     const state = stateOf(sessionId);
     if (state === null) return;
 
-    // Degraded: the session records, and a camera of its plan was not opened.
+    // Degraded: the session records, and a camera of its plan was not opened or did not connect to the worker.
     if (cameras.length > 0) {
-      for (const deviceId of camerasNotOpened) {
-        // One active alert per device: the pre-check's notice of the same camera gives way to the newer fact.
-        if (unreachableNoticeOf(state, deviceId)?.phase === CaptureUnreachablePhase.PRECHECK) await notifier.deviceReachable(deviceId, CaptureUnreachablePhase.PRECHECK);
-        await notifier.notifyCameraNotConnected({ deviceId, sessionId });
-      }
+      for (const deviceId of new Set([...camerasNotOpened, ...session.notConnected])) await warn(session, state, deviceId);
     }
     // Connected in this session: the warning an earlier session start left for that camera is over.
     for (const deviceId of cameras) {
+      // Its source was opened, but the worker says it did not connect: not connected.
+      if (session.notConnected.has(deviceId)) continue;
       if (unreachableNoticeOf(state, deviceId)?.phase !== CaptureUnreachablePhase.SESSION_START) continue;
       if (faultNames(state, deviceId)) continue;
       await notifier.cameraConnected(deviceId);
@@ -180,6 +196,19 @@ export function createSessionStartWatch(options: SessionStartWatchOptions): Sess
             const session = of(event.sessionId);
             session.durable = true;
             await announce(session);
+            return;
+          }
+          case 'CAMERA_NOT_CONNECTED': {
+            // A statement about another session than the one whose capture runs is a late one: ignored.
+            if (current === null || current.sessionId !== event.sessionId) return;
+            current.notConnected.add(event.deviceId);
+            if (!current.announced) {
+              await announce(current);
+              return;
+            }
+            // The session records already and its cameras were announced: this camera is said now.
+            const state = stateOf(event.sessionId);
+            if (state !== null) await warn(current, state, event.deviceId);
             return;
           }
           case 'FAILED_START':

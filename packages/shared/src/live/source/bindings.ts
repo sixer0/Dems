@@ -39,6 +39,7 @@
  * Pure: nothing here calls the network or reads the store; a binding gets the state it reads as
  * an argument.
  */
+import { exportJobIdOf } from '../../api/patterns';
 import { DEFAULT_SESSION_ROOM } from '../../api/session-schema';
 import { ApiErrorCode, type EvidenceExportAccepted, type SessionCommandResponse } from '../../api/core-api';
 import type { DemoEpoch } from '../../api/demo-controls';
@@ -299,8 +300,9 @@ const exported = (success: CoreCallSuccess): ExportResult => ({
 
 /** Operation 42: as `exported`, with the job ID of the 202 when the Core names one (optional member; ruling D140). */
 const evidenceExported = (success: CoreCallSuccess): ExportResult => {
-  const jobId = (success.data as { jobId?: unknown }).jobId;
-  const accepted: LiveExportAccepted = { ...(exported(success) as LiveExportAccepted), ...(typeof jobId === 'string' && /^EXPJ-\d{6,}$/.test(jobId) ? { jobId } : {}) };
+  // The ONE rule (`exportJobIdOf`): with no export ID it answers the answered job ID, or null.
+  const answered = exportJobIdOf('', (success.data as { jobId?: unknown }).jobId);
+  const accepted: LiveExportAccepted = { ...(exported(success) as LiveExportAccepted), ...(answered === null ? {} : { jobId: answered }) };
   return accepted;
 };
 

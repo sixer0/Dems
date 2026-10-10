@@ -12,6 +12,7 @@ import { GlowLayer, useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { shortHash } from './model'
 import { etaSeconds, useSealingProgress } from './sealing-progress'
+import { UnsealableNotice } from './unsealable-notice'
 
 export type OverlayMode = 'finalization' | 'recovery'
 
@@ -97,7 +98,7 @@ export function FinalizationModal({ mode, isOpen, sessionId, onClose }: Finaliza
           {body === 'finalization' ? (
             <FinalizationBody sessionId={sessionId} state={state} onClose={onClose} />
           ) : (
-            <RecoveryBody state={state} onClose={onClose} />
+            <RecoveryBody sessionId={sessionId} state={state} onClose={onClose} />
           )}
         </Modal.Dialog>
       </Modal.Container>
@@ -159,6 +160,7 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
         </span>
       </Modal.Header>
       <Modal.Body className="sm-final-body">
+        <UnsealableNotice sessionId={sessionId} />
         <ProgressBar
           aria-label={t('session.finalization.progress', { percent })}
           value={percent}
@@ -347,7 +349,7 @@ function useDemoPackage(item: SealedItem | null): PackageState {
   return state.id === evidenceId ? state.value : { status: 'loading' }
 }
 
-function RecoveryBody({ state, onClose }: { state: SessionState | null; onClose: () => void }) {
+function RecoveryBody({ sessionId, state, onClose }: { sessionId: string; state: SessionState | null; onClose: () => void }) {
   const { t } = useTranslation()
   const stage = useSim((s) => s.session?.recovery?.stage ?? null)
   const done = state === null
@@ -372,6 +374,7 @@ function RecoveryBody({ state, onClose }: { state: SessionState | null; onClose:
       </Modal.Header>
       <Modal.Body className="sm-final-body">
         <Stepper ariaLabel={t('session.recovery.stagesLabel')} orientation="vertical" variant="pipeline" steps={steps} />
+        <UnsealableNotice sessionId={sessionId} />
         {done ? (
           <p className="sm-final-incomplete" role="status" data-testid="sm-recovery-done">
             <Chip size="sm" variant="soft" color="warning">

@@ -3,9 +3,9 @@
  * decisions D72(h), D72(k), D84, D91 R-1 option A; contract C3 §3.1 "recording start"; database
  * contract `dbc-4` MR-S1). PURE: state in, state out; no clock, no statement.
  *
- * The engine host runs these inside its own units (`host.ts`, the capture blocks). They are here
- * and not in the shared simulator because the simulator has no notion of a fragment: a simulated
- * recording is durable from RECORDING and none of this ever runs for it.
+ * The engine host runs these inside its own units (`host.ts`, the capture blocks). The five
+ * transitions of a capture are the shared simulator's own (re-exported below); what is only the
+ * Core's - the rehydrate and the switch given a media time - is written here.
  *
  *   captureConnectingTransition   the accepted start: the stored state is RECORDING, the payload
  *                                 says `captureDurable: false` ("connecting cameras");
@@ -28,104 +28,19 @@
  *                                 of contract C3 §5.2 and the media time the worker acknowledged.
  */
 import { SessionState } from '@dems/shared/domain';
-import { FaultKind, addTimelineItem, clearFaultAtKey, enterFault, raiseCaptureWarningTransition, type ActiveSession, type EpochMs, type SimState } from '@dems/shared/sim';
+import { FaultKind, applyAudioSourceSwitch, type ActiveSession, type CaptureMicInputId, type EpochMs, type SimState } from '@dems/shared/sim';
 
-/** The two fault kinds the capture side raises, and so the two it clears. */
-export const CAPTURE_FAULT_KINDS: readonly FaultKind[] = [FaultKind.MIC_SILENT, FaultKind.CAPTURE_FAULT];
+// THE FIVE TRANSITIONS OF A CAPTURE ARE THE SHARED ONES (fix pass F-M5, review R74-10). Until this
+// pass this file held a copy of each, kept equal by a parity test, with one difference: the failed
+// start here gave `reason` / `evidenceFiles` to the alert only, because the shared raise did not take
+// them yet. It has since pass D6, so the copy had nothing of its own left - and it had begun to
+// drift (the words of the alert, once a fault is worded by its reason). They are re-exported: one
+// rule, one file (`packages/shared/src/sim/capture-session.ts`).
+export { CAPTURE_FAULT_KINDS, FAILED_START_REASON_UNKNOWN, captureConnectingTransition, captureDurableOfSessionTransition, clearCaptureFaultsTransition, failedCaptureStartTransition, interruptedCaptureTransition } from '@dems/shared/sim';
 
 const recordingSessionOf = (state: SimState, sessionId: string): ActiveSession | null =>
   state.session !== null && state.session.id === sessionId && state.session.state === SessionState.RECORDING ? state.session : null;
 
-/** The accepted start: `captureDurable: false`. The same state when that session is not RECORDING or says so already. */
-export function captureConnectingTransition(state: SimState, sessionId: string): SimState {
-  const session = recordingSessionOf(state, sessionId);
-  if (session === null || session.captureDurable === false) return state;
-  return { ...state, session: { ...session, captureDurable: false } };
-}
-
-/**
- * The first durable fragment of THAT session: `captureDurable: true`. Never back to false, and
- * never for another session than the open one (a late report of an ended capture changes nothing).
- */
-export function captureDurableOfSessionTransition(state: SimState, sessionId: string): SimState {
-  const session = recordingSessionOf(state, sessionId);
-  if (session === null || session.captureDurable === true) return state;
-  return { ...state, session: { ...session, captureDurable: true } };
-}
-
-/**
- * A FAILED START (D84): the capture of the open RECORDING session ended and nothing is durable.
- * The session goes to FAULT with the fault `CAPTURE_FAULT`; `startedAt` is null again and the byte
- * count is 0, so nothing presents it as a recording and its recovery makes no evidence item.
- * The same state for another session, another state, or a session that is durable.
- *
- * THE FAULT ROW OF THE SESSION (its timeline item of kind FAULT) says the two keys of situation C
- * (contract C3 §5.3, erratum PE-121-09; row 71c): `reason` - `NO_CAMERA_CONNECTED` when no camera
- * connected within the ingest-open window, otherwise the code the capture ended with - and
- * `evidenceFiles: 0`: nothing was recorded. The label says the same in words.
- *
- * THE ALERT OF THAT FAULT carries the same two keys in its `params` (C3 §5.4 row C; request of row
- * 139: the clients word the alert from `params.reason`). The fault of the capture as a whole is
- * raised HERE when the capture side has not raised it yet - the simulator's own raise, so there is
- * one alert and one FAULT_RAISED row whichever of the two comes first (a second raise for the same
- * subject writes nothing) - and THE ALERT THIS TRANSITION MADE is given the keys.
- * LIMIT, MEASURED: when the capture side's own raise came first (the usual order: the forwarder
- * raises on the worker's end before this unit runs), the alert is stored already and its `params`
- * cannot be changed; it then holds no `reason`. The keys reach every alert only when the shared
- * simulator's raise takes them (request filed). The FAULT_RAISED audit row is composed by the
- * shared simulator and holds neither key in any order.
- */
-export const FAILED_START_REASON_UNKNOWN = 'CAPTURE_START_FAILED';
-const NO_CAMERA_CONNECTED = 'NO_CAMERA_CONNECTED';
-/** A code as a fault row holds it: letters, digits and underscores; anything else is not written. */
-const FAULT_REASON_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
-
-export function failedCaptureStartTransition(state: SimState, now: EpochMs, sessionId: string, cause: string | null = null): SimState {
-  const session = recordingSessionOf(state, sessionId);
-  if (session === null || session.captureDurable !== false) return state;
-  const reason = cause !== null && FAULT_REASON_CODE.test(cause) ? cause : FAILED_START_REASON_UNKNOWN;
-  // While the session still says RECORDING: the row and the alert are those of a fault raised in a recording.
-  const raised = raiseCaptureWarningTransition(state, now, { code: FaultKind.CAPTURE_FAULT, subject: null });
-  // Only an alert this transition MADE can be given the keys: the `params` of a stored alert are
-  // immutable for the runtime role (`IMMUTABLE_CHANGED`, measured), so an alert the capture side
-  // raised first keeps the params the simulator's raise gave it.
-  const before = new Set(state.alerts.map((alert) => alert.id));
-  const alerts = raised.alerts.map((alert) => (!before.has(alert.id) && alert.active && alert.kind === FaultKind.CAPTURE_FAULT && (alert.target ?? null) === null ? { ...alert, params: { ...alert.params, reason, evidenceFiles: 0 } } : alert));
-  const faulted: ActiveSession = {
-    ...session,
-    state: SessionState.FAULT,
-    fault: { kind: FaultKind.CAPTURE_FAULT, at: now, fromState: SessionState.RECORDING },
-    startedAt: null,
-    bytesWritten: 0,
-    captureDurable: false,
-  };
-  return addTimelineItem(
-    { ...raised, alerts, session: faulted },
-    {
-      at: now,
-      kind: 'FAULT',
-      label: reason === NO_CAMERA_CONNECTED ? 'Recording did not start: no camera connected. Nothing was recorded.' : 'Recording did not start: the capture could not be started. Nothing was recorded.',
-      detail: null,
-      channel: null,
-      params: { kind: FaultKind.CAPTURE_FAULT, critical: true, durable: false, reason, evidenceFiles: 0 },
-    },
-  );
-}
-
-/**
- * An INTERRUPTED recording (D84): the capture of the open RECORDING session ended for good while
- * a fragment is durable. The simulator's own move to FAULT (the bytes so far are kept, the
- * timeline says so), with `captureDurable: true`.
- */
-export function interruptedCaptureTransition(state: SimState, now: EpochMs, sessionId: string): SimState {
-  const session = recordingSessionOf(state, sessionId);
-  if (session === null) return state;
-  const faulted = enterFault(state, now, FaultKind.CAPTURE_FAULT);
-  if (faulted.session === null) return state;
-  return { ...faulted, session: { ...faulted.session, captureDurable: true } };
-}
-
-/** Clears every active capture-originated fault (D84 R-4). The same state when none is active. */
 /** Whether any fragment row of a session is stored: where `captureDurable` comes from after a restart (no column holds it). */
 export const READ_SESSION_HAS_FRAGMENT = 'SELECT 1 AS found FROM public.recording_fragments WHERE session_id = $1 LIMIT 1';
 
@@ -145,10 +60,19 @@ export function captureDurableAtRehydrateTransition(state: SimState, hasFragment
   return { ...state, session: { ...session, captureDurable: hasFragmentRow } };
 }
 
-export function clearCaptureFaultsTransition(state: SimState, now: EpochMs): SimState {
-  let next = state;
-  for (const kind of CAPTURE_FAULT_KINDS) next = clearFaultAtKey(next, now, kind, undefined);
-  return next;
+/**
+ * After a restart in capture mode `simulated` (review R74-14 (1)): the member is not stored, so a
+ * FAILED START that is still open - FAULT from RECORDING by the capture, or its close in RECOVERY,
+ * with NO start instant (the failed start took it back; an interrupted recording keeps it) - reads
+ * as durable and the clients present a recovery of evidence. The stored facts say what it is: the
+ * member is `false` again. The same state for every other session.
+ */
+export function failedStartAtRehydrateTransition(state: SimState): SimState {
+  const session = state.session;
+  if (session === null || session.captureDurable !== undefined) return state;
+  const open = session.state === SessionState.FAULT || session.state === SessionState.RECOVERY;
+  const failed = open && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT && session.fault.fromState === SessionState.RECORDING;
+  return failed ? { ...state, session: { ...session, captureDurable: false } } : state;
 }
 
 export interface AudioSourceSwitch {
@@ -170,31 +94,17 @@ export interface AudioSourceSwitched {
 }
 
 /**
- * The acknowledged switch (operation 81 in real capture). Moves `audio.activeInputId`, records the
- * new active / standby pair with the MEDIA time of the boundary, and adds the timeline item
- * `AUDIO_SWITCH`. Writes no audit row.
+ * The acknowledged switch (operation 81 in real capture): THE SHARED RULE of a switch
+ * (`applyAudioSourceSwitch`, review R74-10 - one function for the simulator's own operation 81 and
+ * for this one), given the MEDIA time the capture worker acknowledged. Writes no audit row.
  * Returns the same state, and `switched: null`, when the session is not that RECORDING session,
- * the input is none of its selector, or it is active already.
+ * it has no source pair, the input is none of its selector snapshot, or it is active already.
  */
 export function audioSourceSwitchTransition(state: SimState, now: EpochMs, change: AudioSourceSwitch): { readonly state: SimState; readonly switched: AudioSourceSwitched | null } {
   const session = recordingSessionOf(state, change.sessionId);
   const source = session?.audioSource ?? null;
   const mics = session?.captureConfig?.mics ?? state.captureConfig.mics;
   const mic = mics.find((entry) => entry.inputId === change.toInputId);
-  if (session === null || source === null || mic === undefined || source.activeInputId === change.toInputId) return { state, switched: null };
-  const toMs = Math.max(source.intervalFromMs, Math.round(change.atMediaMs));
-  const switchedSession: ActiveSession = {
-    ...session,
-    audioSource: { sessionId: session.id, activeInputId: change.toInputId, standbyInputId: source.activeInputId, switchedAt: now, intervalFromMs: toMs },
-  };
-  let next: SimState = { ...state, session: switchedSession, audio: { inputs: state.audio.inputs, activeInputId: change.toInputId } };
-  next = addTimelineItem(next, {
-    at: now,
-    kind: 'AUDIO_SWITCH',
-    label: `Active microphone switched to ${change.toInputId}`,
-    detail: null,
-    channel: 'AUDIO-01',
-    params: { from: source.activeInputId, to: change.toInputId, deviceId: mic.deviceId },
-  });
-  return { state: next, switched: { fromInputId: source.activeInputId, toInputId: change.toInputId, fromMs: source.intervalFromMs, toMs } };
+  if (session === null || source === null || mic === undefined) return { state, switched: null };
+  return applyAudioSourceSwitch(state, now, session, mic.inputId as CaptureMicInputId, change.atMediaMs);
 }

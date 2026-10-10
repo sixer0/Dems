@@ -310,7 +310,8 @@ describe('the three commands on fixture items', () => {
     const exported = await host.post(exportUrl(sealed.id), supervisor, { reason: 'Prosecutor request' });
     expect(exported.statusCode).toBe(202);
     // The fixture's exports end at EXP-000090; the counter it stored is 91.
-    expect(exported.json()).toEqual({ exportId: 'EXP-000091', evidenceId: sealed.id, status: 'QUEUED' }) // op 42 answers QUEUED as landed (C3 §3);
+    // Pass F-Z: the 202 answer names its job too (optional `jobId` since passes D4 / D5 / F-M8): `EXPJ-` + the six digits of the export ID.
+    expect(exported.json()).toEqual({ exportId: 'EXP-000091', jobId: 'EXPJ-000091', evidenceId: sealed.id, status: 'QUEUED' }) // op 42 answers QUEUED as landed (C3 §3);
     expect(await countOf(owner, 'exports')).toBe(exportsBefore + 1);
 
     const custody = await storedCustody(owner, archived.id);

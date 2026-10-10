@@ -3,11 +3,17 @@
  * row 91 / M8-W2; C3 §3 operations 42 and 87, §4 `EXPORT_IN_PROGRESS`, §5.2
  * `EVIDENCE_EXPORT_FAILED`; evidence package spec §G; register NM-12, SH-14).
  *
- * WHAT IS A JOB. Operation 42 stays what it was: the hosted action commits the REQUEST - the audit
- * row `EVIDENCE_EXPORTED`, the `exports` row, the custody entry - and answers `202 QUEUED` with the
- * export ID `EXP-NNNNNN`. For an item that has a real sealed v2 package the route then hands the
- * accepted request over here, and a job `EXPJ-NNNNNN` (the same six digits) writes the artefact
- * (`package-export.ts`). Every other item is none of this unit's: its export is the simulator's.
+ * WHAT IS A JOB. Operation 42: the hosted action commits the REQUEST - the audit row
+ * `EVIDENCE_EXPORTED` and the `exports` row - and answers `202 QUEUED` with the export ID
+ * `EXP-NNNNNN`. For an item that has a sealed v2 package in this Core's store the request is
+ * DEFERRED (it changes nothing of the item), the route hands it over here, and a job
+ * `EXPJ-NNNNNN` (the same six digits) writes the artefact (`package-export.ts`). Every other item
+ * is none of this unit's: its export is the simulator's.
+ *
+ * CUSTODY IS WRITTEN WHEN THE JOB HAS COMPLETED (review finding R93-03, ruling D178): the item's
+ * status `EXPORTED` and the custody entry are applied through the host's `completeExport` (the
+ * engine's export door) after the archive, its manifest and its signature exist. A job that
+ * FAILS leaves the item as it was: its one record is the audit row `EVIDENCE_EXPORT_FAILED`.
  *
  * NO TABLE (the row brief: no migration). What is durable about a job is what exists anyway:
  *
@@ -15,9 +21,15 @@
  *   COMPLETE        `export/EXP-<id>.manifest.sig` of the package (written last) with its manifest;
  *   FAILED          the audit row `EVIDENCE_EXPORT_FAILED` this unit writes.
  *
- * QUEUED, RUNNING and the percentage live in memory. After a restart a job whose artefact is not
- * complete is answered FAILED with `EXPORT_INTERRUPTED` (it is not resumed: the request can be
- * made again). Decision D-91-1.
+ * QUEUED, RUNNING and the percentage live in memory. After a restart a job is answered from what
+ * is STORED (review finding R93-11; the host reads the stored rows, not only the audit ring): its
+ * request row says that it exists; COMPLETE when its artefact is complete; else FAILED - with the
+ * reason of its `EVIDENCE_EXPORT_FAILED` row, or `EXPORT_INTERRUPTED` when it has none (it is not
+ * resumed: the request can be made again). Decision D-91-1.
+ *
+ * THE REQUEST OF A JOB IS READ ONCE, when the route hands the accepted request over (R93-11): the
+ * row was committed a moment before, so it is the newest of the trail. The job keeps it; a busy
+ * trail (playback writes a row per answered range) cannot move it out of reach before the job runs.
  *
  * ONE JOB AT A TIME on the whole Core (a serial queue: an export reads and decrypts whole
  * recordings), and at most one unfinished job per evidence item: a second request for that item
@@ -31,7 +43,7 @@
  * Nothing of a request's text, no path and no key material is in a job's answer, a log entry or a
  * thrown error: codes, IDs and counts only.
  */
-import { EXPORT_ID_PATTERN, EXPORT_JOB_ID_PATTERN, type EvidenceExportJobBody } from '@dems/shared/api';
+import { EXPORT_ID_PATTERN, EXPORT_JOB_ID_PATTERN, exportJobIdOf as contractJobIdOf, type EvidenceExportJobBody } from '@dems/shared/api';
 import { readFile } from 'node:fs/promises';
 import { sep } from 'node:path';
 import type { RealEvidenceItem } from '../evidence-verify';
@@ -40,8 +52,10 @@ import { ExportFailure, ExportFailureCode, ExportKind, exportManifestPathOf, exp
 
 /** `EXPJ-NNNNNN` of `EXP-NNNNNN`: the same digits (the rule the simulator applies in reverse). */
 export function exportJobIdOf(exportId: string): string {
-  if (!EXPORT_ID_PATTERN.test(exportId)) throw new Error('not an export ID');
-  return `EXPJ-${exportId.slice('EXP-'.length)}`;
+  // The rule itself is the contract's (`exportJobIdOf` of `@dems/shared/api`); here an ID of another form is a defect.
+  const jobId = contractJobIdOf(exportId);
+  if (jobId === null) throw new Error('not an export ID');
+  return jobId;
 }
 
 /** `EXP-NNNNNN` of `EXPJ-NNNNNN`, or null for a job ID no export has (more than six digits that are not zeros). */
@@ -73,12 +87,23 @@ export interface EvidenceExportHost {
   findItem(evidenceId: string): RealEvidenceItem | null | Promise<RealEvidenceItem | null>;
   /** The folder of a session's package. */
   packageDirOf(sessionId: string): string;
-  /** The committed request row of that export ID, or null. */
-  requestOf(exportId: string): ExportRequestRecord | null;
+  /**
+   * The committed request of that export ID, or null when no export has it. R93-11: the host
+   * answers from the STORED rows, so the answer does not depend on how busy the trail was or on a
+   * restart. May reject when the stored rows cannot be read (the host has logged it).
+   */
+  requestOf(exportId: string): ExportRequestRecord | null | Promise<ExportRequestRecord | null>;
   /** Read when a job starts: the opener, the signer, the trusted certificates, the composite encoder. */
   ports(): ExportPorts;
   /** Commits the audit row `EVIDENCE_EXPORT_FAILED`. Rejects when it could not. */
   recordFailure(failure: { readonly jobId: string; readonly evidenceId: string; readonly kind: ExportKind; readonly reason: string; readonly operatorId: string | null }): Promise<void>;
+  /**
+   * R93-03: marks the item EXPORTED with its custody entry, now that the artefact exists (the
+   * engine's export door). Rejects when it could not.
+   */
+  completeExport(completion: { readonly evidenceId: string; readonly exportId: string; readonly operatorId: string | null; readonly destination: string }): Promise<void>;
+  /** R93-11: the reason of the STORED `EVIDENCE_EXPORT_FAILED` row of that job, or null when it has none. May reject like `requestOf`. */
+  failureOf?(jobId: string): string | null | Promise<string | null>;
   /** The persistent error log: a fixed source, a code and IDs. */
   reportError(entry: { readonly source: string; readonly code: string; readonly message: string; readonly context: Readonly<Record<string, string>> }): void;
   /** Runs `work` off the request that queued it. Default: `setImmediate`. */
@@ -86,8 +111,13 @@ export interface EvidenceExportHost {
 }
 
 export interface ExportTicket {
-  /** The hosted action accepted the request: queues the job when the item is a real v2 package. Never rejects. */
-  accepted(request: { readonly exportId: string; readonly kind: ExportKind }): Promise<'QUEUED' | 'NOT_A_REAL_PACKAGE'>;
+  /**
+   * The hosted action accepted the request: queues the job when the item is a real v2 package.
+   * Never rejects. `deferred: true` says the request was committed WITHOUT its completion: when no
+   * job can be queued for it, the request is recorded as FAILED (`EXPORT_NOT_QUEUED`) so that it
+   * never stays open without an end.
+   */
+  accepted(request: { readonly exportId: string; readonly kind: ExportKind; readonly deferred?: boolean }): Promise<'QUEUED' | 'NOT_A_REAL_PACKAGE'>;
   /** The request was refused or failed: the item is free again. */
   cancel(): void;
 }
@@ -108,6 +138,8 @@ interface Job {
   readonly evidenceId: string;
   readonly kind: ExportKind;
   readonly createdAt: number;
+  /** The committed request, read when the job was queued (R93-11). */
+  readonly request: ExportRequestRecord | null;
   status: EvidenceExportJobBody['status'];
   progressPct: number;
   completedAt: number | null;
@@ -173,7 +205,14 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
 
   async function run(job: Job, item: RealEvidenceItem): Promise<void> {
     job.status = 'RUNNING';
-    const request = host.requestOf(job.exportId);
+    let request = job.request;
+    if (request === null) {
+      try {
+        request = await host.requestOf(job.exportId);
+      } catch {
+        host.reportError({ source: `${SOURCE}.run`, code: 'EXPORT_REQUEST_NOT_READ', message: 'the request of an export job could not be read', context: { jobId: job.jobId, evidenceId: job.evidenceId } });
+      }
+    }
     if (request === null || request.evidenceId !== job.evidenceId) {
       await fail(job, ExportFailureCode.EXPORT_REQUEST_NOT_FOUND, null);
       return;
@@ -196,6 +235,16 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
           if (percent > job.progressPct) job.progressPct = Math.min(99, percent);
         },
       );
+      // R93-03: the artefact exists; only now is the item marked EXPORTED with its custody entry.
+      // The job is not COMPLETE to a poller before that record is committed.
+      try {
+        await host.completeExport({ evidenceId: job.evidenceId, exportId: job.exportId, operatorId: request.operatorId, destination: request.destination });
+      } catch {
+        // The archive, its manifest and its signature are there and stay; what is missing is the
+        // custody entry. It is said in the persistent error log - the job is not reported FAILED
+        // for an export that exists.
+        host.reportError({ source: `${SOURCE}.completeExport`, code: 'EXPORT_COMPLETION_NOT_RECORDED', message: 'a completed export could not be recorded on its evidence item', context: { jobId: job.jobId, evidenceId: job.evidenceId } });
+      }
       job.outcome = outcome;
       job.progressPct = 100;
       job.completedAt = host.now();
@@ -230,26 +279,40 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
         async accepted(request) {
           try {
             if (!open || !EXPORT_ID_PATTERN.test(request.exportId)) return 'NOT_A_REAL_PACKAGE';
-            const item = await host.findItem(evidenceId);
-            if (item === null) return 'NOT_A_REAL_PACKAGE';
-            const job: Job = {
-              jobId: exportJobIdOf(request.exportId),
-              exportId: request.exportId,
-              evidenceId,
-              kind: request.kind,
-              createdAt: host.requestOf(request.exportId)?.at ?? host.now(),
-              status: 'QUEUED',
-              progressPct: 0,
-              completedAt: null,
-              outcome: null,
-              failureReason: null,
-            };
+            let made: ExportRequestRecord | null = null;
+            try {
+              made = await host.requestOf(request.exportId);
+            } catch {
+              // The job reads it again when it runs; a request that stays unread fails there, with its row.
+              host.reportError({ source: `${SOURCE}.accepted`, code: 'EXPORT_REQUEST_NOT_READ', message: 'the request of an accepted export could not be read', context: { evidenceId, exportId: request.exportId } });
+            }
+            const base = { jobId: exportJobIdOf(request.exportId), exportId: request.exportId, evidenceId, kind: request.kind, createdAt: made?.at ?? host.now(), request: made, progressPct: 0, completedAt: null, outcome: null, failureReason: null } as const;
+            let item: RealEvidenceItem | null = null;
+            let lookupFailed = false;
+            try {
+              item = await host.findItem(evidenceId);
+            } catch {
+              lookupFailed = true;
+            }
+            if (item === null) {
+              if (request.deferred === true) {
+                // A deferred request with no job would stay open for ever: it ends here, FAILED, with its row.
+                const dead: Job = { ...base, status: 'QUEUED' };
+                jobs.set(dead.jobId, dead);
+                await fail(dead, ExportFailureCode.EXPORT_NOT_QUEUED, made?.operatorId ?? null);
+              } else if (lookupFailed) {
+                host.reportError({ source: `${SOURCE}.accepted`, code: 'EXPORT_JOB_NOT_QUEUED', message: 'an accepted export request could not be queued', context: { evidenceId, exportId: request.exportId } });
+              }
+              return 'NOT_A_REAL_PACKAGE';
+            }
+            const queuedItem = item;
+            const job: Job = { ...base, status: 'QUEUED' };
             jobs.set(job.jobId, job);
             queue = queue.then(
               () =>
                 new Promise<void>((resolve) => {
                   defer(() => {
-                    run(job, item)
+                    run(job, queuedItem)
                       .catch(() => {
                         // `run` handles its own failures; this is a defect of this file.
                         job.status = 'FAILED';
@@ -277,13 +340,16 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
       if (known !== undefined) return bodyOf(known);
       const exportId = exportIdOfJob(jobId);
       if (exportId === null) return null;
-      const request = host.requestOf(exportId);
+      // R93-11: the request and the failure reason are the host's STORED rows. A read that fails
+      // rejects (503 at the route): "the trail cannot be read" is never answered as "no such job".
+      const request = await host.requestOf(exportId);
       if (request === null) return null;
       const item = await host.findItem(request.evidenceId);
       if (item === null) return null;
       // A job of an earlier run of the server: what the package folder says.
       const done = await completedOnDisk(host.packageDirOf(item.sessionId), exportId, item.evidenceId);
       const kind = done === null ? (request.kind ?? ExportKind.PACKAGE) : done.derived ? ExportKind.COMPOSITE : ExportKind.PACKAGE;
+      const failureReason = done === null ? ((await host.failureOf?.(jobId)) ?? ExportFailureCode.EXPORT_INTERRUPTED) : null;
       return {
         jobId,
         evidenceId: item.evidenceId,
@@ -295,7 +361,7 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
         derived: kind === ExportKind.COMPOSITE,
         createdAt: request.at,
         completedAt: done === null ? null : done.exportedAt,
-        ...(done === null ? { failureReason: ExportFailureCode.EXPORT_INTERRUPTED } : {}),
+        ...(failureReason === null ? {} : { failureReason }),
       };
     },
 

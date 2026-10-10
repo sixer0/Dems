@@ -63,6 +63,7 @@ import {
   type ManifestFragment,
   type ManifestTrack,
   type ManifestV2,
+  type PackageVideoTrackId,
 } from '../evidence-package';
 import { isDevelopmentKeySubject } from './report';
 import { RETAINED_CERTIFICATES_DIR, REVISION_BOUND_MEMBERS, TranscriptRevisionsFileSchema, retainedCertificatePath } from './revisions';
@@ -70,6 +71,12 @@ import {
   SOURCES_STATE_REPORT,
   TRANSCRIPT_STATE_REPORT,
   VERIFY_FAILURES,
+  AUDIT_EXTRACT_NOT_SIGNED_REPORT,
+  EXPORT_ARTEFACT_NAME,
+  REVISION_APPEND_PENDING_FILE,
+  REVISION_APPEND_PENDING_REPORT,
+  exportFolderNoticeReport,
+  VERIFY_NOTICE,
   VERIFY_RESULT_SCHEMA_ID,
   VERIFY_V2_CHECKS,
   VerifiedSourcesState,
@@ -274,6 +281,9 @@ async function checkCertificate(ports: VerifyPorts, manifest: ManifestV2, option
   if (signedAt < facts.notBefore || signedAt > facts.notAfter) verdict.add('CERTIFICATE_NOT_VALID_AT_SIGNING', { file, member: 'signature.signedAt' });
   const trusted = options.expected?.trustedCertificateSha256;
   if (trusted !== undefined && !trusted.includes(digest)) verdict.add('CERTIFICATE_NOT_TRUSTED', { file });
+  // Fields 25 / 26 are texts the signer writes: they are held to the certificate itself (F-M7 R88-08).
+  if (typeof facts.subject === 'string' && facts.subject !== manifest.device.certificate.subject) verdict.add('CERTIFICATE_SUBJECT_MISMATCH', { file, member: 'device.certificate.subject' });
+  if (typeof facts.serialNumber === 'string' && facts.serialNumber !== manifest.device.certificate.serialNumber) verdict.add('CERTIFICATE_SUBJECT_MISMATCH', { file, member: 'device.certificate.serialNumber' });
   return { sha256: digest, facts };
 }
 
@@ -724,9 +734,13 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
   return list.revisions.length;
 }
 
-/** V-14. `transcript`: whether the transcript files are declared; null when the manifest could not say. */
-async function checkCompleteness(reader: PackageReader, transcript: boolean | null, verdict: Verdict): Promise<void> {
-  const declared = declaredPackageFiles({ transcript: transcript === true });
+/**
+ * V-14. `transcript`: whether the transcript files are declared; null when the manifest could not
+ * say. `tracks`: the camera files the manifest's own track list names (one or two, F-M7 R88-01);
+ * null with an unreadable manifest, where both are held as declared.
+ */
+async function checkCompleteness(reader: PackageReader, transcript: boolean | null, tracks: readonly PackageVideoTrackId[] | null, verdict: Verdict, unexpectedExports: string[] = [], pending: { revisionAppend: boolean } = { revisionAppend: false }): Promise<void> {
+  const declared = declaredPackageFiles({ transcript: transcript === true, ...(tracks === null ? {} : { tracks }) });
   for (const file of declared) {
     const entry = await reader.entry(file);
     if (entry.kind === 'ABSENT') verdict.add('DECLARED_FILE_MISSING', { file });
@@ -743,8 +757,15 @@ async function checkCompleteness(reader: PackageReader, transcript: boolean | nu
   const retained = new RegExp(`^${RETAINED_CERTIFICATES_DIR}/[0-9a-f]{64}\\.pem$`);
   let named = 0;
   for (const file of [...listed].sort()) {
+    // D185 (a): under `export/` only the finished artefacts of an export are expected; anything else is NAMED by a notice (it fails nothing).
+    if (file.startsWith(`${PackageFile.EXPORT_DIR}/`) && !EXPORT_ARTEFACT_NAME.test(file.slice(PackageFile.EXPORT_DIR.length + 1))) unexpectedExports.push(file.slice(PackageFile.EXPORT_DIR.length + 1));
     // An export and an on-demand composite are derived and lie beside the sealed set (spec §A.1, §G).
     if (allowed.has(file) || file.startsWith(`${PackageFile.EXPORT_DIR}/`) || file.startsWith(`${PackageFile.COMPOSITE_DIR}/`) || retained.test(file)) continue;
+    // D187: the staged revision list of a write under way - this EXACT name, in a package that declares a transcript - is NAMED by a notice and fails nothing.
+    if (transcript === true && file === REVISION_APPEND_PENDING_FILE) {
+      pending.revisionAppend = true;
+      continue;
+    }
     if (named < VERIFY_MAX_UNEXPECTED_NAMED) verdict.add('UNEXPECTED_FILE', { file });
     named += 1;
   }
@@ -907,8 +928,20 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
   const files: FileVerifyResult[] = [];
   let revisions: number | null = null;
   let plaintextChecked = false;
+  /** The subject the CERTIFICATE states of itself (V-13), or null when it was not read or the reader states none. */
+  let certificateSubject: string | null = null;
 
   const manifestOnly = options.scope === 'MANIFEST';
+  // R88-06: whether the audit extract is there. Its content is covered by nothing; the result says so.
+  let auditExtractPresent = false;
+  /** D185 (a): the paths under `export/` that are no finished export artefact (filled by V-14's listing). */
+  const unexpectedExports: string[] = [];
+  const pending = { revisionAppend: false };
+  try {
+    auditExtractPresent = (await ports.reader.entry(PackageFile.AUDIT_EXTRACT)).kind === 'FILE';
+  } catch {
+    auditExtractPresent = false;
+  }
 
   const loaded = await loadManifest(ports.reader, verdict);
   const manifest = loaded.manifest;
@@ -931,7 +964,7 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
     } else verdict.skip('V-03', 'BLOCKED');
     for (const id of BLOCKED_WITHOUT_MANIFEST) verdict.skip(id, 'BLOCKED');
     if (manifestOnly) verdict.skip('V-14', 'OUT_OF_SCOPE');
-    else await checkCompleteness(ports.reader, null, verdict);
+    else await checkCompleteness(ports.reader, null, null, verdict);
   } else {
     // V-03
     let canonical = false;
@@ -948,6 +981,7 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
 
     // V-13, V-09
     const certificate = await checkCertificate(ports, manifest, options, verdict);
+    certificateSubject = certificate.facts?.subject ?? null;
     await checkSignature(ports, manifest, certificate, verdict);
 
     if (manifestOnly) for (const id of OUTSIDE_MANIFEST_SCOPE) verdict.skip(id, 'OUT_OF_SCOPE');
@@ -1015,7 +1049,7 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       // V-14
       // V-14: a transcript file is declared exactly when the manifest names a document. One that
       // lies in a package whose manifest declares none is a file nobody sealed (`UNEXPECTED_FILE`).
-      await checkCompleteness(ports.reader, manifestDeclaresTranscript(manifest.transcript), verdict);
+      await checkCompleteness(ports.reader, manifestDeclaresTranscript(manifest.transcript), manifest.tracks.map((track) => track.trackId), verdict, unexpectedExports, pending);
     }
   }
 
@@ -1052,10 +1086,17 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       algorithm: manifest?.signature.algorithm ?? null,
       keyId: manifest?.signature.keyId ?? null,
       simulated: manifest?.signature.simulated ?? null,
-      developmentKey: manifest === null ? null : isDevelopmentKeySubject(manifest.device.certificate.subject),
+      // FROM THE CERTIFICATE THAT VERIFIED THE SIGNATURE, and only when the manifest is the signed one
+      // and its certificate holds (F-M7 R88-08): otherwise NOT ESTABLISHED - never `false` from unverified bytes.
+      developmentKey: trusted && certificateSubject !== null ? isDevelopmentKeySubject(certificateSubject) : null,
       integrityCheckedWithoutKey: true as const,
     }),
     interrupted: manifest?.timeline.interrupted ?? false,
     plaintextChecked,
+    notices: Object.freeze([
+      Object.freeze({ code: VERIFY_NOTICE.AUDIT_EXTRACT_NOT_SIGNED, report: auditExtractPresent ? AUDIT_EXTRACT_NOT_SIGNED_REPORT.PRESENT : AUDIT_EXTRACT_NOT_SIGNED_REPORT.MISSING }),
+      ...(unexpectedExports.length === 0 ? [] : [Object.freeze({ code: VERIFY_NOTICE.EXPORT_FOLDER_UNEXPECTED_FILE, report: exportFolderNoticeReport(unexpectedExports) })]),
+      ...(pending.revisionAppend ? [Object.freeze({ code: VERIFY_NOTICE.REVISION_APPEND_PENDING, report: REVISION_APPEND_PENDING_REPORT })] : []),
+    ]),
   });
 }

@@ -25,7 +25,7 @@ import { FIXED_NOW } from '../../../../test/support/engine';
 import { sealDoorsOf } from '../../../engine/seal-doors';
 import { corePorts } from '../../../evidence-verify';
 import { buildPackage, removeScratch, throwAwaySigner, type BuiltPackage } from '../../../evidence-verify/__tests__/support';
-import { SEALING_STEP_ORDER, SealedTranscriptDocumentSchema, loadSealingSigner, provisionDevelopmentSigningKey } from '../../../sealing';
+import { SEALING_STEP_ORDER, SealedTranscriptDocumentSchema, evidenceTranscriptSummary, loadSealingSigner, provisionDevelopmentSigningKey } from '../../../sealing';
 import { CORE_EVIDENCE_SIGNING_KEY_ID, loadSoftwareSigner, provisionSigningKey, type LoadedSigner } from '../../../capture';
 import { seeded, sessionInput, sessionsApp, type Caller, type SessionsApp } from '../../sessions/__tests__/support';
 import { TRANSCRIPT_HEADS_BOOT_STEP, TRANSCRIPT_HEAD_NOT_PUBLISHED, createTranscriptStore, provideRevisionSigner, revisionDigestOf, type RevisionBody } from '../index';
@@ -94,7 +94,7 @@ interface Rig {
  * media store holds that item's package. `sealedBy`: the key that sealed the PACKAGE - the Core's
  * own key (the usual case), or another one (a key that was rotated since the seal).
  */
-async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY', coreKey: 'STORABLE_KEY' | 'PRODUCT_KEY' = 'STORABLE_KEY'): Promise<Rig> {
+async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY', coreKey: 'STORABLE_KEY' | 'PRODUCT_KEY' = 'STORABLE_KEY', holder: 'INVESTIGATOR' | 'SUPERVISOR' = 'INVESTIGATOR'): Promise<Rig> {
   expect(SealedTranscriptDocumentSchema.safeParse(DOCUMENT).success).toBe(true);
   const dataDir = mkdtempSync(join(tmpdir(), 'dems-d4-transcripts-'));
   roots.push(dataDir);
@@ -119,7 +119,8 @@ async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY'
   const investigator = await server.signIn('INVESTIGATOR');
   const principal = server.principal('INVESTIGATOR');
   await server.engine.setTabletLink('CONNECTED');
-  await server.engine.command(principal, 'createSession', sessionInput(seeded('INVESTIGATOR').id));
+  // The CASE HOLDER of the sealed item (`evidence_items.investigator_id`; D24 Q-SEC-1 (a)): the investigator of the session.
+  await server.engine.command(principal, 'createSession', sessionInput(seeded(holder).id));
   await server.engine.command(principal, 'beginPrecheck');
   await server.drive(5_000);
   if (server.engine.slice('session')?.state === 'PRECHECK') await server.engine.command(principal, 'acknowledgePrecheckWarnings');
@@ -131,10 +132,28 @@ async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY'
   await sealDoorsOf(server.engine).applySealingProgress({ sessionId, steps });
 
   const at = server.clock.now();
+  // The package of THIS item (its IDs are in the signed manifest), with the document's hash sealed in. Built BEFORE
+  // the commit (fix pass F-M6): the item holds the digest of ITS manifest, as every real seal's does - the boot step
+  // that reads the transcript summary back accepts no other manifest.
+  const sealingEvidenceId = server.engine.slice('session')?.evidenceId ?? '';
+  expect(sealingEvidenceId).toMatch(/^EV-/);
+  const prebuilt: BuiltPackage = await buildPackage({
+    sessionId,
+    evidenceId: sealingEvidenceId,
+    signer: sealedBy === 'CORE_KEY' ? coreSigner : throwAwaySigner(),
+    // The manifest seals the backend and the model THIS file's document states in its header: verify V-10 holds
+    // the two against each other since pass D10. (The rig used to seal the builder's example model beside a
+    // document of its own - a package no seal writes; pass D11 follow-up, decision D165.)
+    transcriptModel: {
+      backend: DOCUMENT.header.backend,
+      model: { name: DOCUMENT.header.model.name, version: DOCUMENT.header.model.version, quantisation: DOCUMENT.header.model.quantisation, modelSha256: DOCUMENT.header.model.sha256 },
+    },
+    beforeSeal: (manifest) => void (manifest.transcript.sha256 = DOCUMENT_SHA),
+  });
   const input: CompleteSealInput = {
     sessionId,
     sealedAt: at,
-    manifestSha256: 'ab'.repeat(32),
+    manifestSha256: prebuilt.manifest.manifestSha256,
     signature: { value: 'cd'.repeat(64), keyId: coreSigner.signer.keyId, algorithm: 'Ed25519' },
     tracks: [
       { trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: '01'.repeat(32) },
@@ -145,24 +164,14 @@ async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY'
     transcriptSha256: DOCUMENT_SHA,
     labelsStatus: 'LABELLED',
     developmentSources: true,
+    // What the sealing composition hands in with every seal (R80-01): the projection of the manifest's transcript block.
+    transcript: evidenceTranscriptSummary({ ...prebuilt.manifest.transcript, sha256: DOCUMENT_SHA }, 0),
   };
   let built: BuiltPackage | null = null;
   let packageDir = '';
   const outcome = await sealDoorsOf(server.engine).completeSeal(input, async (unit, evidenceId) => {
-    // The package of THIS item (its IDs are in the signed manifest), with the document's hash sealed in.
-    built = await buildPackage({
-      sessionId,
-      evidenceId,
-      signer: sealedBy === 'CORE_KEY' ? coreSigner : throwAwaySigner(),
-      // The manifest seals the backend and the model THIS file's document states in its header: verify V-10 holds
-      // the two against each other since pass D10. (The rig used to seal the builder's example model beside a
-      // document of its own - a package no seal writes; pass D11 follow-up, decision D165.)
-      transcriptModel: {
-        backend: DOCUMENT.header.backend,
-        model: { name: DOCUMENT.header.model.name, version: DOCUMENT.header.model.version, quantisation: DOCUMENT.header.model.quantisation, modelSha256: DOCUMENT.header.model.sha256 },
-      },
-      beforeSeal: (manifest) => void (manifest.transcript.sha256 = DOCUMENT_SHA),
-    });
+    expect(evidenceId).toBe(sealingEvidenceId);
+    built = prebuilt;
     packageDir = join(mediaStoreDir, `SESSION-${sessionId}`);
     cpSync(built.dir, packageDir, { recursive: true });
     writeFileSync(join(packageDir, ...PackageFile.TRANSCRIPT_JSON.split('/')), DOCUMENT_BYTES);
@@ -200,6 +209,7 @@ async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY'
 }
 
 const REQUEST = { baseRevision: 0, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to: 'Terima kasih, Bu.' }], note: 'The witness addressed a woman officer.' } as const;
+const noticed = (result: PackageVerifyResult): string[] => result.notices.map((notice) => notice.code);
 const failing = (result: PackageVerifyResult): string[] => result.checks.filter((check) => check.status === 'FAIL').map((check) => `${check.id} ${check.findings.map((finding) => finding.code).join(',')}`);
 const codeOf = (response: { json(): unknown }): string => (response.json() as { error: { code: string } }).error.code;
 const detailsOf = (response: { json(): unknown }): Record<string, unknown> => (response.json() as { error: { details?: Record<string, unknown> } }).error.details ?? {};
@@ -212,7 +222,7 @@ describe('the schema this pass was written against', () => {
 });
 
 describe('operation 84 getTranscript', () => {
-  it('answers the sealed machine transcript of the package, with the hash the item is bound to and revision 0; every role reads; nobody without a session', async () => {
+  it('answers the sealed machine transcript of the package, with the hash the item is bound to and revision 0; the case holder reads; nobody without a session', async () => {
     const { server, investigator, transcript, verify } = await rig('d4tr_read');
     expect(failing(await verify(0))).toEqual([]);
     const response = await server.get(investigator, transcript());
@@ -230,7 +240,6 @@ describe('operation 84 getTranscript', () => {
       assembledAt: expect.any(Number),
       revision: 0,
     });
-    expect((await server.get(await server.signIn('TECHNICIAN'), transcript())).statusCode).toBe(200);
     expect((await server.get(null, transcript())).statusCode).toBe(401);
   });
 
@@ -257,6 +266,66 @@ describe('operation 84 getTranscript', () => {
     expect([response.statusCode, codeOf(response), detailsOf(response)['reason']]).toEqual([503, 'NOT_READY', 'TRANSCRIPT_DOCUMENT_UNAVAILABLE']);
     expect(JSON.stringify(response.json())).not.toContain('Kalimat lain');
     expect(server.log.lines().some((line) => line['code'] === 'TRANSCRIPT_DOCUMENT_UNAVAILABLE' && line['evidenceId'] !== undefined)).toBe(true);
+  });
+});
+
+describe('R93-02 (D178; D24 Q-SEC-1 (a)): operations 84, 85 and 86 hold the case scope of a REAL item', () => {
+  const deniedRows = async (server: SessionsApp): Promise<{ actor_id: string; evidence_id: string | null; details: Record<string, unknown> }[]> =>
+    (await server.owner.query("SELECT actor_id, evidence_id, details FROM public.audit_log WHERE type = 'ACCESS_DENIED' ORDER BY seq")).rows;
+
+  it('an operator with EVIDENCE_VIEW who does not hold the case is refused 403 on 84 and 86, each with ONE audited ACCESS_DENIED row; the case holder and a SUPERVISOR read', async () => {
+    const { server, investigator, transcript, evidenceId } = await rig('r93_scope_read');
+    const technician = await server.signIn('TECHNICIAN');
+    const before = (await deniedRows(server)).length;
+    for (const [path, operationId] of [['', 'getTranscript'], ['/revisions', 'listTranscriptRevisions']] as const) {
+      const refused = await server.get(technician, transcript(path));
+      expect([refused.statusCode, codeOf(refused), detailsOf(refused)], operationId).toEqual([403, 'NOT_PERMITTED', { operationId, permission: 'EVIDENCE_VIEW', role: 'TECHNICIAN', reason: 'EVIDENCE_CASE_SCOPE' }]);
+      // No word of the transcript in a refusal.
+      expect(JSON.stringify(refused.json())).not.toContain('Selamat');
+    }
+    const rows = (await deniedRows(server)).slice(before);
+    expect(rows.map((row) => [row.actor_id, row.evidence_id, row.details['operationId'], row.details['reason']])).toEqual([
+      [seeded('TECHNICIAN').id, evidenceId, 'getTranscript', 'EVIDENCE_CASE_SCOPE'],
+      [seeded('TECHNICIAN').id, evidenceId, 'listTranscriptRevisions', 'EVIDENCE_CASE_SCOPE'],
+    ]);
+    // INSIDE the scope: the holder of the case, and a SUPERVISOR. No row for them.
+    const supervisor = await server.signIn('SUPERVISOR');
+    for (const cookie of [investigator, supervisor]) for (const path of ['', '/revisions']) expect((await server.get(cookie, transcript(path))).statusCode).toBe(200);
+    expect((await deniedRows(server)).length).toBe(before + 2);
+  });
+
+  it('operation 85: an operator with TRANSCRIPT_REVISE who does not hold the case appends NOTHING - 403, one audited row, no revision row, the package list untouched; a SUPERVISOR and the holder may', async () => {
+    // The case is held by the SUPERVISOR: the INVESTIGATOR has the permission of stage 6 and is outside the scope.
+    const { server, investigator, transcript, evidenceId, hashOf } = await rig('r93_scope_revise', 'CORE_KEY', 'STORABLE_KEY', 'SUPERVISOR');
+    const before = (await deniedRows(server)).length;
+    const list = hashOf(PackageFile.MANIFEST);
+    const revisionsFile = join(server.app.config.mediaStoreDir, `SESSION-${server.engine.slice('session')?.id ?? ''}`, ...PackageFile.TRANSCRIPT_REVISIONS.split('/'));
+    const revisionsBefore = existsSync(revisionsFile) ? readFileSync(revisionsFile, 'utf8') : null;
+    const refused = await server.post(investigator, transcript('/revisions'), REQUEST);
+    expect([refused.statusCode, codeOf(refused), detailsOf(refused)]).toEqual([403, 'NOT_PERMITTED', { operationId: 'createTranscriptRevision', permission: 'TRANSCRIPT_REVISE', role: 'INVESTIGATOR', reason: 'EVIDENCE_CASE_SCOPE' }]);
+    expect((await server.get(investigator, transcript())).statusCode).toBe(403);
+    expect((await deniedRows(server)).slice(before).map((row) => [row.actor_id, row.evidence_id, row.details['operationId']])).toEqual([
+      [seeded('INVESTIGATOR').id, evidenceId, 'createTranscriptRevision'],
+      [seeded('INVESTIGATOR').id, evidenceId, 'getTranscript'],
+    ]);
+    expect((await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1', [evidenceId])).rows[0]?.n).toBe(0);
+    expect(hashOf(PackageFile.MANIFEST)).toBe(list);
+    expect(existsSync(revisionsFile) ? readFileSync(revisionsFile, 'utf8') : null).toBe(revisionsBefore);
+    // The holder of this case IS the supervisor: the revision is made.
+    expect((await server.post(await server.signIn('SUPERVISOR'), transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+  });
+
+  it('CONTROL: an item that is not REAL (the seeded demonstration items) keeps its answers for every role - the scope is a rule of REAL evidence only', async () => {
+    const { server } = await rig('r93_scope_control');
+    const technician = await server.signIn('TECHNICIAN');
+    const before = (await deniedRows(server)).length;
+    const v1 = server.engine.slice('evidence').find((item) => item.integritySource !== 'REAL' && item.investigatorId !== seeded('TECHNICIAN').id);
+    expect(v1).toBeDefined();
+    for (const path of ['', '/revisions']) {
+      const answer = await server.get(technician, `${EVIDENCE}/${v1?.id}/transcript${path}`);
+      expect([answer.statusCode, codeOf(answer)], path).toEqual([409, 'TRANSCRIPT_NOT_READY']);
+    }
+    expect((await deniedRows(server)).length).toBe(before);
   });
 });
 
@@ -401,7 +470,8 @@ describe('operation 86 listTranscriptRevisions', () => {
       const response = await server.post(investigator, transcript('/revisions'), { baseRevision: index, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to }], note: `Correction number ${index + 1}.` });
       expect(response.statusCode).toBe(201);
     }
-    const all = TranscriptRevisionPageSchema.parse((await server.get(await server.signIn('TECHNICIAN'), transcript('/revisions'))).json());
+    // A SUPERVISOR is inside the case scope of every REAL item (R93-02).
+    const all = TranscriptRevisionPageSchema.parse((await server.get(await server.signIn('SUPERVISOR'), transcript('/revisions'))).json());
     expect(all.nextCursor).toBeNull();
     expect(all.items.map((item) => [item.number, item.baseRevision, item.revisionId, item.changes[0]?.to])).toEqual([
       [3, 2, 'TRV-000003', 'Terima kasih banyak, Ibu.'],
@@ -417,12 +487,13 @@ describe('operation 86 listTranscriptRevisions', () => {
 
   it('PASS D6 (F-D4-1 closed) - verify V-11 holds each record the Core WROTE to its signed body: two revisions pass; a removed body is MISSING; an altered reason, author, time or body is TAMPERED, each naming the revision. The Core answers from the table, never from those members', async () => {
     const { server, investigator, transcript, packageDir, verify, evidenceId } = await rig('d6tr_v11');
-    // Pass D6 item 6: the replicated item names no transcript head before a revision, and the new head after each.
+    // Pass D6 item 6 / R80-01: the replicated item carries the summary of its seal with head 0 before a revision, and the new head after each.
     const summaryOf = () => server.engine.slice('evidence').find((item) => item.id === evidenceId)?.transcript ?? null;
-    expect(summaryOf()).toBeNull();
+    expect(summaryOf()).toMatchObject({ state: 'READY', revision: 0, failedChunks: 0, backendUnreachable: false });
     const revisionBefore = server.engine.revision;
     expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
-    expect(summaryOf()).toEqual({ state: 'READY', sha256: DOCUMENT_SHA, machineTranscriptHash: DOCUMENT_SHA, labelsStatus: 'LABELLED', revision: 1 });
+    // R80-11: a revision moves the head and keeps what the seal stated.
+    expect(summaryOf()).toMatchObject({ state: 'READY', sha256: DOCUMENT_SHA, machineTranscriptHash: DOCUMENT_SHA, revision: 1, failedChunks: 0, backendUnreachable: false });
     expect(server.engine.revision).toBeGreaterThan(revisionBefore);
     expect(EvidenceSliceSchema.safeParse(server.engine.slice('evidence')).success).toBe(true);
     // A refused revision (stale base) moves nothing.
@@ -482,7 +553,7 @@ describe('PASS D11: the revision head of a replicated item after a restart of th
   const stepsOf = (server: SessionsApp): string[] => server.log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => String(line['step']));
 
   it('revise -> restart -> the item carries the revision number without a new revision; the stored rows and the package are what they were', async () => {
-    const { server, investigator, transcript, evidenceId, hashOf, restart } = await rig('d11tr_restart');
+    const { server, investigator, transcript, evidenceId, hashOf, restart, built } = await rig('d11tr_restart');
     expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
     // Operation 85 put the head on the item of the running Core (pass D6).
     expect(summaryOf(server, evidenceId)).toMatchObject({ revision: 1, machineTranscriptHash: DOCUMENT_SHA });
@@ -493,7 +564,9 @@ describe('PASS D11: the revision head of a replicated item after a restart of th
     const again = await restart();
     // The boot step ran after the engine's (it reads the engine's state) and published the head: the same summary a live revision leaves.
     expect(stepsOf(again)).toContain(TRANSCRIPT_HEADS_BOOT_STEP);
-    expect(summaryOf(again, evidenceId)).toEqual({ state: 'READY', sha256: DOCUMENT_SHA, machineTranscriptHash: DOCUMENT_SHA, labelsStatus: 'LABELLED', revision: 1 });
+    // R80-01: the WHOLE summary is read back from the signed manifest of the package - state, failed chunks, the unreachable backend - with the head of the table.
+    expect(summaryOf(again, evidenceId)).toEqual(evidenceTranscriptSummary(built.manifest.transcript, 1));
+    expect(summaryOf(again, evidenceId)).toMatchObject({ state: 'READY', sha256: DOCUMENT_SHA, machineTranscriptHash: DOCUMENT_SHA, revision: 1, failedChunks: 0, backendUnreachable: false });
     expect(EvidenceSliceSchema.safeParse(again.engine.slice('evidence')).success).toBe(true);
     // No new revision was made: the rows and the package list are the same.
     expect((await again.owner.query('SELECT revision_no, sha256 FROM public.transcript_revisions WHERE evidence_id = $1 ORDER BY revision_no', [evidenceId])).rows).toEqual(rowsBefore);
@@ -503,22 +576,26 @@ describe('PASS D11: the revision head of a replicated item after a restart of th
     expect(TranscriptDocumentSchema.parse((await again.get(reader, transcript())).json()).revision).toBe(1);
   });
 
-  it('CONTROL - an item WITHOUT a revision is not touched by the step: after a restart its summary names no revision (the number comes from the revisions table, never from the item)', async () => {
-    const { server, evidenceId, restart } = await rig('d11tr_unrevised');
-    expect(summaryOf(server, evidenceId)?.revision ?? 0).toBe(0);
+  it('R80-01 - an item WITHOUT a revision has its summary too, before and after a restart: the state the seal signed, head 0 (the number comes from the revisions table, never from the item)', async () => {
+    const { server, evidenceId, restart, built } = await rig('d11tr_unrevised');
+    // The seal wrote it with the item.
+    expect(summaryOf(server, evidenceId)).toEqual(evidenceTranscriptSummary(built.manifest.transcript, 0));
     expect((await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1', [evidenceId])).rows[0]?.n).toBe(0);
     const again = await restart();
     expect(stepsOf(again)).toContain(TRANSCRIPT_HEADS_BOOT_STEP);
-    expect(summaryOf(again, evidenceId)?.revision ?? 0).toBe(0);
+    // No column holds the summary: the boot step read it back from the signed manifest.
+    expect(summaryOf(again, evidenceId)).toEqual(evidenceTranscriptSummary(built.manifest.transcript, 0));
+    expect(summaryOf(again, evidenceId)).toMatchObject({ state: 'READY', revision: 0 });
+    expect(again.log.lines().filter((line) => line['code'] === TRANSCRIPT_HEAD_NOT_PUBLISHED)).toEqual([]);
   });
 
-  it('a head that cannot be published is never guessed and never refuses the start: the sealed document is gone from the package -> the item names no revision, the failure is in the log by its code, the Core serves', async () => {
+  it('a summary that cannot be read back is never guessed and never refuses the start: the manifest is gone from the package -> the item has NO summary (no state, no revision), the failure is in the log by its code, the Core serves', async () => {
     const { server, investigator, transcript, evidenceId, packageDir, restart } = await rig('d11tr_no_document');
     expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
-    rmSync(join(packageDir, ...PackageFile.TRANSCRIPT_JSON.split('/')));
+    rmSync(join(packageDir, PackageFile.MANIFEST));
     const again = await restart();
     expect(stepsOf(again)).toContain(TRANSCRIPT_HEADS_BOOT_STEP);
-    expect(summaryOf(again, evidenceId)?.revision ?? null).toBeNull();
+    expect(summaryOf(again, evidenceId)).toBeNull();
     // ONE line for the failures of a start (pass E3 item 3), naming the item and the true count.
     expect(again.log.lines().filter((line) => line['code'] === TRANSCRIPT_HEAD_NOT_PUBLISHED).map((line) => [line['level'], line['items'], line['evidenceIds']])).toEqual([[50, 1, [evidenceId]]]);
     expect(again.app.readiness.isReady()).toBe(true);
@@ -565,5 +642,97 @@ describe('MIGRATION 0013 (dbc-7; ruling D162): a revision signed with the PRODUC
     expect(failing(await verify(2))).toEqual([]);
     expect((await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1 AND signature_key_id = $2', [evidenceId, 'CORE-KEY-EVSIGN-01'])).rows[0]?.n).toBe(2);
     expect((await server.get(investigator, transcript())).json()).toMatchObject({ revision: 2 });
+  });
+});
+
+// Closing pass F-X, finding R80-08 (code review row 80): THE TABLE IS THE JOURNAL. A revision is a
+// row first; the new list is STAGED under a fixed name inside the unit, and renamed over the real
+// list only after the commit. The commit is made to fail by a DEFERRED constraint trigger on the
+// throw-away clone (it fires at COMMIT, after every act of the unit - the file step among them);
+// it refuses only a revision whose reason is `REFUSED_NOTE`, so nothing has to be dropped or replaced.
+describe('R80-08: the revision list of the package is replaced only AFTER the commit; the staged list is judged by the table', () => {
+  const realOf = (packageDir: string): string => join(packageDir, 'transcript', 'transcript-revisions.json');
+  const stagedOf = (packageDir: string): string => `${realOf(packageDir)}.next`;
+  const SEALED_TRANSCRIPT_FOLDER = ['transcript-revisions.json', 'transcript.json', 'transcript.srt', 'transcript.vtt'];
+  const rowsOf = async (server: SessionsApp, evidenceId: string): Promise<number> => (await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1', [evidenceId])).rows[0]?.n as number;
+  async function refuseCommits(server: SessionsApp): Promise<void> {
+    await server.owner.query(`CREATE FUNCTION public.r8008_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.reason = '${REFUSED_NOTE}' THEN RAISE EXCEPTION 'the commit is refused (R80-08 test)'; END IF; RETURN NULL; END $$`);
+    await server.owner.query('CREATE CONSTRAINT TRIGGER r8008_refuse AFTER INSERT ON public.transcript_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.r8008_refuse()');
+  }
+  const REFUSED_NOTE = 'This revision is refused at the commit.';
+  const second = { ...REQUEST, baseRevision: 1, changes: [{ segmentIndex: 0, from: 'Selamat pagi, silakan duduk.', to: 'Selamat pagi. Silakan duduk.' }], note: 'Punctuation as spoken.' };
+
+  it('(a) CRASH POINT 1 - the commit fails after the file step: no row, no audit row, and NO signed record in the package list (byte-identical), no staged file left; the next append works', async () => {
+    const { server, investigator, transcript, evidenceId, packageDir, verify } = await rig('r8008_commit_fails');
+    expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+    const before = readFileSync(realOf(packageDir));
+    await refuseCommits(server);
+    const written = await server.written(async () => {
+      const failed = await server.post(investigator, transcript('/revisions'), { ...second, note: REFUSED_NOTE });
+      expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    });
+    expect(written).toEqual([]);
+    expect(await rowsOf(server, evidenceId)).toBe(1);
+    // THE FINDING: a signed record of a revision the Core never recorded must not be in the package.
+    expect(readFileSync(realOf(packageDir)).equals(before)).toBe(true);
+    expect(readdirSync(join(packageDir, 'transcript')).sort()).toEqual(SEALED_TRANSCRIPT_FOLDER);
+    expect(failing(await verify(1))).toEqual([]);
+    // The staged list of the refused append was settled at once: the table judged it (a warn entry, by its code).
+    expect(server.log.lines().filter((line) => line['code'] === 'TRANSCRIPT_REVISION_STAGED_LIST_DISCARDED').map((line) => line['staged'])).toEqual(['DISCARDED_UNCOMMITTED']);
+    expect((await server.post(investigator, transcript('/revisions'), second)).statusCode).toBe(201);
+    expect(await rowsOf(server, evidenceId)).toBe(2);
+    expect(readdirSync(join(packageDir, 'transcript')).sort()).toEqual(SEALED_TRANSCRIPT_FOLDER);
+    const verified = await verify(2);
+    expect(failing(verified)).toEqual([]);
+    expect(verified.checks.find((entry) => entry.id === 'V-11')?.status).toBe('PASS');
+  });
+
+  it('commit done, rename missing, in the SAME process: operation 86 answers from the staged list without touching a file; the next append finishes the rename first and never builds on the stale list', async () => {
+    const { server, investigator, transcript, evidenceId, packageDir, verify } = await rig('r8008_rename_pending');
+    expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+    const one = readFileSync(realOf(packageDir));
+    expect((await server.post(investigator, transcript('/revisions'), second)).statusCode).toBe(201);
+    const two = readFileSync(realOf(packageDir));
+    // The state a rename that failed leaves: two rows, the real list of ONE record, the staged list of two.
+    writeFileSync(stagedOf(packageDir), two);
+    writeFileSync(realOf(packageDir), one);
+    const page = await server.get(investigator, transcript('/revisions'));
+    expect(page.statusCode).toBe(200);
+    expect(TranscriptRevisionPageSchema.parse(page.json()).items.map((entry) => [entry.number, entry.changes[0]?.to])).toEqual([[2, 'Selamat pagi. Silakan duduk.'], [1, 'Terima kasih, Bu.']]);
+    expect(readFileSync(realOf(packageDir)).equals(one)).toBe(true);
+    expect(existsSync(stagedOf(packageDir))).toBe(true);
+    const third = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 2, note: 'A third correction of the same segment.' });
+    expect(third.statusCode).toBe(201);
+    expect(await rowsOf(server, evidenceId)).toBe(3);
+    const list = TranscriptRevisionsFileSchema.parse(JSON.parse(readFileSync(realOf(packageDir), 'utf8')));
+    expect(list.revisions.map((record) => record.revisionNo)).toEqual([1, 2, 3]);
+    expect(Buffer.from(JSON.stringify(list.revisions.slice(0, 2)))).toEqual(Buffer.from(JSON.stringify(TranscriptRevisionsFileSchema.parse(JSON.parse(two.toString('utf8'))).revisions)));
+    expect(readdirSync(join(packageDir, 'transcript')).sort()).toEqual(SEALED_TRANSCRIPT_FOLDER);
+    expect(failing(await verify(3))).toEqual([]);
+  });
+
+  it('(b) CRASH POINT 2 through a real start: two rows, the real list of one record, the staged list of two -> the boot step finishes the rename; the head is 2, V-11 passes, the list is the staged bytes', async () => {
+    const { server, investigator, transcript, evidenceId, packageDir, verify, restart } = await rig('r8008_boot_heal');
+    expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+    const one = readFileSync(realOf(packageDir));
+    expect((await server.post(investigator, transcript('/revisions'), second)).statusCode).toBe(201);
+    const two = readFileSync(realOf(packageDir));
+    writeFileSync(stagedOf(packageDir), two);
+    writeFileSync(realOf(packageDir), one);
+    // CONTROL: the package as the crash left it does NOT verify against the table's count (V-11), and the verifier names the
+    // staged file - as the notice REVISION_APPEND_PENDING, not as a V-14 failure (fix pass F-M7c, ruling D187; pass F-Z).
+    const crashed = await verify(2);
+    expect(failing(crashed)).toEqual(['V-11 REVISION_COUNT_MISMATCH']);
+    expect(noticed(crashed)).toContain('REVISION_APPEND_PENDING');
+    const again = await restart();
+    expect(readFileSync(realOf(packageDir)).equals(two)).toBe(true);
+    expect(readdirSync(join(packageDir, 'transcript')).sort()).toEqual(SEALED_TRANSCRIPT_FOLDER);
+    const verified = await verify(2);
+    expect(failing(verified)).toEqual([]);
+    expect(noticed(verified)).not.toContain('REVISION_APPEND_PENDING');
+    expect(verified.checks.find((entry) => entry.id === 'V-11')?.status).toBe('PASS');
+    expect(again.engine.slice('evidence').find((item) => item.id === evidenceId)?.transcript?.revision).toBe(2);
+    const reader = await again.signIn('INVESTIGATOR');
+    expect(TranscriptRevisionPageSchema.parse((await again.get(reader, transcript('/revisions'))).json()).items.map((entry) => entry.number)).toEqual([2, 1]);
   });
 });

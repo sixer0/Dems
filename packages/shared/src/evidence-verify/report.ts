@@ -27,6 +27,12 @@ import type { PackageVerifyResult } from './types';
  */
 export const DEVELOPMENT_KEY_SUBJECT_MARK = 'OU=DEVELOPMENT KEY - NOT FOR PRODUCTION';
 export const DEVELOPMENT_KEY_REPORT_LINE = 'Signed with a DEVELOPMENT key \u2014 not a production signature.';
+/**
+ * THE LINE WHEN THE KEY IS NOT ESTABLISHED (fix pass F-M7, R88-08): the signature, the manifest or
+ * its certificate did not verify (or the verifier could not read the certificate's subject), so
+ * whether the key is a development key is NOT said as a fact - neither way.
+ */
+export const SIGNING_KEY_NOT_ESTABLISHED_REPORT_LINE = 'Signing key: not established \u2014 the signature or its certificate did not verify.';
 
 /** True when a certificate subject text carries the development-key unit. */
 export function isDevelopmentKeySubject(subject: string): boolean {
@@ -43,12 +49,14 @@ export function verifyReportLines(result: PackageVerifyResult): readonly string[
   return Object.freeze([
     result.sources.report,
     ...result.sources.lines,
-    ...(result.signature.developmentKey === true ? [DEVELOPMENT_KEY_REPORT_LINE] : []),
+    ...(result.signature.developmentKey === true ? [DEVELOPMENT_KEY_REPORT_LINE] : result.signature.developmentKey === null ? [SIGNING_KEY_NOT_ESTABLISHED_REPORT_LINE] : []),
     integrityLineOf(result),
     ...result.checks.map((check) => `${check.id} ${check.name}: ${check.status}${check.failureClass === null ? '' : ` (${check.failureClass})`}${check.skipped === null ? '' : ` (${check.skipped})`}`),
     result.transcriptState.report,
     // D160: which model made the transcript, and whether the Core verified a file or repeats a server's word.
     ...(result.transcriptModel === null ? [] : [result.transcriptModel.report]),
     ...(result.interrupted ? ['Interrupted recording: the sealed durable prefix'] : []),
+    // What the format does not cover (R88-06): said on every report, never collapsed.
+    ...result.notices.map((notice) => notice.report),
   ]);
 }

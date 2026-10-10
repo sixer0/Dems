@@ -926,9 +926,32 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
   };
 }
 
-/** Slice 30 back from the registry rows, in id order (MR-3). */
-export function captureDevicesFromRows(rows: readonly CaptureDeviceRow[]): CaptureDevicesSlice {
-  return { devices: [...rows].sort((left, right) => compareIds(left.id, right.id)).map(captureDeviceFromRow) };
+/**
+ * Whether a stored registry row is in the device list of the running Core (review row 69, finding
+ * R69-03; C3 §2.6, ux §8f.3, R-11 AC-2: "in `REAL_PRODUCTION` operations 76 / 77 list 0 development
+ * devices"). The rule is the capture fence's (`storedDeviceListingOf`, the caller of
+ * `deviceSourceFieldsOf`); the mapping only applies it, because it is the one place where the
+ * stored rows become the slice every client reads. Absent: every row is listed, as in `SIMULATED`.
+ */
+export type CaptureDeviceListing = (device: Pick<CaptureDeviceRow, 'id' | 'kind' | 'adapterKind'>) => boolean;
+
+/**
+ * Slice 30 back from the registry rows, in id order (MR-3). A row the listing rule refuses is left
+ * out of the slice and stays stored: nothing here deletes or rewrites it, and the write-through
+ * never sees it (the state before and after a unit both lack it). A row in `keep` - a device the
+ * selector names - is never left out: an assigned development source in a production operation is
+ * the capture fence's refusal of the boot (`DEV_SOURCE_WITHOUT_FLAG`), not a state without it.
+ */
+export function captureDevicesFromRows(rows: readonly CaptureDeviceRow[], listing?: CaptureDeviceListing, keep: ReadonlySet<string> = NO_DEVICE_IDS): CaptureDevicesSlice {
+  const listed = listing === undefined ? rows : rows.filter((row) => keep.has(row.id) || listing(row));
+  return { devices: [...listed].sort((left, right) => compareIds(left.id, right.id)).map(captureDeviceFromRow) };
+}
+
+const NO_DEVICE_IDS: ReadonlySet<string> = new Set();
+
+/** The device ids the selector row names (its four slots). */
+export function selectorDeviceIds(row: Pick<CaptureConfigRow, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'>): ReadonlySet<string> {
+  return new Set([row.video01DeviceId, row.video02DeviceId, row.micPrimaryId, row.micStandbyId]);
 }
 
 function compareIds(a: string, b: string): number {

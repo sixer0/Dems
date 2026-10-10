@@ -1,6 +1,6 @@
 // The worker's handshake at boot (blueprint row 61; pair-58 F-10): started once, first frame read,
 // ended. Scripted channel and manual timers: nothing waits in real time and no process is started.
-import { CAPTURE_IPC_DEFAULTS, CAPTURE_PROTOCOL_VERSION, FrameViolation, WorkerMessageType, type WorkerMessage } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CAPTURE_PROTOCOL_VERSION, FrameViolation, LIBAVFORMAT_VERSION_MISMATCH, WorkerMessageType, type WorkerMessage } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { manualCaptureTimers } from '../../../../test/support/capture';
 import { WorkerDownCode, WorkerLaunchError, type WorkerChannelHandlers, type WorkerLaunch, type WorkerLauncher } from '../../types';
@@ -113,5 +113,33 @@ describe('probeWorkerHandshake', () => {
     };
     await expect(probeWorkerHandshake({ launcher, timers: manual.timers })).resolves.toEqual({ outcome: 'NONE', failure: HandshakeFailure.SPAWN_FAILED });
     expect(manual.armed()).toEqual([]);
+  });
+});
+
+// Fix pass F-M7c (controller decision D188 (a); fix F-M3, R63-07): a worker whose linked libavformat is not the one it
+// was verified against writes ONE frame INSTEAD of HELLO - `CRASH` with the code `LIBAVFORMAT_VERSION_MISMATCH` - and exits 70.
+describe('D188 (a): a worker on another media library is NAMED, not "no HELLO"', () => {
+  const crash = (code: string): WorkerMessage => ({ v: CAPTURE_PROTOCOL_VERSION, type: WorkerMessageType.CRASH, sessionId: null, code, signal: null, exitCode: 70 });
+
+  it('first frame CRASH LIBAVFORMAT_VERSION_MISMATCH: the handshake answers MEDIA_LIBRARY_MISMATCH (the exit that follows changes nothing)', async () => {
+    const manual = manualCaptureTimers();
+    const worker = scripted();
+    const probe = probeWorkerHandshake({ launcher: worker.launcher, timers: manual.timers });
+    worker.handlers().message(crash(LIBAVFORMAT_VERSION_MISMATCH));
+    worker.handlers().exit({ exitCode: 70, signal: null, spawnFailed: false });
+    await expect(probe).resolves.toEqual({ outcome: 'NONE', failure: HandshakeFailure.MEDIA_LIBRARY_MISMATCH });
+    expect(HandshakeFailure.MEDIA_LIBRARY_MISMATCH).toBe('MEDIA_LIBRARY_MISMATCH');
+  });
+
+  it('CONTROL: a CRASH with another code is still "its first frame is not HELLO"; an exit without a frame is still EXITED', async () => {
+    const manual = manualCaptureTimers();
+    const other = scripted();
+    const first = probeWorkerHandshake({ launcher: other.launcher, timers: manual.timers });
+    other.handlers().message(crash('OUT_OF_MEMORY'));
+    await expect(first).resolves.toEqual({ outcome: 'NONE', failure: HandshakeFailure.HELLO_EXPECTED });
+    const silent = scripted();
+    const second = probeWorkerHandshake({ launcher: silent.launcher, timers: manual.timers });
+    silent.handlers().exit({ exitCode: 70, signal: null, spawnFailed: false });
+    await expect(second).resolves.toEqual({ outcome: 'NONE', failure: HandshakeFailure.EXITED });
   });
 });

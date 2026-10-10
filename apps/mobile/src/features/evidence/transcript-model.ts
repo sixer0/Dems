@@ -6,7 +6,7 @@
  * |------|-------|
  * | The sealed machine transcript is IMMUTABLE: a revision never overwrites a segment. The pane shows the original and, beside it, the newest revision of that segment as DERIVED | `deriveSegments` |
  * | Speaker labels default to UNAVAILABLE: a label is shown only when the document says LABELLED and the segment carries one. No speaker is ever invented | `readTranscriptDocument` |
- * | The pane state is one of ASSEMBLED / PARTIAL / UNAVAILABLE / DISABLED | `paneStateOf` |
+ * | The pane state is one of ASSEMBLED / PARTIAL / UNAVAILABLE / DISABLED / UNKNOWN, and is the item summary's: never assumed (R80-01) | `paneStateOf`, `sealedWithoutDocument` |
  * | A revision is built on the CURRENT revision number (`baseRevision`); a mismatch is the Core's 409 | `revisionRequestOf`, `reviseRefusalOf` |
  * | An answer is read defensively: a document or a revision that cannot be read whole is not drawn in part | `readTranscriptDocument`, `readTranscriptRevisions` |
  */
@@ -135,17 +135,34 @@ export function readTranscriptRevisions(value: unknown): TranscriptRevision[] | 
   return revisions.sort((a, b) => b.number - a.number);
 }
 
-export type TranscriptPaneState = 'ASSEMBLED' | 'PARTIAL' | 'UNAVAILABLE' | 'DISABLED';
+export type TranscriptPaneState = 'ASSEMBLED' | 'PARTIAL' | 'UNAVAILABLE' | 'DISABLED' | 'UNKNOWN';
 
 /**
- * The state the pane names. DISABLED comes from the item's summary (transcription was turned off:
- * there is no document to ask for). With a document: PARTIAL when the summary says so, else
- * ASSEMBLED. Without one (not ready, failed, refused): UNAVAILABLE.
+ * The state the pane names IS THE STATE THE ITEM'S SUMMARY REPORTS - what the seal signed in the
+ * manifest (code review row 80, finding R80-01). Nothing is inferred from a document having arrived:
+ *
+ *   no summary            UNKNOWN ("Transcript state not reported"), with or without a document.
+ *                         NEVER ASSEMBLED: an item that reports no state has none a reader may assume;
+ *   DISABLED              transcription was turned off: there is no document to ask for;
+ *   PARTIAL               parts of the audio have no text - also when NO document was sealed
+ *                         (unavailable at the seal: `sealedWithoutDocument`);
+ *   READY + a document    ASSEMBLED - the only way to that word;
+ *   anything else         UNAVAILABLE (not ready, failed, refused, not loaded yet).
  */
 export function paneStateOf(summary: Pick<ItemTranscriptSummary, 'state'> | null, hasDocument: boolean): TranscriptPaneState {
-  if (summary?.state === 'DISABLED') return 'DISABLED';
-  if (!hasDocument) return 'UNAVAILABLE';
-  return summary?.state === 'PARTIAL' ? 'PARTIAL' : 'ASSEMBLED';
+  if (summary === null) return 'UNKNOWN';
+  if (summary.state === 'DISABLED') return 'DISABLED';
+  if (summary.state === 'PARTIAL') return 'PARTIAL';
+  return summary.state === 'READY' && hasDocument ? 'ASSEMBLED' : 'UNAVAILABLE';
+}
+
+/**
+ * True when the summary DECLARES that no transcript document was sealed: disabled by configuration,
+ * or PARTIAL without a hash (unavailable at the seal). Nothing is then asked of the Core - operation
+ * 84 could only refuse, and "not available yet" would promise a document that will never come.
+ */
+export function sealedWithoutDocument(summary: Pick<ItemTranscriptSummary, 'state' | 'sha256'> | null): boolean {
+  return summary !== null && (summary.state === 'DISABLED' || (summary.state === 'PARTIAL' && summary.sha256 === null));
 }
 
 export interface DerivedSegment {

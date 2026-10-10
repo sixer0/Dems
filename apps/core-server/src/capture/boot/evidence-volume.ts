@@ -26,7 +26,7 @@
  */
 import { closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, statSync, statfsSync, unlinkSync, writeSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import type { EvidenceVolumeFacts } from './checks';
+import { EVIDENCE_STORE_PRIVATE_FOLDERS, type EvidenceVolumeFacts, type PrivateFolderFacts } from './checks';
 
 const PROBE_PREFIX = '.dems-boot-probe.';
 const PRIVATE_DIRECTORY = 0o700;
@@ -63,6 +63,7 @@ export function probeEvidenceVolume(directory: string): EvidenceVolumeFacts {
     cleaned: false,
     totalBytes: null as number | null,
     freeBytes: null as number | null,
+    privateFolders: [] as PrivateFolderFacts[],
   };
   if (!facts.absolute) return facts;
 
@@ -75,6 +76,13 @@ export function probeEvidenceVolume(directory: string): EvidenceVolumeFacts {
   facts.ownerUid = status.uid;
   facts.mode = status.mode & 0o7777;
   if (!facts.directory) return facts;
+
+  // 1b. The hidden folders that hold plaintext (F-M7c), as they ARE: `lstat`, so a link is "not a
+  // directory"; nothing is created and nothing is changed here - a refusal is the operator's to act on.
+  for (const name of Object.keys(EVIDENCE_STORE_PRIVATE_FOLDERS)) {
+    const found = attempt(() => lstatSync(join(directory, ...name.split('/'))));
+    if (found !== null) facts.privateFolders.push({ name, directory: found.isDirectory(), ownerUid: found.uid, mode: found.mode & 0o7777 });
+  }
 
   const volume = attempt(() => statfsSync(directory));
   if (volume !== null) {

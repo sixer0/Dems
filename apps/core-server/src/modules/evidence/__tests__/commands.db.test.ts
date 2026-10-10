@@ -400,7 +400,8 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
     const body = response.json() as { exportId: string; evidenceId: string; status: string };
     // The answer of the LANDED op 42 (C3 §3, row 48): the job is QUEUED; the item itself moves to
     // the EXPORTED stage in the same transaction, as the state expectations below pin.
-    expect(body).toEqual({ exportId: 'EXP-000032', evidenceId: item.id, status: 'QUEUED' });
+    // R93-06 (fix F-M8): the job operation 87 polls is named in the answer.
+    expect(body).toEqual({ exportId: 'EXP-000032', evidenceId: item.id, status: 'QUEUED', jobId: 'EXPJ-000032' });
     expect(body.exportId).toMatch(EXPORT_ID_PATTERN);
     expectStatePosition(response, host);
     expect(host.engine.revision).toBe(effect.revisionBefore + 1);
@@ -426,7 +427,7 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
     const record = await owner.query('SELECT id, scope, evidence_id, operator_id, reason, destination, at::text AS at FROM public.exports WHERE id = $1', ['EXP-000032']);
     expect(record.rows).toEqual([{ id: 'EXP-000032', scope: 'EVIDENCE', evidence_id: item.id, operator_id: supervisorId, reason: 'Prosecutor request 17/X', destination: 'Encrypted drive KJ-04', at: String(at) }]);
     // The answer holds no file and no path.
-    expect(Object.keys(body).sort()).toEqual(['evidenceId', 'exportId', 'status']);
+    expect(Object.keys(body).sort()).toEqual(['evidenceId', 'exportId', 'jobId', 'status']);
     await expectChainIntact(app);
 
     // Measured round trips: one transaction on one connection, and no statement touches a track.

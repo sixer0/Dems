@@ -112,7 +112,8 @@ describe('a real worker process under the supervisor', () => {
   it('a KILLED worker that reported its first durable fragment is NOT started again: FAULTED, one CAPTURE_FAULT, no process, restarts allowed or not', async () => {
     const { supervisor, events, downs } = await realSupervisor({}, { args: [STUB_WORKER, '--durable'] });
     await supervisor.start(SESSION, capturePlan(SESSION));
-    await vi.waitFor(() => expect(supervisor.status()).toMatchObject({ durable: true, lastRecordSeq: 1 }), WAIT);
+    // Record 1 is the stub's interval of the start (fix pass F-M5: it speaks the audio source as the worker does); record 2 the durable fragment.
+    await vi.waitFor(() => expect(supervisor.status()).toMatchObject({ durable: true, lastRecordSeq: 2 }), WAIT);
     const first = pidOf(supervisor);
     process.kill(first, 'SIGKILL');
     await vi.waitFor(() => expect(supervisor.status().phase).toBe(CapturePhase.FAULTED), WAIT);
@@ -173,6 +174,35 @@ describe('a real worker process under the supervisor', () => {
   }, TEST_TIMEOUT_MS);
 });
 
+// Fix pass F-M5 (review R74-17, carried question 1): the process stub answers a switch AS THE REAL
+// WORKER DOES - the `AUDIO_SOURCE_INTERVAL` record of the switch BEFORE its `ACK` - so a test through
+// it exercises the real path of operation 81 (it used to acknowledge with no record: `SWITCH_NOT_REALISED`).
+describe('the stub speaks the switch of protocol 4 as the worker does', () => {
+  it('the interval of the start at T0; a switch resolves with the record of the microphone that now feeds the track; the role that feeds it already: no record; the end of the timeline at STOP', async () => {
+    const { supervisor } = await realSupervisor();
+    const records: CaptureEvent[] = [];
+    supervisor.on('record', (event) => void records.push(event));
+    const plan = capturePlan(SESSION);
+    await supervisor.start(SESSION, plan);
+    const standby = plan.mics.find((mic) => mic.role === 'STANDBY');
+    const primary = plan.mics.find((mic) => mic.role === 'PRIMARY');
+    const kinds = () => records.map((event) => (event.name === 'record' ? `${event.record.kind}${'reason' in event.record ? `:${String(event.record.reason)}` : ''}` : ''));
+    await vi.waitFor(() => expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START']), WAIT);
+    const first = await supervisor.switchAudioSource(SESSION, 'STANDBY');
+    expect(first).toMatchObject({ kind: 'AUDIO_SOURCE_INTERVAL', deviceId: standby?.deviceId, role: 'STANDBY', index: 2, reason: 'OPERATOR_SWITCH', sampleRateHz: 48_000 });
+    expect((first?.fromSample ?? 1) % 480).toBe(0);
+    expect(first?.correlationId).not.toBeNull();
+    // The role that feeds the track already: acknowledged, NO record (the worker's rule, `audio.c`).
+    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toBeNull();
+    const back = await supervisor.switchAudioSource(SESSION, 'PRIMARY');
+    expect(back).toMatchObject({ deviceId: primary?.deviceId, role: 'PRIMARY', index: 3 });
+    expect(back?.fromSample ?? 0).toBeGreaterThanOrEqual(first?.fromSample ?? 0);
+    await supervisor.stop(SESSION, 'STOPPED');
+    expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START', 'AUDIO_SOURCE_INTERVAL:OPERATOR_SWITCH', 'AUDIO_SOURCE_INTERVAL:OPERATOR_SWITCH', 'AUDIO_TIMELINE_END']);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: null });
+  }, TEST_TIMEOUT_MS);
+});
+
 describe('a listener that never returns, on a real process (navigator findings F-1, F-2, F-4)', () => {
   it('2 000 events against a stuck listener: the worker lives on, the queue stays at its limit, commands and STOP still work', async () => {
     const { supervisor, downs } = await realSupervisor({ eventQueueLimit: 8 }, { args: [STUB_WORKER, '--flood=2000'] });
@@ -186,7 +216,7 @@ describe('a listener that never returns, on a real process (navigator findings F
     expect(downs()).toEqual([]);
     expect(supervisor.status().queuedEvents).toBeLessThanOrEqual(8);
     expect(supervisor.status().heartbeatAgeMs).toBeLessThan(600);
-    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toBeNull();
+    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toMatchObject({ kind: 'AUDIO_SOURCE_INTERVAL', role: 'STANDBY', reason: 'OPERATOR_SWITCH' }); // F-M5: the stub writes the record of a switch before its ACK (it was `null`)
     await supervisor.stop(SESSION, 'STOPPED');
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: null });
   }, TEST_TIMEOUT_MS);

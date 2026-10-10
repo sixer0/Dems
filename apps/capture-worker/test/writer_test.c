@@ -22,6 +22,14 @@
  *   rules        a top-level box that is no fragment, a gap in the fragment numbers: refused
  *   tail         what is left after the last whole fragment at close is never written
  *   cipher seam  with a (toy) cipher both chains differ and each re-derives from its own bytes
+ *   size bound   (review R63-02) a fragment above `max_fragment_bytes` is refused BEFORE a byte of it is
+ *                written: the file keeps the fragments before it, no checkpoint is given for it. Built with
+ *                -DDEMS_PROOF_NO_FRAGMENT_BOUND (the rule off) THIS TEST FAILS on exactly the SIZE BOUND checks.
+ *   sync level   (review R63-09) on a volume that does not take the full sync the writer falls back to
+ *                fsync() and SAYS so (the level of the file is FSYNC, at the first checkpoint already); a file
+ *                whose first sync was full and whose later sync is not is a FAILED sync, never a quieter one.
+ *                Built with -DDEMS_PROOF_SILENT_SYNC_FALLBACK (the reporting before fix pass F-M3) THIS TEST
+ *                FAILS on exactly the SYNC LEVEL checks.
  */
 #include "../src/worker.h"
 
@@ -126,12 +134,13 @@ static size_t stream(Buf *b, uint8_t fill, size_t ends[NFRAG + 1]) {
 }
 
 /* ---------------------------------------------------------------- what the writer said */
-typedef struct { Checkpoint cp[64]; int n; char path[1024]; int name_at_first, part_at_first; long long size_at_callback[64]; } Seen;
+typedef struct { Checkpoint cp[64]; _Atomic int n; char path[1024]; int name_at_first, part_at_first; long long size_at_callback[64]; const Sink *sink; char level_at_first[16]; } Seen;
 
 static void on_durable(void *opaque, const Checkpoint *cp) {
     Seen *seen = opaque;
     struct stat st;
     if (cp->first) {
+        if (seen->sink) snprintf(seen->level_at_first, sizeof seen->level_at_first, "%s", sink_sync_level(seen->sink));
         seen->name_at_first = lstat(seen->path, &st) == 0;
         char cmd[1200];
         snprintf(cmd, sizeof cmd, "ls '%s'.*.part >/dev/null 2>&1", seen->path);
@@ -229,6 +238,13 @@ static int part_files(const char *dir) {
     snprintf(cmd, sizeof cmd, "test -z \"$(ls '%s' | grep '\\.part$')\"", dir);
     return system(cmd) != 0;
 }
+
+/* ---------------------------------------------------------------- the sync seam (review R63-09) */
+static _Atomic int sync_calls;
+static int sync_full_until;     /* the first N full syncs are taken; after them the volume answers ENOTSUP. 0: never taken */
+static int no_full_sync(int fd) { (void)fd; return atomic_fetch_add(&sync_calls, 1) < sync_full_until ? 0 : ENOTSUP; }
+static char sync_failure_code[64];
+static void on_sync_failure(void *opaque, const char *code, int averror) { (void)opaque; (void)averror; snprintf(sync_failure_code, sizeof sync_failure_code, "%s", code ? code : "(none)"); }
 
 /* ---------------------------------------------------------------- the fault seam */
 static int64_t fault_at;
@@ -380,9 +396,86 @@ int main(int argc, char **argv) {
         CHECK(seen.n == NFRAG && !memcmp(seen.cp[NFRAG - 1].plain_chain, run[0].cp[NFRAG - 1].plain_chain, 32), "cipher seam: the plaintext chain must be the chain of the unsealed run");
     }
 
+    /* ---- the size bound (review R63-02): a fragment above it is refused before a byte of it is written */
+    {
+        size_t bound = ends[3] - ends[2];                   /* exactly fragment 3: it is taken; fragment 4 is larger and is not */
+        CHECK(ends[4] - ends[3] > bound && ends[2] - ends[1] <= bound && ends[1] - ends[0] <= bound, "size bound: the test stream is not what the test assumes");
+        memset(&seen, 0, sizeof seen);
+        snprintf(path, sizeof path, "%s/bound.mp4", argv[1]);
+        snprintf(seen.path, sizeof seen.path, "%s", path);
+        sink_init(&s, path);
+        s.max_fragment_bytes = bound;
+        s.on_durable = on_durable; s.opaque = &seen;
+        int r = feed(&s, in.p, in.n);
+        CHECK(r == AVERROR(EFBIG) && s.fail_code && !strcmp(s.fail_code, "WRITER_FRAGMENT_TOO_LARGE"), "a fragment above the bound was not refused by name (%d, %s) (SIZE BOUND)", r, s.fail_code ? s.fail_code : "(none)");
+        sink_close(&s);
+        struct stat st;
+        long long size = lstat(path, &st) == 0 ? (long long)st.st_size : -1;
+        CHECK(size == (long long)ends[3], "size bound: the file is %lld bytes; it must end with the last fragment inside the bound, at %zu (SIZE BOUND)", size, ends[3]);
+        int inside = seen.n == 3;
+        for (int i = 0; i < seen.n; i++) inside = inside && (size_t)seen.cp[i].len <= bound;
+        CHECK(inside, "size bound: %d checkpoints were given, or one is above the bound of %zu bytes (SIZE BOUND)", seen.n, bound);
+        if (size == (long long)ends[3]) verify_against_file("size bound: the fragments before the refused one", path, &seen, 3, NULL);
+        /* CONTROL: the same stream with the bound at its largest fragment is written whole. */
+        memset(&seen, 0, sizeof seen);
+        snprintf(path, sizeof path, "%s/bound_ok.mp4", argv[1]);
+        snprintf(seen.path, sizeof seen.path, "%s", path);
+        sink_init(&s, path);
+        s.max_fragment_bytes = ends[NFRAG] - ends[NFRAG - 1];
+        s.on_durable = on_durable; s.opaque = &seen;
+        CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0 && seen.n == NFRAG, "size bound control: a stream inside the bound was not written whole (%d checkpoints)", seen.n);
+    }
+
+    /* ---- the sync level (review R63-09): what a sync really was is stated, never assumed */
+    {
+        /* this volume, no seam: the level of the file is known at its first checkpoint and is one of the two words */
+        memset(&seen, 0, sizeof seen);
+        snprintf(path, sizeof path, "%s/sync_plain.mp4", argv[1]);
+        snprintf(seen.path, sizeof seen.path, "%s", path);
+        sink_init(&s, path);
+        CHECK(!strcmp(sink_sync_level(&s), "NOT_YET") || !strcmp(sink_sync_level(&s), sink_sync_wanted()), "sync level: a file that was never synced claims %s", sink_sync_level(&s));
+        seen.sink = &s;
+        s.on_durable = on_durable; s.opaque = &seen;
+        CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0, "sync level: the plain run failed");
+        CHECK(!strcmp(seen.level_at_first, "F_FULLFSYNC") || !strcmp(seen.level_at_first, "FSYNC"), "sync level: at the first checkpoint the level reads '%s'", seen.level_at_first);
+        /* a volume that does not take the full sync: fsync() is used, every checkpoint is given, and the level SAYS FSYNC */
+        sink_full_sync_hook = no_full_sync;
+        sync_full_until = 0;
+        atomic_store(&sync_calls, 0);
+        memset(&seen, 0, sizeof seen);
+        snprintf(path, sizeof path, "%s/sync_fallback.mp4", argv[1]);
+        snprintf(seen.path, sizeof seen.path, "%s", path);
+        sink_init(&s, path);
+        seen.sink = &s;
+        s.on_durable = on_durable; s.opaque = &seen;
+        CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0 && seen.n == NFRAG, "sync level: on a volume without the full sync the writer must still write and checkpoint (%d checkpoints)", seen.n);
+        CHECK(atomic_load(&sync_calls) >= 2, "sync level: the seam was not asked (%d calls): the test cannot fail", atomic_load(&sync_calls));
+        CHECK(!strcmp(seen.level_at_first, "FSYNC"), "the fallback was silent: at the first checkpoint the level reads '%s', the volume gave FSYNC (SYNC LEVEL)", seen.level_at_first);
+        CHECK(!strcmp(sink_sync_level(&s), "FSYNC"), "the fallback was silent: the file's level reads '%s', the volume gave FSYNC (SYNC LEVEL)", sink_sync_level(&s));
+        /* the first sync (data + directory) is full, every later one is not: a FAILED sync, no checkpoint, never a quieter level */
+        sync_full_until = 2;
+        atomic_store(&sync_calls, 0);
+        sync_failure_code[0] = 0;
+        memset(&seen, 0, sizeof seen);
+        snprintf(path, sizeof path, "%s/sync_changed.mp4", argv[1]);
+        snprintf(seen.path, sizeof seen.path, "%s", path);
+        sink_init(&s, path);
+        seen.sink = &s;
+        s.on_durable = on_durable; s.on_sync_failure = on_sync_failure; s.opaque = &seen;
+        CHECK(feed(&s, in.p, ends[1]) == 0, "sync level: the first fragment was refused");
+        for (int i = 0; i < 2000 && atomic_load(&seen.n) < 1; i++) usleep(1000);       /* the first batch (fragment 1) is synced and named */
+        CHECK(atomic_load(&seen.n) == 1 && !strcmp(seen.level_at_first, "F_FULLFSYNC"), "sync level: the first fragment is not durable at the full level (%d checkpoints, '%s')", atomic_load(&seen.n), seen.level_at_first);
+        feed(&s, in.p + ends[1], in.n - ends[1]);
+        int closed = sink_close(&s);
+        CHECK(closed < 0 && !strcmp(sync_failure_code, "WRITER_SYNC_LEVEL_CHANGED"), "a weaker sync of the same file was taken quietly: close %d, failure '%s' (SYNC LEVEL)", closed, sync_failure_code);
+        CHECK(atomic_load(&seen.n) == 1, "a checkpoint was given for a fragment whose sync was weaker than the file's stated level: %d checkpoints, expected 1 (SYNC LEVEL)", atomic_load(&seen.n));
+        CHECK(!strcmp(sink_sync_level(&s), "F_FULLFSYNC"), "sync level: the stated level of the file changed to '%s' (SYNC LEVEL)", sink_sync_level(&s));
+        sink_full_sync_hook = NULL;
+    }
+
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", argv[1]);
     if (system(cmd)) return 2;
     if (failures) { printf("writer_test: %d check(s) FAILED\n", failures); return 1; }
-    printf("writer_test: all checks hold (%d fragments: chains re-derived from the file with another SHA-256, two runs equal, sync level %s; short and failed writes truncate to the last good length; cipher seam)\n", NFRAG, sink_sync_level());
+    printf("writer_test: all checks hold (%d fragments: chains re-derived from the file with another SHA-256, two runs equal, sync wanted %s and stated per file; short and failed writes truncate to the last good length; cipher seam; size bound; sync level)\n", NFRAG, sink_sync_wanted());
     return 0;
 }

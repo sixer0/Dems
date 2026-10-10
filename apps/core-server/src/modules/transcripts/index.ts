@@ -19,7 +19,7 @@ import { registerRevisionHeadsBootStep } from './heads';
 import { registerTranscriptRoutes } from './routes';
 
 export * from './store';
-export { TRANSCRIPT_HEADS_BOOT_STEP, TRANSCRIPT_HEADS_NOT_READ, TRANSCRIPT_HEAD_NOT_PUBLISHED, publishRevisionHeads } from './heads';
+export { TRANSCRIPT_HEADS_BOOT_STEP, TRANSCRIPT_HEADS_NOT_READ, TRANSCRIPT_HEAD_NOT_PUBLISHED, publishRevisionHeads, reconcileRevisionLists } from './heads';
 export {
   REVISION_REASON_MAX,
   REVISION_REASON_MIN,
@@ -35,6 +35,7 @@ export {
 } from './revision-body';
 export {
   REVISION_UNIT_LABEL,
+  RevisionFilesCode,
   TRANSCRIPTS_SOURCE,
   TRANSCRIPT_OPERATION_IDS,
   TranscriptReason,
@@ -42,7 +43,9 @@ export {
   provideRevisionSigner,
   reconciled,
   registerTranscriptRoutes,
+  settlementLines,
   type RevisionSignerLoader,
+  type SettlementLine,
   type TranscriptOperationId,
 } from './routes';
 

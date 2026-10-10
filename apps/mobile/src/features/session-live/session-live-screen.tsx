@@ -76,6 +76,7 @@ import {
   type MonitorArrangement,
 } from './session-live.math';
 import { StatusStrip } from './status-strip';
+import { OpenLocalSourcesOffScreen } from '@/features/capture-selector/open-local-sources';
 import {
   useMonitorActions,
   useMonitorCameras,
@@ -325,6 +326,8 @@ export function SessionLiveScreen() {
           <ConnectionBanner />
           {/* Row 139 (ux §8e.2 "C, degraded"): one camera of two connected. Drawn from the Core's alert; cleared by the Core only. */}
           <CaptureStartNotice />
+          {/* Fix F-M4 (R69-02): the "is on" line of an open local device that no tile draws (the camera of the track not on screen). */}
+          <OpenLocalSourcesOffScreen />
         </View>
         <MonitorBody
           arrangement={arrangement}

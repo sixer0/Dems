@@ -240,6 +240,7 @@ describe('what the module depends on', () => {
     }
     // `../../capture-notices`: the gate of a pre-check run (task 3 row 133; C3 §3.1).
     // `../../capture-session`: the capture of a real recording and operation 81 (task 3 row 71).
-    expect([...imported].sort()).toEqual(['../../capture-notices', '../../capture-session', '../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard']);
+    // `../../sealing-host`: the retry ON DEMAND of a failed seal by the recovery operation (fix pass F-M7b, R88-02 (a)).
+    expect([...imported].sort()).toEqual(['../../capture-notices', '../../capture-session', '../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard', '../../sealing-host']);
   });
 });

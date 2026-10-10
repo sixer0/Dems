@@ -25,7 +25,7 @@ import { CLOCK_START, standInDatabase, type StandInDatabase } from '../../../../
 import { ANONYMOUS_PRINCIPAL, type Principal } from '../../authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { throttleControl } from '../../throttle';
-import { EVIDENCE_MEDIA_ROUTE_URL, EVIDENCE_MEDIA_SESSION_OPERATION, EVIDENCE_MEDIA_STREAM_ID, REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
+import { EVIDENCE_EXPORT_DOWNLOAD_ID, EVIDENCE_EXPORT_DOWNLOAD_URL, EVIDENCE_EXPORT_JOB_OPERATION, EVIDENCE_MEDIA_ROUTE_URL, EVIDENCE_MEDIA_SESSION_OPERATION, EVIDENCE_MEDIA_STREAM_ID, REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
 import { MALFORMED_JSON, recordPassed, type PassedRequest } from '../../../../test/support/guard';
 
 let app: FastifyInstance;
@@ -117,6 +117,15 @@ describe('the routes the server registers, whichever modules have landed', () =>
         expect(rule.denial).not.toBeNull();
         continue;
       }
+      if (rule.operationId === EVIDENCE_EXPORT_DOWNLOAD_ID) {
+        // Fix pass F-M8, ruling D178: the export download route, the third route outside the
+        // registry. Its rule is the rule of operation 87 at its own method and path.
+        const job = guard.rules.ruleOf(EVIDENCE_EXPORT_JOB_OPERATION);
+        expect(rule).toBe(guard.rules.ruleAt('GET', EVIDENCE_EXPORT_DOWNLOAD_URL));
+        expect(rule).toEqual({ ...job, operationId: EVIDENCE_EXPORT_DOWNLOAD_ID, method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, idPattern: null });
+        expect(rule.denial).not.toBeNull();
+        continue;
+      }
       expect(contract).toContain(rule.operationId);
       expect(guard.rules.ruleOf(rule.operationId)).toBe(rule);
       const operation = CORE_API_OPERATIONS.find((candidate) => candidate.operationId === rule.operationId);
@@ -125,7 +134,8 @@ describe('the routes the server registers, whichever modules have landed', () =>
     }
     // What this row's own tests call is among them. Nothing else is named, and nothing is counted.
     for (const operationId of NEEDED_HERE) expect(ids).toContain(operationId);
-    expect(ids.length).toBeLessThanOrEqual(contract.length + 2);
+    // The registry, and the three routes outside it: the realtime channel, the evidence media route, the export download route (fix F-M8).
+    expect(ids.length).toBeLessThanOrEqual(contract.length + 3);
   });
 
   it('the walk of the router finds exactly the routes the boot check was shown, and passes', () => {

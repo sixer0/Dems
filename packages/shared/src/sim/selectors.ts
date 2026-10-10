@@ -6,6 +6,7 @@
  * Derived values live here, not in the state, so they can never disagree with their
  * sources (one event stream, one dataset: 04 §9 #12-#18).
  */
+import { captureFaultSentence } from './capture-fault-wording';
 import { SessionState, type AudioTrackId, type TimeSource, type TrackId } from '../domain';
 import { findOperatorById, lockoutStatus, roleHas, type LockoutStatus } from './auth';
 import { startOfWibDay, wibDateParts } from './clock';
@@ -355,7 +356,8 @@ export function systemStatus(s: SimState): SystemStatusDetail {
   // Schema v2 (SH-03): a stalled capture file is critical; a silent mic only warns and the operator
   // decides (OD-11 — the Core never switches on its own).
   if (s.faults.active.some((fault) => fault.kind === 'CAPTURE_FAULT')) {
-    critical('CAPTURE_FAULT', 'Capture fault: a recording file stopped growing');
+    // Review R74-03: the words of THAT fault (its alert was worded by its reason at the raise), never one sentence for every cause.
+    critical('CAPTURE_FAULT', s.alerts.findLast((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')?.message ?? captureFaultSentence(null, null));
   }
   if (s.faults.active.some((fault) => fault.kind === 'MIC_SILENT')) {
     warning('MIC_SILENT', 'Microphone silent: below the silence level for 10 s');

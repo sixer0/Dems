@@ -791,7 +791,9 @@ describe('V-13 certificate', () => {
     writeFileSync(built.path(PackageFile.CERTIFICATE), throwAwaySigner().certificate.pemText);
     const result = await verify(built);
     expectFailed(result, ['V-09', 'V-13']);
-    expect(codes(result, 'V-13')).toEqual(['CERTIFICATE_HASH_MISMATCH', 'CERTIFICATE_HASH_MISMATCH']);
+    // Fix pass F-M7 (R88-08): the other certificate's own serial number is not manifest field 26 either (two throw-away keys share the subject text).
+    expect(codes(result, 'V-13')).toEqual(['CERTIFICATE_HASH_MISMATCH', 'CERTIFICATE_HASH_MISMATCH', 'CERTIFICATE_SUBJECT_MISMATCH']);
+    expect(check(result, 'V-13').findings.filter((finding) => finding.code === 'CERTIFICATE_SUBJECT_MISMATCH').map((finding) => finding.member)).toEqual(['device.certificate.serialNumber']);
     expect(check(result, 'V-13').failureClass).toBe('TAMPERED');
   });
 

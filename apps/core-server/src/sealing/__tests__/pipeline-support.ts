@@ -30,6 +30,7 @@ import {
   finalizeTranscript,
   type AssembledTranscriptSource,
   type FinalizedTranscript,
+  type KeptPlaintextNote,
   type SessionFragmentSealer,
   type SealSessionFacts,
   type SealingHook,
@@ -232,6 +233,8 @@ export interface RecordedEngine {
   /** Calls of `completeSeal`, the ones answered ALREADY_SEALED included. */
   completeCalls: number;
   refuseProgress: boolean;
+  /** F-M7c: the notices of kept plaintext the engine took (one per session, like the door). */
+  kept?: KeptPlaintextNote[];
 }
 
 export interface Harness {
@@ -335,9 +338,16 @@ export function harnessOf(recording: Recording, options: HarnessOptions = {}): H
         return 'SEALED';
       },
       isSealed: (sessionId, manifestSha256) => engine.sealed.some((entry) => entry.input.sessionId === sessionId && entry.input.manifestSha256 === manifestSha256),
+      async noteKeptPlaintext(note) {
+        const kept = (engine.kept ??= []);
+        if (kept.some((entry) => entry.sessionId === note.sessionId)) return false;
+        kept.push(structuredClone(note) as KeptPlaintextNote);
+        return true;
+      },
     },
     packageDir: () => recording.packageDir,
     stagingDir: () => recording.stagingDir,
+    quarantineDir: (sessionId) => join(recording.mediaDir, '.quarantine', sessionId),
     log,
     now: clock.now,
     timer: clock.timer,

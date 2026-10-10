@@ -113,7 +113,9 @@ function CandidateStatus({ candidate, registeredLabel }: { candidate: CaptureCan
       {candidate.lastTest === null ? null : (
         // The outcome word and the Core's time of the last test of this row. A fact; never a value that was typed.
         <Chip size="sm" variant="soft" color={OUTCOME_TONE[candidate.lastTest.outcome]} data-testid={`camera-search-last-test-${candidate.candidateId}`} data-outcome={candidate.lastTest.outcome}>
-          <Chip.Label>{t('devices.search.lastTest', { outcome: t(`common.captureConnect.outcomeShort.${candidate.lastTest.outcome}`), time: formatClock(candidate.lastTest.testedAt) })}</Chip.Label>
+          <Chip.Label>{t('devices.search.lastTest', { // R69-13: a camera whose sign-in method is not answered was sent no password - never "Password refused".
+            outcome: candidate.lastTest.reason === 'SCHEME_NOT_ALLOWED' ? t('common.captureConnectTarget.schemeNotAllowedShort') : t(`common.captureConnect.outcomeShort.${candidate.lastTest.outcome}`),
+            time: formatClock(candidate.lastTest.testedAt) })}</Chip.Label>
         </Chip>
       )}
     </div>

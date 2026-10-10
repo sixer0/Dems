@@ -245,12 +245,25 @@ static void *beat_main(void *arg) {
     }
 }
 
-int ipc_start(int heartbeat_ms) {
+/* What HELLO names. A PROOF build - a build with ANY of the switches of worker.h (review R63-06) - says so:
+ * the Core starts no worker whose version carries the mark. */
+#ifdef DEMS_PROOF_BUILD
+#define HELLO_WORKER_VERSION WORKER_VERSION "-PROOF"
+#else
+#define HELLO_WORKER_VERSION WORKER_VERSION
+#endif
+
+int ipc_start(int heartbeat_ms, const char *refusal) {
     beat_ms = heartbeat_ms;
     if (pthread_create(&writer_th, NULL, writer_main, NULL)) return -1;
     writer_started = 1;
+    if (refusal) {
+        /* The worker refuses to start (review R63-07): ONE frame instead of HELLO, and no heartbeat. */
+        ipc_send("\"type\":\"CRASH\",\"sessionId\":null,\"code\":\"%s\",\"signal\":null,\"exitCode\":%d", refusal, EXIT_FATAL);
+        return 0;
+    }
     /* HELLO is the first frame, before any heartbeat. */
-    ipc_send("\"type\":\"HELLO\",\"protocolVersion\":%d,\"workerVersion\":\"%s\"", CAPTURE_PROTOCOL_VERSION, g_mux_extra ? WORKER_VERSION "-PROOF" : WORKER_VERSION);
+    ipc_send("\"type\":\"HELLO\",\"protocolVersion\":%d,\"workerVersion\":\"%s\"", CAPTURE_PROTOCOL_VERSION, HELLO_WORKER_VERSION);
     if (pthread_create(&beat_th, NULL, beat_main, NULL)) return -1;
     beat_started = 1;
     return 0;

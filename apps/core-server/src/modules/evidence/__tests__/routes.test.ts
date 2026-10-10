@@ -104,6 +104,8 @@ async function build(failure: Error = Object.assign(new Error(`connect refused $
     epoch: EPOCH,
     revision: REVISION,
     running: true,
+    // Fix pass F-M8: operation 42 asks the committed state whether the item has a sealed package here. This stub holds none.
+    state: () => ({ audit: { rows: [] }, evidence: [] }),
     async command(principal: Principal, action: string, ...args: unknown[]) {
       const call = { principal, action, args };
       calls.push(call);
@@ -665,7 +667,8 @@ describe('operation 42 exportEvidence: the hosted action `exportEvidence`', () =
     expect(response.statusCode).toBe(202);
     // The landed schema is `EvidenceExportAcceptedSchema` (op-42, C3 §2.4): the export is QUEUED
     // for the packaging worker, not EXPORTED at answer time (rows 48/51a re-pinned the literal).
-    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'QUEUED' });
+    // R93-06 (fix F-M8): the job operation 87 polls is named, as the contract and the simulator have it.
+    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'QUEUED', jobId: 'EXPJ-000032' });
     expect(validateCoreApiResponse('exportEvidence', 202, response.json())).toEqual({ ok: true });
     expect(response.headers[EPOCH_HEADER_NAME]).toBe(String(EPOCH));
     expect(response.headers[REVISION_HEADER_NAME]).toBe(String(REVISION));

@@ -40,7 +40,7 @@
  * Nothing here logs. A failure carries a code, never a path, a value or key material.
  */
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, open, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { EXPORT_ID_PATTERN } from '@dems/shared/api';
 import { PackageFile, cameraFilePath, exportArchivePath, parseManifestV2, sha256Hex, type ManifestFragment, type ManifestTrack, type ManifestV2 } from '@dems/shared/evidence-package';
@@ -94,6 +94,10 @@ export const ExportFailureCode = {
   EXPORT_REQUEST_NOT_FOUND: 'EXPORT_REQUEST_NOT_FOUND',
   /** The server stopped while the job ran (reported for a job found unfinished after a restart). */
   EXPORT_INTERRUPTED: 'EXPORT_INTERRUPTED',
+  /** A request was accepted and no job could be queued for it (the item or its package was not found). */
+  EXPORT_NOT_QUEUED: 'EXPORT_NOT_QUEUED',
+  /** The item has a sealed package in this Core's store and the export jobs are not composed: nothing is exported. */
+  EXPORT_JOBS_NOT_AVAILABLE: 'EXPORT_JOBS_NOT_AVAILABLE',
   EXPORT_FAILED: 'EXPORT_FAILED',
 } as const;
 export type ExportFailureCode = (typeof ExportFailureCode)[keyof typeof ExportFailureCode];
@@ -346,6 +350,12 @@ export async function exportPackage(
     } catch {
       throw new ExportFailure(ExportFailureCode.SOURCE_UNREADABLE);
     }
+    // A composite is made of TWO camera files; a package of one camera has none to compose. Refused
+    // here, BEFORE anything is written (its PACKAGE export is whole).
+    if (withComposite && manifest.tracks.length < 2) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
+    // R93-19: the manifest that is read AGAIN here is held to the digest of record a second time
+    // (the verification above read its own copy): a file swapped between the two reads is not exported.
+    if (manifest.manifestSha256 !== item.manifestSha256 || manifest.evidenceId !== item.evidenceId) throw new ExportFailure(ExportFailureCode.SOURCE_VERIFY_FAILED);
     const listed = await reader.list(VERIFY_MAX_LISTED_FILES);
     if (listed === null) throw new ExportFailure(ExportFailureCode.SOURCE_UNREADABLE);
     const cameraPaths = new Set<string>(manifest.tracks.map((track) => cameraFilePath(track.trackId)));
@@ -409,7 +419,8 @@ export async function exportPackage(
     let composite: ExportManifest['composite'] = null;
     if (encoder !== null) {
       const [first, second] = manifest.tracks;
-      if (first === undefined || second === undefined) throw new ExportFailure(ExportFailureCode.SOURCE_VERIFY_FAILED);
+      // A composite is made of TWO camera files; a package of one camera has none to compose (its PACKAGE export is whole).
+      if (first === undefined || second === undefined) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
       const sourceOf = (track: ManifestTrack, index: number): CompositeSource => ({
         trackId: track.trackId,
         read: () => decryptedCameraFile(reader, opener, track, manifest.files[index]?.fragments ?? [], chunkBytes),
@@ -499,17 +510,42 @@ export async function exportPackage(
 
     // The names of spec §A.2 hold the export that was made last. A failure here fails the export
     // as a whole (the three files of this run are removed again): an export whose hand-out names
-    // could not be written is not reported as complete.
-    for (const [bytes, name] of [
-      [manifestBytes, PackageFile.EXPORT_MANIFEST],
-      [signatureBytes, PackageFile.EXPORT_MANIFEST_SIGNATURE],
-    ] as const) {
+    // could not be written is not reported as complete. R93-10: the PAIR is kept consistent - both
+    // partials are written first, then both are named; when a name fails, a name already given is
+    // put back to what it held before this run (or removed, when it held nothing), so the folder
+    // never keeps the manifest of an export whose files were removed beside another export's signature.
+    const latest = [
+      { bytes: manifestBytes, name: PackageFile.EXPORT_MANIFEST },
+      { bytes: signatureBytes, name: PackageFile.EXPORT_MANIFEST_SIGNATURE },
+    ] as const;
+    const previous: (Buffer | null)[] = [];
+    for (const { name } of latest) {
+      const facts = await lstat(place(name)).catch(() => null);
+      previous.push(facts !== null && facts.isFile() ? await readFile(place(name)) : null);
+    }
+    const latestPartials: string[] = [];
+    for (const { bytes, name } of latest) {
       const latestPartial = place(`${name}.${request.exportId}${PARTIAL}`);
       await rm(latestPartial, { force: true });
       await writeFile(latestPartial, bytes, { flag: 'wx', mode: 0o600 });
       created.push(latestPartial);
-      await rename(latestPartial, place(name));
-      created.pop();
+      latestPartials.push(latestPartial);
+    }
+    let named = 0;
+    try {
+      for (const [index, { name }] of latest.entries()) {
+        await rename(latestPartials[index] as string, place(name));
+        created.splice(created.indexOf(latestPartials[index] as string), 1);
+        named += 1;
+      }
+    } catch (error) {
+      for (let index = 0; index < named; index += 1) {
+        const name = latest[index]?.name as string;
+        const before = previous[index] ?? null;
+        await rm(place(name), { force: true }).catch(() => undefined);
+        if (before !== null) await writeFile(place(name), before, { flag: 'wx', mode: 0o600 }).catch(() => undefined);
+      }
+      throw error;
     }
     onProgress(100);
 

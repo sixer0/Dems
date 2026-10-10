@@ -18,7 +18,7 @@
 // seconds. WHAT IS NOT: the sources (generated), the tablet link (set through the engine, no
 // tablet), and in case (b) the death of the Core (see there).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PackageFile, parseManifestV2 } from '@dems/shared/evidence-package';
 import { OPERATORS } from '@dems/shared/sim';
@@ -144,6 +144,8 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   const evidenceId = sessionOf(c)?.evidenceId ?? '';
   const item = c.app.engine.state().evidence.find((entry) => entry.id === evidenceId);
   expect(item).toMatchObject({ sessionId, status: 'SEALED', integritySource: 'REAL', manifestVersion: 2, developmentSources: true, signature: { algorithm: 'Ed25519', simulated: false } });
+  // R80-01: the seal wrote the item's transcript summary - here the declared absence of a session whose snapshot disables STT.
+  expect(item?.transcript).toEqual({ state: 'DISABLED', sha256: null, machineTranscriptHash: null, labelsStatus: null, revision: 0, backendUnreachable: false });
 
   // The package folder: the sealed camera files are there, the plaintext recordings are gone.
   const folder = `${fixture.mediaStoreDir}/SESSION-${sessionId}`;
@@ -176,6 +178,8 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   expect(verified.statusCode, verified.body).toBe(200);
   const body = verified.json();
   // The report of the run, for the runner's record (codes, check IDs and counts: no value of evidence).
+  // The output folder is made when it is not there (fix pass F-M7: the run used to fail on a missing folder after the work was done).
+  if (process.env.DEMS_SEAL_E2E_OUT !== undefined) mkdirSync(process.env.DEMS_SEAL_E2E_OUT, { recursive: true });
   if (process.env.DEMS_SEAL_E2E_OUT !== undefined) writeFileSync(`${process.env.DEMS_SEAL_E2E_OUT}/verify-${sessionId}-${Date.now()}.json`, JSON.stringify({ interruptedExpected: interrupted, status: verified.statusCode, ok: body.ok, overall: body.overall, interrupted: body.interrupted, sources: body.sources, transcriptState: body.transcriptState, failedFragmentCount: body.failedFragmentCount, checks: body.checks }, null, 1));
   expect(body).toMatchObject({ evidenceId, ok: true, overall: 'PASS', interrupted, sources: { development: true } });
   expect(body.checks).toHaveLength(15);
@@ -252,5 +256,63 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
     const cookie = await second.cookie();
     await sealedAndVerified(second, cookie, sessionId, fixture, true);
     console.info(`[row82b e2e b] session ${sessionId}: fragments per file ${(await fragmentRows(second, sessionId)).join(' / ')}`);
+  }, 300_000);
+
+  // Fix pass F-M7b (review R88-02 (c); rulings D178 (2), D183): THE TERMINAL OUTCOME in a running Core.
+  it('(c) a session of which NO camera file can be sealed -> RECOVERY ends it UNSEALABLE: recordings in the quarantine, one CRITICAL alert + audit row, no open session, a NEW session is created, and the next start lists the quarantine and retries nothing', async () => {
+    const fixture = fresh('fm7b-c');
+    const target = await db.another({ template: 'seed', slug: 'fm7b_e2e_c' });
+    const first = await core(target, fixture);
+    const sessionId = await record(first, await first.cookie(), 6);
+    const pids = execFileSync('/usr/bin/pgrep', ['-f', `${WORKER} --log ${fixture.dataDir}/`], { encoding: 'utf8' }).trim().split('\n').map(Number);
+    expect(pids).toHaveLength(1);
+    process.kill(pids[0] as number, 'SIGKILL');
+    await first.app.close();
+    await sessionCapture(first.app).idle().catch(() => {});
+    expect((await target.ownerPool().query('SELECT 1 FROM public.recording_fragments WHERE session_id = $1', [sessionId])).rowCount).toBeGreaterThan(0);
+    // BOTH recordings lose everything after their first 64 bytes: no file holds a whole fragment any more, while the rows say they recorded.
+    const folder = `${fixture.mediaStoreDir}/SESSION-${sessionId}`;
+    for (const name of ['VIDEO-01.mp4', 'VIDEO-02.mp4']) {
+      expect(existsSync(`${folder}/${name}`)).toBe(true);
+      truncateSync(`${folder}/${name}`, 64);
+    }
+
+    const second = await core(target, fixture);
+    await until('the session is ended', 60_000, () => (second.app.engine.state().session === null ? true : null), () => ({ state: second.app.engine.state().session?.state, steps: second.app.engine.state().session?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(second.app).lastOutcome(), codes: codes(second).slice(-15) }));
+    await sealingHost(second.app).settled();
+    expect(sealingHost(second.app).lastOutcome()).toMatchObject({ status: 'FAILED', sessionId, code: 'NOTHING_SEALABLE' });
+    const state = second.app.engine.state();
+    expect(state.sessionHistory[0]).toMatchObject({ id: sessionId, outcome: 'INCOMPLETE', evidenceId: null });
+    expect(state.evidence.some((item) => item.sessionId === sessionId)).toBe(false);
+    expect(state.alerts.filter((alert) => alert.params?.reason === 'UNSEALABLE')).toMatchObject([{ kind: 'SYSTEM', severity: 'CRITICAL', active: true, target: sessionId, params: { cause: 'NOTHING_SEALABLE', sessionId } }]);
+    const audit = (await second.owner.query<{ type: string; severity: string; details: Record<string, unknown> }>("SELECT type, severity, details FROM public.audit_log WHERE session_id = $1 AND type = 'SESSION_INCOMPLETE'", [sessionId])).rows;
+    expect(audit).toMatchObject([{ severity: 'CRITICAL', details: { reason: 'UNSEALABLE', cause: 'NOTHING_SEALABLE' } }]);
+    // MOVED, never deleted: both files, owner-only, in the quarantine; nothing of the session in its folder.
+    const kept = `${fixture.mediaStoreDir}/.quarantine/${sessionId}`;
+    for (const name of ['VIDEO-01.mp4', 'VIDEO-02.mp4']) {
+      expect(statSync(`${kept}/${name}`).size).toBe(64);
+      expect(statSync(`${kept}/${name}`).mode & 0o077).toBe(0);
+    }
+    expect(statSync(kept).mode & 0o077).toBe(0);
+    expect(existsSync(folder)).toBe(false);
+    expect((await second.owner.query<{ error_code: string | null }>("SELECT error_code FROM public.sealing_jobs WHERE session_id = $1 AND status = 'FAILED'", [sessionId])).rows).toEqual([{ error_code: 'UNSEALABLE' }]);
+
+    // THE CORE IS FREE: a new session is created.
+    const cookie = await second.cookie();
+    const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')!;
+    const created = await second.post('/api/v1/session', cookie, { caseNumber: 'LP/2026/1010-0083', subjectType: 'SAKSI', subjectName: 'Generated Subject', investigatorId: investigator.id, room: 'Interview Room 1', profileId: 'STANDARD_1080P25' });
+    expect([200, 201], created.body).toContain(created.statusCode);
+    const next = sessionOf(second)?.id ?? '';
+    expect(next).not.toBe(sessionId);
+    expect((await second.post(`/api/v1/session/${next}/cancel`, cookie)).statusCode).toBe(204);
+    await second.app.close();
+
+    // THE NEXT START: the quarantine is listed in one line, and nothing is retried.
+    const third = await core(target, fixture);
+    await sealingHost(third.app).settled();
+    expect(codes(third)).toContain('SEALING_QUARANTINE_HOLDS_SESSIONS');
+    expect(sealingHost(third.app).lastOutcome()).toBeNull();
+    expect(third.app.engine.state().session).toBeNull();
+    console.info(`[fm7b e2e c] session ${sessionId}: ended UNSEALABLE, quarantine ${kept}`);
   }, 300_000);
 });

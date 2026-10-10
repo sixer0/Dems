@@ -130,11 +130,11 @@ describe('the confirmed switch (ux §3.2 steps 2-4; G4; OD-09)', () => {
     expect(details.fromInput ?? details.fromInputId).toBe('MIC-01');
     expect(details.toInput ?? details.toInputId).toBe('MIC-02');
     expect(Object.keys(details)).not.toContain('trigger');
-    // ROW-71 (D105): THIS assertion follows row 71. Today the simulator writes `deviceId` (the mic's
-    // device). The contract names `sendingDeviceId` (the paired device that sent the command, E-30),
-    // plus `fromMs` / `toMs`: when row 71 aligns the simulator, replace this line with
-    // `expect(Object.keys(details).sort()).toEqual(['fromInput', 'fromMs', 'sendingDeviceId', 'toInput', 'toMs'])`.
-    expect('sendingDeviceId' in details || 'deviceId' in details).toBe(true);
+    // Fix pass F-M5 (review R74-05; D105 "the contract wins"): the simulator writes the contract's keys
+    // (C3 §5.2) with the media times. It wrote `deviceId` (the MICROPHONE's device), which the contract
+    // does not name. `sendingDeviceId` (the paired device that sent a command, E-30) is added by the
+    // Core for a command a device sent; the in-app simulator has no sending device and writes none.
+    expect(Object.keys(details).sort()).toEqual(['fromInput', 'fromMs', 'toInput', 'toMs']);
 
     fireEvent.press(screen.getByTestId('monitor-mic-switch'));
     fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));

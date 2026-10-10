@@ -24,11 +24,13 @@
  * supervisor's telemetry and warnings to the engine's INTERNAL actions `applyCaptureTelemetry`
  * and `raiseCaptureWarning`, without ever holding the supervisor's queue.
  *
- * WHAT IT DOES NOT DO YET (stated so nobody reads more into it than is there).
- *   - Sealing progress and seal completion reach no engine action: `applySealingProgress` and
- *     `completeSeal` are the sealing row's. The lossless records (`record` events) are handed to
- *     whoever subscribes; no unit persists them yet (the fMP4 writer row does).
- *   - It builds no capture plan: the sessions module does, when it starts a real recording.
+ * WHAT IT DOES NOT DO (stated so nobody reads more into it than is there; brought up to date by
+ * fix pass F-M3, review R63-17).
+ *   - Sealing progress and seal completion reach no engine action from here: the sealing units own
+ *     them. The lossless records (`record` events) are handed to whoever subscribes; the
+ *     capture-session unit (`src/capture-session`) persists them through the recorder of
+ *     `modules/recording-fragments`. This file only LOGS one of them: the sync level of a camera file.
+ *   - It builds no capture plan: the capture-session unit does, when it starts a real recording.
  *   - It registers no route.
  *
  * The plugin function starts no process and opens no connection: `buildApp()` works without a
@@ -39,8 +41,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { captureDoorsOf } from '../engine';
 import { describeError } from '../plugins/logger';
-import { CAPTURE_IPC_DEFAULTS, CAPTURE_WORKER_SETTING_DEFAULTS, captureWorkerSettingArguments, type CaptureWorkerSettings } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CAPTURE_WORKER_SETTING_DEFAULTS, CaptureRecordKind, CaptureSyncLevel, captureWorkerSettingArguments, type CaptureWorkerSettings } from '@dems/capture-protocol';
 import { MIC_DISCONNECT_DEBOUNCE_MS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
+import { VERIFY_MAX_OPEN_FRAGMENT_BYTES } from '@dems/shared/evidence-verify';
 import { CaptureOperation } from './adapters';
 import { mountCaptureBootChecks } from './boot';
 import { captureOperationOf, mountCaptureFence } from './fence';
@@ -50,7 +53,7 @@ import { createCaptureSupervisor } from './supervisor';
 import { createSystemTimers } from './timers';
 import type { CaptureReport, CaptureSupervisor } from './types';
 
-export { CAPTURE_MIC_RATE_LIMIT_PPM, CAPTURE_WARNING_CLEAR_HOLD_MS, CaptureNoticeCode, ForwarderReportCode, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions, type CaptureNotice } from './forwarder';
+export { CAPTURE_MIC_RATE_LIMIT_PPM, CAPTURE_WARNING_CLEAR_HOLD_MS, CaptureNoticeCode, ForwarderReportCode, SUPERVISOR_REFUSAL_REASONS, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions, type CaptureNotice } from './forwarder';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, createCaptureSupervisor } from './supervisor';
 export { createSystemTimers } from './timers';
@@ -70,6 +73,7 @@ export {
   type CaptureListener,
   type CaptureReport,
   type CaptureStatus,
+  type CaptureStopOutcome,
   type CaptureSupervisor,
   type CaptureSupervisorOptions,
   type CaptureTimers,
@@ -93,6 +97,8 @@ const WORKER_LOG_NAME = 'capture-worker.jsonl';
 const NOTICE = 'capture notice';
 const STALE_FAULTS_CLEARED = 'capture faults of an earlier run cleared at boot';
 const STALE_FAULTS_NOT_CLEARED = 'the capture faults of an earlier run could not be cleared at boot';
+const SYNC_LEVEL = 'the first fragment of a camera file is durable: the sync level the worker achieved';
+const SYNC_LEVEL_NOT_FULL = 'a camera file is NOT synced through the drive cache: the evidence volume does not take the full sync';
 
 /**
  * THE NAMED SETTINGS OF THE WORKER PROCESS (protocol 4; decisions D72(k), D84; capture spec §E.1).
@@ -100,12 +106,18 @@ const STALE_FAULTS_NOT_CLEARED = 'the capture faults of an earlier run could not
  * `ingestOpenWindowMs`: how long a camera may take to connect before a session with no camera
  * FAULTS with `NO_CAMERA_CONNECTED` and nothing claims to record. The three microphone thresholds
  * are the contract's constants (`@dems/shared/api`, CS-25).
+ * `maxFragmentBytes` (fix pass F-M3, review R63-02; ruling D179): THE bound of one fragment, ONE
+ * number - the one the seal enforces (`SEALING_MAX_FRAGMENT_BYTES`, which IS the verifier's
+ * `VERIFY_MAX_OPEN_FRAGMENT_BYTES`; named here by the verifier's constant because the sealing unit
+ * imports this one). The worker makes no fragment durable above it, so a recording can no longer
+ * be written whole and then fail at its seal. `protocol-pins.test.ts` holds the three equal.
  */
 export const CAPTURE_WORKER_PROCESS_SETTINGS: CaptureWorkerSettings = Object.freeze({
   ingestOpenWindowMs: CAPTURE_WORKER_SETTING_DEFAULTS.ingestOpenWindowMs,
   micSilenceDbfs: MIC_SILENCE_DBFS,
   micSilenceDurationMs: MIC_SILENCE_DURATION_MS,
   micDisconnectDebounceMs: MIC_DISCONNECT_DEBOUNCE_MS,
+  maxFragmentBytes: VERIFY_MAX_OPEN_FRAGMENT_BYTES,
 });
 
 export const captureModule: FastifyPluginAsync = async (app) => {
@@ -172,6 +184,23 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     };
     app.log.warn({ code: 'CAPTURE_WORKER_DOWN', ...context }, WORKER_DOWN);
     app.errorLog.append({ level: 'warn', source: 'capture.supervisor', message: WORKER_DOWN, code: 'CAPTURE_WORKER_DOWN', context });
+  });
+
+  // HOW A CAMERA FILE IS REALLY MADE DURABLE (fix pass F-M3, review R63-09; ruling D179). The worker
+  // states, with the first durable fragment of each camera file, the sync level it ACHIEVED - never
+  // the one its build would like. Written to the log for every file; a file that is not synced
+  // through the drive cache (`FSYNC`), or a worker that does not say, also goes to the persistent
+  // error log: after a power loss such a file may miss what its checkpoints claimed.
+  supervisor.on('record', (event) => {
+    if (event.record.kind !== CaptureRecordKind.FIRST_DURABLE_FRAGMENT) return;
+    const syncLevel = event.record.syncLevel ?? 'NOT_STATED';
+    const context = { sessionId: event.sessionId, correlationId: event.correlationId, deviceId: event.record.deviceId, syncLevel };
+    if (syncLevel === CaptureSyncLevel.FULL) {
+      app.log.info({ code: 'CAPTURE_SYNC_LEVEL', ...context }, SYNC_LEVEL);
+      return;
+    }
+    app.log.warn({ code: 'CAPTURE_SYNC_LEVEL_NOT_FULL', ...context }, SYNC_LEVEL_NOT_FULL);
+    app.errorLog.append({ level: 'warn', source: 'capture.supervisor', message: SYNC_LEVEL_NOT_FULL, code: 'CAPTURE_SYNC_LEVEL_NOT_FULL', context });
   });
 
   supervisor.on('warning', (event) => {

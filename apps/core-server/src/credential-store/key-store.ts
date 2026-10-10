@@ -5,6 +5,10 @@
  * THE ONLY FILE OF THIS FOLDER THAT TOUCHES THE FILE SYSTEM. One key per file:
  *
  *   <dataDir>/credential-store/keys/<reference>.key      mode 0600, in directories of mode 0700
+ *   <dataDir>/credential-store/session-keys-<scope>/KID-<sessionId>.key
+ *                                                        the session keys of ONE Core: `<scope>` is
+ *                                                        derived from its media store root, one per
+ *                                                        database (fix pass F-M7c, ruling D180)
  *
  * `<dataDir>` is the git-ignored data directory of the server (`/.data/` at the repository root).
  * The media of a session lives in another branch of it (`<dataDir>/media/sessions/`): the keys
@@ -75,6 +79,11 @@ export interface FileKeyStoreOptions {
   readonly root: string;
   /** A test hands in a source of its own. */
   readonly randomKey?: () => Uint8Array;
+  /**
+   * The folder of the key files inside `root`. Default `keys`. The session keys of ONE Core are in
+   * a folder of their own, `session-keys-<scope of its media store root>` (fix pass F-M7c, D180).
+   */
+  readonly folder?: string;
 }
 
 function fail(code: CredentialStoreFailure, error?: unknown): never {
@@ -119,7 +128,8 @@ export function dataDirectoryIsThere(dataDir: string): boolean {
 
 export function createFileKeyStore(options: FileKeyStoreOptions): KeyStore {
   const { root } = options;
-  const directory = join(root, KEY_FOLDER);
+  if (options.folder !== undefined && !/^[a-z][a-z0-9-]{0,79}$/.test(options.folder)) fail(CredentialStoreFailure.KEY_REF_INVALID);
+  const directory = join(root, options.folder ?? KEY_FOLDER);
   const randomKey = options.randomKey ?? ((): Uint8Array => randomBytes(KEY_BYTES));
 
   const fileOf = (ref: string, suffix: string = KEY_FILE_SUFFIX): string => {

@@ -5,7 +5,17 @@
  *
  *   clockOffsetMs   per camera: the camera clock minus the Core clock as the camera's adapter
  *                   reported it at the start of the capture (`CameraAdapter.ntpOffsetMs`); null
- *                   when the adapter reported none;
+ *                   when the adapter reported none. Since tidy pass F-Y the FALLBACK of field 40;
+ *   measuredClockOffsetMs
+ *                   per camera: the offset the WORKER measured when it anchored the camera - the
+ *                   first `TELEMETRY.clocks[].lagMs` of the worker whose file it is, as camera
+ *                   clock minus Core clock (`-lagMs`, whole ms; it contains the delivery delay,
+ *                   about 20 ms on the fixture). THE SOURCE OF FIELD 40 (fix F-M3 decision 3; ruling
+ *                   D179: an offset inside the bound is recorded, never corrected). Null: the
+ *                   worker reported none;
+ *   syncLevel       per camera file: the durability level the worker stated with its first durable
+ *                   fragment (`F_FULLFSYNC` | `FSYNC`; review R63-09). Null: not stated. The
+ *                   manifest has NO field for it (ruling D188): it stays here and in the log;
  *   firstVideo      per camera file: the worker's `FIRST_VIDEO_SAMPLE` record of the LAST worker of
  *                   the session - `pts` and `timescale` (fields 127 / 128), and what arrived before
  *                   the first written sample (`heldMs`, `skipped`, `skippedSpanMs`: the manifest
@@ -30,6 +40,7 @@
 import { constants as FS } from 'node:fs';
 import { open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
+import { CaptureSyncLevel } from '@dems/capture-protocol';
 import { cameraFileName, cameraFilePath, type PackageVideoTrackId } from '@dems/shared/evidence-package';
 import { videoSampleEntryOf, type VideoSampleEntryRead } from '../capture';
 
@@ -41,12 +52,17 @@ const FACTS_FILE_MAX_BYTES = 16_384;
 const SESSION_ID = /^SES-[0-9]{8}-[0-9]{4}$/;
 const TRACK_IDS: readonly string[] = ['VIDEO-01', 'VIDEO-02'];
 const DEVICE_ID = /^[A-Z][A-Z0-9]{1,15}-[0-9]{2,4}$/;
+const SYNC_LEVELS: readonly CaptureSyncLevel[] = Object.values(CaptureSyncLevel);
 
 export interface SessionCameraFacts {
   readonly trackId: string;
   readonly deviceId: string;
   /** The camera clock minus the Core clock, in whole ms; null: the adapter reported none. */
   readonly clockOffsetMs: number | null;
+  /** The offset the worker measured at anchoring (camera minus Core), in whole ms; null: it reported none. Manifest field 40 when there. */
+  readonly measuredClockOffsetMs: number | null;
+  /** The sync level the worker stated with the first durable fragment of this file; null: not stated. */
+  readonly syncLevel: CaptureSyncLevel | null;
   /** The worker's `FIRST_VIDEO_SAMPLE` of this camera file; null: no such record arrived. */
   readonly firstVideo: {
     readonly pts: number;
@@ -102,6 +118,11 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
     if (typeof entry !== 'object' || entry === null) return null;
     const camera = entry as Record<string, unknown>;
     const { trackId, deviceId, clockOffsetMs, firstVideo } = camera;
+    // The two members of tidy pass F-Y are absent in a file written before it: read as null. Present, they must be of their form.
+    const measured = camera['measuredClockOffsetMs'] ?? null;
+    const syncLevel = camera['syncLevel'] ?? null;
+    if (measured !== null && !(typeof measured === 'number' && Number.isSafeInteger(measured))) return null;
+    if (syncLevel !== null && !SYNC_LEVELS.includes(syncLevel as CaptureSyncLevel)) return null;
     if (typeof trackId !== 'string' || !TRACK_IDS.includes(trackId) || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)) return null;
     if (clockOffsetMs !== null && !(typeof clockOffsetMs === 'number' && Number.isSafeInteger(clockOffsetMs))) return null;
     let first: SessionCameraFacts['firstVideo'] = null;
@@ -117,7 +138,7 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
       }
       first = { pts: video['pts'], timescale: video['timescale'], heldMs: video['heldMs'], skipped: counts, skippedSpanMs: video['skippedSpanMs'] };
     }
-    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, firstVideo: first });
+    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, measuredClockOffsetMs: measured as number | null, syncLevel: syncLevel as CaptureSyncLevel | null, firstVideo: first });
   }
   return { version: SESSION_CAPTURE_FACTS_VERSION, sessionId: file['sessionId'], startRecordedAt: file['startRecordedAt'], cameras };
 }

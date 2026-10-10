@@ -93,6 +93,27 @@ export const CaptureConnectionOutcome = {
 } as const;
 export type CaptureConnectionOutcome = (typeof CaptureConnectionOutcome)[keyof typeof CaptureConnectionOutcome];
 
+/**
+ * Why a test ended `AUTHENTICATION_FAILED` WITHOUT the camera refusing the credential (fix F-M4,
+ * review row 69, finding R69-13; `cap` §A.6.2, the row of that outcome). A closed list of codes:
+ *   SCHEME_NOT_ALLOWED  the camera accepts only a sign-in method the Core does not answer (one that
+ *                       would send the password unprotected, or a digest hash outside its list).
+ *                       THE CREDENTIAL WAS NOT SENT. A client must not word this as "the camera
+ *                       refused this user name or password".
+ * Absent for every other test: a refused credential carries no reason.
+ */
+export const CaptureConnectionTestReason = {
+  SCHEME_NOT_ALLOWED: 'SCHEME_NOT_ALLOWED',
+} as const;
+export type CaptureConnectionTestReason = (typeof CaptureConnectionTestReason)[keyof typeof CaptureConnectionTestReason];
+
+/**
+ * The form of `CaptureCandidate.connectionTarget` (fix F-M4, finding R69-12): scheme, IPv4 host,
+ * an explicit port and the path, exactly as the Core uses them for a connection test. No user
+ * part, no query, no fragment.
+ */
+export const CAPTURE_CONNECTION_TARGET_PATTERN = /^https?:\/\/(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}\/[A-Za-z0-9\-._~!$&'()*+,;=:%/]{0,127}$/;
+
 /** The named cause of a local input that cannot be opened (`cap` §A.6.4 HL-10; erratum PE-128-35). */
 export const CaptureInputErrorCode = {
   PERMISSION_DENIED: 'PERMISSION_DENIED',
@@ -181,6 +202,7 @@ export const CaptureCandidateLastTestSchema = z.strictObject({
   outcome: z.enum(CaptureConnectionOutcome),
   authenticated: z.boolean().describe('Whether a credential was supplied: a fact, never a value.'),
   testedAt: epochMs(),
+  reason: z.enum(CaptureConnectionTestReason).optional().describe('Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).'),
 });
 export type CaptureCandidateLastTest = z.output<typeof CaptureCandidateLastTestSchema>;
 
@@ -198,6 +220,13 @@ export const CaptureCandidateSchema = z
     status: z.enum(CaptureCandidateStatus).describe('REGISTERED when it matches a capture device: by its endpoint reference, else by its whole address.'),
     deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).nullable().describe('The registered capture device when `status` is REGISTERED; null otherwise.'),
     testable: z.boolean().describe('False when no announced service address qualifies, or its host is not `host`: such a candidate is listed and can never be tested.'),
+    connectionTarget: z
+      .string()
+      .regex(CAPTURE_CONNECTION_TARGET_PATTERN)
+      .optional()
+      .describe(
+        'What the Core connects to for a connection test of this candidate, exactly as it uses it: scheme, host, port (always written) and path. Its host is `host`; the scheme, the port and the path are what the device announced: untrusted, draw it as text only, never as a link. Absent for a candidate that is not testable, and in Simulated capture (no connection is made there).',
+      ),
     conflict: z.boolean().describe('Two answers share one endpoint reference from different addresses, or one address announced two references: every such row is listed and none is testable.'),
     addressChanged: z.boolean().describe('REGISTERED by endpoint reference while the answering address differs from the stored one.'),
     lastTest: CaptureCandidateLastTestSchema.nullable().describe('The last connection test of this candidate in this search; null before the first.'),
@@ -240,6 +269,7 @@ export const CaptureConnectionTestSchema = z
     testedAt: epochMs(),
     usableProfileCount: count().describe('Usable H.264 media profiles the test read. A count: no profile name.'),
     failedAttemptsRemaining: count().describe('Refused credentials this host may still see before the lock-out guard closes.'),
+    reason: z.enum(CaptureConnectionTestReason).optional().describe('Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).'),
   })
   .describe('The outcome of one connection test (C3 §2.6 op 95). No device error text, no URL, no credential member.');
 export type CaptureConnectionTest = z.output<typeof CaptureConnectionTestSchema>;

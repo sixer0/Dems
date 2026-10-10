@@ -6,7 +6,8 @@
  *
  *   stt             the key of the STT `SECRET` credential of operation 91 (`stt_config`)
  *   capture         the key of a camera credential of operations 89 and 96 (`capture_device_credentials`)
- *   sessionKeys     the AES-256 key of a recording session, `KID-<sessionId>` (per-fragment GCM)
+ *   sessionKeys     the AES-256 key of a recording session, `KID-<sessionId>` (per-fragment GCM),
+ *                   kept PER MEDIA STORE ROOT of the Core (`session-keys-<scope>`, ruling D180)
  *   keyWrapSecrets  the secret that opens the encrypted signer key file (row 83, SEC35-07)
  *   namedSecrets    a named secret blob another unit keeps here
  *
@@ -26,7 +27,9 @@
  * and a new reference: writing a credential again IS its rotation. The key of the envelope that
  * was replaced stays in the store until the unit that knows which reference is stored calls
  * `credentialKeys.retainOnly` (THE ROTATION HOOK): the sealing side cannot know it, because the
- * credential columns are write-only for the runtime role.
+ * credential columns are write-only for the runtime role. NO SUCH UNIT EXISTS YET (review row 69,
+ * finding R69-09): `retainOnly` has no caller in the product, so replaced keys are never removed.
+ * A recorded gap of this phase, not a behaviour to rely on.
  *
  * KEY LOSS = DATA UNREADABLE (SEC35-09). No escrow, no backup, no second copy. A removed key or a
  * lost data directory makes the sealed credential unusable (it is typed again) and the sealed
@@ -41,8 +44,8 @@
  * a private directory of this user - the store refuses to work, with a code. `READY` otherwise;
  * the folders are made when the first key is.
  */
-import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
+import { join, resolve } from 'node:path';
 import { openSecret, sealSecret, type SealedSecret } from './envelope';
 import { CredentialStoreError, CredentialStoreFailure, errnoOf } from './errors';
 import { disposeKey } from './key-material';
@@ -50,7 +53,7 @@ import { CREDENTIAL_STORE_FOLDER, createFileKeyStore, dataDirectoryIsThere, type
 import type { FragmentKey } from './fragment-cipher';
 
 export { CredentialStoreError, CredentialStoreFailure, FragmentAuthenticationError } from './errors';
-export { ENVELOPE_ALGORITHM, ENVELOPE_MIN_CIPHERTEXT_BYTES, ENVELOPE_VERSION, isSealedSecret, type SealedSecret } from './envelope';
+export { ENVELOPE_ALGORITHM, ENVELOPE_MIN_CIPHERTEXT_BYTES, ENVELOPE_VERSION, isSealedSecret, isStoreSealedSecret, type SealedSecret, type StoreSealedSecret } from './envelope';
 export { KEY_MARK, KeyMaterial } from './key-material';
 export {
   FRAGMENT_NONCE_BYTES,
@@ -123,13 +126,34 @@ export interface CredentialKeyRotation {
 }
 
 /** The session keys of the per-fragment cipher. */
+/**
+ * THE SCOPE OF A CORE'S SESSION KEYS (fix pass F-M7c; ruling D180): 32 hex characters derived from
+ * the RESOLVED media store root - the one thing of a Core that is per database outside the
+ * database (D171). The data directory is shared by every lane of an installation: in one flat
+ * folder two databases with equal session IDs opened ONE key `KID-<sessionId>`. The key ID that is
+ * written into a manifest does not change; where the Core keeps the key does. A media store that
+ * is MOVED to another path needs its key folder renamed to the new scope (`session-keys-<scope>`):
+ * a deployment step, stated in the note of this pass.
+ */
+export function sessionKeyScopeOf(mediaStoreDir: string): string {
+  return createHash('sha256').update(`dems.session-keys/1\n${resolve(mediaStoreDir)}`, 'utf8').digest('hex').slice(0, 32);
+}
+/** The folder of one Core's session keys inside the store. */
+export const sessionKeyFolderOf = (mediaStoreDir: string): string => `session-keys-${sessionKeyScopeOf(mediaStoreDir)}`;
+
 export interface SessionKeys {
   /** A new random key for a session. `CREDENTIAL_KEY_EXISTS` when the session has one: a key is never reused or replaced. */
   create(sessionId: string): FragmentKey;
   /** `CREDENTIAL_KEY_NOT_FOUND` when the key is gone: the media of that session cannot be decrypted. */
   open(keyId: string): FragmentKey;
   has(keyId: string): boolean;
-  /** Destroys the key (retention expiry, after any export). The caller audits the FACT. True when a key was there. */
+  /**
+   * True when the key is THIS Core's own (in the folder of its media store root). A key an earlier
+   * build left in the shared folder is opened for reading (`has`, `open`) and is never this Core's
+   * own: a seal does not reuse it and `destroy` does not touch it (D180).
+   */
+  owns(keyId: string): boolean;
+  /** Destroys THIS Core's own key (a reset, a reseed, retention expiry after any export). The caller audits the FACT. True when a key was there. */
   destroy(keyId: string): boolean;
   /** Overwrites the in-memory copy a `create` or `open` handed out. */
   release(key: FragmentKey): void;
@@ -170,11 +194,19 @@ export interface CredentialStoreOptions {
   readonly root: string;
   /** A test hands in a key store of its own. */
   readonly keys?: KeyStore;
+  /**
+   * The key store of THIS Core's session keys (per media store root, D180). Absent: the session
+   * keys are in `keys` (a store built without a media store root: a test, an earlier layout).
+   */
+  readonly sessionKeyStore?: KeyStore;
 }
 
 /** Builds the store over one directory. The product calls it in one place: `coreCredentialStore`. */
 export function createCredentialStore(options: CredentialStoreOptions): CoreCredentialStore {
   const keys = options.keys ?? createFileKeyStore({ root: options.root });
+  // D180: this Core's own session keys; `shared` is the flat folder of an earlier build, read only.
+  const ownSessionKeys = options.sessionKeyStore ?? keys;
+  const sharedSessionKeys = options.sessionKeyStore === undefined ? null : keys;
 
   /** One key, one envelope: the key is made, used once and its in-memory copy overwritten. */
   const sealWith = (purpose: CredentialPurpose, subject: string, secret: string): SealedSecret => {
@@ -243,13 +275,17 @@ export function createCredentialStore(options: CredentialStoreOptions): CoreCred
     sessionKeys: {
       create(sessionId) {
         const keyId = sessionKeyId(`${SESSION_KEY_PREFIX}${sessionId}`);
-        return { keyId, key: keys.create(keyId) };
+        return { keyId, key: ownSessionKeys.create(keyId) };
       },
       open(keyId) {
-        return { keyId: sessionKeyId(keyId), key: keys.open(keyId) };
+        const id = sessionKeyId(keyId);
+        // This Core's own key first; a key of an earlier build in the shared folder only when it has none.
+        const from = sharedSessionKeys !== null && !ownSessionKeys.has(id) && sharedSessionKeys.has(id) ? sharedSessionKeys : ownSessionKeys;
+        return { keyId: id, key: from.open(id) };
       },
-      has: (keyId) => keys.has(sessionKeyId(keyId)),
-      destroy: (keyId) => keys.destroy(sessionKeyId(keyId)),
+      has: (keyId) => ownSessionKeys.has(sessionKeyId(keyId)) || (sharedSessionKeys?.has(sessionKeyId(keyId)) ?? false),
+      owns: (keyId) => ownSessionKeys.has(sessionKeyId(keyId)),
+      destroy: (keyId) => ownSessionKeys.destroy(sessionKeyId(keyId)),
       release: (key) => disposeKey(key.key),
     },
     keyWrapSecrets: {
@@ -285,7 +321,8 @@ export type CoreCredentialStoreStatus =
 /** What the store needs of an app: its identity and its data directory. */
 export interface CredentialStoreHost {
   readonly stages: object;
-  readonly config: { readonly dataDir: string };
+  /** `mediaStoreDir`: the media store root of this Core - the scope of its session keys (D180). Absent: the shared folder. */
+  readonly config: { readonly dataDir: string; readonly mediaStoreDir?: string };
 }
 
 // Keyed by the app's stage registry: one object per app, the same from every scope of it
@@ -308,7 +345,11 @@ export function coreCredentialStore(app: CredentialStoreHost): CoreCredentialSto
       const keys = createFileKeyStore({ root });
       // Refuses a store directory that exists and is not private, before anything is sealed into it.
       keys.inspect();
-      status = { status: 'READY', store: createCredentialStore({ root, keys }) };
+      const mediaStoreDir = app.config.mediaStoreDir;
+      const sessionKeyStore = typeof mediaStoreDir === 'string' && mediaStoreDir !== '' ? createFileKeyStore({ root, folder: sessionKeyFolderOf(mediaStoreDir) }) : undefined;
+      // The same refusal for the folder of the session keys.
+      sessionKeyStore?.inspect();
+      status = { status: 'READY', store: createCredentialStore({ root, keys, ...(sessionKeyStore === undefined ? {} : { sessionKeyStore }) }) };
     }
   } catch (error) {
     status =

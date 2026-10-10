@@ -28,10 +28,10 @@
  * `insertMissing` brings the table in line with it; the same call is how a replay of records is
  * made harmless. This module therefore never retries by itself and never blocks a recording.
  *
- * WHO CALLS IT. Nothing mounts it yet: the row that wires session start and stop (blueprint row
- * 71) creates one recorder per recording session with the plan's camera-to-track map and
- * subscribes it to `app.capture.on('record', ...)`; RECOVERY and sealing (row 82) call
- * `insertMissing` and `read`.
+ * WHO CALLS IT. The capture-session unit (`src/capture-session/index.ts`, blueprint row 71)
+ * creates one recorder per recording session with the plan's camera-to-track map and hands it the
+ * worker's records; the sealing host (`src/sealing-host/index.ts`, row 82) builds a store from the
+ * same statements, and the seal's pipeline calls `insertMissing` and `read` through its port.
  *
  * FAILURES ARE TYPED AND NEVER SWALLOWED. A statement that fails is a `RecordingFragmentStoreError`
  * with the SQLSTATE and the constraint name (never a value of the row). The recorder hands every

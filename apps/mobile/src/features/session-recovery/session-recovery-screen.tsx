@@ -65,7 +65,8 @@ import { SPEC_LITERALS, animatePulseOnce, enterRise, glowShadow, triggerHaptic, 
 import { sessionResyncHref } from '@/navigation';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { failedStartWords, type FailedStart } from '@/features/capture-selector/capture-notices-model';
-import { FailedStartNotice, useFailedStart } from '@/features/session-live/capture-start-notice';
+import { FailedStartNotice, useFailedStart, useFailedStartClosing } from '@/features/session-live/capture-start-notice';
+import { UnsealableNotice } from '@/features/session-finalizing/unsealable-notice';
 import { RecoveryPipeline, TrackRows } from './recovery-analysis';
 import { RecoveryBoundary } from './recovery-boundary';
 import {
@@ -137,7 +138,10 @@ export function SessionRecoveryScreen() {
 
   // Pass D7 item 1: the failed start of the followed session, held by its id while the Core closes it
   // (the notice itself reads FAULT only). "Adjusting state while rendering", as `useFollowedRecovery`.
-  const failedNow = useFailedStart();
+  // Review R74-12: also when the screen FIRST sees the session while the Core closes it (RECOVERY, nothing recorded).
+  const failedInFault = useFailedStart();
+  const failedClosing = useFailedStartClosing();
+  const failedNow = failedInFault ?? failedClosing;
   const followedId = followed?.id ?? null;
   const [failedStart, setFailedStart] = useState<{ readonly id: string; readonly kind: FailedStart } | null>(null);
   if (failedNow !== null && followedId !== null && (failedStart?.id !== followedId || failedStart.kind !== failedNow)) {
@@ -265,6 +269,8 @@ export function SessionRecoveryScreen() {
     <SafeScreen id="session-recovery">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={[styles.centre, maxWidth !== undefined ? { maxWidth: sideBySide ? maxWidth + SIDE_WIDTH + spacing[4] : maxWidth } : null]}>
+          {/* Fix pass F-M7b (R88-02 (c)): the session this screen followed was ended as UNSEALABLE by the Core. */}
+          {phase === 'fault' || phase === 'analysing' ? null : <UnsealableNotice sessionId={followed?.id ?? null} />}
           {body}
         </View>
       </ScrollView>

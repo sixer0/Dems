@@ -197,7 +197,8 @@ describe('CONTROL: without the helper program the seed says so by name and write
     const code = await runSeed(['--database', target.name], { io, dataDir: db.run.dataDir, allowTestDatabase: true, demoPackages: port });
     expect([code, err]).toEqual([0, []]);
     const line = out.find((entry) => entry.includes('v2 demo packages'));
-    expect(line).toContain('NOT generated (HELPER_ABSENT)');
+    // Fix F-M4 (question 5 of review row 69): the seed asks the boot's own path rule; its code for a path that names nothing is NOT_FOUND.
+    expect(line).toContain('NOT generated (HELPER_NOT_FOUND)');
     expect(line).toContain(absent);
     expect(line).toContain('without the v2 demo items');
     const rows = (await target.ownerPool().query<{ manifest_version: number; signature_simulated: boolean }>('SELECT manifest_version, signature_simulated FROM public.evidence_items')).rows;

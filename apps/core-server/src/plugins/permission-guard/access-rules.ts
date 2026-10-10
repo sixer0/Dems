@@ -25,6 +25,13 @@
  *      method and path. A caller without that permission is refused here, with the row, before
  *      the handler looks at the token. A registry without operation 88 gives the route no rule.
  *
+ *   4. it is the export download route, `GET /exports/:token` (`EVIDENCE_EXPORT_DOWNLOAD_URL`): the
+ *      registry-external route that serves the finished archive of an export job (task 3 fix pass
+ *      F-M8; review finding R93-05, controller ruling D178). Like entry 3 it has no rule of its
+ *      own making: it gets THE RULE OF OPERATION 87 (`getEvidenceExportJob`, the operation that
+ *      names the signed path it serves) - EVIDENCE_EXPORT, with its conditions and its denial -
+ *      at its own method and path. A registry without operation 87 gives the route no rule.
+ *
  * Every other route has no rule: `resolve` answers with a problem instead, the boot check stops
  * the start with it, and a request that reaches such a route all the same is refused.
  *
@@ -351,6 +358,23 @@ export function evidenceMediaStreamRuleOf(session: AccessRule | AccessRuleProble
   return Object.freeze({ ...session, operationId: EVIDENCE_MEDIA_STREAM_ID, method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, idPattern: null });
 }
 
+/** `operationId` of the rule of the export download route in log lines and denial rows. It is no registry operation. */
+export const EVIDENCE_EXPORT_DOWNLOAD_ID = 'evidenceExportDownload';
+/** The export download route as the router holds it (the last path segment is the signed download token). */
+export const EVIDENCE_EXPORT_DOWNLOAD_URL = '/exports/:token';
+/** The registry operation whose rule the export download route gets: the one that names the signed path (ruling D178). */
+export const EVIDENCE_EXPORT_JOB_OPERATION = 'getEvidenceExportJob' satisfies RegistryOperationId;
+
+/**
+ * The rule of the export download route, from the rule of operation 87 as this registry compiled
+ * it: everything of that rule but its name, its method, its path and its path parameter. Null
+ * when the registry has no usable rule for operation 87: the route then has no rule at all.
+ */
+export function evidenceExportDownloadRuleOf(job: AccessRule | AccessRuleProblem | undefined): AccessRule | null {
+  if (job === undefined || !isAccessRule(job) || job.denial === null) return null;
+  return Object.freeze({ ...job, operationId: EVIDENCE_EXPORT_DOWNLOAD_ID, method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, idPattern: null });
+}
+
 export function isAccessRule(resolved: AccessRule | AccessRuleProblem): resolved is AccessRule {
   return 'kind' in resolved;
 }
@@ -404,6 +428,9 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
   // Registry-external entry 3 of the header (ruling D140): made once, from this registry's operation 88.
   const mediaStream = evidenceMediaStreamRuleOf(byId.get(EVIDENCE_MEDIA_SESSION_OPERATION));
   const isMediaStream = (method: string, url: string): boolean => mediaStream !== null && method.toUpperCase() === mediaStream.method && url === mediaStream.url;
+  // Registry-external entry 4 of the header (ruling D178): made once, from this registry's operation 87.
+  const exportDownload = evidenceExportDownloadRuleOf(byId.get(EVIDENCE_EXPORT_JOB_OPERATION));
+  const isExportDownload = (method: string, url: string): boolean => exportDownload !== null && method.toUpperCase() === exportDownload.method && url === exportDownload.url;
 
   return {
     operationIds: operations.map((operation) => operation.operationId),
@@ -411,6 +438,7 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
     ruleAt(method, url) {
       if (isChannel(method, url)) return REALTIME_CHANNEL_RULE;
       if (mediaStream !== null && isMediaStream(method, url)) return mediaStream;
+      if (exportDownload !== null && isExportDownload(method, url)) return exportDownload;
       const name = routeName(method, url);
       return byRoute.get(name) ?? withoutRules(name);
     },
@@ -419,6 +447,7 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
       const name = routeName(route.method, route.url);
       if (isChannel(route.method, route.url)) return REALTIME_CHANNEL_RULE;
       if (mediaStream !== null && isMediaStream(route.method, route.url)) return mediaStream;
+      if (exportDownload !== null && isExportDownload(route.method, route.url)) return exportDownload;
       const compiled = byRoute.get(name);
       if (compiled === undefined) {
         const claimed = route.operationId === undefined ? undefined : byId.get(route.operationId);

@@ -174,7 +174,9 @@ describe('protocol 4: a fault per cause, advisory reasons, notices', () => {
     worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND);
     worker.record({ kind: 'KEYFRAME_INTERVAL', deviceId: 'CAM-02', observedMs: 5_000, boundMs: 2_000, intervals: 1, complete: true, aboveBound: true });
     await flush();
-    expect(calls).toEqual([]);
+    // Fix pass F-M5 (R63-03, D179): NO FAULT, as before - and the operator is told by the named advisory alert of the camera (it was `[]`: the log alone).
+    expect(calls).toEqual(['raise KEYFRAME_INTERVAL_ABOVE_BOUND:CAM-02']);
+    calls.length = 0;
     expect(notices).toEqual([{ code: CaptureNoticeCode.KEYFRAME_INTERVAL_ABOVE_BOUND, sessionId: FIRST, correlationId: `cap:${FIRST}:1`, deviceId: 'CAM-02', value: 5_000, bound: 2_000 }]);
     // CONTROL: the same camera with a reason that is no advisory one.
     worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.CAMERA_STREAM_ENDED);
@@ -273,15 +275,16 @@ describe('protocol 4 in the supervisor: whose device a record names, and the rec
     await expect(again).resolves.toBeNull();
   });
 
-  it('a record of ANOTHER command is not handed to this switch', async () => {
+  it('a record of ANOTHER command is not handed to this switch: a switch nobody commanded ends the worker (review R63-05)', async () => {
     const { fake, supervisor } = await rig({}, { ackSwitch: false });
     await supervisor.start(FIRST, capturePlan(FIRST));
     const worker = fake.last();
     const switching = supervisor.switchAudioSource(FIRST, CaptureMicRole.STANDBY);
     await flush();
     worker.record(interval({ deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 480, reason: 'OPERATOR_SWITCH', correlationId: 'cap:somebody-else:9', appliedDelayUs: 1 }));
-    worker.ack(true, undefined, worker.commands('SWITCH_AUDIO_SOURCE')[0]);
-    await expect(switching).resolves.toBeNull();
+    // Never resolved with that record: the command is refused because its worker went down for the violation.
+    await expect(switching).rejects.toMatchObject({ code: 'CAPTURE_WORKER_DOWN' });
+    expect(supervisor.status().lastCrash).toMatchObject({ code: 'PROTOCOL_VIOLATION', detail: 'SWITCH_NOT_COMMANDED' });
   });
 });
 

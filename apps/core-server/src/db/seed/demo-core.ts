@@ -25,7 +25,7 @@ import { captureOperationOf } from '../../capture/fence';
 import { ConfigError } from '../../config';
 import { loadConfig } from '../../plugins/config';
 import type { SeedDemoOutcome, SeedDemoPackages, SeedDemoPlacement, SeedDemoReport } from './demo-packages';
-import { runSeedHelper, seedHelperProblemOf } from './demo-helper';
+import { SeedHelperProblem, runSeedHelper, seedHelperProblemOf } from './demo-helper';
 
 /** The capture operation whose Core holds seed-sealed demo packages. A literal of the fence's own type. */
 const DEVELOPMENT_OPERATION: ReturnType<typeof captureOperationOf> = 'REAL_DEVELOPMENT';
@@ -61,7 +61,7 @@ export function demoPackagesOfEnvironment(input: DemoCoreEnvironment): SeedDemoP
   const problem = seedHelperProblemOf(program);
   if (problem !== null || program === null) {
     return skipping(
-      problem ?? 'HELPER_NOT_SET',
+      problem ?? SeedHelperProblem.NOT_SET,
       program === null || program === ''
         ? 'no helper program is configured for this environment (DEMS_CAPTURE_HELPER_FFMPEG): the generated picture of a demo package cannot be made'
         : `the helper program ${program} cannot be started (${String(problem)}): make the copy with "node scripts/capture/dev-setup.mjs"`,

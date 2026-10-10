@@ -101,12 +101,18 @@ describe('revisions are derived: the sealed text is never overwritten', () => {
 })
 
 describe('states and rules', () => {
-  it('the pane state: DISABLED by the summary; with a document ASSEMBLED or PARTIAL; without one UNAVAILABLE', () => {
+  it('the pane state is the SUMMARY\'s (R80-01): ASSEMBLED only for a summary that says READY; no summary is UNKNOWN, with or without a document', () => {
     expect(paneStateOf({ state: 'DISABLED' }, false)).toBe('DISABLED')
     expect(paneStateOf({ state: 'READY' }, true)).toBe('ASSEMBLED')
-    expect(paneStateOf(null, true)).toBe('ASSEMBLED')
     expect(paneStateOf({ state: 'PARTIAL' }, true)).toBe('PARTIAL')
-    for (const state of ['PENDING', 'FAILED', 'READY', 'PARTIAL'] as const) expect(paneStateOf({ state }, false)).toBe('UNAVAILABLE')
+    // PARTIAL without a document (unavailable at the seal) is still what the manifest says: PARTIAL.
+    expect(paneStateOf({ state: 'PARTIAL' }, false)).toBe('PARTIAL')
+    // NEVER a fall-back to ASSEMBLED: an item that reports no state has none.
+    expect(paneStateOf(null, true)).toBe('UNKNOWN')
+    expect(paneStateOf(null, false)).toBe('UNKNOWN')
+    for (const state of ['PENDING', 'FAILED', 'READY'] as const) expect(paneStateOf({ state }, false)).toBe('UNAVAILABLE')
+    // A state that is not READY never reads as assembled because a document arrived.
+    for (const state of ['PENDING', 'FAILED'] as const) expect(paneStateOf({ state }, true)).toBe('UNAVAILABLE')
   })
 
   it('the form check, the request and the refusals', () => {
@@ -143,7 +149,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-type Summary = { state: string; failedChunks?: number; backendUnreachable?: boolean }
+type Summary = { state: string; failedChunks?: number; backendUnreachable?: boolean; sha256?: string | null; machineTranscriptHash?: string | null }
 const withTranscript =
   (summary: Summary) =>
   (item: EvidenceItem): EvidenceItem =>
@@ -290,6 +296,48 @@ describe('states on the page', () => {
     await screen.findByTestId('evidence-transcript-segments', {}, UI)
     expect(screen.getByTestId('evidence-transcript')).toHaveAttribute('data-state', 'PARTIAL')
     expect(screen.getByTestId('evidence-transcript-partial')).toHaveTextContent('2 parts of the audio have no text. No text stands in for them. The transcription backend could not be reached for part of the recording.')
+    expect(screen.getAllByTestId(/^evidence-transcript-original-/)).toHaveLength(2)
+  })
+
+  it('R80-01 ASSEMBLED: only a summary that says READY reads as assembled', async () => {
+    await openPane({ state: 'READY', failedChunks: 0, backendUnreachable: false })
+    await screen.findByTestId('evidence-transcript-segments', {}, UI)
+    expect(screen.getByTestId('evidence-transcript')).toHaveAttribute('data-state', 'ASSEMBLED')
+    expect(screen.getByTestId('evidence-transcript-state')).toHaveTextContent('Transcript assembled')
+    expect(screen.queryByTestId('evidence-transcript-partial')).toBeNull()
+  })
+
+  it('R80-01 PARTIAL without a document (unavailable at the seal): PARTIAL, said in a sentence, and nothing is asked of the Core - never "not available yet"', async () => {
+    opened = await openLiveEvidence(`/evidence/${EV.sealed}?tab=media`, {
+      before: (bed) => {
+        bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, (item) => ({ ...withTranscript({ state: 'PARTIAL', sha256: null, machineTranscriptHash: null, failedChunks: 4, backendUnreachable: false })(item), transcriptSha256: null }) as EvidenceItem) }
+        bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
+      },
+    })
+    await findDetailBody()
+    const pane = await screen.findByTestId('evidence-transcript', {}, UI)
+    expect(pane).toHaveAttribute('data-state', 'PARTIAL')
+    expect(screen.getByTestId('evidence-transcript-state')).toHaveTextContent('Transcript partial')
+    expect(screen.getByTestId('evidence-transcript-no-document')).toHaveTextContent('No transcript was sealed with this recording.')
+    expect(screen.getByTestId('evidence-transcript-partial')).toHaveTextContent('4 parts of the audio have no text.')
+    expect(screen.queryByTestId('evidence-transcript-not-ready')).toBeNull()
+    expect(requests('getTranscript')).toHaveLength(0)
+    expect(requests('listTranscriptRevisions')).toHaveLength(0)
+  })
+
+  it('R80-01 NO SUMMARY: "Transcript state not reported" - the document is shown, and the state is NOT assembled', async () => {
+    opened = await openLiveEvidence(`/evidence/${EV.sealed}?tab=media`, {
+      before: (bed) => {
+        bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, (item) => ({ ...withTranscript({ state: 'READY' })(item), transcript: null }) as EvidenceItem) }
+        bed.fake.answer('getTranscript', () => ({ status: 200, body: { ...DOCUMENT, revision: 0 } }))
+        bed.fake.answer('listTranscriptRevisions', () => ({ status: 200, body: { items: [], nextCursor: null } }))
+      },
+    })
+    await findDetailBody()
+    await screen.findByTestId('evidence-transcript-segments', {}, UI)
+    expect(screen.getByTestId('evidence-transcript')).toHaveAttribute('data-state', 'UNKNOWN')
+    expect(screen.getByTestId('evidence-transcript-state')).toHaveTextContent('Transcript state not reported')
+    expect(screen.getByTestId('evidence-transcript-state')).not.toHaveTextContent('assembled')
     expect(screen.getAllByTestId(/^evidence-transcript-original-/)).toHaveLength(2)
   })
 

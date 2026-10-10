@@ -49,6 +49,16 @@
  * closed connection (a media element reports a network error); the same request made again from
  * that offset gets the clean `409` above. Bytes of a fragment that failed are never sent.
  *
+ * AN ANSWER IN FLIGHT AND ITS SIGN-IN SESSION (review finding R93-08). Every NEW request dies with
+ * the session: stage 4 reads the session from the database per request, so after a sign-out the
+ * caller is anonymous and is refused before the token is looked at. An answer that is already
+ * streaming is CUT: every `MEDIA_SESSION_CHECK_EVERY_PIECES` pieces the handler asks whether the
+ * session it started in is still open (`parts().sessionOpen`, one row by its key), and stops the
+ * stream when it is not - also when that read fails (fail closed). The exposure after a sign-out
+ * is therefore bounded by that many pieces (a piece is one fragment or one clear chunk), not by
+ * the length of the file. The EXPIRY of the token does not cut an answer in flight (decision
+ * D-90-9 stands: a player reads one long range): the token gates the START of an answer.
+ *
  * THE AUDIT TRAIL of serving. One `EVIDENCE_MEDIA_SERVED` row per answered range, written when the
  * answer has ended, with the bytes that were actually handed to the connection and the range that
  * was answered; `WARNING` and a message naming the fragment when the stream stopped on a tag.
@@ -97,6 +107,11 @@ export const EVIDENCE_CASE_SCOPE_REASON = 'EVIDENCE_CASE_SCOPE';
 export const NOT_A_SEALED_PACKAGE_REASON = 'NOT_A_SEALED_PACKAGE';
 export const RANGE_NOT_SATISFIABLE_REASON = 'RANGE_NOT_SATISFIABLE';
 
+/** `details`-free code of a stream that was cut because its sign-in session ended (R93-08). In the row's message and the log line. */
+export const MEDIA_SESSION_ENDED_REASON = 'MEDIA_SESSION_ENDED';
+/** After how many pieces of one answer the session is asked for again (R93-08). */
+export const MEDIA_SESSION_CHECK_EVERY_PIECES = 8;
+
 /** How many file plans are kept (a plan is the fragment table of one camera file: no key, no media). */
 export const MEDIA_PLAN_CACHE_ENTRIES = 4;
 
@@ -128,9 +143,19 @@ export interface MediaStreamParts {
   readItem(request: FastifyRequest, evidenceId: string): Promise<MediaItem | null>;
   /** Eight random bytes. */
   nonce(): Uint8Array;
+  /** R93-08: true while the sign-in session of that ID is open. Asked while a long answer is in flight. */
+  sessionOpen(request: FastifyRequest, sessionId: string): Promise<boolean>;
 }
 
 type Operator = Extract<Principal, { kind: 'OPERATOR' }>;
+
+/** Thrown inside an answer in flight whose sign-in session ended: the stream is destroyed. It carries nothing. */
+class SessionEnded extends Error {
+  constructor() {
+    super(MEDIA_SESSION_ENDED_REASON);
+    this.name = 'SessionEnded';
+  }
+}
 
 function operationOf(operationId: MediaStreamOperation): CoreApiRegistryOperation {
   const operation = findCoreApiOperation(operationId);
@@ -288,12 +313,12 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
   // ── The media route ──────────────────────────────────────────────────────────────────────────
 
   /** The row of one answered range, written when the answer has ended. It cannot change the answer: a failure is logged and persisted. */
-  async function recordServed(request: FastifyRequest, principal: Operator, item: MediaItem, fileId: PackageVideoTrackId, range: { readonly start: number; readonly end: number }, served: number, stopped: MediaSourceError | null): Promise<void> {
+  async function recordServed(request: FastifyRequest, principal: Operator, item: MediaItem, fileId: PackageVideoTrackId, range: { readonly start: number; readonly end: number }, served: number, stopped: MediaSourceError | null, sessionEnded = false): Promise<void> {
     try {
       await append(MEDIA_SERVED_UNIT, {
         type: AuditType.EVIDENCE_MEDIA_SERVED,
-        ...(stopped === null ? {} : { severity: Severity.WARNING }),
-        message: stopped === null ? `Media served: ${fileId}` : `Media stream stopped: ${fileId} fragment ${stopped.seq ?? '?'} (${stopped.code})`,
+        ...(stopped === null && !sessionEnded ? {} : { severity: Severity.WARNING }),
+        message: sessionEnded ? `Media stream stopped: ${fileId} (${MEDIA_SESSION_ENDED_REASON})` : stopped === null ? `Media served: ${fileId}` : `Media stream stopped: ${fileId} fragment ${stopped.seq ?? '?'} (${stopped.code})`,
         actorId: principal.operatorId,
         deviceId: principal.deviceId,
         sessionId: item.sessionId,
@@ -304,6 +329,7 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       request.log.error({ err: error, source: `${SOURCE}.recordServed`, evidenceId: item.evidenceId, fileId }, SERVED_ROW_NOT_WRITTEN);
       app.errorLog.append({ level: 'error', source: `${SOURCE}.recordServed`, message: SERVED_ROW_NOT_WRITTEN, ...describeError(error), context: { requestId: request.id, evidenceId: item.evidenceId, fileId } });
     }
+    if (sessionEnded) request.log.info({ code: MEDIA_SESSION_ENDED_REASON, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, bytesServed: served }, 'Evidence media stream stopped: its sign-in session ended');
     if (stopped !== null) {
       request.log.error({ code: stopped.code, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, seq: stopped.seq, bytesServed: served }, STOPPED);
       app.errorLog.append({ level: 'error', source: `${SOURCE}.serve`, message: STOPPED, code: stopped.code, context: { requestId: request.id, evidenceId: item.evidenceId, fileId, seq: stopped.seq } });
@@ -358,22 +384,31 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       async function* body(): AsyncGenerator<Buffer, void, undefined> {
         let served = 0;
         let stopped: MediaSourceError | null = null;
+        let sessionEnded = false;
         try {
           if (first.done !== true) {
             served += first.value.byteLength;
             yield first.value;
+            let sent = 1;
             for await (const piece of pieces) {
+              // R93-08: an answer in flight ends with its sign-in session. A read that fails cuts too.
+              if (sent % MEDIA_SESSION_CHECK_EVERY_PIECES === 0 && !(await parts().sessionOpen(request, principal.sessionId).catch(() => false))) {
+                sessionEnded = true;
+                throw new SessionEnded();
+              }
               served += piece.byteLength;
               yield piece;
+              sent += 1;
             }
           }
         } catch (error) {
+          if (error instanceof SessionEnded) throw error;
           // The stream ends here: the connection is destroyed by the server's stream handling, and
           // the client holds fewer bytes than the length it was told.
           stopped = error instanceof MediaSourceError ? error : new MediaSourceError(MediaSourceFailure.FRAGMENT_NOT_OPENED, { trackId: fileId });
           throw stopped;
         } finally {
-          await recordServed(request, principal, item, fileId, range, served, stopped);
+          await recordServed(request, principal, item, fileId, range, served, stopped, sessionEnded);
         }
       }
 

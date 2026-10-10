@@ -67,4 +67,11 @@ export const INSERT_TRANSCRIPT_REVISION = `INSERT INTO public.transcript_revisio
 export const READ_REVISION_HEADS =
   'SELECT r.evidence_id, max(r.revision_no) AS revision, t.json_sha256, t.labels_status FROM public.transcript_revisions r JOIN public.transcripts t ON t.evidence_id = r.evidence_id GROUP BY r.evidence_id, t.json_sha256, t.labels_status ORDER BY r.evidence_id';
 
+/**
+ * Every stored revision by item, oldest first: what the boot step holds the list files of each
+ * sealed package against (closing pass F-X, R80-08: the table is the journal). Number, hash and
+ * signature only - the judge's side; no author, no reason.
+ */
+export const READ_REVISION_CHAINS = 'SELECT evidence_id, revision_no, sha256, signature_value FROM public.transcript_revisions ORDER BY evidence_id, revision_no';
+
 export const READ_TRANSCRIPT_REVISIONS = `SELECT ${REVISION_COLUMNS} FROM public.transcript_revisions WHERE evidence_id = $1 ORDER BY revision_no`;

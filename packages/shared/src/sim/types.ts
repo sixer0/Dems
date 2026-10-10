@@ -1114,9 +1114,13 @@ export interface EvidenceItem {
    */
   transcriptRevisions?: TranscriptRevisionRecord[];
   /**
-   * The transcript summary of slice `evidence` (`EvidenceItemSchema.transcript`). Set by a Core
-   * when operation 85 stored a revision (pass D6, `noteTranscriptRevisionTransition`); absent
-   * otherwise - the document and the head are always read through operation 84.
+   * The transcript summary of slice `evidence` (`EvidenceItemSchema.transcript`). WRITTEN BY THE
+   * SEAL of a Core (`CompleteSealInput.transcript`: the projection of the signed manifest's
+   * transcript block - state, failed chunks, the unreachable backend; fix pass F-M6, R80-01) and
+   * published again after a start of the Core from the sealed manifest
+   * (`noteTranscriptRevisionTransition`); operation 85 moves its `revision`. Absent on an item no
+   * Core sealed with a summary (v1, the simulator's own items): a reader then knows NO state and
+   * must not assume one.
    */
   transcript?: EvidenceTranscriptSummary | null;
 }
@@ -1129,16 +1133,28 @@ export interface EvidenceTranscriptSummary {
   labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
   /** Current max(revision_no); 0 when no revision exists. */
   revision: number;
+  /** Manifest field 93: chunks (not attempts) that ended FAILED. Absent where the seal states none. */
+  failedChunks?: number;
+  /** Manifest field 122. Absent where no seal stated it. */
+  backendUnreachable?: boolean;
 }
 
-/** What a Core says after it stored a transcript revision (`noteTranscriptRevisionTransition`). */
+/**
+ * What a Core says about the transcript of a sealed item (`noteTranscriptRevisionTransition`):
+ * after it stored a revision (operation 85: the new head), and after a start, when it reads the
+ * summary back from the sealed manifest (the whole summary, head 0 when no revision exists).
+ */
 export interface TranscriptRevisionNote {
   evidenceId: string;
-  /** The new head: the number of the stored revision. */
+  /** The head: the number of the newest stored revision; 0 when none. */
   revision: number;
-  state: 'READY' | 'PARTIAL';
-  machineTranscriptHash: string;
+  /** `DISABLED` and a null hash only for a declared absence read from a sealed manifest. */
+  state: 'READY' | 'PARTIAL' | 'DISABLED';
+  machineTranscriptHash: string | null;
   labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
+  /** Manifest fields 93 and 122, when the caller read the manifest. Used only for an item that holds no summary yet. */
+  failedChunks?: number;
+  backendUnreachable?: boolean;
 }
 
 /** The input of the INTERNAL action `applyStorageVolume` (CS-09): the measured figures of the evidence volume, in bytes. */

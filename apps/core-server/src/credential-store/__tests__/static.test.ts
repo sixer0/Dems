@@ -92,8 +92,8 @@ describe('rule 1: one store', () => {
 
   it('a key store is built in one place, and no other production source of the server builds one', () => {
     expect(files(occurrences(production, KEY_STORE_BUILDER))).toEqual([`${FOLDER}index.ts`, `${FOLDER}key-store.ts`]);
-    // In `index.ts`: the default of `createCredentialStore`, and the store of an app.
-    expect(occurrences(production, KEY_STORE_BUILDER).filter((place) => place.startsWith(`${FOLDER}index.ts:`))).toHaveLength(2);
+    // In `index.ts`: the default of `createCredentialStore`, the store of an app, and - fix pass F-M7c, ruling D180 - the folder of that app's own session keys.
+    expect(occurrences(production, KEY_STORE_BUILDER).filter((place) => place.startsWith(`${FOLDER}index.ts:`))).toHaveLength(3);
     expect(files(occurrences(production, /\bcreateCredentialStore\s*\(/g))).toEqual([`${FOLDER}index.ts`]);
   });
 });

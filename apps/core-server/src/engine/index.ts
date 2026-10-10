@@ -66,6 +66,7 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { followClock, raiseClockFloor } from '../core';
 import { registerStatePositionHeaders, statePositionOf } from './api-headers';
+import type { CaptureDeviceListing } from '../db/mapping';
 import { EngineError } from './errors';
 import { createEngineHost, isEngineControl, type EngineControl } from './host';
 import { ENGINE_BOOT_STEP } from './limits';
@@ -88,6 +89,11 @@ export { markCaptureConnectingIn, registerCaptureDeviceIn, switchCaptureAudioSou
 // Seal block (blueprint row 82): the three INTERNAL sealing actions, beside the seam.
 export { sealDoorsOf } from './seal-doors';
 export { FACT_DOOR_LABEL, factDoorsOf, type EngineFactDoors } from './fact-doors';
+// Export block (fix pass F-M8): the completion of a background export and the record of a download, beside the seam.
+export { EXPORT_DOOR_LABEL, exportDoorsOf, type EngineExportDoors } from './export-doors';
+// Unsealable block (fix pass F-M7b): the terminal outcome of a session that cannot be sealed, beside the seam.
+export { UNSEALABLE_DOOR_LABEL, unsealableDoorsOf, type EngineUnsealableDoors } from './unsealable-doors';
+export { SEALED_PLAINTEXT_REASON, SEALING_NOTICE_DOOR_LABEL, SEAL_BLOCKED_REASON, SEAL_RETRY_REASON, sealingNoticeDoorsOf, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
 export type { EngineSealDoors } from './types';
 export { CAPTURE_FAULT_KINDS, type AudioSourceSwitch, type AudioSourceSwitched } from './capture-session';
 export {
@@ -129,6 +135,23 @@ export function engineControl(app: FastifyInstance): EngineHost & EngineControl 
 export function captureDoorsOf(engine: EngineHost): EngineCaptureDoors {
   if (!isEngineControl(engine)) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the engine behind the seam is not the host of src/engine: it has no capture doors');
   return engine;
+}
+
+/**
+ * Device-list block (fix F-M4; review row 69, finding R69-03): hands the host the rule a stored
+ * registry row is listed by (`storedDeviceListingOf` of the capture fence). The engine imports
+ * nothing of the capture unit (the units import each other in one direction), so the unit that
+ * knows both - `modules/devices`, at its registration, before the boot - provides it, once. From
+ * then on every rehydration reads the stored registry through it. Throws `ENGINE_ACTION_NOT_HOSTED`
+ * for an engine behind the seam that is not the host of this folder: a Core in a real capture
+ * operation never starts on an engine that cannot hold the rule.
+ */
+export function provideCaptureDeviceListing(engine: EngineHost, listing: CaptureDeviceListing): void {
+  const door = engine as EngineHost & { provideCaptureDeviceListing?: (listing: CaptureDeviceListing) => void };
+  if (typeof door.provideCaptureDeviceListing !== 'function') {
+    throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the engine behind the seam is not the host of src/engine: it cannot hold the device-list rule of the capture operation');
+  }
+  door.provideCaptureDeviceListing(listing);
 }
 
 export const enginePlugin: FastifyPluginAsync = async (app) => {

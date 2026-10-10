@@ -154,12 +154,17 @@ export interface FakeHost {
   credential: { credential_kind: string | null; credential_ref: string | null; secret_ciphertext: Uint8Array | null; nonce: Uint8Array | null };
   /** The statements the composition sent to the pool. */
   readonly statements: string[];
+  /** The rows of `session_audio_intervals` the pool answers (fix pass F-M6, R80-02). Default: one open interval from 0. */
+  intervalRows: { mic_device_id: string; from_media_ms: number; to_media_ms: number | null }[];
   now: number;
   /** Everything the host wrote anywhere, as one text: for a canary sweep. */
   everything(): string;
 }
 
-export function fakeHost(dataDir: string, captureMode: 'simulated' | 'real' = 'simulated'): FakeHost {
+/** The media store root a test's Core has when it names none: the configuration's default below the data directory. */
+export const mediaOf = (dataDir: string): string => join(dataDir, 'media', 'sessions');
+
+export function fakeHost(dataDir: string, captureMode: 'simulated' | 'real' = 'simulated', mediaStoreDir: string = mediaOf(dataDir)): FakeHost {
   const lines: LogLine[] = [];
   const persisted: FakeHost['persisted'] = [];
   const bootSteps: FakeHost['bootSteps'] = [];
@@ -173,11 +178,12 @@ export function fakeHost(dataDir: string, captureMode: 'simulated' | 'real' = 's
     bootSteps,
     statements,
     credential: { credential_kind: 'REFERENCE', credential_ref: REFERENCE, secret_ciphertext: null, nonce: null },
+    intervalRows: [{ mic_device_id: 'MIC-01', from_media_ms: 0, to_media_ms: null }],
     now: Date.UTC(2031, 0, 1),
     everything: () => JSON.stringify({ lines, persisted }),
     app: {
       stages: {},
-      config: { dataDir, captureMode },
+      config: { dataDir, mediaStoreDir, captureMode },
       log: { info: write('info'), warn: write('warn'), error: write('error') },
       errorLog: { append: (entry) => void persisted.push(entry) },
       clock: { now: () => host.now },
@@ -186,6 +192,7 @@ export function fakeHost(dataDir: string, captureMode: 'simulated' | 'real' = 's
         pool: {
           async query(text: string) {
             statements.push(text);
+            if (text.includes('session_audio_intervals')) return { rows: host.intervalRows as never[], rowCount: host.intervalRows.length };
             // The reveal function answers the credential columns; every other statement (the mirror of `transcript_chunks`) finds no row.
             if (!text.includes('dems_stt_credential_reveal')) return { rows: [], rowCount: 0 };
             return { rows: [host.credential] as never[], rowCount: 1 };

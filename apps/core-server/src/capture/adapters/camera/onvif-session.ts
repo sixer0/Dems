@@ -54,6 +54,9 @@ import type { CaptureTimers } from '../../types';
 import { usingCredential, type SealedCredential } from '../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import { ConnectionTestOutcome, type CameraCandidate, type ConnectionTestResult } from '../types';
+// The target of a test is worked out in a sibling file that holds no client (pass F-Y): the
+// confirmation text of the connect dialog is built there from the SAME function this file dials with.
+import { targetOf, type ConnectionTarget } from './connection-target';
 
 /** The bounds of one test (capture spec §A.6.2 CT-4; SEC35-33). The whole-test deadline is the caller's signal. */
 export const ONVIF_SESSION_LIMITS: OnvifSessionLimits = Object.freeze({
@@ -134,43 +137,12 @@ export interface OnvifConnectionTester {
   test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult>;
 }
 
-const IPV4 = /^(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
-const SERVICE_PATH = /^\/[A-Za-z0-9\-._~!$&'()*+,;=:%/]{0,127}$/;
 const PROFILE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
 const STREAM_SCHEME = 'rtsp:';
 const STREAM_ADDRESS_MAX_CHARS = 512;
 /** The hash names of a Digest challenge the test answers. Anything else is not answered (SEC35-31; P-5). */
 const DIGEST_ALGORITHMS: readonly string[] = ['MD5', 'SHA-256'];
 const NOT_AUTHORIZED = /not\s*authori[sz]ed|unauthori[sz]ed|failedauthentication|authentication\s+(?:failed|required)/i;
-
-interface Target {
-  readonly secure: boolean;
-  readonly host: string;
-  readonly port: number;
-  readonly path: string;
-}
-
-/** The service address of a candidate, held once more to the candidate's own address (DS-9; SEC35-32 (2)). */
-function targetOf(candidate: CameraCandidate): Target {
-  const refuse = (): never => {
-    throw new CaptureAdapterError(CaptureAdapterRefusal.LOCATOR_INVALID);
-  };
-  if (!candidate.testable || candidate.conflict || candidate.serviceAddress === null || !IPV4.test(candidate.host)) return refuse();
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate.serviceAddress);
-  } catch {
-    return refuse();
-  }
-  const secure = parsed.protocol === 'https:';
-  if (!secure && parsed.protocol !== 'http:') return refuse();
-  // A user part is refused on the raw text: no parser quirk decides it, and this file reads no member of that name.
-  if (candidate.serviceAddress.includes('@') || parsed.hostname !== candidate.host || parsed.hash !== '' || parsed.search !== '') return refuse();
-  if (!SERVICE_PATH.test(parsed.pathname)) return refuse();
-  const port = parsed.port === '' ? (secure ? 443 : 80) : Number(parsed.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) return refuse();
-  return { secure, host: candidate.host, port, path: parsed.pathname };
-}
 
 /** How a read of the package failed, as far as the test needs to know. */
 type Failure =
@@ -283,7 +255,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
 
   const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult> => {
     if (signal.aborted) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.ABORTED));
-    let target: Target;
+    let target: ConnectionTarget;
     try {
       target = targetOf(candidate);
     } catch (error) {

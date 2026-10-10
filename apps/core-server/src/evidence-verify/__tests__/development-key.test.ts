@@ -62,18 +62,21 @@ describe('the development-key line (D147)', () => {
     expect(EvidenceVerifyResultSchema.parse(contractBodyOf(EVIDENCE_ID, NOW, result)).signature).toEqual({ developmentKey: false });
   });
 
-  it('the mark never decides the signature: a development package whose signature file is altered FAILS V-09 and still says which key', async () => {
+  // Fix pass F-M7 (review row 88, R88-08; decision D178): this case pinned `developmentKey: true` beside a signature
+  // that did NOT verify. The mark is now a fact of the VERIFIED certificate only: unverified -> null, "not established".
+  it('the mark never decides the signature: a development package whose signature file is altered FAILS V-09, and the key is then NOT ESTABLISHED (null) - neither "development" nor "not development" is said as a fact', async () => {
     const built = await buildPackage({ signer: developmentSigner() });
     flipByte(join(built.dir, PackageFile.SIGNATURE), 10);
     const result = await verify(built);
     expect(result.ok).toBe(false);
     expect(statusOf(result, 'V-09')).toBe('FAIL');
-    expect(result.signature).toMatchObject({ ok: false, developmentKey: true });
+    expect(result.signature).toMatchObject({ ok: false, developmentKey: null });
     const lines = verifyReportLines(result);
-    expect(lines).toContain(DEVELOPMENT_KEY_REPORT_LINE);
+    expect(lines).not.toContain(DEVELOPMENT_KEY_REPORT_LINE);
+    expect(lines).toContain('Signing key: not established \u2014 the signature or its certificate did not verify.');
     expect(lines.some((line) => line.startsWith('Integrity: FAIL'))).toBe(true);
     const body = EvidenceVerifyResultSchema.parse(contractBodyOf(EVIDENCE_ID, NOW, result));
     expect(body.signatureOk).toBe(false);
-    expect(body.signature).toEqual({ developmentKey: true });
+    expect(body.signature).toEqual({ developmentKey: null });
   });
 });

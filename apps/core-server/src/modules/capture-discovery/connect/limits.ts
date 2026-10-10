@@ -81,10 +81,17 @@ export interface GuardVerdict {
 export interface ConnectionTestTurn {
   /**
    * Ends the turn and records its outcome. `rejectedRequests` is how many requests that carried
-   * the credential the device refused (0 when the outcome is not `AUTHENTICATION_FAILED`).
+   * the credential the device refused; `null` when the adapter does not count them.
+   *
+   * WHAT THE GUARD COUNTS (decision D181, ruling 3; erratum PE-FM4-03 of 03 §7): REJECTED
+   * CREDENTIAL-BEARING REQUESTS, not outcomes. An `AUTHENTICATION_FAILED` test with 0 of them -
+   * the camera offered only a sign-in method the Core refuses (`SCHEME_NOT_ALLOWED`), or asked
+   * for a credential when none was typed - sent no credential: it cannot be a guess, a camera
+   * cannot lock an account for it, and it adds nothing. It forgives nothing either (only
+   * `REACHABLE` resets). `null` (unknown) counts as one: unknown is never "nothing was sent".
    * Calling it twice is a mistake of the caller and throws.
    */
-  end(outcome: CaptureConnectionOutcome, rejectedRequests: number): GuardVerdict;
+  end(outcome: CaptureConnectionOutcome, rejectedRequests: number | null): GuardVerdict;
   /** Ends the turn without an outcome: the test never ran (a failure before the first request). */
   abandon(): void;
 }
@@ -177,7 +184,9 @@ export function createConnectionTestLimits(options: { readonly now: () => number
           }
           if (outcome !== CaptureConnectionOutcome.AUTHENTICATION_FAILED) return { guardTripped: false, failedAttemptsRemaining: remaining(host) };
           const before = liveFailures(host, ended);
-          const added = Math.max(1, Number.isInteger(rejectedRequests) && rejectedRequests > 0 ? rejectedRequests : 1);
+          // D181 (3): a test that sent no credential is not a failure of the guard.
+          if (rejectedRequests === 0) return { guardTripped: false, failedAttemptsRemaining: remaining(host) };
+          const added = rejectedRequests !== null && Number.isInteger(rejectedRequests) && rejectedRequests > 0 ? rejectedRequests : 1;
           const after = [...before, ...Array.from({ length: added }, () => ended)].slice(-bounds.maxFailures * 4);
           failures.delete(host);
           failures.set(host, after);

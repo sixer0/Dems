@@ -153,6 +153,8 @@ describe('the seed-time generator: generate -> verify clean PASS -> tamper -> ve
       const manifest = parseManifestV2(JSON.parse(readFileSync(join(core.packageDir(sealed.sessionId), PackageFile.MANIFEST), 'utf8')));
       expect({ integrity: manifest.integrity, demo: manifest.demo, developmentSources: manifest.developmentSources, simulated: manifest.signature.simulated }).toEqual({ integrity: 'DEMO_PACKAGE', demo: true, developmentSources: true, simulated: false });
       expect(manifest.tracks.map((track) => track.sourceClass)).toEqual(['FAKE', 'FAKE']);
+      // Fix pass F-M7 (review row 69's question 11): field 43 of a seed-sealed package is the codec ENUMERATION the seal uses (`VideoCodec`), never the v1 text 'H.264 + AAC-LC'.
+      expect(manifest.tracks.map((track) => track.codec)).toEqual(['H264', 'H264']);
       expect(manifest.device.certificate.subject).toContain('OU=DEVELOPMENT KEY - NOT FOR PRODUCTION');
       expect(report.sources).toMatchObject({ ok: true, code: 'DEVELOPMENT', development: true });
       expect(report.signature).toMatchObject({ ok: true, developmentKey: true, simulated: false });

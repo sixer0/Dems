@@ -76,6 +76,7 @@ export {
   buildSessionCaptureSources,
   developmentSourceLabelOf,
   deviceSourceFieldsOf,
+  storedDeviceListingOf,
   type CaptureSourceSlot,
   type DeviceSourceFields,
   type RecordedSlot,
@@ -83,6 +84,14 @@ export {
   type SessionCaptureSourcesInput,
 } from './sources';
 export { CAPTURE_FENCE_WRITES, READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from './statements';
+
+/**
+ * The reader of what a helper program path IS (fix F-M4; review row 69, question 5): the door's
+ * own inspector under the fence's name, so that the seed commands ask `helperProgramProblemOf` with
+ * the very reader the boot uses, without reaching into the adapter layer.
+ */
+export const inspectHelperProgram: ProgramInspector = inspectProgram;
+export type HelperProgramInspector = ProgramInspector;
 
 /** `<dataDir>/run/capture`: where the pipes of the sessions live (spec §A.7.1 ML-2). */
 const RUN_SUBPATH = 'run/capture';

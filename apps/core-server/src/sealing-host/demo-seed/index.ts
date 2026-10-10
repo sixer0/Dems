@@ -50,6 +50,7 @@ import { corePorts, sessionPackageDir } from '../../evidence-verify';
 import { VIDEO_TRACK_IDS, type RecordingFragment, type VideoTrackId } from '../../modules/recording-fragments';
 import { describeError, type ErrorLog } from '../../plugins/logger';
 import {
+  SEALING_QUARANTINE_DIR,
   createSealingPipeline,
   createTranscriptFileReader,
   finalizeTranscript,
@@ -237,7 +238,9 @@ function factsOf(item: DemoSealItem, seconds: number): SealSessionFacts {
     model: 'generated source',
     firmware: 'generated source',
     clockOffsetMs: 0,
-    codec: 'H.264 + AAC-LC',
+    // Field 43 is the codec ENUMERATION the seal writes (`VideoCodec`: H264 | HEVC; ev §B.4 erratum PE-D9-03), never the v1 text
+    // 'H.264 + AAC-LC' (fix pass F-M7; review row 69, question 11). The generated source is H.264 (`DEMO_CAMERA_PROFILE`).
+    codec: 'H264',
     avOffsetMs: null,
     firstVideoSamplePts: null,
     firstVideoSampleTimescale: null,
@@ -390,6 +393,7 @@ export async function sealDemoPackages(options: DemoSealOptions, items: readonly
         },
         packageDir: () => packageDir,
         stagingDir: () => stagingDir,
+        quarantineDir: () => join(store, SEALING_QUARANTINE_DIR, sessionId),
         log: options.log,
         now: options.now,
         timer: systemStepTimer,

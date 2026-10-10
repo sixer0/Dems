@@ -106,6 +106,22 @@ export interface V2Sources {
   readonly audioIntervals: readonly { readonly seq: number; readonly micDeviceId: string; readonly sourceClass: V2SourceClass }[]
 }
 
+/**
+ * The signing key of a verified package, as the view may word it (fix pass F-M7, R88-07; D178).
+ * `DEVELOPMENT`: the certificate that VERIFIED the signature carries the development-key mark -
+ * the view says "Signed with a DEVELOPMENT key — not a production signature", on a result that
+ * passed as on one that failed. `NOT_ESTABLISHED`: the Core answered `null` (the manifest, the
+ * signature or the certificate did not verify), or the member is unreadable - never read as "no
+ * development key". `NOT_DEVELOPMENT`: nothing is drawn.
+ */
+export type V2SigningKey = 'DEVELOPMENT' | 'NOT_DEVELOPMENT' | 'NOT_ESTABLISHED'
+
+/** One statement of the verifier about what the package format does not cover: its code and the Core's own line. */
+export interface V2Notice {
+  readonly code: string
+  readonly report: string
+}
+
 export interface VerifyV2Answer {
   /** The Core's verdict: PASS only for `ok === true`. */
   readonly verdict: V2Verdict
@@ -122,6 +138,13 @@ export interface VerifyV2Answer {
   readonly transcriptState: V2TranscriptState | null
   /** null: the answer carries no `sources` block (a v1 answer): nothing is drawn. */
   readonly sources: V2Sources | null
+  /**
+   * What the answer says of the SIGNING KEY (`signature.developmentKey`; fix pass F-M7, R88-07).
+   * null: the answer carries no such member (a v1 answer, an older Core): nothing is drawn.
+   */
+  readonly signingKey: V2SigningKey | null
+  /** What the package signature does NOT cover (`notices[]`; R88-06). Shown, never collapsed. */
+  readonly notices: readonly V2Notice[]
   /** How many fragments did not verify, when the answer says it; larger than the list when the Core cut it. */
   readonly failedFragmentCount: number | null
   /** Every fragment the answer names as failed (from `fragments[]` and the findings); empty when it names none. */
@@ -137,6 +160,8 @@ const CHECK_STATUSES: readonly string[] = ['PASS', 'FAIL', 'SKIPPED']
 const SKIP_REASONS: readonly string[] = ['BLOCKED', 'KEY_UNAVAILABLE', 'OUT_OF_SCOPE']
 const SOURCE_CLASSES: readonly string[] = ['PRODUCTION', 'LOCAL_DEVICE', 'FAKE']
 const MAX_INTERVALS = 4096
+const MAX_NOTICES = 8
+const NOTICE_CODE = /^[A-Z][A-Z0-9_]{2,63}$/
 const CHECK_ID = /^V-\d{2}$/
 /** The largest report this reader walks (a hostile or broken answer must not be drawn at any length). */
 const MAX_CHECKS = 32
@@ -347,6 +372,30 @@ export function readVerifyV2(answer: unknown): VerifyV2Answer | null {
     else malformed.push('transcriptState')
   }
   const sources = readSources(answer.sources, malformed)
+  // R88-07: the signing key. A member that is there and unreadable is NOT "no development key".
+  let signingKey: V2SigningKey | null = null
+  if (answer.signature !== undefined) {
+    const held = isRecord(answer.signature) ? answer.signature.developmentKey : undefined
+    if (held === true) signingKey = 'DEVELOPMENT'
+    else if (held === false) signingKey = 'NOT_DEVELOPMENT'
+    else {
+      signingKey = 'NOT_ESTABLISHED'
+      if (held !== null) malformed.push('signature')
+    }
+  }
+  // R88-06: the notices, each with the Core's own line. An entry that cannot be read is named, not guessed.
+  const notices: V2Notice[] = []
+  if (answer.notices !== undefined) {
+    if (!Array.isArray(answer.notices) || answer.notices.length > MAX_NOTICES) malformed.push('notices')
+    else {
+      for (const entry of answer.notices) {
+        const code = isRecord(entry) && typeof entry.code === 'string' && NOTICE_CODE.test(entry.code) ? entry.code : null
+        const report = isRecord(entry) ? text(entry.report, 256) : null
+        if (code === null || report === null) malformed.push('notices')
+        else notices.push({ code, report })
+      }
+    }
+  }
   let failedFragmentCount: number | null = null
   if (answer.failedFragmentCount !== undefined && answer.failedFragmentCount !== null) {
     failedFragmentCount = whole(answer.failedFragmentCount)
@@ -366,6 +415,8 @@ export function readVerifyV2(answer: unknown): VerifyV2Answer | null {
     checks,
     transcriptState,
     sources,
+    signingKey,
+    notices,
     failedFragmentCount,
     ...fragmentsOf(checks, answer.fragments, malformed),
     malformed: [...new Set(malformed)],
@@ -423,6 +474,12 @@ export function v2FragmentLine(fragment: V2FailedFragment, t: TFunction): string
   if (fragment.storedMismatch) return t('evidence.verifyV2.fragment.tamperedNoChain', place)
   return t('evidence.verifyV2.fragment.tamperedOther', place)
 }
+
+/** The key of the signing-key line (fix pass F-M7, R88-07); `NOT_DEVELOPMENT` has none: nothing is drawn. */
+export const V2_SIGNING_KEY_LINE = {
+  DEVELOPMENT: 'evidence.verifyV2Key.development',
+  NOT_ESTABLISHED: 'evidence.verifyV2Key.notEstablished',
+} as const satisfies Record<Exclude<V2SigningKey, 'NOT_DEVELOPMENT'>, string>
 
 /** The key of the source line, the FIRST line of a v2 result (spec §D.1; `common.sourceClass.verify`). */
 export const V2_SOURCES_LINE = {

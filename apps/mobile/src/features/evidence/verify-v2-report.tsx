@@ -19,7 +19,7 @@ import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuesti
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
-import { V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Row, type V2Sources, type VerifyV2Answer } from './verify-v2';
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2';
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer;
@@ -35,6 +35,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
   return (
     <View style={styles.root} testID={`evidence-verify-v2-${answer.verdict}`}>
       {answer.sources !== null ? <SourcesLine sources={answer.sources} /> : null}
+      {answer.signingKey === 'DEVELOPMENT' || answer.signingKey === 'NOT_ESTABLISHED' ? <SigningKeyLine state={answer.signingKey} /> : null}
       {answer.transcriptState !== null ? (
         <View style={styles.line} testID={`evidence-v2-transcript-state-${answer.transcriptState}`}>
           <FileText size={14} color={palette.gray} />
@@ -84,6 +85,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
       ) : null}
 
       {answer.checks !== null ? <CheckReport checks={answer.checks} /> : null}
+      {answer.notices.length > 0 ? <Notices notices={answer.notices} /> : null}
     </View>
   );
 }
@@ -95,6 +97,45 @@ const SOURCE_INTERVALS_SHOWN = 8;
  * The source line and its entries: an icon AND the words (never colour alone), a constant 1 px
  * border whose colour says which state (E-15). It is a plain view: no press, no collapse.
  */
+/**
+ * THE SIGNING-KEY LINE (fix pass F-M7, R88-07; D178), directly after the source line: a bordered
+ * row like the source line, never collapsed, no press. A development key is the warning tone on a
+ * result that passed as on one that failed; a key that is not established is the danger tone.
+ */
+function SigningKeyLine({ state }: { state: Exclude<V2SigningKey, 'NOT_DEVELOPMENT'> }) {
+  const { t } = useTranslation();
+  const development = state === 'DEVELOPMENT';
+  const Icon = development ? FlaskConical : ShieldQuestion;
+  const tone = development ? statusText.warning : statusText.danger;
+  return (
+    <View style={[styles.row, { borderColor: tone }]} accessibilityRole="text" testID={`evidence-v2-signing-key-${state}`}>
+      <View style={styles.rowHead}>
+        <Icon size={16} color={tone} />
+        <Text maxFontSizeMultiplier={1.2} style={[styles.sourceLine, { color: tone }]}>
+          {t(V2_SIGNING_KEY_LINE[state])}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/** WHAT THE PACKAGE SIGNATURE DOES NOT COVER (R88-06): each statement of the verifier, with the Core's own line. */
+function Notices({ notices }: { notices: readonly V2Notice[] }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.list} accessibilityLabel={t('evidence.verifyV2Key.noticesTitle')} testID="evidence-v2-notices">
+      <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+        {t('evidence.verifyV2Key.noticesTitle')}
+      </Text>
+      {notices.map((notice) => (
+        <Text key={notice.code} maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-v2-notice-${notice.code}`}>
+          {notice.report}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 function SourcesLine({ sources }: { sources: V2Sources }) {
   const { t } = useTranslation();
   const line = t(V2_SOURCES_LINE[sources.state]);

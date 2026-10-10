@@ -10,7 +10,7 @@
  * The answer is what the worker said, or why there is none. What the Core makes of a version is
  * `workerVersionRefusalOf` (`checks.ts`).
  */
-import { CAPTURE_IPC_DEFAULTS, WorkerMessageType } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, LIBAVFORMAT_VERSION_MISMATCH, WorkerMessageType } from '@dems/capture-protocol';
 import type { CaptureTimers, WorkerChannel, WorkerLauncher } from '../types';
 import { HandshakeFailure, type WorkerHandshake } from './checks';
 
@@ -61,6 +61,8 @@ export function probeWorkerHandshake(options: WorkerProbeOptions): Promise<Worke
         {
           message(message) {
             if (message.type === WorkerMessageType.HELLO) answer({ outcome: 'HELLO', protocolVersion: message.protocolVersion, workerVersion: message.workerVersion });
+            // D188 (a): the worker's own statement that its libavformat is not the verified one, written INSTEAD of HELLO.
+            else if (message.type === WorkerMessageType.CRASH && message.code === LIBAVFORMAT_VERSION_MISMATCH) answer({ outcome: 'NONE', failure: HandshakeFailure.MEDIA_LIBRARY_MISMATCH });
             else answer({ outcome: 'NONE', failure: HandshakeFailure.HELLO_EXPECTED });
           },
           violation() {

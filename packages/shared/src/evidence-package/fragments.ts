@@ -14,7 +14,7 @@ import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from '@noble/hashes/
 import { z } from 'zod';
 import { canonicalJson, canonicalJsonBytes } from './canonical';
 import { EvidencePackageError, EvidencePackageRefusal } from './errors';
-import { VIDEO_TRACK_IDS } from './layout';
+import { isSealedTrackList } from './layout';
 import { ManifestFileSchema, type ManifestFile } from './manifest';
 
 export const FRAGMENTS_JSON_SCHEMA_ID = 'dems.fragments/1';
@@ -32,12 +32,13 @@ function members(error: z.ZodError): string[] {
   return [...new Set(error.issues.map((issue) => issue.path.join('.')))];
 }
 
-/** Validates a fragment table and returns the manifest's `files[]` value (VIDEO-01 then VIDEO-02). */
+/** Validates a fragment table and returns the manifest's `files[]` value (the sealed camera files, VIDEO-01 before VIDEO-02). */
 export function manifestFilesFromFragmentTable(table: FragmentTableInput): ManifestFile[] {
   const parsed = z.array(ManifestFileSchema).safeParse(table);
   if (!parsed.success) throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, members(parsed.error));
   const files = parsed.data;
-  if (files.length !== VIDEO_TRACK_IDS.length || files.some((file, index) => file.trackId !== VIDEO_TRACK_IDS[index])) {
+  // One record per SEALED camera file: one or two, VIDEO-01 before VIDEO-02 (F-M7 R88-01).
+  if (!isSealedTrackList(files.map((file) => file.trackId))) {
     throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, ['files']);
   }
   return files;

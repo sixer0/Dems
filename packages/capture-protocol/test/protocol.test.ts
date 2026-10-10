@@ -13,6 +13,11 @@
 // device-ID-only subject (D84 R-1, R-2), the AUDIO_SOURCE_INTERVAL and AUDIO_TIMELINE_END records,
 // what FIRST_VIDEO_SAMPLE says about the video that was not written, the microphone identity and
 // rate in a telemetry level, and the named settings of a worker process.
+//
+// Fix pass F-M3 (review 16, ruling D179) adds: NO FREE TEXT FROM A WORKER - one hostile frame per
+// member that reaches a log, an alert or a file name (R63-05 / carried question 8), each refused by
+// the decoder as a frame that is no message; the reason FRAGMENT_SIZE_BOUND_REACHED and the named
+// setting maxFragmentBytes (R63-02); the sync level a first durable fragment states (R63-09).
 import { describe, expect, it } from 'vitest';
 import {
   ADVISORY_WARNING_REASONS,
@@ -22,6 +27,7 @@ import {
   CAPTURE_SWITCH_BOUND_US,
   CAPTURE_WORKER_SETTINGS,
   CAPTURE_WORKER_SETTING_DEFAULTS,
+  CaptureSyncLevel,
   CaptureWarningReason,
   MIC_RECORD_KINDS,
   MIC_WARNING_REASONS,
@@ -227,7 +233,10 @@ describe('the messages', () => {
     // Every reason belongs to exactly one code; the microphone reasons and the advisory one are named.
     expect([...WARNING_REASONS_OF.MIC_SILENT, ...WARNING_REASONS_OF.CAPTURE_FAULT].sort()).toEqual(Object.values(CaptureWarningReason).sort());
     expect(MIC_WARNING_REASONS).toEqual(['MIC_LEVEL_BELOW_THRESHOLD', 'MIC_DISCONNECTED', 'MIC_RATE_AT_LIMIT']);
-    expect(ADVISORY_WARNING_REASONS).toEqual(['KEYFRAME_INTERVAL_ABOVE_BOUND']);
+    // R63-02: a fragment closed at the size bound is an advisory about a camera that RECORDS, under the existing code.
+    expect(ADVISORY_WARNING_REASONS).toEqual(['KEYFRAME_INTERVAL_ABOVE_BOUND', 'FRAGMENT_SIZE_BOUND_REACHED']);
+    expect(WARNING_REASONS_OF.CAPTURE_FAULT).toContain('FRAGMENT_SIZE_BOUND_REACHED');
+    expect(WARNING_REASONS_OF.MIC_SILENT).not.toContain('FRAGMENT_SIZE_BOUND_REACHED');
     // There is no code and no reason for an automatic switch (OD-11).
     expect(Object.values(CaptureWarningReason).some((reason) => /SWITCH/.test(reason))).toBe(false);
   });
@@ -298,15 +307,77 @@ describe('the messages', () => {
     expect(ok(noRate)).toBe(false);
   });
 
-  it('the named settings of a worker process: the ingest-open window and the three microphone thresholds, as arguments with ranges', () => {
-    expect(CAPTURE_WORKER_SETTING_DEFAULTS).toEqual({ ingestOpenWindowMs: 15_000, micSilenceDbfs: -50, micSilenceDurationMs: 10_000, micDisconnectDebounceMs: 2_000 });
-    expect(captureWorkerSettingArguments()).toEqual(['--ingest-open-window-ms', '15000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '10000', '--mic-disconnect-ms', '2000']);
-    expect(captureWorkerSettingArguments({ ingestOpenWindowMs: 2_000, micSilenceDurationMs: 3_000 })).toEqual(['--ingest-open-window-ms', '2000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '3000', '--mic-disconnect-ms', '2000']);
-    expect(Object.values(CAPTURE_WORKER_SETTINGS).map((rule) => rule.argument)).toEqual(['--ingest-open-window-ms', '--mic-silence-dbfs', '--mic-silence-ms', '--mic-disconnect-ms']);
+  it('the named settings of a worker process: the ingest-open window, the three microphone thresholds and the fragment size bound, as arguments with ranges', () => {
+    const MIB = 1024 * 1024;
+    expect(CAPTURE_WORKER_SETTING_DEFAULTS).toEqual({ ingestOpenWindowMs: 15_000, micSilenceDbfs: -50, micSilenceDurationMs: 10_000, micDisconnectDebounceMs: 2_000, maxFragmentBytes: 64 * MIB });
+    expect(captureWorkerSettingArguments()).toEqual(['--ingest-open-window-ms', '15000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '10000', '--mic-disconnect-ms', '2000', '--max-fragment-bytes', String(64 * MIB)]);
+    expect(captureWorkerSettingArguments({ ingestOpenWindowMs: 2_000, micSilenceDurationMs: 3_000, maxFragmentBytes: 2 * MIB })).toEqual(['--ingest-open-window-ms', '2000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '3000', '--mic-disconnect-ms', '2000', '--max-fragment-bytes', String(2 * MIB)]);
+    expect(Object.values(CAPTURE_WORKER_SETTINGS).map((rule) => rule.argument)).toEqual(['--ingest-open-window-ms', '--mic-silence-dbfs', '--mic-silence-ms', '--mic-disconnect-ms', '--max-fragment-bytes']);
+    // R63-02: ONE number. The bound a launcher may pass is never above the worker's compiled sanity cap, and never so small that an init segment plus a frame cannot fit.
+    expect(CAPTURE_WORKER_SETTINGS.maxFragmentBytes).toMatchObject({ default: 64 * MIB, min: MIB, max: 256 * MIB });
+    for (const bad of [{ maxFragmentBytes: MIB - 1 }, { maxFragmentBytes: 256 * MIB + 1 }, { maxFragmentBytes: 1.5 * MIB + 0.5 }]) expect(() => captureWorkerSettingArguments(bad), JSON.stringify(bad)).toThrow(RangeError);
     // Refused: outside the range, off the step (the listen timeout of the ingest is whole seconds), not a whole number.
     for (const bad of [{ ingestOpenWindowMs: 999 }, { ingestOpenWindowMs: 1_500 }, { ingestOpenWindowMs: 601_000 }, { micSilenceDbfs: 1 }, { micSilenceDbfs: -50.5 }, { micSilenceDurationMs: 50 }, { micDisconnectDebounceMs: Number.NaN }]) {
       expect(() => captureWorkerSettingArguments(bad), JSON.stringify(bad)).toThrow(RangeError);
     }
+  });
+
+  it('R63-05 / Q8: NO FREE TEXT FROM A WORKER - one hostile frame per member that reaches a log, an alert or a file name; each is no message', () => {
+    const decode = (value: unknown) => decodeWorkerLine(JSON.stringify(value));
+    const refused = { ok: false, violation: FrameViolation.NOT_A_MESSAGE };
+    const HOSTILE = 'rtsp://admin:pw@10.0.0.5/live';
+    const telemetry = {
+      v,
+      type: 'TELEMETRY',
+      sessionId: 'S-1',
+      levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: 0 }],
+      ingest: [{ deviceId: 'CAM-01', state: 'CONNECTED' }],
+      fragments: [{ deviceId: 'CAM-01', count: 1, bytes: 5131 }],
+      clocks: [{ deviceId: 'CAM-01', lagMs: 21.5, trendPpm: null, nearBound: false }],
+      tapActive: false,
+    };
+    // CONTROL: the frame with the IDs of a plan decodes; the same frame with ONE hostile member does not.
+    expect(decode(telemetry)).toMatchObject({ ok: true });
+    expect(decode({ ...telemetry, clocks: [{ ...telemetry.clocks[0], deviceId: HOSTILE }] }), 'TELEMETRY.clocks[].deviceId').toEqual(refused);
+    expect(decode({ ...telemetry, ingest: [{ ...telemetry.ingest[0], deviceId: HOSTILE }] }), 'TELEMETRY.ingest[].deviceId').toEqual(refused);
+    expect(decode({ ...telemetry, fragments: [{ ...telemetry.fragments[0], deviceId: HOSTILE }] }), 'TELEMETRY.fragments[].deviceId').toEqual(refused);
+    expect(decode({ ...telemetry, levels: [{ ...telemetry.levels[0], deviceId: 'MIC 01; the operator password is hunter2' }] }), 'TELEMETRY.levels[].deviceId').toEqual(refused);
+    expect(decode({ ...telemetry, sessionId: 'S-1 of case 12/2026' }), 'sessionId').toEqual(refused);
+
+    const crash = { v, type: 'CRASH', sessionId: 'S-1', code: 'WRITER_SYNC_FAILED', signal: 'SIGSEGV', exitCode: 70 };
+    expect(decode(crash)).toMatchObject({ ok: true });
+    expect(decode({ ...crash, signal: null })).toMatchObject({ ok: true });
+    for (const signal of ['11', 'sigsegv', 'SIG', 'SIGSEGV (core)', 'killed by op', 'SIGABCDEFGHIJKLM']) expect(decode({ ...crash, signal }), `CRASH.signal ${signal}`).toEqual(refused);
+
+    const record = (body: unknown) => ({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record: body });
+    expect(decode(record(intervalOfASwitch))).toMatchObject({ ok: true });
+    expect(decode(record({ ...intervalOfASwitch, correlationId: 'the switch of 10:42 by the operator' })), 'AUDIO_SOURCE_INTERVAL.correlationId').toEqual(refused);
+    expect(decode(record({ ...intervalOfASwitch, correlationId: 'cap:S-1:1:3/../x' })), 'AUDIO_SOURCE_INTERVAL.correlationId').toEqual(refused);
+
+    const sealed = { ...checkpointRecord, plaintextSha256: 'd'.repeat(64), plaintextChainSha256: 'e'.repeat(64), gcmIv: '0'.repeat(24), gcmTag: 'f'.repeat(32), keyId: 'KID-S-1' };
+    expect(decode(record(sealed))).toMatchObject({ ok: true });
+    for (const keyId of ['../../etc/passwd', 'S-1', 'KID-', 'KID-S 1', 'kid-S-1']) expect(decode(record({ ...sealed, keyId })), `FRAGMENT_CHECKPOINT.keyId ${keyId}`).toEqual(refused);
+    expect(decode(record({ ...checkpointRecord, deviceId: HOSTILE })), 'FRAGMENT_CHECKPOINT.deviceId').toEqual(refused);
+
+    const hello = { v, type: 'HELLO', protocolVersion: v, workerVersion: 'capture-worker/0.5.0' };
+    expect(decode(hello)).toMatchObject({ ok: true });
+    // A word the allowlist of the supervisor refuses still DECODES (so that the refusal can name it): only free text does not.
+    expect(decode({ ...hello, workerVersion: 'capture-worker/0.5.0+negctl' })).toMatchObject({ ok: true });
+    expect(decode({ ...hello, workerVersion: 'capture worker 0.5.0 (built by hand)' }), 'HELLO.workerVersion').toEqual(refused);
+    expect(decode({ v, type: 'ACK', correlationId: 'cap:S-1:1:1 and more', ok: true }), 'ACK.correlationId').toEqual(refused);
+  });
+
+  it('R63-09: a first durable fragment may state the sync level it really got - one of two words, never another', () => {
+    const ok = (record: unknown) => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    const first = { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 5131 };
+    expect(Object.values(CaptureSyncLevel)).toEqual(['F_FULLFSYNC', 'FSYNC']);
+    expect(ok({ ...first, syncLevel: 'F_FULLFSYNC' })).toBe(true);
+    expect(ok({ ...first, syncLevel: 'FSYNC' })).toBe(true);
+    // Additive inside version 4: the record of a worker before fix pass F-M3 still decodes, and says nothing about the level.
+    expect(ok(first)).toBe(true);
+    expect(ok({ ...first, syncLevel: 'fsync' })).toBe(false);
+    expect(ok({ ...first, syncLevel: 'probably durable' })).toBe(false);
+    expect(ok({ ...first, syncLevel: null })).toBe(false);
   });
 
   it('the checkpoint of a durable fragment: both chains, media time, keyframe flag and the durable instant are required', () => {

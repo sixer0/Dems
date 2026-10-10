@@ -12,7 +12,7 @@
  * |---|---|
  * | which devices | `captureDevices.devices` of kind CAMERA / MIC whose id is not a built-in id |
  * | badge, kind text, the name "Core Mac's ..." | `sourceClass`, `adapter` (decided by the Core; Live mode only, D83 / D131) |
- * | 'is on' | `sourceOpen` — specified (SEC35-44 (4)), not yet in the shared slice: read as an optional member, absent = not on |
+ * | 'is on' | `sourceOpen` — an optional member of the shared `captureDevices` slice (SEC35-44 (4); `packages/shared/src/api/state-slices.ts`): a runtime fact, absent = not on. `sourceOnKeyOf` is the ONE rule of every surface (fix F-M4, R69-02) |
  * | used as | the selector line that names the device (`captureConfig`) |
  * | state | `online`, and the named cause of the active "not reachable" notice of the device |
  * | rate warning | an active advisory alert `params.reason: MIC_RATE_AT_LIMIT` with the device as `target` |
@@ -73,7 +73,7 @@ export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
       sourceClass: device.sourceClass ?? null,
       online: device.online,
       streamState: device.streamState,
-      sourceOpen: (device as { readonly sourceOpen?: unknown }).sourceOpen === true,
+      sourceOpen: device.sourceOpen === true,
       slot,
       cause: notice !== undefined && notice.kind === 'unreachable' ? notice.cause : null,
       rateAtLimit: kind === 'MIC' && state.alerts.some((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === MIC_RATE_AT_LIMIT && (alert.target ?? null) === device.id),
@@ -119,13 +119,61 @@ export function rosterStateLabelKey(state: LocalDeviceState, local: boolean): st
   return state === 'READY' ? 'common.developmentRoster.reachable' : 'common.developmentRoster.notReachable';
 }
 
-/** 'Is on' (SEC35-44 (4)): the Core's local device, open, in Live mode. The key of its fixed line, or null. */
-export function rosterOnKey(device: Pick<RegisteredDevice, 'sourceOpen' | 'sourceClass' | 'adapter' | 'kind'>, live: boolean): string | null {
-  const source = rosterSourceKind(device, live);
-  if (!device.sourceOpen) return null;
+/** The facts of a capture device the "is on" rule reads, as the Core sent them (`captureDevices` slice). */
+export interface SourceOnInput {
+  readonly sourceClass?: string | null | undefined;
+  readonly adapter?: string | null | undefined;
+  /** `CAMERA`, `MIC` (the device's `kind`). */
+  readonly deviceKind: string;
+  /** Only the boolean `true` counts: absent, false or anything else is "not on". */
+  readonly sourceOpen?: unknown;
+}
+
+/**
+ * 'Is on' (SEC35-44 (4); ux spec §8f.3: fixed, non-dismissable, on every client, the short open of a
+ * pre-check included): the Core's local device, open, in Live mode. The key of its fixed line
+ * ("Core Mac's camera is on" / "Core Mac's microphone is on"), or null.
+ *
+ * Fix F-M4 (review R69-02, decision D178): the ONE rule of the Devices roster, the Session New
+ * pre-check rows, Session Live and the Home tiles — the three session surfaces read it through the
+ * badge components of `capture-selector/development-source-badge.tsx`.
+ */
+export function sourceOnKeyOf(input: SourceOnInput, live: boolean): string | null {
+  if (input.sourceOpen !== true) return null;
+  const source = developmentSourceOf({ sourceClass: input.sourceClass ?? undefined, adapter: input.adapter ?? undefined, deviceKind: input.deviceKind, live });
   if (source === 'localCamera') return 'common.sourceClass.cameraOn.mobile';
   if (source === 'localMicrophone') return 'common.sourceClass.microphoneOn.mobile';
   return null;
+}
+
+/** One open local device and the key of its fixed line. */
+export interface OpenLocalSource {
+  readonly deviceId: string;
+  readonly key: string;
+}
+
+/**
+ * Every local device the Core holds open (`sourceOnKeyOf`), in the Core's order, except the ids a
+ * screen already draws itself (fix F-M4 follow-up, R69-02; ux spec §8f.3: the state is shown whenever
+ * a local device is open — on Session Live also for the camera of the track that is not on screen).
+ */
+export function openLocalSourcesOf(
+  devices: readonly { readonly id: string; readonly kind: string; readonly sourceClass?: string | null | undefined; readonly adapter?: string | null | undefined; readonly sourceOpen?: unknown }[],
+  live: boolean,
+  drawn: readonly string[],
+): OpenLocalSource[] {
+  const out: OpenLocalSource[] = [];
+  for (const device of devices) {
+    if (drawn.includes(device.id)) continue;
+    const key = sourceOnKeyOf({ sourceClass: device.sourceClass, adapter: device.adapter, deviceKind: device.kind, sourceOpen: device.sourceOpen }, live);
+    if (key !== null) out.push({ deviceId: device.id, key });
+  }
+  return out;
+}
+
+/** 'Is on' of a roster device: `sourceOnKeyOf` on the roster's own facts. */
+export function rosterOnKey(device: Pick<RegisteredDevice, 'sourceOpen' | 'sourceClass' | 'adapter' | 'kind'>, live: boolean): string | null {
+  return sourceOnKeyOf({ sourceClass: device.sourceClass, adapter: device.adapter, deviceKind: device.kind, sourceOpen: device.sourceOpen }, live);
 }
 
 /** The stated limit of a development source (D128, D136 (3)); null for any other device and outside Live mode. */

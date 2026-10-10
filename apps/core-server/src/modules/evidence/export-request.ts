@@ -33,7 +33,7 @@ import { EvidenceExportRequestSchema } from '@dems/shared/api';
 import type { ExportRequest } from '@dems/shared/sim';
 
 export type ExportBody =
-  | { readonly kind: 'VALID'; readonly request: ExportRequest }
+  | { readonly kind: 'VALID'; readonly request: ExportRequest; /** True when the body names `kind` itself (R93-06): only then is it written to the request row. */ readonly named: boolean }
   | { readonly kind: 'REASON_MISSING' }
   | { readonly kind: 'INVALID' };
 
@@ -50,7 +50,7 @@ export function readExportBody(body: unknown): ExportBody {
   const parsed = EvidenceExportRequestSchema.safeParse(body);
   if (parsed.success) {
     // An absent destination is the empty text: the action then names its default.
-    return { kind: 'VALID', request: { reason: parsed.data.reason, destination: parsed.data.destination ?? '' } };
+    return { kind: 'VALID', request: { reason: parsed.data.reason, destination: parsed.data.destination ?? '' }, named: typeof body === 'object' && body !== null && (body as Record<string, unknown>)['kind'] !== undefined };
   }
   const absent = hasNoReason(body);
   const onlyTheLowerBound = parsed.error.issues.every(

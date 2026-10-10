@@ -202,7 +202,8 @@ describe('M6-STTCFG-OFF (seal clause): STT disabled in the session snapshot', ()
     const dataDir = join(mkdtempSync(join(tmpdir(), 'dems-row116-')), 'never-created');
     const opened = await openSessionTranscription(
       {
-        dataDir,
+        // The media store root of the Core (fix pass F-M7c, ruling D180): the scratch of a session would be made below it.
+        mediaStoreDir: dataDir,
         host: () => {
           touched.push('host');
           throw new Error('the host file is not read for a disabled session');
@@ -217,6 +218,10 @@ describe('M6-STTCFG-OFF (seal clause): STT disabled in the session snapshot', ()
         transcriberLog: createMemoryLog(),
         queue: new SerialQueue(),
         now: r.clock.now,
+        intervals: async () => {
+          touched.push('intervals');
+          return [];
+        },
       },
       r.session.sessionId,
     );
@@ -602,7 +607,9 @@ describe('CAPTURE IS NOT ON THIS PATH: the step cannot touch a fragment', () => 
   it('no production file of `src/sealing` imports the capture unit, the capture worker or a process; the step has no capture port', () => {
     const files = production(root);
     // Row 82 added the pipeline to this unit (`pipeline/`, `signing.ts`, `dev-key-cli.ts`): the list is pinned whole.
-    expect(files.map((file) => file.slice(root.length + 1)).sort()).toEqual(['dev-key-cli.ts', 'finalize-transcript/bounds.ts', 'finalize-transcript/commit.ts', 'finalize-transcript/contract.ts', 'finalize-transcript/document.ts', 'finalize-transcript/files.ts', 'finalize-transcript/handler.ts', 'index.ts', 'pipeline/camera-files.ts', 'pipeline/contract.ts', 'pipeline/controller.ts', 'pipeline/package-writer.ts', 'pipeline/pipeline.ts', 'signing.ts', 'step-journal.ts']);
+    // +1 by fix pass F-M7b: `pipeline/way-out.ts` (the bounded retry and the terminal UNSEALABLE outcome of a failed seal).
+    // +1 by fix pass F-M7c: `pipeline/sealed-plaintext.ts` (the plaintext a sealed session left: proven removal, quarantine with a notice, orphans, the sweep of a start).
+    expect(files.map((file) => file.slice(root.length + 1)).sort()).toEqual(['dev-key-cli.ts', 'finalize-transcript/bounds.ts', 'finalize-transcript/commit.ts', 'finalize-transcript/contract.ts', 'finalize-transcript/document.ts', 'finalize-transcript/files.ts', 'finalize-transcript/handler.ts', 'index.ts', 'pipeline/camera-files.ts', 'pipeline/contract.ts', 'pipeline/controller.ts', 'pipeline/package-writer.ts', 'pipeline/pipeline.ts', 'pipeline/sealed-plaintext.ts', 'pipeline/way-out.ts', 'signing.ts', 'step-journal.ts']);
     const imports = files.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)].map((match) => `${file.slice(root.length + 1)} <- ${match[1] ?? ''}`));
     expect(imports.length).toBeGreaterThan(10);
     const reaching = imports.filter((line) => /capture|child_process|node:net|node:dgram|worker/.test(line.split(' <- ')[1] ?? ''));

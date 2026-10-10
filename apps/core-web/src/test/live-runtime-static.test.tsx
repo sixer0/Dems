@@ -180,10 +180,14 @@ describe('the dev proxy passes the request through (WT-2; AC-C-102, the static h
   })
 
   it('no `headers`, no `changeOrigin`, no rewrite hook: an entry holds `target` (and `ws`) and nothing else', () => {
-    for (const forbidden of ['headers', 'changeOrigin', 'rewriteWsOrigin', 'rewrite', 'configure', 'bypass', 'xfwd', 'autoRewrite', 'cookieDomainRewrite', 'cookiePathRewrite', 'selfHandleResponse', 'auth']) {
+    for (const forbidden of ['headers', 'changeOrigin', 'rewriteWsOrigin', 'rewrite', 'bypass', 'xfwd', 'autoRewrite', 'cookieDomainRewrite', 'cookiePathRewrite', 'selfHandleResponse', 'auth']) {
       expect(body, forbidden).not.toMatch(new RegExp(`\\b${forbidden}\\b`))
     }
-    const entries = [...body.matchAll(/'(\/[^']*)'\s*:\s*\{([^}]*)\}/g)].map((match) => ({
+    // Fix F-M8 (R93-09): `configure` is the ONE named listener that blanks a signed path in a proxy
+    // ERROR line - it acts after a request has failed and changes nothing of a forwarded request.
+    expect([...body.matchAll(/\bconfigure\b\s*:\s*(\w+)/g)].map((match) => match[1])).toEqual(['blankSignedPathOnProxyError', 'blankSignedPathOnProxyError'])
+    expect(body.match(/\bconfigure\b/g)).toHaveLength(2)
+    const entries = [...body.matchAll(/'(\^?\/[^']*)'\s*:\s*\{([^}]*)\}/g)].map((match) => ({
       path: match[1],
       keys: (match[2] ?? '')
         .split(',')
@@ -194,7 +198,9 @@ describe('the dev proxy passes the request through (WT-2; AC-C-102, the static h
       { path: '/api/v1', keys: ['target'] },
       { path: '/ws', keys: ['target', 'ws'] },
       // Row 92 (M8): the registry-external media route of operation 88's signed session, same-origin like `/ws`.
-      { path: '/media', keys: ['target'] },
+      { path: '/media', keys: ['target', 'configure'] },
+      // Fix F-M8 (R93-05): the registry-external download route of a finished export; only paths that carry its token prefix.
+      { path: '^/exports/exs_', keys: ['target', 'configure'] },
     ])
     // The dev server's own CORS layer is off while the proxy is on (decisions D29, D34).
     expect(body).toMatch(/cors:\s*false/)

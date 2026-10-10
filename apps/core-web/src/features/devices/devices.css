@@ -281,6 +281,11 @@
     overflow-wrap: anywhere;
   }
 
+  /* Fix F-M4 (R69-12): the full target the Core will connect to, on a row of its own. */
+  .dev-connect-target-full {
+    grid-column: 1 / -1;
+  }
+
   .dev-panel-ports {
     grid-column: span 7;
   }

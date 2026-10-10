@@ -68,6 +68,8 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       // Blueprint row 87 (E-13): sealing progress, forward-only, from the Core's states alone (no timer).
       'session-finalizing/sealing-progress.ts',
       'session-finalizing/session-finalizing-screen.tsx',
+      // Task 3 fix pass F-M7b (R88-02 (c)): the UNSEALABLE state of a recording, read from the Core's alert (no action, no timer, no network).
+      'session-finalizing/unsealable-notice.tsx',
       'session-finalizing/use-finalizing.ts',
       'session-summary/hash-sheet.tsx',
       'session-summary/i18n.ts',

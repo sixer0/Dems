@@ -31,12 +31,15 @@
  * READS. `getCurrentSession` answers from the engine's committed state (no statement).
  * `listSessionHistory` answers from PostgreSQL, a keyset page (`history.ts`).
  *
- * The plugin function opens no database connection and registers no boot step, no hook and no
- * seam: `buildApp()` works without PostgreSQL.
+ * The plugin function opens no database connection and registers no boot step and no seam:
+ * `buildApp()` works without PostgreSQL. ONE hook since fix pass F-M5 (review R74-09): the
+ * `onClose` of the capture-session unit (`registerSessionCaptureShutdown`), which does nothing
+ * for an app that never captured a session.
  *
  * CONTRACT with the scaffold (P25: `app.ts` is frozen): `sessionsModule` keeps its name.
  */
 import type { FastifyPluginAsync } from 'fastify';
+import { registerSessionCaptureShutdown } from '../../capture-session';
 import { registerSessionRoutes } from './routes';
 
 export { INTERVALS_READ_SOURCE, intervalCursorOf, intervalPositionOf, listAudioSourceIntervals, pageOfIntervals, readIntervalPage } from './audio-intervals';
@@ -62,4 +65,7 @@ export { NO_TEXT, readTextBody, type TextBody } from './text-body';
 
 export const sessionsModule: FastifyPluginAsync = async (app) => {
   registerSessionRoutes(app);
+  // Review R74-09: the capture of the open session is ended when the Core shuts down. A hook must be
+  // added at plugin time; the unit itself is built on first use and an app that never used it closes nothing.
+  registerSessionCaptureShutdown(app);
 };

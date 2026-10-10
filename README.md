@@ -278,9 +278,28 @@ Back to the seed state (stop the Core server of that database first: the command
 **3. Core server.** Start PostgreSQL first.
 
 ```sh
-npm run start:server                         # http://127.0.0.1:4420, database dems_demo, demo controls off
-DEMS_DEMO_CONTROLS=1 npm run start:server    # the same with demo controls on (scenarios, faults, reset from the console)
+scripts/lane/lane.sh start main              # http://127.0.0.1:4420, database dems_demo, demo controls on; waits until ready
+scripts/lane/lane.sh status                  # the four instances: port, database, capture operation, media store root, running or stopped
+scripts/lane/lane.sh stop main
 curl -s http://127.0.0.1:4420/api/v1/health  # "status":"ok" ... "ready":{"database":true,"engine":true}
+```
+
+**Use `scripts/lane/lane.sh`, not a bare `npm run start:server` (since 2026-10-10).** Every database has its own media store root, and the Core records the root it was started with. The script (`start`, `stop`, `reset` with `main`, `1`, `2` or `3`; `status`) always passes the same environment; run it outside the sandbox:
+
+| Instance | Port, database | Capture operation | Demo controls | Media store root (`DEMS_MEDIA_DIR`) |
+|---|---|---|---|---|
+| `main` | 4420, `dems_demo` | Simulated | on | `.data/media/dems_demo/sessions` |
+| `1` | 4421, `dems_lane_1` | Simulated | on | `.data/media/dems_lane_1/sessions` |
+| `2` | 4422, `dems_lane_2` | Development capture (`DEMS_CAPTURE_MODE=real`, `DEMS_CAPTURE_DEV_SOURCES=1`, generated test sources) | off | `.data/media/dems_lane_2/sessions` |
+| `3` | 4423, `dems_lane_3` | Simulated | off | `.data/media/dems_lane_3/sessions` |
+
+- A start or a reset with another `DEMS_MEDIA_DIR` makes the next reset stop with `RESET_STORE_ROOT_CONFLICT`; a bare `npm run start:server` records the old shared root `.data/media/sessions` again. `scripts/lane/lane.sh reset <instance>` runs `db:reset` under the migrate lock with the right root and refuses while that Core runs.
+- Instance `2` needs, once per machine: `npm run capture:dev-setup`, `make -C apps/capture-worker`, `npm run evidence:dev-key -w @dems/core-server`, and `.data/transcriber/host.json` (the paths of the speech engine and its models). Its reset seals two demo packages with the development key. Its selector is the generated sources `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`; this Mac's own camera and microphone are never used by a script.
+- The bare forms below still work for a one-off Core, with the limits above.
+
+```sh
+npm run start:server                         # 4420, dems_demo, demo controls off, media store root .data/media/sessions
+DEMS_DEMO_CONTROLS=1 npm run start:server    # the same with demo controls on (scenarios, faults, reset from the console)
 ```
 
 - At start the server checks the database (boot checks B-1 to B-9: the database answers, version, schema version, runtime role, audit protection, seed, chain head, owner role). A failed check stops it with one log line `"the server stopped: boot"` and a `"check"` that names the step; nothing listens then.

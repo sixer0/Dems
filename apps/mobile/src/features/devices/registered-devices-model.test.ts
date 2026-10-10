@@ -14,6 +14,8 @@ import {
   rosterLimitKey,
   rosterLine,
   rosterOnKey,
+  openLocalSourcesOf,
+  sourceOnKeyOf,
   rosterSourceKey,
   rosterStateLabelKey,
 } from './registered-devices-model';
@@ -120,5 +122,45 @@ describe('M5-SEC-PRIV-2-T / -P (model half): "is on" only from `sourceOpen: true
 
   it('the source words follow the adapter kind; an unknown kind reads "Registered device"', () => {
     expect(['LOCAL_DEVICE', 'FAKE', 'ONVIF_RTSP', 'USB_AUDIO', 'NEW_KIND', null].map(rosterSourceKey)).toEqual(['LOCAL_DEVICE', 'FAKE', 'ONVIF_RTSP', 'USB_AUDIO', 'OTHER', 'OTHER'].map((kind) => `common.developmentRoster.source.${kind}`));
+  });
+});
+
+describe('fix F-M4 (R69-02): `sourceOnKeyOf`, the ONE "is on" rule of every surface (roster, Session New, Session Live, Home)', () => {
+  const local = { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' } as const;
+  it('true only for the Core\'s local device, open, in Live mode; the kind picks the wording', () => {
+    expect(sourceOnKeyOf({ ...local, deviceKind: 'CAMERA', sourceOpen: true }, true)).toBe('common.sourceClass.cameraOn.mobile');
+    expect(sourceOnKeyOf({ ...local, deviceKind: 'MIC', sourceOpen: true }, true)).toBe('common.sourceClass.microphoneOn.mobile');
+  });
+  it('CONTROL: absent, false or a non-boolean member; a test source; a production device; Simulated mode -> null', () => {
+    expect([
+      sourceOnKeyOf({ ...local, deviceKind: 'CAMERA' }, true),
+      sourceOnKeyOf({ ...local, deviceKind: 'CAMERA', sourceOpen: false }, true),
+      sourceOnKeyOf({ ...local, deviceKind: 'CAMERA', sourceOpen: 'true' }, true),
+      sourceOnKeyOf({ sourceClass: 'DEVELOPMENT', adapter: 'FAKE', deviceKind: 'CAMERA', sourceOpen: true }, true),
+      sourceOnKeyOf({ sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP', deviceKind: 'CAMERA', sourceOpen: true }, true),
+      sourceOnKeyOf({ adapter: 'LOCAL_DEVICE', deviceKind: 'MIC', sourceOpen: true }, true),
+      sourceOnKeyOf({ ...local, deviceKind: 'MIC', sourceOpen: true }, false),
+    ]).toEqual([null, null, null, null, null, null, null]);
+  });
+});
+
+describe('fix F-M4 follow-up (R69-02): `openLocalSourcesOf`, the open local devices a screen does not draw itself', () => {
+  const devices = [
+    { id: 'CAM-02', kind: 'CAMERA', sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP', sourceOpen: true },
+    { id: 'CAM-03', kind: 'CAMERA', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE', sourceOpen: true },
+    { id: 'MIC-03', kind: 'MIC', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE', sourceOpen: true },
+    { id: 'MIC-04', kind: 'MIC', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' },
+  ];
+  it('every open local device, in the Core\'s order, minus the ids the screen already draws', () => {
+    expect(openLocalSourcesOf(devices, true, [])).toEqual([
+      { deviceId: 'CAM-03', key: 'common.sourceClass.cameraOn.mobile' },
+      { deviceId: 'MIC-03', key: 'common.sourceClass.microphoneOn.mobile' },
+    ]);
+    expect(openLocalSourcesOf(devices, true, ['CAM-03'])).toEqual([{ deviceId: 'MIC-03', key: 'common.sourceClass.microphoneOn.mobile' }]);
+  });
+  it('CONTROL: all drawn, nothing open, or Simulated mode -> empty', () => {
+    expect(openLocalSourcesOf(devices, true, ['CAM-03', 'MIC-03'])).toEqual([]);
+    expect(openLocalSourcesOf(devices.map(({ sourceOpen: _open, ...rest }) => rest), true, [])).toEqual([]);
+    expect(openLocalSourcesOf(devices, false, [])).toEqual([]);
   });
 });

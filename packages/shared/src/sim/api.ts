@@ -45,7 +45,7 @@ import {
 } from '../api/capture-discovery';
 import { WEB_CONSOLE_ONLY_REASON } from '../api/contract-model';
 import { CaptureCredentialWriteRequestSchema } from '../api/devices';
-import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN } from '../api/patterns';
+import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN, exportJobIdOf } from '../api/patterns';
 import { CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
 import {
   STT_CONFIG_CHANGED_MESSAGE,
@@ -76,7 +76,7 @@ import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimT
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
 import { noSignalFrame } from './initial-state';
-import { isSessionActive, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
+import { SIM_CONSOLE_DEVICE_ID, isSessionActive, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
 import { selectElapsedMs, selectSystemState, storageSummary } from './selectors';
 import type { SimStore } from './store';
 import type {
@@ -291,10 +291,6 @@ export interface ApiExportBody {
   jobId?: string;
 }
 
-/** `EXPJ-NNNNNN` of `EXP-NNNNNN`: the same digits (C3 §3 ops 42 / 87; ruling D140). */
-export function exportJobIdOf(exportId: string): string {
-  return `EXPJ-${exportId.slice('EXP-'.length)}`;
-}
 
 
 // ── Mapping helpers ──────────────────────────────────────────────────────────────────────
@@ -783,47 +779,49 @@ function webConsoleOnlyRefusal(target: SimApiTarget): SimApiResponse | null {
 export function audioSourceIntervalsOf(state: Pick<SimState, 'audit'> & { readonly audio?: Pick<SimState['audio'], 'activeInputId'> }, session: ActiveSession): ApiAudioSourceInterval[] {
   const startedAt = session.startedAt;
   if (startedAt === null) return [];
-  const source = session.audioSource;
-  // The input of the FIRST interval: before any switch it is the active input of the session;
-  // after a switch the input that was active is the standby. (Until pass D4 an unswitched session
-  // listed its STANDBY here.) A hand-built session without a pair falls back to the selector
-  // snapshot's PRIMARY, then to the meters' active input (the Core's durable state holds no meters).
-  const initialInputId: CaptureMicInputId =
-    source !== null && source !== undefined
-      ? source.switchedAt === null
-        ? source.activeInputId
-        : source.standbyInputId
-      : (session.captureConfig?.mics.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? 'MIC-01');
-  const switchedBy = [...state.audit.rows]
-    .reverse()
-    .find((row) => row.type === AuditType.AUDIO_SOURCE_SWITCHED && row.sessionId === session.id)?.actorId ?? null;
-  const first: ApiAudioSourceInterval = {
-    sessionId: session.id,
-    // Pass D6: numbered from 1, as the manifest and the table number them (the simulator counted from 0).
-    seq: 1,
-    inputId: initialInputId,
-    role: MicRole.PRIMARY,
-    fromMs: 0,
-    toMs: source?.switchedAt === null || source?.switchedAt === undefined ? null : Math.max(0, source.switchedAt - startedAt),
-    fromAt: startedAt,
-    toAt: source?.switchedAt ?? null,
-    switchedBy: null,
-    reason: 'START',
-  };
-  if (source === null || source === undefined || source.switchedAt === null) return [first];
-  const second: ApiAudioSourceInterval = {
-    sessionId: session.id,
-    seq: 2,
-    inputId: source.activeInputId,
-    role: MicRole.PRIMARY,
-    fromMs: source.intervalFromMs,
-    toMs: null,
-    fromAt: source.switchedAt,
-    toAt: null,
-    switchedBy,
-    reason: 'MANUAL',
-  };
-  return [second, first];
+  const source = session.audioSource ?? null;
+  // THE INTERVAL FACTS OF THE SESSION (review R74-02): every switch left one `AUDIO_SWITCH` item on
+  // the session's timeline, with the two inputs and the media time of the boundary. The list is read
+  // from ALL of them, oldest first, so the third switch is the fourth interval - not from the
+  // current pair alone, which knows the last boundary only.
+  interface Boundary {
+    readonly from: CaptureMicInputId | null;
+    readonly to: CaptureMicInputId;
+    readonly atMs: number;
+    readonly at: EpochMs;
+  }
+  const boundaries: Boundary[] = [];
+  for (const item of session.timeline) {
+    if (item.kind !== 'AUDIO_SWITCH') continue;
+    const to = item.params?.['to'];
+    if (typeof to !== 'string') continue;
+    const from = item.params?.['from'];
+    const atMs = item.params?.['atMs'];
+    // An item written before the boundary rode its `params`: the simulator's media time is its clock.
+    boundaries.push({ from: typeof from === 'string' ? (from as CaptureMicInputId) : null, to: to as CaptureMicInputId, atMs: typeof atMs === 'number' ? atMs : Math.max(0, item.at - startedAt), at: item.at });
+  }
+  // A session whose pair says "switched" and whose timeline holds no item of it (hand-built, or the
+  // items left the timeline ring): the one boundary the pair knows.
+  if (boundaries.length === 0 && source !== null && source.switchedAt !== null) boundaries.push({ from: source.standbyInputId, to: source.activeInputId, atMs: source.intervalFromMs, at: source.switchedAt });
+  // The input of the FIRST interval: what the first switch left; before any switch the active input
+  // of the session. A hand-built session without a pair falls back to the selector snapshot's
+  // PRIMARY, then to the meters' active input (the Core's durable state holds no meters).
+  const lines = session.captureConfig?.mics ?? [];
+  const initialInputId: CaptureMicInputId = boundaries[0]?.from ?? source?.activeInputId ?? lines.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? 'MIC-01';
+  // The role is the one of the input's selector line (the Core's rows say STANDBY for the standby).
+  const roleOf = (inputId: CaptureMicInputId): MicRole => lines.find((mic) => mic.inputId === inputId)?.role ?? MicRole.PRIMARY;
+  const switchRows = state.audit.rows.filter((row) => row.type === AuditType.AUDIO_SOURCE_SWITCHED && row.sessionId === session.id);
+  /** Who made the switch that opened an interval: the row of that boundary (C3 §5.2 `toMs`), else the newest row for a single switch. */
+  const switchedByOf = (boundary: Boundary): string | null =>
+    (switchRows.find((row) => row.details?.['toMs'] === boundary.atMs && row.details?.['toInput'] === boundary.to) ?? (boundaries.length === 1 ? switchRows.at(-1) : undefined))?.actorId ?? null;
+  const intervals: ApiAudioSourceInterval[] = [];
+  // Pass D6: numbered from 1, as the manifest and the table number them.
+  intervals.push({ sessionId: session.id, seq: 1, inputId: initialInputId, role: roleOf(initialInputId), fromMs: 0, toMs: boundaries[0]?.atMs ?? null, fromAt: startedAt, toAt: boundaries[0]?.at ?? null, switchedBy: null, reason: 'START' });
+  boundaries.forEach((boundary, index) => {
+    const next = boundaries[index + 1];
+    intervals.push({ sessionId: session.id, seq: index + 2, inputId: boundary.to, role: roleOf(boundary.to), fromMs: boundary.atMs, toMs: next?.atMs ?? null, fromAt: boundary.at, toAt: next?.at ?? null, switchedBy: switchedByOf(boundary), reason: 'MANUAL' });
+  });
+  return intervals.reverse();
 }
 
 /** The op 83 progress of one session's finalization slice (E-13: derived from Core instants only). */
@@ -1628,7 +1626,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
   {
     method: 'POST',
     pattern: /^\/api\/v1\/session\/([^/]+)\/audio-source$/,
-    handle: ({ store, clock }, [id = ''], body) => {
+    handle: ({ store, clock, deviceConsole }, [id = ''], body) => {
       const state = store.getState();
       const denied = sessionAccess(state);
       if (denied) return denied;
@@ -1653,7 +1651,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
         return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
       }
       // The transition's parameter type still names the built-in pair (`session-machine.ts`); it reads the selector.
-      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId);
+      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId, deviceConsole === true ? SIM_CONSOLE_DEVICE_ID : null);
       if (next !== state) store.setState(next);
       const source = next.session?.audioSource;
       if (!source) return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
@@ -1884,7 +1882,7 @@ const ROUTES: readonly Route[] = [
       });
       if (!result.ok) return exportFailure(result);
       // Schema v2 (C3 §3 op 42): the answer is the queue receipt; op 87 polls the job to completion.
-      return respond(202, { exportId: result.exportId, evidenceId: id, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) } satisfies ApiExportBody);
+      return respond(202, { exportId: result.exportId, evidenceId: id, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) ?? undefined } satisfies ApiExportBody);
     },
   },
 ];

@@ -28,7 +28,8 @@ import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { webErrorSink } from '@/runtime'
-import { MEDIA_SESSION_RENEW_MARGIN_MS, MediaSession, integrityOf, mediaPathOf, mediaSessionStale } from '../media-session'
+import { MEDIA_SESSION_RENEW_MARGIN_MS, MediaSession, cameraFilesOf, mediaPathOf, mediaSessionStale } from '../media-session'
+import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { createDatasetSim, evidenceIdOf, mountEvidence, stopSims } from './harness'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, toastTexts, type LiveEvidence } from './live-evidence-bed'
 
@@ -48,11 +49,11 @@ const H = (char: string) => char.repeat(64)
 
 /** The served item as a Core-sealed schema-v2 item recorded from development sources. */
 const asSealedV2 =
-  (developmentSources: boolean | null | 'absent') =>
+  (developmentSources: boolean | null | 'absent', fileIds: readonly ('VIDEO-01' | 'VIDEO-02')[] = ['VIDEO-01', 'VIDEO-02']) =>
   (item: EvidenceItem): EvidenceItem => ({
     ...item,
     durationMs: 120_000,
-    files: (['VIDEO-01', 'VIDEO-02'] as const).map((trackId) => ({ trackId, fileName: `fragments/${trackId}.mp4`, sizeBytes: 3_500, sha256: H(trackId === 'VIDEO-01' ? 'a' : 'b'), fragmentCount: 5 })),
+    files: fileIds.map((trackId) => ({ trackId, fileName: `fragments/${trackId}.mp4`, sizeBytes: 3_500, sha256: H(trackId === 'VIDEO-01' ? 'a' : 'b'), fragmentCount: 5 })),
     ...(developmentSources === 'absent' ? {} : { developmentSources }),
     ...({
       audioSourceIntervals: [
@@ -91,12 +92,12 @@ afterEach(async () => {
 
 const sessionAnswer = (evidenceId: string, fileId: 'VIDEO-01' | 'VIDEO-02', url: string, expiresAt: number) => ({ status: 201, body: { evidenceId, fileId, url, expiresAt, ranges: true as const } })
 
-async function openSealed(script: (live: LiveEvidence['bed'], calls: { count: number }) => void, developmentSources: boolean | null | 'absent' = true): Promise<LiveEvidence> {
+async function openSealed(script: (live: LiveEvidence['bed'], calls: { count: number }) => void, developmentSources: boolean | null | 'absent' = true, fileIds?: readonly ('VIDEO-01' | 'VIDEO-02')[]): Promise<LiveEvidence> {
   const calls = { count: 0 }
   opened = await openLiveEvidence(`/evidence/${EV.sealed}?tab=media`, {
     media: { [EV.sealed]: { source: 'LIVE_STREAM', packageSuffix: null } },
     before: (bed) => {
-      bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asSealedV2(developmentSources)) }
+      bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asSealedV2(developmentSources, fileIds)) }
       // The item carries no transcript in these tests: the pane says "not available yet".
       bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
       script(bed, calls)
@@ -245,9 +246,10 @@ describe('the media path', () => {
     }
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS - 1)).toBe(false)
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS)).toBe(true)
-    expect(integrityOf(409, 'MEDIA_NOT_AVAILABLE', { reason: 'FRAGMENT_NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 3 })).toEqual({ fileId: 'VIDEO-02', seq: 3 })
-    expect(integrityOf(409, 'MEDIA_NOT_AVAILABLE', { reason: 'NOT_A_SEALED_PACKAGE' })).toBeNull()
-    expect(integrityOf(403, 'MEDIA_NOT_AVAILABLE', { reason: 'FRAGMENT_NOT_AUTHENTIC' })).toBeNull()
+    // Fix F-M8: the camera files of an item are the ones it names (one or two); an item that names none is asked for both.
+    expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-01' }, { trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-01', 'VIDEO-02'])
+    expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-02'])
+    expect(cameraFilesOf({ files: [] })).toEqual(['VIDEO-01', 'VIDEO-02'])
   })
 })
 
@@ -298,40 +300,18 @@ describe('renewal (the session lives 60 s)', () => {
 })
 
 describe('refusals', () => {
-  it('a failed fragment is an integrity failure with its file and fragment, never a player error', async () => {
+  it('R93-12: operation 88 names no fragment - a 409 of it is the fixed "no playback media" state whatever its details say, never an integrity sentence of this player', async () => {
     await openSealed((bed) =>
       bed.fake.answer('createEvidenceMediaSession', () => ({
         status: 409,
-        body: { error: { code: 'MEDIA_NOT_AVAILABLE', message: 'No playback media is available for this evidence item.', details: { reason: 'FRAGMENT_NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 3 } } },
+        body: { error: { code: 'MEDIA_NOT_AVAILABLE', message: 'No playback media is available for this evidence item.', details: { reason: 'FRAGMENT_NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 0 } } },
       })),
     )
     fireEvent.click(screen.getByTestId('evidence-playback-open'))
     await screen.findByTestId('evidence-playback-refused', {}, UI)
-    expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-refusal', 'INTEGRITY')
-    expect(screen.getByTestId('evidence-playback-refused')).toHaveTextContent('This recording failed its integrity check at VIDEO-02 fragment 3.')
-    expect(screen.queryByTestId('evidence-playback-reopen')).toBeNull()
-  })
-
-  it('pass D5: after a media error the page asks operation 88 again once; when THAT names a failed fragment (here of the second file, the first opens) the integrity sentence carries its file and fragment', async () => {
-    await openSealed((bed, calls) =>
-      bed.fake.answer('createEvidenceMediaSession', (call) => {
-        calls.count += 1
-        const expiresAt = bed.fake.clock.now() + 60_000
-        if (calls.count === 4) {
-          return { status: 409, body: { error: { code: 'MEDIA_NOT_AVAILABLE', message: 'No playback media is available for this evidence item.', details: { reason: 'FRAGMENT_NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 7 } } } }
-        }
-        return calls.count % 2 === 1 ? sessionAnswer(call.params.id ?? '', 'VIDEO-01', URL_1, expiresAt) : sessionAnswer(call.params.id ?? '', 'VIDEO-02', URL_2, expiresAt)
-      }),
-    )
-    fireEvent.click(screen.getByTestId('evidence-playback-open'))
-    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
-    video('VIDEO-01').currentTime = 40
-    fireEvent.timeUpdate(video('VIDEO-01'))
-    fireEvent.error(video('VIDEO-01'))
-    await screen.findByTestId('evidence-playback-refused', {}, UI)
-    expect(sessionRequests()).toHaveLength(4)
-    expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-refusal', 'INTEGRITY')
-    expect(screen.getByTestId('evidence-playback-refused')).toHaveTextContent('This recording failed its integrity check at VIDEO-02 fragment 7.')
+    expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-refusal', 'NOT_AVAILABLE')
+    expect(screen.getByTestId('evidence-playback-refused')).toHaveTextContent('No playback media is available for this evidence item.')
+    expect(screen.getByTestId('evidence-playback-refused')).not.toHaveTextContent('fragment')
   })
 
   it('409 MEDIA_NOT_AVAILABLE: the fixed message, no player, no retry, one request', async () => {
@@ -381,6 +361,96 @@ describe('one file (the seam of operation 88: the contract cannot name the file 
     expect(video('VIDEO-01').getAttribute('src')).toBe(PATH_1)
     expect(screen.queryByTestId('evidence-sealed-video-VIDEO-02')).toBeNull()
     expect(screen.getByTestId('evidence-playback-one-file')).toBeInTheDocument()
+  })
+})
+
+describe('fix F-M8: a package of ONE camera', () => {
+  it('an item that names one camera file is asked for that file only: one request, one player, and no "other file" note', async () => {
+    await openSealed(
+      (bed, calls) =>
+        bed.fake.answer('createEvidenceMediaSession', (call) => {
+          calls.count += 1
+          return sessionAnswer(call.params.id ?? '', 'VIDEO-01', URL_1, bed.fake.clock.now() + 60_000)
+        }),
+      true,
+      ['VIDEO-01'],
+    )
+    fireEvent.click(screen.getByTestId('evidence-playback-open'))
+    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
+    expect(sessionRequests()).toHaveLength(1)
+    expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-files', 'VIDEO-01')
+    expect(video('VIDEO-01').getAttribute('src')).toBe(PATH_1)
+    expect(screen.queryByTestId('evidence-sealed-video-VIDEO-02')).toBeNull()
+    expect(screen.queryByTestId('evidence-playback-one-file')).toBeNull()
+  })
+
+  it('the Core says the second file is not in the package (409 CAMERA_FILE_NOT_IN_PACKAGE): the first file plays, nothing is refused', async () => {
+    await openSealed((bed, calls) =>
+      bed.fake.answer('createEvidenceMediaSession', (call) => {
+        calls.count += 1
+        if (calls.count === 2) return { status: 409, body: { error: { code: 'MEDIA_NOT_AVAILABLE', message: 'No playback media is available for this evidence item.', details: { reason: 'CAMERA_FILE_NOT_IN_PACKAGE', fileId: 'VIDEO-02' } } } }
+        return sessionAnswer(call.params.id ?? '', 'VIDEO-01', URL_1, bed.fake.clock.now() + 60_000)
+      }),
+    )
+    fireEvent.click(screen.getByTestId('evidence-playback-open'))
+    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
+    expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-files', 'VIDEO-01')
+    expect(screen.queryByTestId('evidence-playback-refused')).toBeNull()
+  })
+})
+
+describe('R93-14: a player that does not start does not keep the Pause icon', () => {
+  it('a rejected play() of the leading file takes the playing state back', async () => {
+    await openSealed(bothFiles)
+    fireEvent.click(screen.getByTestId('evidence-playback-open'))
+    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
+    // The autoplay rule (after an awaited renewal there is no user gesture left): play() rejects.
+    Object.defineProperty(video('VIDEO-01'), 'play', { configurable: true, value: () => Promise.reject(new DOMException('not allowed', 'NotAllowedError')) })
+    fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-playing', 'false'))
+  })
+})
+
+// Closing pass F-X (review row 93, R93-13): the render of the sentence, on the page, after a real verify run.
+describe('R93-13: after a stop, what the last Verify run found is said as that - not as the place where playback stopped', () => {
+  /** Verify answers `name` on the Integrity tab; then playback of both files stops at 1:10 (an error, one renewal, the error again). */
+  async function verifyThenStop(name: 'tamperedFragment' | 'pass'): Promise<HTMLElement> {
+    await openSealed((bed, calls) => {
+      bothFiles(bed, calls)
+      bed.fake.answer('verifyEvidence', (call) => ({ status: 200, body: { ...RECORDED_VERIFY_V2[name].body, evidenceId: call.params.id ?? '', at: bed.fake.clock.now() } }) as never)
+    })
+    fireEvent.click(screen.getByTestId('evidence-tab-integrity'))
+    fireEvent.click(await screen.findByTestId('evidence-verify', {}, UI))
+    await waitFor(() => expect(screen.getByTestId('evidence-verify-v2')).toHaveAttribute('data-verdict', name === 'pass' ? 'PASS' : 'FAIL'), UI)
+    fireEvent.click(screen.getByTestId('evidence-tab-media'))
+    fireEvent.click(await screen.findByTestId('evidence-playback-open', {}, UI))
+    await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
+    fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+    video('VIDEO-01').currentTime = 70
+    fireEvent.timeUpdate(video('VIDEO-01'))
+    fireEvent.error(video('VIDEO-01'))
+    await waitFor(() => expect(sessionRequests()).toHaveLength(4))
+    await waitFor(() => expect(screen.queryByTestId('evidence-playback-renewing')).toBeNull())
+    fireEvent.error(video('VIDEO-01'))
+    return screen.findByTestId('evidence-playback-stopped')
+  }
+
+  it('the last verify run names VIDEO-02 fragment 3: "(Verify: VIDEO-02 fragment 3)", never "at VIDEO-02 fragment 3", and no "Open again"', async () => {
+    const stopped = await verifyThenStop('tamperedFragment')
+    expect(stopped).toHaveAttribute('data-integrity', 'true')
+    expect(stopped.textContent).toBe('This recording failed its integrity check (Verify: VIDEO-02 fragment 3).')
+    expect(stopped.textContent).not.toMatch(/\bat VIDEO-0\d fragment/)
+    expect(stopped).not.toHaveTextContent('Playback stopped at')
+    expect(screen.queryByTestId('evidence-playback-reopen')).toBeNull()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('CONTROL: the last verify run named no failed fragment - the stop names its position and points to Verify, with "Open again"', async () => {
+    const stopped = await verifyThenStop('pass')
+    expect(stopped).toHaveAttribute('data-integrity', 'false')
+    expect(stopped).toHaveTextContent(/Playback stopped at 1:10 and did not resume\..*run Verify to see which\./)
+    expect(stopped).not.toHaveTextContent('failed its integrity check')
+    expect(screen.getByTestId('evidence-playback-reopen')).toBeInTheDocument()
   })
 })
 

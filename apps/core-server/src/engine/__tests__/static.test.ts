@@ -44,7 +44,11 @@ describe('the scan itself', () => {
     // +1 by task 3 row 71: `capture-session.ts` (the pure transitions of the capture of a real recording).
     // +1 by task 3 row 82: `seal-doors.ts` (the three INTERNAL sealing actions, beside the seam).
     // +1 by integration pass D6: `fact-doors.ts` (the measured evidence volume, the head of a transcript's revisions).
-    expect(paths).toHaveLength(19);
+    // +1 by fix pass F-M8: `export-doors.ts` (the completion of a background export, the record of a download).
+    // +1 by fix pass F-M7b: `unsealable-doors.ts` (the terminal outcome of a session that cannot be sealed).
+    // +1 by fix pass F-M7c: `sealing-notice-doors.ts` (kept plaintext of a sealed session, a blocked seal, an on-demand retry).
+    for (const door of ['export-doors.ts', 'unsealable-doors.ts', 'sealing-notice-doors.ts']) expect(paths, door).toContain(`src/engine/${door}`);
+    expect(paths).toHaveLength(22);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 

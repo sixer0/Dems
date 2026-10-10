@@ -4,7 +4,7 @@
 // `test/acceptance/demo-seed-v2.test.ts`.
 //
 // WHAT IS HELD: staged then placed (nothing lies in the store before `place`); never over a
-// folder; every skip by its name with nothing left behind; the session key is made once and kept.
+// folder; every skip by its name with nothing left behind; a fresh session key per reseed, the old one destroyed (F-M7c).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { packageFolderName } from '@dems/shared/evidence-package';
@@ -12,6 +12,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { removePackages } from '../../sealing/__tests__/package-support';
 import { recordSession, removeRecordings } from '../../sealing/__tests__/pipeline-support';
 import { provisionSigningKey } from '../../capture';
+import { coreCredentialStore } from '../../credential-store';
+import { usingKeyBytes } from '../../credential-store/key-material';
 import { DEMO_SEED_STAGING_DIR, DEMO_SOURCE_ROWS, DemoSeedSkip, createDemoPackageSeeder, type DemoSealOptions, type DemoSeedItem } from '../demo-seed';
 import { SEED_NOW, demoCore, demoItem, removeDemoCores } from './demo-seed-support';
 
@@ -57,12 +59,29 @@ describe('the seed hook: staged, then placed', () => {
     const placement = await seeder.place();
     expect(placement).toEqual({ placed: ITEMS.map((item) => packageFolderName(item.sessionId)), notPlaced: [] });
     expect(folders(core.mediaStoreDir)).toEqual(ITEMS.map((item) => packageFolderName(item.sessionId)).sort());
-    // THE KEY IS KEPT: a second generation for the same sessions seals under the keys the store holds (none is made, none removed).
-    const keysBefore = ITEMS.map((item) => core.store.sessionKeys.has(`KID-${item.sessionId}`));
-    expect(keysBefore).toEqual([true, true]);
+    // Pin changed by fix pass F-M7c (R88-13 second half; D171 E3-4 reused `KID-<sessionId>` at every reseed):
+    // A FRESH KEY PER RESEED - the old key of each session is destroyed and a new one is made, so no IV can repeat
+    // under one key however often a database is reseeded. The keys are THIS store root's own (ruling D180).
+    const opened = coreCredentialStore({ stages: {}, config: { dataDir: core.dataDir, mediaStoreDir: core.mediaStoreDir } });
+    if (opened.status !== 'READY') throw new Error('the credential store of the demo Core is not ready');
+    const keys = opened.store.sessionKeys;
+    const keyOf = (sessionId: string): string => {
+      const key = keys.open(`KID-${sessionId}`);
+      try {
+        return usingKeyBytes(key.key, (bytes) => Buffer.from(bytes).toString('hex'));
+      } finally {
+        keys.release(key);
+      }
+    };
+    expect(ITEMS.map((item) => keys.owns(`KID-${item.sessionId}`))).toEqual([true, true]);
+    const keysBefore = ITEMS.map((item) => keyOf(item.sessionId));
     const again = seederOf(core);
     const second = await again.seal(ITEMS, { replaceable: ITEMS.map((item) => packageFolderName(item.sessionId)) });
     if (second.status !== 'SEALED') throw new Error(`not sealed again: ${second.reason}`);
+    const keysAfter = ITEMS.map((item) => keyOf(item.sessionId));
+    for (const [index, before] of keysBefore.entries()) expect(keysAfter[index], ITEMS[index]?.sessionId).not.toBe(before);
+    // CONTROL: one key per session per reseed - the two sessions never share one.
+    expect(new Set(keysAfter).size).toBe(2);
     expect(second.packages[0]?.seal.manifestSha256).not.toBe(outcome.packages[0]?.seal.manifestSha256);
     // NEVER OVER A FOLDER: the old folders are still there, so nothing is placed and each is named.
     expect(await again.place()).toEqual({ placed: [], notPlaced: ITEMS.map((item) => ({ directory: packageFolderName(item.sessionId), reason: 'FOLDER_IN_THE_WAY' })) });

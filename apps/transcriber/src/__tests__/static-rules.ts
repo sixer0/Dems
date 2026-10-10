@@ -20,6 +20,22 @@
 // is not a sandbox. Code that builds a name at run time from character codes is outside any static
 // reading, and stays a documented residual. The rule `NO_DYNAMIC_CODE` closes the doors that make
 // that easy (`eval`, `Function`, `createRequire`, `process.mainModule`, `node:vm`, `node:module`).
+//
+// THE LIMITS OF THESE RULES, STATED (pair-77 N-15, carried by D90; ruled by code review row 80,
+// section 4, finding R80-09). Two were closed by a rule, two are ACCEPTED RESIDUALS:
+//
+//   closed    a duration computed from two `getTime()` instants (D230): `COMMIT_INSTANT_ONLY_IN_RUNNER`
+//             - the one `getTime()` of production code is the commit instant of a chunk, in the runner;
+//   closed    a direct database driver: `NO_DATABASE_MODULE` (the package declares none, but a
+//             hoisted workspace install would resolve `pg`);
+//   RESIDUAL  the media-time origin written as ARITHMETIC (`2 ** 10`, `512 * 2`): a number rule
+//             cannot follow arithmetic. The value is held by the required-content rule
+//             `MEDIA_TIME_ORIGIN_IS_IMPORTED` and by the behavioural test
+//             `media-time-wrong-constant.test.ts`, not by `MEDIA_TIME_ORIGIN_NEVER_WRITTEN` alone;
+//   RESIDUAL  an UNCONFINED AUDIO PATH: the transcriber reads the audio file its caller names and
+//             has no rule that confines it. The Core confines it by construction
+//             (`sessionScratchDir` of `apps/core-server/src/transcription/host.ts`: the session-ID
+//             form, joined below the data directory). A caller other than the Core is not held.
 import ts from 'typescript';
 
 export interface SourceFile {
@@ -41,6 +57,7 @@ export const PHYSICAL_CORES = 'src/host/physical-cores.ts';
 export const CONFIG = 'src/config.ts';
 export const LOG = 'src/log.ts';
 export const MEDIA_TIME = 'src/pipeline/media-time.ts';
+export const RUNNER = 'src/pipeline/runner.ts';
 /** The two files that hold the patterns and the planted cases themselves. */
 export const RULE_FILES = ['src/__tests__/static-rules.ts', 'src/__tests__/static.test.ts'] as const;
 
@@ -376,6 +393,11 @@ export const RULES: readonly Rule[] = [
       text(/throughput|real[- ]time factor|\bRTF\b|\bWER\b/i),
     ),
   },
+  // R80-09 (D230 by rule, not by reading): an instant is taken in ONE place, the commit of a chunk
+  // (`transcript_chunks.computed_at`). Two instants anywhere else would be a duration.
+  { id: 'COMMIT_INSTANT_ONLY_IN_RUNNER', allowedIn: [RUNNER], includesTests: false, check: any(access(/(^|\.)(getTime|valueOf)$/), name('getTime')) },
+  // R80-09: the transcriber talks to no database. Its rows are written through the mirror port the Core hands in.
+  { id: 'NO_DATABASE_MODULE', allowedIn: [], includesTests: true, check: module('pg', 'pg-pool', 'pg-native', 'postgres', 'drizzle-orm') },
   // Row 77 / D72(d): the media-time origin of the capture contract (the AAC priming, in samples) and
   // the frame length in milliseconds are IMPORTED, never written. `log.ts` holds a byte size that
   // happens to use the same number.

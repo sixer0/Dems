@@ -9,7 +9,11 @@
  *                            `modules/storage`; never in capture operation SIMULATED.
  *   noteTranscriptRevision   operation 85 "publishes evidence" (C3 §2.3): after its unit committed
  *                            a revision, the item's `transcript` summary of slice `evidence` names
- *                            the new head. Called by `modules/transcripts`.
+ *                            the new head - the head only (R80-11). After a START, the same door
+ *                            puts the WHOLE summary back on an item that has none: the projection
+ *                            of its sealed manifest (R80-01; `modules/transcripts/heads.ts`). At
+ *                            the seal itself the summary is a member of `completeSeal`'s input.
+ *                            Called by `modules/transcripts`.
  *   applyCaptureSourceFacts  integration pass D11 (row 140's findings F-2 and F-5; ux §8f.1,
  *                            §8f.3): what a Core in a REAL capture operation knows of its
  *                            registered sources beyond the stored rows - the adapter kind of a

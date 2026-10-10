@@ -60,6 +60,22 @@ const char *const MUX_MOVFLAGS = DEMS_MOVFLAGS;
 #endif
 _Static_assert(LIBAVFORMAT_VERSION_INT == DEMS_VERIFIED_LAVF_VERSION_INT, "libavformat is not the version the capture worker was verified against (63.1.102, FFmpeg 9.0.2): see test/static/libavformat.pin");
 
+/* THE SAME PIN WHEN THE PROGRAM RUNS (review R63-07). The worker links the shared library of the installed
+ * FFmpeg: after an upgrade within the same major version the SAME binary would run on another libavformat, and
+ * neither the header pin above nor check.sh sees it. main() asks this before it says HELLO and refuses to start
+ * (CRASH LIBAVFORMAT_VERSION_MISMATCH instead of HELLO, exit 70). A proof build names another number through
+ * DEMS_PROOF_RUNTIME_LAVF_VERSION_INT to show the refusal (`make unit`). */
+#ifdef DEMS_PROOF_RUNTIME_LAVF_VERSION_INT
+#define RUNTIME_LAVF_VERSION_INT DEMS_PROOF_RUNTIME_LAVF_VERSION_INT
+#else
+#define RUNTIME_LAVF_VERSION_INT LIBAVFORMAT_VERSION_INT
+#endif
+int lavf_runtime_mismatch(unsigned *running, unsigned *verified) {
+    *running = avformat_version();
+    *verified = (unsigned)RUNTIME_LAVF_VERSION_INT;
+    return *running != *verified;
+}
+
 #define AVIO_BUFFER 65536
 #define PENDING_AUDIO_LIMIT 4096
 
@@ -165,8 +181,10 @@ void cam_fragment_durable(void *cam, const Checkpoint *cp) {
     Cam *c = cam;
     char frag[65], chain[65], prefix[65], plain[65], plain_chain[65], seal[256];
     if (cp->first && !atomic_exchange(&c->first_reported, 1)) {
-        logj("info", "sink", "first_durable_fragment", "\"cam\":%d,\"bytes\":%lld,\"sync\":\"%s\"", c->idx + 1, (long long)(cp->start + cp->len), sink_sync_level());
-        send_record("\"kind\":\"FIRST_DURABLE_FRAGMENT\",\"deviceId\":\"%s\",\"bytes\":%lld", c->device_id, (long long)(cp->start + cp->len));
+        /* The level the sync of THIS file achieved (R63-09), never the one the build would like: a volume without the full sync says FSYNC. */
+        const char *level = sink_sync_level(&c->sink);
+        logj(strcmp(level, sink_sync_wanted()) ? "warn" : "info", "sink", "first_durable_fragment", "\"cam\":%d,\"bytes\":%lld,\"sync\":\"%s\",\"sync_wanted\":\"%s\"", c->idx + 1, (long long)(cp->start + cp->len), level, sink_sync_wanted());
+        send_record("\"kind\":\"FIRST_DURABLE_FRAGMENT\",\"deviceId\":\"%s\",\"bytes\":%lld,\"syncLevel\":\"%s\"", c->device_id, (long long)(cp->start + cp->len), level);
     }
     sha256_hex(cp->frag, frag);
     sha256_hex(cp->chain, chain);
@@ -210,7 +228,8 @@ void cam_sync_failed(void *cam, const char *code, int averror) {
  *     or at the first complete interval once the warning was raised, or at the end of the ingest
  *     with what was seen until then.
  * Nothing is cut and nothing is refused here: the loss stays bounded by one camera GOP and is
- * REPORTED (a hard ceiling by `frag_duration` would make fragments without a keyframe, spec C.1). */
+ * REPORTED (a hard ceiling by `frag_duration` would make fragments without a keyframe, spec C.1).
+ * The SIZE of a fragment is another matter and IS held: see "the fragment size bound" below. */
 #define GOP_OBSERVE_INTERVALS 3
 #define GOP_TOLERANCE_PERMILLE 50       /* a 2.000 s camera on a clock a few hundred ppm off is not "too long" */
 
@@ -242,6 +261,83 @@ static void gop_observe(Cam *c, const char *src, int key, int64_t pts_us) {
     c->gop_intervals++;
     c->gop_last_key_us = pts_us;
     if (c->gop_intervals >= GOP_OBSERVE_INTERVALS || c->gop_warned) gop_report(c, src, 1);
+}
+
+/* ---------------------------------------------------------------- the fragment size bound (R63-02) */
+/* Review R63-02, ruling D179. On stream copy a fragment is one camera GOP, and nothing bounded its BYTES: a
+ * camera with a long keyframe interval at a high bitrate made fragments of 98 to 108 MiB (decision D167), the
+ * worker wrote, synced and checkpointed them, and the session failed only at its seal - the seal and the
+ * verifier open ONE fragment in memory and refuse one above 64 MiB. THE RULE: no fragment the worker makes
+ * durable is larger than the bound it was started with (`g_max_fragment_bytes`: ONE number, the seal's, passed
+ * by the Core's launcher). When the sample at hand would take the OPEN fragment past it, the fragment is
+ * CLOSED there (the muxer's own flush, as the stall cut W-3 uses it) and the sample begins the next one.
+ *   - NO SAMPLE IS LOST: the cut is between two samples; both fragments are whole `moof` + `mdat` pairs.
+ *   - The fragment after such a cut does not start on a keyframe. That is legal fMP4 and it is SAID: its
+ *     checkpoint carries `keyframe: false` (the writer reads the first video sample's sync flag from the
+ *     `trun`), the manifest states it per fragment (field 72) and per track (`keyframeAligned`, field 50).
+ *     The spec does not forbid it: capture spec C.1 rejects mid-GOP fragments "for the default" and names a
+ *     hard ceiling that accepts them as an open option (05_capture_architecture_spec.md:1003, :1019); the
+ *     default stays - every fragment of a camera under the bound starts on a keyframe.
+ *   - THE NEXT KEYFRAME BEGINS A FRAGMENT AGAIN. Left to itself the muxer would not cut at the keyframe that
+ *     follows such a cut (its fragment is younger than `min_frag_duration`), and with a GOP of several bounds
+ *     hardly any fragment of the file would start on a keyframe. So the fragment that began at the bound is
+ *     closed when the next keyframe arrives: every camera GOP starts a fragment, as in a file without a cut.
+ *   - The warning CAPTURE_FAULT / FRAGMENT_SIZE_BOUND_REACHED, once per camera (an advisory: it records).
+ * THE ESTIMATE. The muxer holds the open fragment; the worker counts what it handed it since the last
+ * fragment left (the writer's count of fragments says when one did - also for the muxer's own cut at a
+ * keyframe and for the stall cut). A sample costs its bytes, plus what the muxer may add: its `trun` entry
+ * (16 bytes), a start code that becomes a length (1 byte per NAL unit), covered by 64 bytes per sample and
+ * one sixty-fourth of the payload; the boxes of the fragment by FRAGMENT_BOX_ALLOWANCE. The estimate is
+ * therefore above the true size, and the cut comes a little early (about 1.6 %), never late. Should it ever
+ * be wrong the other way, the writer refuses the fragment before a byte of it is written (sink.c,
+ * WRITER_FRAGMENT_TOO_LARGE): fatal, with the durable prefix intact - never an oversized fragment on the disk.
+ * A SINGLE sample that alone is above the bound cannot be put into any fragment: SAMPLE_ABOVE_FRAGMENT_BOUND. */
+#define FRAGMENT_BOX_ALLOWANCE 4096
+#define SAMPLE_ALLOWANCE 64
+
+__attribute__((unused)) static int64_t fragment_cost(int64_t payload, int64_t samples) { return FRAGMENT_BOX_ALLOWANCE + payload + payload / 64 + samples * SAMPLE_ALLOWANCE; }
+
+/* One packet into the camera's muxer, under the size bound. Called under `c->mx`. Returns 0 or an AVERROR. */
+static int write_bounded_locked(Cam *c, AVPacket *p) {
+    int64_t size = p->size, seen = atomic_load(&c->sink.fragments);
+    if (seen != c->open_seen_fragments) { c->open_seen_fragments = seen; c->open_bytes = c->open_samples = 0; }   /* a fragment left since (the stall cut) */
+#ifndef DEMS_PROOF_NO_FRAGMENT_BOUND        /* PROOF BUILD ONLY: the negative control (the rule off) */
+    if (fragment_cost(size, 1) > g_max_fragment_bytes) {
+        logj("error", "sink", "SAMPLE_ABOVE_FRAGMENT_BOUND", "\"cam\":%d,\"sample_bytes\":%lld,\"bound_bytes\":%d", c->idx + 1, (long long)size, g_max_fragment_bytes);
+        return AVERROR(EFBIG);
+    }
+    if (c->open_misaligned && c->open_samples > 0 && p->stream_index == c->ov->index && (p->flags & AV_PKT_FLAG_KEY)) {
+        int r = av_write_frame(c->out, NULL);               /* the fragment that began at the bound ends; this keyframe begins the next */
+        if (r < 0) return r;
+        c->realign_cuts++;
+        c->open_misaligned = 0;
+        c->open_seen_fragments = atomic_load(&c->sink.fragments);
+        c->open_bytes = c->open_samples = 0;
+    }
+    if (c->open_samples > 0 && fragment_cost(c->open_bytes + size, c->open_samples + 1) > g_max_fragment_bytes) {
+        int r = av_write_frame(c->out, NULL);               /* the open fragment is closed HERE; this sample begins the next */
+        if (r < 0) return r;
+        c->size_cuts++;
+        c->open_misaligned = 1;
+        logj("warn", "sink", "fragment_closed_at_size_bound", "\"cam\":%d,\"open_bytes\":%lld,\"open_samples\":%lld,\"bound_bytes\":%d,\"cuts\":%lld",
+             c->idx + 1, (long long)c->open_bytes, (long long)c->open_samples, g_max_fragment_bytes, (long long)c->size_cuts);
+        if (!c->size_bound_warned) {
+            c->size_bound_warned = 1;
+            send_warning("CAPTURE_FAULT", "FRAGMENT_SIZE_BOUND_REACHED", 1, c->device_id);
+        }
+        c->open_seen_fragments = atomic_load(&c->sink.fragments);
+        c->open_bytes = c->open_samples = 0;
+    }
+#endif
+    int64_t before = atomic_load(&c->sink.fragments);
+    int r = av_write_frame(c->out, p);
+    if (r < 0) return r;
+    int64_t after = atomic_load(&c->sink.fragments);
+    /* The muxer closed the fragment before it took this sample (a keyframe): the sample is the first of the next. */
+    if (after != before) { c->open_seen_fragments = after; c->open_bytes = c->open_samples = 0; c->open_misaligned = 0; }
+    c->open_bytes += size;
+    c->open_samples++;
+    return 0;
 }
 
 static int open_output(Cam *c) {
@@ -282,7 +378,7 @@ static int open_output(Cam *c) {
 static int mux_audio_locked(Cam *c, AVPacket *q) {
     q->stream_index = c->oa->index;
     av_packet_rescale_ts(q, S.enc->time_base, c->oa->time_base);
-    int r = av_write_frame(c->out, q);
+    int r = write_bounded_locked(c, q);
     if (r >= 0) atomic_fetch_add(&c->a_written, 1);
     return r;
 }
@@ -393,6 +489,13 @@ static void *ingest_body(Cam *c) {
     tls_opening = c;
     int r = avformat_open_input(&c->in, c->url, NULL, &o);
     tls_opening = NULL;
+    /* THE REFERENCE OF THE ANCHORING ALLOWANCE (review R63-10). From here on libavformat holds the stream: the
+     * probe below reads its first packets and keeps them until the first av_read_frame. A packet handed over
+     * later waited INSIDE the receiver at most since this instant - not since the probe ENDED, which is where the
+     * reference stood until fix pass F-M3 (a camera with a correct clock whose probe took more than the bound was
+     * refused). The allowance is generous for a camera that connects early and sends late; what it can hide - a
+     * clock BEHIND by up to the wait - is what the clock floor judges without allowance, one second into the stream. */
+    int64_t opened_mono = mono_us();
     /* Given up while it was opening: the session went on without this camera, and stays so. */
     if (atomic_load(&c->abandoned)) { av_dict_free(&o); return NULL; }
     int leftover = av_dict_count(o);
@@ -424,8 +527,7 @@ static void *ingest_body(Cam *c) {
     atomic_store(&c->ever_connected, 1);
     atomic_store(&c->state, ING_CONNECTED);
 
-    int64_t opened_mono = mono_us();     /* a packet handed over from here on waited at most since now (F-6) */
-    int64_t live_after = opened_mono + US;
+    int64_t live_after = mono_us() + US; /* the packets of the probe are handed over at once: the ingest is live a second after it */
     c->gop_last_key_us = c->gop_last_us = AV_NOPTS_VALUE;
     c->first_skipped_pts_us = AV_NOPTS_VALUE;
     clock_floor_init(&c->clock_floor);
@@ -438,7 +540,15 @@ static void *ingest_body(Cam *c) {
         if (r < 0) { end = r; break; }      /* the listen ingest ends on the client's TEARDOWN: one session by design (S1 G-1) */
         if (p->stream_index != c->vidx) { av_packet_unref(p); continue; }
         /* Before the camera's first sender report a packet has no time: it cannot be placed (counted, finding F-8). */
-        if (p->pts == AV_NOPTS_VALUE) { atomic_fetch_add(&c->v_dropped_no_pts, 1); av_packet_unref(p); continue; }
+        if (p->pts == AV_NOPTS_VALUE) {
+            /* The untimestamped LEAD (R63-13): the ones that come before the first packet with a time are part of
+             * what the file does not hold; their span is taken from the host's clock and their count. */
+            if (!c->seen_pts) { if (!c->lead_packets++) c->lead_first_mono_us = mono_us(); }
+            atomic_fetch_add(&c->v_dropped_no_pts, 1);
+            av_packet_unref(p);
+            continue;
+        }
+        if (!c->seen_pts) { c->seen_pts = 1; c->lead_end_mono_us = mono_us(); }
 
         int64_t pts_us = av_rescale_q(p->pts, is->time_base, AV_TIME_BASE_Q);
         /* The camera's wall clock of pts 0, as this packet states it. */
@@ -501,12 +611,14 @@ static void *ingest_body(Cam *c) {
             floor_judged = 1;
             int sane = clock_floor_sane(&c->clock_floor);
             logj(sane ? "info" : "error", src, sane ? "camera_clock_floor" : "camera_clock_out_of_bound", "\"lag_ms\":%.1f,\"bound_ms\":%.0f,\"packets\":%d,\"rule\":\"floor\"", c->clock_floor.min_lag_ms, CLOCK_SANITY_MS, c->clock_floor.packets);
+#ifndef DEMS_PROOF_NO_CLOCK_FLOOR          /* PROOF BUILD ONLY: the negative control of the floor's WIRING (review R63-12): judged, logged, not acted on */
             if (!sane) {
                 av_packet_unref(p);
                 end = AVERROR(ERANGE);
                 clock_refused = 1;
                 break;
             }
+#endif
         }
         if (mono_us() >= live_after) {
             pthread_mutex_lock(&c->trend_mx);
@@ -535,17 +647,32 @@ static void *ingest_body(Cam *c) {
              * camera time it spans (packets without a timestamp have none and are only counted). */
             long long no_pts = (long long)atomic_load(&c->v_dropped_no_pts), prearm = (long long)atomic_load(&c->v_dropped_prearm),
                       unanchored = (long long)atomic_load(&c->v_dropped_unanchored), prestart = (long long)atomic_load(&c->v_dropped_prestart);
-            int64_t span_ms = c->first_skipped_pts_us == AV_NOPTS_VALUE || pts_us <= c->first_skipped_pts_us ? 0 : (pts_us - c->first_skipped_pts_us + 500) / 1000;
-            logj("info", src, "video_started", "\"first_pts\":%lld,\"time_base_den\":%d,\"skipped_no_timestamp\":%lld,\"skipped_before_audio_start\":%lld,\"skipped_no_camera_clock\":%lld,\"skipped_before_keyframe\":%lld,\"skipped_span_ms\":%lld",
-                 (long long)pts, c->ov->time_base.den, no_pts, prearm, unanchored, prestart, (long long)span_ms);
+            /* The span (R63-13): camera time from the first skipped packet that had a time, PLUS the untimestamped lead
+             * before it (anchor.c, skipped_span_ms): until fix pass F-M3 the lead was counted and not spanned. */
+            int64_t camera_span_us = c->first_skipped_pts_us == AV_NOPTS_VALUE || pts_us <= c->first_skipped_pts_us ? 0 : pts_us - c->first_skipped_pts_us;
+            AVRational rate = is->avg_frame_rate.num > 0 && is->avg_frame_rate.den > 0 ? is->avg_frame_rate : is->r_frame_rate;
+            int64_t period_us = rate.num > 0 && rate.den > 0 ? av_rescale(US, rate.den, rate.num) : 0, lead_arrival_us = c->lead_packets ? c->lead_end_mono_us - c->lead_first_mono_us : 0;
+            int64_t span_ms = skipped_span_ms(camera_span_us, c->lead_packets, lead_arrival_us, period_us);
+            logj("info", src, "video_started", "\"first_pts\":%lld,\"time_base_den\":%d,\"skipped_no_timestamp\":%lld,\"skipped_before_audio_start\":%lld,\"skipped_no_camera_clock\":%lld,\"skipped_before_keyframe\":%lld,\"skipped_span_ms\":%lld,"
+                 "\"span_camera_ms\":%lld,\"lead_packets\":%lld,\"lead_arrival_ms\":%lld,\"frame_period_us\":%lld",
+                 (long long)pts, c->ov->time_base.den, no_pts, prearm, unanchored, prestart, (long long)span_ms, (long long)(camera_span_us / 1000), (long long)c->lead_packets, (long long)(lead_arrival_us / 1000), (long long)period_us);
             if (c->ov->time_base.num == 1)
                 send_record("\"kind\":\"FIRST_VIDEO_SAMPLE\",\"deviceId\":\"%s\",\"pts\":%lld,\"timescale\":%d,"
                             "\"skipped\":{\"noTimestamp\":%lld,\"beforeAudioStart\":%lld,\"noCameraClock\":%lld,\"beforeKeyframe\":%lld},\"skippedSpanMs\":%lld",
                             c->device_id, (long long)pts, c->ov->time_base.den, no_pts, prearm, unanchored, prestart, (long long)span_ms);
         }
         int64_t dts = p->dts == AV_NOPTS_VALUE ? pts : av_rescale_q(p->dts, is->time_base, c->ov->time_base) + shift;
-        if (dts <= c->last_dts) dts = c->last_dts + 1;      /* the slew never makes the file's time go backwards */
+        /* THE MONOTONIC GUARD, SAID (review R63-11). The slew never makes the file's time go backwards; neither may
+         * a camera that repeats a timestamp or delivers one out of order (B-frames whose dts the receiver does not
+         * supply). The guard moves such a sample forward - and until fix pass F-M3 said nothing. Every sample it
+         * moved is counted (`retimed` of camera_summary) and the first is logged with its numbers: a file whose
+         * count is not 0 holds presentation times the camera did not state. */
+        int64_t dts_in = dts, pts_in = pts;
+        if (dts <= c->last_dts) dts = c->last_dts + 1;
         if (pts < dts) pts = dts;
+        if ((dts != dts_in || pts != pts_in) && !atomic_fetch_add(&c->v_retimed, 1))
+            logj("warn", src, "video_timestamp_moved", "\"dts_in\":%lld,\"dts\":%lld,\"pts_in\":%lld,\"pts\":%lld,\"time_base_den\":%d,\"video_packets\":%lld",
+                 (long long)dts_in, (long long)dts, (long long)pts_in, (long long)pts, c->ov->time_base.den, (long long)atomic_load(&c->v_written));
         c->last_dts = dts;
         p->dts = dts;
         p->pts = pts;
@@ -555,10 +682,10 @@ static void *ingest_body(Cam *c) {
         int key = (p->flags & AV_PKT_FLAG_KEY) != 0;
         int64_t file_us = av_rescale_q(pts, c->ov->time_base, AV_TIME_BASE_Q);
         pthread_mutex_lock(&c->mx);
-        r = av_write_frame(c->out, p);
+        r = write_bounded_locked(c, p);
         pthread_mutex_unlock(&c->mx);
         av_packet_unref(p);
-        if (r < 0) { fatal(src, "VIDEO_MUX_WRITE_FAILED", r); break; }
+        if (r < 0) { fatal(src, r == AVERROR(EFBIG) ? "SAMPLE_ABOVE_FRAGMENT_BOUND" : "VIDEO_MUX_WRITE_FAILED", r); break; }
         gop_observe(c, src, key, file_us);
         atomic_fetch_add(&c->v_written, 1);
         atomic_store(&c->last_video_mono_us, mono_us());

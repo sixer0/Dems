@@ -30,15 +30,33 @@
  * ONE UNIT OF WORK (operation 85). The engine host's unit: the head of the chain is read and
  * compared with `baseRevision` INSIDE the transaction that mints `revision_no = head + 1`
  * (SEC35-21); two revisions racing for a number are separated by the primary key (the store's
- * 23505 -> `409 TRANSCRIPT_REVISION_CONFLICT`). The audit row is the unit's. The package file is
- * replaced (one rename) as the LAST act of the unit, after both rows were accepted: a file that
- * cannot be written rolls the rows back. A commit that fails after the rename leaves one record
- * more in the file than rows in the table; the next append and every read count from the table
- * (`reconciled`), so that record is dropped at the next append and never answered.
+ * 23505 -> `409 TRANSCRIPT_REVISION_CONFLICT`). The audit row is the unit's.
  *
- * WHAT OPERATION 85 DOES NOT DO YET: it does not move `transcript.revision` of the item in the
- * replicated `evidence` slice (C3 says "publishes `evidence`"): that needs a door of the engine
- * host, which is another unit's file. Operation 84 answers the current revision from the table.
+ * THE TABLE IS THE JOURNAL (closing pass F-X, finding R80-08; code review row 80). The order of an
+ * append, all of it under the package's lock (`withRevisionLock`: one append of a package at a time):
+ *   1. inside the unit: the stored chain is read and the two list files are SETTLED against it
+ *      (`settleRevisionFiles`: a staged list of an earlier commit is promoted, any other is removed,
+ *      records the table never recorded are removed) - so no append builds on a stale list;
+ *   2. the row and the audit row are written;
+ *   3. the WHOLE next list is written to the STAGED name and synced; the real list is not touched.
+ *      A staged list that cannot be written rolls the rows back;
+ *   4. the unit commits;
+ *   5. the staged list is renamed over the real one.
+ * A commit that fails leaves the real list byte-identical; the staged list is removed at once (the
+ * committed rows are read again and the files settled), or at the next append, or at the next start.
+ * A rename that fails after the commit (or a crash between the two) leaves the revision STORED and
+ * its record in the staged list: operation 86 answers it from there, and the next append or the
+ * boot step `transcripts.heads` finishes the rename. NOT HEALABLE, and said so in the error log: a
+ * stored row whose record is in neither file - no column stores a revision's body, and none is made up.
+ *
+ * AFTER THE UNIT COMMITTED operation 85 moves `transcript.revision` of the item in the replicated
+ * `evidence` slice (C3 "publishes `evidence`") through the engine's fact door
+ * (`noteTranscriptRevision`, pass D6): the head only - the state and the counts the seal signed
+ * stay (R80-11). A publication that fails is logged and never turns a stored revision into an
+ * error; operation 84 answers the current revision from the table.
+ *
+ * THE CASE SCOPE (R93-02, D178): operations 84, 85 and 86 refuse a REAL item to a caller who does
+ * not hold its case and is no SUPERVISOR (`holdScope` below; the predicate of `src/media-stream`).
  *
  * FAILURES. A refusal is an `ApiFailure` with a code the registry documents. What is not the
  * caller's doing - a package file that is missing or is not the sealed one, a list that does not
@@ -61,7 +79,7 @@ import {
   type TranscriptRevisionPage,
 } from '@dems/shared/api';
 import type { TranscriptRevisionRecord } from '@dems/shared/evidence-verify';
-import type { EvidenceItem } from '@dems/shared/sim';
+import { AuditType, Permission, Severity, type EvidenceItem } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -69,10 +87,21 @@ import type { LoadedSigner } from '../../capture';
 import { factDoorsOf } from '../../engine';
 import { sessionPackageDir } from '../../evidence-verify';
 import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
-import { describeError } from '../../plugins/logger';
+import { describeError, principalReference } from '../../plugins/logger';
+import { EVIDENCE_CASE_SCOPE_REASON, holdsCase } from '../../media-stream';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { loadSealingSigner, readSealedTranscriptDocument, type SealedTranscriptDocument } from '../../sealing';
-import { readRevisionList, readSealedTranscriptBytes, retainCertificate, writeRevisionList } from '../../transcript-package';
+import {
+  promoteStagedRevisionList,
+  readRevisionList,
+  readSealedTranscriptBytes,
+  readStagedRevisionRecords,
+  retainCertificate,
+  settleRevisionFiles,
+  stageRevisionList,
+  withRevisionLock,
+  type RevisionFilesSettlement,
+} from '../../transcript-package';
 import { changesOfStoredBody, hexOf, revisionBodyOf, revisionDigestOf, revisionIdOf, storableReasonOf, type RevisionBody } from './revision-body';
 import { TranscriptStoreError, createTranscriptStore, type SealedTranscript, type TranscriptRevision } from './store';
 
@@ -84,6 +113,8 @@ export type TranscriptOperationId = (typeof TRANSCRIPT_OPERATION_IDS)[number];
 export const TRANSCRIPTS_SOURCE = 'modules.transcripts';
 /** Label of the unit of work of operation 85. */
 export const REVISION_UNIT_LABEL = 'transcripts.createTranscriptRevision';
+/** Label of the unit that writes the `ACCESS_DENIED` row of a case-scope refusal (R93-02). */
+export const TRANSCRIPT_DENIED_UNIT = 'transcripts.denied';
 
 /** `details.reason` of the answers that are not a state of the caller's request. */
 export const TranscriptReason = {
@@ -121,6 +152,8 @@ const TEXT = {
   CONFLICT: 'The transcript revision is based on a revision that is no longer current.',
   UNAVAILABLE: 'The transcript of this item cannot be read right now.',
   SIGNER: 'The Core cannot sign a transcript revision right now.',
+  /** The sentence of every audited refusal of the Core (the media route's and operation 88's). */
+  NOT_PERMITTED: 'Your role does not allow this action. The attempt was audited.',
 } as const;
 
 function operationOf(operationId: TranscriptOperationId): CoreApiRegistryOperation {
@@ -165,6 +198,49 @@ const signerLoaders = new WeakMap<FastifyInstance, RevisionSignerLoader>();
  */
 export function provideRevisionSigner(app: FastifyInstance, loader: RevisionSignerLoader): void {
   signerLoaders.set(app, loader);
+}
+
+/** The codes of what settling the list files of a package did or found (R80-08). In a log line and in the persistent error log. */
+export const RevisionFilesCode = {
+  /** A staged list of a committed revision was renamed over the real list: the rename of that append never happened. */
+  STAGED_PROMOTED: 'TRANSCRIPT_REVISION_LIST_PROMOTED',
+  /** A staged list was removed: an append that did not commit, a list beside one that is already whole, or no list of this item. */
+  STAGED_DISCARDED: 'TRANSCRIPT_REVISION_STAGED_LIST_DISCARDED',
+  /** Signed records the table never recorded were removed from the real list. */
+  ORPHAN_REMOVED: 'TRANSCRIPT_REVISION_ORPHAN_REMOVED',
+  /** A stored revision has no record in the package and no staged list holds it: not healable, nothing is made up. */
+  RECORD_MISSING: 'TRANSCRIPT_REVISION_RECORD_MISSING',
+  /** The staged list of a committed revision could not be renamed; the next append or the next start does it. */
+  NOT_PROMOTED: 'TRANSCRIPT_REVISIONS_FILE_NOT_PROMOTED',
+  /** The list files could not be settled (a file system error, or the rows could not be read). */
+  NOT_SETTLED: 'TRANSCRIPT_REVISION_FILES_NOT_SETTLED',
+} as const;
+
+export interface SettlementLine {
+  readonly level: 'error' | 'warn';
+  readonly code: string;
+  readonly message: string;
+  readonly context: Readonly<Record<string, string | number>>;
+}
+
+/**
+ * What a settlement is worth saying, one line per act: nothing for a package that was consistent.
+ * Counts and the kind only - never a hash, an author or a text. A list that lacks a stored row
+ * (`records: null`) is NOT a line here: its caller says it once, by its own code.
+ */
+export function settlementLines(settlement: RevisionFilesSettlement): SettlementLine[] {
+  const lines: SettlementLine[] = [];
+  if (settlement.staged === 'PROMOTED') lines.push({ level: 'warn', code: RevisionFilesCode.STAGED_PROMOTED, message: 'the staged revision list of a committed revision was renamed over the list of the package: the rename of that append had not happened', context: { staged: settlement.staged } });
+  else if (settlement.staged !== 'NONE') {
+    lines.push({
+      level: settlement.staged === 'DISCARDED_UNACCEPTABLE' ? 'error' : 'warn',
+      code: RevisionFilesCode.STAGED_DISCARDED,
+      message: settlement.staged === 'DISCARDED_UNACCEPTABLE' ? 'a staged revision list that is not the stored chain of its item was removed from a package' : 'the staged revision list of an append that did not commit was removed from a package',
+      context: { staged: settlement.staged },
+    });
+  }
+  if (settlement.orphansRemoved > 0) lines.push({ level: 'error', code: RevisionFilesCode.ORPHAN_REMOVED, message: 'signed revision records that no stored revision vouches for were removed from the revision list of a package: they were never committed', context: { records: settlement.orphansRemoved } });
+  return lines;
 }
 
 /** Decimal text of a revision number: the cursor of operation 86. */
@@ -213,6 +289,13 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
     request.log.error({ err, code, evidenceId }, message);
     app.errorLog.append({ level: 'error', source: TRANSCRIPTS_SOURCE, message, ...(err === null || err === undefined ? {} : describeError(err)), code, context: { evidenceId, requestId: request.id } });
   }
+  /** What settling the list files did, in the log and the persistent error log (R80-08). */
+  function noteSettlement(request: FastifyRequest, evidenceId: string, settlement: RevisionFilesSettlement): void {
+    for (const line of settlementLines(settlement)) {
+      request.log[line.level]({ code: line.code, evidenceId, ...line.context }, line.message);
+      app.errorLog.append({ level: line.level, source: TRANSCRIPTS_SOURCE, message: line.message, code: line.code, context: { evidenceId, requestId: request.id, ...line.context } });
+    }
+  }
   const unavailable = (reason: string, cause?: unknown): ApiFailure =>
     new ApiFailure(503, ApiErrorCode.NOT_READY, reason === TranscriptReason.SIGNING_KEY_UNAVAILABLE ? TEXT.SIGNER : TEXT.UNAVAILABLE, { details: { reason }, ...(cause === undefined ? {} : { cause }) });
 
@@ -221,6 +304,42 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
     const item = app.engine.slice('evidence').find((candidate) => candidate.id === evidenceId);
     if (item === undefined) throw notFound();
     return item;
+  }
+
+  /**
+   * THE CASE SCOPE OF REAL EVIDENCE (code review row 93, finding R93-02; decision D178; D24 Q-SEC-1
+   * (a); C3 §3): the sealed transcript of a REAL item and its revisions are for the operator who
+   * holds the case (`evidence_items.investigator_id`) and for a SUPERVISOR - THE SAME predicate as
+   * operation 88 and the media route (`holdsCase` of `src/media-stream`: one rule, not a copy).
+   * Stage 6 has already held the permission of the operation; this is the narrower rule behind it.
+   * An item that is not REAL (the simulator's, a demonstration package) is answered as before.
+   *
+   * THE REFUSAL is the media route's: a place in the denial budget first, then ONE `ACCESS_DENIED`
+   * row committed before the answer, then `403 NOT_PERMITTED` with `details.reason:
+   * EVIDENCE_CASE_SCOPE`. It is decided BEFORE anything of the transcript is read, so a refusal
+   * says nothing about whether a transcript exists.
+   */
+  async function holdScope(request: FastifyRequest, operationId: TranscriptOperationId, permission: Permission, item: EvidenceItem): Promise<void> {
+    if (item.integritySource !== 'REAL') return;
+    const { principal } = request;
+    // Stage 6 lets an operator through; anything else never reaches a handler of this module.
+    if (principal.kind !== 'OPERATOR') throw notFound();
+    if (holdsCase(principal, { investigatorId: item.investigatorId })) return;
+    await app.denialBudget.consume(request);
+    const named = { operationId, permission, role: principal.role, reason: EVIDENCE_CASE_SCOPE_REASON };
+    await app.pipeline.run(TRANSCRIPT_DENIED_UNIT, async (unit) => {
+      await unit.audit.append({
+        type: AuditType.ACCESS_DENIED,
+        severity: Severity.WARNING,
+        message: `Access denied: ${EVIDENCE_CASE_SCOPE_REASON} (${operationId})`,
+        actorId: principal.operatorId,
+        deviceId: principal.deviceId,
+        evidenceId: item.id,
+        details: named,
+      });
+    });
+    request.log.warn({ code: ApiErrorCode.NOT_PERMITTED, source: TRANSCRIPTS_SOURCE, operationId, principal: principalReference(principal), refusedBy: EVIDENCE_CASE_SCOPE_REASON, audited: true }, 'a transcript operation was refused: the caller does not hold the case of the item');
+    throw new ApiFailure(403, ApiErrorCode.NOT_PERMITTED, TEXT.NOT_PERMITTED, { details: named });
   }
 
   /** The item's sealed machine transcript row, or 409: read on the pool, outside a unit. */
@@ -272,6 +391,7 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
       schema: { params: paramsOf(operations.getTranscript), response: { [ok]: TranscriptDocumentSchema } },
       handler: async (request): Promise<TranscriptDocumentBody> => {
         const item = itemOf(request.params.id);
+        await holdScope(request, 'getTranscript', Permission.EVIDENCE_VIEW, item);
         const { transcript, revisions } = await sealedTranscriptOf(request, item);
         const document = await documentOf(request, item, transcript);
         return {
@@ -300,6 +420,7 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
         const { principal } = request;
         // Stage 6 let an operator with TRANSCRIPT_REVISE through; anything else never reaches a handler.
         if (principal.kind !== 'OPERATOR') throw notFound();
+        await holdScope(request, 'createTranscriptRevision', Permission.TRANSCRIPT_REVISE, item);
         const { transcript } = await sealedTranscriptOf(request, item);
         const document = await documentOf(request, item, transcript);
         const { baseRevision, changes, note } = request.body;
@@ -320,95 +441,135 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
         const packageDir = sessionPackageDir(app.config.mediaStoreDir, item.sessionId);
         const authorId = principal.operatorId;
 
-        const outcome = await app.engine.run(REVISION_UNIT_LABEL, async (scope) => {
-          const store = createTranscriptStore(scope.unit);
-          let stored: TranscriptRevision[];
-          try {
-            stored = await store.readRevisions(item.id);
-          } catch (err) {
-            persist(request, 'TRANSCRIPT_REVISIONS_READ_FAILED', 'the stored revisions of an item could not be read', err, item.id);
-            throw err;
-          }
-          const head = stored.at(-1);
-          const currentRevision = head?.revisionNo ?? 0;
-          // SEC35-21: compared inside the transaction that mints the number.
-          if (baseRevision !== currentRevision) throw conflict(currentRevision);
+        const identity = { evidenceId: item.id, machineTranscriptSha256: transcript.jsonSha256 };
+        /** True once the staged list of THIS append was (being) written: only then is there anything to settle after a failure. */
+        const progress = { staged: false };
+        const runUnit = () =>
+          app.engine.run(REVISION_UNIT_LABEL, async (scope) => {
+            const store = createTranscriptStore(scope.unit);
+            let stored: TranscriptRevision[];
+            try {
+              stored = await store.readRevisions(item.id);
+            } catch (err) {
+              persist(request, 'TRANSCRIPT_REVISIONS_READ_FAILED', 'the stored revisions of an item could not be read', err, item.id);
+              throw err;
+            }
+            const head = stored.at(-1);
+            const currentRevision = head?.revisionNo ?? 0;
+            // SEC35-21: compared inside the transaction that mints the number.
+            if (baseRevision !== currentRevision) throw conflict(currentRevision);
 
-          const list = await readRevisionList(packageDir, { evidenceId: item.id, machineTranscriptSha256: transcript.jsonSha256 });
-          const kept = list === null ? null : reconciled(list.revisions, stored);
-          if (kept === null) {
-            persist(request, TranscriptReason.REVISIONS_FILE_INCONSISTENT, 'the revision list of a package does not continue the stored chain; no revision is appended', null, item.id);
-            throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT);
-          }
+            // The two list files against the chain this unit reads: no append builds on a stale list.
+            let kept: TranscriptRevisionRecord[] | null;
+            try {
+              const settlement = await settleRevisionFiles(packageDir, identity, stored);
+              noteSettlement(request, item.id, settlement);
+              kept = settlement.records;
+            } catch (err) {
+              persist(request, RevisionFilesCode.NOT_SETTLED, 'the revision list files of a package could not be settled against the stored chain; no revision is appended', err, item.id);
+              throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT, err);
+            }
+            if (kept === null) {
+              persist(request, TranscriptReason.REVISIONS_FILE_INCONSISTENT, 'the revision list of a package does not continue the stored chain; no revision is appended', null, item.id);
+              throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT);
+            }
 
-          const body: RevisionBody = revisionBodyOf({ evidenceId: item.id, baseRevision, parentSha256: head?.sha256 ?? transcript.jsonSha256, machineTranscriptSha256: transcript.jsonSha256, authorId, reason, createdAt: now, changes });
-          const digest = revisionDigestOf(body);
-          let signatureValue: string;
-          try {
-            signatureValue = hexOf(new Uint8Array(await signer.signer.sign(digest)));
-          } catch (err) {
-            persist(request, TranscriptReason.SIGNING_KEY_UNAVAILABLE, 'the Core key did not sign a transcript revision', err, item.id);
-            throw unavailable(TranscriptReason.SIGNING_KEY_UNAVAILABLE, err);
-          }
-          const sha256 = hexOf(digest);
+            const body: RevisionBody = revisionBodyOf({ evidenceId: item.id, baseRevision, parentSha256: head?.sha256 ?? transcript.jsonSha256, machineTranscriptSha256: transcript.jsonSha256, authorId, reason, createdAt: now, changes });
+            const digest = revisionDigestOf(body);
+            let signatureValue: string;
+            try {
+              signatureValue = hexOf(new Uint8Array(await signer.signer.sign(digest)));
+            } catch (err) {
+              persist(request, TranscriptReason.SIGNING_KEY_UNAVAILABLE, 'the Core key did not sign a transcript revision', err, item.id);
+              throw unavailable(TranscriptReason.SIGNING_KEY_UNAVAILABLE, err);
+            }
+            const sha256 = hexOf(digest);
 
-          let row: TranscriptRevision;
-          try {
-            row = await store.appendRevision({
+            let row: TranscriptRevision;
+            try {
+              row = await store.appendRevision({
+                evidenceId: item.id,
+                baseRevision,
+                parentSha256: body.parentSha256,
+                sha256,
+                authorId,
+                reason,
+                signatureValue,
+                signatureKeyId: signer.signer.keyId,
+                signatureAlgorithm: 'Ed25519',
+                signatureSimulated: false,
+                signatureCertificateSha256: signer.certificate.sha256,
+                createdAt: now,
+              });
+            } catch (err) {
+              if (err instanceof TranscriptStoreError && err.code === 'TRANSCRIPT_REVISION_CONFLICT') throw conflict(currentRevision, err);
+              if (err instanceof TranscriptStoreError && err.code === 'TRANSCRIPT_NOT_FOUND') throw notReady(item);
+              if (err instanceof TranscriptStoreError && err.constraint === KEY_ID_CONSTRAINT) {
+                persist(request, TranscriptReason.KEY_ID_NOT_STORABLE, 'the table of transcript revisions refuses the ID of the signing key; no revision is stored', err, item.id);
+                throw unavailable(TranscriptReason.KEY_ID_NOT_STORABLE, err);
+              }
+              persist(request, 'TRANSCRIPT_REVISION_NOT_STORED', 'a transcript revision could not be stored', err, item.id);
+              throw err;
+            }
+
+            // C3 §5.2: the revision id, who, the numbers and the binding hash. NEVER a segment text.
+            await scope.unit.audit.append({
+              type: 'TRANSCRIPT_REVISED',
+              message: `Transcript of ${item.id} revised (revision ${row.revisionNo})`,
+              actorId: authorId,
+              deviceId: principal.deviceId,
+              sessionId: item.sessionId,
               evidenceId: item.id,
-              baseRevision,
+              details: { revisionId: revisionIdOf(row.revisionNo), authorId, number: row.revisionNo, baseRevision, changeCount: changes.length, machineTranscriptHash: transcript.jsonSha256, reason },
+            });
+
+            // The package record, LAST, and only STAGED: both rows were accepted. A staged list that cannot be written undoes them.
+            const record: TranscriptRevisionRecord = {
+              revisionNo: row.revisionNo,
               parentSha256: body.parentSha256,
               sha256,
-              authorId,
-              reason,
-              signatureValue,
-              signatureKeyId: signer.signer.keyId,
-              signatureAlgorithm: 'Ed25519',
-              signatureSimulated: false,
-              signatureCertificateSha256: signer.certificate.sha256,
-              createdAt: now,
-            });
-          } catch (err) {
-            if (err instanceof TranscriptStoreError && err.code === 'TRANSCRIPT_REVISION_CONFLICT') throw conflict(currentRevision, err);
-            if (err instanceof TranscriptStoreError && err.code === 'TRANSCRIPT_NOT_FOUND') throw notReady(item);
-            if (err instanceof TranscriptStoreError && err.constraint === KEY_ID_CONSTRAINT) {
-              persist(request, TranscriptReason.KEY_ID_NOT_STORABLE, 'the table of transcript revisions refuses the ID of the signing key; no revision is stored', err, item.id);
-              throw unavailable(TranscriptReason.KEY_ID_NOT_STORABLE, err);
+              authorId: body.authorId,
+              reason: body.reason,
+              createdAt: body.createdAt,
+              signature: { algorithm: 'Ed25519', keyId: signer.signer.keyId, value: signatureValue, certificateSha256: signer.certificate.sha256 },
+              body: body as unknown as NonNullable<TranscriptRevisionRecord['body']>,
+            };
+            try {
+              await retainCertificate(packageDir, signer.certificate);
+              progress.staged = true;
+              await stageRevisionList(packageDir, { ...identity, revisions: [...kept, record] });
+            } catch (err) {
+              persist(request, 'TRANSCRIPT_REVISIONS_FILE_NOT_WRITTEN', 'the revision list of a package could not be written; the revision is not stored', err, item.id);
+              throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT, err);
             }
-            persist(request, 'TRANSCRIPT_REVISION_NOT_STORED', 'a transcript revision could not be stored', err, item.id);
-            throw err;
-          }
-
-          // C3 §5.2: the revision id, who, the numbers and the binding hash. NEVER a segment text.
-          await scope.unit.audit.append({
-            type: 'TRANSCRIPT_REVISED',
-            message: `Transcript of ${item.id} revised (revision ${row.revisionNo})`,
-            actorId: authorId,
-            deviceId: principal.deviceId,
-            sessionId: item.sessionId,
-            evidenceId: item.id,
-            details: { revisionId: revisionIdOf(row.revisionNo), authorId, number: row.revisionNo, baseRevision, changeCount: changes.length, machineTranscriptHash: transcript.jsonSha256, reason },
-          });
-
-          // The package record, LAST: both rows were accepted. A file that cannot be written undoes them.
-          const record: TranscriptRevisionRecord = {
-            revisionNo: row.revisionNo,
-            parentSha256: body.parentSha256,
-            sha256,
-            authorId: body.authorId,
-            reason: body.reason,
-            createdAt: body.createdAt,
-            signature: { algorithm: 'Ed25519', keyId: signer.signer.keyId, value: signatureValue, certificateSha256: signer.certificate.sha256 },
-            body: body as unknown as NonNullable<TranscriptRevisionRecord['body']>,
-          };
+            return revisionAnswer(row, transcript, changes);
+            });
+        // ONE APPEND OF A PACKAGE AT A TIME (R80-08): settling, the staged list, the commit and the rename.
+        const outcome = await withRevisionLock(packageDir, async () => {
+          let committed: Awaited<ReturnType<typeof runUnit>>;
           try {
-            await retainCertificate(packageDir, signer.certificate);
-            await writeRevisionList(packageDir, { evidenceId: item.id, machineTranscriptSha256: transcript.jsonSha256, revisions: [...kept, record] });
-          } catch (err) {
-            persist(request, 'TRANSCRIPT_REVISIONS_FILE_NOT_WRITTEN', 'the revision list of a package could not be written; the revision is not stored', err, item.id);
-            throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT, err);
+            committed = await runUnit();
+          } catch (failure) {
+            // The unit did not commit (as far as this process was told). THE TABLE JUDGES the staged list: the committed
+            // rows are read again and the files settled - removed when the row is not there, promoted when it is.
+            if (progress.staged) {
+              try {
+                const rows = await app.db.read(`${TRANSCRIPTS_SOURCE}.settle`, (pool) => createTranscriptStore(pool).readRevisions(item.id), request);
+                noteSettlement(request, item.id, await settleRevisionFiles(packageDir, identity, rows));
+              } catch (err) {
+                persist(request, RevisionFilesCode.NOT_SETTLED, 'the staged revision list of an append that did not commit could not be settled; the next append or the next start settles it', err, item.id);
+              }
+            }
+            throw failure;
           }
-          return revisionAnswer(row, transcript, changes);
+          // AFTER THE COMMIT: the staged list becomes the list. A rename that fails never turns a stored revision into
+          // an error: operation 86 answers from the staged list, and the next append or the next start renames it.
+          try {
+            await promoteStagedRevisionList(packageDir);
+          } catch (err) {
+            persist(request, RevisionFilesCode.NOT_PROMOTED, 'the staged revision list of a committed revision could not be renamed over the list of the package', err, item.id);
+          }
+          return committed;
         });
         // Pass D6: the revision is committed. The item's transcript summary of slice `evidence` now names the
         // new head, so a client that watches the slice sees it without a reload (C3 §2.3 "publishes
@@ -438,13 +599,15 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
       schema: { params: paramsOf(operations.listTranscriptRevisions), querystring: PageQuerySchema, response: { [ok]: TranscriptRevisionPageSchema } },
       handler: async (request): Promise<TranscriptRevisionPage> => {
         const item = itemOf(request.params.id);
+        await holdScope(request, 'listTranscriptRevisions', Permission.EVIDENCE_VIEW, item);
         const { cursor, limit } = request.query;
         const after = cursor === undefined ? null : CURSOR_REVISION.test(cursor) ? Number(cursor) : Number.NaN;
         if (Number.isNaN(after)) throw invalidInput('querystring');
         const { transcript, revisions } = await sealedTranscriptOf(request, item);
         if (revisions.length === 0) return { items: [], nextCursor: null };
         const list = await readRevisionList(sessionPackageDir(app.config.mediaStoreDir, item.sessionId), { evidenceId: item.id, machineTranscriptSha256: transcript.jsonSha256 });
-        const records = list === null ? null : reconciled(list.revisions, revisions);
+        // Between a commit and its rename the record of the newest revision is in the STAGED list (R80-08): read, never written here.
+        const records = (list === null ? null : reconciled(list.revisions, revisions)) ?? (await readStagedRevisionRecords(sessionPackageDir(app.config.mediaStoreDir, item.sessionId), { evidenceId: item.id, machineTranscriptSha256: transcript.jsonSha256 }, revisions));
         const answers: TranscriptRevisionBody[] = [];
         for (const [index, row] of revisions.entries()) {
           // The changes are answered from the body whose hash is the stored, signed hash of the row - or not at all.

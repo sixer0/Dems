@@ -23,6 +23,7 @@ import {
   captureOperationOf,
   developmentSourceLabelOf,
   deviceSourceFieldsOf,
+  storedDeviceListingOf,
   helperProgramProblemOf,
   runCaptureFenceBoot,
   type CaptureFenceOutcome,
@@ -552,6 +553,26 @@ describe('what a client is told about a source (C3 §2.6; ruling R-2, D91)', () 
     expect(deviceSourceFieldsOf('REAL_PRODUCTION', 'ONVIF_RTSP')).toEqual({ adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', listed: true });
     expect(deviceSourceFieldsOf('SIMULATED', 'FAKE')).toEqual({ adapter: 'FAKE', sourceClass: 'DEVELOPMENT', listed: true });
     expect(deviceSourceFieldsOf('SIMULATED', 'LOCAL_DEVICE').listed).toBe(true);
+  });
+
+  // Finding R69-03: the rule above had no caller. This is its caller, the reader of the stored registry.
+  it('the stored-registry rule: REAL_PRODUCTION lists no camera or microphone of a development kind; REAL_DEVELOPMENT lists them (control); SIMULATED filters nothing', () => {
+    const rows = [
+      { id: 'CAM-01', kind: 'CAMERA', adapterKind: 'FAKE' },
+      { id: 'CAM-03', kind: 'CAMERA', adapterKind: 'LOCAL_DEVICE' },
+      { id: 'CAM-11', kind: 'CAMERA', adapterKind: 'ONVIF_RTSP' },
+      { id: 'MIC-03', kind: 'MIC', adapterKind: 'LOCAL_DEVICE' },
+      { id: 'MIC-11', kind: 'MIC', adapterKind: 'USB_AUDIO' },
+      { id: 'POE-SWITCH', kind: 'POE', adapterKind: 'FAKE' },
+      { id: 'CAM-99', kind: 'CAMERA', adapterKind: 'NOT_A_KIND' },
+    ];
+    const listedIn = (operation: Parameters<typeof storedDeviceListingOf>[0]): string[] => {
+      const rule = storedDeviceListingOf(operation);
+      return rows.filter((row) => rule === null || rule(row)).map((row) => row.id);
+    };
+    expect(listedIn('REAL_PRODUCTION')).toEqual(['CAM-11', 'MIC-11', 'POE-SWITCH']);
+    expect(listedIn('REAL_DEVELOPMENT')).toEqual(rows.map((row) => row.id));
+    expect(storedDeviceListingOf('SIMULATED')).toBeNull();
   });
 
   it('the development label is drawn in real capture only: never in SIMULATED, never in a production configuration', () => {

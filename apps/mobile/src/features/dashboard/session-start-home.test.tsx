@@ -189,8 +189,9 @@ describe('session start on the mobile shell (pass D7 item 3)', () => {
     fireEvent.press(screen.getByTestId('home-bell'));
     expect(textOf('home-alert-ALR-000901')).toContain('No camera connected. Nothing was recorded.');
     expect(textOf('home-alert-ALR-000902')).toContain('Camera 2 (CAM-02) is not connected');
-    // CONTROL: a capture fault that names no cause, on a session that is not a failed start, keeps the fault's label.
-    expect(textOf('home-alert-ALR-000903')).toContain('Capture fault');
+    // CONTROL: a capture fault that names no cause, on a session that is not a failed start, is NOT worded as a failed start.
+    // Fix pass F-M5 (review R74-03, D179 (b)): it reads as the interrupted recording it is - the shared sentence - where it read the bare label "Capture fault".
+    expect(textOf('home-alert-ALR-000903')).toContain('The capture stopped unexpectedly before the recording was ended.');
     expect(textOf('home-alert-ALR-000903')).not.toContain('Nothing was recorded');
     expect(getMissingKeys()).toEqual([]);
   });

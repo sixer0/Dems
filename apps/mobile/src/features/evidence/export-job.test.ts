@@ -2,7 +2,7 @@
 // of the transcript pane (operations 84 to 86). The web console holds the same cases, and the
 // screens on the Live bed, for its own copies.
 import { describe, expect, it } from '@jest/globals';
-import { COMPOSITE_NOT_SELECTED, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportJob } from './export-job-model';
+import { COMPOSITE_NOT_SELECTED, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from './export-job-model';
 import {
   REVISION_TEXT_MAX,
   currentRevisionNumber,
@@ -45,7 +45,7 @@ describe('the export job', () => {
     for (const answered of [undefined, null, 'EXP-000777', 'EXPJ-7', 7]) expect(exportJobIdOf('EXP-000032', answered)).toBe('EXPJ-000032');
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000777' })).toBe('EXPJ-000777');
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032' })).toBeNull();
-    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: 'EV-20261009-0001', kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null });
+    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: 'EV-20261009-0001', kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null, downloadable: false });
     for (const bad of [null, [], { ...JOB, status: 'DONE' }, { ...JOB, jobId: 'EXP-000032' }]) expect(readExportJob(bad)).toBeNull();
     expect(readExportJob({ ...JOB, kind: 'COMPOSITE', derived: false })?.derived).toBe(true);
     expect(readExportJob({ ...JOB, status: 'FAILED', failureReason: COMPOSITE_NOT_SELECTED })?.failureReason).toBe('COMPOSITE_ENCODER_NOT_SELECTED');
@@ -58,6 +58,26 @@ describe('the export job', () => {
     expect(forwardProgress(40, { status: 'COMPLETE', progressPct: 0 })).toBe(100);
     expect(forwardProgress(40, { status: 'FAILED', progressPct: 10 })).toBe(40);
     expect([isTerminalJob({ status: 'QUEUED' }), isTerminalJob({ status: 'RUNNING' }), isTerminalJob({ status: 'COMPLETE' }), isTerminalJob({ status: 'FAILED' }), isTerminalJob(null)]).toEqual([false, false, true, true, false]);
+  });
+});
+
+// Fix pass F-M8 (review finding R93-05, ruling D178). The UX spec gives the download of a finished
+// export to the web console only (§6.6): this app keeps the FACT that the Core names one (to say
+// "Download from the web console") and never the path.
+describe('fix F-M8: the download member of a job answer', () => {
+  const TOKEN = `exs_CANARY${'q7Zm4xLp0k2Vb6Nc1Hy4GjR8sT3w'.repeat(3)}`.slice(0, 95);
+  const COMPLETE = { ...JOB, status: 'COMPLETE', progressPct: 100, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64) };
+  const WITH_DOWNLOAD = { ...COMPLETE, download: { path: `/exports/${TOKEN}`, expiresAt: 1_790_824_660_000 } };
+
+  it('only a path of the download route on a COMPLETE job is one; the job this app keeps holds the fact, never the path', () => {
+    expect(readExportDownload(WITH_DOWNLOAD)).toEqual({ path: `/exports/${TOKEN}`, expiresAt: 1_790_824_660_000 });
+    for (const bad of [COMPLETE, { ...WITH_DOWNLOAD, status: 'RUNNING' }, { ...COMPLETE, download: { path: `http://127.0.0.1:8443/exports/${TOKEN}`, expiresAt: 1 } }, { ...COMPLETE, download: { path: `/media/${TOKEN}`, expiresAt: 1 } }, null]) {
+      expect(readExportDownload(bad)).toBeNull();
+    }
+    const kept = readExportJob(WITH_DOWNLOAD);
+    expect(kept?.downloadable).toBe(true);
+    expect(JSON.stringify(kept)).not.toContain('exs_');
+    expect(readExportJob(COMPLETE)?.downloadable).toBe(false);
   });
 });
 
@@ -87,7 +107,7 @@ describe('the transcript', () => {
   });
 
   it('the pane states, the form check, the request and the refusals', () => {
-    expect([paneStateOf({ state: 'DISABLED' }, false), paneStateOf({ state: 'READY' }, true), paneStateOf({ state: 'PARTIAL' }, true), paneStateOf({ state: 'PENDING' }, false), paneStateOf(null, true)]).toEqual(['DISABLED', 'ASSEMBLED', 'PARTIAL', 'UNAVAILABLE', 'ASSEMBLED']);
+    expect([paneStateOf({ state: 'DISABLED' }, false), paneStateOf({ state: 'READY' }, true), paneStateOf({ state: 'PARTIAL' }, true), paneStateOf({ state: 'PENDING' }, false), paneStateOf(null, true)]).toEqual(['DISABLED', 'ASSEMBLED', 'PARTIAL', 'UNAVAILABLE', 'UNKNOWN']);
     expect([validateRevisionText('a', 'a'), validateRevisionText('a', 'b'), validateRevisionText('a', 'x'.repeat(REVISION_TEXT_MAX + 1))]).toEqual(['unchanged', null, 'tooLong']);
     expect(revisionRequestOf(3, 1, 'old', 'new', '  why it changed  ')).toEqual({ baseRevision: 3, changes: [{ segmentIndex: 1, from: 'old', to: 'new' }], note: 'why it changed' });
     // Pass D6: the note is REQUIRED (5 to 500 characters after trimming).

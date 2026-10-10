@@ -11,7 +11,7 @@
 // no port is bound, no device is opened.
 import { CAPTURE_PROTOCOL_VERSION, type AudioSourceIntervalRecord, type CaptureRecord } from '@dems/capture-protocol';
 import type { Pool } from 'pg';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
 import { fakeLauncher, flush, type FakeLauncher } from '../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
@@ -28,7 +28,7 @@ import type { Principal } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { sessionTapPath, transcriptionControl } from '../../transcription';
 import { FIRST_DELIVERY_MS } from '../../capture/adapters/local/camera-helper';
-import { CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
+import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
 const fixture = realBootFixture('row71b');
@@ -73,6 +73,10 @@ async function rig(
     sttEnabled?: boolean;
     /** Row 71c: what each fake camera's adapter reports as its clock offset. */
     clockOffsets?: Readonly<Record<string, number>>;
+    /** Fix pass F-M5: limits of the supervisor (a short acknowledgement time for the late-acknowledgement case). */
+    limits?: Record<string, number>;
+    /** Fix pass F-M5: how the fake worker behaves beyond the rig's default (a stop that is not clean). */
+    worker?: Parameters<typeof fakeLauncher>[0];
   } = {},
 ): Promise<Rig> {
   const target = await db.another({ template: 'seed', slug });
@@ -108,10 +112,10 @@ async function rig(
 
   // The worker seam: the real supervisor on the fake worker, forwarded to the real engine as the capture unit does.
   // A switch is acknowledged by the test, after the record the worker writes for it.
-  const fake = fakeLauncher({ ackSwitch: false });
+  const fake = fakeLauncher({ ackSwitch: false, ...options.worker });
   const order: string[] = [];
   const handles: SourceHandle[] = [];
-  const supervisor = createCaptureSupervisor({ now: () => app.clock.now(), timers: createSystemTimers(), launcher: fake.launcher });
+  const supervisor = createCaptureSupervisor({ now: () => app.clock.now(), timers: createSystemTimers(), launcher: fake.launcher, ...(options.limits === undefined ? {} : { limits: options.limits }) });
   await supervisor.boot();
   app.seams.replace('capture', supervisor);
   forwardCaptureEvents({
@@ -631,7 +635,8 @@ describe('row 71c: the transcriber session of a recording is opened at capture s
     await of.start(id);
     expect(await snapshotRows(of, id)).toEqual([{ enabled: true, revision: expect.any(Number) }]);
     const start = of.fake.last().commands('START')[0] as { plan?: { pcmTapPath?: string | null } } | undefined;
-    expect(start?.plan?.pcmTapPath).toBe(sessionTapPath(of.app.config.dataDir, id));
+    // The scratch of a session lies below the media store since the per-store keying (D180; `transcription/host.ts`), no longer below the data directory.
+    expect(start?.plan?.pcmTapPath).toBe(sessionTapPath(of.app.config.mediaStoreDir, id));
     expect(of.transcriber).toEqual([`begin ${id}`]);
     of.fake.last().firstDurableFragment('CAM-01');
     await of.settled();
@@ -692,9 +697,10 @@ describe('row 71c: what the capture side reports is kept for the seal while the 
       sessionId: id,
       startRecordedAt: recordedAt,
       cameras: [
-        { trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: -7, firstVideo: { pts: 3_600, timescale: 90_000, heldMs: 40, skipped: { noTimestamp: 0, beforeAudioStart: 2, noCameraClock: 0, beforeKeyframe: 5 }, skippedSpanMs: 40 } },
+        // Tidy pass F-Y: the fake worker states the full sync with its first durable fragment, as the real worker does; no clock was measured here.
+        { trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: -7, measuredClockOffsetMs: null, syncLevel: 'F_FULLFSYNC', firstVideo: { pts: 3_600, timescale: 90_000, heldMs: 40, skipped: { noTimestamp: 0, beforeAudioStart: 2, noCameraClock: 0, beforeKeyframe: 5 }, skippedSpanMs: 40 } },
         // No FIRST_VIDEO_SAMPLE arrived for the second file: null, never a made-up value (fields 127 / 128 are nullable).
-        { trackId: 'VIDEO-02', deviceId: 'CAM-02', clockOffsetMs: 12, firstVideo: null },
+        { trackId: 'VIDEO-02', deviceId: 'CAM-02', clockOffsetMs: 12, measuredClockOffsetMs: null, syncLevel: null, firstVideo: null },
       ],
     });
     await stopNow(of, id);
@@ -838,5 +844,487 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', audioSource: { activeInputId: 'MIC-01' } });
     expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+  });
+
+  // Closing pass F-X (review row 74, finding R74-08 (2)): `begin`, the stop and the end run on ONE chain, so a stop
+  // that committed while `begin` still waited for a microphone start reached the worker only after the start bound
+  // (8 s in the product): the worker recorded past the committed stop. The chain keeps its order; `begin` stops
+  // waiting the moment a stop (or the worker's end) is asked. Written RED: the STOP came after the bound.
+  const startWithoutWaiting = async (of: Rig, id: string): Promise<void> => {
+    const capture = sessionCapture(of.app);
+    await capture.beforeStart();
+    await of.app.engine.run('sessions.startSession', async (scope) => {
+      await scope.command(of.investigator, 'startRecording');
+      await capture.recordingStartedIn(scope, id);
+    });
+    capture.afterStartCommitted(id);
+  };
+  const until = async (what: () => boolean, ms: number): Promise<number> => {
+    const from = performance.now();
+    while (!what() && performance.now() - from < ms) await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    return performance.now() - from;
+  };
+
+  it('R74-08: a stop that commits while a microphone start is still waited for is sent to the worker at once, not after the start bound; the session is handed over as STOPPED', async () => {
+    const BOUND = 4_000;
+    const helpers = scripted((deviceId) => (deviceId === 'MIC-01' ? 'HANG' : 'SETTLE'));
+    const of = await rig('fx_r7408_stop', { registry: helpers.registry });
+    sessionCapture(of.app).replace({ micStartBoundMs: BOUND });
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    await startWithoutWaiting(of, id);
+    // `begin` has started the worker and both helpers and now waits for MIC-01, which never answers.
+    await until(() => helpers.log.includes('settled MIC-02') && helpers.log.includes('camera CAM-02'), 2_000);
+    of.fake.last().firstDurableFragment('CAM-01');
+    await until(() => of.app.engine.slice('session')?.captureDurable === true, 2_000);
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    expect(of.events.map((event) => event.type)).not.toContain('STARTED');
+
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      sessionCapture(of.app).stopRequestedIn(scope, id);
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    sessionCapture(of.app).afterStopCommitted(id);
+    const waited = await until(() => of.fake.last().commands('STOP').length > 0, BOUND + 2_000);
+    expect(of.fake.last().commands('STOP')).toHaveLength(1);
+    expect(waited).toBeLessThan(BOUND / 4);
+    await of.settled();
+    expect(of.events.at(-1)?.type).toBe('STOPPED');
+    // The microphone that was still being started when the operator stopped is not reported as a failed start.
+    expect(appended.mock.calls.map(([entry]) => entry.code).filter((code) => code === 'CAPTURE_MIC_NOT_STARTED' || code === 'CAPTURE_SESSION_STEP_FAILED')).toEqual([]);
+  });
+
+  it('R74-08 CONTROL: without a stop the same start still waits its bound and reports the microphone (the wait is cut only by a stop or the end of the capture)', async () => {
+    const helpers = scripted((deviceId) => (deviceId === 'MIC-01' ? 'HANG' : 'SETTLE'));
+    const of = await rig('fx_r7408_control', { registry: helpers.registry });
+    sessionCapture(of.app).replace({ micStartBoundMs: 300 });
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    await startWithoutWaiting(of, id);
+    await until(() => helpers.log.includes('settled MIC-02'), 2_000);
+    expect(of.events.map((event) => event.type)).not.toContain('STARTED');
+    await until(() => of.events.some((event) => event.type === 'STARTED'), 3_000);
+    await of.settled();
+    expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
+    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => entry.context?.['cause'])).toEqual(['MIC_START_BOUND']);
+  });
+});
+
+// ── Fix pass F-M5 (code review row 74) ──────────────────────────────────────────────────────────
+
+const switchRecord = (command: { correlationId?: string } | undefined, patch: Partial<AudioSourceIntervalRecord> = {}): AudioSourceIntervalRecord => ({
+  ...startInterval,
+  deviceId: 'MIC-02',
+  role: 'STANDBY',
+  index: 2,
+  fromSample: 240_000,
+  capturedAtMs: FIXED_NOW + 5_000,
+  reason: 'OPERATOR_SWITCH',
+  correlationId: command?.correlationId ?? null,
+  appliedDelayUs: 9_000,
+  ...patch,
+});
+const intervalsOf = (of: Rig, id: string) => of.rows('SELECT seq, mic_device_id, from_media_ms::int AS from_ms, to_media_ms::int AS to_ms, reason FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq', [id]);
+const switchRows = (of: Rig) => of.rows<{ actor_id: string | null; details: Record<string, unknown> }>("SELECT actor_id, details FROM public.audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED' ORDER BY seq");
+
+/**
+ * The rigs of the fix-pass cases are CLOSED AFTER EACH CASE (the app, its pools, the supervisor): the
+ * cases above keep theirs until the file ends, and this file would otherwise hold more connections
+ * than the test server gives one run ("the database does not answer", measured on the first run).
+ */
+const fixPassRigs: Rig[] = [];
+async function fixRig(slug: string, options: Parameters<typeof rig>[1] = {}): Promise<Rig> {
+  const of = await rig(slug, options);
+  fixPassRigs.push(of);
+  return of;
+}
+afterEach(async () => {
+  for (const of of fixPassRigs.splice(0)) {
+    await of.supervisor.shutdown();
+    await of.app.close();
+  }
+});
+
+async function durableSession(slug: string, options: Parameters<typeof rig>[1] = {}): Promise<{ of: Rig; id: string }> {
+  const of = await fixRig(slug, options);
+  const id = await of.arm();
+  await of.start(id);
+  of.fake.last().record(startInterval);
+  of.fake.last().firstDurableFragment('CAM-01');
+  await of.settled();
+  expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+  return { of, id };
+}
+
+describe('review R74-06: a switch the worker realised is recorded whatever happens around it', () => {
+  it('(a) the session left RECORDING between the command and its acknowledgement: the interval rows and the audit row are written from the record; the answer names the input that feeds the track', async () => {
+    const { of, id } = await durableSession('fm5_switch_left');
+    const worker = of.fake.last();
+    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
+    await flush();
+    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
+    // The stop commits while the worker realises the switch.
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    expect(of.app.engine.slice('session')?.state).toBe('STOPPING');
+    worker.record(switchRecord(command));
+    worker.ack(true, undefined, command);
+    await expect(switching).resolves.toMatchObject({ sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
+    expect(await intervalsOf(of, id)).toEqual([
+      { seq: 1, mic_device_id: 'MIC-01', from_ms: 21, to_ms: 5_021, reason: 'START' },
+      { seq: 2, mic_device_id: 'MIC-02', from_ms: 5_021, to_ms: null, reason: 'MANUAL' },
+    ]);
+    const rows = await switchRows(of);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actor_id: of.investigator.operatorId, details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 21, toMs: 5_021 } });
+  });
+
+  it('(b) the record of the switch arrived but its acknowledgement did not come within the limit: the switch is RECORDED from the record (state, rows, audit row), not refused - the Core never says another microphone than the worker feeds; a switch back then works', async () => {
+    const { of, id } = await durableSession('fm5_switch_late', { limits: { ackTimeoutMs: 300 } });
+    const worker = of.fake.last();
+    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
+    await flush();
+    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
+    // The worker switched and wrote its record; the acknowledgement is never read in time.
+    worker.record(switchRecord(command));
+    await expect(switching).resolves.toMatchObject({ sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
+    expect(of.app.engine.slice('session')?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
+    expect(await intervalsOf(of, id)).toEqual([
+      { seq: 1, mic_device_id: 'MIC-01', from_ms: 21, to_ms: 5_021, reason: 'START' },
+      { seq: 2, mic_device_id: 'MIC-02', from_ms: 5_021, to_ms: null, reason: 'MANUAL' },
+    ]);
+    const rows = await switchRows(of);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actor_id: of.investigator.operatorId, details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 21, toMs: 5_021 } });
+    // No dead end: the way back is a normal switch.
+    const back = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-01');
+    await flush();
+    const second = worker.commands('SWITCH_AUDIO_SOURCE')[1];
+    expect(second).toMatchObject({ to: 'PRIMARY' });
+    worker.record(switchRecord(second, { deviceId: 'MIC-01', role: 'PRIMARY', index: 3, fromSample: 480_000, capturedAtMs: FIXED_NOW + 10_000 }));
+    worker.ack(true, undefined, second);
+    await expect(back).resolves.toMatchObject({ activeInputId: 'MIC-01', intervalFromMs: 10_021 });
+    expect(await switchRows(of)).toHaveLength(2);
+  });
+
+  it('CONTROL of (b): no record and no acknowledgement within the limit - the call is refused 409 and nothing is written', async () => {
+    const { of, id } = await durableSession('fm5_switch_silent', { limits: { ackTimeoutMs: 300 } });
+    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
+    await expect(switching).rejects.toMatchObject({ statusCode: 409, code: 'AUDIO_SOURCE_CONFLICT' });
+    expect(await intervalsOf(of, id)).toHaveLength(1);
+    expect(await switchRows(of)).toEqual([]);
+    expect(of.app.engine.slice('session')?.audioSource).toMatchObject({ activeInputId: 'MIC-01' });
+  });
+});
+
+describe('review R74-07: the end of a capture that holds durable media is always handed over', () => {
+  it('the worker ends for good while the session is STOPPING (the engine ignores the end): the listeners are told INTERRUPTED, so the seal is not left waiting for a restart', async () => {
+    const { of, id } = await durableSession('fm5_end_ignored');
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      sessionCapture(of.app).stopRequestedIn(scope, id);
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    // The worker dies before the stop reaches it.
+    of.fake.last().exit(1);
+    await of.settled();
+    expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id });
+    expect(of.transcriber.filter((entry) => entry.includes('nothing'))).toEqual([]);
+    expect(sessionCapture(of.app).liveSessionId()).toBeNull();
+    // The stop that committed finds no live capture and says nothing a second time.
+    sessionCapture(of.app).afterStopCommitted(id);
+    await of.settled();
+    expect(of.events.filter((event) => event.type === 'INTERRUPTED' || event.type === 'STOPPED')).toHaveLength(1);
+  });
+});
+
+describe('review R74-09: the unit has a shutdown path of its own', () => {
+  it('mid-recording: the worker is stopped FIRST, then every source is closed, the session signal is aborted and nothing runs in the background; nothing is told (the next boot resumes the session)', async () => {
+    const { of, id } = await durableSession('fm5_shutdown_recording');
+    const told = of.events.length;
+    await sessionCapture(of.app).shutdown();
+    expect(of.fake.last().commands('STOP')).toHaveLength(1);
+    expect(of.order.slice(4)).toEqual(['STOP', 'close MIC-01', 'close MIC-02', 'close CAM-01', 'close CAM-02']);
+    expect(sessionCapture(of.app).liveSessionId()).toBeNull();
+    expect(of.events.slice(told)).toEqual([]);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
+    // Safe to call twice.
+    await expect(sessionCapture(of.app).shutdown()).resolves.toBeUndefined();
+  });
+
+  it('mid-start: a camera source that is still being opened (the settle window of its helper) is reached by the shutdown through the session signal, and the shutdown does not wait for the start to finish', async () => {
+    let aborted = 0;
+    let opening = 0;
+    const of = await fixRig('fm5_shutdown_starting', {
+      registry: (built) => {
+        const camera = built.resolve('CAMERA', 'CAM-02');
+        // A helper inside its settle window: it is in no table yet, and ends only when its signal is aborted.
+        const settling: typeof camera = {
+          ...camera,
+          openSource: (deviceId, _to, signal) =>
+            new Promise((_resolve, reject) => {
+              opening += 1;
+              signal?.addEventListener('abort', () => {
+                aborted += 1;
+                reject(new Error(`${deviceId}: aborted while settling`));
+              });
+            }),
+        };
+        const resolve = ((kind: 'CAMERA' | 'MIC', deviceId: string) => (kind === 'CAMERA' && deviceId === 'CAM-02' ? settling : built.resolve(kind as 'CAMERA', deviceId))) as typeof built.resolve;
+        return { ...built, resolve };
+      },
+    });
+    const id = await of.arm();
+    await sessionCapture(of.app).beforeStart();
+    await of.app.engine.run('sessions.startSession', async (scope) => {
+      await scope.command(of.investigator, 'startRecording');
+      await sessionCapture(of.app).recordingStartedIn(scope, id);
+    });
+    sessionCapture(of.app).afterStartCommitted(id);
+    await vi.waitFor(() => expect(opening).toBe(1), { timeout: 5_000 });
+    expect(aborted).toBe(0);
+    await sessionCapture(of.app).shutdown();
+    expect(aborted).toBe(1);
+    expect(of.fake.last().commands('STOP')).toHaveLength(1);
+    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close MIC-01', 'close MIC-02']);
+    expect(sessionCapture(of.app).liveSessionId()).toBeNull();
+    expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
+  });
+
+  it('the app closes through it: `app.close()` alone stops the worker and closes the sources', async () => {
+    const { of } = await durableSession('fm5_shutdown_close');
+    await of.app.close();
+    expect(of.fake.last().commands('STOP')).toHaveLength(1);
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(4);
+    expect(of.order.indexOf('STOP')).toBeLessThan(of.order.indexOf('close MIC-01'));
+  });
+});
+
+describe('review R74-03: a camera the worker could not connect is told to the listeners of the unit', () => {
+  it('the worker warning CAMERA_NOT_CONNECTED of the session becomes the event CAMERA_NOT_CONNECTED with the device; no critical fault of the camera is raised', async () => {
+    const of = await fixRig('fm5_camera_not_connected');
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().warning('CAPTURE_FAULT', 'CAM-02', 'ACTIVE', 'CAMERA_NOT_CONNECTED');
+    of.fake.last().firstDurableFragment('CAM-01');
+    await of.settled();
+    expect(of.events.filter((event) => event.type === 'CAMERA_NOT_CONNECTED')).toEqual([{ type: 'CAMERA_NOT_CONNECTED', sessionId: id, deviceId: 'CAM-02' }]);
+    expect(of.app.engine.slice('faults').active.filter((fault) => fault.kind === 'CAPTURE_FAULT')).toEqual([]);
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+  });
+});
+
+// Review R74-04, ruling D177: no manifest field can say that a microphone stopped delivering (ev §B.5
+// has seq, device, role, the two media times, reason and operator - bending one would be a lie). What
+// the sealed package DOES hold is the audit trail of the session: `audit-session-extract.jsonl` is
+// every `audit_log` row whose `session_id` is the session (`sealing-host/session-reader.ts`,
+// READ_SEAL_AUDIT_ROWS - the same predicate as below). This case holds that the named microphone
+// faults, raised and cleared, with their times and a sentence that is true, ARE such rows.
+describe('review R74-04: both microphones fail during a recording - the audit rows the seal extracts say so', () => {
+  it('FAULT_RAISED and FAULT_CLEARED of each microphone carry the session ID, the device, the reason MIC_DISCONNECTED and a true sentence; the session keeps recording (D163)', async () => {
+    const { of, id } = await durableSession('fm5_mics_lost');
+    const worker = of.fake.last();
+    worker.warning('CAPTURE_FAULT', 'MIC-01', 'ACTIVE', 'MIC_DISCONNECTED');
+    worker.warning('CAPTURE_FAULT', 'MIC-02', 'ACTIVE', 'MIC_DISCONNECTED');
+    await of.settled();
+    await vi.waitFor(() => expect(of.app.engine.slice('faults').active.filter((fault) => fault.reason === 'MIC_DISCONNECTED')).toHaveLength(2), { timeout: 5_000 });
+    // D163: the session goes on.
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING', captureDurable: true });
+    // One of the two delivers again: its fault is cleared by the capture side after the hold.
+    worker.warning('CAPTURE_FAULT', 'MIC-02', 'CLEARED', 'MIC_DISCONNECTED');
+    await of.settled();
+    // The hold of the forwarder runs on the Core's clock.
+    await of.drive(2_500);
+    worker.telemetry(1);
+    await of.settled();
+    await vi.waitFor(() => expect(of.app.engine.slice('faults').active.filter((fault) => fault.reason === 'MIC_DISCONNECTED')).toHaveLength(1), { timeout: 5_000 });
+
+    // THE EXTRACT OF THE SEAL: every audit row of the session.
+    const extract = await of.rows<{ type: string; at: string; message: string; device_id: string | null; details: Record<string, unknown> }>('SELECT type, at, message, device_id, details FROM public.audit_log WHERE session_id = $1 ORDER BY seq', [id]);
+    const mic = extract.filter((row) => row.details['reason'] === 'MIC_DISCONNECTED');
+    expect(mic.map((row) => `${row.type} ${String(row.details['target'])}`)).toEqual(['FAULT_RAISED MIC-01', 'FAULT_RAISED MIC-02', 'FAULT_CLEARED MIC-02']);
+    for (const row of mic) {
+      expect(row.details).toMatchObject({ kind: 'CAPTURE_FAULT', reason: 'MIC_DISCONNECTED' });
+      expect(Number(row.at)).toBeGreaterThan(0);
+      expect(row.message).toMatch(/stopped delivering audio/);
+      expect(row.message).not.toMatch(/stopped growing/);
+    }
+    // CONTROL: the microphone that never delivered again has no clear row in the extract - a verifier reads "not resolved in this session".
+    expect(mic.filter((row) => row.type === 'FAULT_CLEARED' && row.details['target'] === 'MIC-01')).toEqual([]);
+    // CONTROL of the predicate: a row of no session (or of another) is not in the extract.
+    const others = await of.rows<{ n: string }>("SELECT count(*) AS n FROM public.audit_log WHERE session_id IS DISTINCT FROM $1 AND details->>'reason' = 'MIC_DISCONNECTED'", [id]);
+    expect(Number(others[0]?.n)).toBe(0);
+  });
+});
+
+// Fix pass F-M3 / F-M5 (review R63-01, decision D179 (b)): the supervisor says HOW a stop ended; a stop
+// that is not clean is an interrupted recording. The capture-session unit maps it to its hand-off.
+describe('a stop that did not end cleanly is handed over as INTERRUPTED and worded for the operator', () => {
+  it('the worker exits on STOP without the end of its audio timeline: INTERRUPTED with the cause, never STOPPED; one alert that says the recording was interrupted', async () => {
+    const { of, id } = await durableSession('fm5_stop_not_clean', { worker: { timelineEndOnStop: false } });
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      sessionCapture(of.app).stopRequestedIn(scope, id);
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    sessionCapture(of.app).afterStopCommitted(id);
+    await of.settled();
+    const last = of.events.at(-1);
+    expect(last).toMatchObject({ type: 'INTERRUPTED', sessionId: id });
+    expect(typeof (last as { cause?: unknown }).cause).toBe('string');
+    expect(of.events.filter((event) => event.type === 'STOPPED')).toEqual([]);
+    await vi.waitFor(() => expect(of.app.engine.slice('alerts').filter((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')).toHaveLength(1), { timeout: 5_000 });
+    const alert = of.app.engine.slice('alerts').find((entry) => entry.active && entry.kind === 'CAPTURE_FAULT');
+    expect(alert?.message).toMatch(/interrupted/);
+    expect(alert?.message).not.toMatch(/stopped growing/);
+  });
+
+  it('CONTROL: the same stop of a worker that closes its timeline is STOPPED, with no alert', async () => {
+    const { of, id } = await durableSession('fm5_stop_clean');
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      sessionCapture(of.app).stopRequestedIn(scope, id);
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    sessionCapture(of.app).afterStopCommitted(id);
+    await of.settled();
+    expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
+    expect(of.app.engine.slice('alerts').filter((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')).toEqual([]);
+  });
+});
+
+// Fix pass F-M6's request (decision D180; review R80-04): the transcriber's scratch folder of a session
+// can hold a raw PCM tap from the moment the tap path was asked for. A start that fails BEFORE the
+// transcriber session was opened must still tell the transcription unit the end ("nothing recorded"),
+// so that its clean-up removes that folder. (The transcriber is a recording double in this rig: the
+// call is held here; that the call removes the folder is `transcription/scratch.ts`'s own test.)
+describe('a start that fails before the transcriber session was opened still tells the transcription unit the end', () => {
+  it('the worker refuses the START (the tap path was asked, `begin` never ran): `end <id> nothing` is said once', async () => {
+    const of = await fixRig('fm5_failed_before_begin', { sttEnabled: true, worker: { ackStart: 'PLAN_INVALID' } });
+    const id = await of.arm();
+    await of.start(id);
+    await of.settled();
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'FAULT', captureDurable: false });
+    expect(of.transcriber).toEqual([`end ${id} nothing`]);
+  });
+
+  it('CONTROL: a clean stop of a session whose plan has no tap tells it nothing (the folder question does not arise)', async () => {
+    const { of, id } = await durableSession('fm5_no_tap_stop');
+    await of.app.engine.run('sessions.stopSession', async (scope) => {
+      sessionCapture(of.app).stopRequestedIn(scope, id);
+      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
+    });
+    sessionCapture(of.app).afterStopCommitted(id);
+    await of.settled();
+    expect(of.transcriber).toEqual([]);
+  });
+});
+
+// ── Tidy pass F-Y (the request lines of fix pass F-M3; rulings D179, D188; decision D189) ──────────────────────
+
+const systemAlerts = (of: Rig, reason: string) => of.app.engine.slice('alerts').filter((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === reason);
+const captureFault = (of: Rig) => of.app.engine.slice('alerts').filter((alert) => alert.active && alert.kind === 'CAPTURE_FAULT');
+const camerasOf = async (of: Rig, id: string) => (await readSessionCaptureFacts(of.app.config.mediaStoreDir, id))?.cameras.map((camera) => [camera.deviceId, camera.clockOffsetMs, camera.measuredClockOffsetMs, camera.syncLevel]);
+
+describe('F-Y item 1: the final shape of a stop that is not clean, and what the supervisor refused, reach the session by name', () => {
+  it('STOP_TIMEOUT: a worker that ignores the STOP is killed at the grace - the session is handed over INTERRUPTED with that cause, never STOPPED', async () => {
+    const { of, id } = await durableSession('fy_stop_timeout', { worker: { exitOnStop: false }, limits: { stopGraceMs: 150 } });
+    await stopNow(of, id);
+    await vi.waitFor(() => expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, cause: 'STOP_TIMEOUT' }), { timeout: 5_000 });
+    expect(of.events.filter((event) => event.type === 'STOPPED')).toEqual([]);
+    expect(of.supervisor.status().lastCrash).toMatchObject({ code: 'STOP_TIMEOUT', signal: 'SIGKILL' });
+    await vi.waitFor(() => expect(captureFault(of).map((alert) => alert.params?.['reason'])).toEqual(['CAPTURE_STOP_NOT_CLEAN']), { timeout: 5_000 });
+  });
+
+  it.each([
+    ['TELEMETRY_SUBJECT_UNKNOWN', /reported a device that is not part of this session/, (of: Rig) => of.fake.last().say({ type: 'TELEMETRY', levels: [], ingest: [{ deviceId: 'CAM-09', state: 'CONNECTED' }], fragments: [], clocks: [], tapActive: false })],
+    ['SWITCH_NOT_COMMANDED', /changed the microphone without a command/, (of: Rig) => of.fake.last().record({ kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 480, sampleRateHz: 48_000, capturedAtMs: FIXED_NOW, reason: 'OPERATOR_SWITCH', correlationId: 'cap:nobody:1', appliedDelayUs: 1 })],
+  ] as const)('%s: the worker is ended, the recording is handed over INTERRUPTED with that cause, and the ONE alert says it in words (not "stopped unexpectedly")', async (cause, words, say) => {
+    const { of, id } = await durableSession(`fy_${cause.toLowerCase().slice(0, 12)}`);
+    say(of);
+    await of.settled();
+    await vi.waitFor(() => expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, cause }), { timeout: 5_000 });
+    await vi.waitFor(() => expect(captureFault(of)).toHaveLength(1), { timeout: 5_000 });
+    const alert = captureFault(of)[0];
+    expect(alert?.params?.['reason']).toBe(cause);
+    expect(alert?.message).toMatch(words);
+    expect(alert?.message).not.toMatch(/unexpectedly|stopped growing/);
+    const row = (await of.rows<{ details: Record<string, unknown> }>("SELECT details FROM public.audit_log WHERE type = 'FAULT_RAISED' AND session_id = $1 ORDER BY seq DESC LIMIT 1", [id]))[0];
+    expect(row?.details).toMatchObject({ kind: 'CAPTURE_FAULT', reason: cause });
+  });
+});
+
+describe('F-Y item 3: the sync level the worker achieved is kept with the session and told when it is not the full sync', () => {
+  it('REAL_DEVELOPMENT (this rig): FSYNC on the first durable fragment is in the capture facts and is ONE advisory (INFO) on the session; the session keeps recording; a second camera file writes no second alert; the stop resolves it', async () => {
+    const of = await fixRig('fy_sync_dev');
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().record(startInterval);
+    of.fake.last().firstDurableFragment('CAM-01', 5_131, 'FSYNC');
+    of.fake.last().firstDurableFragment('CAM-02', 5_131, 'FSYNC');
+    await of.settled();
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC']]);
+    const alerts = systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL');
+    expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params?.['sessionId'], alert.params?.['syncLevel']])).toEqual([['INFO', 'EVIDENCE_VOLUME', 'The evidence volume does not confirm full durability; recordings may not survive a power loss.', id, 'FSYNC']]);
+    expect(captureFault(of)).toEqual([]);
+    await stopNow(of, id);
+    expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
+    expect(systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
+    // The level stays with the session after its capture ended: the seal's reader finds it there.
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'FSYNC'], ['CAM-02', 0, null, 'FSYNC']]);
+  });
+
+  it('REAL_PRODUCTION sources: the same level is ONE CRITICAL alert on the session, and the session still records', async () => {
+    const of = await fixRig('fy_sync_prod');
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION });
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().record(startInterval);
+    of.fake.last().firstDurableFragment('CAM-01', 5_131, 'FSYNC');
+    await of.settled();
+    expect(systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL').map((alert) => [alert.severity, alert.target])).toEqual([['CRITICAL', 'EVIDENCE_VOLUME']]);
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    expect(captureFault(of)).toEqual([]);
+  });
+
+  it('CONTROL: the full sync is kept in the facts and tells the operator nothing', async () => {
+    const { of, id } = await durableSession('fy_sync_full');
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, null, 'F_FULLFSYNC'], ['CAM-02', 0, null, null]]);
+    expect(systemAlerts(of, 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
+  });
+});
+
+describe('F-Y item 4: the clock offset the worker measured is the source of manifest field 40, and a large one is advised', () => {
+  it('the threshold is named and 500 ms', () => {
+    expect(CAMERA_CLOCK_OFFSET_ADVISORY_MS).toBe(500);
+  });
+
+  it('a camera 1.5 s behind is anchored and recorded: the measured offset is kept for field 40 beside the adapter\'s, ONE advisory says the number; 100 ms on the other camera: kept, no advisory; later readings change nothing; the stop resolves the advice', async () => {
+    const { of, id } = await durableSession('fy_clock', { clockOffsets: { 'CAM-01': -7, 'CAM-02': 12 } });
+    // Arrival minus camera time: the camera's clock is 1.5 s BEHIND the Core's -> camera minus Core = -1500.
+    of.fake.last().telemetry(1, [{ deviceId: 'CAM-01', lagMs: 1_500.4 }, { deviceId: 'CAM-02', lagMs: 100 }]);
+    await of.settled();
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    expect(of.supervisor.status().phase).toBe('RECORDING');
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+    const advice = systemAlerts(of, 'CAMERA_CLOCK_OFFSET');
+    expect(advice.map((alert) => [alert.severity, alert.target, alert.message, alert.params?.['offsetMs']])).toEqual([['INFO', 'CAM-01', "Camera clock differs from the Core by 1500 ms; the recording keeps the camera's own timeline and records the offset.", -1_500]]);
+    expect(captureFault(of)).toEqual([]);
+    // The offset AT ANCHORING: what the same worker says later is drift, not this number.
+    of.fake.last().telemetry(2, [{ deviceId: 'CAM-01', lagMs: 1_900 }, { deviceId: 'CAM-02', lagMs: 900 }]);
+    await of.settled();
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+    expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toHaveLength(1);
+    await stopNow(of, id);
+    expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
+    expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toEqual([]);
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', -7, -1_500, 'F_FULLFSYNC'], ['CAM-02', 12, -100, null]]);
+  });
+
+  it('CONTROL: 100 ms on both cameras - measured and kept, no advisory at all; exactly the threshold is not above it', async () => {
+    const { of, id } = await durableSession('fy_clock_small');
+    of.fake.last().telemetry(1, [{ deviceId: 'CAM-01', lagMs: -100 }, { deviceId: 'CAM-02', lagMs: CAMERA_CLOCK_OFFSET_ADVISORY_MS }]);
+    await of.settled();
+    expect(await camerasOf(of, id)).toEqual([['CAM-01', 0, 100, 'F_FULLFSYNC'], ['CAM-02', 0, -CAMERA_CLOCK_OFFSET_ADVISORY_MS, null]]);
+    expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toEqual([]);
   });
 });

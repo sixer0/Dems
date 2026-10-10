@@ -144,3 +144,27 @@ describe('a failed start on /session/recovery (pass D7 item 1)', () => {
     expect(screen.getByTestId('recovery-failed-start')).toBeTruthy();
   });
 });
+
+// Fix pass F-M5 (review R74-12; decision D158, MB-06): a screen that FIRST sees the failed start while
+// the Core is already closing it (another client pressed "Close session": RECOVERY with
+// `captureDurable: false`) never saw the FAULT, so it held nothing and drew the recovery of evidence.
+describe('a failed start first seen while the Core closes it (review R74-12)', () => {
+  it('RECOVERY with captureDurable false, never seen in FAULT: the failed-start card, no recovery of evidence; CONTROL: the same RECOVERY of a durable session is the recovery screen', async () => {
+    const h = await open({ window: 'phonePortrait' });
+    const closing = (captureDurable: boolean): void => {
+      act(() => {
+        h.sim.store.setState((s) => ({
+          session: { ...s.session!, state: 'RECOVERY', captureDurable, recovery: { stage: 'RECOVERY_SCAN', startedAt: Date.now(), completesAt: Date.now() + 600_000 } },
+          alerts: [...s.alerts, captureFault('NO_CAMERA_CONNECTED')],
+        }));
+      });
+    };
+    // CONTROL first: a durable recording in RECOVERY keeps the recovery presentation.
+    closing(true);
+    expect(screen.queryByTestId('recovery-failed-start')).toBeNull();
+    closing(false);
+    expect(screen.getByTestId('recovery-failed-start')).toBeTruthy();
+    expect(drawn(RECOVERY_OF_EVIDENCE)).toEqual([]);
+    expect(getMissingKeys()).toEqual([]);
+  });
+});

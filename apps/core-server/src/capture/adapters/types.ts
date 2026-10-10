@@ -107,7 +107,8 @@ export interface ConnectionTestResult {
 
 export interface MediaProfile {
   readonly code: string;
-  readonly codec: 'H264' | 'H265' | 'OTHER';
+  /** The video codec, in the words of manifest field 43 (`H264` | `HEVC`, erratum PE-D9-03): one vocabulary with what the capture reads from an init segment. */
+  readonly codec: 'H264' | 'HEVC' | 'OTHER';
 }
 
 /** An opened source: something that now feeds the worker. Closing it stops the feed; closing twice is safe. */

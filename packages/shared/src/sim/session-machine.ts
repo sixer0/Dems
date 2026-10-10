@@ -20,6 +20,7 @@ import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
 import { captureReachabilityOf } from './capture-notices';
 import { advanceCaptureStart } from './capture-session';
 import {
+  ALERT_RING_SIZE,
   FINALIZATION_STEP_MAX_MS,
   FINALIZATION_STEP_MIN_MS,
   PRECHECK_CHECK_MAX_MS,
@@ -43,6 +44,8 @@ import {
   sessionIdFor,
 } from './dataset';
 import { deriveDeviceState } from './derive';
+// Seal block (fix pass F-M7b): the terminal UNSEALABLE outcome.
+import { SEAL_UNSEALABLE_CAUSE_CODE, SEAL_UNSEALABLE_REASON, unsealableSentence } from './seal-unsealable';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
 import { createEvidenceItem, EVIDENCE_STATUS_STAGE } from './evidence';
@@ -58,11 +61,13 @@ import type {
   EvidenceItem,
   EvidenceMarker,
   EvidenceSignature,
+  EvidenceTranscriptSummary,
   FinalizationStepState,
   PrecheckItem,
   PrecheckSlice,
   SessionCreateInput,
   SessionHistoryEntry,
+  SimAlert,
   SimState,
   TimelineEvent,
 } from './types';
@@ -113,7 +118,8 @@ export const SPEECH_STATES: readonly SessionState[] = [
  * The sealing steps the simulator runs, in pipeline order. Schema v2 (register SH-01): the six
  * normal-path steps of `domain/enums.ts` `FINALIZATION_STEPS_V2` (`CLOSE_TRACKS` ..
  * `STORE_SEALED_PACKAGE`). The v1 names (`FINALIZE_TRACKS`, `CALCULATE_HASHES`) and the v1
- * `ENCRYPT_PAYLOAD` step are gone: v2 encrypts while recording, and the two fallback-only steps
+ * `ENCRYPT_PAYLOAD` step are gone: v2 encrypts inside `CLOSE_TRACKS` (the Core seals at seal time,
+ * ruling D147 - never while recording), and the two fallback-only steps
  * (OD-21) never appear in this order. The per-step progress/ETA fields are SH-06 (row 51).
  */
 export const FINALIZATION_ORDER = FINALIZATION_STEPS_V2;
@@ -850,51 +856,83 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
  * the interval it opens, and writes one timeline `AUDIO_SWITCH` plus one `AUDIO_SOURCE_SWITCHED`
  * audit row carrying the sending device id (E-30). Idempotent when the input is already active; a
  * recording session is required.
+ *
+ * `sendingDeviceId` (closing pass F-X): the paired device the command came from, where the caller
+ * knows one - a simulator that runs inside a tablet or phone app passes `SIM_CONSOLE_DEVICE_ID`.
+ * Null (a web console session): the row has no device and its details no `sendingDeviceId` key,
+ * as the Core writes it (`capture-session`, contract C3 §5.2).
  */
-export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId): SimState {
+export const SIM_CONSOLE_DEVICE_ID = 'TABLET';
+
+export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId, sendingDeviceId: string | null = null): SimState {
   const actorId = requireSessionOperator(state, 'switchAudioSource');
   const session = requireSession(state, 'switchAudioSource', [SessionState.RECORDING]);
-  const mic = state.captureConfig.mics.find((entry) => entry.inputId === inputId);
+  // The inputs of a session are those of its selector snapshot (OD-10); the selector when it has none.
+  const mic = (session.captureConfig?.mics ?? state.captureConfig.mics).find((entry) => entry.inputId === inputId);
   if (!mic) throw new SimNotFoundError('captureMic', inputId);
-  const previousActive = state.audio.activeInputId;
-  if (previousActive === inputId) return state;
-  const startedAt = session.startedAt ?? now;
-  const switched: ActiveSession = {
-    ...session,
-    audioSource: {
-      sessionId: session.id,
-      activeInputId: inputId,
-      standbyInputId: previousActive,
-      switchedAt: now,
-      // Media-pts start of the interval this switch opens (never the operator wall clock, S2 §6).
-      intervalFromMs: Math.max(0, now - startedAt),
-    },
-  };
-  let next: SimState = {
-    ...state,
-    session: switched,
-    audio: { inputs: state.audio.inputs, activeInputId: inputId },
-  };
-  next = addTimelineItem(next, {
-    at: now,
-    kind: 'AUDIO_SWITCH',
-    label: `Active microphone switched to ${inputId}`,
-    detail: null,
-    channel: channelOfMicLine(captureMicLines(state), inputId) ?? 'AUDIO-01',
-    params: { from: previousActive, to: inputId, deviceId: mic.deviceId },
-  });
-  return record(next, now, {
+  // Media-pts start of the interval this switch opens (never the operator wall clock, S2 §6).
+  const applied = applyAudioSourceSwitch(state, now, session, inputId, Math.max(0, now - (session.startedAt ?? now)));
+  if (applied.switched === null) return state;
+  const { fromInputId, toInputId, fromMs, toMs } = applied.switched;
+  return record(applied.state, now, {
     audit: {
       type: 'AUDIO_SOURCE_SWITCHED',
       message: `Audio source switched to ${inputId}`,
       actorId,
       sessionId: session.id,
-      // E-30: the sending device id rides the audit row so a phone-sent switch is attributable.
-      details: { fromInputId: previousActive, toInputId: inputId, deviceId: mic.deviceId },
+      ...(sendingDeviceId === null ? {} : { deviceId: sendingDeviceId }),
+      // Contract C3 §5.2 (review R74-05): the keys of the row, with the MEDIA times of the interval the
+      // switch closed. `sendingDeviceId` only when a paired device sent the command (E-30).
+      details: { fromInput: fromInputId, toInput: toInputId, fromMs, toMs, ...(sendingDeviceId === null ? {} : { sendingDeviceId }) },
     },
     // No operational event row: `SimEventType` is the book's closed 46-value set and does not name a
     // mic switch; the switch is carried by the `AUDIO_SWITCH` timeline item and this audit row.
   });
+}
+
+/** What a switch moved: the two inputs and the interval it closed, in media ms. */
+export interface AudioSourceSwitchFacts {
+  readonly fromInputId: CaptureMicInputId;
+  readonly toInputId: CaptureMicInputId;
+  /** Start of the interval the switch closed. */
+  readonly fromMs: number;
+  /** End of that interval = start of the one it opens. */
+  readonly toMs: number;
+}
+
+/**
+ * THE STATE OF A SWITCH, for both of its callers (review R74-10: one rule, not two copies): the
+ * simulator's own operation 81 above, with the media time of its clock, and the Core's engine in
+ * real capture, with the media time the capture worker acknowledged. Moves `audio.activeInputId`,
+ * records the new active / standby pair with the media time of the boundary, and adds the timeline
+ * item `AUDIO_SWITCH` whose `params` hold the boundary (`atMs`) - the interval list of operation 82
+ * in simulated capture is read from those items. Writes no audit row.
+ * `switched: null` and the same state when `toInputId` is active already. The boundary never lies
+ * before the start of the interval it closes.
+ */
+export function applyAudioSourceSwitch(state: SimState, now: EpochMs, session: ActiveSession, toInputId: CaptureMicInputId, atMediaMs: number): { readonly state: SimState; readonly switched: AudioSourceSwitchFacts | null } {
+  const source = session.audioSource ?? null;
+  const fromInputId = source?.activeInputId ?? state.audio.activeInputId;
+  if (fromInputId === toInputId) return { state, switched: null };
+  const fromMs = source?.intervalFromMs ?? 0;
+  const toMs = Math.max(fromMs, Math.round(atMediaMs));
+  const lines = session.captureConfig?.mics ?? state.captureConfig.mics;
+  const switched: ActiveSession = {
+    ...session,
+    audioSource: { sessionId: session.id, activeInputId: toInputId, standbyInputId: fromInputId, switchedAt: now, intervalFromMs: toMs },
+  };
+  const next = addTimelineItem(
+    { ...state, session: switched, audio: { inputs: state.audio.inputs, activeInputId: toInputId } },
+    {
+      at: now,
+      kind: 'AUDIO_SWITCH',
+      label: `Active microphone switched to ${toInputId}`,
+      detail: null,
+      channel: channelOfMicLine(lines, toInputId) ?? 'AUDIO-01',
+      params: { from: fromInputId, to: toInputId, deviceId: lines.find((entry) => entry.inputId === toInputId)?.deviceId ?? null, atMs: toMs },
+    },
+  );
+  return { state: next, switched: { fromInputId, toInputId, fromMs, toMs } };
 }
 
 /** CREATE, PRECHECK or ARMED → no session. Audit SESSION_CANCELLED. */
@@ -1319,6 +1357,13 @@ export interface CompleteSealInput {
   labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
   /** Manifest field 126. */
   developmentSources: boolean;
+  /**
+   * THE TRANSCRIPT SUMMARY OF THE ITEM (fix pass F-M6, R80-01): the projection of the signed
+   * manifest's transcript block - state, failed chunks, the unreachable backend - with head 0. The
+   * pipeline that signed the manifest hands it in; absent, the item carries no summary (nothing is
+   * derived here). Its hash must be the item's `transcriptSha256`.
+   */
+  transcript?: EvidenceTranscriptSummary;
 }
 
 const HEX_64 = /^[0-9a-f]{64}$/;
@@ -1340,10 +1385,19 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
   if (session.finalization.steps.some((step) => step.status === 'error')) refuse('a sealing step failed');
   if (!HEX_64.test(input.manifestSha256)) refuse('the manifest digest is no SHA-256');
   if (input.signature.algorithm !== 'Ed25519' || !HEX_128.test(input.signature.value) || input.signature.keyId.length === 0) refuse('the signature is no Ed25519 signature');
-  if (input.tracks.length !== 2 || input.tracks[0]?.trackId !== 'VIDEO-01' || input.tracks[1]?.trackId !== 'VIDEO-02') refuse('a sealed package has the two camera files, VIDEO-01 then VIDEO-02');
+  // Fix pass F-M7 (R88-01, D178): the camera files that EXIST - one or two, VIDEO-01 before VIDEO-02. A one-camera session is sealed with its one file.
+  const sealedIds = input.tracks.map((track) => track.trackId);
+  if (!(sealedIds.length === 1 ? sealedIds[0] === 'VIDEO-01' || sealedIds[0] === 'VIDEO-02' : sealedIds.length === 2 && sealedIds[0] === 'VIDEO-01' && sealedIds[1] === 'VIDEO-02')) refuse('a sealed package has one or two camera files, VIDEO-01 before VIDEO-02');
   for (const track of input.tracks) if (!HEX_64.test(track.sha256) || !Number.isSafeInteger(track.sizeBytes) || track.sizeBytes < 1) refuse('a camera file without its hash or its size');
   if (input.transcriptSha256 !== null && !HEX_64.test(input.transcriptSha256)) refuse('the transcript digest is no SHA-256');
   if (session.startedAt === null) refuse('a session that never recorded has nothing to seal');
+  const summary = input.transcript;
+  if (summary !== undefined) {
+    if (summary.sha256 !== input.transcriptSha256 || summary.machineTranscriptHash !== input.transcriptSha256) refuse('the transcript summary names another transcript than the item');
+    if (summary.revision !== 0) refuse('a seal has no transcript revision');
+    if (summary.state !== 'READY' && summary.state !== 'PARTIAL' && summary.state !== 'DISABLED') refuse('a sealed transcript is READY, PARTIAL or DISABLED');
+    if (summary.failedChunks !== undefined && (!Number.isSafeInteger(summary.failedChunks) || summary.failedChunks < 0)) refuse('the failed chunks of the transcript summary are no count');
+  }
 
   const at = input.sealedAt;
   const evidenceId = session.evidenceId ?? evidenceIdFor(state.meta.counters.evidence, session.createdAt);
@@ -1394,6 +1448,7 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
     manifestVersion: 2,
     labelsStatus: input.labelsStatus,
     developmentSources: input.developmentSources,
+    ...(summary === undefined ? {} : { transcript: { ...summary } }),
   };
   const steps = session.finalization.steps.map((step): FinalizationStepState => (step.status === 'done' ? step : { ...step, status: 'done', startedAt: step.startedAt ?? at, completedAt: at, durationMs: Math.max(0, at - (step.startedAt ?? at)), progress: 100, etaMs: 0 }));
   const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId, bytesWritten: sizeBytes, finalization: { ...session.finalization, steps, completedAt: at } };
@@ -1421,6 +1476,53 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
     });
   }
   return record(deriveDeviceState(next), now, items);
+}
+
+/** What the Core says of a session it cannot seal (INTERNAL action `endUnsealable`; fix pass F-M7b, R88-02 (c)). */
+export interface EndUnsealableInput {
+  sessionId: string;
+  /** The code of the cause (`NOTHING_SEALABLE`, a failure code of the pipeline). Never a path, a hash or text. */
+  cause: string;
+  /** How many files the Core moved to its quarantine folder. A count. */
+  quarantinedFiles?: number;
+}
+
+/**
+ * THE TERMINAL OUTCOME OF A SESSION THAT CANNOT BE SEALED (fix pass F-M7b; review R88-02 (c);
+ * rulings D178 (2), D183). STOPPING / FINALIZING / FAULT / RECOVERY -> no open session: the session
+ * is ended as INCOMPLETE with ONE audit row `SESSION_INCOMPLETE` (`details.reason: UNSEALABLE` and
+ * the named cause) and ONE CRITICAL alert (`seal-unsealable.ts`). NO evidence item is made: nothing
+ * of this session is presented as evidence - the Core moved its recordings to the quarantine
+ * folder before it called this. Afterwards `isSessionActive` is false and a session can be created.
+ * The Core's engine door applies this same transition (parity with the simulator).
+ */
+export function endUnsealableTransition(state: SimState, now: EpochMs, input: EndUnsealableInput): SimState {
+  const session = requireSession(state, 'endUnsealable', SEALABLE_STATES);
+  const refuse = (reason: string): never => {
+    throw new SimTransitionError(session.state, 'endUnsealable', reason);
+  };
+  if (session.id !== input.sessionId) refuse('another session is active');
+  if (typeof input.cause !== 'string' || !SEAL_UNSEALABLE_CAUSE_CODE.test(input.cause)) refuse('the cause of an unsealable session is a code');
+  const quarantinedFiles = input.quarantinedFiles === undefined ? null : wholeBetween(input.quarantinedFiles, 0, Number.MAX_SAFE_INTEGER);
+  const faultKind = session.fault?.kind ?? null;
+  const endedAt = session.stoppedAt ?? session.fault?.at ?? now;
+  const message = unsealableSentence(input.cause);
+  const { id, meta } = nextItemId(state.meta, 'ALR');
+  const alert: SimAlert = { id, at: now, severity: 'CRITICAL', kind: 'SYSTEM', message, active: true, acknowledged: false, resolvedAt: null, target: session.id, params: { reason: SEAL_UNSEALABLE_REASON, cause: input.cause, sessionId: session.id } };
+  const next = withSession({ ...state, meta, alerts: pushRing(state.alerts, [alert], ALERT_RING_SIZE), sessionHistory: [historyEntry(session, SessionOutcome.INCOMPLETE, endedAt, null, faultKind), ...state.sessionHistory] }, null);
+  return record(deriveDeviceState(next), now, [
+    {
+      audit: {
+        type: 'SESSION_INCOMPLETE',
+        message: `Session ${session.id} could not be sealed (${input.cause}): ended INCOMPLETE, its recordings are in the quarantine folder`,
+        severity: 'CRITICAL',
+        sessionId: session.id,
+        evidenceId: null,
+        details: { reason: SEAL_UNSEALABLE_REASON, cause: input.cause, faultKind, ...(quarantinedFiles === null ? {} : { quarantinedFiles }) },
+      },
+      event: { type: 'SESSION_INCOMPLETE', message, severity: 'CRITICAL', sessionId: session.id, params: { reason: SEAL_UNSEALABLE_REASON, cause: input.cause } },
+    },
+  ]);
 }
 
 /** The verdict of one verification run of a REAL item, as the Core computed it (`VerdictRecord`). */

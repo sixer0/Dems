@@ -3,7 +3,7 @@
  * revisions (blueprint row 78 / M6-W3; dbc-3 §B.8, §B.9, §B.11; transcript spec §A.5, §A.6;
  * evidence package spec §B.7).
  *
- * WHO CALLS IT. Nothing mounts it yet. The seal handler (`FINALIZE_TRANSCRIPT`, row 79; the item
+ * WHO CALLS IT. The seal's composition (`sealing-host`, through `commitSealedTranscript` of row 79; the item
  * insert of rows 82/83) calls `writeSealedTranscript` INSIDE THE UNIT OF WORK THAT INSERTS THE
  * EVIDENCE ITEM; the revise operation (op 85, the row that mounts it with the `Signer` of row 83)
  * calls `revisionHead` and `appendRevision` inside its own unit of work. This store opens,

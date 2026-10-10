@@ -6,7 +6,7 @@
  * checkpoints through a port of three members — `insertMissing`, `update`, `read` — and never
  * talks to PostgreSQL itself. `createTranscriptChunkStore` IS that port on the real table: the
  * same member names, the same row members (`TranscriptChunkRow` of the typed schema, camelCase).
- * The Core hands it to the transcriber when it mounts it (row 115); nothing mounts it yet.
+ * The Core hands it to the transcriber when it mounts it (`src/transcription`, row 115).
  *
  * WHAT IS THE TRUTH. The checkpoint FILE of the session is; this table follows it. So this store
  * has no opinion about order or completeness: it stores what it is given, the CHECK constraints
@@ -18,7 +18,7 @@
  * log of its own: its one caller logs every failed mirror write to the transcriber's persistent
  * log and goes on (the transcript must not stop because the database did).
  */
-import { INSERT_TRANSCRIPT_CHUNK, READ_TRANSCRIPT_CHUNKS, UPDATE_TRANSCRIPT_CHUNK, type Queryable, type TranscriptChunkStatusValue } from './statements';
+import { INSERT_TRANSCRIPT_CHUNK, READ_TRANSCRIPT_CHUNKS, READ_TRANSCRIPT_CHUNK_WRITE_STATE, UPDATE_TRANSCRIPT_CHUNK, type Queryable, type TranscriptChunkStatusValue } from './statements';
 
 export type { Queryable, TranscriptChunkStatusValue } from './statements';
 export { failedChunkCount, summariseChunkAttempts, type ChunkAttempt, type ChunkAttemptSummary, type ChunkOutcome } from './attempts';
@@ -40,7 +40,12 @@ export interface TranscriptChunk {
 /** What an update may change (the audio range and the key are written once, by the insert). */
 export type TranscriptChunkPatch = Pick<TranscriptChunk, 'status' | 'segments' | 'modelId' | 'computedAt'>;
 
-export type TranscriptChunkStoreErrorCode = 'WRITE_FAILED' | 'READ_FAILED' | 'ROW_NOT_FOUND';
+/**
+ * `SESSION_TRANSCRIPT_SEALED` (code review row 80, R80-03): the `FINALIZE_TRANSCRIPT` step of the
+ * session is DONE - its transcript block is fixed for the manifest - and the write was refused by
+ * the statement itself. Nothing was changed.
+ */
+export type TranscriptChunkStoreErrorCode = 'WRITE_FAILED' | 'READ_FAILED' | 'ROW_NOT_FOUND' | 'SESSION_TRANSCRIPT_SEALED';
 
 export class TranscriptChunkStoreError extends Error {
   readonly code: TranscriptChunkStoreErrorCode;
@@ -96,14 +101,30 @@ function toChunk(row: StoredRow): TranscriptChunk {
 }
 
 export function createTranscriptChunkStore(connection: Queryable): TranscriptChunkStore {
+  /** Asked only after a write that changed no row: why. A read that fails says nothing (the caller's own rule then holds). */
+  async function writeState(sessionId: string, seq: number): Promise<{ sealed: boolean; present: boolean }> {
+    try {
+      const found = (await connection.query<{ sealed: unknown; present: unknown }>(READ_TRANSCRIPT_CHUNK_WRITE_STATE, [sessionId, seq])).rows[0];
+      return { sealed: found?.sealed === true, present: found?.present === true };
+    } catch {
+      return { sealed: false, present: false };
+    }
+  }
+  const sealed = (): TranscriptChunkStoreError => new TranscriptChunkStoreError('SESSION_TRANSCRIPT_SEALED', 'the transcript of the session is closed by its seal: no chunk row is written any more');
+
   return Object.freeze({
     async insertMissing(rows: readonly TranscriptChunk[]): Promise<void> {
       for (const row of rows) {
+        let inserted: number | null;
         try {
-          await connection.query(INSERT_TRANSCRIPT_CHUNK, [row.sessionId, row.seq, row.audioFromMs, row.audioToMs, row.status, jsonOrNull(row.segments), row.embeddingRef, row.modelId, row.computedAt]);
+          inserted = (await connection.query(INSERT_TRANSCRIPT_CHUNK, [row.sessionId, row.seq, row.audioFromMs, row.audioToMs, row.status, jsonOrNull(row.segments), row.embeddingRef, row.modelId, row.computedAt])).rowCount;
         } catch (error) {
           throw new TranscriptChunkStoreError('WRITE_FAILED', 'a transcript chunk row could not be inserted', error);
         }
+        if (inserted === 1) continue;
+        // No row was inserted: it exists already (the resume's no-op), or the seal has closed the session's rows.
+        const state = await writeState(row.sessionId, row.seq);
+        if (state.sealed && !state.present) throw sealed();
       }
     },
 
@@ -114,7 +135,9 @@ export function createTranscriptChunkStore(connection: Queryable): TranscriptChu
       } catch (error) {
         throw new TranscriptChunkStoreError('WRITE_FAILED', 'a transcript chunk row could not be updated', error);
       }
-      if (changed !== 1) throw new TranscriptChunkStoreError('ROW_NOT_FOUND', 'no transcript chunk row has this session and sequence number');
+      if (changed === 1) return;
+      if ((await writeState(sessionId, seq)).sealed) throw sealed();
+      throw new TranscriptChunkStoreError('ROW_NOT_FOUND', 'no transcript chunk row has this session and sequence number');
     },
 
     async read(sessionId: string): Promise<TranscriptChunk[]> {

@@ -226,7 +226,7 @@ describe('N-1: a listener that calls back into the supervisor from one of its ow
     const { supervisor, fake, clock } = await recording({ maxRestarts: 0 });
     const phases: string[] = [];
     supervisor.on('phase', (event) => void phases.push(`${event.previous}>${event.phase}`));
-    let stopped: Promise<void> | null = null;
+    let stopped: Promise<unknown> | null = null;
     supervisor.on('warning', (event) => {
       if (event.source === 'supervisor' && event.state === 'ACTIVE') stopped = supervisor.stop(SESSION, 'CRASH');
     });
@@ -243,7 +243,7 @@ describe('N-1: a listener that calls back into the supervisor from one of its ow
 
   it('stop() from the workerDown listener cancels the restart: IDLE, no timer armed, no second worker (it stood at RESTARTING for ever)', async () => {
     const { supervisor, fake, clock } = await recording();
-    let stopped: Promise<void> | null = null;
+    let stopped: Promise<unknown> | null = null;
     supervisor.on('workerDown', () => {
       stopped = supervisor.stop(SESSION, 'CRASH');
     });

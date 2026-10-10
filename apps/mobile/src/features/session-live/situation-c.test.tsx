@@ -16,8 +16,8 @@ import '@/navigation/testing/router-harness';
 
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
-import type { SimAlert, SimState } from '@dems/shared/sim';
-import { camerasNotConnectedOf, failedStartOf } from '@/features/capture-selector/capture-notices-model';
+import { captureFaultSentence, type SimAlert, type SimState } from '@dems/shared/sim';
+import { camerasNotConnectedOf, captureFaultLine, deviceLabel, failedStartClosingOf, failedStartOf } from '@/features/capture-selector/capture-notices-model';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { RuntimeTestProviders, createTestSim } from '@/runtime/testing/test-sim';
@@ -81,6 +81,31 @@ describe('the rules (pure)', () => {
     expect(failedStartOf({ state: 'FAULT' }, [captureFault('NO_CAMERA_CONNECTED')])).toBeNull();
     expect(failedStartOf({ state: 'RECORDING', captureDurable: false }, [captureFault('NO_CAMERA_CONNECTED')])).toBeNull();
     expect(failedStartOf(null, [])).toBeNull();
+  });
+
+  it('review R74-03: a capture fault is worded by its reason, from the shared source, with the device by the name of this app', () => {
+    const t = (key: string, options?: Record<string, unknown>): string => (options === undefined ? key : `${key}${JSON.stringify(options)}`);
+    const onDevice = (reason: string | null, target: string): SimAlert => ({ ...captureFault(reason), target, params: reason === null ? { kind: 'CAPTURE_FAULT' } : { kind: 'CAPTURE_FAULT', reason } });
+    const mic = captureFaultLine(t, onDevice('MIC_DISCONNECTED', 'MIC-01')) ?? '';
+    expect(mic).toBe(captureFaultSentence('MIC_DISCONNECTED', deviceLabel(t, 'MIC-01')));
+    expect(mic).toMatch(/stopped delivering audio/);
+    expect(captureFaultLine(t, onDevice('CAMERA_STREAM_ENDED', 'CAM-02'))).toMatch(/stopped delivering video/);
+    // An unknown reason: the neutral sentence with its code; never the sentence of another cause.
+    expect(captureFaultLine(t, onDevice('A_NEW_REASON', 'CAM-02'))).toMatch(/^Capture reported a problem on .*\(A_NEW_REASON\)\.$/);
+    // The capture as a whole without a cause: an interrupted recording.
+    expect(captureFaultLine(t, captureFault(null))).toMatch(/stopped unexpectedly/);
+    // CONTROL: another kind of alert is not worded here.
+    expect(captureFaultLine(t, { ...captureFault(null), kind: 'MIC_CLIP' })).toBeNull();
+  });
+
+  it('review R74-12: a failed start the Core is closing is RECOVERY with captureDurable false - and only that', () => {
+    expect(failedStartClosingOf({ state: 'RECOVERY', captureDurable: false }, [captureFault('NO_CAMERA_CONNECTED')])).toBe('NO_CAMERA_CONNECTED');
+    expect(failedStartClosingOf({ state: 'RECOVERY', captureDurable: false }, [])).toBe('OTHER');
+    // CONTROLS: a durable recording being recovered, a session without the member, and the FAULT itself (that is `failedStartOf`).
+    expect(failedStartClosingOf({ state: 'RECOVERY', captureDurable: true }, [captureFault('NO_CAMERA_CONNECTED')])).toBeNull();
+    expect(failedStartClosingOf({ state: 'RECOVERY' }, [captureFault('NO_CAMERA_CONNECTED')])).toBeNull();
+    expect(failedStartClosingOf({ state: 'FAULT', captureDurable: false }, [captureFault('NO_CAMERA_CONNECTED')])).toBeNull();
+    expect(failedStartClosingOf(null, [])).toBeNull();
   });
 
   it('the cameras a session start names: active SESSION_START notices of cameras only', () => {

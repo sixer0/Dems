@@ -27,7 +27,7 @@ import {
   type StoredSttSelection,
   type TranscriptionControl,
 } from '../index';
-import { KEY_CANARY, SERVER_MODEL, answerer, cpuRow, fakeHost, fullHost, makeDataDir, serverRow, writeTap, type Answerer, type FakeHost } from './support';
+import { KEY_CANARY, SERVER_MODEL, answerer, cpuRow, fakeHost, fullHost, makeDataDir, serverRow, writeTap, type Answerer, type FakeHost, fakeCapture, mediaOf } from './support';
 
 const dirs: string[] = [];
 afterAll(() => {
@@ -80,7 +80,7 @@ describe('M6-STTCFG-NEXT: a change while a session is open applies to the NEXT s
     expect(again).toMatchObject({ ok: true, taken: false, snapshot: { takenAt: t0, revision: 1, endpoint: ENDPOINT_A, model: SERVER_MODEL, diarization: true } });
     expect(await m.control.manifestSnapshot('SES-20310101-0001')).toEqual({ enabled: true, backend: 'omlx-server', model: SERVER_MODEL, diarization: true, revision: 1 });
 
-    writeTap(sessionTapPath(m.dataDir, 'SES-20310101-0001'), 40);
+    writeTap(sessionTapPath(mediaOf(m.dataDir), 'SES-20310101-0001'), 40);
     m.transport.calls.length = 0;
     const open = await m.control.openSession('SES-20310101-0001');
     if (open.state !== 'ENABLED') throw new Error(`the open session is ${open.state}`);
@@ -100,7 +100,7 @@ describe('M6-STTCFG-NEXT: a change while a session is open applies to the NEXT s
     const next = await m.control.snapshotSttConfigForSession('SES-20310101-0002');
     expect(next).toMatchObject({ ok: true, taken: true, snapshot: { takenAt: t0 + 90_000, revision: 2, endpoint: ENDPOINT_B, model: 'qwen3-asr-1.7b-8bit', diarization: false } });
     await m.control.settled();
-    writeTap(sessionTapPath(m.dataDir, 'SES-20310101-0002'), 10);
+    writeTap(sessionTapPath(mediaOf(m.dataDir), 'SES-20310101-0002'), 10);
     m.transport.calls.length = 0;
     const second = await m.control.openSession('SES-20310101-0002');
     if (second.state !== 'ENABLED') throw new Error(`the next session is ${second.state}`);
@@ -116,7 +116,7 @@ describe('M6-STTCFG-NEXT: a change while a session is open applies to the NEXT s
     await m.control.snapshotSttConfigForSession('SES-20310101-0003');
     await m.control.settled();
     m.stored = serverRow(ENDPOINT_A, { enabled: false, revision: 2 });
-    writeTap(sessionTapPath(m.dataDir, 'SES-20310101-0003'), 5);
+    writeTap(sessionTapPath(mediaOf(m.dataDir), 'SES-20310101-0003'), 5);
     expect((await m.control.openSession('SES-20310101-0003')).state).toBe('ENABLED');
 
     await m.control.snapshotSttConfigForSession('SES-20310101-0004');
@@ -154,16 +154,16 @@ describe('STT disabled in the snapshot: no VAD, no STT, nothing built (the runti
     expect(open.state).toBe('DISABLED');
     expect(m.transport.calls).toEqual([]);
     expect(m.host.statements).toEqual([]);
-    expect(existsSync(sessionScratchDir(m.dataDir, 'SES-20310101-0010'))).toBe(false);
+    expect(existsSync(sessionScratchDir(mediaOf(m.dataDir), 'SES-20310101-0010'))).toBe(false);
     expect(await m.control.tapPathFor('SES-20310101-0010')).toBeNull();
     expect(m.host.lines.filter((line) => line.level !== 'info')).toEqual([]);
     // Control: the same host with STT enabled does make the directory and asks the backend once.
     m.stored = serverRow(ENDPOINT_A, { revision: 2 });
     await m.control.snapshotSttConfigForSession('SES-20310101-0011');
     await m.control.settled();
-    expect(existsSync(sessionScratchDir(m.dataDir, 'SES-20310101-0011'))).toBe(true);
+    expect(existsSync(sessionScratchDir(mediaOf(m.dataDir), 'SES-20310101-0011'))).toBe(true);
     expect(m.transport.calls).toEqual([`GET ${ENDPOINT_A}/v1/models`]);
-    expect(await m.control.tapPathFor('SES-20310101-0011')).toBe(sessionTapPath(m.dataDir, 'SES-20310101-0011'));
+    expect(await m.control.tapPathFor('SES-20310101-0011')).toBe(sessionTapPath(mediaOf(m.dataDir), 'SES-20310101-0011'));
   });
 
   it('a session without a snapshot is never transcribed with the configuration as it is now', async () => {
@@ -261,9 +261,9 @@ async function compose(slug: string, sessionId: string, seconds: number): Promis
   const mirror = createMemoryChunkMirror();
   const snapshots = createMemorySnapshotStore();
   await snapshots.put({ ...serverRow(ENDPOINT_A), sessionId, takenAt: host.now });
-  writeTap(sessionTapPath(dir.dataDir, sessionId), seconds);
+  writeTap(sessionTapPath(mediaOf(dir.dataDir), sessionId), seconds);
   const deps: SessionCompositionDeps = {
-    dataDir: dir.dataDir,
+    mediaStoreDir: mediaOf(dir.dataDir),
     host: () => readTranscriberHost(dir.dataDir, () => 8),
     snapshots,
     reveal: () => revealSttCredential({ query: (text) => host.app.db.pool.query(text) }),
@@ -273,6 +273,7 @@ async function compose(slug: string, sessionId: string, seconds: number): Promis
     queue: new SerialQueue(),
     now: () => host.now,
     fetchImpl: transport.fetchImpl,
+    intervals: async () => [{ source: 'MIC-01', fromMs: 0, toMs: null }],
   };
   return { deps, host, mirror, transport, dataDir: dir.dataDir };
 }
@@ -299,7 +300,7 @@ describe('a torn or foreign checkpoint (pair-77 N-17): moved aside, logged, the 
 
   it('a torn file: kept under another name byte for byte, one persisted error with the reason, old rows untouched, new rows above them, text only from the engine', async () => {
     const c = await compose('cp-torn', SESSION, 70);
-    const scratch = sessionScratchDir(c.dataDir, SESSION);
+    const scratch = sessionScratchDir(mediaOf(c.dataDir), SESSION);
     const file = join(scratch, TRANSCRIPT_CHECKPOINT_FILE);
     const first = await openSessionTranscription(c.deps, SESSION);
     if (first.state !== 'ENABLED') throw new Error(first.state);
@@ -345,7 +346,7 @@ describe('a torn or foreign checkpoint (pair-77 N-17): moved aside, logged, the 
 
   it('a checkpoint of another session is foreign: the same rule; at the limit the session is UNAVAILABLE instead of looping', async () => {
     const c = await compose('cp-foreign', SESSION, 12);
-    const scratch = sessionScratchDir(c.dataDir, SESSION);
+    const scratch = sessionScratchDir(mediaOf(c.dataDir), SESSION);
     const file = join(scratch, TRANSCRIPT_CHECKPOINT_FILE);
     const first = await openSessionTranscription(c.deps, SESSION);
     if (first.state !== 'ENABLED') throw new Error(first.state);
@@ -398,6 +399,41 @@ describe('the values a live session must state (pair-77 N-10, "What row 115 must
     open.close();
   });
 
+  it('R80-06: a lost tap is latched ON THE DISK when the frame arrives - a Core that dies before the next step still seals PARTIAL, never ASSEMBLED for audio that was not transcribed', async () => {
+    const id = 'SES-20310101-0052';
+    const c = await compose('tap-crash', id, 5);
+    const open = await openSessionTranscription(c.deps, id);
+    if (open.state !== 'ENABLED') throw new Error(open.state);
+    c.host.capture.state = { sessionId: id, workerPid: 4242, phase: 'RECORDING' };
+    c.host.capture.emitTelemetry(id, false);
+    expect(open.tapLost()).toBe(true);
+    // THE CORE DIES HERE: no step of the runner ran after the frame, so the checkpoint file says nothing of it.
+    open.close();
+
+    // A new process: another capture supervisor (no worker, no telemetry), the same data directory.
+    const again = await openSessionTranscription({ ...c.deps, capture: fakeCapture() }, id);
+    if (again.state !== 'ENABLED') throw new Error(again.state);
+    expect(again.tapLost()).toBe(true);
+    const report = await again.step({ final: true });
+    expect(report).toMatchObject({ complete: true, transcriptState: 'PARTIAL', partialReason: 'TRANSCRIPT_AUDIO_UNAVAILABLE' });
+    again.close();
+  });
+
+  it('R80-06 CONTROL: a session whose tap was never reported lost is READY after the same restart', async () => {
+    const id = 'SES-20310101-0053';
+    const c = await compose('tap-crash-control', id, 5);
+    const open = await openSessionTranscription(c.deps, id);
+    if (open.state !== 'ENABLED') throw new Error(open.state);
+    c.host.capture.state = { sessionId: id, workerPid: 4242, phase: 'RECORDING' };
+    c.host.capture.emitTelemetry(id, true);
+    open.close();
+    const again = await openSessionTranscription({ ...c.deps, capture: fakeCapture() }, id);
+    if (again.state !== 'ENABLED') throw new Error(again.state);
+    expect(again.tapLost()).toBe(false);
+    expect(await again.step({ final: true })).toMatchObject({ complete: true, transcriptState: 'READY', partialReason: null });
+    again.close();
+  });
+
   it('`hold` keeps the runner back between chunks and lets it go on; the caller`s own hold is asked too', async () => {
     const c = await compose('hold', SESSION, 70);
     let callerHolds = false;
@@ -424,8 +460,8 @@ describe('the values a live session must state (pair-77 N-10, "What row 115 must
     const host = fakeHost(dir.dataDir);
     const snapshots = createMemorySnapshotStore();
     await snapshots.put({ ...cpuRow(), sessionId: SESSION, takenAt: host.now });
-    writeTap(sessionTapPath(dir.dataDir, SESSION), 2);
-    const base = { dataDir: dir.dataDir, snapshots, reveal: async () => ({ kind: 'NONE' as const }), capture: host.capture, mirror: createMemoryChunkMirror(), log: createCoreTranscriberLog({ log: host.app.log, errorLog: host.app.errorLog, now: () => host.now }), queue: new SerialQueue(), now: () => host.now };
+    writeTap(sessionTapPath(mediaOf(dir.dataDir), SESSION), 2);
+    const base = { mediaStoreDir: mediaOf(dir.dataDir), snapshots, reveal: async () => ({ kind: 'NONE' as const }), capture: host.capture, mirror: createMemoryChunkMirror(), log: createCoreTranscriberLog({ log: host.app.log, errorLog: host.app.errorLog, now: () => host.now }), queue: new SerialQueue(), now: () => host.now, intervals: async () => [] };
     const open = await openSessionTranscription({ ...base, host: () => readTranscriberHost(dir.dataDir, () => 8) }, SESSION);
     if (open.state !== 'ENABLED') throw new Error(open.state);
     expect([open.adapter.backend, open.adapter.captureWorkerStated, open.config.backend === 'cpu-local' ? open.config.priority : null]).toEqual(['cpu-local', true, 'required']);
@@ -433,7 +469,7 @@ describe('the values a live session must state (pair-77 N-10, "What row 115 must
 
     const bare = makeDataDir('cpu-bare');
     dirs.push(bare.dataDir);
-    const none = await openSessionTranscription({ ...base, dataDir: bare.dataDir, host: () => readTranscriberHost(bare.dataDir, () => 8) }, SESSION);
+    const none = await openSessionTranscription({ ...base, mediaStoreDir: mediaOf(bare.dataDir), host: () => readTranscriberHost(bare.dataDir, () => 8) }, SESSION);
     expect(none).toMatchObject({ state: 'UNAVAILABLE', code: 'CONFIG_INVALID' });
   });
 });

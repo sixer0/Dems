@@ -18,7 +18,8 @@
  * | The media route asks for the operator: the player sends `Authorization: Bearer <session token>` | `MediaTransport.headers`, supplied by the runtime: `mediaTransportOf` reads `mediaTransport()` of the Live source (integration pass D5; `runtime/sim-adapters.ts`). It answers null while no operator session is in memory — the player then says playback cannot be opened, and asks nothing of the Core |
  * | One session per camera file: the body `{ fileId }` | `requestMediaSession`; a registry that does not know the member yet makes the typed client refuse the body, and the request is sent without one (the Core opens VIDEO-01) |
  * | The token lives 60 s; a new range request after it is refused | `mediaSessionStale`: the player renews before it starts or seeks on a stale session, and once after a player error |
- * | A fragment that fails its tag: `409 MEDIA_NOT_AVAILABLE`, `details { reason: FRAGMENT_NOT_AUTHENTIC, fileId, seq }` | the refusal `INTEGRITY`: an integrity failure of the recording, never a player error |
+ * | A fragment that fails its tag is refused by the MEDIA ROUTE (`409`, read by the player, which hands no body on) | Operation 88 opens no fragment and never answers it (review finding R93-12): this file reads no such refusal. The player stops at the place and points to Verify |
+ * | A package of ONE camera has one file | `openMediaSessions(…, fileIds)`: only the files the item names are asked for; `409 … CAMERA_FILE_NOT_IN_PACKAGE` for the other is not a failure |
  *
  * LIVE only: outside Live mode the app plays the bundled demo media and opens no media session.
  */
@@ -59,15 +60,13 @@ export class MediaSession {
   }
 }
 
-export type MediaSessionRefusal = 'NOT_AVAILABLE' | 'INTEGRITY' | 'NOT_PERMITTED' | 'FAILED';
+export type MediaSessionRefusal = 'NOT_AVAILABLE' | 'NOT_PERMITTED' | 'FAILED';
 
 export interface MediaSessionFailure {
   readonly ok: false;
   readonly refusal: MediaSessionRefusal;
   readonly status: number | null;
   readonly code: string;
-  /** The file and the fragment an INTEGRITY refusal names, as far as it names them. */
-  readonly integrity: { readonly fileId: string | null; readonly seq: number | null } | null;
   /** The failed call (the Core's envelope; it holds no path), for the presenter. null: the answer was not a usable session. */
   readonly failure: CoreFailure | null;
 }
@@ -83,11 +82,13 @@ export function mediaPathOf(url: unknown): string | null {
   return MEDIA_PATH.exec(url)?.[1] ?? null;
 }
 
-/** What a 409 says of a failed fragment, or null. */
-export function integrityOf(status: number | null, code: string, details: unknown): MediaSessionFailure['integrity'] {
-  const record = (typeof details === 'object' && details !== null ? details : {}) as { reason?: unknown; fileId?: unknown; seq?: unknown };
-  if (status !== 409 || code !== 'MEDIA_NOT_AVAILABLE' || record.reason !== 'FRAGMENT_NOT_AUTHENTIC') return null;
-  return { fileId: isCameraFile(record.fileId) ? record.fileId : null, seq: typeof record.seq === 'number' && Number.isInteger(record.seq) && record.seq >= 0 ? record.seq : null };
+/** `details.reason` of the 409 for a camera file the sealed package does not hold (a package of one camera). */
+export const CAMERA_FILE_NOT_IN_PACKAGE = 'CAMERA_FILE_NOT_IN_PACKAGE';
+
+/** The camera files an item names (`files[]` of 1 or 2), in file order; both when the item names none. */
+export function cameraFilesOf(item: { readonly files: readonly { readonly trackId: string }[] }): readonly CameraFileId[] {
+  const named = CAMERA_FILE_IDS.filter((fileId) => item.files.some((file) => file.trackId === fileId));
+  return named.length > 0 ? named : CAMERA_FILE_IDS;
 }
 
 type SessionCall = ReturnType<MobileLiveSim['client']['call']>;
@@ -108,15 +109,13 @@ async function callForFile(live: MobileLiveSim, evidenceId: string, fileId: Came
 export async function requestMediaSession(live: MobileLiveSim, evidenceId: string, fileId: CameraFileId): Promise<MediaSessionAnswer> {
   const answer = await callForFile(live, evidenceId, fileId);
   if (!answer.ok) {
-    const integrity = integrityOf(answer.status, answer.error.code, answer.error.details);
-    const refusal: MediaSessionRefusal =
-      integrity !== null ? 'INTEGRITY' : answer.status === 409 && answer.error.code === 'MEDIA_NOT_AVAILABLE' ? 'NOT_AVAILABLE' : answer.status === 403 ? 'NOT_PERMITTED' : 'FAILED';
-    return { ok: false, refusal, status: answer.status, code: answer.error.code, integrity, failure: answer };
+    const refusal: MediaSessionRefusal = answer.status === 409 && answer.error.code === 'MEDIA_NOT_AVAILABLE' ? 'NOT_AVAILABLE' : answer.status === 403 ? 'NOT_PERMITTED' : 'FAILED';
+    return { ok: false, refusal, status: answer.status, code: answer.error.code, failure: answer };
   }
   const data = answer.data as { fileId?: unknown; url?: unknown; expiresAt?: unknown };
   const path = mediaPathOf(data.url);
   if (!isCameraFile(data.fileId) || path === null || typeof data.expiresAt !== 'number') {
-    return { ok: false, refusal: 'FAILED', status: answer.status, code: 'MEDIA_SESSION_UNUSABLE', integrity: null, failure: null };
+    return { ok: false, refusal: 'FAILED', status: answer.status, code: 'MEDIA_SESSION_UNUSABLE', failure: null };
   }
   return { ok: true, session: new MediaSession(data.fileId, path, data.expiresAt) };
 }
@@ -135,11 +134,16 @@ export interface OpenedMediaSessions {
  * first request ends it. When the second answer names the file already open, that file keeps its
  * first session and the other file stays closed.
  */
-export async function openMediaSessions(live: MobileLiveSim, evidenceId: string): Promise<OpenedMediaSessions> {
+export async function openMediaSessions(live: MobileLiveSim, evidenceId: string, fileIds: readonly CameraFileId[] = CAMERA_FILE_IDS): Promise<OpenedMediaSessions> {
   const sessions: MediaSessions = {};
-  for (const fileId of CAMERA_FILE_IDS) {
+  for (const fileId of fileIds) {
     const answer = await requestMediaSession(live, evidenceId, fileId);
-    if (!answer.ok) return { sessions, failure: answer };
+    if (!answer.ok) {
+      // A package of one camera: the file that is not in it is no failure of the one that is.
+      const reason = (answer.failure?.error.details as { reason?: unknown } | undefined)?.reason;
+      if (answer.status === 409 && reason === CAMERA_FILE_NOT_IN_PACKAGE && Object.keys(sessions).length > 0) continue;
+      return { sessions, failure: answer };
+    }
     sessions[answer.session.fileId] ??= answer.session;
   }
   return { sessions, failure: null };
@@ -169,7 +173,11 @@ export function mediaTransportOf(live: MobileLiveSim | null): MediaTransport | n
   const transport = (provider as () => unknown).call(live) as Partial<MediaTransport> | null;
   if (transport === null || typeof transport !== 'object' || typeof transport.origin !== 'string' || !/^https?:\/\/[^/?#]+$/.test(transport.origin)) return null;
   if (typeof transport.headers !== 'object' || transport.headers === null || typeof transport.headers.Authorization !== 'string') return null;
-  return { origin: transport.origin, headers: transport.headers };
+  // R93-16: the header carries the session token. It is handed on as the runtime hands it out -
+  // NOT enumerable - so that printing, spreading or serialising this object never shows it.
+  const read = { origin: transport.origin } as MediaTransport;
+  Object.defineProperty(read, 'headers', { value: transport.headers, enumerable: false });
+  return read;
 }
 
 /** The player source of a session: the Core's own address, the session's path, the operator's header. Built at the hand-over, kept nowhere. */

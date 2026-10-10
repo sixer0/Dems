@@ -88,11 +88,19 @@ export function captureDurableOfSessionTransition(state: SimState, sessionId: st
  * count is 0, so nothing presents it as a recording and its recovery makes no evidence item.
  * The same state for another session, another state, or a session that is not connecting.
  *
+ * D84 R-3 / R-4 IN THIS TRANSITION (review R74-01). The capture-wide fault of a failed start stays
+ * raised after its session is closed, until a session starts again (R-4: `advanceCaptureStart`
+ * clears it when the next start connects; on the Core the forwarder clears every capture fault when
+ * a worker reaches RECORDING). When the NEXT start fails too, the fault that is active was raised
+ * before this session began: it is another session's. It is ended here (`endStaleCaptureFault`:
+ * FAULT_CLEARED, its alert resolved) and this session's own is raised - two failed starts in a row
+ * are two alerts and two FAULT_RAISED rows, each naming its session.
+ *
  * The fault row of the session (its timeline item of kind FAULT) and the alert of the fault carry
  * the two keys of situation C (C3 §5.3, §5.4 row C): `reason` - `NO_CAMERA_CONNECTED`, or the code
  * the capture ended with - and `evidenceFiles: 0`. The fault of the capture as a whole is raised
- * HERE when it is not active yet (a second raise for the same subject writes nothing), with the
- * two keys; an alert that was stored before keeps the `params` it was raised with.
+ * HERE when this session's is not active yet (a second raise for the same subject writes nothing),
+ * with the two keys; an alert that was stored before keeps the `params` it was raised with.
  */
 export function failedCaptureStartTransition(state: SimState, now: EpochMs, sessionId: string, cause: string | null = null): SimState {
   const session = recordingSessionOf(state, sessionId);
@@ -101,7 +109,9 @@ export function failedCaptureStartTransition(state: SimState, now: EpochMs, sess
   // While the session still says RECORDING: the row and the alert are those of a fault raised in a recording.
   // The two keys ride the raise (`captureFaultFactsOf`); the input type does not name them (pass D6 item 14).
   const warning = { code: FaultKind.CAPTURE_FAULT, subject: null, reason, evidenceFiles: 0 } as CaptureWarningInput;
-  const raised = raiseCaptureWarningTransition(state, now, warning);
+  // D84 R-3 (review R74-01): a capture-wide fault that began BEFORE this session started is another
+  // session's. It ends here, so this failed start is a new occurrence with its own alert and row.
+  const raised = raiseCaptureWarningTransition(endStaleCaptureFault(state, now, session), now, warning);
   const before = new Set(state.alerts.map((alert) => alert.id));
   const alerts = raised.alerts.map((alert) => (!before.has(alert.id) && alert.active && alert.kind === FaultKind.CAPTURE_FAULT && (alert.target ?? null) === null ? { ...alert, params: { ...alert.params, reason, evidenceFiles: 0 } } : alert));
   const faulted: ActiveSession = {
@@ -123,6 +133,23 @@ export function failedCaptureStartTransition(state: SimState, now: EpochMs, sess
       params: { kind: FaultKind.CAPTURE_FAULT, critical: true, durable: false, reason, evidenceFiles: 0 },
     },
   );
+}
+
+/**
+ * The capture-wide `CAPTURE_FAULT` that is active and began before `session` started recording is
+ * cleared (its alert resolved, one FAULT_CLEARED row). The same state when there is none, when it
+ * began in this session, or when the session has no start instant.
+ */
+export function endStaleCaptureFault(state: SimState, now: EpochMs, session: Pick<ActiveSession, 'startedAt'>): SimState {
+  const startedAt = session.startedAt;
+  if (startedAt === null) return state;
+  const stale = state.faults.active.some((fault) => fault.kind === FaultKind.CAPTURE_FAULT && fault.target === null && fault.since < startedAt);
+  return stale ? clearFaultAtKey(state, now, FaultKind.CAPTURE_FAULT, null) : state;
+}
+
+/** True for the open session that is a failed start: in FAULT (or being closed) with nothing recorded. */
+export function isFailedCaptureStart(session: Pick<ActiveSession, 'captureDurable' | 'fault' | 'startedAt'> | null | undefined): boolean {
+  return session !== null && session !== undefined && session.captureDurable === false && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT;
 }
 
 /**

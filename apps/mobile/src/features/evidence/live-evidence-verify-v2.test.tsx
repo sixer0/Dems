@@ -114,3 +114,29 @@ describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
     expect(screen.getByTestId('evidence-integrity-heading-FAIL')).toBeTruthy();
   });
 });
+
+// ── Fix pass F-M7 (review row 88, R88-07; decision D178) ─────────────────────────────────────────
+describe('F-M7 R88-07: a development-key answer is said beside the result and on the signature line of the detail', () => {
+  const answered = async (signature: unknown) => {
+    const { b, id } = await openIntegrity('0001');
+    b.fake.answerOnce('verifyEvidence', { status: 200, body: { ...RECORDED_VERIFY_V2.pass.body, evidenceId: id, at: b.fake.clock.now(), signature } });
+    fireEvent.press(screen.getByTestId('evidence-verify'));
+    await b.flush();
+    await b.elapse(VERIFY_ASK_MS + 200);
+  };
+
+  it('the Core answers `developmentKey: true` on a PASS: the result carries the line, and so does the signature section - never a plain pass', async () => {
+    await answered({ developmentKey: true });
+    expect(drawn()).toMatchObject({ pass: true, report: true });
+    expect(screen.getByTestId('evidence-v2-signing-key-DEVELOPMENT')).toHaveTextContent(en.evidence.verifyV2Key.development);
+    expect(screen.getByTestId('evidence-signature-key-DEVELOPMENT')).toHaveTextContent('Signed with a DEVELOPMENT key — not a production signature');
+  });
+
+  it('CONTROL: `developmentKey: false` draws neither line', async () => {
+    await answered({ developmentKey: false });
+    expect(drawn()).toMatchObject({ pass: true, report: true });
+    expect(screen.queryByTestId('evidence-v2-signing-key-DEVELOPMENT')).toBeNull();
+    expect(screen.queryByTestId('evidence-signature-key-DEVELOPMENT')).toBeNull();
+    expect(screen.queryByTestId('evidence-signature-key-NOT_ESTABLISHED')).toBeNull();
+  });
+});

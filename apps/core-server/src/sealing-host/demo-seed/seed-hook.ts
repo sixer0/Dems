@@ -38,7 +38,7 @@ import type { CompleteSealInput } from '@dems/shared/sim';
 import { coreFragmentOpener } from '../../evidence-verify';
 import type { ErrorLog } from '../../plugins/logger';
 import { isDevelopmentSigningCertificate, loadSealingSigner, type SealingPorts } from '../../sealing';
-import { coreFragmentSealer } from '../session-key';
+import { coreFragmentSealer, renewSessionKey } from '../session-key';
 import { STAND_INS } from '../session-reader';
 import { DEMO_CLIP_SECONDS } from './source-arguments';
 import { DEMO_SOURCE_ROWS, DemoSealError, sealDemoPackages, type DemoSealItem, type DemoSealOptions } from './index';
@@ -145,10 +145,14 @@ export function createDemoPackageSeeder(core: DemoSeederCore, ports: DemoSeederP
       }
 
       // The credential store of THIS data directory: the cipher's two doors take a host, not an app.
-      const host = { stages: {}, config: { dataDir } };
+      // D180 (fix pass F-M7c): the session keys are those of the STORE the packages are placed in - never of the staging folder.
+      const host = { stages: {}, config: { dataDir, mediaStoreDir: store } };
       const seconds = ports.seconds ?? DEMO_CLIP_SECONDS;
       clear();
       try {
+        // A FRESH KEY PER RESEED (fix pass F-M7c, R88-13): the key an earlier generation sealed these sessions with is destroyed
+        // before the first fragment - the packages it sealed are the ones this run replaces (or that the caller refused above).
+        for (const item of items) renewSessionKey(host, item.sessionId);
         const sealed = await sealDemoPackages(
           { dataDir, mediaStoreDir: staging, synthesise: ports.synthesise, sealer: coreFragmentSealer(host), opener: coreFragmentOpener(host), signing, log: ports.log, now: ports.now, seconds },
           items.map((item): DemoSealItem => ({ ...item, subject: { ...item.subject, authorization: STAND_INS.subjectAuthorization } })),
@@ -176,7 +180,8 @@ export function createDemoPackageSeeder(core: DemoSeederCore, ports: DemoSeederP
           continue;
         }
         try {
-          mkdirSync(store, { recursive: true });
+          // Owner-only when this call makes it (F-M7c, item 2): the store holds plaintext recordings until they are sealed.
+          mkdirSync(store, { recursive: true, mode: 0o700 });
           renameSync(join(staging, directory), target);
           placed.push(directory);
         } catch {

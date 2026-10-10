@@ -89,6 +89,7 @@ import {
   type WizardStep,
 } from './session-new-model';
 import { markMonitorHandoff } from '@/features/session-live/monitor-handoff';
+import { LocalSourceNotStarted, LocalSourceNoticeDialog } from '@/features/capture-selector/local-source-notice';
 import { nextCaseNumber } from './sim-adapter';
 import { StepBoundary } from './step-boundary';
 import {
@@ -223,6 +224,13 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
     setStepParam(navigation, current);
   }, [launching, step, current, navigation]);
 
+  // Fix F-M4 (D184): a consent is for the one start that follows it. No countdown and no launch under way
+  // (the countdown was cancelled or stopped): an unused consent is dropped, and the next press asks again.
+  const discardStartConsent = actions.localSourceGate.discard;
+  useEffect(() => {
+    if (remaining === null && !launching) discardStartConsent();
+  }, [remaining, launching, discardStartConsent]);
+
   // 3-2-1: one digit per second, then the launch (03M M-PG-NEW).
   useEffect(() => {
     if (remaining === null) return undefined;
@@ -335,9 +343,13 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   };
 
   const onStart = () => {
-    triggerHaptic('recordStart');
-    if (countdownOn) setRemaining(COUNTDOWN_FROM);
-    else setLaunching(true);
+    // Fix F-M4 (D184): on a selector that names a local device the operator consents FIRST; only then the
+    // countdown runs and the start is sent (the sender's own gate consumes this one consent, so it asks once).
+    actions.localSourceGate.consent('START', () => {
+      triggerHaptic('recordStart');
+      if (countdownOn) setRemaining(COUNTDOWN_FROM);
+      else setLaunching(true);
+    });
   };
 
   const cancelAndLeave = () => {
@@ -476,6 +488,8 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       contentContainerStyle={[styles.scrollContent, arrangement === 'phone' ? null : styles.scrollContentWide]}
     >
       {linkNotice}
+      {/* Fix F-M4 (R69-01): a session left in CREATE is not checked by itself when the check turns on a local device. */}
+      <LocalSourceNotStarted visible={current === 1 && data.state === 'CREATE' && !createPress.busy} onRun={() => void onNextInfo()} />
       {stepBody}
     </KeyboardAwareScrollView>
   );
@@ -513,6 +527,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       )}
 
       {remaining !== null ? <CountdownOverlay seconds={remaining} onCancel={() => setRemaining(null)} /> : null}
+      <LocalSourceNoticeDialog gate={actions.localSourceGate} />
       {flowActive ? (
         <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.busy} pending={cancelPress.pending} />
       ) : (

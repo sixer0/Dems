@@ -61,7 +61,27 @@
  * durable is handed over as an interrupted recording.
  *
  * EVERY SOURCE HANDLE IS CLOSED ON EVERY EXIT PATH: a refused start, a failed start, an
- * interrupted recording, a stop, and a failure of this unit itself.
+ * interrupted recording, a stop, a failure of this unit itself, and A SHUTDOWN OF THE CORE
+ * (`shutdown()`, fix pass F-M5 / review R74-09: registered as an `onClose` hook by
+ * `registerSessionCaptureShutdown`, called from the sessions module's plugin function). At a
+ * shutdown the worker is stopped first, then the session's signal is aborted - which is what
+ * reaches a camera helper that is still inside its settle window and in no table yet - and every
+ * handle is closed. Nothing is told and no state is written: the session stays as stored and the
+ * next boot resumes it.
+ *
+ * A SWITCH THE WORKER REALISED IS ALWAYS RECORDED (review R74-06). The interval rows and the
+ * `AUDIO_SOURCE_SWITCHED` row are written from the worker's record: when the session left
+ * RECORDING meanwhile, when the acknowledgement came after the limit (the record nobody waited
+ * for is applied when it arrives), and after one retry of a unit that failed.
+ *
+ * THE TIMES OF A SWITCH, AS STORED (review R74-13; a correction of the sentence of D142 (1) /
+ * D144 (5) "both times are in the audit row"). The audit row `AUDIO_SOURCE_SWITCHED` holds the
+ * MEDIA times `fromMs` / `toMs` (contract C3 §5.2 names no member for a wall instant) and its own
+ * `at`, which is the instant of THE UNIT THAT RECORDED THE SWITCH - after the worker's
+ * acknowledgement, not the arrival of the command. The wall instant of the boundary is the
+ * worker's `capturedAtMs`: `session_audio_intervals.from_at` of the opened row and `to_at` of the
+ * closed one. The arrival instant of the command is not a stored member (erratum proposal in
+ * `implementation/112_fix_m5_review.md`).
  *
  * IN CAPTURE MODE `simulated` NOTHING HERE RUNS: `recordingStartedIn` and the two `after...` calls
  * return at once, and operation 81 is the simulator's own hosted action.
@@ -75,12 +95,12 @@
  */
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { AudioSourceIntervalReason, CaptureRecordKind, CaptureStopReason, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
+import { AudioSourceIntervalReason, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningReason, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
 import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
-import type { ActiveSession } from '@dems/shared/sim';
+import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
-import { CapturePhase, CaptureSupervisorError, type CaptureEventOf, type CaptureSupervisor } from '../capture';
+import { CapturePhase, CaptureSupervisorError, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
 import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { assertSessionSourcesOfOperation, buildSessionCaptureSources, captureFenceControl, captureOperationOf, type CaptureSourceSlot, type SessionCaptureSource } from '../capture/fence';
 import { captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
@@ -106,6 +126,14 @@ export const SOURCE_KIND_NOT_RECORDABLE = 'SOURCE_KIND_NOT_RECORDABLE';
  */
 export const MIC_START_BOUND_MS = 8_000;
 
+/**
+ * THE ADVISORY THRESHOLD OF A CAMERA CLOCK (tidy pass F-Y; ruling D179). The worker accepts a camera
+ * whose clock is up to 2 s away from the Core's and records it at its own clock. The offset it
+ * measured is kept for manifest field 40 whatever its size; ABOVE this size (in ms) the camera also
+ * gets the advisory alert `CAMERA_CLOCK_OFFSET`. Default of the port `clockOffsetAdvisoryMs`.
+ */
+export const CAMERA_CLOCK_OFFSET_ADVISORY_MS = 500;
+
 /** `details.reason` of a stop that is refused because the capture holds nothing durable yet (D84). */
 export const CAPTURE_NOT_DURABLE = 'CAPTURE_NOT_DURABLE';
 
@@ -114,6 +142,9 @@ export const STT_SNAPSHOT_NOT_STORED = 'STT_SNAPSHOT_NOT_STORED';
 
 /** The `cause` of a capture that was ended because its session left RECORDING by another door. */
 export const SESSION_LEFT_RECORDING = 'SESSION_LEFT_RECORDING';
+
+/** The `reason` of the capture fault of a stop that did not end cleanly (the recording is sealed as interrupted). */
+export const STOP_NOT_CLEAN = 'CAPTURE_STOP_NOT_CLEAN';
 
 /** The fault-row key `reason` of a start at which no camera connected (C3 §5.3, erratum PE-121-09). */
 export const NO_CAMERA_CONNECTED = 'NO_CAMERA_CONNECTED';
@@ -154,6 +185,12 @@ export type SessionCaptureEvent =
   | { readonly type: 'STARTED'; readonly sessionId: string; readonly cameras: readonly string[]; readonly camerasNotOpened: readonly string[] }
   /** The first durable fragment: the session presents 'recording' from here. */
   | { readonly type: 'DURABLE'; readonly sessionId: string }
+  /**
+   * The worker says a camera of the plan did not connect within the ingest-open window (protocol 4
+   * `CAMERA_NOT_CONNECTED`; review R74-03). When the session records, that is the degraded start
+   * the notices unit words as a WARNING; when no camera connects, FAILED_START follows instead.
+   */
+  | { readonly type: 'CAMERA_NOT_CONNECTED'; readonly sessionId: string; readonly deviceId: string }
   /**
    * A FAILED START: nothing durable, no evidence item. `cause` is the worker's or the supervisor's
    * code (`NO_CAMERA_CONNECTED`, ...). `reason` and `evidenceFiles` are the two keys of the fault
@@ -211,6 +248,13 @@ export interface SessionCapturePorts {
   ensureDir(path: string): Promise<void>;
   /** How long the start of one microphone helper is waited for: the no-delivery bound (`MIC_START_BOUND_MS`). */
   micStartBoundMs: number;
+  /** Above this size of the clock offset the worker measured (ms) a camera gets the advisory alert (`CAMERA_CLOCK_OFFSET_ADVISORY_MS`). */
+  clockOffsetAdvisoryMs: number;
+  /**
+   * The capture operation the sources of a session belong to (default: the registry's own). Read for
+   * ONE thing: how grave a volume without the full sync is (CRITICAL in `REAL_PRODUCTION`, D189).
+   */
+  operationOf(registry: CaptureDeviceRegistry): CaptureOperation;
   /** Whether a file is at that path (the camera file of a plan: the truth about 'durable'). */
   fileExists(path: string): Promise<boolean>;
   /** The PCM tap of the session's plan, or null. */
@@ -264,6 +308,13 @@ export interface SessionCapture {
   on(listener: SessionCaptureListener): () => void;
   /** Resolves when nothing of this unit runs in the background. For a test and for a shutdown. */
   idle(): Promise<void>;
+  /**
+   * THE SHUTDOWN OF THE CORE (review R74-09): the worker of the live capture is stopped, the
+   * session's signal is aborted (a source that is still being opened ends there), every handle is
+   * closed, and the background work is awaited. Tells no listener and writes no state. Safe to
+   * call twice and while no capture runs. Never rejects.
+   */
+  shutdown(): Promise<void>;
   /** The session whose capture this unit holds now, or null. */
   liveSessionId(): string | null;
   /** Replaces ports. Before the first start only. */
@@ -292,17 +343,72 @@ interface Live {
   durableAsked: boolean;
   /** True once the end of this capture is being handled: an end is handled once. */
   ended: boolean;
+  /**
+   * THE END WAS ASKED (closing pass F-X, review R74-08). `begin`, the stop and the end of a capture run
+   * on ONE chain, so `ended` is set only after `begin` returned: `begin` could never see it, and a stop
+   * that committed while it still waited (a microphone start is waited for up to `MIC_START_BOUND_MS`)
+   * reached the worker that much later - the worker recorded past the committed stop. `leaving` is
+   * set OUTSIDE the chain, the moment a stop commits or the worker ends the session; `begin` then
+   * opens nothing more and waits for nothing more, and the step queued behind it runs. The chain
+   * keeps its order.
+   */
+  leaving: boolean;
+  /** Resolves when `leaving` is set. */
+  readonly left: Promise<void>;
+  leave(): void;
   /** The last instant of the audio timeline the worker reported, in media ms; null before. */
   audioEndMs: number | null;
   /** The instant of the session's source rows: what ties the facts file to THIS session. */
   readonly startRecordedAt: number;
   /** By camera: the clock offset its adapter reported at the start, in ms; null: it reported none. */
   readonly clockOffsets: Map<string, number | null>;
+  /**
+   * By camera: the offset the WORKER measured when it anchored the camera (camera clock minus Core
+   * clock, whole ms) and which worker of the session measured it. Manifest field 40 (tidy pass F-Y).
+   */
+  readonly measuredOffsets: Map<string, { readonly attempt: number; readonly offsetMs: number }>;
+  /** By camera: the sync level the worker stated with the first durable fragment of its file (R63-09). */
+  readonly syncLevels: Map<string, CaptureSyncLevel>;
+  /** The notices this capture raised and resolves when it ends: the clock-offset advice by camera, the volume notice once. */
+  readonly noticesRaised: Map<string, CaptureAdvisoryNotice | CaptureVolumeSyncNotice>;
+  /** True for a capture whose sources are production's (`REAL_PRODUCTION`): a volume without the full sync is CRITICAL there. */
+  readonly production: boolean;
+  /** True once the tap path of the session was asked of the transcription unit: from then on its scratch folder may exist. */
+  tapAsked: boolean;
   /** True once the transcriber session was asked for; true again once it was told the end. */
   transcriberBegun: boolean;
   transcriberEnded: boolean;
   /** The writes of the facts file, one after the other. */
   factsWritten: Promise<void>;
+  /** Operation 81 calls that wait for the worker's acknowledgement now. */
+  switchesWaiting: number;
+  /** By microphone: who last asked for it to become the source (the actor of the row its record writes). */
+  readonly switchAskedBy: Map<string, SwitchActor>;
+  /** Switch records that arrived while a call waited: taken by that call, or applied when it was refused for a late acknowledgement. */
+  readonly switchRecordsSeen: Map<number, AudioSourceIntervalRecord>;
+  /** The `index` of every switch record that was recorded (or is being recorded): a record is applied once. */
+  readonly switchesRecorded: Set<number>;
+}
+
+/** Who a switch is recorded for: the operator, and the paired device the command came from (E-30 / SEC35-17). */
+interface SwitchActor {
+  readonly operatorId: string | null;
+  readonly sendingDeviceId: string | null;
+}
+
+const instancesOfShutdown = new WeakSet<object>();
+
+/**
+ * Registers the shutdown of the capture-session unit as an `onClose` hook of the app (review
+ * R74-09). Called at plugin time (a hook cannot be added to a booted app) by the sessions module.
+ * The unit itself is still built on first use; an app that never built it has nothing to close.
+ */
+export function registerSessionCaptureShutdown(app: FastifyInstance): void {
+  if (instancesOfShutdown.has(app.stages)) return;
+  instancesOfShutdown.add(app.stages);
+  app.addHook('onClose', async () => {
+    await instances.get(app.stages)?.shutdown();
+  });
 }
 
 const instances = new WeakMap<object, SessionCapture>();
@@ -330,6 +436,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       await mkdir(path, { recursive: true, mode: 0o700 });
     },
     micStartBoundMs: MIC_START_BOUND_MS,
+    clockOffsetAdvisoryMs: CAMERA_CLOCK_OFFSET_ADVISORY_MS,
+    operationOf: (registry) => registry.operation,
     fileExists: (path) =>
       stat(path).then(
         () => true,
@@ -409,14 +517,30 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', err, { sessionId: of.sessionId, deviceId: handle.deviceId });
       }
     }
+    // What this capture told the operator about a camera clock or the evidence volume ends with it.
+    const notices = [...of.noticesRaised.values()];
+    of.noticesRaised.clear();
+    for (const notice of notices) {
+      try {
+        await app.engine.clearCaptureWarning({ code: notice.code, subject: notice.subject } as Parameters<typeof app.engine.clearCaptureWarning>[0]);
+      } catch (err) {
+        persist('warn', 'CAPTURE_NOTICE_NOT_RESOLVED', 'a notice of an ended capture could not be resolved', err, { sessionId: of.sessionId, notice: notice.code, deviceId: notice.subject });
+      }
+    }
     // No exit path leaves a transcriber session open: one that was not told the end is told it here.
-    endTranscriber(of, of.durableSaid);
+    // (Only an OPENED one: whether a capture that was never opened recorded nothing is said by the path that ended it.)
+    if (of.transcriberBegun) endTranscriber(of, of.durableSaid);
     if (live === of) live = null;
   }
 
   /** Tells the transcriber session of a capture that the capture is over. Once; never throws. */
   function endTranscriber(of: Live, recorded: boolean): void {
-    if (!of.transcriberBegun || of.transcriberEnded) return;
+    if (of.transcriberEnded) return;
+    // A capture that recorded NOTHING is told to the transcription unit from the moment the tap path was
+    // asked for, whether or not its session was opened (fix pass F-M6's request, D180 / R80-04): the
+    // scratch folder of the session may hold a raw PCM tap, and that unit's end is what removes it
+    // (idempotent). A capture that recorded tells it only when a transcriber session was opened.
+    if (!of.transcriberBegun && (recorded || !of.tapAsked)) return;
     of.transcriberEnded = true;
     try {
       ports.transcriber.end(of.sessionId, { recorded });
@@ -437,6 +561,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           trackId: file.trackId,
           deviceId: file.deviceId,
           clockOffsetMs: of.clockOffsets.get(file.deviceId) ?? null,
+          measuredClockOffsetMs: of.measuredOffsets.get(file.deviceId)?.offsetMs ?? null,
+          syncLevel: of.syncLevels.get(file.deviceId) ?? null,
           firstVideo: first === null ? null : { pts: first.pts, timescale: first.timescale, heldMs: first.heldMs, skipped: first.skipped, skippedSpanMs: first.skippedSpanMs },
         };
       }),
@@ -537,6 +663,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     if (event.sessionId !== of.sessionId) return;
     watchSession(of);
     const { record } = event;
+    if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT) onSyncLevel(of, record.deviceId, record.syncLevel ?? null);
     if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT || record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) {
       // The FIRST of them makes the session 'recording'; asked again while it was not said.
       if (!of.durableSaid) track(markDurable(of));
@@ -546,6 +673,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     // The interval of the start is this unit's to store; the interval of a switch is stored by the unit of operation 81.
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.reason === AudioSourceIntervalReason.SESSION_START) {
       track(writeInterval(of, record));
+      return;
+    }
+    if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL) {
+      // The record of a switch. A call of operation 81 that waits takes it with its acknowledgement;
+      // a record NOBODY waits for (its acknowledgement came after the limit and the call was refused,
+      // review R74-06 (b)) is applied here, so the Core never says another microphone than the worker feeds.
+      if (of.switchesWaiting > 0) of.switchRecordsSeen.set(record.index, record);
+      else inBackground(of.sessionId, 'lateSwitchRecord', () => recordSwitch(of, record, of.switchAskedBy.get(record.deviceId) ?? { operatorId: null, sendingDeviceId: null }).then(() => undefined, () => undefined));
       return;
     }
     if (record.kind === CaptureRecordKind.FIRST_VIDEO_SAMPLE) {
@@ -560,6 +695,71 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     if (record.kind === CaptureRecordKind.AUDIO_TIMELINE_END) of.audioEndMs = mediaMsOfSample(record.samples, record.sampleRateHz);
   }
 
+  /** Raises a notice of this capture through the engine and holds it for the end of the capture. Never throws. */
+  function raiseNotice(of: Live, key: string, notice: CaptureAdvisoryNotice | CaptureVolumeSyncNotice): void {
+    if (of.noticesRaised.has(key)) return;
+    of.noticesRaised.set(key, notice);
+    track(
+      Promise.resolve()
+        .then(() => app.engine.raiseCaptureWarning({ ...notice, sessionId: of.sessionId } as Parameters<typeof app.engine.raiseCaptureWarning>[0]))
+        .then(
+          () => undefined,
+          (err: unknown) => {
+            // What the engine did not raise is not held: nothing is resolved for it at the end.
+            if (of.noticesRaised.get(key) === notice) of.noticesRaised.delete(key);
+            persist('error', 'CAPTURE_NOTICE_NOT_RAISED', 'a notice of the capture could not be raised for the operator', err, { sessionId: of.sessionId, notice: notice.code, deviceId: notice.subject });
+          },
+        ),
+    );
+  }
+
+  /**
+   * THE SYNC LEVEL A CAMERA FILE REALLY HAS (tidy pass F-Y, item 3; review R63-09; ruling D188;
+   * decision D189). Kept per camera file in the capture facts - the manifest has no durability
+   * field. The worker's statement is the ONLY truthful source of the level (the boot cannot learn
+   * it: Node's `fsync` falls back silently), so a level weaker than the full sync - or none stated -
+   * is told to the operator here, ONCE per session: CRITICAL where the sources are production's,
+   * advice in the development operation. The session keeps recording.
+   */
+  function onSyncLevel(of: Live, deviceId: string, level: CaptureSyncLevel | null): void {
+    if (!of.files.some((file) => file.deviceId === deviceId)) return;
+    if (level !== null) of.syncLevels.set(deviceId, level);
+    track(writeFacts(of));
+    if (level === CaptureSyncLevel.FULL) return;
+    persist(of.production ? 'error' : 'warn', 'CAPTURE_VOLUME_SYNC_NOT_FULL', 'the evidence volume did not confirm the full sync for a camera file of the session: the recording may not survive a power loss', null, { sessionId: of.sessionId, deviceId, syncLevel: level ?? 'NOT_STATED', production: of.production });
+    raiseNotice(of, CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL, { code: CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL, subject: null, critical: of.production, syncLevel: level ?? 'NOT_STATED' });
+  }
+
+  /**
+   * THE CLOCK OF A CAMERA AS THE WORKER MEASURED IT (tidy pass F-Y, item 4; fix F-M3 decision 3).
+   * The worker anchors a camera whose clock is up to 2 s away from the Core's and records it at its
+   * own clock; what it measured is in `TELEMETRY.clocks[].lagMs` (arrival time minus camera time).
+   * The FIRST reading of a camera from the worker whose file it is, is the offset at anchoring:
+   * kept as camera minus Core (`-lagMs`, whole ms) for manifest field 40. It contains the delivery
+   * delay (about 20 ms on the fixture): a static offset cannot be told from it without a round trip.
+   * Above the advisory threshold the camera gets ONE advisory alert with the number; a later worker
+   * of the session (a restart before anything was durable) measures again.
+   */
+  function onClocks(of: Live, event: CaptureEventOf<'telemetry'>): void {
+    if (of.ended || event.frame.clocks.length === 0) return;
+    const attempt = of.supervisor.status().attempt;
+    let measured = false;
+    for (const clock of event.frame.clocks) {
+      if (!Number.isFinite(clock.lagMs) || !of.files.some((file) => file.deviceId === clock.deviceId)) continue;
+      if (of.measuredOffsets.get(clock.deviceId)?.attempt === attempt) continue;
+      // `+ 0`: a lag of zero is the offset 0, never -0.
+      const offsetMs = Math.round(-clock.lagMs) + 0;
+      of.measuredOffsets.set(clock.deviceId, { attempt, offsetMs });
+      measured = true;
+      const above = Math.abs(offsetMs) > ports.clockOffsetAdvisoryMs;
+      app.log.info({ code: 'CAPTURE_CLOCK_OFFSET_MEASURED', sessionId: of.sessionId, deviceId: clock.deviceId, offsetMs, advisoryMs: ports.clockOffsetAdvisoryMs, above }, 'the capture worker measured the clock offset of a camera: recorded for the manifest, not corrected');
+      if (!above) continue;
+      persist('warn', 'CAPTURE_CAMERA_CLOCK_OFFSET', 'the clock of a camera differs from the Core by more than the advisory threshold: the recording keeps the camera\'s own timeline and records the offset', null, { sessionId: of.sessionId, deviceId: clock.deviceId, offsetMs, advisoryMs: ports.clockOffsetAdvisoryMs });
+      raiseNotice(of, `${CaptureAdvisoryReason.CAMERA_CLOCK_OFFSET}|${clock.deviceId}`, { code: CaptureAdvisoryReason.CAMERA_CLOCK_OFFSET, subject: clock.deviceId, offsetMs });
+    }
+    if (measured) track(writeFacts(of));
+  }
+
   /** The end of a capture that did not come from a stop: a failed start or an interrupted recording. */
   async function captureEnded(of: Live, cause: string | null, supervisorDurable: boolean): Promise<void> {
     if (of.ended) return;
@@ -569,10 +769,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     for (const file of of.files) onDisk = onDisk || (await ports.fileExists(file.path));
     const durable = supervisorDurable || of.durableSaid || onDisk;
     let outcome: 'FAILED_START' | 'INTERRUPTED' | 'IGNORED' = 'IGNORED';
-    try {
-      outcome = (await captureDoorsOf(app.engine).endCapture(of.sessionId, { durable, cause })).value;
-    } catch (err) {
-      persist('error', 'CAPTURE_END_NOT_RECORDED', 'the end of a capture could not be recorded on the session', err, { sessionId: of.sessionId, durable });
+    // The engine's door is asked twice before its failure stands (review R74-07): the end of a capture is said once by the worker.
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        outcome = (await captureDoorsOf(app.engine).endCapture(of.sessionId, { durable, cause })).value;
+        break;
+      } catch (err) {
+        if (attempt === 2) persist('error', 'CAPTURE_END_NOT_RECORDED', 'the end of a capture could not be recorded on the session', err, { sessionId: of.sessionId, durable });
+      }
     }
     // The worker of a session that ended is ended too, so that the supervisor is free for the next session.
     try {
@@ -583,15 +787,21 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     await of.recorder?.idle();
     await closeLastInterval(of);
     await of.factsWritten;
+    // DURABLE MEDIA IS ALWAYS HANDED OVER (review R74-07). When the engine ignored the end (the session
+    // had left RECORDING: a stop that committed and never reached the worker) or its door failed, the
+    // camera files are still evidence: the listeners are told INTERRUPTED and the seal's controller
+    // joins or refuses by itself. Without this the session waited for the next boot.
+    const handedOver = outcome === 'INTERRUPTED' || (durable && outcome !== 'FAILED_START');
     // The tap of an interrupted recording is whole now; a failed start recorded nothing.
-    endTranscriber(of, outcome === 'INTERRUPTED' || (outcome === 'IGNORED' && durable));
+    endTranscriber(of, handedOver);
     await release(of);
-    persist('warn', outcome === 'INTERRUPTED' ? 'CAPTURE_INTERRUPTED' : 'CAPTURE_START_FAILED', outcome === 'INTERRUPTED' ? 'a recording was interrupted: its durable media is to be sealed as interrupted' : 'a recording did not start: nothing is durable and no evidence item is made', null, {
+    persist('warn', handedOver ? 'CAPTURE_INTERRUPTED' : 'CAPTURE_START_FAILED', handedOver ? 'a recording was interrupted: its durable media is to be sealed as interrupted' : 'a recording did not start: nothing is durable and no evidence item is made', null, {
       sessionId: of.sessionId,
       cause,
       outcome,
+      durable,
     });
-    if (outcome === 'INTERRUPTED') tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
+    if (handedOver) tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
     else if (outcome === 'FAILED_START') tell({ type: 'FAILED_START', sessionId: of.sessionId, cause, reason: cause ?? 'CAPTURE_START_FAILED', evidenceFiles: 0 });
   }
 
@@ -640,7 +850,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const starts: Promise<void>[] = [];
     for (const handle of current.handles) {
       const launch = (handle as { start?: (signal?: AbortSignal) => Promise<void> }).start;
-      if (typeof launch !== 'function' || current.ended) continue;
+      if (typeof launch !== 'function' || current.ended || current.leaving) continue;
       const role = ready.selector.mics.find((mic) => mic.deviceId === handle.deviceId)?.role ?? null;
       // D80(6) / ML-7: the standby alone missing warns; a primary that does not start is an error. Neither is replaced.
       const failed = (err: unknown, cause: string): void =>
@@ -663,6 +873,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       starts.push(
         Promise.race([settled, late]).then((outcome) => {
           clearTimeout(bound);
+          // The capture is being ended (a stop, or the worker's end): a start that was cut short by it is no failed start.
+          if (current.leaving || current.ended) return;
           if (outcome === 'BOUND') failed(null, 'MIC_START_BOUND');
           else if (outcome !== 'STARTED') failed(outcome.err, 'MIC_START_FAILED');
         }),
@@ -675,6 +887,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const { sessionId } = ready;
     const supervisor = app.capture;
     const registry = ports.registry();
+    let sayGone: () => void = () => undefined;
+    const gone = { promise: new Promise<void>((resolve) => (sayGone = resolve)), resolve: (): void => sayGone() };
     const current: Live = {
       sessionId,
       supervisor,
@@ -687,12 +901,27 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       durableSaid: false,
       durableAsked: false,
       ended: false,
+      leaving: false,
+      left: gone.promise,
+      leave() {
+        current.leaving = true;
+        gone.resolve();
+      },
       audioEndMs: null,
       startRecordedAt: ready.sources[0]?.recordedAt ?? 0,
       clockOffsets: new Map(),
+      measuredOffsets: new Map(),
+      syncLevels: new Map(),
+      noticesRaised: new Map(),
+      production: registry !== null && ports.operationOf(registry) === CaptureOperation.REAL_PRODUCTION,
+      tapAsked: false,
       transcriberBegun: false,
       transcriberEnded: false,
       factsWritten: Promise.resolve(),
+      switchesWaiting: 0,
+      switchAskedBy: new Map(),
+      switchRecordsSeen: new Map(),
+      switchesRecorded: new Set(),
     };
     live = current;
     tell({ type: 'CONNECTING', sessionId, sources: ready.sources });
@@ -707,6 +936,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         try {
           const handle = await registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal });
           current.handles.push(handle);
+          // The unit was shut down while this source was being opened: `release` has run and will not see the handle.
+          if (current.abort.signal.aborted) await release(current);
           mics[mic.deviceId] = handle.input;
         } catch (err) {
           // The standby may be missing (D80(6)); without the PRIMARY the plan builder refuses below.
@@ -722,6 +953,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         current.files.push({ trackId, deviceId: camera.deviceId, path: outputPath });
       }
       let pcmTapPath: string | null = null;
+      current.tapAsked = true;
       try {
         pcmTapPath = await ports.tapPathFor(sessionId);
       } catch (err) {
@@ -742,13 +974,23 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       current.offs.push(supervisor.on('record', (event) => onRecord(current, event)));
       current.offs.push(
         supervisor.on('telemetry', (event) => {
-          if (event.sessionId === sessionId) watchSession(current);
+          if (event.sessionId !== sessionId) return;
+          watchSession(current);
+          onClocks(current, event);
+        }),
+      );
+      current.offs.push(
+        supervisor.on('warning', (event) => {
+          // Review R74-03: a camera of the plan that did not connect is said to the listeners (the notices unit words the degraded start).
+          if (event.sessionId !== sessionId || event.source !== 'worker' || event.reason !== CaptureWarningReason.CAMERA_NOT_CONNECTED || event.state !== CaptureWarningState.ACTIVE || event.subject === null) return;
+          tell({ type: 'CAMERA_NOT_CONNECTED', sessionId, deviceId: event.subject });
         }),
       );
       current.offs.push(
         supervisor.on('phase', (event) => {
           if (event.sessionId !== sessionId || event.phase !== CapturePhase.FAULTED) return;
           const status = supervisor.status();
+          current.leave();
           inBackground(sessionId, 'captureEnded', () => captureEnded(current, status.lastCrash?.detail ?? status.lastCrash?.code ?? null, status.sessionId === sessionId && status.durable));
         }),
       );
@@ -767,7 +1009,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
 
       // The worker listens and writes the tap: the transcriber session of an STT-enabled session is
       // opened. Not awaited: a recording never waits for the transcriber (RK-1).
-      if (pcmTapPath !== null && !current.ended) {
+      if (pcmTapPath !== null && !current.ended && !current.leaving) {
         current.transcriberBegun = true;
         track(
           ports.transcriber.begin(sessionId).then(
@@ -781,9 +1023,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       const opened: string[] = [];
       const notOpened: string[] = [];
       for (const camera of plan.cameras) {
-        if (current.ended) break;
+        if (current.ended || current.leaving) break;
         try {
           current.handles.push(await registry.resolve('CAMERA', camera.deviceId).openSource(camera.deviceId, { ingestUrl: camera.ingestUrl }, current.abort.signal));
+          // A source that came up although the session's signal was aborted meanwhile (a shutdown) is closed at once.
+          if (current.abort.signal.aborted) await release(current);
           opened.push(camera.deviceId);
         } catch (err) {
           // One camera of two is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
@@ -793,6 +1037,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
       // Field 40: the clock of each camera against the Core's, as its adapter reports it. A read; never a reason to end a capture.
       for (const camera of plan.cameras) {
+        if (current.leaving) break;
         let offset: number | null = null;
         try {
           const reported = await registry.resolve('CAMERA', camera.deviceId).ntpOffsetMs(camera.deviceId);
@@ -803,7 +1048,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         current.clockOffsets.set(camera.deviceId, offset);
       }
       // Every microphone start has an outcome by now or within its bound: said before the session says STARTED.
-      await micStarts;
+      // ... unless the end of the capture was asked meanwhile (R74-08): the step queued behind this one stops the worker NOW.
+      await Promise.race([micStarts, current.left]);
       await writeFacts(current);
       if (!current.ended) tell({ type: 'STARTED', sessionId, cameras: opened, camerasNotOpened: notOpened });
     } catch (err) {
@@ -851,40 +1097,84 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const of = live;
     if (of === null || of.sessionId !== sessionId || of.ended) throw conflict('CAPTURE_NOT_RUNNING');
 
+    const actor: SwitchActor = {
+      operatorId: principal.kind === 'OPERATOR' ? principal.operatorId : null,
+      // E-30 / SEC35-17: the paired device a command came from is named; a web console session has none.
+      sendingDeviceId: principal.kind === 'OPERATOR' ? principal.deviceId : null,
+    };
+    of.switchAskedBy.set(mic.deviceId, actor);
     let record: AudioSourceIntervalRecord | null;
+    of.switchesWaiting += 1;
     try {
       record = await of.supervisor.switchAudioSource(sessionId, mic.role);
     } catch (cause) {
-      if (cause instanceof CaptureSupervisorError) throw conflict(cause.detail ?? cause.code, cause);
-      throw cause;
+      if (!(cause instanceof CaptureSupervisorError)) throw cause;
+      // The command was not acknowledged in time or was refused. A record of THAT microphone that
+      // arrived while this call waited says the worker did switch: it is recorded, never dropped (R74-06 (b)).
+      const seen = [...of.switchRecordsSeen.values()].find((entry) => entry.deviceId === mic.deviceId && !of.switchesRecorded.has(entry.index));
+      if (seen === undefined) throw conflict(cause.detail ?? cause.code, cause);
+      record = seen;
+    } finally {
+      of.switchesWaiting -= 1;
+      if (of.switchesWaiting === 0) of.switchRecordsSeen.clear();
     }
     // The worker says that role already feeds the track: the Core's state says another. Said, never guessed.
     if (record === null || record.deviceId !== mic.deviceId) {
       persist('error', 'AUDIO_SWITCH_WITHOUT_RECORD', 'the capture worker acknowledged a switch without the interval record of that microphone', null, { sessionId, deviceId: mic.deviceId });
       throw conflict('SWITCH_NOT_REALISED');
     }
+    const realised = await recordSwitch(of, record, actor);
+    const after = app.engine.slice('session');
+    const answer = after === null || after.id !== sessionId ? null : stateOf(after);
+    // The session's pair was not moved (it left RECORDING while the worker switched): the answer is what the record says feeds the track.
+    if (answer === null || answer.activeInputId !== inputId) return { sessionId, activeInputId: inputId, standbyInputId: realised.fromInputId, switchedAt: app.clock.now(), intervalFromMs: realised.toMs };
+    return answer;
+  }
+
+  /**
+   * RECORDS A SWITCH THE WORKER REALISED, from its interval record (review R74-06). ONE unit holds
+   * the session's new pair (when the session still records), the closed and the opened
+   * `session_audio_intervals` rows and the `AUDIO_SOURCE_SWITCHED` row with the keys of C3 §5.2.
+   * The rows are written WHATEVER the engine's transition says: the worker has switched, and the
+   * interval is evidence metadata. A unit that fails is run once more; then the two interval rows
+   * are written apart and the failure is said (503). A record is recorded once.
+   */
+  async function recordSwitch(of: Live, record: AudioSourceIntervalRecord, actor: SwitchActor): Promise<{ readonly fromInputId: string; readonly toMs: number }> {
+    const { sessionId } = of;
     const atMediaMs = mediaMsOfSample(record.fromSample, record.sampleRateHz);
-    const operatorId = principal.kind === 'OPERATOR' ? principal.operatorId : null;
-    // E-30 / SEC35-17: the paired device a command came from is named; a web console session has none.
-    const sendingDeviceId = principal.kind === 'OPERATOR' ? principal.deviceId : null;
-    const intervalValues = [sessionId, record.index, record.deviceId, record.role, atMediaMs, record.capturedAtMs, operatorId, AudioIntervalRowReason.MANUAL] as const;
-    try {
-      await app.engine.run('captureSession.switchAudioSource', async (scope) => {
-        const switched = await switchCaptureAudioSourceIn(scope, { sessionId, toInputId: inputId, atMediaMs });
-        if (switched === null) return;
+    const lines = app.engine.slice('session')?.captureConfig?.mics ?? [];
+    const toInputId = lines.find((line) => line.deviceId === record.deviceId)?.inputId ?? record.deviceId;
+    const otherInputId = lines.find((line) => line.deviceId !== record.deviceId)?.inputId ?? toInputId;
+    if (of.switchesRecorded.has(record.index)) return { fromInputId: otherInputId, toMs: atMediaMs };
+    of.switchesRecorded.add(record.index);
+    const intervalValues = [sessionId, record.index, record.deviceId, record.role, atMediaMs, record.capturedAtMs, actor.operatorId, AudioIntervalRowReason.MANUAL] as const;
+    let fromInputId = otherInputId;
+    const unit = (): Promise<unknown> =>
+      app.engine.run('captureSession.switchAudioSource', async (scope) => {
+        const switched = await switchCaptureAudioSourceIn(scope, { sessionId, toInputId, atMediaMs });
         // Where the closed interval began is the stored row's (the capture side's media time), not a wall clock.
         const closed = (await scope.unit.query<{ from_media_ms: string | number }>(CLOSE_OPEN_AUDIO_INTERVAL, [sessionId, atMediaMs, record.capturedAtMs])).rows[0];
-        const fromMs = closed === undefined ? switched.fromMs : Number(closed.from_media_ms);
+        const fromMs = closed === undefined ? (switched?.fromMs ?? atMediaMs) : Number(closed.from_media_ms);
+        fromInputId = switched?.fromInputId ?? otherInputId;
         await scope.unit.query(INSERT_AUDIO_INTERVAL, [...intervalValues]);
+        // `at` of this row is the instant of THIS unit (after the worker's acknowledgement); the wall instant of the boundary is the interval row's `from_at` (see the header).
         await scope.unit.audit.append({
           type: 'AUDIO_SOURCE_SWITCHED',
-          message: `Audio source switched to ${switched.toInputId}`,
-          actorId: operatorId,
-          deviceId: sendingDeviceId,
+          message: `Audio source switched to ${toInputId}`,
+          actorId: actor.operatorId,
+          deviceId: actor.sendingDeviceId,
           sessionId,
-          details: { fromInput: switched.fromInputId, toInput: switched.toInputId, fromMs, toMs: switched.toMs, ...(sendingDeviceId === null ? {} : { sendingDeviceId }) },
+          details: { fromInput: fromInputId, toInput: toInputId, fromMs, toMs: switched?.toMs ?? atMediaMs, ...(actor.sendingDeviceId === null ? {} : { sendingDeviceId: actor.sendingDeviceId }) },
         });
+        if (switched === null) persist('warn', 'AUDIO_SWITCH_OUTSIDE_RECORDING', 'a realised microphone switch was recorded for a session that is no longer recording: its rows are written, its state is not moved', null, { sessionId, seq: record.index, deviceId: record.deviceId, atMediaMs });
       });
+    try {
+      try {
+        await unit();
+      } catch (first) {
+        persist('warn', 'AUDIO_SWITCH_UNIT_RETRIED', 'the unit of a realised microphone switch failed and is run once more', first, { sessionId, seq: record.index, deviceId: record.deviceId });
+        await unit();
+      }
     } catch (err) {
       // The worker HAS switched. The interval is evidence metadata: it is stored by itself when the unit could not be.
       persist('error', 'AUDIO_SWITCH_NOT_RECORDED', 'a realised microphone switch could not be recorded in its unit; the interval rows are written apart', err, { sessionId, seq: record.index, deviceId: record.deviceId, atMediaMs });
@@ -896,10 +1186,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
       throw refusal(503, ApiErrorCode.NOT_READY, TEXT.SWITCH_NOT_RECORDED, { reason: 'AUDIO_SWITCH_NOT_RECORDED' }, err);
     }
-    const after = app.engine.slice('session');
-    const answer = after === null || after.id !== sessionId ? null : stateOf(after);
-    if (answer === null) throw conflict('NO_AUDIO_SOURCE');
-    return answer;
+    return { fromInputId, toMs: atMediaMs };
   }
 
   // ── The unit ─────────────────────────────────────────────────────────────────────────────────
@@ -943,12 +1230,22 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
 
     afterStopCommitted(sessionId) {
       if (!real) return;
+      // R74-08: said outside the chain, so a `begin` that still waits returns and this stop is not held behind it.
+      if (live !== null && live.sessionId === sessionId) live.leave();
       inBackground(sessionId, 'stop', async () => {
         const of = live;
         if (of === null || of.sessionId !== sessionId || of.ended) return;
         of.ended = true;
+        // HOW the stop ended (fix pass F-M3, review R63-01): a stop that is not clean - a CRASH while the
+        // worker closed, a non-zero exit, the kill at the grace, no end of the audio timeline - is an
+        // INTERRUPTED recording, never a normal one. A seam that says nothing (an older double) reads as clean.
+        let notClean: string | null = null;
         try {
-          await of.supervisor.stop(sessionId, CaptureStopReason.STOPPED);
+          // The final shape (`CaptureStopOutcome`, ruling D179): `down.detail` is the worker's own account (a CRASH code,
+          // STOP_NOT_ACKNOWLEDGED, TIMELINE_END_MISSING); without one, `down.code` names it (STOP_TIMEOUT: killed at the grace).
+          // A double of the seam that resolves nothing reads as clean.
+          const outcome: CaptureStopOutcome | undefined = await of.supervisor.stop(sessionId, CaptureStopReason.STOPPED);
+          if (outcome !== undefined && !outcome.clean) notClean = outcome.down?.detail ?? outcome.down?.code ?? STOP_NOT_CLEAN;
         } catch (err) {
           persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker of a stopped session could not be stopped', err, { sessionId });
         }
@@ -959,7 +1256,19 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         // The worker has exited: the tap is whole. The transcript is run to its end for the seal.
         endTranscriber(of, true);
         await release(of);
-        tell({ type: 'STOPPED', sessionId, files: Object.freeze([...of.files]), fragmentRowsBehind: behind, firstVideo: Object.freeze([...of.firstVideo.values()]) });
+        if (notClean === null) {
+          tell({ type: 'STOPPED', sessionId, files: Object.freeze([...of.files]), fragmentRowsBehind: behind, firstVideo: Object.freeze([...of.firstVideo.values()]) });
+          return;
+        }
+        // The operator is told in words that are no clean stop (decision D179 (b)): the capture-wide fault, with the
+        // reason of this unit. One fault of the capture at a time: when the capture side raised it already, this writes nothing.
+        persist('warn', 'CAPTURE_STOP_NOT_CLEAN', 'the capture worker did not stop cleanly: the recording is handed over as interrupted', null, { sessionId, cause: notClean });
+        try {
+          await app.engine.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: null, reason: STOP_NOT_CLEAN } as Parameters<typeof app.engine.raiseCaptureWarning>[0]);
+        } catch (err) {
+          persist('error', 'CAPTURE_STOP_FAULT_NOT_RAISED', 'the alert of a stop that was not clean could not be raised', err, { sessionId });
+        }
+        tell({ type: 'INTERRUPTED', sessionId, cause: notClean, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
       });
     },
 
@@ -979,6 +1288,28 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         await seen;
         await Promise.all(writes);
         await live?.recorder?.idle();
+      }
+    },
+
+    async shutdown() {
+      const of = live;
+      if (of !== null && !of.ended) {
+        of.ended = true;
+        // The worker FIRST: a source closed under a recording worker is a lost camera for it.
+        try {
+          await of.supervisor.stop(of.sessionId, CaptureStopReason.SHUTDOWN);
+        } catch (err) {
+          // The capture unit's own shutdown stopped it already (the entry point calls it first): nothing is left to stop.
+          if (!(err instanceof CaptureSupervisorError)) persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker could not be stopped at the shutdown of the Core', err, { sessionId: of.sessionId });
+        }
+        // Aborts the session's signal - what reaches a source that is still being opened - and closes every handle.
+        await release(of);
+        persist('warn', 'CAPTURE_SESSION_SHUT_DOWN', 'the Core shut down while a session was being captured: the worker was stopped and its sources closed; the next boot resumes the session', null, { sessionId: of.sessionId, durable: of.durableSaid });
+      }
+      try {
+        await this.idle();
+      } catch (err) {
+        persist('error', 'CAPTURE_SESSION_STEP_FAILED', 'the background work of the capture session did not end at the shutdown', err, { sessionId: of?.sessionId ?? null });
       }
     },
 

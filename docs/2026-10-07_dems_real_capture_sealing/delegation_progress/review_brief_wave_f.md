@@ -1,0 +1,11 @@
+# Review brief — wave F (decision D174, 2026-10-10)
+
+You are a REVIEWER. You read code and run read-only commands; you change NO product or test file. You write exactly one file: your review report (path in your task). Baseline for diffs: `git diff 9d3a1ef..abf742f -- <paths>` (from the M2 gate to the checkpoint: milestones M3-M8) — the tree is committed at `abf742f`, every suite green there (`test/05_checkpoint_wave_de_suites.md`).
+
+Binding rules: `delegation_progress/driver_rules_d94.md` (never open this Mac's camera or microphone; never set the attended env variables; never read `.data/pg*.env`; never touch ports 5173-5175, 8000, 5432; no installs; no git writes; never open media under `.data/`). You may run a single test FILE to confirm a suspicion (sandbox off for loopback / PostgreSQL; db files under `/usr/bin/lockf -k .locks/db-migrate.lock`), not whole suites. Other reviewers run in parallel on other milestones; an environment agent is migrating the standing databases — do not use `dems_demo` or the lane databases.
+
+What a finding is: a defect, a gap between spec and code, a claim in an implementation note that the code does not hold, a test that cannot fail, an unsafe default, dead or duplicated code that will mislead, a missing negative path. Each finding: ID (`R<row>-NN`), severity (BLOCKER: wrong evidence, a security hole, data loss, or a gate would be meaningless | MAJOR: wrong behaviour an operator or verifier would meet | MINOR | NOTE), the file:line, what is wrong in one or two sentences, the evidence (the lines, or the command and its output), and the smallest fix as a proposal with its owner area. No finding without a file:line or a command output. Say also what you checked and found sound (one line each), and what you did NOT review.
+
+Report shape: verdict per area (PASS | PASS WITH FINDINGS | FAIL), the findings table sorted by severity, the carried questions answered one by one (they are listed in your task: answer each with evidence or say "not determinable from the code" and why), a count line `BLOCKER n / MAJOR n / MINOR n / NOTE n`. Tier 2 narrative: what was found, why it matters, how it was verified, source.
+
+Do not re-litigate decisions recorded in `decisions/decisions.md` (D1-D174) unless the code contradicts the decision or the decision creates a defect you can show — then cite the decision number.

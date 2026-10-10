@@ -88,6 +88,20 @@
  *       `SESSION-*` path segment, a real directory, resolved inside the root).
  * A folder that is not removed is reported and left: it blocks the next reset (fail-safe).
  *
+ * A RECORDING THAT IS NOT SEALED YET IS EVIDENCE TOO (fix pass F-M7, review row 88 R88-09; decision
+ * D178). Such a session has no item row, so the three rules below are added, each fail-safe:
+ *   (9)  a store root - or its quarantine folder - that is there and cannot be LISTED refuses the
+ *        reset (`RESET_STORE_UNREADABLE` in the message, with the cause). Only a root that does not
+ *        exist is "no store";
+ *   (10) the database side also names every session that recorded from a production-class source
+ *        (a `session_capture_sources` row whose kind is NOT a development kind - an unknown kind
+ *        counts as production) and is neither sealed (no sealed item) nor terminally closed (no
+ *        `session_history` entry). It blocks, is never exempt, and is counted apart
+ *        (`unsealedSessions`). Its recording folder on disk blocks by the standing rule: a
+ *        `SESSION-*` folder without a readable manifest is UNKNOWN;
+ *   (11) every folder in `<store root>/.quarantine/` blocks (`quarantinedSessions`): recordings the
+ *        Core could not seal and moved there (`sealing`, D178) are real evidence without a package.
+ *
  * WHAT A MESSAGE MAY HOLD: the database name, the store root, counts, and at most a few session
  * identifiers. Session identifiers are what the audit chain already names; no value of a kept
  * table, no credential, and nothing from a manifest beyond its integrity state reaches a message.
@@ -119,16 +133,30 @@ export const DEVELOPMENT_ADAPTER_KINDS = ['FAKE', 'LOCAL_DEVICE'] as const;
  * the disk side names packages by it. One statement, so both the block and the exemption are
  * decided on one snapshot.
  */
+const DEVELOPMENT_KIND_LIST = DEVELOPMENT_ADAPTER_KINDS.map((kind) => `'${kind}'`).join(', ');
+/** `integrity_source` of the rows of rule (10): a session that recorded from a production source and is not sealed. No item has it. */
+export const UNSEALED_RECORDING_SOURCE = 'UNSEALED_RECORDING';
 export const REAL_SEALED_EVIDENCE_STATEMENT =
   "SELECT e.session_id::text AS session_id, e.id::text AS evidence_id, e.manifest_hash::text AS manifest_hash, e.integrity_source::text AS integrity_source, " +
   "(e.development_sources IS TRUE) AS development_flag, " +
   "(SELECT count(*)::int FROM public.session_capture_sources AS s WHERE s.session_id = e.session_id) AS source_rows, " +
   "(SELECT count(*)::int FROM public.session_capture_sources AS s WHERE s.session_id = e.session_id " +
-  `AND s.adapter_kind IN (${DEVELOPMENT_ADAPTER_KINDS.map((kind) => `'${kind}'`).join(', ')})) AS development_rows ` +
+  `AND s.adapter_kind IN (${DEVELOPMENT_KIND_LIST})) AS development_rows ` +
   "FROM public.evidence_items AS e " +
   // REAL items, and (pass E3) the demo items a seed really sealed: version 2 with a signature that is not the stand-in.
   "WHERE (e.integrity_source = 'REAL' OR (e.integrity_source = 'DEMO_PACKAGE' AND e.manifest_version = 2 AND e.signature_simulated IS FALSE)) " +
-  "AND e.sealed_at IS NOT NULL ORDER BY e.session_id";
+  "AND e.sealed_at IS NOT NULL " +
+  // Rule (10) (F-M7 R88-09), in the SAME statement and so on the same snapshot: sessions that recorded
+  // from a production-class source and have neither a sealed item nor a history entry.
+  "UNION ALL " +
+  `SELECT c.session_id::text, NULL::text, NULL::text, '${UNSEALED_RECORDING_SOURCE}'::text, false, count(*)::int, ` +
+  `(count(*) FILTER (WHERE c.adapter_kind IN (${DEVELOPMENT_KIND_LIST})))::int ` +
+  "FROM public.session_capture_sources AS c " +
+  "WHERE NOT EXISTS (SELECT 1 FROM public.evidence_items AS i WHERE i.session_id = c.session_id AND i.sealed_at IS NOT NULL) " +
+  "AND NOT EXISTS (SELECT 1 FROM public.session_history AS h WHERE h.id = c.session_id) " +
+  "GROUP BY c.session_id " +
+  `HAVING count(*) FILTER (WHERE c.adapter_kind NOT IN (${DEVELOPMENT_KIND_LIST})) > 0 ` +
+  "ORDER BY session_id";
 
 /** `integrity_source` of a demo item: it never blocks on the database side. */
 const DEMO_PACKAGE_SOURCE = 'DEMO_PACKAGE';
@@ -158,6 +186,8 @@ export interface RealSealedRows {
   readonly developmentItems: readonly DevelopmentItem[];
   /** Sessions of the seed-sealed demo items that pass the same two rules: never blocking, never in `development`. */
   readonly seedSealedDemo: readonly string[];
+  /** The subset of `blocking` that recorded from a production source and is not sealed (rule (10)). */
+  readonly unsealed: readonly string[];
 }
 
 /** One exempt item: its session, and what its signed manifest must say it is. */
@@ -177,7 +207,14 @@ export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): 
   const development: string[] = [];
   const developmentItems: DevelopmentItem[] = [];
   const seedSealedDemo: string[] = [];
+  const unsealed: string[] = [];
   for (const row of rows) {
+    // Rule (10): an unsealed real recording blocks, whatever else the row carries. Never exempt.
+    if (row.integrity_source === UNSEALED_RECORDING_SOURCE) {
+      blocking.push(row.session_id);
+      unsealed.push(row.session_id);
+      continue;
+    }
     const flagged = row.development_flag === true;
     const proven = row.source_rows === SOURCE_ROWS_PER_SESSION && row.development_rows === SOURCE_ROWS_PER_SESSION;
     // A demo row never blocks on this side (D-DB-04). It gives its folder an anchor only under the
@@ -197,7 +234,7 @@ export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): 
       if (flagged) unproven.push(row.session_id);
     }
   }
-  return Object.freeze({ blocking: Object.freeze(blocking), unproven: Object.freeze(unproven), development: Object.freeze(development), developmentItems: Object.freeze(developmentItems), seedSealedDemo: Object.freeze(seedSealedDemo) });
+  return Object.freeze({ blocking: Object.freeze(blocking), unproven: Object.freeze(unproven), development: Object.freeze(development), developmentItems: Object.freeze(developmentItems), seedSealedDemo: Object.freeze(seedSealedDemo), unsealed: Object.freeze(unsealed) });
 }
 
 /** Reads the signed source mark of one package folder. Default: the verify unit's reader. */
@@ -242,6 +279,12 @@ export interface RealEvidenceFacts {
   readonly storeRoot: string;
   /** False when the store root does not exist at all. */
   readonly storePresent: boolean;
+  /** The cause when the store root or its quarantine folder is there and could not be listed (rule (9)); null otherwise. It blocks. */
+  readonly storeUnreadable: string | null;
+  /** The blocking sessions that recorded from a production source and are not sealed (rule (10)). */
+  readonly unsealedSessions: readonly string[];
+  /** The names in the quarantine folder of the store (rule (11)). Each blocks. */
+  readonly quarantinedSessions: readonly string[];
   /** Sessions of the REAL sealed rows of `evidence_items` that BLOCK, in id order (exempt ones are not here). */
   readonly dbSessions: readonly string[];
   /** The blocking sessions that claim `development_sources` and fail the cross-check (SEC35-42 (2)). */
@@ -304,6 +347,7 @@ export function evaluateRealEvidence(
     readonly clearedOnDisk?: readonly string[];
     readonly developmentItems?: readonly DevelopmentItem[];
     readonly seedSealedDemo?: readonly string[];
+    readonly unsealed?: readonly string[];
   } = {},
 ): RealEvidenceFacts {
   const sorted = [...dbSessions].sort();
@@ -316,6 +360,9 @@ export function evaluateRealEvidence(
     database,
     storeRoot,
     storePresent: scan.present,
+    storeUnreadable: scan.unreadable ?? null,
+    unsealedSessions: Object.freeze([...(exemption.unsealed ?? [])].sort()),
+    quarantinedSessions: Object.freeze([...(scan.quarantined ?? [])]),
     dbSessions: Object.freeze(sorted),
     developmentUnproven: Object.freeze([...(exemption.unproven ?? [])].sort()),
     developmentSessions: Object.freeze([...(exemption.development ?? [])].sort()),
@@ -329,18 +376,22 @@ export function evaluateRealEvidence(
     blocked: false,
   });
   // `blocked` is derived, so it is set where the object is built and nowhere else.
-  return Object.freeze({ ...facts, blocked: sorted.length > 0 || real.length > 0 || unprovable.length > 0 });
+  return Object.freeze({ ...facts, blocked: sorted.length > 0 || real.length > 0 || unprovable.length > 0 || facts.storeUnreadable !== null || facts.quarantinedSessions.length > 0 });
 }
 
 /** One sentence for a log line and for the `ResetError`: counts, then the identifiers it names. */
 export function realEvidenceMessage(facts: RealEvidenceFacts): string {
   const sides = [
-    `${facts.database}: ${String(facts.dbSessions.length)} REAL sealed item(s)` +
+    `${facts.database}: ${String(facts.dbSessions.length - facts.unsealedSessions.length)} REAL sealed item(s)` +
+      (facts.unsealedSessions.length === 0 ? '' : `, ${String(facts.unsealedSessions.length)} session(s) that recorded from a production source and are not sealed (${named(facts.unsealedSessions)})`) +
       (facts.developmentUnproven.length === 0
         ? ''
         : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without four development source rows`),
     `evidence store ${facts.storeRoot} ${facts.storePresent ? 'holds' : 'does not exist;'} ${String(facts.diskSessions.length)} REAL package(s)` +
-      (facts.unprovablePackages.length === 0 ? '' : ` and ${String(facts.unprovablePackages.length)} unreadable package director(y/ies) [${named(facts.unprovablePackages)}]`),
+      (facts.unprovablePackages.length === 0 ? '' : ` and ${String(facts.unprovablePackages.length)} unreadable package director(y/ies) [${named(facts.unprovablePackages)}]`) +
+      (facts.quarantinedSessions.length === 0 ? '' : ` and ${String(facts.quarantinedSessions.length)} quarantined recording folder(s) [${named(facts.quarantinedSessions)}]`) +
+      // Rule (9): an unlistable store is never an empty one.
+      (facts.storeUnreadable === null ? '' : `; the store could not be listed (RESET_STORE_UNREADABLE, ${facts.storeUnreadable}): what it holds is unknown, so nothing may be reset`),
   ];
   const halves = [
     facts.missingOnDisk.length === 0 ? '' : `in the database without a package: ${named(facts.missingOnDisk)}`,
@@ -358,7 +409,10 @@ export function realEvidenceDetails(facts: RealEvidenceFacts): Record<string, st
     database: facts.database,
     storeRoot: facts.storeRoot,
     storePresent: facts.storePresent,
-    realRows: facts.dbSessions.length,
+    realRows: facts.dbSessions.length - facts.unsealedSessions.length,
+    unsealedSessions: facts.unsealedSessions.length,
+    quarantinedFolders: facts.quarantinedSessions.length,
+    ...(facts.storeUnreadable === null ? {} : { storeUnreadable: facts.storeUnreadable }),
     developmentUnproven: facts.developmentUnproven.length,
     developmentPackages: facts.developmentSessions.length,
     realPackages: facts.diskSessions.length,
@@ -379,7 +433,7 @@ export async function findRealSealedEvidence(client: RealEvidenceQueryable, opti
   const split = classifyRealSealedRows(rows);
   const scan = (options.readStore ?? readEvidenceStore)(storeRoot);
   const clearedOnDisk = await clearedDevelopmentPackages(storeRoot, scan, split, options.readSourceMark ?? readSealedSourceMark);
-  return evaluateRealEvidence(options.database, storeRoot, split.blocking, scan, { unproven: split.unproven, development: split.development, clearedOnDisk, developmentItems: split.developmentItems, seedSealedDemo: split.seedSealedDemo });
+  return evaluateRealEvidence(options.database, storeRoot, split.blocking, scan, { unproven: split.unproven, development: split.development, clearedOnDisk, developmentItems: split.developmentItems, seedSealedDemo: split.seedSealedDemo, unsealed: split.unsealed });
 }
 
 /**

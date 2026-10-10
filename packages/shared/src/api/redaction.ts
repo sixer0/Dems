@@ -65,7 +65,8 @@ export const CREDENTIAL_BLANK = '***';
 
 /** A session token, a device credential and a biometric token start with these (01_specs §5.3). */
 // `mts`: the signed media session token of operation 88 (task 3 row 90; C3 §2.4, §7 `EVIDENCE_MEDIA_TOKEN_PREFIX`; SEC35-13; check M8-BLK-1).
-const TOKEN = /\b(ses|dvc|bio|mts)_[A-Za-z0-9_-]+/g;
+// `exs`: the signed download token of a finished export (fix pass F-M8, ruling D178; `EVIDENCE_EXPORT_DOWNLOAD_TOKEN_PREFIX`).
+const TOKEN = /\b(ses|dvc|bio|mts|exs)_[A-Za-z0-9_-]+/g;
 
 /**
  * An authentication scheme and what follows it. Written as a header writes it (`Bearer`, `Basic`,
@@ -74,7 +75,7 @@ const TOKEN = /\b(ses|dvc|bio|mts)_[A-Za-z0-9_-]+/g;
  * `Basic` is held to the token test in every case: "Basic authentication" is a phrase. A token of
  * this server after the scheme keeps rule 1 (`Bearer ses_***`).
  */
-const SCHEME = /\b(bearer|basic)(\s+)(?!(?:ses|dvc|bio|mts)_)(?:(["'])([^"'\n]*)\3|([^\s"',;)\]}]+))/gi;
+const SCHEME = /\b(bearer|basic)(\s+)(?!(?:ses|dvc|bio|mts|exs)_)(?:(["'])([^"'\n]*)\3|([^\s"',;)\]}]+))/gi;
 /** Looks like a token, not a word: 8 characters or more, with a character that is no letter or a capital after the first. */
 const tokenLike = (value: string): boolean => value.length >= 8 && (/[^A-Za-z]/.test(value) || /[A-Z]/.test(value.slice(1)));
 

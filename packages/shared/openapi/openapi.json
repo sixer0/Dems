@@ -2128,7 +2128,7 @@
           "Evidence"
         ],
         "summary": "Authorized export",
-        "description": "**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.\n\n- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).\n- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).\n\nOnly SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).\n\nThe answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than 500 UTF-16 code units, a destination longer than 120, and any other body that does not match its schema, answers `422 INVALID_INPUT`; the server does not cut a text.\n\nA refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "**RBAC + audit required** (book §19.3, §21.2). The Core server applies the role of the operator whose session the request carries, before the body is read.\n\n- SUPERVISOR (holds EVIDENCE_EXPORT): `202`, and an EVIDENCE_EXPORTED audit row (the ExportEvent).\n- INVESTIGATOR or TECHNICIAN: `403 FORBIDDEN`, and an EXPORT_DENIED audit row (EVT-26).\n\nOnly SEALED, UNDER_REVIEW or EXPORTED evidence can be exported, and the sealed source is never modified (book §19.3 rule 1).\n\nThe answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than 500 UTF-16 code units, a destination longer than 120, and any other body that does not match its schema, answers `422 INVALID_INPUT`; the server does not cut a text.\n\nA refused export is still recorded: the EXPORT_DENIED row is committed and reaches every client through the `state` topic. The `403` carries no `x-dems-epoch` or `x-dems-revision` header (API-7 names the 2xx answers only).\n\nREAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller with EVIDENCE_EXPORT who neither holds the case nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "202": {
             "description": "Export accepted and audited.",
@@ -8374,10 +8374,10 @@
           "Session"
         ],
         "summary": "Recover a faulted session",
-        "description": "Starts the recovery of a session in **FAULT** and answers `202` with state **RECOVERY**. The Core closes what was recorded as an incomplete session with a RECORDED evidence item; the steps arrive in the `session` slice.\n\nWrites RECOVERY_STARTED. After a power failure the simulated boot is part of the recovery, so SYSTEM_BOOT and FAULT_CLEARED are written too.\n\nCore server only: the server runs the shared simulator action `recover` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Starts the recovery of a session in **FAULT** and answers `202` with state **RECOVERY**. The Core closes what was recorded as an incomplete session with a RECORDED evidence item; the steps arrive in the `session` slice.\n\nWrites RECOVERY_STARTED. After a power failure the simulated boot is part of the recovery, so SYSTEM_BOOT and FAULT_CLEARED are written too.\n\nCore server in real capture operation (decision D186 (4)): when the open session is **FINALIZING** with a FAILED sealing step, the operation runs its seal again in the background and answers `202` with state **FINALIZING**; no recovery starts and RECOVERY_STARTED is not written.\n\nCore server only: the server runs the shared simulator action `recover` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "202": {
-            "description": "The recovery is running (state RECOVERY).",
+            "description": "The recovery is running (state RECOVERY); or, on a Core in real capture operation, the failed seal of a FINALIZING session was queued again (state FINALIZING).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -19598,7 +19598,7 @@
           "Evidence"
         ],
         "summary": "Machine transcript of an item",
-        "description": "The machine transcript inside the seal (R-5; D222): the canonical `dems.transcript/1` document view — segments with speaker labels when diarization labelled them, `UNAVAILABLE` marked otherwise (D226) — plus the sealed machine-transcript hash the revisions bind to (OD-15).\n\nNot ready yet answers `409 TRANSCRIPT_NOT_READY`; audio that never reached the transcriber surfaces as `details.reason: TRANSCRIPT_AUDIO_UNAVAILABLE` while the package still seals `PARTIAL` without fabricated text (D-EV-1; transcript-spec §A.1/§E.5).\n\nNeeds EVIDENCE_VIEW (every role). For REAL evidence the read is additionally case/session-scoped once SEC35-16 is confirmed (provisional; M8).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The machine transcript inside the seal (R-5; D222): the canonical `dems.transcript/1` document view — segments with speaker labels when diarization labelled them, `UNAVAILABLE` marked otherwise (D226) — plus the sealed machine-transcript hash the revisions bind to (OD-15).\n\nNot ready yet answers `409 TRANSCRIPT_NOT_READY`; audio that never reached the transcriber surfaces as `details.reason: TRANSCRIPT_AUDIO_UNAVAILABLE` while the package still seals `PARTIAL` without fabricated text (D-EV-1; transcript-spec §A.1/§E.5).\n\nNeeds EVIDENCE_VIEW (every role). REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session's investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The transcript document.",
@@ -19857,7 +19857,7 @@
           "Evidence"
         ],
         "summary": "Revise a transcript (signed, append-only)",
-        "description": "Appends a signed revision (OD-15): TRANSCRIPT_REVISE — INVESTIGATOR and SUPERVISOR — the Core Ed25519 key signs, the author is recorded, there is NO approval flow. The sealed machine transcript stays byte-unchanged; `baseRevision` binds the revision to it.\n\n`baseRevision` is the item's current max(revision_no) (0 when none), read and compared INSIDE the INSERT transaction that mints max+1 (SEC35-21; dbc-3 §B.9 — no column, no sequence). A mismatch answers `409 TRANSCRIPT_REVISION_CONFLICT`.\n\nWrites TRANSCRIPT_REVISED: revisionId, authorId, number, baseRevision, changeCount, machineTranscriptHash, the optional reason and permission — never the transcript body or any segment text (`C3 §5.2`).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Appends a signed revision (OD-15): TRANSCRIPT_REVISE — INVESTIGATOR and SUPERVISOR — the Core Ed25519 key signs, the author is recorded, there is NO approval flow. The sealed machine transcript stays byte-unchanged; `baseRevision` binds the revision to it.\n\n`baseRevision` is the item's current max(revision_no) (0 when none), read and compared INSIDE the INSERT transaction that mints max+1 (SEC35-21; dbc-3 §B.9 — no column, no sequence). A mismatch answers `409 TRANSCRIPT_REVISION_CONFLICT`.\n\nWrites TRANSCRIPT_REVISED: revisionId, authorId, number, baseRevision, changeCount, machineTranscriptHash, the optional reason and permission — never the transcript body or any segment text (`C3 §5.2`).\n\nREAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session's investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "201": {
             "description": "The appended revision.",
@@ -20198,7 +20198,7 @@
           "Evidence"
         ],
         "summary": "Transcript revisions of an item",
-        "description": "The append-only revisions of the item, newest first, paged (API-9). V-11 verifies the parent_sha256 chain; this read lists it.\n\nNeeds EVIDENCE_VIEW (every role; REAL-evidence scope per SEC35-16 provisional).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The append-only revisions of the item, newest first, paged (API-9). V-11 verifies the parent_sha256 chain; this read lists it.\n\nNeeds EVIDENCE_VIEW (every role). REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session's investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "One page of revisions.",
@@ -20480,7 +20480,7 @@
           "Evidence"
         ],
         "summary": "Export job progress",
-        "description": "Polls the background export job op 42 queued (NM-12; OD-16) to completion. A FAILED job is a `200` answer with `status: FAILED` — not an HTTP error; the failure is audited as EVIDENCE_EXPORT_FAILED by the job itself (`C3 §4/§5.2`).\n\nNeeds EVIDENCE_EXPORT (SUPERVISOR), like the export request.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Polls the background export job op 42 queued (NM-12; OD-16) to completion. A FAILED job is a `200` answer with `status: FAILED` — not an HTTP error; the failure is audited as EVIDENCE_EXPORT_FAILED by the job itself (`C3 §4/§5.2`).\n\nNeeds EVIDENCE_EXPORT (SUPERVISOR), like the export request. REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session's investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope. The same rule holds on the export request (operation 42) and on the signed download `GET /exports/{token}`.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The job.",
@@ -32341,18 +32341,47 @@
             "additionalProperties": false
           },
           "signature": {
-            "description": "Schema v2 (decision D147): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. Absent for a v1 item and when no manifest could be read.",
+            "description": "Schema v2 (decisions D147, D178): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. `developmentKey` is nullable: `null` means NOT ESTABLISHED (the package did not verify), never \"not a development key\". Absent for a v1 item.",
             "type": "object",
             "properties": {
               "developmentKey": {
-                "type": "boolean",
-                "description": "True when the certificate subject recorded in the signed manifest carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`)."
+                "description": "True when the subject of the certificate that VERIFIED the signature carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`); false when it does not. `null`: NOT ESTABLISHED - the manifest, the signature or the certificate did not verify (never `false` from an unverified package). A client shows \"Signed with a DEVELOPMENT key - not a production signature\" for true and \"not established\" for null.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               }
             },
             "required": [
               "developmentKey"
             ],
             "additionalProperties": false
+          },
+          "notices": {
+            "description": "Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.",
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+                  "description": "`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly."
+                },
+                "report": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "description": "The report line of the notice."
+                }
+              },
+              "required": [
+                "code",
+                "report"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -34057,6 +34086,27 @@
             "description": "SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code. An open set of codes. Among them: `COMPOSITE_ENCODER_NOT_SELECTED` (a COMPOSITE was asked for and no encoder is selected), `EXPORT_INTERRUPTED` (the server stopped while the job ran; the job is not resumed - ask again), `SESSION_KEY_UNAVAILABLE`, `SOURCE_VERIFY_FAILED`, `PLAINTEXT_HASH_MISMATCH`, `EXPORT_WRITE_FAILED`, `EXPORT_FAILED`.",
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "download": {
+            "description": "Core server only, and only on a COMPLETE job of an item whose sealed package lies in the Core's store: a short-lived signed path that serves the finished archive as an attachment (ruling D178). Bound to the caller's operator and sign-in session and to this export; the request needs EVIDENCE_EXPORT and, for REAL evidence, the case scope of SEC35-16. Each download is audited. Absent in Simulated mode and for a simulated export.",
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^\\/exports\\/exs_[A-Za-z0-9_-]{60,96}$",
+                "description": "Same-origin path of the registry-external `GET /exports/<token>`. A BEARER value: never logged, never audited, never stored, never a cache key."
+              },
+              "expiresAt": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Core instant the path dies (`EVIDENCE_MEDIA_SESSION_TTL_MS` after this answer). Poll again for a fresh one."
+              }
+            },
+            "required": [
+              "path",
+              "expiresAt"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -34649,6 +34699,11 @@
             "type": "boolean",
             "description": "False when no announced service address qualifies, or its host is not `host`: such a candidate is listed and can never be tested."
           },
+          "connectionTarget": {
+            "description": "What the Core connects to for a connection test of this candidate, exactly as it uses it: scheme, host, port (always written) and path. Its host is `host`; the scheme, the port and the path are what the device announced: untrusted, draw it as text only, never as a link. Absent for a candidate that is not testable, and in Simulated capture (no connection is made there).",
+            "type": "string",
+            "pattern": "^https?:\\/\\/(?:\\d{1,3}\\.){3}\\d{1,3}:\\d{1,5}\\/[A-Za-z0-9\\-._~!$&'()*+,;=:%/]{0,127}$"
+          },
           "conflict": {
             "type": "boolean",
             "description": "Two answers share one endpoint reference from different addresses, or one address announced two references: every such row is listed and none is testable."
@@ -34679,6 +34734,13 @@
                   "testedAt": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "reason": {
+                    "description": "Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).",
+                    "type": "string",
+                    "enum": [
+                      "SCHEME_NOT_ALLOWED"
+                    ]
                   }
                 },
                 "required": [
@@ -34799,6 +34861,13 @@
             "type": "integer",
             "minimum": 0,
             "description": "Refused credentials this host may still see before the lock-out guard closes."
+          },
+          "reason": {
+            "description": "Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).",
+            "type": "string",
+            "enum": [
+              "SCHEME_NOT_ALLOWED"
+            ]
           }
         },
         "required": [

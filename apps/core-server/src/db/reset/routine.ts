@@ -44,6 +44,7 @@
  * `index.ts`; the server-side parts of R-1 and R-9 are the caller's and reach this routine
  * through `quiesce` and through its return.
  */
+import { resolve as resolvePath } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { recordActivity } from '@dems/shared/sim';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -103,6 +104,7 @@ import {
 } from './kept-tables';
 import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarget, recoverStatement, swapStatements, type DisposableDatabase, type ResetTarget } from './names';
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
+import { READ_CLEARED_TRANSCRIBER_SESSIONS, removeTranscriberScratchOf } from './transcriber-scratch';
 import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage, removeClearedDevelopmentPackages, type RealEvidenceFacts } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
@@ -647,6 +649,8 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     let facts: SourceFacts | null = null;
     // What the real-evidence guard read at R-3: the package folders it cleared are removed after the swap (D133 (2)).
     let evidence: RealEvidenceFacts | null = null;
+    // R80-04: the sessions of this database that took an STT snapshot - their transcriber scratch (a raw PCM tap) is removed after the swap.
+    let transcribedSessions: readonly string[] = [];
     if (targetExists) {
       sideDatabase = target.name;
       side = openPool(target.name);
@@ -658,6 +662,12 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
       carried = read.kept;
       facts = read.facts;
       evidence = read.evidence;
+      try {
+        transcribedSessions = (await side.query<{ session_id: string }>(READ_CLEARED_TRANSCRIBER_SESSIONS)).rows.map((row) => row.session_id);
+      } catch {
+        // A database older than the snapshot table, or a read that failed: no folder is named, none is removed.
+        transcribedSessions = [];
+      }
       await closeSide();
     }
     const plan: ResetPlan = planReset(facts, request, now);
@@ -861,6 +871,20 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
           message: `the reset of ${target.name} succeeded, but its cleared package folders could not be examined for removal; they block the next reset.`,
           details: { database: target.name, storeRoot: evidence.storeRoot },
         });
+      }
+    }
+    // R80-04 (code review row 80): the session IDs of the erased database are given out again. The
+    // transcriber scratch of the sessions it held - a raw PCM tap first of all - goes with them, by
+    // the containment rule of `transcriber-scratch.ts`. It never fails a reset that has succeeded.
+    // D180 (fix pass F-M7c): below the MEDIA STORE ROOT of THIS database - the root the guard of this reset read - never
+    // below the data directory every lane shares (there the folder of another database's session of the same ID would go).
+    if (transcribedSessions.length > 0 && evidence !== null) {
+      const scratch = removeTranscriberScratchOf(resolvePath(evidence.storeRoot), transcribedSessions);
+      if (scratch.removed.length > 0) {
+        log({ level: 'warn', code: 'RESET_TRANSCRIBER_SCRATCH_REMOVED', message: `the reset of ${target.name} removed the transcriber scratch of ${String(scratch.removed.length)} cleared session(s), raw audio taps included.`, details: { database: target.name, removed: scratch.removed.length } });
+      }
+      for (const left of scratch.kept) {
+        log({ level: 'error', code: 'RESET_TRANSCRIBER_SCRATCH_LEFT', message: `the reset of ${target.name} succeeded, but the transcriber scratch of ${left.sessionId} was not removed (${left.reason}): a raw audio tap may still be on the disk, and a session of that ID cannot be transcribed until it is examined.`, details: { database: target.name, sessionId: left.sessionId, reason: left.reason } });
       }
     }
     // Pass E3: the database is replaced and the old folders are gone - the packages the new rows name

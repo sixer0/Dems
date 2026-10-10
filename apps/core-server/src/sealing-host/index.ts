@@ -30,27 +30,41 @@
  * the entry in the persistent error log, and the session in FINALIZING with that step in `error`
  * and a sentence an operator reads as its `detail`. No item is committed, so nothing is presented
  * as sealed. A run that could not even start (the journal or the session record could not be
- * read) is recorded the same way by this unit (`SEALING_RUN_REJECTED`). The next attempt is the
- * next process start (`resume()`), one attempt per start.
+ * read) is recorded the same way by this unit (`SEALING_RUN_REJECTED`).
+ *
+ * EVERY FAILED SEAL HAS A WAY OUT (fix pass F-M7b; R88-02 (a) + (c); `sealing/pipeline/way-out.ts`):
+ * the end of every run goes to the way out, which RETRIES it in this process after a bounded
+ * back-off (`SealingHostSettings.sealRetry`, default `SEAL_RETRY_DEFAULTS`: 5 s, 30 s, 120 s),
+ * leaves a retriable cause that outlived them to the next start (`resume()`) and to the recovery
+ * operation (`retryFailedSeal`), and ends a session that cannot be sealed as UNSEALABLE: its files
+ * moved to `<mediaStoreDir>/.quarantine/<sessionId>/`, the session ended through the engine's
+ * unsealable door, the Core free for the next session. A start of the Core lists what the
+ * quarantine holds (`SEALING_QUARANTINE_HOLDS_SESSIONS`) and finishes a terminal outcome a
+ * process end interrupted, before it resumes anything.
  *
  * NOTHING HERE READS A CAMERA FILE OR HOLDS A HANDLE: every file handle is the pipeline's and is
  * closed by it on every path (its `finally` blocks); this unit keeps one listener, removed at close.
  */
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { CaptureOperation } from '../capture/adapters';
 import { captureOperationOf } from '../capture/fence';
 import { readSessionCaptureFacts, readSessionVideoSampleEntry, sessionCapture } from '../capture-session';
 import type { UnitContext } from '../core';
-import { sealDoorsOf } from '../engine';
+import { SEAL_BLOCKED_REASON, sealDoorsOf, sealingNoticeDoorsOf, unsealableDoorsOf } from '../engine';
+import { provideCoreEvidenceExport } from '../evidence-export';
 import { coreFragmentOpener, createRealEvidenceVerification, hasSealedPackageHere, sessionPackageDir } from '../evidence-verify';
 import { evidenceVerification } from '../modules/evidence';
 import { VIDEO_TRACK_IDS, createRecordingFragmentStore } from '../modules/recording-fragments';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
 import { createTranscriptStore } from '../modules/transcripts';
+import type { Principal } from '../plugins/authenticate';
 import { describeError } from '../plugins/logger';
 import {
+  SEALING_QUARANTINE_DIR,
   SEALING_STEP_ORDER,
+  SEAL_RETRY_DEFAULTS,
   SealingError,
   SealingFailure,
   SealingStop,
@@ -58,15 +72,21 @@ import {
   createSealingController,
   createSealingPipeline,
   createSealingStepJournal,
+  createSealWayOut,
   createTranscriptFileReader,
   durableMediaOnDisk,
   loadSealingSigner,
   sealEngineOf,
+  sealInputWithTranscriptSummary,
+  sealBlockedRestoreHint,
   sealOnCaptureHandOff,
   sealingFailureReason,
+  sweepSealedSession,
   systemStepTimer,
   type FinalizeTranscriptLimits,
   type SealOutcome,
+  type SealRetrySettings,
+  type SealWayOut,
   type SealingController,
   type SealingEngineHost,
   type SealingPorts,
@@ -102,6 +122,8 @@ export interface SealingHostSettings {
   readonly transcriptLimits: FinalizeTranscriptLimits;
   /** The transcriber sessions the transcript step asks. Default: `transcriptionControl(app).runs`. */
   readonly transcriptRuns: SealTranscriptRuns;
+  /** THE BOUNDS of the retries of a failed seal (fix pass F-M7b, R88-02 (a) + (c)). Default: `SEAL_RETRY_DEFAULTS`. */
+  readonly sealRetry: SealRetrySettings;
 }
 
 export interface SealingHost {
@@ -115,10 +137,29 @@ export interface SealingHost {
   settled(): Promise<void>;
   /** Replaces settings of the composition. While no run is under way; does nothing in capture mode `simulated`. */
   replace(next: Partial<SealingHostSettings>): void;
+  /**
+   * THE RETRY ON DEMAND (fix pass F-M7b, R88-02 (a); called by the recovery operation): when
+   * `sessionId` is the open session, FINALIZING with a FAILED sealing step, its seal is run again
+   * now - the retries of this process counted from the first again - and the answer is true. False
+   * for every other session and state, and in capture mode `simulated`: the caller then does what
+   * it did before. Never awaited: the seal runs in the background.
+   *
+   * AUDITED (fix pass F-M7c, ruling D186 (8)): one row `RECOVERY_STARTED` with `details.reason:
+   * SEAL_RETRY`, the session, the cause and step being retried, and the operator who asked: read
+   * HERE from the principal the caller hands on as it is (pass F-Z; null when the caller hands none
+   * or the principal is no operator).
+   */
+  retryFailedSeal(sessionId: string, principal?: Principal): boolean;
+  /**
+   * The same retry as a door with the shape of a hosted command (pass F-Z): a route module hands its
+   * principal on, as it is, the way it hands it to the engine (rule M3 of the modules) and reads
+   * no member of it. `hosted` names the action the caller runs otherwise; it is not read.
+   */
+  failedSeal(sessionId: string): { command(principal: Principal, hosted?: string): boolean };
 }
 
 const hosts = new WeakMap<object, SealingHost>();
-const INERT: SealingHost = Object.freeze({ mounted: false, controller: () => null, lastOutcome: () => null, settled: async () => {}, replace: () => {} });
+const INERT: SealingHost = Object.freeze({ mounted: false, controller: () => null, lastOutcome: () => null, settled: async () => {}, replace: () => {}, retryFailedSeal: () => false, failedSeal: () => ({ command: () => false }) });
 
 /** The sealing host of an app: what `mountSealingHost` built, or the inert one. */
 export function sealingHost(app: { readonly stages: object }): SealingHost {
@@ -139,7 +180,7 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   const packageDir = (sessionId: string): string => sessionPackageDir(mediaStoreDir, sessionId);
   const now = (): number => app.clock.now();
   let last: SealOutcome | null = null;
-  const settings: { transcriptLimits?: FinalizeTranscriptLimits; transcriptRuns?: SealTranscriptRuns } = {};
+  const settings: { transcriptLimits?: FinalizeTranscriptLimits; transcriptRuns?: SealTranscriptRuns; sealRetry?: SealRetrySettings } = {};
   const pending = new Set<Promise<unknown>>();
   const track = <Value>(run: Promise<Value>): Promise<Value> => {
     pending.add(run);
@@ -163,9 +204,93 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   let signing: SealingPorts['signing'] | null = null;
   const signingNow = (): SealingPorts['signing'] => (signing ??= loadSealingSigner({ dataDir: app.config.dataDir, now: now() }));
 
+  /** R80-04: set by `compose`. The transcription unit removes the folder by its own containment rule and never throws. */
+  let discardTranscriberScratch: (sessionId: string, why: string) => void = () => {};
+
+  /**
+   * R80-04, AT A START OF THE CORE: the transcriber scratch of every session that is SEALED already
+   * goes - a Core that ended between the commit of an item and the removal leaves a raw audio tap
+   * behind. A session whose seal this start still has to run or to finish is left alone: its own
+   * SEALED outcome removes its scratch. Never throws.
+   */
+  async function sweepSealedScratch(): Promise<void> {
+    try {
+      const decision = await compose().controller.decide();
+      const pending = decision.action === 'NONE' ? null : decision.sessionId;
+      const evidence = app.engine.state().evidence;
+      const removed = transcriptionControl(app).sweepSessionScratch((sessionId) => sessionId !== pending && evidence.some((item) => item.sessionId === sessionId && item.integritySource === 'REAL' && item.status === 'SEALED'));
+      if (removed.length > 0) app.log.info({ code: 'SEALING_TRANSCRIBER_SCRATCH_SWEPT', source: SOURCE, sessions: removed.length }, 'the transcriber scratch of sessions that were sealed already was removed at the start');
+    } catch (error) {
+      persist('error', 'SEALING_TRANSCRIBER_SCRATCH_NOT_SWEPT', 'the transcriber scratch of sealed sessions could not be examined at the start', error, {});
+    }
+  }
+
+  /** F-M7c (R88-05 (c)): the engine's notice of kept plaintext. Resolves false when the session's notice is active already. */
+  const noteKeptPlaintext: NonNullable<SealingPorts['engine']['noteKeptPlaintext']> = async (note) => (await sealingNoticeDoorsOf(app.engine).noteSealedPlaintextKept({ sessionId: note.sessionId, files: note.files.map((file) => ({ ...file })) })).value;
+
+  /**
+   * F-M7c (R88-05 (b)), AT A START OF THE CORE: EVERY sealed session - not only the current one -
+   * has what its seal left undone finished: plaintext recordings removed by proof (with the
+   * repeated decrypt-and-compare, R88-15), a file that fails the proof told and quarantined, orphan
+   * part files removed, the journal row of the last step closed. The session this start still
+   * seals or finishes through the pipeline is left to the pipeline. Never throws.
+   */
+  async function sweepSealedSessions(): Promise<void> {
+    try {
+      const { ports, controller } = compose();
+      const decision = await controller.decide();
+      const pending = decision.action === 'NONE' ? null : decision.sessionId;
+      const open = app.engine.state().session;
+      const seen = new Set<string>();
+      let touched = 0;
+      for (const item of app.engine.state().evidence) {
+        if (item.integritySource !== 'REAL' || seen.has(item.sessionId) || item.sessionId === pending) continue;
+        // The open session is the pipeline's while it is not SEALED.
+        if (open !== null && open.id === item.sessionId && open.state !== 'SEALED') continue;
+        seen.add(item.sessionId);
+        const done = await sweepSealedSession({ packageDir, stagingDir: ports.stagingDir, quarantineDir: ports.quarantineDir, opener: ports.opener, fragments: ports.fragments, journal: ports.journal, log: app.errorLog, now, noteKeptPlaintext }, { sessionId: item.sessionId, manifestSha256: item.manifestHash });
+        if (done.touched) {
+          touched += 1;
+          app.log.warn({ code: 'SEALING_SEALED_SESSION_FINISHED', source: SOURCE, sessionId: item.sessionId, recordingsRemoved: done.recordingsRemoved, recordingsKept: done.recordingsKept, recordingsQuarantined: done.recordingsQuarantined, orphansRemoved: done.orphansRemoved, journalClosed: done.journalClosed }, 'what a sealed session left on the evidence store was finished at the start of the Core');
+        }
+      }
+      if (touched > 0) app.log.info({ code: 'SEALING_SEALED_SESSIONS_SWEPT', source: SOURCE, sessions: touched }, 'sealed sessions were finished at the start of the Core');
+    } catch (error) {
+      persist('error', 'SEALING_SEALED_SESSIONS_NOT_SWEPT', 'the sealed sessions could not be examined at the start of the Core', error, {});
+    }
+  }
+
+  /** F-M7c (D186 (1)), AT A START: a seal that was left BLOCKED says so in the log again - the cause, and what restores it. */
+  function reportBlockedSeal(): void {
+    for (const alert of app.engine.state().alerts) {
+      if (!alert.active || alert.kind !== 'SYSTEM' || alert.params?.['reason'] !== SEAL_BLOCKED_REASON) continue;
+      const cause = typeof alert.params['cause'] === 'string' ? alert.params['cause'] : 'UNKNOWN';
+      persist('error', 'SEALING_SESSION_BLOCKED', 'the seal of a session is BLOCKED since an earlier run of the Core: it is tried again now; the Core records no new session until it is sealed', null, { sessionId: alert.target ?? null, failure: cause, restore: sealBlockedRestoreHint(cause) });
+    }
+  }
+
+  /** F-M7c (D186 (8)): the audit row of a retry on demand, with the cause the journal holds for the failed step. Never throws. */
+  async function noteRetryOnDemand(sessionId: string, actorId: string | null): Promise<void> {
+    try {
+      let failed: { step: string; cause: string | null } | null = null;
+      try {
+        for (const step of SEALING_STEP_ORDER) {
+          const row = await compose().ports.journal.read(sessionId, step);
+          if (row !== null && row.status === 'FAILED') failed = { step, cause: row.errorCode };
+        }
+      } catch {
+        // The journal cannot be read (that may be the very cause): the row is written without a cause, never skipped.
+        failed = null;
+      }
+      await sealingNoticeDoorsOf(app.engine).noteSealRetryOnDemand({ sessionId, actorId, cause: failed?.cause ?? null, step: failed?.step ?? null });
+    } catch (error) {
+      persist('error', 'SEALING_RETRY_NOT_AUDITED', 'the audit row of a seal retry on demand could not be written', error, { sessionId });
+    }
+  }
+
   /** Built at the first use: the pool exists after `ready()`. */
-  let composed: { readonly controller: SealingController; readonly ports: SealingPorts } | null = null;
-  function compose(): { readonly controller: SealingController; readonly ports: SealingPorts } {
+  let composed: { readonly controller: SealingController; readonly ports: SealingPorts; readonly wayOut: SealWayOut } | null = null;
+  function compose(): { readonly controller: SealingController; readonly ports: SealingPorts; readonly wayOut: SealWayOut } {
     if (composed !== null) return composed;
     const pool = app.db.pool;
     const journal = createSealingStepJournal(pool);
@@ -175,6 +300,23 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         return transcriptionControl(app);
       } catch {
         return null;
+      }
+    };
+    const itemEngine = sealEngineOf(engine, async (unit: UnitContext, evidenceId, transcript, sealedAt) => {
+      await commitSealedTranscript(createTranscriptStore(unit), { evidenceId, transcript, createdAt: sealedAt });
+    });
+    // R80-01: the item is committed WITH its transcript summary - the projection of the manifest block that was signed.
+    const sealEngine: SealingPorts['engine'] = {
+      ...itemEngine,
+      completeSeal: (input, transcript) => itemEngine.completeSeal(sealInputWithTranscriptSummary(input, transcript), transcript),
+      // F-M7c (R88-05 (c)): plaintext of a sealed session that must be kept - one alert + one audit row, before it is moved.
+      noteKeptPlaintext,
+    };
+    discardTranscriberScratch = (sessionId, why) => {
+      try {
+        transcription()?.discardSessionScratch(sessionId, why);
+      } catch (error) {
+        persist('error', 'SEALING_TRANSCRIBER_SCRATCH_NOT_REMOVED', 'the transcriber scratch of a sealed session could not be removed', error, { sessionId });
       }
     };
     const ports: SealingPorts = {
@@ -209,11 +351,10 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       get signing() {
         return signingNow();
       },
-      engine: sealEngineOf(engine, async (unit: UnitContext, evidenceId, transcript, sealedAt) => {
-        await commitSealedTranscript(createTranscriptStore(unit), { evidenceId, transcript, createdAt: sealedAt });
-      }),
+      engine: sealEngine,
       packageDir,
       stagingDir: (sessionId) => join(mediaStoreDir, '.sealing', sessionId),
+      quarantineDir: (sessionId) => join(mediaStoreDir, SEALING_QUARANTINE_DIR, sessionId),
       log: app.errorLog,
       now,
       timer: systemStepTimer,
@@ -236,17 +377,60 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       },
       onOutcome: (outcome) => {
         last = outcome;
-        if (outcome.status === 'SEALED') app.log.info({ code: 'SEALING_COMPLETE', source: SOURCE, sessionId: outcome.sessionId, evidenceId: outcome.evidenceId, attempt: outcome.attempt, interrupted: outcome.interrupted }, 'a session was sealed');
+        if (outcome.status === 'SEALED') {
+          app.log.info({ code: 'SEALING_COMPLETE', source: SOURCE, sessionId: outcome.sessionId, evidenceId: outcome.evidenceId, attempt: outcome.attempt, interrupted: outcome.interrupted }, 'a session was sealed');
+          // R80-04: the package is stored - the raw PCM tap and the rest of the session's transcriber scratch go (a normal seal, an interrupted one, a run a start finished).
+          discardTranscriberScratch(outcome.sessionId, 'SEALED');
+        }
         // A FAILED run is in the error log already (the pipeline wrote it, with its step and code).
         else if (outcome.status === 'FAILED') app.log.error({ code: outcome.code, source: SOURCE, sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, retriable: outcome.retriable }, 'the seal of a session failed');
-        else {
+        // F-M7b (R88-02 (a) + (c)): EVERY end of a run goes to the way out - a retry in this process, the wait for a start, or the terminal UNSEALABLE outcome.
+        if (outcome.status !== 'NOTHING_DURABLE') void track(wayOut.after(outcome).then((next) => (next?.action === 'TERMINAL' ? app.log.error({ code: 'SEALING_SESSION_UNSEALABLE', source: SOURCE, sessionId: outcome.sessionId, failure: next.cause }, 'a session could not be sealed: it was ended as UNSEALABLE and its files are in the quarantine folder') : undefined)));
+        if (outcome.status !== 'SEALED' && outcome.status !== 'FAILED') {
           persist('warn', 'SEALING_NOTHING_DURABLE', 'a seal was asked for a session that holds nothing durable: no item is made', null, { sessionId: outcome.sessionId });
           // The session is told, so that it never stays in STOPPING or FAULT without a word (row 71c, item 4 (c)).
           void track(nothingDurable(outcome.sessionId));
         }
       },
     });
-    composed = { controller, ports };
+    // Fix pass F-M7b (R88-02 (a) + (c)): the bounded retry and the terminal outcome of a failed seal (`sealing/pipeline/way-out.ts`).
+    const wayOut = createSealWayOut({
+      settings: () => settings.sealRetry ?? SEAL_RETRY_DEFAULTS,
+      timer: systemStepTimer,
+      journal,
+      now,
+      log: app.errorLog,
+      // Another attempt for the session of the committed state, with the cause its state gives (the controller's rule).
+      retry: () => track(controller.resume()),
+      tell: async (input) => {
+        await sealDoorsOf(app.engine).applySealingProgress(input);
+      },
+      end: async (input) => {
+        await unsealableDoorsOf(app.engine).endSessionUnsealable(input);
+      },
+      packageDir,
+      stagingDir: ports.stagingDir,
+      quarantineDir: ports.quarantineDir,
+      // F-M7c (D186, F-M7b's decision 6): the transcriber scratch of an UNSEALABLE session goes to its quarantine folder. The run is ended first: nothing writes into the folder while it is moved.
+      scratchDir: (sessionId) => {
+        const control = transcription();
+        if (control === null) return null;
+        try {
+          control.runs.discard(sessionId);
+        } catch {
+          // A run that could not be ended: a stopped or absent runner writes nothing; the folder is moved all the same.
+        }
+        return control.scratchDirFor(sessionId);
+      },
+      // F-M7c (D186 (1)): a retriable cause that outlived the retries is VISIBLE - one CRITICAL alert, resolved when the seal completes.
+      blocked: async (input) => {
+        await sealingNoticeDoorsOf(app.engine).raiseSealBlocked(input);
+      },
+      unblocked: async (sessionId) => {
+        await sealingNoticeDoorsOf(app.engine).resolveSealBlocked({ sessionId });
+      },
+    });
+    composed = { controller, ports, wayOut };
     return composed;
   }
 
@@ -283,6 +467,35 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
     }
   }
 
+  /** F-M7b: what the quarantine holds, said at every start (one line; the folders are evidence the Core could not seal and never deletes). */
+  async function reportQuarantine(): Promise<void> {
+    try {
+      const sessions = (await readdir(join(mediaStoreDir, SEALING_QUARANTINE_DIR), { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^SES-[0-9]{8}-[0-9]{4}$/.test(entry.name)).map((entry) => entry.name).sort();
+      if (sessions.length > 0) persist('warn', 'SEALING_QUARANTINE_HOLDS_SESSIONS', 'the quarantine folder of the evidence store holds recordings the Core could not seal', null, { count: sessions.length, sessions: sessions.slice(0, 50).join(',') });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') persist('error', 'SEALING_QUARANTINE_NOT_LISTED', 'the quarantine folder of the evidence store could not be listed', error, {});
+    }
+  }
+
+  /**
+   * F-M7b, AT A START: a terminal UNSEALABLE outcome a process end interrupted (the journal says
+   * so) is FINISHED - what is left is moved, the session is ended - and no seal is run for it.
+   * Resolves true when there was one.
+   */
+  async function finishUnsealable(): Promise<boolean> {
+    const session = app.engine.state().session;
+    if (session === null || session.state === 'SEALED') return false;
+    try {
+      const finished = await compose().wayOut.finishPending(session.id);
+      if (finished) app.log.error({ code: 'SEALING_UNSEALABLE_FINISHED', source: SOURCE, sessionId: session.id }, 'a session that cannot be sealed was ended at the start of the Core: its files are in the quarantine folder');
+      return finished;
+    } catch (error) {
+      persist('error', 'SEALING_UNSEALABLE_NOT_FINISHED', 'the terminal outcome of a session that cannot be sealed could not be finished at the start of the Core', error, { sessionId: session.id });
+      // Marked UNSEALABLE and not finished: no seal is run for it; the next start tries again.
+      return true;
+    }
+  }
+
   /** The controller's `seal`, with the rejection handled: what the hand-off and RECOVERY call. */
   const controller: SealingController = {
     seal: (sessionId, cause) => track(compose().controller.seal(sessionId, cause)),
@@ -302,6 +515,18 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       if (pending.size > 0 || composed !== null) throw new Error('the settings of the sealing host are replaced before its first seal only');
       Object.assign(settings, next);
     },
+    retryFailedSeal(sessionId, principal) {
+      const session = app.engine.state().session;
+      if (session === null || session.id !== sessionId || session.state !== 'FINALIZING' || !session.finalization.steps.some((step) => step.status === 'error')) return false;
+      // A run under way IS the retry: nothing is started beside it.
+      if (controller.running() !== null) return true;
+      compose().wayOut.reset(sessionId);
+      app.log.info({ code: 'SEALING_RETRY_ON_DEMAND', source: SOURCE, sessionId }, 'the failed seal of a session is run again on demand');
+      // F-M7c (D186 (8)): AUDITED - who asked, which session, the cause being retried. Written before the run reads its rows.
+      void track(noteRetryOnDemand(sessionId, principal?.kind === 'OPERATOR' ? principal.operatorId : null)).then(() => controller.resume()).catch((error: unknown) => track(rejected(sessionId, error)));
+      return true;
+    },
+    failedSeal: (sessionId) => ({ command: (principal) => host.retryFailedSeal(sessionId, principal) }),
   };
   hosts.set(app.stages, host);
 
@@ -319,6 +544,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   app.addHook('onClose', async () => {
     off?.();
     off = null;
+    // F-M7b: no retry of a failed seal fires into a Core that is closing.
+    composed?.wayOut.close();
   });
 
   // RECOVERY: after the engine's boot step (this unit registers after the engine). Not awaited:
@@ -326,11 +553,21 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   app.readiness.addBootStep({
     id: SEALING_RESUME_BOOT_STEP,
     run: async () => {
-      void controller.resume().then(
-        (outcome) => {
-          if (outcome !== null) app.log.info({ code: 'SEALING_RESUMED', source: SOURCE, sessionId: outcome.sessionId, status: outcome.status }, 'a seal was resumed at the start of the Core');
-        },
-        (error: unknown) => track(rejected(app.engine.state().session?.id ?? 'unknown', error)),
+      void track(sweepSealedScratch());
+      void track(reportQuarantine());
+      // F-M7c: R88-05 (b) every sealed session is finished; D186 (1) a blocked seal says so again.
+      void track(sweepSealedSessions());
+      reportBlockedSeal();
+      // F-M7b: a pending terminal outcome is finished first; only a session without one is resumed.
+      void track(finishUnsealable()).then((finished) =>
+        finished
+          ? undefined
+          : controller.resume().then(
+              (outcome) => {
+                if (outcome !== null) app.log.info({ code: 'SEALING_RESUMED', source: SOURCE, sessionId: outcome.sessionId, status: outcome.status }, 'a seal was resumed at the start of the Core');
+              },
+              (error: unknown) => track(rejected(app.engine.state().session?.id ?? 'unknown', error)),
+            ),
       );
     },
   });
@@ -362,6 +599,9 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       },
     }),
   );
+
+  // OPERATIONS 42 / 87 for a sealed package (fix pass F-M8, R93-01): the export jobs, composed with this Core's evidence signer.
+  provideCoreEvidenceExport(app, { signer: signingNow });
 
   return host;
 }

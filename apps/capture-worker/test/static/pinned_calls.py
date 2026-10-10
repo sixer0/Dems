@@ -25,22 +25,44 @@ RULES THAT DO NOT DEPEND ON THE TABLE (editing the table cannot make these pass)
   - the functions of BANNED are not used at all, by call or by name;
   - av_dict_set / av_dict_set_int: the key is one string literal of the decided set;
   - av_dict_parse_string: its second argument is exactly g_mux_extra (the proof-build seam);
-  - no token-paste operator (##): a name glued from two pieces is seen by no rule.
+  - no token-paste operator (##): a name glued from two pieces is seen by no rule;
+  - (fix pass F-M3, review R63-08) NO OTHER SPELLING OF THE PREPROCESSOR AND NO ASSEMBLER NAME:
+    no digraph (`%:` is `#`, so `%:%:` is the token paste; `<:` `:>` `<%` `%>`), no trigraph
+    (`??=` is `#` under -std=c11), no `asm` / `__asm__` (a label gives a C name another linker
+    name: `int f(...) __asm__("_open")`), no `alias` / `weakref` attribute. The worker's sources
+    use none of them, so they are refused outright;
+  - avformat_alloc_output_context2: the muxer is the one string literal "mp4", and neither an
+    output format object nor a file name is handed over (both NULL). Another muxer name
+    ("segment", "tee", "hls") would open files of its own.
+
+THE IMPORT NET (fix pass F-M3, review R63-08): `--imports <binary> <imports.pin>` reads what the
+LINKED worker imports (`nm -u`) and holds the file-making functions among them to the pinned
+list - whatever the spelling in the sources was. The Makefile runs it after every link of
+build/capture-worker. This is the net that does not depend on reading C.
 
 LIMITS (it is a tripwire, not a proof; the dynamic guards are sink_kill_test, writer_test, e2e):
   - a string built at run time (snprintf, strcat) is not read; it can reach the muxer only through
     a call this rule pins, whose text would have to change;
   - code reached through a header outside src/ (a macro of a system header that expands to one of
-    these functions) is not seen;
+    these functions) is not seen by the token rules (the import net sees the function it ends in);
   - what libavformat itself opens is not this rule's: the worker hands it no file name (the camera
-    files go through the worker's own write callback).
+    files go through the worker's own write callback) and one muxer name, "mp4" (pinned above);
+  - the import net sees FUNCTIONS, not arguments: a pinned function (open, fopen, rename, link,
+    unlink, ftruncate) called a new way is the token rules' to find, not its;
+  - a file-making function the import net does not watch (one that is not in FILE_MAKING), a system
+    call made without a libc function the net watches, and code of ANOTHER library the worker
+    links (libavformat, libavutil) are outside both nets;
+  - the token rules are held on src/ only; the import net on build/capture-worker only - a proof
+    build is not netted (the Core starts none).
 
 usage:  pinned_calls.py <source dir> <table.tsv>     exit 0 when every rule holds; else one line
                                                      per violation ("R-6: ..." / "F-10: ...")
         pinned_calls.py --print <source dir>         the table rows of the sources as they are
+        pinned_calls.py --imports <binary> <pin>     the import net over one linked binary
 """
 import os
 import re
+import subprocess
 import sys
 
 FILE_MAKING = [
@@ -49,6 +71,7 @@ FILE_MAKING = [
     'unlink', 'unlinkat', 'remove', 'rmdir', 'mkdir', 'mkdirat', 'mkfifo', 'mknod',
     'mkstemp', 'mkostemp', 'mkstemps', 'mktemp', 'tmpfile', 'tmpnam',
     'copyfile', 'fcopyfile', 'clonefile', 'clonefileat', 'fclonefileat', 'exchangedata',
+    'removefile', 'removefileat', 'open_dprotected_np', 'openat_dprotected_np', 'shm_open', 'shm_unlink',
     'avio_open', 'avio_open2',
     'syscall', '__syscall', 'dlsym', 'dlopen', 'system', 'popen', 'fork', 'vfork',
     'execl', 'execlp', 'execle', 'execv', 'execvp', 'execve', 'posix_spawn', 'posix_spawnp',
@@ -67,7 +90,12 @@ MUX_BANNED = {'av_dict_copy', 'av_opt_set', 'av_opt_set_int', 'av_opt_set_double
               'av_opt_set_dict', 'av_opt_set_dict2', 'av_opt_set_from_string', 'av_set_options_string',
               'avformat_init_output', 'avfilter_graph_queue_command', 'avfilter_process_command'}
 # Pinned by count and place only: their arguments name no option and no file.
-ARGS_FREE = {'avformat_write_header', 'avformat_alloc_output_context2', 'avformat_open_input', 'avfilter_graph_send_command'}
+ARGS_FREE = {'avformat_write_header', 'avformat_open_input', 'avfilter_graph_send_command'}
+# Review R63-08: the one muxer the worker asks libavformat for. Another name could open files of its own.
+MUXER_NAME = 'mp4'
+# Review R63-08: other spellings of `#` / `##` and of a linker name. Adjacent punctuation tokens / identifiers.
+DIGRAPHS = ['%:', '<:', ':>', '<%', '%>']
+ASM_NAMES = {'asm', '__asm', '__asm__', 'alias', '__alias__', 'weakref', '__weakref__'}
 DECIDED_KEYS = {'movflags', 'flush_packets', 'min_frag_duration', 'rtsp_flags', 'listen_timeout', 'protocol_whitelist'}
 # Capture spec C.4 (erratum PE-111-02), register W1-C1, W-1, decision D72(d).
 FORBIDDEN_NAMES = ['use_editlist', 'negative_cts_offsets', 'avoid_negative_ts', 'frag_type', 'default_prft',
@@ -193,6 +221,15 @@ def scan(directory):
         # Token paste: a name glued from pieces is seen by no rule below.
         if any(token[0] == 'p' and token[1] == '##' for token in tokens):
             bad.append('R-6: %s: the token-paste operator ## is not used in the worker (a glued name is seen by no rule)' % name)
+        # Review R63-08: the same operator in its other spellings, and a C name with another linker name.
+        for (k1, v1, _, e1), (k2, v2, s2, _) in zip(tokens, tokens[1:]):
+            if k1 == 'p' and k2 == 'p' and e1 == s2 and v1 + v2 in DIGRAPHS:
+                bad.append('R-6: %s: the digraph %s is not used in the worker (%%:%%: is the token paste; a glued name is seen by no rule)' % (name, v1 + v2))
+        if re.search(r"\?\?[=/'()!<>-]", raw[name]):
+            bad.append('R-6: %s: a trigraph (??x) is not used in the worker (??= is # under -std=c11)' % name)
+        for kind, value, _, _ in tokens:
+            if kind == 'id' and value in ASM_NAMES:
+                bad.append('R-6: %s: %s is not used in the worker (an assembler label or an alias gives a function another linker name: no rule would see what is called)' % (name, value))
 
         # Forbidden option names: in any identifier, and in any string after its pieces are joined.
         run = []
@@ -261,6 +298,10 @@ def scan(directory):
             if value == 'av_dict_parse_string':
                 if len(args) < 2 or spell(args[1]) != 'g_mux_extra':
                     bad.append('F-10: %s: av_dict_parse_string(%s) - its source is not the proof-build seam g_mux_extra' % (name, text))
+            if value == 'avformat_alloc_output_context2':
+                muxer = args[2] if len(args) > 2 else []
+                if len(args) != 4 or spell(args[1]) != 'NULL' or spell(args[3]) != 'NULL' or len(muxer) != 1 or muxer[0][0] != 'str' or muxer[0][1] != MUXER_NAME:
+                    bad.append('F-10: %s: avformat_alloc_output_context2(%s) - the muxer is not the one string literal "%s" with no format object and no file name' % (name, text, MUXER_NAME))
             if value in ARGS_FREE:
                 text = '*'
             calls[(name, value, text)] = calls.get((name, value, text), 0) + 1
@@ -276,7 +317,46 @@ def rows_of(calls, mentions):
     return rows
 
 
+def imports_of(binary):
+    """The undefined symbols of a linked binary as plain C names: no leading underscore, no $SUFFIX of the platform."""
+    listing = subprocess.run(['nm', '-u', binary], capture_output=True, text=True)
+    if listing.returncode != 0:
+        return None
+    names = set()
+    for line in listing.stdout.splitlines():
+        symbol = line.split()[-1] if line.split() else ''
+        if symbol.startswith('_'):
+            symbol = symbol[1:]
+        names.add(symbol.split('$')[0])
+    return names
+
+
+def check_imports(binary, pin):
+    """The import net: the watched file-making functions the binary imports are exactly the pinned ones."""
+    names = imports_of(binary)
+    if names is None:
+        print('R-6: %s: the imports could not be read (nm -u)' % binary)
+        return 1
+    with open(pin, encoding='utf-8') as handle:
+        pinned = {line.strip() for line in handle if line.strip() and not line.startswith('#')}
+    bad = []
+    if not pinned:
+        bad.append('R-6: %s: the list of pinned imports is empty' % pin)
+    for name in sorted(pinned - set(FILE_MAKING)):
+        bad.append('R-6: %s: %s is pinned and is not a watched function' % (pin, name))
+    seen = names & set(FILE_MAKING)
+    for name in sorted(seen - pinned):
+        bad.append('R-6: %s imports %s, which is not a pinned file-making function (%s) - whatever the sources spell' % (binary, name, pin))
+    for name in sorted(pinned - seen):
+        bad.append('R-6: %s no longer imports the pinned function %s: the pin is stale (a decision, like a row of pinned-calls.tsv)' % (binary, name))
+    for line in bad:
+        print(line)
+    return 1 if bad else 0
+
+
 def main(argv):
+    if len(argv) == 4 and argv[1] == '--imports':
+        return check_imports(argv[2], argv[3])
     if len(argv) == 3 and argv[1] == '--print':
         calls, mentions, _ = scan(argv[2])
         print('\n'.join(rows_of(calls, mentions)))

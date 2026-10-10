@@ -27,6 +27,8 @@ import {
   auditRowFromRow,
   captureConfigFromRow,
   captureDevicesFromRows,
+  selectorDeviceIds,
+  type CaptureDeviceListing,
   coreDeviceFromRow,
   eventFromRow,
   evidenceItemFromRows,
@@ -85,8 +87,17 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
 const NO_TRACKS: readonly EvidenceTrackRow[] = [];
 const NO_CUSTODY: readonly EvidenceCustodyRow[] = [];
 
+/** What a caller may say about the Core that reads the rows. Absent: the rows are mapped as stored. */
+export interface FromRowsOptions {
+  /**
+   * The device-list rule of the running capture operation (finding R69-03): a registry row it
+   * refuses is not in slice `captureDevices`. The selector is still read against EVERY stored row.
+   */
+  readonly captureDeviceListing?: CaptureDeviceListing;
+}
+
 /** The durable slices that `rows` hold. */
-export function fromRows(rows: StoredRows): DurableSlices {
+export function fromRows(rows: StoredRows, options: FromRowsOptions = {}): DurableSlices {
   const coreState = single(rows.coreState, 'core_state');
   const head = single(rows.auditChainHead, 'audit_chain_head');
   if (rows.activeSession.length > 1) {
@@ -144,7 +155,7 @@ export function fromRows(rows: StoredRows): DurableSlices {
     // way it refuses a missing core_device). The derivations are rows.ts's, mirroring the
     // capture-config module's builders.
     captureConfig: captureConfigFromRow(single(rows.captureConfig, 'capture_config'), rows.captureDevices),
-    captureDevices: captureDevicesFromRows(rows.captureDevices),
+    captureDevices: captureDevicesFromRows(rows.captureDevices, options.captureDeviceListing, selectorDeviceIds(single(rows.captureConfig, 'capture_config'))),
     // Snapshot slices.
     ...snapshotSlicesFromRow(single(rows.hardwareSnapshot, 'hardware_snapshot')),
   };

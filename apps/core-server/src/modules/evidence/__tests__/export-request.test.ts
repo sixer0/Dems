@@ -35,10 +35,14 @@ describe('a body the contract accepts', () => {
     expect(readExportBody({ reason: '  Prosecutor request  ', destination: ' Case file ' })).toEqual({
       kind: 'VALID',
       request: { reason: 'Prosecutor request', destination: ' Case file ' },
+      named: false,
     });
-    expect(readExportBody({ reason: 'Court order 17' })).toEqual({ kind: 'VALID', request: { reason: 'Court order 17', destination: '' } });
+    expect(readExportBody({ reason: 'Court order 17' })).toEqual({ kind: 'VALID', request: { reason: 'Court order 17', destination: '' }, named: false });
+    // R93-06: a body that names its kind says so; the kind itself is read by the route.
+    expect(readExportBody({ reason: 'Court order 17', kind: 'COMPOSITE' })).toMatchObject({ kind: 'VALID', named: true });
+    expect(readExportBody({ reason: 'Court order 17', kind: 'PACKAGE' })).toMatchObject({ kind: 'VALID', named: true });
     // API-4: an unknown key is dropped, not refused.
-    expect(readExportBody({ reason: 'Court order 17', operatorId: 'OPR-002', at: 1 })).toEqual({ kind: 'VALID', request: { reason: 'Court order 17', destination: '' } });
+    expect(readExportBody({ reason: 'Court order 17', operatorId: 'OPR-002', at: 1 })).toEqual({ kind: 'VALID', request: { reason: 'Court order 17', destination: '' }, named: false });
   });
 
   it('the bounds themselves pass: 5 and 500 for the reason, 120 for the destination, in UTF-16 code units', () => {
@@ -49,6 +53,7 @@ describe('a body the contract accepts', () => {
     expect(readExportBody({ reason: 'r'.repeat(500), destination: 'd'.repeat(120) })).toEqual({
       kind: 'VALID',
       request: { reason: 'r'.repeat(500), destination: 'd'.repeat(120) },
+      named: false,
     });
     // 120 code units that end in a two-unit character, and white space around 120.
     expect(readExportBody({ reason: 'abcde', destination: `${'d'.repeat(118)}${FACE}` }).kind).toBe('VALID');

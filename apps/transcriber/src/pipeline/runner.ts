@@ -96,6 +96,16 @@ export interface TranscriptRunnerOptions {
   readonly minPlanMs?: number;
   /** Asked before every chunk; true holds the runner back until the next `step` (§C). */
   readonly shouldPause?: () => boolean;
+  /**
+   * THE STOP OF THIS RUNNER (code review row 80, R80-03). Once it answers true THE RUNNER WRITES
+   * NOTHING ANY MORE - no checkpoint file, no mirror row - and starts nothing: it is asked before
+   * every write, before every attempt of a chunk, and AFTER every engine call, so an answer that
+   * arrives late (a slow engine, a hanging backend that came back) is dropped and commits nothing.
+   * The caller sets it for good when another runner takes the session over (the close-out of the
+   * seal), when the session is abandoned, and at a shutdown. Unlike `shouldPause` it is not a
+   * hold between chunks: a stopped runner is never resumed. Its chunk files are still removed.
+   */
+  readonly shouldStop?: () => boolean;
   /** Told what happens to a chunk, for a check that watches from outside. No time. */
   readonly onChunk?: (event: { readonly chunkIndex: number; readonly seq: number; readonly phase: 'reused' | 'running' | 'done' | 'failed' }) => void;
 }
@@ -209,7 +219,11 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
   /** What the mirror is known to hold, by `seq`. Null: not known (not read yet, or a write failed). */
   let mirrored: Map<number, string> | null = null;
 
+  const stopped = (): boolean => options.shouldStop?.() === true;
+
+  /** Every write of the checkpoint file goes through here: a stopped runner writes nothing (R80-03). */
   const save = (): void => {
+    if (stopped()) return;
     store.save(checkpoint);
   };
 
@@ -231,10 +245,11 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
 
   async function syncMirror(): Promise<void> {
     const mirror = options.mirror;
-    if (mirror === undefined) return;
+    if (mirror === undefined || stopped()) return;
     try {
       if (mirrored === null) mirrored = new Map((await mirror.read(sessionId)).map((row) => [row.seq, fingerprint(row)]));
       const known = mirrored;
+      if (stopped()) return;
       if (startedEmpty) {
         startedEmpty = false;
         // THE CHECKPOINT FILE WAS LOST BUT THE TABLE HOLDS ROWS OF IT (N-6). The file is the only
@@ -248,12 +263,14 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
       }
       const desired = mirrorRows(checkpoint);
       const missing = desired.filter((row) => !known.has(row.seq));
-      if (missing.length > 0) {
+      if (missing.length > 0 && !stopped()) {
         await mirror.insertMissing(missing);
         for (const row of missing) known.set(row.seq, fingerprint(row));
       }
       for (const row of desired) {
         if (known.get(row.seq) === fingerprint(row)) continue;
+        // Stopped while a statement was under way: no further row is written by this runner.
+        if (stopped()) return;
         await mirror.update(sessionId, row.seq, { status: row.status, segments: row.segments, modelId: row.modelId, computedAt: row.computedAt });
         known.set(row.seq, fingerprint(row));
       }
@@ -345,6 +362,7 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     const maxWindow = msToSamples(timeline, VAD_WINDOW_MAX_MS);
     const minPlan = msToSamples(timeline, options.minPlanMs ?? VAD_MAX_CHUNK_MS);
     while (!checkpoint.audioComplete) {
+      if (stopped()) return planned;
       let available: number;
       try {
         available = source.availableSamples();
@@ -370,6 +388,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
 
       const window = { from, to };
       let spans = await detectSpeech(window);
+      // Stopped while the VAD ran: its answer plans nothing.
+      if (stopped()) return planned;
       // A pass that cut an open run left the cursor inside it (N-4): this pass is told how far it reached.
       let result = planChunks({ timeline, window, spans, final: last, openRunUntil: checkpoint.openRunUntilSample ?? null });
       if (!last && final && result.chunks.length === 0 && result.nextCursor === from && spans !== null) {
@@ -395,8 +415,9 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     return planned;
   }
 
-  /** DECODE one chunk. Returns true when it was committed. */
-  async function decode(chunk: CheckpointChunk): Promise<boolean> {
+  /** DECODE one chunk. Returns true when it was committed; null when the runner was stopped (nothing was written for the chunk from then on). */
+  async function decode(chunk: CheckpointChunk): Promise<boolean | null> {
+    if (stopped()) return null;
     const range = { from: chunk.fromSample, to: chunk.toSample };
     const correlationId = `${sessionId}#${chunk.chunkIndex}`;
     chunk.status = ChunkStatus.RUNNING;
@@ -409,6 +430,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     let lastCode: string = TranscriberErrorCode.ENGINE_FAILED;
     try {
       for (let attempt = 0; attempt <= STT_CHUNK_RETRIES; attempt += 1) {
+        // No attempt starts on a stopped runner: no engine, no request.
+        if (stopped()) return null;
         try {
           mkdirSync(workDir, { recursive: true });
           writeFileSync(path, encodeWavPcm16(source.read(range), timeline.sampleRateHz), { mode: 0o600 });
@@ -416,6 +439,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
             { audio: { kind: 'file', path }, sampleRateHz: timeline.sampleRateHz, offsetMs: chunk.startMs, durationMs: chunk.endMs - chunk.startMs },
             { language: TRANSCRIBER_LANGUAGE, correlationId, ...(options.prompt === undefined ? {} : { prompt: options.prompt }) },
           );
+          // THE ANSWER CAME AFTER THE STOP (R80-03): it is dropped. The chunk is whatever the runner that took over made of it.
+          if (stopped()) return null;
           const clamped = clampSegments(result.segments, timeline, range);
           if (clamped.clamped > 0 || clamped.dropped.length > 0) {
             log.warn({
@@ -443,6 +468,8 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
     } finally {
       rmSync(path, { force: true });
     }
+    // A failure that arrived after the stop gives nothing up either: this runner states nothing any more.
+    if (stopped()) return null;
     chunk.status = ChunkStatus.FAILED;
     chunk.segments = null;
     chunk.computedAt = null;
@@ -459,6 +486,10 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
   const toDecode = (): CheckpointChunk[] => checkpoint.chunks.filter((chunk) => chunk.status === ChunkStatus.PENDING || chunk.status === ChunkStatus.RUNNING);
 
   async function step(stepOptions: { readonly final: boolean }): Promise<StepReport> {
+    // A STOPPED RUNNER DOES NOTHING (R80-03): it reads no audio, plans nothing and reports its own last view, never `complete`.
+    if (stopped()) {
+      return { planned: 0, decoded: 0, failed: 0, reused: 0, remaining: toDecode().length, paused: true, complete: false, qaFlags: [...checkpoint.qaFlags], transcriptState: 'PENDING', partialReason: null };
+    }
     adoptPostPass();
     // THE TAP SIGNAL IS STICKY (N-1): asked at every step, latched in the checkpoint file at once.
     if (!checkpoint.audioUnavailable && options.tapLost?.() === true) {
@@ -481,11 +512,17 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
         paused = true;
         break;
       }
-      if (await decode(chunk)) decoded += 1;
+      const committed = await decode(chunk);
+      if (committed === null) {
+        paused = true;
+        break;
+      }
+      if (committed) decoded += 1;
       else failed += 1;
     }
     const remaining = toDecode().length;
-    const complete = checkpoint.audioComplete && remaining === 0;
+    // A stopped runner never says `complete`: what it holds in memory is not what is stored any more.
+    const complete = !stopped() && checkpoint.audioComplete && remaining === 0;
     // END OF A RUN: no chunk file, VAD window or engine record stays behind (unencrypted session audio).
     if (complete) rmSync(workDir, { recursive: true, force: true });
     const anyFailed = checkpoint.chunks.some((chunk) => chunk.status === ChunkStatus.FAILED);
@@ -495,6 +532,7 @@ export function createTranscriptRunner(options: TranscriptRunnerOptions): Transc
   }
 
   function retryFailed(): number {
+    if (stopped()) return 0;
     adoptPostPass();
     if (checkpoint.diarization !== undefined || checkpoint.document !== undefined) {
       // The label map belongs to the committed segments as they are, and an assembled machine

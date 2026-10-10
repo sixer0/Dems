@@ -1,0 +1,11 @@
+# The file-making functions the capture worker BINARY may import (fix pass F-M3, review R63-08; decision D84 R-6).
+# One name per line, without the leading underscore and without a $SUFFIX of the platform. `nm -u` of
+# build/capture-worker is read after every link (Makefile): a watched function that is not listed here,
+# and a listed one that is no longer imported, both stop the build. The watched set is FILE_MAKING of
+# pinned_calls.py. A new line here is a decision, like a new row of pinned-calls.tsv.
+fopen
+ftruncate
+link
+open
+rename
+unlink

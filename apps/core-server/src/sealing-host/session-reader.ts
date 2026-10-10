@@ -51,7 +51,9 @@ export const READ_SEAL_AUDIT_ROWS =
  *                           members - case number, subject name, subject type, investigator - and
  *                           none is an authorization. The fixed text below stands in until the
  *                           contract gives the session input that member;
- *   tracks[].clockOffsetMs  field 40: the camera adapter's report, from the capture facts. The
+ *   tracks[].clockOffsetMs  field 40: the offset the capture WORKER measured at anchoring, from the
+ *                           capture facts (tidy pass F-Y); the camera adapter's report where the
+ *                           worker reported none. The
  *                           stand-in 0 is written ONLY for a camera whose adapter reported none
  *                           (the field is "not null") and for a session that has no capture facts;
  *   tracks[].codec          field 43: NO LONGER A STAND-IN (integration pass D9). Protocol 4 names no
@@ -147,6 +149,12 @@ export interface SealCaptureFacts {
     readonly trackId: string;
     readonly deviceId: string;
     readonly clockOffsetMs: number | null;
+    /**
+     * Tidy pass F-Y (fix F-M3 decision 3): the offset the WORKER measured when it anchored the camera
+     * (camera clock minus Core clock, whole ms). Manifest field 40 is THIS value when it is there;
+     * the adapter's report above is the fallback. Absent / null: the worker reported none.
+     */
+    readonly measuredClockOffsetMs?: number | null;
     readonly firstVideo: { readonly pts: number; readonly timescale: number } | null;
   }[];
 }
@@ -175,8 +183,14 @@ export interface SealCaptureFacts {
 export const STT_SNAPSHOT_NOT_RECORDED_MODEL = 'not-recorded';
 export const NO_STT_SNAPSHOT_RECORDED: SttConfigSnapshot = Object.freeze({ enabled: true, backend: 'cpu-local', model: STT_SNAPSHOT_NOT_RECORDED_MODEL, diarization: false, revision: 1 });
 
-/** True for the fixed snapshot of a session that recorded none: the transcript step then waits for nothing. */
-export const isSttSnapshotNotRecorded = (snapshot: SttConfigSnapshot): boolean => snapshot.model === STT_SNAPSHOT_NOT_RECORDED_MODEL;
+/**
+ * True for THE stand-in of a session that recorded no snapshot: the transcript step then waits for
+ * nothing. BY IDENTITY, never by a member (code review row 80, R80-07): `not-recorded` is a valid
+ * model identifier, and a session whose real snapshot names such a model HAS a snapshot. A copy of
+ * the stand-in is not it either - the step then asks the transcription unit, which answers
+ * `NO_SNAPSHOT` for a session that has none.
+ */
+export const isSttSnapshotNotRecorded = (snapshot: SttConfigSnapshot): boolean => snapshot === NO_STT_SNAPSHOT_RECORDED;
 
 const oneOf = <Value extends string>(values: readonly Value[], value: unknown, otherwise: Value): Value => (values.includes(value as Value) ? (value as Value) : otherwise);
 const text = (value: string | null | undefined): string => (typeof value === 'string' && value.length > 0 ? value : STAND_INS.unknownText);
@@ -270,7 +284,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
           name: text(camera?.name),
           model: text(device?.model ?? camera?.model),
           firmware: text(device?.firmware ?? camera?.firmware),
-          clockOffsetMs: reported?.clockOffsetMs ?? STAND_INS.clockOffsetMs,
+          clockOffsetMs: reported?.measuredClockOffsetMs ?? reported?.clockOffsetMs ?? STAND_INS.clockOffsetMs,
           codec: codecs.get(trackId) ?? null,
           avOffsetMs: null,
           firstVideoSamplePts: reported?.firstVideo?.pts ?? null,

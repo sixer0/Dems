@@ -1,12 +1,14 @@
 import { Alert, Button, Chip, ProgressBar } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { RotateCcw } from 'lucide-react'
+import { Download, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { retryCoreQuery, useQueryFailure } from '@/lib/core-queries'
-import { ExportJobReadError, exportJobQueryKey, useExportJob } from './export-job'
-import { COMPOSITE_NOT_SELECTED, exportJobIdOf, type ExportJobStatus as JobStatus } from './export-job-model'
+import { useWebLive } from '@/runtime'
+import { ExportJobReadError, exportJobQueryKey, startExportDownload, useExportJob, type ExportDownloadStart } from './export-job'
+import { COMPOSITE_NOT_SELECTED, EXPORT_INTERRUPTED, EXPORT_JOBS_NOT_AVAILABLE, exportJobIdOf, type ExportJobStatus as JobStatus } from './export-job-model'
 import { logEvidence } from './log'
 import { shortHash } from './model'
 import { useRetryCooldown } from './use-retry-cooldown'
@@ -29,8 +31,12 @@ export interface ExportJobStatusProps {
  *
  * A composite is marked "Derived output — not the sealed evidence"; a composite job that ends
  * `COMPOSITE_ENCODER_NOT_SELECTED` reads "Composite video is not available in this build" (a state
- * of the product, not a fault of the operator). There is no download operation: the line says "The
- * export is stored on the Core", and no download control is drawn.
+ * of the product, not a fault of the operator).
+ *
+ * A COMPLETE job the Core names a download for draws "Download export" (fix pass F-M8, R93-05; UX
+ * §6.6): the press reads the job once more for a fresh signed path and hands it to the browser
+ * (`startExportDownload`); nothing of that path is kept by this component. A COMPLETE job without
+ * a download (a simulated export) says "The export is stored on the Core" and draws no control.
  */
 export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = null }: ExportJobStatusProps) {
   const { t } = useTranslation()
@@ -39,6 +45,23 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
   const retry = useRetryCooldown()
   const jobId = exportJobIdOf(exportId, answeredJobId)
   const query = useExportJob(jobId)
+  const live = useWebLive()
+  const downloadRetry = useRetryCooldown()
+  const [download, setDownload] = useState<{ readonly busy: boolean; readonly last: ExportDownloadStart | null }>({ busy: false, last: null })
+
+  const startDownload = async () => {
+    if (live === null || jobId === null || download.busy) return
+    // A press after a failed start is rate-limited (3 s, 6 s, 12 s; three tries).
+    if (download.last !== null && download.last !== 'STARTED' && !downloadRetry.consume()) return
+    setDownload({ busy: true, last: null })
+    const result = await startExportDownload(live, jobId)
+    if (result.outcome === 'STARTED') downloadRetry.reset()
+    else if (result.failure === null || presentCoreError(result.failure, { permission: Permission.EVIDENCE_EXPORT, afterAcceptedCommand: true }) === null) {
+      // Codes only: the path of a download is never part of a record.
+      logEvidence('warn', 'export.download', null, { evidenceId, exportId, outcome: result.outcome, status: result.failure?.status ?? null, code: result.failure?.error.code ?? 'NO_DOWNLOAD' })
+    }
+    setDownload({ busy: false, last: result.outcome })
+  }
 
   useQueryFailure(query, (error) => {
     const read = error instanceof ExportJobReadError ? error : null
@@ -100,10 +123,36 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
           </div>
         </dl>
       ) : null}
-      {job?.status === 'COMPLETE' ? (
+      {job?.status === 'COMPLETE' && !job.downloadable ? (
         <span className="evi-caption" data-testid="export-job-on-core">
           {t('evidence.exportJob.onCore', { exportId })}
         </span>
+      ) : null}
+      {job?.status === 'COMPLETE' && job.downloadable ? (
+        <div className="flex flex-wrap items-center gap-2" data-testid="export-job-download-row">
+          <Button
+            size="sm"
+            variant="primary"
+            isDisabled={download.busy || (download.last !== null && download.last !== 'STARTED' && !downloadRetry.canRetry)}
+            isPending={download.busy}
+            onPress={() => void startDownload()}
+            data-testid="export-job-download"
+          >
+            <Download className="size-4" aria-hidden="true" />
+            {download.busy
+              ? t('evidence.exportJob.downloadStarting')
+              : download.last !== null && download.last !== 'STARTED' && downloadRetry.exhausted
+                ? t('common.errors.maxRetries')
+                : download.last !== null && download.last !== 'STARTED' && downloadRetry.cooldownSeconds > 0
+                  ? t('common.actions.retryIn', { seconds: downloadRetry.cooldownSeconds })
+                  : t('evidence.exportJob.download')}
+          </Button>
+          {download.last === 'FAILED' || download.last === 'UNAVAILABLE' ? (
+            <span className="evi-caption evi-bad" role="alert" data-testid="export-job-download-failed" data-outcome={download.last}>
+              {t(download.last === 'FAILED' ? 'evidence.exportJob.downloadFailed' : 'evidence.exportJob.downloadUnavailable')}
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
       {job?.status === 'FAILED' ? (
@@ -114,7 +163,11 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
             <Alert.Title>
               {job.failureReason === COMPOSITE_NOT_SELECTED
                 ? t('evidence.exportJob.compositeUnavailable')
-                : job.failureReason !== null
+                : job.failureReason === EXPORT_INTERRUPTED
+                  ? t('evidence.exportJob.failedInterrupted')
+                  : job.failureReason === EXPORT_JOBS_NOT_AVAILABLE
+                    ? t('evidence.exportJob.failedNotAvailable')
+                    : job.failureReason !== null
                   ? t('evidence.exportJob.failed', { reason: job.failureReason })
                   : t('evidence.exportJob.failedNoReason')}
             </Alert.Title>

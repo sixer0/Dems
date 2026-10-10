@@ -189,6 +189,26 @@ int main(void) {
     for (int k = 0; k < 50 * 60; k++) { trend_add(&t, k * 0.02, 5.0 + (k % 7) * 0.3); near += trend_near_bound(&t); }
     CHECK(near == 0, "a healthy camera set nearBound %d times", near);
 
+    /* (4) review R63-13: the span of delivered video a file does not hold counts the packets that had no timestamp.
+     * -DNO_LEAD is the arithmetic before fix pass F-M3 (camera time only): it must fail (a) and (c). */
+#ifdef NO_LEAD
+#define SPAN(camera_us, packets, arrival_us, period_us) (((camera_us) + 500) / 1000)
+#else
+#define SPAN(camera_us, packets, arrival_us, period_us) skipped_span_ms(camera_us, packets, arrival_us, period_us)
+#endif
+    /* (a) decision D130 as measured: 1 packet without a timestamp, then 29 before the start (25 fps: 1,160 ms of camera
+     *     time from the first timestamped one). The file misses 30 frames = 1,200 ms, not 1,160. */
+    CHECK(SPAN(1160000, 1, 0, 40000) == 1200, "D130 case: span %lld ms, expected 1,200 (29 timestamped frames + 1 untimestamped at 25 fps)", (long long)SPAN(1160000, 1, 0, 40000));
+    /* (b) CONTROL: nothing without a timestamp: the span is the camera time, as before. */
+    CHECK(SPAN(805000, 0, 0, 40000) == 805 && SPAN(0, 0, 0, 40000) == 0, "no untimestamped lead: %lld and %lld ms, expected 805 and 0", (long long)SPAN(805000, 0, 0, 40000), (long long)SPAN(0, 0, 0, 40000));
+    /* (c) the first sender report came 5 s after the camera began to send: 125 untimestamped frames arrived over
+     *     4.96 s; the first timestamped one is the keyframe the file starts with (camera span 0). The hole is 5 s. */
+    CHECK(SPAN(0, 125, 4960000, 40000) == 5000, "late first report: span %lld ms, expected 5,000 (125 frames at 25 fps; arrivals 4,960 ms)", (long long)SPAN(0, 125, 4960000, 40000));
+    /* (d) the arrivals say MORE than the count (frames were lost on the way): the longer of the two is stated. */
+    CHECK(SPAN(0, 10, 2000000, 40000) == 2000, "arrival span above count x period: %lld ms, expected 2,000", (long long)SPAN(0, 10, 2000000, 40000));
+    /* (e) a stream that states no frame rate: the arrivals alone. */
+    CHECK(SPAN(40000, 3, 90000, 0) == 130, "no nominal rate: %lld ms, expected 130", (long long)SPAN(40000, 3, 90000, 0));
+
     printf(failed ? "anchor_test: %d check(s) FAILED\n" : "anchor_test: all checks hold\n", failed);
     return failed ? 1 : 0;
 }

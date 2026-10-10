@@ -72,7 +72,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { MappingError } from '../../db/mapping';
 import { simCodeOf, simRefusal, type EngineOutcome } from '../../engine';
-import { EXPORT_IN_PROGRESS_TEXT, evidenceExport, exportKindOfBody } from '../../evidence-export';
+import { EXPORT_IN_PROGRESS_TEXT, createExportService, evidenceExport, exportJobIdOf, exportKindOfBody } from '../../evidence-export';
 import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from './cursor';
@@ -162,6 +162,8 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
     archiveEvidence: operationOf('archiveEvidence'),
   } as const satisfies Record<EvidenceModuleOperation, CoreApiRegistryOperation>;
   const exportIdPattern = idPatternOf(operations.exportEvidence);
+  // Fix pass F-M8: what operation 42 asks of the export unit before its hosted action (`evidence-export/service.ts`).
+  const exportService = createExportService(app);
   const realVerification = evidenceVerification(app);
 
   /**
@@ -250,6 +252,13 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const evidenceId = pathIdOf(request);
       if (!exportIdPattern.test(evidenceId)) throw exportRefused({ ok: false, status: 404, reason: 'NOT_FOUND' });
 
+      // Fix pass F-M8 (review findings R93-01, R93-03; ruling D178). An item whose sealed package
+      // lies in this Core's store is exported by a JOB: the REAL-evidence case scope is held, the
+      // jobs must be composed (else the request is refused by name and nothing is marked), and the
+      // request is committed DEFERRED - status EXPORTED and the custody entry are the job's
+      // completion, never the request's. Every other item takes the hosted action as it is.
+      const admitted = await exportService.admitRequest(request, evidenceId);
+
       // Task 3 row 91: an item with an unfinished export job takes no second request (C3 §4). The
       // ticket is taken BEFORE the hosted action, so two requests cannot both pass; while no export
       // jobs are provided (`src/evidence-export`), nothing is asked and nothing is refused here.
@@ -257,9 +266,12 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const ticket = exportJobs === null ? null : exportJobs.begin(evidenceId);
       if (exportJobs !== null && ticket === null) throw new ApiFailure(409, 'EXPORT_IN_PROGRESS', EXPORT_IN_PROGRESS_TEXT);
 
+      const kind = exportKindOfBody(request.body);
       let result: ExportResult;
       try {
-        const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, body.kind === 'VALID' ? body.request : NO_REASON);
+        // R93-06: the kind the body named goes onto the request row; `completion` is the server's own member, never the body's.
+        const hostedRequest = body.kind === 'VALID' ? { ...body.request, ...(body.named ? { kind } : {}), ...(admitted.job ? { completion: 'DEFERRED' as const } : {}) } : NO_REASON;
+        const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, hostedRequest);
         result = outcome.value;
       } catch (error) {
         ticket?.cancel();
@@ -270,11 +282,13 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
         ticket?.cancel();
         throw exportRefused(result);
       }
-      // The request is committed. For a real sealed v2 package the background job is queued now
-      // (operation 87 polls it); for every other item this changes nothing. It never rejects.
-      await ticket?.accepted({ exportId: result.exportId, kind: exportKindOfBody(request.body) });
+      // The request is committed. For a sealed package the background job is queued now (operation
+      // 87 polls it); a deferred request no job could be queued for ends FAILED, with its row. For
+      // every other item this changes nothing. It never rejects.
+      await ticket?.accepted({ exportId: result.exportId, kind, deferred: admitted.job });
       void reply.code(202);
-      return { exportId: result.exportId, evidenceId, status: 'QUEUED' };
+      // R93-06: the job operation 87 polls, as the contract and the simulator name it.
+      return { exportId: result.exportId, evidenceId, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) };
     },
   });
 

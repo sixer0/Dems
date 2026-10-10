@@ -46,6 +46,7 @@ import {
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
   CAPTURE_DEVICE_CHANGED_CAUSE,
   CaptureConnectionOutcome,
+  CaptureConnectionTestReason,
   CaptureDiscoveryReason,
   CaptureSourceClass,
   RETRY_AFTER_HEADER_NAME,
@@ -63,6 +64,7 @@ import type { EngineOutcome, EngineUnit } from '../../../engine';
 import type { Principal } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import type { ConnectionTestLimits, ConnectionTestRefusal, GuardVerdict } from './limits';
+import { readRegisteredCameras } from '../registered';
 import { insertCaptureCredential, upsertCaptureCredential, type CaptureCredentialRow } from './statements';
 
 // ── Seams ──────────────────────────────────────────────────────────────────────────────────────
@@ -72,6 +74,8 @@ export interface CandidateTestRecord {
   readonly outcome: CaptureConnectionOutcome;
   readonly authenticated: boolean;
   readonly testedAt: number;
+  /** Present only for an `AUTHENTICATION_FAILED` test in which the credential was NOT sent (finding R69-13). */
+  readonly reason?: CaptureConnectionTestReason;
   /** The usable H.264 profile codes the test read; empty unless `REACHABLE`. */
   readonly profiles: readonly string[];
 }
@@ -96,7 +100,24 @@ export interface CandidateDirectory {
 }
 
 /** What one read-only attempt answers; `rejectedCredentialRequests` is absent for an adapter that does not count them. */
-export type ConnectionAttempt = ConnectionTestResult & { readonly rejectedCredentialRequests?: number };
+export type ConnectionAttempt = ConnectionTestResult & {
+  readonly rejectedCredentialRequests?: number;
+  /** The adapter's own reason code of the attempt (`OnvifTestReason`), when it gives one. Read for ONE value only: `reasonOf`. */
+  readonly reason?: string | null;
+};
+
+/**
+ * The reason a client is told (fix F-M4; review row 69, finding R69-13; decision D178). `cap`
+ * §A.6.2 gives a camera whose sign-in method the Core does not answer the outcome
+ * `AUTHENTICATION_FAILED` with the reason `SCHEME_NOT_ALLOWED`: THE CREDENTIAL WAS NOT SENT. The
+ * outcome alone reads "the camera refused this user name or password", which is false for it, so
+ * this one reason travels with the outcome. Every other reason of an adapter stays inside the Core.
+ * The lock-out guard does NOT count it (decision D181, ruling 3): no credential-bearing request was
+ * sent, so `rejectedCredentialRequests` is 0 and `limits.ts` adds nothing for the host.
+ */
+function reasonOf(attempt: ConnectionAttempt): { reason?: CaptureConnectionTestReason } {
+  return attempt.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED && attempt.reason === CaptureConnectionTestReason.SCHEME_NOT_ALLOWED ? { reason: CaptureConnectionTestReason.SCHEME_NOT_ALLOWED } : {};
+}
 
 /** THE SEAM TO THE DEVICE: the read-only test of `camera/onvif-session.ts`, or a camera adapter's `testConnection`. */
 export interface ConnectionTester {
@@ -157,6 +178,12 @@ export interface ConnectSeams {
   candidates(): CandidateDirectory | null;
   tester(): ConnectionTester | null;
   sealer(): CameraSecretSealer | null;
+  /**
+   * Whether `sealed` is an answer of the Core credential store ITSELF (`isStoreSealedSecret`: the
+   * object its `sealSecret` returned, in the store's form). Wired by the module's index, the one
+   * file of this folder that imports the store. Question 2 of review row 69.
+   */
+  storeSealed(sealed: unknown): boolean;
   registrar(): DeviceRegistrar | null;
 }
 
@@ -289,13 +316,15 @@ async function contact(
   } finally {
     cancel();
   }
-  const verdict = turn.end(attempt.outcome, attempt.rejectedCredentialRequests ?? 0);
+  // The count of the adapter, or null when it gives none: the guard counts rejected credential-bearing requests (D181 (3)).
+  const verdict = turn.end(attempt.outcome, attempt.rejectedCredentialRequests ?? null);
   const authenticated = sealed !== null;
   const record: CandidateTestRecord = {
     outcome: attempt.outcome,
     authenticated,
     testedAt: host.now(),
     profiles: attempt.outcome === CaptureConnectionOutcome.REACHABLE ? [...attempt.usableProfiles] : [],
+    ...reasonOf(attempt),
   };
   directory.recordTest(sessionId, candidate.candidateId, record);
   const sourceClass = sourceClassOfCandidate(candidate);
@@ -363,12 +392,14 @@ export function holdsClearSecret(ciphertext: Uint8Array, secret: string): boolea
 }
 
 /** Seals a secret for a device and holds the answer to the table's form before a statement is sent. */
-async function sealFor(sealer: CameraSecretSealer, deviceId: string, credential: OperatorCredential, at: number): Promise<CaptureCredentialRow> {
+async function sealFor(seams: Pick<ConnectSeams, 'storeSealed'>, sealer: CameraSecretSealer, deviceId: string, credential: OperatorCredential, at: number): Promise<CaptureCredentialRow> {
   return usingCredential(credential.sealed, async ({ username, secret }) => {
     const sealed = await sealer.seal(deviceId, secret);
-    const wellFormed =
-      typeof sealed.keyRef === 'string' && KEY_REF.test(sealed.keyRef) && sealed.ciphertext instanceof Uint8Array && sealed.ciphertext.byteLength >= 33 && sealed.nonce instanceof Uint8Array && sealed.nonce.byteLength === 12;
-    if (!wellFormed || holdsClearSecret(sealed.ciphertext, secret)) throw new SealedCameraSecretRefused();
+    // Question 2 of review row 69 (R69-05): the answer must be the Core credential store's OWN object
+    // (`isStoreSealedSecret`: what `sealSecret` returned, in the store's form - 80 bytes or more, a
+    // frame multiple, a 12-byte nonce). The local form check this replaced was a second, weaker copy
+    // (33 bytes), and a byte search cannot prove sealing. `holdsClearSecret` stays as a second line.
+    if (!seams.storeSealed(sealed) || !KEY_REF.test(sealed.keyRef) || holdsClearSecret(sealed.ciphertext, secret)) throw new SealedCameraSecretRefused();
     return { deviceId, username, ciphertext: sealed.ciphertext, nonce: sealed.nonce, keyRef: sealed.keyRef, at };
   });
 }
@@ -397,6 +428,7 @@ export async function testCandidate(seams: ConnectSeams, caller: ConnectCaller, 
     testedAt: record.testedAt,
     usableProfileCount: record.profiles.length,
     failedAttemptsRemaining: verdict.failedAttemptsRemaining,
+    ...(record.reason === undefined ? {} : { reason: record.reason }),
   };
 }
 
@@ -458,7 +490,10 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
     const taken = before.captureDevices.devices.find((device) => device.kind === 'CAMERA' && device.host === address);
     if (taken !== undefined) throw invalidState(CaptureDiscoveryReason.CANDIDATE_ALREADY_REGISTERED, 'This camera is already a capture device.', { deviceId: taken.id });
     const at = host.now();
-    const deviceId = nextCameraId(before.captureDevices.devices);
+    // Minted over the STORED registry (fix F-M4, finding R69-03): the listed state lacks a stored
+    // development device in `REAL_PRODUCTION`, and the registry's upsert would write this camera
+    // over such a row. Read in this unit, behind its chain lock: no other writer is in between.
+    const deviceId = nextCameraId([...before.captureDevices.devices, ...(await readRegisteredCameras(scope.unit))]);
     const device = await registrar(scope, caller.principal, {
       id: deviceId,
       adapterKind: candidate.camera.adapterKind,
@@ -469,7 +504,7 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
       at,
     });
     if (credential !== null && sealer !== null) {
-      await insertCaptureCredential(scope.unit, await sealFor(sealer, deviceId, credential, at));
+      await insertCaptureCredential(scope.unit, await sealFor(seams, sealer, deviceId, credential, at));
       await scope.unit.audit.append(credentialSet(caller, deviceId, 'adoptCaptureCandidate'));
     }
     await scope.unit.audit.append({
@@ -501,8 +536,15 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
 /**
  * Sets or REPLACES the credential of a registered camera: one unit of the engine, so that no
  * session can open between the lock read and the write. Writing a credential again is its
- * rotation: the sealer makes a new key each time, and the key of the replaced envelope is
- * destroyed by the unit that reads the stored references (the reveal side; `credentialKeys`).
+ * rotation: the sealer makes a new key each time.
+ *
+ * KNOWN GAP (review row 69, finding R69-09; not built in this phase): THE KEY OF A REPLACED
+ * ENVELOPE IS NOT DESTROYED. `credentialKeys.retainOnly` of the credential store is the hook for
+ * it and has no caller: the runtime role may read no `key_ref` of the credential table, so only an
+ * owner-side unit could say which references are stored, and none exists. A replaced credential,
+ * an adoption whose transaction rolls back after the seal, and an answer `sealFor` refuses each
+ * leave one key file (40 bytes, mode 0600) in the store for good. The file opens nothing that is
+ * stored; it is clutter and a key that should not outlive its envelope.
  */
 export async function setCredential(seams: ConnectSeams, caller: ConnectCaller, deviceId: string, credential: OperatorCredential): Promise<CaptureConfigSliceBody> {
   const { host } = seams;
@@ -516,7 +558,7 @@ export async function setCredential(seams: ConnectSeams, caller: ConnectCaller, 
     const before = scope.pending();
     if (!camera(before)) throw noDevice();
     if (isSessionActive(before.session)) throw locked();
-    await upsertCaptureCredential(scope.unit, await sealFor(sealer, deviceId, credential, host.now()));
+    await upsertCaptureCredential(scope.unit, await sealFor(seams, sealer, deviceId, credential, host.now()));
     await scope.unit.audit.append(credentialSet(caller, deviceId, 'setCaptureDeviceCredential'));
     return before.captureConfig;
   });

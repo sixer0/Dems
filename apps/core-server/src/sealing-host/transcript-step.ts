@@ -118,7 +118,11 @@ export function createSealTranscriptStep(options: SealTranscriptStepOptions): Tr
         answer = { kind: 'UNAVAILABLE', code: SealTranscriptCode.AVAILABILITY_UNKNOWN };
       }
       if (answer.kind === 'AVAILABLE') kind = { kind: 'AVAILABLE' };
-      else {
+      else if (answer.kind === 'NO_SNAPSHOT') {
+        // The transcription unit holds the session's own row: it has none (R80-07 - said by the unit, not read from a member).
+        kind = { kind: 'NOTHING', why: 'NO_SNAPSHOT' };
+        options.report('error', SealTranscriptCode.SNAPSHOT_MISSING, 'the session has no STT snapshot: no transcriber ran for it; it is sealed without a transcript document, as unavailable at the seal', sessionId, {});
+      } else {
         // The session record says STT was enabled: an answer that says otherwise is not believed over it.
         const why = answer.kind === 'UNAVAILABLE' ? answer.code : `SNAPSHOT_DISAGREES_${answer.kind}`;
         kind = { kind: 'NOTHING', why };

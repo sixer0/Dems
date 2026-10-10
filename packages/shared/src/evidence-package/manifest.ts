@@ -17,7 +17,7 @@
  */
 import { z } from 'zod';
 import { FinalizationStep } from '../domain';
-import { CAMERA_FILE_MEDIA_TYPE, MANIFEST_V2_SCHEMA_ID, MANIFEST_V2_VERSION, PackageFile, SESSION_AUDIO_TRACK_ID, VIDEO_TRACK_IDS, cameraFileName } from './layout';
+import { CAMERA_FILE_MEDIA_TYPE, MANIFEST_V2_SCHEMA_ID, MANIFEST_V2_VERSION, PackageFile, SESSION_AUDIO_TRACK_ID, VIDEO_TRACK_IDS, cameraFileName, isSealedTrackList } from './layout';
 import { MANIFEST_SOURCE_CLASSES, ManifestSourceClass, deriveDevelopmentSources } from './source-class';
 
 // ── Leaf types ───────────────────────────────────────────────────────────────────────────────
@@ -314,22 +314,26 @@ type BodyShape = z.output<z.ZodObject<typeof bodyMembers>>;
 
 /** The rules between fields that a per-field type cannot hold. Messages name members, never values. */
 function crossFieldRules(manifest: BodyShape, issue: Issue): void {
-  // §B.4: exactly two track records, VIDEO-01 then VIDEO-02, each with its file name.
-  if (manifest.tracks.length !== VIDEO_TRACK_IDS.length) issue(['tracks'], 'exactly 2 track records');
+  // §B.4 (erratum F-M7 / D178): the track records of the camera files that EXIST - one or two,
+  // VIDEO-01 before VIDEO-02, each with its file name. A camera that recorded nothing has no record.
+  const trackIds = manifest.tracks.map((track) => track.trackId);
+  if (!isSealedTrackList(trackIds)) issue(['tracks'], '1 or 2 track records, VIDEO-01 before VIDEO-02');
   manifest.tracks.forEach((track, index) => {
-    const expected = VIDEO_TRACK_IDS[index];
-    if (expected !== undefined && track.trackId !== expected) issue(['tracks', index, 'trackId'], 'tracks are VIDEO-01 then VIDEO-02');
     if (track.file !== cameraFileName(track.trackId)) issue(['tracks', index, 'file'], 'the camera file is named after its track');
     // §B.12 fields 127 / 128: null together.
     if ((track.firstVideoSamplePts === null) !== (track.firstVideoSampleTimescale === null)) {
       issue(['tracks', index, 'firstVideoSampleTimescale'], 'null exactly when firstVideoSamplePts is null');
     }
   });
-  // §B.6: one fragment array per camera file, in track order.
-  if (manifest.files.length !== VIDEO_TRACK_IDS.length) issue(['files'], 'exactly 2 file records');
+  // §B.6: one fragment array per SEALED camera file, in the order of the track records.
+  if (manifest.files.length !== manifest.tracks.length) issue(['files'], 'one file record per track record');
   manifest.files.forEach((file, index) => {
-    const expected = VIDEO_TRACK_IDS[index];
-    if (expected !== undefined && file.trackId !== expected) issue(['files', index, 'trackId'], 'files are VIDEO-01 then VIDEO-02');
+    if (file.trackId !== trackIds[index]) issue(['files', index, 'trackId'], 'the file records follow the track records');
+  });
+  // §B.5: the session audio lies in a camera file of THIS package, and in at least one.
+  if (manifest.audio.containsIn.length === 0) issue(['audio', 'containsIn'], 'at least one camera file');
+  manifest.audio.containsIn.forEach((trackId, index) => {
+    if (!trackIds.includes(trackId)) issue(['audio', 'containsIn', index], 'a camera file of this package');
   });
   if (new Set(manifest.audio.containsIn).size !== manifest.audio.containsIn.length) issue(['audio', 'containsIn'], 'no track twice');
 

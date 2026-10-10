@@ -22,7 +22,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
-import { WEB_ORIGIN, signInOnWeb, type Headers } from '../../../../test/support/identity';
+import { SIGN_OUT, WEB_ORIGIN, signInOnWeb, type Headers } from '../../../../test/support/identity';
 import { coreCredentialStore, createFragmentSealer } from '../../../credential-store';
 import { coreFragmentOpener } from '../../../evidence-verify';
 import { buildPackage, removeScratch, type BuiltPackage } from '../../../evidence-verify/__tests__/support';
@@ -192,5 +192,42 @@ describe('M8-EV-SCOPE-1 and the session binding, with real sessions', () => {
     expect(await server.trailLength()).toBe(rows);
     // Still playable where it belongs.
     expect((await fetch(cookies.INVESTIGATOR, session.url, 'bytes=0-0')).statusCode).toBe(206);
+  });
+});
+
+// Fix pass F-M8 (review finding R93-08; question 1 of the review, "sign-out while a token is live").
+describe('R93-08: sign-out while a media session is live, with a real session', () => {
+  it('every NEW media request dies with the session (401, the token unread), and the read an answer in flight makes says the session is closed', async () => {
+    const signedIn = await signInOnWeb(server.identity, 'budi.santoso');
+    await server.app.pipeline.drain();
+    const who = signedIn.cookie;
+    const session = (await open(who)).json() as { url: string };
+    expect((await fetch(who, session.url, 'bytes=0-0')).statusCode).toBe(206); // control: it plays
+
+    // The open sign-in sessions of this operator before the sign-out: what a stream in flight asks about.
+    const openIds = async (): Promise<string[]> =>
+      (await server.owner.query<{ id: string }>('SELECT id::text AS id FROM public.auth_sessions WHERE ended_at IS NULL AND operator_id = $1 ORDER BY id', [server.operatorId('INVESTIGATOR')])).rows.map((row) => row.id);
+    const before = await openIds();
+    const parts = mediaStream(server.app).parts();
+    const request = { id: 'r93-08', log: server.app.log } as unknown as Parameters<typeof parts.sessionOpen>[0];
+    for (const id of before) expect(await parts.sessionOpen(request, id)).toBe(true);
+
+    const out = await server.app.inject({ method: 'POST', url: SIGN_OUT, headers: { ...who, origin: WEB_ORIGIN }, payload: {} });
+    expect(out.statusCode).toBeLessThan(300);
+    await server.app.pipeline.drain();
+
+    const rows = await server.trailLength();
+    const after = await fetch(who, session.url, 'bytes=0-0');
+    expect(after.statusCode).toBe(401);
+    // Refused before the token was looked at: no ACCESS_DENIED row of the media route.
+    expect(await server.trailLength()).toBe(rows);
+    expect((await open(who)).statusCode).toBe(401);
+    // What an answer in flight would read now: THE session that signed out is closed, the others stay open.
+    const still = await openIds();
+    const ended = before.filter((id) => !still.includes(id));
+    expect(ended).toHaveLength(1);
+    expect(await parts.sessionOpen(request, ended[0] ?? '')).toBe(false);
+    for (const id of still) expect(await parts.sessionOpen(request, id)).toBe(true);
+    expect(await parts.sessionOpen(request, 'not-a-session')).toBe(false);
   });
 });

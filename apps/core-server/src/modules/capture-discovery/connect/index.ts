@@ -25,11 +25,11 @@
  * WHAT IS PROVIDED AND BY WHOM (`captureConnectControl(app)`):
  *   the candidate state      row 132's search module, `provideCandidates`;
  *   the connection tester    the read-only ONVIF test of `capture/adapters/camera/onvif-session.ts`,
- *                            `provideTester` (the adapter barrel does not export it yet: request filed);
+ *                            `provideTester` (wired by the search module: `capture-discovery/index.ts`);
  *   the secret sealer        the Core credential store (row 84), taken when the app is ready; a
  *                            sealer handed to `provideSealer` wins over it (a test);
  *   the device registrar     the engine action that adds a device to the replicated registry,
- *                            `provideRegistrar` (the contract has no such action yet: request filed).
+ *                            `provideRegistrar` (wired by the search module with `adoption.ts`).
  * While one is missing, the operation that needs it answers `503 NOT_READY` before any request.
  */
 import {
@@ -52,7 +52,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { createSystemTimers } from '../../../capture';
 import { sealCredential } from '../../../capture/adapters';
-import { coreCredentialStore } from '../../../credential-store';
+import { coreCredentialStore, isStoreSealedSecret } from '../../../credential-store';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { routeOfOperation } from '../../../plugins/permission-guard';
@@ -93,7 +93,12 @@ export { INSERT_CAPTURE_CREDENTIAL, UPSERT_CAPTURE_CREDENTIAL } from './statemen
 /** The operations this folder answers. */
 export const CAPTURE_CONNECT_OPERATIONS = ['testCaptureCandidateConnection', 'adoptCaptureCandidate', 'setCaptureDeviceCredential'] as const;
 
-/** The longest account name the table takes (`capture_device_credentials_username_check`); the contract's schema allows 255. */
+/**
+ * The longest account name the table takes (`capture_device_credentials_username_check`). ONE bound
+ * (decision D117; review row 69, finding R69-11): the shared constant `CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH`
+ * and the request schema say the same 120, so the schema refuses a longer name first and the check
+ * in `credentialOf` below is a second line that today's schema never reaches.
+ */
 export const CAPTURE_CREDENTIAL_USERNAME_MAX_CHARS = 120;
 
 const STORE_SOURCE = 'captureConnect.credentialStore';
@@ -252,6 +257,8 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     candidates: () => control.candidates,
     tester: () => control.tester,
     sealer: () => control.sealer ?? control.storeSealer,
+    // Question 2 of review row 69: only the store's own answer is written, whoever the sealer is.
+    storeSealed: isStoreSealedSecret,
     registrar: () => control.registrar,
   };
   const routes = app.withTypeProvider<ZodTypeProvider>();

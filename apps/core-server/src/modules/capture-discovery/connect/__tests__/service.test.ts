@@ -6,12 +6,13 @@
 // says. A PRODUCTION candidate has a documentation address (RFC 5737) that nothing ever contacts.
 // The routes and the transaction are proven in `connect.db.test.ts`. EVERY RULE HAS ITS CONTROL.
 import { randomBytes } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 import { CAPTURE_CONNECTION_TEST_TIMEOUT_MS, CAPTURE_CONNECTION_TEST_VALIDITY_MS, CaptureConnectionOutcome } from '@dems/shared/api';
 import type { AuditRow } from '@dems/shared/sim';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { codeOnly } from '../../../../../test/static/scan';
 import { CaptureAdapterError, CaptureAdapterKind, CaptureAdapterRefusal, sealCredential, usingCredential, type CameraCandidate, type SealedCredential } from '../../../../capture/adapters';
 import type { AuditEntry, UnitContext } from '../../../../core';
@@ -34,6 +35,14 @@ import {
   type ConnectSeams,
   type ConnectionAttempt,
 } from '../service';
+import { READ_REGISTERED_CAMERAS } from '../../registered';
+import { createCredentialStore, isStoreSealedSecret } from '../../../../credential-store';
+
+// The sealer of every world is the Core credential store's own (fix F-M4, question 2): the connect flow
+// takes no other answer. Its key files live in a directory of this file, removed at the end.
+const STORE_ROOT = mkdtempSync(join(tmpdir(), 'dems-fm4-connect-'));
+afterAll(() => rmSync(STORE_ROOT, { recursive: true, force: true }));
+const STORE = createCredentialStore({ root: join(STORE_ROOT, 'credential-store') });
 
 const ACCOUNT = { username: `cnryU${'a1b2c3'.repeat(4)}`, secret: `cnryS${'d4e5f6'.repeat(4)}` };
 const PRODUCTION_HOST = '192.0.2.40';
@@ -65,6 +74,10 @@ interface World {
   readonly candidates: Map<string, { owner: string; candidate: { -readonly [Key in keyof ConnectCandidate]: ConnectCandidate[Key] } }>;
   answer: ConnectionAttempt | Error | 'HANG';
   sessionOpen: boolean;
+  /** The camera ids the registry TABLE holds beyond the listed state (finding R69-03: a stored development device a production Core does not list). */
+  storedOnly: string[];
+  /** What a sealer that is NOT the store answers, when a test hands one in; null: the store's own answer. */
+  standInSealer: ((deviceId: string, secret: string) => Promise<{ keyRef: string; ciphertext: Uint8Array; nonce: Uint8Array }>) | null;
   now: number;
   provided: { candidates: boolean; tester: boolean; sealer: boolean; registrar: boolean };
   add(candidateId: string, device: CameraCandidate, owner?: string): void;
@@ -79,6 +92,8 @@ function world(): World {
     candidates: new Map(),
     answer: { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['main'], rejectedCredentialRequests: 0 },
     sessionOpen: false,
+    storedOnly: [],
+    standInSealer: null,
     now: 1_800_000_000_000,
     provided: { candidates: true, tester: true, sealer: true, registrar: true },
     add(candidateId, device, owner = 'SESSION-A') {
@@ -86,7 +101,7 @@ function world(): World {
     },
     seams: undefined as unknown as ConnectSeams,
   };
-  const unit = { audit: { append: async (entry: AuditEntry) => (state.audit.push(entry), {} as AuditRow) }, query: async () => ({ rows: [], rowCount: 0 }) } as unknown as UnitContext;
+  const unit = { audit: { append: async (entry: AuditEntry) => (state.audit.push(entry), {} as AuditRow) }, query: async (text: string) => (text === READ_REGISTERED_CAMERAS ? { rows: state.storedOnly.map((id) => ({ id, address: null, onvif_uuid: null })), rowCount: state.storedOnly.length } : { rows: [], rowCount: 0 }) } as unknown as UnitContext;
   const slices = () => ({
     session: state.sessionOpen ? ({ state: 'RECORDING' } as never) : null,
     captureDevices: { devices: [{ id: 'CAM-01', kind: 'CAMERA', host: '192.0.2.1' }, { id: 'CAM-02', kind: 'CAMERA', host: '192.0.2.2' }, { id: 'MIC-01', kind: 'MIC', host: null }] },
@@ -121,7 +136,8 @@ function world(): World {
             },
           }
         : null,
-    sealer: () => (state.provided.sealer ? { seal: async () => ({ keyRef: 'CAPTURE_DEVICE_K_TEST', ciphertext: new Uint8Array(48), nonce: new Uint8Array(12) }) } : null),
+    sealer: () => (state.provided.sealer ? { seal: (deviceId, secret) => (state.standInSealer ?? STORE.capture.seal)(deviceId, secret) } : null),
+    storeSealed: isStoreSealedSecret,
     registrar: () => (state.provided.registrar ? async (_scope, _principal, device) => ({ id: device.id, kind: 'CAMERA', model: device.model, firmware: null, host: device.address, poePort: null, online: true, streamState: null, capabilities: ['VIDEO'] }) : null),
     host: {
       now: () => state.now,
@@ -304,6 +320,40 @@ describe('pass D1a (D132): the endpoint reference of an audit row is the URN for
   });
 });
 
+// Fix F-M4 (review row 69, question 2 / finding R69-05): the form check of the connect flow was a
+// second, weaker copy of the store's (33 bytes against 80 and a frame multiple), and "is it really
+// sealed" was a byte search that cannot see a short or a re-encoded secret. Now the answer must be
+// the STORE'S OWN OBJECT: `isStoreSealedSecret` knows what `sealSecret` returned and nothing else.
+describe('question 2: only an answer of the Core credential store is written', () => {
+  const adoptWith = async (standIn: World['standInSealer']) => {
+    const w = world();
+    w.standInSealer = standIn;
+    w.add('CND-000000000001', camera());
+    await testCandidate(w.seams, CALLER, 'CND-000000000001', typed());
+    later(w);
+    return adoptCandidate(w.seams, CALLER, 'CND-000000000001', typed()).then(
+      (adoption) => adoption.credentialSet,
+      (error: unknown) => (error instanceof Error ? error.name : 'not an error'),
+    );
+  };
+  const keyRef = `CAPTURE_DEVICE_K_${'0'.repeat(32)}`;
+
+  it('a stand-in sealer is refused whatever it answers: random bytes of the right form, a secret in another encoding, a short secret beside other bytes, a copy of a real envelope', async () => {
+    // Well-formed by every rule the flow had (a key reference of the form, 80 bytes, a 12-byte nonce): accepted before this fix.
+    expect(await adoptWith(async () => ({ keyRef, ciphertext: new Uint8Array(randomBytes(80)), nonce: new Uint8Array(12) }))).toBe('SealedCameraSecretRefused');
+    // The two cases the byte search could never see (R69-05).
+    expect(await adoptWith(async (_device, secret) => ({ keyRef, ciphertext: new Uint8Array(Buffer.concat([Buffer.from(Buffer.from(secret).toString('hex')), randomBytes(80)]).subarray(0, 80)), nonce: new Uint8Array(12) }))).toBe('SealedCameraSecretRefused');
+    expect(await adoptWith(async () => ({ keyRef, ciphertext: new Uint8Array(Buffer.concat([Buffer.from('k9'), randomBytes(78)])), nonce: new Uint8Array(12) }))).toBe('SealedCameraSecretRefused');
+    // A copy is not the store's object.
+    expect(await adoptWith(async (device, secret) => ({ ...(await STORE.capture.seal(device, secret)) }))).toBe('SealedCameraSecretRefused');
+  });
+
+  it('CONTROL - the store\'s own answer is written', async () => {
+    expect(await adoptWith(null)).toBe(true);
+    expect(await adoptWith((device, secret) => STORE.capture.seal(device, secret))).toBe(true);
+  });
+});
+
 describe('pass D1a (D132, connect.db.test.ts:474): a short secret is not refused by chance, a clear one still is', () => {
   it('10,000 random 80-byte envelopes hold a one-, two- and three-character secret 0 times by the rule; the old rule (bare containment) is hit', () => {
     const envelopes = Array.from({ length: 10_000 }, () => new Uint8Array(randomBytes(80)));
@@ -407,6 +457,52 @@ describe('M4-CONN-ORDER-1: the flow has one order', () => {
     expect(w.candidates.get('CND-000000000002')?.candidate.registeredDeviceId).toBe('CAM-03');
     later(w);
     expect(await refusal(adoptCandidate(w.seams, CALLER, 'CND-000000000002', null))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED']);
+  });
+
+  // Fix F-M4 (finding R69-03): a production Core does not LIST a stored development device, so the
+  // listed state can lack the row with the highest number. An id minted from the list alone would be
+  // the id of that stored row, and the registry's upsert would write the new camera over it (the
+  // adapter kind of a row is never updated). The id is minted over the stored registry.
+  it('the id of an adopted camera is free in the STORED registry, not only in the listed one', async () => {
+    const w = world();
+    w.storedOnly = ['CAM-03', 'CAM-07'];
+    w.add('CND-000000000002', development());
+    await testCandidate(w.seams, CALLER, 'CND-000000000002', null);
+    later(w);
+    const adoption = await adoptCandidate(w.seams, CALLER, 'CND-000000000002', null);
+    expect(adoption.deviceId).toBe('CAM-08');
+  });
+
+  // Fix F-M4 (review row 69, finding R69-13; decision D178): a camera that asks for a sign-in
+  // method the Core does not answer ends as AUTHENTICATION_FAILED (the outcome `cap` §A.6.2 gives
+  // it) WITH its reason, so no client words it as a refused credential. Nothing follows it by itself.
+  it('R69-13: SCHEME_NOT_ALLOWED travels with the outcome to the answer and to the candidate; one request, no second attempt; a refused credential carries no reason (control)', async () => {
+    const w = world();
+    w.add('CND-000000000001', camera());
+    w.answer = { outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, reason: 'SCHEME_NOT_ALLOWED' };
+    const unanswered = await testCandidate(w.seams, CALLER, 'CND-000000000001', typed());
+    expect(unanswered).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', reason: 'SCHEME_NOT_ALLOWED' });
+    expect(w.candidates.get('CND-000000000001')?.candidate.lastTest).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', reason: 'SCHEME_NOT_ALLOWED' });
+    expect(w.contacted).toHaveLength(1);
+    // D181 (3): nothing was sent with a credential, so the guard did not count it and the row does not say it tripped.
+    expect(unanswered.failedAttemptsRemaining).toBe(2);
+    expect(w.audit.at(-1)?.details).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', guardTripped: false });
+    for (let index = 0; index < 4; index += 1) {
+      later(w);
+      w.now += 60_000;
+      expect((await testCandidate(w.seams, CALLER, 'CND-000000000001', typed())).failedAttemptsRemaining).toBe(2);
+    }
+    // The audit row keeps its exact key list: the outcome, no reason member.
+    expect(Object.keys(w.audit.at(-1)?.details ?? {})).not.toContain('reason');
+
+    const control = world();
+    control.add('CND-000000000001', camera());
+    control.answer = { outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 1, reason: 'CREDENTIAL_REFUSED' };
+    const refused = await testCandidate(control.seams, CALLER, 'CND-000000000001', typed());
+    expect(refused.outcome).toBe('AUTHENTICATION_FAILED');
+    expect('reason' in refused).toBe(false);
+    expect(refused.failedAttemptsRemaining).toBe(1);
+    expect('reason' in (control.candidates.get('CND-000000000001')?.candidate.lastTest ?? {})).toBe(false);
   });
 
   it('the next camera id is the highest number plus 1, two digits at least', () => {

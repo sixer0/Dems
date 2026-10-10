@@ -62,7 +62,7 @@ describe('the guard family', () => {
   it('the worker\'s guard keeps every rule tag, row 58\'s exclusive-create pins among them, and its planted violations', () => {
     const check = read('apps/capture-worker/check.sh');
     const tags = [...new Set([...check.matchAll(/\bsay "([^:"]+):/g)].map((match) => match[1] ?? ''))].sort();
-    expect(tags).toEqual(['AU2-07', 'B.2', 'C.2 (W-2)', 'C.4', 'D58-1', 'D58-2', 'D59-2', 'D59-3', 'D59-4', 'F-2', 'H-4', 'N-10', 'R-6', 'SEC35-23', 'SEC35-23 (fixtures)', 'SR-3', 'W-1', 'W-4', 'W1-C1'].sort());
+    expect(tags).toEqual(['AU2-07', 'B.2', 'C.2 (W-2)', 'C.4', 'D58-1', 'D58-2', 'D59-2', 'D59-3', 'D59-4', 'F-2', 'H-4', 'N-10', 'R-6', 'R63-06', 'R63-09', 'SEC35-23', 'SEC35-23 (fixtures)', 'SR-3', 'W-1', 'W-4', 'W1-C1'].sort());
     // Row 58's pin (decision D72(a), pair-58 A-9): no O_TRUNC, every create exclusive. Still two rules of the file.
     expect(check).toContain(`[ "$(count 'O_TRUN[C]')" = "0" ] || say "D58-1: O_TRUNC in the worker"`);
     expect(check).toContain(`[ "$(count 'O_CREA[T]')" = "$(count 'O_CREAT | O_EXC[L]')" ] || say "D58-1: a create without O_EXCL"`);
@@ -71,10 +71,15 @@ describe('the guard family', () => {
     expect(check).toMatch(/\nproof_rule Makefile "\$1" \|\| exit 1\nversion_rule test\/static\/libavformat\.pin /);
     // The planted violations: 23 of rows 58 and 59, 25 of row 61 (the 11 + 4 evasions of D84 R-6 / D85 R-8, the two of F-10, and their kin).
     const planted = read('apps/capture-worker/test/static/planted.tsv').split('\n').filter((line) => line !== '' && !line.startsWith('#')).map((line) => line.split('\t')[0] ?? '');
-    expect(planted.length).toBeGreaterThanOrEqual(48);
-    expect(planted.filter((tag) => tag === 'R-6').length).toBeGreaterThanOrEqual(18);
-    expect(planted.filter((tag) => tag === 'F-10').length).toBeGreaterThanOrEqual(7);
-    expect(check).toContain('[ "$n" -ge 48 ]');
+    // Fix pass F-M3 (review R63-08): + 7 - the digraph paste, the assembler label, the weak reference, removefile(), another muxer name, a file name handed to the muxer, a trigraph.
+    expect(planted.length).toBeGreaterThanOrEqual(55);
+    expect(planted.filter((tag) => tag === 'R-6').length).toBeGreaterThanOrEqual(23);
+    expect(planted.filter((tag) => tag === 'F-10').length).toBeGreaterThanOrEqual(9);
+    expect(check).toContain('[ "$n" -ge 55 ]');
+    // Fix pass F-M3 (review R63-08): the import net - the file-making functions the linked worker may import are six, and the Makefile reads them after every link.
+    const imports = read('apps/capture-worker/test/static/imports.pin').split('\n').filter((line) => line !== '' && !line.startsWith('#'));
+    expect(imports).toEqual(['fopen', 'ftruncate', 'link', 'open', 'rename', 'unlink']);
+    expect(read('apps/capture-worker/Makefile')).toContain('@python3 test/static/pinned_calls.py --imports $@ test/static/imports.pin || { rm -f $@; exit 1; }');
     // The version the worker was verified against (decision D85): one line, FFmpeg 9.0.2.
     const pin = read('apps/capture-worker/test/static/libavformat.pin').split('\n').filter((line) => line !== '' && !line.startsWith('#'));
     expect(pin).toEqual(['libavformat\t63.1.102\t9.0.2']);

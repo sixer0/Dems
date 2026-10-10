@@ -990,6 +990,7 @@ const OPERATION_TABLE = [
       EXPORT_SEALED_ONLY,
       `The answer holds no file: the server records the export, and a client keeps its bundled export archive (01_specs §11). The reason is mandatory. A reason longer than ${EXPORT_REASON_MAX_LENGTH} UTF-16 code units, a destination longer than ${EXPORT_DESTINATION_MAX_LENGTH}, and any other body that does not match its schema, answers \`422 INVALID_INPUT\`; the server does not cut a text.`,
       EXPORT_DENIAL_NOTE,
+      'REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller with EVIDENCE_EXPORT who neither holds the case nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row.',
       CORE_SERVER_ANSWERS,
     ].join('\n\n'),
     source: 'Design book §21.2, §19.2, §19.3',

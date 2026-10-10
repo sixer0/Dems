@@ -404,3 +404,22 @@ Appended on 2026-10-09 by row 91. Version, licence and copyright line were read 
 | `@types/yazl` | 3.3.1 (exact pin; devDependency, types only, not in a running server) | MIT | `LICENSE` | "Copyright (c) Microsoft Corporation." | type declarations of `yazl` |
 
 Chosen over `fflate` (MIT, no dependency, but it writes no ZIP64 archive: a recording beyond 4 GiB could not be exported) and `archiver` (MIT, a large dependency tree for the same task).
+
+### Where the Core names `libx264` at run time, outside the composite (task 3, fix pass F-M8; register DOC-05; review finding R93-17)
+
+Appended on 2026-10-10 by fix pass F-M8. The M8 licence check above covers the COMPOSITE and is accurate for it: no encoder is selected there. It did not name two other places in `@dems/core-server` that put `-c:v libx264` into an argument list of the helper program at run time. Both were read from the source on that day (`grep -rn "libx264" apps packages`); nothing was installed, built or measured for this paragraph.
+
+| Place | What it is | When it runs |
+|---|---|---|
+| `apps/core-server/src/capture/adapters/local/camera-helper-args.ts` (`ENCODER.X264`), chosen in `camera-helper.ts` when the source is `GENERATED` | The generated FAKE camera of a development capture operation (`testsrc2`, no device): the picture is encoded in software | While a session records from the built-in generated test source of capture operation REAL_DEVELOPMENT. A real local camera (`avfoundation`) is encoded with `h264_videotoolbox` by default; `libx264` is used for it only when a caller hands `encoder: X264` in explicitly (no production composition does) |
+| `apps/core-server/src/sealing-host/demo-seed/source-arguments.ts` (`DEMO_VIDEO_ENCODER`) | The generated camera files of the two v2 DEMO packages | Once per seed (`db:seed` / `db:reset`) of a development-capture Core that has the helper program; never during a session |
+
+Neither place is the sealing, the verification, the playback or the export of real evidence, and neither runs in capture operation SIMULATED or in a production capture operation (generated sources are development sources; the manifest marks them, register PE-125-06).
+
+**What this means for a distributed build.** These two argument lists exist only in a helper build that has `libx264`, which is a GPL build (table above: `libx264` exists only with `--enable-gpl`). So:
+
+1. *On this development Mac* (today's state): the same private helper copy as above (`.data/helpers/ffmpeg`, the Homebrew GPL-3.0-or-later build; git-ignored, in no package) runs them. Use is not distribution; the files it writes are its output. Nothing changes for the packages listed in this file: none carries FFmpeg.
+2. *If a DEMS Core is ever distributed WITH a helper program*: the conclusion of the M8 licence check applies to these two uses exactly as to the composite. With the recommended LGPL-only build (option 3) `libx264` does not exist, so the generated fake camera and the demo seed would FAIL to start their helper until their encoder is changed (for example to `h264_videotoolbox` on macOS, as the real local camera already uses) - a change of development-only code that is NOT made by this fix pass and is listed for the product owner's licence decision. With the GPL build (option 2) they work unchanged and the GPL-3.0-or-later obligations of that option are owed.
+3. *If no helper program is distributed* (option 4): both features are absent - the seed then writes the dataset without the v2 demo packages (it says so by name), and the generated fake camera cannot be selected.
+
+The earlier line of this file, "ffmpeg ... was used only at build time to render and encode the demo media" (section "Build-time tool"), describes the task-1 demo media of the packaged web demo and remains true for those packages; it is not a statement about `@dems/core-server` in a development capture operation, which starts the helper at run time as described here.

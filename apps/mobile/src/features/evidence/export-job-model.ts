@@ -14,6 +14,7 @@
  * them. `exportJobIdOf` is the ONE place: it takes the `jobId` of the 202 when the answer names
  * one, and follows the contract's rule (the same digits) otherwise.
  */
+import { exportJobIdOf } from '@dems/shared/api';
 
 export type ExportJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETE' | 'FAILED';
 export type ExportJobKind = 'PACKAGE' | 'COMPOSITE';
@@ -31,7 +32,37 @@ export interface ExportJob {
   readonly signature: string | null;
   /** SCREAMING_SNAKE cause of a FAILED job, or null. */
   readonly failureReason: string | null;
+  /**
+   * Fix F-M8 (R93-05): the Core named a signed download path for this COMPLETE job. Only the FACT
+   * is kept: the path is a bearer value and is never part of a job this app holds, caches or logs
+   * (`readExportDownload` reads it from a fresh answer, at the press of the control).
+   */
+  readonly downloadable: boolean;
 }
+
+/** The download member of a COMPLETE job: a same-origin path of the Core's download route and the instant it dies. */
+export interface ExportDownload {
+  readonly path: string;
+  readonly expiresAt: number;
+}
+
+const DOWNLOAD_PATH = /^\/exports\/exs_[A-Za-z0-9_-]{60,96}$/;
+
+/**
+ * The download member of an answer of operation 87, or null when it names none (a job that is not
+ * COMPLETE, a simulated export, a Core without a key store) or one that is not exactly a path of
+ * the download route: no host, no query, no other route is ever taken from an answer.
+ */
+export function readExportDownload(value: unknown): ExportDownload | null {
+  const download = typeof value === 'object' && value !== null ? (value as { status?: unknown; download?: unknown }) : null;
+  if (download === null || download.status !== 'COMPLETE' || typeof download.download !== 'object' || download.download === null) return null;
+  const { path, expiresAt } = download.download as { path?: unknown; expiresAt?: unknown };
+  return typeof path === 'string' && DOWNLOAD_PATH.test(path) && typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? { path, expiresAt } : null;
+}
+
+/** The cause of a job the Core's restart interrupted, and of an item this Core cannot export (R93-01, R93-04). */
+export const EXPORT_INTERRUPTED = 'EXPORT_INTERRUPTED';
+export const EXPORT_JOBS_NOT_AVAILABLE = 'EXPORT_JOBS_NOT_AVAILABLE';
 
 /** The cause of a COMPOSITE job in a build whose encoder is not chosen yet (row 91: the licence decision is open). */
 export const COMPOSITE_NOT_SELECTED = 'COMPOSITE_ENCODER_NOT_SELECTED';
@@ -47,24 +78,18 @@ export const EXPORT_IN_PROGRESS = 'EXPORT_IN_PROGRESS';
 export const EXPORT_JOB_POLL_MS = 2_000;
 
 const STATUSES: readonly string[] = ['QUEUED', 'RUNNING', 'COMPLETE', 'FAILED'];
-const EXPORT_ID = /^EXP-(\d{6})$/;
 const JOB_ID = /^EXPJ-\d{6,}$/;
 
 /**
- * The job ID of an accepted export, or null for an ID of another form. The `jobId` the 202 answer
- * names wins when it is one (optional member of the contract; integration pass D5); without it the
- * job is derived from the export ID by the contract's rule (the same six digits).
+ * The job ID of an accepted export: the ONE rule of the shared contract (`exportJobIdOf`, closing
+ * pass F-X; review question 11). The `jobId` the 202 answered wins when it is one.
  */
-export function exportJobIdOf(exportId: string, answered?: unknown): string | null {
-  if (typeof answered === 'string' && JOB_ID.test(answered)) return answered;
-  const match = EXPORT_ID.exec(exportId);
-  return match === null ? null : `EXPJ-${match[1] ?? ''}`;
-}
+export { exportJobIdOf };
 
 /** The job ID an accepted export result carries (the Live source adds it from the 202), or null. */
 export function answeredJobIdOf(result: unknown): string | null {
   const jobId = (typeof result === 'object' && result !== null ? (result as { jobId?: unknown }).jobId : null);
-  return typeof jobId === 'string' && JOB_ID.test(jobId) ? jobId : null;
+  return exportJobIdOf('', jobId);
 }
 
 /** The answer of operation 87, or null when it cannot be read. */
@@ -86,6 +111,7 @@ export function readExportJob(value: unknown): ExportJob | null {
     manifestHash: hex(source.manifestHash, /^[0-9a-f]{64}$/),
     signature: hex(source.signature, /^(?:[0-9a-f]{64}|[0-9a-f]{128})$/),
     failureReason: status === 'FAILED' ? hex(source.failureReason, /^[A-Z][A-Z0-9_]{0,63}$/) : null,
+    downloadable: readExportDownload(value) !== null,
   };
 }
 

@@ -94,6 +94,8 @@ describe('the verdict of record of a real v2 item', () => {
       },
       // Decision D147: the key of this package carries no development mark (a throw-away key of the signer).
       signature: { developmentKey: false },
+      // Fix pass F-M7 (R88-06): the audit extract is in the package and nothing signs its content - said on every v2 answer.
+      notices: [{ code: 'AUDIT_EXTRACT_NOT_SIGNED', report: 'Audit extract: present, NOT covered by the package signature.' }],
     });
     expect(run.report.checks.map((check) => check.status)).toEqual(Array.from({ length: 15 }, () => 'PASS'));
     expect(recorded).toEqual([{ principal: OPERATOR, verdict: { evidenceId: 'EV-20261009-0001', ok: true, at: AT, manifestOk: true, signatureOk: true, failedTracks: [], detail: null } }]);

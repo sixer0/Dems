@@ -17,7 +17,7 @@
  * here from the id; no address, no user name and no URL is read from an alert.
  */
 import { CaptureInputScanSchema, type CaptureInputScan } from '@dems/shared/api';
-import type { PrecheckItem, SimAlert } from '@dems/shared/sim';
+import { captureFaultSentence, type PrecheckItem, type SimAlert } from '@dems/shared/sim';
 import { micInputName, micInputNumber } from './mic-input-name';
 
 // ── Flow 11: situations A and B ──────────────────────────────────────────────────────────
@@ -292,6 +292,21 @@ export function inputScanOf(body: unknown): CaptureInputScan | null {
 /** The gated control of flow 13 on these clients (§11; check `M4-MIC-RESCAN-T` / `-P`). */
 export const RESCAN_GATED_CONTROLS = ['G17'] as const;
 
+// ── A capture fault by its reason (fix pass F-M5, review R74-03) ─────────────────────────────────
+
+/**
+ * The line of a `CAPTURE_FAULT` alert, or null for any other alert: THE SHARED SENTENCE of its
+ * `params.reason` (`captureFaultSentence`, the one wording source of `@dems/shared/sim`), with the
+ * device named as this app names it. A reason without a sentence reads neutrally with its code;
+ * the capture as a whole without a cause reads as an interrupted recording.
+ */
+export function captureFaultLine(t: NoticeTranslate, alert: Pick<SimAlert, 'kind' | 'target' | 'params'>): string | null {
+  if (alert.kind !== 'CAPTURE_FAULT') return null;
+  const reason = alert.params?.['reason'];
+  const target = alert.target ?? null;
+  return captureFaultSentence(typeof reason === 'string' ? reason : null, target === null ? null : deviceLabel(t, target));
+}
+
 // ── Flow 11, situation C: a session start with no camera (blueprint row 139; ux §8e.2; D72(k), D84, D91) ──
 
 /** `params.reason` of the `CAPTURE_FAULT` alert of a start at which no camera connected (C3 §5.4). */
@@ -313,6 +328,21 @@ export function failedStartOf(session: unknown, alerts: readonly Pick<SimAlert, 
   if (facts.state !== 'FAULT' || facts.captureDurable !== false) return null;
   const named = alerts.some((alert) => alert.active && alert.kind === 'CAPTURE_FAULT' && alert.params?.['reason'] === NOTICE_REASON_NO_CAMERA_CONNECTED);
   return named ? NOTICE_REASON_NO_CAMERA_CONNECTED : 'OTHER';
+}
+
+/**
+ * A failed start THE CORE IS CLOSING, or null (fix pass F-M5, review R74-12; decision D158, MB-06):
+ * "Close session" is the Core's recovery of a session that recorded nothing, so the session passes
+ * through RECOVERY with `captureDurable` still `false` - only a failed start can be there (an
+ * interrupted recording is durable). The rule of the web console (`selectFailedStartClosing`): a
+ * screen that first sees the session in that state presents no recovery of evidence. The cause is
+ * read as for the FAULT.
+ */
+export function failedStartClosingOf(session: unknown, alerts: readonly Pick<SimAlert, 'kind' | 'active' | 'params'>[]): FailedStart | null {
+  if (typeof session !== 'object' || session === null) return null;
+  const facts = session as { state?: unknown; captureDurable?: unknown };
+  if (facts.state !== 'RECOVERY' || facts.captureDurable !== false) return null;
+  return failedStartOf({ state: 'FAULT', captureDurable: false }, alerts);
 }
 
 /** "No camera connected" / "Nothing was recorded." (shared words, ux §14.2). The body is said in full for every failed start. */

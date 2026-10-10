@@ -476,6 +476,11 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
   // taken out, in the order they stand, app.ts is byte-equal to the file of plan row W08. A line
   // nobody waived - of any module, with any wording - changes the digest and fails here.
   it('app.ts: every added line is a waived one (capture: spec §I edits 1 to 6; STT configuration: edits 13 and 14, decision D68; camera search and local inputs: edits 19 to 22, decision D114); without them the file is the frozen one', () => {
+    // THE SINGLE SOURCE OF THE WAIVED LINES of `app.ts` (review R63-14; capture spec §I, erratum PE-R63-14): the list
+    // `WAIVED` below. The spec's table numbers every edit and names its authority - edits 1 to 6 (OD-14), 13 and 14
+    // (D68), 19 to 22 (D114), and the four module registrations that had no number until that erratum: 23 and 24
+    // `modules/evidence-export` (D143), 25 and 26 `modules/media-stream` (D140), 27 and 28 `modules/transcripts`
+    // (D146), 29 and 30 `modules/sealing` (D147 (E)). A line added to this list is added to that table in the same change.
     /** SHA-256 of `src/app.ts` as plan row W08 froze it (commit 9d3a1ef, 398 lines). */
     const FROZEN_APP_TS = '3846e1700616410967dae0e251c07e27f98edd866f826fa549bb1a430f375db8';
     const WAIVED: readonly string[] = [
@@ -490,14 +495,14 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "import { captureConfigModule } from './modules/capture-config';",
       "import { captureDiscoveryModule } from './modules/capture-discovery';",
       "import { captureInputsModule } from './modules/capture-inputs';",
-      // Row 91, controller ruling D143: the registration of `modules/evidence-export` (operation 87) - this import and its unit line below.
+      // Waived edits 23 and 24. Row 91, controller ruling D143: the registration of `modules/evidence-export` (operation 87) - this import and its unit line below.
       "import { evidenceExportModule } from './modules/evidence-export';",
-      // Row 90, controller ruling D140: the registration of `modules/media-stream` (operation 88 and the evidence media route) - this import and its unit line below.
+      // Waived edits 25 and 26. Row 90, controller ruling D140: the registration of `modules/media-stream` (operation 88 and the evidence media route) - this import and its unit line below.
       "import { mediaStreamModule } from './modules/media-stream';",
-      // Row 82b, controller ruling D147 (E): the registration of `modules/sealing` (operation 83 and the mount of the sealing composition) - this import and its unit line below.
+      // Waived edits 29 and 30. Row 82b, controller ruling D147 (E): the registration of `modules/sealing` (operation 83 and the mount of the sealing composition) - this import and its unit line below.
       "import { sealingModule } from './modules/sealing';",
       "import { sttConfigModule } from './modules/stt-config';",
-      // Integration pass D4, controller decision D146 (ops 84 to 86 had no owner in wave D): the registration of `modules/transcripts` - this import and its unit line below.
+      // Waived edits 27 and 28. Integration pass D4, controller decision D146 (ops 84 to 86 had no owner in wave D): the registration of `modules/transcripts` - this import and its unit line below.
       "import { transcriptsModule } from './modules/transcripts';",
       '  capture: CaptureSupervisor;',
       "  capture: 'src/capture (capture module)',",

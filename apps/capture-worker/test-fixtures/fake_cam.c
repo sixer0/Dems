@@ -13,7 +13,9 @@
  * Video: 320x240 gray (luma 16), 50 fps, GOP 50 by default (1 s, Q-GOP <= 2 s; --gop N sets it:
  * 250 = a keyframe every 5 s, the camera-like long GOP), libx264 zerolatency, no B-frames, no
  * scene-cut keyframes. Frames k = flash_first + j * flash_every are white (luma 235) - exactly one
- * frame each.
+ * frame each. With --noise 1 every other frame is pseudo-random luma: a HIGH-BITRATE stream (about 2 MB per
+ * second at this size), which with a long GOP gives one group of pictures of many megabytes - the oversized
+ * fragment of review R63-02 (fix pass F-M3). The flash frames stay white.
  *
  * Pushes to an RTSP LISTENER on 127.0.0.1 over TCP (S1 section 3 shape) and ends with TEARDOWN.
  * It opens no listener of its own and refuses any URL that is not rtsp://127.0.0.1:<port>/...
@@ -36,7 +38,8 @@ int main(int argc, char **argv) {
     const char *url = NULL;
     int64_t epoch = 0, claimed = 0;
     double drift_ppm = 0;
-    int frames = 500, flash_first = 100, flash_every = 100, fps = 50, gop = 0;
+    int frames = 500, flash_first = 100, flash_every = 100, fps = 50, gop = 0, noise = 0;
+    uint32_t lcg = 0x2545F491u;
     for (int i = 1; i + 1 < argc; i += 2) {
         const char *k = argv[i], *v = argv[i + 1];
         if (!strcmp(k, "--url")) url = v;
@@ -47,6 +50,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(k, "--flash-first")) flash_first = atoi(v);
         else if (!strcmp(k, "--flash-every")) flash_every = atoi(v);
         else if (!strcmp(k, "--gop")) gop = atoi(v);
+        else if (!strcmp(k, "--noise")) noise = atoi(v);
         else { fprintf(stderr, "unknown arg %s\n", k); return 2; }
     }
     if (gop <= 0) gop = fps;
@@ -97,6 +101,9 @@ int main(int argc, char **argv) {
             OK(av_frame_make_writable(f));
             int flash = k >= flash_first && (k - flash_first) % flash_every == 0;
             for (int y = 0; y < f->height; y++) memset(f->data[0] + y * f->linesize[0], flash ? 235 : 16, f->width);
+            if (noise && !flash)
+                for (int y = 0; y < f->height; y++)
+                    for (int x = 0; x < f->width; x++) { lcg = lcg * 1664525u + 1013904223u; f->data[0][y * f->linesize[0] + x] = (uint8_t)(16 + ((lcg >> 24) % 220)); }
             for (int y = 0; y < f->height / 2; y++) { memset(f->data[1] + y * f->linesize[1], 128, f->width / 2); memset(f->data[2] + y * f->linesize[2], 128, f->width / 2); }
             f->pts = k;
             OK(avcodec_send_frame(e, f));

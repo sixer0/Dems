@@ -102,4 +102,5 @@ export type { OnvifCandidate, RegisteredLookup, RegisteredMatch } from './camera
 // The connection test of a candidate camera (blueprint row 142; exported by row 132, which owns
 // this barrel line). Importing the barrel loads the HTTP modules and the ONVIF client's file;
 // no connection is opened before `test()` is called.
+export { connectionTargetOf } from './camera/connection-target';
 export { ONVIF_SESSION_LIMITS, OnvifTestReason, createOnvifConnectionTester, type OnvifConnectionTester, type OnvifConnectionTesterOptions, type OnvifSessionResult } from './camera/onvif-session';

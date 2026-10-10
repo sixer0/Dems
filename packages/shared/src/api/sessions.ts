@@ -395,12 +395,13 @@ export const SESSION_OPERATIONS = [
     description: [
       'Starts the recovery of a session in **FAULT** and answers `202` with state **RECOVERY**. The Core closes what was recorded as an incomplete session with a RECORDED evidence item; the steps arrive in the `session` slice.',
       'Writes RECOVERY_STARTED. After a power failure the simulated boot is part of the recovery, so SYSTEM_BOOT and FAULT_CLEARED are written too.',
+      'Core server in real capture operation (decision D186 (4)): when the open session is **FINALIZING** with a FAILED sealing step, the operation runs its seal again in the background and answers `202` with state **FINALIZING**; no recovery starts and RECOVERY_STARTED is not written.',
       hostedNote('recover'),
     ].join('\n\n'),
     source: backendSource(SECTION, 33),
     pathParam: SESSION_PARAM,
     responses: {
-      202: { description: 'The recovery is running (state RECOVERY).', schema: COMMAND },
+      202: { description: 'The recovery is running (state RECOVERY); or, on a Core in real capture operation, the failed seal of a FINALIZING session was queued again (state FINALIZING).', schema: COMMAND },
       401: NOT_SIGNED_IN,
       403: START_REFUSED,
       404: NOT_OPEN_SESSION,

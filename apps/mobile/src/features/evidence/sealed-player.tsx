@@ -37,7 +37,7 @@ import { newCorrelationId, reportRuntimeIssue, useCoreErrorPresenter, useMobileL
 import { AudioSourceBand } from './audio-source-band';
 import { VerifiedSourceBadge } from './development-source';
 import { CAMERA_FILE_IDS, type CameraFileId, type ItemV2 } from './item-v2';
-import { mediaSessionStale, mediaTransportOf, openMediaSessions, videoSourceOf, type MediaSessionFailure, type MediaSessionRefusal, type MediaSessions } from './media-session';
+import { cameraFilesOf, mediaSessionStale, mediaTransportOf, openMediaSessions, videoSourceOf, type MediaSessionRefusal, type MediaSessions } from './media-session';
 import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, type VerifiedSources } from './sealed-playback';
 
 export interface SealedPlayerProps {
@@ -57,7 +57,7 @@ type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'opening' }
   | { readonly kind: 'ready'; readonly sessions: MediaSessions; readonly stoppedAtMs: number | null; readonly renewing: boolean }
-  | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal | 'NO_TRANSPORT'; readonly integrity: MediaSessionFailure['integrity'] };
+  | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal | 'NO_TRANSPORT' };
 
 interface Resume {
   readonly seconds: number;
@@ -116,6 +116,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
 
   const sessions = phase.kind === 'ready' ? phase.sessions : null;
   const opened = useMemo(() => (sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)), [sessions]);
+  /** The camera files this item has: one or two (fix F-M8). */
+  const expected = useMemo(() => cameraFilesOf(item), [item]);
   const players = useMemo(() => [leadPlayer, followPlayer].slice(0, opened.length), [leadPlayer, followPlayer, opened.length]);
 
   const markPlaying = (value: boolean) => {
@@ -129,16 +131,22 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       if (mediaTransportOf(live) === null) {
         // The runtime holds no operator session to name to the media route (pass D5). Nothing is asked.
         reportRuntimeIssue('warn', 'evidence.playback.transport', 'no media transport on the Live source', { evidenceId });
-        setPhase({ kind: 'refused', refusal: 'NO_TRANSPORT', integrity: null });
+        setPhase({ kind: 'refused', refusal: 'NO_TRANSPORT' });
         return;
       }
       busy.current = true;
       setPhase((current) => (renewal && current.kind === 'ready' ? { ...current, renewing: true } : { kind: 'opening' }));
       const correlationId = newCorrelationId('evidence');
-      const result = await openMediaSessions(live, evidenceId);
-      busy.current = false;
-      // Pass D5: an integrity refusal of EITHER file stops playback with its sentence, also when the other file opened.
-      if (Object.keys(result.sessions).length === 0 || result.failure?.refusal === 'INTEGRITY') {
+      let result: Awaited<ReturnType<typeof openMediaSessions>>;
+      try {
+        result = await openMediaSessions(live, evidenceId, expected);
+      } catch {
+        // The client returns failures as values; a throw is a defect. The player is not latched by it (R93-21).
+        result = { sessions: {}, failure: null };
+      } finally {
+        busy.current = false;
+      }
+      if (Object.keys(result.sessions).length === 0) {
         const failure = result.failure;
         const refusal = failure?.refusal ?? 'FAILED';
         if (refusal === 'FAILED' || refusal === 'NOT_PERMITTED') {
@@ -148,7 +156,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         resume.current = null;
         playingRef.current = false;
         setPlaying(false);
-        setPhase({ kind: 'refused', refusal, integrity: failure?.integrity ?? null });
+        setPhase({ kind: 'refused', refusal });
         return;
       }
       resume.current = then;
@@ -162,7 +170,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       }
       setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, renewing: false });
     },
-    [evidenceId, live, presentCoreError],
+    [evidenceId, expected, live, presentCoreError],
   );
 
   // The bearer path goes into the player's source here; it is taken out again when the sessions or the screen go.
@@ -184,6 +192,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       .catch(() => {
         // The error itself may quote the source: only the fact is recorded.
         reportRuntimeIssue('warn', 'evidence.playback.source', 'a sealed file could not be handed to its player', { evidenceId });
+        // R93-14: nothing plays - the Pause state set for this hand-over is taken back.
+        if (alive && target?.play === true) {
+          playingRef.current = false;
+          setPlaying(false);
+        }
       });
     return () => {
       alive = false;
@@ -309,17 +322,14 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       <Button.Label>{retry.attempts >= RETRY_MAX ? t('common.errors.maxRetries') : t('evidence.playback.reopen')}</Button.Label>
     </Button>
   );
-  const integrityText = (place: { readonly fileId: string | null; readonly seq: number | null } | null): string =>
-    place !== null && place.fileId !== null && place.seq !== null ? t('evidence.playback.integrity', { file: place.fileId, seq: place.seq }) : t('evidence.playback.integrityNoPlace');
+  // R93-13: what the screen's last Verify run found, said as that - not as the place where playback stopped.
+  const integrityText = (place: { readonly fileId: string; readonly seq: number }): string => t('evidence.playback.integrityVerify', { file: place.fileId, seq: place.seq });
 
   if (phase.kind === 'refused') {
-    const text =
-      phase.refusal === 'INTEGRITY'
-        ? integrityText(phase.integrity)
-        : t(`evidence.playback.${phase.refusal === 'NOT_AVAILABLE' ? 'notAvailable' : phase.refusal === 'NOT_PERMITTED' ? 'notPermitted' : 'failed'}`);
+    const text = t(`evidence.playback.${phase.refusal === 'NOT_AVAILABLE' ? 'notAvailable' : phase.refusal === 'NOT_PERMITTED' ? 'notPermitted' : 'failed'}`);
     return (
       <View style={styles.root} testID={`evidence-playback-refused-${phase.refusal}`}>
-        <Alert status={phase.refusal === 'FAILED' || phase.refusal === 'INTEGRITY' || phase.refusal === 'NO_TRANSPORT' ? 'danger' : 'warning'}>
+        <Alert status={phase.refusal === 'FAILED' || phase.refusal === 'NO_TRANSPORT' ? 'danger' : 'warning'}>
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Title>{text}</Alert.Title>
@@ -348,7 +358,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     );
   }
 
-  const missing = CAMERA_FILE_IDS.find((fileId) => phase.sessions[fileId] === undefined) ?? null;
+  // A file the item HAS and that did not open; a package of one camera misses nothing.
+  const missing = expected.find((fileId) => phase.sessions[fileId] === undefined) ?? null;
   const stopped = phase.stoppedAtMs !== null;
   const verifiedFailure = stopped ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null;
   const shownMs = dragMs ?? positionMs;

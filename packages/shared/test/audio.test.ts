@@ -6,7 +6,7 @@ import type { AudioTrackId } from '../src/domain';
 import {
   AUDIO_FRAME_MS,
   AUDIO_PEAK_HOLD_MS,
-  MIC_INPUT_OF_CHANNEL,
+  DEFAULT_MIC_INPUT_OF_CHANNEL,
   createManualClock,
   createSim,
   meterAt,
@@ -23,7 +23,7 @@ function harness(scenario: ScenarioName = 'idle') {
   const frames: Record<AudioTrackId, AudioFrame[]> = { 'AUDIO-01': [], 'AUDIO-02': [] };
   for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
     sim.store.subscribe(
-      (state) => state.audio.inputs[MIC_INPUT_OF_CHANNEL[channel]]!,
+      (state) => state.audio.inputs[DEFAULT_MIC_INPUT_OF_CHANNEL[channel]]!,
       (frame) => frames[channel].push(frame),
     );
   }

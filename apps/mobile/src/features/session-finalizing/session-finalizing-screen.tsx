@@ -69,6 +69,7 @@ import { SessionSummaryScreen } from '@/features/session-summary/session-summary
 import { markSummaryHandoff } from '@/features/session-summary/summary-handoff';
 import { isFinalizingHandover, markFinalizingHandover } from './handover';
 import { SealedStamp } from './sealed-stamp';
+import { UnsealableNotice } from './unsealable-notice';
 import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
 
 /** 04 §2.4 "Finalizing, Summary, Recovery": centred card widths per layout class (dp). */
@@ -169,7 +170,11 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
   return (
     <SafeScreen id="session-finalizing">
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.centre, maxWidth !== undefined ? { maxWidth: sideBySide ? maxWidth + SIDE_WIDTH + spacing[4] : maxWidth } : null]}>{body}</View>
+        <View style={[styles.centre, maxWidth !== undefined ? { maxWidth: sideBySide ? maxWidth + SIDE_WIDTH + spacing[4] : maxWidth } : null]}>
+          {/* Fix pass F-M7b (R88-02 (c)): the Core ended the session as UNSEALABLE - a state of the recording, not an error of this screen. */}
+          {phase === 'idle' ? <UnsealableNotice /> : null}
+          {body}
+        </View>
       </ScrollView>
     </SafeScreen>
   );

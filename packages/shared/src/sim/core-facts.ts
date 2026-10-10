@@ -43,19 +43,33 @@ export function applyStorageVolumeTransition(state: SimState, input: StorageVolu
   };
 }
 
-/** The head only moves forward; an unknown item, or a note that says what the item says, changes nothing. */
+/**
+ * The head only moves forward; an unknown item, or a note that says what the item says, changes nothing.
+ *
+ * AN ITEM THAT HOLDS A SUMMARY KEEPS IT (fix pass F-M6, R80-11): the state, the hash, the failed
+ * chunks and the unreachable backend were signed by the seal and no revision changes them (OD-15),
+ * so a note moves `revision` and nothing else. AN ITEM WITHOUT ONE takes the whole note (a state a
+ * Core read back after a start carries no summary: `modules/transcripts/heads.ts` hands in the
+ * projection of the sealed manifest).
+ */
 export function noteTranscriptRevisionTransition(state: SimState, note: TranscriptRevisionNote): SimState {
   const item = state.evidence.find((candidate) => candidate.id === note.evidenceId);
   if (item === undefined || !Number.isSafeInteger(note.revision) || note.revision < 0) return state;
   const held = item.transcript ?? null;
   if (held !== null && held.revision >= note.revision) return state;
-  const transcript: EvidenceTranscriptSummary = {
-    state: note.state,
-    sha256: note.machineTranscriptHash,
-    machineTranscriptHash: note.machineTranscriptHash,
-    labelsStatus: note.labelsStatus,
-    revision: note.revision,
-  };
+  const count = note.failedChunks;
+  const transcript: EvidenceTranscriptSummary =
+    held !== null
+      ? { ...held, revision: note.revision }
+      : {
+          state: note.state,
+          sha256: note.machineTranscriptHash,
+          machineTranscriptHash: note.machineTranscriptHash,
+          labelsStatus: note.labelsStatus,
+          revision: note.revision,
+          ...(count !== undefined && Number.isSafeInteger(count) && count >= 0 ? { failedChunks: count } : {}),
+          ...(typeof note.backendUnreachable === 'boolean' ? { backendUnreachable: note.backendUnreachable } : {}),
+        };
   return { ...state, evidence: state.evidence.map((candidate) => (candidate.id === note.evidenceId ? { ...candidate, transcript } : candidate)) };
 }
 

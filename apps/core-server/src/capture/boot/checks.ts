@@ -56,7 +56,11 @@ export const CaptureBootRefusal = {
   WORKER_PROGRAM_UNUSABLE: 'CAPTURE_WORKER_PROGRAM_UNUSABLE',
   EVIDENCE_STORE_UNUSABLE: 'CAPTURE_EVIDENCE_STORE_UNUSABLE',
   SIGNING_KEY_UNUSABLE: 'CAPTURE_SIGNING_KEY_UNUSABLE',
+  /** The signing key of the store is a DEVELOPMENT key and the Core is REAL_PRODUCTION (fix pass F-M7, R88-08 (3); D178). */
+  DEVELOPMENT_SIGNING_KEY: 'CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION',
   WORKER_NO_HANDSHAKE: 'CAPTURE_WORKER_NO_HANDSHAKE',
+  /** The worker answered that its media library is not the verified one (decision D188 (a)). */
+  WORKER_MEDIA_LIBRARY_MISMATCH: 'CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH',
   WORKER_PROTOCOL_MISMATCH: 'CAPTURE_WORKER_PROTOCOL_MISMATCH',
   WORKER_PROOF_BUILD: 'CAPTURE_WORKER_PROOF_BUILD',
   WORKER_VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
@@ -69,9 +73,13 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_PROGRAM_UNUSABLE:
     'The program in DEMS_CAPTURE_WORKER cannot be used: it must be a regular executable file owned by root or by the user of the server, not writable by group or others, with no directory on the way to it writable by them.',
   CAPTURE_EVIDENCE_STORE_UNUSABLE:
-    'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, not writable by group or others, on a volume that supports exclusive create, sync and hard links.',
+    'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, owner-only (no permission for group or others: chmod 700), on a volume that supports exclusive create, sync and hard links. Recordings lie in this directory in PLAINTEXT from the start of a session until its seal completes (they are encrypted at seal time), recordings the Core could not seal stay in its .quarantine folder and the audio tap of a running session in its .transcriber folder: nobody but the server may read the store or these folders (chmod 700 each).',
+  CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION:
+    'The evidence signing key in <data directory>/signer is a DEVELOPMENT key (its certificate says "DEVELOPMENT KEY - NOT FOR PRODUCTION"): a production Core does not start with it, because every package it sealed would carry a development signature. Provision the production signing key, or run the Core in development capture mode.',
   CAPTURE_SIGNING_KEY_UNUSABLE: 'The evidence signing key cannot be loaded from <data directory>/signer: real capture does not start without the key that seals its packages. Provision the key once, then start again.',
   CAPTURE_WORKER_NO_HANDSHAKE: 'The program in DEMS_CAPTURE_WORKER did not answer as a capture worker: no HELLO frame within the limit.',
+  CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH:
+    'The capture worker in DEMS_CAPTURE_WORKER cannot be used: the libavformat it runs with on this host is not the version it was built and verified against (the media library was upgraded or replaced after the build), so its recordings would not be the verified ones. Build the worker again on this host (make -C apps/capture-worker) and run its checks, or restore the media library version it was built with; then start again.',
   CAPTURE_WORKER_PROTOCOL_MISMATCH: 'The capture worker speaks another version of the capture protocol than this server. Build the worker of this repository state (make -C apps/capture-worker).',
   CAPTURE_WORKER_PROOF_BUILD: 'The program in DEMS_CAPTURE_WORKER is a PROOF build (a negative control of the capture checks). It is never started by the Core. Set the key to build/capture-worker.',
   CAPTURE_WORKER_VERSION_UNKNOWN: 'The capture worker names a version this server does not know as a release build. Only capture-worker/<major>.<minor>.<patch> is started.',
@@ -97,6 +105,7 @@ export type WorkerProgramProblem = (typeof WorkerProgramProblem)[keyof typeof Wo
 
 const EXECUTE_BITS = 0o111;
 const GROUP_OR_OTHER_WRITE = 0o022;
+const GROUP_OR_OTHER_ANY = 0o077;
 
 /** The worker path against the path rule (the rule of the helper program, spec §A.1.2 row 9), plus "is set" and "can be executed". */
 export function workerProgramProblemOf(program: string | null, inspect: ProgramInspector): WorkerProgramProblem | null {
@@ -135,7 +144,29 @@ export interface EvidenceVolumeFacts {
   /** The real figures of the volume (CS-09), or null when the volume did not say. */
   readonly totalBytes: number | null;
   readonly freeBytes: number | null;
+  /**
+   * The HIDDEN FOLDERS of the store that hold plaintext, as far as they exist (fix pass F-M7c):
+   * `.quarantine` (recordings the Core could not seal) and `.transcriber`, `.transcriber/sessions`
+   * (the raw audio tap of a session, ruling D180). `directory` is false for a link or a file - the
+   * probe follows nothing. Absent: a probe that does not look (a test's facts).
+   */
+  readonly privateFolders?: readonly PrivateFolderFacts[];
 }
+
+export interface PrivateFolderFacts {
+  /** The path below the store root, `/`-joined: one of `EVIDENCE_STORE_PRIVATE_FOLDERS`. */
+  readonly name: string;
+  readonly directory: boolean;
+  readonly ownerUid: number | null;
+  readonly mode: number | null;
+}
+
+/** The hidden folders of the evidence store the boot holds to the owner-only rule, with the reason each is refused by. */
+export const EVIDENCE_STORE_PRIVATE_FOLDERS: Readonly<Record<string, 'QUARANTINE_READABLE_BY_OTHERS' | 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS'>> = Object.freeze({
+  '.quarantine': 'QUARANTINE_READABLE_BY_OTHERS',
+  '.transcriber': 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
+  '.transcriber/sessions': 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
+});
 
 export const EvidenceStoreProblem = {
   NOT_ABSOLUTE: 'NOT_ABSOLUTE',
@@ -143,6 +174,12 @@ export const EvidenceStoreProblem = {
   NOT_A_DIRECTORY: 'NOT_A_DIRECTORY',
   OWNER: 'OWNER',
   WRITABLE_BY_OTHERS: 'WRITABLE_BY_OTHERS',
+  /** Group or others may read or enter the store (fix pass F-M7, R88-04): recordings are plaintext there until sealed (D147). */
+  READABLE_BY_OTHERS: 'READABLE_BY_OTHERS',
+  /** The quarantine folder exists and is not an owner-only directory of the server (fix pass F-M7c): what the Core could not seal lies there in plaintext. */
+  QUARANTINE_READABLE_BY_OTHERS: 'QUARANTINE_READABLE_BY_OTHERS',
+  /** The transcriber's scratch root exists and is not an owner-only directory of the server (fix pass F-M7c; D180): the raw audio tap of a session lies there. */
+  TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS: 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
   NOT_WRITABLE: 'NOT_WRITABLE',
   NO_EXCLUSIVE_CREATE: 'NO_EXCLUSIVE_CREATE',
   NO_SYNC: 'NO_SYNC',
@@ -160,6 +197,15 @@ export function evidenceStoreProblemOf(facts: EvidenceVolumeFacts): EvidenceStor
   // The store is the server's own: a directory of another user (root included) is one the server cannot keep private.
   if (facts.ownerUid === null || facts.serverUid < 0 || facts.ownerUid !== facts.serverUid) return EvidenceStoreProblem.OWNER;
   if (facts.mode === null || (facts.mode & GROUP_OR_OTHER_WRITE) !== 0) return EvidenceStoreProblem.WRITABLE_BY_OTHERS;
+  // OWNER-ONLY (R88-04): the worker writes PLAINTEXT recordings here and the Core encrypts them at seal time
+  // (ruling D147); the quarantine of what could not be sealed is here as well. No bit for group or others at all.
+  if ((facts.mode & GROUP_OR_OTHER_ANY) !== 0) return EvidenceStoreProblem.READABLE_BY_OTHERS;
+  // THE SAME RULE FOR THE HIDDEN FOLDERS THAT HOLD PLAINTEXT (F-M7c): a real directory (never a link), the server's own, no bit for group or others.
+  for (const folder of facts.privateFolders ?? []) {
+    const problem = EVIDENCE_STORE_PRIVATE_FOLDERS[folder.name];
+    if (problem === undefined) continue;
+    if (!folder.directory || folder.ownerUid === null || folder.ownerUid !== facts.serverUid || folder.mode === null || (folder.mode & GROUP_OR_OTHER_ANY) !== 0) return EvidenceStoreProblem[problem];
+  }
   if (!facts.exclusiveCreate) return EvidenceStoreProblem.NOT_WRITABLE;
   if (!facts.exclusiveRefusesSecond) return EvidenceStoreProblem.NO_EXCLUSIVE_CREATE;
   if (!facts.synced) return EvidenceStoreProblem.NO_SYNC;
@@ -182,6 +228,11 @@ export const HandshakeFailure = {
   VIOLATION: 'VIOLATION',
   /** Its first frame is not `HELLO`. */
   HELLO_EXPECTED: 'HELLO_EXPECTED',
+  /**
+   * Its first frame is `CRASH` with the code `LIBAVFORMAT_VERSION_MISMATCH` (fix F-M3, R63-07; decision D188 (a)):
+   * the worker runs on another libavformat than the one it was verified against, says so INSTEAD of `HELLO`, and exits.
+   */
+  MEDIA_LIBRARY_MISMATCH: 'MEDIA_LIBRARY_MISMATCH',
 } as const;
 export type HandshakeFailure = (typeof HandshakeFailure)[keyof typeof HandshakeFailure];
 
@@ -231,6 +282,11 @@ export interface CaptureBootDeps {
   probeEvidenceVolume(): EvidenceVolumeFacts;
   /** A code of the signer when the evidence signing key does not load, else null. Called in a real operation only. */
   signingKeyProblem(): string | null;
+  /**
+   * True when the certificate of the evidence signing key carries the development-key mark. Called
+   * only after the key loaded, in REAL_PRODUCTION only: that operation refuses such a key (R88-08 (3)).
+   */
+  signingKeyIsDevelopment(): boolean;
   /** Starts the worker once and reads its first frame. Called in a real operation only, after every file check passed. */
   handshake(): Promise<WorkerHandshake>;
   readonly sinks: CaptureBootSinks;
@@ -296,9 +352,13 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
   // 4: the evidence signing key.
   const signing = deps.signingKeyProblem();
   if (signing !== null) return refuse(CaptureBootRefusal.SIGNING_KEY_UNUSABLE, signing);
+  // 4b: a development key never signs for a production Core (R88-08 (3)). REAL_DEVELOPMENT accepts it.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.signingKeyIsDevelopment()) return refuse(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY, null);
 
   // 5: the worker itself, started once. Only now: nothing is started from a path that failed a rule above.
   const hello = await deps.handshake();
+  // D188 (a): a worker on another media library is NAMED - it is not a worker that did not answer.
+  if (hello.outcome !== 'HELLO' && hello.failure === HandshakeFailure.MEDIA_LIBRARY_MISMATCH) return refuse(CaptureBootRefusal.WORKER_MEDIA_LIBRARY_MISMATCH, 'LIBAVFORMAT_VERSION_MISMATCH');
   if (hello.outcome !== 'HELLO') return refuse(CaptureBootRefusal.WORKER_NO_HANDSHAKE, hello.failure);
   const version = workerVersionRefusalOf(hello);
   if (version !== null) return refuse(version, null);

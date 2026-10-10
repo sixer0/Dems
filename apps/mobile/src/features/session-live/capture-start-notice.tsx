@@ -20,7 +20,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useSim, type SimState } from '@dems/shared/sim';
-import { camerasNotConnectedOf, failedStartOf, failedStartWords, noticeTitle, type FailedStart } from '@/features/capture-selector/capture-notices-model';
+import { camerasNotConnectedOf, type FailedStart, failedStartClosingOf, failedStartOf, failedStartWords, noticeTitle } from '@/features/capture-selector/capture-notices-model';
 
 /** The degraded warning of a session start: the newest camera the Core named, and how many it named. */
 export function useCamerasNotConnected() {
@@ -34,6 +34,14 @@ export const selectFailedStart = (s: SimState): FailedStart | null => failedStar
 /** The failed start of the open session, or null (ux §8e.2 situation C). */
 export function useFailedStart(): FailedStart | null {
   return useSim(selectFailedStart);
+}
+
+/** Flat: the failed start the Core is closing (RECOVERY, nothing recorded), or null (review R74-12). */
+export const selectFailedStartClosing = (s: SimState): FailedStart | null => failedStartClosingOf(s.session, s.alerts);
+
+/** The failed start of the open session while the Core closes it, or null. */
+export function useFailedStartClosing(): FailedStart | null {
+  return useSim(selectFailedStartClosing);
 }
 
 /** "Camera 2 (CAM-02) is not connected" / "The session is recording one camera only." One banner per missing camera. */

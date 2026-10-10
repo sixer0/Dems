@@ -120,6 +120,20 @@
  *   - it owns no datagram socket, and every socket it owns is on 127.0.0.1 (SEC35-23);
  *   - it keeps writing `HEARTBEAT` whatever else it writes: the supervisor reads its output at all
  *     times and never pauses it, and it drops telemetry it cannot hand on rather than slow down.
+ *
+ * NO FREE TEXT FROM A WORKER (review R63-05, carried question 8; ruling D179). Every member of a
+ * worker frame that can reach a log, the persistent error log, an alert or a file name is a CLOSED
+ * FORM in this schema: an ID (session, correlation, device) is 1 to 128 characters of
+ * `[A-Za-z0-9._:-]` - the class the C worker itself holds its commands to - so no address, no
+ * credential and no white space fits one; `CRASH.signal` is a signal name (`SIG` and capitals or
+ * digits); a checkpoint's `keyId` is `KID-...`; `HELLO.workerVersion` is a version word. A frame
+ * that breaks a form is no message (`FRAME_NOT_A_MESSAGE`): the supervisor ends such a worker as it
+ * ends one that writes a malformed line. What the schema cannot know - whether a device belongs to
+ * the session's plan, whether a switch was commanded - the supervisor holds, the same way.
+ *
+ * ADDED INSIDE VERSION 4 (fix pass F-M3; ruling D179 - additive: a frame of the worker before it
+ * still decodes): the warning reason `FRAGMENT_SIZE_BOUND_REACHED`, the named setting
+ * `maxFragmentBytes`, and the OPTIONAL member `FIRST_DURABLE_FRAGMENT.syncLevel`.
  */
 import { z } from 'zod';
 
@@ -187,6 +201,11 @@ export type CaptureWarningCode = (typeof CaptureWarningCode)[keyof typeof Captur
  *                       CAMERA_CLOCK_OUT_OF_BOUND        the camera's wall clock is beyond any delay: not recorded at a wrong time
  *                       KEYFRAME_INTERVAL_ABOVE_BOUND    ADVISORY: the camera RECORDS; its keyframe interval is above the
  *                                                        target, so a crash loses more than the target (record `KEYFRAME_INTERVAL`)
+ *                       FRAGMENT_SIZE_BOUND_REACHED      ADVISORY: the camera RECORDS; the open fragment of its file reached the
+ *                                                        size bound the seal and the verifier enforce (`maxFragmentBytes`) before
+ *                                                        a keyframe came, so the worker CLOSED it there and began the next one:
+ *                                                        that file holds a fragment that does not start on a keyframe (its
+ *                                                        checkpoint says `keyframe: false`). No sample is lost. Once per camera
  *                       MIC_DISCONNECTED                 the microphone delivered no sample for the disconnect debounce (spec §E.1).
  *                                                        `CLEARED` when it delivers again
  *                       MIC_RATE_AT_LIMIT                the microphone's clock differs from the host's by the limit the rate
@@ -203,6 +222,7 @@ export const CaptureWarningReason = {
   CAMERA_STREAM_ENDED: 'CAMERA_STREAM_ENDED',
   CAMERA_CLOCK_OUT_OF_BOUND: 'CAMERA_CLOCK_OUT_OF_BOUND',
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'KEYFRAME_INTERVAL_ABOVE_BOUND',
+  FRAGMENT_SIZE_BOUND_REACHED: 'FRAGMENT_SIZE_BOUND_REACHED',
   MIC_DISCONNECTED: 'MIC_DISCONNECTED',
   MIC_RATE_AT_LIMIT: 'MIC_RATE_AT_LIMIT',
 } as const;
@@ -215,6 +235,7 @@ export const WARNING_REASONS_OF: { readonly [Code in CaptureWarningCode]: readon
     CaptureWarningReason.CAMERA_STREAM_ENDED,
     CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND,
     CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND,
+    CaptureWarningReason.FRAGMENT_SIZE_BOUND_REACHED,
     CaptureWarningReason.MIC_DISCONNECTED,
     CaptureWarningReason.MIC_RATE_AT_LIMIT,
   ],
@@ -225,8 +246,11 @@ export const MIC_WARNING_REASONS: readonly CaptureWarningReason[] = [CaptureWarn
  * The reasons that are NOT a failed device: the subject keeps recording. `KEYFRAME_INTERVAL_ABOVE_BOUND`
  * says the crash-loss window of that camera file is longer than the target (decision D127 (2)): a
  * consumer shows it as a notice with the number of the record, not as a camera fault.
+ * `FRAGMENT_SIZE_BOUND_REACHED` says one fragment of that camera file was closed at the size bound
+ * and not at a keyframe (ruling D179 on review R63-02): the recording is whole, and the manifest
+ * says so per fragment (`keyframe`) and per track (`keyframeAligned`).
  */
-export const ADVISORY_WARNING_REASONS: readonly CaptureWarningReason[] = [CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND];
+export const ADVISORY_WARNING_REASONS: readonly CaptureWarningReason[] = [CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND, CaptureWarningReason.FRAGMENT_SIZE_BOUND_REACHED];
 
 /** Whether a warning's condition began or ended. */
 export const CaptureWarningState = { ACTIVE: 'ACTIVE', CLEARED: 'CLEARED' } as const;
@@ -243,6 +267,15 @@ export const FINAL_START_REFUSALS: readonly string[] = ['OUTPUT_EXISTS', 'PLAN_I
  * within the ingest window (decision D72(k): such a session is not left running audio-only).
  */
 export const FINAL_CRASH_CODES: readonly string[] = ['NO_CAMERA_CONNECTED'];
+/**
+ * What a worker says in `CRASH` - as its FIRST and only frame, instead of `HELLO` - when the
+ * libavformat it runs on is not the one it was built and verified against (review R63-07; the pin
+ * of `apps/capture-worker/test/static/libavformat.pin` held at RUN time). It records nothing and
+ * exits; another start of the same program on the same host ends the same way, so the supervisor
+ * does not retry it. It is NOT one of `FINAL_CRASH_CODES`: those end a session that had been given
+ * a plan, this one comes before any.
+ */
+export const LIBAVFORMAT_VERSION_MISMATCH = 'LIBAVFORMAT_VERSION_MISMATCH';
 
 /** State of one RTSP ingest as the worker reports it. */
 export const CaptureIngestState = { WAITING: 'WAITING', CONNECTED: 'CONNECTED', ENDED: 'ENDED' } as const;
@@ -277,6 +310,17 @@ export const CaptureRecordKind = {
   SEAL_COMPLETE: 'SEAL_COMPLETE',
 } as const;
 export type CaptureRecordKind = (typeof CaptureRecordKind)[keyof typeof CaptureRecordKind];
+
+/**
+ * HOW A CAMERA FILE WAS REALLY MADE DURABLE (review R63-09; capture spec §C.2). The level the first
+ * sync of the file ACHIEVED, not the one the build would like: `F_FULLFSYNC` went through the
+ * drive's own cache (macOS); `FSYNC` is what a volume that does not know the full sync got - on
+ * macOS not through the drive cache. A worker never changes the level silently: it states the level
+ * of the first sync here, and a later sync of the same file that cannot reach that level is a
+ * failed sync (`WRITER_SYNC_LEVEL_CHANGED`), never a quieter one.
+ */
+export const CaptureSyncLevel = { FULL: 'F_FULLFSYNC', FSYNC: 'FSYNC' } as const;
+export type CaptureSyncLevel = (typeof CaptureSyncLevel)[keyof typeof CaptureSyncLevel];
 
 /** How a mic's samples reach the worker. One kind today; the adapter rows add the device kinds. */
 export const CaptureMicInputKind = {
@@ -342,12 +386,19 @@ export const CAPTURE_SWITCH_BOUND_US = 21_333;
  *   micSilenceDbfs           the level at or below which a delivering microphone counts as silent
  *   micSilenceDurationMs     for how long, before `MIC_SILENT` is raised
  *   micDisconnectDebounceMs  no sample for this long: `CAPTURE_FAULT` / `MIC_DISCONNECTED`
+ *   maxFragmentBytes         THE bound of one fragment (`moof` + `mdat`) of a camera file: ONE number,
+ *                            the one the seal and the verifier enforce (`SEALING_MAX_FRAGMENT_BYTES` =
+ *                            `VERIFY_MAX_OPEN_FRAGMENT_BYTES`; the Core's launcher passes it, a pin test
+ *                            holds the default below equal to it). The worker makes no fragment durable
+ *                            above it: an open fragment that would pass it is closed there
+ *                            (`FRAGMENT_SIZE_BOUND_REACHED`). `max` is the worker's compiled sanity cap.
  */
 export const CAPTURE_WORKER_SETTINGS = {
   ingestOpenWindowMs: { argument: '--ingest-open-window-ms', default: 15_000, min: 1_000, max: 600_000, step: 1_000 },
   micSilenceDbfs: { argument: '--mic-silence-dbfs', default: -50, min: -120, max: 0, step: 1 },
   micSilenceDurationMs: { argument: '--mic-silence-ms', default: 10_000, min: 100, max: 600_000, step: 100 },
   micDisconnectDebounceMs: { argument: '--mic-disconnect-ms', default: 2_000, min: 100, max: 600_000, step: 100 },
+  maxFragmentBytes: { argument: '--max-fragment-bytes', default: 64 * 1024 * 1024, min: 1024 * 1024, max: 256 * 1024 * 1024, step: 1 },
 } as const;
 export type CaptureWorkerSettingName = keyof typeof CAPTURE_WORKER_SETTINGS;
 export type CaptureWorkerSettings = { readonly [Name in CaptureWorkerSettingName]: number };
@@ -356,6 +407,7 @@ export const CAPTURE_WORKER_SETTING_DEFAULTS: CaptureWorkerSettings = {
   micSilenceDbfs: CAPTURE_WORKER_SETTINGS.micSilenceDbfs.default,
   micSilenceDurationMs: CAPTURE_WORKER_SETTINGS.micSilenceDurationMs.default,
   micDisconnectDebounceMs: CAPTURE_WORKER_SETTINGS.micDisconnectDebounceMs.default,
+  maxFragmentBytes: CAPTURE_WORKER_SETTINGS.maxFragmentBytes.default,
 };
 
 /**
@@ -429,7 +481,19 @@ export type CaptureIpcLimits = { readonly [Key in keyof typeof CAPTURE_IPC_DEFAU
 
 // ── Payloads ──────────────────────────────────────────────────────────────────────────────────
 
-const id = z.string().min(1).max(128);
+/**
+ * An ID on the wire: a session, a correlation, a device, a track. 1 to 128 characters of the class
+ * the C worker holds its commands to (`id_ok`, `apps/capture-worker/src/ipc.c`). Never free text:
+ * an address, a credential or a sentence does not fit it (review R63-05).
+ */
+export const CAPTURE_WIRE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const id = z.string().regex(CAPTURE_WIRE_ID);
+/** A signal as a worker names it in `CRASH`: `SIGKILL`, `SIGSEGV`, `SIGUSR1`. */
+export const CAPTURE_SIGNAL_NAME = /^SIG[A-Z0-9]{1,12}$/;
+/** The key of a sealed fragment: `KID-<sessionId>` (capture spec §D.2; evidence spec §B.6 field 77). */
+export const CAPTURE_KEY_ID = /^KID-[A-Za-z0-9._:-]{1,124}$/;
+/** A worker's own version as `HELLO` states it: a word, never a sentence. WHICH versions the Core starts is the supervisor's allowlist. */
+export const CAPTURE_WORKER_VERSION_WORD = /^[A-Za-z0-9._+/-]{1,64}$/;
 const wholeNumber = z.number().int().nonnegative();
 function isMicRoleWord(value: string): boolean {
   return (Object.values(CaptureMicRole) as string[]).includes(value);
@@ -559,8 +623,8 @@ export const HelloMessageSchema = z.strictObject({
   type: z.literal(WorkerMessageType.HELLO),
   /** The protocol version the worker speaks. */
   protocolVersion: wholeNumber,
-  /** The worker's own version, for the log. */
-  workerVersion: z.string().min(1).max(64),
+  /** The worker's own version, for the log: a word of `CAPTURE_WORKER_VERSION_WORD`. */
+  workerVersion: z.string().regex(CAPTURE_WORKER_VERSION_WORD),
 });
 export const AckMessageSchema = z.strictObject({
   ...version,
@@ -637,7 +701,8 @@ export const CrashMessageSchema = z.strictObject({
   type: z.literal(WorkerMessageType.CRASH),
   /** A machine code of the worker's own choosing. */
   code,
-  signal: z.string().max(16).nullable(),
+  /** The signal that ended it, by name (`CAPTURE_SIGNAL_NAME`), or null. */
+  signal: z.string().regex(CAPTURE_SIGNAL_NAME).nullable(),
   exitCode: z.number().int().nullable(),
 });
 
@@ -668,9 +733,15 @@ export const FirstVideoSampleRecordSchema = z.strictObject({
    */
   skipped: z.strictObject({ noTimestamp: wholeNumber, beforeAudioStart: wholeNumber, noCameraClock: wholeNumber, beforeKeyframe: wholeNumber }),
   /**
-   * Camera time from the first skipped packet that had a timestamp to this sample, in ms: how much
-   * delivered video the file does not hold. 0 when nothing with a timestamp was skipped. Skipped
-   * packets without a timestamp are counted above and are not in this span.
+   * How much delivered video the file does not hold, in ms: from the first skipped packet to this
+   * sample. Two parts added (review R63-13; before fix pass F-M3 only the first was counted, so a
+   * camera whose first sender report came late stated a short span for a long hole):
+   *   - camera time from the first skipped packet that HAD a timestamp to this sample;
+   *   - THE UNTIMESTAMPED LEAD: the skipped packets that came before that one have no camera time,
+   *     so their span is taken from the host's clock - from the arrival of the first of them to the
+   *     arrival of the first packet with a timestamp - and never less than their count times the
+   *     stream's nominal frame period (packets that waited inside the receiver arrive at once).
+   * 0 when nothing was skipped. The lead is a measurement on the host clock, not camera time.
    */
   skippedSpanMs: wholeNumber,
 });
@@ -680,6 +751,12 @@ export const FirstDurableFragmentRecordSchema = z.strictObject({
   deviceId: id,
   /** Length of that file once the fragment was written. A hint: the file is read again at RECOVERY. */
   bytes: wholeNumber.positive(),
+  /**
+   * The durability level the sync that covers this fragment REALLY achieved (`CaptureSyncLevel`;
+   * review R63-09). Optional on the wire inside version 4 (added by fix pass F-M3): the worker of
+   * this tree always states it; a record without it says "not stated", never "full".
+   */
+  syncLevel: z.enum(CaptureSyncLevel).optional(),
 });
 /**
  * Spec §A.5 `FragmentCheckpoint`, with its `seq` named `index` (the record's own `seq` is the
@@ -719,7 +796,7 @@ export const FragmentCheckpointRecordSchema = z
     /** The three of the per-fragment cipher (OD-03; blueprint row 84): all null until the file is encrypted. */
     gcmIv: z.string().regex(/^[0-9a-f]{24}$/).nullable(),
     gcmTag: z.string().regex(/^[0-9a-f]{32}$/).nullable(),
-    keyId: id.nullable(),
+    keyId: z.string().regex(CAPTURE_KEY_ID).nullable(),
   })
   .superRefine((record, context) => {
     const sealed = [record.gcmIv, record.gcmTag, record.keyId].filter((value) => value !== null).length;

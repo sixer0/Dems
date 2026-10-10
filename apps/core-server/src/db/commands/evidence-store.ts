@@ -16,14 +16,27 @@
  * FAIL-SAFE. A package whose manifest is missing, unreadable, or carries no integrity value the
  * contract knows is reported as UNKNOWN, which the guard treats as evidence it cannot clear: an
  * unprovable package blocks the reset exactly as a REAL one does. A store root that does not
- * exist holds zero packages — that is the state before the capture store lands (CS-02/CS-09), and
- * it says nothing about the database side, which is asked separately.
+ * exist (`ENOENT`, and only that) holds zero packages — that is the state before the capture store
+ * lands (CS-02/CS-09), and it says nothing about the database side, which is asked separately.
+ *
+ * A ROOT THAT CANNOT BE LISTED IS NOT AN EMPTY STORE (fix pass F-M7, review row 88 R88-09; decision
+ * D178). Not mounted, no permission, an I/O error, a name that is no directory: the scan says
+ * `unreadable` with the cause, and the guard REFUSES the reset - a recording that is not sealed
+ * yet has no item row, so the disk is the only witness of it.
+ *
+ * THE QUARANTINE (`<root>/.quarantine/<sessionId>/`, `sealing` D178): recordings the Core could
+ * not seal, MOVED there. Every folder in it is listed (`quarantined`) and blocks a reset: it is
+ * real evidence that has no package.
+ *
+ * A v2 FOLDER IS NEVER JUDGED BY A v1 FILE (R88-11): a folder that holds `session-manifest.json`
+ * is a v2 package, whatever a `manifest.json` beside it says - UNKNOWN here, and cleared only by
+ * its SIGNED manifest (the guard's rule (5)).
  *
  * NOTHING HERE IS LOGGED: a path and a session id are the most this file returns, and the caller
  * decides what it prints. No secret lives in a manifest, but the rule of NL-1 is that the guard
  * names counts and identifiers only.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ENV_MEDIA_DIR, MEDIA_STORE_SUBPATH, parseCapturePath } from '../../config';
 import { DEFAULT_DATA_DIR } from '../../plugins/config';
@@ -37,6 +50,10 @@ export const EVIDENCE_STORE_SUBPATH = MEDIA_STORE_SUBPATH;
 export const PACKAGE_DIRECTORY_PREFIX = 'SESSION-';
 /** The manifest file of a package, the only file this reader opens. */
 export const PACKAGE_MANIFEST_FILE = 'manifest.json';
+/** The manifest of a v2 package (`ev` §A.1): its presence makes the folder a v2 package. Never opened here. */
+export const PACKAGE_V2_MANIFEST_FILE = 'session-manifest.json';
+/** The quarantine folder below the store root (the sealing unit's `SEALING_QUARANTINE_DIR`; the reset folder imports no sealing code). */
+export const STORE_QUARANTINE_DIRECTORY = '.quarantine';
 /** The integrity values `evidence_items.integrity_source` admits (`dbc-3` C.6; D-DB-04). */
 const DEMO_INTEGRITY_VALUES: readonly string[] = ['DEMO_PACKAGE', 'SIMULATED'];
 const REAL_INTEGRITY_VALUE = 'REAL';
@@ -59,6 +76,13 @@ export interface EvidenceStoreScan {
   readonly present: boolean;
   /** Every package directory found, in directory-name order. */
   readonly packages: readonly EvidencePackageEntry[];
+  /**
+   * The cause (an errno name, or `UNKNOWN`) when the root - or its quarantine folder - is there and
+   * could NOT be listed; null when it was listed or does not exist. The guard refuses on it (R88-09).
+   */
+  readonly unreadable?: string | null;
+  /** The names in `<root>/.quarantine/`, in name order: recordings the Core could not seal. Each blocks a reset. */
+  readonly quarantined?: readonly string[];
 }
 
 /** The store root of one data directory: the evidence-store package directory of `dbc-3` §E.2. */
@@ -116,17 +140,41 @@ function isDirectory(path: string): boolean {
   }
 }
 
+function present(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    // Anything but "no such name" is held as present: the folder is then UNKNOWN and blocks (fail-safe).
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+  }
+}
+
+const errnoOf = (error: unknown): string => {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return typeof code === 'string' && /^E[A-Z0-9]+$/.test(code) ? code : 'UNKNOWN';
+};
+
 /**
- * Reads the store root: every `SESSION-*` directory and what its manifest says. A root that is
- * missing or unreadable yields `present: false` with no packages; a root that cannot be listed
- * yields no packages either, and the guard's database side still has to agree with it.
+ * Reads the store root: every `SESSION-*` directory and what its manifest says, and the names in
+ * its quarantine folder. A root that does NOT EXIST yields `present: false` with no packages. A
+ * root (or a quarantine folder) that is there and cannot be listed yields `unreadable` with the
+ * cause: the guard refuses, it never reads that as an empty store (R88-09).
  */
 export function readEvidenceStore(root: string = evidenceStoreRoot()): EvidenceStoreScan {
   let names: string[];
   try {
     names = readdirSync(root);
-  } catch {
-    return Object.freeze({ root, present: false, packages: Object.freeze([]) });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Object.freeze({ root, present: false, packages: Object.freeze([]), unreadable: null, quarantined: Object.freeze([]) });
+    return Object.freeze({ root, present: true, packages: Object.freeze([]), unreadable: errnoOf(error), quarantined: Object.freeze([]) });
+  }
+  let unreadable: string | null = null;
+  let quarantined: string[] = [];
+  try {
+    quarantined = readdirSync(join(root, STORE_QUARANTINE_DIRECTORY)).sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadable = errnoOf(error);
   }
   const packages = names
     .filter((name) => name.startsWith(PACKAGE_DIRECTORY_PREFIX))
@@ -134,7 +182,12 @@ export function readEvidenceStore(root: string = evidenceStoreRoot()): EvidenceS
     .sort()
     .map(
       (name): EvidencePackageEntry =>
-        Object.freeze({ sessionId: sessionIdOfPackageDirectory(name), directory: name, integrity: integrityOf(readManifest(join(root, name))) }),
+        Object.freeze({
+          sessionId: sessionIdOfPackageDirectory(name),
+          directory: name,
+          // A v2 folder is never read from a v1 file beside its manifest (R88-11).
+          integrity: present(join(root, name, PACKAGE_V2_MANIFEST_FILE)) ? 'UNKNOWN' : integrityOf(readManifest(join(root, name))),
+        }),
     );
-  return Object.freeze({ root, present: true, packages: Object.freeze(packages) });
+  return Object.freeze({ root, present: true, packages: Object.freeze(packages), unreadable, quarantined: Object.freeze(quarantined) });
 }

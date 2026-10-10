@@ -30,6 +30,7 @@ import {
   ManifestV2ExportBlockSchema,
   PackageFile,
   VIDEO_TRACK_IDS,
+  isSealedTrackList,
   canonicalJson,
   canonicalJsonBytes,
   manifestSignedMessage,
@@ -59,7 +60,12 @@ export const ExportManifestSchema = z.strictObject({
   /** §19.2 item 1: the decrypted camera files, each with the plaintext hash the SEALED manifest records. */
   payload: z.strictObject({
     representation: z.literal(EXPORT_REPRESENTATION),
-    files: z.array(z.strictObject({ trackId: z.enum(VIDEO_TRACK_IDS), path: entryPath, bytes: count, sha256Plain: hex64 })).length(VIDEO_TRACK_IDS.length),
+    // ONE OR TWO camera files, as the sealed package holds them (R88-01, decision D178): the shared rule of the sealed track list.
+    files: z
+      .array(z.strictObject({ trackId: z.enum(VIDEO_TRACK_IDS), path: entryPath, bytes: count, sha256Plain: hex64 }))
+      .min(1)
+      .max(VIDEO_TRACK_IDS.length)
+      .refine((files) => isSealedTrackList(files.map((file) => file.trackId)), 'the camera files of a sealed package: one or two, each once, in file order'),
   }),
   /** §19.2 item 2: the sealed manifest, carried byte for byte (§G.2). */
   sessionManifest: z.strictObject({
@@ -104,7 +110,12 @@ export const ExportManifestSchema = z.strictObject({
       bytes: count,
       sha256: hex64,
       encoder: text,
-      sources: z.array(z.enum(VIDEO_TRACK_IDS)).length(VIDEO_TRACK_IDS.length),
+      // The sources a composite names are camera files of the package (the same list rule). The encoder seam composes TWO.
+      sources: z
+        .array(z.enum(VIDEO_TRACK_IDS))
+        .min(1)
+        .max(VIDEO_TRACK_IDS.length)
+        .refine((sources) => isSealedTrackList(sources), 'the sources of a composite: camera files of the package, each once, in file order'),
     })
     .nullable(),
 });

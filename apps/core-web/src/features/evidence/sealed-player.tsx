@@ -10,7 +10,7 @@ import { AudioSourceBand } from './audio-source-band'
 import { VerifiedSourceBadge } from './development-source'
 import { CAMERA_FILE_IDS, type CameraFileId, type ItemV2 } from './item-v2'
 import { logEvidence, newCorrelationId } from './log'
-import { mediaSessionStale, openMediaSessions, type MediaSession, type MediaSessionFailure, type MediaSessionRefusal } from './media-session'
+import { cameraFilesOf, mediaSessionStale, openMediaSessions, type MediaSession, type MediaSessionRefusal } from './media-session'
 import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, type VerifiedSources } from './sealed-playback'
 import { useRetryCooldown } from './use-retry-cooldown'
 
@@ -34,7 +34,7 @@ type Phase =
   | { readonly kind: 'opening' }
   /** `stoppedAtMs`: playback stopped there and did not resume by itself; null while it runs. `renewing`: new sessions are being asked for. */
   | { readonly kind: 'ready'; readonly sessions: Sessions; readonly stoppedAtMs: number | null; readonly renewing: boolean }
-  | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal; readonly integrity: MediaSessionFailure['integrity'] }
+  | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal }
 
 /** After a renewal the players go back to this place, and play again when they were playing. */
 interface Resume {
@@ -55,18 +55,22 @@ function setTime(element: HTMLMediaElement, seconds: number): void {
   }
 }
 
-function playSafely(element: HTMLMediaElement | null, source: string, context: Record<string, unknown>): void {
+/** `onRefused`: the element did not start (the autoplay rule after an awaited renewal, a source it cannot play). R93-14: the caller takes the Pause state back. */
+function playSafely(element: HTMLMediaElement | null, source: string, context: Record<string, unknown>, onRefused: () => void): void {
   if (!element) return
   try {
     const result = element.play() as Promise<void> | undefined
     if (result && typeof result.catch === 'function') {
       result.catch((error: unknown) => {
-        // A pause during load rejects play(); that is not worth a record.
-        if (!(error instanceof DOMException && error.name === 'AbortError')) logEvidence('warn', source, error, context)
+        // A pause during load rejects play(); that is not worth a record, and the pause set the state itself.
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        logEvidence('warn', source, error, context)
+        onRefused()
       })
     }
   } catch (error) {
     logEvidence('warn', source, error, context)
+    onRefused()
   }
 }
 
@@ -91,11 +95,14 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
  *   on a session that is at its end (the Core's clock, 5 s margin), and once after a media error —
  *   then it goes back to the same position and plays on if it was playing. A second error at the
  *   same place is not renewed again: playback stops there with its position.
- * - **A failed fragment is an integrity failure, not a player error.** When operation 88 answers
- *   `FRAGMENT_NOT_AUTHENTIC`, or playback stopped and the last verify run of this page names a
- *   failed fragment, the player says "This recording failed its integrity check at <file> fragment
- *   <n>". (A media element cannot read the body of the media route's 409, so the fragment comes
- *   from one of those two answers; without either, the stop names the position and points to Verify.)
+ * - **A failed fragment is an integrity failure, not a player error.** A media element cannot
+ *   read the body of the media route's 409, and operation 88 opens no fragment (R93-12): the
+ *   player itself never learns WHICH fragment failed. When playback stopped and the last verify
+ *   run of this page names a failed fragment of an open file, the player says "This recording
+ *   failed its integrity check (Verify: <file> fragment <n>)" - what Verify found, not a claim
+ *   about where playback stopped (R93-13). Without a verify run the stop names the position and
+ *   points to Verify.
+ * - **One camera or two.** The files asked for are the ones the item names (`files[]` of 1 or 2).
  * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal for
  *   the role says so; anything else goes to the shared presenter first and offers a rate-limited
  *   "Open again" (3 s, 6 s, 12 s; three tries).
@@ -123,6 +130,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const totalSeconds = totalMs / 1000
 
   const sessions = phase.kind === 'ready' ? phase.sessions : null
+  /** The camera files this item has: one or two. */
+  const expected = useMemo(() => cameraFilesOf(item), [item])
   const opened = sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)
   const leading = opened[0] ?? null
 
@@ -133,10 +142,16 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       busy.current = true
       setPhase((current) => (renewal && current.kind === 'ready' ? { ...current, renewing: true } : { kind: 'opening' }))
       const correlationId = newCorrelationId('media')
-      const result = await openMediaSessions(live, evidenceId)
-      busy.current = false
-      // Pass D5: an integrity refusal of EITHER file stops playback with its sentence, also when the other file opened.
-      if (Object.keys(result.sessions).length === 0 || result.failure?.refusal === 'INTEGRITY') {
+      let result: Awaited<ReturnType<typeof openMediaSessions>>
+      try {
+        result = await openMediaSessions(live, evidenceId, expected)
+      } catch {
+        // The client returns failures as values; a throw is a defect. The player is not latched by it (R93-21).
+        result = { sessions: {}, failure: null }
+      } finally {
+        busy.current = false
+      }
+      if (Object.keys(result.sessions).length === 0) {
         const failure = result.failure
         const refusal = failure?.refusal ?? 'FAILED'
         // The presenter speaks first (an outage, a time-out, a 403); the page records the rest by its codes.
@@ -147,7 +162,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         }
         resume.current = null
         setPlaying(false)
-        setPhase({ kind: 'refused', refusal, integrity: failure?.integrity ?? null })
+        setPhase({ kind: 'refused', refusal })
         return
       }
       resume.current = then
@@ -156,7 +171,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       if (then?.play === true) setPlaying(true)
       setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, renewing: false })
     },
-    [evidenceId, live, presentCoreError],
+    [evidenceId, expected, live, presentCoreError],
   )
 
   const pause = useCallback(() => {
@@ -171,7 +186,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     for (const fileId of opened) {
       const element = videos.current[fileId] ?? null
       if (element !== null && element !== lead && needsResync(lead.currentTime, element.currentTime, 0)) setTime(element, lead.currentTime)
-      playSafely(element, 'playback.play', { evidenceId, fileId })
+      // R93-14: a LEADING element that does not start takes the Pause icon back; a follower that does not start is re-aligned by the next time update.
+      playSafely(element, 'playback.play', { evidenceId, fileId }, () => {
+        if (element === lead) setPlaying(false)
+      })
     }
   }
   const startPlayers = () => {
@@ -244,7 +262,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     }
     for (const other of opened) {
       const element = videos.current[other]
-      if (other !== fileId && element && needsResync(lead.currentTime, element.currentTime)) setTime(element, lead.currentTime)
+      // R93-14: a follower that is still seeking (it buffers) is not seeked again on every time update.
+      if (other !== fileId && element && !element.seeking && needsResync(lead.currentTime, element.currentTime)) setTime(element, lead.currentTime)
     }
   }
 
@@ -294,17 +313,14 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       {reopenLabel}
     </Button>
   )
-  const integrityText = (place: { readonly fileId: string | null; readonly seq: number | null } | null): string =>
-    place !== null && place.fileId !== null && place.seq !== null ? t('evidence.playback.integrity', { file: place.fileId, seq: place.seq }) : t('evidence.playback.integrityNoPlace')
+  // R93-13: what the page's last Verify run found, said as that - not as the place where playback stopped.
+  const integrityText = (place: { readonly fileId: string; readonly seq: number }): string => t('evidence.playback.integrityVerify', { file: place.fileId, seq: place.seq })
 
   if (phase.kind === 'refused') {
-    const text =
-      phase.refusal === 'INTEGRITY'
-        ? integrityText(phase.integrity)
-        : t(`evidence.playback.${phase.refusal === 'NOT_AVAILABLE' ? 'notAvailable' : phase.refusal === 'NOT_PERMITTED' ? 'notPermitted' : 'failed'}`)
+    const text = t(`evidence.playback.${phase.refusal === 'NOT_AVAILABLE' ? 'notAvailable' : phase.refusal === 'NOT_PERMITTED' ? 'notPermitted' : 'failed'}`)
     return (
       <div className="evi-sealed" data-testid="evidence-playback" data-phase="refused" data-refusal={phase.refusal}>
-        <Alert status={phase.refusal === 'FAILED' || phase.refusal === 'INTEGRITY' ? 'danger' : 'warning'} role="alert" data-testid="evidence-playback-refused">
+        <Alert status={phase.refusal === 'FAILED' ? 'danger' : 'warning'} role="alert" data-testid="evidence-playback-refused">
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Title>{text}</Alert.Title>
@@ -331,7 +347,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     )
   }
 
-  const missing = CAMERA_FILE_IDS.find((fileId) => phase.sessions[fileId] === undefined) ?? null
+  // A file the item HAS and that did not open; a package of one camera misses nothing.
+  const missing = expected.find((fileId) => phase.sessions[fileId] === undefined) ?? null
   const stopped = phase.stoppedAtMs !== null
   // The fragment of an open file the last verify run of this page named as failed, if any.
   const verifiedFailure = stopped ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null

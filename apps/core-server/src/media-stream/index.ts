@@ -29,13 +29,13 @@ import { randomBytes } from 'node:crypto';
 import { sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { coreFragmentOpener } from '../evidence-verify';
-import { readMediaItem } from './items';
+import { readMediaItem, readSessionOpen } from './items';
 import type { MediaStreamParts } from './service';
 import { packageFolderOf } from './source';
 import { mediaSessionMacOf } from './store-door';
 import { MEDIA_TOKEN_NONCE_BYTES } from './token';
 
-export { READ_MEDIA_ITEM, readMediaItem, type MediaItem, type MediaItemReader } from './items';
+export { READ_MEDIA_ITEM, READ_SESSION_OPEN, readMediaItem, readSessionOpen, type MediaItem, type MediaItemReader } from './items';
 export { contentRangeOf, decideRange, unsatisfiedRangeOf, type RangeDecision } from './ranges';
 export {
   EVIDENCE_CASE_SCOPE_REASON,
@@ -44,6 +44,8 @@ export {
   MEDIA_ROUTE_PREFIX,
   MEDIA_ROUTE_URL,
   MEDIA_SERVED_UNIT,
+  MEDIA_SESSION_CHECK_EVERY_PIECES,
+  MEDIA_SESSION_ENDED_REASON,
   MEDIA_SESSION_ISSUED_UNIT,
   MEDIA_STREAM_OPERATIONS,
   MediaSessionRequestSchema,
@@ -102,6 +104,7 @@ export function mediaStream(app: FastifyInstance): MediaStreamControl {
     mac: () => mediaSessionMacOf(app),
     readItem: (request, evidenceId) => app.db.read('mediaStream.readItem', (pool) => readMediaItem({ query: (text, values) => pool.query(text, [...values]) }, evidenceId), request),
     nonce: () => randomBytes(MEDIA_TOKEN_NONCE_BYTES),
+    sessionOpen: (request, sessionId) => app.db.read('mediaStream.sessionOpen', (pool) => readSessionOpen({ query: (text, values) => pool.query(text, [...values]) }, sessionId), request),
   };
   let replaced: Partial<MediaStreamParts> = {};
   const control: MediaStreamControl = {

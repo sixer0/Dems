@@ -25,6 +25,29 @@ const CORE_PROXY_PORTS = ['4420', '4421', '4422', '4423']
  * (SR-04, OR-5). Without the variable nothing is returned, so Vite's default stays and Simulated-mode
  * dev is unchanged.
  */
+/** A proxied path whose last segment is a signed bearer value: the media session (`mts_`) and the export download (`exs_`). */
+const SIGNED_PATH = /^\/(media|exports)\/.*$/
+
+/**
+ * Review finding R93-09 (fix pass F-M8). Vite prints `http proxy error: <request url>` for every
+ * proxy error, and the Core destroys a media connection ON PURPOSE when a fragment fails its tag
+ * mid-stream (also at a Core restart): the token path would be in the dev server's output. This
+ * listener is registered through the entry's `configure`, which Vite calls BEFORE it adds its own
+ * `error` listener - so it runs first and blanks the path on the request Vite is about to print.
+ * It changes nothing of a request that is forwarded: it acts only after the request has failed.
+ */
+export function blankSignedPathOnProxyError(forwarder: { on(event: 'error', listener: (error: unknown, request: unknown, response: unknown) => void): unknown }): void {
+  const blank = (holder: unknown): void => {
+    if (typeof holder !== 'object' || holder === null) return
+    const request = holder as { url?: unknown }
+    if (typeof request.url === 'string') request.url = request.url.replace(SIGNED_PATH, '/$1/[signed path not printed]')
+  }
+  forwarder.on('error', (_error, request, response) => {
+    blank(request)
+    blank((response as { req?: unknown } | null | undefined)?.req)
+  })
+}
+
 function coreDevProxy(port: string | undefined): Pick<ServerOptions, 'proxy' | 'cors'> {
   if (port === undefined || port === '') return {}
   if (!CORE_PROXY_PORTS.includes(port)) {
@@ -39,7 +62,10 @@ function coreDevProxy(port: string | undefined): Pick<ServerOptions, 'proxy' | '
       '/ws': { target, ws: true },
       // Blueprint row 92 (M8): the media route of the signed media session (operation 88) is
       // registry-external like `/ws`; the player asks it same-origin, so the session cookie travels.
-      '/media': { target },
+      // R93-09: a proxy error of a signed path is printed without the path.
+      '/media': { target, configure: blankSignedPathOnProxyError },
+      // Fix pass F-M8 (R93-05): the registry-external download route of a finished export, same-origin like `/media`.
+      '^/exports/exs_': { target, configure: blankSignedPathOnProxyError },
     },
     cors: false,
   }

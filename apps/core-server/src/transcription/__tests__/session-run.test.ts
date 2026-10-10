@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import type { FetchLike, TranscriptModelProvenance } from '@dems/transcriber';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ModelProvenanceCode, SessionRunCode, createMemorySnapshotStore, mountTranscription, sessionScratchDir, sessionTapPath, type StoredSttSelection, type SttSnapshotStore, type TranscriptionControl } from '../index';
-import { CPU_MODEL, SERVER_MODEL, answerer, cpuRow, fakeHost, fullHost, ggmlBytes, makeDataDir, serverRow, writeTap, type Answerer, type DataDir, type FakeHost } from './support';
+import { CPU_MODEL, SERVER_MODEL, answerer, cpuRow, fakeHost, fullHost, ggmlBytes, makeDataDir, serverRow, writeTap, type Answerer, type DataDir, type FakeHost, mediaOf } from './support';
 
 const dirs: string[] = [];
 afterAll(() => {
@@ -59,7 +59,7 @@ function mount(slug: string, stored: StoredSttSelection | null, more: { provenan
 async function recording(m: Mounted, sessionId: string, seconds: number): Promise<void> {
   expect(await m.control.snapshotSttConfigForSession(sessionId)).toMatchObject({ ok: true, taken: true });
   await m.control.settled();
-  writeTap(sessionTapPath(m.dir.dataDir, sessionId), seconds);
+  writeTap(sessionTapPath(mediaOf(m.dir.dataDir), sessionId), seconds);
   m.host.capture.state = { sessionId, workerPid: process.pid, phase: 'RECORDING' };
 }
 
@@ -269,7 +269,7 @@ describe('nothing is opened for a session that is not to be transcribed', () => 
     await m.control.runs.idle();
     expect(await m.control.runs.availability(id)).toEqual({ kind: 'DISABLED' });
     expect(m.transport.calls).toEqual([]);
-    expect(existsSync(sessionScratchDir(m.dir.dataDir, id))).toBe(false);
+    expect(existsSync(sessionScratchDir(mediaOf(m.dir.dataDir), id))).toBe(false);
   });
 
   it('no snapshot: nothing is opened and the configuration as it is NOW is never used; the seal is told NO_SNAPSHOT', async () => {
@@ -308,5 +308,150 @@ describe('after a restart of the Core the seal reads the same seam', () => {
     expect(second.control.runs.status(id)).toMatchObject({ phase: 'COMPLETE', opened: 'ENABLED', closed: true });
     const answer = await second.control.runs.assemble(id);
     expect(answer.kind === 'ASSEMBLED' ? answer.record.state : answer.kind).toBe('ASSEMBLED');
+  });
+});
+
+/** The checkpoint and the sealed document of a session, as they are on the disk. */
+const checkpointOf = (m: Mounted, id: string): { chunks: { startMs: number; audioSource: string | null; status: string }[]; qaFlags: string[] } => JSON.parse(readFileSync(join(sessionScratchDir(mediaOf(m.dir.dataDir), id), 'transcript-checkpoint.json'), 'utf8'));
+const documentOf = (path: string): { qa_flags: string[]; intervals: unknown[] } => JSON.parse(readFileSync(path, 'utf8'));
+
+describe('R80-02 (code review row 80): the production runner is given the audio-source intervals of its session', () => {
+  it('a switch inside the session: every chunk names the source of its start, and the sealed document does NOT carry `intervals_incomplete`', async () => {
+    const m = mount('fm6-intervals', serverRow(ENDPOINT));
+    const id = 'SES-20310101-0201';
+    // START on MIC-01, a switch to MIC-02 at 15 s of media time: the rows row 71b writes.
+    m.host.intervalRows = [
+      { mic_device_id: 'MIC-01', from_media_ms: 0, to_media_ms: 15_000 },
+      { mic_device_id: 'MIC-02', from_media_ms: 15_000, to_media_ms: null },
+    ];
+    await recording(m, id, 70);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    const answer = await m.control.runs.assemble(id);
+    if (answer.kind !== 'ASSEMBLED') throw new Error(`the seal was answered ${answer.kind}`);
+    const { chunks, qaFlags } = checkpointOf(m, id);
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    expect(chunks.map((chunk) => chunk.audioSource)).toEqual(chunks.map((chunk) => (chunk.startMs < 15_000 ? 'MIC-01' : 'MIC-02')));
+    expect(new Set(chunks.map((chunk) => chunk.audioSource))).toEqual(new Set(['MIC-01', 'MIC-02']));
+    expect(qaFlags).not.toContain('intervals_incomplete');
+    expect(documentOf(answer.files.json).qa_flags).not.toContain('intervals_incomplete');
+    expect(answer.record.state).toBe('ASSEMBLED');
+  });
+
+  it('CONTROL: intervals that really are incomplete (no row covers the later audio) raise the flag, and that chunk names no source', async () => {
+    const m = mount('fm6-intervals-gap', serverRow(ENDPOINT));
+    const id = 'SES-20310101-0202';
+    m.host.intervalRows = [{ mic_device_id: 'MIC-01', from_media_ms: 0, to_media_ms: 15_000 }];
+    await recording(m, id, 70);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    const answer = await m.control.runs.assemble(id);
+    if (answer.kind !== 'ASSEMBLED') throw new Error(`the seal was answered ${answer.kind}`);
+    const { chunks } = checkpointOf(m, id);
+    expect(chunks.map((chunk) => chunk.audioSource)).toEqual(chunks.map((chunk) => (chunk.startMs < 15_000 ? 'MIC-01' : null)));
+    expect(documentOf(answer.files.json).qa_flags).toContain('intervals_incomplete');
+  });
+});
+
+/** A transport whose transcription answers wait at a gate the test opens: a SLOW engine that then answers with text. */
+function gated(): { fetchImpl: FetchLike; asked: () => number; open: () => void } {
+  let asked = 0;
+  let open: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const fetchImpl: FetchLike = async (input) => {
+    if (input.endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: SERVER_MODEL }] }), { status: 200 });
+    asked += 1;
+    await gate;
+    return new Response(JSON.stringify({ text: 'terlambat', language: 'id', segments: [{ start: 0.2, end: 1.4, text: 'terlambat' }] }), { status: 200 });
+  };
+  return { fetchImpl, asked: () => asked, open };
+}
+const turns = async (count = 40): Promise<void> => {
+  for (let index = 0; index < count; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+};
+const until = async (holds: () => boolean): Promise<void> => {
+  for (let index = 0; index < 400 && !holds(); index += 1) await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  if (!holds()) throw new Error('the awaited state of the test was not reached');
+};
+/** Every statement that WRITES a chunk row. */
+const chunkWrites = (m: Mounted): string[] => m.host.statements.filter((text) => text.includes('transcript_chunks') && /^\s*(INSERT|UPDATE)/i.test(text));
+const scratchBytes = (m: Mounted, id: string): Record<string, string> => {
+  const dir = sessionScratchDir(mediaOf(m.dir.dataDir), id);
+  return Object.fromEntries(['transcript-checkpoint.json', 'transcript.json', 'transcript.srt', 'transcript.vtt'].map((name) => [name, createHash('sha256').update(readFileSync(join(dir, name))).digest('hex')]));
+};
+
+describe('R80-03 (code review row 80): after the close-out of the seal nothing of the session\'s own runner writes any more', () => {
+  it('a slow chunk that finishes AFTER the close-out changes no chunk row and no file, and no further chunk is asked of the backend', async () => {
+    const slow = gated();
+    const m = mount('fm6-closeout-stop', serverRow(ENDPOINT), { fetchImpl: slow.fetchImpl });
+    const id = 'SES-20310101-0301';
+    await recording(m, id, 70);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    // The session's own runner is inside its engine call for the first chunk.
+    await until(() => slow.asked() >= 1);
+
+    const closed = await m.control.runs.closeOut(id, 'TIMEOUT');
+    if (closed.kind !== 'ASSEMBLED') throw new Error(`the close-out answered ${closed.kind}`);
+    expect(closed.record.state).toBe('PARTIAL');
+    const failed = closed.record.failedChunks;
+    expect(failed).toBeGreaterThanOrEqual(2);
+    const files = scratchBytes(m, id);
+    const writes = chunkWrites(m).length;
+    const asked = slow.asked();
+
+    // THE ENGINE ANSWERS NOW, with text, for the chunk the seal already signed as FAILED.
+    slow.open();
+    await turns();
+    await m.control.runs.idle();
+    await turns();
+
+    expect(scratchBytes(m, id)).toEqual(files);
+    expect(chunkWrites(m).length).toBe(writes);
+    expect(slow.asked()).toBe(asked);
+    const { chunks } = checkpointOf(m, id);
+    expect(chunks.filter((chunk) => chunk.status === 'FAILED').length).toBe(failed);
+    expect(chunks.some((chunk) => chunk.status === 'DONE')).toBe(false);
+    expect(m.control.runs.status(id)).toMatchObject({ phase: 'CLOSED_OUT', closed: true });
+  });
+
+  it('CONTROL: without a close-out the same slow answer IS committed - the checkpoint, the rows and the next request all move', async () => {
+    const slow = gated();
+    const m = mount('fm6-closeout-control', serverRow(ENDPOINT), { fetchImpl: slow.fetchImpl });
+    const id = 'SES-20310101-0302';
+    await recording(m, id, 70);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await until(() => slow.asked() >= 1);
+    const writes = chunkWrites(m).length;
+    slow.open();
+    await m.control.runs.idle();
+    expect(slow.asked()).toBeGreaterThanOrEqual(2);
+    expect(chunkWrites(m).length).toBeGreaterThan(writes);
+    expect(checkpointOf(m, id).chunks.every((chunk) => chunk.status === 'DONE')).toBe(true);
+  });
+
+  it('a failed start (end recorded: false) and a shutdown stop a step in flight the same way: its late answer writes nothing', async () => {
+    for (const how of ['failed-start', 'shutdown'] as const) {
+      const slow = gated();
+      const m = mount(`fm6-stop-${how}`, serverRow(ENDPOINT), { fetchImpl: slow.fetchImpl });
+      const id = how === 'failed-start' ? 'SES-20310101-0303' : 'SES-20310101-0304';
+      await recording(m, id, 70);
+      await m.control.runs.begin(id);
+      await until(() => slow.asked() >= 1);
+      const before = createHash('sha256').update(readFileSync(join(sessionScratchDir(mediaOf(m.dir.dataDir), id), 'transcript-checkpoint.json'))).digest('hex');
+      const writes = chunkWrites(m).length;
+      if (how === 'failed-start') m.control.runs.end(id, { recorded: false });
+      else m.control.runs.shutdown();
+      slow.open();
+      await turns();
+      expect(slow.asked(), how).toBe(1);
+      expect(chunkWrites(m).length, how).toBe(writes);
+      if (how === 'shutdown') expect(createHash('sha256').update(readFileSync(join(sessionScratchDir(mediaOf(m.dir.dataDir), id), 'transcript-checkpoint.json'))).digest('hex'), how).toBe(before);
+    }
   });
 });

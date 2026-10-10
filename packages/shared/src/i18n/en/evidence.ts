@@ -481,6 +481,8 @@ export const evidence = {
     stoppedAt: 'Playback stopped at {{at}} and did not resume. A recording that fails its integrity check stops at the failed fragment: run Verify to see which.',
     integrity: 'This recording failed its integrity check at {{file}} fragment {{seq}}.',
     integrityNoPlace: 'This recording failed its integrity check.',
+    /** Fix pass F-M8 (R93-13): the place is what the page's last Verify run found - it is not said to be where playback stopped. */
+    integrityVerify: 'This recording failed its integrity check (Verify: {{file}} fragment {{seq}}).',
     renewing: 'Renewing the media session…',
     reopen: 'Open again',
     reopenIn: 'Open again in {{seconds}} s',
@@ -517,7 +519,9 @@ export const evidence = {
       PARTIAL: 'Transcript partial',
       UNAVAILABLE: 'Transcript unavailable',
       DISABLED: 'Transcript disabled by configuration',
+      UNKNOWN: 'Transcript state not reported',
     },
+    noDocument: 'No transcript was sealed with this recording.',
     failedChunks_one: '{{count}} part of the audio has no text. No text stands in for it.',
     failedChunks_other: '{{count}} parts of the audio have no text. No text stands in for them.',
     backendUnreachable: 'The transcription backend could not be reached for part of the recording.',
@@ -586,6 +590,15 @@ export const evidence = {
     inProgress: 'An export of this item is already running. Wait until it has finished, then export again.',
     /** Integration pass D5: the label of the control that names the kind of a new export (options: `kind.PACKAGE`, `kind.COMPOSITE`). */
     kindLabel: 'Export output',
+    /** Fix pass F-M8 (R93-05, ruling D178): the signed download of a finished export. Web only (UX §6.6); the mobile app points to the web console. */
+    download: 'Download export',
+    downloadStarting: 'Starting the download…',
+    downloadFailed: 'The download could not be started. Try again.',
+    downloadUnavailable: 'This export cannot be downloaded right now. Read the job again, then try once more.',
+    downloadFromWeb: 'Download from the web console.',
+    /** R93-01 / R93-03: named causes of a FAILED job an operator can act on. */
+    failedInterrupted: 'The export was interrupted (the Core server stopped). Nothing was exported: export again.',
+    failedNotAvailable: 'This Core server cannot export this item: its export jobs are not available. Nothing was exported.',
   },
 
   /** MB-05 Session Summary (row 92): the sealed members of a schema-v2 item, as the Core's seal states them. */
@@ -604,5 +617,18 @@ export const evidence = {
     },
     signature: 'Signature',
     signatureReal: 'Ed25519, Core key {{key}}',
+  },
+
+  /**
+   * Fix pass F-M7 (review row 88, R88-06 / R88-07; decision D178): the signing key of a verified
+   * package and what its signature does not cover. `development` is the verifier's own report line
+   * (`DEVELOPMENT_KEY_REPORT_LINE`), without its full stop.
+   */
+  verifyV2Key: {
+    development: 'Signed with a DEVELOPMENT key — not a production signature',
+    notEstablished: 'Signing key: not established — the signature or its certificate did not verify',
+    noticesTitle: 'Not covered by the package signature',
+    /** The signature line of the evidence detail, after the item was verified with a development-key answer. */
+    detailDevelopment: 'Signed with a DEVELOPMENT key — not a production signature',
   },
 } as const satisfies ResourceTree;

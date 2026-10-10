@@ -6,8 +6,10 @@
  *
  * A composite is marked "Derived output — not the sealed evidence"; a composite job that ends
  * `COMPOSITE_ENCODER_NOT_SELECTED` reads "Composite video is not available in this build" (a state
- * of the product, not a fault of the operator). There is no download operation: the line says "The
- * export is stored on the Core", and no download control is drawn. Plain views and the kit; the
+ * of the product, not a fault of the operator). The line says "The export is stored on the Core";
+ * the DOWNLOAD of a finished export is the web console's (UX §6.6 gives tablet and phone none): when
+ * the Core names one, this screen adds "Download from the web console." and draws no control (fix
+ * pass F-M8, R93-05). Plain views and the kit; the
  * bar is a static width, nothing here is animated (E-13).
  */
 import { useQueryClient } from '@tanstack/react-query';
@@ -100,6 +102,12 @@ export function ExportJobStatus({ exportId, jobId: answeredJobId = null }: Expor
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-on-core">
             {t('evidence.exportJob.onCore', { exportId })}
           </Text>
+          {/* Fix F-M8 (R93-05): the UX spec gives the download to the web console only (§6.6); this app says where it is. */}
+          {job.downloadable ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-download-from-web">
+              {t('evidence.exportJob.downloadFromWeb')}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 

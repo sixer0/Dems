@@ -302,3 +302,66 @@ describe('`captureNotices(app).watchSessionStarts`: the listener of `sessionCapt
     expect(errors).toEqual([]);
   });
 });
+
+// Fix pass F-M5 (review R74-03): a camera whose source was OPENED but which the worker could not
+// connect (protocol 4 `CAMERA_NOT_CONNECTED`) used to get a CRITICAL capture fault reading "a
+// recording file stopped growing". It is the degraded start of ux §8e.2: ONE WARNING naming the camera.
+describe('review R74-03: a camera the worker could not connect is the WARNING of a degraded start', () => {
+  const notConnected = (sessionId: string, deviceId: string): SessionStartEvent => ({ type: 'CAMERA_NOT_CONNECTED', sessionId, deviceId });
+
+  it('said by the worker before the session records: nothing until DURABLE, then one WARNING and one audit row; no fault', async () => {
+    const h = harness();
+    await h.watch.handle(connecting(SESSION));
+    await h.watch.handle(started(SESSION, ['CAM-01', 'CAM-02'], []));
+    await h.watch.handle(notConnected(SESSION, 'CAM-02'));
+    // CONTROL: a start that then fails has ONE alert, the critical one - nothing is announced before the session records.
+    expect(h.notices('CAM-02')).toEqual([]);
+    await h.watch.handle(durable(SESSION));
+    expect(h.notices('CAM-02', true)).toMatchObject([{ severity: 'WARNING', params: { phase: 'SESSION_START', cause: 'NOT_CONNECTED' } }]);
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE').map((row) => row.details)).toEqual([{ deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'SESSION_START', reason: 'NOT_CONNECTED', degraded: true, sessionId: SESSION }]);
+    expect(h.faults()).toEqual([]);
+    // The camera that DID connect keeps no warning, and CAM-02 is not treated as connected.
+    expect(h.notices('CAM-01')).toEqual([]);
+    expect(h.reports).toEqual([]);
+  });
+
+  it('said after the session records (the ingest-open window closed later): raised at once, once; with the adapter refusal of the same camera it stays ONE alert', async () => {
+    const h = harness();
+    await h.watch.handle(connecting(SESSION));
+    await h.watch.handle(started(SESSION, ['CAM-01'], ['CAM-02']));
+    await h.watch.handle(durable(SESSION));
+    expect(h.notices('CAM-02', true)).toHaveLength(1);
+    // One event, ONE alert: the worker's statement about the camera the adapter already could not open adds nothing.
+    await h.watch.handle(notConnected(SESSION, 'CAM-02'));
+    expect(h.notices('CAM-02')).toHaveLength(1);
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(1);
+
+    const other = harness();
+    await other.watch.handle(connecting(SESSION));
+    await other.watch.handle(started(SESSION, ['CAM-01', 'CAM-02'], []));
+    await other.watch.handle(durable(SESSION));
+    expect(other.notices('CAM-02')).toEqual([]);
+    await other.watch.handle(notConnected(SESSION, 'CAM-02'));
+    await other.watch.handle(notConnected(SESSION, 'CAM-02'));
+    expect(other.notices('CAM-02', true)).toHaveLength(1);
+    expect(other.faults()).toEqual([]);
+  });
+
+  it('no camera connected at all: the failed start keeps its ONE critical alert; no warning per camera; a statement of another session is ignored', async () => {
+    const h = harness();
+    await h.watch.handle(connecting(SESSION));
+    await h.watch.handle(started(SESSION, ['CAM-01', 'CAM-02'], []));
+    await h.watch.handle(notConnected(SESSION, 'CAM-01'));
+    await h.watch.handle(notConnected(SESSION, 'CAM-02'));
+    await h.watch.handle({ type: 'FAILED_START', sessionId: SESSION, cause: 'NO_CAMERA_CONNECTED' });
+    expect(h.notices('CAM-01')).toEqual([]);
+    expect(h.notices('CAM-02')).toEqual([]);
+    expect(h.faults(true)).toHaveLength(1);
+    // The next session: what the failed one said about its cameras is gone, and a late statement of it changes nothing.
+    await h.watch.handle(connecting(NEXT_SESSION));
+    await h.watch.handle(started(NEXT_SESSION, ['CAM-01', 'CAM-02'], []));
+    await h.watch.handle(notConnected(SESSION, 'CAM-02'));
+    await h.watch.handle(durable(NEXT_SESSION));
+    expect(h.notices('CAM-02')).toEqual([]);
+  });
+});

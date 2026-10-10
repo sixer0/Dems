@@ -105,3 +105,13 @@ double trend_ppm(const ClockTrend *t, int *fitted) {
     *fitted = t->last_x >= CLOCK_TREND_MIN_SPAN_S && den > 0;
     return *fitted ? (t->n * t->sxy - t->sx * t->sy) / den * 1000.0 : 0;     /* ms per second -> ppm */
 }
+
+int64_t skipped_span_ms(int64_t camera_span_us, int64_t lead_packets, int64_t lead_arrival_us, int64_t frame_period_us) {
+    int64_t lead_us = 0;
+    if (lead_packets > 0) {
+        lead_us = lead_arrival_us > 0 ? lead_arrival_us : 0;
+        if (frame_period_us > 0 && lead_packets * frame_period_us > lead_us) lead_us = lead_packets * frame_period_us;
+    }
+    if (camera_span_us < 0) camera_span_us = 0;
+    return (camera_span_us + lead_us + 500) / 1000;
+}

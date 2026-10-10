@@ -173,6 +173,28 @@ describe('nothing is waited for when no transcript can come', () => {
     expect(accepted(result)).toBe('PARTIAL');
   });
 
+  it('R80-07: a session whose REAL snapshot names a model `not-recorded` (a valid identifier) HAS a snapshot - it is asked for and sealed with its document, never mistaken for "no snapshot"', async () => {
+    const r = rig(AVAILABLE);
+    await r.session.finish();
+    // Member for member the fixed stand-in, and NOT it: a row of `session_stt_config` the session really wrote.
+    const real = { ...NO_STT_SNAPSHOT_RECORDED, revision: 4 };
+    const sealed = await r.seal(real);
+    const result = done(sealed.result);
+    expect(result.transcript.manifest).toMatchObject({ state: 'ASSEMBLED', disabledReason: null, configSnapshot: { model: 'not-recorded', revision: 4 } });
+    expect(result.transcript.transcriptRow).not.toBeNull();
+    expect(r.asked).toEqual(['availability', 'assemble']);
+    expect(r.reports).toEqual([]);
+  });
+
+  it('R80-07: when the stand-in reaches the step as a COPY (not the reader\'s own object) the transcription unit is asked, and its answer NO_SNAPSHOT is reported under the same code', async () => {
+    const r = rig({ kind: 'NO_SNAPSHOT' });
+    const sealed = await r.seal({ ...NO_STT_SNAPSHOT_RECORDED }, { stepLimitMs: 3_600_000, callLimitMs: 30_000, closeOutLimitMs: 60_000 }, 8);
+    const result = done(sealed.result);
+    expect(result.transcript.manifest).toMatchObject({ state: 'PARTIAL', disabledReason: 'TRANSCRIPT_UNAVAILABLE_AT_SEAL', file: null });
+    expect(r.asked).toEqual(['availability']);
+    expect(r.reports).toEqual([{ level: 'error', code: SealTranscriptCode.SNAPSHOT_MISSING, cause: null }]);
+  });
+
   it('the bounds of a step that has nothing to wait for are the smallest the step admits', () => {
     expect(NO_TRANSCRIPT_LIMITS).toEqual({ stepLimitMs: 2, callLimitMs: 1, closeOutLimitMs: 1, closeOutAttempts: 1 });
   });

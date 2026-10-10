@@ -19,7 +19,8 @@
  *                                     engine start, handed to the adapter AND the VAD (§C sibling rule);
  *                   priority          `required` (the host module states it; D91);
  *                   tapLost           STICKY: one telemetry frame `tapActive: false` while the
- *                                     session records latches it for good (N-1);
+ *                                     session records latches it for good (N-1), ON THE DISK at
+ *                                     once (`TAP_LOST_MARKER_FILE`, R80-06);
  *                   the tap           `<session scratch>/tap.pcm` (`sessionTapPath`);
  *                   shouldPause       the composition's own hold, plus the caller's;
  *                   mirror            the `transcript_chunks` store on the runtime pool;
@@ -53,7 +54,7 @@
  *      hold: PARTIAL, D-EV-1) - a checkpoint that keeps tearing is a fault of the store, not
  *      something to loop on.
  */
-import { existsSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   captureTapTimeline,
@@ -76,6 +77,7 @@ import {
   type TranscriberAdapter,
   type TranscriberConfig,
   type TranscriberLog,
+  type AudioSourceInterval,
   type TranscriptRunner,
   type TranscriptRunnerOptions,
   type VoiceActivityDetector,
@@ -86,6 +88,16 @@ import { sessionScratchDir, sessionTapPath, type TranscriberHost } from './host'
 import type { SttSessionSnapshot, SttSnapshotStore } from './snapshot';
 
 export const CHECKPOINT_RECOVERY_LIMIT = 3;
+
+/**
+ * THE DURABLE HALF OF THE TAP LATCH (code review row 80, R80-06). An empty file in the session's
+ * scratch folder, made THE MOMENT the capture worker reports that the tap is not written. The
+ * in-memory latch reaches the checkpoint file only at the entry of the runner's next step; a Core
+ * that died in between used to reopen the session with "tap never lost", plan the short tap to its
+ * end and seal ASSEMBLED for audio that was never transcribed. A session whose folder holds this
+ * file is opened with the latch SET, for good. It holds nothing; it goes with the scratch folder.
+ */
+export const TAP_LOST_MARKER_FILE = 'tap-lost';
 
 export const SessionTranscriptionCode = {
   HOST_CONFIG_INVALID: 'HOST_CONFIG_INVALID',
@@ -108,7 +120,8 @@ interface SessionCompositionBase {
   readonly engineGuard?: (sessionScratchDir: string) => SessionEngineGuard;
   /** The opener of a stored `ENCRYPTED` credential (`coreSttEnvelopeOpener`). Absent: a session with that kind is UNAVAILABLE. */
   readonly openEncrypted?: SttEnvelopeOpener;
-  readonly dataDir: string;
+  /** The media store root of this Core: the session's scratch is `<mediaStoreDir>/.transcriber/sessions/<id>` (ruling D180). */
+  readonly mediaStoreDir: string;
   readonly host: () => TranscriberHost;
   readonly snapshots: SttSnapshotStore;
   readonly reveal: () => Promise<RevealedSttCredential>;
@@ -117,6 +130,14 @@ interface SessionCompositionBase {
   readonly queue: SerialQueue;
   readonly now: () => number;
   readonly fetchImpl?: FetchLike;
+  /**
+   * THE AUDIO-SOURCE INTERVALS OF THE SESSION (`session_audio_intervals`, media time; transcript
+   * spec §A.1; code review row 80, R80-02). NOT OPTIONAL: a runner that is given none names no
+   * source for any chunk and flags every transcript `intervals_incomplete` - a false statement in
+   * the sealed document. Read before every step of the runner (a switch adds rows while the
+   * session records).
+   */
+  readonly intervals: (sessionId: string) => Promise<readonly AudioSourceInterval[]>;
 }
 
 /**
@@ -163,6 +184,15 @@ export interface EnabledSessionTranscription {
    * the session's engine guard, as after a kill (N-2). Resolves true when the plan is complete.
    */
   closeOut(chunkCode: string): Promise<boolean>;
+  /**
+   * STOPS THE SESSION'S OWN RUNNER FOR GOOD (code review row 80, R80-03): from here on it writes no
+   * checkpoint and no chunk row and starts no attempt, whatever an engine call that is still under
+   * way answers. Called by the close-out of the seal (before the closing runner is built), for an
+   * abandoned session and at a shutdown. Also ends the telemetry subscription. Not reversible.
+   */
+  stop(): void;
+  /** True once `stop()` was called. */
+  stopped(): boolean;
   /** Ends the telemetry subscription. The checkpoint and the files stay. */
   close(): void;
 }
@@ -233,23 +263,39 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
     }
   }
 
-  const scratchDir = sessionScratchDir(deps.dataDir, sessionId);
-  const tapPath = sessionTapPath(deps.dataDir, sessionId);
+  const scratchDir = sessionScratchDir(deps.mediaStoreDir, sessionId);
+  const tapPath = sessionTapPath(deps.mediaStoreDir, sessionId);
   const captureWorkerPid = (): number | null => deps.capture.status().workerPid;
 
   // STICKY (N-1). Latched by a frame of THIS session while it records: a tap that ends because
-  // the session stops is not a lost tap.
-  let lost = false;
+  // the session stops is not a lost tap. DURABLE (R80-06): the latch of an earlier process is read
+  // back from its marker, and a new latch is written to the disk before anything else happens.
+  const lostMarker = join(scratchDir, TAP_LOST_MARKER_FILE);
+  let lost = existsSync(lostMarker);
   const unsubscribe = deps.capture.on('telemetry', (event) => {
     if (lost || event.sessionId !== sessionId || event.frame.tapActive) return;
     const status = deps.capture.status();
     if (status.sessionId !== sessionId || status.phase !== RECORDING) return;
     lost = true;
+    try {
+      mkdirSync(scratchDir, { recursive: true, mode: 0o700 });
+      const handle = openSync(lostMarker, 'a', 0o600);
+      try {
+        fsyncSync(handle);
+      } finally {
+        closeSync(handle);
+      }
+    } catch (error) {
+      // The latch of this process holds; only a Core that dies before the next step would lose it. Said, never silent.
+      transcriberLog.error({ source: `${SOURCE}.tap`, message: 'the lost tap of the session could not be recorded on the disk; it is held in memory only until the next step of the runner', error, context: { reason: 'TAP_LOST_MARKER_NOT_WRITTEN' }, correlationId: sessionId });
+    }
     transcriberLog.error({ source: `${SOURCE}.tap`, message: 'the capture worker reports that the PCM tap of the session is not written; the transcript will be PARTIAL', context: { reason: 'TAP_LOST' }, correlationId: sessionId });
   });
 
   let held = false;
-  const shouldPause = (): boolean => held || options.shouldPause?.() === true;
+  /** R80-03: set once, by `stop()` and by `closeOut`. The session's own runner reads it before every write and after every engine call. */
+  let stopped = false;
+  const shouldPause = (): boolean => held || stopped || options.shouldPause?.() === true;
 
   try {
     const config = resolveTranscriberConfig({ backend: snapshot.backend, endpoint: snapshot.endpoint, model: snapshot.model, language: snapshot.language, credentialRef }, host.runtime);
@@ -259,6 +305,16 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
     const vad = host.vad === null ? null : createSileroVad(resolveSileroVadConfig(host.vad), { log: transcriberLog, captureWorkerPid, onEngineStart });
     const timeline = captureTapTimeline();
     const source = openPcmSource({ container: 'raw', path: tapPath, sampleRateHz: timeline.sampleRateHz });
+    // The runner's option is synchronous: it reads this copy, refreshed before every step (R80-02).
+    let intervals: readonly AudioSourceInterval[] = [];
+    const refreshIntervals = async (): Promise<void> => {
+      try {
+        intervals = await deps.intervals(sessionId);
+      } catch (error) {
+        // The last copy stays: a chunk the copy does not cover is flagged `intervals_incomplete`, which is then true.
+        transcriberLog.error({ source: `${SOURCE}.intervals`, message: 'the audio-source intervals of the session could not be read; the last copy is used', error, context: { reason: 'INTERVALS_NOT_READ', known: intervals.length }, correlationId: sessionId });
+      }
+    };
     const build = (): TranscriptRunner =>
       createTranscriptRunner({
         sessionId,
@@ -273,6 +329,8 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
         tapLost: () => lost,
         engineGuard,
         shouldPause,
+        shouldStop: () => stopped,
+        intervals: () => intervals,
       });
 
     let runner: TranscriptRunner;
@@ -313,9 +371,14 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
       hold(paused) {
         held = paused;
       },
-      step: (step) => runner.step(step),
+      async step(step) {
+        await refreshIntervals();
+        return runner.step(step);
+      },
       assembly: { identity: { sessionId, backend: adapter.backend, model: adapter.model, timeline }, source },
       async closeOut(chunkCode) {
+        // THE SESSION'S OWN RUNNER IS STOPPED FIRST (R80-03): one scratch directory has one writer.
+        stopped = true;
         const refusing: TranscriberAdapter = {
           backend: adapter.backend,
           model: adapter.model,
@@ -326,9 +389,15 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
             throw new TranscriberError(chunkCode as TranscriberErrorCode, 'the seal stopped waiting for this chunk', { reason: 'SEAL_WAIT_LIMIT' });
           },
         };
-        const closing = createTranscriptRunner({ sessionId, adapter: refusing, timeline, source, vad, sessionScratchDir: scratchDir, log: transcriberLog, mirror: deps.mirror, now: () => new Date(deps.now()), tapLost: () => lost, engineGuard });
+        await refreshIntervals();
+        const closing = createTranscriptRunner({ sessionId, adapter: refusing, timeline, source, vad, sessionScratchDir: scratchDir, log: transcriberLog, mirror: deps.mirror, now: () => new Date(deps.now()), tapLost: () => lost, engineGuard, intervals: () => intervals });
         return (await closing.step({ final: true })).complete;
       },
+      stop() {
+        stopped = true;
+        unsubscribe();
+      },
+      stopped: () => stopped,
       close: unsubscribe,
     };
   } catch (error) {

@@ -68,6 +68,7 @@ import {
   startRecordingTransition,
   stopRecordingTransition,
   switchAudioSourceTransition,
+  SIM_CONSOLE_DEVICE_ID,
 } from './session-machine';
 import type { SimStore } from './store';
 import type {
@@ -89,6 +90,8 @@ export interface ActionContext {
   rng: RngStreams;
   /** Transient audio state shared with the audio subsystem (test tones). */
   audio: AudioRuntime;
+  /** `CreateSimOptions.deviceConsole`: the simulator runs inside a tablet or phone app (closing pass F-X: the sending device of a mic switch). */
+  deviceConsole?: boolean;
 }
 
 /**
@@ -261,7 +264,7 @@ export function createActions(context: ActionContext): SimActions {
     setCaptureConfig: (change) => commit((state, now) => setCaptureConfigTransition(state, now, change)),
     // The transition looks the input up in the selector (any `MIC-NN` it holds, D133 (1)); its
     // parameter type still names the built-in pair (`session-machine.ts`, request filed by pass D1b).
-    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId)),
+    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId, context.deviceConsole === true ? SIM_CONSOLE_DEVICE_ID : null)),
     registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
   };
 }

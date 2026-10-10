@@ -17,6 +17,9 @@ import {
   AccessRuleErrorCode,
   EVIDENCE_MEDIA_ROUTE_URL,
   EVIDENCE_MEDIA_SESSION_OPERATION,
+  EVIDENCE_EXPORT_DOWNLOAD_ID,
+  EVIDENCE_EXPORT_DOWNLOAD_URL,
+  EVIDENCE_EXPORT_JOB_OPERATION,
   EVIDENCE_MEDIA_STREAM_ID,
   EXPORT_DENIALS,
   FORBIDDEN_OPERATION,
@@ -303,6 +306,37 @@ describe('which route gets which rule (RB-1: deny by default)', () => {
     // The rule follows the registry: a registry in which operation 88 asks for another permission gives the route that one.
     const moved = createRuleBook(book.operationIds.map((id) => (id === EVIDENCE_MEDIA_SESSION_OPERATION ? { ...operationOf(id), access: operationOf('exportEvidence').access } : operationOf(id))));
     expect(moved.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL)).toMatchObject({ permissions: ['EVIDENCE_EXPORT'], operationId: EVIDENCE_MEDIA_STREAM_ID });
+  });
+
+  it('fix F-M8, ruling D178: the export download route, GET /exports/:token, is outside the registry and gets THE RULE OF OPERATION 87 - never an open one', () => {
+    const job = book.ruleOf(EVIDENCE_EXPORT_JOB_OPERATION);
+    if (!isAccessRule(job)) throw new Error('operation 87 has no rule');
+    expect(EVIDENCE_EXPORT_JOB_OPERATION).toBe('getEvidenceExportJob');
+    expect(EVIDENCE_EXPORT_DOWNLOAD_URL).toBe('/exports/:token');
+    const rule = book.ruleAt('GET', EVIDENCE_EXPORT_DOWNLOAD_URL);
+    if (!isAccessRule(rule)) throw new Error('the export download route has no rule');
+    for (const operationId of [undefined, 'whatever', EVIDENCE_EXPORT_JOB_OPERATION]) {
+      expect(book.resolve({ method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, operationId })).toBe(rule);
+    }
+    expect(rule).toEqual({ ...job, operationId: EVIDENCE_EXPORT_DOWNLOAD_ID, method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, idPattern: null });
+    expect(rule).toMatchObject({
+      kind: CoreApiAccessKind.PERMISSION,
+      permissions: ['EVIDENCE_EXPORT'],
+      denial: { auditType: 'ACCESS_DENIED', errorCode: 'NOT_PERMITTED', permission: 'EVIDENCE_EXPORT', export: null },
+    });
+    expect(Object.isFrozen(rule)).toBe(true);
+    expect(book.operationIds).not.toContain(EVIDENCE_EXPORT_DOWNLOAD_ID);
+    // Only that method on that path: nothing beside it inherits the rule.
+    for (const [method, url] of [['POST', EVIDENCE_EXPORT_DOWNLOAD_URL], ['GET', '/exports'], ['GET', '/exports/:token/other'], ['GET', '/exports/:id'], ['GET', '/api/v1/exports/:token']] as const) {
+      expect(problemOf(book.resolve({ method, url, operationId: undefined })).code, `${method} ${url}`).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    }
+    // A registry WITHOUT operation 87 gives the route no rule at all: it cannot fall back to an open one.
+    const without = createRuleBook(book.operationIds.filter((id) => id !== EVIDENCE_EXPORT_JOB_OPERATION).map((id) => operationOf(id)));
+    expect(problemOf(without.resolve({ method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, operationId: undefined })).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    expect(problemOf(without.ruleAt('GET', EVIDENCE_EXPORT_DOWNLOAD_URL)).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    // The rule follows the registry.
+    const moved = createRuleBook(book.operationIds.map((id) => (id === EVIDENCE_EXPORT_JOB_OPERATION ? { ...operationOf(id), access: operationOf('createEvidenceMediaSession').access } : operationOf(id))));
+    expect(moved.ruleAt('GET', EVIDENCE_EXPORT_DOWNLOAD_URL)).toMatchObject({ permissions: ['EVIDENCE_VIEW'], operationId: EVIDENCE_EXPORT_DOWNLOAD_ID });
   });
 
   it('ruleAt holds a route to the registry by method and path alone, for a route whose configuration cannot be read', () => {

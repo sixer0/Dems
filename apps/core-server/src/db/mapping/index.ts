@@ -85,7 +85,8 @@ export {
   type MappedTable,
   type WrittenTable,
 } from './to-rows';
-export { RING_LIMITS, fromRows, type StoredRows } from './from-rows';
+export { RING_LIMITS, fromRows, type FromRowsOptions, type StoredRows } from './from-rows';
+export type { CaptureDeviceListing } from './rows';
 export {
   RUNTIME_UPDATABLE_COLUMNS,
   diffSlices,

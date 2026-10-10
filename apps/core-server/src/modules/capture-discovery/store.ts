@@ -37,6 +37,7 @@ import {
   CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CaptureCandidateStatus,
   CaptureConnectionOutcome,
+  type CaptureConnectionTestReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryState,
   type CaptureCandidate,
@@ -58,6 +59,8 @@ export interface TestRecord {
   /** Whether a credential was supplied: a fact, never a value. */
   readonly authenticated: boolean;
   readonly testedAt: number;
+  /** Present only for an `AUTHENTICATION_FAILED` test in which the credential was NOT sent (finding R69-13). */
+  readonly reason?: CaptureConnectionTestReason;
   /** The usable H.264 profile codes the test read; empty unless `REACHABLE`. */
   readonly profiles: readonly string[];
 }
@@ -252,7 +255,7 @@ export function createCandidateStore(options: CandidateStoreOptions): CandidateS
     recordTest(sessionId, candidateId, record, now) {
       const found = entryOf(sessionId, candidateId, now);
       if (found === null) return false;
-      found.entry.candidate = { ...found.entry.candidate, lastTest: { outcome: record.outcome, authenticated: record.authenticated, testedAt: record.testedAt } };
+      found.entry.candidate = { ...found.entry.candidate, lastTest: { outcome: record.outcome, authenticated: record.authenticated, testedAt: record.testedAt, ...(record.reason === undefined ? {} : { reason: record.reason }) } };
       found.entry.profiles = record.outcome === CaptureConnectionOutcome.REACHABLE ? [...record.profiles] : [];
       return true;
     },

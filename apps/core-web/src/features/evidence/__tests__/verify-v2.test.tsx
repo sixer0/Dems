@@ -556,3 +556,34 @@ describe('IntegrityTab, a v1 run is unchanged', () => {
     expect(isV2Item(null)).toBe(false)
   })
 })
+
+// ── Fix pass F-M7 (review row 88, R88-07; decision D178) ─────────────────────────────────────────
+describe("F-M7 R88-07: the signature line of the detail says which key signed, once the Core answered it", () => {
+  const answerWith = (signature: unknown): VerifyV2Answer => readVerifyV2({ ...RECORDED_VERIFY_V2.pass.body, signature }) as VerifyV2Answer
+  const mount = (v2: VerifyV2Answer | null) => {
+    const sim = createDatasetSim()
+    const item = datasetItem(sim, '0001')
+    return renderCard(sim, rowOf(sim, item), coreState({ verdict: v2 === null ? null : v2.verdict, v2, awaitsV2: v2 === null }))
+  }
+
+  it('a development-key answer: the line stands IN the signature entry of the hash list, in the verifier\'s words', () => {
+    mount(answerWith({ developmentKey: true }))
+    const line = screen.getByTestId('evidence-signature-key')
+    expect(line).toHaveAttribute('data-signing-key', 'DEVELOPMENT')
+    expect(line).toHaveTextContent('Signed with a DEVELOPMENT key — not a production signature')
+    expect(line.closest('[data-hash="signature"]')).not.toBeNull()
+  })
+
+  it('a key that is not established says so there as well', () => {
+    mount(answerWith({ developmentKey: null }))
+    expect(screen.getByTestId('evidence-signature-key')).toHaveAttribute('data-signing-key', 'NOT_ESTABLISHED')
+  })
+
+  it('CONTROL: a key without the mark, and an item that was not verified in this view, show no such line', () => {
+    mount(answerWith({ developmentKey: false }))
+    expect(screen.queryByTestId('evidence-signature-key')).toBeNull()
+    cleanup()
+    mount(null)
+    expect(screen.queryByTestId('evidence-signature-key')).toBeNull()
+  })
+})

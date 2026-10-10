@@ -501,6 +501,10 @@ describe('13. advisory notices and two documented reasons (ruling D144)', () => 
       ['KEYFRAME_INTERVAL_ABOVE_BOUND', 'CAM-02', 'CAMERA'],
       ['AV_OFFSET_NEAR_BOUND', 'CAM-02', 'CAMERA'],
       ['MIC_RATE_AT_LIMIT', 'MIC-01', 'MIC'],
+      // Closing pass F-X (ruling D179 (a)): the fourth advisory notice.
+      ['FRAGMENT_SIZE_BOUND_REACHED', 'CAM-01', 'CAMERA'],
+      // Tidy pass F-Y (ruling D179): the fifth. Raised here WITHOUT its number: the alert then holds none (`sim-fy-clock-offset.test.ts` has the number).
+      ['CAMERA_CLOCK_OFFSET', 'CAM-01', 'CAMERA'],
     ] as const;
     expect(cases.map(([code]) => code).sort()).toEqual(Object.values(CaptureAdvisoryReason).sort());
     for (const [code, subject] of cases) h.sim.actions.raiseCaptureWarning({ code, subject });

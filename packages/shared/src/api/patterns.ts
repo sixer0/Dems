@@ -26,6 +26,19 @@ export const EXPORT_ID_PATTERN = /^EXP-\d{6}$/;
 export const EXPORT_JOB_ID_PATTERN = /^EXPJ-\d{6,}$/;
 
 /**
+ * THE ONE RULE that ties the two (C3 §3 ops 42 / 87; ruling D140): `EXPJ-` and the six digits of
+ * the export ID (`EXP-000012` -> `EXPJ-000012`). Null for a text that is no export ID. The `jobId`
+ * the 202 of operation 42 answered wins when it is one (optional member of the contract). The
+ * Core, the simulator, the Live binding, the web console and the mobile app all derive the job of
+ * an export HERE (fix pass F-M8 and closing pass F-X, review question 11: the rule existed four
+ * times). With an empty `exportId` the answer is the answered job ID or null.
+ */
+export function exportJobIdOf(exportId: string, answered?: unknown): string | null {
+  if (typeof answered === 'string' && EXPORT_JOB_ID_PATTERN.test(answered)) return answered;
+  return typeof exportId === 'string' && EXPORT_ID_PATTERN.test(exportId) ? `EXPJ-${exportId.slice('EXP-'.length)}` : null;
+}
+
+/**
  * Case reference `LP/{YYYY}/{MMDD}-NNNN`, e.g. `LP/2026/1001-0007` (book §11.3 field 5; the
  * "LP/" prefix is kept verbatim, D28/Q3). Month 01-12 and day 01-31 are checked; the rest of
  * the calendar is not.

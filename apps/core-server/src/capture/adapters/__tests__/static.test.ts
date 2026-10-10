@@ -52,7 +52,7 @@ const USER_PART_COMPOSED = /\/\/\$\{[^}]*\}(?::\$\{[^}]*\})?@|['"`]@['"`]\s*\+|\
 describe('the scan itself', () => {
   it('reads the adapter layer: exactly these production files', () => {
     expect(adapters.map((file) => file.path)).toEqual(
-      ['audio/usb-audio.ts', 'camera/discovery-collector.ts', 'camera/onvif-cam.d.ts', 'camera/onvif-discovery.ts', 'camera/onvif-rtsp.ts', 'camera/onvif-session.ts', 'camera/probe-answer.ts', 'camera/ws-discovery.ts', 'camera/xml2js.d.ts', 'commands.ts', 'credential.ts', 'errors.ts', 'fake/audio.ts', 'fake/camera.ts', 'fake/index.ts', 'fake/poe.ts', 'index.ts', 'kinds.ts', 'local/camera-adapter.ts', 'local/camera-helper-args.ts', 'local/camera-helper.ts', 'local/device-list.ts', 'local/errors.ts', 'local/helper-program.ts', 'local/index.ts', 'local/leftover.ts', 'local/mic-adapter.ts', 'local/mic-helper-args.ts', 'local/mic-helper.ts', 'local/mic-pipe.ts', 'local/pipe-files.ts', 'local/process-door.ts', 'mic-transport.ts', 'poe/snmp-poe.ts', 'real.ts', 'registry.ts', 'types.ts'].map(
+      ['audio/usb-audio.ts', 'camera/connection-target.ts', 'camera/discovery-collector.ts', 'camera/onvif-cam.d.ts', 'camera/onvif-discovery.ts', 'camera/onvif-rtsp.ts', 'camera/onvif-session.ts', 'camera/probe-answer.ts', 'camera/ws-discovery.ts', 'camera/xml2js.d.ts', 'commands.ts', 'credential.ts', 'errors.ts', 'fake/audio.ts', 'fake/camera.ts', 'fake/index.ts', 'fake/poe.ts', 'index.ts', 'kinds.ts', 'local/camera-adapter.ts', 'local/camera-helper-args.ts', 'local/camera-helper.ts', 'local/device-list.ts', 'local/errors.ts', 'local/helper-program.ts', 'local/index.ts', 'local/leftover.ts', 'local/mic-adapter.ts', 'local/mic-helper-args.ts', 'local/mic-helper.ts', 'local/mic-pipe.ts', 'local/pipe-files.ts', 'local/process-door.ts', 'mic-transport.ts', 'poe/snmp-poe.ts', 'real.ts', 'registry.ts', 'types.ts'].map(
         (name) => `${ADAPTERS}${name}`,
       ),
     );
@@ -255,5 +255,21 @@ describe('A-5: the layer is reached by the units that wire it, and from outside 
     expect([...importers].some((file) => file.startsWith('src/capture/fence/'))).toBe(true);
     // A named entry that names no importer any more is stale: it goes.
     for (const file of NAMED) expect([...importers], file).toContain(file);
+  });
+});
+
+// Fix F-M4 (review row 69, question 11 / finding R69-08, the adapter half): the video codec of a
+// recorded track is named `H264` | `HEVC` (manifest field 43, erratum PE-D9-03; `fragments.ts`
+// reads the init segment so). The profile type of the adapter seam said `'H265'`, which nothing
+// produced and nothing read: a second word for one codec, waiting for the first reader to compare
+// it with `HEVC`. One vocabulary in the capture unit.
+describe('A-6: one word for the second video codec', () => {
+  it('no production source of the adapter layer names H265 or H.265; the profile type says HEVC', () => {
+    // The raw text: the scan's `code` blanks string literals, and the word in question IS a literal.
+    const sources = readTree(WORKSPACE).filter((file) => file.path.startsWith(ADAPTERS) && isProductionSource(file.path));
+    expect(sources.length).toBeGreaterThan(10);
+    expect(sources.filter((file) => /\bH\.?265\b/.test(file.text)).map((file) => file.path)).toEqual([]);
+    const types = sources.find((file) => file.path.endsWith('adapters/types.ts'));
+    expect(types?.text).toMatch(/readonly codec: 'H264' \| 'HEVC' \| 'OTHER';/);
   });
 });

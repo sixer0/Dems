@@ -35,11 +35,13 @@ describe('transcript_chunks store: the statements', () => {
   });
 
   it('the update sets only columns the runtime role may update, and never the key or the audio range', () => {
-    const set = /SET (.*) WHERE/.exec(UPDATE_TRANSCRIPT_CHUNK)![1]!.split(',').map((part) => part.trim().split(' ')[0]);
+    const set = /SET (.*?) WHERE/.exec(UPDATE_TRANSCRIPT_CHUNK)![1]!.split(',').map((part) => part.trim().split(' ')[0]);
     expect(set).toEqual(['status', 'segments', 'model_id', 'computed_at']);
     const granted = ['status', 'segments', 'embedding_ref', 'model_id', 'computed_at']; // 0005_capture_privileges.sql
     expect(set.every((column) => granted.includes(column!))).toBe(true);
-    expect(UPDATE_TRANSCRIPT_CHUNK).toMatch(/WHERE session_id = \$1 AND seq = \$2$/);
+    // R80-03: one row by its key, and only while the seal has not closed the session's transcript.
+    expect(UPDATE_TRANSCRIPT_CHUNK).toMatch(/WHERE session_id = \$1 AND seq = \$2 AND NOT EXISTS \(SELECT 1 FROM public\.sealing_jobs j WHERE j\.session_id = \$1 AND j\.step = 'FINALIZE_TRANSCRIPT' AND j\.status = 'DONE'\)$/);
+    expect(INSERT_TRANSCRIPT_CHUNK).toContain("WHERE NOT EXISTS (SELECT 1 FROM public.sealing_jobs j WHERE j.session_id = $1 AND j.step = 'FINALIZE_TRANSCRIPT' AND j.status = 'DONE')");
   });
 
   it('the insert leaves an existing row alone', () => {

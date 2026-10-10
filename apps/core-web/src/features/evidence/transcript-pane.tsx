@@ -14,7 +14,7 @@ import { formatWibDateTime, investigatorNameOf } from './model'
 import { formatMediaTime, permissionGate } from './sealed-playback'
 import { selectOperators } from './selectors'
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript'
-import { currentRevisionNumber, deriveSegments, paneStateOf, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
+import { currentRevisionNumber, deriveSegments, paneStateOf, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
 import { TranscriptReviseDialog } from './transcript-revise-dialog'
 import { useRetryCooldown } from './use-retry-cooldown'
 
@@ -23,14 +23,16 @@ export interface TranscriptPaneProps {
   item: ItemV2
 }
 
-const STATE_COLOR = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>
+const STATE_COLOR = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default', UNKNOWN: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>
 
 /**
  * The transcript pane of a sealed item (blueprint row 92, M8-W3; UX spec flow 6; R-5; WB-04).
  *
- * - **States**: ASSEMBLED, PARTIAL (with how many parts of the audio have no text, and whether the
- *   backend was unreachable), UNAVAILABLE ("The transcript is not available yet."), DISABLED (by
- *   configuration: nothing is asked of the Core).
+ * - **States** are the item summary's, never assumed (R80-01): ASSEMBLED, PARTIAL (with how many
+ *   parts of the audio have no text, whether the backend was unreachable, and "No transcript was
+ *   sealed" when the seal had none), UNAVAILABLE ("The transcript is not available yet."), DISABLED
+ *   (by configuration: nothing is asked of the Core), UNKNOWN ("Transcript state not reported": the
+ *   item carries no summary; the document, if the Core answers one, is still shown).
  * - **Speaker labels default to UNAVAILABLE**: the badge reads exactly "speaker labels unavailable"
  *   and every segment is shown unlabelled; a label is drawn only for a LABELLED document.
  * - **The sealed original is immutable.** Each segment shows the sealed text. A revision is shown
@@ -53,7 +55,8 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
   const canRevise = useSim((s) => selectCan(s, Permission.TRANSCRIPT_REVISE))
   const gate = permissionGate({ operatorKnown, permitted: canRevise })
   const summary = item.transcript
-  const disabled = summary?.state === 'DISABLED'
+  // No document was sealed (disabled, or unavailable at the seal): nothing is asked of the Core.
+  const disabled = sealedWithoutDocument(summary)
   const transcript = useTranscript(evidenceId, !disabled)
   const revisions = useTranscriptRevisions(evidenceId, !disabled && transcript.data !== undefined)
   // A revision another operator appended moves the head of the slice item: both reads are fetched again (pass D10).
@@ -113,6 +116,12 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
         <p className="evi-caption" data-testid="evidence-transcript-partial">
           {summary.failedChunks > 0 ? `${t('evidence.transcript.failedChunks', { count: summary.failedChunks })} ` : ''}
           {summary.backendUnreachable ? t('evidence.transcript.backendUnreachable') : ''}
+        </p>
+      ) : null}
+
+      {state === 'PARTIAL' && disabled ? (
+        <p className="evi-caption" data-testid="evidence-transcript-no-document">
+          {t('evidence.transcript.noDocument')}
         </p>
       ) : null}
 

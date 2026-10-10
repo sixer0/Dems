@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import type { CaptureDevice } from './capture-selector'
 import {
+  LOCAL_DEVICE_ADAPTER,
   isDevelopmentSource,
   isLocalSourceOn,
   sourceKindKey,
@@ -81,8 +82,9 @@ function SourceMarks({ device, place }: { device: CaptureDevice | undefined; pla
 
 /**
  * "This Mac's camera is on" / "This Mac's microphone is on" (ux §8f.3, SEC35-44 (4)): a fixed,
- * non-dismissable state whenever the Core holds a local device open. Drawn from `sourceOpen`, which
- * the shared slice does not carry yet — until it does, nothing is drawn (see `isLocalSourceOn`).
+ * non-dismissable state whenever the Core holds a local device open. Drawn from `sourceOpen` of the
+ * replicated `captureDevices` slice (`packages/shared/src/api/state-slices.ts`), an optional member:
+ * absent or false = nothing is drawn (see `isLocalSourceOn`).
  */
 export function LocalSourceOn({ device, place }: { device: CaptureDevice | undefined; place: string }) {
   const { t } = useTranslation()
@@ -96,8 +98,30 @@ export function LocalSourceOn({ device, place }: { device: CaptureDevice | undef
   )
 }
 
-/** The badge and the 'is on' line of the device a pre-check row stands for (ux §8f.2 "Pre-check"). Draws nothing for a row that is no capture source. */
+/**
+ * "Not fit for recording yet. Use it for development checks only." (review finding R69-07, D161): the
+ * short limit of this Mac's microphone, said where the operator chooses it (its selector line) and
+ * where it is checked (its pre-check row) — the full text stays in "View device". Only for a
+ * microphone whose `adapter` is `LOCAL_DEVICE`, only in real capture.
+ */
+export function LocalMicrophoneLimit({ device, place, className = 'dev-source-kind' }: { device: CaptureDevice | undefined; place: string; className?: string }) {
+  const { t } = useTranslation()
+  const realCapture = useRealCapture()
+  if (!realCapture || device === undefined || device.kind !== 'MIC' || device.adapter !== LOCAL_DEVICE_ADAPTER) return null
+  return (
+    <span className={className} data-testid={`source-limit-${place}`}>
+      {t('common.localSourceNotice.microphoneLimit')}
+    </span>
+  )
+}
+
+/** The badge, the 'is on' line and the local-microphone limit of the device a pre-check row stands for (ux §8f.2 "Pre-check"). Draws nothing for a row that is no capture source. */
 export function PrecheckSourceMarks({ checkId }: { checkId: string }) {
   const device = usePrecheckDevice(checkId)
-  return <SourceMarks device={device} place={`precheck-${checkId}`} />
+  return (
+    <>
+      <SourceMarks device={device} place={`precheck-${checkId}`} />
+      <LocalMicrophoneLimit device={device} place={`precheck-${checkId}`} />
+    </>
+  )
 }

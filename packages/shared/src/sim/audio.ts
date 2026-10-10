@@ -54,14 +54,6 @@ export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInpu
   'AUDIO-02': 'MIC-02',
 };
 
-/**
- * @deprecated The fixed table of the built-in pair only. The input of a meter channel is a
- * function of the capture configuration's microphone lines (`micInputOfChannel`, ruling D137):
- * with another pair behind the capture (`MIC-03`, decision D133 (1)) this table names the wrong
- * input. Kept as an alias while clients import it; new code asks `micInputOfChannel`.
- */
-export const MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = DEFAULT_MIC_INPUT_OF_CHANNEL;
-
 /** One microphone line, as far as the channel rule reads it. */
 type MicLine = Pick<CaptureConfigMic, 'inputId'>;
 

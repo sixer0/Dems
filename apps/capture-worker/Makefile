@@ -18,6 +18,10 @@
 #                                                            (the torn tail stays; the tail validation must flag it)
 #                     build/capture-worker-intervalskew      the AUDIO_SOURCE_INTERVAL record of a switch names a sample one
 #                                                            input chunk late (row 71: the mutation the interval check must catch)
+#                     build/capture-worker-nofloor           the clock floor is judged and logged but NOT acted on (fix pass F-M3,
+#                                                            review R63-12: the negative control of the floor's wiring in the ingest)
+#                     build/capture-worker-nobound           no fragment size bound: neither the cut nor the writer's refusal
+#                                                            (review R63-02: the negative control "with the rule off")
 #   make fixtures   the NM-14 fixture set from test-fixtures/ (fake camera, fake mics, the vendored
 #                   row-111 skeleton used as the negative control of the socket check)
 #   make e2e        THE capture end-to-end series with one aggregate exit code (test/e2e.py; sandbox
@@ -34,7 +38,9 @@
 CC         := clang
 PKG_CONFIG ?= pkg-config
 LIBS_PC    := libavformat libavcodec libavfilter libswresample libavutil
-CFLAGS     ?= -std=c11 -O2 -g -Wall -Wextra -Werror
+# NOT `?=` (review R63-06): a CFLAGS of the ENVIRONMENT must not reach the release build - it could carry a
+# proof switch. (A switch that arrives anyway, on the make command line, still marks the binary: worker.h.)
+CFLAGS     := -std=c11 -O2 -g -Wall -Wextra -Werror
 CFLAGS     += $(shell $(PKG_CONFIG) --cflags $(LIBS_PC))
 LDLIBS     := $(shell $(PKG_CONFIG) --libs $(LIBS_PC)) -lm -lpthread
 
@@ -49,9 +55,13 @@ FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton
 
 all: check selftest unit $(BIN)
 
-$(BIN): $(SRC) $(HDR) Makefile
+# The worker itself. After the link, THE IMPORT NET (review R63-08): the file-making functions the BINARY imports
+# are exactly the pinned ones (test/static/imports.pin) - whatever the spelling in the sources was (an alias through
+# an assembler label, a name glued by the preprocessor). A binary that imports another one is removed.
+$(BIN): $(SRC) $(HDR) Makefile test/static/imports.pin test/static/pinned_calls.py
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDLIBS)
+	@python3 test/static/pinned_calls.py --imports $@ test/static/imports.pin || { rm -f $@; exit 1; }
 
 check:
 	@sh check.sh src
@@ -71,6 +81,8 @@ proof: check
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -o $(BUILD)/capture-worker-writefault $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -DDEMS_PROOF_KEEP_TORN_TAIL -o $(BUILD)/capture-worker-writefault-notrunc $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_INTERVAL_SKEW=480 -o $(BUILD)/capture-worker-intervalskew $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_CLOCK_FLOOR -o $(BUILD)/capture-worker-nofloor $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_FRAGMENT_BOUND -o $(BUILD)/capture-worker-nobound $(SRC) $(LDLIBS)
 
 unit:
 	@mkdir -p $(BUILD)
@@ -87,6 +99,15 @@ unit:
 	  n=$$(grep -c 'FAILED: .*TRUNCATION' $(BUILD)/writer_test_notrunc.out); o=$$(grep 'FAILED: ' $(BUILD)/writer_test_notrunc.out | grep -vc 'TRUNCATION'); \
 	  if [ $$rc -ne 0 ] && [ $$n -ge 2 ] && [ $$o -eq 0 ]; then echo "writer_test: without the truncation it fails on the $$n truncation checks and on nothing else, as required (negative control)"; \
 	  else echo "writer_test: the build without truncation gave rc $$rc, $$n truncation failures, $$o other failures: the truncation check cannot fail, or fails for another reason"; cat $(BUILD)/writer_test_notrunc.out; exit 1; fi; }
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DNO_LEAD -o $(BUILD)/anchor_test_nolead test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_nolead >/dev/null && { echo "anchor_test: without the untimestamped lead the test passes: the skipped-span check cannot fail"; exit 1; } || echo "anchor_test: the span without the untimestamped lead fails it, as required (negative control, review R63-13)"; }
+	@for control in 'nobound|-DDEMS_PROOF_NO_FRAGMENT_BOUND|SIZE BOUND|review R63-02: without the size bound' 'silentsync|-DDEMS_PROOF_SILENT_SYNC_FALLBACK|SYNC LEVEL|review R63-09: with the silent sync fallback'; do \
+	  name=$${control%%|*}; rest=$${control#*|}; flag=$${rest%%|*}; rest=$${rest#*|}; mark=$${rest%%|*}; what=$${rest#*|}; \
+	  $(CC) $(CFLAGS) $$flag -o $(BUILD)/writer_test_$$name test/writer_test.c src/sink.c $(LDLIBS) || exit 1; \
+	  $(BUILD)/writer_test_$$name $(BUILD)/writer_scratch_$$name > $(BUILD)/writer_test_$$name.out; rc=$$?; \
+	  n=$$(grep -c "FAILED: .*$$mark" $(BUILD)/writer_test_$$name.out); o=$$(grep 'FAILED: ' $(BUILD)/writer_test_$$name.out | grep -vc "$$mark"); \
+	  if [ $$rc -ne 0 ] && [ $$n -ge 2 ] && [ $$o -eq 0 ]; then echo "writer_test: $$what it fails on the $$n checks of that rule and on nothing else, as required (negative control)"; \
+	  else echo "writer_test: the build $$flag gave rc $$rc, $$n failures of its rule, $$o other failures: the check cannot fail, or fails for another reason"; cat $(BUILD)/writer_test_$$name.out; exit 1; fi; done
+	@sh test/start_checks.sh $(BUILD) "$(CC) $(CFLAGS)" "$(SRC)" "$(LDLIBS)"
 	@$(CC) $(CFLAGS) -o $(BUILD)/log_test test/log_test.c src/ipc.c $(LDLIBS) && $(BUILD)/log_test $(BUILD)/log_test.jsonl
 	@$(CC) $(CFLAGS) -DLOG_SHARED_QUOTA -o $(BUILD)/log_test_shared test/log_test.c src/ipc.c $(LDLIBS) && { $(BUILD)/log_test_shared $(BUILD)/log_test_shared.jsonl >/dev/null && { echo "log_test: with one shared quota the test passes: the per-source check cannot fail"; exit 1; } || echo "log_test: with one shared quota it fails, as required (negative control, R-4)"; }
 

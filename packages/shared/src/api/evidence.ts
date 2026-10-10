@@ -273,12 +273,30 @@ export const EvidenceVerifyResultSchema = z
       .strictObject({
         developmentKey: z
           .boolean()
-          .describe('True when the certificate subject recorded in the signed manifest carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`).'),
+          .nullable()
+          .describe(
+            'True when the subject of the certificate that VERIFIED the signature carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`); false when it does not. `null`: NOT ESTABLISHED - the manifest, the signature or the certificate did not verify (never `false` from an unverified package). A client shows "Signed with a DEVELOPMENT key - not a production signature" for true and "not established" for null.',
+          ),
       })
       .optional()
       .describe(
-        'Schema v2 (decision D147): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. Absent for a v1 item and when no manifest could be read.',
+        'Schema v2 (decisions D147, D178): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. `developmentKey` is nullable: `null` means NOT ESTABLISHED (the package did not verify), never "not a development key". Absent for a v1 item.',
       ),
+    notices: z
+      .array(
+        z.strictObject({
+          code: z
+            .string()
+            .regex(/^[A-Z][A-Z0-9_]{2,63}$/)
+            .describe(
+              '`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly.',
+            ),
+          report: trimmedText(256).describe('The report line of the notice.'),
+        }),
+      )
+      .max(8)
+      .optional()
+      .describe('Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.'),
   })
   .describe('The verdict of record of an integrity verification (schema v2: per-file chains, transcript hash, real signature).');
 export type EvidenceVerifyResultBody = z.output<typeof EvidenceVerifyResultSchema>;
@@ -398,6 +416,18 @@ export const EvidenceExportJobSchema = z
       .optional()
       .describe(
         'SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code. An open set of codes. Among them: `COMPOSITE_ENCODER_NOT_SELECTED` (a COMPOSITE was asked for and no encoder is selected), `EXPORT_INTERRUPTED` (the server stopped while the job ran; the job is not resumed - ask again), `SESSION_KEY_UNAVAILABLE`, `SOURCE_VERIFY_FAILED`, `PLAINTEXT_HASH_MISMATCH`, `EXPORT_WRITE_FAILED`, `EXPORT_FAILED`.',
+      ),
+    download: z
+      .strictObject({
+        path: z
+          .string()
+          .regex(/^\/exports\/exs_[A-Za-z0-9_-]{60,96}$/)
+          .describe('Same-origin path of the registry-external `GET /exports/<token>`. A BEARER value: never logged, never audited, never stored, never a cache key.'),
+        expiresAt: epochMs().describe('Core instant the path dies (`EVIDENCE_MEDIA_SESSION_TTL_MS` after this answer). Poll again for a fresh one.'),
+      })
+      .optional()
+      .describe(
+        'Core server only, and only on a COMPLETE job of an item whose sealed package lies in the Core\'s store: a short-lived signed path that serves the finished archive as an attachment (ruling D178). Bound to the caller\'s operator and sign-in session and to this export; the request needs EVIDENCE_EXPORT and, for REAL evidence, the case scope of SEC35-16. Each download is audited. Absent in Simulated mode and for a simulated export.',
       ),
   })
   .describe('The background export job of op 42/87 (NM-12; OD-16).');
@@ -593,7 +623,7 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
     description: [
       'The machine transcript inside the seal (R-5; D222): the canonical `dems.transcript/1` document view — segments with speaker labels when diarization labelled them, `UNAVAILABLE` marked otherwise (D226) — plus the sealed machine-transcript hash the revisions bind to (OD-15).',
       'Not ready yet answers `409 TRANSCRIPT_NOT_READY`; audio that never reached the transcriber surfaces as `details.reason: TRANSCRIPT_AUDIO_UNAVAILABLE` while the package still seals `PARTIAL` without fabricated text (D-EV-1; transcript-spec §A.1/§E.5).',
-      'Needs EVIDENCE_VIEW (every role). For REAL evidence the read is additionally case/session-scoped once SEC35-16 is confirmed (provisional; M8).',
+      'Needs EVIDENCE_VIEW (every role). REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session\'s investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 84; register SH-14/NM-06 (not in the design book)',
@@ -601,8 +631,9 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
     responses: {
       200: { description: 'The transcript document.', schema: 'TranscriptDocument' },
       401: NOT_SIGNED_IN,
-      // RECON-A (row 51a §5 B2b): every seeded role holds EVIDENCE_VIEW, so no role can be refused this
-      // read; the 403 is the Origin / revoked-device guard only the Core server sends (01_specs §7.19).
+      // RECON-A (row 51a §5 B2b): every seeded role holds EVIDENCE_VIEW, so no role is refused this
+      // read by its permission; the 403 is the Origin / revoked-device guard and, for REAL evidence,
+      // the case scope (closing pass F-X) - all three only the Core server sends (01_specs §7.19).
       // The simulator answers an unknown `{id}` with 404 and does no path-parameter format check
       // (D-51a-6), so this 422 is produced only by the Core server's schema validation.
       403: { ...VIEW_REFUSED, services: CORE_SERVER_ONLY },
@@ -625,6 +656,7 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
       'Appends a signed revision (OD-15): TRANSCRIPT_REVISE — INVESTIGATOR and SUPERVISOR — the Core Ed25519 key signs, the author is recorded, there is NO approval flow. The sealed machine transcript stays byte-unchanged; `baseRevision` binds the revision to it.',
       '`baseRevision` is the item\'s current max(revision_no) (0 when none), read and compared INSIDE the INSERT transaction that mints max+1 (SEC35-21; dbc-3 §B.9 — no column, no sequence). A mismatch answers `409 TRANSCRIPT_REVISION_CONFLICT`.',
       'Writes TRANSCRIPT_REVISED: revisionId, authorId, number, baseRevision, changeCount, machineTranscriptHash, the optional reason and permission — never the transcript body or any segment text (`C3 §5.2`).',
+      'REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session\'s investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 85; register SH-02/SH-03/SH-04/SH-14/NM-06 (not in the design book)',
@@ -656,7 +688,7 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
     summary: 'Transcript revisions of an item',
     description: [
       'The append-only revisions of the item, newest first, paged (API-9). V-11 verifies the parent_sha256 chain; this read lists it.',
-      'Needs EVIDENCE_VIEW (every role; REAL-evidence scope per SEC35-16 provisional).',
+      'Needs EVIDENCE_VIEW (every role). REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session\'s investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope.',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 86; register SH-02/SH-14/NM-06 (not in the design book)',
@@ -665,8 +697,9 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
     responses: {
       200: { description: 'One page of revisions.', schema: 'TranscriptRevisionPage' },
       401: NOT_SIGNED_IN,
-      // RECON-A (row 51a §5 B2b): every seeded role holds EVIDENCE_VIEW, so no role can be refused this
-      // read; the 403 is the Origin / revoked-device guard only the Core server sends (01_specs §7.19).
+      // RECON-A (row 51a §5 B2b): every seeded role holds EVIDENCE_VIEW, so no role is refused this
+      // read by its permission; the 403 is the Origin / revoked-device guard and, for REAL evidence,
+      // the case scope (closing pass F-X) - all three only the Core server sends (01_specs §7.19).
       // The simulator ignores the query entirely, so the paged-read 422 is likewise Core-server-only (SR-64).
       403: { ...VIEW_REFUSED, services: CORE_SERVER_ONLY },
       404: UNKNOWN_EVIDENCE,
@@ -686,7 +719,7 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
     summary: 'Export job progress',
     description: [
       'Polls the background export job op 42 queued (NM-12; OD-16) to completion. A FAILED job is a `200` answer with `status: FAILED` — not an HTTP error; the failure is audited as EVIDENCE_EXPORT_FAILED by the job itself (`C3 §4/§5.2`).',
-      'Needs EVIDENCE_EXPORT (SUPERVISOR), like the export request.',
+      'Needs EVIDENCE_EXPORT (SUPERVISOR), like the export request. REAL evidence is case-scoped (SEC35-16; review finding R93-02): a caller who neither holds the case (the session\'s investigator) nor is a SUPERVISOR is refused `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE`, with one ACCESS_DENIED row, before anything of the item is read. Evidence that is not REAL has no such scope. The same rule holds on the export request (operation 42) and on the signed download `GET /exports/{token}`.',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 87; register SH-14/NM-12/OD-16 (not in the design book)',

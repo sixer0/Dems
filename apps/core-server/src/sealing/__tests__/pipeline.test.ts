@@ -366,59 +366,110 @@ describe('what must never seal, does not (each fails closed, with its row and it
     return { h, outcome };
   }
 
-  it('a byte of the recording was changed before the seal: it is not the fragment its row recorded, and nothing is sealed', async () => {
+  // FIX PASS F-M7 (review row 88, decision D178; R88-01, R88-02 (b)). A failure CONFINED TO ONE
+  // CAMERA FILE no longer stops the whole seal for ever: THAT file is never sealed - it is left
+  // out BY NAME (the same members the failed step used to carry), it is moved to the quarantine,
+  // and the camera file that validates is sealed as an INTERRUPTED recording. The same failure in
+  // EVERY camera file still seals nothing (`NOTHING_SEALABLE`). `pipeline-one-camera.test.ts`
+  // holds the sealed side (verify PASS, quarantine bytes); here: the bad file is never sealed.
+  async function leftOut(prepare: (recording: Recording, h: Harness) => void, run: (h: Harness) => Promise<SealOutcome> = (h) => h.pipeline.run({ sessionId: h.recording.sessionId, cause: 'STOPPED' })) {
+    const recording = recordSession();
+    const h = harnessOf(recording);
+    prepare(recording, h);
+    const outcome = sealedOf(await run(h));
+    // RULING D183 (fix pass F-M7b): the fragments BEFORE the first bad one are sealed when they validate;
+    // the bad fragment and everything after it never are. (A file with NO valid fragment is left out whole:
+    // `pipeline-prefix.test.ts`, `pipeline-one-camera.test.ts`.)
+    const entries = h.log.entries.filter((entry) => entry.code === 'SEALING_CAMERA_PREFIX_SEALED' || entry.code === 'SEALING_CAMERA_LEFT_OUT');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ level: 'error', code: 'SEALING_CAMERA_PREFIX_SEALED' });
+    const context = entries[0]?.context as Record<string, unknown>;
+    const bad = context.trackId as (typeof TRACKS)[number];
+    const firstBad = context.firstBadSeq as number;
+    // The bad fragment is NOT in the package, and the original recording is not left in the package folder.
+    expect(manifestOf(recording).files.find((file) => file.trackId === bad)?.fragments.map((fragment) => fragment.seq)).toEqual(Array.from({ length: firstBad - 1 }, (_, index) => index + 1));
+    expect(existsSync(recording.recordingFile(bad))).toBe(false);
+    expect(outcome.interrupted).toBe(true);
+    expect(outcome.tracks.map((track) => [track.trackId, track.fragmentCount])).toEqual(TRACKS.map((trackId) => [trackId, trackId === bad ? firstBad - 1 : recording.tracks[trackId].plain.length]));
+    expect(manifestOf(recording).timeline.interrupted).toBe(true);
+    return { h, outcome, context, told: h.engine.progress.flatMap((report) => report.steps).filter((step) => step.id === 'CLOSE_TRACKS' && step.status === 'DONE').at(-1)?.detail ?? null };
+  }
+  const changeByte = (recording: Recording, trackId: (typeof TRACKS)[number], index = 1): void => {
+    const row = recording.tracks[trackId].rows[index]!;
+    const bytes = readFileSync(recording.recordingFile(trackId));
+    bytes[row.byteOffset + 90] = (bytes[row.byteOffset + 90] ?? 0) ^ 0x80;
+    writeFileSync(recording.recordingFile(trackId), bytes);
+  };
+
+  it('a byte of the recording was changed before the seal: it is not the fragment its row recorded - THAT camera file is never sealed, and it is named', async () => {
+    const { context } = await leftOut((recording) => changeByte(recording, 'VIDEO-01'));
+    expect(context).toMatchObject({ failure: 'FRAGMENT_MISMATCH', firstBadSeq: 2, sealedFragments: 1, trackId: 'VIDEO-01', seq: 2, member: 'fragSha256' });
+  });
+
+  it('the same change in EVERY camera file: nothing is sealed, nothing is signed (NOTHING_SEALABLE), and the next attempt ends the same way', async () => {
     const { h, outcome } = await refused((recording) => {
-      const row = recording.tracks['VIDEO-01'].rows[1]!;
-      const bytes = readFileSync(recording.recordingFile('VIDEO-01'));
-      bytes[row.byteOffset + 90] = (bytes[row.byteOffset + 90] ?? 0) ^ 0x80;
-      writeFileSync(recording.recordingFile('VIDEO-01'), bytes);
+      // The FIRST fragment of each file: no file has a valid fragment (ruling D183).
+      for (const trackId of TRACKS) changeByte(recording, trackId, 0);
     });
-    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'FRAGMENT_MISMATCH', retriable: false, detail: { trackId: 'VIDEO-01', seq: 2, member: 'fragSha256' } });
+    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'NOTHING_SEALABLE', retriable: false, attempt: 1, detail: { reasons: 'VIDEO-01:FRAGMENT_MISMATCH,VIDEO-02:FRAGMENT_MISMATCH' } });
     expect(nothingSigned(h.recording)).toBe(true);
-    expect(existsSync(h.recording.cameraFile('VIDEO-01'))).toBe(false);
+    for (const trackId of TRACKS) {
+      expect(existsSync(h.recording.cameraFile(trackId))).toBe(false);
+      expect(existsSync(h.recording.recordingFile(trackId))).toBe(true);
+    }
+    expect(existsSync(h.recording.path(PackageFile.FRAGMENTS_JSON))).toBe(false);
+    // What the session record (operation 83, the Finalizing screen) is told: the step FAILED, and why, in words.
+    const told = h.engine.progress.at(-1)?.steps.find((step) => step.id === 'CLOSE_TRACKS');
+    expect(told).toMatchObject({ status: 'FAILED', etaMs: null, detail: sealingFailureReason('NOTHING_SEALABLE') });
+    expect(h.engine.progress.at(-1)?.steps.filter((step) => step.status === 'RUNNING')).toEqual([]);
+    // NOT A HANG AND NOT A LOOP: a second run is one more attempt, ends at once, with the same name.
+    const again = failedOf(await h.again().run({ sessionId: h.recording.sessionId, cause: 'STOPPED' }));
+    expect(again).toMatchObject({ step: 'CLOSE_TRACKS', code: 'NOTHING_SEALABLE', attempt: 2 });
+    expect(h.engine.sealed).toHaveLength(0);
   });
 
   it('a row whose digest is not the bytes\' (the recording-time chain disagrees with the file): CORRUPT, the fragment is named', async () => {
-    const { h, outcome } = await refused((recording) => {
+    const { context } = await leftOut((recording) => {
       const row = recording.tracks['VIDEO-02'].rows[2]!;
       recording.tracks['VIDEO-02'].rows[2] = { ...row, sha256: sha256Hex(Buffer.from('another fragment')) };
     });
-    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'FRAGMENT_MISMATCH', detail: { trackId: 'VIDEO-02', seq: 3, member: 'fragSha256' } });
-    expect(nothingSigned(h.recording)).toBe(true);
+    expect(context).toMatchObject({ failure: 'FRAGMENT_MISMATCH', trackId: 'VIDEO-02', seq: 3, member: 'fragSha256' });
   });
 
   it('bytes that were recorded as durable are gone from the recording', async () => {
-    const { outcome } = await refused((recording) => {
+    const { context } = await leftOut((recording) => {
       const last = recording.tracks['VIDEO-01'].rows.at(-1)!;
       writeFileSync(recording.recordingFile('VIDEO-01'), readFileSync(recording.recordingFile('VIDEO-01')).subarray(0, last.byteOffset));
     });
-    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'DURABLE_BYTES_MISSING' });
+    expect(context).toMatchObject({ failure: 'DURABLE_BYTES_MISSING', trackId: 'VIDEO-01' });
   });
 
-  // THE KNOWN LIMIT (ev §B.4 "tracks[] of exactly 2"; ruling D147): a session whose second camera
-  // never produced a whole fragment cannot be sealed. It must END - in a named failure with a
-  // sentence an operator reads - and never hang or be presented as sealed (row 82b).
+  // THE FORMER KNOWN LIMIT (ev §B.4 "tracks[] of exactly 2"; ruling D147) IS GONE (review row 88,
+  // R88-01 BLOCKER; decision D178): a session whose second camera never produced a whole fragment
+  // IS sealed, with the camera file it has. This case pinned the opposite at abf742f ("a NAMED
+  // failure ... and the next attempt ends the same way"): that pin was the reproduction of R88-01.
   it.each([
-    ['holds an init segment and a cut first fragment (the box walk names it by its first flag)', 'NO_INIT_SEGMENT', (recording: Recording) => writeFileSync(recording.recordingFile('VIDEO-02'), readFileSync(recording.recordingFile('VIDEO-02')).subarray(0, recording.tracks['VIDEO-02'].rows[0]!.byteOffset + 10))],
-    ['was never written', 'MISSING', (recording: Recording) => rmSync(recording.recordingFile('VIDEO-02'))],
-  ] as const)('the second camera file %s while the first recorded: a NAMED failure with an operator-readable reason, nothing signed, and the next attempt ends the same way', async (_label, reason, damage) => {
-    const { h, outcome } = await refused((recording) => {
-      damage(recording);
-      recording.tracks['VIDEO-02'].rows.length = 0;
-    });
-    expect(outcome).toMatchObject({ status: 'FAILED', step: 'CLOSE_TRACKS', code: 'CAMERA_FILE_UNUSABLE', retriable: false, attempt: 1, detail: { trackId: 'VIDEO-02', reason } });
-    // What the session record (operation 83, the Finalizing screen) is told: the step FAILED, and why, in words.
-    const told = h.engine.progress.at(-1)?.steps.find((step) => step.id === 'CLOSE_TRACKS');
-    expect(told).toMatchObject({ status: 'FAILED', etaMs: null, detail: `Camera file VIDEO-02 holds no whole recording (${reason}): this session cannot be sealed.` });
-    expect(h.engine.progress.at(-1)?.steps.filter((step) => step.status === 'RUNNING')).toEqual([]);
-    expect(nothingSigned(h.recording)).toBe(true);
-    expect(existsSync(h.recording.path(PackageFile.FRAGMENTS_JSON))).toBe(false);
-    // The recording of the camera that did record is still there, untouched: nothing was lost by trying.
-    expect(sha256Hex(readFileSync(h.recording.recordingFile('VIDEO-01')))).toBe(sha256Hex(Buffer.concat([readFileSync(h.recording.recordingFile('VIDEO-01')).subarray(0, h.recording.tracks['VIDEO-01'].rows[0]!.byteOffset), ...h.recording.tracks['VIDEO-01'].plain])));
-    // NOT A HANG AND NOT A LOOP: a second run is one more attempt, ends at once, with the same name.
-    const again = failedOf(await h.again().run({ sessionId: h.recording.sessionId, cause: 'STOPPED' }));
-    expect(again).toMatchObject({ step: 'CLOSE_TRACKS', code: 'CAMERA_FILE_UNUSABLE', attempt: 2 });
-    expect(h.engine.sealed).toHaveLength(0);
+    ['holds an init segment and a cut first fragment (the box walk names it by its first flag)', 'NO_INIT_SEGMENT', true, (recording: Recording) => writeFileSync(recording.recordingFile('VIDEO-02'), readFileSync(recording.recordingFile('VIDEO-02')).subarray(0, recording.tracks['VIDEO-02'].rows[0]!.byteOffset + 10))],
+    ['was never written', 'NOT_RECORDED', false, (recording: Recording) => rmSync(recording.recordingFile('VIDEO-02'))],
+  ] as const)('the second camera file %s while the first recorded: the session IS SEALED with the first camera file, the operator is told, and a second run has nothing left to do', async (_label, reason, interrupted, damage) => {
+    const recording = recordSession();
+    const h = harnessOf(recording);
+    damage(recording);
+    recording.tracks['VIDEO-02'].rows.length = 0;
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome).toMatchObject({ attempt: 1, interrupted });
+    expect(outcome.tracks.map((track) => track.trackId)).toEqual(['VIDEO-01']);
+    expect((rowOf(h, 'CLOSE_TRACKS')!.checkpoint as unknown as { omitted: unknown[] }).omitted).toMatchObject([{ trackId: 'VIDEO-02', reason }]);
+    // What the session record (operation 83, the Finalizing screen) is told on the DONE step: which camera, in words.
+    const told = h.engine.progress.flatMap((report) => report.steps).filter((step) => step.id === 'CLOSE_TRACKS' && step.status === 'DONE').at(-1)?.detail ?? '';
+    expect(told).toContain('VIDEO-02');
+    expect(told).not.toMatch(/[/\\]|[0-9a-f]{32}/);
+    expect(h.engine.progress.flatMap((report) => report.steps).some((step) => step.status === 'FAILED')).toBe(false);
+    expect((await verify(h)).ok).toBe(true);
+    expect(h.engine.sealed).toHaveLength(1);
+    // A second run commits nothing again.
+    sealedOf(await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(h.engine.sealed).toHaveLength(1);
   });
 
   it('CONTROL of the reason: a step that did not fail carries no failure sentence, and a failed one carries the sentence of ITS code', async () => {
@@ -426,10 +477,19 @@ describe('what must never seal, does not (each fails closed, with its row and it
     sealedOf(await good.pipeline.run({ sessionId: good.recording.sessionId, cause: 'STOPPED' }));
     expect(good.engine.progress.flatMap((report) => report.steps).filter((step) => /cannot be sealed|seal stopped|nothing was/i.test(step.detail ?? ''))).toEqual([]);
     const { h } = await refused((recording) => {
+      for (const trackId of TRACKS) {
+        // Cut inside the FIRST fragment: no file holds a whole fragment (ruling D183: a later cut seals the prefix).
+        const first = recording.tracks[trackId].rows[0]!;
+        writeFileSync(recording.recordingFile(trackId), readFileSync(recording.recordingFile(trackId)).subarray(0, first.byteOffset + 10));
+      }
+    });
+    expect(h.engine.progress.at(-1)?.steps.find((step) => step.status === 'FAILED')?.detail).toBe(sealingFailureReason('NOTHING_SEALABLE'));
+    // ... and a camera file that was LEFT OUT is named on the DONE step, with ITS reason (F-M7).
+    const { told } = await leftOut((recording) => {
       const last = recording.tracks['VIDEO-01'].rows.at(-1)!;
       writeFileSync(recording.recordingFile('VIDEO-01'), readFileSync(recording.recordingFile('VIDEO-01')).subarray(0, last.byteOffset));
     });
-    expect(h.engine.progress.at(-1)?.steps.find((step) => step.status === 'FAILED')?.detail).toBe('Recorded bytes of camera file VIDEO-01 are missing: this session cannot be sealed.');
+    expect(told).toBe('Camera file VIDEO-01 is sealed up to fragment 4 only (DURABLE_BYTES_MISSING): the recording is sealed as interrupted, and the whole original file is kept in the quarantine folder.');
   });
 
   it('field 50 `keyframeAligned` is what the box walk found of the sealed fragments, not a statement of the session record', async () => {
@@ -503,17 +563,24 @@ describe('what must never seal, does not (each fails closed, with its row and it
     expect(h.engine.completeCalls).toBe(0);
   });
 
-  it('the session record changed between BUILD_MANIFEST and a resumed SIGN_MANIFEST: the signer signs the digest of the checkpoint or nothing', async () => {
+  // FIX PASS F-M7 (review row 88, R88-03; decision D178). This case pinned the defect at abf742f: a session record
+  // that differs at the restart made SIGN_MANIFEST fail `MANIFEST_NOT_REPRODUCIBLE` for ever, although nothing was
+  // signed. The inputs of the manifest are now FROZEN in the BUILD_MANIFEST checkpoint: the resume builds from that
+  // snapshot, so it seals - with the values of the first build. That the signer still signs "the digest of the
+  // checkpoint or nothing" is held by `pipeline-frozen-facts.test.ts` (a package file changed after the build).
+  it('the session record changed between BUILD_MANIFEST and a resumed SIGN_MANIFEST: the resume builds from the frozen snapshot and SEALS with the values of the first build', async () => {
     const recording = recordSession();
     const h = harnessOf(recording);
+    const first = h.facts.caseNumber;
     h.hook = stopAt('BUILD_MANIFEST', 'AFTER_CHECKPOINT');
     await expect(h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
     h.facts = { ...h.facts, caseNumber: 'LP/2026/9999-0001' };
     h.hook = null;
-    const outcome = failedOf(await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
-    expect(outcome).toMatchObject({ step: 'SIGN_MANIFEST', code: 'MANIFEST_NOT_REPRODUCIBLE', retriable: false });
-    expect(nothingSigned(recording)).toBe(true);
-    expect(h.engine.sealed).toHaveLength(0);
+    const outcome = sealedOf(await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome.manifestSha256).toBe((rowOf(h, 'BUILD_MANIFEST')!.checkpoint as unknown as { manifestSha256: string }).manifestSha256);
+    expect(manifestOf(recording).caseNumber).toBe(first);
+    expect((await verify(h)).ok).toBe(true);
+    expect(h.engine.sealed).toHaveLength(1);
   });
 
   it('an engine that is not running fails the run as retriable, and the next run seals', async () => {
@@ -528,16 +595,25 @@ describe('what must never seal, does not (each fails closed, with its row and it
 });
 
 describe('`.part` names beside a camera file (pair-58 R-5)', () => {
-  it('a second name of the camera file is removed as a name; a file of its own is moved out with its bytes; the package is clean and verifies', async () => {
+  // Pin changed by fix pass F-M7c (R88-05 (a)): the orphan is still MOVED OUT with its bytes by CLOSE_TRACKS (asserted while the
+  // seal runs) - and, new, it is REMOVED once the session is sealed: plaintext of a dead worker never outlives a SEALED outcome.
+  it('a second name of the camera file is removed as a name; a file of its own is moved out with its bytes and removed once the session is sealed; the package is clean and verifies', async () => {
     const recording = recordSession();
     const camera = recording.recordingFile('VIDEO-01');
     linkSync(camera, `${camera}.4711.part`);
     expect(statSync(camera).nlink).toBe(2);
     writeFileSync(`${recording.recordingFile('VIDEO-02')}.4712.part`, 'an orphan of a dead worker');
     const h = harnessOf(recording);
-    sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const orphan = join(recording.stagingDir, 'orphans', 'VIDEO-02.mp4.4712.part');
+    let movedOutWithItsBytes: string | null = null;
+    h.hook = async (point) => {
+      if (point.step === 'STORE_SEALED_PACKAGE' && point.phase === 'BEFORE') movedOutWithItsBytes = readFileSync(orphan, 'utf8');
+    };
+    sealedOf(await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
     expect((rowOf(h, 'CLOSE_TRACKS')!.checkpoint as { tracks: { partNamesRemoved: number; orphansMoved: number }[] }).tracks.map((track) => [track.partNamesRemoved, track.orphansMoved])).toEqual([[1, 0], [0, 1]]);
-    expect(readFileSync(join(recording.stagingDir, 'orphans', 'VIDEO-02.mp4.4712.part'), 'utf8')).toBe('an orphan of a dead worker');
+    expect(movedOutWithItsBytes).toBe('an orphan of a dead worker');
+    expect(existsSync(orphan)).toBe(false);
+    expect(rowOf(h, 'STORE_SEALED_PACKAGE')?.checkpoint).toMatchObject({ orphansRemoved: 1 });
     expect((await verify(h)).ok).toBe(true);
     expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false })].sort());
   });
@@ -697,14 +773,28 @@ describe('ONE fragment bound for the pipeline and its verifier (row 82c; finding
     expect(passing(held)).toEqual(ALL);
   });
 
-  it('a fragment above the bound is refused at CLOSE_TRACKS, BY NAME, before a sealed byte exists and before anything is signed', async () => {
+  it('a fragment above the bound is refused at CLOSE_TRACKS, BY NAME: it is never sealed - the fragments before it are (ruling D183), as interrupted, and the package verifies at the same bound', async () => {
     const h = harnessOf(recordSession({ fragments: 3 }));
     const largest = largestOf(h.recording);
     const pipeline = createSealingPipeline({ ...h.ports, maxFragmentBytes: largest.bytes - 1 });
+    const outcome = sealedOf(await pipeline.run({ sessionId: h.recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome.interrupted).toBe(true);
+    expect(outcome.tracks.map((track) => [track.trackId, track.fragmentCount])).toEqual(TRACKS.map((trackId) => [trackId, trackId === largest.trackId ? largest.seq - 1 : 3]));
+    const entry = h.log.entries.filter((candidate) => candidate.code === 'SEALING_CAMERA_PREFIX_SEALED');
+    expect(entry).toHaveLength(1);
+    expect(entry[0]?.context).toMatchObject({ failure: 'FRAGMENT_TOO_LARGE', trackId: largest.trackId, seq: largest.seq, bytes: largest.bytes, limitBytes: largest.bytes - 1, firstBadSeq: largest.seq });
+    // No sealed byte of the refused FRAGMENT; the pipeline produced nothing its verifier refuses at this bound.
+    expect(manifestOf(h.recording).files.flatMap((file) => file.fragments).every((fragment) => fragment.byteLength <= largest.bytes - 1)).toBe(true);
+    expect((await verifyAt(h, largest.bytes - 1)).ok).toBe(true);
+  });
+
+  it('a fragment above the bound in EVERY camera file: nothing sealed, nothing signed, nothing committed; the recordings are untouched', async () => {
+    const h = harnessOf(recordSession({ fragments: 3 }));
+    // Below the SMALLEST fragment of the session: the first fragment of each file is too large, so no file has a valid fragment (ruling D183).
+    const smallest = Math.min(...TRACKS.flatMap((trackId) => h.recording.tracks[trackId].rows.map((row) => row.byteLength)));
+    const pipeline = createSealingPipeline({ ...h.ports, maxFragmentBytes: smallest - 1 });
     const outcome = failedOf(await pipeline.run({ sessionId: h.recording.sessionId, cause: 'STOPPED' }));
-    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'FRAGMENT_TOO_LARGE', retriable: false, attempt: 1 });
-    expect(outcome.detail).toEqual({ trackId: largest.trackId, seq: largest.seq, bytes: largest.bytes, limitBytes: largest.bytes - 1 });
-    // Nothing sealed, nothing signed, nothing committed; the recordings are untouched.
+    expect(outcome).toMatchObject({ step: 'CLOSE_TRACKS', code: 'NOTHING_SEALABLE', retriable: false, attempt: 1, detail: { reasons: 'VIDEO-01:FRAGMENT_TOO_LARGE,VIDEO-02:FRAGMENT_TOO_LARGE' } });
     expect(nothingSigned(h.recording)).toBe(true);
     for (const trackId of TRACKS) {
       expect(existsSync(h.recording.cameraFile(trackId))).toBe(false);
@@ -713,14 +803,16 @@ describe('ONE fragment bound for the pipeline and its verifier (row 82c; finding
     expect(existsSync(h.recording.path(PackageFile.FRAGMENTS_JSON))).toBe(false);
     expect(h.engine.completeCalls).toBe(0);
     expect(SEALING_STEP_ORDER.map((step) => rowOf(h, step)?.status ?? null)).toEqual(['FAILED', null, null, null, null, null]);
-    expect(rowOf(h, 'CLOSE_TRACKS')?.errorCode).toBe('FRAGMENT_TOO_LARGE');
-    expect(h.log.entries.filter((entry) => entry.code === 'FRAGMENT_TOO_LARGE')).toHaveLength(1);
-    // What an operator reads (operation 83): the file, the fragment, both sizes.
+    expect(rowOf(h, 'CLOSE_TRACKS')?.errorCode).toBe('NOTHING_SEALABLE');
+    // Each file is named with ITS fragment and both sizes in the persistent log; the operator reads one sentence.
+    const named = h.log.entries.filter((entry) => entry.code === 'SEALING_CAMERA_LEFT_OUT').map((entry) => entry.context as Record<string, unknown>);
+    expect(named.map((context) => [context.trackId, context.failure, context.limitBytes])).toEqual(TRACKS.map((trackId) => [trackId, 'FRAGMENT_TOO_LARGE', smallest - 1]));
     const told = h.engine.progress.at(-1)?.steps.find((step) => step.id === 'CLOSE_TRACKS');
     expect(told?.status).toBe('FAILED');
-    expect(told?.detail).toBe(sealingFailureReason('FRAGMENT_TOO_LARGE', outcome.detail));
-    expect(told?.detail).toContain(`Fragment ${largest.seq} of camera file ${largest.trackId} is too large to be verified`);
+    expect(told?.detail).toBe(sealingFailureReason('NOTHING_SEALABLE'));
     expect(told?.detail).not.toMatch(/[/\\]|[0-9a-f]{32}/);
+    // The sentence of the single-fragment refusal is still what the contract says of that code (unchanged text).
+    expect(sealingFailureReason('FRAGMENT_TOO_LARGE', named[0] as never)).toContain('is too large to be verified');
   });
 
   it('CONTROL: at exactly the bound the session seals, and the verifier AT THE SAME BOUND passes it - the pipeline produced nothing its verifier refuses', async () => {
@@ -807,7 +899,9 @@ describe('a Core that ended after the commit of the item is FINISHED at the next
     expect(rowOf(h, 'STORE_SEALED_PACKAGE')?.status).toBe('RUNNING');
   });
 
-  it('CONTAINMENT: only a recording the package\'s own manifest accounts for is removed - another file under a recording\'s name, a link, and every other file of the folder stay', async () => {
+  // Pin changed by fix pass F-M7c (R88-05 (c)): a file under a recording's name that fails the proof is no longer LEFT with
+  // one log line - it is told to the engine once and MOVED to the quarantine (never deleted, never followed). Every other file stays.
+  it('CONTAINMENT: only a recording the package\'s own manifest accounts for is removed - another file under a recording\'s name and a link go to the QUARANTINE with one notice, every other file of the folder stays', async () => {
     const h = harnessOf(recordSession({ fragments: 3 }));
     await killedAfterCommit(h);
     const outside = mkdtempSync(join(tmpdir(), 'dems-row82c-outside-'));
@@ -829,14 +923,27 @@ describe('a Core that ended after the commit of the item is FINISHED at the next
 
       const outcome = sealedOf((await controllerOf(h).resume()) as SealOutcome);
       expect(outcome.attempt).toBe(2);
-      expect(lstatSync(first).isSymbolicLink()).toBe(true);
+      const quarantine = join(h.recording.mediaDir, '.quarantine', h.recording.sessionId);
+      // Neither is deleted and neither stays beside the sealed package: the link is moved as the link it is (never followed), the foreign file byte for byte.
+      expect(existsSync(first)).toBe(false);
+      expect(lstatSync(join(quarantine, 'VIDEO-01.mp4')).isSymbolicLink()).toBe(true);
       expect(existsSync(target)).toBe(true);
-      expect(sha256Hex(readFileSync(second))).toBe(sha256Hex(foreign));
+      expect(existsSync(second)).toBe(false);
+      expect(sha256Hex(readFileSync(join(quarantine, 'VIDEO-02.mp4')))).toBe(sha256Hex(foreign));
       expect(readFileSync(h.recording.path('notes.txt'), 'utf8')).toBe('kept');
       expect(readFileSync(h.recording.path('VIDEO-03.mp4'), 'utf8')).toBe('kept');
-      expect(rowOf(h, 'STORE_SEALED_PACKAGE')).toMatchObject({ status: 'DONE', attempt: 2, checkpoint: { committed: 'ALREADY_SEALED', recordingsRemoved: 0, recordingsKept: 2 } });
-      // Each file that was left is SAID, by track and reason, in the persistent log.
-      expect(h.log.entries.filter((entry) => entry.code === 'SEALING_RECORDING_NOT_OF_PACKAGE').map((entry) => [entry.context?.trackId, entry.context?.reason])).toEqual([
+      expect(rowOf(h, 'STORE_SEALED_PACKAGE')).toMatchObject({ status: 'DONE', attempt: 2, checkpoint: { committed: 'ALREADY_SEALED', recordingsRemoved: 0, recordingsKept: 2, recordingsQuarantined: 2 } });
+      // Each file that was kept is SAID: ONE notice to the engine naming the session and both files, and one line each in the persistent log.
+      expect(h.engine.kept).toEqual([
+        {
+          sessionId: h.recording.sessionId,
+          files: [
+            { trackId: 'VIDEO-01', name: 'VIDEO-01.mp4', reason: 'NOT_A_REGULAR_FILE' },
+            { trackId: 'VIDEO-02', name: 'VIDEO-02.mp4', reason: 'NOT_THE_SEALED_BYTES' },
+          ],
+        },
+      ]);
+      expect(h.log.entries.filter((entry) => entry.code === 'SEALING_PLAINTEXT_QUARANTINED').map((entry) => [entry.context?.trackId, entry.context?.reason])).toEqual([
         ['VIDEO-01', 'NOT_A_REGULAR_FILE'],
         ['VIDEO-02', 'NOT_THE_SEALED_BYTES'],
       ]);

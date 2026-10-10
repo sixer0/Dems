@@ -17,7 +17,7 @@ import { ENGINE_RECORD_FILE, createEngineGuard } from '@dems/transcriber';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { CredentialPurpose, coreCredentialStore, type CoreCredentialStore } from '../../credential-store';
 import { createMemorySnapshotStore, mountTranscription, sessionScratchDir, sessionTapPath, type StoredSttSelection, type TranscriptionControl } from '../index';
-import { answerer, fakeHost, fullHost, makeDataDir, serverRow, startFakeOmlx, writeTap, type Answerer, type FakeHost, type FakeOmlx } from './support';
+import { answerer, fakeHost, fullHost, makeDataDir, serverRow, startFakeOmlx, writeTap, type Answerer, type FakeHost, type FakeOmlx, mediaOf } from './support';
 
 /** The API key of this file. Built from parts: no other file of the repository holds it, and it is NOT the key of the settings file. */
 const SECRET_CANARY = ['stt', 'ENCRYPTED', 'CANARY', 'passA', 'Hx7Pd2Lm9Qc4Wz'].join('-');
@@ -150,7 +150,7 @@ describe('a stored ENCRYPTED credential: the adapter of a session', () => {
     await m.storeSecret(SECRET_CANARY);
     expect(await m.control.snapshotSttConfigForSession(SESSION)).toMatchObject({ ok: true, snapshot: { credentialKind: 'ENCRYPTED' } });
     await m.control.settled();
-    writeTap(sessionTapPath(m.dataDir, SESSION), 40);
+    writeTap(sessionTapPath(mediaOf(m.dataDir), SESSION), 40);
     m.transport.calls.length = 0;
     m.transport.authorizations.length = 0;
     const reveals = (): number => m.host.statements.filter((text) => text.includes('dems_stt_credential_reveal')).length;
@@ -200,8 +200,8 @@ describe('the engine guard of the pipeline is in the production composition (rev
     const m = mount('guard', (endpoint) => serverRow(endpoint, { credentialKind: null }), 'http://127.0.0.1:18912', true);
     await m.control.snapshotSttConfigForSession(SESSION);
     await m.control.settled();
-    writeTap(sessionTapPath(m.dataDir, SESSION), 2);
-    const scratch = sessionScratchDir(m.dataDir, SESSION);
+    writeTap(sessionTapPath(mediaOf(m.dataDir), SESSION), 2);
+    const scratch = sessionScratchDir(mediaOf(m.dataDir), SESSION);
     mkdirSync(scratch, { recursive: true });
 
     // The stand-in of an orphaned engine: a process that does nothing, recorded as the pipeline records an engine.

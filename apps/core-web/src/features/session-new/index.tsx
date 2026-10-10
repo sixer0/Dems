@@ -84,6 +84,8 @@ import { CancelDialog } from './cancel-dialog'
 import { DevicesStep } from './devices-step'
 import { FlowErrorBoundary } from './error-boundary'
 import { InfoStep } from './info-step'
+import { useLocalSourceGate } from '@/features/devices/local-source-gate'
+import { LocalSourceNotice, LocalSourceNotStarted } from '@/features/devices/local-source-notice'
 import { logSessionNew, newFlowCorrelationId } from './log'
 import {
   COUNTDOWN_FROM,
@@ -184,6 +186,9 @@ export function SessionNewPage() {
   const createInFlight = useRef(false)
   /** FC-7: the session ID whose `beginPrecheck` is in flight; one request per session. */
   const precheckInFlight = useRef<string | null>(null)
+  /** R69-01 (D178): a pre-check on a selector that names this Mac's camera / microphone is sent only after the operator confirmed the notice. */
+  const localGate = useLocalSourceGate()
+  const { resumeAllowed: localResumeAllowed, started: localStarted, failed: localFailed, resumeKey: localResumeKey } = localGate
 
   // LB-1: one in-flight flag and one late spinner per control that sends a command.
   const { run: runScan, pending: scanPending, ref: scanRef } = usePendingControl()
@@ -230,12 +235,16 @@ export function SessionNewPage() {
   useEffect(() => {
     if (step !== 2 || sessionState !== SessionState.CREATE || sessionId === null) return undefined
     if (precheckInFlight.current === sessionId) return undefined
+    // R69-01: never by itself when the selector names a local device; "Run the device check" and its notice allow one request.
+    if (!localResumeAllowed()) return undefined
     const id = sessionId
     return deferEffectStart(() => {
       if (precheckInFlight.current === id) return
       precheckInFlight.current = id
+      localStarted(id)
       settle(() => actions.beginPrecheck(), {
         fail: (error) => {
+          localFailed()
           logSessionNew('error', 'beginPrecheck.resume', error, { sessionId: id, correlationId: correlation.current })
           if (presentCoreError(error) !== null) return
           toast.danger(t('sessionNew.errors.precheck'))
@@ -245,13 +254,14 @@ export function SessionNewPage() {
         },
       })
     })
-  }, [step, sessionState, actions, sessionId, t, presentCoreError])
+  }, [step, sessionState, actions, sessionId, t, presentCoreError, localResumeAllowed, localStarted, localFailed, localResumeKey])
 
   // ── Step 1 → 2 ──────────────────────────────────────────────────────────────────────────
   /** D-3: the pre-check of a session just created, unless the resume effect already has it in flight (FC-7). */
   const beginPrecheckOnce = async (id: string) => {
     if (precheckInFlight.current === id) return
     precheckInFlight.current = id
+    localGate.started(id)
     try {
       await actions.beginPrecheck()
     } finally {
@@ -286,6 +296,7 @@ export function SessionNewPage() {
       if (created?.state === SessionState.CREATE) await beginPrecheckOnce(created.id)
       goTo(2)
     } catch (error) {
+      localGate.failed()
       logSessionNew('error', 'submitInfo', error, { sessionId: sim.store.getState().session?.id ?? null, correlationId: correlation.current })
       if (presentCoreError(error) !== null) return
       toast.danger(t('sessionNew.errors.precheck'))
@@ -294,7 +305,8 @@ export function SessionNewPage() {
       setCreating(false)
     }
   }
-  const submitInfo = () => form.handleSubmit(createAndCheck)()
+  // R69-01: the form validates first; with a local device in the selector nothing is sent until the notice is confirmed.
+  const submitInfo = () => form.handleSubmit((values) => localGate.guard(() => void createAndCheck(values)))()
 
   // A4: the field is written when the scan settled; the result never rejects (the adapter's fallback).
   const scan = () => {
@@ -473,7 +485,7 @@ export function SessionNewPage() {
         gate={gate}
         acknowledged={acknowledged}
         onAcknowledgedChange={(value) => setAck({ runAt: precheck?.startedAt ?? null, value })}
-        onRetry={retryChecks}
+        onRetry={() => localGate.guard(retryChecks)}
         live={live}
         retryPending={retryPending}
         retryRef={retryRef}
@@ -486,7 +498,7 @@ export function SessionNewPage() {
         countdownOn={countdownOn}
         onCountdownChange={setCountdownOn}
         countdown={countdown}
-        onStart={start}
+        onStart={() => localGate.guard(start, 'START')}
         onCancelCountdown={() => setCountdown(null)}
         canStart={canStart}
         enterDelayMs={0}
@@ -529,6 +541,7 @@ export function SessionNewPage() {
           <Stepper steps={steps} orientation="horizontal" variant="wizard" ariaLabel={t('sessionNew.steps.label')} className="sn-stepper" />
         </div>
 
+        <LocalSourceNotStarted gate={localGate} sessionId={step === 2 && sessionState === SessionState.CREATE ? sessionId : null} />
         <TransitionPanel activeIndex={step - 1} custom={view.direction} className="sn-panel">
           {panels}
         </TransitionPanel>
@@ -566,6 +579,7 @@ export function SessionNewPage() {
         </footer>
       </motion.section>
 
+      <LocalSourceNotice gate={localGate} />
       <CancelDialog
         isOpen={cancelOpen}
         onOpenChange={setCancelOpen}

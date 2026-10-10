@@ -127,11 +127,51 @@ describe('REAL_DEVELOPMENT: the development devices carry the class (the CONTROL
 });
 
 describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; nothing reads DEVELOPMENT', () => {
-  it('four assigned production devices: each listed with its adapter and class PRODUCTION; the unassigned built-ins carry nothing; 0 development marks', async () => {
+  // Until fix F-M4 (finding R69-03) this case pinned the four FAKE built-ins as listed with no class.
+  // They are development devices: a production Core lists none of them (decision D178). The switch stays.
+  it('four assigned production devices: each listed with its adapter and class PRODUCTION; of the built-ins only the switch is listed, with no class; 0 development marks', async () => {
     const core = await booted('d131_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-d131-prod', 'capture-worker/0.4.0') }, productionRows);
     expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
     expect(core.marks.filter((mark) => /-1[12] /.test(mark))).toEqual(['CAM-11 ONVIF_RTSP PRODUCTION', 'CAM-12 ONVIF_RTSP PRODUCTION', 'MIC-11 USB_AUDIO PRODUCTION', 'MIC-12 USB_AUDIO PRODUCTION']);
-    expect(core.marks.filter((mark) => BUILT_INS.includes(mark.split(' ')[0] ?? ''))).toEqual(BUILT_INS.map((id) => `${id} - -`));
+    expect(core.marks.filter((mark) => BUILT_INS.includes(mark.split(' ')[0] ?? ''))).toEqual(['POE-SWITCH - -']);
     expect(core.wire).not.toMatch(/DEVELOPMENT|LOCAL_DEVICE/);
+  });
+
+  // Review row 69, finding R69-03 (decision D178): "in REAL_PRODUCTION operations 76 / 77 list 0
+  // development devices" (C3 §2.6; ux §8f.3; R-11 AC-2; M4-LOCAL-SEL-1). A database that once booted
+  // REAL_DEVELOPMENT holds this Mac's camera and microphone (`LOCAL_DEVICE`) and the four built-in
+  // test sources (`FAKE`); unassigned, they do not refuse the production boot - and they are in no
+  // list a client reads. The rows themselves stay: a development boot lists them again (the CONTROL
+  // is the REAL_DEVELOPMENT case above, which reads the same rows with the same reader).
+  it('R69-03: stored development devices (LOCAL_DEVICE and FAKE), unassigned, are in no list of a production Core; the rows stay stored', async () => {
+    const core = await booted('r6903_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-r6903-prod', 'capture-worker/0.4.0') }, async (owner) => {
+      await localRows(owner);
+      await productionRows(owner);
+    });
+    expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
+    // The device list (operation 77 answers the slice; the roster of both clients is drawn from it).
+    expect(core.marks).toEqual(['CAM-11 ONVIF_RTSP PRODUCTION', 'CAM-12 ONVIF_RTSP PRODUCTION', 'MIC-11 USB_AUDIO PRODUCTION', 'MIC-12 USB_AUDIO PRODUCTION', 'POE-SWITCH - -']);
+    expect(JSON.stringify(core.state.captureDevices)).not.toMatch(/CAM-0[123]|MIC-0[123]|MacBook/);
+    expect(JSON.stringify(core.app.engine.slice('captureDevices'))).not.toMatch(/CAM-0[123]|MIC-0[123]|MacBook/);
+    expect(core.wire).not.toMatch(/DEVELOPMENT|LOCAL_DEVICE|MacBook/);
+    // Not probed, not registered by the boot: the production registry holds no adapter at all.
+    expect(captureFenceControl(core.app).registry()?.list() ?? []).toEqual([]);
+    // Nothing was deleted or rewritten: the seven development rows are stored as they were.
+    const stored = (await core.owner.query("SELECT id, adapter_kind FROM public.capture_devices WHERE adapter_kind IN ('FAKE', 'LOCAL_DEVICE') ORDER BY id")).rows;
+    expect(stored.map((row: { id: string; adapter_kind: string }) => `${row.id} ${row.adapter_kind}`)).toEqual(['CAM-01 FAKE', 'CAM-02 FAKE', 'CAM-03 LOCAL_DEVICE', 'MIC-01 FAKE', 'MIC-02 FAKE', 'MIC-03 LOCAL_DEVICE', 'POE-SWITCH FAKE']);
+    // A reload inside the process reads the same list (the rule is applied at every rehydration).
+    await core.app.engine.stop();
+    await core.app.engine.reload();
+    expect(core.app.engine.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-11', 'CAM-12', 'MIC-11', 'MIC-12', 'POE-SWITCH']);
+  });
+
+  it('R69-03 CONTROL - SIMULATED on the same rows lists every stored device, inert (D83 O-2)', async () => {
+    const core = await booted('r6903_sim', { demoControls: false }, async (owner) => {
+      await localRows(owner);
+      await productionRows(owner);
+      await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-01', video_02_device_id = 'CAM-02', mic_primary_id = 'MIC-01', mic_standby_id = 'MIC-02'");
+    });
+    expect(captureFenceControl(core.app).operation).toBe('SIMULATED');
+    expect(core.state.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-11', 'CAM-12', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-11', 'MIC-12', 'POE-SWITCH']);
   });
 });

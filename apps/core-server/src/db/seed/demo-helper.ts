@@ -15,40 +15,33 @@
  * bounded; a helper that outlives the bound is killed. A failure is a code and an exit status.
  */
 import { spawn } from 'node:child_process';
-import { accessSync, constants, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { HelperProgramProblem, helperProgramProblemOf, inspectHelperProgram, type HelperProgramInspector } from '../../capture/fence';
 
 /** The longest one generated camera file may take (it is a few seconds of 720p). */
 export const DEMO_HELPER_TIMEOUT_MS = 120_000;
 
-export const SeedHelperProblem = {
-  /** No helper program is configured (`DEMS_CAPTURE_HELPER_FFMPEG` is not set). */
-  NOT_SET: 'HELPER_NOT_SET',
-  NOT_ABSOLUTE: 'HELPER_NOT_ABSOLUTE',
-  /** The configured path names nothing: the helper copy is absent. */
-  ABSENT: 'HELPER_ABSENT',
-  NOT_A_FILE: 'HELPER_NOT_A_FILE',
-  NOT_EXECUTABLE: 'HELPER_NOT_EXECUTABLE',
-} as const;
+/**
+ * Why the configured helper program is not started. ONE RULE WITH THE SERVER'S BOOT (fix F-M4;
+ * review row 69, question 5 / finding R69-06; SEC35-43 (a)): the codes are the capture fence's
+ * `HelperProgramProblem` under the prefix `HELPER_` - not set, not executable, and every refusal of
+ * the path rule (`capture/adapters/local/helper-program.ts`): not absolute, not found, not a
+ * regular file, a file or a directory on the way (as written and as resolved) that is not owned by
+ * root or by this user, or that its group or others may write. A path the server refuses to start
+ * is a path the seed does not start.
+ */
+export const SeedHelperProblem = Object.freeze(
+  Object.fromEntries(Object.values(HelperProgramProblem).map((problem) => [problem, `HELPER_${problem}`])) as { readonly [Problem in HelperProgramProblem]: `HELPER_${Problem}` },
+);
 export type SeedHelperProblem = (typeof SeedHelperProblem)[keyof typeof SeedHelperProblem];
 
-/** Why the configured helper program cannot be started, or null. Reads what the path IS; opens no file. */
-export function seedHelperProblemOf(program: string | null): SeedHelperProblem | null {
-  if (program === null || program === '') return SeedHelperProblem.NOT_SET;
-  if (!isAbsolute(program)) return SeedHelperProblem.NOT_ABSOLUTE;
-  let regular: boolean;
-  try {
-    regular = statSync(program).isFile();
-  } catch {
-    return SeedHelperProblem.ABSENT;
-  }
-  if (!regular) return SeedHelperProblem.NOT_A_FILE;
-  try {
-    accessSync(program, constants.X_OK);
-  } catch {
-    return SeedHelperProblem.NOT_EXECUTABLE;
-  }
-  return null;
+/**
+ * Why the configured helper program cannot be started, or null: the answer of the boot's own
+ * function (`helperProgramProblemOf`) for the same path. Reads what the path IS; opens no file.
+ */
+export function seedHelperProblemOf(program: string | null, inspect: HelperProgramInspector = inspectHelperProgram): SeedHelperProblem | null {
+  const problem = helperProgramProblemOf(program, inspect);
+  return problem === null ? null : SeedHelperProblem[problem];
 }
 
 /** A helper run that did not end well. Carries a code and the exit facts, never output. */

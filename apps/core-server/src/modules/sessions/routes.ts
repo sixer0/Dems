@@ -103,6 +103,8 @@ import { sessionCapture } from '../../capture-session';
 import type { EngineOutcome, EngineUnit } from '../../engine';
 import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
+// Fix pass F-M7b (review R88-02 (a)): the recovery operation retries a FAILED seal on demand.
+import { sealingHost } from '../../sealing-host';
 import { listAudioSourceIntervals } from './audio-intervals';
 import { currentSessionResponse } from './current';
 import { listSessionHistory } from './history';
@@ -296,7 +298,18 @@ export function registerSessionRoutes(app: FastifyInstance): void {
       handler: async (request, reply): Promise<SessionCommandResponse> => {
         const { id } = request.params;
         if (operationId !== 'recoverSession') await beforePrecheck(request, id, operationId === 'beginPrecheck' ? 'BEGIN' : 'RETRY');
-        await onOpenSession(operationId, id, (scope) => scope.command(request.principal, hosted));
+        // Fix pass F-M7b (R88-02 (a)): the open session is FINALIZING with a FAILED sealing step (real capture
+        // only: the host is inert in Simulated mode) - its seal is run again now, in the background, and the
+        // session stays FINALIZING. Every other state goes to the hosted action as before.
+        // The operator who asked is named on the host's audit row `RECOVERY_STARTED` / `SEAL_RETRY` (ruling D186 (8); tidy pass F-Y).
+        // Pass F-Z (rule M3): the principal is handed on, as it is, at ONE place - to the door that runs the request (the
+        // sealing host's retry or the unit of the open session). The receiving side reads who asked; this module reads no member.
+        const handOn = <Value>(door: { command(principal: FastifyRequest['principal'], name: typeof hosted): Value }): Value => door.command(request.principal, hosted);
+        if (operationId === 'recoverSession' && handOn(sealingHost(app).failedSeal(id))) {
+          void reply.code(accepted);
+          return { sessionId: id, state: SessionState.FINALIZING };
+        }
+        await onOpenSession(operationId, id, handOn);
         void reply.code(accepted);
         return { sessionId: id, state };
       },

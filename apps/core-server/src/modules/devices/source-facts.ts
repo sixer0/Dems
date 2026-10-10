@@ -44,9 +44,9 @@
  */
 import type { CaptureSourceFact } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
-import { captureFenceControl } from '../../capture/fence';
+import { captureFenceControl, captureOperationOf, storedDeviceListingOf } from '../../capture/fence';
 import { sessionCapture } from '../../capture-session';
-import { factDoorsOf } from '../../engine';
+import { factDoorsOf, provideCaptureDeviceListing } from '../../engine';
 import { describeError } from '../../plugins/logger';
 
 /** The ID of the boot step. */
@@ -127,6 +127,16 @@ export function mountCaptureSourceFacts(app: FastifyInstance): CaptureSourceFact
     },
   };
   feeds.set(app.stages, feed);
+
+  // THE DEVICE LIST OF THE RUNNING OPERATION (fix F-M4; review row 69, finding R69-03; decision
+  // D178). Handed to the engine NOW, at registration - before the boot reads the stored registry -
+  // and applied by it at every rehydration: in `REAL_PRODUCTION` a stored camera or microphone of a
+  // development kind (this Mac's camera and microphone of an earlier development boot, the four
+  // generated test sources) is in no state, so in no answer of operations 76 / 77, no replicated
+  // slice and no roster. `SIMULATED` has no rule: every stored kind is listed and inert (D83 O-2).
+  // An engine behind the seam that cannot hold the rule stops the registration (fail closed).
+  const listing = storedDeviceListingOf(captureOperationOf(app.config));
+  if (listing !== null) provideCaptureDeviceListing(app.engine, listing);
 
   app.addHook('onReady', async () => {
     const fence = captureFenceControl(app);

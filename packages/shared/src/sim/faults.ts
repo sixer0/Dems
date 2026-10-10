@@ -16,6 +16,7 @@
  */
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
 import { activeMeterChannel, captureMicLines, micInputOfChannel } from './audio';
+import { captureFaultSentence } from './capture-fault-wording';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
 import { DEVICE_ID } from './dataset';
 import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
@@ -118,7 +119,13 @@ function parseEvidenceTamper(key: string | null): { evidenceId: string; trackId:
   return { evidenceId: rest.slice(0, split), trackId: rest.slice(split + 1) as TrackId };
 }
 
-function describeFault(state: SimState, kind: FaultKind, key: string | null): { message: string; deviceId: string } {
+/** "Camera 2 (CAM-02)": the name the simulator holds for a capture device and its id; the id alone when it holds none. */
+export function captureDeviceLabel(state: Pick<SimState, 'cameras' | 'mics'>, deviceId: string): string {
+  const name = state.cameras.find((camera) => camera.deviceId === deviceId)?.name ?? state.mics.find((mic) => mic.deviceId === deviceId)?.name ?? null;
+  return name === null || name === deviceId ? deviceId : `${name} (${deviceId})`;
+}
+
+function describeFault(state: SimState, kind: FaultKind, key: string | null, reason: string | null = null): { message: string; deviceId: string } {
   const camera = state.cameras.find((c) => c.id === key);
   const mic = state.mics.find((m) => m.id === key);
   switch (kind) {
@@ -163,9 +170,13 @@ function describeFault(state: SimState, kind: FaultKind, key: string | null): { 
         message: `${mic?.name ?? 'Microphone'}: silent below ${MIC_SILENCE_DBFS} dBFS for ${MIC_SILENCE_DURATION_MS / 1000} s`,
         deviceId: mic?.deviceId ?? DEVICE_ID,
       };
-    // Schema v2 (register NM-07): a recording file stopped growing. Critical (`dbc-3 §C.2`).
-    case FaultKind.CAPTURE_FAULT:
-      return { message: `Capture fault: a recording file stopped growing (${key ?? 'unknown'})`, deviceId: key ?? DEVICE_ID };
+    // A fault of the capture side (`dbc-3 §C.2`: critical). WORDED BY ITS REASON (review R74-03): the
+    // one sentence of that cause from `capture-fault-wording.ts`, naming the device by name and id;
+    // an unknown reason gets the neutral sentence with its code.
+    case FaultKind.CAPTURE_FAULT: {
+      const device = key === null ? null : captureDeviceLabel(state, key);
+      return { message: captureFaultSentence(reason, device), deviceId: key ?? DEVICE_ID };
+    }
     default:
       return { message: 'Fault', deviceId: DEVICE_ID };
   }
@@ -289,7 +300,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   if (evidenceTamper && !next.evidence.some((item) => item.id === evidenceTamper.evidenceId)) {
     throw new SimNotFoundError('evidence', evidenceTamper.evidenceId);
   }
-  const { message, deviceId } = describeFault(next, kind, key);
+  const { message, deviceId } = describeFault(next, kind, key, facts?.reason ?? null);
   next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key, ...(reason === null ? {} : { reason }) }] } };
 
   // Immediate effects that are not pure derivations.
@@ -402,12 +413,24 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   return next;
 }
 
+/** The open session is a failed start: nothing recorded, faulted by the capture (the rule of `isFailedCaptureStart`, kept here to stay clear of an import cycle). */
+const isFailedStartSession = (session: SimState['session']): boolean => session !== null && session.captureDurable === false && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT;
+
 /** `clearFault(kind, target?)`: without a target, every active fault of that kind clears. */
 export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultKind, target?: FaultTarget): SimState {
   let key: string | null | undefined;
   if (target === undefined) key = undefined;
   else if (kind === FaultKind.AUDIT_TAMPER && target.auditIndex === undefined) key = undefined;
   else key = faultTargetKey(state, kind, target);
+  // Review R74-11: the capture-wide fault of a FAILED START is the cause its session shows while it
+  // is in FAULT (or being closed). It is ended by the next start (D84 R-3 / R-4), never by this demo
+  // control while that session is open: a clear here would leave a FAULT session with no cause.
+  if (kind === FaultKind.CAPTURE_FAULT && isFailedStartSession(state.session)) {
+    const others = state.faults.active.filter((fault) => fault.kind === kind && fault.target !== null && (key === undefined || fault.target === key));
+    let next = state;
+    for (const fault of others) next = clearFaultAtKey(next, now, kind, fault.target);
+    return next;
+  }
   return clearFaultAtKey(state, now, kind, key);
 }
 
@@ -456,7 +479,7 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
       matches.map((fault) => ({
         audit: {
           type: 'FAULT_CLEARED' as const,
-          message: `${describeFault(state, kind, fault.target).message} — cleared`,
+          message: `${describeFault(state, kind, fault.target, fault.reason ?? null).message} — cleared`,
           sessionId,
           details: { kind, evt: FaultEvt[kind], target: fault.target, ...(fault.reason === undefined ? {} : { reason: fault.reason }) },
         },

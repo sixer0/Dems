@@ -272,4 +272,63 @@ describe('the mount in a real capture mode (no database, nothing recorded)', () 
     expect(await evidenceVerification(app).current()?.verify({ kind: 'ANONYMOUS', retiredDeviceId: null }, 'EV-20260930-0004')).toBeNull();
     expect(SEALING_RESUME_BOOT_STEP).toBe('sealing.resume');
   });
+
+  // Fix pass F-M7b (R88-02 (a)): the retry ON DEMAND the recovery operation asks for.
+  it('retryFailedSeal: true ONLY for the open session that is FINALIZING with a FAILED sealing step; false for every other session and state (controls)', async () => {
+    const failure = Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' });
+    const pool = { connect: async () => Promise.reject(failure), query: async () => Promise.reject(failure), on: () => pool, end: async () => {} };
+    const app = buildApp({
+      config: unitTestConfig({ dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: '/bin/echo', captureWorkerPath: fixture.worker('worker-fm7b', 'capture-worker/0.4.0') }),
+      createPool: () => pool as unknown as Pool,
+      logStream: captureLog().stream,
+    });
+    apps.push(app);
+    await app.ready();
+    const host = sealingHost(app);
+    const sessionOf = (state: string, steps: string[]) => ({ id: 'SES-20261010-0007', state, stoppedAt: 1, fault: null, finalization: { steps: steps.map((status, index) => ({ id: `STEP-${index}`, status })) } });
+    const engine = (session: unknown) => app.seams.replace('engine', { state: () => ({ session, evidence: [] }) } as never);
+    engine(null);
+    expect(host.retryFailedSeal('SES-20261010-0007')).toBe(false);
+    engine(sessionOf('FINALIZING', ['done', 'active', 'pending']));
+    expect(host.retryFailedSeal('SES-20261010-0007')).toBe(false);
+    engine(sessionOf('RECORDING', ['error']));
+    expect(host.retryFailedSeal('SES-20261010-0007')).toBe(false);
+    engine(sessionOf('FINALIZING', ['done', 'error', 'pending']));
+    expect(host.retryFailedSeal('SES-20261010-0001')).toBe(false);
+    // THE CASE: the seal is started again in the background (here it cannot reach a database: the run rejects and is logged, the answer stands).
+    expect(host.retryFailedSeal('SES-20261010-0007')).toBe(true);
+    await host.settled();
+    // In Simulated mode there is no host: the recovery operation does what it always did.
+    expect(sealingHost({ stages: {} }).retryFailedSeal('SES-20261010-0007')).toBe(false);
+  });
+
+  // Fix pass F-M7c (ruling D186 (8)): the retry on demand is AUDITED - who asked, which session, the cause being retried.
+  it('retryFailedSeal writes ONE audit note through the engine door with the operator who asked; a refused retry (control) writes none', async () => {
+    const failure = Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' });
+    const pool = { connect: async () => Promise.reject(failure), query: async () => Promise.reject(failure), on: () => pool, end: async () => {} };
+    const app = buildApp({
+      config: unitTestConfig({ dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: '/bin/echo', captureWorkerPath: fixture.worker('worker-fm7c', 'capture-worker/0.4.0') }),
+      createPool: () => pool as unknown as Pool,
+      logStream: captureLog().stream,
+    });
+    apps.push(app);
+    await app.ready();
+    const host = sealingHost(app);
+    const notes: unknown[] = [];
+    const doors = { noteSealedPlaintextKept: async () => ({ value: false }), raiseSealBlocked: async () => ({ value: false }), resolveSealBlocked: async () => ({ value: false }), noteSealRetryOnDemand: async (note: unknown) => (notes.push(note), { value: true }) };
+    const engine = (session: unknown) => app.seams.replace('engine', { state: () => ({ session, evidence: [], alerts: [] }), ...doors } as never);
+    const sessionOf = (state: string, steps: string[]) => ({ id: 'SES-20261010-0008', state, stoppedAt: 1, fault: null, finalization: { steps: steps.map((status, index) => ({ id: `STEP-${index}`, status })) } });
+    // Pass F-Z: the caller hands the principal on as it is; the host reads who asked.
+    const asked = { kind: 'OPERATOR', operatorId: 'OP-0003', sessionId: 'AS-1', deviceId: null, role: 'INVESTIGATOR', permissions: [] } as never;
+    // CONTROL: no failed step - no retry, no audit note.
+    engine(sessionOf('FINALIZING', ['done', 'active']));
+    expect(host.retryFailedSeal('SES-20261010-0008', asked)).toBe(false);
+    await host.settled();
+    expect(notes).toEqual([]);
+    engine(sessionOf('FINALIZING', ['done', 'error', 'pending']));
+    expect(host.retryFailedSeal('SES-20261010-0008', asked)).toBe(true);
+    await host.settled();
+    // The journal cannot be read here (no database): the row is written all the same, without a cause - never skipped.
+    expect(notes).toEqual([{ sessionId: 'SES-20261010-0008', actorId: 'OP-0003', cause: null, step: null }]);
+  });
 });

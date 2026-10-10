@@ -41,6 +41,7 @@ import { CaptureAdapterError, CaptureAdapterRefusal } from '../../errors';
 import { CaptureAdapterKind } from '../../kinds';
 import { ConnectionTestOutcome, type CameraCandidate } from '../../types';
 import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, type OnvifSessionResult } from '../onvif-session';
+import { connectionTargetOf } from '../connection-target';
 
 // Two canaries, as the credential of the fixture account: neither is a word of any message.
 const ACCOUNT = { username: `cnryU${randomUUID().replaceAll('-', '')}`, secret: `cnryS${randomUUID().replaceAll('-', '')}` };
@@ -271,6 +272,32 @@ describe('M4-SEC-CONN-2 (SEC35-38): the request budget of a failed test', () => 
     expect(result).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, authenticated: false, reason: OnvifTestReason.CREDENTIAL_ABSENT, credentialRequests: 0, rejectedCredentialRequests: 0 });
     expect(deviceRequests(stub).filter((request) => request.authPresent)).toEqual([]);
     expect(stub.violations()).toEqual([]);
+  });
+});
+
+// Fix F-M4 (review row 69, finding R69-12; decision D178): the operator confirms the FULL target -
+// scheme, host, port and path - and that text is what the test uses, from one function.
+describe('R69-12: the target the operator confirms is the target the test contacts', () => {
+  it('scheme, host, the port written out (also the default one) and the path; null for a candidate the test refuses', () => {
+    expect(connectionTargetOf(candidateAt('http://127.0.0.1/onvif/device_service'))).toBe('http://127.0.0.1:80/onvif/device_service');
+    expect(connectionTargetOf(candidateAt('https://127.0.0.1/onvif/device_service'))).toBe('https://127.0.0.1:443/onvif/device_service');
+    expect(connectionTargetOf(candidateAt('http://127.0.0.1:8899/a/b'))).toBe('http://127.0.0.1:8899/a/b');
+    expect(connectionTargetOf(candidateAt('http://127.0.0.1:8899'))).toBe('http://127.0.0.1:8899/');
+    // Every candidate the test refuses before a request has no target to confirm.
+    for (const refused of [candidateAt(null), candidateAt('http://127.0.0.2/x'), candidateAt('http://user@127.0.0.1/x'), candidateAt('http://127.0.0.1/x?y=1'), candidateAt('ftp://127.0.0.1/x'), candidateAt('http://127.0.0.1/x', { conflict: true }), candidateAt('http://127.0.0.1/x', { testable: false })]) {
+      expect(connectionTargetOf(refused)).toBeNull();
+    }
+  });
+
+  it('the stub is contacted on exactly the port and the path of that text (control: a candidate on another port names another target)', async () => {
+    const stub = await startStub();
+    const candidate = candidateAt(stub.addresses().deviceServiceUrl);
+    const target = new URL(connectionTargetOf(candidate) ?? 'http://invalid.invalid/');
+    await tester().test(candidate, null, never());
+    const served = new URL(stub.addresses().deviceServiceUrl);
+    expect([target.protocol, target.hostname, target.port, target.pathname]).toEqual([served.protocol, served.hostname, served.port, served.pathname]);
+    expect(deviceRequests(stub).length).toBeGreaterThan(0);
+    expect(connectionTargetOf(candidateAt(`http://127.0.0.1:${Number(served.port) + 1}${served.pathname}`))).not.toBe(connectionTargetOf(candidate));
   });
 });
 

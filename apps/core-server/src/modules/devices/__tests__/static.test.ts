@@ -240,7 +240,7 @@ describe('M8: time, and what the folder may touch', () => {
     expect(engineImports).toHaveLength(1);
     expect(engineImports.every((line) => line.trimStart().startsWith('import type '))).toBe(true);
     // Pass D11: the feed imports the fact doors, and the three capture / logger sources are its alone.
-    expect(feedCode[0]?.text.split('\n').filter((line) => line.includes(`'../../engine'`))).toEqual(["import { factDoorsOf } from '../../engine';"]);
+    expect(feedCode[0]?.text.split('\n').filter((line) => line.includes(`'../../engine'`))).toEqual(["import { factDoorsOf, provideCaptureDeviceListing } from '../../engine';"]); // + the device-list rule (fix F-M4, R69-03)
     for (const source of ['../../capture-session', '../../capture/fence', '../../plugins/logger']) {
       expect(routesCode.some((file) => file.text.includes(`'${source}'`)), source).toBe(false);
     }

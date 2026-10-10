@@ -106,11 +106,32 @@ export function sealSecret(key: KeyMaterial, context: EnvelopeContext, secret: s
       const cipher = createCipheriv(CIPHER, bytes, nonce, { authTagLength: ENVELOPE_TAG_BYTES });
       cipher.setAAD(aad);
       const body = Buffer.concat([cipher.update(frame), cipher.final()]);
-      return { keyRef: context.keyRef, ciphertext: new Uint8Array(Buffer.concat([body, cipher.getAuthTag()])), nonce: new Uint8Array(nonce) };
+      return storeSealed({ keyRef: context.keyRef, ciphertext: new Uint8Array(Buffer.concat([body, cipher.getAuthTag()])), nonce: new Uint8Array(nonce) });
     });
   } finally {
     frame.fill(0);
   }
+}
+
+/**
+ * THE BRAND (fix F-M4; review row 69, question 2): the objects `sealSecret` itself returned, and no
+ * other. A caller that must write a sealed secret to a table asks `isStoreSealedSecret` instead of
+ * inspecting bytes: an answer of anything else - a stand-in sealer, a copy, a hand-built object of
+ * the right form - is not in the set, whatever it holds. Nothing outside this file can add to it.
+ * The set holds the objects weakly and keeps no secret: an envelope is ciphertext.
+ */
+declare const STORE_SEALED: unique symbol;
+export type StoreSealedSecret = SealedSecret & { readonly [STORE_SEALED]: true };
+const sealedByStore = new WeakSet<object>();
+function storeSealed(sealed: SealedSecret): StoreSealedSecret {
+  Object.freeze(sealed);
+  sealedByStore.add(sealed);
+  return sealed as StoreSealedSecret;
+}
+
+/** True for an object `sealSecret` returned, still of the form it gave it. Says nothing about whether it opens. */
+export function isStoreSealedSecret(sealed: unknown): sealed is StoreSealedSecret {
+  return typeof sealed === 'object' && sealed !== null && sealedByStore.has(sealed) && isSealedSecret(sealed as SealedSecret);
 }
 
 /** True when the three values have the form `sealSecret` gives them. Says nothing about whether they open. */

@@ -29,7 +29,7 @@ import { useMobileLive } from '@/runtime';
 import type { ItemV2 } from './item-v2';
 import { formatMediaTime, permissionGate, type GateState } from './sealed-playback';
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript';
-import { currentRevisionNumber, deriveSegments, paneStateOf, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model';
+import { currentRevisionNumber, deriveSegments, paneStateOf, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model';
 import { TranscriptReviseSheet } from './transcript-revise-sheet';
 
 export interface TranscriptPaneProps {
@@ -38,7 +38,7 @@ export interface TranscriptPaneProps {
   operatorNames: Readonly<Record<string, string>>;
 }
 
-const STATE_TONE = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>;
+const STATE_TONE = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default', UNKNOWN: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>;
 const RETRY_BASE_MS = 3_000;
 const RETRY_MAX = 3;
 
@@ -51,7 +51,8 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
   const canRevise = useSim((s) => selectCan(s, Permission.TRANSCRIPT_REVISE));
   const gate = permissionGate({ operatorKnown, permitted: canRevise });
   const summary = item.transcript;
-  const disabled = summary?.state === 'DISABLED';
+  // No document was sealed (disabled, or unavailable at the seal): nothing is asked of the Core (R80-01).
+  const disabled = sealedWithoutDocument(summary);
   const transcript = useTranscript(evidenceId, !disabled);
   const revisions = useTranscriptRevisions(evidenceId, !disabled && transcript.data !== undefined);
   // A revision another operator appended moves the head of the slice item: both reads are fetched again (pass D10).
@@ -105,6 +106,12 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-partial">
           {summary.failedChunks > 0 ? `${t('evidence.transcript.failedChunks', { count: summary.failedChunks })} ` : ''}
           {summary.backendUnreachable ? t('evidence.transcript.backendUnreachable') : ''}
+        </Text>
+      ) : null}
+
+      {state === 'PARTIAL' && disabled ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-no-document">
+          {t('evidence.transcript.noDocument')}
         </Text>
       ) : null}
 

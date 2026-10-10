@@ -10,8 +10,8 @@
  */
 import { createHash } from 'node:crypto';
 import { constants as FS } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, unlink, type FileHandle } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, lstat, mkdir, open, readdir, rename, unlink, type FileHandle } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { cameraFileName, type PackageVideoTrackId } from '@dems/shared/evidence-package';
 import { walkCameraFile, type ByteSource, type NameFacts, type Sha256Factory } from '../../capture';
 
@@ -139,6 +139,41 @@ export async function removeName(dir: string, name: string): Promise<void> {
 export async function moveOut(dir: string, name: string, toDir: string): Promise<void> {
   await mkdir(toDir, { recursive: true, mode: 0o700 });
   await rename(join(dir, name), join(toDir, name));
+}
+
+/**
+ * MOVES A RECORDING FILE THE CORE COULD NOT SEAL TO THE QUARANTINE (fix pass F-M7; D178): never a
+ * delete. `toDir` is `<mediaStoreRoot>/.quarantine/<sessionId>`; it and its parent are made and
+ * held owner-only (0700), the file 0600. A name that is taken there (a second move after a
+ * restart) gets a counted suffix: nothing in the quarantine is ever overwritten. False when there
+ * is no such name in `dir`. No link is followed: a link is moved as the link it is.
+ */
+export async function moveToQuarantine(dir: string, name: string, toDir: string): Promise<boolean> {
+  let facts;
+  try {
+    facts = await lstat(join(dir, name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  await mkdir(toDir, { recursive: true, mode: 0o700 });
+  await chmod(dirname(toDir), 0o700);
+  await chmod(toDir, 0o700);
+  let target = name;
+  for (let count = 1; ; count += 1) {
+    try {
+      await lstat(join(toDir, target));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+      throw error;
+    }
+    target = `${name}.${count}`;
+  }
+  await rename(join(dir, name), join(toDir, target));
+  if (facts.isFile()) await chmod(join(toDir, target), 0o600);
+  await syncDirectory(toDir);
+  await syncDirectory(dir);
+  return true;
 }
 
 /** Every file below `dir`, as `/`-joined relative paths, sorted. Links are listed and never followed. */

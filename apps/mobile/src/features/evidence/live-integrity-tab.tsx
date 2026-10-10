@@ -75,7 +75,7 @@ import {
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { SCRAMBLE_MS } from './use-scramble';
-import { readVerifyV2, v2FailedNames, verdictOfAnswer, type VerifyV2Answer } from './verify-v2';
+import { V2_SIGNING_KEY_LINE, readVerifyV2, v2FailedNames, verdictOfAnswer, type VerifyV2Answer } from './verify-v2';
 import { VerifyV2Report } from './verify-v2-report';
 
 export interface LiveIntegrityTabProps {
@@ -276,6 +276,12 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
           {t('features.evidence.integrity.keyId')}: {view.signature.keyId}
         </Text>
+        {/* Fix pass F-M7 (R88-07): which key signed, as the Core answered it for this item (operation 41). The item itself carries no such member: before a verification nothing is said here. */}
+        {done && v2 !== null && (v2.signingKey === 'DEVELOPMENT' || v2.signingKey === 'NOT_ESTABLISHED') ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID={`evidence-signature-key-${v2.signingKey}`}>
+            {t(V2_SIGNING_KEY_LINE[v2.signingKey])}
+          </Text>
+        ) : null}
         <CheckLine row={view.checks.find((row) => row.id === 'signature')} revealed={v1Revealed} label={t('features.evidence.integrity.checks.signature')} />
       </Section>
 

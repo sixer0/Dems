@@ -1,13 +1,12 @@
-// Integration pass D10, item 1: the capture transitions exist TWICE until the engine re-exports the
-// shared ones - `../capture-session.ts` (the Core runs them in capture mode `real`) and
-// `@dems/shared/sim` `capture-session.ts` (the simulator decides its own start with them). This file
-// holds the two equal: the same state in, the same state out, for every transition and every kind
-// of input, with ONE known difference that is asserted, not ignored.
-//
-// THE DIFFERENCE: when the failed start itself makes the raise of the capture fault, the shared
-// copy hands `reason` / `evidenceFiles: 0` to the shared raise (pass D6 item 14), so the
-// FAULT_RAISED audit row carries the two keys; the engine's copy gives them to the alert only.
-// When the capture side raised first (the usual order on the Core) the two are equal throughout.
+// The capture transitions of the engine and of the shared simulator. Until fix pass F-M5 they existed
+// TWICE and this file held the two copies equal on the same inputs, with one asserted difference
+// (the engine's failed start gave `reason` / `evidenceFiles` to the alert only). Review R74-10: five
+// of six pairs were compared and the sixth, the switch, had drifted. Now:
+//   - the five transitions ARE the shared ones (the engine file re-exports them): held by identity,
+//     and still run on every kind of input so that a copy that comes back is seen;
+//   - the SIXTH pair is compared: the engine's switch is the simulator's own switch without its
+//     audit row, given a media time (one shared function, `applyAudioSourceSwitch`);
+//   - D84 R-3 in the failed start, and the rehydrate of a failed start in simulated capture.
 import { describe, expect, it } from 'vitest';
 import {
   captureConnectingTransition as sharedConnecting,
@@ -18,6 +17,7 @@ import {
   failedCaptureStartTransition as sharedFailedStart,
   interruptedCaptureTransition as sharedInterrupted,
   raiseCaptureWarningTransition,
+  switchAudioSourceTransition as sharedSwitch,
   CAPTURE_FAULT_KINDS as SHARED_KINDS,
   FAILED_START_REASON_UNKNOWN as SHARED_UNKNOWN,
   type CaptureWarningInput,
@@ -27,10 +27,12 @@ import {
 import {
   CAPTURE_FAULT_KINDS,
   FAILED_START_REASON_UNKNOWN,
+  audioSourceSwitchTransition,
   captureConnectingTransition,
   captureDurableOfSessionTransition,
   clearCaptureFaultsTransition,
   failedCaptureStartTransition,
+  failedStartAtRehydrateTransition,
   interruptedCaptureTransition,
 } from '../capture-session';
 
@@ -85,6 +87,14 @@ function comparable(state: SimState): unknown {
 }
 
 describe('the capture transitions of the engine and of the shared simulator are one rule', () => {
+  it('the five transitions of the engine ARE the shared ones: one function each, not a copy', () => {
+    expect(captureConnectingTransition).toBe(sharedConnecting);
+    expect(captureDurableOfSessionTransition).toBe(sharedDurable);
+    expect(failedCaptureStartTransition).toBe(sharedFailedStart);
+    expect(interruptedCaptureTransition).toBe(sharedInterrupted);
+    expect(clearCaptureFaultsTransition).toBe(sharedClear);
+  });
+
   it('the constants agree', () => {
     expect([...SHARED_KINDS]).toEqual([...CAPTURE_FAULT_KINDS]);
     expect(SHARED_UNKNOWN).toBe(FAILED_START_REASON_UNKNOWN);
@@ -103,7 +113,7 @@ describe('the capture transitions of the engine and of the shared simulator are 
     expect(captureConnectingTransition(state, OTHER)).toBe(state);
   });
 
-  it.each([null, 'NO_CAMERA_CONNECTED', 'WORKER_START_FAILED', 'not a code'])('failed start with cause %s: identical, except the two keys on the audit row of a raise it makes itself', (cause) => {
+  it.each([null, 'NO_CAMERA_CONNECTED', 'WORKER_START_FAILED', 'not a code'])('failed start with cause %s: identical, the two keys on the alert and on the audit row of a raise it makes itself', (cause) => {
     const all = states();
     for (const name of ['armed', 'recording', 'connecting', 'durable', 'raisedFirst'] as const) {
       const state = all[name] as SimState;
@@ -120,12 +130,14 @@ describe('the capture transitions of the engine and of the shared simulator are 
     expect(sharedFailedStart(all['raisedFirst'] as SimState, NOW, SESSION(all['raisedFirst'] as SimState), cause)).toEqual(
       failedCaptureStartTransition(all['raisedFirst'] as SimState, NOW, SESSION(all['raisedFirst'] as SimState), cause),
     );
-    // CONTROL of the comparison and the known difference: the transition made the raise itself.
+    // The transition made the raise itself: BOTH hand the two keys to the audit row (the difference of the two copies is gone).
     const connecting = all['connecting'] as SimState;
     const reason = cause !== null && /^[A-Z][A-Z0-9_]{1,63}$/.test(cause) ? cause : FAILED_START_REASON_UNKNOWN;
     const rowOf = (state: SimState) => state.audit.rows.filter((row) => row.type === 'FAULT_RAISED').at(-1)?.details ?? {};
     expect(rowOf(sharedFailedStart(connecting, NOW, SESSION(connecting), cause))).toMatchObject({ reason, evidenceFiles: 0 });
-    expect(rowOf(failedCaptureStartTransition(connecting, NOW, SESSION(connecting), cause))).not.toHaveProperty('reason');
+    expect(rowOf(failedCaptureStartTransition(connecting, NOW, SESSION(connecting), cause))).toMatchObject({ reason, evidenceFiles: 0 });
+    // And the words of the alert are those of the reason, in both (review R74-03).
+    expect(failedCaptureStartTransition(connecting, NOW, SESSION(connecting), cause).alerts.at(-1)?.message).toBe(sharedFailedStart(connecting, NOW, SESSION(connecting), cause).alerts.at(-1)?.message);
     // Both give the alert the two keys.
     for (const result of [sharedFailedStart(connecting, NOW, SESSION(connecting), cause), failedCaptureStartTransition(connecting, NOW, SESSION(connecting), cause)]) {
       expect(result.alerts.find((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')?.params).toMatchObject({ reason, evidenceFiles: 0 });
@@ -140,5 +152,93 @@ describe('the capture transitions of the engine and of the shared simulator are 
     const other: SimState = { ...(connecting as SimState), session: { ...session, bytesWritten: session.bytesWritten + 1 } };
     expect(comparable(sharedFailedStart(other, NOW, session.id, null))).toEqual(comparable(failedCaptureStartTransition(other, NOW, session.id, null)));
     expect(comparable(sharedInterrupted(other, NOW, session.id))).not.toEqual(comparable(interruptedCaptureTransition(connecting as SimState, NOW, session.id)));
+  });
+  // Review R74-01 (D84 R-3): a capture-wide fault another session left is ended by the failed start
+  // itself - in BOTH copies, so the simulator's own capture and the Core's engine write the same rows.
+  it('a failed start ends the capture-wide fault an EARLIER session left and raises its own: identical, two FAULT_RAISED rows', () => {
+    const { connecting } = states();
+    const state = connecting as SimState;
+    const startedAt = state.session?.startedAt ?? 0;
+    // Raised before this session started recording: another session's.
+    const stale = raiseCaptureWarningTransition(state, startedAt - 60_000, { code: 'CAPTURE_FAULT', subject: null, reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 } as CaptureWarningInput);
+    const staleAlert = stale.alerts.find((alert) => alert.active && alert.kind === 'CAPTURE_FAULT');
+    const shared = sharedFailedStart(stale, NOW, SESSION(stale), 'NO_CAMERA_CONNECTED');
+    const engine = failedCaptureStartTransition(stale, NOW, SESSION(stale), 'NO_CAMERA_CONNECTED');
+    expect(comparable(shared)).toEqual(comparable(engine));
+    for (const result of [shared, engine]) {
+      const rows = result.audit.rows.slice(stale.audit.rows.length).map((row) => row.type);
+      expect(rows).toEqual(['FAULT_CLEARED', 'FAULT_RAISED']);
+      const active = result.alerts.filter((alert) => alert.active && alert.kind === 'CAPTURE_FAULT');
+      expect(active).toHaveLength(1);
+      expect(active[0]?.id).not.toBe(staleAlert?.id);
+      expect(active[0]?.at).toBe(NOW);
+      expect(result.alerts.find((alert) => alert.id === staleAlert?.id)).toMatchObject({ active: false, resolvedAt: NOW });
+    }
+    // CONTROL: a fault raised in THIS session (the forwarder's, the usual order) is kept: no second row.
+    const { raisedFirst } = states();
+    const own = failedCaptureStartTransition(raisedFirst as SimState, NOW, SESSION(raisedFirst as SimState), 'NO_CAMERA_CONNECTED');
+    expect(own.audit.rows.slice((raisedFirst as SimState).audit.rows.length).map((row) => row.type)).toEqual([]);
+  });
+
+  // Review R74-10: THE SIXTH PAIR. The engine's switch is the simulator's own switch without its audit
+  // row, given a media time. With the media time of the simulator's clock the two states are equal.
+  it.each(['MIC-02', 'MIC-01', 'MIC-09'])('switch to %s: the engine state is the shared state without the AUDIO_SOURCE_SWITCHED row', (inputId) => {
+    const all = states();
+    for (const name of ['armed', 'recording', 'durable'] as const) {
+      const state = all[name] as SimState;
+      const session = state.session;
+      if (session === null) throw new Error('no session');
+      const atMediaMs = Math.max(0, NOW - (session.startedAt ?? NOW));
+      const engine = audioSourceSwitchTransition(state, NOW, { sessionId: session.id, toInputId: inputId, atMediaMs });
+      let shared: SimState | null = null;
+      try {
+        shared = sharedSwitch(state, NOW, inputId as Parameters<typeof sharedSwitch>[2]);
+      } catch {
+        // The simulator's operation REFUSES what the engine's door ignores (not RECORDING, no such input).
+      }
+      if (shared === null || shared === state) {
+        expect(engine.switched, `${name} ${inputId}`).toBeNull();
+        expect(engine.state, `${name} ${inputId}`).toBe(state);
+        continue;
+      }
+      const row = shared.audit.rows.at(-1);
+      expect(row?.type).toBe('AUDIO_SOURCE_SWITCHED');
+      // The row of the simulator holds exactly what the engine hands its caller for the Core's row (C3 §5.2).
+      expect(row?.details).toEqual({ fromInput: engine.switched?.fromInputId, toInput: engine.switched?.toInputId, fromMs: engine.switched?.fromMs, toMs: engine.switched?.toMs });
+      expect({ ...shared, audit: state.audit, meta: null }).toEqual({ ...engine.state, meta: null });
+      expect(engine.state.session?.timeline.at(-1)).toEqual(shared.session?.timeline.at(-1));
+      expect(engine.state.session?.audioSource).toMatchObject({ activeInputId: inputId, intervalFromMs: atMediaMs });
+    }
+    // A second switch back: both number from the boundary the first one set.
+    const recording = all['recording'] as SimState;
+    const id = SESSION(recording);
+    const first = audioSourceSwitchTransition(recording, NOW, { sessionId: id, toInputId: 'MIC-02', atMediaMs: 5_000 });
+    const second = audioSourceSwitchTransition(first.state, NOW + 1, { sessionId: id, toInputId: 'MIC-01', atMediaMs: 9_000 });
+    expect(second.switched).toEqual({ fromInputId: 'MIC-02', toInputId: 'MIC-01', fromMs: 5_000, toMs: 9_000 });
+    // CONTROL: the comparison can fail - another media time is another state.
+    expect(audioSourceSwitchTransition(recording, NOW, { sessionId: id, toInputId: 'MIC-02', atMediaMs: 5_001 }).state).not.toEqual(first.state);
+  });
+  // Review R74-14 (1): a Core in SIMULATED capture stores no `captureDurable`. After a restart a failed
+  // start that is still open read as durable, and both clients presented a recovery of evidence.
+  it('rehydrate in simulated capture: an open session faulted from RECORDING with no start instant is a failed start again; every other session is left alone', () => {
+    const { connecting, durable, recording, armed } = states();
+    const failed = sharedFailedStart(connecting as SimState, NOW, SESSION(connecting as SimState), 'NO_CAMERA_CONNECTED');
+    const session = failed.session;
+    if (session === null) throw new Error('no session');
+    // As the Core stores it: the member is not a column.
+    const { captureDurable: _dropped, ...stored } = session;
+    const restarted: SimState = { ...failed, session: stored };
+    expect(failedStartAtRehydrateTransition(restarted).session).toMatchObject({ state: 'FAULT', captureDurable: false, startedAt: null });
+    // The Core is closing it (RECOVERY): the same.
+    const closing: SimState = { ...restarted, session: { ...stored, state: 'RECOVERY' } };
+    expect(failedStartAtRehydrateTransition(closing).session?.captureDurable).toBe(false);
+    // CONTROLS: an interrupted recording (it has a start instant), a recording, an armed session, no session.
+    const interrupted = sharedInterrupted(durable as SimState, NOW, SESSION(durable as SimState));
+    const { captureDurable: _kept, ...interruptedStored } = interrupted.session ?? session;
+    const interruptedRestarted: SimState = { ...interrupted, session: interruptedStored };
+    expect(failedStartAtRehydrateTransition(interruptedRestarted)).toBe(interruptedRestarted);
+    for (const state of [recording, armed] as SimState[]) expect(failedStartAtRehydrateTransition(state)).toBe(state);
+    const none: SimState = { ...(armed as SimState), session: null };
+    expect(failedStartAtRehydrateTransition(none)).toBe(none);
   });
 });

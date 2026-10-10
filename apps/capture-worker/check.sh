@@ -16,6 +16,15 @@
 #                  the build links; another version is refused here, before anything is compiled.
 #     F-10         every proof build of the Makefile says so in its HELLO (the Core refuses it at boot).
 #
+#   Fix pass F-M3 (code review of row 63, gateway_check/16_m3_code_review.md; ruling D179):
+#     R63-06       a PROOF build is a build with ANY proof switch: every DEMS_PROOF_ name the sources test is in the
+#                  list of worker.h that defines DEMS_PROOF_BUILD, and HELLO takes its mark from that one macro.
+#     R63-08       the four evasions that passed both nets - a digraph paste, an assembler label, another muxer name,
+#                  removefile() - are refused by pinned_calls.py; and THE IMPORT NET reads the linked binary
+#                  (`nm -u`, test/static/imports.pin; run by the Makefile after every link of build/capture-worker).
+#                  What remains outside the nets is stated in the header of pinned_calls.py ("LIMITS").
+#     R63-09       the sync seam of sink.c is assigned by nothing in the worker (a unit test only).
+#
 # Every forbidden text below is written with a bracket in it, so that this file does not contain it.
 # Run from apps/capture-worker (the Makefile does).
 set -u
@@ -79,7 +88,17 @@ rules() {
   #   - the write-fault seam is set by nothing but the proof build, behind its own switch.
   [ "$(count 'sink_fault_hook [=] ')" = "1" ] || say "D59-4: the write-fault seam is assigned outside the proof build"
   [ "$(grep -B1 'sink_fault_hook = proof_write_fault;' "$dir/capture_worker.c" 2>/dev/null | head -1)" = "#ifdef DEMS_PROOF_WRITE_FAULT" ] || say "D59-4: the write-fault seam is not behind the proof-build switch"
-  [ "$(count 'DEMS_PROOF_KEEP_TORN_TAI[L]')" = "1" ] && [ "$(files 'DEMS_PROOF_KEEP_TORN_TAI[L]')" = "sink.c" ] || say "D59-4: the no-truncation control is named outside its one place in sink.c"
+  [ "$(cat "$dir"/*.c 2>/dev/null | grep -c 'DEMS_PROOF_KEEP_TORN_TAI[L]')" = "1" ] && [ "$(grep -l 'DEMS_PROOF_KEEP_TORN_TAI[L]' "$dir"/*.c 2>/dev/null | sed 's|.*/||')" = "sink.c" ] || say "D59-4: the no-truncation control is named outside its one place in sink.c"
+  #   - R63-09: the sync seam (a volume without the full sync) is a unit-test seam: defined NULL once, assigned by nothing.
+  [ "$(count 'sink_full_sync_hook [=] ')" = "0" ] && [ "$(count '(\*sink_full_sync_hook)(int fd) = NULL;')" = "1" ] || say "R63-09: the sync seam is assigned in the worker (only a unit test sets it)"
+  #   - R63-06: every proof switch the sources test is one of the list that makes a build a PROOF build (worker.h).
+  for switch in $(cat "$dir"/*.c "$dir"/*.h 2>/dev/null | grep -o 'DEMS_PROOF_[A-Z_]*' | sort -u); do
+    [ "$switch" = "DEMS_PROOF_BUILD" ] && continue
+    sed -n '/^#if defined(DEMS_PROOF_MUX_EXTRA)/,/^#define DEMS_PROOF_BUILD 1/p' "$dir/worker.h" 2>/dev/null | grep -q "defined($switch)" || say "R63-06: the proof switch $switch does not make its build a PROOF build (it is missing from the list of worker.h)"
+  done
+  for switch in MIC_MAX_PPM DEMS_MOVFLAGS DEMS_VERIFIED_LAVF_VERSION_INT; do
+    sed -n '/^#if defined(DEMS_PROOF_MUX_EXTRA)/,/^#define DEMS_PROOF_BUILD 1/p' "$dir/worker.h" 2>/dev/null | grep -q "defined($switch)" || say "R63-06: the build switch $switch does not make its build a PROOF build (it is missing from the list of worker.h)"
+  done
   # M3-SR-3 (worker part): the options set on an input or an output context are the decided ones.
   # The muxer gets movflags (the four pinned flags), flush_packets and min_frag_duration, nothing else.
   opts=$(cat "$dir"/*.c 2>/dev/null | grep -o 'av_dict_set\(_int\)\{0,1\}(&o, "[a-z_]*"' | sed 's/.*"\(.*\)"/\1/' | sort -u | tr '\n' ' ' | sed 's/ $//')
@@ -122,7 +141,8 @@ proof_rule() {
   [ "$builds" -ge 6 ] || { echo "check.sh: F-10: $1: expected the proof builds of the worker, found $builds"; fail=1; }
   [ "$builds" = "$marked" ] || { echo "check.sh: F-10: $1: $((builds - marked)) proof build(s) do not define the proof-build seam: their HELLO would not say PROOF"; fail=1; }
   [ "$(grep -A2 '^$(BIN):' "$1" | grep -c 'DEMS_PROO[F]')" = "0" ] || { echo "check.sh: F-10: $1: the worker's own build line defines a proof switch"; fail=1; }
-  [ "$(grep -c 'g_mux_extra ? WORKER_VERSION "-PROOF" : WORKER_VERSION' "$2/ipc.c" 2>/dev/null)" = "1" ] || { echo "check.sh: F-10: $2/ipc.c: HELLO does not mark a proof build"; fail=1; }
+  # R63-06: the mark hangs on DEMS_PROOF_BUILD (ANY proof switch), not on the mux seam alone; HELLO names that macro's word.
+  [ "$(grep -A1 '^#ifdef DEMS_PROOF_BUILD' "$2/ipc.c" 2>/dev/null | grep -c '^#define HELLO_WORKER_VERSION WORKER_VERSION "-PROOF"$')" = "1" ] && [ "$(grep -c 'CAPTURE_PROTOCOL_VERSION, HELLO_WORKER_VERSION);' "$2/ipc.c" 2>/dev/null)" = "1" ] || { echo "check.sh: F-10: $2/ipc.c: HELLO does not mark a proof build"; fail=1; }
   [ "$(grep -B1 'const char \*g_mux_extra = DEMS_PROOF_MUX_EXTRA;' "$2/capture_worker.c" 2>/dev/null | head -1)" = "#ifdef DEMS_PROOF_MUX_EXTRA" ] || { echo "check.sh: F-10: $2/capture_worker.c: the proof-build seam is not behind its switch"; fail=1; }
   return $fail
 }
@@ -162,13 +182,16 @@ if [ "${1:-}" = "--selftest" ]; then
     elif ! echo "$out" | grep -q ": $tag"; then echo "check.sh selftest: planted line $n was refused, but not by rule $tag: $out"; bad=1
     else echo "check.sh selftest: refused as required ($tag): $(echo "$out" | head -1 | sed "s|^check.sh: $dir: ||")"; fi
   done < test/static/planted.tsv
-  [ "$n" -ge 48 ] || { echo "check.sh selftest: expected at least 48 planted lines, found $n"; bad=1; }
+  [ "$n" -ge 55 ] || { echo "check.sh selftest: expected at least 55 planted lines, found $n"; bad=1; }
   # Row 61: evasions that CHANGE a pinned line instead of adding one (planted.tsv can only append).
   for mutation in 'sink.c~s/O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0600/part_flags, 0600/~R-6~the flags of the exclusive create moved into a variable' \
                   'sink.c~s/link(s->part, s->path)/link(s->part, other)/~R-6~the link to the final name with another target' \
                   'audio.c~s/fopen(path, "w")/fopen(path, mode)/~R-6~the mode of the manifest stream in a variable' \
                   'ingest.c~s/av_dict_set(&o, "flush_packets", "1", 0)/av_dict_set(\&o, key, "1", 0)/~F-10~a mux option key in a variable' \
-                  'ingest.c~s/"protocol_whitelist", "tcp"/"protocol_whitelist", "tcp,udp"/~F-10~another value of a pinned option'; do
+                  'ingest.c~s/"protocol_whitelist", "tcp"/"protocol_whitelist", "tcp,udp"/~F-10~another value of a pinned option' \
+                  'ingest.c~s/avformat_alloc_output_context2(&c->out, NULL, "mp4", NULL)/avformat_alloc_output_context2(\&c->out, NULL, "segment", NULL)/~F-10~another muxer name (review R63-08: it would open files of its own)' \
+                  'sink.c~s/#ifdef DEMS_PROOF_SILENT_SYNC_FALLBACK/#ifdef DEMS_PROOF_PLANTED_SWITCH/~R63-06~a proof switch that is not in the list of worker.h' \
+                  'capture_worker.c~s/^    ingest_init();$/    ingest_init(); sink_full_sync_hook = NULL;/~R63-09~the sync seam assigned in the worker'; do
     file=${mutation%%~*}; rest=${mutation#*~}; script=${rest%%~*}; rest=${rest#*~}; tag=${rest%%~*}; what=${rest#*~}
     n=$((n + 1)); dir="$work/mutated$n"; mkdir -p "$dir"; cp src/*.c src/*.h "$dir/"
     sed "$script" "src/$file" > "$dir/$file"
@@ -193,8 +216,19 @@ if [ "${1:-}" = "--selftest" ]; then
   mkdir -p "$work/proof"; cp src/*.c src/*.h "$work/proof/"
   sed "s/-DDEMS_PROOF_MUX_EXTRA='\"\"' -DMIC_MAX_PPM=0/-DMIC_MAX_PPM=0/" Makefile > "$work/proof/Makefile"
   proof_rule "$work/proof/Makefile" "$work/proof" 2>&1 | grep -q 'do not define the proof-build seam' && echo "check.sh selftest: refused as required (F-10): a proof build whose HELLO would not say PROOF" || { echo "check.sh selftest: a proof build without the seam was NOT refused"; bad=1; }
-  sed 's/g_mux_extra ? WORKER_VERSION "-PROOF" : WORKER_VERSION/WORKER_VERSION/' src/ipc.c > "$work/proof/ipc.c"
+  sed 's/^#define HELLO_WORKER_VERSION WORKER_VERSION "-PROOF"$/#define HELLO_WORKER_VERSION WORKER_VERSION/' src/ipc.c > "$work/proof/ipc.c"
   proof_rule Makefile "$work/proof" 2>&1 | grep -q 'HELLO does not mark a proof build' && echo "check.sh selftest: refused as required (F-10): a HELLO without the proof mark" || { echo "check.sh selftest: a HELLO without the proof mark was NOT refused"; bad=1; }
+  # Fix pass F-M3 (review R63-08): THE IMPORT NET on real binaries. A program that reaches creat() through an assembler
+  # label (no rule that reads C sees a call of creat) is refused by what it IMPORTS; its control imports only pinned names.
+  if command -v "${CC:-clang}" >/dev/null 2>&1; then
+    mkdir -p "$work/imports"
+    printf '%s\n' '#include <fcntl.h>' '#include <unistd.h>' 'static int quiet(const char *, int) __asm__("_creat");' 'int main(void) { int fd = quiet("/nonexistent/x", 0600); if (fd >= 0) close(fd); return unlink("/nonexistent/x") != 0; }' > "$work/imports/label.c"
+    printf '%s\n' '#include <fcntl.h>' '#include <stdio.h>' '#include <unistd.h>' 'int main(void) { int fd = open("/nonexistent/x", O_RDONLY); FILE *f = fopen("/nonexistent/y", "r"); if (fd >= 0) close(fd); if (f) fclose(f); return (ftruncate(-1, 0) != 0) + (rename("/nonexistent/a", "/nonexistent/b") != 0) + (link("/nonexistent/a", "/nonexistent/b") != 0) + (unlink("/nonexistent/x") != 0) == 0; }' > "$work/imports/control.c"
+    if "${CC:-clang}" -o "$work/imports/label" "$work/imports/label.c" 2>/dev/null && "${CC:-clang}" -o "$work/imports/control" "$work/imports/control.c" 2>/dev/null; then
+      python3 test/static/pinned_calls.py --imports "$work/imports/control" test/static/imports.pin >/dev/null 2>&1 || { echo "check.sh selftest: a program that imports exactly the pinned functions is refused by the import net"; bad=1; }
+      python3 test/static/pinned_calls.py --imports "$work/imports/label" test/static/imports.pin 2>&1 | grep -q 'imports creat, which is not a pinned' && echo "check.sh selftest: refused as required (R-6, import net): creat() reached through an assembler label" || { echo "check.sh selftest: creat() through an assembler label was NOT refused by the import net"; bad=1; }
+    else echo "check.sh selftest: the two programs of the import-net check did not compile"; bad=1; fi
+  else echo "check.sh selftest: no C compiler for the import-net check"; bad=1; fi
   # The fixture rules, the same way: an untouched copy passes, each planted line is refused.
   mkdir -p "$work/fix0"; cp test-fixtures/fake_cam.c test-fixtures/fake_mic.c test-fixtures/av_analyse.py test-fixtures/fake_cam_sr.py "$work/fix0/"
   fixture_rules "$work/fix0" >/dev/null 2>&1 || { echo "check.sh selftest: an untouched copy of the fixtures is refused"; bad=1; }
@@ -229,4 +263,4 @@ grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefil
 fixture_rules test-fixtures || exit 1
 proof_rule Makefile "$1" || exit 1
 version_rule test/static/libavformat.pin "$(${PKG_CONFIG:-pkg-config} --modversion libavformat 2>/dev/null)" || exit 1
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, R-6 pinned file calls, F-10 pinned mux calls + proof builds marked, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"

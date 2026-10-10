@@ -31,7 +31,7 @@ import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
 import { cameraLineStatus, type CameraOption, type MicSelectorRow, type SelectorCommand } from './capture-selector-model';
-import { SourceBadge } from './development-source-badge';
+import { MicrophoneLimitLine, SourceBadge } from './development-source-badge';
 import { SheetContentSignal, useSheetPresence } from '@/features/devices/use-sheet-presence';
 
 /** Task 3 row 138 (flow 12; D131): handed in as a plain value — the sheet is portalled, so it reads no store itself. */
@@ -223,6 +223,8 @@ function OptionRow({ id, icon, title, detail, chip, source = null, selected, dis
           )}
           {/* Flow 12: the one badge, on each option; nothing when the Core sent no development class. */}
           {source === null ? null : <SourceBadge kind={source} testID={`capture-source-badge-${id}`} />}
+          {/* Fix F-M4 (R69-07): the short limit of the Core Mac's microphone, where it is chosen; real capture only (`source` is null in Simulated mode). */}
+          {source === 'localMicrophone' ? <MicrophoneLimitLine testID={`capture-source-limit-${id}`} /> : null}
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix>{chip}</ListGroup.ItemSuffix>
       </ListGroup.Item>

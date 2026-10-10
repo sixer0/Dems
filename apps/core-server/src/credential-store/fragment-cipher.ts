@@ -3,8 +3,9 @@
  * spec §A.3, §B.6; SEC35-10; hypothesis H-2). PURE: bytes and typed records in, bytes out. No
  * file, no clock, no database; the only outside thing is the random source of a nonce.
  *
- * NOT WIRED YET. The fMP4 writer (row 59) and the sealing pipeline (row 82) are the callers; until
- * they land, the tests of this folder are the only ones. See `implementation/39_m7_encryption.md`.
+ * WIRED (fix pass F-M7, R88-18): the Core seals at seal time (ruling D147). The callers are the seal-time cipher of
+ * the sealing host (`sealing-host/session-key.ts`, CLOSE_TRACKS) and the Core's fragment opener
+ * (`evidence-verify/fragment-opener.ts`: FINALIZE_HASHES, verify V-05, the media route, the export).
  *
  * THE SHAPE (§D.1). GCM is OUTSIDE the muxer. A camera file at rest is the fMP4 whose sealed byte
  * ranges are each ONE AES-256-GCM message. A ciphertext is exactly as long as its plaintext, so
@@ -131,7 +132,16 @@ export interface FragmentSealer {
   sealed(): number;
 }
 
-/** One sealer per key: it is what keeps a nonce from being used twice under that key. */
+/**
+ * One sealer OBJECT remembers the nonces it used and refuses a repeat. THE HONEST RULE (fix pass
+ * F-M7, R88-13): the nonce is 96 RANDOM bits per message, so uniqueness under a key is
+ * PROBABILISTIC, never proven. This memo holds only for the life of this object: the sealing host
+ * builds a sealer per fragment and keeps its own per-key memo for the life of the process
+ * (`sealing-host/session-key.ts`); across a restarted CLOSE_TRACKS, across processes, and across a
+ * demo reseed that reuses `KID-<sessionId>`, nothing is remembered and nothing counts the messages
+ * of a key. With a few thousand messages per key the collision bound of random 96-bit nonces is
+ * far away; the claim "a nonce is never used twice under a key" is not one this code can make.
+ */
 export function createFragmentSealer(sessionKey: FragmentKey, options: FragmentSealerOptions = {}): FragmentSealer {
   const used = new Set<string>();
   const draw = options.randomNonce ?? ((): Uint8Array => randomBytes(FRAGMENT_NONCE_BYTES));

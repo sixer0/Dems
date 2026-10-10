@@ -93,6 +93,40 @@ describe('transcript_chunks store as dems_app: rows in, rows out', () => {
   });
 });
 
+describe('R80-03 (defence in depth): no chunk row of a session is written once its FINALIZE_TRANSCRIPT step is DONE', () => {
+  const journal = (status: string, step = 'FINALIZE_TRANSCRIPT', sessionId = SESSION): Promise<unknown> =>
+    owner.query("INSERT INTO public.sealing_jobs (session_id, step, status, progress, eta_ms, attempt, checkpoint, error_code, started_at, updated_at) VALUES ($1, $2, $3, 100, NULL, 1, NULL, NULL, 1, 1) ON CONFLICT (session_id, step) DO UPDATE SET status = EXCLUDED.status", [sessionId, step, status]);
+  const clear = (): Promise<unknown> => owner.query('DELETE FROM public.sealing_jobs WHERE session_id = ANY($1)', [[SESSION, OTHER]]);
+  const segments = [{ startMs: 2005, endMs: 2900, text: 'terlambat' }];
+
+  it('a FAILED row the seal signed is not flipped to DONE afterwards, and no new row appears: both are refused BY NAME; the rows stay as they were', async () => {
+    await clear();
+    await store.insertMissing([row(1, { status: 'FAILED' }), row(2)]);
+    await journal('DONE');
+    const before = await storedRows();
+    await expect(store.update(SESSION, 1, { status: 'DONE', segments, modelId: 'GGML_LARGE_V3_TURBO', computedAt: 1_791_529_000_123 })).rejects.toMatchObject({ code: 'SESSION_TRANSCRIPT_SEALED' });
+    await expect(store.insertMissing([row(3)])).rejects.toMatchObject({ code: 'SESSION_TRANSCRIPT_SEALED' });
+    expect(await storedRows()).toEqual(before);
+    // An insert of rows that all exist is still the no-op a resume relies on.
+    await store.insertMissing([row(1, { status: 'FAILED' }), row(2)]);
+    expect(await storedRows()).toEqual(before);
+    await clear();
+  });
+
+  it('CONTROL: while that step is not DONE (RUNNING: the close-out writes then), for another step that is DONE, and for another session, rows are written as before', async () => {
+    await clear();
+    await store.insertMissing([row(1, { status: 'FAILED' })]);
+    await journal('RUNNING');
+    await journal('DONE', 'FINALIZE_HASHES');
+    await journal('DONE', 'FINALIZE_TRANSCRIPT', OTHER);
+    await store.update(SESSION, 1, { status: 'DONE', segments, modelId: 'GGML_LARGE_V3_TURBO', computedAt: 1_791_529_000_123 });
+    await store.insertMissing([row(2)]);
+    expect((await storedRows()).map((stored) => [stored['seq'], stored['status']])).toEqual([[1, 'DONE'], [2, 'PENDING']]);
+    await expect(store.update(SESSION, 41, { status: 'RUNNING', segments: null, modelId: null, computedAt: null })).rejects.toMatchObject({ code: 'ROW_NOT_FOUND' });
+    await clear();
+  });
+});
+
 describe('what the table refuses, the stand-in mirror of the transcriber refuses under the same name', () => {
   const refused: readonly (readonly [string, Partial<ChunkMirrorRow>])[] = [
     ['transcript_chunks_session_check', { sessionId: 'session-1' }],

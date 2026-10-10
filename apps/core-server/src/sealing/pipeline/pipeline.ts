@@ -9,18 +9,21 @@
  * step starts its row says RUNNING; when it has finished, DONE with the checkpoint; when it
  * failed, FAILED with the code - and the failure is in the persistent error log.
  *
- * WHAT IS FROZEN FOR THE DIGEST. `BUILD_MANIFEST` writes the three values a resumed build could
- * otherwise read differently - `sealedAt`, `signedAt` and the step list of the manifest - into its
- * RUNNING row BEFORE the first build. A resumed build and `SIGN_MANIFEST` take them from there,
- * so they form the same canonical body, and the signer signs the digest the checkpoint holds or
- * nothing (`MANIFEST_NOT_REPRODUCIBLE`).
+ * WHAT IS FROZEN FOR THE DIGEST (fix pass F-M7, R88-03). `BUILD_MANIFEST` writes EVERYTHING a
+ * resumed build could otherwise read differently into its RUNNING row BEFORE the first build:
+ * `sealedAt`, `signedAt`, the step list, and the whole input of the manifest as the session record
+ * gave it then (the time source, the device and its software version, the operator, the cameras,
+ * the certificate block, the transcript block, the source rows). A resumed build and
+ * `SIGN_MANIFEST` take them from there and read nothing live, so they form the same canonical
+ * body. The fragment table is not in the snapshot: it is `fragments.json` of the package. The
+ * signer signs the digest the checkpoint holds or nothing (`MANIFEST_NOT_REPRODUCIBLE`: now only
+ * when a file of the package changed after the build).
  *
  * THE SESSION RECORD IS TOLD AS THE RUN GOES: after every change of a row the step states go to
  * the engine (`applySealingProgress`), with the tails the tail validation dropped. The item is
  * committed by `completeSeal` inside the last step, never from a progress value (decision D67).
  */
-import { lstat } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import {
   CAMERA_FILE_MEDIA_TYPE,
   EvidencePackageError,
@@ -37,17 +40,16 @@ import {
   declaredPackageFiles,
   nextFragmentChainHash,
   parseFragmentsJson,
-  parseManifestV2,
   serializeDetachedSignature,
   serializeFragmentsJson,
   serializeManifest,
   type ManifestFile,
   type ManifestFragment,
-  type ManifestV2,
   type ManifestV2Input,
+  type SessionCaptureSourceRow,
   type UnsignedManifestV2,
 } from '@dems/shared/evidence-package';
-import { TRANSCRIPT_REVISIONS_SCHEMA_ID } from '@dems/shared/evidence-verify';
+import { TRANSCRIPT_REVISIONS_SCHEMA_ID, isDevelopmentKeySubject } from '@dems/shared/evidence-verify';
 import type { CompleteSealInput, SealingStepReport } from '@dems/shared/sim';
 import { CameraFileFlag, SignerError, classifyPartNames, deviceCertificateBlock, signManifest, validateCameraFile, verifyEd25519, type RecordedCheckpoint } from '../../capture';
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '../../modules/recording-fragments';
@@ -56,6 +58,7 @@ import { FinalizeTranscriptError, type FinalizeTranscriptResult } from '../final
 import { SealingStepJournalError, type SealingStepRecord, type StepCheckpoint } from '../step-journal';
 import { cameraFileNames, createExclusive, ensureDirectory, listPackageFiles, moveOut, nodeSha256, openCameraFile, removeIfThere, removeName, renameWithin, syncDirectory, syncFile, wholeFragmentsOnDisk } from './camera-files';
 import {
+  CONFINED_TO_ONE_CAMERA_FILE,
   SEALING_MAX_FRAGMENT_BYTES,
   SEALING_STEP_ORDER,
   SealingError,
@@ -63,6 +66,8 @@ import {
   SealingStop,
   type ClosedTrack,
   type HashedTrack,
+  type OmittedTrack,
+  type SealEngine,
   type SealOutcome,
   type SealRequest,
   type SealSessionFacts,
@@ -72,8 +77,10 @@ import {
   type SealingPorts,
   type SealingStepId,
   sealingFailureReason,
+  sealingOmittedNotice,
 } from './contract';
 import { createPackageWriter, type PackageWriter } from './package-writer';
+import { SEALING_ORPHANS_DIR, finishSealedPlaintext } from './sealed-plaintext';
 
 const SOURCE = 'sealing.pipeline';
 const DEFAULT_CHUNK_BYTES = 1024 * 1024;
@@ -89,7 +96,10 @@ const hexOf = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
 
 interface ClosedCheckpoint {
   readonly interrupted: boolean;
+  /** The camera files that ARE sealed: one or two, VIDEO-01 before VIDEO-02 (F-M7 R88-01). */
   readonly tracks: readonly ClosedTrack[];
+  /** The cameras of the session that are not in the seal, and why. Absent in a checkpoint written before fix pass F-M7 (then: none). */
+  readonly omitted?: readonly OmittedTrack[];
 }
 interface HashedCheckpoint {
   readonly tracks: readonly HashedTrack[];
@@ -99,6 +109,16 @@ interface FrozenBuild {
   readonly sealedAt: number;
   readonly signedAt: number;
   readonly steps: readonly ManifestStep[];
+  /**
+   * THE SNAPSHOT (fix pass F-M7, R88-03; decision D178): everything the manifest is built from,
+   * as it was when BUILD_MANIFEST first ran - the session record, the certificate block, the
+   * tracks, the audio intervals, the transcript block - WITHOUT `files` (the fragment table is
+   * `fragments.json`, durable in the package and read again), and the source rows the classes
+   * are computed from. A resumed build takes these and nothing live. Absent only in a checkpoint
+   * written before this fix: that build reads the session record again, as it did.
+   */
+  readonly input?: Omit<ManifestV2Input, 'files'>;
+  readonly sourceRows?: readonly SessionCaptureSourceRow[];
 }
 interface BuiltCheckpoint extends FrozenBuild {
   readonly manifestSha256: string;
@@ -119,12 +139,12 @@ const journalInvalid = (step: SealingStepId): SealingError => new SealingError(S
 
 function closedOf(row: SealingStepRecord): ClosedCheckpoint {
   const checkpoint = row.checkpoint;
-  if (!isRecord(checkpoint) || typeof checkpoint.interrupted !== 'boolean' || !Array.isArray(checkpoint.tracks) || checkpoint.tracks.length !== VIDEO_TRACK_IDS.length) throw journalInvalid('CLOSE_TRACKS');
+  if (!isRecord(checkpoint) || typeof checkpoint.interrupted !== 'boolean' || !Array.isArray(checkpoint.tracks) || checkpoint.tracks.length < 1 || checkpoint.tracks.length > VIDEO_TRACK_IDS.length) throw journalInvalid('CLOSE_TRACKS');
   return checkpoint as unknown as ClosedCheckpoint;
 }
 function hashedOf(row: SealingStepRecord): HashedCheckpoint {
   const checkpoint = row.checkpoint;
-  if (!isRecord(checkpoint) || !Array.isArray(checkpoint.tracks) || checkpoint.tracks.length !== VIDEO_TRACK_IDS.length) throw journalInvalid('FINALIZE_HASHES');
+  if (!isRecord(checkpoint) || !Array.isArray(checkpoint.tracks) || checkpoint.tracks.length < 1 || checkpoint.tracks.length > VIDEO_TRACK_IDS.length) throw journalInvalid('FINALIZE_HASHES');
   return checkpoint as unknown as HashedCheckpoint;
 }
 function frozenOf(row: SealingStepRecord | null): FrozenBuild | null {
@@ -256,9 +276,17 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
     // `mdat`) as one AES-256-GCM message at the same offset. The recording file is not changed by
     // this step: it is removed by the last step, after the item is committed. A run that was
     // stopped inside this step starts both sealed files again (new IVs: nothing was checkpointed).
+    //
+    // ONE OR TWO CAMERA FILES (fix pass F-M7; decision D178). A camera that never recorded - no
+    // recording file and no fragment row - has no track in the seal (R88-01: a one-camera session
+    // is valid and is sealed). A failure CONFINED to one camera file leaves that file out, is said
+    // in the persistent log and the checkpoint, and makes the seal an INTERRUPTED one (R88-02 (b));
+    // the file is moved to the quarantine by the last step. The step fails only when NO camera
+    // file validates (`NOTHING_SEALABLE`).
     async function closeTracks(): Promise<StepCheckpoint> {
       const tracks: ClosedTrack[] = [];
       const files: ManifestFile[] = [];
+      const omitted: OmittedTrack[] = [];
       const total = VIDEO_TRACK_IDS.length;
       const progress = progressOf('CLOSE_TRACKS', () => null);
       await ensureDirectory(fragmentsDir);
@@ -274,7 +302,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
             await removeName(packageDir, verdict.name);
             partNamesRemoved += 1;
           } else {
-            await moveOut(packageDir, verdict.name, join(stagingDir, 'orphans'));
+            await moveOut(packageDir, verdict.name, join(stagingDir, SEALING_ORPHANS_DIR));
             orphansMoved += 1;
             ports.log.append({ level: 'warn', source: SOURCE, message: 'a part file of a dead worker was moved out of the package folder', code: 'SEALING_ORPHAN_PART_MOVED', context: { sessionId, trackId } });
           }
@@ -283,10 +311,17 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         await removeIfThere(fragmentsDir, sealingNameOf(trackId));
         await removeIfThere(fragmentsDir, fileName);
 
+        const recorded = await ports.fragments.read(sessionId, trackId);
         const file = await openCameraFile(recordingPathOf(trackId));
-        if (file === null) throw new SealingError(SealingFailure.CAMERA_FILE_UNUSABLE, 'a recording file of the session is not there', { trackId, reason: 'MISSING' });
+        if (file === null && recorded.length === 0) {
+          // THE CAMERA NEVER RECORDED (D72(k)): no file, no row. Not a failure and not an interruption.
+          omitted.push({ trackId, code: null, reason: 'NOT_RECORDED' });
+          ports.log.append({ level: 'warn', source: SOURCE, message: 'a camera of the session recorded nothing: the session is sealed without its file', code: 'SEALING_CAMERA_NOT_RECORDED', context: { sessionId, trackId } });
+          continue;
+        }
         try {
-          const recorded = await ports.fragments.read(sessionId, trackId);
+          if (file === null) throw new SealingError(SealingFailure.CAMERA_FILE_UNUSABLE, 'a recording file of the session is not there', { trackId, reason: 'MISSING' });
+        try {
           // The worker wrote plaintext: the rows hold the digests and the chain of exactly these bytes.
           const checkpoints: RecordedCheckpoint[] = recorded.map((row) => ({ index: row.seq, start: row.byteOffset, len: row.byteLength, fragSha256: row.sha256, chainSha256: row.chainHash, prefixSha256: null }));
           const validation = await validateCameraFile(file.source, nodeSha256, checkpoints);
@@ -295,12 +330,15 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
           if (has(CameraFileFlag.NO_INIT_SEGMENT) || has(CameraFileFlag.NO_WHOLE_FRAGMENT)) {
             throw new SealingError(SealingFailure.CAMERA_FILE_UNUSABLE, 'a recording file holds no whole fragment', { trackId, reason: has(CameraFileFlag.NO_INIT_SEGMENT) ? 'NO_INIT_SEGMENT' : 'NO_WHOLE_FRAGMENT' });
           }
+          // WHAT ENDS THE DURABLE PREFIX (ruling D183): a recorded value that is not what the bytes
+          // give, or durable bytes that are gone. Not thrown here: the fragments BEFORE the first bad
+          // one are sealed when they validate (the loop below); only a file with none is left out.
+          let prefixEnd: SealingError | null = null;
           if (has(CameraFileFlag.CHECKPOINT_MISMATCH) || has(CameraFileFlag.RECORDS_NOT_CONTIGUOUS)) {
             const mismatch = validation.comparison?.firstMismatch ?? null;
-            throw new SealingError(SealingFailure.FRAGMENT_MISMATCH, 'a recorded fragment is not what the bytes of the recording file give', { trackId, seq: mismatch?.index ?? null, member: mismatch?.member ?? 'seq' });
-          }
-          if (has(CameraFileFlag.FILE_SHORTER_THAN_RECORDS)) {
-            throw new SealingError(SealingFailure.DURABLE_BYTES_MISSING, 'bytes that were recorded as durable are not in the recording file', { trackId, missing: validation.comparison?.missing.length ?? 0 });
+            prefixEnd = new SealingError(SealingFailure.FRAGMENT_MISMATCH, 'a recorded fragment is not what the bytes of the recording file give', { trackId, seq: mismatch?.index ?? null, member: mismatch?.member ?? 'seq' });
+          } else if (has(CameraFileFlag.FILE_SHORTER_THAN_RECORDS)) {
+            prefixEnd = new SealingError(SealingFailure.DURABLE_BYTES_MISSING, 'bytes that were recorded as durable are not in the recording file', { trackId, missing: validation.comparison?.missing.length ?? 0 });
           }
           let whole = walk.fragments;
           let tailReason: string | null = has(CameraFileFlag.TORN_TAIL) ? (walk.tail?.reason ?? 'TORN_TAIL') : null;
@@ -323,19 +361,41 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
             }
           }
           const rows = new Map((await ports.fragments.read(sessionId, trackId)).map((row) => [row.seq, row] as const));
+          // THE DURABLE PREFIX THAT VALIDATES (ruling D183; fix pass F-M7b). Fragment by fragment, in
+          // order: its number follows the one before, its row is there, and the row's offset, length,
+          // digest AND recording-time chain are what the box walk made of the bytes; and it is no
+          // larger than the verifier can open (row 82c, F-86-1: THE PIPELINE NEVER PRODUCES A PACKAGE
+          // ITS OWN VERIFIER REFUSES). The first fragment that fails ends the prefix: nothing from it
+          // on is sealed. A file whose FIRST fragment fails has no valid fragment and is left out.
+          let valid = 0;
+          for (const fragment of whole) {
+            const row = rows.get(fragment.index);
+            if (fragment.index !== valid + 1 || row === undefined || row.byteOffset !== fragment.start || row.byteLength !== fragment.len || row.sha256 !== fragment.fragSha256 || row.chainHash !== fragment.chainSha256) {
+              // The comparison of the validation named the fragment and the member when it found this one; otherwise it is named here.
+              if (prefixEnd === null || prefixEnd.code !== SealingFailure.FRAGMENT_MISMATCH || prefixEnd.detail.seq !== fragment.index) {
+                prefixEnd = new SealingError(SealingFailure.FRAGMENT_MISMATCH, 'a recorded fragment is not what the bytes of the recording file give', { trackId, seq: fragment.index, member: row !== undefined && row.sha256 === fragment.fragSha256 ? 'chainHash' : 'sha256' });
+              }
+              break;
+            }
+            if (fragment.len > maxFragmentBytes) {
+              prefixEnd = new SealingError(SealingFailure.FRAGMENT_TOO_LARGE, 'a fragment of the recording is larger than the Core can verify', { trackId, seq: fragment.index, bytes: fragment.len, limitBytes: maxFragmentBytes });
+              break;
+            }
+            valid += 1;
+          }
+          // No fragment validates: THIS file is left out (the catch below), named by what ended it.
+          if (prefixEnd !== null && valid === 0) throw prefixEnd;
+          let partial: ClosedTrack['partial'];
+          if (prefixEnd !== null) {
+            whole = whole.slice(0, valid);
+            tailReason = prefixEnd.code;
+            partial = { code: prefixEnd.code, reason: prefixEnd.code, firstBadSeq: valid + 1 };
+            ports.log.append({ level: 'error', source: SOURCE, message: 'a camera file of the session failed validation part-way: its durable prefix is sealed as an interrupted recording, and the whole original file goes to the quarantine', ...describeError(prefixEnd), code: 'SEALING_CAMERA_PREFIX_SEALED', context: { sessionId, attempt, ...prefixEnd.detail, trackId, failure: prefixEnd.code, firstBadSeq: valid + 1, sealedFragments: valid } });
+          }
           const last = whole[whole.length - 1];
           if (last === undefined) throw new SealingError(SealingFailure.CAMERA_FILE_UNUSABLE, 'a recording file holds no whole fragment', { trackId, reason: 'NO_WHOLE_FRAGMENT' });
           const durableLength = last.start + last.len;
           const droppedBytes = walk.fileLength - durableLength;
-          // THE PIPELINE NEVER PRODUCES A PACKAGE ITS OWN VERIFIER REFUSES (row 82c, F-86-1): a
-          // fragment the verifier could not hold to open it is refused HERE, by name, before a
-          // sealed byte of this file exists and long before anything is signed.
-          const tooLarge = whole.find((fragment) => fragment.len > maxFragmentBytes);
-          if (tooLarge !== undefined) {
-            // What this step wrote of the other camera file is not left behind as if it were a seal.
-            for (const written of VIDEO_TRACK_IDS) await removeIfThere(fragmentsDir, cameraFileName(written));
-            throw new SealingError(SealingFailure.FRAGMENT_TOO_LARGE, 'a fragment of the recording is larger than the Core can verify', { trackId, seq: tooLarge.index, bytes: tooLarge.len, limitBytes: maxFragmentBytes });
-          }
 
           // The sealed file, under a name of its own until it is whole and synced.
           const out = await createExclusive(join(fragmentsDir, sealingNameOf(trackId)));
@@ -393,7 +453,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
                 // below, once both files are known); the fragment after which bytes were left out
                 // says `truncated`.
                 interrupted: false,
-                truncated: droppedBytes > 0 && index === whole.length - 1,
+                truncated: (droppedBytes > 0 || partial !== undefined) && index === whole.length - 1,
                 gcmIv: sealed.gcmIv,
                 gcmTag: sealed.gcmTag,
                 keyId: sealed.keyId,
@@ -424,20 +484,34 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
             partNamesRemoved,
             orphansMoved,
             hashes: { trackId, bytes: durableLength, sha256: hexOf(storedWhole.digest()), sha256Plain: hexOf(plainWhole.digest()), fragmentChainHead: chain, fragmentCount: fragments.length, mediaEndMs: lastSealed.mediaStartMs + lastSealed.mediaDurationMs },
+            ...(partial === undefined ? {} : { partial }),
           });
         } finally {
           await file.close();
         }
+        } catch (error) {
+          if (!(error instanceof SealingError) || !CONFINED_TO_ONE_CAMERA_FILE.includes(error.code)) throw error;
+          // CONFINED TO THIS CAMERA FILE (R88-02 (b)): nothing of it is left in the package as if it were sealed.
+          await removeIfThere(fragmentsDir, sealingNameOf(trackId));
+          await removeIfThere(fragmentsDir, fileName);
+          const reason = error.code === SealingFailure.CAMERA_FILE_UNUSABLE && typeof error.detail.reason === 'string' ? error.detail.reason : error.code;
+          omitted.push({ trackId, code: error.code, reason });
+          ports.log.append({ level: 'error', source: SOURCE, message: 'a camera file of the session could not be sealed and is left out of the package: what validates is sealed as an interrupted recording', ...describeError(error), code: 'SEALING_CAMERA_LEFT_OUT', context: { sessionId, attempt, ...error.detail, trackId, reason, failure: error.code } });
+        }
       }
-      // A left-out tail makes the seal an interrupted one, whatever the cause it was asked with:
-      // a recording that lost bytes is never sealed as whole.
-      const interrupted = cause === 'INTERRUPTED' || tracks.some((track) => track.droppedBytes > 0);
+      if (tracks.length === 0) {
+        // NOTHING VALIDATES (R88-02 (c)): no sealed byte is left, nothing is signed, every recording stays where it is.
+        throw new SealingError(SealingFailure.NOTHING_SEALABLE, 'no camera file of the session can be sealed', { reasons: omitted.map((entry) => `${entry.trackId}:${entry.reason}`).join(',') });
+      }
+      // A left-out tail - or a camera file left out for a failure - makes the seal an interrupted
+      // one, whatever the cause it was asked with: a recording that lost bytes is never sealed as whole.
+      const interrupted = cause === 'INTERRUPTED' || tracks.some((track) => track.droppedBytes > 0 || track.partial !== undefined) || omitted.some((entry) => entry.code !== null);
       const marked = files.map((entry) => ({ trackId: entry.trackId, fragments: entry.fragments.map((fragment) => ({ ...fragment, interrupted })) }));
       // THE DURABLE HOME OF THE CIPHER RECORDS (ev §A.3; ruling D147): `fragments.json`, the exact
       // serialization of the manifest's `files[]` (SEC35-11), written before the step's checkpoint.
       await writer.write(PackageFile.FRAGMENTS_JSON, serializeFragmentsJson(marked));
       await syncDirectory(fragmentsDir);
-      closed = { interrupted, tracks };
+      closed = { interrupted, tracks, omitted };
       return closed as unknown as StepCheckpoint;
     }
 
@@ -455,7 +529,8 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const table = parseFragmentsJson(Buffer.from(text).toString('utf8')).files as ManifestFile[];
       if (ports.opener === null) throw new SealingError(SealingFailure.FRAGMENT_NOT_OPENABLE, 'the Core holds no session key', {});
       const tracks: HashedTrack[] = [];
-      for (const trackId of VIDEO_TRACK_IDS) {
+      // The camera files CLOSE_TRACKS sealed: one or two (F-M7 R88-01).
+      for (const { trackId } of before.tracks) {
         const was = before.tracks.find((track) => track.trackId === trackId);
         const records = table.find((entry) => entry.trackId === trackId)?.fragments;
         const file = await openCameraFile(pathOf(trackId));
@@ -561,22 +636,46 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const closedTracks = closedNow();
       const hashedTracks = hashedNow();
       return [
-        entry('CLOSE_TRACKS', { tracks: closedTracks.tracks.length, truncatedTails: closedTracks.tracks.filter((track) => track.droppedBytes > 0).length, interrupted: closedTracks.interrupted }),
+        // `absentTracks` (F-M7 R88-01): the camera(s) of the session that are not in this package, stated under the
+        // signature by this existing member (no new manifest field). Absent for a two-camera seal: its record is as before.
+        entry('CLOSE_TRACKS', { tracks: closedTracks.tracks.length, truncatedTails: closedTracks.tracks.filter((track) => track.droppedBytes > 0 || track.partial !== undefined).length, interrupted: closedTracks.interrupted, ...((closedTracks.omitted ?? []).length > 0 ? { absentTracks: (closedTracks.omitted ?? []).map((entry) => entry.trackId).join(',') } : {}) }),
         entry('FINALIZE_HASHES', { files: hashedTracks.tracks.length, fragments: hashedTracks.tracks.reduce((sum, track) => sum + track.fragmentCount, 0) }),
         entry('FINALIZE_TRANSCRIPT', { state: done.transcript.manifest.state, failedChunks: done.transcript.manifest.failedChunks }),
       ];
     }
 
+    /** The fragment table of the package: the manifest's `files[]`, read from `fragments.json` every time. */
+    async function fragmentTable(): Promise<ManifestFile[]> {
+      const text = await writer.read(PackageFile.FRAGMENTS_JSON);
+      if (text === null) throw new SealingError(SealingFailure.STORAGE_FAILED, 'the fragment table of the package is not there', {});
+      return parseFragmentsJson(Buffer.from(text).toString('utf8')).files as ManifestFile[];
+    }
+
+    /**
+     * THE MANIFEST OF A BUILD. From the SNAPSHOT of the checkpoint when it holds one (R88-03): the
+     * same input, the same source rows, the fragment table of the package - so a resumed build has
+     * the digest of the first one whatever the Core's state is now. Otherwise from the session
+     * record as it is (the first build, which then freezes it).
+     */
     async function assemble(frozen: FrozenBuild): Promise<UnsignedManifestV2> {
+      if (frozen.input !== undefined && frozen.sourceRows !== undefined) {
+        return buildUnsignedManifest({ ...frozen.input, files: await fragmentTable() } as ManifestV2Input, frozen.sourceRows);
+      }
+      const live = await liveInput(frozen);
+      return buildUnsignedManifest(live.input, live.sourceRows);
+    }
+
+    /** The manifest input from the session record as it is NOW. Called once per seal (the first BUILD_MANIFEST). */
+    async function liveInput(frozen: Pick<FrozenBuild, 'sealedAt' | 'signedAt' | 'steps'>): Promise<{ input: ManifestV2Input; sourceRows: readonly SessionCaptureSourceRow[] }> {
       const session = facts as SealSessionFacts;
       const closedTracks = closedNow();
       const hashedTracks = hashedNow();
       const done = await transcriptNow();
-      const text = await writer.read(PackageFile.FRAGMENTS_JSON);
-      if (text === null) throw new SealingError(SealingFailure.STORAGE_FAILED, 'the fragment table of the package is not there', {});
-      const files = parseFragmentsJson(Buffer.from(text).toString('utf8')).files as ManifestFile[];
+      const files = await fragmentTable();
       const mediaEndMs = Math.max(...hashedTracks.tracks.map((track) => track.mediaEndMs));
       const interrupted = closedTracks.interrupted;
+      // The camera files of THIS package: one or two (F-M7 R88-01).
+      const sealedIds = closedTracks.tracks.map((track) => track.trackId);
       // Where the sealed media ends on the Core clock: the operator's stop, or - for a durable
       // prefix - the end of the last durable fragment counted from the start of the recording.
       const durableEndMs = !interrupted && session.stoppedAt !== null ? session.stoppedAt : session.startedAt + mediaEndMs;
@@ -605,10 +704,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         device: { ...session.device, certificate: deviceCertificateBlock(ports.signing.certificate) },
         operator: session.operator,
         subject: session.subject,
-        tracks: VIDEO_TRACK_IDS.map((trackId, index) => {
+        tracks: sealedIds.map((trackId) => {
           const hashedTrack = hashedTracks.tracks.find((track) => track.trackId === trackId) as HashedTrack;
           return {
-            ...(session.tracks[index] as SealSessionFacts['tracks'][number]),
+            ...(session.tracks[VIDEO_TRACK_IDS.indexOf(trackId)] as SealSessionFacts['tracks'][number]),
             trackId,
             file: cameraFileName(trackId),
             mediaType: CAMERA_FILE_MEDIA_TYPE,
@@ -622,7 +721,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
             keyframeAligned: (files.find((entry) => entry.trackId === trackId)?.fragments ?? []).every((fragment) => fragment.keyframe),
           };
         }),
-        audio: { trackId: SESSION_AUDIO_TRACK_ID, codec: session.audioCodec, containsIn: [...VIDEO_TRACK_IDS], sourceIntervals: intervals },
+        audio: { trackId: SESSION_AUDIO_TRACK_ID, codec: session.audioCodec, containsIn: [...sealedIds], sourceIntervals: intervals },
         files,
         transcript: done.transcript.manifest,
         sealing: { steps: [...frozen.steps] },
@@ -638,16 +737,22 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       };
       // The source classes and field 126 are computed by the builder from the four session-start
       // rows; an unknown kind or a missing row throws before a digest exists (ev §E.6).
-      return buildUnsignedManifest(input, session.sourceRows);
+      return { input, sourceRows: session.sourceRows.map((row) => ({ slot: row.slot, deviceId: row.deviceId, adapterKind: row.adapterKind })) };
     }
 
     async function buildManifest(): Promise<StepCheckpoint> {
       const done = await transcriptNow();
       // FROZEN BEFORE THE FIRST BUILD: a resumed build reads these from the row and forms the same body.
       let frozen = frozenOf(rows.get('BUILD_MANIFEST') ?? null);
-      if (frozen === null) {
+      if (frozen === null || frozen.input === undefined || frozen.sourceRows === undefined) {
+        // THE ONE READ OF LIVE STATE (R88-03): the instants, the step list AND the whole input of the
+        // manifest are written into the RUNNING row before the first digest exists.
         const at = ports.now();
-        frozen = { sealedAt: at, signedAt: at, steps: manifestSteps(done) };
+        const times = frozen ?? { sealedAt: at, signedAt: at, steps: manifestSteps(done) };
+        const live = await liveInput(times);
+        const { files: _files, ...input } = live.input;
+        // Through JSON, as the journal stores it: what a resumed build reads back is exactly this value.
+        frozen = JSON.parse(JSON.stringify({ sealedAt: times.sealedAt, signedAt: times.signedAt, steps: times.steps, input, sourceRows: live.sourceRows })) as FrozenBuild;
         await writeRow('BUILD_MANIFEST', 'RUNNING', 0, frozen as unknown as StepCheckpoint, null, null);
       }
       unsigned = await assemble(frozen);
@@ -669,6 +774,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const again = unsigned ?? (await assemble(was));
       // The signer signs the digest the checkpoint holds, or nothing.
       if (again.manifestSha256 !== was.manifestSha256) throw new SealingError(SealingFailure.MANIFEST_NOT_REPRODUCIBLE, 'the rebuilt manifest does not have the digest of its checkpoint', {});
+      // A DEVELOPMENT KEY NEVER SIGNS A PACKAGE OF PRODUCTION SOURCES (R88-08 (3)): field 126 false = every source is PRODUCTION.
+      if (!again.developmentSources && isDevelopmentKeySubject(ports.signing.certificate.subject)) {
+        throw new SealingError(SealingFailure.DEVELOPMENT_KEY_FOR_PRODUCTION_SOURCES, 'a development signing key does not sign a package of production sources', {});
+      }
       const { manifest, detached } = await signManifest(ports.signing.signer, again, verifyEd25519);
       await writer.write(PackageFile.CERTIFICATE, Buffer.from(ports.signing.certificate.pemText, 'utf8'));
       await writer.write(PackageFile.SIGNATURE, serializeDetachedSignature(detached));
@@ -689,6 +798,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       // committed (ruling D147): a crash before that leaves them for the resumed run, never a
       // package without media. They are the one thing here the package does not declare.
       const recordings: string[] = VIDEO_TRACK_IDS.map((trackId) => cameraFileName(trackId));
+      const sealedIds = closedTracks.tracks.map((track) => track.trackId);
       const present = (await listPackageFiles(packageDir)).filter((name) => !recordings.includes(name));
       let committed: 'SEALED' | 'ALREADY_SEALED';
       if (ports.engine.isSealed(sessionId, was.manifestSha256)) {
@@ -699,12 +809,12 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         committed = 'ALREADY_SEALED';
       } else {
         // Nothing the package does not declare may be in its folder (verify V-14), and nothing it declares may be missing.
-        const declared = new Set(declaredPackageFiles({ transcript: was.transcript }));
+        const declared = new Set(declaredPackageFiles({ transcript: was.transcript, tracks: sealedIds }));
         const undeclared = present.filter((name) => !declared.has(name));
         const missing = [...declared].filter((name) => !present.includes(name));
         if (undeclared.length > 0) throw new SealingError(SealingFailure.PACKAGE_NOT_CLEAN, 'the package folder holds a file the package does not declare', { undeclared: undeclared.length });
         if (missing.length > 0) throw new SealingError(SealingFailure.STORAGE_FAILED, 'a file of the package is not in its folder', { missing: missing.length });
-        for (const trackId of VIDEO_TRACK_IDS) await syncFile(pathOf(trackId));
+        for (const trackId of sealedIds) await syncFile(pathOf(trackId));
         for (const dir of [fragmentsDir, ...(was.transcript ? [join(packageDir, PackageFile.TRANSCRIPT_DIR)] : []), packageDir]) await syncDirectory(dir);
         await syncDirectory(join(packageDir, '..'));
 
@@ -730,102 +840,27 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
           throw new SealingError(SealingFailure.ENGINE_REFUSED, 'the engine did not commit the sealed item', {}, error);
         }
       }
-      // The item is committed: the plaintext recordings go, and the folder is the package and nothing else.
-      const { removed: recordingsRemoved, kept: recordingsKept } = await removeSealedRecordings(was.manifestSha256);
-      return { manifestSha256: was.manifestSha256, files: present.length, committed, recordingsRemoved, recordingsKept };
-    }
-
-    /**
-     * THE PLAINTEXT RECORDINGS OF A COMMITTED PACKAGE ARE REMOVED - AND NOTHING ELSE IS (row 82c,
-     * F-86-2). Called after the commit of the item, by the run that committed it or by the run
-     * that finds it committed after a process start. A file is removed only when ALL of this holds:
-     *
-     *   - the package's OWN signed manifest (the one whose digest the item holds) names it as the
-     *     file of one of its camera tracks (`tracks[].file`), and the name is a bare file name;
-     *   - it lies directly in the session's folder (containment: no separator, no link followed,
-     *     a regular file, its resolved parent is the package folder);
-     *   - the SEALED file of that track is in the package with the length the manifest states
-     *     (plaintext never goes while its sealed media is not there);
-     *   - its first `tracks[].bytes` bytes hash to `tracks[].sha256Plain`: it IS the recording
-     *     that was sealed, not another file under that name.
-     *
-     * A file under a recording's name that fails one of these is LEFT and said in the persistent
-     * log (`SEALING_RECORDING_NOT_OF_PACKAGE`); every other file of the folder is never looked at.
-     */
-    async function removeSealedRecordings(manifestSha256: string): Promise<{ removed: number; kept: number }> {
-      const text = await writer.read(PackageFile.MANIFEST);
-      let manifest: ManifestV2 | null = null;
-      try {
-        if (text !== null) manifest = parseManifestV2(JSON.parse(Buffer.from(text).toString('utf8')));
-      } catch {
-        manifest = null;
-      }
-      if (manifest === null || manifest.manifestSha256 !== manifestSha256 || manifest.sessionId !== sessionId) {
-        throw new SealingError(SealingFailure.STORAGE_FAILED, 'the manifest of the committed package could not be read back: no recording is removed', {});
-      }
-      const home = resolve(packageDir);
-      let removed = 0;
-      let kept = 0;
-      for (const track of manifest.tracks) {
-        const name = track.file;
-        const trackId = VIDEO_TRACK_IDS.find((id) => id === track.trackId);
-        const keep = (reason: string): void => {
-          kept += 1;
-          ports.log.append({ level: 'error', source: SOURCE, message: 'a file under the name of a recording is not the recording this package sealed: it was left where it is', code: 'SEALING_RECORDING_NOT_OF_PACKAGE', context: { sessionId, trackId: track.trackId, reason } });
-        };
-        if (trackId === undefined || name !== cameraFileName(trackId) || basename(name) !== name) {
-          // Not a name this pipeline ever gave a recording: nothing under it is touched.
-          continue;
-        }
-        const path = join(packageDir, name);
-        if (dirname(resolve(path)) !== home) continue;
-        let facts;
-        try {
-          facts = await lstat(path);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-          throw error;
-        }
-        if (!facts.isFile()) {
-          keep('NOT_A_REGULAR_FILE');
-          continue;
-        }
-        let sealedFacts;
-        try {
-          sealedFacts = await lstat(pathOf(trackId));
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          sealedFacts = null;
-        }
-        if (sealedFacts === null || !sealedFacts.isFile() || sealedFacts.size !== track.bytes) {
-          throw new SealingError(SealingFailure.STORAGE_FAILED, 'the sealed camera file of the committed package is not as its manifest states: no recording is removed', { trackId });
-        }
-        if (track.sha256Plain === null || facts.size < track.bytes) {
-          keep(track.sha256Plain === null ? 'NO_PLAINTEXT_HASH' : 'SHORTER_THAN_SEALED');
-          continue;
-        }
-        const file = await openCameraFile(path);
-        if (file === null) continue;
-        let same: boolean;
-        try {
-          const hash = nodeSha256();
-          for (let at = 0; at < track.bytes; at += chunkBytes) {
-            const bytes = await file.source.read(at, Math.min(chunkBytes, track.bytes - at));
-            if (bytes.byteLength === 0) break;
-            hash.update(bytes);
-          }
-          same = hexOf(hash.digest()) === track.sha256Plain;
-        } finally {
-          await file.close();
-        }
-        if (!same) {
-          keep('NOT_THE_SEALED_BYTES');
-          continue;
-        }
-        if (await removeIfThere(packageDir, name)) removed += 1;
-      }
-      await syncDirectory(packageDir);
-      return { removed, kept };
+      // THE ITEM IS COMMITTED: what the seal left in plaintext is dealt with by ONE unit
+      // (`sealed-plaintext.ts`; fix pass F-M7c, R88-05 + R88-15) - the original of a prefix-sealed
+      // camera file and a left-out camera file MOVED to the quarantine, the recordings the signed
+      // manifest accounts for REMOVED by proof, a file that fails the proof TOLD to the engine and
+      // moved to the quarantine, the orphan part files removed. When this step does not run in the
+      // attempt that hashed the sealed files (a resume, a finish at a start), the sealed files are
+      // decrypted and compared again before a recording goes.
+      const hashedAttempt = rows.get('FINALIZE_HASHES')?.attempt ?? null;
+      const finished = await finishSealedPlaintext({
+        sessionId,
+        packageDir,
+        stagingDir,
+        quarantineDir: ports.quarantineDir(sessionId),
+        manifestSha256: was.manifestSha256,
+        closed: closedTracks,
+        recheck: hashedAttempt === attempt ? null : { opener: ports.opener, fragments: ports.fragments },
+        chunkBytes,
+        log: ports.log,
+        ...(ports.engine.noteKeptPlaintext === undefined ? {} : { noteKeptPlaintext: (note) => (ports.engine.noteKeptPlaintext as NonNullable<SealEngine['noteKeptPlaintext']>)(note) }),
+      });
+      return { manifestSha256: was.manifestSha256, files: present.length, committed, ...finished };
     }
 
     const work: Record<SealingStepId, () => Promise<StepCheckpoint | null>> = {
@@ -862,7 +897,8 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         await hook(step, 'AFTER_WORK');
         if (step !== 'FINALIZE_TRANSCRIPT') await writeRow(step, 'DONE', 100, checkpoint, null, 0);
         rows.set(step, await ports.journal.read(sessionId, step));
-        Object.assign(state, { status: 'DONE', progress: 100, etaMs: 0, detail: null });
+        // A seal that goes on without a camera says so on its first step, in words an operator reads (F-M7).
+        Object.assign(state, { status: 'DONE', progress: 100, etaMs: 0, detail: step === 'CLOSE_TRACKS' ? sealingOmittedNotice(closedNow().omitted ?? [], closedNow().tracks.flatMap((track) => (track.partial === undefined ? [] : [{ trackId: track.trackId, code: track.partial.reason, sealedFragments: track.fragments }]))) : null });
         // After the item is committed the session is SEALED: there is no finalization left to report.
         if (step !== 'STORE_SEALED_PACKAGE') await tell();
         await hook(step, 'AFTER_CHECKPOINT');

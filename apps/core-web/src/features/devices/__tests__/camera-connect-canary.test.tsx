@@ -105,7 +105,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function openDialog(): Promise<LiveTestBed> {
+async function openDialog(candidate: CaptureCandidate = CANDIDATE): Promise<LiveTestBed> {
   const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
   bed = created
   let searched = false
@@ -113,7 +113,7 @@ async function openDialog(): Promise<LiveTestBed> {
     searched = true
     return { status: 202, body: SEARCH }
   })
-  created.fake.answer('getCaptureDiscovery', () => ({ status: 200, body: searched ? { search: { ...SEARCH, created: false }, candidates: [CANDIDATE], truncated: false } : { search: null, candidates: [], truncated: false } }))
+  created.fake.answer('getCaptureDiscovery', () => ({ status: 200, body: searched ? { search: { ...SEARCH, created: false }, candidates: [candidate], truncated: false } : { search: null, candidates: [], truncated: false } }))
   page = await created.load()
   mounted = await created.mount(page, '/devices')
   await screen.findByTestId('page-devices')
@@ -148,7 +148,111 @@ const expectNoCanary = (text: string) => {
   expect(text).not.toContain('s3cr3t')
 }
 
+// Fix F-M4 (review row 69, findings R69-12 and R69-13; decision D178).
+describe('what the operator confirms, and a camera whose sign-in method is not answered (Live mode, fake transport)', () => {
+  const TARGET = 'https://192.0.2.44:8443/onvif/device_service'
+  const T = en.common.captureConnectTarget
+
+  it('R69-12: the full target the Core sent - scheme, host, port, path - is shown as text and is the sentence of the tick; without it the host is confirmed (control)', async () => {
+    await openDialog({ ...CANDIDATE, connectionTarget: TARGET })
+    expect(screen.getByTestId('camera-connect-target-full')).toHaveTextContent(TARGET)
+    expect(screen.getByTestId('camera-connect-target').querySelector('a')).toBeNull()
+    expect(screen.getByTestId('camera-connect-confirm')).toHaveTextContent(T.confirm.replace('{{target}}', TARGET))
+    expect(screen.getByTestId('camera-connect-confirm')).not.toHaveTextContent(C.confirmDevice.replace('{{address}}', CANDIDATE.host))
+    // Test connection stays disabled until that sentence is ticked.
+    fireEvent.change(username(), { target: { value: USER } })
+    fireEvent.change(password(), { target: { value: PASS } })
+    expect(screen.getByTestId('camera-connect-test')).toBeDisabled()
+    cleanup()
+    bed?.dispose()
+    await openDialog()
+    expect(screen.queryByTestId('camera-connect-target-full')).not.toBeInTheDocument()
+    expect(screen.getByTestId('camera-connect-confirm')).toHaveTextContent(C.confirmDevice.replace('{{address}}', CANDIDATE.host))
+  })
+
+  it('R69-13: AUTHENTICATION_FAILED with reason SCHEME_NOT_ALLOWED is never worded as a refused password, and nothing is sent again by itself; a refused password keeps its sentence (control)', async () => {
+    const created = await openDialog()
+    fireEvent.change(username(), { target: { value: USER } })
+    fireEvent.change(password(), { target: { value: PASS } })
+    fireEvent.click(within(screen.getByTestId('camera-connect-confirm')).getByRole('checkbox'))
+    const unanswered = tested('AUTHENTICATION_FAILED', 1)
+    created.fake.answerOnce('testCaptureCandidateConnection', { ...unanswered, body: { ...unanswered.body, reason: 'SCHEME_NOT_ALLOWED' } })
+    fireEvent.click(screen.getByTestId('camera-connect-test'))
+    const outcome = await screen.findByTestId('camera-connect-outcome')
+    await waitFor(() => expect(outcome).toHaveAttribute('data-reason', 'SCHEME_NOT_ALLOWED'))
+    expect(outcome).toHaveTextContent(T.schemeNotAllowed)
+    expect(screen.getByTestId('camera-connect-scheme')).toHaveTextContent(T.schemeNotAllowedDetail)
+    expect(outcome).not.toHaveTextContent(C.outcome.AUTHENTICATION_FAILED)
+    expect(password().value).toBe('')
+    await act(async () => undefined)
+    expect(created.fake.log.requestsOf('testCaptureCandidateConnection')).toHaveLength(1)
+
+    // CONTROL: a refused password, with no reason.
+    fireEvent.change(password(), { target: { value: PASS } })
+    created.fake.answerOnce('testCaptureCandidateConnection', tested('AUTHENTICATION_FAILED', 0))
+    fireEvent.click(screen.getByTestId('camera-connect-test'))
+    await waitFor(() => expect(screen.getByTestId('camera-connect-outcome')).not.toHaveAttribute('data-reason'))
+    expect(screen.getByTestId('camera-connect-outcome')).toHaveTextContent(C.outcome.AUTHENTICATION_FAILED)
+    expect(screen.queryByTestId('camera-connect-scheme')).not.toBeInTheDocument()
+  })
+})
+
+describe('the row of a tested candidate (R69-13)', () => {
+  it('a last test that ended SCHEME_NOT_ALLOWED does not read "Password refused" on the row; a refused password does (control)', async () => {
+    const last = { outcome: 'AUTHENTICATION_FAILED', authenticated: true, testedAt: 5_000 } as const
+    await openDialog({ ...CANDIDATE, lastTest: { ...last, reason: 'SCHEME_NOT_ALLOWED' } })
+    const chip = screen.getByTestId(`camera-search-last-test-${ID}`)
+    expect(chip).toHaveTextContent(en.common.captureConnectTarget.schemeNotAllowedShort)
+    expect(chip).not.toHaveTextContent(C.outcomeShort.AUTHENTICATION_FAILED)
+    cleanup()
+    bed?.dispose()
+    await openDialog({ ...CANDIDATE, lastTest: last })
+    expect(screen.getByTestId(`camera-search-last-test-${ID}`)).toHaveTextContent(C.outcomeShort.AUTHENTICATION_FAILED)
+  })
+})
+
 describe('the typed camera user name and password (Live mode, fake transport)', () => {
+  // Fix F-M4 (review row 69, findings R69-04 and R69-10; decision D134). The case below reads the
+  // attribute AFTER a remover ran, so it could not fail for the write it is about. This one can: an
+  // observer that exists BEFORE the dialog (as a library loaded at page start does), on an ancestor,
+  // asking for old values. With controlled inputs React wrote the typed text into the `value`
+  // attribute at every keystroke, and the removal handed it to this observer a second time.
+  it('an observer created before the dialog, asking for old values, never receives a typed character: the `value` attribute is never written', async () => {
+    const seen: string[] = []
+    const note = (records: MutationRecord[]) => {
+      for (const record of records) seen.push(`${String(record.attributeName)}|${String(record.oldValue)}|${String((record.target as Element).getAttribute(record.attributeName ?? ''))}`)
+    }
+    const early = new MutationObserver(note)
+    early.observe(document.body, { attributes: true, subtree: true, attributeOldValue: true })
+    try {
+      await openDialog()
+      fireEvent.change(username(), { target: { value: USER } })
+      fireEvent.change(password(), { target: { value: PASS } })
+      await act(async () => undefined)
+      // Shown as text, typed on, hidden again: every state the field has while it holds the password.
+      fireEvent.click(screen.getByTestId('camera-connect-reveal'))
+      fireEvent.change(password(), { target: { value: `${PASS}x` } })
+      await act(async () => undefined)
+      fireEvent.click(screen.getByTestId('camera-connect-reveal'))
+      fireEvent.change(password(), { target: { value: PASS } })
+      await act(async () => undefined)
+      note(early.takeRecords())
+      expect(password().value).toBe(PASS)
+      expect(username().value).toBe(USER)
+      expect(seen.filter((entry) => entry.startsWith('value|'))).toEqual([])
+      expectNoCanary(seen.join('\n'))
+      for (const input of [username(), password()]) expect(input.hasAttribute('value')).toBe(false)
+      // CONTROL: an attribute that does hold the text reaches this observer - as the OLD VALUE of its removal,
+      // which is how the remover of the former dialog handed the text on.
+      password().setAttribute('data-planted', 'CANARY-planted')
+      password().removeAttribute('data-planted')
+      note(early.takeRecords())
+      expect(seen.filter((entry) => entry.includes('CANARY-planted'))).toEqual(['data-planted|CANARY-planted|null'])
+    } finally {
+      early.disconnect()
+    }
+  })
+
   it('sent as typed in operations 95 and 96, and reported nowhere: a refused password, the 503 before row 84, a 422, then close', async () => {
     const created = await openDialog()
     // A PRODUCTION camera: the two fields are there at once, and empty.
@@ -157,7 +261,7 @@ describe('the typed camera user name and password (Live mode, fake transport)', 
     fireEvent.change(username(), { target: { value: USER } })
     fireEvent.change(password(), { target: { value: PASS } })
     // ux §14.3: no value in any attribute of the password field while it is typed.
-    // The attribute React writes is taken off in the same task (a mutation observer): one turn of the microtask queue.
+    // Since fix F-M4 the two inputs are uncontrolled: React writes no `value` attribute at all (the case above holds that at every instant).
     await act(async () => undefined)
     for (const input of [username(), password()]) expect(Array.from(input.attributes).map((attribute) => attribute.value).join(' ')).not.toContain('CANARY')
     // The whole document while both values are in the form: in the two inputs' values, and in no markup.

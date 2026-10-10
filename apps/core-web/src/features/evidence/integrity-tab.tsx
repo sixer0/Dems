@@ -16,6 +16,7 @@ import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, sto
 import { selectOperators } from './selectors'
 import { useRetryCooldown } from './use-retry-cooldown'
 import type { EvidenceVerification } from './use-verification'
+import { V2_SIGNING_KEY_LINE } from './verify-v2'
 import { VerifyV2Report } from './verify-v2-report'
 
 const LIFECYCLE: EvidenceLifecycleStage[] = Object.values(EvidenceLifecycleStage)
@@ -310,6 +311,12 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
               <span className="evi-caption">
                 {pkg ? t('evidence.integrity.signatureNoteDemo', { at: `${formatWibDateTime(Date.parse(pkg.signature.signedAt))} UTC${formatUtcOffset()}` }) : t('evidence.detail.integrity.signatureNote')}
               </span>
+              {/* Fix pass F-M7 (R88-07): which key signed, as the Core answered it for this item (operation 41). The item itself carries no such member: before a verification nothing is said here. */}
+              {state.v2 != null && (state.v2.signingKey === 'DEVELOPMENT' || state.v2.signingKey === 'NOT_ESTABLISHED') ? (
+                <span className="evi-caption evi-strong" role="status" data-testid="evidence-signature-key" data-signing-key={state.v2.signingKey}>
+                  {t(V2_SIGNING_KEY_LINE[state.v2.signingKey])}
+                </span>
+              ) : null}
             </li>
             {pkg ? (
               <li data-hash="certificate">

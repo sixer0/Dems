@@ -40,7 +40,22 @@
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
-#define WORKER_VERSION "capture-worker/0.4.0"
+#define WORKER_VERSION "capture-worker/0.5.0"
+
+/* A PROOF BUILD IS ANY BUILD WITH ONE OF ITS SWITCHES (review R63-06; pair-58 F-10). Until fix pass
+ * F-M3 the mark of HELLO hung on ONE macro (DEMS_PROOF_MUX_EXTRA): a build with any of the other
+ * switches - through the Makefile or through a CFLAGS of the environment - said the release
+ * version. Every switch that changes what the worker does is listed here, and HELLO says "-PROOF"
+ * when ANY of them is defined (ipc.c). The Core starts no worker that says so (boot check and
+ * every HELLO of a session). `check.sh` holds this list complete: a proof switch the sources
+ * test that is missing here is refused. THIS HEADER IS THE FIRST INCLUDE of every unit, so the
+ * test below sees only what the build line defined (the defaults of MIC_MAX_PPM, DEMS_MOVFLAGS and
+ * DEMS_VERIFIED_LAVF_VERSION_INT are defined later, in their units). */
+#if defined(DEMS_PROOF_MUX_EXTRA) || defined(DEMS_PROOF_KEEP_TORN_TAIL) || defined(DEMS_PROOF_NO_REFUSAL_EXIT) || defined(DEMS_PROOF_WRITE_FAULT) || \
+    defined(DEMS_PROOF_INTERVAL_SKEW) || defined(DEMS_PROOF_NO_CLOCK_FLOOR) || defined(DEMS_PROOF_NO_FRAGMENT_BOUND) || defined(DEMS_PROOF_SILENT_SYNC_FALLBACK) || \
+    defined(DEMS_PROOF_RUNTIME_LAVF_VERSION_INT) || defined(MIC_MAX_PPM) || defined(DEMS_MOVFLAGS) || defined(DEMS_VERIFIED_LAVF_VERSION_INT)
+#define DEMS_PROOF_BUILD 1
+#endif
 
 /* THE NAMED SETTINGS of a worker process (protocol version 4, CAPTURE_WORKER_SETTINGS): what each is
  * when the launcher does not pass its argument. The same Core test holds these four equal to the
@@ -49,6 +64,13 @@
 #define DEFAULT_MIC_SILENCE_DBFS -50
 #define DEFAULT_MIC_SILENCE_MS 10000
 #define DEFAULT_MIC_DISCONNECT_MS 2000
+/* THE FRAGMENT SIZE BOUND (review R63-02; ruling D179): ONE number, the one the seal and the verifier
+ * enforce (SEALING_MAX_FRAGMENT_BYTES = VERIFY_MAX_OPEN_FRAGMENT_BYTES, 64 MiB). The Core's launcher
+ * passes it (--max-fragment-bytes); this default is held equal to the package's by the same test.
+ * The ceiling is only the worker's compiled sanity cap (the most the writer ever holds in memory). */
+#define DEFAULT_MAX_FRAGMENT_BYTES 67108864
+#define MIN_MAX_FRAGMENT_BYTES 1048576
+#define MAX_FRAGMENT_BYTES_CEILING 268435456
 
 #define SR 48000            /* AUDIO-01: AAC-LC 48 kHz mono (OD-06) */
 #define QUANTUM 480         /* worker input quantum: 10 ms (AU2-07 bound) */
@@ -81,7 +103,10 @@ const JNode *jget(const JNode *obj, const char *key);
 /* 1 when the value is a string of 1..max characters out of [A-Za-z0-9._:-]. */
 int id_ok(const JNode *v, int max);
 
-int ipc_start(int heartbeat_ms);
+/* Starts the writer of the frames. `refusal` NULL: HELLO is the first frame and the heartbeat runs.
+ * `refusal` a machine code: the worker refuses to start - ONE frame, CRASH with that code and no
+ * session, INSTEAD of HELLO, and no heartbeat (review R63-07). */
+int ipc_start(int heartbeat_ms, const char *refusal);
 void ipc_stop(void);
 /* One frame, never dropped. `fmt` produces the members after {"v":N, without braces. */
 void ipc_send(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -153,6 +178,8 @@ typedef struct Sink {
     /* the sync thread: what is written waits here until a sync covered it */
     pthread_t sync_th;
     int sync_started, sync_closing, linked;
+    size_t max_fragment_bytes;      /* 0: no bound (a unit test); the worker sets the bound of the session: a larger fragment is never written */
+    atomic_int sync_level;          /* SYNC_NOT_YET until the first sync of the file returned; then the level it ACHIEVED */
     pthread_mutex_t sync_mx;
     pthread_cond_t sync_cv;
     struct SinkJob *job_head, *job_tail;
@@ -172,8 +199,21 @@ int sink_close(Sink *s);
 /* 1 when something is at the path already (any kind of file). */
 int sink_path_occupied(const char *path);
 int sink_stale_parts(const char *path);
-/* How the file data is made durable on this build: "F_FULLFSYNC" or "fsync". */
-const char *sink_sync_level(void);
+/* THE SYNC LEVEL (review R63-09). What a sync of this file really was: the full sync (through the
+ * drive's own cache where the platform has it), or fsync() on a volume that does not know the full
+ * one. Decided by the FIRST sync of the file and stated with its first durable fragment; a later
+ * sync that cannot reach that level is a failed sync, never a quieter one. */
+#define SYNC_NOT_YET 0
+#define SYNC_FULL 1
+#define SYNC_FSYNC 2
+/* The level this file's syncs achieved: "F_FULLFSYNC", "FSYNC", or "NOT_YET" before the first one. */
+const char *sink_sync_level(const Sink *s);
+/* What the build asks for first: "F_FULLFSYNC" where the platform has it, else "FSYNC". Not a claim about any file. */
+const char *sink_sync_wanted(void);
+/* TEST SEAM. NULL in the worker (`check.sh` holds that nothing assigns it). A unit test makes the
+ * full sync of a descriptor answer as a volume without it does: return 0 for "sync normally", or
+ * the errno the full sync fails with (ENOTSUP: the writer falls back to fsync and must SAY so). */
+extern int (*sink_full_sync_hook)(int fd);
 void sha256_hex(const uint8_t digest[SHA256_BYTES], char out[2 * SHA256_BYTES + 1]);
 /* TEST SEAM. NULL in the worker. A unit test, or a proof build, makes the write of one fragment
  * fail: return -1 for "write normally", or the number of bytes that reach the file before the
@@ -200,6 +240,12 @@ typedef struct Cam {
     atomic_int failed;              /* the ingest ended for a reason other than a stop */
     atomic_int out_ready;           /* the muxer header is written: audio may be muxed */
     atomic_int first_reported;      /* FIRST_DURABLE_FRAGMENT was sent */
+    /* THE FRAGMENT SIZE BOUND (under `mx`; ingest.c "write_bounded_locked"): what the OPEN fragment holds so far */
+    int64_t open_bytes, open_samples, open_seen_fragments;
+    int64_t size_cuts;              /* fragments closed at the bound instead of at a keyframe */
+    int size_bound_warned;          /* FRAGMENT_SIZE_BOUND_REACHED was sent (once per camera) */
+    int open_misaligned;            /* the open fragment began at a cut at the bound, not at a keyframe: the next keyframe begins a new one */
+    int64_t realign_cuts;           /* fragments closed so that a keyframe begins the next one again */
     /* observed keyframe interval (ingest thread only; Q-GOP, spec C.1) */
     int64_t gop_last_key_us, gop_last_us, gop_max_us;
     int gop_intervals, gop_warned, gop_reported;
@@ -211,12 +257,16 @@ typedef struct Cam {
     Anchor anchor;
     int64_t last_dts, first_pts;
     int64_t first_skipped_pts_us;   /* camera time of the first video packet that had a time and was not written */
+    /* the untimestamped lead (review R63-13): video packets without a time that came before the first one with a time */
+    int64_t lead_packets, lead_first_mono_us, lead_end_mono_us;
+    int seen_pts;
     ClockFloor clock_floor;         /* the smallest arrival lag of any packet since the ingest opened (anchor.h) */
     atomic_int th_done;             /* the ingest thread has ended */
     atomic_int abandoned;           /* it did not end when it had to: nobody waits for it any more */
     atomic_int ever_connected;
     _Atomic int64_t last_video_mono_us;
     _Atomic int64_t v_written, a_written, v_dropped_prearm, v_dropped_prestart, v_dropped_unanchored, v_dropped_no_pts;
+    _Atomic int64_t v_retimed;      /* video samples whose time the monotonic guard had to move (review R63-11) */
     /* arrival-vs-camera trend: telemetry only, corrects nothing (spec F) */
     pthread_mutex_t trend_mx;
     ClockTrend trend;
@@ -248,6 +298,7 @@ extern atomic_int g_stop;           /* stop recording: flush, close, exit */
 extern atomic_int g_stop_ingest;
 extern int g_listen_timeout_s;      /* the ingest-open window, in the whole seconds libavformat's listen timeout takes */
 extern int g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms;
+extern int g_max_fragment_bytes;    /* the fragment size bound of this installation (--max-fragment-bytes) */
 extern const char *g_mux_extra;     /* PROOF BUILD ONLY (negative control); NULL in the worker */
 
 /* A fatal error: logs it, remembers the first code, and forces exit code EXIT_FATAL. */
@@ -280,6 +331,11 @@ int cam_cut_if_stalled(Cam *c, int64_t now, int64_t stall_us);
 int cam_close(Cam *c);
 /* The mux options of the camera files, as one string (logged at start; the P4 decision). */
 extern const char *const MUX_MOVFLAGS;
+/* THE libavformat PIN AT RUN TIME (review R63-07). 0 when the library this process RUNS on is the one
+ * it was built and verified against; else 1, with the two version numbers. The header pin
+ * (_Static_assert in ingest.c) and the build pin (check.sh) cannot see a shared library that was
+ * replaced after the build. */
+int lavf_runtime_mismatch(unsigned *running, unsigned *verified);
 
 /* ---------------------------------------------------------------- audio.c */
 void *audio_main(void *arg);

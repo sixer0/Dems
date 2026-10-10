@@ -252,6 +252,11 @@ describe('static rule: other ways round a text pattern, each one red', () => {
     ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/chunker.ts', 'const fileSample = tapSample + 1_024;'],
     ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/runner.ts', 'const startMs = tapMs + 21.333;'],
     ['MEDIA_TIME_ORIGIN_NEVER_WRITTEN', 'src/pipeline/clamp.ts', 'const frame = 0x400;'],
+    // R80-09 (code review row 80, section 4): the two limits that were closed by a rule.
+    ['COMMIT_INSTANT_ONLY_IN_RUNNER', 'src/pipeline/assembly.ts', 'const took = after.getTime() - before.getTime();'],
+    ['COMMIT_INSTANT_ONLY_IN_RUNNER', 'src/backends/cpu-local.ts', "const at = new Date()['getTime']();"],
+    ['NO_DATABASE_MODULE', 'src/pipeline/mirror.ts', "import { Pool } from 'pg';"],
+    ['NO_DATABASE_MODULE', 'src/__tests__/some.test.ts', "const postgres = require('postgres');"],
     ['NO_DYNAMIC_CODE', 'src/adapter.ts', "eval('con' + 'sole.log(key)');"],
     ['NO_DYNAMIC_CODE', 'src/adapter.ts', "const f = new Function('return process');"],
   ];

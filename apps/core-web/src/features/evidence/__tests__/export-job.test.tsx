@@ -21,7 +21,7 @@ import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { webErrorSink } from '@/runtime'
-import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportJob } from '../export-job-model'
+import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
 
@@ -42,7 +42,7 @@ describe('the model', () => {
     for (const answered of [undefined, null, 'EXP-000777', 'EXPJ-7', 7]) expect(exportJobIdOf('EXP-000032', answered)).toBe('EXPJ-000032')
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000777' })).toBe('EXPJ-000777')
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032' })).toBeNull()
-    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: EV.sealed, kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null })
+    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: EV.sealed, kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null, downloadable: false })
     for (const bad of [null, [], { ...JOB, status: 'DONE' }, { ...JOB, jobId: 'EXP-000032' }, { ...JOB, evidenceId: 7 }]) expect(readExportJob(bad)).toBeNull()
     expect(readExportJob({ ...JOB, progressPct: 250 })?.progressPct).toBe(100)
     expect(readExportJob({ ...JOB, progressPct: 'half' })?.progressPct).toBe(0)
@@ -227,5 +227,116 @@ describe('an unknown job', () => {
     expect(screen.getByTestId('export-job-unknown')).toHaveTextContent('The Core server has no job for this export.')
     await new Promise((resolve) => setTimeout(resolve, EXPORT_JOB_POLL_MS + 400))
     expect(jobReads()).toHaveLength(1)
+  })
+})
+
+// Fix pass F-M8 (review findings R93-01, R93-05; controller ruling D178): the signed download of a finished export.
+const DOWNLOAD_TOKEN = `exs_CANARY${'q7Zm4xLp0k2Vb6Nc1Hy4GjR8sT3w'.repeat(3)}`.slice(0, 95)
+const DOWNLOAD_PATH = `/exports/${DOWNLOAD_TOKEN}`
+const COMPLETE_JOB = { ...JOB, status: 'COMPLETE', progressPct: 100, etaMs: 0, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64), completedAt: 1_790_824_600_000 }
+const WITH_DOWNLOAD = { ...COMPLETE_JOB, download: { path: DOWNLOAD_PATH, expiresAt: 1_790_824_660_000 } }
+
+describe('fix F-M8: the download member of a job answer', () => {
+  it('only a path of the download route on a COMPLETE job is one; the job this page keeps holds the FACT, never the path', () => {
+    expect(readExportDownload(WITH_DOWNLOAD)).toEqual({ path: DOWNLOAD_PATH, expiresAt: 1_790_824_660_000 })
+    for (const bad of [
+      COMPLETE_JOB,
+      { ...WITH_DOWNLOAD, status: 'RUNNING' },
+      { ...COMPLETE_JOB, download: { path: `http://127.0.0.1:8443${DOWNLOAD_PATH}`, expiresAt: 1 } },
+      { ...COMPLETE_JOB, download: { path: `${DOWNLOAD_PATH}?next=1`, expiresAt: 1 } },
+      { ...COMPLETE_JOB, download: { path: `/media/${DOWNLOAD_TOKEN}`, expiresAt: 1 } },
+      { ...COMPLETE_JOB, download: { path: `/exports/../api/v1/${DOWNLOAD_TOKEN}`, expiresAt: 1 } },
+      { ...COMPLETE_JOB, download: { path: DOWNLOAD_PATH } },
+      { ...COMPLETE_JOB, download: DOWNLOAD_PATH },
+      null,
+    ]) {
+      expect(readExportDownload(bad)).toBeNull()
+    }
+    const kept = readExportJob(WITH_DOWNLOAD)
+    expect(kept?.downloadable).toBe(true)
+    expect(JSON.stringify(kept)).not.toContain('exs_')
+    expect(readExportJob(COMPLETE_JOB)?.downloadable).toBe(false)
+  })
+})
+
+describe('fix F-M8: "Download export" on a COMPLETE job (web; UX 6.6)', () => {
+  it('the press reads the job once more and hands its fresh signed path to the browser; CANARY: the path is in no cache, key, record, storage, address or markup', async () => {
+    const followed: string[] = []
+    const consoleCalls: unknown[][] = []
+    for (const level of ['error', 'warn', 'log', 'info', 'debug'] as const) vi.spyOn(console, level).mockImplementation((...parts: unknown[]) => void consoleCalls.push(parts))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      followed.push(this.getAttribute('href') ?? '')
+    })
+    const live = await exportSealed([WITH_DOWNLOAD])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    // A job the Core names a download for draws the control, not the "stored on the Core" line.
+    expect(screen.queryByTestId('export-job-on-core')).toBeNull()
+    const button = screen.getByTestId('export-job-download')
+    expect(button).toHaveTextContent('Download export')
+    const reads = jobReads().length
+    expect(followed).toEqual([])
+
+    fireEvent.click(button)
+    await waitFor(() => expect(followed).toEqual([DOWNLOAD_PATH]))
+    // ONE fresh read of operation 87 for the press, and no query of the page was started for it.
+    expect(jobReads()).toHaveLength(reads + 1)
+    expect(screen.queryByTestId('export-job-download-failed')).toBeNull()
+
+    const cache = live.queryClient.getQueryCache().getAll()
+    const storage = (area: Storage) => Array.from({ length: area.length }, (_, index) => `${area.key(index)}=${area.getItem(area.key(index) ?? '')}`)
+    const reported = JSON.stringify({
+      sink: webErrorSink.records(),
+      pageSink: live.page.sink.records(),
+      console: consoleCalls.map((call) => call.map((part) => (part instanceof Error ? `${part.message} ${part.stack}` : part))),
+      html: document.body.innerHTML,
+      queryKeys: cache.map((query) => query.queryKey),
+      queryData: cache.map((query) => ({ data: query.state.data, error: String(query.state.error) })),
+      mutations: live.queryClient.getMutationCache().getAll().map((mutation) => ({ variables: mutation.state.variables, data: mutation.state.data })),
+      urls: live.bed.fake.log.requests.map((call) => call.url),
+      location: `${window.location.href} ${live.router.state.location.href}`,
+      history: JSON.stringify(window.history.state),
+      local: storage(window.localStorage),
+      session: storage(window.sessionStorage),
+    })
+    // CONTROL of the canary: the job itself IS in the cache (found by its manifest hash).
+    expect(reported).toContain('ab'.repeat(32))
+    expect(['CANARY', 'exs_', DOWNLOAD_TOKEN].filter((needle) => reported.includes(needle))).toEqual([])
+    // The anchor lived for one click.
+    expect(document.querySelector(`a[href^="/exports/"]`)).toBeNull()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('a job the Core names NO download for (a simulated export) keeps the "stored on the Core" line and draws no control', async () => {
+    await exportSealed([COMPLETE_JOB])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    expect(screen.getByTestId('export-job-on-core')).toBeInTheDocument()
+    expect(screen.queryByTestId('export-job-download')).toBeNull()
+  })
+
+  it('the fresh read names no download any more: nothing is followed, the page says so, and the next press waits its cooldown', async () => {
+    const followed: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      followed.push(this.getAttribute('href') ?? '')
+    })
+    await exportSealed([WITH_DOWNLOAD, COMPLETE_JOB])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    fireEvent.click(screen.getByTestId('export-job-download'))
+    const failed = await screen.findByTestId('export-job-download-failed')
+    expect(failed).toHaveAttribute('data-outcome', 'UNAVAILABLE')
+    expect(failed).toHaveTextContent('This export cannot be downloaded right now.')
+    expect(followed).toEqual([])
+    // Rate-limited: the first retry is free of a wait only once it was consumed; a second press right after it is refused.
+    const reads = jobReads().length
+    fireEvent.click(screen.getByTestId('export-job-download'))
+    await waitFor(() => expect(jobReads()).toHaveLength(reads + 1))
+    await waitFor(() => expect(screen.getByTestId('export-job-download')).toBeDisabled())
+  })
+})
+
+describe('fix F-M8: named causes of a FAILED job (R93-01, R93-04)', () => {
+  it('EXPORT_INTERRUPTED and EXPORT_JOBS_NOT_AVAILABLE read as what happened and that nothing was exported', async () => {
+    await exportSealed([{ ...JOB, status: 'FAILED', progressPct: 0, failureReason: 'EXPORT_INTERRUPTED' }])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'FAILED'), POLLS)
+    expect(screen.getByTestId('export-job-failed')).toHaveTextContent('The export was interrupted (the Core server stopped). Nothing was exported: export again.')
   })
 })

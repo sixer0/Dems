@@ -39,6 +39,7 @@ import type { MicRole } from '../domain';
 import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
+import { cameraClockOffsetSentence, captureFaultSentence } from './capture-fault-wording';
 import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, EpochMs, SimAlert, SimState } from './types';
 import { AuditType, CaptureStreamState } from './vocabulary';
 
@@ -46,6 +47,13 @@ import { AuditType, CaptureStreamState } from './vocabulary';
 export const CaptureNoticeReason = {
   CAPTURE_DISCOVERY_EMPTY: 'CAPTURE_DISCOVERY_EMPTY',
   CAPTURE_DEVICE_UNREACHABLE: 'CAPTURE_DEVICE_UNREACHABLE',
+  /**
+   * The evidence volume did not take the full sync for a camera file of the session (decision D189;
+   * the worker's `FIRST_DURABLE_FRAGMENT.syncLevel`). ONE `SYSTEM` alert per session, target
+   * `EVIDENCE_VOLUME`: CRITICAL when `critical` (production sources), INFO otherwise. No fault, no
+   * audit row, no device state: the session keeps recording. Resolved by its clear.
+   */
+  EVIDENCE_VOLUME_SYNC_NOT_FULL: 'EVIDENCE_VOLUME_SYNC_NOT_FULL',
 } as const;
 export type CaptureNoticeReason = (typeof CaptureNoticeReason)[keyof typeof CaptureNoticeReason];
 
@@ -60,6 +68,8 @@ export type CaptureNoticeReason = (typeof CaptureNoticeReason)[keyof typeof Capt
  * | `KEYFRAME_INTERVAL_ABOVE_BOUND` | a camera | the camera's keyframe interval is above the bound the capture plans its fragments with |
  * | `AV_OFFSET_NEAR_BOUND` | a camera | the camera's clock is near the bound of the audio/video offset (`nearBound`) |
  * | `MIC_RATE_AT_LIMIT` | a microphone | the microphone's rate correction is held at its limit (±5,000 ppm) |
+ * | `FRAGMENT_SIZE_BOUND_REACHED` | a camera | a fragment of the camera's file reached the size bound and was closed there, not at a keyframe; nothing is lost (ruling D179; closing pass F-X) |
+ * | `CAMERA_CLOCK_OFFSET` | a camera | the offset the capture worker measured between the camera's clock and the Core's is above the advisory threshold and inside the bound: the recording keeps the camera's own timeline and the offset is recorded (manifest field 40), not corrected (ruling D179; tidy pass F-Y). The ONE advisory notice that carries a number: `offsetMs` (camera minus Core, whole ms) in the alert's text and `params` |
  *
  * Like the other notices they have NO fault life cycle (nothing in `faults.active`, no demo
  * control injects or clears them), at most one is active per (`reason`, device), a raise while it
@@ -71,6 +81,8 @@ export const CaptureAdvisoryReason = {
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'KEYFRAME_INTERVAL_ABOVE_BOUND',
   AV_OFFSET_NEAR_BOUND: 'AV_OFFSET_NEAR_BOUND',
   MIC_RATE_AT_LIMIT: 'MIC_RATE_AT_LIMIT',
+  FRAGMENT_SIZE_BOUND_REACHED: 'FRAGMENT_SIZE_BOUND_REACHED',
+  CAMERA_CLOCK_OFFSET: 'CAMERA_CLOCK_OFFSET',
 } as const;
 export type CaptureAdvisoryReason = (typeof CaptureAdvisoryReason)[keyof typeof CaptureAdvisoryReason];
 
@@ -79,13 +91,21 @@ export const CAPTURE_ADVISORY_DEVICE_KIND = {
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'CAMERA',
   AV_OFFSET_NEAR_BOUND: 'CAMERA',
   MIC_RATE_AT_LIMIT: 'MIC',
+  FRAGMENT_SIZE_BOUND_REACHED: 'CAMERA',
+  CAMERA_CLOCK_OFFSET: 'CAMERA',
 } as const satisfies Record<CaptureAdvisoryReason, 'CAMERA' | 'MIC'>;
 
 const ADVISORY_TEXT = {
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'keyframe interval is above the bound',
   AV_OFFSET_NEAR_BOUND: 'clock is near the bound of the audio/video offset',
   MIC_RATE_AT_LIMIT: 'rate correction is at its limit',
+  FRAGMENT_SIZE_BOUND_REACHED: 'a fragment reached the size bound and was closed early',
+  // Not shown as it stands: this notice has its own sentence with the measured number (`cameraClockOffsetSentence`).
+  CAMERA_CLOCK_OFFSET: 'clock differs from the Core',
 } as const satisfies Record<CaptureAdvisoryReason, string>;
+
+/** The alert target of the volume-durability notice: the evidence volume, not a device. */
+export const CAPTURE_NOTICE_VOLUME_TARGET = 'EVIDENCE_VOLUME';
 
 /** The alert target of situation A (C3 §5.4). */
 export const CAPTURE_NOTICE_DISCOVERY_TARGET = 'CAPTURE_DISCOVERY';
@@ -144,9 +164,26 @@ export interface CaptureAdvisoryNotice {
   subject: string;
   /** The open session. Read at a raise only; the open session of the state when absent. */
   sessionId?: string | null;
+  /**
+   * `CAMERA_CLOCK_OFFSET` only, read at a raise only: the measured offset, camera clock minus Core
+   * clock, in whole ms. A number, never device text. Ignored for every other notice.
+   */
+  offsetMs?: number;
 }
 
-export type CaptureNoticeInput = CaptureDiscoveryEmptyNotice | CaptureDeviceUnreachableNotice | CaptureAdvisoryNotice;
+/** The evidence volume did not confirm the full sync for the session's recording (decision D189). */
+export interface CaptureVolumeSyncNotice {
+  code: typeof CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL;
+  subject: null;
+  /** True: CRITICAL (production sources). False / absent: advice (INFO). Read at a raise only. */
+  critical?: boolean;
+  /** The level the worker stated (a code of the capture protocol). Read at a raise only. */
+  syncLevel?: string;
+  /** The open session. Read at a raise only; the open session of the state when absent. */
+  sessionId?: string | null;
+}
+
+export type CaptureNoticeInput = CaptureDiscoveryEmptyNotice | CaptureDeviceUnreachableNotice | CaptureAdvisoryNotice | CaptureVolumeSyncNotice;
 
 /** True for a notice that is advice (ruling D144), not a no-device notice. */
 export function isCaptureAdvisoryNotice(input: { readonly code: string }): input is CaptureAdvisoryNotice {
@@ -155,7 +192,7 @@ export function isCaptureAdvisoryNotice(input: { readonly code: string }): input
 
 /** True for an input of `raiseCaptureWarning` / `clearCaptureWarning` that is a notice, not a fault. */
 export function isCaptureNotice(input: { readonly code: string }): input is CaptureNoticeInput {
-  return input.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY || input.code === CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE || isCaptureAdvisoryNotice(input);
+  return input.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY || input.code === CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE || input.code === CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL || isCaptureAdvisoryNotice(input);
 }
 
 /** The active notice alert of (`reason`, `target`), or undefined. */
@@ -222,10 +259,36 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
     });
   }
 
+  if (notice.code === CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL) {
+    if (activeCaptureNotice(state, notice.code, CAPTURE_NOTICE_VOLUME_TARGET) !== undefined) return state;
+    const session = notice.sessionId ?? state.session?.id ?? null;
+    const level = typeof notice.syncLevel === 'string' && /^[A-Z][A-Z0-9_]{1,31}$/.test(notice.syncLevel) ? notice.syncLevel : null;
+    return raiseNoticeAlert(
+      state,
+      now,
+      captureFaultSentence(notice.code, null),
+      CAPTURE_NOTICE_VOLUME_TARGET,
+      { reason: notice.code, ...(session === null ? {} : { sessionId: session }), ...(level === null ? {} : { syncLevel: level }) },
+      notice.critical === true ? 'CRITICAL' : 'INFO',
+    );
+  }
+
   if (isCaptureAdvisoryNotice(notice)) {
     const about = advisoryDeviceOf(state, notice);
     if (activeCaptureNotice(state, notice.code, about.id) !== undefined) return state;
     const session = notice.sessionId ?? state.session?.id ?? null;
+    // The clock-offset notice says its number (tidy pass F-Y): a whole number of ms, the alert's target names the camera.
+    if (notice.code === CaptureAdvisoryReason.CAMERA_CLOCK_OFFSET) {
+      const offsetMs = typeof notice.offsetMs === 'number' && Number.isSafeInteger(notice.offsetMs) ? notice.offsetMs : null;
+      return raiseNoticeAlert(
+        state,
+        now,
+        cameraClockOffsetSentence(offsetMs),
+        about.id,
+        { reason: notice.code, deviceId: about.id, deviceKind: about.kind, ...(session === null ? {} : { sessionId: session }), ...(offsetMs === null ? {} : { offsetMs }) },
+        'INFO',
+      );
+    }
     // The device ID and codes only (R-10 AC-6): no label, no address, no measured value.
     return raiseNoticeAlert(
       state,
@@ -277,6 +340,7 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
 /** The clear of a notice (`clearCaptureWarning`): no audit row (C3 §5.4). Returns the same state when nothing changes. */
 export function clearCaptureNoticeTransition(state: SimState, now: EpochMs, notice: CaptureNoticeInput): SimState {
   if (notice.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY) return resolveNoticeAlert(state, now, notice.code, CAPTURE_NOTICE_DISCOVERY_TARGET);
+  if (notice.code === CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL) return resolveNoticeAlert(state, now, notice.code, CAPTURE_NOTICE_VOLUME_TARGET);
   // Advice ends: the alert is resolved, nothing else moves.
   if (isCaptureAdvisoryNotice(notice)) return resolveNoticeAlert(state, now, notice.code, advisoryDeviceOf(state, notice).id);
   const device = sourceDeviceOf(state, notice.subject);

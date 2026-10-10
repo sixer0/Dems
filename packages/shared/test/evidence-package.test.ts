@@ -397,10 +397,13 @@ describe('fragments.json (spec §A.1, §B.6; SEC35-11)', () => {
     expect(() => parseFragmentsJson(JSON.stringify({ schema: 'dems.fragments/1', files: sealed.files, extra: 1 }))).toThrow(EvidencePackageError);
   });
 
-  it('refuses a fragment table that is not VIDEO-01 then VIDEO-02', () => {
+  it('refuses a fragment table that is not the sealed camera files, VIDEO-01 before VIDEO-02', () => {
     const files = sealedExample().files;
     expect(() => serializeFragmentsJson([...files].reverse())).toThrow(EvidencePackageError);
-    expect(() => serializeFragmentsJson(files.slice(0, 1))).toThrow(EvidencePackageError);
+    // Fix pass F-M7 (R88-01, D178): ONE camera file is a table (a one-camera session is sealed); none, or one twice, is not.
+    expect(() => serializeFragmentsJson(files.slice(0, 1))).not.toThrow();
+    expect(() => serializeFragmentsJson([])).toThrow(EvidencePackageError);
+    expect(() => serializeFragmentsJson([files[0]!, files[0]!])).toThrow(EvidencePackageError);
   });
 
   it('the chain rule: chain_0 = SHA-256(""), chain_n = SHA-256(chain_{n-1} || sha_n)', () => {

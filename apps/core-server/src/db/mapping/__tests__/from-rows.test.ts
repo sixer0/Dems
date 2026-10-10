@@ -229,3 +229,33 @@ describe('capture_devices: a device the state holds no transport for keeps the r
     expect(changes.map((change) => (change.op === 'insert' ? change.rows.map((row) => [(row as { id: string }).id, (row as { transport: string }).transport]) : null))).toEqual([[['MIC-03', 'UNKNOWN']]]);
   });
 });
+
+// Fix F-M4 (review row 69, finding R69-03): the stored registry becomes the device list through the
+// rule of the running capture operation. The mapping applies the rule and decides nothing itself.
+describe('capture_devices: the device-list rule of the reader (R69-03)', () => {
+  const rows = asStored(toRows(idle(), context));
+  const ids = (slices: ReturnType<typeof fromRows>): string[] => slices.captureDevices.devices.map((device) => device.id);
+  const all = ids(fromRows(rows));
+
+  it('CONTROL - without a rule every stored device is listed, as before', () => {
+    expect(all).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(fromRows(rows, {})).toEqual(fromRows(rows));
+  });
+
+  it('a row the rule refuses is not in the slice; the rule is asked with the id, the kind and the stored adapter kind', () => {
+    const asked: string[] = [];
+    const slices = fromRows(
+      { ...rows, captureDevices: [...rows.captureDevices, { ...rows.captureDevices.find((row) => row.kind === 'CAMERA')!, id: 'CAM-03', adapterKind: 'LOCAL_DEVICE' }] },
+      { captureDeviceListing: (device) => (asked.push(`${device.id} ${device.kind} ${device.adapterKind}`), device.adapterKind !== 'LOCAL_DEVICE') },
+    );
+    expect(ids(slices)).toEqual(all);
+    expect(asked).toContain('CAM-03 CAMERA LOCAL_DEVICE');
+  });
+
+  it('a device the selector names is never left out (its refusal is the capture fence\'s, at boot), and the selector is read against every stored row', () => {
+    const slices = fromRows(rows, { captureDeviceListing: () => false });
+    const named = [...slices.captureConfig.cameras.map((line) => line.deviceId), ...slices.captureConfig.mics.map((line) => line.deviceId)].sort();
+    expect(ids(slices)).toEqual(named);
+    expect(named).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+  });
+});

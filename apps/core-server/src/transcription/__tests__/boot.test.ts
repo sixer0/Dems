@@ -83,8 +83,9 @@ describe('the host file `<dataDir>/transcriber/host.json`', () => {
   });
 
   it('the scratch directory and the tap of a session are below the data directory; a session ID of another form is refused', () => {
-    expect(sessionScratchDir('/data', 'SES-20310101-0001')).toBe('/data/transcriber/sessions/SES-20310101-0001');
-    expect(sessionTapPath('/data', 'SES-20310101-0001')).toBe('/data/transcriber/sessions/SES-20310101-0001/tap.pcm');
+    // Pin moved by fix pass F-M7c (ruling D180): the first argument is the MEDIA STORE ROOT of the Core, and the folder is its hidden `.transcriber`.
+    expect(sessionScratchDir('/data/media/sessions', 'SES-20310101-0001')).toBe('/data/media/sessions/.transcriber/sessions/SES-20310101-0001');
+    expect(sessionTapPath('/data/media/sessions', 'SES-20310101-0001')).toBe('/data/media/sessions/.transcriber/sessions/SES-20310101-0001/tap.pcm');
     for (const id of ['../../etc', 'SES-20310101-0001/..', '', 'SES-2031-1']) expect(() => sessionScratchDir('/data', id), id).toThrow(TranscriberHostError);
   });
 });

@@ -74,6 +74,16 @@ import { applyStorageVolumeTransition, noteTranscriptRevisionTransition, type St
 import { FACT_DOOR_LABEL, type EngineFactDoors } from './fact-doors';
 // Source-fact block (integration pass D11): the class and the "is on" of the sources of a real capture operation.
 import { applyCaptureSourceFactsTransition, type CaptureSourceFact } from '@dems/shared/sim';
+// Device-list block (fix F-M4, finding R69-03): the rule a stored registry row is listed by.
+import type { CaptureDeviceListing } from '../db/mapping';
+// Export block (fix pass F-M8, ruling D178): the completion of a background export and the record of a download.
+import { completeEvidenceExportTransition, noteEvidenceExportDownloadTransition, type EvidenceExportCompletion, type EvidenceExportDownloadNote } from '@dems/shared/sim';
+import { EXPORT_DOOR_LABEL, type EngineExportDoors } from './export-doors';
+// Unsealable block (fix pass F-M7b, rulings D178 (2), D183): the terminal outcome of a session that cannot be sealed.
+import { endUnsealableTransition, type EndUnsealableInput } from '@dems/shared/sim';
+import { UNSEALABLE_DOOR_LABEL, type EngineUnsealableDoors } from './unsealable-doors';
+// Sealing notice block (fix pass F-M7c, ruling D186): kept plaintext of a sealed session, a blocked seal, an on-demand retry.
+import { SEALING_NOTICE_DOOR_LABEL, noteSealRetryOnDemandTransition, noteSealedPlaintextKeptTransition, raiseSealBlockedTransition, resolveSealBlockedTransition, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -102,6 +112,7 @@ import {
   captureDurableOfSessionTransition,
   clearCaptureFaultsTransition,
   failedCaptureStartTransition,
+  failedStartAtRehydrateTransition,
   interruptedCaptureTransition,
   type AudioSourceSwitch,
   type AudioSourceSwitched,
@@ -174,6 +185,13 @@ export interface EngineHostDependencies {
    * in capture mode `real`, where the simulator must generate none. Default `'simulated'`.
    */
   readonly captureLevels?: CaptureLevelSource;
+  /**
+   * Device-list block (fix F-M4; review row 69, finding R69-03): the rule of the RUNNING capture
+   * operation for the stored registry rows (`storedDeviceListingOf`, the capture fence's). A row it
+   * refuses is in no state this host reads - a stored development device in `REAL_PRODUCTION` -
+   * and stays stored. Applied at EVERY rehydration. Absent: every stored device is listed.
+   */
+  readonly captureDeviceListing?: CaptureDeviceListing;
 }
 
 /**
@@ -307,6 +325,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
   let heldLink: TabletLink | null = null;
   /** Source-fact block (pass D11): the list `applyCaptureSourceFacts` last took in THIS process; null while none was handed in. */
   let heldSourceFacts: readonly CaptureSourceFact[] | null = null;
+  /** Device-list block (fix F-M4, finding R69-03): the rule a stored registry row is listed by; null: every row is listed (`SIMULATED`). */
+  let captureDeviceListing: CaptureDeviceListing | null = dependencies.captureDeviceListing ?? null;
   /** The outcome of an earlier commit is not known: the next unit compares the stored head first. */
   let suspect = false;
   /** A reload after a diverged head that is under way, and how to end its wait between two tries. */
@@ -894,7 +914,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         rehydrateUnit = unit.id;
         ownUnits.add(unit.id);
         // The reader's statements follow the chain lock of this unit: no writer is in between.
-        const stored = await readStored(unit);
+        // Device-list block (fix F-M4, finding R69-03): the stored registry is read through the rule of the running operation.
+        const stored = await readStored(unit, captureDeviceListing === null ? {} : { captureDeviceListing });
         assertValidSlices(stored.slices);
 
         // ONE time base (decision D110; security finding CPS1-1). A server clock that is behind
@@ -946,6 +967,10 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
             const derived = captureDurableAtRehydrateTransition(sim.store.getState(), hasFragmentRow);
             if (derived !== sim.store.getState()) sim.store.setState(derived, true);
           }
+        } else {
+          // Capture mode `simulated` (review R74-14 (1)): a failed start that is still open says so again from its stored facts.
+          const derived = failedStartAtRehydrateTransition(sim.store.getState());
+          if (derived !== sim.store.getState()) sim.store.setState(derived, true);
         }
 
         // Source-fact block (integration pass D11; `fact-doors.ts`): no row holds the class of a
@@ -1074,7 +1099,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return committed;
   }
 
-  const host: EngineHost & EngineControl & EngineCaptureDoors & EngineSealDoors & EngineFactDoors & { readonly [CONTROL]: true } = {
+  const host: EngineHost & EngineControl & EngineCaptureDoors & EngineSealDoors & EngineFactDoors & EngineExportDoors & EngineUnsealableDoors & EngineSealingNoticeDoors & { provideCaptureDeviceListing(listing: CaptureDeviceListing): void } & { readonly [CONTROL]: true } = {
     [CONTROL]: true,
 
     get epoch() {
@@ -1223,11 +1248,52 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
       return inUnit(FACT_DOOR_LABEL.transcriptRevision, 'command', (scope) => applyCaptureTransition(scope, (state) => noteTranscriptRevisionTransition(state, note)));
     },
 
+    // Device-list block (fix F-M4, finding R69-03): provided once, by the unit that knows the capture
+    // operation, before the boot; read at every rehydration from then on. Not a member of `EngineHost`.
+    provideCaptureDeviceListing(listing: CaptureDeviceListing) {
+      if (captureDeviceListing !== null) throw new Error('the device-list rule of the capture operation was provided twice');
+      captureDeviceListing = listing;
+    },
+
     // Source-fact block (integration pass D11): the list is kept for the next rehydrate of this
     // process, then applied as one unit with no actor and no audit row. Nothing is stored.
     applyCaptureSourceFacts(facts: readonly CaptureSourceFact[]) {
       heldSourceFacts = facts.map((fact) => ({ ...fact }));
       return inUnit(FACT_DOOR_LABEL.captureSourceFacts, 'command', (scope) => applyCaptureTransition(scope, (state) => applyCaptureSourceFactsTransition(state, facts)));
+    },
+
+    // Export block (fix pass F-M8; `export-doors.ts`; review findings R93-03, R93-05): each one
+    // unit, the pure transition of the shared simulator written whole. An unknown item is the
+    // mapped refusal of a hosted action; a call that changes nothing sends no statement.
+    completeEvidenceExport(completion: EvidenceExportCompletion) {
+      return inUnit(EXPORT_DOOR_LABEL.completed, 'command', (scope) => applySealTransition(scope, 'completeEvidenceExport', (state, now) => completeEvidenceExportTransition(state, now, completion)));
+    },
+
+    noteEvidenceExportDownload(note: EvidenceExportDownloadNote) {
+      return inUnit(EXPORT_DOOR_LABEL.downloaded, 'command', (scope) => applySealTransition(scope, 'noteEvidenceExportDownload', (state, now) => noteEvidenceExportDownloadTransition(state, now, note)));
+    },
+
+    // Unsealable block (fix pass F-M7b; `unsealable-doors.ts`; review R88-02 (c)): one unit, the pure
+    // transition of the shared session machine written whole - the session ended INCOMPLETE with its
+    // one audit row and its one CRITICAL alert. A refusal of the machine is the mapped refusal.
+    endSessionUnsealable(input: EndUnsealableInput) {
+      return inUnit(UNSEALABLE_DOOR_LABEL.ended, 'command', (scope) => applySealTransition(scope, 'endSessionUnsealable', (state, now) => endUnsealableTransition(state, now, input)));
+    },
+
+    // Sealing notice block (fix pass F-M7c; `sealing-notice-doors.ts`; review R88-05 (c), ruling D186):
+    // four facts of the sealing composition, each one unit and one pure transition. A call that
+    // changes nothing (the notice is active already, the session is not the open one) sends no statement.
+    noteSealedPlaintextKept(input: SealedPlaintextKeptInput) {
+      return inUnit(SEALING_NOTICE_DOOR_LABEL.plaintextKept, 'command', (scope) => applySealTransition(scope, 'noteSealedPlaintextKept', (state, now) => noteSealedPlaintextKeptTransition(state, now, input)));
+    },
+    raiseSealBlocked(input: SealBlockedInput) {
+      return inUnit(SEALING_NOTICE_DOOR_LABEL.blocked, 'command', (scope) => applySealTransition(scope, 'raiseSealBlocked', (state, now) => raiseSealBlockedTransition(state, now, input)));
+    },
+    resolveSealBlocked(input: { readonly sessionId: string }) {
+      return inUnit(SEALING_NOTICE_DOOR_LABEL.unblocked, 'command', (scope) => applySealTransition(scope, 'resolveSealBlocked', (state, now) => resolveSealBlockedTransition(state, now, input)));
+    },
+    noteSealRetryOnDemand(input: SealRetryNote) {
+      return inUnit(SEALING_NOTICE_DOOR_LABEL.retry, 'command', (scope) => applySealTransition(scope, 'noteSealRetryOnDemand', (state, now) => noteSealRetryOnDemandTransition(state, now, input)));
     },
 
     mirrorOperators() {

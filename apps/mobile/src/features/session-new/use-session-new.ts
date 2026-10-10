@@ -53,6 +53,7 @@ import {
   type SimState,
 } from '@dems/shared/sim';
 import { reportRuntimeIssue, useActiveSession, useCoreErrorPresenter, useCoreLink, type RuntimeLogLevel } from '@/runtime';
+import { useLocalSourceGate, type LocalSourceGate } from '@/features/capture-selector/local-source-notice';
 import { encodeEvaluation, newestHistoryEntry } from './session-new-model';
 
 // ---------------------------------------------------------------------------------------------
@@ -171,6 +172,12 @@ export interface FlowActions {
   cancelSession(then: FlowSettled): void;
   /** ARMED → RECORDING. Throws nothing; `then(false)` when the simulator or the Core refused. */
   startRecording(then: FlowSettled): void;
+  /**
+   * Fix F-M4 (R69-01, D178): the confirm step in front of `createAndCheck` and `retryChecks` when the
+   * selector names the Core Mac's camera or microphone. Nothing is sent before Confirm; a decline
+   * reports `{ ok: false, reason: null }` / `false`. The screen mounts its dialog.
+   */
+  readonly localSourceGate: LocalSourceGate;
 }
 
 const SOURCE = 'features.sessionNew';
@@ -182,6 +189,8 @@ function logAction(action: string, error: unknown, state: SessionState | null, s
 
 export function useFlowActions(state: SessionState | null, sessionId: string | null): FlowActions {
   const actions = useCoreActions();
+  const localSourceGate = useLocalSourceGate();
+  const askLocalSource = localSourceGate.ask;
   const live = useCoreLink().source === 'LIVE';
   const presentCoreError = useCoreErrorPresenter();
   const { toast } = useToast();
@@ -234,6 +243,8 @@ export function useFlowActions(state: SessionState | null, sessionId: string | n
           fail: failed,
         });
       };
+      // Fix F-M4 (R69-01): a pre-check on a local device opens it on the Core Mac, so the operator confirms first; nothing is sent before.
+      const send = (): void =>
       settle(() => actions.createSession(values), {
         ok: (result) => {
           // A CREATE session left by an earlier run with other details (edited after a relaunch): it
@@ -250,8 +261,9 @@ export function useFlowActions(state: SessionState | null, sessionId: string | n
         },
         fail: failed,
       });
+      askLocalSource(send, () => then({ ok: false, reason: null }));
     },
-    [actions, live, presentCoreError, state, sessionId],
+    [actions, askLocalSource, live, presentCoreError, state, sessionId],
   );
 
   // S2-2: a success or a throw (Simulated) or a rejection (Live) becomes the boolean of `then`.
@@ -272,8 +284,10 @@ export function useFlowActions(state: SessionState | null, sessionId: string | n
     createAndCheck,
     acknowledgeWarnings: (then) =>
       guarded('acknowledgeWarnings', () => actions.acknowledgePrecheckWarnings(), t('features.session-new.actionFailed'), then),
-    retryChecks: (then) => guarded('retryChecks', () => actions.retryPrecheck(), t('features.session-new.actionFailed'), then),
+    retryChecks: (then) => askLocalSource(() => guarded('retryChecks', () => actions.retryPrecheck(), t('features.session-new.actionFailed'), then), () => then(false)),
     cancelSession: (then) => guarded('cancel', () => actions.cancel(), t('features.session-new.actionFailed'), then),
-    startRecording: (then) => guarded('startRecording', () => actions.startRecording(), t('features.session-new.ready.startFailed'), then),
+    // Fix F-M4 (D181 ruling 7): a recording keeps a local device ON, so the start asks by itself; the pre-check's consent never counts.
+    startRecording: (then) => askLocalSource(() => guarded('startRecording', () => actions.startRecording(), t('features.session-new.ready.startFailed'), then), () => then(false), 'START'),
+    localSourceGate,
   };
 }

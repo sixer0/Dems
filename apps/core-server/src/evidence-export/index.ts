@@ -11,13 +11,18 @@
  *   secret-sweep.ts     the sweep for credential-shaped values over the artefact
  *   receiver-verify.ts  what a receiver verifies at the destination, without any key of the Core
  *   host.ts             the app's side: the request directory, the failure row, the error log
+ *   stored-trail.ts     the STORED rows of an export (R93-11): its request (`exports` with its audit
+ *                       row) and its failure row, read from the database - not from the audit ring
+ *   control.ts          `evidenceExport(app)`: where the composition hands the jobs in
+ *   boot-sweep.ts       the removal of `.partial` artefacts an interrupted export left (R93-04)
+ *   download-token.ts   the signed download token of a finished export (`exs_`, R93-05)
+ *   service.ts          what operations 42 / 87 and the download route do: the case scope, the
+ *                       refusal without export jobs, the job answer, the download
  *
  * CLOSED: imported through this index only. It registers NO ROUTE (routes are registered by
  * modules, so that the permission guard covers them): operation 87 is `modules/evidence-export`,
  * operation 42 stays in `modules/evidence`; both reach this unit through `evidenceExport(app)`.
  */
-import type { EvidenceExportRuntime } from './jobs';
-
 export { COMPOSITE_ENCODER_GATE, COMPOSITE_LICENCE_RECORD, GPL_ONLY_ENCODERS, compositeEncoderAllowed, selectedCompositeEncoder, type CompositeEncoder, type CompositeSource } from './composite';
 export {
   COMPOSITE_ENTRY,
@@ -36,9 +41,55 @@ export {
   type ExportManifest,
   type ExportSignature,
 } from './export-manifest';
-export { EXPORT_FAILED_UNIT_LABEL, coreExportDirectory, coreExportHost, exportFailedEntry, type CoreExportWiring, type ExportDirectory, type ExportDirectoryApp, type ExportHostApp } from './host';
+export {
+  EXPORT_FAILED_UNIT_LABEL,
+  EXPORT_FAILURE_READ_SOURCE,
+  EXPORT_REQUEST_READ_SOURCE,
+  EXPORT_SWEEP_BOOT_STEP,
+  coreExportDirectory,
+  coreExportHost,
+  exportFailedEntry,
+  provideCoreEvidenceExport,
+  sweepInterruptedExports,
+  type CoreExportComposition,
+  type CoreExportWiring,
+  type ExportDirectory,
+  type ExportDirectoryApp,
+  type ExportHostApp,
+  type ExportItemFacts,
+} from './host';
+export { READ_STORED_EXPORT_FAILURE, READ_STORED_EXPORT_REQUEST, readStoredExportFailure, readStoredExportRequest, type ExportTrailQueryable } from './stored-trail';
+export { EXPORT_PARTIAL_SUFFIX, sweepExportPartials, type ExportSweepResult, type SweptPartial } from './boot-sweep';
 export { createEvidenceExportRuntime, exportIdOfJob, exportJobIdOf, type EvidenceExportHost, type EvidenceExportRuntime, type ExportRequestRecord, type ExportTicket } from './jobs';
 export { ExportFailure, ExportFailureCode, ExportKind, exportManifestPathOf, exportPackage, exportSignaturePathOf, type ExportOutcome, type ExportPorts, type ExportRequestFacts } from './package-export';
+export {
+  DOWNLOAD_TOKEN_MAC_BYTES,
+  DOWNLOAD_TOKEN_MAX_CHARS,
+  DOWNLOAD_TOKEN_NONCE_BYTES,
+  DOWNLOAD_TOKEN_PATTERN,
+  DOWNLOAD_TOKEN_VERSION,
+  DownloadTokenRefusal,
+  issueDownloadToken,
+  readDownloadToken,
+  type DownloadMac,
+  type DownloadTokenClaims,
+  type DownloadTokenHolder,
+  type DownloadTokenReading,
+} from './download-token';
+export {
+  EXPORT_ARCHIVE_MEDIA_TYPE,
+  EXPORT_DENIED_UNIT,
+  EXPORT_DOWNLOAD_ROUTE_URL,
+  EXPORT_DOWNLOAD_TTL_MS,
+  EXPORT_JOBS_NOT_AVAILABLE_REASON,
+  EXPORT_JOB_OPERATION,
+  EXPORT_REQUEST_OPERATION,
+  createExportService,
+  downloadFileNameOf,
+  replaceExportServicePartsForTest,
+  type ExportService,
+  type ExportServiceParts,
+} from './service';
 export { RECEIVER_CHECKS, RECEIVER_VERIFY_V2_CHECKS, verifyExportAtDestination, type ReceiverVerifyInput, type ReceiverVerifyResult } from './receiver-verify';
 export { SecretForm, secretFormsIn, sweepForSecrets, type SecretFinding } from './secret-sweep';
 export { createArchive, isArchiveEntryName, type ArchiveWriter } from './zip-store';
@@ -51,29 +102,4 @@ export function exportKindOfBody(body: unknown): 'PACKAGE' | 'COMPOSITE' {
 /** The text of `409 EXPORT_IN_PROGRESS` (C3 §4). */
 export const EXPORT_IN_PROGRESS_TEXT = 'An export job is already running for this evidence item.';
 
-export interface EvidenceExportControl {
-  /** Hands in the export jobs of real packages. Once per app. */
-  provide(runtime: EvidenceExportRuntime): void;
-  /** What was provided, or null. */
-  current(): EvidenceExportRuntime | null;
-}
-
-// Keyed by the app's stage registry: one object per app, the same from every scope of it
-// (the `sttConfigControl(app)` idiom).
-const controls = new WeakMap<object, EvidenceExportControl>();
-
-/** The control of an app. It exists from the first call. */
-export function evidenceExport(app: { readonly stages: object }): EvidenceExportControl {
-  const known = controls.get(app.stages);
-  if (known !== undefined) return known;
-  let provided: EvidenceExportRuntime | null = null;
-  const control: EvidenceExportControl = {
-    provide(runtime) {
-      if (provided !== null) throw new Error('the export jobs of real evidence packages were provided twice');
-      provided = runtime;
-    },
-    current: () => provided,
-  };
-  controls.set(app.stages, control);
-  return control;
-}
+export { evidenceExport, type EvidenceExportControl } from './control';

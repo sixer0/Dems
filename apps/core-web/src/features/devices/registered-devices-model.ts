@@ -15,7 +15,7 @@
  * |---|---|
  * | which devices | `captureDevices.devices` of kind CAMERA / MIC whose id is not one of the four built-in ids |
  * | development badge, kind text | `sourceClass`, `adapter` of the device (ux §8f.1 "Decided by the Core") |
- * | 'is on' | `sourceOpen` of the device — specified (SEC35-44 (4)), not yet a member of the shared slice: read as an OPTIONAL member, absent = nothing is drawn (request to pass D4) |
+ * | 'is on' | `sourceOpen` of the device (SEC35-44 (4)) — an OPTIONAL member of the shared `captureDevices` slice (`packages/shared/src/api/state-slices.ts`): absent or false = nothing is drawn |
  * | used as | the selector line that names the device (`captureConfig`, operation 76) |
  * | state | `online`, and the named cause of the active "not reachable" notice of that device (flow 11 situation B; §8f.3) |
  * | rate warning | an active advisory alert `params.reason: MIC_RATE_AT_LIMIT` whose `target` is the device (ruling D144 (4)) |
