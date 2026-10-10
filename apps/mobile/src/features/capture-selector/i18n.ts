@@ -18,7 +18,7 @@ import type { ResourceTree } from '@/i18n/resources';
 export const captureSelectorEn = {
   selector: {
     title: 'Capture Sources',
-    subtitle: 'Which camera feeds each video track, and which microphone is primary.',
+    subtitle: 'Which camera feeds each video track, and which microphones are primary and standby.',
     label: 'Capture sources',
     track: {
       'VIDEO-01': 'Video track 1',
@@ -36,6 +36,7 @@ export const captureSelectorEn = {
     change: 'Change',
     changeCameraLabel: 'Change the camera of {{track}}',
     changeMicLabel: 'Change the primary microphone',
+    changeStandbyMicLabel: 'Change the standby microphone',
     pending: 'Saving…',
     empty: 'No capture devices configured',
     noPreview: 'Status only. A live preview of the cameras is not part of this phase.',
@@ -71,7 +72,13 @@ export const captureSelectorEn = {
       cameraTitle: 'Camera for {{track}}',
       cameraBody: 'Registered cameras only. A camera found by a search is added on the web console first.',
       micTitle: 'Primary microphone',
-      micBody: 'The other input becomes the standby.',
+      micBody: 'Every registered microphone. Choosing the standby microphone trades the two roles.',
+      standbyMicTitle: 'Standby microphone',
+      standbyMicBody: 'Every registered microphone. The primary microphone stays as it is.',
+      notAssigned: 'Not assigned',
+      refusal: {
+        onOtherLine: 'This is the primary microphone. One microphone cannot be on both lines.',
+      },
       feeds: 'Feeds {{track}}',
       save: 'Save',
       close: 'Close the source list',
@@ -236,6 +243,22 @@ export const captureSelectorEn = {
     openFailedCamera: "Core Mac's camera could not be opened. Check its permission on the Mac that runs the Core, then search again.",
     openFailedMicrophone: "Core Mac's microphone could not be opened. Check its permission on the Mac that runs the Core, then search again.",
     absentMicrophone: 'This microphone is not connected to the Core.',
+  },
+  /**
+   * Fix wave H (G70-03, G75-13; ruling D196): the tile that stands where a camera picture would be on
+   * a Core in real capture. It states what the Core knows; no "live", no "demo".
+   */
+  preview: {
+    none: 'No preview',
+    camera: 'Camera',
+    stateUnknown: 'State not known',
+    on: 'On',
+    label: '{{name}}, {{state}}. No preview: this build shows no live picture of the cameras.',
+    thumbLabel: '{{name}}. No preview: this build shows no live picture.',
+  },
+  /** Fix wave H (G70-08): why a pre-check or start control is disabled while the device classes are not known. */
+  localSources: {
+    checking: 'Checking the capture sources…',
   },
   /** Flow 13: the re-read of the local inputs (G17). */
   inputs: {

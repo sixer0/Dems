@@ -21,6 +21,7 @@ import {
   type CaptureBootDeps,
   type EvidenceVolumeFacts,
   type WorkerHandshake,
+  CAPTURE_WORKER_VERSION,
 } from '../checks';
 import { recordedSinks } from './support';
 
@@ -55,7 +56,7 @@ const goodVolume = (overrides: Partial<EvidenceVolumeFacts> = {}): EvidenceVolum
   freeBytes: 400_000_000_000,
   ...overrides,
 });
-const HELLO: WorkerHandshake = { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: 'capture-worker/0.3.0' };
+const HELLO: WorkerHandshake = { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION };
 
 interface Scene {
   readonly deps: CaptureBootDeps;
@@ -90,7 +91,7 @@ async function refusalOf(deps: CaptureBootDeps): Promise<CaptureBootError> {
 describe('a real operation that has everything passes, in both source classes (control)', () => {
   it.each([[false, CaptureOperation.REAL_PRODUCTION], [true, CaptureOperation.REAL_DEVELOPMENT]] as const)('development flag %s -> %s: every check ran, in order, and the worker last', async (captureDevSources, operation) => {
     const { deps, calls, recorded } = scene({ config: { captureDevSources } });
-    await expect(runCaptureBootChecks(deps)).resolves.toEqual({ operation, label: null, workerVersion: 'capture-worker/0.3.0', evidenceVolume: { totalBytes: 1_000_000_000_000, freeBytes: 400_000_000_000 } });
+    await expect(runCaptureBootChecks(deps)).resolves.toEqual({ operation, label: null, workerVersion: CAPTURE_WORKER_VERSION, evidenceVolume: { totalBytes: 1_000_000_000_000, freeBytes: 400_000_000_000 } });
     expect(calls).toEqual(['inspect', 'volume', 'key', 'handshake']);
     expect(recorded.lines.map((line) => [line.level, line.fields['code'], line.fields['checks']])).toEqual([['info', 'CAPTURE_BOOT_CHECKS_PASSED', 'real']]);
     expect(recorded.persisted).toEqual([]);
@@ -166,7 +167,9 @@ describe('M3-BC-1: what a real start is refused for (one refusal each)', () => {
   it('the proof mark is found wherever it stands; a release version does not carry it (control)', () => {
     expect(['capture-worker/0.3.0-PROOF', 'x-Proof-y', '-PROOF'].every(isProofWorkerVersion)).toBe(true);
     expect(['capture-worker/0.3.0', 'capture-worker/12.0.1', 'proof', 'capture-worker/0.3.0-PRO'].some(isProofWorkerVersion)).toBe(false);
-    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: 'capture-worker/12.0.1' })).toBeNull();
+    // Pin by delta (wave H driver F, gate 64 C7): the release FORM is no longer enough - only THE version this Core drives is taken.
+    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: 'capture-worker/12.0.1' })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+    expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION })).toBeNull();
   });
 
   it('a worker of another protocol version, and a program that does not answer', async () => {

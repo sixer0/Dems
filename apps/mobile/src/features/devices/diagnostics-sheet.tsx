@@ -105,6 +105,7 @@ function DiagnosticsBody({ onClose, onRunAgain, closeLabel, subtitleKey, runAgai
           onPress={onRunAgain}
           testID="device-diagnostics-again"
           style={styles.again}
+          accessibilityLabel={t('system.diagnostics.runAgain')}
           {...busyState(runAgainBusy)}
         >
           {runAgainPending ? <PendingSpinner color={palette.gold} testID="device-diagnostics-again-spinner" /> : null}

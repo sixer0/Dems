@@ -2,7 +2,10 @@
  * CHECK FOR THE TEST RUNNER, not a test file (blueprint row 61; pair-58 F-10): the REAL capture
  * worker builds of `apps/capture-worker/build/` through the boot check's handshake.
  *
- *   build/capture-worker            must say HELLO with a release version: NOT refused
+ *   build/capture-worker            must say HELLO with THE version this Core drives: NOT refused. It is
+ *                                   started with the arguments of a session start (`captureWorkerArguments`,
+ *                                   as the boot probe starts it since wave H driver F, gate 64 C7): a worker
+ *                                   that does not take one of them says no HELLO, and this check fails
  *   build/capture-worker-*          every proof build must be refused as CAPTURE_WORKER_PROOF_BUILD
  *
  * It STARTS THE WORKER (for its first frame only: no START is sent, no port is bound, no file of
@@ -17,6 +20,7 @@ import { resolve } from 'node:path';
 import { REPOSITORY } from '../../../../test/static/scan';
 import { createProcessLauncher } from '../../ipc';
 import { createSystemTimers } from '../../timers';
+import { captureWorkerArguments } from '../../worker-arguments';
 import { CaptureBootRefusal, workerVersionRefusalOf } from '../checks';
 import { probeWorkerHandshake } from '../worker-probe';
 
@@ -24,7 +28,7 @@ const BUILD = resolve(REPOSITORY, 'apps/capture-worker/build');
 const LOG = resolve(REPOSITORY, '.data', 'row61-worker-probe.jsonl');
 
 async function verdictOf(name: string): Promise<string> {
-  const launcher = createProcessLauncher({ command: resolve(BUILD, name), args: ['--log', LOG, '--heartbeat-ms', '1000'] });
+  const launcher = createProcessLauncher({ command: resolve(BUILD, name), args: captureWorkerArguments(LOG) });
   const hello = await probeWorkerHandshake({ launcher, timers: createSystemTimers() });
   if (hello.outcome !== 'HELLO') return `NO_HELLO:${hello.failure}`;
   return `${workerVersionRefusalOf(hello) ?? 'ACCEPTED'} (${hello.workerVersion})`;

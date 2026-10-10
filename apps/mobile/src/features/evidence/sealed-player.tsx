@@ -51,13 +51,29 @@ export interface SealedPlayerProps {
   failedFragments?: readonly { readonly trackId: string; readonly seq: number }[];
   /** Raised by the screen's Play action; the player opens (or starts) once per value. */
   playToken: number | null;
+  /**
+   * Wave H C2: the camera files the Core says the package holds (operation 40 `media.files`, else
+   * the VIDEO entries of the item's own `files` / `tracks`). null / absent: not reported - the
+   * player then asks as before and shows what operation 88 opens.
+   */
+  fileIds?: readonly CameraFileId[] | null;
 }
 
 type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'opening' }
-  | { readonly kind: 'ready'; readonly sessions: MediaSessions; readonly stoppedAtMs: number | null; readonly renewing: boolean }
+  | { readonly kind: 'ready'; readonly sessions: MediaSessions; readonly stoppedAtMs: number | null; readonly stopCause: StopCause | null; readonly renewing: boolean }
   | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal | 'NO_TRANSPORT' };
+
+/**
+ * Why playback stopped and did not resume by itself (wave H C2, G94-07):
+ *   SESSION  the media session was at its end by the Core's clock when the player failed again
+ *            (its 60 s ran out: a stall, a throttled link), or the renewal got no session. Nothing
+ *            is said about integrity: "Press Play to continue" renews and goes on;
+ *   PLAYER   the player failed twice at one place on a session that had NOT ended: the stop names
+ *            its position and points to Verify (an integrity answer is Verify's to give).
+ */
+type StopCause = 'SESSION' | 'PLAYER';
 
 interface Resume {
   readonly seconds: number;
@@ -89,7 +105,7 @@ function setTime(player: VideoPlayer, seconds: number): void {
   }
 }
 
-export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken }: SealedPlayerProps) {
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, fileIds = null }: SealedPlayerProps) {
   const { t } = useTranslation();
   const live = useMobileLive();
   const sim = useSimInstance();
@@ -109,6 +125,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const renewedAtMs = useRef<number | null>(null);
   const position = useRef(0);
   const playingRef = useRef(false);
+  /** A renewal got no session: the open sessions are dead whatever their clock says, so Play renews first. */
+  const sessionEnded = useRef(false);
 
   const segments = useMemo(() => bandSegments(item.audioIntervals, durationMs), [item.audioIntervals, durationMs]);
   const totalMs = bandDurationMs(item.audioIntervals, durationMs);
@@ -116,8 +134,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
 
   const sessions = phase.kind === 'ready' ? phase.sessions : null;
   const opened = useMemo(() => (sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)), [sessions]);
-  /** The camera files this item has: one or two (fix F-M8). */
-  const expected = useMemo(() => cameraFilesOf(item), [item]);
+  /** The camera files this item has: one or two (fix F-M8) - the Core's own list when it states one (wave H C2). */
+  const expected = useMemo(() => (fileIds !== null && fileIds.length > 0 ? fileIds : cameraFilesOf(item)), [fileIds, item]);
+  /** The package is known to hold ONE camera file: said as a fact of the recording, not as a file that failed to open. */
+  const oneCamera = fileIds !== null && fileIds.length === 1 ? fileIds[0] : null;
   const players = useMemo(() => [leadPlayer, followPlayer].slice(0, opened.length), [leadPlayer, followPlayer, opened.length]);
 
   const markPlaying = (value: boolean) => {
@@ -149,6 +169,19 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       if (Object.keys(result.sessions).length === 0) {
         const failure = result.failure;
         const refusal = failure?.refusal ?? 'FAILED';
+        if (renewal && refusal === 'FAILED') {
+          // G94-07: a RENEWAL that got no session ends the media session, not the recording. The
+          // player keeps its place and says so; Play asks again. (A refusal by permission or
+          // "no media" stays its own state below.)
+          const presented = failure?.failure != null && presentCoreError(failure.failure);
+          reportRuntimeIssue(presented ? 'warn' : 'error', 'evidence.playback.renew', `createEvidenceMediaSession -> ${failure?.code ?? 'NO_SESSION'}`, { evidenceId, status: failure?.status ?? null, code: failure?.code ?? 'NO_SESSION' }, correlationId);
+          resume.current = null;
+          playingRef.current = false;
+          setPlaying(false);
+          sessionEnded.current = true;
+          setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: position.current, stopCause: 'SESSION', renewing: false } : { kind: 'refused', refusal }));
+          return;
+        }
         if (refusal === 'FAILED' || refusal === 'NOT_PERMITTED') {
           const presented = failure?.failure != null && presentCoreError(failure.failure);
           reportRuntimeIssue(presented ? 'warn' : 'error', 'evidence.playback.open', `createEvidenceMediaSession -> ${failure?.code ?? 'NO_SESSION'}`, { evidenceId, status: failure?.status ?? null, code: failure?.code ?? 'NO_SESSION' }, correlationId);
@@ -168,7 +201,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         playingRef.current = true;
         setPlaying(true);
       }
-      setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, renewing: false });
+      sessionEnded.current = false;
+      setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, stopCause: null, renewing: false });
     },
     [evidenceId, expected, live, presentCoreError],
   );
@@ -223,9 +257,21 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     setPlaying(false);
   }, [leadPlayer, followPlayer]);
 
-  const stale = (): boolean => sessions !== null && opened.some((fileId) => mediaSessionStale(sessions[fileId]!, coreNow()));
+  const stale = (): boolean => sessionEnded.current || (sessions !== null && opened.some((fileId) => mediaSessionStale(sessions[fileId]!, coreNow())));
+  /** The session is past its END by the Core's clock (no margin): a request on it is refused whatever the recording is. */
+  const ended = (): boolean => sessions !== null && opened.some((fileId) => mediaSessionStale(sessions[fileId]!, coreNow(), 0));
+
+  const canRetry = retry.attempts < RETRY_MAX && coreNow() >= retry.until;
+  const consumeRetry = (): boolean => {
+    const now = coreNow();
+    if (retry.attempts >= RETRY_MAX || now < retry.until) return false;
+    setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
+    return true;
+  };
 
   const play = () => {
+    // After a renewal that got no session, asking again is rate-limited like "Open again" (3 s, 6 s, 12 s; three tries).
+    if (sessionEnded.current && !consumeRetry()) return;
     if (stale()) {
       void open({ seconds: position.current / 1000, play: true }, true);
       return;
@@ -247,14 +293,6 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     for (const player of players) setTime(player, seconds);
   };
 
-  const canRetry = retry.attempts < RETRY_MAX && coreNow() >= retry.until;
-  const consumeRetry = (): boolean => {
-    const now = coreNow();
-    if (retry.attempts >= RETRY_MAX || now < retry.until) return false;
-    setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
-    return true;
-  };
-
   const onPlayerError = (fileId: CameraFileId) => {
     const at = position.current;
     reportRuntimeIssue('warn', 'evidence.playback.player', 'a player of a sealed file reported an error', { evidenceId, fileId, positionMs: Math.round(at) });
@@ -266,7 +304,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       void open({ seconds: at / 1000, play: wasPlaying }, true);
       return;
     }
-    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: at, renewing: false } : current));
+    // G94-07: the cause is the session's end when the Core's clock is past it - never worded as integrity.
+    const stopCause: StopCause = ended() ? 'SESSION' : 'PLAYER';
+    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: at, stopCause, renewing: false } : current));
   };
 
   // The media clock of the leading player, its end, and the errors of both players.
@@ -361,7 +401,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   // A file the item HAS and that did not open; a package of one camera misses nothing.
   const missing = expected.find((fileId) => phase.sessions[fileId] === undefined) ?? null;
   const stopped = phase.stoppedAtMs !== null;
-  const verifiedFailure = stopped ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null;
+  /** The stop is the media session's end only: said as that, with no integrity sentence (G94-07). */
+  const sessionStop = stopped && phase.stopCause === 'SESSION';
+  const verifiedFailure = stopped && !sessionStop ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null;
   const shownMs = dragMs ?? positionMs;
   return (
     <View style={styles.root} testID={`evidence-playback-ready-${opened.join('+')}`}>
@@ -396,13 +438,26 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-playback-one-file">
           {t('evidence.playback.oneFile', { track: t(`common.tracks.${opened[0] ?? missing}`) })}
         </Text>
+      ) : oneCamera != null ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-playback-one-camera">
+          {t('evidence.itemFacts.media.oneCamera', { track: t(`common.tracks.${oneCamera}`) })}
+        </Text>
       ) : null}
       {phase.renewing ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityLiveRegion="polite" testID="evidence-playback-renewing">
           {t('evidence.playback.renewing')}
         </Text>
       ) : null}
-      {stopped ? (
+      {sessionStop ? (
+        <View style={styles.stoppedBlock} accessibilityLiveRegion="polite" testID="evidence-playback-stopped-session">
+          <Alert status="warning">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>{t('evidence.itemFacts.playback.sessionEnded')}</Alert.Title>
+            </Alert.Content>
+          </Alert>
+        </View>
+      ) : stopped ? (
         <View style={styles.stoppedBlock} testID={`evidence-playback-stopped-${verifiedFailure ? 'integrity' : 'position'}`}>
           <Alert status={verifiedFailure ? 'danger' : 'warning'}>
             <Alert.Indicator />
@@ -438,7 +493,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         <Button
           size="md"
           variant="tertiary"
-          isDisabled={stopped || phase.renewing}
+          isDisabled={(stopped && !sessionStop) || phase.renewing}
           onPress={() => (playing ? pause() : play())}
           accessibilityLabel={playing ? t('evidence.media.pause') : t('evidence.media.play')}
           testID={`evidence-sealed-toggle-${playing ? 'playing' : 'paused'}`}

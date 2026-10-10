@@ -130,7 +130,7 @@ export function CoreModeDialog({ target, busy, pending, onConfirm, onCancel }: C
               <Button.Label>{t('common.actions.cancel')}</Button.Label>
             </Button>
             {/* A second press while busy sends nothing: the pending press ignores it (`usePendingPress`). */}
-            <Button variant="primary" onPress={onConfirm} testID="settings-core-mode-confirm" {...busyState(busy)}>
+            <Button variant="primary" onPress={onConfirm} testID="settings-core-mode-confirm" accessibilityLabel={t(`common.coreMode.switchConfirm.${mode}`)} {...busyState(busy)}>
               {pending ? <PendingSpinner color={palette.black} testID="settings-core-mode-confirm-spinner" /> : null}
               <Button.Label>{t(`common.coreMode.switchConfirm.${mode}`)}</Button.Label>
             </Button>

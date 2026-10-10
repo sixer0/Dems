@@ -8,7 +8,7 @@ import type { SttConfig, SttConfigUpdateResult, SttConnectionTest } from '@dems/
 import { settle, useCorePermission, useLiveSelector } from '@dems/shared/live'
 import { useRetryCooldown } from '@dems/shared/realtime'
 import { formatWibTime, Permission } from '@dems/shared/sim'
-import { requiredRoleForPermission, useCoreErrorPresenter } from '@/lib/core-errors'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { retryCoreQuery, useQueryFailure } from '@/lib/core-queries'
 import { usePendingControl } from '@/lib/pending-control'
 import type { WebLive } from '@/runtime'
@@ -30,6 +30,7 @@ import {
   EMPTY_STT_CREDENTIAL,
   hasSttErrors,
   isTranscriberNotReady,
+  rolesHoldingPermission,
   STT_SECRET_FORM_OFFERED,
   sttChangedNames,
   SttCredentialEdit,
@@ -144,8 +145,9 @@ function SttConfigLive() {
 
   const config = query.data
   const access: Access = !sessionKnown || !gate.enabled || (config === undefined && !query.isError) ? Access.CHECKING : permitted ? Access.ALLOWED : Access.REFUSED
-  const requiredRole = requiredRoleForPermission(STT_PERMISSION)
-  const refusedReason = requiredRole === null ? t('common.rbac.deniedTitle') : t('common.rbac.requiresRole', { role: t(`common.roles.${requiredRole}`) })
+  // G81-03: every role the access rule admits ("Supervisor / Technician"), as the storage policy drawer words the same permission.
+  const admittedRoles = rolesHoldingPermission(STT_PERMISSION)
+  const refusedReason = admittedRoles.length === 0 ? t('common.rbac.deniedTitle') : t('common.rbac.requiresRole', { role: admittedRoles.map((role) => t(`common.roles.${role}`)).join(' / ') })
 
   // A failed read: the shared presenter first (an outage, a limit), then this section's own record.
   useQueryFailure(query, (error) => {

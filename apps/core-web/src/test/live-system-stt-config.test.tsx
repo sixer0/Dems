@@ -196,7 +196,9 @@ describe('gating (G11 Save, G12 Test connection)', () => {
     expect(screen.getByTestId('stt-access')).toHaveTextContent(T.checking)
     await act(async () => held!.release(created.fake.example('getSttConfig', 200, 'seeded')))
     await waitFor(() => expect(screen.getByTestId('stt-config')).toHaveAttribute('data-access', 'refused'))
-    expect(screen.getByTestId('stt-access')).toHaveTextContent(en.common.rbac.requiresRole.replace('{{role}}', en.common.roles.SUPERVISOR))
+    // G81-03 (gate 81): the hint names EVERY role the access rule admits (`CAPTURE_CONFIG`: Supervisor and Technician), never the Supervisor alone.
+    expect(screen.getByTestId('stt-access')).toHaveTextContent(`Read-only: ${en.common.rbac.requiresRole.replace('{{role}}', `${en.common.roles.SUPERVISOR} / ${en.common.roles.TECHNICIAN}`)}.`)
+    expect(screen.getByTestId('stt-access').textContent).toBe('Read-only: Requires the Supervisor / Technician role.')
     for (const control of ['stt-save', 'stt-test', 'stt-credential-change']) expect(disabled(control)).toBe(true)
     expect(switchInput('stt-enabled').disabled).toBe(true)
     expect(switchInput('stt-diarization').disabled).toBe(true)

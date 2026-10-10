@@ -8,6 +8,7 @@
 import { SessionState, type BootRecoveryState } from '@dems/shared/domain'
 import {
   Permission,
+  recordingEndOf,
   selectCan,
   selectWorstAlert,
   storageSummary,
@@ -148,6 +149,8 @@ export interface BannerModel {
   total: number
   stopping: boolean
   evidenceId: string | null
+  /** The open session of the banner (wave H driver B: the surface reads its interrupted fact by this id). */
+  sessionId: string | null
   recoveryStage: BootRecoveryState | null
   /**
    * Row 139 (ux §8e.2 situation C): FAULT of a session that recorded NOTHING (`captureDurable: false`).
@@ -167,6 +170,18 @@ export function selectBannerNoticeAlert(s: SimState) {
   if (!selectRecordingDurable(s)) return null
   const worst = selectWorstAlert(s)
   return worst !== null && captureNoticeOf(worst) !== null ? worst : null
+}
+
+/**
+ * Wave H driver B (gate 75, G75-07 (a)): the degraded-start warning that the banner does NOT say because
+ * a more severe alert took it - the stored alert object (stable between store updates), or null. The
+ * banner draws it in a line of its own, so a camera a session records without is always named there.
+ */
+export function selectCoveredDegradedNotice(s: SimState) {
+  if (!selectRecordingDurable(s)) return null
+  const degraded = s.alerts.find((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === 'CAPTURE_DEVICE_UNREACHABLE' && alert.params['phase'] === 'SESSION_START')
+  if (degraded === undefined || captureNoticeOf(degraded) === null) return null
+  return selectWorstAlert(s) === degraded ? null : degraded
 }
 
 /** Row 139: the failed start of the open session, or `null` (flat, for a selector). */
@@ -198,6 +213,7 @@ export function selectBanner(s: SimState): BannerModel {
     total: 0,
     stopping: false,
     evidenceId: session?.evidenceId ?? null,
+    sessionId: session?.id ?? null,
     recoveryStage: null,
     failedStart: null,
     failedStartClosing: false,
@@ -277,7 +293,8 @@ export function selectDetails(s: SimState): DetailsModel {
     room: session?.input.room ?? null,
     profileId: session?.input.profileId ?? null,
     startedAt: session?.startedAt ?? null,
-    stoppedAt: session?.stoppedAt ?? null,
+    // Wave H driver B (G75-08): where the recording ended - the stop, or the fault that ended it. Never a clock that runs on.
+    stoppedAt: recordingEndOf(session),
     evidenceId: session?.evidenceId ?? null,
     state: session?.state ?? null,
   }

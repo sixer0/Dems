@@ -60,7 +60,7 @@ import { createReadStream } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { ApiErrorCode, CaptureDiscoveryReason, EVIDENCE_EXPORT_DOWNLOAD_ROUTE_PREFIX, EVIDENCE_MEDIA_SESSION_TTL_MS, type EvidenceExportJobBody } from '@dems/shared/api';
+import { ApiErrorCode, CaptureDiscoveryReason, EVIDENCE_EXPORT_DOWNLOAD_ROUTE_PREFIX, EVIDENCE_MEDIA_SESSION_TTL_MS, type EvidenceExportJobBody, type EvidenceFinishedExport } from '@dems/shared/api';
 import { exportArchivePath } from '@dems/shared/evidence-package';
 import { AuditType, Permission, Severity } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -73,6 +73,7 @@ import { ApiFailure } from '../plugins/error-envelope';
 import { principalReference } from '../plugins/logger';
 import { EVIDENCE_EXPORT_DOWNLOAD_URL } from '../plugins/permission-guard';
 import { evidenceExport } from './control';
+import { archiveFactsOf, listFinishedExports } from './finished';
 import { DOWNLOAD_TOKEN_NONCE_BYTES, DOWNLOAD_TOKEN_PATTERN, DownloadTokenRefusal, issueDownloadToken, readDownloadToken, type DownloadMac } from './download-token';
 import { coreExportDirectory, type ExportItemFacts } from './host';
 import { exportIdOfJob, exportJobIdOf } from './jobs';
@@ -130,6 +131,12 @@ export interface ExportService {
   job(request: FastifyRequest, jobId: string): Promise<EvidenceExportJobBody>;
   /** `GET /exports/:token`. */
   download(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply>;
+  /**
+   * G94-05 (wave H C1): the finished exports of an item whose sealed package lies in this Core's
+   * store, newest first, as its `export/` folder holds them - for operation 40. Reads the folder;
+   * decides nothing about access (the caller lists them only for an operator who may export).
+   */
+  finished(item: { readonly evidenceId: string; readonly sessionId: string }): Promise<EvidenceFinishedExport[]>;
 }
 
 const controls = new WeakMap<object, { parts: Partial<ExportServiceParts> }>();
@@ -303,8 +310,13 @@ export function createExportService(app: FastifyInstance): ExportService {
         throw downloadNotFound();
       }
 
+      // Ruling D200: the archive carries its export manifest inside and cannot contain its own hash -
+      // the row of the download states the hash of the file that is handed out (remembered per file).
+      const archive = await archiveFactsOf(file, { hash: true });
+      if (archive === null || archive.bytes !== bytes) throw downloadNotFound();
+
       // The record BEFORE the first byte: a download the trail does not know of does not happen.
-      await exportDoorsOf(app.engine).noteEvidenceExportDownload({ evidenceId, jobId, operatorId: principal.operatorId, deviceId: principal.deviceId, bytes });
+      await exportDoorsOf(app.engine).noteEvidenceExportDownload({ evidenceId, jobId, operatorId: principal.operatorId, deviceId: principal.deviceId, bytes, ...(archive.sha256 === undefined ? {} : { archiveSha256: archive.sha256 }) });
       request.log.info({ code: 'EXPORT_DOWNLOADED', source: SOURCE, evidenceId, jobId, bytes }, 'Export archive downloaded');
 
       void reply.code(200);
@@ -315,5 +327,7 @@ export function createExportService(app: FastifyInstance): ExportService {
       });
       return reply.send(createReadStream(file, { start: 0, end: Math.max(0, bytes - 1) }));
     },
+
+    finished: (item) => listFinishedExports(parts().packageDirOf(item.sessionId), item.evidenceId),
   };
 }

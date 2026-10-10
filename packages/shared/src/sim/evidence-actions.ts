@@ -156,6 +156,11 @@ export interface EvidenceExportDownloadNote {
   readonly deviceId: string | null;
   /** The length of the archive that was handed out. */
   readonly bytes: number;
+  /**
+   * SHA-256 of the archive FILE that was handed out (wave H C1; ruling D200: the archive carries its
+   * export manifest inside and cannot contain its own hash - the trail states it). Absent: not stated.
+   */
+  readonly archiveSha256?: string;
 }
 
 /** `details.reason` of the `EVIDENCE_EXPORTED` row that records a DOWNLOAD (it carries no `exportId`: it is no request). */
@@ -291,7 +296,7 @@ export function noteEvidenceExportDownloadTransition(state: SimState, now: Epoch
         actorId: note.operatorId,
         evidenceId: note.evidenceId,
         ...(note.deviceId === null ? {} : { deviceId: note.deviceId }),
-        details: { jobId: note.jobId, reason: EXPORT_DOWNLOADED_REASON, bytes: note.bytes, eventKind: AuditEventKind.EXPORT },
+        details: { jobId: note.jobId, reason: EXPORT_DOWNLOADED_REASON, bytes: note.bytes, ...(typeof note.archiveSha256 === 'string' && /^[0-9a-f]{64}$/.test(note.archiveSha256) ? { archiveSha256: note.archiveSha256 } : {}), eventKind: AuditEventKind.EXPORT },
       },
     }),
   };

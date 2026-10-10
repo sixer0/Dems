@@ -7,7 +7,7 @@
  *
  * | Piece | When | What it adds |
  * |---|---|---|
- * | `busyState(press.busy, disabled?)` | from the press until the command settled | `accessibilityState: { busy: true, disabled }` ("the control is marked busy"); NOTHING while idle, so a control in Simulated mode, whose command settles before the press returns, gets no new prop |
+ * | `busyState(press.busy, disabled?)` | from the press until the command settled | `accessibilityState: { busy: true, disabled }` ("the control is marked busy"); while idle `{ busy: false }` STATED (below) |
  * | `<PendingSpinner />` | while `press.pending` (the reveal delay passed on the store's clock) | the kit's own `Spinner` (`size="sm"`) inside the control, in place of its icon, so nothing moves |
  *
  * ```tsx
@@ -26,9 +26,25 @@
  */
 import { Spinner } from 'heroui-native';
 
-/** The accessibility state of a control whose command is out; nothing while idle. */
-export function busyState(busy: boolean, disabled = false): { accessibilityState?: { busy: true; disabled: boolean } } {
-  return busy ? { accessibilityState: { busy: true, disabled } } : {};
+/**
+ * The accessibility state of a control that can send a command: `busy: true` while the command is
+ * out, `busy: false` once it is not.
+ *
+ * WHY THE IDLE STATE IS STATED (wave H closing pass Z2; gate 70 finding G70-04, seen again at gates 75
+ * and 81; the app-wide cause named by drivers B and D). This function used to return `{}` while idle.
+ * React Native on Android recomputes a view's content description - where ", busy" is appended to
+ * the label - only when the NEW state holds the key `busy` (`BaseViewManager.setViewState`), so a
+ * control that went from `{ busy: true }` back to no state kept announcing "busy" after its action
+ * had ended. With `busy: false` the description is rewritten. A control that takes this state must
+ * also carry an `accessibilityLabel` (or readable text children): Android skips the rewrite for a
+ * view without a description.
+ *
+ * `disabled`: stated when the caller gives it. Not given while idle: the key is left out, so the
+ * kit's own `disabled` (from `isDisabled`, merged by the pressable) is not overwritten by a guess.
+ */
+export function busyState(busy: boolean, disabled?: boolean): { accessibilityState: { busy: boolean; disabled?: boolean } } {
+  if (busy) return { accessibilityState: { busy: true, disabled: disabled ?? false } };
+  return { accessibilityState: disabled === undefined ? { busy: false } : { busy: false, disabled } };
 }
 
 export interface PendingSpinnerProps {

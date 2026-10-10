@@ -301,8 +301,8 @@ export const CaptureInputScanEntrySchema = z.strictObject({
   deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN),
   inputId: z.string().regex(MIC_INPUT_ID_PATTERN).nullable().describe('The mic input (`MIC-NN`) this device stands behind in the selector; null when it is assigned to none.'),
   present: z.boolean(),
-  adapter: z.string().regex(CAPTURE_ADAPTER_CODE_PATTERN),
-  sourceClass: z.enum(CaptureSourceClass),
+  adapter: z.string().regex(CAPTURE_ADAPTER_CODE_PATTERN).optional().describe('The adapter kind of the microphone. ABSENT on a Core in SIMULATED capture, which states no adapter and no source class on any operation (decision D196, gate 70 finding G70-01).'),
+  sourceClass: z.enum(CaptureSourceClass).optional().describe('Derived by the Core from `adapter`; absent exactly when `adapter` is.'),
   errorCode: z.enum(CaptureInputErrorCode).nullable().describe('The named cause when a local input cannot be opened; null otherwise.'),
 });
 export type CaptureInputScanEntry = z.output<typeof CaptureInputScanEntrySchema>;

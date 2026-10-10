@@ -100,10 +100,10 @@ import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateB
 import { SessionState } from '@dems/shared/domain';
 import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
-import { CapturePhase, CaptureSupervisorError, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
+import { CapturePhase, CaptureSupervisorError, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
 import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { assertSessionSourcesOfOperation, buildSessionCaptureSources, captureFenceControl, captureOperationOf, type CaptureSourceSlot, type SessionCaptureSource } from '../capture/fence';
-import { captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
+import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
 import { CapturePlanError, assertRecordableSelector, buildCapturePlan, type CapturePlanSelector, type RecordableSelector } from '../modules/capture-config';
 import { createFragmentRecorder, createRecordingFragmentStore, type FragmentRecorder, type VideoTrackId } from '../modules/recording-fragments';
 import type { Principal } from '../plugins/authenticate';
@@ -113,7 +113,7 @@ import { describeError } from '../plugins/logger';
 import { SESSION_CAPTURE_FACTS_VERSION, sessionCaptureFactsPath, writeSessionCaptureFacts, type SessionCaptureFacts } from './facts';
 import { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
-export { SESSION_CAPTURE_FACTS_FOLDER, SESSION_CAPTURE_FACTS_VERSION, parseSessionCaptureFacts, readSessionCaptureFacts, readSessionVideoSampleEntry, sessionCaptureFactsPath, type SessionCameraFacts, type SessionCaptureFacts } from './facts';
+export { SESSION_CAPTURE_FACTS_FOLDER, SESSION_CAPTURE_FACTS_VERSION, parseSessionCaptureFacts, readSessionCaptureFacts, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCaptureFactsPath, withCameraEnded, type SessionCameraEnd, type SessionCameraFacts, type SessionCaptureFacts } from './facts';
 export { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
 /** `details.reason` of a start that is refused for its sources (C3 §4, erratum PE-128-34). */
@@ -205,9 +205,16 @@ export type SessionCaptureEvent =
    * HAND-OFF TO THE SEALING ROW (82): seal what the camera files hold, as interrupted. The worker
    * has exited and every source handle is closed when this is said.
    */
-  | { readonly type: 'INTERRUPTED'; readonly sessionId: string; readonly cause: string | null; readonly files: readonly SessionCameraFile[]; readonly firstVideo: readonly SessionFirstVideo[] }
-  /** A stop: the worker flushed, closed its files and exited; the recorder wrote its last rows. THE HAND-OFF of a normal seal. */
-  | { readonly type: 'STOPPED'; readonly sessionId: string; readonly files: readonly SessionCameraFile[]; readonly fragmentRowsBehind: readonly VideoTrackId[]; readonly firstVideo: readonly SessionFirstVideo[] };
+  | { readonly type: 'INTERRUPTED'; readonly sessionId: string; readonly cause: string | null; readonly files: readonly SessionCameraFile[]; readonly firstVideo: readonly SessionFirstVideo[]; readonly cameraEnds?: readonly CaptureCameraEnd[] }
+  /**
+   * A stop: the worker flushed, closed its files and exited; the recorder wrote its last rows. THE HAND-OFF of a normal seal.
+   *
+   * `cameraEnds` (fix wave H driver A, C3; decision D202), on this event and on INTERRUPTED: the
+   * cameras the worker GAVE UP while the session went on - which, why (the supervisor's closed
+   * reason) and where their file ends. Absent when none ended. The same facts are in the session's
+   * capture facts file before the event is told: the seal reads them there (`facts.ts`, `ended`).
+   */
+  | { readonly type: 'STOPPED'; readonly sessionId: string; readonly files: readonly SessionCameraFile[]; readonly fragmentRowsBehind: readonly VideoTrackId[]; readonly firstVideo: readonly SessionFirstVideo[]; readonly cameraEnds?: readonly CaptureCameraEnd[] };
 
 /**
  * The start-up of one camera file as the worker reported it (protocol 4, `FIRST_VIDEO_SAMPLE`): a
@@ -380,6 +387,8 @@ interface Live {
   transcriberEnded: boolean;
   /** The writes of the facts file, one after the other. */
   factsWritten: Promise<void>;
+  /** C3: the cameras the worker gave up while the session went on, by camera. The FIRST end of a camera stands. */
+  readonly cameraEnds: Map<string, CaptureCameraEnd>;
   /** Operation 81 calls that wait for the worker's acknowledgement now. */
   switchesWaiting: number;
   /** By microphone: who last asked for it to become the source (the actor of the row its record writes). */
@@ -388,7 +397,24 @@ interface Live {
   readonly switchRecordsSeen: Map<number, AudioSourceIntervalRecord>;
   /** The `index` of every switch record that was recorded (or is being recorded): a record is applied once. */
   readonly switchesRecorded: Set<number>;
+  /**
+   * Closing pass Z1 (driver A decision 3): by camera, what the worker reported durable so far - the
+   * number of `FRAGMENT_CHECKPOINT` records and the end of the newest one's byte range - and the Core
+   * clock at the newest of them. Said to the session payload through the engine's capture-checkpoint
+   * door at most every `CHECKPOINT_FACTS_INTERVAL_MS` and once when the capture ends.
+   */
+  readonly checkpoints: Map<string, { fragments: number; bytes: number }>;
+  checkpointsAt: number | null;
+  /** The Core clock when the figures were last said (the window is counted from it); null before the first. */
+  checkpointsSaidAt: number | null;
+  /** How many checkpoints the figures the session payload states cover. */
+  checkpointsSaid: number;
+  /** The calls of the door, one after the other: the call at the end of a capture runs after one that is in flight. */
+  checkpointsSaying: Promise<void>;
 }
+
+/** The session payload hears the checkpoint figures at most this often (one engine unit per window, never one per fragment). */
+export const CHECKPOINT_FACTS_INTERVAL_MS = 5_000;
 
 /** Who a switch is recorded for: the operator, and the paired device the command came from (E-30 / SEC35-17). */
 interface SwitchActor {
@@ -557,12 +583,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       startRecordedAt: of.startRecordedAt,
       cameras: of.files.map((file) => {
         const first = of.firstVideo.get(file.deviceId) ?? null;
+        const ended = of.cameraEnds.get(file.deviceId) ?? null;
         return {
           trackId: file.trackId,
           deviceId: file.deviceId,
           clockOffsetMs: of.clockOffsets.get(file.deviceId) ?? null,
           measuredClockOffsetMs: of.measuredOffsets.get(file.deviceId)?.offsetMs ?? null,
           syncLevel: of.syncLevels.get(file.deviceId) ?? null,
+          ...(ended === null ? {} : { ended: { reason: ended.reason, at: ended.at, lastDurableFragmentIndex: ended.lastDurableFragmentIndex, lastDurableMediaEndMs: ended.lastDurableMediaEndMs } }),
           firstVideo: first === null ? null : { pts: first.pts, timescale: first.timescale, heldMs: first.heldMs, skipped: first.skipped, skippedSpanMs: first.skippedSpanMs },
         };
       }),
@@ -642,6 +670,40 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     }
   }
 
+  /**
+   * Closing pass Z1: the checkpoint figures of this capture, said to the session payload. Never
+   * rejects and never stops a recording: a figure that could not be said is said by the next call.
+   */
+  function sayCheckpoints(of: Live): Promise<void> {
+    of.checkpointsSaying = of.checkpointsSaying.then(() => sayCheckpointsNow(of));
+    return of.checkpointsSaying;
+  }
+
+  async function sayCheckpointsNow(of: Live): Promise<void> {
+    const cameras = [...of.checkpoints].map(([deviceId, held]) => ({ deviceId, fragments: held.fragments, bytes: held.bytes }));
+    const heard = cameras.reduce((sum, camera) => sum + camera.fragments, 0);
+    if (of.checkpointsAt === null || heard === of.checkpointsSaid) return;
+    const lastAt = of.checkpointsAt;
+    // The window opens when the figures are asked, so a slow unit does not let the next checkpoint ask again at once.
+    of.checkpointsSaidAt = app.clock.now();
+    try {
+      await captureCheckpointDoorsOf(app.engine).applyCaptureCheckpoints(of.sessionId, { lastAt, cameras });
+      of.checkpointsSaid = heard;
+    } catch (err) {
+      persist('warn', 'CAPTURE_CHECKPOINTS_NOT_SAID', 'the checkpoint figures of a recording could not be put on the session; the recording is not affected', err, { sessionId: of.sessionId });
+    }
+  }
+
+  /** One `FRAGMENT_CHECKPOINT` of the worker: counted by camera; said when the window has passed. */
+  function noteCheckpoint(of: Live, deviceId: string, start: number, len: number): void {
+    const held = of.checkpoints.get(deviceId) ?? { fragments: 0, bytes: 0 };
+    const end = Number.isSafeInteger(start) && Number.isSafeInteger(len) && start >= 0 && len >= 0 ? start + len : held.bytes;
+    of.checkpoints.set(deviceId, { fragments: held.fragments + 1, bytes: Math.max(held.bytes, end) });
+    const now = app.clock.now();
+    of.checkpointsAt = of.checkpointsAt === null ? now : Math.max(now, of.checkpointsAt);
+    if (of.checkpointsSaidAt === null || now - of.checkpointsSaidAt >= CHECKPOINT_FACTS_INTERVAL_MS) track(sayCheckpoints(of));
+  }
+
   async function writeInterval(of: Live, record: AudioSourceIntervalRecord): Promise<void> {
     try {
       await app.db.pool.query(INSERT_AUDIO_INTERVAL, [of.sessionId, record.index, record.deviceId, record.role, mediaMsOfSample(record.fromSample, record.sampleRateHz), record.capturedAtMs, null, AudioIntervalRowReason.START]);
@@ -668,6 +730,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // The FIRST of them makes the session 'recording'; asked again while it was not said.
       if (!of.durableSaid) track(markDurable(of));
       of.recorder?.take(event);
+      if (record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) noteCheckpoint(of, record.deviceId, record.start, record.len);
       return;
     }
     // The interval of the start is this unit's to store; the interval of a switch is stored by the unit of operation 81.
@@ -760,6 +823,33 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     if (measured) track(writeFacts(of));
   }
 
+  /**
+   * C3 (fix wave H driver A; decision D202): what the supervisor says of cameras it gave up - its
+   * status until the stop, the outcome of the stop after it - is kept by camera and written into
+   * the facts file, so that the seal marks those tracks with their cause. A camera of another plan
+   * is not this session's. Resolves when the facts file holds what is known.
+   */
+  async function noteCameraEnds(of: Live, ends: readonly CaptureCameraEnd[] | undefined): Promise<void> {
+    let changed = false;
+    for (const end of ends ?? []) {
+      if (of.cameraEnds.has(end.deviceId) || !of.files.some((file) => file.deviceId === end.deviceId)) continue;
+      of.cameraEnds.set(end.deviceId, end);
+      changed = true;
+      persist('warn', 'CAPTURE_CAMERA_ENDED', 'a camera was given up while the session went on: its track is sealed as interrupted, with this cause', null, { sessionId: of.sessionId, deviceId: end.deviceId, reason: end.reason, lastDurableFragmentIndex: end.lastDurableFragmentIndex, lastDurableMediaEndMs: end.lastDurableMediaEndMs });
+    }
+    if (changed) await writeFacts(of);
+  }
+  /** The supervisor's status list, when it is of THIS session (a double written before the member has none). */
+  const cameraEndsNow = (of: Live): readonly CaptureCameraEnd[] | undefined => {
+    try {
+      const status = of.supervisor.status();
+      return status.sessionId === of.sessionId ? status.cameraEnds : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const cameraEndsOf = (of: Live): { readonly cameraEnds?: readonly CaptureCameraEnd[] } => (of.cameraEnds.size === 0 ? {} : { cameraEnds: Object.freeze([...of.cameraEnds.values()]) });
+
   /** The end of a capture that did not come from a stop: a failed start or an interrupted recording. */
   async function captureEnded(of: Live, cause: string | null, supervisorDurable: boolean): Promise<void> {
     if (of.ended) return;
@@ -779,12 +869,16 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
     }
     // The worker of a session that ended is ended too, so that the supervisor is free for the next session.
+    const endsAtEnd = cameraEndsNow(of);
     try {
-      await of.supervisor.stop(of.sessionId, CaptureStopReason.CRASH);
+      const stopped: CaptureStopOutcome | undefined = await of.supervisor.stop(of.sessionId, CaptureStopReason.CRASH);
+      await noteCameraEnds(of, stopped?.cameraEnds ?? endsAtEnd);
     } catch (err) {
+      await noteCameraEnds(of, endsAtEnd);
       if (!(err instanceof CaptureSupervisorError)) persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker of an ended session could not be stopped', err, { sessionId: of.sessionId });
     }
     await of.recorder?.idle();
+    await sayCheckpoints(of);
     await closeLastInterval(of);
     await of.factsWritten;
     // DURABLE MEDIA IS ALWAYS HANDED OVER (review R74-07). When the engine ignored the end (the session
@@ -801,7 +895,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       outcome,
       durable,
     });
-    if (handedOver) tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
+    if (handedOver) tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]), ...cameraEndsOf(of) });
     else if (outcome === 'FAILED_START') tell({ type: 'FAILED_START', sessionId: of.sessionId, cause, reason: cause ?? 'CAPTURE_START_FAILED', evidenceFiles: 0 });
   }
 
@@ -824,20 +918,24 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     if (of.ended) return;
     of.ended = true;
     persist('error', 'CAPTURE_SESSION_LEFT_RECORDING', 'the session left RECORDING while its capture ran: the capture worker is stopped', null, { sessionId: of.sessionId, state });
+    const endsAtEnd = cameraEndsNow(of);
     try {
-      await of.supervisor.stop(of.sessionId, CaptureStopReason.CRASH);
+      const stopped: CaptureStopOutcome | undefined = await of.supervisor.stop(of.sessionId, CaptureStopReason.CRASH);
+      await noteCameraEnds(of, stopped?.cameraEnds ?? endsAtEnd);
     } catch (err) {
+      await noteCameraEnds(of, endsAtEnd);
       if (!(err instanceof CaptureSupervisorError)) persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker of a session that left RECORDING could not be stopped', err, { sessionId: of.sessionId });
     }
     let onDisk = false;
     for (const file of of.files) onDisk = onDisk || (await ports.fileExists(file.path));
     const durable = of.durableSaid || onDisk;
     await of.recorder?.idle();
+    await sayCheckpoints(of);
     await closeLastInterval(of);
     await of.factsWritten;
     endTranscriber(of, durable);
     await release(of);
-    if (durable) tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause: SESSION_LEFT_RECORDING, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
+    if (durable) tell({ type: 'INTERRUPTED', sessionId: of.sessionId, cause: SESSION_LEFT_RECORDING, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]), ...cameraEndsOf(of) });
     else tell({ type: 'FAILED_START', sessionId: of.sessionId, cause: SESSION_LEFT_RECORDING, reason: SESSION_LEFT_RECORDING, evidenceFiles: 0 });
   }
 
@@ -918,6 +1016,12 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       transcriberBegun: false,
       transcriberEnded: false,
       factsWritten: Promise.resolve(),
+      cameraEnds: new Map(),
+      checkpoints: new Map(),
+      checkpointsAt: null,
+      checkpointsSaidAt: null,
+      checkpointsSaid: 0,
+      checkpointsSaying: Promise.resolve(),
       switchesWaiting: 0,
       switchAskedBy: new Map(),
       switchRecordsSeen: new Map(),
@@ -1240,16 +1344,21 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         // worker closed, a non-zero exit, the kill at the grace, no end of the audio timeline - is an
         // INTERRUPTED recording, never a normal one. A seam that says nothing (an older double) reads as clean.
         let notClean: string | null = null;
+        const endsAtStop = cameraEndsNow(of);
         try {
           // The final shape (`CaptureStopOutcome`, ruling D179): `down.detail` is the worker's own account (a CRASH code,
           // STOP_NOT_ACKNOWLEDGED, TIMELINE_END_MISSING); without one, `down.code` names it (STOP_TIMEOUT: killed at the grace).
           // A double of the seam that resolves nothing reads as clean.
           const outcome: CaptureStopOutcome | undefined = await of.supervisor.stop(sessionId, CaptureStopReason.STOPPED);
           if (outcome !== undefined && !outcome.clean) notClean = outcome.down?.detail ?? outcome.down?.code ?? STOP_NOT_CLEAN;
+          // C3: a camera given up while the session went on - for a CLEAN stop too - is in the facts before the hand-off.
+          await noteCameraEnds(of, outcome?.cameraEnds ?? endsAtStop);
         } catch (err) {
+          await noteCameraEnds(of, endsAtStop);
           persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker of a stopped session could not be stopped', err, { sessionId });
         }
         await of.recorder?.idle();
+        await sayCheckpoints(of);
         await closeLastInterval(of);
         await of.factsWritten;
         const behind = of.recorder?.status().behind ?? [];
@@ -1257,7 +1366,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         endTranscriber(of, true);
         await release(of);
         if (notClean === null) {
-          tell({ type: 'STOPPED', sessionId, files: Object.freeze([...of.files]), fragmentRowsBehind: behind, firstVideo: Object.freeze([...of.firstVideo.values()]) });
+          tell({ type: 'STOPPED', sessionId, files: Object.freeze([...of.files]), fragmentRowsBehind: behind, firstVideo: Object.freeze([...of.firstVideo.values()]), ...cameraEndsOf(of) });
           return;
         }
         // The operator is told in words that are no clean stop (decision D179 (b)): the capture-wide fault, with the
@@ -1268,7 +1377,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         } catch (err) {
           persist('error', 'CAPTURE_STOP_FAULT_NOT_RAISED', 'the alert of a stop that was not clean could not be raised', err, { sessionId });
         }
-        tell({ type: 'INTERRUPTED', sessionId, cause: notClean, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]) });
+        tell({ type: 'INTERRUPTED', sessionId, cause: notClean, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]), ...cameraEndsOf(of) });
       });
     },
 

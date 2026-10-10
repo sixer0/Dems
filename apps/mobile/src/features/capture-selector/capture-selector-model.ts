@@ -124,6 +124,78 @@ export function cameraOptions(config: Pick<CaptureConfigSlice, 'cameras'>, regis
     }));
 }
 
+/**
+ * One registered microphone as an option of a microphone line (fix wave H, gate 70 finding G70-02;
+ * ruling D196: the selector offers EVERY registered microphone on both lines).
+ */
+export interface MicOption {
+  /** The registered microphone (`MIC-01`, `MIC-03`, …): the input of the same id (D106 (4)). */
+  readonly deviceId: string;
+  readonly model: string | null;
+  readonly online: boolean;
+  /** The line this microphone holds right now, or null ("not assigned"). */
+  readonly role: MicRole | null;
+  /** `sourceClass` as the Core sent it on the device (flow 12); null when the device carries none. */
+  readonly sourceClass: string | null;
+  /** `adapter` as the Core sent it on the device; null when the device carries none. */
+  readonly adapter: string | null;
+}
+
+/**
+ * Every REGISTERED microphone of the registry (op 77), in registry order: the built-in pair and any
+ * microphone registered later (`MIC-03`, the Core Mac's microphone of a development configuration).
+ * Whether the Core accepts one on a line is the Core's decision (a development source on a production
+ * Core is refused with 422 `DEVELOPMENT_SOURCE_NOT_ALLOWED`, drawn in place).
+ */
+export function micOptions(config: Pick<CaptureConfigSlice, 'mics'>, registry: CaptureDevicesSlice): MicOption[] {
+  return registry.devices
+    .filter((device) => device.kind === CaptureDeviceKind.MIC)
+    .map((device) => ({
+      deviceId: device.id,
+      model: device.model,
+      online: device.online,
+      role: config.mics.find((line) => line.deviceId === device.id)?.role ?? null,
+      sourceClass: device.sourceClass ?? null,
+      adapter: device.adapter ?? null,
+    }));
+}
+
+/** Why an option of a microphone line cannot be chosen; null when it can. */
+export type MicOptionRefusal = 'onOtherLine';
+
+/**
+ * The same microphone cannot be on both lines (C3 §2.4: "the two mic inputs need two devices").
+ * On the PRIMARY line the standby microphone stays choosable: that is the trade of roles operation 80
+ * has always done. On the STANDBY line the primary microphone is refused, with its reason: taking it
+ * there would leave no primary.
+ */
+export function micOptionRefusal(role: MicRole, option: Pick<MicOption, 'role'>): MicOptionRefusal | null {
+  return role === 'STANDBY' && option.role === 'PRIMARY' ? 'onOtherLine' : null;
+}
+
+/**
+ * The command that puts microphone `chosenId` on the `role` line, or null when nothing is to send
+ * (the line already holds it, the choice is refused, or the selector holds no pair to replace).
+ *
+ * | Line | Choice | Command |
+ * |---|---|---|
+ * | PRIMARY | the standby microphone | operation 80 `setPrimaryMic`: the two trade roles (as before) |
+ * | PRIMARY | a microphone on no line | operation 78, pair replacement (D133 (1)): it becomes PRIMARY, the standby stays |
+ * | STANDBY | a microphone on no line | operation 78, pair replacement: it becomes STANDBY, the primary stays |
+ * | STANDBY | the primary microphone | none (`micOptionRefusal`) |
+ */
+export function micLineCommand(role: MicRole, chosenId: string, config: { readonly mics: readonly { readonly inputId: string; readonly role: MicRole }[] }): SelectorCommand | null {
+  const primary = config.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? null;
+  const standby = config.mics.find((line) => line.role === 'STANDBY')?.inputId ?? null;
+  if (role === 'PRIMARY') {
+    if (chosenId === primary) return null;
+    if (chosenId === standby) return { kind: 'primaryMic', inputId: chosenId };
+    return standby === null ? null : { kind: 'micPair', primaryId: chosenId, standbyId: standby };
+  }
+  if (chosenId === standby || chosenId === primary) return null;
+  return primary === null ? null : { kind: 'micPair', primaryId: primary, standbyId: chosenId };
+}
+
 /** True when the Core holds no selector line and no capture device at all (§2.5 "Empty device list"). */
 export function isSelectorEmpty(config: Pick<CaptureConfigSlice, 'cameras' | 'mics'>, registry: CaptureDevicesSlice): boolean {
   return config.cameras.length === 0 && config.mics.length === 0 && registry.devices.length === 0;
@@ -180,7 +252,9 @@ export type SelectorGatedControl = (typeof SELECTOR_GATED_CONTROLS)[number];
 
 export type SelectorCommand =
   | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly deviceId: string }
-  | { readonly kind: 'primaryMic'; readonly inputId: string };
+  | { readonly kind: 'primaryMic'; readonly inputId: string }
+  /** Operation 78, pair replacement (D133 (1); fix wave H, G70-02): the two microphones of the selector, by role. */
+  | { readonly kind: 'micPair'; readonly primaryId: string; readonly standbyId: string };
 
 /** What an operation answered, reduced to the three members both sources carry. */
 export interface AnswerFacts {
@@ -258,5 +332,11 @@ export function isAwaitingRepublish(answeredUpdatedAt: number | null, storeUpdat
 /** True when the command would change nothing: the control does not send it. */
 export function isNoChange(command: SelectorCommand, config: Pick<CaptureConfigSlice, 'cameras' | 'mics'>): boolean {
   if (command.kind === 'camera') return config.cameras.some((line) => line.trackId === command.trackId && line.deviceId === command.deviceId);
+  if (command.kind === 'micPair') {
+    return (
+      config.mics.some((line) => line.inputId === command.primaryId && line.role === 'PRIMARY') &&
+      config.mics.some((line) => line.inputId === command.standbyId && line.role === 'STANDBY')
+    );
+  }
   return config.mics.some((line) => line.inputId === command.inputId && line.role === 'PRIMARY');
 }

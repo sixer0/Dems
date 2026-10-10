@@ -30,6 +30,19 @@ last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `g
 
 # Client UX Spec — web, tablet and phone (blueprint row 34, M0)
 
+## Errata index (fix passes of 2026-10-10)
+
+> Added on 2026-10-10 by blueprint row 96 (register DOC-02). An index only: no text of this spec was
+> changed, and each erratum stays where it stands. It lists the errata paragraphs the review-fix
+> passes of 2026-10-10 added to THIS file (commit `f293221`). Errata of earlier passes (`PE-12x-…`,
+> `PE-R8-…` and others) are marked inline as before and are not repeated here. Decision numbers
+> refer to `decisions/decisions.md`.
+
+| Erratum | Where | What it changes, in one line | Decision |
+|---|---|---|---|
+| PE-FM4-01 | §8d.3 The password prompt, row Fields | The bound of the camera user name is 1..120, not 1..255 | D117, D178 |
+| PE-FM4-02 | §8d.3 The password prompt, row Fields | The two credential fields are plain uncontrolled inputs with the kit's field classes, not the kit `TextField` | D134, D178 |
+
 > **Authority in force.** Blueprint row 34 (`identification/02_structured.md:214`) is the hard gate:
 > *"Each flow defined for all 3 clients; P-01..P-16 each marked applied or not applicable with reason;
 > every gated control has the 'Checking your permissions...' state."* Decisions: **D4 OD-09** (hot

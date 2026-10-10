@@ -7,6 +7,12 @@
  * CF2-B (RF-T-1): a selection change is a colour change only. The glow is `SelectionGlow`, always
  * mounted after the pressable (nothing is mounted or removed inside the row), and the card keeps its
  * 1 dp border in both states (`ROW_CARD_BORDER`), so its border insets, layout and clip never change.
+ *
+ * Wave H C2 (G94-02; finding 4). In Live mode the thumbnail is a bundled poster ONLY for a v1 /
+ * simulated demo item by the item's own members (`item-facts.ts` `isDemoItem`); every other item -
+ * a recording this Core sealed, whatever its number - draws the empty thumbnail box, never a
+ * picture joined by the evidence number. The box keeps its size, so the row's layout is the same.
+ * A row whose item says `interrupted === true` adds the line "Sealed — recording was interrupted".
  */
 import { Image } from 'expo-image';
 import { Button, Card, Menu, PressableFeedback } from 'heroui-native';
@@ -17,9 +23,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import { DATE_PATTERNS, formatDate, formatDuration } from '@dems/shared/realtime';
 import type { EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { useMobileLive } from '@/runtime';
 import { ItemDevelopmentBadge } from './development-source';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { posterForEvidence } from './evidence-media';
+import { InterruptedLine } from './interrupted-line';
+import { isDemoItem, readItemFacts } from './item-facts';
 import { isArchivable, isExportable, type EvidenceDensity } from './evidence-model';
 import { MenuItemText } from './menu-item-text';
 import { ROW_CARD_BORDER, SelectionGlow } from './selection-glow';
@@ -41,6 +50,9 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
   const date = formatDate(item.recordedAt, DATE_PATTERNS.dateTimeMinutes);
   const duration = formatDuration(item.durationMs);
   const status = t(`common.evidenceStatus.${item.status}`);
+  const live = useMobileLive() !== null;
+  const facts = readItemFacts(item);
+  const bundledPoster = !live || isDemoItem(facts);
 
   return (
     <View style={styles.wrap}>
@@ -48,13 +60,15 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
         testID={`evidence-row-${item.id}`}
         accessibilityRole="button"
         accessibilityState={{ selected }}
-        accessibilityLabel={t('features.evidence.list.rowLabel', { id: item.id, subject: item.subjectName, status, date, duration })}
+        accessibilityLabel={t('features.evidence.list.rowLabel', { id: item.id, subject: item.subjectName, status: facts.interrupted === true ? t('evidence.itemFacts.interrupted.status') : status, date, duration })}
         onPress={() => onPress(item.id)}
         style={styles.pressable}
       >
         <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]} testID={`evidence-row-card-${item.id}`}>
           <View style={[styles.row, compact ? styles.rowCompact : null]}>
-            {compact ? null : (
+            {compact ? null : !bundledPoster ? (
+              <View style={styles.thumb} testID={`evidence-row-no-poster-${item.id}`} />
+            ) : (
               <Image
                 source={posterForEvidence(item.id)}
                 style={styles.thumb}
@@ -82,6 +96,7 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
                   {duration}
                 </Text>
               </View>
+              <InterruptedLine facts={facts} testID={`evidence-row-interrupted-${item.id}`} />
             </View>
             <View style={styles.trailing}>
               <EvidenceStatusChip status={item.status} testID={`evidence-row-status-${item.id}`} />

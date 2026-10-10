@@ -127,7 +127,7 @@ describe('the SQL read of the item and its case holder', () => {
 });
 
 describe('EVIDENCE_MEDIA_SERVED as stored', () => {
-  it('the issue row is committed before the answer, the range row when the answer has ended - exact keys, the actor, the item and its session, never the token', async () => {
+  it('the issue row is committed before the answer and is the ONE row of a playback - exact keys, the actor, the item and its session, never the token; an answered range writes none', async () => {
     const before = await server.trailLength();
     const response = await open(cookies.INVESTIGATOR, EVIDENCE_ID, { fileId: 'VIDEO-02' });
     expect(response.statusCode).toBe(201);
@@ -147,11 +147,10 @@ describe('EVIDENCE_MEDIA_SERVED as stored', () => {
     expect(sha256(whole.rawPayload)).toBe(built.manifest.tracks.find((track) => track.trackId === 'VIDEO-02')?.sha256Plain);
     const part = await fetch(cookies.INVESTIGATOR, session.url, 'bytes=829-1528');
     expect([part.statusCode, part.headers['content-range'], part.rawPayload.equals(whole.rawPayload.subarray(829, 1529))]).toEqual([206, `bytes 829-1528/${SIZE}`, true]);
-    const served = (await rowsSince(before)).slice(1);
-    expect(served.map(stored)).toEqual([
-      { type: 'EVIDENCE_MEDIA_SERVED', category: 'EVIDENCE', severity: 'INFO', actorId: server.operatorId('INVESTIGATOR'), sessionId: SESSION_ID, evidenceId: EVIDENCE_ID, details: { fileId: 'VIDEO-02', bytesServed: SIZE, rangeStart: 0, rangeEnd: SIZE - 1, signed: true } },
-      { type: 'EVIDENCE_MEDIA_SERVED', category: 'EVIDENCE', severity: 'INFO', actorId: server.operatorId('INVESTIGATOR'), sessionId: SESSION_ID, evidenceId: EVIDENCE_ID, details: { fileId: 'VIDEO-02', bytesServed: 700, rangeStart: 829, rangeEnd: 1528, signed: true } },
-    ]);
+    // G94-06 (wave H C1, ruling D200): the two answers above are NOT audit rows - the playback is audited once, by
+    // the issue row. (Until wave H this pinned one stored `EVIDENCE_MEDIA_SERVED` row per answered range: 117 rows
+    // for one opening of a 134 s item at gate 94.)
+    expect((await rowsSince(before)).slice(1)).toEqual([]);
     // Nothing of the trail or of the log holds the token.
     const token = session.url.split('/').at(-1) ?? '';
     expect(token).toMatch(/^mts_/);

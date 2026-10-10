@@ -8,6 +8,7 @@ import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import {
   CAPTURE_SELECTOR_ANCHOR,
+  micPairFor,
   poeCycleGate,
   selectorEditGate,
   selectorRefusal,
@@ -27,7 +28,7 @@ import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
 import { DeviceSourceBadge, LocalMicrophoneLimit } from './source-badge'
-import { isDevelopmentSource, useRealCapture } from './source-class'
+import { isDevelopmentSource, LOCAL_DEVICE_ADAPTER, useRealCapture } from './source-class'
 
 /** The fixed sentence of the page's own record when a selector command fails for a reason the presenter left to the page. */
 const COMMAND_FAILED_RECORD = 'A command of the capture device selector was not carried out.'
@@ -272,15 +273,65 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
   )
 }
 
-function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMicLine; device: CaptureDevice | undefined }) {
+/**
+ * One microphone line of the selector. Wave H (G70-02, ruling D196): the line offers EVERY
+ * registered microphone (`mics`) for its role - PRIMARY and STANDBY alike - with one Save, which is
+ * operation 78 in its pair-replacement form (`micPairFor`). The other line's microphone is a
+ * disabled option that says where it is (the contract refuses one microphone on both lines).
+ * "Make primary" (operation 80) stays as it was. Both controls keep the selector's gates.
+ */
+function MicRow({
+  line,
+  device,
+  mics,
+  lines,
+  block,
+  commands,
+}: RowShared & { line: CaptureMicLine; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
   const notice = useFailureNotice()
   const control = usePendingControl()
   const { ref: controlRef } = control
+  const save = usePendingControl()
+  const { ref: saveRef } = save
+  const realCapture = useRealCapture()
   const [message, setMessage] = useState<string | null>(null)
+  // `null`: the control follows the Core's line. Nothing is optimistic (ux §2.2 step 4).
+  const [choice, setChoice] = useState<string | null>(null)
+  const [pairMessage, setPairMessage] = useState<string | null>(null)
   const primary = line.role === 'PRIMARY'
-  const reason = primary ? null : reasonOf(block)
+  const reason = reasonOf(block)
+  const other = lines.find((entry) => entry.role !== line.role)
+  const selected = choice ?? line.deviceId
+  const pair = choice === null ? null : micPairFor(lines, line.role, choice)
+  const lineLabel = t(`devices.micLines.label.${line.role}`)
+  // An option says what the Core says of the microphone (the development class, this Mac's microphone) and where it already is.
+  const optionText = (entry: CaptureDevice): string => {
+    const parts = [deviceText(entry)]
+    if (realCapture && isDevelopmentSource(entry)) {
+      if (entry.adapter === LOCAL_DEVICE_ADAPTER) parts.push(t('common.sourceClass.kind.localMicrophone'))
+      parts.push(t('common.sourceClass.badge'))
+    }
+    if (other !== undefined && entry.id === other.deviceId) parts.push(t(`devices.micLines.onOtherLine.${other.role}`))
+    return parts.join(' · ')
+  }
+
+  const onSavePair = () => {
+    if (pair === null) return
+    save.run((release) => {
+      void commands
+        .setMicPair(pair)
+        .then((answer) => {
+          if (answer.ok) {
+            setChoice(null)
+            setPairMessage(null)
+            toast.success(t('devices.selector.saved'))
+          } else setPairMessage(notice(answer))
+        })
+        .finally(release)
+    })
+  }
 
   const onMakePrimary = () => {
     control.run((release) => {
@@ -297,7 +348,7 @@ function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMi
   }
 
   return (
-    <li className="dev-sel-row" data-testid={`selector-mic-${line.inputId}`} data-role={line.role} aria-busy={control.busy || undefined}>
+    <li className="dev-sel-row" data-testid={`selector-mic-${line.inputId}`} data-role={line.role} aria-busy={control.busy || save.busy || undefined}>
       <div className="dev-sel-head">
         <Mic className="dev-sel-icon" aria-hidden="true" strokeWidth={1.75} />
         <div className="dev-sel-titles">
@@ -316,8 +367,37 @@ function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMi
       </div>
       {/* R69-07 (D161): the limit of this Mac's microphone, on the line where it is chosen. */}
       <LocalMicrophoneLimit device={device} place={`selector-${line.inputId}`} className="dev-sel-reason" />
-      {primary ? null : (
-        <div className="dev-sel-edit">
+      <div className="dev-sel-edit">
+        <Select
+          value={selected}
+          onChange={(key) => {
+            if (typeof key === 'string') setChoice(key === line.deviceId ? null : key)
+          }}
+          isDisabled={block !== null || save.busy}
+          className="dev-sel-select"
+          data-testid={`selector-mic-source-${line.role}`}
+        >
+          <Label>{lineLabel}</Label>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {mics.map((entry) => (
+                <ListBox.Item key={entry.id} id={entry.id} textValue={optionText(entry)} isDisabled={other !== undefined && entry.id === other.deviceId}>
+                  {optionText(entry)}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || pair === null} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${line.role}`}>
+          {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
+          {t('devices.selector.save')}
+        </Button>
+        {primary ? null : (
           <Button
             ref={controlRef}
             size="sm"
@@ -330,8 +410,10 @@ function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMi
             {control.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
             {t('devices.selector.makePrimary')}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+      {/* The limit of this Mac's microphone at the moment it is chosen, before the Save (R69-07, D161). */}
+      {choice === null ? null : <LocalMicrophoneLimit device={mics.find((entry) => entry.id === choice)} place={`choice-${line.role}`} className="dev-sel-reason" />}
       {reason ? (
         <p className="dev-sel-reason" data-testid={`selector-reason-${line.inputId}`} data-block={block?.kind}>
           {reason}
@@ -340,6 +422,11 @@ function MicRow({ line, device, block, commands }: RowShared & { line: CaptureMi
       {message ? (
         <p className="dev-sel-message" role="alert" data-testid={`selector-message-${line.inputId}`}>
           {message}
+        </p>
+      ) : null}
+      {pairMessage ? (
+        <p className="dev-sel-message" role="alert" data-testid={`selector-mic-message-${line.role}`}>
+          {pairMessage}
         </p>
       ) : null}
     </li>
@@ -395,6 +482,7 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
 
   const { config, devices } = read
   const cameras = devices.devices.filter((device) => device.kind === 'CAMERA')
+  const microphones = devices.devices.filter((device) => device.kind === 'MIC')
   const block = selectorEditGate({ resolved: view.resolved, can: view.canConfigure, locked: config.locked })
   const empty = devices.devices.length === 0 && config.cameras.length === 0 && config.mics.length === 0
 
@@ -446,7 +534,15 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
         <h3 className="dev-sel-group">{t('devices.selector.mics')}</h3>
         <ul className="dev-sel-list">
           {config.mics.map((line) => (
-            <MicRow key={line.inputId} line={line} device={devices.devices.find((device) => device.id === line.deviceId)} block={block} commands={commands} />
+            <MicRow
+              key={line.inputId}
+              line={line}
+              device={devices.devices.find((device) => device.id === line.deviceId)}
+              mics={microphones}
+              lines={config.mics}
+              block={block}
+              commands={commands}
+            />
           ))}
         </ul>
       </section>
@@ -456,7 +552,8 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
 
 /**
  * The capture device selector (ux §2 flow 1; WB-05): which registered camera feeds `VIDEO-01` and
- * `VIDEO-02`, and which microphone input is PRIMARY. Reads are open to every role; the edit controls
+ * `VIDEO-02`, which registered microphone is on the PRIMARY and on the STANDBY line (wave H, G70-02:
+ * operation 78, pair replacement), and which microphone input is PRIMARY. Reads are open to every role; the edit controls
  * need `CAPTURE_CONFIG` and no open session, and show "Checking your permissions..." until the role,
  * the link and the read are resolved (E-16) — a control is disabled with its reason, never hidden.
  * Inline selects with one Save per field (operation 79) and "Make primary" (operation 80); a LOST

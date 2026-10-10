@@ -506,7 +506,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       // A left-out tail - or a camera file left out for a failure - makes the seal an interrupted
       // one, whatever the cause it was asked with: a recording that lost bytes is never sealed as whole.
       const interrupted = cause === 'INTERRUPTED' || tracks.some((track) => track.droppedBytes > 0 || track.partial !== undefined) || omitted.some((entry) => entry.code !== null);
-      const marked = files.map((entry) => ({ trackId: entry.trackId, fragments: entry.fragments.map((fragment) => ({ ...fragment, interrupted })) }));
+      // C3 (wave H driver A; D199, D202): a camera that was given up while the session went on left a file that ends early.
+      // Its fragment records say `interrupted: true` (field 73) whatever the session's own end was; the cause is in the CLOSE_TRACKS record.
+      const endedEarly = new Set(((facts as SealSessionFacts).cameraEnds ?? []).map((end) => end.trackId));
+      const marked = files.map((entry) => ({ trackId: entry.trackId, fragments: entry.fragments.map((fragment) => ({ ...fragment, interrupted: interrupted || endedEarly.has(entry.trackId) })) }));
       // THE DURABLE HOME OF THE CIPHER RECORDS (ev §A.3; ruling D147): `fragments.json`, the exact
       // serialization of the manifest's `files[]` (SEC35-11), written before the step's checkpoint.
       await writer.write(PackageFile.FRAGMENTS_JSON, serializeFragmentsJson(marked));
@@ -626,6 +629,15 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
     }
     const transcriptNow = async (): Promise<Extract<FinalizeTranscriptResult, { status: 'DONE' }>> => (transcript ??= await finalizeTranscript());
 
+    /**
+     * `endedTracks` of the signed CLOSE_TRACKS record (C3): `VIDEO-02:CAMERA_CLOCK_OUT_OF_BOUND`, one per camera that was
+     * given up while the session went on, in track order, joined by a comma. Absent when none: the record is as before.
+     */
+    const endedTracksOf = (ends: SealSessionFacts['cameraEnds']): { endedTracks?: string } => {
+      const named = [...(ends ?? [])].filter((end) => /^VIDEO-0[12]$/.test(end.trackId) && /^[A-Z][A-Z0-9_]{1,63}$/.test(end.reason)).sort((a, b) => a.trackId.localeCompare(b.trackId));
+      return named.length === 0 ? {} : { endedTracks: named.map((end) => `${end.trackId}:${end.reason}`).join(',') };
+    };
+
     // ── BUILD_MANIFEST and SIGN_MANIFEST ────────────────────────────────────────────────────────
     function manifestSteps(done: Extract<FinalizeTranscriptResult, { status: 'DONE' }>): ManifestStep[] {
       const entry = (step: SealingStepId, checkpoint: Record<string, string | number | boolean | null>): ManifestStep => {
@@ -638,7 +650,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       return [
         // `absentTracks` (F-M7 R88-01): the camera(s) of the session that are not in this package, stated under the
         // signature by this existing member (no new manifest field). Absent for a two-camera seal: its record is as before.
-        entry('CLOSE_TRACKS', { tracks: closedTracks.tracks.length, truncatedTails: closedTracks.tracks.filter((track) => track.droppedBytes > 0 || track.partial !== undefined).length, interrupted: closedTracks.interrupted, ...((closedTracks.omitted ?? []).length > 0 ? { absentTracks: (closedTracks.omitted ?? []).map((entry) => entry.trackId).join(',') } : {}) }),
+        entry('CLOSE_TRACKS', { tracks: closedTracks.tracks.length, truncatedTails: closedTracks.tracks.filter((track) => track.droppedBytes > 0 || track.partial !== undefined).length, interrupted: closedTracks.interrupted, ...((closedTracks.omitted ?? []).length > 0 ? { absentTracks: (closedTracks.omitted ?? []).map((entry) => entry.trackId).join(',') } : {}), ...endedTracksOf(facts!.cameraEnds) }),
         entry('FINALIZE_HASHES', { files: hashedTracks.tracks.length, fragments: hashedTracks.tracks.reduce((sum, track) => sum + track.fragmentCount, 0) }),
         entry('FINALIZE_TRANSCRIPT', { state: done.transcript.manifest.state, failedChunks: done.transcript.manifest.failedChunks }),
       ];

@@ -2,8 +2,9 @@
  * What the media-stream unit reads of an evidence item (blueprint row 90; database contract
  * `evidence_items`; SEC35-16). One statement on the pool of the runtime role, one bind parameter.
  *
- * It names six columns and nothing else of the item: the unit needs to know WHETHER the item has a
- * real sealed v2 package, WHERE that package is (the session), WHAT its manifest must hash to (the
+ * It names nine columns and nothing else of the item (six, and since decision D205 the three that
+ * tell a seed-sealed demonstration item): the unit needs to know WHETHER the item has a
+ * sealed v2 package in this Core's store, WHERE that package is (the session), WHAT its manifest must hash to (the
  * anchor from outside the package) and WHO holds the case.
  *
  * THE CASE HOLDER is `investigator_id`. C3 §2.4 words the scope as "the owner of that case/session
@@ -20,14 +21,23 @@ export interface MediaItem {
   readonly sessionId: string;
   /** The operator who holds the case. */
   readonly investigatorId: string;
-  /** `integrity_source = 'REAL'` and `manifest_version = 2`: a real sealed package. */
+  /** `integrity_source = 'REAL'` and `manifest_version = 2`: a real sealed package. The case scope of SEC35-16 holds for THESE items only. */
   readonly real: boolean;
+  /**
+   * Decision D205 (reconcile pass R): a demonstration item the SEED sealed on this Core - a real
+   * sealed v2 package of a generated test picture. The same four facts as the row mapping's rule for
+   * a real signature on a `DEMO_PACKAGE` row (`db/mapping/rows.ts signatureFromRow`;
+   * `evidence-verify isSeedSealedDemoItem`): `DEMO_PACKAGE`, version 2, `development_sources` true,
+   * an Ed25519 signature that is not simulated. Stated only when true. It plays through operation 88
+   * like any sealed package, for every holder of EVIDENCE_VIEW: it is no REAL evidence.
+   */
+  readonly seedSealedDemo?: true;
   /** `evidence_items.manifest_hash`: the digest that was signed when the item was sealed. */
   readonly manifestSha256: string;
 }
 
 export const READ_MEDIA_ITEM =
-  'SELECT id, session_id, investigator_id, integrity_source, manifest_version, manifest_hash FROM public.evidence_items WHERE id = $1';
+  'SELECT id, session_id, investigator_id, integrity_source, manifest_version, manifest_hash, development_sources, signature_algorithm, signature_simulated FROM public.evidence_items WHERE id = $1';
 
 /** What the read needs of its reader (the pool of the pool plugin satisfies it). */
 export interface MediaItemReader {
@@ -41,12 +51,14 @@ export async function readMediaItem(reader: MediaItemReader, evidenceId: string)
   const { rows } = await reader.query(READ_MEDIA_ITEM, [evidenceId]);
   const row = rows[0];
   if (row === undefined) return null;
+  const seedSealedDemo = row['integrity_source'] === 'DEMO_PACKAGE' && Number(row['manifest_version']) === 2 && row['development_sources'] === true && row['signature_algorithm'] === 'Ed25519' && row['signature_simulated'] === false;
   return {
     evidenceId: text(row['id']),
     sessionId: text(row['session_id']),
     investigatorId: text(row['investigator_id']),
     real: row['integrity_source'] === 'REAL' && Number(row['manifest_version']) === 2,
     manifestSha256: text(row['manifest_hash']),
+    ...(seedSealedDemo ? { seedSealedDemo } : {}),
   };
 }
 

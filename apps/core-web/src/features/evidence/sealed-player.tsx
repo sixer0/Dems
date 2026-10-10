@@ -26,6 +26,14 @@ export interface SealedPlayerProps {
   /** Set by the header's Play button; the player opens (or starts) once and reports it handled. */
   playToken: number | null
   onPlayHandled: () => void
+  /**
+   * Wave H C2: the camera files the Core says the package holds (`media.files` of operation 40, else
+   * the VIDEO entries the item names; `item-facts.ts`). null / absent: not reported - both files
+   * are asked for and the player shows what operation 88 opens.
+   */
+  fileIds?: readonly CameraFileId[] | null
+  /** Wave H C2 (G81-07): `access.play` of operation 40. `false`: operation 88 is never asked; the player says "not permitted". */
+  mayPlay?: boolean | null
 }
 
 type Sessions = Partial<Record<CameraFileId, MediaSession>>
@@ -33,8 +41,16 @@ type Phase =
   | { readonly kind: 'idle' }
   | { readonly kind: 'opening' }
   /** `stoppedAtMs`: playback stopped there and did not resume by itself; null while it runs. `renewing`: new sessions are being asked for. */
-  | { readonly kind: 'ready'; readonly sessions: Sessions; readonly stoppedAtMs: number | null; readonly renewing: boolean }
+  | { readonly kind: 'ready'; readonly sessions: Sessions; readonly stoppedAtMs: number | null; readonly renewing: boolean; readonly stopCause?: StopCause }
   | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal }
+
+/**
+ * Why playback stopped and did not resume (wave H C2, G94-07). `SESSION_ENDED`: the media session was
+ * at its end on the Core's clock when the request was refused - a state of the session, never worded
+ * as an integrity failure. `UNKNOWN`: refused on a session that was still alive (the media element
+ * cannot read why): the stop names its place and points to Verify.
+ */
+type StopCause = 'SESSION_ENDED' | 'UNKNOWN'
 
 /** After a renewal the players go back to this place, and play again when they were playing. */
 interface Resume {
@@ -107,7 +123,7 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
  *   the role says so; anything else goes to the shared presenter first and offers a rate-limited
  *   "Open again" (3 s, 6 s, 12 s; three tries).
  */
-export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayHandled }: SealedPlayerProps) {
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayHandled, fileIds = null, mayPlay = null }: SealedPlayerProps) {
   const { t } = useTranslation()
   const live = useWebLive()
   const sim = useSimInstance()
@@ -115,7 +131,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const retry = useRetryCooldown()
   const operatorKnown = useSim((s) => selectOperator(s) !== null)
   const canView = useSim((s) => selectCan(s, Permission.EVIDENCE_VIEW))
-  const gate = permissionGate({ operatorKnown, permitted: canView })
+  // The Core's own word for this caller and this item wins over the role hint (a case scope is not a role).
+  const gate = mayPlay === false ? 'REFUSED' : permissionGate({ operatorKnown, permitted: canView })
   const [phase, setPhase] = useState<Phase>(IDLE)
   const [playing, setPlaying] = useState(false)
   const [positionMs, setPositionMs] = useState(0)
@@ -124,6 +141,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const busy = useRef(false)
   /** The media position of the last AUTOMATIC renewal after an error; null: none since the last progress. */
   const renewedAtMs = useRef<number | null>(null)
+  /** G94-08: the path was taken off the elements after a refused request; the next start asks for a new session first. */
+  const detached = useRef(false)
 
   const segments = useMemo(() => bandSegments(item.audioIntervals, durationMs), [item.audioIntervals, durationMs])
   const totalMs = bandDurationMs(item.audioIntervals, durationMs)
@@ -131,7 +150,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
 
   const sessions = phase.kind === 'ready' ? phase.sessions : null
   /** The camera files this item has: one or two. */
-  const expected = useMemo(() => cameraFilesOf(item), [item])
+  const expected = useMemo(() => (fileIds !== null && fileIds.length > 0 ? fileIds : cameraFilesOf(item)), [fileIds, item])
   const opened = sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)
   const leading = opened[0] ?? null
 
@@ -166,6 +185,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         return
       }
       resume.current = then
+      detached.current = false
       if (then === null) setPositionMs(0)
       // The players are started by the effect that puts the new paths on them.
       if (then?.play === true) setPlaying(true)
@@ -203,9 +223,26 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     return sessions !== null && opened.some((fileId) => mediaSessionStale(sessions[fileId] as MediaSession, coreNow))
   }
 
+  /**
+   * G94-08: takes the bearer path off every element at once. A refused request leaves a dead path
+   * on the element; with no `src` the browser has nothing to ask again (and nothing to print again).
+   */
+  const detach = () => {
+    detached.current = true
+    for (const fileId of CAMERA_FILE_IDS) {
+      const element = videos.current[fileId]
+      if (!element) continue
+      element.removeAttribute('src')
+      element.load()
+    }
+  }
+
   const play = () => {
-    if (stale()) void open({ seconds: positionMs / 1000, play: true }, true)
-    else startPlayers()
+    // A session at its end, or elements without a path (after a refused request): a new session first.
+    if (stale() || detached.current) {
+      renewedAtMs.current = null
+      void open({ seconds: positionMs / 1000, play: true }, true)
+    } else startPlayers()
   }
 
   // The bearer path goes to the element here and is taken off it when the session or the player goes.
@@ -255,6 +292,12 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     if (!lead) return
     const nowMs = Math.min(lead.currentTime * 1000, totalMs)
     setPositionMs(nowMs)
+    // G94-08: renew BEFORE the end while it plays, so no range request is ever sent on a dead session
+    // (the browser prints the path of a refused request itself). Driven by the media clock, once per end.
+    if (playing && !busy.current && !detached.current && stale()) {
+      void open({ seconds: lead.currentTime, play: true }, true)
+      return
+    }
     // Playback moved on past the place of the last renewal: the next error may be renewed again.
     if (renewedAtMs.current !== null && nowMs - renewedAtMs.current > SAME_PLACE_MS) {
       renewedAtMs.current = null
@@ -270,7 +313,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const seekTo = (seconds: number) => {
     const target = clampSeek(seconds, totalSeconds)
     setPositionMs(target * 1000)
-    if (stale()) {
+    if (stale() || detached.current) {
       // The seek would be a new range request on a session at its end: renew first, then go there.
       void open({ seconds: target, play: playing }, true)
       return
@@ -286,7 +329,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     // The numeric code of the element's error and nothing else: its message and its source are never read.
     logEvidence('warn', 'playback.mediaError', null, { evidenceId, fileId, mediaErrorCode: element?.error?.code ?? null, positionMs: Math.round(positionMs) })
     const wasPlaying = playing
+    // G94-07: was the session at its end on the Core's clock when the request was refused?
+    const sessionEnded = stale()
     pause()
+    // G94-08: the dead path comes off the elements now; the renewal below (or the next press) puts a new one on.
+    detach()
     const samePlace = renewedAtMs.current !== null && Math.abs(positionMs - renewedAtMs.current) <= SAME_PLACE_MS
     if (!samePlace && !busy.current && retry.consume()) {
       // Once per place: a new session, the same position, and on with it.
@@ -294,7 +341,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       void open({ seconds: positionMs / 1000, play: wasPlaying }, true)
       return
     }
-    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: positionMs, renewing: false } : current))
+    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: positionMs, renewing: false, stopCause: sessionEnded ? 'SESSION_ENDED' : 'UNKNOWN' } : current))
   }
 
   const reopen = () => {
@@ -336,7 +383,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     return (
       <div className="evi-sealed" data-testid="evidence-playback" data-phase={phase.kind} aria-busy={opening || undefined}>
         <span className="evi-strong">{t('evidence.playback.title')}</span>
-        <p className="evi-caption">{gate === 'REFUSED' ? t('evidence.playback.notPermitted') : t('evidence.playback.note')}</p>
+        <p className="evi-caption" data-testid={gate === 'REFUSED' ? 'evidence-playback-not-permitted' : undefined}>
+          {mayPlay === false ? t('evidence.itemFacts.media.mayNotPlay') : gate === 'REFUSED' ? t('evidence.playback.notPermitted') : t('evidence.playback.note')}
+        </p>
         <div>
           <Button variant="primary" onPress={() => void open(null, false)} isDisabled={gate !== 'ALLOWED' || opening} isPending={opening} data-testid="evidence-playback-open" data-gate={gate}>
             {opening ? <Spinner size="sm" color="current" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
@@ -350,8 +399,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   // A file the item HAS and that did not open; a package of one camera misses nothing.
   const missing = expected.find((fileId) => phase.sessions[fileId] === undefined) ?? null
   const stopped = phase.stoppedAtMs !== null
+  // G94-07: a stop that is only the end of the media session: "Press Play to continue" (Play renews).
+  const sessionEnded = stopped && phase.stopCause === 'SESSION_ENDED'
   // The fragment of an open file the last verify run of this page named as failed, if any.
-  const verifiedFailure = stopped ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null
+  const verifiedFailure = stopped && !sessionEnded ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null
   return (
     <div className="evi-sealed" data-testid="evidence-playback" data-phase="ready" data-playing={playing ? 'true' : 'false'} data-files={opened.join(' ')} aria-busy={phase.renewing || undefined}>
       <div className="evi-sealed-stages" data-files={opened.length}>
@@ -394,19 +445,28 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           {t('evidence.playback.oneFile', { track: t(`common.tracks.${opened[0] ?? missing}`) })}
         </p>
       ) : null}
+      {fileIds !== null && fileIds.length === 1 && missing === null ? (
+        <p className="evi-caption" data-testid="evidence-playback-one-camera">
+          {t('evidence.itemFacts.media.oneCamera', { track: fileIds[0] })}
+        </p>
+      ) : null}
       {phase.renewing ? (
         <p className="evi-caption" role="status" data-testid="evidence-playback-renewing">
           {t('evidence.playback.renewing')}
         </p>
       ) : null}
       {stopped ? (
-        <Alert status={verifiedFailure ? 'danger' : 'warning'} role="alert" data-testid="evidence-playback-stopped" data-integrity={verifiedFailure ? 'true' : 'false'}>
+        <Alert status={verifiedFailure ? 'danger' : 'warning'} role="alert" data-testid="evidence-playback-stopped" data-integrity={verifiedFailure ? 'true' : 'false'} data-cause={phase.stopCause ?? 'UNKNOWN'}>
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Title>
-              {verifiedFailure ? integrityText({ fileId: verifiedFailure.trackId, seq: verifiedFailure.seq }) : t('evidence.playback.stoppedAt', { at: formatMediaTime(phase.stoppedAtMs ?? 0) })}
+              {sessionEnded
+                ? t('evidence.itemFacts.playback.sessionEnded')
+                : verifiedFailure
+                  ? integrityText({ fileId: verifiedFailure.trackId, seq: verifiedFailure.seq })
+                  : t('evidence.playback.stoppedAt', { at: formatMediaTime(phase.stoppedAtMs ?? 0) })}
             </Alert.Title>
-            {verifiedFailure ? null : <Alert.Description>{reopenButton}</Alert.Description>}
+            {verifiedFailure || sessionEnded ? null : <Alert.Description>{reopenButton}</Alert.Description>}
           </Alert.Content>
         </Alert>
       ) : null}
@@ -416,7 +476,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           isIconOnly
           size="sm"
           variant="primary"
-          isDisabled={stopped || phase.renewing}
+          isDisabled={(stopped && !sessionEnded) || phase.renewing}
           aria-label={playing ? t('evidence.media.pause') : t('evidence.media.play')}
           onPress={() => (playing ? pause() : play())}
           data-testid="evidence-sealed-play-toggle"

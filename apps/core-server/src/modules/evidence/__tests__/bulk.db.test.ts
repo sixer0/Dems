@@ -252,11 +252,13 @@ describe('operation 40 getEvidence at volume', () => {
       expect(validateCoreApiResponse('getEvidence', 200, response.json()), item.id).toEqual({ ok: true });
       const detail = EvidenceDetailSchema.parse(response.json());
       expect(detail.evidence, item.id).toStrictEqual(onTheWire(item));
-      expect(detail.media, item.id).toEqual(mediaRefOf(item));
+      // Wave H C1 (G94-01): an item with no package in the Core's store and no bundled one answers NONE WITH ITS REASON.
+      const bundled = mediaRefOf(item);
+      expect(detail.media, item.id).toEqual(bundled.source === 'NONE' ? { ...bundled, reason: 'NOT_A_SEALED_PACKAGE' } : bundled);
       expect(trackListsOf(response.json()), item.id).toEqual([FOUR_TRACKS]);
     }
     const detail14 = EvidenceDetailSchema.parse((await host.get(itemUrl(numbered14.id), investigator)).json());
-    expect(detail14.media).toEqual({ source: 'NONE', packageSuffix: null });
+    expect(detail14.media).toEqual({ source: 'NONE', packageSuffix: null, reason: 'NOT_A_SEALED_PACKAGE' });
   });
 
   it('text outside ASCII comes back as it was stored: a subject, a note and a marker label with the Unicode sample', async () => {

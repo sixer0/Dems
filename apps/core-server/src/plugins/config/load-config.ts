@@ -16,19 +16,25 @@ import {
   CONNECTION_FILE_KEYS,
   CONNECTION_FILE_NAME,
   ConfigError,
+  ENV_CAPTURE_DEV_FAKE_MIC,
   ENV_CAPTURE_DEV_SOURCES,
   ENV_CAPTURE_HELPER_FFMPEG,
   ENV_CAPTURE_MODE,
   ENV_CAPTURE_WORKER,
   ENV_DEMO_CONTROLS,
+  ENV_INSTALLATION_DEVICE_ID,
+  ENV_INSTALLATION_NAME,
   ENV_LISTEN_PORT,
   ENV_LOG_LEVEL,
   ENV_MEDIA_DIR,
   RUNTIME_ROLE,
   createConfig,
+  parseCaptureDevFakeMic,
   parseCaptureDevSources,
   parseCaptureMode,
   parseCapturePath,
+  parseInstallationDeviceId,
+  parseInstallationName,
   databaseNameFor,
   parseDemoControls,
   parseListenPort,
@@ -72,6 +78,11 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   // here and decided nowhere here: which combination boots is the capture fence's (spec §A.1.2).
   const captureDevSources = parseCaptureDevSources(options.env[ENV_CAPTURE_DEV_SOURCES]);
   const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, options.env[ENV_CAPTURE_HELPER_FFMPEG]);
+  // What the first generated test microphone plays (fix wave H, ruling D198). Parsed here; refused or not by the capture fence.
+  const captureDevFakeMic = parseCaptureDevFakeMic(options.env[ENV_CAPTURE_DEV_FAKE_MIC]);
+  // The installation identity (fix wave H closing pass Z1, decision D207). Parsed here; whether a start without it is refused is the sealing host's.
+  const installationDeviceId = parseInstallationDeviceId(options.env[ENV_INSTALLATION_DEVICE_ID]);
+  const installationName = parseInstallationName(options.env[ENV_INSTALLATION_NAME]);
 
   const dataDir = resolve(options.dataDir ?? DEFAULT_DATA_DIR);
   const file = join(dataDir, CONNECTION_FILE_NAME);
@@ -104,5 +115,8 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
     mediaStoreDir,
     captureDevSources,
     captureHelperFfmpegPath,
+    captureDevFakeMic,
+    installationDeviceId,
+    installationName,
   });
 }

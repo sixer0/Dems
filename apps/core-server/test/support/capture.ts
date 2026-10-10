@@ -41,6 +41,7 @@ import {
   CAPTURE_MIN_FRAG_DURATION_MS,
 } from '@dems/shared/api';
 import {
+  CAPTURE_WORKER_VERSION,
   WorkerLaunchError,
   type CaptureTimers,
   type WorkerChannel,
@@ -119,11 +120,12 @@ export interface FakeWorkerBehaviour {
   /** The protocol version its `HELLO` names. */
   protocolVersion: number;
   /**
-   * The version word its `HELLO` names. Default: a RELEASE word (`capture-worker/<n>.<n>.<n>`): the
-   * supervisor holds every `HELLO` to that allowlist (review R63-04), so a fake that is to record
-   * names itself like a release worker - with the word of the worker of this tree
-   * (`apps/capture-worker/src/worker.h` `WORKER_VERSION`; `src/capture/__tests__/tidy-fy.test.ts`
-   * holds the two equal). A test of the refusal says another word.
+   * The version word its `HELLO` names. Default: THE version this Core was built to drive
+   * (`CAPTURE_WORKER_VERSION`, `src/capture/boot/checks.ts` - the word of the worker of this tree,
+   * `apps/capture-worker/src/worker.h` `WORKER_VERSION`; a test holds the two equal). The boot and
+   * the supervisor refuse every other word since wave H driver F (gate 64 C7; before it the rule
+   * was the release FORM, review R63-04), so a fake that is to record states the built version by
+   * construction. A test of the refusal says another word.
    */
   workerVersion: string;
   /** `true`: acknowledges `START`; a code: refuses it with that code; `false`: never answers. */
@@ -149,7 +151,7 @@ const DEFAULT_BEHAVIOUR: FakeWorkerBehaviour = {
   hello: true,
   libavformatMismatch: false,
   protocolVersion: CAPTURE_PROTOCOL_VERSION,
-  workerVersion: 'capture-worker/0.5.0',
+  workerVersion: CAPTURE_WORKER_VERSION,
   ackStart: true,
   ackSwitch: true,
   exitOnStop: true,

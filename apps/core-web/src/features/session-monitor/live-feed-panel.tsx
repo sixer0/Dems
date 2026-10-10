@@ -9,11 +9,13 @@ import { formatDuration } from '@dems/shared/realtime'
 import { useCoreActions } from '@dems/shared/live'
 import { selectSystemState, useSim } from '@dems/shared/sim'
 import { GlowRing } from '@/components/composed'
-import { CameraFeed, RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
+import { RecIndicator, useSimSecond, type CameraFeedHandle } from '@/components/media'
+import { CameraPreview } from '@/features/devices/camera-preview'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { TrackSourceMarks } from '@/features/devices/source-badge'
+import { useInterruptedSeal } from './use-interrupted-seal'
 import { logSessionMonitorError } from './log'
 import { captureFailedStartText, type CaptureFailedStart } from '@/lib/capture-notices'
 import { selectFeed, type SessionPhase } from './model'
@@ -150,7 +152,7 @@ export function LiveFeedPanel({
       <TrackSourceMarks trackId={feed.activeCameraId} place={`monitor-${feed.activeCameraId}`} />
       <div className="sm-feed-stage" ref={stageRef}>
         <div className="sm-feed-frame" data-idle={live ? undefined : 'true'}>
-          <CameraFeed
+          <CameraPreview
             ref={feedRef}
             cameraId={feed.activeCameraId}
             variant="feed"
@@ -209,7 +211,7 @@ export function LiveFeedPanel({
         <Modal.Container size="full" placement="center" className="sm-fullscreen-container">
           <Modal.Dialog aria-label={label} className="sm-fullscreen-dialog">
             <div className="sm-fullscreen-frame">
-              <CameraFeed
+              <CameraPreview
                 cameraId={feed.activeCameraId}
                 variant="feed"
                 label={label}
@@ -277,6 +279,9 @@ interface InvitationProps {
 function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRecover, recoverBusy, recoverPending }: InvitationProps) {
   const { t } = useTranslation()
   const systemState = useSim((s) => selectSystemState(s).state)
+  // Wave H driver B (G75-03, ruling D197): the sealed card of an interrupted recording names it.
+  const openSessionId = useSim((s) => s.session?.id ?? null)
+  const interrupted = useInterruptedSeal(phase === 'SEALED' ? openSessionId : null)
   // D158: the failed start keeps its words while the Core closes it (the store passes through RECOVERY).
   const failed = (phase === 'FAULT' || phase === 'RECOVERY') && failedStart !== null ? captureFailedStartText(t, failedStart) : null
   // Row 139 (ux §8e.2): "Connecting cameras…" and the failed start come first; neither words a recording or evidence.
@@ -290,7 +295,9 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
     (phase === 'SETUP'
       ? { title: t('session.idle.setupTitle'), body: t('session.idle.setupBody') }
       : phase === 'SEALED'
-        ? { title: t('session.idle.sealedTitle'), body: t('session.idle.sealedBody', { evidenceId: evidenceId ?? '—' }) }
+        ? interrupted !== null
+          ? { title: interrupted.title, body: `${evidenceId ?? '—'} · ${interrupted.cause} ${interrupted.kept}` }
+          : { title: t('session.idle.sealedTitle'), body: t('session.idle.sealedBody', { evidenceId: evidenceId ?? '—' }) }
         : phase === 'FAULT' || phase === 'RECOVERY'
           ? { title: t('session.idle.faultTitle'), body: t('session.idle.faultBody') }
           : { title: t('session.idle.title'), body: t('session.idle.body') })

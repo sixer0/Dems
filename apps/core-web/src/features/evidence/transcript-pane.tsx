@@ -21,7 +21,17 @@ import { useRetryCooldown } from './use-retry-cooldown'
 export interface TranscriptPaneProps {
   evidenceId: string
   item: ItemV2
+  /**
+   * Wave H C2 (G81-07): `access.transcript` of operation 40 for THIS operator. `false`: the page view
+   * calls neither operation 84 nor 86 (a refusal is an audited row on the Core) and the pane says
+   * "not permitted". null / absent: not reported - the pane asks as before.
+   */
+  mayRead?: boolean | null
 }
+
+/** The Core's reason for "no transcript" of an item of the demonstration data (operation 84, `details.reason`). */
+const SIMULATED_ITEM = 'SIMULATED_ITEM'
+const STATE_TONE = { success: 'success', warning: 'warning', default: 'neutral' } as const
 
 const STATE_COLOR = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default', UNKNOWN: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>
 
@@ -44,7 +54,7 @@ const STATE_COLOR = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'de
  * - A failed read goes to the shared presenter first, then one record with its codes; "Load again"
  *   is rate-limited (3 s, 6 s, 12 s; three tries).
  */
-export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
+export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptPaneProps) {
   const { t } = useTranslation()
   const live = useWebLive()
   const queryClient = useQueryClient()
@@ -57,8 +67,10 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
   const summary = item.transcript
   // No document was sealed (disabled, or unavailable at the seal): nothing is asked of the Core.
   const disabled = sealedWithoutDocument(summary)
-  const transcript = useTranscript(evidenceId, !disabled)
-  const revisions = useTranscriptRevisions(evidenceId, !disabled && transcript.data !== undefined)
+  // G81-07: the Core says this operator may not read it: nothing is asked on a page view.
+  const blocked = mayRead === false
+  const transcript = useTranscript(evidenceId, !disabled && !blocked)
+  const revisions = useTranscriptRevisions(evidenceId, !disabled && !blocked && transcript.data !== undefined)
   // A revision another operator appended moves the head of the slice item: both reads are fetched again (pass D10).
   useTranscriptFollowsRevision(evidenceId, summary?.revision ?? null)
   const [revising, setRevising] = useState<{ key: number; index: number } | null>(null)
@@ -79,7 +91,13 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
   const derived = document === null ? [] : deriveSegments(document, revisionList)
   const baseRevision = currentRevisionNumber(document, revisionList)
   const refusal = transcript.error instanceof TranscriptReadError ? transcript.error.refusal : transcript.isError ? 'FAILED' : null
-  const loading = !disabled && transcript.isPending && transcript.fetchStatus !== 'idle'
+  // G81-01: why the Core has no transcript, as its own code; a simulated item never will have one.
+  const refusalReason = transcript.error instanceof TranscriptReadError ? transcript.error.reason : null
+  // G81-05 (ruling D198): an assembled transcript without a single segment is "no speech", not a success.
+  const noSpeech = state === 'ASSEMBLED' && derived.length === 0
+  const shownState = noSpeech ? 'NO_SPEECH' : state
+  const stateColor = noSpeech ? 'default' : STATE_COLOR[state]
+  const loading = !disabled && !blocked && transcript.isPending && transcript.fetchStatus !== 'idle'
   const nameOf = (operatorId: string) => investigatorNameOf(operators, operatorId)
   const revisingSegment = revising === null ? null : (derived.find((entry) => entry.segment.index === revising.index) ?? null)
 
@@ -90,15 +108,17 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
   }
 
   return (
-    <section className="evi-transcript" data-testid="evidence-transcript" data-state={state} aria-label={t('evidence.transcript.title')} aria-busy={loading || undefined}>
+    <section className="evi-transcript" data-testid="evidence-transcript" data-state={shownState} aria-label={t('evidence.transcript.title')} aria-busy={loading || undefined}>
       <div className="evi-transcript-head">
         <span className="evi-strong inline-flex items-center gap-2">
           <FileText className="size-4" aria-hidden="true" />
           {t('evidence.transcript.title')}
         </span>
-        <Chip size="sm" variant="soft" color={STATE_COLOR[state]} data-testid="evidence-transcript-state">
-          <Chip.Label>{t(`evidence.transcript.state.${state}`)}</Chip.Label>
-        </Chip>
+        {blocked ? null : (
+          <Chip size="sm" variant="soft" color={stateColor} data-testid="evidence-transcript-state" data-tone={STATE_TONE[stateColor]}>
+            <Chip.Label>{noSpeech ? t('evidence.itemFacts.web.noSpeechChip') : t(`evidence.transcript.state.${state}`)}</Chip.Label>
+          </Chip>
+        )}
         {document !== null ? (
           <>
             <Chip size="sm" variant="secondary" data-testid="evidence-transcript-in-package">
@@ -111,6 +131,12 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
           </>
         ) : null}
       </div>
+
+      {blocked ? (
+        <p className="evi-caption" role="status" data-testid="evidence-transcript-may-not-read">
+          {t('evidence.itemFacts.transcript.mayNotRead')}
+        </p>
+      ) : null}
 
       {state === 'PARTIAL' && summary !== null ? (
         <p className="evi-caption" data-testid="evidence-transcript-partial">
@@ -133,8 +159,8 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
       ) : null}
 
       {refusal === 'NOT_READY' ? (
-        <p className="evi-caption" role="status" data-testid="evidence-transcript-not-ready">
-          {t('evidence.transcript.notReady')}
+        <p className="evi-caption" role="status" data-testid="evidence-transcript-not-ready" data-reason={refusalReason ?? undefined}>
+          {refusalReason === SIMULATED_ITEM ? t('evidence.itemFacts.transcript.simulatedItem') : t('evidence.transcript.notReady')}
         </p>
       ) : null}
       {refusal === 'DENIED' || refusal === 'FAILED' ? (
@@ -160,9 +186,15 @@ export function TranscriptPane({ evidenceId, item }: TranscriptPaneProps) {
             {t('evidence.transcript.sealedOriginal')}
           </p>
           {derived.length === 0 ? (
-            <p className="evi-caption" data-testid="evidence-transcript-empty">
-              {t('evidence.transcript.noSegments')}
-            </p>
+            noSpeech ? (
+              <p className="evi-caption" data-testid="evidence-transcript-no-speech">
+                {t('evidence.itemFacts.transcript.noSpeech')}
+              </p>
+            ) : (
+              <p className="evi-caption" data-testid="evidence-transcript-empty">
+                {t('evidence.transcript.noSegments')}
+              </p>
+            )
           ) : (
             <ol className="evi-transcript-list m-0 list-none p-0" data-testid="evidence-transcript-segments">
               {derived.map((entry) => (

@@ -47,6 +47,7 @@ import { Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import { z } from 'zod';
 import {
+  EvidenceDetailSchema,
   CORE_API_EXAMPLES,
   CORE_API_SCHEMAS,
   REPLICATED_SLICE_NAMES,
@@ -152,6 +153,11 @@ export interface LiveEvidenceBed {
   answerDelayMs: number;
   /** The media reference operation 40 answers for an item (default: `DEMO_PACKAGE`, the item's own suffix). */
   mediaRef: (evidenceId: string) => EvidenceMediaRef;
+  /**
+   * Wave H C2: the optional members operation 40 states beside `evidence` and `media` (`access`,
+   * `exports`), merged into the answer. Default: none, as a Core that states neither.
+   */
+  detailExtras: (evidenceId: string) => Readonly<Record<string, unknown>>;
   /** The Core stops answering (requests fail, the socket drops, reconnects are refused), or answers again. */
   setReachable(reachable: boolean): void;
   /** Moves the fake clock in steps, with the promise jobs in between. */
@@ -268,6 +274,7 @@ export async function renderLiveEvidence({
     queryClient: undefined as unknown as QueryClient,
     answerDelayMs: 0,
     mediaRef: (evidenceId) => ({ source: 'DEMO_PACKAGE', packageSuffix: evidenceId.slice(-4) }),
+    detailExtras: () => ({}),
     setReachable(next) {
       reachable = next;
       if (!next) act(() => void bed.connection().drop());
@@ -348,7 +355,12 @@ export async function renderLiveEvidence({
     const id = idParam(call);
     const item = engine.sim.store.getState().evidence.find((entry) => entry.id === id);
     if (!item) return fake.example('getEvidence', 404, 'notFound');
-    return { status: 200, body: { evidence: JSON.parse(JSON.stringify(item)) as unknown, media: bed.mediaRef(id) } };
+    const body = { evidence: JSON.parse(JSON.stringify(item)) as unknown, media: bed.mediaRef(id), ...bed.detailExtras(id) };
+    // Reconcile pass R: the answer a test scripts for operation 40 is held to the contract's STRICT schema - a
+    // member name no Core sends (`media.files`, `access.transcript`) fails the test here instead of passing unseen.
+    const checked = EvidenceDetailSchema.safeParse(body);
+    if (!checked.success) throw new Error(`the scripted answer of operation 40 is not the contract's shape: ${checked.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
+    return { status: 200, body };
   });
 
   fake.onConnect((connection) => {

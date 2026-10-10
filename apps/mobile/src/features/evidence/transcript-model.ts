@@ -137,6 +137,20 @@ export function readTranscriptRevisions(value: unknown): TranscriptRevision[] | 
 
 export type TranscriptPaneState = 'ASSEMBLED' | 'PARTIAL' | 'UNAVAILABLE' | 'DISABLED' | 'UNKNOWN';
 
+/** `details.reason` of operation 84's `409 TRANSCRIPT_NOT_READY` for an item the Core keeps no transcript of (G81-01). */
+export const TRANSCRIPT_REASON_SIMULATED_ITEM = 'SIMULATED_ITEM';
+
+/**
+ * No speech (wave H C2; gate note G81-05, ruling D198): the seal reports an ASSEMBLED transcript and
+ * its document holds NO segment. That is a finding about the recording, not a transcript a reader
+ * may take "assembled" for: the pane says "No speech was detected" in a neutral tone and offers no
+ * revise control (a revision needs a segment). Only for the state ASSEMBLED: a PARTIAL document
+ * without segments has parts of the audio without text and is not "no speech".
+ */
+export function isNoSpeech(state: TranscriptPaneState, document: Pick<TranscriptDocument, 'segments'> | null): boolean {
+  return state === 'ASSEMBLED' && document !== null && document.segments.length === 0;
+}
+
 /**
  * The state the pane names IS THE STATE THE ITEM'S SUMMARY REPORTS - what the seal signed in the
  * manifest (code review row 80, finding R80-01). Nothing is inferred from a document having arrived:

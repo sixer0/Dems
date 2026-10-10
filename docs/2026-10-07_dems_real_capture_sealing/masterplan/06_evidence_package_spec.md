@@ -28,6 +28,21 @@ last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-67..71 (D89, D91; `g
 
 # Evidence Package Spec — layout, manifest v2, signer, verify v2, sealing pipeline v2, tamper demo
 
+## Errata index (fix passes of 2026-10-10)
+
+> Added on 2026-10-10 by blueprint row 96 (register DOC-02). An index only: no text of this spec was
+> changed, and each erratum stays where it stands. It lists the errata paragraphs the review-fix
+> passes of 2026-10-10 added to THIS file (commit `f293221`). Errata of earlier passes (`PE-12x-…`,
+> `PE-R8-…` and others) are marked inline as before and are not repeated here. Decision numbers
+> refer to `decisions/decisions.md`.
+
+| Erratum | Where | What it changes, in one line | Decision |
+|---|---|---|---|
+| PE-M7-02 | §A.3 | WHEN the camera file becomes ciphertext: recordings are plaintext on the media store root from the start of a session until its seal completes; recording-time digests are plaintext digests; the root must be owner-only; recordings the Core could not seal are moved to `.quarantine/<sessionId>/` | D147, D148, D160, D167, D178 |
+| PE-M7-01 | §B.4 | `tracks[]` holds 1 or 2 records, not exactly 2: a one-camera session is sealable; no new manifest field | D178 |
+| PE-M7-03 | §H.6 | Limits stated by fix pass F-M7: plaintext until sealed; the audit extract is not signed (notice `AUDIT_EXTRACT_NOT_SIGNED`); the development-key mark; one-camera packages; random IVs; the manifest's inputs are frozen at the first build | D178 |
+| PE-M7-04 | §H.7 | Rules stated by fix pass F-M7c: the IV rule; session keys kept per media store root (`session-keys-<scope>`; moving a store means renaming that folder); plaintext after a SEALED outcome is removed only by proof; the staged file `transcript-revisions.json.next` and the notice `REVISION_APPEND_PENDING`; the transcriber scratch under the store root | D180, D186, D187 |
+
 > **Authority in force.** Blueprint row 32 (`identification/02_structured.md:212`) is the hard gate:
 > *"Every manifest v2 field has type plus source; every sealing step has checkpoint, resume rule,
 > progress source; verify checks enumerated incl. the one-fragment tamper expectation."* The M7 gate

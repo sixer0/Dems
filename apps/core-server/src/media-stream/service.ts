@@ -17,8 +17,9 @@
  *   401 / 403   stage 6: not signed in; a role without EVIDENCE_VIEW, with its ACCESS_DENIED row
  *   422         a body that is not exactly `{ fileId }`
  *   404         no item of that ID
- *   409         MEDIA_NOT_AVAILABLE: the item has no real sealed v2 package (every dataset item and
- *               every v1 demo package: a client plays its bundled media for those)
+ *   409         MEDIA_NOT_AVAILABLE: the item has no sealed v2 package in this Core's store (every
+ *               v1 demo package and simulated item: a client plays its bundled media for those). A
+ *               demonstration item the SEED sealed here HAS one and is opened (decision D205)
  *   403         NOT_PERMITTED, `details.reason: EVIDENCE_CASE_SCOPE`, one ACCESS_DENIED row
  *               (SEC35-16, Q-SEC-1 (a)): the item is REAL and the caller neither holds the case
  *               nor is a SUPERVISOR
@@ -59,10 +60,18 @@
  * the length of the file. The EXPIRY of the token does not cut an answer in flight (decision
  * D-90-9 stands: a player reads one long range): the token gates the START of an answer.
  *
- * THE AUDIT TRAIL of serving. One `EVIDENCE_MEDIA_SERVED` row per answered range, written when the
- * answer has ended, with the bytes that were actually handed to the connection and the range that
- * was answered; `WARNING` and a message naming the fragment when the stream stopped on a tag.
- * Never the token, never the URL, never a byte of media (C3 §5.1).
+ * THE AUDIT TRAIL of serving (wave H C1; gate finding G94-06, ruling D200). A PLAYBACK IS AUDITED
+ * ONCE PER MEDIA SESSION ISSUE: the row operation 88 commits before its answer says who opened
+ * which file of which item, when, and until when the session lives (SEC35-12: "no token exists
+ * that the trail does not know of"; SEC35-13 is the blanking of the token, unchanged). A RANGE
+ * REQUEST IS NOT AN AUDIT ROW: a player reads the fragment index of an fMP4 by a hundred aborted
+ * requests, and a row per request buried the trail (117 rows for one opening of a 134 s item).
+ * An answered range is ONE LOG LINE (`debug`: the file, the positions the server computed, the
+ * bytes handed on). ONE MORE ROW IS WRITTEN WHEN SERVING FAILS on the package: a fragment whose
+ * tag did not verify (or that could not be opened or read) - `WARNING`, naming the fragment, the
+ * range and the bytes that were handed on before it; that row is evidence about the package and
+ * is never dropped. A stream cut because its sign-in session ended is a log line (the sign-out
+ * itself is in the trail). Never the token, never the URL, never a byte of media (C3 §5.1).
  *
  * WHAT IS NEVER LOGGED: the token, the URL, the `Range` value. The request line of the server
  * holds the route PATTERN (`/media/:token`), never the path (`plugins/logger`); the lines of this
@@ -179,6 +188,12 @@ function mediaUnavailable(reason: string, where: { readonly fileId?: string | nu
   });
 }
 
+/**
+ * An item operation 88 opens: a REAL sealed v2 package, or (decision D205) a demonstration item the
+ * seed sealed on this Core. Every other item has no sealed package here.
+ */
+const hasSealedPackage = (item: MediaItem): boolean => item.real || item.seedSealedDemo === true;
+
 /** SEC35-16 (Q-SEC-1 (a)): REAL evidence is for the operator who holds the case, and for a SUPERVISOR. */
 export function holdsCase(principal: Pick<Operator, 'operatorId' | 'role'>, item: Pick<MediaItem, 'investigatorId'>): boolean {
   return principal.role === OperatorRole.SUPERVISOR || (item.investigatorId !== '' && principal.operatorId === item.investigatorId);
@@ -245,7 +260,9 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
 
   /** The case scope of REAL evidence. Resolves for a caller inside it; refuses, audited, otherwise. */
   async function holdScope(request: FastifyRequest, principal: Operator, item: MediaItem): Promise<void> {
-    if (holdsCase(principal, item)) return;
+    // Decision D205: the scope is REAL evidence's (03_api_contract.md 2.4: "For an item whose integrity_source='REAL'").
+    // A seed-sealed demonstration item is a generated test picture: every holder of EVIDENCE_VIEW may play it.
+    if (!item.real || holdsCase(principal, item)) return;
     await refuse(request, principal, { reason: EVIDENCE_CASE_SCOPE_REASON, permission: Permission.EVIDENCE_VIEW, evidenceId: item.evidenceId });
   }
 
@@ -286,7 +303,7 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       const fileId = fileOfBody(request.body);
       const item = await parts().readItem(request, evidenceId);
       if (item === null) throw evidenceNotFound();
-      if (!item.real) throw mediaUnavailable(NOT_A_SEALED_PACKAGE_REASON, { fileId });
+      if (!hasSealedPackage(item)) throw mediaUnavailable(NOT_A_SEALED_PACKAGE_REASON, { fileId });
       await holdScope(request, principal, item);
       const mac = parts().mac();
       if (mac === null) throw storeNotReady();
@@ -312,13 +329,23 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
 
   // ── The media route ──────────────────────────────────────────────────────────────────────────
 
-  /** The row of one answered range, written when the answer has ended. It cannot change the answer: a failure is logged and persisted. */
+  /**
+   * The record of one answered range, made when the answer has ended (G94-06): a LOG LINE for a
+   * range that was served or cut by the end of its sign-in session, and ONE AUDIT ROW only when
+   * the stream stopped on the package itself (`stopped`). It cannot change the answer: a row that
+   * could not be written is logged and persisted.
+   */
   async function recordServed(request: FastifyRequest, principal: Operator, item: MediaItem, fileId: PackageVideoTrackId, range: { readonly start: number; readonly end: number }, served: number, stopped: MediaSourceError | null, sessionEnded = false): Promise<void> {
+    if (stopped === null) {
+      if (sessionEnded) request.log.info({ code: MEDIA_SESSION_ENDED_REASON, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, bytesServed: served }, 'Evidence media stream stopped: its sign-in session ended');
+      else request.log.debug({ code: AuditType.EVIDENCE_MEDIA_SERVED, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, rangeStart: range.start, rangeEnd: range.end - 1, bytesServed: served }, 'Evidence media range served');
+      return;
+    }
     try {
       await append(MEDIA_SERVED_UNIT, {
         type: AuditType.EVIDENCE_MEDIA_SERVED,
-        ...(stopped === null && !sessionEnded ? {} : { severity: Severity.WARNING }),
-        message: sessionEnded ? `Media stream stopped: ${fileId} (${MEDIA_SESSION_ENDED_REASON})` : stopped === null ? `Media served: ${fileId}` : `Media stream stopped: ${fileId} fragment ${stopped.seq ?? '?'} (${stopped.code})`,
+        severity: Severity.WARNING,
+        message: `Media stream stopped: ${fileId} fragment ${stopped.seq ?? '?'} (${stopped.code})`,
         actorId: principal.operatorId,
         deviceId: principal.deviceId,
         sessionId: item.sessionId,
@@ -329,11 +356,8 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       request.log.error({ err: error, source: `${SOURCE}.recordServed`, evidenceId: item.evidenceId, fileId }, SERVED_ROW_NOT_WRITTEN);
       app.errorLog.append({ level: 'error', source: `${SOURCE}.recordServed`, message: SERVED_ROW_NOT_WRITTEN, ...describeError(error), context: { requestId: request.id, evidenceId: item.evidenceId, fileId } });
     }
-    if (sessionEnded) request.log.info({ code: MEDIA_SESSION_ENDED_REASON, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, bytesServed: served }, 'Evidence media stream stopped: its sign-in session ended');
-    if (stopped !== null) {
-      request.log.error({ code: stopped.code, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, seq: stopped.seq, bytesServed: served }, STOPPED);
-      app.errorLog.append({ level: 'error', source: `${SOURCE}.serve`, message: STOPPED, code: stopped.code, context: { requestId: request.id, evidenceId: item.evidenceId, fileId, seq: stopped.seq } });
-    }
+    request.log.error({ code: stopped.code, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, seq: stopped.seq, bytesServed: served }, STOPPED);
+    app.errorLog.append({ level: 'error', source: `${SOURCE}.serve`, message: STOPPED, code: stopped.code, context: { requestId: request.id, evidenceId: item.evidenceId, fileId, seq: stopped.seq } });
   }
 
   const serve = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
@@ -358,7 +382,7 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       // since the session was issued is gone here too.
       if (!principal.permissions.includes(Permission.EVIDENCE_VIEW)) return refuse(request, principal, { permission: Permission.EVIDENCE_VIEW, evidenceId });
       const found = await parts().readItem(request, evidenceId);
-      if (found === null || !found.real) throw mediaUnavailable(NOT_A_SEALED_PACKAGE_REASON, { fileId });
+      if (found === null || !hasSealedPackage(found)) throw mediaUnavailable(NOT_A_SEALED_PACKAGE_REASON, { fileId });
       const item: MediaItem = found;
       await holdScope(request, principal, item);
       const { ports, plan } = await sourceOf(item, fileId);

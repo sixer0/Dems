@@ -102,6 +102,14 @@ export class FakeOnvifPortBusyError extends Error {
 /** A documentation address (RFC 5737): the "other host" of the steering cases. It is never contacted. */
 export const FAKE_ONVIF_FOREIGN_HOST = '192.0.2.10';
 
+/**
+ * The answer of discovery mode `NOT_XML`: 512 FIXED bytes that are no XML. Fixed on purpose (pass H-Y): the body was
+ * `randomBytes(512)`, and about one random body in 130 holds the two bytes `<!` - which a search rightly drops as a
+ * DECLARATION (the declaration rule reads the bytes before any parser does), not as NOT_XML. The reason of a hostile
+ * answer must not be drawn by lot: this body holds no `<!`, and `probe-answer.test.ts` pins its one reason.
+ */
+export const FAKE_ONVIF_NOT_XML_BODY: Buffer = Buffer.from(Array.from({ length: 512 }, (_unused, index) => (index * 97 + 13) % 256));
+
 export const WS_DISCOVERY_NAMESPACE = 'http://schemas.xmlsoap.org/ws/2005/04/discovery';
 export const WS_DISCOVERY_PROBE_ACTION = `${WS_DISCOVERY_NAMESPACE}/Probe`;
 export const WS_DISCOVERY_PROBE_MATCHES_ACTION = `${WS_DISCOVERY_NAMESPACE}/ProbeMatches`;
@@ -197,6 +205,12 @@ export interface FakeOnvifStub {
   stop(): Promise<void>;
   /** Closes the device listener only: the next connection is refused (`UNREACHABLE` by refusal). */
   closeDeviceListener(): Promise<void>;
+  /**
+   * Opens the device listener again on its port after `closeDeviceListener()` (fix wave H: the lane
+   * launcher switches a running stub between "reachable" and "unreachable"). Does nothing while it
+   * listens; rejects before `start()` and with `FakeOnvifPortBusyError` when the port was taken.
+   */
+  openDeviceListener(): Promise<void>;
   setDiscoveryMode(mode: FakeOnvifDiscoveryMode): void;
   setDeviceMode(mode: FakeOnvifDeviceMode): void;
   setRtspMode(mode: FakeOnvifRtspMode): void;
@@ -388,7 +402,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         return first === undefined ? [] : [probeMatches(messageId, probeMatch({ ...first, name: '&e;' }, deviceServiceUrl).replace('%26e%3B', '&e;'), '', doctype)];
       }
       case 'NOT_XML':
-        return [randomBytes(512)];
+        return [Buffer.from(FAKE_ONVIF_NOT_XML_BODY)];
       case 'FLOOD_300':
         return Array.from({ length: 300 }, (_unused, index) =>
           probeMatches(messageId, probeMatch({ endpointRef: `urn:uuid:${randomUUID()}`, name: `Flood ${index}`, hardware: 'FLOOD' }, deviceServiceUrl)),
@@ -718,6 +732,14 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     async closeDeviceListener() {
       for (const socket of openSockets) if (socket.localPort === ports.device) socket.destroy();
       await closeServer(http);
+    },
+    async openDeviceListener() {
+      if (udp === null) throw new Error('fake ONVIF stub: not started');
+      if (http !== null && http.listening) return;
+      const server = createHttpServer(onHttp);
+      track(server);
+      await listenTcp(server, ports.device, 'device');
+      http = server;
     },
     setDiscoveryMode(mode) {
       discoveryMode = mode;

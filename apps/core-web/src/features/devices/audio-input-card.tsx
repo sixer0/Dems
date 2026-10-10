@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { EMPTY_DATE_TEXT } from '@dems/shared/realtime'
-import { selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
+import { captureMicLines, DEFAULT_MIC_INPUT_OF_CHANNEL, micInputOfChannel, selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
 import { DbfsMeter, formatDbfsValue, METER_THRESHOLDS } from '@/components/composed'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
@@ -19,6 +19,7 @@ import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
 import { reportDevicesError } from './report'
 import { MIC_DEVICE, type RearPortId } from './sim-adapter'
 import { MicSourceMarks } from './source-badge'
+import { useMicInputName } from './source-class'
 import { StatusChip, StatusDot } from './status-chip'
 
 const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2' }
@@ -53,6 +54,13 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const actions = useCoreActions()
   const presentCoreError = useCoreErrorPresenter()
   const deviceId = MIC_DEVICE[channel]
+  // Wave H closing pass Z2 (note 124 section 4 item 2; ruling D137): the card is a LINE. The microphone
+  // that is on it is the selector's (the session's snapshot while one is open) - channel 1 is the first
+  // line, whatever its id. `deviceId` above stays the line's own identity (status, menu, identify).
+  const inputId = useSim((s) => micInputOfChannel(captureMicLines(s), channel))
+  const inputName = useMicInputName()
+  // Named only when it is not the line's built-in microphone: the title already says "MIC 1" / "MIC 2".
+  const otherInput = inputId !== DEFAULT_MIC_INPUT_OF_CHANNEL[channel]
   // LB-1: the kebab's Button drops `aria-busy`, so the head that holds it carries it.
   const commandBusy = useDevicePending(deviceId)
   // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0).
@@ -90,14 +98,17 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
       data-testid={`audio-input-${channel}`}
       data-status={status}
       data-tone={tone}
+      data-mic-input={inputId}
       variants={m.variants.row}
     >
       <header className="dev-tile-head" aria-busy={commandBusy || undefined}>
         <StatusDot tone={tone} />
         <div className="dev-tile-titles">
-          <span className="dev-tile-name">{fullName}</span>
+          {/* G70-07 (wave H): the full title stays readable - it wraps instead of ending in an ellipsis. */}
+          <span className="dev-tile-name dev-tile-name-wrap">{fullName}</span>
           <span className="dev-tile-sub">
             {port} · {channel}
+            {otherInput ? <span data-testid={`audio-line-input-${channel}`}>{` · ${inputName(inputId)}`}</span> : null}
           </span>
         </div>
         <div className="dev-tile-chips">
@@ -108,11 +119,14 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
           ) : null}
           <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`audio-status-${channel}`} />
           {/* Task 3 R-10 / R-11 (blueprint row 137): the input's device is the one the selector names for it. */}
-          <MicUnreachableMark inputId={deviceId} />
-          <MicSourceMarks inputId={deviceId} place={channel} />
+          <MicUnreachableMark inputId={inputId} />
         </div>
         <DeviceMenu deviceId={deviceId} name={name} />
       </header>
+      {/* G70-07 (wave H): the development badge and the 'is on' line on their own line, so they take no width from the title. */}
+      <div className="dev-tile-marks">
+        <MicSourceMarks inputId={inputId} place={channel} />
+      </div>
 
       <div className="dev-audio-body">
         <div className="dev-audio-meter">

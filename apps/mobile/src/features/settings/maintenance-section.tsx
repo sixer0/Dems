@@ -194,7 +194,7 @@ function DiagnosticsCard() {
           })}
         </Text>
       ) : null}
-      <Button testID="settings-run-diagnostics" variant="secondary" size="lg" onPress={start} {...busyState(press.busy)}>
+      <Button testID="settings-run-diagnostics" variant="secondary" size="lg" onPress={start} accessibilityLabel={t('features.settings.maintenance.runDiagnostics')} {...busyState(press.busy)}>
         {press.pending ? <PendingSpinner color={palette.gold} testID="settings-run-diagnostics-spinner" /> : <Activity size={18} color={palette.gold} />}
         <Button.Label>{t('features.settings.maintenance.runDiagnostics')}</Button.Label>
       </Button>
@@ -331,6 +331,7 @@ function UpdateCard() {
             size="lg"
             isDisabled={locked}
             onPress={install}
+            accessibilityLabel={t(live ? 'system.live.install' : 'system.update.install')}
             {...(locked && maintenance.hint ? { accessibilityHint: maintenance.hint } : {})}
             {...busyState(press.busy, locked)}
           >
@@ -490,6 +491,7 @@ function DemoControls() {
                 size="md"
                 variant="primary"
                 onPress={() => loadPress.run((release) => loadScenario(scenario, false, release))}
+                accessibilityLabel={t('features.settings.maintenance.loadScenario')}
                 {...busyState(loadPress.busy)}
               >
                 {loadPress.pending ? <PendingSpinner color={palette.black} testID="settings-demo-load-spinner" /> : <Play size={16} color={palette.black} />}
@@ -500,6 +502,7 @@ function DemoControls() {
                 size="md"
                 variant="outline"
                 onPress={() => resetPress.run((release) => loadScenario(ScenarioName.IDLE, true, release))}
+                accessibilityLabel={t('system.demo.reset')}
                 {...busyState(resetPress.busy)}
               >
                 {resetPress.pending ? <PendingSpinner color={palette.gold} testID="settings-demo-reset-spinner" /> : <RotateCcw size={16} color={palette.gold} />}
@@ -520,6 +523,7 @@ function DemoControls() {
                   variant="danger-soft"
                   onPress={() => recoverPress.run(recover)}
                   testID="settings-demo-recover-button"
+                  accessibilityLabel={t('system.demo.recover')}
                   {...busyState(recoverPress.busy)}
                 >
                   {recoverPress.pending ? <PendingSpinner color={palette.danger} testID="settings-demo-recover-spinner" /> : <LifeBuoy size={16} color={palette.danger} />}
@@ -547,6 +551,7 @@ function DemoFaultButton({ spec, on, onToggle }: { spec: DemoFaultSpec; on: bool
       testID={`settings-demo-fault-${spec.kind}`}
       size="sm"
       variant={on ? 'danger-soft' : 'outline'}
+      accessibilityLabel={t(`system.demo.faults.${spec.kind}`)}
       accessibilityState={{ selected: on, ...busyState(press.busy).accessibilityState }}
       accessibilityHint={t(on ? 'features.settings.maintenance.faultActiveHint' : 'features.settings.maintenance.faultIdleHint')}
       onPress={() => press.run((release) => onToggle(spec, release))}

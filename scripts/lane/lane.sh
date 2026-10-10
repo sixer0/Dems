@@ -4,6 +4,13 @@
 # docs/2026-10-07_dems_real_capture_sealing/initialization/04_gate_environment_wave_f.md).
 #
 #   scripts/lane/lane.sh start  <main|1|2|3>   start that Core detached, wait until it is ready
+#   scripts/lane/lane.sh start  <lane> --with-camera-stub
+#                                              the same Core, started by the lane launcher of the
+#                                              test support with ONE fake ONVIF camera on loopback
+#                                              as its camera search (see "THE CAMERA STUB" below)
+#   scripts/lane/lane.sh start  2 --speech-mic   lane 2 only (development capture): the first test
+#                                              microphone plays the speech fixture (ruling D198);
+#                                              the two options may be given together
 #   scripts/lane/lane.sh stop   <main|1|2|3>   stop that Core (TERM to the listener of its port)
 #   scripts/lane/lane.sh status                what listens on 4420-4423, and the plan of each
 #   scripts/lane/lane.sh reset  <main|1|2|3>   db:reset of that database, under the migrate lock
@@ -29,8 +36,23 @@
 #
 # WHAT IT NEVER DOES. It reads no connection file and no key: it calls the project's npm scripts,
 # which load what they need. It sets no attendance variable and selects no capture source. It
-# touches no port outside 4420-4423 and stops only the listener of the lane it was asked for.
+# touches no port outside 4420-4423 and stops only the listener of the lane it was asked for
+# (the camera stub of "--with-camera-stub" binds three ephemeral ports of 127.0.0.1 inside the
+# Core's own process and goes with it).
 # Web dev servers, Metro and the device rules are not started here (see the note above, section 7).
+#
+# THE CAMERA STUB (fix wave H, gate 70 finding B-1, decision D196). "--with-camera-stub" starts
+# the lane's Core through "npm run start:camera-stub -w @dems/core-server"
+# (apps/core-server/test/support/lane-camera-stub-cli.ts) in the place of "npm run start:server".
+# It is the same Core with one addition: every camera search of that Core goes to ONE fake ONVIF
+# device on 127.0.0.1 (three ephemeral ports) and to nothing else - no multicast, no datagram to
+# the real network. The capture fence decides: a development lane (REAL_DEVELOPMENT) gets the
+# stub; a SIMULATED lane starts WITHOUT it and says so; a production configuration is not started
+# at all (check capture.cameraStub, code DEV_CAMERA_STUB_IN_PRODUCTION). The product's own entry
+# point cannot load the stub, with any flag. The stub's fixture account is made at each start and
+# printed below once the lane is ready: it is a fixture of the fake device, not a secret, and it
+# opens nothing else. What the stub answers is switched by ONE word in its mode file (printed
+# too): NORMAL, AUTH_SCHEME, UNREACHABLE, NO_PROFILE, NOT_H264, EMPTY.
 #
 # Exit codes: 0 done; 64 usage or unknown lane; 69 the lane is in the wrong state (already
 # running, not running, a prerequisite of lane 2 is missing); 70 the Core did not become ready.
@@ -42,7 +64,7 @@ LOCKS="$ROOT/.locks"
 READY_SECONDS=${LANE_READY_SECONDS:-40}
 
 usage() {
-  echo "usage: $0 start|stop|reset <main|1|2|3>   |   $0 status" >&2
+  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 status" >&2
   exit 64
 }
 
@@ -63,7 +85,10 @@ plan() {
 listener() { lsof -nP -t -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n 1; }
 
 say_plan() {
-  echo "lane.sh: lane $1 = port $PORT, database $DATABASE, capture operation $MODE, demo controls $DEMO"
+  OPTIONS=""
+  [ "${START_STUB:-}" = --with-camera-stub ] && OPTIONS="$OPTIONS --with-camera-stub"
+  [ "${SPEECH_MIC:-}" = --speech-mic ] && OPTIONS="$OPTIONS --speech-mic"
+  echo "lane.sh: lane $1 = port $PORT, database $DATABASE, capture operation $MODE, demo controls $DEMO, options:${OPTIONS:- none}"
   echo "lane.sh: media store root $MEDIA"
   if [ "$MODE" = REAL_DEVELOPMENT ]; then
     echo "lane.sh: lane 2 records from the FAKE (generated) sources: its selector is CAM-01, CAM-02, MIC-01, MIC-02. A selector naming this Mac's camera or microphone (LOCAL_DEVICE) is the user's own run, never an agent's."
@@ -73,11 +98,13 @@ say_plan() {
 # The environment of a lane, for "env": the variables of the plan and nothing else of the capture
 # family (a value inherited from the caller's shell must not change the plan).
 lane_env() {
-  set -- -u DEMS_CAPTURE_MODE -u DEMS_CAPTURE_DEV_SOURCES -u DEMS_CAPTURE_HELPER_FFMPEG -u DEMS_CAPTURE_WORKER \
+  set -- -u DEMS_CAPTURE_MODE -u DEMS_CAPTURE_DEV_SOURCES -u DEMS_CAPTURE_HELPER_FFMPEG -u DEMS_CAPTURE_WORKER -u DEMS_CAPTURE_DEV_FAKE_MIC \
     -u DEMS_DEMO_CONTROLS -u DEMS_CORE_PORT -u DEMS_LOCAL_SESSION_ATTENDED -u DEMS_USER_ATTENDED \
     "DEMS_MEDIA_DIR=$MEDIA"
   if [ "$MODE" = REAL_DEVELOPMENT ]; then
     set -- "$@" DEMS_CAPTURE_MODE=real DEMS_CAPTURE_DEV_SOURCES=1 "DEMS_CAPTURE_HELPER_FFMPEG=$HELPER" "DEMS_CAPTURE_WORKER=$WORKER"
+    # --speech-mic (wave H, ruling D198; request of driver E): the first test microphone plays the speech fixture.
+    [ "${SPEECH_MIC:-}" = --speech-mic ] && set -- "$@" DEMS_CAPTURE_DEV_FAKE_MIC=speech
   fi
   [ "$DEMO" = on ] && set -- "$@" DEMS_DEMO_CONTROLS=1
   # The words hold no blank: a repository path with a blank is refused by check_root.
@@ -94,19 +121,51 @@ check_real_prerequisites() {
   [ -x "$WORKER" ] || { echo "lane.sh: the capture worker is missing: run 'make -C apps/capture-worker'" >&2; exit 69; }
 }
 
+# What a lane started with the camera stub tells the person or the gate that drives it. The
+# fixture file exists only while a stub runs: the launcher writes it when the fence admitted the
+# stub and removes it at its stop.
+say_camera_stub() {
+  if [ -r "$STUB_FIXTURE" ]; then
+    echo "lane.sh: camera stub ON: ONE fake ONVIF camera on 127.0.0.1. Every camera search of lane $1 goes to it and to nothing else (no network search on this lane)."
+    echo "lane.sh: its fixture account (a fixture of the fake device, not a secret; made at this start):"
+    sed 's/^/lane.sh:   /' "$STUB_FIXTURE"
+    echo "lane.sh: what it answers, one word:  echo <PRESET> > $STUB_MODE"
+    echo "lane.sh:   NORMAL       the fixture account -> the camera can be reached; any other account -> the camera refused it"
+    echo "lane.sh:   AUTH_SCHEME  the camera accepts only a sign-in the Core does not answer (SCHEME_NOT_ALLOWED; nothing is sent)"
+    echo "lane.sh:   UNREACHABLE  the camera does not answer     NO_PROFILE  no usable profile     NOT_H264  H.265 only"
+    echo "lane.sh:   EMPTY        no device answers a search (the empty-search notice)"
+    echo "lane.sh: two refused accounts hold further tests of 127.0.0.1 for 30 minutes (the Core's lock-out guard); a reachable test or a restart of the lane clears it."
+  else
+    echo "lane.sh: camera stub IGNORED: lane $1 runs $MODE, which has no camera search with a stub. The Core runs as it does without the option (its log says LANE_CAMERA_STUB_IGNORED)."
+  fi
+}
+
 cmd_start() {
-  plan "$1"; check_root; say_plan "$1"; check_real_prerequisites
+  plan "$1"; check_root
+  if [ "${SPEECH_MIC:-}" = --speech-mic ] && [ "$MODE" != REAL_DEVELOPMENT ]; then
+    echo "lane.sh: --speech-mic is for the development-capture lane only (lane 2); lane $1 runs $MODE" >&2; exit 64
+  fi
+  say_plan "$1"; check_real_prerequisites
+  [ "${SPEECH_MIC:-}" = --speech-mic ] && echo "lane.sh: the first test microphone plays the speech fixture: synthetic speech made by 'npm run capture:dev-setup'."
+  STUB_FIXTURE="$LOCKS/camera-stub.lane$1.fixture"; STUB_MODE="$LOCKS/camera-stub.lane$1.mode"
   pid=$(listener "$PORT")
   if [ -n "$pid" ]; then echo "lane.sh: port $PORT already has a listener (PID $pid): not started" >&2; exit 69; fi
   lane_env
   mkdir -p "$LOCKS"
   mkdir -p "$MEDIA" && chmod 700 "$MEDIA"  # fix F-M7b: the lane's own media store root (.data/media/<database>/sessions), owner-only; a real-mode Core refuses any other mode (READABLE_BY_OTHERS)
-  # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
-  ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:server >"$LOG" 2>&1 & )
+  if [ "$2" = --with-camera-stub ]; then
+    # The lane launcher of the test support: the same Core, with the fake ONVIF camera on loopback as its camera search.
+    # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
+    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:camera-stub -w @dems/core-server -- --fixture-file "$STUB_FIXTURE" --mode-file "$STUB_MODE" >"$LOG" 2>&1 & )
+  else
+    # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
+    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:server >"$LOG" 2>&1 & )
+  fi
   waited=0
   while [ "$waited" -lt "$READY_SECONDS" ]; do
     if curl -s -m 2 "http://127.0.0.1:$PORT/api/v1/health" 2>/dev/null | grep -q '"ready":{"database":true,"engine":true}'; then
       echo "lane.sh: lane $1 is ready on 127.0.0.1:$PORT (PID $(listener "$PORT")); log $LOG"
+      [ "$2" = --with-camera-stub ] && say_camera_stub "$1"
       return 0
     fi
     # The Core stops by itself on a failed boot check: no listener and a final line in the log.
@@ -158,7 +217,19 @@ cmd_reset() {
 [ $# -ge 1 ] || usage
 case "$1" in
   status) [ $# -eq 1 ] || usage; cmd_status ;;
-  start)  [ $# -eq 2 ] || usage; cmd_start "$2" ;;
+  start)
+    [ $# -ge 2 ] || usage
+    START_LANE=$2; START_STUB=""; SPEECH_MIC=""
+    shift 2
+    # The two options of start, each at most once, in any order; anything else is a usage error.
+    for option in "$@"; do
+      case "$option" in
+        --with-camera-stub) [ -z "$START_STUB" ] || usage; START_STUB=$option ;;
+        --speech-mic)       [ -z "$SPEECH_MIC" ] || usage; SPEECH_MIC=$option ;;
+        *) usage ;;
+      esac
+    done
+    cmd_start "$START_LANE" "$START_STUB" ;;
   stop)   [ $# -eq 2 ] || usage; cmd_stop "$2" ;;
   reset)  [ $# -eq 2 ] || usage; cmd_reset "$2" ;;
   *) usage ;;

@@ -28,9 +28,7 @@ import {
   CaptureDiscoveryReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryTrigger,
-  CaptureSourceClass,
   SIM_ADOPTED_DEVICE_ID,
-  SIM_CAPTURE_ADAPTER,
   captureCandidateAdoptedDetails,
   captureConnectionTestedDetails,
   captureDiscoverySearchedDetails,
@@ -76,7 +74,7 @@ import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimT
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
 import { noSignalFrame } from './initial-state';
-import { SIM_CONSOLE_DEVICE_ID, isSessionActive, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
+import { isSessionActive, sendingDeviceOf, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
 import { selectElapsedMs, selectSystemState, storageSummary } from './selectors';
 import type { SimStore } from './store';
 import type {
@@ -744,10 +742,10 @@ function unknownCaptureDevice(id: string): SimApiResponse {
  * of C3 §5.2, a line that names no registered device of the right class is refused, and so is one
  * camera on both tracks with one profile. An edit that changes nothing writes no row.
  */
-function editCaptureConfig({ store, clock }: SimApiTarget, change: CaptureConfigChange): SimApiResponse {
+function editCaptureConfig({ store, clock, deviceConsole }: SimApiTarget, change: CaptureConfigChange): SimApiResponse {
   const state = store.getState();
   try {
-    const next = setCaptureConfigTransition(state, clock.now(), change);
+    const next = setCaptureConfigTransition(state, clock.now(), change, sendingDeviceOf(state, deviceConsole === true));
     if (next !== state) store.setState(next);
     return respond(200, captureConfigBody(next));
   } catch (error) {
@@ -1481,8 +1479,8 @@ const DISCOVERY_ROUTES: readonly Route[] = [
           deviceId: device.id,
           inputId: state.captureConfig.mics.find((mic) => mic.deviceId === device.id)?.inputId ?? null,
           present: device.online,
-          adapter: SIM_CAPTURE_ADAPTER,
-          sourceClass: CaptureSourceClass.DEVELOPMENT,
+          // No `adapter`, no `sourceClass` (wave H closing pass Z1, ruling D206 (2); C3 §2.6 erratum PE-WH-01):
+          // simulated capture states no source class on any operation. The two members are a real Core's.
           errorCode: null,
         }));
       const open = hasActiveSession(state) ? (state.session?.id ?? null) : null;
@@ -1651,7 +1649,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
         return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
       }
       // The transition's parameter type still names the built-in pair (`session-machine.ts`); it reads the selector.
-      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId, deviceConsole === true ? SIM_CONSOLE_DEVICE_ID : null);
+      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId, sendingDeviceOf(state, deviceConsole === true));
       if (next !== state) store.setState(next);
       const source = next.session?.audioSource;
       if (!source) return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');

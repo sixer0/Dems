@@ -9,7 +9,6 @@
  * The Recording Indicator's lamp breathes while recording (V4; `glowBreath`, registered as an
  * ambient loop so it pauses off-focus and stops under reduced motion, where it stays steadily lit).
  */
-import { Image } from 'expo-image';
 import { useIsFocused } from 'expo-router';
 import { ListGroup } from 'heroui-native';
 import { ChevronRight, EthernetPort, Mic, Siren, Tablet, type LucideIcon } from 'lucide-react-native';
@@ -24,6 +23,7 @@ import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { useLayoutClass } from '@/layout';
 import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
+import { PreviewThumb } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
 import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, type DeviceId, type DeviceStatus } from './devices-model';
@@ -64,7 +64,7 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       name={name}
       detail={camera?.room ?? ''}
       statusText={t(STATUS_LABEL_KEY[status])}
-      prefix={<Thumb source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'FAULT'} />}
+      prefix={<PreviewThumb kind="camera" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'FAULT'} testID={`device-thumb-${deviceId}`} />}
       suffix={<DeviceStatusChip status={status} testID={`device-status-${deviceId}`} />}
     />
   );
@@ -89,11 +89,11 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       detail={t('devices.drawer.value.channel', { channel: mic?.channel ?? 1 })}
       statusText={t(STATUS_LABEL_KEY[status])}
       prefix={
-        <Thumb source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'}>
+        <PreviewThumb kind="microphone" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'} testID={`device-thumb-${deviceId}`}>
           <View style={styles.micBadge} accessibilityLabel={t('features.devices.list.micBadge')}>
             <Mic size={12} color={palette.black} />
           </View>
-        </Thumb>
+        </PreviewThumb>
       }
       extra={
         isMultiPane && mic ? (
@@ -219,15 +219,6 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
   );
 }
 
-function Thumb({ source, label, dim, children }: { source: number; label: string; dim: boolean; children?: ReactNode }) {
-  return (
-    <View style={styles.thumbWrap}>
-      <Image source={source} style={[styles.thumb, dim ? styles.thumbDim : null]} contentFit="cover" transition={0} accessibilityLabel={label} />
-      {children}
-    </View>
-  );
-}
-
 function IconTile({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
   return (
     <View style={styles.iconTile}>
@@ -266,9 +257,6 @@ const styles = StyleSheet.create({
   detail: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.gray },
   muted: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: derived.foreground2 },
   suffix: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], maxWidth: '55%' },
-  thumbWrap: { width: 68, height: 48 },
-  thumb: { width: 68, height: 48, borderRadius: radius.px.lg, backgroundColor: derived.surfaceSecondary },
-  thumbDim: { opacity: 0.4 },
   micBadge: {
     position: 'absolute',
     right: 4,

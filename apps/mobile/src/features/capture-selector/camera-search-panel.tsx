@@ -30,7 +30,8 @@ import { fontFamily, palette, radius, spacing, typography } from '@dems/shared/t
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
-import { PendingSpinner, busyState } from '@/runtime';
+import { settledBusyState } from './settled-busy-state';
+import { PendingSpinner } from '@/runtime';
 import { SEARCH_MAX_CANDIDATES, searchWindowSeconds, type CandidateRow } from './camera-search-model';
 import { candidateSourceOf, deviceNameKey } from './capture-notices-model';
 import { SourceBadge } from './development-source-badge';
@@ -201,7 +202,7 @@ export function SearchButton({ search, label, testID, size = 'md' }: SearchButto
       testID={testID}
       accessibilityLabel={label}
       {...(search.gateHint === null ? {} : { accessibilityHint: search.gateHint })}
-      {...busyState(pending, !search.canSearch)}
+      {...settledBusyState(pending, !search.canSearch)}
     >
       {pending ? <PendingSpinner color={palette.gold} testID={`${testID}-spinner`} /> : null}
       <Button.Label>{label}</Button.Label>

@@ -30,6 +30,10 @@ export function unitTestConfig(overrides: Partial<ConfigInput> = {}): CoreServer
     demoControls: false,
     logLevel: 'silent',
     dataDir: '/nonexistent/dems-unit-test-data',
+    // Wave H closing pass Z1 (decision D207): a test Core has an installation identity, so a rig in a
+    // production capture operation boots as before. A test ABOUT a Core without one passes `null`.
+    installationDeviceId: 'DEMS-TEST-01',
+    installationName: 'Unit test installation',
     database: {
       host: '127.0.0.1',
       port: CLOSED_PORT,

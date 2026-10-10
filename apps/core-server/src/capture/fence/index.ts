@@ -10,6 +10,11 @@
  *   - `registration.ts`, `statements.ts`  this Mac's camera and microphone as NEW device rows of
  *                     kind `LOCAL_DEVICE`, in `REAL_DEVELOPMENT` only;
  *   - `generated-sources.ts`  the development test sources (kind `FAKE`) that feed the worker;
+ *   - `fake-mic.ts`   what the first test microphone plays: its tone, or the speech fixture
+ *                     (`DEMS_CAPTURE_DEV_FAKE_MIC`, `REAL_DEVELOPMENT` only; fix wave H, ruling D198);
+ *   - `development-discovery.ts`  whether the lane launcher of the test support may hand a
+ *                     development discovery source (the fake ONVIF device on loopback) to this
+ *                     Core: `REAL_DEVELOPMENT` only (fix wave H, gate 70 finding B-1);
  *   - `sources.ts`    the four `session_capture_sources` rows of a session, the re-read check, and
  *                     what a client is told about a source (adapter, source class, label);
  *   - this file       the device registry of the running operation, and the mount.
@@ -38,7 +43,9 @@ import {
   createMicHelper,
   inspectProgram,
   leftoverHelperPids,
+  readFileHead,
   startHelperProcess,
+  type FileHeadReader,
   type HelperDoor,
   type LocalSourceError,
   type ProgramInspector,
@@ -66,7 +73,9 @@ export {
   type CaptureFenceUnit,
 } from './boot';
 export { createGeneratedCameraAdapter, createGeneratedMicAdapter, type GeneratedCameraAdapter, type GeneratedCameraOptions, type GeneratedMicAdapter, type GeneratedMicOptions } from './generated-sources';
+export { FakeMicRefusal, FakeMicSource, SPEECH_FIXTURE_FORMAT, SPEECH_FIXTURE_HEAD_BYTES, SpeechFixtureProblem, fakeMicDecisionOf, speechFixtureFormatProblem, type FakeMicDecision, type FakeMicInput } from './fake-mic';
 export { CaptureFlagRefusal, captureOperationDecisionOf, captureOperationOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
+export { DEV_CAMERA_STUB_IN_PRODUCTION, DevelopmentDiscoveryError, DevelopmentDiscoveryIgnored, developmentDiscoveryAdmissionOf, type DevelopmentDiscoveryAdmission } from './development-discovery';
 export { LOCAL_DEVICE_ROWS, readStoredDevices, registerLocalDevices, type FenceExecutor, type LocalDeviceClass, type LocalDeviceRegistration, type StoredCaptureDevice } from './registration';
 export {
   CAPTURE_SOURCE_SLOTS,
@@ -115,6 +124,11 @@ export interface DevelopmentRegistryInput {
    * passed: the listener reads `openSources()`.
    */
   readonly onOpenSourcesChanged?: () => void;
+  /**
+   * The speech fixture the boot fence vouched for (`CaptureFenceOutcome.fakeMic.fixturePath`; fix
+   * wave H), or null / absent for the tones. When set, the FIRST test microphone plays it.
+   */
+  readonly speechFixturePath?: string | null;
 }
 
 /**
@@ -221,8 +235,11 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
       closers.push(() => generated.closeAll());
     } else if (device.kind === 'MIC') {
       // The first fake microphone sounds 440 Hz, every other one 880 Hz: two test tones a listener can tell apart.
-      const tone = device.id === fakes.find((other) => other.kind === 'MIC')?.id ? MicGeneratedTone.TONE_440 : MicGeneratedTone.TONE_880;
-      const generated = createGeneratedMicAdapter({ ...shared, id: device.id, label, runDir: input.runDir, tone });
+      const first = device.id === fakes.find((other) => other.kind === 'MIC')?.id;
+      const tone = first ? MicGeneratedTone.TONE_440 : MicGeneratedTone.TONE_880;
+      // Fix wave H: with the speech setting the first one plays the speech fixture in the place of its tone; every other one keeps its tone.
+      const speechFixture = first && typeof input.speechFixturePath === 'string' ? { speechFixture: input.speechFixturePath } : {};
+      const generated = createGeneratedMicAdapter({ ...shared, id: device.id, label, runDir: input.runDir, tone, ...speechFixture });
       adapters.push(generated);
       micAdapters.push(generated);
       closers.push(() => generated.closeAll());
@@ -316,6 +333,8 @@ export interface CaptureFenceMount {
   /** Test seams. Defaults: the real file-system inspector and the real process door. */
   readonly inspect?: ProgramInspector;
   readonly door?: HelperDoor;
+  /** Closing pass Z1: the reader of the speech fixture's first bytes. Default: the real one (`readFileHead`). */
+  readonly readHead?: FileHeadReader;
 }
 
 /** Mounts the fence on the app: the control, the boot step, the shutdown hook. Called once, by the capture unit. */
@@ -380,6 +399,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
             }),
           ),
         inspect,
+        readHead: mount.readHead ?? readFileHead,
         labels: { CAMERA: LOCAL_CAMERA_DEVICE_NAME, MIC: LOCAL_MIC_DEVICE_NAME },
         listed,
         sinks: mount.sinks,
@@ -396,6 +416,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
           inspect,
           ...(mount.locked === undefined ? {} : { locked: mount.locked }),
           onOpenSourcesChanged: openSourcesChanged,
+          speechFixturePath: passed.fakeMic.fixturePath,
         });
       } else if (passed.operation === CaptureOperation.REAL_PRODUCTION) {
         built = buildProductionRegistry(mount.locked);

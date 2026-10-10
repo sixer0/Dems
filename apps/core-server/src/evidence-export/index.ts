@@ -34,6 +34,7 @@ export {
   ExportManifestSchema,
   ExportSignatureSchema,
   buildExportManifest,
+  isSelfContainedExport,
   compositeMarkingHolds,
   computeExportManifestSha256,
   parseExportManifest,
@@ -90,6 +91,7 @@ export {
   type ExportService,
   type ExportServiceParts,
 } from './service';
+export { FINISHED_EXPORTS_LISTED, archiveFactsOf, archiveFileOf, completedOnDisk, listFinishedExports, rememberArchive, type CompletedExportFacts } from './finished';
 export { RECEIVER_CHECKS, RECEIVER_VERIFY_V2_CHECKS, verifyExportAtDestination, type ReceiverVerifyInput, type ReceiverVerifyResult } from './receiver-verify';
 export { SecretForm, secretFormsIn, sweepForSecrets, type SecretFinding } from './secret-sweep';
 export { createArchive, isArchiveEntryName, type ArchiveWriter } from './zip-store';

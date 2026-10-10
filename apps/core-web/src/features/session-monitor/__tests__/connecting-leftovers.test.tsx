@@ -8,6 +8,14 @@
 // while `captureDurable` is false the audio panel shows the connecting state in each meter's place
 // and the integrity panel claims no storage write; the first durable fragment brings both back.
 // CONTROL: the session without the member, as before.
+//
+// Wave H closing pass Z2 (item 9): since driver A (finding G75-01) a session that CARRIES the member
+// is a recording of the Core's own capture and the panel draws the capture facts instead of the four
+// demo checks, so there is no storage-write row to read while connecting. What this file proves is
+// unchanged - NO INTEGRITY ACTIVITY IS CLAIMED WHILE CONNECTING: the capture row is standby and says
+// nothing is recorded yet, no row but the audit log's own hash chain is 'pass', and no demo claim
+// ("Continuous", "Verified", "Encryption Active", "AES-256") is on the panel. The first durable
+// fragment turns the capture row to 'pass'.
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -46,7 +54,11 @@ function mount(): Sim {
 
 const setDurable = (sim: Sim, captureDurable: boolean) => act(() => sim.store.setState({ session: { ...sim.store.getState().session!, captureDurable } }))
 const panel = (id: 'N' | 'O') => screen.findByTestId(`panel-${id}`, {}, { timeout: 15_000 })
-const storageWrite = (integrity: HTMLElement) => integrity.querySelector('[data-check="storageWrite"]') as HTMLElement
+const storageWrite = (integrity: HTMLElement) => integrity.querySelector('[data-check="storageWrite"]') as HTMLElement | null
+const capture = (integrity: HTMLElement) => integrity.querySelector('[data-check="capture"]') as HTMLElement
+const passing = (integrity: HTMLElement) => [...integrity.querySelectorAll('[data-check][data-status="pass"]')].map((row) => row.getAttribute('data-check'))
+/** What the panel must not say while nothing is recorded. */
+const ACTIVITY_CLAIMS = ['Continuous', 'Verified', 'Encryption Active', 'AES-256', 'GNSS']
 
 const originalPlay = HTMLMediaElement.prototype.play
 const originalPause = HTMLMediaElement.prototype.pause
@@ -86,6 +98,7 @@ describe('the Session Monitor while the cameras connect (pass D7 item 4)', () =>
     expect(within(audio).queryByTestId('sm-audio-connecting-AUDIO-01')).toBeNull()
     expect(storageWrite(integrity)).toHaveAttribute('data-status', 'pass')
     expect(storageWrite(integrity)).toHaveTextContent('Continuous')
+    expect(capture(integrity)).toBeNull()
 
     setDurable(sim, false)
     await waitFor(() => expect(within(audio).queryAllByTestId('dbfs-meter')).toHaveLength(0))
@@ -96,13 +109,19 @@ describe('the Session Monitor while the cameras connect (pass D7 item 4)', () =>
     }
     expect(within(audio).queryByRole('meter')).toBeNull()
     expect(within(audio).queryByText(/dBFS/)).toBeNull()
-    expect(storageWrite(integrity)).toHaveAttribute('data-status', 'idle')
-    expect(storageWrite(integrity)).toHaveTextContent('Standby')
-    expect(storageWrite(integrity)).not.toHaveTextContent('Continuous')
+    // No integrity activity is claimed while connecting: the capture row is standby, only the audit
+    // log's own chain passes, the storage-write row of the demo checks is gone with its claim.
+    await waitFor(() => expect(capture(integrity)).toHaveAttribute('data-status', 'idle'))
+    expect(capture(integrity)).toHaveTextContent('Connecting cameras. Nothing is recorded yet')
+    expect(storageWrite(integrity)).toBeNull()
+    expect(passing(integrity)).toEqual(['hashChain'])
+    for (const claim of ACTIVITY_CLAIMS) expect(integrity, claim).not.toHaveTextContent(claim)
 
     setDurable(sim, true)
     await waitFor(() => expect(within(audio).getAllByTestId('dbfs-meter')).toHaveLength(2))
-    expect(storageWrite(integrity)).toHaveAttribute('data-status', 'pass')
+    expect(capture(integrity)).toHaveAttribute('data-status', 'pass')
+    expect(passing(integrity)).toEqual(['capture', 'hashChain'])
+    for (const claim of ACTIVITY_CLAIMS) expect(integrity, claim).not.toHaveTextContent(claim)
     expect(getMissingI18nKeys()).toEqual([])
   })
 

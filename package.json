@@ -50,7 +50,8 @@
     "pg:remove-data": "node scripts/pg/remove-data.mjs",
     "pg:remove": "node scripts/pg/remove.mjs",
     "test:pg-scripts": "node --test scripts/pg/",
-    "capture:dev-setup": "node scripts/capture/dev-setup.mjs"
+    "capture:dev-setup": "node scripts/capture/dev-setup.mjs",
+    "evidence:verify-export": "npm run evidence:verify-export -w @dems/core-server --"
   },
   "devDependencies": {
     "embedded-postgres": "18.4.0-beta.17",

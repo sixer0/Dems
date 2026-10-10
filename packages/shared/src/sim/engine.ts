@@ -27,6 +27,8 @@ import {
 } from './constants';
 import { createActions } from './actions';
 import { handleSimApiRequest } from './api';
+import { captureConnectMsOf } from './capture-session';
+import { hostClockTimeTransition } from './core-facts';
 import { OPERATORS } from './dataset';
 import { describeError } from './errors';
 import { createGeneratorSubsystem } from './generator';
@@ -134,13 +136,13 @@ function authIdleSubsystem(engine: EngineContext): SimSubsystem {
 }
 
 /** Runs the session machine's timed transitions (precheck checks, STOPPING, finalization, recovery). */
-function machineSubsystem(engine: EngineContext, capture: CaptureLevelSource): SimSubsystem {
+function machineSubsystem(engine: EngineContext, capture: CaptureLevelSource, captureConnectMs: number): SimSubsystem {
   return {
     name: 'session-machine',
     tick({ now }) {
       const state = engine.store.getState();
       if (!state.session) return;
-      const next = tickMachine(state, now, engine.rng, capture);
+      const next = tickMachine(state, now, engine.rng, capture, captureConnectMs);
       if (next !== state) engine.store.setState(next);
     },
   };
@@ -150,15 +152,18 @@ function machineSubsystem(engine: EngineContext, capture: CaptureLevelSource): S
  * The ordered subsystem list: clock, auth idle expiry, session machine, health (1 Hz),
  * audio (20 Hz), event generator, maintenance.
  */
-export function createSubsystems(engine: EngineContext, audio: AudioRuntime = createAudioRuntime()): SimSubsystem[] {
+export function createSubsystems(engine: EngineContext, audio: AudioRuntime = createAudioRuntime(), captureConnectMs?: number): SimSubsystem[] {
   return [
     clockSubsystem(engine),
     authIdleSubsystem(engine),
     // The machine decides a connecting start by the time only where the simulator runs its own capture.
-    machineSubsystem(engine, audio.levelSource),
-    createHealthSubsystem(engine),
+    // `captureConnectMs` (wave H Z1): how long that connecting part lasts; the default unless the host asked otherwise.
+    machineSubsystem(engine, audio.levelSource, captureConnectMsOf(captureConnectMs)),
+    // Wave H Z1: where the capture is the Core's own the time slice is the host clock.
+    createHealthSubsystem(engine, audio.levelSource),
     createAudioSubsystem(engine, audio),
-    createGeneratorSubsystem(engine),
+    // G75-01: where the capture is the Core's own the generator states no integrity fact.
+    createGeneratorSubsystem(engine, audio.levelSource),
     createMaintenanceSubsystem(engine),
   ];
 }
@@ -214,7 +219,7 @@ export function createSim(options: CreateSimOptions = {}): Sim {
 
   const now = clock.now();
   const auth = restoreAuth(OPERATORS, authStorage.load(), now);
-  const initialState = buildScenarioState(
+  const scenarioState = buildScenarioState(
     options.scenario ?? ScenarioName.IDLE,
     createIdleState({
       now,
@@ -223,6 +228,8 @@ export function createSim(options: CreateSimOptions = {}): Sim {
       ...(options.initialPairing ? { pairing: options.initialPairing } : {}),
     }),
   );
+  // Wave H Z1 (ruling D203 (1)): a Core in its own capture never states the dataset's GNSS time, not even in its first state.
+  const initialState = options.capture === 'external' ? hostClockTimeTransition(scenarioState) : scenarioState;
 
   const rng = createRngStreams(seed, 0);
   let hydrated = false;
@@ -254,7 +261,7 @@ export function createSim(options: CreateSimOptions = {}): Sim {
 
   const engine: EngineContext = { store, clock, rng, report };
   const audio = createAudioRuntime(options.capture);
-  const subsystems = createSubsystems(engine, audio);
+  const subsystems = createSubsystems(engine, audio, options.captureConnectMs);
   const actions = createActions({ store, clock, authStorage, rng, audio, deviceConsole: options.deviceConsole === true });
 
   let wantRunning = false;

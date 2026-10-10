@@ -51,6 +51,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import type { DatabaseConnection } from '../../config';
 import { evidenceStoreRoot, type EvidenceStoreScan } from '../commands/evidence-store';
+import { DEFAULT_DATA_DIR } from '../../plugins/config';
 import { readMediaStoreRoot, type StoredMediaStoreRoot } from '../commands/media-store-root';
 import { applyMigrations, readSchemaVersion } from '../commands/migrations';
 import {
@@ -105,6 +106,7 @@ import {
 import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarget, recoverStatement, swapStatements, type DisposableDatabase, type ResetTarget } from './names';
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
 import { READ_CLEARED_TRANSCRIBER_SESSIONS, removeTranscriberScratchOf } from './transcriber-scratch';
+import { READ_CLEARED_ARTEFACT_SESSIONS, removeSessionArtefactsOf } from './session-artefacts';
 import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage, removeClearedDevelopmentPackages, type RealEvidenceFacts } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
@@ -651,6 +653,8 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     let evidence: RealEvidenceFacts | null = null;
     // R80-04: the sessions of this database that took an STT snapshot - their transcriber scratch (a raw PCM tap) is removed after the swap.
     let transcribedSessions: readonly string[] = [];
+    // G89-06 / G89-07 (fix wave H driver A): the sessions of this database that can have a session key, a capture facts file or a sealing staging folder - destroyed / removed after the swap.
+    let artefactSessions: readonly string[] = [];
     if (targetExists) {
       sideDatabase = target.name;
       side = openPool(target.name);
@@ -667,6 +671,12 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
       } catch {
         // A database older than the snapshot table, or a read that failed: no folder is named, none is removed.
         transcribedSessions = [];
+      }
+      try {
+        artefactSessions = (await side.query<{ session_id: string }>(READ_CLEARED_ARTEFACT_SESSIONS)).rows.map((row) => row.session_id);
+      } catch {
+        // A database older than these tables, or a read that failed: no session is named, nothing is destroyed.
+        artefactSessions = [];
       }
       await closeSide();
     }
@@ -885,6 +895,33 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
       }
       for (const left of scratch.kept) {
         log({ level: 'error', code: 'RESET_TRANSCRIBER_SCRATCH_LEFT', message: `the reset of ${target.name} succeeded, but the transcriber scratch of ${left.sessionId} was not removed (${left.reason}): a raw audio tap may still be on the disk, and a session of that ID cannot be transcribed until it is examined.`, details: { database: target.name, sessionId: left.sessionId, reason: left.reason } });
+      }
+    }
+    // G89-06 / G89-07 (fix wave H driver A; ruling D199): the session IDs of the erased database are
+    // given out again. The SESSION KEY of every session this reset cleared is DESTROYED - the next
+    // session of that ID is sealed under a key of its own, never under this one - and its capture
+    // facts file and sealing staging go with it (`session-artefacts.ts`: the containment rule, and a
+    // key whose package folder is still in the store stays). NOT the sessions of the demo packages
+    // this reset sealed anew: their keys are the new rows'. Below the media store root the guard of
+    // this reset read. It never fails a reset that has succeeded. No key byte is read or logged.
+    if (artefactSessions.length > 0 && evidence !== null) {
+      const renewed = prepared.demo.report.status === 'SEALED' ? prepared.demo.report.items.map((item) => item.sessionId) : [];
+      const artefacts = removeSessionArtefactsOf({ dataDir: resolvePath(options.dataDir ?? DEFAULT_DATA_DIR), storeRoot: resolvePath(evidence.storeRoot), sessionIds: artefactSessions, keep: renewed });
+      if (artefacts.keysDestroyed.length > 0 || artefacts.factsRemoved.length > 0 || artefacts.stagingRemoved.length > 0) {
+        log({
+          level: 'warn',
+          code: 'RESET_SESSION_KEYS_DESTROYED',
+          message: `the reset of ${target.name} destroyed the session key of ${String(artefacts.keysDestroyed.length)} cleared session(s) (${artefacts.keysDestroyed.join(', ') || 'none'}): what those keys sealed can no longer be decrypted. It removed ${String(artefacts.factsRemoved.length)} capture facts file(s) and ${String(artefacts.stagingRemoved.length)} sealing staging folder(s).`,
+          details: { database: target.name, storeRoot: evidence.storeRoot, keysDestroyed: artefacts.keysDestroyed.length, keyIds: artefacts.keysDestroyed.join(' '), factsRemoved: artefacts.factsRemoved.length, stagingRemoved: artefacts.stagingRemoved.length },
+        });
+      }
+      for (const left of artefacts.kept) {
+        log({
+          level: 'error',
+          code: 'RESET_SESSION_ARTEFACT_LEFT',
+          message: `the reset of ${target.name} succeeded, but ${left.kind === 'SESSION_KEY' ? 'the session key' : left.kind === 'CAPTURE_FACTS' ? 'the capture facts file' : 'the sealing staging folder'} of ${left.sessionId} was not removed (${left.reason}): a later session of that ID is refused its seal until it is examined.`,
+          details: { database: target.name, sessionId: left.sessionId, kind: left.kind, reason: left.reason },
+        });
       }
     }
     // Pass E3: the database is replaced and the old folders are gone - the packages the new rows name

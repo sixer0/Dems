@@ -22,6 +22,13 @@
  * the development fence. `DEMS_CAPTURE_DEV_SOURCES` (`1` or `0`, the default: development sources
  * exist) and `DEMS_CAPTURE_HELPER_FFMPEG` (the program the development helpers run). What a start
  * refuses for them is the capture fence's decision (capture spec §A.1.2), not this file's.
+ * WAIVED EDIT (task 3, fix wave H, ruling D198; the category of OD-14 and D108): one more key of the
+ * development fence. `DEMS_CAPTURE_DEV_FAKE_MIC` (`tone`, the default, or `speech`): what the first
+ * generated test microphone plays. What a start refuses for it is the capture fence's decision.
+ * WAIVED EDIT (task 3, fix wave H closing pass Z1, decision D207): the installation identity of the
+ * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`
+ * (a display name) are what the signed manifest of a sealed recording states as its device. Read
+ * once, at start. Whether a start without them is refused is the sealing host's decision.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -49,6 +56,9 @@ export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';
 export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';
 export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';
 export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';
+export const ENV_CAPTURE_DEV_FAKE_MIC = 'DEMS_CAPTURE_DEV_FAKE_MIC';
+export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';
+export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -57,6 +67,8 @@ export const DEFAULT_LOG_LEVEL: LogLevel = 'info';
 export const CAPTURE_MODES = ['simulated', 'real'] as const;
 export type CaptureMode = (typeof CAPTURE_MODES)[number];
 export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';
+export const CAPTURE_DEV_FAKE_MICS = ['tone', 'speech'] as const;
+export type CaptureDevFakeMic = (typeof CAPTURE_DEV_FAKE_MICS)[number];
 /** Where the camera files live below the data directory when `DEMS_MEDIA_DIR` is unset (capture spec §H). */
 export const MEDIA_STORE_SUBPATH = 'media/sessions';
 
@@ -189,6 +201,12 @@ export interface CoreServerConfig {
   readonly captureDevSources: boolean;
   /** Absolute path of the program the development helpers run, or null when none is configured. */
   readonly captureHelperFfmpegPath: string | null;
+  /** What the first generated test microphone plays. Read by ONE function: `fakeMicDecisionOf` of the capture fence. */
+  readonly captureDevFakeMic: CaptureDevFakeMic;
+  /** The device id of this installation, or null when none is configured. Read by ONE function: `installationIdentityOf` of the sealing host. */
+  readonly installationDeviceId: string | null;
+  /** The display name of this installation, or null when none is configured. */
+  readonly installationName: string | null;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -262,6 +280,28 @@ export function parseCaptureDevSources(raw: string | undefined): boolean {
   throw new ConfigError('CAPTURE_DEV_SOURCES_INVALID', `${ENV_CAPTURE_DEV_SOURCES} must be 1 or 0.`);
 }
 
+/** Unset or empty means `tone`. Any other value than the two stops the boot. */
+export function parseCaptureDevFakeMic(raw: string | undefined): CaptureDevFakeMic {
+  if (raw === undefined || raw === '') return 'tone';
+  const source = CAPTURE_DEV_FAKE_MICS.find((known) => known === raw);
+  if (source === undefined) throw new ConfigError('CAPTURE_DEV_FAKE_MIC_INVALID', `${ENV_CAPTURE_DEV_FAKE_MIC} must be one of ${CAPTURE_DEV_FAKE_MICS.join(', ')}.`);
+  return source;
+}
+
+/** A device id of the contract's form (`DEMS-IR-01`), or null when the variable is unset. Any other value stops the boot. */
+export function parseInstallationDeviceId(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (!/^[A-Z][A-Z0-9-]{0,31}$/.test(raw)) throw new ConfigError('INSTALLATION_DEVICE_ID_INVALID', `${ENV_INSTALLATION_DEVICE_ID} must be a device id: a capital letter, then capitals, digits or hyphens, 32 characters at most.`);
+  return raw;
+}
+
+/** A display name of 1 to 120 printable characters, or null when the variable is unset. Any other value stops the boot. */
+export function parseInstallationName(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  if (raw.length > 120 || raw !== raw.trim() || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('INSTALLATION_NAME_INVALID', `${ENV_INSTALLATION_NAME} must be 1 to 120 printable characters without a leading or trailing space.`);
+  return raw;
+}
+
 // ── Building the configuration object ──────────────────────────────────────────────────────────
 
 export interface ConfigInput {
@@ -286,6 +326,12 @@ export interface ConfigInput {
   readonly captureDevSources?: boolean;
   /** Default: null (no helper program). */
   readonly captureHelperFfmpegPath?: string | null;
+  /** Default: `tone`. */
+  readonly captureDevFakeMic?: CaptureDevFakeMic;
+  /** Default: null (no installation identity is configured). */
+  readonly installationDeviceId?: string | null;
+  /** Default: null. */
+  readonly installationName?: string | null;
 }
 
 /**
@@ -336,5 +382,8 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     mediaStoreDir,
     captureDevSources: input.captureDevSources ?? false,
     captureHelperFfmpegPath,
+    captureDevFakeMic: input.captureDevFakeMic ?? 'tone',
+    installationDeviceId: parseInstallationDeviceId(input.installationDeviceId ?? undefined),
+    installationName: parseInstallationName(input.installationName ?? undefined),
   });
 }

@@ -7,7 +7,7 @@
  * Every function that calls a hook is named `use*` (D66: the device build runs the React Compiler).
  */
 import type { SessionState } from '@dems/shared/domain';
-import { useSim, type FinalizationStepState, type FaultKind, type SubjectType } from '@dems/shared/sim';
+import { recordingEndOf, useSim, type FinalizationStepState, type FaultKind, type SubjectType } from '@dems/shared/sim';
 import { handOffDue } from './finalizing.model';
 
 /** The session being finalized, as flat values. */
@@ -36,7 +36,8 @@ export function useFinalizingSession(): FinalizingSession {
       subjectName: session?.input.subjectName ?? null,
       subjectType: session?.input.subjectType ?? null,
       startedAt: session?.startedAt ?? null,
-      stoppedAt: session?.stoppedAt ?? null,
+      // Wave H driver B (G75-08): where the recording ended - the stop, or the fault that ended it.
+      stoppedAt: recordingEndOf(session),
       sealedAt: session?.sealedAt ?? null,
       evidenceId: session?.evidenceId ?? null,
       faultKind: session?.fault?.kind ?? null,

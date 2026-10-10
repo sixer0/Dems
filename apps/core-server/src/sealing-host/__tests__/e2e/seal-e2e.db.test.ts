@@ -21,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PackageFile, parseManifestV2 } from '@dems/shared/evidence-package';
-import { OPERATORS } from '@dems/shared/sim';
+import { HOST_CLOCK_TIME, OPERATORS } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -32,7 +32,9 @@ import { buildApp } from '../../../app';
 import { realBootFixture } from '../../../capture/boot/__tests__/support';
 import { sessionCapture } from '../../../capture-session';
 import { provisionDevelopmentSigningKey } from '../../../sealing';
+import { CORE_SERVER_VERSION } from '../../../version';
 import { sealingHost } from '../../index';
+import { CORE_TIME_SOURCE, NOT_CONFIGURED } from '../../session-reader';
 
 const ASKED = process.env.DEMS_SEAL_E2E === '1';
 const REPOSITORY = resolve(import.meta.dirname, '../../../../../..');
@@ -182,6 +184,52 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   if (process.env.DEMS_SEAL_E2E_OUT !== undefined) mkdirSync(process.env.DEMS_SEAL_E2E_OUT, { recursive: true });
   if (process.env.DEMS_SEAL_E2E_OUT !== undefined) writeFileSync(`${process.env.DEMS_SEAL_E2E_OUT}/verify-${sessionId}-${Date.now()}.json`, JSON.stringify({ interruptedExpected: interrupted, status: verified.statusCode, ok: body.ok, overall: body.overall, interrupted: body.interrupted, sources: body.sources, transcriptState: body.transcriptState, failedFragmentCount: body.failedFragmentCount, checks: body.checks }, null, 1));
   expect(body).toMatchObject({ evidenceId, ok: true, overall: 'PASS', interrupted, sources: { development: true } });
+
+  // PASS H-Y: WHAT A PRODUCT-SEALED MANIFEST AND ITS AUDIT EXTRACT SAY, kept for the record before the fixture is removed
+  // (two checkpoints and gate 64's condition C2 could quote none of it). Facts read from the sealed package only: codes,
+  // identifiers, counts and instants - no media, no key material, no hash of evidence, no text of an audit row.
+  const extract = readFileSync(`${folder}/${PackageFile.AUDIT_EXTRACT}`, 'utf8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line) as { type: string; details: Record<string, unknown> | null });
+  const rowsPerType: Record<string, number> = {};
+  for (const type of extract.map((row) => row.type).sort()) rowsPerType[type] = (rowsPerType[type] ?? 0) + 1;
+  const recordingStarted = extract.filter((row) => row.type === 'RECORDING_STARTED').map((row) => row.details?.timeSource ?? null);
+  const developmentKey = (body as { signature?: { developmentKey?: unknown } }).signature?.developmentKey ?? null;
+  const facts = {
+    case: interrupted ? 'b' : 'a',
+    sessionId,
+    evidenceId,
+    manifest: {
+      timeSource: manifest.timeline.timeSource,
+      device: { deviceId: manifest.device.deviceId, name: manifest.device.name, serialNumber: manifest.device.serialNumber, hardwareUuid: manifest.device.hardwareUuid, softwareVersion: manifest.device.softwareVersion },
+      tracksLength: manifest.tracks.length,
+      tracks: manifest.tracks.map((track) => ({ trackId: track.trackId, deviceId: track.deviceId, sourceClass: track.sourceClass, codec: track.codec, clockOffsetMs: track.clockOffsetMs })),
+      timeline: { interrupted: manifest.timeline.interrupted, stoppedAt: manifest.timeline.stoppedAt },
+      transcript: { state: manifest.transcript.state },
+      signature: { keyId: manifest.signature.keyId, algorithm: manifest.signature.algorithm, simulated: manifest.signature.simulated },
+      developmentSources: manifest.developmentSources,
+    },
+    // The verifier's own statement of the certificate that verified the signature (operation 41): the development mark.
+    certificate: { developmentMark: developmentKey },
+    auditExtract: { rows: extract.length, rowsPerType, recordingStartedTimeSource: recordingStarted },
+  };
+  if (process.env.DEMS_SEAL_E2E_OUT !== undefined) writeFileSync(`${process.env.DEMS_SEAL_E2E_OUT}/facts-${facts.case}-${sessionId}.json`, `${JSON.stringify(facts, null, 1)}\n`);
+
+  // WHAT FIX WAVE H PUT RIGHT, on a package the PRODUCT sealed (each was a value of the simulator's dataset before it).
+  // No row of the simulator's recording loop in a real-capture extract.
+  expect(extract.length).toBeGreaterThan(0);
+  expect(Object.keys(rowsPerType).filter((type) => ['FRAME_HASH', 'WRITE_VERIFIED', 'TIMESTAMP_CONFIRMED'].includes(type))).toEqual([]);
+  // The time source is the host system clock, in the manifest and on the start row: never GNSS.
+  expect(manifest.timeline.timeSource).toEqual({ source: 'RTC', state: 'HOST_SYSTEM_CLOCK', fallbackOrder: [] });
+  expect(manifest.timeline.timeSource).toEqual(CORE_TIME_SOURCE);
+  expect(recordingStarted).toEqual([HOST_CLOCK_TIME.source]);
+  expect(recordingStarted).not.toContain('GNSS');
+  // The version is the Core's; serial and hardware UUID are not configured; fields 20 / 21 are the rig's configured identity.
+  expect(manifest.device.softwareVersion).toBe(CORE_SERVER_VERSION);
+  expect([manifest.device.serialNumber, manifest.device.hardwareUuid]).toEqual([NOT_CONFIGURED, NOT_CONFIGURED]);
+  expect(c.app.config.installationDeviceId).not.toBeNull();
+  expect([manifest.device.deviceId, manifest.device.name]).toEqual([c.app.config.installationDeviceId, c.app.config.installationName]);
+  expect(manifest.tracks).toHaveLength(2);
+  // A generated-source package is signed with the development key, and the verifier says so of its certificate.
+  expect(developmentKey).toBe(true);
   expect(body.checks).toHaveLength(15);
   expect((body.checks as { id: string; status: string }[]).filter((check) => check.status === 'FAIL')).toEqual([]);
   expect(c.app.engine.state().evidence.find((entry) => entry.id === evidenceId)?.verification.status).toBe('PASS');

@@ -49,15 +49,19 @@
  * (`raiseCaptureWarningTransition`) writes the two members into the alert's params and the
  * FAULT_RAISED details once it takes them; until then it reads `code` and `subject` only.
  *
- * A WORKER THE SUPERVISOR ENDED FOR WHAT IT SAID IS NAMED (tidy pass F-Y; review R63-05, ruling D179).
- * Since fix pass F-M3 the supervisor ends a worker whose TELEMETRY names a device outside the
- * session's plan (`PROTOCOL_VIOLATION` / `TELEMETRY_SUBJECT_UNKNOWN`) and one that says it switched
- * the microphone although no command asked for it (`SWITCH_NOT_COMMANDED`). When that down is the END
- * of the session's worker, the supervisor's own `CAPTURE_FAULT` that follows is raised with
- * `reason: <that code>` (`SUPERVISOR_REFUSAL_REASONS`, each with its sentence in the shared wording
- * source): the operator reads WHY the capture was stopped, not "stopped unexpectedly". Only the
- * reason: `evidenceFiles` belongs to a failed start, and such a session may hold durable media.
- * The codes are the supervisor's own literals, never text of the worker.
+ * THE SUPERVISOR'S OWN FAULT ALWAYS SAYS WHY (wave H driver F; gate 64 condition C4, gate 75 finding
+ * G75-05; before it tidy pass F-Y, which named two refusals and left every other end of a worker
+ * without a reason). The supervisor's `CAPTURE_FAULT` carries `cause`: ONE member of the closed
+ * enumeration `CaptureDownReason` (`types.ts`) - what it refused of the worker's words
+ * (`WARNING_SUBJECT_UNKNOWN`, `RECORD_SEQUENCE_GAP`, `HELLO_EXPECTED` ...), a crash the worker
+ * reported (`WORKER_CRASHED`), a process that was killed or left (`WORKER_KILLED`,
+ * `WORKER_EXIT_NONZERO`), a heartbeat that stopped, a start that was refused. The raise hands it to
+ * the engine as the fault's `reason`, so the alert and its `FAULT_RAISED` row say WHY and the
+ * operator reads that reason's own sentence (the shared wording source), not "stopped unexpectedly".
+ * Only the reason: `evidenceFiles` belongs to a failed start of a final crash code (above), and a
+ * session whose worker was ended may hold durable media. The codes are the supervisor's own
+ * literals, never text of the worker. A fault without a `cause` (a supervisor double of a test) is
+ * raised without a reason, as before.
  *
  * ADVISORY REASONS ARE NOT FAULTS (decision D127 (2)). `KEYFRAME_INTERVAL_ABOVE_BOUND` says the
  * camera RECORDS and a crash would lose more than the fragment target: it raises no fault (the
@@ -108,7 +112,7 @@
  */
 import { ADVISORY_WARNING_REASONS, CaptureRecordKind, CaptureWarningCode, CaptureWarningReason, CaptureWarningState, DURABLE_RECORD_KINDS, FINAL_CRASH_CODES } from '@dems/capture-protocol';
 import { CaptureAdvisoryReason, type CaptureAdvisoryNotice, type CaptureFaultWarningInput, type CaptureTelemetryInput } from '@dems/shared/sim';
-import type { CaptureReport, CaptureSupervisor } from './types';
+import { SupervisorRefusal, type CaptureReport, type CaptureSupervisor } from './types';
 
 /**
  * The two keys of a failed start on the raise of its fault (C3 §5.3, §5.4 row C): the worker's
@@ -120,10 +124,11 @@ export interface FailedStartKeys {
 }
 /**
  * The refusals of the supervisor that end a worker and are said to the operator by name (tidy pass
- * F-Y): `WorkerDown.detail` of a `PROTOCOL_VIOLATION`. Each has a sentence in
+ * F-Y named two; since wave H driver F: EVERY member of `SupervisorRefusal`, `types.ts`). A subset
+ * of the reasons a supervisor's fault can carry (`CaptureDownReason`). Each has a sentence in
  * `@dems/shared/sim` `capture-fault-wording.ts`.
  */
-export const SUPERVISOR_REFUSAL_REASONS: readonly string[] = Object.freeze(['TELEMETRY_SUBJECT_UNKNOWN', 'SWITCH_NOT_COMMANDED']);
+export const SUPERVISOR_REFUSAL_REASONS: readonly string[] = Object.freeze(Object.values(SupervisorRefusal));
 
 /** What the forwarder raises: the fault of a warning, with the keys of a failed start when it is one. */
 export type ForwardedFaultWarning = CaptureFaultWarningInput & Partial<FailedStartKeys>;
@@ -236,8 +241,6 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
   let durable: string | null = null;
   /** The session whose worker ended for good with a final crash code while nothing was durable, and that code. */
   let failedStart: { readonly correlationId: string; readonly reason: string } | null = null;
-  /** The session whose worker the supervisor ended for good for a NAMED refusal (`SUPERVISOR_REFUSAL_REASONS`), and that name. */
-  let refused: { readonly correlationId: string; readonly reason: string } | null = null;
 
   function clear(host: CaptureEngine, entry: Raised): void {
     if (raised.get(keyOf(entry.warning, entry.reason)) === entry) raised.delete(keyOf(entry.warning, entry.reason));
@@ -249,7 +252,7 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
   function raise(host: CaptureEngine, warning: CaptureFaultWarningInput, reason: string, ids: { readonly sessionId: string; readonly correlationId: string }, keys: FailedStartKeys | null = null, named: string | null = null): void {
     // The engine's key is (kind, reason, device): a `CAPTURE_FAULT` is raised with the worker's reason,
     // or with the final crash code of a failed start; `MIC_SILENT` has one cause and names none.
-    // ... or with the name of what the supervisor refused (tidy pass F-Y).
+    // ... or with the supervisor's own reason for the end of its worker (wave H driver F).
     const engineReason = keys !== null ? keys.reason : named !== null ? named : warning.code === CaptureWarningCode.CAPTURE_FAULT && reason !== '' ? reason : null;
     const known: ForwardedFaultWarning = engineReason === null ? warning : { ...warning, reason: engineReason };
     // The file count belongs to the raise alone: a later clear names the fault, not its facts.
@@ -414,8 +417,8 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
       event.source === 'supervisor' && event.code === CaptureWarningCode.CAPTURE_FAULT && event.subject === null && failedStart !== null && failedStart.correlationId === event.correlationId && durable !== event.correlationId
         ? { reason: failedStart.reason, evidenceFiles: 0 }
         : null;
-    // The supervisor's own fault of the session whose worker it just ended for a named refusal (tidy pass F-Y).
-    const named: string | null = keys === null && event.source === 'supervisor' && event.code === CaptureWarningCode.CAPTURE_FAULT && event.subject === null && refused !== null && refused.correlationId === event.correlationId ? refused.reason : null;
+    // The supervisor's own fault says WHY its worker is down for good (wave H driver F): the closed reason it carries.
+    const named: string | null = keys === null && event.source === 'supervisor' && event.code === CaptureWarningCode.CAPTURE_FAULT && event.subject === null ? (event.cause ?? null) : null;
     if (event.state === CaptureWarningState.CLEARED) {
       // Another cause on the same device is another entry and another fault of the engine: it stays.
       if (known === undefined || known.correlationId !== event.correlationId) return;
@@ -442,8 +445,6 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
     // The END of a session's worker (no restart follows) with a code a new worker would repeat.
     const code = event.down.detail;
     failedStart = event.restartInMs === null && code !== null && FINAL_CRASH_CODES.includes(code) ? { correlationId: event.correlationId, reason: code } : null;
-    // The END of a session's worker because the supervisor refused what it said, by the supervisor's own name for it.
-    refused = event.restartInMs === null && event.down.code === 'PROTOCOL_VIOLATION' && code !== null && SUPERVISOR_REFUSAL_REASONS.includes(code) ? { correlationId: event.correlationId, reason: code } : null;
   });
 
   const offRecord = capture.on('record', (event) => {

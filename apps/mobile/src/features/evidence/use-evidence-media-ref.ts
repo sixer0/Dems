@@ -17,16 +17,28 @@
  *
  * A read is no command: a failure shows no toast (LB-6 words commands); the media tab says the
  * reference is unavailable.
+ *
+ * Wave H C2 (G94-02, G94-05, G81-07): the ONE call keeps the whole of what operation 40 states
+ * beside the item - the media source with its files and reason, what this caller may do, the
+ * finished exports - read by the one reader `item-facts.ts` (`detail`). The query holds those facts,
+ * never the item (the replicated slice is the item's source) and no path of any kind.
  */
 import { useQuery } from '@tanstack/react-query';
 import type { EvidenceMediaRef } from '@dems/shared/api';
 import { reportRuntimeIssue, useMobileLive, type MobileLiveSim } from '@/runtime';
+import { readDetailFacts, type DetailFacts } from './item-facts';
+
+/** What the query keeps of one answer of operation 40. */
+interface EvidenceDetailRead {
+  readonly media: EvidenceMediaRef;
+  readonly detail: DetailFacts;
+}
 
 export type EvidenceMediaRefState =
   /** Not Live: nothing is asked; the suffix join stands. */
   | { readonly status: 'not-live' }
   | { readonly status: 'loading' }
-  | { readonly status: 'ready'; readonly media: EvidenceMediaRef }
+  | { readonly status: 'ready'; readonly media: EvidenceMediaRef; readonly detail: DetailFacts }
   /** No answer: no bundled media is shown. */
   | { readonly status: 'unavailable' };
 
@@ -39,9 +51,9 @@ export function evidenceMediaRefKey(evidenceId: string) {
   return ['core-server', 'evidence-media', evidenceId] as const;
 }
 
-async function readMediaRef(live: MobileLiveSim, evidenceId: string): Promise<EvidenceMediaRef> {
+async function readMediaRef(live: MobileLiveSim, evidenceId: string): Promise<EvidenceDetailRead> {
   const answer = await live.client.call('getEvidence', { params: { id: evidenceId } });
-  if (answer.ok) return answer.data.media;
+  if (answer.ok) return { media: answer.data.media, detail: readDetailFacts(answer.data) };
   reportRuntimeIssue('warn', 'evidence.mediaRef', `getEvidence -> ${answer.kind}`, { evidenceId, kind: answer.kind, status: answer.status });
   throw new Error(`getEvidence -> ${answer.kind}${answer.status === null ? '' : ` (HTTP ${answer.status})`}`);
 }
@@ -58,6 +70,6 @@ export function useEvidenceMediaRef(evidenceId: string): EvidenceMediaRefState {
     },
   });
   if (live === null) return NOT_LIVE;
-  if (query.data !== undefined) return { status: 'ready', media: query.data };
+  if (query.data !== undefined) return { status: 'ready', media: query.data.media, detail: query.data.detail };
   return query.isError ? UNAVAILABLE : LOADING;
 }

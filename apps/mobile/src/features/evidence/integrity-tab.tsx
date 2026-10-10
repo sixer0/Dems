@@ -263,10 +263,10 @@ export function VerdictLine({ verdict, failed, done, resultKey }: VerdictLinePro
   );
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children, testID, titleTestID }: { title: string; children: ReactNode; testID?: string; titleTestID?: string }) {
   return (
-    <View style={styles.section}>
-      <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.label}>
+    <View style={styles.section} testID={testID}>
+      <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.label} testID={titleTestID}>
         {title}
       </Text>
       {children}

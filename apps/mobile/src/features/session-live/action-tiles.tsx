@@ -248,7 +248,7 @@ function MarkerForm({ label, onChange, onSubmit, busy, pending }: MarkerFormProp
         />
         <Description>{t('features.session-live.marker.optional')}</Description>
       </TextField>
-      <Button testID="monitor-marker-submit" variant="primary" onPress={onSubmit} {...busyState(busy)}>
+      <Button testID="monitor-marker-submit" variant="primary" onPress={onSubmit} accessibilityLabel={t('session.actions.addMarker.submit')} {...busyState(busy)}>
         {pending ? <PendingSpinner color={palette.black} testID="monitor-marker-submit-spinner" /> : null}
         <Button.Label>{t('session.actions.addMarker.submit')}</Button.Label>
       </Button>

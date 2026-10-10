@@ -413,7 +413,8 @@ describe('SIMULATED mode keeps its words (the same call sites, the simulator set
     expect(toastShown('Test signal sent to MIC 2 (simulated)')).toBe(true);
     expect(screen.queryByTestId('device-command-dialog')).toBeNull();
     // Nothing is ever marked busy: the command settled before the press returned.
-    expect(screen.getByTestId('device-action-diagnostics').props.accessibilityState?.busy).toBeUndefined();
+    // DELIBERATE PIN CHANGE (wave H closing pass Z2, G70-04): an idle control now STATES `busy: false` (`busyState`); it is never marked busy.
+    expect(screen.getByTestId('device-action-diagnostics').props.accessibilityState?.busy).toBe(false);
     fireEvent.press(screen.getByTestId('device-tab-log'));
     await flushSimulated();
     expect(within(screen.getByTestId('device-log')).getByText('Test signal (simulated)')).toBeTruthy();

@@ -92,12 +92,20 @@ export const ExportManifestSchema = z.strictObject({
   source: z.strictObject({ evidenceId: text, sessionId: text, deviceId: text }),
   /** §19.2 item 6. */
   destination: z.strictObject({ id: text }),
-  /** §19.2 item 7: the archive. */
+  /**
+   * §19.2 item 7: the archive. SINCE WAVE H (gate finding G94-03, ruling D200) THE ARCHIVE IS
+   * SELF-CONTAINED: this manifest and its signature are entries of the archive
+   * (`export/EXP-<id>.manifest.json` / `.sig`), and an archive cannot contain its own hash - so
+   * `bytes` and `sha256` are ABSENT, and the archive's hash is stated outside it (the job answer of
+   * operation 87 and the audit row of a download). `entries` covers every OTHER entry of the
+   * archive, each with its own hash; the signature covers this manifest. An export written before
+   * wave H carries both members: its manifest lies BESIDE the archive and names the archive's hash.
+   */
   package: z.strictObject({
     file: z.string().regex(/^EXP-[A-Za-z0-9-]+\.zip$/),
-    bytes: count,
+    bytes: count.optional(),
     hashAlgorithm: z.literal('SHA-256'),
-    sha256: hex64,
+    sha256: hex64.optional(),
     entries: z.array(z.strictObject({ path: entryPath, bytes: count, sha256: hex64 })).min(1),
   }),
   /** §19.2 item 8. `reference` is the ID of the audit row of the export request. */
@@ -120,6 +128,11 @@ export const ExportManifestSchema = z.strictObject({
     .nullable(),
 });
 export type ExportManifest = z.output<typeof ExportManifestSchema>;
+
+/** True for the self-contained form (wave H): the manifest names no hash of the archive it lies in. Both members or neither. */
+export function isSelfContainedExport(manifest: ExportManifest): boolean {
+  return manifest.package.sha256 === undefined && manifest.package.bytes === undefined;
+}
 export type ExportManifestInput = Omit<ExportManifest, 'schema' | 'export'> & { readonly export: Omit<ManifestV2ExportBlock, 'manifestSha256'> };
 
 export const ExportSignatureSchema = z.strictObject({
@@ -171,6 +184,8 @@ export function buildExportManifest(input: ExportManifestInput): ExportManifest 
   if (!parsed.success) throw new ExportManifestError('EXPORT_MANIFEST_INVALID');
   const manifest = parsed.data;
   if (!compositeMarkingHolds(manifest)) throw new ExportManifestError('EXPORT_COMPOSITE_MARKING');
+  // The archive hash: both members (the detached form) or neither (the self-contained form).
+  if ((manifest.package.sha256 === undefined) !== (manifest.package.bytes === undefined)) throw new ExportManifestError('EXPORT_MANIFEST_INVALID');
   return manifest;
 }
 

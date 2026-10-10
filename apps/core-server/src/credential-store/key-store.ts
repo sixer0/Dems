@@ -72,6 +72,8 @@ export interface KeyStore {
   /** A copy of the blob. The caller overwrites it after use. */
   openBlob(ref: string): Buffer;
   hasBlob(ref: string): boolean;
+  /** Overwrites and removes the blob. True when one was there. */
+  destroyBlob(ref: string): boolean;
 }
 
 export interface FileKeyStoreOptions {
@@ -286,37 +288,9 @@ export function createFileKeyStore(options: FileKeyStoreOptions): KeyStore {
 
     has: (ref) => isThere(fileOf(ref)),
 
-    destroy(ref) {
-      const file = fileOf(ref);
-      let handle: number;
-      try {
-        handle = openSync(file, constants.O_WRONLY | constants.O_NOFOLLOW);
-      } catch (error) {
-        const errno = errnoOf(error);
-        if (errno === 'ENOENT' || errno === 'ENOTDIR') return false;
-        if (errno !== 'ELOOP' && errno !== 'EMLINK') return fail(CredentialStoreFailure.STORE_UNAVAILABLE, error);
-        // A link in the place of a key file: the name is removed, what it points at is not written to.
-        handle = -1;
-      }
-      try {
-        if (handle !== -1) {
-          const size = Math.min(fstatSync(handle).size, 4096);
-          writeSync(handle, Buffer.alloc(size), 0, size, 0);
-          fsyncSync(handle);
-        }
-      } catch {
-        /* the removal below is what makes the key unreadable to the server */
-      } finally {
-        if (handle !== -1) closeSync(handle);
-      }
-      try {
-        unlinkSync(file);
-      } catch (error) {
-        return fail(CredentialStoreFailure.STORE_UNAVAILABLE, error);
-      }
-      syncDirectory(directory);
-      return true;
-    },
+    destroy: (ref) => destroyFile(fileOf(ref)),
+
+    destroyBlob: (ref) => destroyFile(fileOf(ref, BLOB_FILE_SUFFIX)),
 
     list() {
       if (inspect() === 'ABSENT') return [];
@@ -331,4 +305,36 @@ export function createFileKeyStore(options: FileKeyStoreOptions): KeyStore {
       }
     },
   };
+
+  /** Overwrites a key or blob file and removes it. True when a file was there. */
+  function destroyFile(file: string): boolean {
+    let handle: number;
+    try {
+      handle = openSync(file, constants.O_WRONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      const errno = errnoOf(error);
+      if (errno === 'ENOENT' || errno === 'ENOTDIR') return false;
+      if (errno !== 'ELOOP' && errno !== 'EMLINK') return fail(CredentialStoreFailure.STORE_UNAVAILABLE, error);
+      // A link in the place of a key file: the name is removed, what it points at is not written to.
+      handle = -1;
+    }
+    try {
+      if (handle !== -1) {
+        const size = Math.min(fstatSync(handle).size, 4096);
+        writeSync(handle, Buffer.alloc(size), 0, size, 0);
+        fsyncSync(handle);
+      }
+    } catch {
+      /* the removal below is what makes the key unreadable to the server */
+    } finally {
+      if (handle !== -1) closeSync(handle);
+    }
+    try {
+      unlinkSync(file);
+    } catch (error) {
+      return fail(CredentialStoreFailure.STORE_UNAVAILABLE, error);
+    }
+    syncDirectory(directory);
+    return true;
+  }
 }

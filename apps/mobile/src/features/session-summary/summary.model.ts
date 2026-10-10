@@ -41,6 +41,23 @@ export function sizeParts(bytes: number): SizeParts {
   return { unit: 'mb', value: (safe / 1e6).toFixed(1) };
 }
 
+/**
+ * THE TIME SOURCE A SUMMARY CHIP REPEATS (wave H closing pass Z2; driver A's line of 10:20:55Z item 3,
+ * ruling D203 (1)). `member`: `startTimeSource` / `endTimeSource` of the session's own history entry -
+ * what the Core stated for THAT session; `ring`: the source the live `time` slice's ring held at that
+ * instant, the fallback of an entry without the member (the step-80 rule); `hostClock`: the Core's
+ * time is the host system clock (`isHostClockTime`).
+ *
+ * The member wins. On a host-clock Core the ring is never read (that Core keeps none, and a ring left
+ * from before would be the dataset's GNSS), and an `RTC` member is the host clock (`host: true`: the
+ * chip names it, neutral). Null: nothing is known, no chip.
+ */
+export function summaryTimeSource(input: { member: string | null | undefined; ring: string | null; hostClock: boolean }): { source: string; host: boolean } | null {
+  const source = input.member ?? (input.hostClock ? null : input.ring);
+  if (source === null || source === undefined) return null;
+  return { source, host: input.hostClock && source === 'RTC' };
+}
+
 /** The twelve §19.1 lifecycle stages in order (C-4 horizontal). */
 export const LIFECYCLE_STAGES: readonly EvidenceLifecycleStage[] = Object.values(EvidenceLifecycleStage);
 

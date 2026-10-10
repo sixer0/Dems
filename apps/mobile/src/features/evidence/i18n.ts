@@ -98,6 +98,8 @@ export const evidenceEn = {
     exportZip: 'Package SHA-256 ({{file}})',
     exportBy: 'Exported by',
     exportReason: 'Reason',
+    // Wave H C2 (G94-14 / G81-10): the Metadata tab of a recording of this Core names no DEMO package.
+    coreRecordOnly: 'The Core server\u2019s record of this item.',
   },
   custodyAction: {
     RECORDING_STARTED: 'Recording started',

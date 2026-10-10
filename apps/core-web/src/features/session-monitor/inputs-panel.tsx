@@ -4,9 +4,9 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { ArrowRight, Cctv, Mic } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim } from '@dems/shared/sim'
+import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
-import { CameraFeed } from '@/components/media'
+import { CameraPreview } from '@/features/devices/camera-preview'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
@@ -29,6 +29,9 @@ export function InputsPanel({ paused }: { paused: boolean }) {
   const cameras = useMemo(() => cameraTiles(cameraStore), [cameraStore])
   const mics = useMemo(() => micTiles(micStore), [micStore])
   const container = useStaggerVariants(PANEL_BEAT_MS.R, 60, 4)
+  // Wave H driver B (G75-04; ux §8e.2 "no meters"; D84): no live level before the first durable fragment, and none
+  // for a session that recorded nothing. The state stands in the meter's place.
+  const noLevels = useSim((s) => noLiveLevelsOf(s.session))
 
   return (
     <Panel
@@ -47,7 +50,7 @@ export function InputsPanel({ paused }: { paused: boolean }) {
         {cameras.map((camera) => (
           <motion.div key={camera.id} variants={m.variants.row} className="min-w-0">
             <Card variant="tertiary" className="sm-input-tile" data-device={camera.id} data-ready={camera.ready ? 'true' : 'false'}>
-              <CameraFeed
+              <CameraPreview
                 cameraId={camera.id}
                 variant="thumb"
                 live={false}
@@ -84,7 +87,13 @@ export function InputsPanel({ paused }: { paused: boolean }) {
                   <p className={cn('sm-input-state', tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : 'text-muted')}>
                     {t(`common.enums.micState.${mic.clipLatched ? 'CLIP' : mic.state}`)}
                   </p>
-                  <DbfsMeter channel={mic.id} variant="compact" label={mic.name} monitoringPaused={paused} className="sm-input-meter" />
+                  {noLevels !== null ? (
+                    <p className="sm-input-meta" role="status" data-testid={`sm-input-no-level-${mic.id}`}>
+                      {noLevels === 'CONNECTING' ? t('common.session.trackConnecting') : t('common.session.failedStart.title')}
+                    </p>
+                  ) : (
+                    <DbfsMeter channel={mic.id} variant="compact" label={mic.name} monitoringPaused={paused} className="sm-input-meter" />
+                  )}
                 </div>
               </Card>
             </motion.div>

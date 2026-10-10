@@ -11,9 +11,11 @@ import {
   MicGeneratedTone,
   MicHelperArgumentError,
   isMicPipeArgument,
+  isSpeechFixtureArgument,
   micOutputPromise,
   micPrecheckArguments,
   micPushArguments,
+  speechFixturePath,
 } from '../mic-helper-args';
 
 const PIPE = micPipePath('/work/.data/run/capture', 'SES-20261009-0001', 'MIC-03');
@@ -166,5 +168,58 @@ describe('the pipe argument has the shape micPipePath builds, and nothing else',
       expect(isMicPipeArgument(path), JSON.stringify(path)).toBe(false);
       expect(() => micPushArguments({ source: { kind: 'GENERATED', tone: MicGeneratedTone.TONE_880 }, pipePath: path })).toThrow(MicHelperArgumentError);
     }
+  });
+});
+
+// Fix wave H (ruling D198 on gate 81, condition C1): the development SPEECH microphone. The generated
+// tone carries no speech, so no chunk is ever planned in a development session; this source plays a
+// file of synthetic speech through the SAME output line.
+describe('the speech fixture input of the development speech microphone', () => {
+  const FIXTURE = speechFixturePath('/work/.data');
+  const speech = micPushArguments({ source: { kind: 'FIXTURE', path: FIXTURE }, pipePath: PIPE });
+  const tone = micPushArguments({ source: { kind: 'GENERATED', tone: MicGeneratedTone.TONE_440 }, pipePath: PIPE });
+
+  it('the exact list: paced by the timestamps of the file, started again at its end, read as WAV, then the one output line', () => {
+    expect(FIXTURE).toBe('/work/.data/dev-fixtures/speech-mic/dialogue.wav');
+    expect([...speech]).toEqual([
+      '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning',
+      '-progress', 'pipe:1',
+      '-re', '-stream_loop', '-1', '-f', 'wav', '-i', FIXTURE,
+      '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-y',
+      PIPE,
+    ]);
+  });
+
+  it('NO DEVICE: the list names no device layer, no device name and no second input', () => {
+    expect(speech.some((argument) => /avfoundation|^none:|^default$|^[0-9]+(?::[0-9]+)?$/.test(argument) && argument !== '1' && argument !== '-1' && argument !== '48000')).toBe(false);
+    expect(speech).not.toContain('avfoundation');
+    expect(speech.filter((argument) => argument === '-i')).toHaveLength(1);
+    // Control: the device list does name the device layer, so the assertion above can fail.
+    expect(micPushArguments({ source: { kind: 'DEVICE', name: LOCAL_MIC_DEVICE_NAME }, pipePath: PIPE })).toContain('avfoundation');
+  });
+
+  it('REAL-TIME PACING and the SAME FORMAT as the tone source: `-re` leads the input, and everything after the input equals the tone list', () => {
+    const inputAt = MIC_HELPER_TABLE.quietLength;
+    expect(speech[inputAt]).toBe('-re');
+    expect(tone[inputAt]).toBe('-re');
+    expect(speech.slice(inputAt + MIC_HELPER_TABLE.fixtureInputLength)).toEqual(tone.slice(inputAt + MIC_HELPER_TABLE.generatedInputLength));
+    expect(speech.slice(0, inputAt)).toEqual(tone.slice(0, inputAt));
+    // Looped for as long as the session records: a session may outlast the file.
+    expect(speech.slice(speech.indexOf('-stream_loop'), speech.indexOf('-stream_loop') + 2)).toEqual(['-stream_loop', '-1']);
+  });
+
+  it('G-R12 holds: every argument is a literal of the table or the fixture path / the pipe path', () => {
+    expect(violations(speech, [FIXTURE, PIPE])).toEqual([]);
+    // Control: the fixture path is NOT a literal - a list checked without it as a computed value is found.
+    expect(violations(speech, [PIPE])).toEqual([`not a literal and not a computed value: ${FIXTURE}`]);
+  });
+
+  it('a path that is not of the fixture shape never becomes an argument', () => {
+    const REFUSED = ['', 'dialogue.wav', '/work/.data/dev-fixtures/speech-mic/other.wav', '/work/.data/dev-fixtures/speech-mic/dialogue.wav.sdp', '/work/../etc/dev-fixtures/speech-mic/dialogue.wav', '/work//dev-fixtures/speech-mic/dialogue.wav', '-i/dev-fixtures/speech-mic/dialogue.wav', 'concat:/a/dev-fixtures/speech-mic/dialogue.wav', '/a;b/dev-fixtures/speech-mic/dialogue.wav', '/a$(id)/dev-fixtures/speech-mic/dialogue.wav', `/${'a'.repeat(1024)}/dev-fixtures/speech-mic/dialogue.wav`, 'rtsp://127.0.0.1/dev-fixtures/speech-mic/dialogue.wav'];
+    for (const path of REFUSED) {
+      expect(isSpeechFixtureArgument(path), JSON.stringify(path)).toBe(false);
+      expect(() => micPushArguments({ source: { kind: 'FIXTURE', path }, pipePath: PIPE }), JSON.stringify(path)).toThrow(MicHelperArgumentError);
+    }
+    expect(isSpeechFixtureArgument('/Users/a b/DEMS/.data/dev-fixtures/speech-mic/dialogue.wav')).toBe(true);
   });
 });

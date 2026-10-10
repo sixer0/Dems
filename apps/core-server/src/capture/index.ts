@@ -10,7 +10,9 @@
  *     restart with back-off, correlation IDs, back-pressure;
  *   - the PROCESS CHANNEL (`ipc.ts`): the only file of the server runtime that starts a process;
  *   - the persistence of what goes wrong: a worker that went down and a `CAPTURE_FAULT` are
- *     written to the log and to the persistent error log, with the session and correlation IDs.
+ *     written to the log and to the persistent error log, with the session and correlation IDs;
+ *   - the BOOT CLEAR of what a Core that went down left raised (decision D84 R-4: the capture
+ *     faults; wave H driver F: the notices of a running capture, `stale-notices.ts`).
  *
  * THE WORKER COMMAND (blueprint row 58; spec §I edits 7 to 10). In capture mode `real` with a
  * worker program configured (`config.captureWorkerPath`), the supervisor starts that program, one
@@ -41,32 +43,41 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { captureDoorsOf } from '../engine';
 import { describeError } from '../plugins/logger';
-import { CAPTURE_IPC_DEFAULTS, CAPTURE_WORKER_SETTING_DEFAULTS, CaptureRecordKind, CaptureSyncLevel, captureWorkerSettingArguments, type CaptureWorkerSettings } from '@dems/capture-protocol';
-import { MIC_DISCONNECT_DEBOUNCE_MS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
-import { VERIFY_MAX_OPEN_FRAGMENT_BYTES } from '@dems/shared/evidence-verify';
+import { CaptureRecordKind, CaptureSyncLevel } from '@dems/capture-protocol';
 import { CaptureOperation } from './adapters';
 import { mountCaptureBootChecks } from './boot';
 import { captureOperationOf, mountCaptureFence } from './fence';
 import { forwardCaptureEvents } from './forwarder';
 import { createProcessLauncher, unconfiguredLauncher } from './ipc';
+import { staleCaptureNoticesOf } from './stale-notices';
 import { createCaptureSupervisor } from './supervisor';
 import { createSystemTimers } from './timers';
 import type { CaptureReport, CaptureSupervisor } from './types';
+import { WORKER_LOG_NAME, captureWorkerArguments } from './worker-arguments';
 
 export { CAPTURE_MIC_RATE_LIMIT_PPM, CAPTURE_WARNING_CLEAR_HOLD_MS, CaptureNoticeCode, ForwarderReportCode, SUPERVISOR_REFUSAL_REASONS, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions, type CaptureNotice } from './forwarder';
+// The ONE version of the worker this Core drives (gate 64 C7): the boot and every HELLO hold a worker to it.
+export { CAPTURE_WORKER_VERSION } from './boot';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
-export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, createCaptureSupervisor } from './supervisor';
+export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor } from './supervisor';
+// The arguments of a worker process: one set for a session start and for the boot probe (wave H driver F; gate 64 C7).
+export { CAPTURE_WORKER_PROCESS_SETTINGS, captureWorkerArguments } from './worker-arguments';
 export { createSystemTimers } from './timers';
 // The evidence signer (row 83): reached through this index like the rest of the closed unit.
 export * from './signer';
 // The camera file read again (row 59): box walk, fragment chain, tail validation of RECOVERY.
 export * from './fragments';
 export {
+  CAMERA_END_REASONS,
+  CaptureDownReason,
   CapturePhase,
   CaptureRefusal,
   CaptureSupervisorError,
+  SupervisorRefusal,
   WorkerDownCode,
   WorkerLaunchError,
+  type CaptureCameraEnd,
+  type CaptureCameraEndReason,
   type CaptureEvent,
   type CaptureEventName,
   type CaptureEventOf,
@@ -92,33 +103,13 @@ const BOOTED = 'capture supervisor booted';
 const STOPPED = 'capture supervisor stopped';
 const RECOVERED = 'the capture supervisor finished a step that had failed';
 
-/** The worker's own log: one JSON object per line, beside the connection files of the data directory. */
-const WORKER_LOG_NAME = 'capture-worker.jsonl';
 const NOTICE = 'capture notice';
 const STALE_FAULTS_CLEARED = 'capture faults of an earlier run cleared at boot';
 const STALE_FAULTS_NOT_CLEARED = 'the capture faults of an earlier run could not be cleared at boot';
+const STALE_NOTICES_CLEARED = 'capture notices of an earlier run resolved at boot: no capture is running, so their conditions are not being observed';
+const STALE_NOTICES_NOT_CLEARED = 'a capture notice of an earlier run could not be resolved at boot';
 const SYNC_LEVEL = 'the first fragment of a camera file is durable: the sync level the worker achieved';
 const SYNC_LEVEL_NOT_FULL = 'a camera file is NOT synced through the drive cache: the evidence volume does not take the full sync';
-
-/**
- * THE NAMED SETTINGS OF THE WORKER PROCESS (protocol 4; decisions D72(k), D84; capture spec §E.1).
- * The launcher passes every one of them to every worker; a worker's own default is never relied on.
- * `ingestOpenWindowMs`: how long a camera may take to connect before a session with no camera
- * FAULTS with `NO_CAMERA_CONNECTED` and nothing claims to record. The three microphone thresholds
- * are the contract's constants (`@dems/shared/api`, CS-25).
- * `maxFragmentBytes` (fix pass F-M3, review R63-02; ruling D179): THE bound of one fragment, ONE
- * number - the one the seal enforces (`SEALING_MAX_FRAGMENT_BYTES`, which IS the verifier's
- * `VERIFY_MAX_OPEN_FRAGMENT_BYTES`; named here by the verifier's constant because the sealing unit
- * imports this one). The worker makes no fragment durable above it, so a recording can no longer
- * be written whole and then fail at its seal. `protocol-pins.test.ts` holds the three equal.
- */
-export const CAPTURE_WORKER_PROCESS_SETTINGS: CaptureWorkerSettings = Object.freeze({
-  ingestOpenWindowMs: CAPTURE_WORKER_SETTING_DEFAULTS.ingestOpenWindowMs,
-  micSilenceDbfs: MIC_SILENCE_DBFS,
-  micSilenceDurationMs: MIC_SILENCE_DURATION_MS,
-  micDisconnectDebounceMs: MIC_DISCONNECT_DEBOUNCE_MS,
-  maxFragmentBytes: VERIFY_MAX_OPEN_FRAGMENT_BYTES,
-});
 
 export const captureModule: FastifyPluginAsync = async (app) => {
   const { captureMode, captureWorkerPath, dataDir } = app.config;
@@ -142,7 +133,7 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     now: () => app.clock.now(),
     timers: createSystemTimers(),
     launcher: configured
-      ? createProcessLauncher({ command: captureWorkerPath, args: ['--log', `${dataDir}/${WORKER_LOG_NAME}`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PROCESS_SETTINGS)] })
+      ? createProcessLauncher({ command: captureWorkerPath, args: captureWorkerArguments(`${dataDir}/${WORKER_LOG_NAME}`) })
       : unconfiguredLauncher,
     report,
   });
@@ -178,6 +169,7 @@ export const captureModule: FastifyPluginAsync = async (app) => {
       attempt: event.down.attempt,
       downCode: event.down.code,
       downDetail: event.down.detail,
+      downReason: event.down.reason ?? null,
       exitCode: event.down.exitCode,
       signal: event.down.signal,
       restartInMs: event.restartInMs,
@@ -205,7 +197,8 @@ export const captureModule: FastifyPluginAsync = async (app) => {
 
   supervisor.on('warning', (event) => {
     if (event.source !== 'supervisor') return;
-    const context = { sessionId: event.sessionId, correlationId: event.correlationId };
+    // WHY the worker is down for good, in the error log as well (wave H driver F): one code of the closed enumeration.
+    const context = { sessionId: event.sessionId, correlationId: event.correlationId, reason: event.cause ?? null };
     app.log.error({ code: event.code, ...context }, FAULT);
     app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: FAULT, code: event.code, context });
   });
@@ -229,6 +222,37 @@ export const captureModule: FastifyPluginAsync = async (app) => {
         } catch (err) {
           app.log.error({ err, code: 'CAPTURE_STALE_FAULTS_NOT_CLEARED' }, STALE_FAULTS_NOT_CLEARED);
           app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: STALE_FAULTS_NOT_CLEARED, ...describeError(err), code: 'CAPTURE_STALE_FAULTS_NOT_CLEARED', context: {} });
+        }
+        // THE SAME FOR THE NOTICES OF A RUNNING CAPTURE (wave H driver F; gate 64 C4, F-Y decision 8): the advice about a
+        // camera or a microphone and the volume-durability notice are resolved from memory by the unit that raised them, so a
+        // Core that died left them active - one of them can be CRITICAL - and a later raise for the same target wrote nothing.
+        // No capture runs now: each is resolved, here, before a client connects (`stale-notices.ts` says which and why not the
+        // no-device notices). A condition that is still true is said again by the first reading of the next recording. What
+        // was done is written to the log AND to the persistent error log (the notices' own rule writes no audit row for a
+        // clear): codes and a count only.
+        try {
+          const stale = staleCaptureNoticesOf(app.engine.state().alerts);
+          const resolved: string[] = [];
+          for (const notice of stale) {
+            try {
+              await app.engine.clearCaptureWarning(notice);
+              resolved.push(notice.code);
+            } catch (err) {
+              const context = { reason: notice.code, deviceId: notice.subject };
+              app.log.error({ err, code: 'CAPTURE_STALE_NOTICE_NOT_CLEARED', ...context }, STALE_NOTICES_NOT_CLEARED);
+              app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: STALE_NOTICES_NOT_CLEARED, ...describeError(err), code: 'CAPTURE_STALE_NOTICE_NOT_CLEARED', context });
+            }
+          }
+          if (resolved.length > 0) {
+            const context = { cleared: resolved.length, reasons: [...new Set(resolved)].sort().join(',') };
+            app.log.info({ code: 'CAPTURE_STALE_NOTICES_CLEARED', ...context }, STALE_NOTICES_CLEARED);
+            // The persistent error log has no level below `warn`: the end of an episode is written at that level.
+            app.errorLog.append({ level: 'warn', source: 'capture.supervisor', message: STALE_NOTICES_CLEARED, code: 'CAPTURE_STALE_NOTICES_CLEARED', context });
+          }
+        } catch (err) {
+          // The state could not be read: nothing is resolved from a guess, and the boot goes on.
+          app.log.error({ err, code: 'CAPTURE_STALE_NOTICE_NOT_CLEARED' }, STALE_NOTICES_NOT_CLEARED);
+          app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: STALE_NOTICES_NOT_CLEARED, ...describeError(err), code: 'CAPTURE_STALE_NOTICE_NOT_CLEARED', context: {} });
         }
       }
       app.log.info({ code: 'CAPTURE_SUPERVISOR_BOOTED', mode: captureMode, worker: configured ? 'configured' : 'not-configured' }, BOOTED);

@@ -3,8 +3,8 @@ import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { selectCameraById, useSim } from '@dems/shared/sim'
-import { CameraFeed } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
+import { CameraPreview } from './camera-preview'
 import { TrackUnreachableMark } from './capture-notices'
 import { useDeviceActions, useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
@@ -91,7 +91,8 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
         onClick={() => open(deviceId)}
         aria-label={t('devices.cameras.openDetails', { name })}
       >
-        <CameraFeed
+        {/* Wave H (G70-03): on a Core in real capture this is the neutral "No preview" tile, never the demo loop. */}
+        <CameraPreview
           cameraId={cameraId}
           variant="tile"
           label={null}

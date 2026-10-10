@@ -25,7 +25,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
-import type { MicStatus } from '@dems/shared/sim';
+import { captureMicLines, micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
 import { MicStateTone, fontFamily, palette, toneHex, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
@@ -140,6 +140,10 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
   const tone = MicStateTone[mic.state];
   const label = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
   const sourceRole = useMicSourceRole(mic.id);
+  // Wave H closing pass Z2 (ruling D137): the card is a LINE. The microphone on it is the one the capture
+  // configuration names for this channel (the open session's snapshot first) - not `mic.deviceId`, the
+  // channel record's constant `MIC-01` / `MIC-02`, which no selector edit moves.
+  const lineInput = useSim((s) => micInputOfChannel(captureMicLines(s), mic.id));
   const active = sourceRole === 'ACTIVE';
 
   // §7.6: one Warning haptic when the CLIP latch sets (never tied to the 20 Hz data).
@@ -172,7 +176,7 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
         ) : null}
       </View>
       {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
-      <MicInputSourceBadge inputId={mic.deviceId} testID={`monitor-mic-source-${mic.channel}`} />
+      <MicInputSourceBadge inputId={lineInput} testID={`monitor-mic-source-${mic.channel}`} />
       <MicMeter mic={mic} testID={`monitor-meter-${mic.channel}`} {...meter} />
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
       <SelectionGlow selected={active} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />

@@ -347,6 +347,15 @@ export const ActiveSessionSchema = z
       .boolean()
       .optional()
       .describe('False from the accepted start until the first durable fragment ("connecting cameras"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.'),
+    captureCheckpoints: z
+      .strictObject({
+        fragments: count().describe('Durable fragment checkpoints of all camera files.'),
+        bytes: count().describe('Stored bytes of the camera files the checkpoints cover (plaintext on the evidence volume until the seal).'),
+        lastAt: epochMs().describe('The Core clock at the newest checkpoint.'),
+        cameras: z.array(z.strictObject({ deviceId: label(), fragments: count(), bytes: count() })).describe('The same figures by camera.'),
+      })
+      .optional()
+      .describe('What the Core holds of a recording of its OWN capture: the fragment checkpoints the capture worker reported durable. Not stored; refreshed at most every 5 s and at the end of the capture. Absent in simulated capture, before the first checkpoint and on a session read back after a restart: absent means "not stated", never 0 (wave H Z1).'),
     /** Incremental transcript state of this session (op 84; R-5). */
     transcript: z
       .strictObject({
@@ -522,6 +531,10 @@ export type StoragePolicySliceBody = z.output<typeof StoragePolicySliceSchema>;
 
 export const TimeSliceSchema = z
   .strictObject({
+    hostClock: z
+      .literal(true)
+      .optional()
+      .describe('Present on a Core in its own capture: the time is the host system clock and there is no time service. `source` is then `RTC`, nothing is locked, no offset is measured and the history is empty (wave H Z1, D203 (1)). Absent on the simulated time service.'),
     source: timeSource().describe('Active source, priority GNSS, then NTP, then RTC.'),
     locked: z.boolean(),
     stratum: count(),
@@ -688,6 +701,12 @@ export const EvidenceItemSchema = z
         keyId: text(),
         algorithm: z.enum(['Ed25519', 'SIMULATED-SHA256']).describe('Schema v2: real seals sign with Ed25519 (OD-02); the stand-in remains for v1 rows.'),
         simulated: z.boolean(),
+        // Wave H C1 (G89-03 family; F-M7 request R88-07): stated by a Core for an item whose sealed package lies in its store, BEFORE any verification run.
+        developmentKey: z
+          .boolean()
+          .nullable()
+          .optional()
+          .describe('Core server only: whether the certificate the SEALED manifest names is a development key - true / false as read from the item\'s own sealed manifest and certificate; null: could not be established (the package or its certificate is not readable). Absent: not stated (Simulated mode, a v1 item) - never to be read as a production key.'),
       })
       .superRefine((signature, report) => {
         const simulatedPair = signature.algorithm === 'SIMULATED-SHA256' && signature.simulated && signature.value.length === 64;
@@ -750,10 +769,26 @@ export const EvidenceItemSchema = z
           fromMs: count().describe('Media-pts start (S2 §6 finding 3).'),
           toMs: nullableEpochMs().describe('Media-pts end; null for the open interval of a live session.'),
           reason: z.enum(['START', 'MANUAL', 'STOP']),
+          sourceClass: z.enum(['PRODUCTION', 'LOCAL_DEVICE', 'FAKE']).optional().describe('Wave H C1: the source class of the microphone of this interval as the sealed manifest records it (field 125). Absent: not stated.'),
         }),
       )
       .optional()
-      .describe('Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows).'),
+      .describe('Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows). On a Core, for a sealed item: the intervals of the SEALED manifest (`audio.sourceIntervals`, `seq` from 1), read from the item\'s own package.'),
+    // Wave H C1 (gate 94 / 89 / 75): what the sealed manifest of the item says, carried by the item so that no client derives it.
+    sealedPackage: z
+      .enum(['PRESENT', 'NOT_READABLE'])
+      .optional()
+      .describe('Core server only, for an item whose sealed v2 package lies in the Core\'s own store by its facts (a product seal, a seed-sealed demo item). PRESENT: its manifest was read from the package under the digest of record, and `files`, `audioSourceIntervals`, `interrupted` and `signature.developmentKey` are that manifest\'s. NOT_READABLE: the package is gone or its manifest is not the one the item was sealed with - no sealed fact is stated. Absent: the item has no package in the Core\'s store (a v1 demo item, a simulated item) - a client then shows nothing of a Core package.'),
+    interrupted: z
+      .boolean()
+      .optional()
+      .describe('Core server only: the sealed manifest\'s `timeline.interrupted` - the package is the sealed durable prefix of a recording that did not end by a stop. Absent: not stated (no sealed manifest was read).'),
+    interruptedCause: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]{0,63}$/)
+      .nullable()
+      .optional()
+      .describe('Core server only, with `interrupted: true`: the code the item\'s custody entry `RECORDING_INTERRUPTED` names (a fault kind), or null when it names none.'),
     transcript: z
       .strictObject({
         state: z.enum(['PENDING', 'PARTIAL', 'READY', 'FAILED', 'DISABLED']).describe('DISABLED only when R-8 turns STT off (D20; lands with M6).'),

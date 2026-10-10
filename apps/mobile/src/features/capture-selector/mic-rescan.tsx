@@ -26,7 +26,8 @@ import { Permission, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
-import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLinkNotice, useMobileLive } from '@/runtime';
+import { settledBusyState } from './settled-busy-state';
+import { PendingSpinner, reportRuntimeIssue, useCoreLinkNotice, useMobileLive } from '@/runtime';
 import { LOCAL_STATE_TONE, classifyRescanAnswer, inputScanOf, localDeviceSentenceKey, localDeviceStateOf, type RescanAnswerClass } from './capture-notices-model';
 import { liveDiscoveryPort, simDiscoveryPort, type DiscoveryPort } from './capture-discovery-port';
 
@@ -115,12 +116,18 @@ export interface MicRescanProps {
   testID?: string;
   /** Leaves out the description line (a notification already says what the action is about). */
   compact?: boolean;
+  /**
+   * Fix wave H (G70-06): the sentence the surrounding card already draws for its own gate. When the
+   * button's reason is that same sentence it is not drawn a second time (it stays the button's
+   * accessibility hint); any other reason is drawn as before.
+   */
+  gateShownAs?: string | null;
 }
 
 const K = 'features.capture-selector.inputs';
 
 /** G17 with its result, wherever a microphone can be searched again. */
-export function MicRescanControl({ testID = 'mic-rescan', compact = false }: MicRescanProps) {
+export function MicRescanControl({ testID = 'mic-rescan', compact = false, gateShownAs = null }: MicRescanProps) {
   const { t } = useTranslation();
   const rescan = useMicRescan();
   const { result } = rescan;
@@ -135,7 +142,8 @@ export function MicRescanControl({ testID = 'mic-rescan', compact = false }: Mic
           testID={`${testID}-action`}
           accessibilityLabel={t(`${K}.againLabel`)}
           {...(rescan.gateHint === null ? {} : { accessibilityHint: rescan.gateHint })}
-          {...busyState(rescan.pending, !rescan.canRescan)}
+          // Fix wave H (G70-04): `busy: false` is said once the answer is in, so the label stops reading "busy".
+          {...settledBusyState(rescan.pending, !rescan.canRescan)}
         >
           {rescan.pending ? <PendingSpinner color={palette.gold} testID={`${testID}-spinner`} /> : null}
           <Button.Label>{t(`${K}.again`)}</Button.Label>
@@ -146,7 +154,7 @@ export function MicRescanControl({ testID = 'mic-rescan', compact = false }: Mic
           {t(`${K}.description`)}
         </Text>
       )}
-      {rescan.gateHint !== null ? (
+      {rescan.gateHint !== null && rescan.gateHint !== gateShownAs ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.muted} testID={`${testID}-gate`} accessibilityLiveRegion="polite">
           {rescan.gateHint}
         </Text>

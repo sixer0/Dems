@@ -31,7 +31,8 @@ import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
 import { MicInputSourceBadge, TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
-import { CameraFeed } from '@/components/media/camera-feed';
+// Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
+import { CameraPreview } from '@/features/devices/camera-preview';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { AUDIO_FLOOR_DBFS, audioAccessibilityValue, useAudioAccessibilityValue, useAudioSharedValues, type AudioAccessibilityValue } from '@/runtime';
@@ -116,7 +117,8 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const cameraIndex = tile.trackId === 'VIDEO-02' ? 2 : 1;
   const poster = DEMO_MEDIA_LIVE.poster[cameraIndex === 2 ? 'VIDEO-02' : 'VIDEO-01'];
   return (
-    <CameraFeed
+    <CameraPreview
+      name={name}
       testID={`home-device-${tile.trackId}-feed`}
       cameraId={`CAM-${cameraIndex}`}
       cameraLabel={`CAM ${cameraIndex}`}

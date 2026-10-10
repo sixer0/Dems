@@ -18,6 +18,15 @@
  *   while it is asked, and when it cannot be read, the Media tab says so.
  * - "Download manifest" says that it is not available: the Core serves no file (MS-1).
  * Simulated mode joins the bundled packages by the evidence number, as before.
+ *
+ * **Wave H C2** (gate findings G94-02 BLOCKER, G94-14 / G81-10, G94-05, G81-07, G75-03). In Live
+ * mode what is shown as the item's media is decided ONLY by the item's media facts
+ * (`item-facts.ts` `mediaKindOf`): streamable -> the sealed player; a bundled demo package the Core
+ * named AND a demo item by the item's own members -> the bundled media with its demo label;
+ * anything else, also no answer -> NO player and NO picture (the hero draws no poster and Play
+ * opens nothing), the state sentence and the reason. `access.play` / `access.transcript` false: the
+ * page view asks neither operation 88 nor 84 / 86 and says "not permitted". The header names an
+ * interrupted recording, and the finished exports of the item are listed under the facts.
  */
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -55,6 +64,9 @@ import { ArchiveDialog } from './archive-dialog';
 import { ItemDevelopmentBadge } from './development-source';
 import { consumeDetailIntent, useDetailIntent, type DetailTab } from './detail-intent';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
+import { FinishedExports } from './finished-exports';
+import { InterruptedLine } from './interrupted-line';
+import { NO_DETAIL_FACTS, cameraFilesFor, isDemoItem, mediaKindOf, mediaReasonLine, readItemFacts, type MediaKind } from './item-facts';
 import { clipMsFor, mediaForEvidence, posterOf } from './evidence-media';
 import { fileSizeParts, integrityFor, isArchivable, isExportable, packageFor, packageTimeSource } from './evidence-model';
 import { ExportSheet } from './export-sheet';
@@ -113,8 +125,15 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const [sealedPlay, setSealedPlay] = useState<number | null>(null);
   const [verified, setVerified] = useState<VerifyV2Answer | null>(null);
   const v2 = useMemo(() => readItemV2(item), [item]);
+  const facts = useMemo(() => readItemFacts(item), [item]);
+  // Wave H C2: what operation 40 states beside the item; nothing is reported before it answers.
+  const detail = mediaRef.status === 'ready' ? mediaRef.detail : NO_DETAIL_FACTS;
+  /** Live only: what may be shown as the item's media (G94-02). No answer is NONE: no picture, no player. */
+  const mediaKind: MediaKind | null = !live ? null : mediaRef.status === 'ready' ? mediaKindOf(detail.media, facts) : 'NONE';
+  /** `access.play: false`: this caller is refused - the page asks for no media session (G81-07). */
+  const mayPlay = detail.access.play !== false;
   // Flow 5 step 1: the Core says the sealed files can be played through a signed media session.
-  const sealedPlayback = live && mediaRef.status === 'ready' && mediaRef.media.source === 'LIVE_STREAM';
+  const sealedPlayback = live && mediaKind === 'SEALED' && mayPlay;
   const hasTranscript = v2.isV2 || v2.transcript !== null || v2.transcriptSha256 !== null;
 
   // A kebab "Verify" from the list: adjust state during render, clear the intent after commit.
@@ -128,8 +147,9 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   }, [intent, handledIntent]);
 
   // What the bundled lookups join by: the evidence number (Simulated), or the suffix the Core named
-  // for a DEMO_PACKAGE item (Live; null while asked, for NONE, and without an answer).
-  const liveSuffix = mediaRef.status === 'ready' && mediaRef.media.source === 'DEMO_PACKAGE' ? mediaRef.media.packageSuffix : null;
+  // for a DEMO_PACKAGE item that IS a demo item by its own members (Live; null while asked, for
+  // NONE, without an answer, and for every item this Core sealed - G94-02, G89-09).
+  const liveSuffix = mediaKind === 'DEMO' ? (detail.media?.packageSuffix ?? null) : null;
   const bundleKey = live ? liveSuffix : evidenceId;
   const pkg = useMemo(() => (bundleKey === null ? null : packageFor(bundleKey)), [bundleKey]);
   const media = useMemo(() => (bundleKey === null ? null : mediaForEvidence(bundleKey)), [bundleKey]);
@@ -181,9 +201,10 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   }
 
   const size = fileSizeParts(item.sizeBytes);
+  const noMediaReason = mediaReasonLine(detail.media?.source === 'NONE' ? detail.media.reason : null);
   const exportable = isExportable(item.status);
   const archivable = canArchive && isArchivable(item.status);
-  const facts: FactRow[] = [
+  const factRows: FactRow[] = [
     { id: 'caseNumber', icon: Briefcase, label: t('evidence.detail.fields.caseNumber'), value: item.caseNumber, mono: true },
     {
       id: 'subject',
@@ -208,13 +229,16 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const hero = (
     <Animated.View entering={enterRise(0, m, { distance: 'riseLg' })} style={styles.heroBlock}>
       <View style={[styles.hero, variant === 'pane' ? styles.heroPane : null]} testID="evidence-detail-hero">
-        <Image
-          source={posterOf(media)}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={0}
-          accessibilityLabel={t('features.evidence.detail.sealedHero', { id: item.id })}
-        />
+        {/* G94-02: in Live mode a picture is drawn only for bundled demo media of a demo item - never a fallback still. */}
+        {!live || (mediaKind === 'DEMO' && media !== null) ? (
+          <Image
+            source={posterOf(media)}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={0}
+            accessibilityLabel={t('features.evidence.detail.sealedHero', { id: item.id })}
+          />
+        ) : null}
         <LinearGradient colors={[withAlpha(palette.black, 0), withAlpha(palette.black, 0.9)]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
         <View style={styles.heroChip}>
           <EvidenceStatusChip status={item.status} size="md" testID="evidence-detail-status" />
@@ -242,11 +266,13 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
               })}
             </Text>
           </View>
+          <InterruptedLine facts={facts} withCause testID="evidence-detail-interrupted" />
         </View>
       </View>
       <Animated.View entering={enterRise(1, m)}>
-        <FactList rows={facts} />
+        <FactList rows={factRows} />
       </Animated.View>
+      {live && mediaRef.status === 'ready' ? <FinishedExports exports={detail.exports} exported={item.status === 'EXPORTED'} /> : null}
     </Animated.View>
   );
 
@@ -275,30 +301,52 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             {t('features.evidence.media.checking')}
           </Text>
         ) : tab === 'media' && live && mediaRef.status === 'unavailable' ? (
-          <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-unavailable">
-            {t('features.evidence.media.unavailable')}
-          </Text>
+          // No answer of operation 40: no media source is known, so nothing is shown (G94-02).
+          <View style={styles.mediaPanel} testID="evidence-media-panel-none">
+            <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-unavailable">
+              {t('evidence.itemFacts.media.reason.NOT_REPORTED')}
+            </Text>
+          </View>
         ) : tab === 'media' ? (
-          <View style={styles.mediaPanel} testID={`evidence-media-panel-${sealedPlayback ? 'sealed' : 'bundled'}`}>
+          <View style={styles.mediaPanel} testID={`evidence-media-panel-${sealedPlayback ? 'sealed' : mediaKind === null || mediaKind === 'DEMO' ? 'bundled' : 'none'}`}>
             {sealedPlayback ? (
               <SealedPlayer
                 evidenceId={item.id}
                 durationMs={item.durationMs}
                 item={v2}
+                fileIds={cameraFilesFor(detail.media, facts)}
                 sources={verified?.sources ?? null}
                 failedFragments={verified?.failedFragments}
                 playToken={sealedPlay}
               />
+            ) : mediaKind === 'SEALED' ? (
+              // Streamable, and this caller is refused: no player and no request (G81-07).
+              <View style={styles.noMedia} testID="evidence-media-may-not-play">
+                <Text maxFontSizeMultiplier={1.2} style={styles.noMediaTitle}>
+                  {t('evidence.itemFacts.media.mayNotPlay')}
+                </Text>
+              </View>
+            ) : mediaKind === 'NONE' ? (
+              // G94-02 / G94-14: neither streamable nor bundled demo media of a demo item - the state and its reason.
+              <View style={styles.noMedia} testID="evidence-media-none" accessibilityLabel={t('evidence.itemFacts.media.noneTitle')}>
+                <Text maxFontSizeMultiplier={1.2} style={styles.noMediaTitle}>
+                  {t('evidence.itemFacts.media.none')}
+                </Text>
+                <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-none-reason">
+                  {t(noMediaReason.key, noMediaReason.options)}
+                </Text>
+              </View>
             ) : (
               <MediaTab
                 media={media}
                 durationMs={item.durationMs}
                 clipMs={clipMsFor(pkg)}
+                demoLabel={live}
                 onOpenCamera={(camera) => setPlay({ camera, mic: 'AUDIO-01' })}
                 onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
               />
             )}
-            {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} operatorNames={operatorNames} /> : null}
+            {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} operatorNames={operatorNames} access={detail.access.transcript} /> : null}
           </View>
         ) : tab === 'metadata' ? (
           // E2E-T-6 (E-fix FX-M2): an item without a package shows its record (the Core's in Live mode).
@@ -308,6 +356,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             item={item}
             live={live}
             mediaStatus={mediaRef.status === 'loading' || mediaRef.status === 'unavailable' ? mediaRef.status : 'ready'}
+            demoItem={isDemoItem(facts)}
           />
         ) : live || !integrity ? (
           <LiveIntegrityTab
@@ -331,12 +380,18 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     </Animated.View>
   );
 
+  /** Live: Play has something to open - the sealed player, or bundled demo media of a demo item. Simulated: as before. */
+  const playable = !live || sealedPlayback || (mediaKind === 'DEMO' && media !== null);
   const actionBar = (
     <View style={styles.actions} testID="evidence-detail-actions">
       <Button
         variant="tertiary"
         style={styles.action}
+        isDisabled={!playable}
+        accessibilityHint={playable ? undefined : t(mediaKind === 'SEALED' ? 'evidence.itemFacts.media.mayNotPlay' : 'evidence.itemFacts.media.noneTitle')}
         onPress={() => {
+          // G94-02: without media of this item nothing opens - never a placeholder player.
+          if (!playable) return;
           triggerHaptic('primaryPress');
           if (sealedPlayback) {
             // The sealed files play on the Media tab, through the media session of operation 88.
@@ -346,7 +401,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         }}
         testID="evidence-action-play"
       >
-        <Play size={18} color={palette.gold} fill={palette.gold} />
+        <Play size={18} color={playable ? palette.gold : palette.gray} fill={playable ? palette.gold : palette.gray} />
         <Button.Label>{t('evidence.detail.actions.play')}</Button.Label>
       </Button>
       <Button
@@ -419,7 +474,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
       )}
       {actionBar}
       <PlaySheet
-        isOpen={play !== null}
+        isOpen={play !== null && playable && !sealedPlayback}
         onClose={() => setPlay(null)}
         evidenceId={item.id}
         media={media}
@@ -524,6 +579,8 @@ const styles = StyleSheet.create({
   // A dark backing keeps the soft (15% alpha) status chip legible over a bright poster.
   heroBadge: { position: 'absolute', top: spacing[2], left: spacing[2], borderRadius: radius.px.full, backgroundColor: withAlpha(palette.black, 0.7) },
   mediaPanel: { gap: spacing[3] },
+  noMedia: { gap: spacing[1], padding: spacing[2], borderRadius: radius.px.lg, borderWidth: 1, borderColor: derived.border, backgroundColor: derived.surfaceSecondary },
+  noMediaTitle: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
   heroChip: { position: 'absolute', top: spacing[2], right: spacing[2], borderRadius: radius.px.full, backgroundColor: withAlpha(palette.black, 0.7) },
   heroText: { padding: spacing[2], gap: 4 },
   heroId: { fontFamily: fontFamily.native.monoMedium, fontSize: typography.h2.size, lineHeight: typography.h2.lineHeight, color: palette.foreground },

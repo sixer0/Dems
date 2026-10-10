@@ -138,7 +138,7 @@ function Hero({ row }: { row: SessionRow }) {
             hero does (`evidence-detail.tsx` heroChip): the chip's soft tone is see-through and read faded
             over the bright ceiling of the still. */}
         <View style={styles.heroChip} testID="session-detail-status-plate">
-          <SessionStatusChip status={row.status} size="md" testID="session-detail-status" />
+          <SessionStatusChip status={row.status} sessionId={row.id} size="md" testID="session-detail-status" />
         </View>
       </View>
       <Text selectable maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit style={styles.heroId} testID="session-detail-id">

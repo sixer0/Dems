@@ -18,7 +18,8 @@ import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
 import { captureReachabilityOf } from './capture-notices';
-import { advanceCaptureStart } from './capture-session';
+import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
+import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, isHostClockTime, isPrecheckNote } from './core-facts';
 import {
   ALERT_RING_SIZE,
   FINALIZATION_STEP_MAX_MS,
@@ -537,6 +538,12 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       }
       return { status: 'PASS', value: 'READY', ...PASSED };
     case 'TIME':
+      // Fix wave H Z1 (ruling D203 (1)): a Core in its own capture has the host system clock and no
+      // time service. The item says so as a NOTE (`isPrecheckNote`): WARN level, no reason code of the
+      // closed table, never counted as a warning and never acknowledged (`advancePrecheck`).
+      if (isHostClockTime(state.time)) {
+        return { status: 'WARN', value: HOST_CLOCK_PRECHECK_VALUE, reason: HOST_CLOCK_PRECHECK_REASON, reasonCode: null, params: { rule: HOST_CLOCK_PRECHECK_RULE, source: state.time.source } };
+      }
       return state.time.source === 'RTC'
         ? {
             status: 'WARN',
@@ -648,7 +655,8 @@ export function advancePrecheck(state: SimState, now: EpochMs): SimState {
 
   const completedAt = items[items.length - 1]?.resolvesAt ?? now;
   const blocks = items.filter((item) => item.status === 'BLOCK');
-  const warnings = items.filter((item) => item.status === 'WARN');
+  // A note (the host-clock time item, Z1) is no warning: it neither holds the gate nor is it counted.
+  const warnings = items.filter((item) => item.status === 'WARN' && !isPrecheckNote(item));
   const outcome = blocks.length > 0 ? 'BLOCK' : warnings.length > 0 ? 'WARN' : 'PASS';
   const resolved: ActiveSession = {
     ...session,
@@ -696,7 +704,7 @@ export function acknowledgePrecheckWarningsTransition(state: SimState, now: Epoc
       session.precheck.outcome === null ? SimErrorCode.CHECKS_RUNNING : SimErrorCode.NO_WARNINGS,
     );
   }
-  const warnings = session.precheck.items.filter((item) => item.status === 'WARN').length;
+  const warnings = session.precheck.items.filter((item) => item.status === 'WARN' && !isPrecheckNote(item)).length;
   const acknowledged: ActiveSession = {
     ...session,
     precheck: { ...session.precheck, warningsAcknowledged: true },
@@ -863,6 +871,22 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
  * as the Core writes it (`capture-session`, contract C3 §5.2).
  */
 export const SIM_CONSOLE_DEVICE_ID = 'TABLET';
+
+/** A paired-device ID as a row may name it: letters, digits and dashes. Anything else names no device. */
+const SENDING_DEVICE_ID = /^[A-Z][A-Z0-9-]{1,31}$/;
+
+/**
+ * THE DEVICE A COMMAND CAME FROM (wave H driver B, finding G75-02; E-30 / SEC35-17), one rule for
+ * the action and for operation 81: the paired device of the acting identity when its holder set
+ * one (`auth.deviceId`: a Core in simulated capture, for the command of a tablet's or a phone's
+ * device session); else the simulator's own paired device when it runs inside a device app; else
+ * null - a web console session, whose row names no device.
+ */
+export function sendingDeviceOf(state: Pick<SimState, 'auth'>, deviceConsole: boolean): string | null {
+  const scoped = state.auth.deviceId;
+  if (typeof scoped === 'string' && SENDING_DEVICE_ID.test(scoped)) return scoped;
+  return deviceConsole ? SIM_CONSOLE_DEVICE_ID : null;
+}
 
 export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId, sendingDeviceId: string | null = null): SimState {
   const actorId = requireSessionOperator(state, 'switchAudioSource');
@@ -1450,8 +1474,21 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
     developmentSources: input.developmentSources,
     ...(summary === undefined ? {} : { transcript: { ...summary } }),
   };
-  const steps = session.finalization.steps.map((step): FinalizationStepState => (step.status === 'done' ? step : { ...step, status: 'done', startedAt: step.startedAt ?? at, completedAt: at, durationMs: Math.max(0, at - (step.startedAt ?? at)), progress: 100, etaMs: 0 }));
-  const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId, bytesWritten: sizeBytes, finalization: { ...session.finalization, steps, completedAt: at } };
+  // Wave H driver A (G89-08 / G81-08): `at` is the instant under the signature - `timeline.sealedAt` of the manifest, taken
+  // when BUILD_MANIFEST froze the manifest's content - so it lies BEFORE the start of the steps that ran after it (SIGN_MANIFEST,
+  // STORE_SEALED_PACKAGE). A step never completes before it started: its completion is the later of the two instants.
+  const steps = session.finalization.steps.map((step): FinalizationStepState => {
+    if (step.status === 'done') return step;
+    const startedAt = step.startedAt ?? at;
+    const completedAt = Math.max(at, startedAt);
+    return { ...step, status: 'done', startedAt, completedAt, durationMs: completedAt - startedAt, progress: 100, etaMs: 0 };
+  });
+  /** The seal as a whole completed when its last step did (never before `sealedAt`). */
+  const stepsCompletedAt = steps.reduce((latest, step) => Math.max(latest, step.completedAt ?? at), at);
+  // Wave H driver B (G75-08, ruling D197): an interrupted recording has no operator stop, and its end is
+  // known now - the end of the durable media. `stoppedAt` says it, so every duration stops there. Written
+  // only HERE, at SEALED: while the seal runs the sealing side reads a null `stoppedAt` as "interrupted".
+  const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId, bytesWritten: sizeBytes, ...(input.interrupted ? { stoppedAt: endedAt } : {}), finalization: { ...session.finalization, steps, completedAt: stepsCompletedAt } };
   const next: SimState = {
     ...state,
     meta: session.evidenceId ? state.meta : { ...state.meta, counters: { ...state.meta.counters, evidence: state.meta.counters.evidence + 1 } },
@@ -1475,7 +1512,8 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
       event: { type: 'RECOVERY_COMPLETED', message: `Recovery completed · ${session.id}`, sessionId: session.id },
     });
   }
-  return record(deriveDeviceState(next), now, items);
+  // Wave H driver B (G75-10; D84 R-4): the capture fault of the recording that was just sealed as interrupted is over.
+  return endCaptureFaultAtSeal(record(deriveDeviceState(next), now, items), now, session);
 }
 
 /** What the Core says of a session it cannot seal (INTERNAL action `endUnsealable`; fix pass F-M7b, R88-02 (c)). */
@@ -1858,12 +1896,14 @@ export function acknowledgeSummaryTransition(state: SimState, now: EpochMs, sess
 // ── The machine tick ─────────────────────────────────────────────────────────────────────
 
 /** Runs every timed transition that is due at `now` (several in one call after a catch-up). */
-export function tickMachine(state: SimState, now: EpochMs, rng: RngStreams, capture: CaptureLevelSource = 'simulated'): SimState {
+export function tickMachine(state: SimState, now: EpochMs, rng: RngStreams, capture: CaptureLevelSource = 'simulated', captureConnectMs?: number): SimState {
   let current = state;
   for (let guard = 0; guard < 8; guard += 1) {
     let next = advancePrecheck(current, now);
     // The simulator's own capture decides a connecting start by the time; an external one never.
-    if (capture === 'simulated') next = advanceCaptureStart(next, now);
+    if (capture === 'simulated') next = advanceCaptureStart(next, now, captureConnectMs);
+    // Wave H driver B (G75-07): the warning of a degraded start ends when its session no longer records.
+    if (capture === 'simulated') next = advanceCaptureEnd(next, now);
     next = advanceStopping(next, now, rng);
     next = advanceFinalization(next, now);
     next = advanceRecovery(next, now);

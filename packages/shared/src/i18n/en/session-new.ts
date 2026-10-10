@@ -201,4 +201,14 @@ export const sessionNew = {
     speakToTest: 'Microphone levels from the Core server',
     scanCaseNumber: 'Fill in the next case number',
   },
+
+  /**
+   * Wave H closing pass Z2 (closing pass Z1's line of 10:30:00Z; ruling D203 (1)): the pre-check TIME
+   * item of a Core in its own capture is a NOTE (`isPrecheckNote`): the time is the host system
+   * clock. It asks nothing of the operator and is not a warning.
+   */
+  precheckNote: {
+    chip: 'NOTE',
+    timeHostClock: 'Time source: host system clock (no GNSS)',
+  },
 } as const satisfies ResourceTree;

@@ -206,3 +206,24 @@ describe('session start on the mobile shell (pass D7 item 3)', () => {
     expect(failedStartAlertLabel(t, cameraNotConnected, 'OTHER')).toBeNull();
   });
 });
+
+// Wave H, driver B - gate 75 finding G75-07 (b): during a DEGRADED recording (camera 2 lost, camera 1
+// recording) the phone Home read "Recording Blocked / A critical fault needs action". Nothing is
+// blocked: the session records. Written RED: the title was the idle Core's "Recording Blocked".
+describe('G75-07 (b): a critical fault while a session records', () => {
+  it('Home says that the recording continues with a critical fault - never "Recording Blocked"; an idle Core with the same fault still says it (control)', async () => {
+    const test = await mount();
+    act(() => test.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' }));
+    await flushAsync();
+    expect(test.sim.store.getState().session?.state).toBe('RECORDING');
+    expect(textOf('home-status-title')).toBe('Recording — critical fault');
+    expect(textOf('home-status-title')).not.toBe('Recording Blocked');
+    expect(textOf('home-status-subtitle')).toContain(test.sim.store.getState().session!.id);
+    expect(getMissingKeys()).toEqual([]);
+
+    // CONTROL: no session open and the same camera lost - the Core's pre-check would block: the title stands.
+    act(() => test.sim.store.setState({ session: null }));
+    await flushAsync();
+    expect(textOf('home-status-title')).toBe('Recording Blocked');
+  });
+});

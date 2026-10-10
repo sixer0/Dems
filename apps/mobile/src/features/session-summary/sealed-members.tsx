@@ -11,14 +11,22 @@
  * A legacy v1 item draws NOTHING here: its four track hashes, manifest hash and simulated signature
  * stay in the card above, as before. Plain views, no entering animation: the card appears with the
  * commit that has the sealed item (E-13: nothing here holds Reanimated state through the hand-over).
+ *
+ * Wave H C2 (gate findings G81-02 / G89-03, MAJOR): the mark beside "Signature" in the hashes card
+ * (`SummarySignatureMark`, `summarySignatureWording`). The chip "SIMULATED" is drawn ONLY for a
+ * signature the item itself calls simulated. A REAL signature (`simulated === false`) names its
+ * algorithm and Core key and is never called simulated; its only qualifier is the development-key
+ * line (`SummarySignatureKeyLine`), from the item's `signature.developmentKey`; a key class the item
+ * does not report reads "Signing key class: not reported".
  */
 import { PressableFeedback } from 'heroui-native';
 import { ChevronRight } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { selectEvidenceBySessionId, useSim } from '@dems/shared/sim';
-import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
-import { SectionCard } from '@/components/kit';
+import { derived, fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
+import { SectionCard, StatusChip } from '@/components/kit';
+import { readItemFacts, signingKeyClassOf, type SignatureFacts } from '@/features/evidence/item-facts';
 import { CAMERA_FILE_IDS, cameraFileOf, readItemV2 } from '@/features/evidence/item-v2';
 import { shortHash } from './summary.model';
 
@@ -106,8 +114,58 @@ export function SealedMembersCard({ sessionId, onOpen }: SealedMembersCardProps)
   );
 }
 
+/** The signature facts of the item with this ID, as the item states them; null: no item, or a signature that cannot be read. */
+export function useSummarySignature(evidenceId: string | null): SignatureFacts | null {
+  // The store-owned item (a stable reference); the reader takes it as `unknown`.
+  const item = useSim((s) => (evidenceId === null ? null : (s.evidence.find((entry) => entry.id === evidenceId) ?? null)));
+  return item === null ? null : readItemFacts(item).signature;
+}
+
+export type SummarySignatureKind = 'SIMULATED' | 'REAL' | 'NOT_REPORTED';
+
+/** What the signature row says: simulated only for a signature the item calls simulated (G81-02 / G89-03). */
+export function summarySignatureKind(signature: SignatureFacts | null): SummarySignatureKind {
+  if (signature === null) return 'NOT_REPORTED';
+  return signature.simulated ? 'SIMULATED' : 'REAL';
+}
+
+/** The i18n key of the key-class line of a REAL signature, or null when nothing is to be said. */
+export function summarySignatureKeyLine(signature: SignatureFacts | null): { readonly keyClass: 'DEVELOPMENT' | 'UNKNOWN'; readonly key: string } | null {
+  if (signature === null || signature.simulated) return null;
+  const keyClass = signingKeyClassOf(signature);
+  if (keyClass === 'DEVELOPMENT') return { keyClass, key: 'evidence.itemFacts.signature.developmentKey' };
+  if (keyClass === 'UNKNOWN') return { keyClass, key: 'evidence.itemFacts.signature.keyClassUnknown' };
+  return null;
+}
+
+/** The mark beside "Signature": the SIMULATED chip, the algorithm and Core key of a real signature, or "not reported". */
+export function SummarySignatureMark({ signature }: { signature: SignatureFacts | null }) {
+  const { t } = useTranslation();
+  const kind = summarySignatureKind(signature);
+  if (kind === 'SIMULATED') return <StatusChip tone="warning" icon={null} size="sm" label={t('common.simulated.chip')} testID="summary-signature-simulated" />;
+  return (
+    <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.mark} testID={kind === 'REAL' ? 'summary-signature-real' : 'summary-signature-not-reported'}>
+      {signature !== null ? t('evidence.itemFacts.signature.realShort', { algorithm: signature.algorithm, key: signature.keyId }) : t('evidence.itemFacts.signature.notReported')}
+    </Text>
+  );
+}
+
+/** Under the signature row of a REAL signature: the development-key line, or "Signing key class: not reported". */
+export function SummarySignatureKeyLine({ signature }: { signature: SignatureFacts | null }) {
+  const { t } = useTranslation();
+  const line = summarySignatureKeyLine(signature);
+  if (line === null) return null;
+  return (
+    <Text maxFontSizeMultiplier={1.2} accessibilityRole="text" style={[styles.note, line.keyClass === 'DEVELOPMENT' ? styles.development : null]} testID={`summary-signature-key-class-${line.keyClass}`}>
+      {t(line.key)}
+    </Text>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { marginTop: spacing[2] },
+  mark: { flexShrink: 1, fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
+  development: { color: statusText.warning },
   separator: { height: 1, backgroundColor: derived.separator },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: 48, paddingVertical: spacing[1] },
   label: { flex: 1, fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },

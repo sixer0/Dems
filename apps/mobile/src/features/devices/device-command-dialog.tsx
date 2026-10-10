@@ -121,7 +121,7 @@ export function DeviceCommandDialog({ command, deviceId, deviceName, live = fals
             <Button variant="outline" isDisabled={press.pending} onPress={cancel} testID="device-command-cancel">
               <Button.Label>{t('features.devices.actions.cancel')}</Button.Label>
             </Button>
-            <Button variant={restart ? 'danger' : 'primary'} onPress={confirm} testID="device-command-confirm" {...busyState(press.busy)}>
+            <Button variant={restart ? 'danger' : 'primary'} onPress={confirm} testID="device-command-confirm" accessibilityLabel={t('features.devices.actions.confirm')} {...busyState(press.busy)}>
               {press.pending ? <PendingSpinner color={palette.foreground} testID="device-command-spinner" /> : null}
               <Button.Label>{t('features.devices.actions.confirm')}</Button.Label>
             </Button>

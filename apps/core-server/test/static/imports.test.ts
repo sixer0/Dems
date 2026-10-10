@@ -74,6 +74,8 @@ const CLOSED_UNITS: readonly string[] = [
   'src/capture-session',
   // Media streaming (task 3 row 90): closed from its first day; reached through `mediaStream(app)` / `createMediaStreamService`, its routes (op 88, the media route) are registered by modules/media-stream.
   'src/media-stream',
+  // What the Core says of an evidence item beyond its rows (task 3 wave H, driver C1): closed from its first day; reached through `evidenceFacts(app)`, mounted by modules/evidence, not registered by app.ts.
+  'src/evidence-facts',
   // The transcript files of a sealed package (task 3 integration pass D4): closed from its first day; not registered by app.ts; imported by modules/transcripts (operations 84 to 86).
   'src/transcript-package',
   // The composition of the sealing pipeline (task 3 row 82b): closed from its first day; mounted by modules/sealing (`mountSealingHost`), which also registers its route (op 83).

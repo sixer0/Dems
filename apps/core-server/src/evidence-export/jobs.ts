@@ -44,11 +44,9 @@
  * thrown error: codes, IDs and counts only.
  */
 import { EXPORT_ID_PATTERN, EXPORT_JOB_ID_PATTERN, exportJobIdOf as contractJobIdOf, type EvidenceExportJobBody } from '@dems/shared/api';
-import { readFile } from 'node:fs/promises';
-import { sep } from 'node:path';
 import type { RealEvidenceItem } from '../evidence-verify';
-import { computeExportManifestSha256, parseExportManifest, parseExportSignature } from './export-manifest';
-import { ExportFailure, ExportFailureCode, ExportKind, exportManifestPathOf, exportPackage, exportSignaturePathOf, type ExportOutcome, type ExportPorts } from './package-export';
+import { archiveFactsOf, archiveFileOf, completedOnDisk, rememberArchive } from './finished';
+import { ExportFailure, ExportFailureCode, ExportKind, exportPackage, type ExportOutcome, type ExportPorts } from './package-export';
 
 /** `EXPJ-NNNNNN` of `EXP-NNNNNN`: the same digits (the rule the simulator applies in reverse). */
 export function exportJobIdOf(exportId: string): string {
@@ -130,6 +128,13 @@ export interface EvidenceExportRuntime {
   job(jobId: string): Promise<EvidenceExportJobBody | null>;
   /** Resolves when no job is queued or running (tests, shutdown). */
   idle(): Promise<void>;
+  /**
+   * G94-12 (wave H C1): the Core is stopping. The job that runs is ABORTED (its failure path removes
+   * its partial artefact at once) and every job still queued ends without running; each ends FAILED
+   * `EXPORT_INTERRUPTED` with its row (or, when the trail takes no row any more, its entry in the
+   * persistent error log). Resolves when no job is left. A job is never resumed: the request can be made again.
+   */
+  stop(): Promise<void>;
 }
 
 interface Job {
@@ -159,7 +164,7 @@ function bodyOf(job: Job): EvidenceExportJobBody {
     progressPct: job.progressPct,
     // No estimate is made: a figure nobody measured is not answered.
     etaMs: done ? 0 : null,
-    ...(job.outcome === null ? {} : { manifestHash: job.outcome.manifestSha256, signature: job.outcome.signature }),
+    ...(job.outcome === null ? {} : { manifestHash: job.outcome.manifestSha256, signature: job.outcome.signature, archive: { bytes: job.outcome.archive.bytes, sha256: job.outcome.archive.sha256 } }),
     derived: job.kind === ExportKind.COMPOSITE,
     createdAt: job.createdAt,
     completedAt: job.completedAt,
@@ -167,25 +172,13 @@ function bodyOf(job: Job): EvidenceExportJobBody {
   };
 }
 
-/** What `export/EXP-<id>.manifest.{json,sig}` of a package say of a finished export, or null. */
-async function completedOnDisk(packageDir: string, exportId: string, evidenceId: string): Promise<{ manifestSha256: string; signature: string; derived: boolean; exportedAt: number } | null> {
-  const place = (relative: string): string => `${packageDir}${sep}${relative.split('/').join(sep)}`;
-  try {
-    const manifest = parseExportManifest(await readFile(place(exportManifestPathOf(exportId)), 'utf8'));
-    const signature = parseExportSignature(await readFile(place(exportSignaturePathOf(exportId)), 'utf8'));
-    if (manifest.export.exportId !== exportId || manifest.source.evidenceId !== evidenceId) return null;
-    if (computeExportManifestSha256(manifest) !== manifest.export.manifestSha256 || signature.signedDigest !== manifest.export.manifestSha256) return null;
-    return { manifestSha256: manifest.export.manifestSha256, signature: signature.signature, derived: manifest.export.derived, exportedAt: manifest.export.exportedAt };
-  } catch {
-    return null;
-  }
-}
-
 export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceExportRuntime {
   const jobs = new Map<string, Job>();
   /** Items with a request between its ticket and its hand-over. */
   const reserved = new Set<string>();
   let queue: Promise<void> = Promise.resolve();
+  /** G94-12: aborted when the Core stops; the run in flight sees it before its next piece. */
+  const stopping = new AbortController();
   const defer = host.defer ?? ((work: () => void): void => void setImmediate(work));
 
   const unfinished = (evidenceId: string): boolean => [...jobs.values()].some((job) => job.evidenceId === evidenceId && (job.status === 'QUEUED' || job.status === 'RUNNING'));
@@ -204,6 +197,11 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
   }
 
   async function run(job: Job, item: RealEvidenceItem): Promise<void> {
+    if (stopping.signal.aborted) {
+      // G94-12: queued behind a job the stop interrupted. Nothing was written for it.
+      await fail(job, ExportFailureCode.EXPORT_INTERRUPTED, job.request?.operatorId ?? null);
+      return;
+    }
     job.status = 'RUNNING';
     let request = job.request;
     if (request === null) {
@@ -230,7 +228,7 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
           destination: request.destination,
           purpose: request.reason,
         },
-        host.ports(),
+        { ...host.ports(), signal: stopping.signal },
         (percent) => {
           if (percent > job.progressPct) job.progressPct = Math.min(99, percent);
         },
@@ -245,6 +243,7 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
         // for an export that exists.
         host.reportError({ source: `${SOURCE}.completeExport`, code: 'EXPORT_COMPLETION_NOT_RECORDED', message: 'a completed export could not be recorded on its evidence item', context: { jobId: job.jobId, evidenceId: job.evidenceId } });
       }
+      await rememberArchive(archiveFileOf(host.packageDirOf(item.sessionId), job.exportId), outcome.archive);
       job.outcome = outcome;
       job.progressPct = 100;
       job.completedAt = host.now();
@@ -262,6 +261,14 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
       await fail(job, failure.code, request.operatorId);
     }
   }
+
+  const idle = async (): Promise<void> => {
+    let seen: Promise<void> | null = null;
+    while (seen !== queue) {
+      seen = queue;
+      await seen;
+    }
+  };
 
   return {
     inProgress,
@@ -347,7 +354,10 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
       const item = await host.findItem(request.evidenceId);
       if (item === null) return null;
       // A job of an earlier run of the server: what the package folder says.
-      const done = await completedOnDisk(host.packageDirOf(item.sessionId), exportId, item.evidenceId);
+      const packageDir = host.packageDirOf(item.sessionId);
+      const done = await completedOnDisk(packageDir, exportId, item.evidenceId);
+      // Ruling D200: the archive's hash is stated by the job answer. Computed from the file (and remembered) when this run did not write it.
+      const archive = done === null ? null : await archiveFactsOf(archiveFileOf(packageDir, exportId), { hash: true });
       const kind = done === null ? (request.kind ?? ExportKind.PACKAGE) : done.derived ? ExportKind.COMPOSITE : ExportKind.PACKAGE;
       const failureReason = done === null ? ((await host.failureOf?.(jobId)) ?? ExportFailureCode.EXPORT_INTERRUPTED) : null;
       return {
@@ -358,6 +368,7 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
         progressPct: done === null ? 0 : 100,
         etaMs: 0,
         ...(done === null ? {} : { manifestHash: done.manifestSha256, signature: done.signature }),
+        ...(archive === null || archive.sha256 === undefined ? {} : { archive: { bytes: archive.bytes, sha256: archive.sha256 } }),
         derived: kind === ExportKind.COMPOSITE,
         createdAt: request.at,
         completedAt: done === null ? null : done.exportedAt,
@@ -365,12 +376,11 @@ export function createEvidenceExportRuntime(host: EvidenceExportHost): EvidenceE
       };
     },
 
-    idle: async () => {
-      let seen: Promise<void> | null = null;
-      while (seen !== queue) {
-        seen = queue;
-        await seen;
-      }
+    idle,
+
+    async stop() {
+      stopping.abort();
+      await idle();
     },
   };
 }

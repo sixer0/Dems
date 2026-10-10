@@ -23,6 +23,7 @@ import {
 } from '@dems/shared/sim'
 import { demoIdSuffix, matchDemoPackage, type DemoEvidencePackage } from '@dems/shared/demo-data'
 import type { StatusTone } from '@dems/shared/tokens'
+import { isDemoItem } from './item-facts'
 
 // ── Tones ───────────────────────────────────────────────────────────────────────────────────
 
@@ -102,8 +103,19 @@ export function joinDemoPackage(
   return matchDemoPackage(item)
 }
 
-export function buildEvidenceRow(item: EvidenceItem, operators: readonly SimOperator[]): EvidenceRow {
-  const pkg = joinDemoPackage(item)
+/** `live`: the item is the Core server's (Live mode). Default: Simulated client mode, where every item is the in-app simulator's. */
+export interface EvidenceRowMode {
+  readonly live?: boolean
+}
+
+/**
+ * Wave H C2 (G94-02, G94-14): in Live mode the guarded join by the evidence number is allowed ONLY
+ * for an item whose own members say it is a v1 / simulated demo item (`isDemoItem`). A REAL item, a
+ * package sealed on this Core and an item that reports nothing never get a bundled package, thumbnail
+ * or poster. In Simulated client mode the join stands, unchanged.
+ */
+export function buildEvidenceRow(item: EvidenceItem, operators: readonly SimOperator[], mode: EvidenceRowMode = {}): EvidenceRow {
+  const pkg = mode.live === true && !isDemoItem(item) ? null : joinDemoPackage(item)
   const video = pkg?.tracks.find((track) => track.trackId === 'VIDEO-01') ?? null
   return {
     id: item.id,
@@ -161,8 +173,8 @@ export function storedVerification(item: Pick<EvidenceItem, 'verification' | 'cu
 }
 
 /** Newest first (the list's default order). */
-export function buildEvidenceRows(items: readonly EvidenceItem[], operators: readonly SimOperator[]): EvidenceRow[] {
-  return items.map((item) => buildEvidenceRow(item, operators)).sort((a, b) => b.item.recordedAt - a.item.recordedAt)
+export function buildEvidenceRows(items: readonly EvidenceItem[], operators: readonly SimOperator[], mode: EvidenceRowMode = {}): EvidenceRow[] {
+  return items.map((item) => buildEvidenceRow(item, operators, mode)).sort((a, b) => b.item.recordedAt - a.item.recordedAt)
 }
 
 // ── Filters (AC-64) ─────────────────────────────────────────────────────────────────────────

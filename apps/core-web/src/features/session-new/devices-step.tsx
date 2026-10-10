@@ -6,6 +6,7 @@ import {
   Camera,
   Clock,
   HardDrive,
+  Info,
   ListChecks,
   Mic,
   OctagonX,
@@ -19,13 +20,13 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useSim, type PrecheckCheckId, type PrecheckItem, type SimState } from '@dems/shared/sim'
 import type { VideoTrackId } from '@dems/shared/domain'
-import { CameraFeed } from '@/components/media/camera-feed'
+import { CameraPreview } from '@/features/devices/camera-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
 import { activeCaptureNotices, captureNoticeText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
 import { tween, useMotionPolicy } from '@/motion'
-import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, reasonKeyFor, type GateView } from './model'
+import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, precheckNoteKey, reasonKeyFor, type GateView } from './model'
 
 const CHECK_ICON: Record<PrecheckCheckId, LucideIcon> = {
   CORE: Server,
@@ -64,6 +65,8 @@ export interface DevicesStepProps {
   retryPending?: boolean
   /** The "Re-run checks" button's element (`aria-busy` while the request is in flight). */
   retryRef?: RefObject<HTMLButtonElement | null>
+  /** G70-08 (wave H): the id of the reason line while the console does not know the capture sources; "Re-run checks" is then disabled. */
+  retryBlockedBy?: string | null
 }
 
 /** The text of a WARN or BLOCK check (i18n, never the simulator's EN `reason`; looked up from its `reasonCode`). */
@@ -80,6 +83,9 @@ function useCheckReason() {
       const notice = notices.find((entry) => entry.kind === 'UNREACHABLE' && entry.deviceId === unreachable.deviceId)
       return notice === undefined ? rule : `${rule} ${captureNoticeText(t, notice).body}`
     }
+    // Wave H closing pass Z2: a NOTE is worded by its rule (the host system clock), never as a fallback.
+    const note = precheckNoteKey(item)
+    if (note !== null) return t(note)
     const key = reasonKeyFor(item)
     if (!key) return null
     const device = item.id in CHECK_DEVICE_KEY ? t(CHECK_DEVICE_KEY[item.id as keyof typeof CHECK_DEVICE_KEY]) : ''
@@ -96,7 +102,7 @@ function useCheckReason() {
  * Motion (M-PG-NEW): Spinner → check-draw (PASS), amber chip (WARN; the Checkbox slides in) or red
  * chip plus the Alert (BLOCK); preview tiles fade in from blur; meters are live.
  */
-export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry, live = false, retryPending = false, retryRef }: DevicesStepProps) {
+export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry, live = false, retryPending = false, retryRef, retryBlockedBy = null }: DevicesStepProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const items = useSim(selectItems)
@@ -178,7 +184,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
 
         <ListBox aria-label={t('sessionNew.devices.listLabel')} selectionMode="none" className="sn-checks" data-testid="sn-checks">
           {items.map((item) => (
-            <ListBox.Item key={item.id} id={item.id} textValue={`${t(`sessionNew.devices.checks.${item.id}`)}: ${t(`common.precheckStatus.${item.status}`)}`}>
+            <ListBox.Item key={item.id} id={item.id} textValue={`${t(`sessionNew.devices.checks.${item.id}`)}: ${precheckNoteKey(item) !== null ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${item.status}`)}`}>
               <CheckRow item={item} reason={reasonOf(item)} />
             </ListBox.Item>
           ))}
@@ -218,7 +224,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
 
         {gate.canRetry ? (
           <div className="sn-gate-actions">
-            <Button ref={retryRef} variant="outline" size="sm" onPress={onRetry} isPending={retryPending} data-testid="sn-retry">
+            <Button ref={retryRef} variant="outline" size="sm" onPress={onRetry} isPending={retryPending} isDisabled={retryBlockedBy !== null} aria-describedby={retryBlockedBy ?? undefined} data-testid="sn-retry">
               {retryPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <RotateCcw className="size-4" aria-hidden="true" />}
               {t('sessionNew.devices.retry')}
             </Button>
@@ -289,10 +295,13 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
   const { t } = useTranslation()
   const Icon = CHECK_ICON[item.id]
   const enumKey = CHECK_VALUE_ENUM[item.id]
-  const valueText = item.value ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
+  // Wave H closing pass Z2: a NOTE states a fact of the installation; its mark is not a warning's, and
+  // its `value` (`HOST_SYSTEM_CLOCK`) is no member of the value enumeration - the row reads its sentence.
+  const note = precheckNoteKey(item) !== null
+  const valueText = item.value && !note ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
   const resolved = item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK'
   return (
-    <div className="sn-check" data-check={item.id} data-status={item.status} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
+    <div className="sn-check" data-check={item.id} data-status={item.status} data-note={note ? 'true' : undefined} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
       <span className="sn-check-icon" aria-hidden="true">
         <Icon className="size-4" strokeWidth={1.75} />
       </span>
@@ -305,7 +314,14 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
         </span>
       </span>
       <span className="sn-check-status">
-        <StatusMark status={item.status} />
+        {note ? (
+          <Chip size="sm" variant="soft" color="default" data-testid="sn-check-chip" data-note="true" className="sn-status-chip">
+            <Info className="size-3.5" aria-hidden="true" />
+            <Chip.Label>{t('sessionNew.precheckNote.chip')}</Chip.Label>
+          </Chip>
+        ) : (
+          <StatusMark status={item.status} />
+        )}
       </span>
     </div>
   )
@@ -353,7 +369,7 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
   })
   const label = t(`common.tracks.${cameraId}`)
   return (
-    <CameraFeed
+    <CameraPreview
       cameraId={cameraId}
       variant="tile"
       label={label}

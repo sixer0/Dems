@@ -6,10 +6,10 @@ import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-rea
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
-import { DeviceCommand, useSim, type SimState } from '@dems/shared/sim'
+import { DeviceCommand, noLiveLevelsOf, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
-import { CameraFeed } from '@/components/media'
+import { CameraPreview } from '@/features/devices/camera-preview'
 import { MicSourceMarks, TrackSourceMarks } from '@/features/devices/source-badge'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useDeviceCommandGate } from '@/lib/device-command-gate'
@@ -311,7 +311,7 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
       {/* Pass D2 (ux §8f.2, WB-02): the one badge of the camera that feeds this track; nothing unless the Core sent the development class. */}
       <TrackSourceMarks trackId={cameraId} place={`dashboard-${cameraId}`} />
       {/* The format chip sits top-left: bottom-left would cover the DEMO OSD line of the loop (N-39-3, P13). */}
-      <CameraFeed
+      <CameraPreview
         cameraId={cameraId}
         variant="tile"
         label={t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
@@ -326,6 +326,8 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
 function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: number; beatMs: number }) {
   const { t } = useTranslation()
   const mic = useSim(useMemo(() => selectMic(channel), [channel]))
+  // Wave H driver B (G75-04; ux §8e.2 "no meters"): no live level while the cameras connect or for a failed start.
+  const noLevels = useSim((s) => noLiveLevelsOf(s.session))
   if (!mic) return null
   const clip = mic.state === 'CLIP' || mic.clipLatched
   const tone: StatusTone = clip ? 'danger' : mic.state === 'NO_SIGNAL' ? 'warning' : 'success'
@@ -349,7 +351,13 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
         <span className="dems-mic-ring" aria-hidden="true">
           <Mic strokeWidth={1.6} />
         </span>
-        <DbfsMeter channel={channel} variant="tile" label={t(`common.tracks.${channel}`)} />
+        {noLevels !== null ? (
+          <p className="font-mono text-caption uppercase tracking-[0.08em] text-foreground-2" role="status" data-testid={`device-tile-no-level-${channel}`}>
+            {noLevels === 'CONNECTING' ? t('common.session.trackConnecting') : t('common.session.failedStart.title')}
+          </p>
+        ) : (
+          <DbfsMeter channel={channel} variant="tile" label={t(`common.tracks.${channel}`)} />
+        )}
       </div>
     </Tile>
   )

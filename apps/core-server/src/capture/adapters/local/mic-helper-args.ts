@@ -5,14 +5,18 @@
  *
  * The helper is the FFmpeg command-line program (9.0.2 on this host), started through the door of
  * this folder with one of the argument lists below, like the camera helper (`camera-helper-args.ts`).
- * Every argument is a literal of this file, except TWO values, each held to a strict shape before it
+ * Every argument is a literal of this file, except THREE values, each held to a strict shape before it
  * becomes an argument:
  *   1. the device name, which passes `isUsableDeviceName` and was found as exactly one entry of the
  *      AUDIO class of the device list (`device-list.ts`) before this table is asked. It becomes ONE
  *      argument, `none:<name>`; it can neither start with a dash nor carry a separator, so it cannot
  *      become an option of the program;
  *   2. the pipe path, `<runDir>/<sessionId>/<MIC-NN>.pcm`, built by `micPipePath` from two ids that
- *      passed their patterns (`mic-transport.ts`) and held again to that shape here.
+ *      passed their patterns (`mic-transport.ts`) and held again to that shape here;
+ *   3. the SPEECH FIXTURE path of the development speech microphone (fix wave H; ruling D198),
+ *      `<dataDir>/dev-fixtures/speech-mic/dialogue.wav`: built by `speechFixturePath` from the data
+ *      directory of the configuration and two literals, and held to that shape here. It follows `-i`
+ *      as ONE argument, after `-f wav`: the file is read as RIFF/WAVE audio or not at all.
  * No value typed by an operator, read from the database or taken from the network reaches an
  * argument. No table holds a screen-capture name or option, a network address, a listen option or a
  * datagram transport: the helper binds no socket at all.
@@ -41,7 +45,13 @@ export type MicSource =
   /** This Mac's microphone, by exact name. The first open of it is where macOS asks for permission. */
   | { readonly kind: 'DEVICE'; readonly name: string }
   /** A generated tone through the SAME output line: no device, no permission. */
-  | { readonly kind: 'GENERATED'; readonly tone: MicGeneratedTone };
+  | { readonly kind: 'GENERATED'; readonly tone: MicGeneratedTone }
+  /**
+   * The development SPEECH microphone (fix wave H; ruling D198): a file of synthetic speech, read at
+   * the pace of its own timestamps and started again when it ends, through the SAME output line. No
+   * device, no permission, no socket.
+   */
+  | { readonly kind: 'FIXTURE'; readonly path: string };
 
 const QUIET = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning'] as const;
 /** The device input. The device name follows `-i` as ONE argument, `none:<name>` (audio only; video `none`). */
@@ -51,6 +61,12 @@ const GENERATED_INPUT_SOURCE = {
   TONE_880: 'sine=frequency=880:sample_rate=48000',
   TONE_440: 'sine=frequency=440:sample_rate=48000',
 } as const satisfies Record<MicGeneratedTone, string>;
+/**
+ * The file input of the speech microphone. `-re`: read at the pace of the file's timestamps (real
+ * time), as the tone is. `-stream_loop -1`: start again at the end, for as long as the session
+ * records. `-f wav`: the demuxer is stated, never guessed from the file. The path follows `-i`.
+ */
+const FIXTURE_INPUT_HEAD = ['-re', '-stream_loop', '-1', '-f', 'wav', '-i'] as const;
 /** What goes into the pipe: float 32 little-endian, 48 kHz, mono, flushed per packet. Held to the transport statement by a test. */
 const OUTPUT = ['-vn', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-y'] as const;
 const PRECHECK_OUTPUT = ['-t', '0.2', '-vn', '-f', 'null', '-'] as const;
@@ -58,8 +74,8 @@ const PRECHECK_OUTPUT = ['-t', '0.2', '-vn', '-f', 'null', '-'] as const;
 const PROGRESS = PROGRESS_ARGUMENTS;
 
 export class MicHelperArgumentError extends Error {
-  readonly what: 'PIPE' | 'NAME' | 'TONE';
-  constructor(what: 'PIPE' | 'NAME' | 'TONE') {
+  readonly what: 'PIPE' | 'NAME' | 'TONE' | 'FIXTURE';
+  constructor(what: 'PIPE' | 'NAME' | 'TONE' | 'FIXTURE') {
     super('a value of the microphone helper is not of its shape');
     this.name = 'MicHelperArgumentError';
     this.what = what;
@@ -79,6 +95,23 @@ export function isMicPipeArgument(path: string): boolean {
   return !path.split('/').includes('..') && !path.includes('//');
 }
 
+/** Where the speech fixture lives below the data directory. `npm run capture:dev-setup` writes it there. */
+export const SPEECH_FIXTURE_SUBPATH = 'dev-fixtures/speech-mic/dialogue.wav';
+
+/** `<dataDir>/dev-fixtures/speech-mic/dialogue.wav`. A pure join: it touches nothing. */
+export function speechFixturePath(dataDir: string): string {
+  return `${dataDir}/${SPEECH_FIXTURE_SUBPATH}`;
+}
+
+/** The shape of a fixture path: absolute, the directories of a pipe path, and the fixed tail. */
+const FIXTURE_PATH = /^\/(?:[A-Za-z0-9._ +:/-]+\/)?dev-fixtures\/speech-mic\/dialogue\.wav$/;
+
+/** True when `path` is a fixture path of the shape `speechFixturePath` builds. A pure check: it touches nothing. */
+export function isSpeechFixtureArgument(path: string): boolean {
+  if (path.length > 1024 || !FIXTURE_PATH.test(path)) return false;
+  return !path.split('/').includes('..') && !path.includes('//');
+}
+
 function deviceArgument(name: string): string {
   if (!isUsableDeviceName(name)) throw new MicHelperArgumentError('NAME');
   return `none:${name}`;
@@ -86,6 +119,10 @@ function deviceArgument(name: string): string {
 
 function inputArguments(source: MicSource): string[] {
   if (source.kind === 'DEVICE') return [...DEVICE_INPUT, deviceArgument(source.name)];
+  if (source.kind === 'FIXTURE') {
+    if (!isSpeechFixtureArgument(source.path)) throw new MicHelperArgumentError('FIXTURE');
+    return [...FIXTURE_INPUT_HEAD, source.path];
+  }
   const generated = (GENERATED_INPUT_SOURCE as Record<string, string | undefined>)[source.tone];
   if (generated === undefined) throw new MicHelperArgumentError('TONE');
   return [...GENERATED_INPUT_HEAD, generated];
@@ -122,12 +159,14 @@ export function micOutputPromise(): { readonly rateHz: number; readonly channels
 
 /**
  * For the static argument test (G-R12): the literals of the tables, and where the input section of a
- * push list sits. The two computed values are the device argument and the pipe path.
+ * push list sits. The three computed values are the device argument, the pipe path and the path of
+ * the speech fixture.
  */
 export const MIC_HELPER_TABLE = Object.freeze({
-  literals: Object.freeze([...new Set<string>([...QUIET, ...DEVICE_INPUT, ...GENERATED_INPUT_HEAD, ...Object.values(GENERATED_INPUT_SOURCE), ...OUTPUT, ...PRECHECK_OUTPUT, ...PROGRESS])]),
+  literals: Object.freeze([...new Set<string>([...QUIET, ...DEVICE_INPUT, ...GENERATED_INPUT_HEAD, ...Object.values(GENERATED_INPUT_SOURCE), ...FIXTURE_INPUT_HEAD, ...OUTPUT, ...PRECHECK_OUTPUT, ...PROGRESS])]),
   quietLength: QUIET.length + PROGRESS.length,
   deviceInputLength: DEVICE_INPUT.length + 1,
   generatedInputLength: GENERATED_INPUT_HEAD.length + 1,
+  fixtureInputLength: FIXTURE_INPUT_HEAD.length + 1,
   outputLength: OUTPUT.length,
 });

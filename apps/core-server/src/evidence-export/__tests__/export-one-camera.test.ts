@@ -12,7 +12,6 @@ import { removeScratch, scratch } from '../../evidence-verify/__tests__/support'
 import type { RealEvidenceItem } from '../../evidence-verify';
 import { removePackages } from '../../sealing/__tests__/package-support';
 import { harnessOf, recordSession, removeRecordings, type Harness } from '../../sealing/__tests__/pipeline-support';
-import { EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE } from '../export-manifest';
 import { ExportFailure, exportPackage } from '../package-export';
 import { verifyExportAtDestination } from '../receiver-verify';
 import { UNZIP, requestFacts, standInEncoder } from './support';
@@ -48,14 +47,13 @@ describe('fix F-M8 / R88-01: the export of a package with ONE camera file', () =
     const destination = scratch('one-camera-destination');
     const place = (relative: string): string => join(dir, ...relative.split('/'));
     copyFileSync(place(outcome.files.archive), join(destination, `${outcome.exportId}.zip`));
-    copyFileSync(place(outcome.files.manifest), join(destination, EXPORT_MANIFEST_FILE));
-    copyFileSync(place(outcome.files.signature), join(destination, EXPORT_SIGNATURE_FILE));
+    // Wave H C1 (G94-03): ONE file is handed over - the archive carries its export manifest and signature.
     const unpacked = join(destination, 'unpacked');
     mkdirSync(unpacked);
     execFileSync(UNZIP, ['-q', join(destination, `${outcome.exportId}.zip`), '-d', unpacked]);
     expect(existsSync(join(unpacked, 'fragments', 'VIDEO-01.mp4'))).toBe(true);
     expect(existsSync(join(unpacked, 'fragments', 'VIDEO-02.mp4'))).toBe(false);
-    const received = await verifyExportAtDestination({ exportDir: destination, unpackedDir: unpacked, trustedCertificateSha256: [h.signer.certificate.sha256], chunkBytes: 512 });
+    const received = await verifyExportAtDestination({ unpackedDir: unpacked, archiveFile: join(destination, `${outcome.exportId}.zip`), expectedArchiveSha256: outcome.archive.sha256, trustedCertificateSha256: [h.signer.certificate.sha256], chunkBytes: 512 });
     expect(received.checks.filter((check) => !check.ok).map((check) => check.id)).toEqual([]);
     expect(received.ok).toBe(true);
   });

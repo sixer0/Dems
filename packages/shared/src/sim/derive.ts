@@ -139,6 +139,10 @@ function deriveStorage(storage: StorageSlice, active: readonly ActiveFault[]): S
 }
 
 function deriveTime(time: TimeSlice, active: readonly ActiveFault[]): TimeSlice {
+  // Pass H-Y (wave H Z1, ruling D203 (1)): the host system clock of a Core in its own capture is no time service. It has
+  // no GNSS to hold or to lose, so no fault state re-derives it: without this line every session change put `GNSS, locked`
+  // back until the next health tick, and a recording started inside that second wrote GNSS into its audit row.
+  if (time.hostClock === true) return time;
   const gnssLoss = active.find((fault) => fault.kind === FaultKind.GNSS_LOSS);
   if (!gnssLoss) {
     return patchIfChanged(time, {

@@ -272,3 +272,29 @@ describe('M4-LOCK-1: the selector is locked while a session is open', () => {
     await expectStoredEqualsCommitted();
   });
 });
+
+// Fix wave H, driver D (gate 70 finding G70-05): a selector edit sent from a tablet or a phone
+// carried no sending device in its row, while the search row of the same device did. The engine
+// runs the hosted action under the caller's identity AND its paired device (`withActorScope`); the
+// action names that device in the row's own `deviceId`. The stored row is read here.
+describe('G70-05: the row of a selector edit names the paired device that sent it', () => {
+  it('an edit of a device session carries its device; the same edit of a web console session carries none (control); the details are the same', async () => {
+    const technician = server.principal('TECHNICIAN');
+    const current = server.engine.slice('captureConfig').mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? 'MIC-02';
+    let before = await server.trailLength();
+    // A principal as stage 4 resolves it for a paired device's session: the same operator, bound to DEV-0001.
+    await server.engine.command({ ...technician, deviceId: 'DEV-0001' }, 'setCaptureConfig', { kind: 'PRIMARY_MIC', inputId: current });
+    await server.app.pipeline.drain();
+    const fromDevice = changed(await server.since(before));
+    expect(fromDevice.map((row) => [row.actorId, row.deviceId, row.details['operationId'], row.details['deviceId']])).toEqual([[technician.operatorId, 'DEV-0001', 'setPrimaryMic', current]]);
+
+    const other = server.engine.slice('captureConfig').mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? 'MIC-01';
+    before = await server.trailLength();
+    await server.engine.command(technician, 'setCaptureConfig', { kind: 'PRIMARY_MIC', inputId: other });
+    await server.app.pipeline.drain();
+    const fromWeb = changed(await server.since(before));
+    expect(fromWeb.map((row) => [row.actorId, row.deviceId ?? null, row.details['operationId']])).toEqual([[technician.operatorId, null, 'setPrimaryMic']]);
+    expect(Object.keys(fromDevice[0]?.details ?? {}).sort()).toEqual(Object.keys(fromWeb[0]?.details ?? {}).sort());
+    await expectStoredEqualsCommitted();
+  });
+});

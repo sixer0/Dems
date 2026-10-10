@@ -48,6 +48,8 @@ export interface CaptureSelectorProps {
 
 const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning' } as const;
 const MIC_ROW_KEY = 'MIC';
+/** The i18n key of the Change control of a microphone line (fix wave H, G70-02: each line has its own sheet). */
+const MIC_CHANGE_LABEL = { PRIMARY: 'changeMicLabel', STANDBY: 'changeStandbyMicLabel' } as const;
 
 export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelectorProps) {
   const { t } = useTranslation();
@@ -58,7 +60,8 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   const press = usePendingPress();
   const [request, setRequest] = useState<SourceSheetRequest | null>(null);
   const editable = selector.gate === 'allowed' && !selector.busy;
-  const openKey = request === null ? null : request.kind === 'camera' ? request.trackId : MIC_ROW_KEY;
+  const openKey = request === null ? null : request.kind === 'camera' ? request.trackId : null;
+  const openRole = request !== null && request.kind === 'mic' ? request.role : null;
 
   const save = (command: SelectorCommand) => {
     press.run((release) => {
@@ -174,19 +177,13 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                         testID={`capture-selector-role-${row.inputId}`}
                       />
                     }
-                    selected={openKey === MIC_ROW_KEY}
+                    selected={openRole === row.role}
                     pending={selector.pendingKey === MIC_ROW_KEY}
                     editable={editable}
                     gateHint={gateLine}
-                    editLabel={t('features.capture-selector.selector.changeMicLabel')}
-                    onEdit={() =>
-                      setRequest({
-                        kind: 'primaryMic',
-                        currentInputId: selector.mics.find((mic) => mic.role === 'PRIMARY')?.inputId ?? null,
-                        inputs: selector.mics,
-                        badgeMode: selector.badgeMode,
-                      })
-                    }
+                    editLabel={t(`features.capture-selector.selector.${MIC_CHANGE_LABEL[row.role]}`)}
+                    // Fix wave H (G70-02): the line's own sheet, with every registered microphone.
+                    onEdit={() => setRequest({ kind: 'mic', role: row.role, currentInputId: row.inputId, options: selector.micOptions, badgeMode: selector.badgeMode })}
                   />
                   <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="MIC" mode={selector.badgeMode} testID={`capture-selector-source-${row.inputId}`} />
                 </Fragment>
@@ -195,7 +192,8 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
               {selector.mics.length > 0 ? (
                 <>
                   <Separator />
-                  <MicRescanControl testID="capture-selector-mic-rescan" />
+                  {/* Fix wave H (G70-06): the card's gate line already says why; the same sentence is not drawn a second time here. */}
+                  <MicRescanControl testID="capture-selector-mic-rescan" gateShownAs={gateLine} />
                 </>
               ) : null}
             </ListGroup>

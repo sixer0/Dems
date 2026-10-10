@@ -83,6 +83,8 @@ export const STOPPING_MS = 1_500;
  * first durable fragment (`capture-session.ts` `advanceCaptureStart`).
  */
 export const CAPTURE_CONNECT_MS = 1_000;
+/** The longest connecting part a host may ask for (`CreateSimOptions.captureConnectMs`, wave H Z1): ten minutes. */
+export const CAPTURE_CONNECT_MS_MAX = 600_000;
 export const FINALIZATION_STEP_MIN_MS = 600;
 export const FINALIZATION_STEP_MAX_MS = 1_200;
 /**

@@ -4,6 +4,7 @@ import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import { BadgeCheck, CircleDot, Hourglass, Layers, Share2, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { EvidenceStatus, Permission, selectCan, selectEvidence, selectEvidenceStats, useSim, useSimReady } from '@dems/shared/sim'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { browserMatchMedia, useMediaQuery } from '@/motion/use-media-query'
@@ -56,7 +57,9 @@ export function EvidenceListBody() {
   const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
   const wide = useMediaQuery(PREVIEW_QUERY, browserMatchMedia())
 
-  const rows = useMemo(() => buildEvidenceRows(items, operators), [items, operators])
+  // Wave H C2 (G94-14): in Live mode a bundled thumbnail joins a demo item only (`buildEvidenceRow`).
+  const live = useCoreMode() === CoreMode.LIVE
+  const rows = useMemo(() => buildEvidenceRows(items, operators, { live }), [items, live, operators])
   const filters: EvidenceFilters = useMemo(
     () => ({
       q: search.q,

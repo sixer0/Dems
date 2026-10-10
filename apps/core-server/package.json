@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "start:camera-stub": "tsx test/support/lane-camera-stub-cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run --project unit",
@@ -18,7 +19,8 @@
     "db:reset": "tsx src/db/reset/cli.ts",
     "db:status": "tsx src/db/commands/status.ts",
     "db:generate": "drizzle-kit generate",
-    "evidence:dev-key": "tsx src/sealing/dev-key-cli.ts"
+    "evidence:dev-key": "tsx src/sealing/dev-key-cli.ts",
+    "evidence:verify-export": "tsx cli/verify-export.ts"
   },
   "dependencies": {
     "@dems/capture-protocol": "*",

@@ -56,6 +56,8 @@ describe('Devices takes the Core through the light Live API (CLG c, AC-C-53)', (
   it('reads the folder: every production file, sub-folders included', () => {
     expect(production.map((file) => file.name)).toEqual([
       'busy-state.ts',
+      // Fix wave H (G70-03, G75-13; D196): the camera picture or the neutral "No preview" tile; it reads the store only.
+      'camera-preview.tsx',
       'device-command-dialog.tsx',
       'device-detail-screen.tsx',
       'device-detail.tsx',

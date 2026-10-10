@@ -282,11 +282,10 @@ describe('M8-RNG-1: the media route answers byte ranges of the DECRYPTED file', 
     expect(response.rawPayload.equals(plain.subarray(start, end))).toBe(true);
     // §D.4: only the fragments the range covers are opened, each once.
     expect(media.opened).toEqual([...fragments]);
-    // One row for the answered range, with what was served.
-    expect(media.appended.slice(before)).toEqual([
-      expect.objectContaining({ unit: 'mediaStream.served', type: 'EVIDENCE_MEDIA_SERVED', actorId: 'OPR-001', evidenceId: EVIDENCE_ID, sessionId: SESSION_ID, details: { fileId: 'VIDEO-01', bytesServed: end - start, rangeStart: start, rangeEnd: end - 1, signed: true } }),
-    ]);
-    expect(media.appended.at(-1)?.severity).toBeUndefined();
+    // G94-06 (wave H C1, ruling D200): an answered range is NOT an audit row - the playback was audited once,
+    // when its media session was issued. (Until wave H this pinned one `mediaStream.served` row per range.)
+    expect(media.appended.slice(before)).toEqual([]);
+    expect(media.errors.filter((entry) => entry['source'] === 'mediaStream.serve')).toEqual([]);
   });
 
   it('416 for a range that starts at or past the end, with `content-range: bytes */size`, no byte, no fragment opened and no row', async () => {
@@ -560,7 +559,7 @@ describe('R93-08: a stream in flight is cut when its sign-in session ends', () =
     expect(media.signIn.asked).toBeGreaterThanOrEqual(2);
   });
 
-  it('signed out while the answer runs: the stream stops within one check interval - fewer bytes than the length that was told, no fragment behind the cut is opened - and the stop is audited', async () => {
+  it('signed out while the answer runs: the stream stops within one check interval - fewer bytes than the length that was told, no fragment behind the cut is opened - and the stop is logged', async () => {
     const media = await build(LONG);
     media.actAs(INVESTIGATOR);
     const session = await sessionOf(media);
@@ -579,11 +578,13 @@ describe('R93-08: a stream in flight is cut when its sign-in session ends', () =
     expect(received.byteLength).toBeLessThan(LONG_SIZE);
     expect(received.equals(plain.subarray(0, received.byteLength))).toBe(true);
     expect(Math.max(0, ...media.opened)).toBeLessThanOrEqual(9);
-    const rows = media.appended.slice(before);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ unit: 'mediaStream.served', type: 'EVIDENCE_MEDIA_SERVED', severity: 'WARNING', message: 'Media stream stopped: VIDEO-01 (MEDIA_SESSION_ENDED)' });
-    const details = (rows[0]?.details ?? {}) as { bytesServed?: number };
-    expect(details.bytesServed).toBeLessThan(LONG_SIZE);
+    // G94-06 (wave H C1): a stream cut by the end of its sign-in session is a LOG LINE with the bytes handed
+    // on, not an audit row (the sign-out itself is in the trail; the package did not fail).
+    expect(media.appended.slice(before)).toEqual([]);
+    const cut = media.log.lines().filter((line) => line['code'] === 'MEDIA_SESSION_ENDED');
+    expect(cut).toHaveLength(1);
+    expect(cut[0]).toMatchObject({ source: 'mediaStream.serve', evidenceId: EVIDENCE_ID, fileId: 'VIDEO-01' });
+    expect(Number(cut[0]?.['bytesServed'])).toBeLessThan(LONG_SIZE);
     // Not an integrity failure: the persistent error log holds no entry for it.
     expect(media.errors.filter((entry) => entry['source'] === 'mediaStream.serve')).toEqual([]);
   });

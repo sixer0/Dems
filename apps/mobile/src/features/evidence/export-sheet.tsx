@@ -33,6 +33,15 @@
  * runtime's hooks do not reach portalled sheet content, so `ExportSheet` reads the Core link and
  * passes `live` down. In Simulated mode every `settle` runs before it returns, so the wizard
  * behaves exactly as before.
+ *
+ * **Wave H C2** (gate finding G94-09). For an item whose package THIS Core sealed (`item-facts.ts`
+ * `hasSealedPackageHere`: a REAL item, or a seed-sealed v2 demo item) the export is a real archive
+ * in the Core's store (`apps/core-server/src/evidence-export/package-export.ts`: the destination is
+ * a label written into the signed export manifest, `destination: { id }`; nothing is copied to a
+ * drive or a network by the Core). So for such an item the destinations carry no "(simulated)", the
+ * step is titled "Destination recorded with the export", one sentence says where the export is
+ * stored, and the label SENT with the request is the plain one. A simulated / demo item keeps the
+ * simulated labels, which are true of it.
  */
 import { Alert, Button, Description, FieldError, Label, RadioGroup, Spinner, TextArea, TextField, useToast } from 'heroui-native';
 import { Lock } from 'lucide-react-native';
@@ -63,6 +72,7 @@ import {
   type ExportDestination,
 } from './evidence-model';
 import { EXPORT_IN_PROGRESS, answeredJobIdOf, type ExportJobKind } from './export-job-model';
+import { hasSealedPackageHere, isRealItem, readItemFacts } from './item-facts';
 import { ExportJobStatus } from './export-job-status';
 import { VERIFY_ASK_MS } from './integrity-tab';
 import { SheetFrame } from './sheet-frame';
@@ -148,7 +158,13 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
   const coreSource = useMemo(() => (item && source.kind === 'verdict' ? coreIntegrityView(item, source.verdict) : null), [item, source]);
   const sourceOk = live ? coreSource?.verdict === 'PASS' : integrity?.verdict === 'PASS';
   const check = checkExportReason(reason);
-  const destinationText = t(destination === 'usb' ? 'evidence.exportWizard.destinationUsb' : 'evidence.exportWizard.destinationNetwork');
+  /** G94-09: the export of a package this Core sealed is real - its destination is a recorded label, not a simulation. */
+  const realExport = useMemo(() => live && ((facts) => hasSealedPackageHere(facts) || isRealItem(facts))(readItemFacts(item)), [live, item]);
+  const destinationLabelOf = (key: ExportDestination): string =>
+    realExport
+      ? t(key === 'usb' ? 'evidence.itemFacts.exportReal.destination.USB' : 'evidence.itemFacts.exportReal.destination.NETWORK')
+      : t(key === 'usb' ? 'evidence.exportWizard.destinationUsb' : 'evidence.exportWizard.destinationNetwork');
+  const destinationText = destinationLabelOf(destination);
 
   // Authorize: ask the Core. Without EVIDENCE_EXPORT the attempt is sent so the Core audits it.
   // Simulated: the simulator answers inside `settle`, as the direct call did before.
@@ -376,14 +392,19 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
 
       {step === 2 ? (
         <View style={styles.field}>
-          <Label>{t('features.evidence.export.destinationLabel')}</Label>
+          <Label>{t(realExport ? 'evidence.itemFacts.exportReal.destinationLabel' : 'features.evidence.export.destinationLabel')}</Label>
           <RadioGroup value={destination} onValueChange={(value) => setDestination(value as ExportDestination)} testID="evidence-export-destination">
             {EXPORT_DESTINATIONS.map((key) => (
               <RadioGroup.Item key={key} value={key} testID={`evidence-export-destination-${key}`}>
-                {t(key === 'usb' ? 'evidence.exportWizard.destinationUsb' : 'evidence.exportWizard.destinationNetwork')}
+                {destinationLabelOf(key)}
               </RadioGroup.Item>
             ))}
           </RadioGroup>
+          {realExport ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-real-note">
+              {t('evidence.itemFacts.exportReal.note')}
+            </Text>
+          ) : null}
           {live ? (
             <>
               <Label>{t('evidence.exportJob.kindLabel')}</Label>

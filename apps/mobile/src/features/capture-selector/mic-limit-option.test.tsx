@@ -7,17 +7,18 @@ import '@/features/devices/testing/devices-test-setup';
 import { screen } from '@testing-library/react-native';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { createTestSim, flushAsync, renderWithRuntime } from '@/runtime/testing/test-sim';
-import type { MicSelectorRow } from './capture-selector-model';
+import type { MicOption } from './capture-selector-model';
 import { CaptureSourceSheet, type SourceSheetRequest } from './capture-source-sheet';
 
 beforeEach(() => resetMissingKeys());
 afterEach(() => expect(getMissingKeys()).toEqual([]));
 
-const row = (inputId: string, role: MicSelectorRow['role'], over: Partial<MicSelectorRow> = {}): MicSelectorRow => ({ inputId, deviceId: inputId, model: null, role, transport: 'USB', online: true, sourceClass: null, adapter: null, ...over });
-const INPUTS: readonly MicSelectorRow[] = [
+// Fix wave H (G70-02): the sheet takes the registered microphones (`MicOption`), not the two selector rows; the assertions are unchanged.
+const row = (deviceId: string, role: MicOption['role'], over: Partial<MicOption> = {}): MicOption => ({ deviceId, model: null, role, online: true, sourceClass: null, adapter: null, ...over });
+const INPUTS: readonly MicOption[] = [
   row('MIC-01', 'PRIMARY', { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' }),
   row('MIC-02', 'STANDBY', { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' }),
-  row('MIC-03', 'STANDBY', { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' }),
+  row('MIC-03', null, { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' }),
 ];
 const LIMIT = 'Not fit for recording yet. Use it for development checks only.';
 
@@ -30,7 +31,7 @@ async function open(request: SourceSheetRequest) {
 
 describe('the primary-microphone sheet: the limit of the Core Mac\'s microphone', () => {
   it('Live: the option of the local microphone carries the sentence; a test source and a production microphone do not', async () => {
-    await open({ kind: 'primaryMic', currentInputId: 'MIC-01', inputs: INPUTS, badgeMode: { live: true } });
+    await open({ kind: 'mic', role: 'PRIMARY', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: true } });
     expect(screen.getByTestId('capture-source-option-MIC-03')).toBeTruthy();
     expect(screen.getByTestId('capture-source-limit-MIC-03')).toHaveTextContent(LIMIT);
     expect(screen.queryByTestId('capture-source-limit-MIC-01')).toBeNull();
@@ -38,7 +39,7 @@ describe('the primary-microphone sheet: the limit of the Core Mac\'s microphone'
   });
 
   it('CONTROL: Simulated client mode draws no limit sentence (nothing is opened there)', async () => {
-    await open({ kind: 'primaryMic', currentInputId: 'MIC-01', inputs: INPUTS, badgeMode: { live: false } });
+    await open({ kind: 'mic', role: 'PRIMARY', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: false } });
     expect(screen.getByTestId('capture-source-option-MIC-03')).toBeTruthy();
     expect(screen.queryByText(LIMIT)).toBeNull();
   });

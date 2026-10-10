@@ -64,6 +64,7 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       // E-fix row FX-M2 (E2E-P-4): the monitor-to-Finalizing hand-over mark (one slot, no timer).
       'session-finalizing/handover.ts',
       'session-finalizing/i18n.ts',
+      'session-finalizing/interrupted-seal.tsx',
       'session-finalizing/sealed-stamp.tsx',
       // Blueprint row 87 (E-13): sealing progress, forward-only, from the Core's states alone (no timer).
       'session-finalizing/sealing-progress.ts',

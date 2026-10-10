@@ -10306,6 +10306,855 @@
                         "packageSuffix": "0004"
                       }
                     }
+                  },
+                  "productSealed": {
+                    "summary": "A product-sealed item on a Core server: its sealed camera files play through a media session (operation 88); the sealed facts, what this caller may do and the finished exports are stated",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "EXPORTED",
+                        "lifecycleStage": "AUTHORIZED_EXPORT_TRANSFER",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false,
+                          "developmentKey": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "REAL",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "PRESENT",
+                        "interrupted": false,
+                        "files": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "fileName": "fragments/VIDEO-01.mp4",
+                            "sizeBytes": 68363781,
+                            "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                            "fragmentCount": 67,
+                            "sha256Plain": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                            "fragmentChainHead": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "fileName": "fragments/VIDEO-02.mp4",
+                            "sizeBytes": 67588980,
+                            "sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                            "fragmentCount": 67,
+                            "sha256Plain": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                            "fragmentChainHead": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+                          }
+                        ],
+                        "audioSourceIntervals": [
+                          {
+                            "seq": 1,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 0,
+                            "toMs": 17601,
+                            "reason": "START",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 2,
+                            "inputId": "MIC-02",
+                            "role": "STANDBY",
+                            "fromMs": 17601,
+                            "toMs": 49001,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 3,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 49001,
+                            "toMs": 134145,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        }
+                      },
+                      "media": {
+                        "source": "LIVE_STREAM",
+                        "packageSuffix": null,
+                        "fileIds": [
+                          "VIDEO-01",
+                          "VIDEO-02"
+                        ]
+                      },
+                      "access": {
+                        "play": true,
+                        "readTranscript": true,
+                        "export": true
+                      },
+                      "exports": [
+                        {
+                          "exportId": "EXP-000033",
+                          "jobId": "EXPJ-000033",
+                          "kind": "PACKAGE",
+                          "completedAt": 1791620071205,
+                          "exportedBy": "OPR-002",
+                          "archiveBytes": 136096844,
+                          "archiveSha256": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+                        }
+                      ]
+                    }
+                  },
+                  "productSealedInterrupted": {
+                    "summary": "A product-sealed item whose recording did not end by a stop: the sealed manifest says `interrupted`, the cause is the code of the item's custody entry RECORDING_INTERRUPTED, and the durable prefix plays like any sealed package",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "SEALED",
+                        "lifecycleStage": "SEALED_LOCAL_EVIDENCE",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false,
+                          "developmentKey": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741640000,
+                            "action": "RECORDING_INTERRUPTED",
+                            "actorId": null,
+                            "detail": "CAPTURE_FAULT"
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": "Durable prefix sealed (interrupted)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "REAL",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "PRESENT",
+                        "interrupted": true,
+                        "files": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "fileName": "fragments/VIDEO-01.mp4",
+                            "sizeBytes": 68363781,
+                            "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                            "fragmentCount": 67,
+                            "sha256Plain": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                            "fragmentChainHead": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "fileName": "fragments/VIDEO-02.mp4",
+                            "sizeBytes": 67588980,
+                            "sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                            "fragmentCount": 67,
+                            "sha256Plain": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                            "fragmentChainHead": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+                          }
+                        ],
+                        "audioSourceIntervals": [
+                          {
+                            "seq": 1,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 0,
+                            "toMs": 17601,
+                            "reason": "START",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 2,
+                            "inputId": "MIC-02",
+                            "role": "STANDBY",
+                            "fromMs": 17601,
+                            "toMs": 49001,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 3,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 49001,
+                            "toMs": 134145,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        },
+                        "interruptedCause": "CAPTURE_FAULT"
+                      },
+                      "media": {
+                        "source": "LIVE_STREAM",
+                        "packageSuffix": null,
+                        "fileIds": [
+                          "VIDEO-01",
+                          "VIDEO-02"
+                        ]
+                      },
+                      "access": {
+                        "play": true,
+                        "readTranscript": true,
+                        "export": false
+                      }
+                    }
+                  },
+                  "productSealedOneCamera": {
+                    "summary": "A product-sealed item of a one-camera session: the package holds ONE camera file and operation 88 accepts that `fileId` only",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "EXPORTED",
+                        "lifecycleStage": "AUTHORIZED_EXPORT_TRANSFER",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false,
+                          "developmentKey": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "REAL",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "PRESENT",
+                        "interrupted": false,
+                        "files": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "fileName": "fragments/VIDEO-01.mp4",
+                            "sizeBytes": 68363781,
+                            "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                            "fragmentCount": 67,
+                            "sha256Plain": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                            "fragmentChainHead": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+                          }
+                        ],
+                        "audioSourceIntervals": [
+                          {
+                            "seq": 1,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 0,
+                            "toMs": 17601,
+                            "reason": "START",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 2,
+                            "inputId": "MIC-02",
+                            "role": "STANDBY",
+                            "fromMs": 17601,
+                            "toMs": 49001,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 3,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 49001,
+                            "toMs": 134145,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        }
+                      },
+                      "media": {
+                        "source": "LIVE_STREAM",
+                        "packageSuffix": null,
+                        "fileIds": [
+                          "VIDEO-01"
+                        ]
+                      },
+                      "access": {
+                        "play": true,
+                        "readTranscript": true,
+                        "export": false
+                      }
+                    }
+                  },
+                  "noMedia": {
+                    "summary": "A REAL item whose sealed package cannot be read in the Core's store: no media, with the reason as a code; the item states no sealed fact (`sealedPackage: NOT_READABLE`)",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "EXPORTED",
+                        "lifecycleStage": "AUTHORIZED_EXPORT_TRANSFER",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "REAL",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "NOT_READABLE",
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        }
+                      },
+                      "media": {
+                        "source": "NONE",
+                        "packageSuffix": null,
+                        "reason": "PACKAGE_MISSING"
+                      },
+                      "access": {
+                        "play": true,
+                        "readTranscript": true,
+                        "export": false
+                      }
+                    }
+                  },
+                  "outsideCaseScope": {
+                    "summary": "A product-sealed item read by an operator who does not hold the case: the page is answered, and `access` says what a page view must not ask for (SEC35-16)",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "EXPORTED",
+                        "lifecycleStage": "AUTHORIZED_EXPORT_TRANSFER",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false,
+                          "developmentKey": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "REAL",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "PRESENT",
+                        "interrupted": false,
+                        "files": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "fileName": "fragments/VIDEO-01.mp4",
+                            "sizeBytes": 68363781,
+                            "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                            "fragmentCount": 67,
+                            "sha256Plain": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                            "fragmentChainHead": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "fileName": "fragments/VIDEO-02.mp4",
+                            "sizeBytes": 67588980,
+                            "sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                            "fragmentCount": 67,
+                            "sha256Plain": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                            "fragmentChainHead": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+                          }
+                        ],
+                        "audioSourceIntervals": [
+                          {
+                            "seq": 1,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 0,
+                            "toMs": 17601,
+                            "reason": "START",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 2,
+                            "inputId": "MIC-02",
+                            "role": "STANDBY",
+                            "fromMs": 17601,
+                            "toMs": 49001,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 3,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 49001,
+                            "toMs": 134145,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        }
+                      },
+                      "media": {
+                        "source": "LIVE_STREAM",
+                        "packageSuffix": null,
+                        "fileIds": [
+                          "VIDEO-01",
+                          "VIDEO-02"
+                        ]
+                      },
+                      "access": {
+                        "play": false,
+                        "readTranscript": false,
+                        "export": false
+                      }
+                    }
+                  },
+                  "seedSealedDemo": {
+                    "summary": "A demonstration item the seed SEALED on this Core with the development key (decision D205): a real sealed package of a generated test picture. It plays through operation 88 like any sealed package and is marked by its own members (DEMO_PACKAGE, development sources, development key); no bundled media belongs to it",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "SEALED",
+                        "lifecycleStage": "SEALED_LOCAL_EVIDENCE",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+                          "keyId": "CORE-KEY-EVSIGN-01",
+                          "algorithm": "Ed25519",
+                          "simulated": false,
+                          "developmentKey": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "DEMO_PACKAGE",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS",
+                        "manifestVersion": 2,
+                        "transcriptSha256": null,
+                        "labelsStatus": null,
+                        "developmentSources": true,
+                        "sealedPackage": "PRESENT",
+                        "interrupted": false,
+                        "files": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "fileName": "fragments/VIDEO-01.mp4",
+                            "sizeBytes": 68363781,
+                            "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+                            "fragmentCount": 67,
+                            "sha256Plain": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+                            "fragmentChainHead": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "fileName": "fragments/VIDEO-02.mp4",
+                            "sizeBytes": 67588980,
+                            "sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+                            "fragmentCount": 67,
+                            "sha256Plain": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+                            "fragmentChainHead": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f"
+                          }
+                        ],
+                        "audioSourceIntervals": [
+                          {
+                            "seq": 1,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 0,
+                            "toMs": 17601,
+                            "reason": "START",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 2,
+                            "inputId": "MIC-02",
+                            "role": "STANDBY",
+                            "fromMs": 17601,
+                            "toMs": 49001,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          },
+                          {
+                            "seq": 3,
+                            "inputId": "MIC-01",
+                            "role": "PRIMARY",
+                            "fromMs": 49001,
+                            "toMs": 134145,
+                            "reason": "MANUAL",
+                            "sourceClass": "FAKE"
+                          }
+                        ],
+                        "transcript": {
+                          "state": "DISABLED",
+                          "sha256": null,
+                          "machineTranscriptHash": null,
+                          "labelsStatus": null,
+                          "revision": 0
+                        }
+                      },
+                      "media": {
+                        "source": "LIVE_STREAM",
+                        "packageSuffix": null,
+                        "fileIds": [
+                          "VIDEO-01",
+                          "VIDEO-02"
+                        ]
+                      },
+                      "access": {
+                        "play": true,
+                        "readTranscript": true,
+                        "export": true
+                      },
+                      "exports": []
+                    }
                   }
                 }
               }
@@ -25983,6 +26832,7 @@
             ]
           }
         },
+        "additionalProperties": false,
         "description": "Optional target of a fault: the members of the simulator's `FaultTarget`."
       },
       "DemoFaultRequest": {
@@ -26014,7 +26864,8 @@
         "required": [
           "kind"
         ],
-        "description": "Request body of `POST /api/v1/demo/faults` and `POST /api/v1/demo/faults/clear`."
+        "additionalProperties": false,
+        "description": "Request body of `POST /api/v1/demo/faults` and `POST /api/v1/demo/faults/clear`. Strict: an unknown member, here or in `target`, is refused with 422."
       },
       "ScenarioLoadRequest": {
         "type": "object",
@@ -26821,6 +27672,11 @@
       "TimeSlice": {
         "type": "object",
         "properties": {
+          "hostClock": {
+            "description": "Present on a Core in its own capture: the time is the host system clock and there is no time service. `source` is then `RTC`, nothing is locked, no offset is measured and the history is empty (wave H Z1, D203 (1)). Absent on the simulated time service.",
+            "type": "boolean",
+            "const": true
+          },
           "source": {
             "type": "string",
             "enum": [
@@ -29030,6 +29886,61 @@
             "description": "False from the accepted start until the first durable fragment (\"connecting cameras\"), then true; the state stays RECORDING (D84, D91 R-1). Absent reads as true.",
             "type": "boolean"
           },
+          "captureCheckpoints": {
+            "description": "What the Core holds of a recording of its OWN capture: the fragment checkpoints the capture worker reported durable. Not stored; refreshed at most every 5 s and at the end of the capture. Absent in simulated capture, before the first checkpoint and on a session read back after a restart: absent means \"not stated\", never 0 (wave H Z1).",
+            "type": "object",
+            "properties": {
+              "fragments": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Durable fragment checkpoints of all camera files."
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Stored bytes of the camera files the checkpoints cover (plaintext on the evidence volume until the seal)."
+              },
+              "lastAt": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The Core clock at the newest checkpoint."
+              },
+              "cameras": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fragments": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "fragments",
+                    "bytes"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "The same figures by camera."
+              }
+            },
+            "required": [
+              "fragments",
+              "bytes",
+              "lastAt",
+              "cameras"
+            ],
+            "additionalProperties": false
+          },
           "transcript": {
             "description": "Transcript progress of the open session.",
             "anyOf": [
@@ -29450,6 +30361,13 @@
               },
               "simulated": {
                 "type": "boolean"
+              },
+              "developmentKey": {
+                "description": "Core server only: whether the certificate the SEALED manifest names is a development key - true / false as read from the item's own sealed manifest and certificate; null: could not be established (the package or its certificate is not readable). Absent: not stated (Simulated mode, a v1 item) - never to be read as a production key.",
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -29753,7 +30671,7 @@
             ]
           },
           "audioSourceIntervals": {
-            "description": "Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows).",
+            "description": "Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows). On a Core, for a sealed item: the intervals of the SEALED manifest (`audio.sourceIntervals`, `seq` from 1), read from the item's own package.",
             "type": "array",
             "items": {
               "type": "object",
@@ -29797,6 +30715,15 @@
                     "MANUAL",
                     "STOP"
                   ]
+                },
+                "sourceClass": {
+                  "description": "Wave H C1: the source class of the microphone of this interval as the sealed manifest records it (field 125). Absent: not stated.",
+                  "type": "string",
+                  "enum": [
+                    "PRODUCTION",
+                    "LOCAL_DEVICE",
+                    "FAKE"
+                  ]
                 }
               },
               "required": [
@@ -29809,6 +30736,30 @@
               ],
               "additionalProperties": false
             }
+          },
+          "sealedPackage": {
+            "description": "Core server only, for an item whose sealed v2 package lies in the Core's own store by its facts (a product seal, a seed-sealed demo item). PRESENT: its manifest was read from the package under the digest of record, and `files`, `audioSourceIntervals`, `interrupted` and `signature.developmentKey` are that manifest's. NOT_READABLE: the package is gone or its manifest is not the one the item was sealed with - no sealed fact is stated. Absent: the item has no package in the Core's store (a v1 demo item, a simulated item) - a client then shows nothing of a Core package.",
+            "type": "string",
+            "enum": [
+              "PRESENT",
+              "NOT_READABLE"
+            ]
+          },
+          "interrupted": {
+            "description": "Core server only: the sealed manifest's `timeline.interrupted` - the package is the sealed durable prefix of a recording that did not end by a stop. Absent: not stated (no sealed manifest was read).",
+            "type": "boolean"
+          },
+          "interruptedCause": {
+            "description": "Core server only, with `interrupted: true`: the code the item's custody entry `RECORDING_INTERRUPTED` names (a fault kind), or null when it names none.",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "transcript": {
             "description": "Schema v2: the transcript summary inside the item; the body arrives through op 84.",
@@ -31722,6 +32673,24 @@
               }
             ],
             "description": "The join key of the bundled package, e.g. `0004`; null when the source is not DEMO_PACKAGE."
+          },
+          "fileIds": {
+            "description": "Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one or two), in file order - the `fileId` values operation 88 accepts for it.",
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "VIDEO-01",
+                "VIDEO-02"
+              ]
+            }
+          },
+          "reason": {
+            "description": "Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core's store and no bundled demo package belongs to it), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.",
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
           }
         },
         "required": [
@@ -31739,6 +32708,89 @@
           },
           "media": {
             "$ref": "#/components/schemas/EvidenceMediaRef"
+          },
+          "access": {
+            "description": "Core server only: what THIS caller may do with the item, so that a page view asks for nothing it would be refused (a refusal is an audited row).",
+            "type": "object",
+            "properties": {
+              "play": {
+                "type": "boolean",
+                "description": "This caller may open a media session for the item (operation 88): false for REAL evidence the caller does not hold (SEC35-16). A client that reads false does not ask."
+              },
+              "readTranscript": {
+                "type": "boolean",
+                "description": "This caller is inside the case scope the transcript operations (84, 86) hold for the item."
+              },
+              "export": {
+                "type": "boolean",
+                "description": "This caller has EVIDENCE_EXPORT and is inside the case scope of the item (operations 42, 87 and the download)."
+              }
+            },
+            "required": [
+              "play",
+              "readTranscript",
+              "export"
+            ],
+            "additionalProperties": false
+          },
+          "exports": {
+            "description": "Core server only, and only for a caller with `access.export`: the finished exports of the item whose archive lies in the Core's store, newest first. Each can be downloaded again through operation 87 by its `jobId`. Archives are kept until the package is removed; none is deleted by the product.",
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "exportId": {
+                  "type": "string",
+                  "pattern": "^EXP-[0-9]{6}$",
+                  "description": "`EXP-NNNNNN` of operation 42."
+                },
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32,
+                  "description": "`EXPJ-NNNNNN`: the `{id}` of operation 87, which answers a fresh signed download path for it."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "PACKAGE",
+                    "COMPOSITE"
+                  ]
+                },
+                "completedAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "`export.exportedAt` of the signed export manifest."
+                },
+                "exportedBy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "description": "The operator ID the signed export manifest names (`export.exportedBy`)."
+                },
+                "archiveBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "The length of the archive file as it lies on the Core."
+                },
+                "archiveSha256": {
+                  "description": "SHA-256 of the archive file, when the Core has computed it in this run; operation 87 always answers it (`archive.sha256`).",
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "exportId",
+                "jobId",
+                "kind",
+                "completedAt",
+                "exportedBy",
+                "archiveBytes"
+              ],
+              "additionalProperties": false,
+              "description": "One finished export of an evidence item: the archive lies in the Core's store."
+            }
           }
         },
         "required": [
@@ -34082,6 +35134,25 @@
               }
             ]
           },
+          "archive": {
+            "description": "Core server only, on a COMPLETE job whose archive lies in the Core's store (wave H C1; ruling D200): the length and SHA-256 of the archive FILE. The archive carries its export manifest and signature inside and therefore cannot contain its own hash: this answer and the download's audit row are where it is stated. `npm run evidence:verify-export -- <archive> --sha256 <this value>` holds a received file to it.",
+            "type": "object",
+            "properties": {
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "bytes",
+              "sha256"
+            ],
+            "additionalProperties": false
+          },
           "failureReason": {
             "description": "SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code. An open set of codes. Among them: `COMPOSITE_ENCODER_NOT_SELECTED` (a COMPOSITE was asked for and no encoder is selected), `EXPORT_INTERRUPTED` (the server stopped while the job ran; the job is not resumed - ask again), `SESSION_KEY_UNAVAILABLE`, `SOURCE_VERIFY_FAILED`, `PLAINTEXT_HASH_MISMATCH`, `EXPORT_WRITE_FAILED`, `EXPORT_FAILED`.",
             "type": "string",
@@ -35045,10 +36116,12 @@
                   "type": "boolean"
                 },
                 "adapter": {
+                  "description": "The adapter kind of the microphone. ABSENT on a Core in SIMULATED capture, which states no adapter and no source class on any operation (decision D196, gate 70 finding G70-01).",
                   "type": "string",
                   "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
                 },
                 "sourceClass": {
+                  "description": "Derived by the Core from `adapter`; absent exactly when `adapter` is.",
                   "type": "string",
                   "enum": [
                     "PRODUCTION",
@@ -35078,8 +36151,6 @@
                 "deviceId",
                 "inputId",
                 "present",
-                "adapter",
-                "sourceClass",
                 "errorCode"
               ],
               "additionalProperties": false

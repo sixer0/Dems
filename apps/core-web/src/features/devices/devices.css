@@ -560,6 +560,25 @@
     gap: 6px;
   }
 
+  /* Wave H (gate 70, G70-07): a title that wraps instead of being cut, and a line of its own for the source marks. */
+  .dev-tile-name-wrap {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .dev-tile-marks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dev-tile-marks:empty {
+    display: none;
+  }
+
   .dev-kebab {
     flex: none;
     color: var(--color-foreground-2);

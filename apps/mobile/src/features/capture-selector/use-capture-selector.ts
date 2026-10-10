@@ -20,11 +20,13 @@ import {
   isExpectedRefusal,
   isNoChange,
   isSelectorEmpty,
+  micOptions,
   micRows,
   selectorGate,
   type AnswerClass,
   type CameraOption,
   type CameraSelectorRow,
+  type MicOption,
   type MicSelectorRow,
   type SelectorCommand,
   type SelectorGateState,
@@ -60,6 +62,8 @@ export interface CaptureSelector {
   readonly cameras: readonly CameraSelectorRow[];
   readonly mics: readonly MicSelectorRow[];
   readonly options: readonly CameraOption[];
+  /** Fix wave H (G70-02): every registered microphone, for the sheet of the PRIMARY and of the STANDBY line. */
+  readonly micOptions: readonly MicOption[];
   readonly gate: SelectorGateState;
   /** "Checking your permissions…" while the role is unknown, else null (the card words the others). */
   readonly checkingHint: string | null;
@@ -130,7 +134,7 @@ export function useCaptureSelector(): CaptureSelector {
       if (answer.result !== 'ok') {
         reportRuntimeIssue(isExpectedRefusal(answer.result) ? 'warn' : 'error', 'devices.captureSelector', `selector command -> ${answer.result}`, {
           kind: command.kind,
-          target: command.kind === 'camera' ? command.trackId : command.inputId,
+          target: command.kind === 'camera' ? command.trackId : command.kind === 'micPair' ? `${command.primaryId}+${command.standbyId}` : command.inputId,
           deviceId: command.kind === 'camera' ? command.deviceId : null,
           result: answer.result,
           status: answer.facts.status,
@@ -165,6 +169,7 @@ export function useCaptureSelector(): CaptureSelector {
   const cameras = useMemo(() => cameraRows(config, registry), [config, registry]);
   const mics = useMemo(() => micRows(config, registry), [config, registry]);
   const options = useMemo(() => cameraOptions(config, registry), [config, registry]);
+  const microphones = useMemo(() => micOptions(config, registry), [config, registry]);
 
   const awaiting = awaited !== null && isAwaitingRepublish(awaited.updatedAt, config.updatedAt);
   const pendingKey = outKey ?? (awaiting ? awaited.rowKey : null);
@@ -176,6 +181,7 @@ export function useCaptureSelector(): CaptureSelector {
     cameras,
     mics,
     options,
+    micOptions: microphones,
     gate,
     checkingHint: gate === 'checking' ? role.hint : null,
     pendingKey,

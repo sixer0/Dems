@@ -17,6 +17,7 @@
  * SurfaceMountingManager" bursts) starts no motion at all: no overlay, no entering fade, a still Spinner.
  */
 import { Chip, Separator, Spinner, Typography } from 'heroui-native';
+import { LoaderCircle } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
@@ -367,7 +368,15 @@ function StepBadge({ index, status, still, testID }: StepBadgeProps) {
         accessible={false}
       >
         {status === 'running' ? (
-          <Spinner size="sm" color={palette.gold} {...(still ? { animation: 'disable-all' as const } : {})} />
+          // Wave H driver B (gate 89, G89-02 = B9): a still copy owns NO Reanimated indicator. The kit Spinner keeps a
+          // shared value even with `animation="disable-all"` and cancels it when it unmounts - one write to a view
+          // tag that is being removed per finished step (the "Unable to find SurfaceMountingManager" bursts of the
+          // hand-over). The same glyph, drawn by React alone.
+          still ? (
+            <LoaderCircle testID={part('running')} size={18} color={palette.gold} />
+          ) : (
+            <Spinner size="sm" color={palette.gold} />
+          )
         ) : done ? (
           <Svg width={18} height={18} viewBox="0 0 24 24">
             {drawCheck ? (

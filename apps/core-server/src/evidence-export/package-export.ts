@@ -6,7 +6,13 @@
  *                                   of the package byte for byte (the sealed manifest, the seal's
  *                                   signature and certificate, `fragments.json`, the transcript
  *                                   and its revisions, the audit extract, retained certificates);
- *                                   with a composite: `composite/composite.mp4`
+ *                                   with a composite: `composite/composite.mp4`; AND, as its last
+ *                                   two entries, the export manifest and signature of THIS export
+ *                                   under their per-export names (`export/EXP-<id>.manifest.json`,
+ *                                   `.sig`): the download is ONE self-contained file (gate finding
+ *                                   G94-03, ruling D200). The manifest covers every other entry,
+ *                                   the signature covers the manifest, and the archive's own hash
+ *                                   is stated OUTSIDE it (`ExportOutcome.archive`)
  *   export/EXP-<id>.manifest.json   the export manifest of THIS export, and its signature
  *   export/EXP-<id>.manifest.sig    (the completion mark: it is written last)
  *   export/export-manifest.json     the same two files under the names of spec §A.2: the export
@@ -25,8 +31,11 @@
  *      plaintext is hashed on the way and must equal the SEALED `tracks[].sha256Plain`;
  *   4. the composite, when asked for: encoded from the two decrypted streams into a `.partial`
  *      file of the export folder, copied into the archive, hashed, removed;
- *   5. hash the archive, build the export manifest (the 9 fields of §B.11 in it), sign it;
- *   6. THE SECRET SWEEP over every clear text of the artefact (`secret-sweep.ts`);
+ *   5. build the export manifest (the 9 fields of §B.11 in it; every entry written so far with
+ *      its hash; NO hash of the archive - ruling D200), sign it;
+ *   6. THE SECRET SWEEP over every clear text of the artefact (`secret-sweep.ts`); then the
+ *      manifest and the signature go INTO the archive as its last two entries, the archive is
+ *      closed and hashed (the hash is the run's outcome, never a member of what it hashes);
  *   7. give the files their names: archive, manifest, signature - the signature last.
  *
  * PLAINTEXT exists in the archive, in the composite's `.partial` file while step 4 runs, and in
@@ -142,6 +151,12 @@ export interface ExportPorts {
   readonly chunkBytes?: number;
   /** A test plants a failure at a named step (`'BEFORE_NAMES'`: everything written, nothing named yet). */
   readonly probe?: (step: 'ARCHIVE_WRITTEN' | 'BEFORE_NAMES') => void | Promise<void>;
+  /**
+   * G94-12 (wave H C1): the Core is stopping. Looked at before every piece that is written and
+   * between the steps: an aborted run ends `EXPORT_INTERRUPTED`, and its failure path removes
+   * every file it created - the partial is gone at once, not at the next start.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface ExportOutcome {
@@ -155,6 +170,11 @@ export interface ExportOutcome {
   readonly manifest: ExportManifest;
   /** Paths inside the package folder, `/` separated. */
   readonly files: { readonly archive: string; readonly manifest: string; readonly signature: string };
+  /**
+   * The archive FILE as written (G94-03, ruling D200): its length and SHA-256. Stated here, in the
+   * job answer and in a download's audit row - never inside the archive, which carries its manifest.
+   */
+  readonly archive: { readonly bytes: number; readonly sha256: string };
 }
 
 /** `export/EXP-<id>.manifest.json` and `.sig`: the manifest and signature of ONE export. */
@@ -239,10 +259,12 @@ interface ArchivedEntry {
   readonly sha256: string;
 }
 
-async function addEntry(archive: ArchiveWriter, path: string, pieces: AsyncIterable<Uint8Array> | Iterable<Uint8Array>, onBytes: (count: number) => void): Promise<ArchivedEntry> {
+async function addEntry(archive: ArchiveWriter, path: string, pieces: AsyncIterable<Uint8Array> | Iterable<Uint8Array>, onBytes: (count: number) => void, signal?: AbortSignal): Promise<ArchivedEntry> {
   const hash = createHash('sha256');
   const bytes = await archive.add(path, async (write) => {
     for await (const piece of pieces) {
+      // G94-12: a stopping Core writes no further piece.
+      if (signal?.aborted === true) throw new ExportFailure(ExportFailureCode.EXPORT_INTERRUPTED);
       hash.update(piece);
       await write(piece);
       onBytes(piece.byteLength);
@@ -309,6 +331,11 @@ export async function exportPackage(
   if (encoder !== null && !compositeEncoderAllowed(encoder.name)) throw new ExportFailure(ExportFailureCode.COMPOSITE_ENCODER_REFUSED);
 
   const chunkBytes = ports.chunkBytes ?? DEFAULT_CHUNK_BYTES;
+  const { signal } = ports;
+  /** G94-12: between the steps. Inside the `try` below, so the failure path removes what this run created. */
+  const stopIfAborted = (): void => {
+    if (signal?.aborted === true) throw new ExportFailure(ExportFailureCode.EXPORT_INTERRUPTED);
+  };
   const place = (relative: string): string => `${packageDir}${sep}${relative.split('/').join(sep)}`;
   const exportDir = place(PackageFile.EXPORT_DIR);
   const names = {
@@ -323,6 +350,7 @@ export async function exportPackage(
   let archive: ArchiveWriter | null = null;
 
   try {
+    stopIfAborted();
     // 2. The source verifies, with the session key, against the item's anchors.
     const report = await verifyPackageV2(corePorts(packageDir, opener, ports.chunkBytes), {
       plaintext: 'REQUIRED',
@@ -340,6 +368,7 @@ export async function exportPackage(
       throw new ExportFailure(keyLost ? ExportFailureCode.SESSION_KEY_UNAVAILABLE : ExportFailureCode.SOURCE_VERIFY_FAILED);
     }
     onProgress(30);
+    stopIfAborted();
 
     const reader = createPackageReader(packageDir, { chunkBytes });
     let manifestText: string;
@@ -396,14 +425,14 @@ export async function exportPackage(
       const entry = await reader.entry(path);
       if (entry.kind !== 'FILE' || entry.size > CLEAR_FILE_MAX_BYTES) throw new ExportFailure(ExportFailureCode.SOURCE_UNREADABLE);
       const bytes = await readExact(reader, path, 0, entry.size);
-      entries.push(await addEntry(archive, path, [bytes], () => undefined));
+      entries.push(await addEntry(archive, path, [bytes], () => undefined, signal));
       texts.push({ file: path, text: bytes.toString('utf8') });
     }
 
     const payload: ExportManifest['payload']['files'] = [];
     for (const [index, track] of manifest.tracks.entries()) {
       const path = cameraFilePath(track.trackId);
-      const archived = await addEntry(archive, path, decryptedCameraFile(reader, opener, track, manifest.files[index]?.fragments ?? [], chunkBytes), counted);
+      const archived = await addEntry(archive, path, decryptedCameraFile(reader, opener, track, manifest.files[index]?.fragments ?? [], chunkBytes), counted, signal);
       if (archived.sha256 !== track.sha256Plain || archived.bytes !== track.bytes) throw new ExportFailure(ExportFailureCode.PLAINTEXT_HASH_MISMATCH);
       entries.push(archived);
       payload.push({ trackId: track.trackId, path, bytes: archived.bytes, sha256Plain: archived.sha256 });
@@ -432,7 +461,7 @@ export async function exportPackage(
         throw error instanceof ExportFailure ? error : new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
       }
       if (!(await exists(compositePartial))) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
-      const archived = await addEntry(archive, COMPOSITE_ENTRY, fileChunks(compositePartial, chunkBytes), () => undefined);
+      const archived = await addEntry(archive, COMPOSITE_ENTRY, fileChunks(compositePartial, chunkBytes), () => undefined, signal);
       if (archived.bytes === 0) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
       entries.push(archived);
       await rm(compositePartial, { force: true });
@@ -440,13 +469,11 @@ export async function exportPackage(
       onProgress(85);
     }
 
-    await archive.finish();
-    archive = null;
-    await ports.probe?.('ARCHIVE_WRITTEN');
-    const archiveFacts = await hashFile(archivePartial, chunkBytes);
-    onProgress(90);
+    stopIfAborted();
+    onProgress(88);
 
-    // 5. The export manifest and its signature.
+    // 5. The export manifest and its signature. The archive is still open: the two files go INTO it
+    // (G94-03, ruling D200), so the manifest covers every other entry and names no hash of the archive.
     const exportManifest = buildExportManifest({
       payload: { representation: EXPORT_REPRESENTATION, files: payload },
       sessionManifest: {
@@ -473,7 +500,7 @@ export async function exportPackage(
       },
       source: { evidenceId: manifest.evidenceId, sessionId: manifest.sessionId, deviceId: manifest.device.deviceId },
       destination: { id: request.destination },
-      package: { file: `${request.exportId}.zip`, bytes: archiveFacts.bytes, hashAlgorithm: 'SHA-256', sha256: archiveFacts.sha256, entries },
+      package: { file: `${request.exportId}.zip`, hashAlgorithm: 'SHA-256', entries },
       authorization: { purpose: request.purpose, reference: request.authorizationRef, permission: EXPORT_PERMISSION },
       composite,
     });
@@ -489,6 +516,18 @@ export async function exportPackage(
     ]);
     if (findings.length > 0) throw new ExportFailure(ExportFailureCode.SECRET_SHAPE_FOUND, findings);
 
+    // 6b. THE ARCHIVE IS SELF-CONTAINED: its export manifest and signature are its last two entries,
+    // under their per-export names. Then the archive is closed and hashed - the hash is this run's
+    // outcome (the job answer, the audit row of a download), never a member of what it hashes.
+    await addEntry(archive, names.manifest, [manifestBytes], () => undefined, signal);
+    await addEntry(archive, names.signature, [signatureBytes], () => undefined, signal);
+    await archive.finish();
+    archive = null;
+    await ports.probe?.('ARCHIVE_WRITTEN');
+    stopIfAborted();
+    const archiveFacts = await hashFile(archivePartial, chunkBytes);
+    onProgress(92);
+
     const manifestPartial = place(`${names.manifest}${PARTIAL}`);
     const signaturePartial = place(`${names.signature}${PARTIAL}`);
     await writeFile(manifestPartial, manifestBytes, { flag: 'wx', mode: 0o600 });
@@ -496,6 +535,7 @@ export async function exportPackage(
     await writeFile(signaturePartial, signatureBytes, { flag: 'wx', mode: 0o600 });
     created.push(signaturePartial);
     await ports.probe?.('BEFORE_NAMES');
+    stopIfAborted();
 
     // 7. The names: the signature last. Each name replaces its partial in the list of what a failure removes.
     for (const [partial, name] of [
@@ -557,6 +597,7 @@ export async function exportPackage(
       signature: signature.signature,
       manifest: exportManifest,
       files: names,
+      archive: Object.freeze({ bytes: archiveFacts.bytes, sha256: archiveFacts.sha256 }),
     });
   } catch (error) {
     if (archive !== null) await archive.abandon().catch(() => undefined);

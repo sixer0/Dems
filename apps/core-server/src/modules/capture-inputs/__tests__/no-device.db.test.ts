@@ -287,9 +287,11 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     const first = await server.post('SUPERVISOR', RESCAN);
     expect(first.statusCode).toBe(200);
     expect(validateCoreApiResponse('rescanCaptureInputs', 200, bodyOf(first))).toEqual({ ok: true });
+    // Fix wave H (G70-01, decision D196): this server runs SIMULATED capture (the probe is the test's), so no entry
+    // states an adapter or a source class; what a real operation states is `routes.test.ts`'s (capture mode real).
     expect((first.json() as { inputs: unknown[]; unregisteredCount: number }).inputs).toEqual([
-      { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
-      { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: 'PERMISSION_DENIED' },
+      { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
+      { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: 'PERMISSION_DENIED' },
     ]);
     await server.app.pipeline.drain();
     let rows = await server.since(before);

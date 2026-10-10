@@ -34,7 +34,8 @@ import Animated, {
 import type { VideoTrackId } from '@dems/shared/domain';
 import type { CameraStatus } from '@dems/shared/sim';
 import { derived, fontFamily, motion as motionTokens, palette, radius, typography } from '@dems/shared/tokens';
-import { CameraFeed } from '@/components/media';
+// Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
+import { CameraPreview } from '@/features/devices/camera-preview';
 import { withAlpha } from '@/components/media/color';
 import { GlowLayer, triggerHaptic, useMotionSettings } from '@/motion';
 import { TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
@@ -145,7 +146,8 @@ export function LiveFeed({
   };
 
   const feed = (
-    <CameraFeed
+    <CameraPreview
+      name={short}
       cameraId={activeCameraId}
       mode="live"
       motion={settings.policy}

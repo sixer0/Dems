@@ -27,6 +27,7 @@ import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { withAlpha } from '@/components/media/color';
 import { DEMO_MEDIA_LIVE, demoMediaForEvidence, type DemoMediaAsset } from '@/components/media/demo-media';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
+import { PreviewThumb, useRealCaptureView } from '@/features/devices/camera-preview';
 import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { SessionStatusChip } from './session-status-chip';
 import { evidenceSuffix, handOffFor, type SessionRow as SessionRowModel } from './sessions-model';
@@ -64,6 +65,9 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
   const duration = row.durationMs === null ? null : formatDuration(row.durationMs);
   const hint = t(`features.sessions.list.hint.${handOffFor(row, isMultiPane).kind}`);
   const poster = posterForRow(row);
+  // Wave H closing pass Z2 (G70-03, ruling D196; driver D's left surface): on a Core in REAL capture no
+  // bundled picture - the live loop's poster, the room still - stands where a camera picture would be.
+  const realCapture = useRealCaptureView();
 
   return (
     <View style={styles.wrap}>
@@ -85,16 +89,20 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
         <Card className="rounded-xl" style={[styles.card, selected ? styles.cardSelected : null]} testID={`session-row-card-${row.id}`}>
           <View style={styles.row}>
             <View style={[styles.thumbWrap, isMultiPane ? styles.thumbPane : null]} testID={`session-row-thumb-${row.id}`}>
-              <Image
-                source={poster.source}
-                style={styles.thumb}
-                contentFit="cover"
-                contentPosition={poster.still ? HERO_FOCUS : 'center'}
-                accessible={false}
-                recyclingKey={row.id}
-                transition={0}
-              />
-              {row.active && !connecting ? (
+              {realCapture ? (
+                <PreviewThumb kind="camera" fill name={row.id} source={poster.source} label={row.id} dim={false} testID={`session-row-no-preview-${row.id}`} />
+              ) : (
+                <Image
+                  source={poster.source}
+                  style={styles.thumb}
+                  contentFit="cover"
+                  contentPosition={poster.still ? HERO_FOCUS : 'center'}
+                  accessible={false}
+                  recyclingKey={row.id}
+                  transition={0}
+                />
+              )}
+              {row.active && !connecting && !realCapture ? (
                 <View style={styles.liveBadge} testID={`session-row-live-${row.id}`}>
                   <View style={styles.liveDot} />
                   <Text maxFontSizeMultiplier={1.2} style={styles.liveText}>
@@ -130,7 +138,7 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
               </View>
             </View>
             <View style={styles.trailing}>
-              <SessionStatusChip status={row.status} testID={`session-row-status-${row.id}`} />
+              <SessionStatusChip status={row.status} sessionId={row.id} testID={`session-row-status-${row.id}`} />
               {row.pendingSummary ? (
                 <StatusChip
                   tone="accent"

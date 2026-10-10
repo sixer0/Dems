@@ -52,6 +52,7 @@ import {
   type ExportOutcome,
 } from './export-outcome'
 import { answeredJobIdOf, type ExportJobKind } from './export-job-model'
+import { isDemoItem } from './item-facts'
 import { ExportJobStatus } from './export-job-status'
 import { LockShackle } from './lock-shackle'
 import { logEvidenceError, newCorrelationId } from './log'
@@ -128,7 +129,12 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
 
   const trimmed = reason.trim()
   const reasonValid = trimmed.length >= EXPORT_REASON_MIN_LENGTH
-  const destinationText = t(`evidence.exportWizard.destinations.${destination}`)
+  // Wave H C2 (G94-09): on a Core, an item that is not a v1 / simulated demo item is exported by the
+  // Core itself: nothing in its dialog is labelled DEMO or simulated, and no bundled DEMO manifest is
+  // offered beside the Core's archive. A demo item (and Simulated mode) keeps what it had.
+  const coreOnly = live && rows.length > 0 && rows.every((row) => !isDemoItem(row.item))
+  const destinationLabel = (key: Destination): string => t(coreOnly ? `evidence.itemFacts.exportReal.destination.${key}` : `evidence.exportWizard.destinations.${key}`)
+  const destinationText = destinationLabel(destination)
   const allVerified = rows.length > 0 && rows.every((row) => verification[row.id]?.phase === 'done')
   const failedSources = rows.filter((row) => verification[row.id]?.verdict === 'FAIL')
   const erroredSources = rows.filter((row) => verification[row.id]?.phase === 'error')
@@ -342,7 +348,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
         }}
         className="evi-field"
       >
-        <Label>{t('evidence.exportWizard.destinationLabel')}</Label>
+        <Label>{t(coreOnly ? 'evidence.itemFacts.exportReal.destinationLabel' : 'evidence.exportWizard.destinationLabel')}</Label>
         <Select.Trigger data-testid="export-destination">
           <Select.Value />
           <Select.Indicator />
@@ -350,14 +356,19 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
         <Select.Popover>
           <ListBox>
             {DESTINATIONS.map((key) => (
-              <ListBox.Item key={key} id={key} textValue={t(`evidence.exportWizard.destinations.${key}`)}>
-                {t(`evidence.exportWizard.destinations.${key}`)}
+              <ListBox.Item key={key} id={key} textValue={destinationLabel(key)}>
+                {destinationLabel(key)}
                 <ListBox.ItemIndicator />
               </ListBox.Item>
             ))}
           </ListBox>
         </Select.Popover>
       </Select>
+      {coreOnly ? (
+        <p className="evi-caption" data-testid="export-real-note">
+          {t('evidence.itemFacts.exportReal.note')}
+        </p>
+      ) : null}
       {live ? (
         <Select
           value={kind}
@@ -458,7 +469,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
               <dd>{trimmed}</dd>
             </div>
             <div>
-              <dt>{t('evidence.exportWizard.destinationLabel')}</dt>
+              <dt>{t(coreOnly ? 'evidence.itemFacts.exportReal.destinationLabel' : 'evidence.exportWizard.destinationLabel')}</dt>
               <dd>{destinationText}</dd>
             </div>
           </dl>
@@ -491,7 +502,8 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
             const zip = zipChecks[row.id]
             // Row 92: a Core-sealed (schema-v2) item has no bundled DEMO file to hand over, and the
             // contract sends no export archive to a client: its result is the Core's job, below.
-            const coreArchiveOnly = live && isV2Item(row)
+            // Wave H C2 (G94-09): also for a REAL item whose replicated copy names no `files[]` (`isV2Item`), and for any item that is not a demo item.
+            const coreArchiveOnly = live && (isV2Item(row) || !isDemoItem(row.item))
             return (
               <li key={row.id} className="evi-export-result" data-export-id={outcome.result.exportId} data-plan={plan.kind}>
                 <div className="evi-export-result-head">
@@ -626,9 +638,11 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
         <Modal.Dialog aria-label={t('evidence.exportWizard.title')} className="evi-wizard" data-testid="export-wizard">
           <Modal.Header className="evi-wizard-header">
             <Modal.Heading>{t('evidence.exportWizard.title')}</Modal.Heading>
-            <Chip size="sm" variant="secondary" className="evi-demo-chip">
-              <Chip.Label>{t('evidence.demo.chip')}</Chip.Label>
-            </Chip>
+            {coreOnly ? null : (
+              <Chip size="sm" variant="secondary" className="evi-demo-chip">
+                <Chip.Label>{t('evidence.demo.chip')}</Chip.Label>
+              </Chip>
+            )}
           </Modal.Header>
           <Modal.Body className="evi-wizard-body">
             <Stepper steps={steps} orientation="horizontal" variant="wizard" ariaLabel={t('evidence.exportWizard.title')} />

@@ -318,7 +318,18 @@ export function provideCoreEvidenceExport(app: FastifyInstance, composition: Cor
     opener: () => opener,
     composite: () => selectedCompositeEncoder(),
   };
-  evidenceExport(app).provide(createEvidenceExportRuntime(coreExportHost(app, wiring)));
+  const runtime = createEvidenceExportRuntime(coreExportHost(app, wiring));
+  evidenceExport(app).provide(runtime);
+  // G94-12 (wave H C1): a Core that stops does not let an export run on. The job in flight is aborted
+  // (its partial artefact is removed by its own failure path), queued jobs end without running, each
+  // FAILED `EXPORT_INTERRUPTED`; the close waits until none is left. Never rejects.
+  app.addHook('onClose', async () => {
+    try {
+      await runtime.stop();
+    } catch {
+      app.errorLog.append({ level: 'error', source: 'evidence-export.stop', message: 'the export jobs could not be stopped at the close of the server', code: 'EXPORT_STOP_FAILED', context: {} });
+    }
+  });
   app.readiness.addBootStep({
     id: EXPORT_SWEEP_BOOT_STEP,
     run: async () => {

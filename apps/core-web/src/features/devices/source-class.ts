@@ -37,6 +37,27 @@ export function useRealCapture(): boolean {
   return useWebLive() !== null
 }
 
+/**
+ * Whether the Core this console shows RECORDS FOR REAL (wave H, G70-03; ruling D196); pure. The
+ * console has no operation that names the Core's capture operation for every role, so it is told
+ * apart by the Core's data, the rule of this file's header: a Core in real capture states the class
+ * of its sources (`sourceClass`, DEVELOPMENT or PRODUCTION), a Core in simulated capture states none
+ * for its built-in devices (D91, D131). A Live console that holds NO device (the list not received
+ * yet, or a Core without a source) has nothing that says "simulated", so it counts as real capture:
+ * the neutral side - no demo picture is drawn on a guess. Never true in Simulated client mode.
+ */
+export function isRealCaptureCore(live: boolean, devices: readonly { readonly sourceClass?: string | null | undefined }[]): boolean {
+  if (!live) return false
+  return devices.length === 0 || devices.some((device) => device.sourceClass != null)
+}
+
+/** `isRealCaptureCore` of the console's data: Live mode and the replicated `captureDevices` slice. */
+export function useRealCaptureCore(): boolean {
+  const live = useRealCapture()
+  const stated = useSim((state) => isRealCaptureCore(true, state.captureDevices.devices))
+  return live && stated
+}
+
 /** True exactly when the Core sent `sourceClass: DEVELOPMENT`. An absent member is not a development source. */
 export function isDevelopmentSource(source: { readonly sourceClass?: string | null } | null | undefined): boolean {
   return source?.sourceClass === CaptureSourceClass.DEVELOPMENT

@@ -89,6 +89,19 @@ export function autosaveSegment(event: TimelineFields): number | null {
   return match ? Number(match[1]) : null
 }
 
+/**
+ * The timeline of a recording of the Core's OWN capture (wave H closing pass Z2; the rule of the
+ * tablet's `timelineOfCaptureFacts`, driver A): AUTOSAVE, HEALTH and the generator's CHECK are rows
+ * the simulator's generator invents - an auto-save segment with a byte figure of its formula, a
+ * health check nobody ran. They are not drawn. A CHECK of the seal side (`params.source:
+ * 'TAIL_VALIDATION'`) is a fact of the Core and stays. `ownCapture` false: every row, the same array.
+ */
+export function timelineOfOwnCapture<Event extends { kind: string; params?: Readonly<Record<string, unknown>> | null }>(events: readonly Event[], ownCapture: boolean): readonly Event[] {
+  if (!ownCapture) return events
+  const kept = events.filter((event) => event.kind !== 'AUTOSAVE' && event.kind !== 'HEALTH' && (event.kind !== 'CHECK' || event.params?.source === 'TAIL_VALIDATION'))
+  return kept.length === events.length ? events : kept
+}
+
 /** Bytes written when `event` happened: `params.bytesWritten`, else 8.2 GB/h from `startedAt`. */
 export function bytesAt(event: Pick<TimelineEvent, 'at'> & Partial<Pick<TimelineEvent, 'params'>>, startedAt: number | null): number | null {
   const value = event.params?.bytesWritten

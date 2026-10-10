@@ -7,6 +7,7 @@
 // tests of the clients compare them.
 import { describe, expect, it } from 'vitest';
 import {
+  CaptureInputScanSchema,
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
   CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CaptureConnectionOutcome,
@@ -350,8 +351,10 @@ describe('operation 97: the local inputs, read again', () => {
       body: {
         scannedAt: AT,
         inputs: [
-          { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
-          { deviceId: 'MIC-02', inputId: 'MIC-02', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+          // Pin moved by wave H closing pass Z1, item 6 (ruling D206 (2); C3 §2.6 erratum PE-WH-01): simulated
+          // capture states NO adapter and NO source class on any operation - the in-app simulator as the SIMULATED Core.
+          { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
+          { deviceId: 'MIC-02', inputId: 'MIC-02', present: true, errorCode: null },
         ],
         unregisteredCount: 0,
       },
@@ -359,6 +362,12 @@ describe('operation 97: the local inputs, read again', () => {
     expect(h.rows('CAPTURE_DISCOVERY_SEARCHED').map((row) => row.details)).toEqual([
       { searchId: 'DSC-000001', scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 2, newCount: 0, registeredCount: 2, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' },
     ]);
+    for (const entry of scan.body.inputs) {
+      expect(entry).not.toHaveProperty('adapter');
+      expect(entry).not.toHaveProperty('sourceClass');
+    }
+    // The body is still one of the contract (the two members are optional there).
+    expect(CaptureInputScanSchema.safeParse(scan.body).success).toBe(true);
     // It registers nothing and is no camera search: the candidate read stays empty.
     expect(h.state().captureDevices.devices).toHaveLength(5);
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });

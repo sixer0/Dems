@@ -41,7 +41,7 @@ import { FIRST_DELIVERY_MS, createDeliveryWatch, errorOfHelperExit, errorOfNoDel
 import { parseDeviceList, selectLocalDevice } from './device-list';
 import { LocalSourceError, LocalSourceErrorCode, LocalSourceErrorReason } from './errors';
 import { helperProgramRefusal } from './helper-program';
-import { micPrecheckArguments, micPushArguments, type MicSource } from './mic-helper-args';
+import { isSpeechFixtureArgument, micPrecheckArguments, micPushArguments, type MicSource } from './mic-helper-args';
 import { preparePipe, removePipe, runBounded } from './mic-pipe';
 import { createPipeFiles, type PipeFiles } from './pipe-files';
 import { inspectProgram, startHelperProcess, type HelperDoor, type HelperProcess, type ProgramInspector } from './process-door';
@@ -139,6 +139,15 @@ export function createMicHelper(options: MicHelperOptions): MicHelper {
     if (helperProgramRefusal(inspect(options.program)) !== null) throw refused(LocalSourceErrorReason.PROGRAM_REFUSED, deviceId);
   }
 
+  /**
+   * The speech fixture is held to the SAME path rule as the program (fix wave H): a file another
+   * local user could replace is not played into a recording. Asked at `prepare` and again at `start`.
+   */
+  function assertSource(source: MicSource, deviceId: string): void {
+    assertProgram(deviceId);
+    if (source.kind === 'FIXTURE' && (!isSpeechFixtureArgument(source.path) || helperProgramRefusal(inspect(source.path)) !== null)) throw refused(LocalSourceErrorReason.FIXTURE_REFUSED, deviceId);
+  }
+
   async function readAudioDevices(deviceId: string | null): Promise<readonly string[]> {
     assertProgram(deviceId);
     const run = await runBounded(door, timers, options.program, deviceListArguments(), limits.listTimeoutMs);
@@ -163,7 +172,7 @@ export function createMicHelper(options: MicHelperOptions): MicHelper {
     let path: string;
     try {
       if (source.kind === 'DEVICE') await requireDevice(deviceId, source.name);
-      else assertProgram(deviceId);
+      else assertSource(source, deviceId);
       path = await preparePipe({ runDir: options.runDir, sessionId, deviceId, files, door, timers, inspector: inspect, ...(options.mkfifoProgram === undefined ? {} : { mkfifoProgram: options.mkfifoProgram }) });
     } catch (error) {
       held.delete(deviceId);
@@ -191,7 +200,7 @@ export function createMicHelper(options: MicHelperOptions): MicHelper {
         if (helper !== null) throw failure(LocalSourceErrorCode.DEVICE_BUSY, LocalSourceErrorReason.ALREADY_OPEN, deviceId);
         // The list is read again: time has passed since `prepare`, and every open follows a list (HL-10).
         if (source.kind === 'DEVICE') await requireDevice(deviceId, source.name);
-        else assertProgram(deviceId);
+        else assertSource(source, deviceId);
         if (closing !== null || helper !== null || abortedNow(signal)) throw refused(LocalSourceErrorReason.ABORTED, deviceId);
 
         const watch = createDeliveryWatch('SAMPLE');

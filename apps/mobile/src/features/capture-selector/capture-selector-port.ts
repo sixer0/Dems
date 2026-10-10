@@ -1,6 +1,7 @@
 /**
- * The one way the device selector sends operations 79 `setCaptureCameraSource` and 80
- * `setPrimaryMic` (task 3, blueprint row 68; `masterplan/03_api_contract.md` §2.2-§2.4). Both are
+ * The one way the device selector sends operations 79 `setCaptureCameraSource`, 80 `setPrimaryMic`
+ * and - for a microphone that is on no line yet (fix wave H, G70-02) - the pair replacement of
+ * operation 78 `updateCaptureConfig` (task 3, blueprint row 68; `masterplan/03_api_contract.md` §2.2-§2.4). Both are
  * operations a tablet or phone session may call (`PERMISSION CAPTURE_CONFIG`; only 89, 95 and 96 are
  * web-console-only), and neither is a simulator action, so there are two ways in:
  *
@@ -41,9 +42,29 @@ function answerOf(facts: AnswerFacts, body: unknown): SelectorAnswer {
 
 /** The path of the operation a command maps to (C3 §2.2). Ids are path segments, so they are encoded. */
 export function selectorPath(command: SelectorCommand): string {
+  if (command.kind === 'micPair') return '/api/v1/capture/config';
   return command.kind === 'camera'
     ? `/api/v1/capture/cameras/${encodeURIComponent(command.deviceId)}/source`
     : `/api/v1/capture/mics/${encodeURIComponent(command.inputId)}/primary`;
+}
+
+/**
+ * The body of operation 78 for a pair replacement (C3 §2.3, D133 (1); fix wave H, G70-02): two lines,
+ * each with its role, each `deviceId == inputId` (D106 (4)). No transport is sent: the Core takes it
+ * from its registry row.
+ */
+export function micPairBody(command: Extract<SelectorCommand, { kind: 'micPair' }>): { mics: { inputId: string; deviceId: string; role: 'PRIMARY' | 'STANDBY' }[] } {
+  return {
+    mics: [
+      { inputId: command.primaryId, deviceId: command.primaryId, role: 'PRIMARY' },
+      { inputId: command.standbyId, deviceId: command.standbyId, role: 'STANDBY' },
+    ],
+  };
+}
+
+function simBody(command: SelectorCommand): { body?: unknown } {
+  if (command.kind === 'camera') return { body: { trackId: command.trackId } };
+  return command.kind === 'micPair' ? { body: micPairBody(command) } : {};
 }
 
 /** SIMULATED and HEARTBEAT: the in-app simulator answers the request synchronously. */
@@ -54,7 +75,7 @@ export function simSelectorPort(sim: Pick<Sim, 'request'>): SelectorPort {
         const response = sim.request({
           method: 'POST',
           path: selectorPath(command),
-          ...(command.kind === 'camera' ? { body: { trackId: command.trackId } } : {}),
+          ...simBody(command),
         });
         return Promise.resolve(answerOf(factsOfEnvelope(response.status, response.body), response.body));
       } catch {
@@ -72,7 +93,9 @@ export function liveSelectorPort(client: Pick<MobileCoreClient, 'call'>): Select
         const answer =
           command.kind === 'camera'
             ? await client.call('setCaptureCameraSource', { params: { id: command.deviceId }, body: { trackId: command.trackId } })
-            : await client.call('setPrimaryMic', { params: { id: command.inputId } });
+            : command.kind === 'micPair'
+              ? await client.call('updateCaptureConfig', { body: micPairBody(command) })
+              : await client.call('setPrimaryMic', { params: { id: command.inputId } });
         if (answer.ok) return answerOf({ status: answer.status, code: null, reason: null }, answer.data);
         const reason = answer.error.details?.reason;
         return answerOf({ status: answer.status, code: answer.error.code, reason: typeof reason === 'string' ? reason : null }, null);

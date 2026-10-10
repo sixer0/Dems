@@ -20,6 +20,14 @@
  * remembered beyond that one send: `discard()` drops it (a cancelled countdown), the next `consent`
  * drops a stale one, and a send that reaches `ask` with no grant opens the notice there.
  *
+ * Fix wave H (gate 70 finding G70-08; ruling D196): the rule FAILS CLOSED. While the client does not
+ * know the device classes of the selector's lines (`localSourcesKnown`: the list is not loaded, in
+ * error, stale after a reconnect, or misses a device a line names) the gate sends NOTHING: `ask` runs
+ * `cancelled`, `consent` does not proceed, an unused grant is dropped, and one line says "Checking the
+ * capture sources…". `checking` is the same fact for the screen, which disables its pre-check and
+ * start controls with that reason (`LocalSourcesChecking` draws it). Before, a press went straight
+ * through: "no local device found" was read as "no local device".
+ *
  * The rule is the client's only; the Core does not require the confirmation. In Simulated mode, and
  * on a selector without a local device, none of this is ever drawn.
  *
@@ -27,12 +35,13 @@
  * the persistent runtime log and the notice closes, so the screen stays usable; what `send` starts
  * keeps its own three-layer handling (`use-session-new.ts`).
  */
-import { Alert, Button, Dialog } from 'heroui-native';
+import { Alert, Button, Dialog, useToast } from 'heroui-native';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { liveLinkOf, useLiveLink } from '@dems/shared/live';
 import { useSim, useSimInstance } from '@dems/shared/sim';
-import { spacing } from '@dems/shared/tokens';
+import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { reportRuntimeIssue } from '@/runtime';
 import { useSourceBadgeMode } from './development-source-badge';
 import {
@@ -40,6 +49,7 @@ import {
   localSourceNoticeKey,
   localSourceNoticeLine,
   localSourceNoticeOfState,
+  localSourcesKnownOfState,
   parseLocalSourceNoticeLine,
   type LocalSourceNotice,
   type LocalSourceNoticeKind,
@@ -61,6 +71,11 @@ export interface LocalSourceGate {
   consent(kind: LocalSourceNoticeKind, proceed: () => void): void;
   /** Drops an unused grant (the countdown was cancelled, the flow stopped): the next send asks again. */
   discard(): void;
+  /**
+   * Fix wave H (G70-08): the device classes are not known (yet), so the gate sends nothing. The
+   * screen disables its pre-check and start controls with "Checking the capture sources…".
+   */
+  readonly checking: boolean;
   /** The open notice, or null. */
   readonly notice: LocalSourceNotice | null;
   /** What the open notice is about (`PRECHECK` while none is open). */
@@ -87,9 +102,19 @@ function run(step: string, continuation: () => void, notice: LocalSourceNotice, 
   }
 }
 
+/** Whether the device classes are NOT known now (fix wave H, G70-08); always false in Simulated client mode. */
+export function useLocalSourcesChecking(): boolean {
+  const { live } = useSourceBadgeMode();
+  const link = useLiveLink();
+  return !useSim((s) => localSourcesKnownOfState(s, live, link));
+}
+
 export function useLocalSourceGate(): LocalSourceGate {
   const sim = useSimInstance();
   const { live } = useSourceBadgeMode();
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const checking = useLocalSourcesChecking();
   const [held, setHeld] = useState<Held | null>(null);
   // The same value for the callbacks, which must see an answer given in the same turn (a double press).
   const heldRef = useRef<Held | null>(null);
@@ -101,8 +126,26 @@ export function useLocalSourceGate(): LocalSourceGate {
   // The one-shot grant of a consent given at the press (D184); a ref, so the sender reads it in the same turn.
   const grant = useRef<LocalSourceNoticeKind | null>(null);
 
+  /**
+   * G70-08, at the press: true when the classes are unknown. Nothing is sent then - the request is
+   * declined, said (one toast) and logged (persistent runtime log); the screen stays usable.
+   */
+  const refusedUnknown = useCallback(
+    (cancelled: () => void, kind: LocalSourceNoticeKind): boolean => {
+      const link = liveLinkOf(sim);
+      if (localSourcesKnownOfState(sim.store.getState(), live, link)) return false;
+      grant.current = null;
+      reportRuntimeIssue('warn', `${SOURCE}.unknown`, 'The device classes of the selector are not known: nothing was sent', { kind, link });
+      toast.show({ variant: 'warning', label: t('features.capture-selector.localSources.checking') });
+      run('unknown', cancelled, { camera: null, microphone: null }, kind);
+      return true;
+    },
+    [sim, live, toast, t],
+  );
+
   const open = useCallback(
     (send: () => void, cancelled: () => void, kind: LocalSourceNoticeKind, grants: boolean): void => {
+      if (refusedUnknown(cancelled, kind)) return;
       const notice = localSourceNoticeOfState(sim.store.getState(), live);
       if (notice === null) {
         send();
@@ -116,20 +159,22 @@ export function useLocalSourceGate(): LocalSourceGate {
       reportRuntimeIssue('info', `${SOURCE}.shown`, 'The command would turn on a local device: asked before sending', { kind, camera: notice.camera, microphone: notice.microphone });
       hold({ notice, kind, send, cancelled, grants });
     },
-    [sim, live, hold],
+    [sim, live, hold, refusedUnknown],
   );
 
   const ask = useCallback(
     (send: () => void, cancelled: () => void, kind: LocalSourceNoticeKind = 'PRECHECK'): void => {
       // Consent was given at the press for exactly this send: consumed here, never kept.
       if (grant.current === kind) {
+        // G70-08: a consent does not carry a send through a list that became unknown since.
+        if (refusedUnknown(cancelled, kind)) return;
         grant.current = null;
         send();
         return;
       }
       open(send, cancelled, kind, false);
     },
-    [open],
+    [open, refusedUnknown],
   );
 
   const consent = useCallback(
@@ -161,13 +206,33 @@ export function useLocalSourceGate(): LocalSourceGate {
     run('declined', current.cancelled, current.notice, current.kind);
   }, [hold]);
 
-  return { ask, consent, discard, notice: held?.notice ?? null, kind: held?.kind ?? 'PRECHECK', confirm, cancel };
+  return { ask, consent, discard, checking, notice: held?.notice ?? null, kind: held?.kind ?? 'PRECHECK', confirm, cancel };
 }
 
 /** The notice a pre-check started now would need, or null — for a line that is drawn, not for a press (a press reads the store itself). */
 export function useLocalSourceNotice(): LocalSourceNotice | null {
   const { live } = useSourceBadgeMode();
   return parseLocalSourceNoticeLine(useSim((s) => localSourceNoticeLine(s, live)));
+}
+
+/**
+ * "Checking the capture sources…" (fix wave H, G70-08): the visible reason of a pre-check or start
+ * control that is disabled because the device classes are not known. Nothing while they are known.
+ */
+export function LocalSourcesChecking({ checking, testID = 'local-sources-checking' }: { checking: boolean; testID?: string }) {
+  const { t } = useTranslation();
+  if (!checking) return null;
+  return (
+    <Text maxFontSizeMultiplier={1.2} style={styles.checking} testID={testID} accessibilityLiveRegion="polite">
+      {t('features.capture-selector.localSources.checking')}
+    </Text>
+  );
+}
+
+/** The accessibility hint of such a control: the same sentence, or nothing. */
+export function useLocalSourcesCheckingHint(checking: boolean): { accessibilityHint?: string } {
+  const { t } = useTranslation();
+  return checking ? { accessibilityHint: t('features.capture-selector.localSources.checking') } : {};
 }
 
 export interface LocalSourceNoticeDialogProps {
@@ -223,6 +288,9 @@ export interface LocalSourceNotStartedProps {
 export function LocalSourceNotStarted({ visible, onRun }: LocalSourceNotStartedProps) {
   const { t } = useTranslation();
   const notice = useLocalSourceNotice();
+  // Fix wave H (G70-08): the check is not offered while the device classes are unknown.
+  const checking = useLocalSourcesChecking();
+  const checkingHint = useLocalSourcesCheckingHint(checking);
   if (!visible || notice === null) return null;
   return (
     <Alert status="warning" testID="local-source-not-started">
@@ -230,10 +298,11 @@ export function LocalSourceNotStarted({ visible, onRun }: LocalSourceNotStartedP
       <Alert.Content>
         <Alert.Description>{t('common.localSourceNotice.notStarted')}</Alert.Description>
         <View style={styles.run}>
-          <Button variant="outline" size="sm" onPress={onRun} testID="local-source-run-check">
+          <Button variant="outline" size="sm" isDisabled={checking} onPress={onRun} testID="local-source-run-check" {...checkingHint}>
             <Button.Label>{t('common.localSourceNotice.runCheck')}</Button.Label>
           </Button>
         </View>
+        <LocalSourcesChecking checking={checking} testID="local-source-run-check-checking" />
       </Alert.Content>
     </Alert>
   );
@@ -242,4 +311,5 @@ export function LocalSourceNotStarted({ visible, onRun }: LocalSourceNotStartedP
 const styles = StyleSheet.create({
   actions: { gap: spacing[1], marginTop: spacing[3] },
   run: { flexDirection: 'row', marginTop: spacing[1] },
+  checking: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.gray },
 });

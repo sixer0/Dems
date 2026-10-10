@@ -671,6 +671,30 @@ describe('the controller: one run per session, the engine port, and what a resta
     expect(await controller.decide()).toEqual(expected);
   });
 
+  // Wave H closing pass Z1, item 7 (driver B decision 7; the kill-matrix shape C-S6 / P2-S6): since driver B's
+  // fix an INTERRUPTED session has `stoppedAt` set once it is SEALED (the end of its durable media), so
+  // `stoppedAt` no longer tells a stop from an interruption there. The FINISH decision reads the
+  // interrupted fact of the session's committed item: its custody entry, or the sealed flag where stated.
+  it.each([
+    ['an interrupted SEALED session (stoppedAt set at the seal, custody RECORDING_INTERRUPTED), store step not DONE', { custody: [{ action: 'SEALED' }, { action: 'RECORDING_INTERRUPTED' }] }, 'INTERRUPTED'],
+    ['the same, said by the sealed manifest flag on the item', { custody: [{ action: 'SEALED' }], interrupted: true }, 'INTERRUPTED'],
+    ['CONTROL: a stopped SEALED session (no such entry)', { custody: [{ action: 'SEALED' }] }, 'STOPPED'],
+    ['CONTROL: the sealed manifest flag says NOT interrupted - it is the answer where it is stated', { custody: [{ action: 'RECORDING_INTERRUPTED' }], interrupted: false }, 'STOPPED'],
+  ] as const)('decide for a SEALED session whose journal is open: %s', async (_name, item, cause) => {
+    const controller = createSealingController({
+      pipeline: { run: async () => ({ status: 'NOTHING_DURABLE', sessionId: 'SES-20261009-0001' }) },
+      engine: () => ({
+        applySealingProgress: async () => undefined,
+        completeSeal: async () => undefined,
+        state: () => ({ session: { id: 'SES-20261009-0001', state: 'SEALED', stoppedAt: 5, fault: null }, evidence: [{ sessionId: 'SES-20261009-0001', manifestHash: 'ab'.repeat(32), integritySource: 'REAL', ...item }] }),
+      }),
+      hasDurableMedia: async () => true,
+      hasSealingRows: async () => true,
+      hasOpenSealingRows: async () => true,
+    });
+    expect(await controller.decide()).toEqual({ action: 'FINISH', sessionId: 'SES-20261009-0001', cause });
+  });
+
   it('the engine port: a sealed item is not committed twice, and a late report after the commit is dropped', async () => {
     const calls: string[] = [];
     let held = state({ id: 'SES-20261009-0001', state: 'FINALIZING', stoppedAt: 5, fault: null });

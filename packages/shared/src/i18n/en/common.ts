@@ -5,7 +5,7 @@
  * vocabulary (roles, audit types, fault kinds, …) from `src/sim/vocabulary.ts` as read on
  * 2026-10-01 02:36 WIB, so `t('common.auditType.' + row.type)` needs no lookup table.
  */
-import { CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, CAPTURE_FAULT_UNKNOWN_SENTENCES } from '../../sim/capture-fault-wording';
+import { CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, CAPTURE_FAULT_UNKNOWN_SENTENCES, INTERRUPTED_SEAL_SENTENCES } from '../../sim/capture-fault-wording';
 import { SEAL_UNSEALABLE_SENTENCE } from '../../sim/seal-unsealable';
 import type { ResourceTree } from '../resource-tree';
 
@@ -1086,5 +1086,21 @@ export const common = {
    */
   sealUnsealable: {
     notice: SEAL_UNSEALABLE_SENTENCE,
+  },
+  /**
+   * Wave H driver B (G75-03 / G75-08, ruling D197): a SEALED recording that was INTERRUPTED. This
+   * IS the table of `sim/capture-fault-wording.ts` (imported, never copied). Every session surface
+   * shows `title` in place of the plain sealed state, then the cause sentence
+   * (`interruptedSealCauseSentence`) and `kept`.
+   */
+  interruptedSeal: INTERRUPTED_SEAL_SENTENCES,
+  /**
+   * Wave H driver B (gate 75, G75-07 (b)): the system status WHILE A SESSION RECORDS and a critical
+   * fault is active (a degraded recording: one camera lost, the other recording). Nothing is blocked -
+   * the Core says the session records - so a status card never reads "Recording Blocked" then.
+   */
+  criticalWhileRecording: {
+    title: 'Recording — critical fault',
+    subtitle: 'Recording {{sessionId}} continues. A critical fault needs action',
   },
 } as const satisfies ResourceTree;

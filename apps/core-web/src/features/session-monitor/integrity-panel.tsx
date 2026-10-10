@@ -5,11 +5,12 @@ import { CircleCheck, CircleDashed, CircleX, ShieldCheck, TriangleAlert } from '
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
-import { useSim, type ChainVerifyResult } from '@dems/shared/sim'
+import { captureFactsOf, useSim, type ChainVerifyResult } from '@dems/shared/sim'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
+import { SessionCaptureCheckpoints } from './capture-checkpoints'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
 import { logSessionMonitorError } from './log'
 import { selectIntegrity, shortHash, type CheckStatus } from './model'
@@ -49,6 +50,17 @@ type VerifyState =
  * show and the demo fault AUDIT_TAMPER breaks; the stored chain is the Security & Audit page's
  * line. A refusal goes to the presenter first (an outage, a limit, the address of an
  * ORIGIN_NOT_ALLOWED), else to the page's own toast.
+ *
+ * A RECORDING OF THE CORE'S OWN CAPTURE (fix wave H driver A; finding G75-01, rulings D197 / D199).
+ * The four checks above are the simulator's demonstration: "Encryption Active AES-256", a "secure
+ * timestamp" of the dataset's time source, "Storage Write Verified". Beside a real recording they
+ * would be claims nobody measured - the media is PLAINTEXT on the evidence volume until the seal
+ * encrypts it. So for a session that carries the capture member (`captureFactsOf`) the panel shows
+ * only what the Core has: the capture state, when the media is protected ("Encrypted at seal" is
+ * said of a SEALED session only), the hash chain of the audit log (a real chain, re-verified by
+ * the button below) and the clock the Core reads. The fragment-checkpoint figures are drawn by
+ * `SessionCaptureCheckpoints` when the session states them (`captureCheckpoints`, closing passes Z1 /
+ * Z2); absent = nothing is drawn.
  */
 export function IntegrityPanel() {
   const { t } = useTranslation()
@@ -91,8 +103,42 @@ export function IntegrityPanel() {
     }, m.reduced ? 0 : VERIFY_SPIN_MS)
   }
 
+  // G75-01: the two primitives the capture facts are read from (an object from the selector would loop).
+  const sessionState = useSim((s) => s.session?.state ?? null)
+  const captureDurable = useSim((s) => s.session?.captureDurable)
+  const facts = sessionState === null ? null : captureFactsOf({ state: sessionState, captureDurable })
+
   const offset = formatUtcOffset()
-  const checks: { id: string; status: CheckStatus; label: string; value: string }[] = [
+  const factChecks: { id: string; status: CheckStatus; label: string; value: string }[] =
+    facts === null
+      ? []
+      : [
+          {
+            id: 'capture',
+            status: facts.capture === 'DURABLE' ? 'pass' : facts.capture === 'NOTHING_RECORDED' ? 'warn' : 'idle',
+            label: t('session.integrityFacts.capture.label'),
+            value: t(`session.integrityFacts.capture.${facts.capture}`),
+          },
+          {
+            id: 'protection',
+            status: facts.protection === 'SEALED' ? 'pass' : 'idle',
+            label: t('session.integrityFacts.protection.label'),
+            value: t(`session.integrityFacts.protection.${facts.protection}`),
+          },
+          {
+            id: 'hashChain',
+            status: integrity.hashChain,
+            label: t('session.integrityFacts.auditChain.label'),
+            value: integrity.hashChain === 'fail' ? t('session.integrity.hashChainBroken') : t('session.integrity.hashChain.value'),
+          },
+          {
+            id: 'time',
+            status: 'idle',
+            label: t('session.integrityFacts.time.label'),
+            value: t('session.integrityFacts.time.value', { offset }),
+          },
+        ]
+  const demoChecks: { id: string; status: CheckStatus; label: string; value: string }[] = [
     {
       id: 'encryption',
       status: integrity.encryption,
@@ -119,13 +165,15 @@ export function IntegrityPanel() {
     },
   ]
 
+  const checks = facts === null ? demoChecks : factChecks
+
   const head = shortHash(integrity.chainHead, 12)
   const result = verify.phase === 'done' ? verify.result : null
 
   return (
     <Panel id="N" icon={ShieldCheck} title={t('session.integrity.title')} className="sm-area-integrity" bodyClassName="sm-integrity-body">
       <div className="sm-integrity-rows">
-        <motion.ul className="sm-checks" variants={container} data-testid="sm-integrity-checks">
+        <motion.ul className="sm-checks" variants={container} data-testid="sm-integrity-checks" data-capture-facts={facts === null ? undefined : 'true'}>
           {checks.map((check) => {
             const Icon = STATUS_ICON[check.status]
             return (
@@ -152,6 +200,14 @@ export function IntegrityPanel() {
           />
         ) : null}
       </div>
+
+      {facts !== null ? <SessionCaptureCheckpoints /> : null}
+
+      {facts !== null ? (
+        <p className="sm-check-value" data-testid="sm-integrity-facts-note">
+          {t('session.integrityFacts.note')}
+        </p>
+      ) : null}
 
       <div className="sm-chain-row">
         <span className="sm-chain-label">{t('session.integrity.chainHead')}</span>

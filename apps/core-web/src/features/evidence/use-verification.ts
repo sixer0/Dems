@@ -61,6 +61,7 @@ import { motion as tokens } from '@dems/shared/tokens'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { useEvidenceAssets } from './demo-assets'
+import { isCoreSealedItem, isRealItem } from './item-facts'
 import { logEvidence, logEvidenceError, newCorrelationId } from './log'
 import type { EvidenceRow } from './model'
 import { failedTracksOf, recordPackageVerification, simTamperedTrack, withSimulatedTamper } from './sim-adapter'
@@ -113,9 +114,14 @@ export interface VerifyState {
   awaitsV2?: boolean | undefined
 }
 
-/** Whether the item is a schema-v2 item: it carries sealed FILES (the legacy v1 items carry none). */
+/**
+ * Whether the item is a schema-v2 item: it carries sealed FILES (the legacy v1 items carry none), or
+ * its own members say it was sealed on this Core (wave H C2, G89-04: a REAL item whose replicated
+ * copy names no `files[]` is still a v2 package - `isCoreSealedItem` holds the rule and its evidence).
+ */
 export function isV2Item(row: EvidenceRow | null): boolean {
-  return Array.isArray(row?.item.files) && (row?.item.files.length ?? 0) > 0
+  if (row === null) return false
+  return (Array.isArray(row.item.files) && row.item.files.length > 0) || isCoreSealedItem(row.item) || isRealItem(row.item)
 }
 
 const SIM_CHECK_ORDER: DemoCheckId[] = ['track:VIDEO-01', 'track:VIDEO-02', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature']
@@ -270,7 +276,8 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
     runCounter.current += 1
     const runId = runCounter.current
     // Live mode: the bundled package's check starts beside the Core's call (display only).
-    const bundledPkg = live && bundled ? target.pkg : null
+    // Wave H C2 (G89-09): never beside a v2 item - its package is the Core's, and the bundled one is another package.
+    const bundledPkg = live && bundled && !isV2Item(target) ? target.pkg : null
     setState({
       ...initialState(target, live),
       phase: 'running',

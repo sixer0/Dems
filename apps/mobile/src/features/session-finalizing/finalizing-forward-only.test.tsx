@@ -77,7 +77,7 @@ describe('forward-only on the screen (M7-FF-TAB / M7-FF-PHONE, software part)', 
     await settle();
     coreSends(h.sim, coreSteps(2, 40, { etaMs: 6_000 }));
     expect(progressText()).toBe(percentText(40));
-    expect(screen.getByTestId('finalizing-eta-core')).toHaveTextContent(F.eta.replace('{{seconds}}', '6'));
+    expect(screen.getByTestId('finalizing-eta-core')).toHaveTextContent(en.session.sealingEta.step.replace('{{seconds}}', '6'));
     expect(stepLabel(2)).toMatch(/in progress$/);
     expect(screen.getByText('40%')).toBeTruthy();
 
@@ -86,7 +86,7 @@ describe('forward-only on the screen (M7-FF-TAB / M7-FF-PHONE, software part)', 
       await new Promise((resolve) => setTimeout(resolve, 1_200));
     });
     expect(progressText()).toBe(percentText(40));
-    expect(screen.getByTestId('finalizing-eta-core')).toHaveTextContent(F.eta.replace('{{seconds}}', '6'));
+    expect(screen.getByTestId('finalizing-eta-core')).toHaveTextContent(en.session.sealingEta.step.replace('{{seconds}}', '6'));
 
     // A lower value from the Core is not drawn.
     coreSends(h.sim, coreSteps(2, 10, { etaMs: 9_000 }));
@@ -154,7 +154,11 @@ describe('B9 (FXR-DEV-2 with MB-04): React draws the Finalizing hand-over', () =
     await settle();
     const root = () => screen.getByTestId('screen-session-finalizing');
     expect(motionBelow(root())).toMatchObject({ entering: 0, overlays: [], spinning: 0 });
-    expect(motionBelow(root()).spinners).toBeGreaterThan(0);
+    // Wave H driver B (gate 89, G89-02): the pin of row 87 asked for a kit Spinner with its animation disabled here.
+    // The logcat of the gate named that Spinner as the source (it cancels a shared value when it unmounts), so a
+    // hand-over copy now mounts NONE: the running step is the React-drawn glyph (`b9-still-indicator.test.tsx`).
+    expect(motionBelow(root()).spinners).toBe(0);
+    expect(screen.getByTestId('finalizing-pipeline-badge-0-running', { includeHiddenElements: true })).toBeTruthy();
     expect(stepLabel(0)).toMatch(/in progress$/);
 
     // Step by step to the last one: at every step change the final state is drawn and nothing animates.

@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   FAKE_ONVIF_ALLOWED_OPERATIONS,
   FAKE_ONVIF_FOREIGN_HOST,
+  FAKE_ONVIF_NOT_XML_BODY,
   FAKE_ONVIF_HOST,
   FAKE_ONVIF_TESTABLE_DEVICES_MAX,
   WS_DISCOVERY_PROBE_ACTION,
@@ -447,6 +448,11 @@ describe('fake ONVIF stub: hostile and odd answers, one switch each (ST-2)', () 
       check: (answers) => {
         expect(answers).toHaveLength(2);
         for (const answer of answers) expect(answer.text).not.toContain('Envelope');
+        // Pass H-Y: the same fixed bytes in every answer, and no `<!` in them (a random body held one about once in 130 and
+        // was then, rightly, a DECLARATION to the search - the red of the wave-H checkpoint run).
+        for (const answer of answers) expect(answer.text).toBe(FAKE_ONVIF_NOT_XML_BODY.toString('utf8'));
+        expect(FAKE_ONVIF_NOT_XML_BODY).toHaveLength(512);
+        expect(FAKE_ONVIF_NOT_XML_BODY.includes('<!')).toBe(false);
       },
     },
     {

@@ -189,7 +189,7 @@ describe('the finalization dialog (M7-FF-WEB, software part)', () => {
     coreSends(sim, steps(2, 40, { etaMs: 6_000 }))
     mount(sim, sessionId)
     expect(label()).toContain(percentText(40))
-    expect(within(modal()).getByTestId('sm-final-eta')).toHaveTextContent(F.eta.replace('{{seconds}}', '6'))
+    expect(within(modal()).getByTestId('sm-final-eta')).toHaveTextContent(en.session.sealingEta.step.replace('{{seconds}}', '6'))
     expect(stepStatuses()).toEqual(['done', 'done', 'active', 'pending', 'pending', 'pending'])
     expect(within(modal()).getAllByRole('listitem')[2]).toHaveTextContent('40%')
 
@@ -198,7 +198,7 @@ describe('the finalization dialog (M7-FF-WEB, software part)', () => {
       vi.advanceTimersByTime(60_000)
     })
     expect(label()).toContain(percentText(40))
-    expect(within(modal()).getByTestId('sm-final-eta')).toHaveTextContent(F.eta.replace('{{seconds}}', '6'))
+    expect(within(modal()).getByTestId('sm-final-eta')).toHaveTextContent(en.session.sealingEta.step.replace('{{seconds}}', '6'))
 
     // A lower value from the Core is not drawn.
     coreSends(sim, steps(2, 10, { etaMs: 9_000 }))

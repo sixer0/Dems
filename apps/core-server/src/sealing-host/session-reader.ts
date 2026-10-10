@@ -4,9 +4,12 @@
  *
  * WHERE EVERY MEMBER COMES FROM.
  *
- *   the engine's COMMITTED state   the session (case, subject, instants), the Core device and its
- *                                  identity, the operator, the camera lines of the capture
- *                                  snapshot the session took at its start, the time source;
+ *   the engine's COMMITTED state   the session (case, subject, instants), the ID and the name of
+ *                                  the Core's stored device record, the operator, the camera
+ *                                  lines of the capture snapshot the session took at its start,
+ *                                  and the registry row of a camera (what its adapter reported);
+ *   the Core itself                its own build (`CORE_SERVER_VERSION`) and the clock it reads
+ *                                  (`CORE_TIME_SOURCE`) - see "ONLY FACTS THE CORE HAS" below;
  *   `session_capture_sources`      the four rows of the session START (T-41): the device and the
  *                                  adapter kind of every slot. The source classes of the manifest
  *                                  are computed from these rows by row 83's builder, never from
@@ -27,12 +30,36 @@
  * WHAT HAS NO SOURCE IN THE CORE TODAY is said in `STAND_INS` below, value by value, and in the
  * row's note: nothing of it is taken from a client or made up per session.
  *
+ * ONLY FACTS THE CORE HAS (fix wave H driver A; gate 89 finding G89-01, ruling D199). The engine's
+ * state is the hosted SIMULATOR's: its `time` slice (GNSS, locked), its `device.softwareVersion`
+ * (2.4.1), `device.identity` (a serial number and a hardware UUID of the dataset) and the model and
+ * firmware of its `cameras` are values of a demonstration. Under the signature of a real package
+ * each was a false statement. This reader takes NONE of them:
+ *
+ *   field 17-19  the time source      `CORE_TIME_SOURCE`: the host's system clock. Never the
+ *                                     `time` slice, never the session's `startTimeSource`;
+ *   field 22-23  serial, hardware UUID `NOT_CONFIGURED`: no installation step and no setting gives
+ *                                     a Core an identity of its own (spec defect, note 120);
+ *   field 24     software version     the Core's build, `src/version.ts`;
+ *   field 38-39  camera model,        by the adapter kind of the session-START row of that slot:
+ *                firmware             a generated source says so and has no firmware; any other
+ *                                     camera states its registry row (`capture_devices`), and
+ *                                     `NOT_REPORTED` where the row holds nothing. Never the
+ *                                     simulator's camera.
+ *
+ * Fields 20, 21 (`deviceId`, `name`) WERE the Core's stored device record, whose values are the
+ * seed's. Since closing pass Z1 (decision D207) they are the CONFIGURED installation identity
+ * (`installation-identity.ts`: `DEMS_INSTALLATION_DEVICE_ID`, `DEMS_INSTALLATION_NAME`), or
+ * `NOT_CONFIGURED` - the stored record stays the id the audit rows and the clients use, and is not
+ * read here.
+ *
  * This file opens no file and no key (the camera file's sample entry comes through a port). A read that cannot be completed throws: the seal does not
  * start on half a session record.
  */
 import type { ManifestAudioIntervalInput, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import type { QueryResultRow } from 'pg';
 import { SealingError, SealingFailure, type SealSessionFacts, type SealSessionReader, type SealTrackFacts, type SttConfigSnapshot } from '../sealing';
+import { CORE_SERVER_VERSION } from '../version';
 
 /** A connection that runs one parameterised statement (the runtime pool). */
 export interface Queryable {
@@ -67,6 +94,25 @@ export const READ_SEAL_AUDIT_ROWS =
  *   fields 127 / 128        the worker's `FIRST_VIDEO_SAMPLE` of the camera file, from the capture
  *                           facts; null when no such record exists for the file (the spec's rule).
  */
+/**
+ * FIELDS 17-19 OF A PACKAGE THIS CORE SEALS (G89-01). What the Core has is the clock of the
+ * computer it runs on, read through the operating system: it has no GNSS receiver, runs no
+ * network-time client of its own and measures no lock. The spec's enumeration of field 17 is
+ * `GNSS | NTP | RTC` (ev §B.2) and holds no value for "the host's system clock" (spec defect, note
+ * 120): `RTC` is the one that claims no external reference, so it is the honest one of the three.
+ * `state` says in words which clock it is; there is no fallback chain, so the order is empty.
+ */
+export const CORE_TIME_SOURCE = Object.freeze({ source: 'RTC' as const, state: 'HOST_SYSTEM_CLOCK', fallbackOrder: Object.freeze([]) as readonly string[] });
+/** Fields 22, 23: the Core was given no serial number and no hardware UUID. The schema's fields are "not null" text (spec defect, note 120). */
+export const NOT_CONFIGURED = 'NOT_CONFIGURED';
+/** Fields 38, 39 of a camera whose registry row holds no value for the member. */
+export const NOT_REPORTED = 'NOT_REPORTED';
+/** Fields 38, 39 of a DEVELOPMENT source, by adapter kind: what the Core knows of it. */
+export const SOURCE_WORDS = Object.freeze({
+  FAKE: Object.freeze({ model: 'Generated test source (no camera)', firmware: 'None (generated test source)' }),
+  LOCAL_DEVICE: Object.freeze({ model: 'Local development device of the Core computer', firmware: 'Not reported (local development device)' }),
+});
+
 export const STAND_INS = Object.freeze({
   subjectAuthorization: 'Name and subject type only, as entered at session creation',
   clockOffsetMs: 0,
@@ -83,7 +129,6 @@ export const SEAL_NOTICE = Object.freeze({
 const TRACKS = ['VIDEO-01', 'VIDEO-02'] as const;
 const OPERATOR_ROLES = ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const;
 const SUBJECT_TYPES = ['TERSANGKA', 'SAKSI', 'LAINNYA'] as const;
-const TIME_SOURCES = ['GNSS', 'NTP', 'RTC'] as const;
 const INTERVAL_REASONS = ['START', 'MANUAL', 'STOP'] as const;
 
 /** The members of the committed state the reader uses (the engine's `state()` satisfies it). */
@@ -99,10 +144,17 @@ export interface SealStateView {
     readonly startTimeSource?: string | null;
     readonly captureConfig?: { readonly cameras: readonly { readonly trackId: string; readonly deviceId: string; readonly profile: string }[] } | null;
   } | null;
-  readonly device: { readonly id: string; readonly name: string; readonly softwareVersion: string; readonly identity: { readonly serialNumber: string; readonly hardwareUuid: string } };
+  /**
+   * NOTHING OF IT IS READ since closing pass Z1 (D207: fields 20, 21 are the configured installation identity).
+   * `softwareVersion` and `identity` are the hosted simulator's dataset (G89-01): a view may carry
+   * them (the engine's state does), this reader never takes them.
+   */
+  readonly device: { readonly id: string; readonly name: string; readonly softwareVersion?: string; readonly identity?: { readonly serialNumber: string; readonly hardwareUuid: string } };
   readonly operators: readonly { readonly id: string; readonly displayName: string; readonly role: string }[];
-  readonly cameras: readonly { readonly id: string; readonly deviceId: string; readonly name: string; readonly model: string; readonly firmware: string }[];
-  readonly time: { readonly source: string; readonly locked: boolean };
+  /** G89-01: the label of the track slot ONLY IS READ. `model` and `firmware` of a simulator camera are never taken. */
+  readonly cameras: readonly { readonly id: string; readonly name: string; readonly deviceId?: string; readonly model?: string; readonly firmware?: string }[];
+  /** G89-01: NEVER READ (the simulator's time source); a view may carry it. */
+  readonly time?: { readonly source: string; readonly locked: boolean };
   readonly captureDevices: { readonly devices: readonly { readonly id: string; readonly model: string | null; readonly firmware: string | null }[] };
 }
 
@@ -127,6 +179,12 @@ export interface SealSessionReaderOptions {
   readonly videoSampleEntry?: (sessionId: string, trackId: (typeof TRACKS)[number]) => Promise<SealVideoSampleEntry | null>;
   readonly notice: string;
   readonly timezone: string;
+  /**
+   * Closing pass Z1 (decision D207): the installation identity of this Core - manifest fields 20, 21
+   * (`installation-identity.ts`). A member that is null, or the option being absent, is stated as
+   * `NOT_CONFIGURED`. The stored device record of the state is NOT read for them.
+   */
+  readonly identity?: { readonly deviceId: string | null; readonly name: string | null };
   /** Told once per read of a session that has NO STT snapshot. */
   readonly onNoSttSnapshot?: (sessionId: string) => void;
   /** Told once per read whose capture facts are of ANOTHER session of that ID (they are not used). */
@@ -155,6 +213,8 @@ export interface SealCaptureFacts {
      * the adapter's report above is the fallback. Absent / null: the worker reported none.
      */
     readonly measuredClockOffsetMs?: number | null;
+    /** C3: the camera was given up while the session went on (`capture-session/facts.ts`); absent / null: it was not. */
+    readonly ended?: { readonly reason: string } | null;
     readonly firstVideo: { readonly pts: number; readonly timescale: number } | null;
   }[];
 }
@@ -277,13 +337,17 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         const device = state.captureDevices.devices.find((entry) => entry.id === deviceId);
         // Joined on the track AND the device of the start record (D72 (g)): a report of another camera is not this file's.
         const reported = captureFacts?.cameras.find((entry) => entry.trackId === trackId && entry.deviceId === deviceId) ?? null;
+        // Fields 38, 39 (G89-01): by the adapter kind of the START row. A generated source has no model
+        // and no firmware to report; another camera states its registry row or says that none was reported.
+        const adapterKind = sourceRows.find((row) => row.slot === trackId)?.adapterKind;
+        const words = adapterKind === 'FAKE' ? SOURCE_WORDS.FAKE : adapterKind === 'LOCAL_DEVICE' ? { model: device?.model ?? SOURCE_WORDS.LOCAL_DEVICE.model, firmware: SOURCE_WORDS.LOCAL_DEVICE.firmware } : { model: device?.model ?? NOT_REPORTED, firmware: device?.firmware ?? NOT_REPORTED };
         return {
           trackId,
           deviceId,
           profile: text(line?.profile),
           name: text(camera?.name),
-          model: text(device?.model ?? camera?.model),
-          firmware: text(device?.firmware ?? camera?.firmware),
+          model: text(words.model),
+          firmware: text(words.firmware),
           clockOffsetMs: reported?.measuredClockOffsetMs ?? reported?.clockOffsetMs ?? STAND_INS.clockOffsetMs,
           codec: codecs.get(trackId) ?? null,
           avOffsetMs: null,
@@ -292,6 +356,11 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         };
       };
 
+      const cameraEnds = TRACKS.flatMap((trackId) => {
+        const deviceId = sourceRows.find((row) => row.slot === trackId)?.deviceId;
+        const ended = captureFacts?.cameras.find((entry) => entry.trackId === trackId && entry.deviceId === deviceId)?.ended ?? null;
+        return ended === null ? [] : [{ trackId, reason: ended.reason }];
+      });
       const operator = state.operators.find((entry) => entry.id === session.input.investigatorId);
       let sttSnapshot = await options.sttSnapshot(sessionId);
       if (sttSnapshot === null) {
@@ -307,8 +376,10 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         createdAt: session.createdAt,
         startedAt: session.startedAt,
         stoppedAt: session.stoppedAt,
-        timeSource: { source: oneOf(TIME_SOURCES, session.startTimeSource ?? state.time.source, 'RTC'), state: state.time.locked ? 'LOCKED' : 'UNLOCKED', fallbackOrder: [...TIME_SOURCES] },
-        device: { deviceId: state.device.id, name: state.device.name, serialNumber: state.device.identity.serialNumber, hardwareUuid: state.device.identity.hardwareUuid, softwareVersion: state.device.softwareVersion },
+        // G89-01: the Core's own clock and build; an identity that says it was not configured. Nothing of the hosted simulator's dataset.
+        timeSource: { source: CORE_TIME_SOURCE.source, state: CORE_TIME_SOURCE.state, fallbackOrder: [...CORE_TIME_SOURCE.fallbackOrder] },
+        // Closing pass Z1 (D207): fields 20, 21 are the CONFIGURED installation identity or say that none is - never the stored seed record.
+        device: { deviceId: options.identity?.deviceId ?? NOT_CONFIGURED, name: options.identity?.name ?? NOT_CONFIGURED, serialNumber: NOT_CONFIGURED, hardwareUuid: NOT_CONFIGURED, softwareVersion: CORE_SERVER_VERSION },
         operator: { investigatorId: session.input.investigatorId, displayName: text(operator?.displayName), role: oneOf(OPERATOR_ROLES, operator?.role, 'INVESTIGATOR') },
         subject: { name: session.input.subjectName, type: oneOf(SUBJECT_TYPES, session.input.subjectType, 'LAINNYA'), authorization: STAND_INS.subjectAuthorization },
         tracks: [track('VIDEO-01'), track('VIDEO-02')],
@@ -317,6 +388,8 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         sourceRows,
         sttSnapshot,
         auditExtract,
+        // C3: by TRACK and joined on the device of the START record, as every capture fact is (a report of another camera is not this file's).
+        ...(cameraEnds.length === 0 ? {} : { cameraEnds }),
       };
     },
   };

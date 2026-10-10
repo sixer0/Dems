@@ -41,6 +41,8 @@ export interface ReadyStepProps {
   startPending?: boolean
   /** The Start button's element (`aria-busy` while the start request is in flight). */
   startRef?: RefObject<HTMLButtonElement | null>
+  /** G70-08 (wave H): the id of the reason line while the console does not know the capture sources; Start is then disabled. */
+  startBlockedBy?: string | null
 }
 
 /**
@@ -50,7 +52,7 @@ export interface ReadyStepProps {
  * The countdown is a centred 3-2-1: each digit rack-focuses in and scales 1.1 → 1 over 600 ms, one
  * second apart (M-PG-NEW). Start is gated on SESSION_START (review 40 M5, rule R4).
  */
-export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, countdown, onStart, onCancelCountdown, canStart, enterDelayMs, startPending = false, startRef }: ReadyStepProps) {
+export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, countdown, onStart, onCancelCountdown, canStart, enterDelayMs, startPending = false, startRef, startBlockedBy = null }: ReadyStepProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const subjectTone = summary.subjectType ? toneChipProps(SUBJECT_TONE[summary.subjectType]) : null
@@ -141,7 +143,8 @@ export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, c
                   variant="primary"
                   size="lg"
                   onPress={onStart}
-                  isDisabled={!canStart || counting}
+                  isDisabled={!canStart || counting || startBlockedBy !== null}
+                  aria-describedby={startBlockedBy ?? undefined}
                   isPending={startPending}
                   className="sn-start"
                   data-testid="sn-start"

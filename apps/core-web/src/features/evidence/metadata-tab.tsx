@@ -13,6 +13,7 @@ import { useEvidenceAssets } from './demo-assets'
 import { JsonView } from './json-view'
 import { logEvidenceError } from './log'
 import { byteSize, formatWibDate, formatWibDateTime, packageDescribesItem, shortHash, type EvidenceRow } from './model'
+import { isDemoItem } from './item-facts'
 import { summariseManifestField } from './manifest-summary'
 
 type DocumentKey = 'manifest' | 'metadata' | 'signature' | 'audit'
@@ -90,6 +91,8 @@ export function MetadataTab({ row, mediaUnavailable = false }: MetadataTabProps)
   // Live, operation 40 unanswered: whether a DEMO package joins the item is unknown (W83 ledger #95).
   const packageUnknown = live && mediaUnavailable
   const pkg = row.pkg
+  // Wave H C2 (G94-14): "No DEMO package" is said of a demo item only, never of a REAL item or a package of this Core.
+  const notDemo = live && !isDemoItem(row.item)
   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(pkg.evidenceSuffix) : null), [pkg])
   const manifest = useMemo<Record<string, unknown> | null>(() => {
     if (!documents) return null
@@ -118,7 +121,9 @@ export function MetadataTab({ row, mediaUnavailable = false }: MetadataTabProps)
             record: 'CORE',
             note: packageUnknown
               ? "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown."
-              : "The Core server's record of this item; no DEMO package joins it.",
+              : notDemo
+                ? "The Core server's record of this item."
+                : "The Core server's record of this item; no DEMO package joins it.",
           }
         : { simulated: true, note: 'SIMULATED record from the in-browser simulator; no DEMO package joins this item.' },
     )
@@ -126,7 +131,7 @@ export function MetadataTab({ row, mediaUnavailable = false }: MetadataTabProps)
       <div className="evi-metadata" data-testid="evidence-metadata" data-package={live ? 'core' : 'simulated'}>
         <EmptyState className="evi-empty evi-empty-inline">
           <FileX className="size-6 text-foreground-2" aria-hidden="true" />
-          <p className="evi-empty-title">{t(packageUnknown ? 'evidence.live.mediaUnavailable' : 'evidence.metadata.noPackage')}</p>
+          <p className="evi-empty-title">{t(packageUnknown ? 'evidence.live.mediaUnavailable' : notDemo ? 'evidence.itemFacts.web.coreRecordLine' : 'evidence.metadata.noPackage')}</p>
         </EmptyState>
         <JsonView text={record} label={recordLabel} />
       </div>

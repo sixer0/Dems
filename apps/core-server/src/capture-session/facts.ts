@@ -16,6 +16,13 @@
  *   syncLevel       per camera file: the durability level the worker stated with its first durable
  *                   fragment (`F_FULLFSYNC` | `FSYNC`; review R63-09). Null: not stated. The
  *                   manifest has NO field for it (ruling D188): it stays here and in the log;
+ *   ended           per camera: THE CAMERA WAS GIVEN UP WHILE THE SESSION WENT ON (fix wave H driver A,
+ *                   gate 64 condition C3 / gate 89 section 7; ruling D199) - the reason the worker
+ *                   gave (`CAMERA_CLOCK_OUT_OF_BOUND`, `CAMERA_STREAM_ENDED`, `CAMERA_NOT_CONNECTED`:
+ *                   the supervisor's `CaptureCameraEnd`), the Core instant, and the last durable
+ *                   fragment of its file. Null / absent: the camera recorded to the end of the
+ *                   session. THE HAND-OFF OF THE PER-CAMERA CAUSE TO THE SEAL: the seal marks that
+ *                   track from it (the marking itself is the pipeline's: request filed, note 120);
  *   firstVideo      per camera file: the worker's `FIRST_VIDEO_SAMPLE` record of the LAST worker of
  *                   the session - `pts` and `timescale` (fields 127 / 128), and what arrived before
  *                   the first written sample (`heldMs`, `skipped`, `skippedSpanMs`: the manifest
@@ -33,12 +40,17 @@
  * files it declares). The file is replaced atomically (sibling file, fsync, rename). It holds
  * device IDs, track IDs and numbers: no path, no address, no credential, no media.
  *
+ * HOW LONG IT IS KEPT (fix wave H driver A, G89-07). Until the session is SEALED: the sealing host
+ * removes it once the manifest is signed and stored (`removeSessionCaptureFacts`). A FAILED or
+ * pending seal keeps it - its next run reads it. A reset removes the file of every session it
+ * clears (`db/reset/session-artefacts.ts`).
+ *
  * WHOSE FILE IT IS. A reset starts the session counter again, so a session ID can be used twice.
  * The file says `startRecordedAt`: the instant of the session's four `session_capture_sources`
  * rows. A reader holds it against those rows and ignores a file of another session of that ID.
  */
 import { constants as FS } from 'node:fs';
-import { open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
+import { lstat, open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CaptureSyncLevel } from '@dems/capture-protocol';
 import { cameraFileName, cameraFilePath, type PackageVideoTrackId } from '@dems/shared/evidence-package';
@@ -63,6 +75,11 @@ export interface SessionCameraFacts {
   readonly measuredClockOffsetMs: number | null;
   /** The sync level the worker stated with the first durable fragment of this file; null: not stated. */
   readonly syncLevel: CaptureSyncLevel | null;
+  /**
+   * The camera was given up while the session went on (C3): why, when (Core clock, epoch ms) and
+   * where its file ends (the last durable fragment; null: none was durable). Absent or null: it was not.
+   */
+  readonly ended?: SessionCameraEnd | null;
   /** The worker's `FIRST_VIDEO_SAMPLE` of this camera file; null: no such record arrived. */
   readonly firstVideo: {
     readonly pts: number;
@@ -71,6 +88,30 @@ export interface SessionCameraFacts {
     readonly skipped: Readonly<Record<string, number>>;
     readonly skippedSpanMs: number;
   } | null;
+}
+
+const whole = (value: unknown, min: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= min;
+
+/** A reason code as the capture protocol writes one: capitals, digits, underscores. Never a sentence, never a value of a device. */
+const END_REASON = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+export interface SessionCameraEnd {
+  readonly reason: string;
+  readonly at: number;
+  readonly lastDurableFragmentIndex: number | null;
+  readonly lastDurableMediaEndMs: number | null;
+}
+
+/**
+ * The facts with one camera marked as given up (C3). THE FIRST END OF A CAMERA STANDS: a later
+ * report for the same camera changes nothing (the file ended where it first ended). The same
+ * object when the camera is not of this session, is marked already, or the end is not of the form.
+ */
+export function withCameraEnded(facts: SessionCaptureFacts, deviceId: string, end: SessionCameraEnd): SessionCaptureFacts {
+  const valid = END_REASON.test(end.reason) && whole(end.at, 0) && (end.lastDurableFragmentIndex === null || whole(end.lastDurableFragmentIndex, 1)) && (end.lastDurableMediaEndMs === null || whole(end.lastDurableMediaEndMs, 0));
+  if (!valid || !facts.cameras.some((camera) => camera.deviceId === deviceId && (camera.ended ?? null) === null)) return facts;
+  const ended: SessionCameraEnd = { reason: end.reason, at: end.at, lastDurableFragmentIndex: end.lastDurableFragmentIndex, lastDurableMediaEndMs: end.lastDurableMediaEndMs };
+  return { ...facts, cameras: facts.cameras.map((camera) => (camera.deviceId === deviceId && (camera.ended ?? null) === null ? { ...camera, ended } : camera)) };
 }
 
 export interface SessionCaptureFacts {
@@ -100,8 +141,6 @@ export async function writeSessionCaptureFacts(path: string, facts: SessionCaptu
   await rename(staging, path);
 }
 
-const whole = (value: unknown, min: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= min;
-
 /** The facts a text holds, or null when it is not a facts file of this form. Nothing is repaired. */
 export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | null {
   let json: unknown;
@@ -125,6 +164,17 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
     if (syncLevel !== null && !SYNC_LEVELS.includes(syncLevel as CaptureSyncLevel)) return null;
     if (typeof trackId !== 'string' || !TRACK_IDS.includes(trackId) || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)) return null;
     if (clockOffsetMs !== null && !(typeof clockOffsetMs === 'number' && Number.isSafeInteger(clockOffsetMs))) return null;
+    // The member of fix wave H (C3) is absent in a file written before it: read as "not given up". Present, it must be of its form.
+    let ended: SessionCameraEnd | null = null;
+    const rawEnd = camera['ended'] ?? null;
+    if (rawEnd !== null) {
+      if (typeof rawEnd !== 'object') return null;
+      const end = rawEnd as Record<string, unknown>;
+      const index = end['lastDurableFragmentIndex'] ?? null;
+      const mediaEnd = end['lastDurableMediaEndMs'] ?? null;
+      if (typeof end['reason'] !== 'string' || !END_REASON.test(end['reason']) || !whole(end['at'], 0) || (index !== null && !whole(index, 1)) || (mediaEnd !== null && !whole(mediaEnd, 0))) return null;
+      ended = { reason: end['reason'], at: end['at'], lastDurableFragmentIndex: index as number | null, lastDurableMediaEndMs: mediaEnd as number | null };
+    }
     let first: SessionCameraFacts['firstVideo'] = null;
     if (firstVideo !== null) {
       if (typeof firstVideo !== 'object' || firstVideo === undefined) return null;
@@ -138,7 +188,7 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
       }
       first = { pts: video['pts'], timescale: video['timescale'], heldMs: video['heldMs'], skipped: counts, skippedSpanMs: video['skippedSpanMs'] };
     }
-    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, measuredClockOffsetMs: measured as number | null, syncLevel: syncLevel as CaptureSyncLevel | null, firstVideo: first });
+    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, measuredClockOffsetMs: measured as number | null, syncLevel: syncLevel as CaptureSyncLevel | null, ...(ended === null ? {} : { ended }), firstVideo: first });
   }
   return { version: SESSION_CAPTURE_FACTS_VERSION, sessionId: file['sessionId'], startRecordedAt: file['startRecordedAt'], cameras };
 }
@@ -160,6 +210,29 @@ export async function readSessionCaptureFacts(mediaStoreDir: string, sessionId: 
   const facts = text.length > FACTS_FILE_MAX_BYTES ? null : parseSessionCaptureFacts(text);
   if (facts === null || facts.sessionId !== sessionId) throw new Error('the capture facts of the session are not of the form this Core writes');
   return facts;
+}
+
+/**
+ * REMOVES THE FACTS FILE OF A SESSION (fix wave H driver A; gate 89 finding G89-07 = R88-27 live).
+ * The file is needed until the manifest of the session is signed and stored: from then on the
+ * inputs of the manifest are frozen in the seal's own checkpoint (R88-03) and nothing reads the
+ * file again - left behind, it would lie beside the facts of the NEXT session of that ID after a
+ * reset. Called by the sealing host on a SEALED outcome, never for a FAILED or a pending seal
+ * (their next run reads it), and by nothing while a capture runs. True when a file was removed.
+ * A name that is not a regular file is not removed: it throws, as a read of it would.
+ */
+export async function removeSessionCaptureFacts(mediaStoreDir: string, sessionId: string): Promise<boolean> {
+  const path = sessionCaptureFactsPath(mediaStoreDir, sessionId);
+  let facts;
+  try {
+    facts = await lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw new Error('the capture facts of the session could not be examined', { cause: error });
+  }
+  if (!facts.isFile()) throw new Error('the capture facts name of the session is no regular file: it is not removed');
+  await rm(path);
+  return true;
 }
 
 /**

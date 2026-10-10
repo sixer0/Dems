@@ -20,7 +20,7 @@
  * `helper-program.ts`.
  */
 import { spawn } from 'node:child_process';
-import { lstatSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 
 /** How much of each output stream is kept (HL-7). What comes after is counted, not kept. */
@@ -208,5 +208,48 @@ export const inspectProgram: ProgramInspector = (path) => {
     };
   } catch {
     return nothing;
+  }
+};
+
+/**
+ * THE FIRST BYTES OF A FILE (wave H closing pass Z1; driver E decision 5, ruling D201 (5)): what the
+ * fence needs to hold the speech fixture to its format before a helper is given the path. Read
+ * here because this file is the one file-system door of the local helpers (static rule G-R2).
+ *
+ * At most `bytes` bytes (bounded by `FILE_HEAD_MAX_BYTES`) from offset 0 of a REGULAR file at an
+ * absolute path; fewer when the file is shorter. `null` when the path is not absolute, is no regular
+ * file, or cannot be opened or read - never a throw, and nothing of the content is logged. The
+ * caller applies the path rule (`helperProgramRefusal`) FIRST: this function reads whatever it is
+ * pointed at.
+ */
+export type FileHeadReader = (path: string, bytes: number) => Uint8Array | null;
+
+export const FILE_HEAD_MAX_BYTES = 65_536;
+
+export const readFileHead: FileHeadReader = (path, bytes) => {
+  if (!isAbsolute(path) || !Number.isSafeInteger(bytes) || bytes < 0) return null;
+  const wanted = Math.min(bytes, FILE_HEAD_MAX_BYTES);
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, 'r');
+    if (!fstatSync(descriptor).isFile()) return null;
+    const buffer = new Uint8Array(wanted);
+    let filled = 0;
+    while (filled < wanted) {
+      const read = readSync(descriptor, buffer, filled, wanted - filled, filled);
+      if (read === 0) break;
+      filled += read;
+    }
+    return buffer.subarray(0, filled);
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== null) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Nothing to do for a descriptor that would not close: the read already has its answer.
+      }
+    }
   }
 };

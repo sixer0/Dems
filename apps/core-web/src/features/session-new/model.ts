@@ -12,7 +12,7 @@
  */
 import { SessionState } from '@dems/shared/domain'
 import { SESSION_CREATE_MESSAGES } from '@dems/shared/api'
-import { SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
+import { isPrecheckNote, SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
 import { PRECHECK_UNREACHABLE_VALUE } from '@/lib/capture-notices'
 
@@ -76,7 +76,9 @@ const RESOLVED = new Set<PrecheckItem['status']>(['PASS', 'WARN', 'BLOCK'])
 export function gateView(precheck: Pick<PrecheckSlice, 'items' | 'outcome' | 'warningsAcknowledged'> | null, state: SessionState | null, acknowledged: boolean): GateView {
   const items = precheck?.items ?? []
   const done = items.filter((item) => RESOLVED.has(item.status)).length
-  const warnings = items.filter((item) => item.status === 'WARN').length
+  // Wave H closing pass Z2 (Z1's line of 10:30:00Z): a NOTE (the host-clock TIME item of a Core in its own
+  // capture) is at WARN level and is no warning to count or acknowledge.
+  const warnings = items.filter((item) => item.status === 'WARN' && !isPrecheckNote(item)).length
   const blocks = items.filter((item) => item.status === 'BLOCK').length
   const armed = state === SessionState.ARMED
   const outcome = precheck?.outcome ?? null
@@ -123,8 +125,12 @@ export const REASON_KEY_BY_CODE: Record<NonNullable<PrecheckItem['reasonCode']>,
  * The i18n reason for a resolved WARN or BLOCK check: from its `reasonCode` (step 54), else (an
  * item from before step 54) from its id, status and value.
  */
-export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'> & Partial<Pick<PrecheckItem, 'reasonCode'>>): ReasonKey | null {
+export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'> & Partial<Pick<PrecheckItem, 'reasonCode' | 'params'>>): ReasonKey | null {
   if (item.status !== 'WARN' && item.status !== 'BLOCK') return null
+  // Wave H closing pass Z2: a NOTE has no reason of this table - without this branch the host-clock TIME
+  // item (no reason code) fell through to the id switch below and read as the RTC FALLBACK. The step
+  // words it from `params.rule` (`precheckNoteKey`).
+  if (isPrecheckNote({ status: item.status, params: item.params ?? {} })) return null
   // Task 3 R-10 (blueprint row 137; decision D114): a source that did not answer the pre-check is
   // not a lens fault and not "no signal". It has no reason of this table: the step draws it from
   // `params.rule` (`unreachablePrecheckOf`, `lib/capture-notices.ts`).
@@ -150,6 +156,14 @@ export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'>
     default:
       return null
   }
+}
+
+/**
+ * The sentence of a pre-check NOTE (`isPrecheckNote`), or null for an item that is none. Today one:
+ * the TIME item of a Core in its own capture - the host system clock.
+ */
+export function precheckNoteKey(item: Pick<PrecheckItem, 'status' | 'params'>): 'sessionNew.precheckNote.timeHostClock' | null {
+  return isPrecheckNote(item) ? 'sessionNew.precheckNote.timeHostClock' : null
 }
 
 /** The device named inside a lens or MIC reason. */

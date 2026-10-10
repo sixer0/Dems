@@ -326,6 +326,22 @@ export interface SealSessionFacts {
    * running Core never sets it.
    */
   readonly demoPackage?: boolean;
+  /**
+   * C3 (fix wave H driver A; gate 64 condition C3, gate 89 section 7; decisions D199, D202): the
+   * cameras that were GIVEN UP while the session went on, by track - the capture side's statement
+   * (`capture-session/facts.ts`, `ended`), with the supervisor's closed reason. Such a track is
+   * sealed as an INTERRUPTED track: every fragment record of its file says `interrupted: true`
+   * (field 73) and the signed `CLOSE_TRACKS` record names the track and the cause (`endedTracks`).
+   * NO NEW MANIFEST FIELD. The session is not made an interrupted one by it (`timeline.interrupted`
+   * says how the SESSION ended): the other camera recorded to the stop. Absent / empty: none.
+   */
+  readonly cameraEnds?: readonly SealCameraEnd[];
+}
+
+export interface SealCameraEnd {
+  readonly trackId: string;
+  /** A code (`CAMERA_CLOCK_OUT_OF_BOUND`, `CAMERA_STREAM_ENDED`, `CAMERA_NOT_CONNECTED`): never a sentence. */
+  readonly reason: string;
 }
 
 export interface SealSessionReader {

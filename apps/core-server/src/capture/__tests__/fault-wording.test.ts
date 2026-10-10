@@ -5,13 +5,21 @@ import { CAPTURE_ADVISORY_REASONS, CAPTURE_FAULT_SENTENCES, CAPTURE_REASON_SEVER
 import { describe, expect, it } from 'vitest';
 import { FAILED_START_REASON_UNKNOWN } from '../../engine/capture-session';
 import { NO_CAMERA_CONNECTED, SESSION_LEFT_RECORDING, STOP_NOT_CLEAN } from '../../capture-session';
+import { CaptureDownReason } from '../index';
 
 const PROTOCOL_REASONS: readonly string[] = [...Object.values(CaptureWarningReason), ...FINAL_CRASH_CODES];
 /** The codes the Core itself ends a capture with and shows as a reason. */
 const CORE_REASONS: readonly string[] = [FAILED_START_REASON_UNKNOWN, NO_CAMERA_CONNECTED, SESSION_LEFT_RECORDING, STOP_NOT_CLEAN];
 
+/**
+ * THE LINK (wave H driver F; gate 64 C4, F-Y decision 6): every reason the SUPERVISOR can end a worker for - the closed
+ * enumeration `CaptureDownReason`, which holds every member of `SupervisorRefusal`. It is what the supervisor's own
+ * `CAPTURE_FAULT` carries as its reason, so each needs its own sentence: a refusal added to the supervisor without one fails here.
+ */
+const SUPERVISOR_REASONS: readonly string[] = Object.values(CaptureDownReason);
+
 describe('the wording of capture faults covers the protocol', () => {
-  it.each([...PROTOCOL_REASONS, ...CORE_REASONS])('%s has its own sentence and a severity', (reason) => {
+  it.each([...new Set([...PROTOCOL_REASONS, ...CORE_REASONS, ...SUPERVISOR_REASONS])])('%s has its own sentence and a severity', (reason) => {
     expect(isCaptureFaultReason(reason), `no sentence for ${reason} in packages/shared/src/sim/capture-fault-wording.ts`).toBe(true);
     const sentence = captureFaultSentence(reason, 'Camera 2 (CAM-02)');
     expect(sentence).not.toContain(`(${reason})`);

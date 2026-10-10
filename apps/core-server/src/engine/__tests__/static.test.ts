@@ -47,8 +47,40 @@ describe('the scan itself', () => {
     // +1 by fix pass F-M8: `export-doors.ts` (the completion of a background export, the record of a download).
     // +1 by fix pass F-M7b: `unsealable-doors.ts` (the terminal outcome of a session that cannot be sealed).
     // +1 by fix pass F-M7c: `sealing-notice-doors.ts` (kept plaintext of a sealed session, a blocked seal, an on-demand retry).
-    for (const door of ['export-doors.ts', 'unsealable-doors.ts', 'sealing-notice-doors.ts']) expect(paths, door).toContain(`src/engine/${door}`);
-    expect(paths).toHaveLength(22);
+    // +1 by wave H driver C1: `sealed-facts-doors.ts` (what the sealed manifest of an item says and no column holds).
+    // +1 by wave H closing pass Z1: `capture-checkpoint-doors.ts` (what the Core holds of a running recording of its own capture).
+    for (const door of ['export-doors.ts', 'unsealable-doors.ts', 'sealing-notice-doors.ts', 'sealed-facts-doors.ts', 'capture-checkpoint-doors.ts']) expect(paths, door).toContain(`src/engine/${door}`);
+    // THE TRUE COUNT, EVERY NAME LISTED (closing pass Z1, item 10: the drivers of wave H disagreed on a bare
+    // number - 22 or 23). A file that joins or leaves the folder moves this list, by name.
+    expect([...paths].sort()).toEqual(
+      [
+        'actor-scope.ts',
+        'api-headers.ts',
+        'capture-checkpoint-doors.ts',
+        'capture-session.ts',
+        'delta.ts',
+        'errors.ts',
+        'export-doors.ts',
+        'fact-doors.ts',
+        'headless-sim.ts',
+        'host.ts',
+        'hosted-actions.ts',
+        'index.ts',
+        'internal-actions.ts',
+        'limits.ts',
+        'rehydrate.ts',
+        'ring.ts',
+        'scheduler.ts',
+        'seal-doors.ts',
+        'sealed-facts-doors.ts',
+        'sealing-notice-doors.ts',
+        'timer.ts',
+        'types.ts',
+        'unsealable-doors.ts',
+        'write-plan.ts',
+      ].map((name) => `src/engine/${name}`),
+    );
+    expect(paths).toHaveLength(24);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 
@@ -96,10 +128,10 @@ describe('the actor scope (SR-79)', () => {
 
   it('the scope is set, the action is called, and the slice is cleared in a finally', () => {
     const scope = text('src/engine/actor-scope.ts').replace(/\s+/g, ' ');
-    expect(scope).toMatch(/store\.setState\(\{ auth: actorAuth\(operatorId, at\) \}\); try \{ return action\(\); \} finally \{ store\.setState\(\{ auth: signedOutAuth\(\) \}\); \}/);
+    expect(scope).toMatch(/store\.setState\(\{ auth: actorAuth\(operatorId, at, deviceId\) \}\); try \{ return action\(\); \} finally \{ store\.setState\(\{ auth: signedOutAuth\(\) \}\); \}/);
     // The host runs every hosted action through it, and calls an action nowhere else under an identity.
     const host = text('src/engine/host.ts');
-    expect(host).toMatch(/withActorScope\(sim\.store, principal\.operatorId, stampOf\(clock\), \(\) => run\(\.\.\.args\)\)/);
+    expect(host).toMatch(/withActorScope\(sim\.store, principal\.operatorId, stampOf\(clock\), \(\) => run\(\.\.\.args\), principal\.deviceId\)/);
     expect([...host.matchAll(/withActorScope\(/g)]).toHaveLength(1);
   });
 });

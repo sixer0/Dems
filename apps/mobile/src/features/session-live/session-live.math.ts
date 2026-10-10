@@ -124,13 +124,18 @@ export interface StripInput {
   storage: StorageStateName;
   timeSource: TimeSourceName;
   timeLocked: boolean;
+  /**
+   * Wave H closing pass Z2 (ruling D203 (1); `isHostClockTime`): the Core's `time` slice says the host
+   * system clock. It is that Core's ONLY time, not a fallback: no warning tone, never "locked".
+   */
+  hostClock?: boolean;
 }
 
 /** One chip of the strip; `value` is a key into the shared enum labels (the screen translates it). */
 export type StripChip =
   | { kind: 'video'; id: string; index: 1 | 2; value: TrackRecState | 'OFFLINE' | 'CONNECTING'; tone: StatusTone }
   | { kind: 'storage'; id: 'storage'; value: StorageStateName; tone: StatusTone }
-  | { kind: 'time'; id: 'time'; value: TimeSourceName; locked: boolean; tone: StatusTone };
+  | { kind: 'time'; id: 'time'; value: TimeSourceName; locked: boolean; host: boolean; tone: StatusTone };
 
 const TRACK_TONE: Record<TrackRecState, StatusTone> = { REC: 'success', DEGRADED: 'warning', LOST: 'danger' };
 const STORAGE_TONE: Record<StorageStateName, StatusTone> = { READY: 'success', LOW: 'warning', FULL: 'danger' };
@@ -157,12 +162,14 @@ export function statusStrip(input: StripInput): StripChip[] {
     };
   });
   chips.push({ kind: 'storage', id: 'storage', value: input.storage, tone: STORAGE_TONE[input.storage] });
+  const host = input.hostClock === true;
   chips.push({
     kind: 'time',
     id: 'time',
     value: input.timeSource,
-    locked: input.timeLocked,
-    tone: input.timeLocked ? TIME_TONE[input.timeSource] : 'warning',
+    locked: host ? false : input.timeLocked,
+    host,
+    tone: host ? 'info' : input.timeLocked ? TIME_TONE[input.timeSource] : 'warning',
   });
   return chips;
 }
@@ -223,6 +230,28 @@ export function timelineItems(events: readonly TimelineEventInput[], limit = 50)
       tone: KIND_TONE[event.kind] ?? 'default',
     };
   });
+}
+
+/**
+ * THE TIMELINE OF A RECORDING OF THE CORE'S OWN CAPTURE (fix wave H driver A; finding G75-01, gate
+ * 81 G81-04: the tablet showed "Evidence Auto-Save - Autosave segment 1" and "System Check -
+ * Integrity check passed" beside a real recording; rulings D197, D199).
+ *
+ * Three kinds of rows are written only by the simulator's generator (`@dems/shared/sim`
+ * `generator.ts`): AUTOSAVE, HEALTH, and the CHECK "Integrity check passed". Beside a real recording
+ * each would be a claim nobody measured. The generator no longer runs there; this is the second
+ * guard on the surface itself, for a session whose stored timeline still holds such a row (written
+ * before the fix, or by a Core that does not have it).
+ *
+ * A CHECK the seal side wrote (`params.source: 'TAIL_VALIDATION'`, the recovery of an interrupted
+ * recording) is a fact of the Core and stays. `ownCapture` is the rule of the state
+ * (`captureFactsOf`): the session carries the member `captureDurable`. A session of the
+ * simulator's own capture keeps every row.
+ */
+export function timelineOfCaptureFacts<Event extends { kind: string; params?: Readonly<Record<string, unknown>> | null }>(events: readonly Event[], ownCapture: boolean): readonly Event[] {
+  if (!ownCapture) return events;
+  const kept = events.filter((event) => event.kind !== 'AUTOSAVE' && event.kind !== 'HEALTH' && (event.kind !== 'CHECK' || event.params?.source === 'TAIL_VALIDATION'));
+  return kept.length === events.length ? events : kept;
 }
 
 /** Unseen timeline events for the History badge (phone): events added since the sheet was last opened. */

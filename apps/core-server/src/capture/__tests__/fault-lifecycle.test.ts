@@ -5,7 +5,7 @@
 import { CAPTURE_PROTOCOL_VERSION, CaptureMicRole, CaptureWarningCode, CaptureWarningReason, type AudioSourceIntervalRecord } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
-import { CAPTURE_WARNING_CLEAR_HOLD_MS, CapturePhase, CaptureNoticeCode, ForwarderReportCode, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureNotice, type CaptureReport } from '../index';
+import { CAPTURE_WARNING_CLEAR_HOLD_MS, CAPTURE_WORKER_VERSION, CapturePhase, CaptureNoticeCode, ForwarderReportCode, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureNotice, type CaptureReport } from '../index';
 
 const FIRST = 'S-TEST-0001';
 const SECOND = 'S-TEST-0002';
@@ -306,7 +306,8 @@ describe('a proof build of the worker is never recorded with (row 61, pair-58 F-
     const { fake, supervisor } = await rig({}, { hello: false });
     const starting = supervisor.start(FIRST, capturePlan(FIRST));
     await flush();
-    fake.last().say({ type: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: 'capture-worker/0.4.0' });
+    // Pin by delta (wave H driver F, gate 64 C7): the release word of THIS tree - another release word is refused as a mismatch.
+    fake.last().say({ type: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION });
     await expect(starting).resolves.toBeUndefined();
     expect(supervisor.status().phase).toBe(CapturePhase.RECORDING);
   });

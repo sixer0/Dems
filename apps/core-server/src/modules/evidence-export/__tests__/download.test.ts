@@ -6,7 +6,7 @@
 // request the principal a test names; the engine is a stub that keeps what the export door was
 // told; the export jobs are a double; the archive is a real file in a throw-away package folder;
 // the MAC is HMAC-SHA-256 under a test key (the product key door is exercised by the database test).
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -114,7 +114,7 @@ async function bed(): Promise<Bed> {
   app.seams.replace('pipeline', {
     run: async (label: string, work: (unit: unknown) => unknown) => work({ label, audit: { append: async (entry: Record<string, unknown>) => void appended.push({ ...entry, unit: label }) } }),
   } as unknown as FastifyInstance['pipeline']);
-  evidenceExport(app).provide({ inProgress: () => false, begin: () => null, job: async (jobId) => (jobId === 'EXPJ-000032' ? self.job : null), idle: async () => undefined });
+  evidenceExport(app).provide({ inProgress: () => false, begin: () => null, job: async (jobId) => (jobId === 'EXPJ-000032' ? self.job : null), idle: async () => undefined, stop: async () => undefined });
   replaceExportServicePartsForTest(app, {
     mac: () => (self.macKey === null ? null : (message) => createHmac('sha256', self.macKey as string).update(message).digest()),
     packageDirOf: () => packageDir,
@@ -181,7 +181,8 @@ describe('GET /exports/:token', () => {
     expect(response.headers['content-length']).toBe(String(ARCHIVE.byteLength));
     expect(response.headers['content-disposition']).toBe('attachment; filename="DEMS-export-EXP-000032.zip"');
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(test.notes).toEqual([{ evidenceId: ID, jobId: 'EXPJ-000032', operatorId: 'OPR-002', deviceId: null, bytes: ARCHIVE.byteLength }]);
+    // Wave H C1 (ruling D200): the record of a download states the hash of the file that is handed out - the archive cannot contain it.
+    expect(test.notes).toEqual([{ evidenceId: ID, jobId: 'EXPJ-000032', operatorId: 'OPR-002', deviceId: null, bytes: ARCHIVE.byteLength, archiveSha256: createHash('sha256').update(ARCHIVE).digest('hex') }]);
     // Range is not answered: the whole archive, 200.
     const ranged = await test.get(path, { range: 'bytes=0-9' });
     expect([ranged.statusCode, ranged.rawPayload.byteLength]).toEqual([200, ARCHIVE.byteLength]);

@@ -19,7 +19,7 @@
  * of a revision are operation 85's, and a volume figure is a measurement, not an act of an operator.
  */
 import { storageStateFor } from './selectors';
-import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, SimState, StorageVolumeInput, TranscriptRevisionNote } from './types';
+import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote } from './types';
 
 const wholeBytes = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 
@@ -110,4 +110,64 @@ export function applyCaptureSourceFactsTransition(state: SimState, facts: readon
     };
   });
   return changed ? { ...state, captureDevices: { ...state.captureDevices, devices } } : state;
+}
+
+// ── The time a Core in its own capture has (fix wave H, closing pass Z1; ruling D203 (1)) ──────────
+
+/**
+ * THE TIME OF A CORE IN ITS OWN CAPTURE IS THE HOST SYSTEM CLOCK. The simulator's `time` slice is a
+ * demonstration of a GNSS-disciplined time service (locked, 11 satellites, an NTP server, an offset
+ * history). A Core that records with its own capture has none of that: no GNSS receiver, no
+ * network-time module, no measurement of an offset. Its only time is the clock of the host. The
+ * signed manifest already says so (`RTC` / `HOST_SYSTEM_CLOCK`, `sealing-host/session-reader.ts`);
+ * this is the same statement for the slice, so `RECORDING_STARTED.timeSource`, the session's
+ * `startTimeSource` / `stopTimeSource`, the evidence item and every client that reads the slice
+ * follow it.
+ *
+ * THE VALUES. `source: RTC` is the one member of the contract's closed enumeration (GNSS / NTP /
+ * RTC) that states no external reference; `hostClock: true` says WHICH clock it is, so a reader
+ * tells the host clock from a GNSS fallback of the simulation. Nothing is locked, no satellite is
+ * seen, no NTP server is named or reachable, no offset or drift is measured (0, never a figure of
+ * the dataset), nothing was ever synchronised (`lastSyncAt: 0`) and the offset history is empty.
+ */
+export const HOST_CLOCK_TIME: TimeSlice = Object.freeze({
+  hostClock: true,
+  source: 'RTC',
+  locked: false,
+  stratum: 0,
+  offsetMs: 0,
+  lastSyncAt: 0,
+  gnss: { locked: false, satellites: 0 },
+  ntp: { server: '', reachable: false, stratum: 0 },
+  rtc: { driftPpm: 0 },
+  history: [],
+}) as TimeSlice;
+
+/** True for the `time` slice of a Core in its own capture: the host system clock, no time service. */
+export function isHostClockTime(time: Pick<TimeSlice, 'hostClock'> | null | undefined): boolean {
+  return time?.hostClock === true;
+}
+
+/** The slice says the host clock. The same state when it already does (no write, no row, no event). */
+export function hostClockTimeTransition(state: SimState): SimState {
+  const time = state.time;
+  if (isHostClockTime(time) && time.source === 'RTC' && !time.locked && !time.gnss.locked && time.history.length === 0) return state;
+  return { ...state, time: { ...HOST_CLOCK_TIME, gnss: { ...HOST_CLOCK_TIME.gnss }, ntp: { ...HOST_CLOCK_TIME.ntp }, rtc: { ...HOST_CLOCK_TIME.rtc }, history: [] } };
+}
+
+/** The sentence of the pre-check TIME item of a Core in its own capture (English fallback; a client words it from the rule). */
+export const HOST_CLOCK_PRECHECK_REASON = 'Time source: host system clock (no GNSS)';
+/** `params.rule` of that item: it has no reason code of the closed table (as an unreachable source has none). */
+export const HOST_CLOCK_PRECHECK_RULE = 'TIME_HOST_CLOCK';
+/** `value` of that item. */
+export const HOST_CLOCK_PRECHECK_VALUE = 'HOST_SYSTEM_CLOCK';
+
+/**
+ * A pre-check NOTE: an item at WARN level that states a fact of the installation and asks nothing
+ * of the operator. It does not block the start, it is not a warning to acknowledge and it is not
+ * counted with the warnings (`advancePrecheck`: the outcome of a run whose only WARN items are notes
+ * is PASS). Today there is one: the host-clock time item.
+ */
+export function isPrecheckNote(item: Pick<PrecheckItem, 'status' | 'params'>): boolean {
+  return item.status === 'WARN' && item.params?.['rule'] === HOST_CLOCK_PRECHECK_RULE;
 }

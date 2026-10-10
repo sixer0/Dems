@@ -84,8 +84,8 @@ import { CancelDialog } from './cancel-dialog'
 import { DevicesStep } from './devices-step'
 import { FlowErrorBoundary } from './error-boundary'
 import { InfoStep } from './info-step'
-import { useLocalSourceGate } from '@/features/devices/local-source-gate'
-import { LocalSourceNotice, LocalSourceNotStarted } from '@/features/devices/local-source-notice'
+import { LOCAL_SOURCE_CHECKING_ID, useLocalSourceGate } from '@/features/devices/local-source-gate'
+import { LocalSourceChecking, LocalSourceNotice, LocalSourceNotStarted } from '@/features/devices/local-source-notice'
 import { logSessionNew, newFlowCorrelationId } from './log'
 import {
   COUNTDOWN_FROM,
@@ -189,6 +189,18 @@ export function SessionNewPage() {
   /** R69-01 (D178): a pre-check on a selector that names this Mac's camera / microphone is sent only after the operator confirmed the notice. */
   const localGate = useLocalSourceGate()
   const { resumeAllowed: localResumeAllowed, started: localStarted, failed: localFailed, resumeKey: localResumeKey } = localGate
+  // Wave H closing pass Z2 (note 124 section 4 item 3; D206): a Start that passed the rule runs its 3-2-1,
+  // and the start is SENT ONLY IF THE CAPTURE SOURCES ARE STILL KNOWN. Knowledge lost at any moment of the
+  // countdown (the link down, the device list being read again) ends the countdown: what the rule - and a
+  // confirmed notice - stood on may no longer be true. Nothing is sent; the page shows "Checking the
+  // capture sources…" (`LocalSourceChecking`) and the operator presses Start again, which asks the rule again.
+  const sourcesChecking = localGate.checking
+  if (countdown !== null && sourcesChecking) setCountdown(null)
+  /** Read by the countdown's last tick: the knowledge of THAT moment, not of the render that armed the timer. */
+  const sourcesCheckingNow = useRef(sourcesChecking)
+  useEffect(() => {
+    sourcesCheckingNow.current = sourcesChecking
+  }, [sourcesChecking])
 
   // LB-1: one in-flight flag and one late spinner per control that sends a command.
   const { run: runScan, pending: scanPending, ref: scanRef } = usePendingControl()
@@ -398,11 +410,16 @@ export function SessionNewPage() {
       if (countdown > 1) setCountdown(countdown - 1)
       else {
         setCountdown(null)
+        if (sourcesCheckingNow.current) {
+          // Defence in depth: the render above already ends a countdown whose knowledge was lost.
+          logSessionNew('warn', 'startRecording', 'CAPTURE_SOURCES_NOT_KNOWN', { sessionId: sim.store.getState().session?.id ?? null, correlationId: correlation.current })
+          return
+        }
         startNow()
       }
     }, COUNTDOWN_STEP_MS)
     return () => clearTimeout(timer)
-  }, [countdown, startNow])
+  }, [countdown, startNow, sim])
 
   // ── Cancel ──────────────────────────────────────────────────────────────────────────────
   const requestCancel = () => {
@@ -464,7 +481,8 @@ export function SessionNewPage() {
     [sessionId, values.caseNumber, values.subjectName, values.subjectType, values.investigatorId, values.room, operators],
   )
 
-  const nextEnabled = step === 1 ? isValid && !creating : step === 2 ? gate.canProceed : false
+  // G70-08 (wave H): step 1's Next creates the session and sends its pre-check, so it waits until the console knows the capture sources.
+  const nextEnabled = step === 1 ? isValid && !creating && !localGate.checking : step === 2 ? gate.canProceed : false
   const counting = countdown !== null
 
   const panels = [
@@ -486,6 +504,7 @@ export function SessionNewPage() {
         acknowledged={acknowledged}
         onAcknowledgedChange={(value) => setAck({ runAt: precheck?.startedAt ?? null, value })}
         onRetry={() => localGate.guard(retryChecks)}
+        retryBlockedBy={localGate.checking ? LOCAL_SOURCE_CHECKING_ID : null}
         live={live}
         retryPending={retryPending}
         retryRef={retryRef}
@@ -501,6 +520,7 @@ export function SessionNewPage() {
         onStart={() => localGate.guard(start, 'START')}
         onCancelCountdown={() => setCountdown(null)}
         canStart={canStart}
+        startBlockedBy={localGate.checking ? LOCAL_SOURCE_CHECKING_ID : null}
         enterDelayMs={0}
         startPending={startPending}
         startRef={startRef}
@@ -541,6 +561,7 @@ export function SessionNewPage() {
           <Stepper steps={steps} orientation="horizontal" variant="wizard" ariaLabel={t('sessionNew.steps.label')} className="sn-stepper" />
         </div>
 
+        <LocalSourceChecking gate={localGate} />
         <LocalSourceNotStarted gate={localGate} sessionId={step === 2 && sessionState === SessionState.CREATE ? sessionId : null} />
         <TransitionPanel activeIndex={step - 1} custom={view.direction} className="sn-panel">
           {panels}
@@ -565,6 +586,7 @@ export function SessionNewPage() {
                   variant="primary"
                   onPress={step === 1 ? () => void submitInfo() : proceedFromDevices}
                   isDisabled={!nextEnabled}
+                  aria-describedby={step === 1 && localGate.checking ? LOCAL_SOURCE_CHECKING_ID : undefined}
                   isPending={creating || ackPending}
                   className="sn-next"
                   data-testid="sn-next"

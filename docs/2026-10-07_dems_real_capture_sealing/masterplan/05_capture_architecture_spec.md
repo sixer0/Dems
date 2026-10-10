@@ -33,6 +33,22 @@ last_updated: 2026-10-09 14:35 (row-128 spec-gate fix pass PE-128-46..66 (D89, D
 
 # Capture Architecture Spec (blueprint row 31, M0)
 
+## Errata index (fix passes of 2026-10-10)
+
+> Added on 2026-10-10 by blueprint row 96 (register DOC-02). An index only: no text of this spec was
+> changed, and each erratum stays where it stands. It lists the errata paragraphs the review-fix
+> passes of 2026-10-10 added to THIS file (commit `f293221`). Errata of earlier passes (`PE-12x-…`,
+> `PE-R8-…` and others) are marked inline as before and are not repeated here. Decision numbers
+> refer to `decisions/decisions.md`.
+
+| Erratum | Where | What it changes, in one line | Decision |
+|---|---|---|---|
+| PE-R63-13 | §C.4 | A first keyframe that arrives after T0 without a timestamp is not recorded, nor is anything up to the next keyframe; `FIRST_VIDEO_SAMPLE.skipped` and `skippedSpanMs` report it, and the span now counts the untimestamped lead | D126, D130, D179 |
+| CAP-M7-01 | after §D.4 (it corrects §D.1 to §D.3 and §H) | §D.1 to §D.3 describe the SEALED camera file: the worker writes the recording in plaintext, the Core encrypts at seal time, the session key is made at seal time, the IV is random, and the media store root and its `.quarantine` must be owner-only | D147, D148, D178 |
+| PE-R63-14 | §I P25 edits list | The record of the frozen-file waiver brought up to the code: 30 edits, all landed; the single source of the waived lines is the pin test | D179 |
+
+Read with CAP-M7-01: its last bullet names `<data directory>/transcriber` as the place of a session's audio tap. Since fix pass F-M7c the tap lies under `<media store root>/.transcriber/sessions/<sessionId>/`, and the session keys are kept per media store root; both are stated in `06_evidence_package_spec.md` §H.7, erratum PE-M7-04 (D180, D189).
+
 This is the design of the capture layer. It is a spec, not an implementation: M3 implements it.
 Every design choice carries a citation to a spike report (row 7/8/9/15), the register
 (`research/03_analysis.md`), a decision ID, a collection fact (F-xx) or an `initialization/` line.

@@ -10,7 +10,8 @@
  * | `selectorEditGate` | G1-G3 (ux §2.4): Checking → allowed, or refused with its reason (role, open session) |
  * | `poeCycleGate` | G9 (ux §2.4): offered only for a LOST stream; the role and recording rules are the one gate of `lib/device-command-gate.ts` |
  * | `useCaptureSelector` | The read in both data modes |
- * | `useCaptureSelectorCommands` | Operations 79, 80 and the camera PoE cycle (48) in both data modes |
+ * | `useCaptureSelectorCommands` | Operations 78 (the microphone pair), 79, 80 and the camera PoE cycle (48) in both data modes |
+ * | `micPairFor` | Wave H (G70-02): the two lines of operation 78's pair replacement (D133 (1)) for "this microphone on this line" |
  *
  * **Two data modes, one shape.** In Live mode the read is operations 76 and 77 through the two
  * query factories of `lib/core-queries.ts` (WB-11, E-17), kept current by the republished slices
@@ -202,7 +203,30 @@ export function useCaptureSelector(): CaptureSelectorView {
 
 // ── The commands ─────────────────────────────────────────────────────────────────────────
 
-export type SelectorOperation = 'setCaptureCameraSource' | 'setPrimaryMic' | 'restartDevice'
+export type SelectorOperation = 'updateCaptureConfig' | 'setCaptureCameraSource' | 'setPrimaryMic' | 'restartDevice'
+
+/** One line of the replacing microphone pair of operation 78 (D133 (1)): `deviceId` equals `inputId`. */
+export interface MicPairLine {
+  readonly inputId: string
+  readonly deviceId: string
+  readonly role: CaptureMicLine['role']
+}
+
+/**
+ * Wave H (G70-02): the body of "microphone `deviceId` on the line of `role`" - the PAIR REPLACEMENT
+ * of operation 78 (C3 §2.3; decision D133 (1)): exactly two lines, one PRIMARY and one STANDBY,
+ * each `deviceId == inputId`. The other line keeps the microphone it holds. `null` when the choice
+ * cannot be a pair: the selector does not hold two lines, or `deviceId` is the other line's
+ * microphone (the contract refuses one microphone on both lines) - nothing is sent then.
+ */
+export function micPairFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): readonly [MicPairLine, MicPairLine] | null {
+  if (mics.length !== 2) return null
+  const other = mics.find((line) => line.role !== role)
+  if (other === undefined || !mics.some((line) => line.role === role) || other.deviceId === deviceId) return null
+  const chosen: MicPairLine = { inputId: deviceId, deviceId, role }
+  const kept: MicPairLine = { inputId: other.deviceId, deviceId: other.deviceId, role: other.role }
+  return role === 'PRIMARY' ? [chosen, kept] : [kept, chosen]
+}
 
 /** A command that was refused or not answered: the status and the code, never the answer's text. */
 export interface SelectorFailure {
@@ -278,6 +302,8 @@ export interface CaptureSelectorCommands {
   readonly setCameraSource: (deviceId: string, trackId: VideoTrackId) => Promise<SelectorAnswer>
   /** Operation 80: `inputId` becomes PRIMARY, the other input STANDBY. */
   readonly setPrimaryMic: (inputId: string) => Promise<SelectorAnswer>
+  /** Operation 78, pair replacement (wave H, G70-02): `pair` (of `micPairFor`) is the new pair of microphone inputs. */
+  readonly setMicPair: (pair: readonly [MicPairLine, MicPairLine]) => Promise<SelectorAnswer>
   /** Operation 48 for a camera: the confirmed PoE cycle (`{ confirm: true }`, OD-22). */
   readonly poeCycle: (deviceId: string) => Promise<SelectorAnswer>
 }
@@ -328,6 +354,13 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
             ? simAnswer('setPrimaryMic', sim.request({ method: 'POST', path: `/api/v1/capture/mics/${encodeURIComponent(inputId)}/primary` }))
             : callLive(live, queryClient, 'setPrimaryMic', () => live.client.call('setPrimaryMic', { params: { id: inputId } })),
         ),
+      setMicPair: (pair) =>
+        guarded('updateCaptureConfig', () => {
+          const body = { mics: pair.map((line) => ({ inputId: line.inputId, deviceId: line.deviceId, role: line.role })) }
+          return live === null
+            ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
+            : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))
+        }),
       poeCycle: (deviceId) =>
         guarded('restartDevice', () => {
           if (live !== null) {

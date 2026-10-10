@@ -12,10 +12,11 @@ import { useMotionPolicy } from '@/motion'
 import { CheckList } from './check-list'
 import { VerdictChip, type VerdictState } from './chips'
 import { copyText } from './clipboard'
+import { readItemFacts } from './item-facts'
 import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, storedVerification, type EvidenceRow } from './model'
 import { selectOperators } from './selectors'
 import { useRetryCooldown } from './use-retry-cooldown'
-import type { EvidenceVerification } from './use-verification'
+import { isV2Item, type EvidenceVerification } from './use-verification'
 import { V2_SIGNING_KEY_LINE } from './verify-v2'
 import { VerifyV2Report } from './verify-v2-report'
 
@@ -97,7 +98,12 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const operators = useSim(selectOperators)
   const { state, run } = verification
   const retry = useRetryCooldown()
-  const pkg = row.pkg
+  // Wave H C2 (G89-03 / -04 / -09): in Live mode the sealed values of a v2 item (sealed on this Core, or
+  // carrying sealed files) are the ITEM'S OWN members - never a bundled v1 package's hashes, key or
+  // certificate, and never an AUDIO row. A v1 / simulated demo item and Simulated mode keep what they had.
+  const fromItem = live && isV2Item(row)
+  const facts = useMemo(() => readItemFacts(row.item), [row.item])
+  const pkg = fromItem ? null : row.pkg
 
   const recordNow = storedVerification(row.item)
   // FXR-W W92-10 (D227 O-RF-T-3; the mobile card's CF-M2 rule): while a run is on screen the line keeps
@@ -163,11 +169,17 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
     void copyText(value, { ok: t('evidence.detail.integrity.hashCopied'), failed: t('evidence.integrity.copyFailed') }, 'integrity.copy')
 
   const hashes = useMemo(() => {
+    if (fromItem) return facts.sealedFiles.map((file) => ({ id: file.trackId, label: '', value: file.sha256 }))
     if (pkg) {
       return pkg.tracks.map((track) => ({ id: track.trackId, label: t(`common.tracks.${track.trackId}`), value: track.sealedSha256 }))
     }
     return row.item.tracks.map((track) => ({ id: track.trackId, label: t(`common.tracks.${track.trackId}`), value: track.sha256 }))
-  }, [pkg, row.item.tracks, t])
+  }, [facts.sealedFiles, fromItem, pkg, row.item.tracks, t])
+  // G89-03: the signature of the item as the item states it. `real`: an Ed25519 signature of the Core key.
+  const signature = facts.signature
+  const realSignature = fromItem && signature?.simulated === false
+  // The key class: a verify result of this page speaks first (operation 41), else the item's own member.
+  const keyByVerify = state.v2 != null && (state.v2.signingKey === 'DEVELOPMENT' || state.v2.signingKey === 'NOT_ESTABLISHED' || state.v2.signingKey === 'NOT_DEVELOPMENT')
 
   return (
     <div className="evi-integrity" data-testid="evidence-integrity" data-mode={state.mode}>
@@ -238,6 +250,12 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
               <span className="evi-caption">{t('evidence.verify.progress', { done, total })}</span>
             </>
           )}
+          {/* G89-05: a v1 result states its sources where a v2 result shows its sources line - "not recorded". */}
+          {state.v2 == null && state.awaitsV2 !== true && state.phase === 'done' ? (
+            <p className="evi-caption evi-strong" role="status" data-testid="evidence-v1-sources">
+              {t('common.sourceClass.verify.v1')}
+            </p>
+          ) : null}
           {state.v2 != null ? <VerifyV2Report answer={state.v2} /> : state.awaitsV2 === true ? null : <CheckList state={state} variant="full" />}
           {state.bundled ? (
             <div className="evi-bundled" data-testid="evidence-bundled" data-phase={state.bundled.phase} data-verdict={state.bundled.verdict ?? undefined}>
@@ -270,18 +288,24 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
           ) : null}
         </Card>
 
-        <Card className="evi-hash-card" data-testid="evidence-hashes" data-source={pkg ? 'package' : live ? 'core' : 'simulated'}>
+        <Card className="evi-hash-card" data-testid="evidence-hashes" data-source={fromItem ? 'item' : pkg ? 'package' : live ? 'core' : 'simulated'}>
           <h3 className="evi-section-title">
             <KeyRound className="size-4 text-accent" aria-hidden="true" />
-            {t('evidence.integrity.sealedValues')}
+            {fromItem ? t('evidence.itemFacts.sealed.title') : t('evidence.integrity.sealedValues')}
             <Chip size="sm" variant="secondary" className="evi-demo-chip">
               <Chip.Label>{pkg ? t('evidence.demo.chip') : live ? t('evidence.live.coreRecord') : t('common.simulated.chip')}</Chip.Label>
             </Chip>
           </h3>
+          {fromItem ? <p className="evi-caption">{t('evidence.itemFacts.sealed.note')}</p> : null}
+          {fromItem && hashes.length === 0 ? (
+            <p className="evi-caption" data-testid="evidence-sealed-no-files">
+              {t('evidence.itemFacts.sealed.noFiles')}
+            </p>
+          ) : null}
           <ul className="evi-hash-list">
             {hashes.map((hash) => (
               <li key={hash.id} data-hash={hash.id}>
-                <span className="evi-caption">{t('evidence.detail.integrity.trackHash', { track: `${hash.id} · ${hash.label}` })}</span>
+                <span className="evi-caption">{fromItem ? t('evidence.itemFacts.sealed.file', { track: hash.id }) : t('evidence.detail.integrity.trackHash', { track: `${hash.id} · ${hash.label}` })}</span>
                 <span className="evi-hash-row">
                   <span className="evi-mono evi-hash" title={hash.value}>
                     {shortHash(hash.value, 16)}
@@ -293,7 +317,7 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
               </li>
             ))}
             <li data-hash="manifest">
-              <span className="evi-caption">{t('evidence.detail.integrity.manifestHash')}</span>
+              <span className="evi-caption">{fromItem ? t('evidence.itemFacts.sealed.manifestHash') : t('evidence.detail.integrity.manifestHash')}</span>
               <span className="evi-hash-row">
                 <span className="evi-mono evi-hash">{shortHash(pkg ? pkg.signature.signedDigest : row.item.manifestHash, 16)}</span>
                 <Button isIconOnly size="sm" variant="ghost" aria-label={t('evidence.detail.integrity.copyHash')} onPress={() => copy(pkg ? pkg.signature.signedDigest : row.item.manifestHash)}>
@@ -301,16 +325,43 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
                 </Button>
               </span>
             </li>
-            <li data-hash="signature">
+            {fromItem && facts.manifestVersion !== null ? (
+              <li data-hash="manifestVersion">
+                <span className="evi-caption">{t('evidence.itemFacts.sealed.manifestVersion')}</span>
+                <span className="evi-mono">{facts.manifestVersion}</span>
+              </li>
+            ) : null}
+            <li data-hash="signature" data-signature={fromItem ? (realSignature ? 'real' : signature?.simulated === true ? 'simulated' : 'not-reported') : undefined}>
               <span className="evi-caption">
-                {pkg ? t('evidence.integrity.signatureDemo', { key: pkg.signature.keyId }) : t('evidence.detail.integrity.signature')}
+                {fromItem
+                  ? realSignature
+                    ? t('evidence.itemFacts.signature.real', { algorithm: signature?.algorithm ?? t('evidence.itemFacts.notReported'), key: signature?.keyId ?? t('evidence.itemFacts.notReported') })
+                    : signature?.simulated === true
+                      ? t('evidence.itemFacts.web.signatureSimulated')
+                      : t('evidence.itemFacts.signature.notReported')
+                  : pkg
+                    ? t('evidence.integrity.signatureDemo', { key: pkg.signature.keyId })
+                    : t('evidence.detail.integrity.signature')}
               </span>
               <span className="evi-hash-row">
                 <span className="evi-mono evi-hash">{shortHash(pkg ? pkg.signature.signatureHex : row.item.signature.value, 16)}</span>
               </span>
-              <span className="evi-caption">
-                {pkg ? t('evidence.integrity.signatureNoteDemo', { at: `${formatWibDateTime(Date.parse(pkg.signature.signedAt))} UTC${formatUtcOffset()}` }) : t('evidence.detail.integrity.signatureNote')}
-              </span>
+              {/* G89-03: the "simulated signature" note is said of a simulated signature only. */}
+              {realSignature || (fromItem && signature?.simulated !== true) ? null : (
+                <span className="evi-caption">
+                  {pkg ? t('evidence.integrity.signatureNoteDemo', { at: `${formatWibDateTime(Date.parse(pkg.signature.signedAt))} UTC${formatUtcOffset()}` }) : t('evidence.detail.integrity.signatureNote')}
+                </span>
+              )}
+              {/* The item's own word on the key class, until a verify result of this page states it. */}
+              {realSignature && !keyByVerify && signature !== null && signature.keyClass !== 'NOT_DEVELOPMENT' ? (
+                <span className="evi-caption evi-strong" role="status" data-testid="evidence-signature-key-item" data-signing-key={signature.keyClass}>
+                  {signature.keyClass === 'DEVELOPMENT'
+                    ? t('evidence.itemFacts.signature.developmentKey')
+                    : signature.keyClass === 'NOT_ESTABLISHED'
+                      ? t(V2_SIGNING_KEY_LINE.NOT_ESTABLISHED)
+                      : t('evidence.itemFacts.signature.keyClassUnknown')}
+                </span>
+              ) : null}
               {/* Fix pass F-M7 (R88-07): which key signed, as the Core answered it for this item (operation 41). The item itself carries no such member: before a verification nothing is said here. */}
               {state.v2 != null && (state.v2.signingKey === 'DEVELOPMENT' || state.v2.signingKey === 'NOT_ESTABLISHED') ? (
                 <span className="evi-caption evi-strong" role="status" data-testid="evidence-signature-key" data-signing-key={state.v2.signingKey}>

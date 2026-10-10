@@ -178,6 +178,15 @@ export interface CreateSimOptions {
    * once by the host that creates the simulator.
    */
   deviceConsole?: boolean;
+  /**
+   * How long the connecting part of a start lasts where the simulator runs its own capture, in ms
+   * (wave H closing pass Z1; driver B decision 6). Default `CAPTURE_CONNECT_MS` (1,000). A TEST /
+   * DEVELOPMENT control: it holds the connecting state so a gate can look at it. Set once by the
+   * host that creates the simulator; no action, operation or operator surface sets it. A value that
+   * is no whole number from 0 to `CAPTURE_CONNECT_MS_MAX` is not taken. Not read where the capture
+   * is `'external'` (a real capture decides its own start).
+   */
+  captureConnectMs?: number;
 }
 
 /** See `CreateSimOptions.capture`. */
@@ -271,6 +280,14 @@ export interface AuthSlice {
   method: AuthMethod | null;
   issuedAt: EpochMs | null;
   lastActivityAt: EpochMs | null;
+  /**
+   * The PAIRED DEVICE this identity acts from, where the holder of the simulator knows one (wave H
+   * driver B, finding G75-02): a Core sets it for exactly one hosted command of a device session
+   * (`withActorScope`), so a row that names the sending device (`AUDIO_SOURCE_SWITCHED`) names the
+   * tablet or phone that sent it. Absent / null: a web console session, or the in-app simulator.
+   * Never stored and never sent (the `auth` slice is a client slice).
+   */
+  deviceId?: string | null;
 }
 
 /** Lockout bookkeeping (persisted, so a reload does not reset the counter). */
@@ -312,6 +329,17 @@ export interface RecordingProfile {
   fps: 25;
   codec: 'H.264';
   bitrateMbps: number;
+}
+
+/** See `ActiveSession.captureCheckpoints`. */
+export interface SessionCaptureCheckpoints {
+  /** Durable fragment checkpoints of all camera files. */
+  fragments: number;
+  /** Stored bytes of the camera files the checkpoints cover. */
+  bytes: number;
+  /** The Core clock at the newest checkpoint. */
+  lastAt: EpochMs;
+  cameras: Array<{ deviceId: string; fragments: number; bytes: number }>;
 }
 
 export interface PrecheckItem {
@@ -481,6 +509,13 @@ export interface ActiveSession {
    * (`capture-session.ts` `advanceCaptureStart`; pass D10).
    */
   captureDurable?: boolean;
+  /**
+   * What the Core holds of a recording of its OWN capture while it runs (fix wave H Z1; driver A
+   * decision 3): the durable fragment checkpoints the capture worker reported. Written by the
+   * Core's capture session through an engine door; no simulator writes it and no column holds it.
+   * ABSENT = not stated (simulated capture, before the first checkpoint, after a restart).
+   */
+  captureCheckpoints?: SessionCaptureCheckpoints;
   /** Incremental transcript state of this session (op 84; R-5). */
   transcript?: TranscriptSessionState | null;
 }
@@ -857,6 +892,12 @@ export interface TimeHistoryPoint {
 }
 
 export interface TimeSlice {
+  /**
+   * Present (`true`) on a Core in its own capture: the time is the HOST SYSTEM CLOCK, there is no
+   * time service (fix wave H Z1, ruling D203 (1); `core-facts.ts` `HOST_CLOCK_TIME`). Absent on the
+   * simulator's demonstration of a GNSS-disciplined service.
+   */
+  hostClock?: true;
   source: TimeSource;
   locked: boolean;
   stratum: number;

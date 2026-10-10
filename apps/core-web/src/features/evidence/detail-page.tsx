@@ -18,7 +18,10 @@ import { useEvidenceAssets } from './demo-assets'
 import { ItemDevelopmentBadge } from './development-source'
 import { saveBytes } from './export-download'
 import { ExportWizard } from './export-wizard'
+import { FinishedExports } from './finished-exports'
 import { IntegrityTab } from './integrity-tab'
+import { isDemoItem, mediaKindOf, playableFilesOf } from './item-facts'
+import { InterruptedMark, MediaNone } from './item-marks'
 import { readItemV2 } from './item-v2'
 import { logEvidenceError } from './log'
 import { MediaTab } from './media-tab'
@@ -102,11 +105,22 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
   const { urlFor, load } = useEvidenceAssets()
   const routeDelay = useRouteEnterDelay()
-  const row = useMemo(() => rowForMedia(buildEvidenceRow(item, operators), media), [item, media, operators])
+  const row = useMemo(() => rowForMedia(buildEvidenceRow(item, operators, { live }), media), [item, live, media, operators])
   const verification = useEvidenceVerification(row)
   const v2 = useMemo(() => readItemV2(item), [item])
   // Flow 5 step 1: the Core says the sealed files can be played through a signed media session.
-  const sealedPlayback = live && media.status === 'ready' && media.media.source === 'LIVE_STREAM'
+  // Wave H C2 (G94-02): in Live mode the source of the player is decided ONLY by the item's media facts
+  // (`mediaKindOf`): streamable -> the sealed player; demo AND a demo item -> bundled media under its
+  // label; anything else, a member that is absent, or no answer -> no player and no picture.
+  const facts = media.facts
+  const mediaKind = live ? mediaKindOf(facts, item) : row.pkg ? 'DEMO' : 'NONE'
+  const demoItem = !live || isDemoItem(item)
+  const sealedPlayback = live && mediaKind === 'STREAM'
+  // The Core's own word for this caller (G81-07): false asks nothing on a page view. null: not reported.
+  const access = facts?.access ?? { play: null, transcript: null, export: null }
+  const fileIds = useMemo(() => (sealedPlayback ? playableFilesOf(facts, item) : null), [facts, item, sealedPlayback])
+  // No player, no picture and no demo words: a Live item that is not a demo item and is not streamable.
+  const noMedia = live && mediaKind === 'NONE' && !demoItem && media.status !== 'unavailable'
   const hasTranscript = v2.isV2 || v2.transcript !== null || v2.transcriptSha256 !== null
   // The source classes of the last verify run on this page (never the current device list).
   const verifiedSources = verification.state.v2?.sources ?? null
@@ -218,7 +232,16 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                 <span className="evi-preview-still-empty" data-testid="evidence-detail-still-empty">
                   <FileVideo className="size-8" aria-hidden="true" />
                   {/* FXR-W W92-11 (D217): a failed lookup says what the chip says, as the Media and Metadata tabs do (CF-W). */}
-                  <span>{live && media.status === 'unavailable' ? t('evidence.live.mediaUnavailable') : t('evidence.media.noMedia')}</span>
+                  {/* Wave H C2 (G94-14 / G81-10): "No DEMO media" is said of a demo item only. */}
+                  <span>
+                    {live && media.status === 'unavailable'
+                      ? t('evidence.live.mediaUnavailable')
+                      : sealedPlayback
+                        ? t('evidence.itemFacts.web.noPreview')
+                        : noMedia
+                          ? t('evidence.itemFacts.media.noneTitle')
+                          : t('evidence.media.noMedia')}
+                  </span>
                 </span>
               )}
             </div>
@@ -228,6 +251,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                 <Chip.Label>{packageChip.label}</Chip.Label>
               </Chip>
               <ItemDevelopmentBadge item={item} testId="evidence-detail-development" />
+              <InterruptedMark item={item} testId="evidence-interrupted" />
             </div>
           </div>
 
@@ -290,7 +314,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
             </dl>
             {/* LB-1: the kit's Button drops `aria-busy` (F63-2), so the action row carries it while an archive is out. */}
             <div className="evi-detail-actions" aria-busy={archiving.busy || undefined}>
-              <Button variant="primary" onPress={onPlay} isDisabled={!row.pkg && !sealedPlayback} data-testid="evidence-play">
+              <Button variant="primary" onPress={onPlay} isDisabled={(!row.pkg && !sealedPlayback) || (sealedPlayback && access.play === false)} data-testid="evidence-play">
                 <Play className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.play')}
               </Button>
@@ -331,6 +355,9 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
         </Card>
       </motion.section>
 
+      {/* Wave H C2 (G94-05): the finished exports the Core reports for this item, each with its download. */}
+      {live && facts !== null && (item.status === 'EXPORTED' || (facts.exports?.length ?? 0) > 0) ? <FinishedExports evidenceId={item.id} facts={facts} /> : null}
+
       <motion.section variants={tabsVariants} initial="hidden" animate="visible">
         <Card className="evi-tabs-card">
           <Tabs selectedKey={tab} onSelectionChange={(key) => onTab(String(key) as TabKey)} className="evi-tabs">
@@ -353,13 +380,15 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                   transition={m.reduced ? m.transitions.crossFade : m.transitions.enter}
                 >
                   {key === 'media' ? (
-                    <div className="evi-body" data-testid="evidence-media-panel" data-playback={sealedPlayback ? 'sealed' : 'bundled'}>
+                    <div className="evi-body" data-testid="evidence-media-panel" data-playback={sealedPlayback ? 'sealed' : row.pkg ? 'bundled' : live ? 'none' : 'bundled'}>
                       {sealedPlayback ? (
-                        <SealedPlayer evidenceId={item.id} durationMs={item.durationMs} item={v2} sources={verifiedSources} failedFragments={verification.state.v2?.failedFragments} playToken={playToken} onPlayHandled={onPlayHandled} />
+                        <SealedPlayer evidenceId={item.id} durationMs={item.durationMs} item={v2} sources={verifiedSources} failedFragments={verification.state.v2?.failedFragments} playToken={playToken} onPlayHandled={onPlayHandled} fileIds={fileIds} mayPlay={access.play} />
+                      ) : noMedia ? (
+                        <MediaNone facts={facts} />
                       ) : (
                         <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} mediaUnavailable={media.status === 'unavailable'} />
                       )}
-                      {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} /> : null}
+                      {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} mayRead={access.transcript} /> : null}
                     </div>
                   ) : key === 'metadata' ? (
                     <MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />

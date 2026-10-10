@@ -113,9 +113,20 @@ export const selectIsRecording = (s: SimState): boolean =>
 export const selectElapsedMs = (s: SimState): number => {
   const session = s.session;
   if (!session || session.startedAt === null) return 0;
-  const end = session.stoppedAt ?? s.clock.now;
+  const end = recordingEndOf(session) ?? s.clock.now;
   return Math.max(0, end - session.startedAt);
 };
+/**
+ * THE INSTANT A RECORDING ENDED, or null while it runs (wave H driver B, finding G75-08): the
+ * operator's stop, or - for a recording a fault ended - the fault. An interrupted recording has no
+ * stop until its seal writes the end of the durable media into `stoppedAt`; until then its clock
+ * stands at the fault instead of running on. Every client duration reads this, never `stoppedAt ?? now`.
+ */
+export function recordingEndOf(session: Pick<ActiveSession, 'state' | 'stoppedAt' | 'fault'> | null | undefined): EpochMs | null {
+  if (session === null || session === undefined) return null;
+  if (session.stoppedAt !== null) return session.stoppedAt;
+  return session.state !== SessionState.RECORDING && session.fault !== null && session.fault.fromState === SessionState.RECORDING ? session.fault.at : null;
+}
 /** Whole seconds of recording time: changes at 1 Hz (step 54, m9; §9.3). */
 export const selectElapsedSeconds = (s: SimState): number => Math.floor(selectElapsedMs(s) / 1_000);
 export const selectTimeline = (s: SimState) => s.session?.timeline ?? EMPTY;
@@ -357,7 +368,12 @@ export function systemStatus(s: SimState): SystemStatusDetail {
   // decides (OD-11 — the Core never switches on its own).
   if (s.faults.active.some((fault) => fault.kind === 'CAPTURE_FAULT')) {
     // Review R74-03: the words of THAT fault (its alert was worded by its reason at the raise), never one sentence for every cause.
-    critical('CAPTURE_FAULT', s.alerts.findLast((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')?.message ?? captureFaultSentence(null, null));
+    const words = s.alerts.findLast((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')?.message ?? captureFaultSentence(null, null);
+    // Wave H driver B (G75-10; D84 R-4): the fault a CLOSED session left blocks nothing - a session can be
+    // created and started, and that start ends it. It is shown as a warning, never as the critical state.
+    const ofOpenSession = s.session !== null && (s.session.state === SessionState.RECORDING || s.session.state === SessionState.STOPPING || s.session.fault?.kind === 'CAPTURE_FAULT');
+    if (ofOpenSession) critical('CAPTURE_FAULT', words);
+    else warning('CAPTURE_FAULT', words);
   }
   if (s.faults.active.some((fault) => fault.kind === 'MIC_SILENT')) {
     warning('MIC_SILENT', 'Microphone silent: below the silence level for 10 s');
@@ -374,7 +390,8 @@ export function systemStatus(s: SimState): SystemStatusDetail {
     if (mic.state === 'NO_SIGNAL') warning(`MIC_${mic.id}_NO_SIGNAL`, `${mic.name}: no signal`, { track: mic.id, name: mic.name });
     if (mic.state === 'CLIP' || mic.clipLatched) warning(`MIC_${mic.id}_CLIP`, `${mic.name}: clipping`, { track: mic.id, name: mic.name });
   }
-  if (s.time.source !== 'GNSS') warning('TIME_FALLBACK', `Time source ${s.time.source}`, { source: s.time.source });
+  // The host system clock of a Core in its own capture is no fallback of a time service (wave H Z1, D203 (1)).
+  if (s.time.source !== 'GNSS' && s.time.hostClock !== true) warning('TIME_FALLBACK', `Time source ${s.time.source}`, { source: s.time.source });
   if (!s.health.fanOk) warning('FAN_STALL', 'Fan stalled');
   if (s.security.tamper) warning('TAMPER', 'Tamper detected');
   if (s.tabletLink.state === 'OFFLINE') warning('TABLET_OFFLINE', 'Tablet offline');

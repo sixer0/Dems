@@ -340,7 +340,8 @@ describe('Simulated mode is unchanged', () => {
     const before = feed();
     fireEvent.press(screen.getByTestId('monitor-action-snapshot'));
     expect(feed()).toEqual({ shutterSignal: before.shutterSignal + 1, snapshotSignal: before.snapshotSignal + 1 });
-    expect(screen.getByTestId('monitor-action-snapshot').props.accessibilityState?.busy).toBeUndefined();
+    // DELIBERATE PIN CHANGE (wave H closing pass Z2, G70-04): an idle control now STATES `busy: false` (`busyState`); it is never marked busy.
+    expect(screen.getByTestId('monitor-action-snapshot').props.accessibilityState?.busy).toBe(false);
     expect(toastShown('Snapshot captured')).toBe(true);
 
     // The bed's reset switches motion off (the device test switch): the Dialog opens on a tap.

@@ -244,4 +244,14 @@ export const dashboard = {
   quickActions: {
     label: 'Quick actions',
   },
+
+  /**
+   * Wave H closing pass Z2 (finding G75-11, the Dashboard half): the Recent Events row of an
+   * ACCEPTED start (`RECORDING_STARTED`) whose capture has no durable fragment. "Started" is said
+   * only of a recording that did start; a failed start says what it came to.
+   */
+  captureStart: {
+    CONNECTING: 'Recording start accepted',
+    FAILED: 'Recording did not start',
+  },
 } as const satisfies ResourceTree;

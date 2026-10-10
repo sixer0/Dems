@@ -22,7 +22,7 @@ import { useCoreMode } from '@dems/shared/live'
 import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtime'
 import { Permission, selectCan, selectOperatorById, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, palette, toneChipProps } from '@dems/shared/tokens'
-import { CameraFeed } from '@/components/media'
+import { CameraPreview } from '@/features/devices/camera-preview'
 import { Ripple } from '@/components/ui/ripple'
 import { ShineBorder } from '@/components/ui/shine-border'
 import { TextScramble } from '@/components/ui/text-scramble'
@@ -260,7 +260,7 @@ function RecordingView({ card }: { card: SessionCard }) {
           transition={m.transitions.layout}
           className="w-[44%] max-w-[280px] shrink-0"
         >
-          <CameraFeed
+          <CameraPreview
             cameraId="VIDEO-01"
             variant="thumb"
             live={false}

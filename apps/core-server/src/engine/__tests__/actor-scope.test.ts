@@ -109,4 +109,36 @@ describe('withActorScope', () => {
     expect(seen.at(-1)).toBeNull();
     expect((DURABLE_SLICE_KEYS as readonly string[]).includes('auth')).toBe(false);
   });
+
+  // Wave H driver B, finding G75-02 (gate 75 `M5-SW-P`): on a Core in SIMULATED capture the switch of
+  // the active microphone is the hosted action. The row must name the paired device the command came
+  // from - the tablet's or the phone's device session - exactly as the real path does (SEC35-17).
+  it('G75-02: the paired device of the principal reaches the hosted action - the switch row names it; a web console session names none', async () => {
+    const host = await createHost({ scenario: 'recording' });
+    const investigator = host.operator('INVESTIGATOR');
+    const lastSwitch = () => host.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED').at(-1);
+    const standby = host.state().session?.audioSource?.standbyInputId ?? 'MIC-02';
+    const active = host.state().session?.audioSource?.activeInputId ?? 'MIC-01';
+
+    let during: AuthSlice | null = null;
+    withActorScope(
+      host.sim.store,
+      investigator.id,
+      AT,
+      () => {
+        during = host.state().auth;
+        host.sim.actions.switchAudioSource(standby);
+      },
+      'DEV-0002',
+    );
+    expect(during).toMatchObject({ operatorId: investigator.id, deviceId: 'DEV-0002' });
+    expect(lastSwitch()).toMatchObject({ actorId: investigator.id, deviceId: 'DEV-0002', details: { toInput: standby, sendingDeviceId: 'DEV-0002' } });
+    // The device leaves with the scope.
+    expect(host.state().auth).toEqual(signedOutAuth());
+
+    // CONTROL - a web console session has no device: no device on the row, no key in its details.
+    withActorScope(host.sim.store, investigator.id, AT + 1_000, () => host.sim.actions.switchAudioSource(active), null);
+    expect(lastSwitch()?.deviceId).toBeNull();
+    expect(Object.keys(lastSwitch()?.details ?? {})).not.toContain('sendingDeviceId');
+  });
 });

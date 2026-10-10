@@ -79,15 +79,17 @@ export type MetadataMediaStatus = 'loading' | 'ready' | 'unavailable';
  * The item's record as the web's Metadata tab prints it for an item without a package (the same keys
  * in the same order, times in WIB ISO form). Pure; exported for tests.
  */
-export function evidenceRecordJson(item: EvidenceItem, options: { live: boolean; mediaStatus: MetadataMediaStatus }): string {
-  const { live, mediaStatus } = options;
+export function evidenceRecordJson(item: EvidenceItem, options: { live: boolean; mediaStatus: MetadataMediaStatus; demoItem?: boolean }): string {
+  const { live, mediaStatus, demoItem = true } = options;
   return JSON.stringify(
     {
       ...(live
         ? {
             record: 'CORE',
-            note:
-              mediaStatus === 'ready'
+            // Wave H C2 (G94-14 / G81-10): a DEMO package is spoken of only for a demo item.
+            note: !demoItem
+              ? "The Core server's record of this item."
+              : mediaStatus === 'ready'
                 ? "The Core server's record of this item; no DEMO package joins it."
                 : "The Core server's record of this item; its media reference is unavailable, so no DEMO package is shown.",
           }
@@ -121,9 +123,14 @@ export interface MetadataTabProps {
   live?: boolean;
   /** Live mode: the state of the Core's media reference (operation 40). */
   mediaStatus?: MetadataMediaStatus;
+  /**
+   * Live mode: the item is a v1 / simulated demo item by its own members (`item-facts.ts`
+   * `isDemoItem`). False: a recording of this Core - no "DEMO package" is spoken of (G94-14).
+   */
+  demoItem?: boolean;
 }
 
-export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaStatus = 'ready' }: MetadataTabProps) {
+export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaStatus = 'ready', demoItem = true }: MetadataTabProps) {
   const { t } = useTranslation();
   const documents = useMemo(() => (pkg ? getDemoEvidenceDocuments(evidenceId) : null), [pkg, evidenceId]);
   const manifest = useMemo(() => {
@@ -155,7 +162,9 @@ export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaS
         ? t('features.evidence.media.checking')
         : mediaStatus === 'unavailable'
           ? t('evidence.live.mediaUnavailable')
-          : t('evidence.live.noPackage');
+          : demoItem
+            ? t('evidence.live.noPackage')
+            : t('features.evidence.metadata.coreRecordOnly');
     if (item === null) {
       return (
         <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-metadata-none">
@@ -175,7 +184,7 @@ export function MetadataTab({ evidenceId, pkg, item = null, live = false, mediaS
           <ScrollShadow LinearGradientComponent={LinearGradient}>
             <ScrollView nestedScrollEnabled style={styles.jsonScroll} contentContainerStyle={styles.jsonContent}>
               <Text maxFontSizeMultiplier={1.2} selectable style={styles.json} testID="evidence-record-json">
-                {evidenceRecordJson(item, { live, mediaStatus })}
+                {evidenceRecordJson(item, { live, mediaStatus, demoItem })}
               </Text>
             </ScrollView>
           </ScrollShadow>

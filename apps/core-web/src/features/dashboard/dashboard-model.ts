@@ -276,6 +276,32 @@ export function groupEventsByDay(events: readonly SimEvent[], nowMs: number): Ev
 }
 
 /**
+ * WHAT AN ACCEPTED START CAME TO (wave H closing pass Z2, finding G75-11). The event
+ * `RECORDING_STARTED` is written when the Core accepts the start - before any camera is connected in
+ * the Core's own capture - and it is the contract's only type, so it stays in the slice. The row is
+ * worded by the state of its session:
+ *
+ *   FAILED      the open session is a failed start (FAULT, or its RECOVERY, with `captureDurable:
+ *               false`: the capture ended before a durable fragment), or the session is closed and
+ *               its history entry has no start time (`startedAt: null`, the failed start's entry)
+ *   CONNECTING  the open session records but has no durable fragment yet
+ *   STARTED     anything else, and an event that names no session or one this console knows nothing of
+ */
+export type RecordingStartOutcome = 'STARTED' | 'CONNECTING' | 'FAILED'
+
+export function recordingStartOutcome(state: Pick<SimState, 'session' | 'sessionHistory'>, sessionId: string | null): RecordingStartOutcome {
+  if (sessionId === null) return 'STARTED'
+  const session = state.session
+  if (session !== null && session.id === sessionId) {
+    if (session.captureDurable !== false) return 'STARTED'
+    if (session.state === SessionState.RECORDING) return 'CONNECTING'
+    return session.state === SessionState.FAULT || session.state === SessionState.RECOVERY ? 'FAILED' : 'STARTED'
+  }
+  const entry = state.sessionHistory.find((item) => item.id === sessionId)
+  return entry !== undefined && entry.startedAt === null ? 'FAILED' : 'STARTED'
+}
+
+/**
  * The detail column of an event row: the evidence or session it concerns, the operator, the
  * device, or the time source. Returns `null` when the event carries nothing more than its title.
  */

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { palette } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
+import { SessionCaptureCheckpoints } from './capture-checkpoints';
 import type { StripChip } from './session-live.math';
 import { useMonitorStrip } from './use-monitor';
 
@@ -36,6 +37,8 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
       case 'storage':
         return `${t('features.session-live.strip.storage')} ${t(`common.enums.storageRecordingState.${chip.value}`)}`;
       case 'time': {
+        // Wave H closing pass Z2: the host system clock of a Core in its own capture is named as that - no GNSS, no lock word.
+        if (chip.host) return `${t('features.session-live.strip.time')} ${t('session.captureFacts.timeSource.hostClock')}`;
         const source = t(`common.enums.timeSource.${chip.value}`);
         const quality = chip.locked ? ` ${t('common.enums.timeQuality.LOCKED')}` : '';
         return `${t('features.session-live.strip.time')} ${source}${quality}`;
@@ -58,6 +61,7 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
     return (
       <View testID="monitor-status-strip" accessibilityLabel={t('features.session-live.strip.label')} style={styles.column}>
         {items}
+        <SessionCaptureCheckpoints />
       </View>
     );
   }
@@ -68,6 +72,7 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
           {items}
         </ScrollView>
       </ScrollShadow>
+      <SessionCaptureCheckpoints />
     </View>
   );
 }

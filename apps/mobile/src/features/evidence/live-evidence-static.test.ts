@@ -63,6 +63,8 @@ const LIVE_KEYS = [
   'integrity.failedOnCore',
   'integrity.notVerifiedYet',
   'integrity.coreNotRun',
+  // Wave H C2 (G94-14 / G81-10): the Metadata tab's line for a recording of this Core (no "DEMO package" is spoken of).
+  'metadata.coreRecordOnly',
 ];
 
 function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
@@ -91,8 +93,12 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'export-job-status.tsx',
       'export-job.ts',
       'export-sheet.tsx',
+      // Wave H C2 (G94-05, finding 4, the one reader of the item facts): three files, added by delta.
+      'finished-exports.tsx',
       'i18n.ts',
       'integrity-tab.tsx',
+      'interrupted-line.tsx',
+      'item-facts.ts',
       'item-v2.ts',
       'live-integrity-tab.tsx',
       'media-session.ts',

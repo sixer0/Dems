@@ -3,6 +3,8 @@
 //
 //   npm run capture:dev-setup            copies the FFmpeg found on the PATH
 //   npm run capture:dev-setup -- <path>  copies the FFmpeg at <path>
+//   options (after `--`): --no-speech-fixture   skip the speech fixture step
+//                         --renew-speech-fixture  make the speech fixture again even when one is there
 //
 // WHY. In development capture (`DEMS_CAPTURE_MODE=real DEMS_CAPTURE_DEV_SOURCES=1`) the Core runs
 // FFmpeg as the helper of the local camera, the local microphone and the test sources. It starts
@@ -21,10 +23,17 @@
 // LIMITATION, stated plainly. The copy is the PROGRAM FILE only. It still loads the shared
 // libraries of the installation it was copied from (for Homebrew: under `/opt/homebrew`), which
 // stay group-writable. The rule protects the file the Core starts, not what that file links to.
+//
+// THE SPEECH FIXTURE (fix wave H; ruling D198). After the helper it makes the audio the development
+// SPEECH microphone plays (`DEMS_CAPTURE_DEV_FAKE_MIC=speech`): synthetic speech, made on this
+// machine by the macOS speech synthesiser, written under `.data/dev-fixtures/speech-mic/` with its
+// reference text. No network, no recording of a person, nothing played. See `speech-fixture.mjs`.
+// A fixture that cannot be made is reported and does NOT fail the set-up: the helper is good without it.
 import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prepareSpeechFixture } from './speech-fixture.mjs';
 
 const REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA_DIR = join(REPOSITORY, '.data');
@@ -73,7 +82,11 @@ function ruleProblem(path) {
 }
 
 if (typeof process.getuid !== 'function') stop('this setup is for macOS and Linux.');
-const source = realpathSync(findSource(process.argv[2]));
+const OPTIONS = ['--no-speech-fixture', '--renew-speech-fixture'];
+const given = process.argv.slice(2);
+const unknown = given.find((argument) => argument.startsWith('--') && !OPTIONS.includes(argument));
+if (unknown !== undefined) stop(`unknown option ${unknown}. Options: ${OPTIONS.join(', ')}.`);
+const source = realpathSync(findSource(given.find((argument) => !argument.startsWith('--'))));
 if (!statSync(source).isFile()) stop('the FFmpeg to copy is not a regular file.');
 
 mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
@@ -109,3 +122,22 @@ console.log('note    the copy still loads the shared libraries of the installati
 console.log('');
 console.log('Start the Core in development capture with:');
 console.log(`  DEMS_CAPTURE_MODE=real DEMS_CAPTURE_DEV_SOURCES=1 DEMS_CAPTURE_HELPER_FFMPEG=${TARGET}`);
+
+// The speech fixture of the development speech microphone (see the header).
+if (given.includes('--no-speech-fixture')) {
+  console.log('');
+  console.log('speech  skipped (--no-speech-fixture)');
+} else {
+  const fixture = prepareSpeechFixture({ dataDir: DATA_DIR, ffmpeg: TARGET, renew: given.includes('--renew-speech-fixture') });
+  console.log('');
+  if (fixture.status === 'NOT_CREATED') {
+    console.log(`speech  NOT created: ${fixture.reason}`);
+    console.log('        the tone microphone works without it; DEMS_CAPTURE_DEV_FAKE_MIC=speech is refused at boot until it exists');
+  } else {
+    console.log(`speech  ${fixture.status === 'KEPT' ? 'kept   ' : 'created'} ${fixture.wav}  (mode 0600, directory 0700; synthetic speech, git-ignored)`);
+    console.log(`        reference text ${fixture.reference}`);
+    console.log(`        ${Math.round(fixture.durationMs / 1000)} s of audio, sha256 ${fixture.sha256}`);
+    console.log('To let the first test microphone play it (development capture only), add:');
+    console.log('  DEMS_CAPTURE_DEV_FAKE_MIC=speech');
+  }
+}

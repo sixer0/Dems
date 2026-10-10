@@ -30,7 +30,7 @@ export const OMLX_TTS_MODEL = 'omnivoice-bfloat16';
 export const ROW_12_ANSWER = join(REPO, '.cache/spikes/stt-check/runs/whisper-run1.json');
 export const ROW_12_SEGMENTS = 17;
 
-export type RunKind = 'cpu-local' | 'omlx-server' | 'shape' | 'omlx-log-excerpt' | 'row77-cpu-local' | 'row77-omlx-server' | 'row77-df1';
+export type RunKind = 'cpu-local' | 'omlx-server' | 'shape' | 'omlx-log-excerpt' | 'row77-cpu-local' | 'row77-omlx-server' | 'row77-df1' | 'wave-h-speech-fixture';
 
 /** A NEW directory for one run. Throws when it already exists: an earlier run is never written into. */
 export function createRunDir(kind: RunKind, root: string = RUNS_DIR, now: Date = new Date()): string {
@@ -79,3 +79,11 @@ export const FIXTURE_SAMPLES = 1_577_297;
 export const FIXTURE_RATE = 24_000;
 export const FIXTURE_END_MS = 65_721;
 export const SCRIPTED_SENTENCES = 13;
+
+// ── Fix wave H (driver E; ruling D198): the speech fixture of the development speech microphone ──
+
+/** What `npm run capture:dev-setup` writes: synthetic speech made on this machine, and its reference text (git-ignored). */
+export const SPEECH_MIC_FIXTURE = join(REPO, '.data/dev-fixtures/speech-mic/dialogue.wav');
+export const SPEECH_MIC_REFERENCE = join(REPO, '.data/dev-fixtures/speech-mic/dialogue.reference.json');
+export const SPEECH_MIC_RATE = 48_000;
+export const WAVE_H_RUNS_DIR = join(REPO, '.cache/stt/checks/wave-h-e/runs');

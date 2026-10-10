@@ -257,6 +257,45 @@ describe('start: the helper is launched with the fixed table and nothing else', 
   });
 });
 
+// Fix wave H (ruling D198): the development speech microphone plays a file through the same helper.
+describe('the speech fixture source: no device list, the fixture held to the path rule, the file input started', () => {
+  const FIXTURE = '/work/.data/dev-fixtures/speech-mic/dialogue.wav';
+
+  it('prepares and starts without a device list; the push list reads the fixture in real time, looped, and names no device layer', async () => {
+    const r = rig('not a device list\n');
+    const stream = await createMicHelperOf(r).prepare({ deviceId: 'MIC-01', sessionId: 'SES-1', source: { kind: 'FIXTURE', path: FIXTURE } });
+    expect(await startAndSettle(stream, r.timers)).toBeNull();
+    expect(r.door.calls.filter((call) => call.args.includes('-list_devices'))).toEqual([]);
+    const args = [...(r.door.pushes()[0]?.args ?? [])];
+    expect(args.slice(args.indexOf('-re'), args.indexOf('-i') + 2)).toEqual(['-re', '-stream_loop', '-1', '-f', 'wav', '-i', FIXTURE]);
+    expect(args).not.toContain('avfoundation');
+    await stream.close();
+  });
+
+  it('a fixture that is absent or that another user could replace is refused by name BEFORE a pipe is made or a helper is started', async () => {
+    const absent = { ...trustedInspector(uid)(), exists: false, file: null };
+    const writable = { ...trustedInspector(uid)(), file: { ownerUid: uid, mode: 0o666 } };
+    for (const facts of [absent, writable]) {
+      const r = rig('not a device list\n', () => ({ lives: true }), { inspect: (path) => (path === FIXTURE ? facts : trustedInspector(uid)()) });
+      const error = await failureOf(createMicHelperOf(r).prepare({ deviceId: 'MIC-01', sessionId: 'SES-1', source: { kind: 'FIXTURE', path: FIXTURE } }));
+      expect([error.code, error.reason, error.deviceId]).toEqual([LocalSourceErrorCode.OPEN_FAILED, LocalSourceErrorReason.FIXTURE_REFUSED, 'MIC-01']);
+      expect(r.door.calls).toEqual([]);
+      expect(createMicHelperOf(r).openIds()).toEqual([]);
+    }
+  });
+
+  it('the fixture is asked again at the start: one that was replaced after the prepare is not played', async () => {
+    let replaced = false;
+    const r = rig('not a device list\n', () => ({ lives: true }), { inspect: (path) => (path === FIXTURE && replaced ? { ...trustedInspector(uid)(), file: { ownerUid: uid + 1, mode: 0o644 } } : trustedInspector(uid)()) });
+    const stream = await createMicHelperOf(r).prepare({ deviceId: 'MIC-01', sessionId: 'SES-1', source: { kind: 'FIXTURE', path: FIXTURE } });
+    replaced = true;
+    const error = await failureOf(stream.start());
+    expect(error.reason).toBe(LocalSourceErrorReason.FIXTURE_REFUSED);
+    expect(r.door.pushes()).toEqual([]);
+    await stream.close();
+  });
+});
+
 describe('the five named errors, mapped from what the helper says (H-18: the patterns are a hypothesis until the user denies once)', () => {
   const cases: Array<[string, ProcessScript, LocalSourceErrorCode, LocalSourceErrorReason]> = [
     ['a refused permission', { ends: exitOf({ exitCode: 1, diagnostics: '[AVFoundation indev @ 0x1] Failed: not authorized to access the microphone' }) }, LocalSourceErrorCode.PERMISSION_DENIED, LocalSourceErrorReason.PATTERN],

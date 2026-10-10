@@ -50,11 +50,12 @@ import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLinkNotice, usePe
 import { FinalizationPipeline } from '@/features/session-finalizing/finalization-pipeline';
 import { pipelineSeconds, pipelineStatuses, sealedAfterSeconds } from '@/features/session-finalizing/finalizing.model';
 import { FlowBoundary } from '@/features/session-finalizing/flow-boundary';
+import { InterruptedSealNotice, useInterruptedSeal } from '@/features/session-finalizing/interrupted-seal';
 import { SealedStamp } from '@/features/session-finalizing/sealed-stamp';
 import { HashSheet, type HashSheetValue } from './hash-sheet';
 import { hasStamped, markStamped } from './stamp-once';
 import { isSummaryHandoff } from './summary-handoff';
-import { SealedMembersCard } from './sealed-members';
+import { SealedMembersCard, SummarySignatureKeyLine, SummarySignatureMark, summarySignatureKeyLine, summarySignatureKind, useSummarySignature } from './sealed-members';
 import { LIFECYCLE_STAGES, lifecycleStatuses, orderedTracks, shortHash, sizeParts, summaryAvailability } from './summary.model';
 import {
   useAcknowledgeSummary,
@@ -316,7 +317,7 @@ function SummaryActions({ canViewEvidence, acknowledging, onViewEvidence, onDone
   const hint = acknowledging ? t('features.session-summary.actions.acknowledgeHint') : undefined;
   const buttons = (
     <View style={[styles.actions, wide ? styles.actionsWide : null]} testID="summary-actions">
-      <Button testID="summary-done" variant="outline" size="lg" onPress={onDone} accessibilityHint={hint} style={styles.doneButton} {...busyState(donePress.busy)}>
+      <Button testID="summary-done" variant="outline" size="lg" onPress={onDone} accessibilityLabel={t('common.actions.done')} accessibilityHint={hint} style={styles.doneButton} {...busyState(donePress.busy)}>
         {donePress.pending ? <PendingSpinner testID="summary-done-spinner" /> : null}
         <Button.Label numberOfLines={1}>{t('common.actions.done')}</Button.Label>
       </Button>
@@ -326,6 +327,7 @@ function SummaryActions({ canViewEvidence, acknowledging, onViewEvidence, onDone
           variant="primary"
           size="lg"
           onPress={onViewEvidence}
+          accessibilityLabel={t('session.finalization.viewEvidence')}
           accessibilityHint={hint}
           style={styles.evidenceButton}
           {...busyState(evidencePress.busy)}
@@ -367,13 +369,15 @@ function HeroCard({ sessionId, session, evidence, playStamp, index }: HeroCardPr
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const sealed = session.outcome === 'SEALED';
+  // Wave H driver B (G75-03, ruling D197): an interrupted seal is named - the stamp's word and the notice under it.
+  const interrupted = useInterruptedSeal(sealed ? sessionId : null);
   return (
     <Animated.View entering={riseAt(index, settings)}>
       <SectionCard testID="summary-hero">
         {sealed ? (
           <SealedStamp
             play={playStamp}
-            label={t('session.finalization.sealed')}
+            label={interrupted?.short ?? t('session.finalization.sealed')}
             accessibilityLabel={t('features.session-summary.stampLabel')}
             testID="summary-sealed"
           />
@@ -399,21 +403,25 @@ function HeroCard({ sessionId, session, evidence, playStamp, index }: HeroCardPr
             {t('features.session-summary.incomplete.body')}
           </Text>
         ) : null}
+        {sealed ? <InterruptedSealNotice sessionId={sessionId} testID="summary-interrupted" /> : null}
       </SectionCard>
     </Animated.View>
   );
 }
 
-function TimeValue({ at, source, testID }: { at: number | null; source: string | null; testID: string }) {
+function TimeValue({ at, source, host = false, testID }: { at: number | null; source: string | null; host?: boolean; testID: string }) {
   const { t } = useTranslation();
+  // Wave H closing pass Z2: the host system clock of a Core in its own capture is named as that, in a
+  // neutral chip - it is no GNSS time and no success to mark.
+  const name = source === null ? '' : host ? t('session.captureFacts.timeSource.hostClock') : t(`common.enums.timeSource.${source}`);
   return (
     <View style={styles.timeValue} testID={testID}>
       <Text maxFontSizeMultiplier={1.2} style={styles.mono}>
         {at === null ? '—' : formatDate(at, DATE_PATTERNS.dateTime)}
       </Text>
       {source ? (
-        <Chip size="sm" variant="soft" color="success" accessibilityLabel={t('features.session-summary.fields.timeSource', { source })}>
-          <Chip.Label>{t(`common.enums.timeSource.${source}`)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={host ? 'default' : 'success'} accessibilityLabel={t('features.session-summary.fields.timeSource', { source: host ? name : source })}>
+          <Chip.Label>{name}</Chip.Label>
         </Chip>
       ) : null}
     </View>
@@ -441,8 +449,8 @@ function DetailsCard({ session, evidence, index }: { session: SummarySession; ev
     },
     { id: 'investigator', label: t('session.details.investigator'), value: session.investigatorName ?? '—', testID: 'summary-investigator' },
     { id: 'room', label: t('session.details.room'), value: session.room ?? '—', testID: 'summary-room' },
-    { id: 'start', label: t('session.details.startTime'), value: <TimeValue at={session.startedAt} source={session.startSource} testID="summary-start" /> },
-    { id: 'end', label: t('features.session-summary.fields.endTime'), value: <TimeValue at={session.endedAt} source={session.endSource} testID="summary-end" /> },
+    { id: 'start', label: t('session.details.startTime'), value: <TimeValue at={session.startedAt} source={session.startSource} host={session.startHostClock} testID="summary-start" /> },
+    { id: 'end', label: t('features.session-summary.fields.endTime'), value: <TimeValue at={session.endedAt} source={session.endSource} host={session.endHostClock} testID="summary-end" /> },
     { id: 'duration', label: t('session.details.duration'), value: formatDuration(session.durationMs), mono: true, testID: 'summary-duration' },
     { id: 'size', label: t('features.session-summary.fields.size'), value: t(`common.units.${size.unit}`, { value: size.value }), testID: 'summary-size' },
     { id: 'evidence', label: t('session.details.evidenceId'), value: evidence?.id ?? '—', mono: true, testID: 'summary-evidence-id' },
@@ -494,6 +502,8 @@ function HashRow({ label, name, value, trailing, onPress, testID }: HashRowProps
 function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | null; onOpen: (value: HashSheetValue) => void; index: number | null }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
+  // Wave H C2 (G81-02 / G89-03): what the item itself says of its signature decides the mark.
+  const signature = useSummarySignature(evidence?.id ?? null);
   if (!evidence) {
     return (
       <Animated.View entering={riseAt(index, settings)}>
@@ -509,6 +519,8 @@ function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | n
   const manifestLabel = t('evidence.detail.integrity.manifestHash');
   const signatureLabel = t('features.session-summary.hashes.signature');
   const simulated = t('common.simulated.chip');
+  const signatureKind = summarySignatureKind(signature);
+  const signatureKeyLine = summarySignatureKeyLine(signature);
   return (
     <Animated.View entering={riseAt(index, settings)}>
       <SectionCard
@@ -544,13 +556,19 @@ function HashesCard({ evidence, onOpen, index }: { evidence: SummaryEvidence | n
           <HashRow
             testID="summary-hash-signature"
             label={signatureLabel}
-            name={`${signatureLabel}, ${simulated}`}
+            name={signatureKind === 'SIMULATED' ? `${signatureLabel}, ${simulated}` : signatureLabel}
             value={evidence.signatureValue}
-            trailing={<StatusChip tone="warning" icon={null} size="sm" label={simulated} testID="summary-signature-simulated" />}
+            trailing={<SummarySignatureMark signature={signature} />}
             onPress={() =>
-              onOpen({ label: signatureLabel, value: evidence.signatureValue, note: t('features.session-summary.hashes.signatureNote') })
+              onOpen({
+                label: signatureLabel,
+                value: evidence.signatureValue,
+                // The "simulated signature" note belongs to a simulated signature only; a real one gets its key-class line.
+                note: signatureKind === 'SIMULATED' ? t('features.session-summary.hashes.signatureNote') : signatureKeyLine !== null ? t(signatureKeyLine.key) : undefined,
+              })
             }
           />
+          <SummarySignatureKeyLine signature={signature} />
         </View>
       </SectionCard>
     </Animated.View>

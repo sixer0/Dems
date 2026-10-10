@@ -3,6 +3,12 @@
  * with a play overlay and the duration label, then the two MIC tracks. Each opens the Play sheet on
  * that camera or microphone. Posters are `expo-image` (no canvas per poster, §7.8). The strip has
  * no snapshots: the simulator keeps none per evidence item (SIM-GAP-M83-2).
+ *
+ * This tab draws BUNDLED DEMO media only (the two posters and the two microphone tracks of a demo
+ * package): Simulated mode, and in Live mode a demo item whose package the Core named. There the
+ * caller passes `demoLabel` and the tab says what the pictures are (wave H C2, G94-02): bundled with
+ * this application, not a recording of this Core. A recording this Core sealed never comes here
+ * (`evidence-detail.tsx`: the sealed player, or the "no playable media" state).
  */
 import { Image } from 'expo-image';
 import { PressableFeedback } from 'heroui-native';
@@ -11,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { formatDuration } from '@dems/shared/realtime';
-import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import type { DemoMediaItem } from '@/components/media';
 import { withAlpha } from '@/components/media';
 
@@ -24,9 +30,11 @@ export interface MediaTabProps {
   clipMs: number;
   onOpenCamera: (camera: VideoTrackId) => void;
   onOpenMic: (mic: AudioTrackId) => void;
+  /** Live mode: the label of bundled demo media is drawn above the posters. */
+  demoLabel?: boolean;
 }
 
-export function MediaTab({ media, durationMs, clipMs, onOpenCamera, onOpenMic }: MediaTabProps) {
+export function MediaTab({ media, durationMs, clipMs, onOpenCamera, onOpenMic, demoLabel = false }: MediaTabProps) {
   const { t } = useTranslation();
   const duration = formatDuration(durationMs);
   if (!media) {
@@ -38,6 +46,11 @@ export function MediaTab({ media, durationMs, clipMs, onOpenCamera, onOpenMic }:
   }
   return (
     <View style={styles.root} testID="evidence-media">
+      {demoLabel ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.demoLabel} accessibilityRole="text" testID="evidence-media-demo-label">
+          {t('evidence.itemFacts.media.demoLabel')}
+        </Text>
+      ) : null}
       <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
         {CAMERAS.map((camera) => (
           <PressableFeedback
@@ -156,4 +169,5 @@ const styles = StyleSheet.create({
   micText: { flex: 1, minWidth: 0 },
   micLabel: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: derived.foreground2 },
   note: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
+  demoLabel: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: statusText.warning },
 });

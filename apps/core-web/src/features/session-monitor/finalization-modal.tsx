@@ -12,6 +12,8 @@ import { GlowLayer, useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { shortHash } from './model'
 import { etaSeconds, useSealingProgress } from './sealing-progress'
+import { InterruptedSealNotice } from './interrupted-seal'
+import { useInterruptedSeal } from './use-interrupted-seal'
 import { UnsealableNotice } from './unsealable-notice'
 
 export type OverlayMode = 'finalization' | 'recovery'
@@ -115,6 +117,8 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
   const sealedAt = useSim((s) => (s.session?.id === sessionId ? s.session.sealedAt : null))
   const sealed = state === SessionState.SEALED
   const stopping = state === SessionState.STOPPING
+  // Wave H driver B (G75-03, ruling D197): an interrupted seal is named in the heading, the stamp and the sealed line.
+  const interrupted = useInterruptedSeal(sessionId)
 
   // Row 87 (E-13): forward-only, from the Core's states alone (no timer here).
   const progress = useSealingProgress(sessionId, steps, sealed)
@@ -154,13 +158,14 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
         </span>
         <span className="flex min-w-0 flex-col">
           <Modal.Heading className="sm-final-title">
-            {sealed ? t('session.finalization.sealedTitle') : t('session.finalization.title')}
+            {sealed ? (interrupted?.title ?? t('session.finalization.sealedTitle')) : t('session.finalization.title')}
           </Modal.Heading>
           <span className="sm-final-subtitle font-mono">{t('session.finalization.subtitle', { sessionId })}</span>
         </span>
       </Modal.Header>
       <Modal.Body className="sm-final-body">
         <UnsealableNotice sessionId={sessionId} />
+        <InterruptedSealNotice sessionId={sessionId} />
         <ProgressBar
           aria-label={t('session.finalization.progress', { percent })}
           value={percent}
@@ -178,7 +183,7 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
 
         {finalizing && progress.reportsProgress ? (
           <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta={progress.etaMs === null ? 'none' : 'core'}>
-            {progress.etaMs === null ? t('session.finalization.estimating') : t('session.finalization.eta', { seconds: etaSeconds(progress.etaMs) })}
+            {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
           </p>
         ) : null}
         {progress.resumed && !sealed ? (
@@ -223,10 +228,12 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
             >
               <span className="sm-final-stamp-wrap">
                 <GlowLayer level={0} tone="sealed" pulseKey={evidenceId ?? 'sealed'} />
-                <StepperStamp show label={t('session.finalization.sealed')} className="sm-final-stamp" />
+                <StepperStamp show label={interrupted !== null ? t('common.interruptedSeal.short') : t('session.finalization.sealed')} className="sm-final-stamp" />
               </span>
               <div className="sm-final-sealed-text">
-                <p className="sm-final-sealed-title">{t('session.finalization.sealedBody', { evidenceId: evidenceId ?? '—' })}</p>
+                <p className="sm-final-sealed-title" data-interrupted={interrupted !== null ? 'true' : undefined}>
+                  {interrupted !== null ? `${evidenceId ?? '—'} · ${interrupted.title}` : t('session.finalization.sealedBody', { evidenceId: evidenceId ?? '—' })}
+                </p>
                 {stoppedAt !== null && sealedAt !== null ? (
                   <p className="sm-final-sealed-meta" data-testid="sm-sealed-in">
                     {t('session.finalization.sealedIn', { seconds: ((sealedAt - stoppedAt) / 1000).toFixed(1) })}

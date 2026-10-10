@@ -409,7 +409,8 @@ describe('SIMULATED mode is as before (the same call site; the simulator settles
     // Synchronous: the store and its audit row are there right after the press.
     expect(test.sim.store.getState().storagePolicy).toEqual({ retentionPolicy: 'YEAR_1', retentionDays: 365, autoArchive: false });
     expect(test.sim.store.getState().audit.rows.at(-1)?.type).toBe('STORAGE_POLICY_CHANGED');
-    expect(screen.getByTestId('storage-manage-apply').props.accessibilityState?.busy).toBeUndefined();
+    // DELIBERATE PIN CHANGE (wave H closing pass Z2, G70-04): an idle control now STATES `busy: false` (`busyState`); it is never marked busy.
+    expect(screen.getByTestId('storage-manage-apply').props.accessibilityState?.busy).toBe(false);
     expect(screen.queryByTestId('storage-manage-apply-spinner')).toBeNull();
     expect(toastShown(APPLIED_SIMULATED)).toBe(true);
     await wallClock(600);

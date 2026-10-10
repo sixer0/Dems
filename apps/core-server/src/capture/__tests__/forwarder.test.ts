@@ -78,7 +78,8 @@ describe('the forwarder: telemetry and warnings reach the engine (SH-18 / CS-04,
     await flush();
     expect(calls.warnings).toEqual([
       { code: 'MIC_SILENT', subject: 'MIC-01' },
-      { code: 'CAPTURE_FAULT', subject: null },
+      // Pin by delta (wave H driver F): the supervisor's own fault says WHY.
+      { code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_EXIT_NONZERO' },
     ]);
   });
 
@@ -301,7 +302,8 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
     await flush();
     fake.last().exit(1);
     await flush();
-    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }, { code: 'CAPTURE_FAULT', subject: null }]);
+    // Pin by delta (wave H driver F): the supervisor's own fault says WHY (the process left with a code other than 0).
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }, { code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_EXIT_NONZERO' }]);
     await supervisor.stop(SESSION, 'CRASH');
     expect(calls.cleared).toEqual([]);
     await supervisor.start('S-TEST-0002', capturePlan('S-TEST-0002'));
@@ -357,7 +359,8 @@ describe('the two keys of a failed start are on the RAISE of its fault (integrat
     fake.last().say(crash('SOME_OTHER_END'));
     clock.advance(1);
     await flush();
-    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
+    // Pin by delta (wave H driver F): never the worker's own text - the supervisor's closed reason for "it said CRASH"; still no keys.
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_CRASHED' }]);
   });
 
   it('CONTROL: a session that holds a durable fragment is not a failed start, whatever its worker says at its end - no keys, no count of 0', async () => {
@@ -367,7 +370,8 @@ describe('the two keys of a failed start are on the RAISE of its fault (integrat
     fake.last().say(crash('NO_CAMERA_CONNECTED'));
     clock.advance(1);
     await flush();
-    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
+    // Pin by delta (wave H driver F): the fault says the worker crashed - NOT "no camera connected, nothing was recorded".
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_CRASHED' }]);
   });
 });
 

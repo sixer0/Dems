@@ -13,6 +13,11 @@
  * the bundled package the Core named, so the first chip reads "Bundled demo package" (not
  * "Simulated playback"); with no bundled media neither chip shows. The caller passes `live` (the
  * runtime's hooks do not reach portalled sheet content).
+ *
+ * Wave H C2 (G94-02, BLOCKER): in Live mode this sheet opens ONLY for bundled demo media of a demo
+ * item (`evidence-detail.tsx` `playable`). Should it ever be opened in Live mode without media, it
+ * draws NO picture: the procedural `CameraFeed` with the session's clock is the simulator's
+ * stand-in and belongs to Simulated mode alone, under its "Simulated playback" chip.
  */
 import { Button, Slider, Tabs, TagGroup } from 'heroui-native';
 import { VideoView } from 'expo-video';
@@ -71,7 +76,7 @@ export function PlaySheet({ isOpen, onClose, evidenceId, media, live = false, ..
       {media ? (
         <PlayerBody evidenceId={evidenceId} media={media} active={isOpen} {...rest} />
       ) : (
-        <NoMediaBody recordedAt={rest.recordedAt} />
+        <NoMediaBody recordedAt={rest.recordedAt} live={live} />
       )}
     </SheetFrame>
   );
@@ -204,9 +209,19 @@ function PlayerBody({ evidenceId, media, durationMs, clipMs, active, initialCame
   );
 }
 
-function NoMediaBody({ recordedAt }: { recordedAt: number }) {
+function NoMediaBody({ recordedAt, live }: { recordedAt: number; live: boolean }) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
+  if (live) {
+    // Live: no stand-in picture for an item of the Core (G94-02). The state sentence only.
+    return (
+      <View style={styles.body} testID="evidence-player-no-media">
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+          {t('evidence.itemFacts.media.noneTitle')}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.body} testID="evidence-player-none">
       <CameraFeed cameraId="CAM-1" mode="playback" motion={policy} source={null} timestampBaseMs={recordedAt} />

@@ -46,7 +46,7 @@ import { settle, useCoreActions } from '@dems/shared/live';
 import { captureMicLines, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
-import { CameraFeed } from '@/components/media';
+import { CameraPreview } from './camera-preview';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
@@ -370,7 +370,10 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
   const name = t(DEVICE_NAME_KEY[deviceId]);
   return (
     <View style={styles.feedWrap}>
-      <CameraFeed
+      {/* Fix wave H (G70-03; D196): the demo feed for a simulated Core, the "No preview" tile for a Core in real capture. */}
+      <CameraPreview
+        trackId={trackId}
+        name={name}
         testID="device-detail-feed"
         cameraId={`CAM-${index}`}
         cameraLabel={`CAM ${index}`}

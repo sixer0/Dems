@@ -19,6 +19,12 @@ export const CredentialStoreFailure = {
   /** The key file is not a private regular file of this user, or is not a key file. */
   KEY_UNSAFE: 'CREDENTIAL_KEY_UNSAFE',
   KEY_WRITE_FAILED: 'CREDENTIAL_KEY_WRITE_FAILED',
+  /**
+   * A session key of that ID is in the store and is NOT the key of the session that asks (fix wave
+   * H driver A, G89-06): it was made for another session of the same ID - one a reset cleared - or
+   * by a build that bound no key to its session. A key is never reused: nothing is sealed with it.
+   */
+  SESSION_KEY_NOT_OF_SESSION: 'CREDENTIAL_SESSION_KEY_NOT_OF_SESSION',
   /** The value to seal is empty, too long or not text. */
   PLAINTEXT_INVALID: 'CREDENTIAL_PLAINTEXT_INVALID',
   /** The stored envelope does not have the form of one (lengths, reference). */
@@ -42,6 +48,7 @@ const SENTENCES: Record<CredentialStoreFailure, string> = {
   CREDENTIAL_KEY_NOT_FOUND: 'the Core credential store holds no key of that reference',
   CREDENTIAL_KEY_UNSAFE: 'the key file is not a private key file of the server user',
   CREDENTIAL_KEY_WRITE_FAILED: 'the key could not be written to the Core credential store',
+  CREDENTIAL_SESSION_KEY_NOT_OF_SESSION: 'a session key of that ID exists and is not the key of this session: it is not reused',
   CREDENTIAL_PLAINTEXT_INVALID: 'the value cannot be sealed',
   CREDENTIAL_ENVELOPE_INVALID: 'the stored envelope does not have the form of one',
   CREDENTIAL_OPEN_FAILED: 'the stored envelope could not be opened',

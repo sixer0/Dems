@@ -40,6 +40,20 @@
  * result shows when the "asking" state ends, and no timer of this screen reveals or counts a part of
  * it. The v1 per-track rows are not marked for a v2 answer (it judges files, not tracks). The pinned
  * record line (CF-M2) is the same rule for v1 and v2.
+ *
+ * **Wave H C2** (gate findings G89-03 / G81-02 MAJOR, G89-04, G89-05, G89-09).
+ * - The rows under the card are THE ITEM'S OWN members. An item whose package this Core sealed
+ *   (`item-facts.ts` `hasSealedPackageHere`, or an item that carries sealed `files`) lists its own
+ *   camera files with their sealed hashes - before a verify run too - and never the four v1 track
+ *   rows (a v2 package has no AUDIO-01 / AUDIO-02 file). A v1 demo item keeps the four rows and
+ *   says "Sources: not recorded (v1 package)".
+ * - The signature is named by what the item says of it: a REAL signature (`simulated === false`)
+ *   reads "Manifest signature (Ed25519, Core key ...)" and is NEVER called simulated or demo; its
+ *   only qualifier is the development-key line, from the item's `signature.developmentKey` or from
+ *   the verify run of this screen; a key class nobody reported reads "not reported". A simulated
+ *   signature keeps "Signature (simulated)".
+ * - The bundled-package line is drawn only for the package of a demo item: the detail passes
+ *   `bundled` for nothing else (G89-09).
  */
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -72,6 +86,8 @@ import {
   VerdictLine,
   integrityStyles as styles,
 } from './integrity-tab';
+import { hasSealedPackageHere, isDemoItem, isRealItem, readItemFacts, signingKeyClassOf } from './item-facts';
+import { readItemV2 } from './item-v2';
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { SCRAMBLE_MS } from './use-scramble';
@@ -199,6 +215,23 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
   /** The v1 per-track and per-check marks belong to a v1 answer. */
   const v1Revealed = done && v2 === null;
   const lastLine = stored === null ? null : lastVerificationLine(stored, operatorNames, t);
+  // Wave H C2: the item's own facts decide the rows and the signature wording.
+  const facts = useMemo(() => readItemFacts(item), [item]);
+  const itemV2 = useMemo(() => readItemV2(item), [item]);
+  /** A package this Core sealed: its own files are listed, never the v1 track rows (G89-04, G89-09). */
+  const sealedHere = hasSealedPackageHere(facts) || isRealItem(facts) || itemV2.isV2;
+  const sealedFiles: readonly { readonly trackId: string; readonly sha256: string | null }[] =
+    itemV2.files.length > 0 ? itemV2.files : item.tracks.map((track) => ({ trackId: track.trackId, sha256: track.sha256 }));
+  const signature = facts.signature;
+  const verifiedKeyLine = done && v2 !== null && (v2.signingKey === 'DEVELOPMENT' || v2.signingKey === 'NOT_ESTABLISHED') ? v2.signingKey : null;
+  /** The key class of a REAL signature, from the item or this screen's verify run; null: no line (simulated, or said by the verify line). */
+  const keyClass = signature !== null && !signature.simulated && verifiedKeyLine === null ? signingKeyClassOf(signature, done && v2 !== null ? v2.signingKey : null) : null;
+  const signatureTitle =
+    signature === null
+      ? t('evidence.itemFacts.signature.notReported')
+      : signature.simulated
+        ? t('features.evidence.integrity.signatureSimulated')
+        : t('evidence.itemFacts.signature.real', { algorithm: signature.algorithm, key: signature.keyId });
 
   return (
     <View style={styles.root} testID="evidence-integrity">
@@ -224,6 +257,12 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         <Text maxFontSizeMultiplier={1.2} style={styles.note}>
           {t('features.evidence.integrity.coreNote')}
         </Text>
+        {/* G89-05: a v1 package records no source class - said where a v2 result states its sources. */}
+        {!sealedHere && isDemoItem(facts) ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID="evidence-sources-v1">
+            {t('common.sourceClass.verify.v1')}
+          </Text>
+        ) : null}
         {lastLine !== null && stored !== null ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-verify-last-${stored.status}`}>
             {lastLine}
@@ -260,18 +299,40 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         ) : null}
       </View>
 
-      <Section title={t('features.evidence.integrity.trackTitle')}>
-        {view.tracks.map((row) => (
-          <TrackHashRow key={row.id} row={row} scrambling={phase === 'scrambling'} reduced={reduced} revealed={v1Revealed} />
-        ))}
-      </Section>
+      {sealedHere ? (
+        <Section title={t('evidence.itemFacts.sealed.title')} testID="evidence-sealed-values">
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+            {t('evidence.itemFacts.sealed.note')}
+          </Text>
+          {sealedFiles.length === 0 ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-sealed-no-files">
+              {t('evidence.itemFacts.sealed.noFiles')}
+            </Text>
+          ) : (
+            sealedFiles.map((file) => (
+              <View key={file.trackId} testID={`evidence-sealed-file-${file.trackId}`}>
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+                  {t('evidence.itemFacts.sealed.file', { track: file.trackId })}
+                </Text>
+                <HashText value={file.sha256 ?? t('evidence.itemFacts.notReported')} />
+              </View>
+            ))
+          )}
+        </Section>
+      ) : (
+        <Section title={t('features.evidence.integrity.trackTitle')}>
+          {view.tracks.map((row) => (
+            <TrackHashRow key={row.id} row={row} scrambling={phase === 'scrambling'} reduced={reduced} revealed={v1Revealed} />
+          ))}
+        </Section>
+      )}
 
       <Section title={t('features.evidence.integrity.manifestHash')}>
         <HashText testID="evidence-manifest-hash" value={view.manifestHash} />
         <CheckLine row={view.checks.find((row) => row.id === 'manifest')} revealed={v1Revealed} label={t('features.evidence.integrity.checks.manifest')} />
       </Section>
 
-      <Section title={view.signature.algorithm === 'Ed25519' ? t('features.evidence.integrity.signature') : t('features.evidence.integrity.signatureSimulated')}>
+      <Section title={signatureTitle} titleTestID="evidence-signature-title">
         <HashText testID="evidence-signature" value={view.signature.value} />
         <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
           {t('features.evidence.integrity.keyId')}: {view.signature.keyId}
@@ -280,6 +341,11 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
         {done && v2 !== null && (v2.signingKey === 'DEVELOPMENT' || v2.signingKey === 'NOT_ESTABLISHED') ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID={`evidence-signature-key-${v2.signingKey}`}>
             {t(V2_SIGNING_KEY_LINE[v2.signingKey])}
+          </Text>
+        ) : null}
+        {keyClass === 'DEVELOPMENT' || keyClass === 'UNKNOWN' ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID={`evidence-signature-key-class-${keyClass}`}>
+            {t(keyClass === 'DEVELOPMENT' ? 'evidence.itemFacts.signature.developmentKey' : 'evidence.itemFacts.signature.keyClassUnknown')}
           </Text>
         ) : null}
         <CheckLine row={view.checks.find((row) => row.id === 'signature')} revealed={v1Revealed} label={t('features.evidence.integrity.checks.signature')} />

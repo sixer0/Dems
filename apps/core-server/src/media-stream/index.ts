@@ -28,10 +28,11 @@
 import { randomBytes } from 'node:crypto';
 import { sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { coreFragmentOpener } from '../evidence-verify';
-import { readMediaItem, readSessionOpen } from './items';
+import type { PackageVideoTrackId } from '@dems/shared/evidence-package';
+import { coreFragmentOpener, createPackageReader } from '../evidence-verify';
+import { readMediaItem, readSessionOpen, type MediaItem } from './items';
 import type { MediaStreamParts } from './service';
-import { packageFolderOf } from './source';
+import { MediaSourceError, MediaSourceFailure, listPlayableFiles, packageFolderOf } from './source';
 import { mediaSessionMacOf } from './store-door';
 import { MEDIA_TOKEN_NONCE_BYTES } from './token';
 
@@ -57,7 +58,7 @@ export {
   type MediaStreamParts,
   type MediaStreamService,
 } from './service';
-export { CLEAR_CHUNK_BYTES, MediaSourceError, MediaSourceFailure, packageFolderOf, planMediaFile, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
+export { CLEAR_CHUNK_BYTES, MediaSourceError, MediaSourceFailure, listPlayableFiles, packageFolderOf, planMediaFile, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
 export { MEDIA_SESSION_KEY_BYTES, MEDIA_SESSION_KEY_SECRET_NAME, mediaSessionMacOf } from './store-door';
 export {
   MEDIA_TOKEN_MAC_BYTES,
@@ -74,10 +75,20 @@ export {
   type MediaTokenReading,
 } from './token';
 
+/** What the package of an item can play, as operation 88 would find it (wave H C1; G94-01). */
+export type MediaPlayability = { readonly playable: true; readonly files: readonly PackageVideoTrackId[] } | { readonly playable: false; readonly reason: MediaSourceFailure };
+
 /** What the unit offers beside its routes. */
 export interface MediaStreamControl {
   /** What the routes work with now. */
   parts(): MediaStreamParts;
+  /**
+   * G94-01: the camera files the sealed package of a REAL v2 item can play NOW, by the same plan
+   * operation 88 makes (the manifest of record, each file on disk as long as sealed, its fragment
+   * table, its session key), or why it cannot be played. Reads the manifest and file facts; no
+   * camera byte, no key. Never rejects for anything a package can be.
+   */
+  playability(item: Pick<MediaItem, 'evidenceId' | 'sessionId' | 'manifestSha256'>): Promise<MediaPlayability>;
   /**
    * A TEST puts its own parts in the place of the app's (a package folder of its own, a fixed
    * nonce, an item that is a value). No production file calls it: the unit's static test holds that.
@@ -109,6 +120,18 @@ export function mediaStream(app: FastifyInstance): MediaStreamControl {
   let replaced: Partial<MediaStreamParts> = {};
   const control: MediaStreamControl = {
     parts: () => ({ ...own, ...replaced }),
+    async playability(item) {
+      const parts = control.parts();
+      const dir = parts.packageDirOf(item.sessionId);
+      if (dir === null) return { playable: false, reason: MediaSourceFailure.PACKAGE_MISSING };
+      try {
+        return { playable: true, files: await listPlayableFiles({ reader: createPackageReader(dir), opener: parts.opener }, item) };
+      } catch (error) {
+        if (error instanceof MediaSourceError) return { playable: false, reason: error.code };
+        // Anything else of a reader (a folder that vanished between two calls) is "cannot be read", never a 500 of a page view.
+        return { playable: false, reason: MediaSourceFailure.MANIFEST_UNREADABLE };
+      }
+    },
     replaceForTest(parts) {
       replaced = { ...replaced, ...parts };
     },

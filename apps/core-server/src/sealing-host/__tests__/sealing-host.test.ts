@@ -18,7 +18,8 @@ import { SealingError } from '../../sealing';
 import { evidenceVerification } from '../../modules/evidence';
 import { NO_STT_SNAPSHOT_RECORDED, SEALING_RESUME_BOOT_STEP, STAND_INS, isSttSnapshotNotRecorded, sealingHost, sessionKeyIdOf } from '../index';
 import { coreFragmentSealer } from '../session-key';
-import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, createSealSessionReader, type SealStateView } from '../session-reader';
+import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, SOURCE_WORDS, createSealSessionReader, type SealStateView } from '../session-reader';
+import { CORE_SERVER_VERSION } from '../../version';
 
 const roots: string[] = [];
 const apps: FastifyInstance[] = [];
@@ -106,6 +107,8 @@ describe('the session record the seal reads', () => {
       sttSnapshot: async () => null,
       notice: 'NOTICE',
       timezone: '+07:00',
+      // Closing pass Z1 (D207): fields 20 / 21 are the configured installation identity, not the state's stored record (`CORE-01`, `Core`).
+      identity: { deviceId: 'DEMS-JKT-07', name: 'Ruang Pemeriksaan 3' },
       onNoSttSnapshot: (sessionId) => void noSnapshot.push(sessionId),
     });
     const facts = await reader.read(SESSION);
@@ -119,8 +122,10 @@ describe('the session record the seal reads', () => {
       createdAt: 1_000,
       startedAt: 2_000,
       stoppedAt: 9_000,
-      timeSource: { source: 'NTP', state: 'LOCKED', fallbackOrder: ['GNSS', 'NTP', 'RTC'] },
-      device: { deviceId: 'CORE-01', name: 'Core', serialNumber: 'SN-1', hardwareUuid: 'uuid-1', softwareVersion: '0.2.0' },
+      // Fix wave H driver A (G89-01): the Core's own clock, build and (not configured) identity - never the hosted simulator's
+      // `time` slice (NTP / locked here), `startTimeSource`, `device.identity` (SN-1, uuid-1) or `device.softwareVersion`.
+      timeSource: { source: 'RTC', state: 'HOST_SYSTEM_CLOCK', fallbackOrder: [] },
+      device: { deviceId: 'DEMS-JKT-07', name: 'Ruang Pemeriksaan 3', serialNumber: 'NOT_CONFIGURED', hardwareUuid: 'NOT_CONFIGURED', softwareVersion: CORE_SERVER_VERSION },
       operator: { investigatorId: 'OPR-001', displayName: 'AKP Budi Santoso', role: 'INVESTIGATOR' },
       subject: { name: 'Test Subject', type: 'SAKSI', authorization: STAND_INS.subjectAuthorization },
       audioIntervals: [
@@ -129,7 +134,8 @@ describe('the session record the seal reads', () => {
       ],
     });
     // The device of a slot is the START record's (VIDEO-02 was recorded from CAM-09), never the selector as it is now.
-    expect(facts?.tracks.map((track) => [track.trackId, track.deviceId, track.model, track.firmware, track.profile])).toEqual([['VIDEO-01', 'CAM-01', 'FAKE-CAM', 'sim-fw', 'main-1080p25'], ['VIDEO-02', 'CAM-09', 'sim-model', 'sim-fw', 'main-1080p25']]);
+    expect(facts?.tracks.map((track) => [track.trackId, track.deviceId, track.model, track.firmware, track.profile])).toEqual([['VIDEO-01', 'CAM-01', SOURCE_WORDS.FAKE.model, SOURCE_WORDS.FAKE.firmware, 'main-1080p25'], ['VIDEO-02', 'CAM-09', SOURCE_WORDS.FAKE.model, SOURCE_WORDS.FAKE.firmware, 'main-1080p25']]);
+    // G89-01: both slots are generated sources (adapter FAKE in the START rows): neither the registry's label ('FAKE-CAM') nor the simulator camera's model / firmware ('sim-model', 'sim-fw') is a fact of the source.
     expect(facts?.tracks.every((track) => track.codec === null && track.avOffsetMs === null && track.firstVideoSamplePts === null && track.firstVideoSampleTimescale === null)).toBe(true);
     // The four rows of the session start go to the builder as they are stored: the classes are its to compute.
     expect(facts?.sourceRows).toEqual([{ slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' }, { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' }, { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }, { slot: 'VIDEO-02', deviceId: 'CAM-09', adapterKind: 'FAKE' }]);

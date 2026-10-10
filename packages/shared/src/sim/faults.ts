@@ -16,7 +16,7 @@
  */
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
 import { activeMeterChannel, captureMicLines, micInputOfChannel } from './audio';
-import { captureFaultSentence } from './capture-fault-wording';
+import { DEMO_CAPTURE_FAULT_REASON, captureFaultSentence } from './capture-fault-wording';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
 import { DEVICE_ID } from './dataset';
 import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
@@ -263,6 +263,9 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
   }
   const key = faultTargetKey(state, kind, target);
   if (kind === FaultKind.AUDIT_TAMPER && key === null) return state; // nothing to tamper with
+  // Wave H driver B (G75-09): the DEMO control's capture fault says who raised it. The simulator's session
+  // keeps recording, so the sentence of a capture that ENDED ("the recording was interrupted") is not its.
+  if (kind === FaultKind.CAPTURE_FAULT) return raiseFaultAtKey(state, now, kind, key, target, { reason: DEMO_CAPTURE_FAULT_REASON });
   return raiseFaultAtKey(state, now, kind, key, target);
 }
 
@@ -416,6 +419,27 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
 /** The open session is a failed start: nothing recorded, faulted by the capture (the rule of `isFailedCaptureStart`, kept here to stay clear of an import cycle). */
 const isFailedStartSession = (session: SimState['session']): boolean => session !== null && session.captureDurable === false && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT;
 
+/**
+ * The cause of the CAPTURE-WIDE fault of `kind` that is active (key null): a fact of its alert
+ * (`params.reason`, see `raiseFaultAtKey`), not of the fault entry. Null when it names none.
+ */
+function captureWideReason(state: SimState, kind: FaultKind): string | null {
+  const alert = state.alerts.findLast((candidate) => candidate.active && candidate.kind === kind && (candidate.target ?? null) === null);
+  return alert === undefined ? null : alertReason(alert);
+}
+
+/**
+ * True when the active capture-wide `CAPTURE_FAULT` was raised BY A CAPTURE (a failed start, a
+ * capture that ended): it names a cause that is not the demo control's own. Decision D72(h) /
+ * finding G75-06: such a fault is ended by the capture side (the next start, the seal of its
+ * recording), never by demo operation 74 - whether its session is open or closed.
+ */
+function isCaptureOriginatedFault(state: SimState): boolean {
+  if (!state.faults.active.some((fault) => fault.kind === FaultKind.CAPTURE_FAULT && fault.target === null)) return false;
+  const reason = captureWideReason(state, FaultKind.CAPTURE_FAULT);
+  return reason !== null && reason !== DEMO_CAPTURE_FAULT_REASON;
+}
+
 /** `clearFault(kind, target?)`: without a target, every active fault of that kind clears. */
 export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultKind, target?: FaultTarget): SimState {
   let key: string | null | undefined;
@@ -425,7 +449,7 @@ export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultK
   // Review R74-11: the capture-wide fault of a FAILED START is the cause its session shows while it
   // is in FAULT (or being closed). It is ended by the next start (D84 R-3 / R-4), never by this demo
   // control while that session is open: a clear here would leave a FAULT session with no cause.
-  if (kind === FaultKind.CAPTURE_FAULT && isFailedStartSession(state.session)) {
+  if (kind === FaultKind.CAPTURE_FAULT && (isFailedStartSession(state.session) || isCaptureOriginatedFault(state))) {
     const others = state.faults.active.filter((fault) => fault.kind === kind && fault.target !== null && (key === undefined || fault.target === key));
     let next = state;
     for (const fault of others) next = clearFaultAtKey(next, now, kind, fault.target);
@@ -450,6 +474,10 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
     (fault) => fault.kind === kind && (key === undefined || fault.target === key) && (wanted === undefined || fault.target === null || (fault.reason ?? null) === wanted),
   );
   if (matches.length === 0) return state;
+  // Wave H driver B (G75-05): the cause of each fault, read BEFORE its alert is resolved. A fault of a
+  // device carries it in its key; the capture-wide one in its alert - without this its clear row read the
+  // sentence of a capture that ended unexpectedly, whatever had really happened (no camera connected).
+  const causes = new Map(matches.map((fault) => [fault, fault.reason ?? (fault.target === null ? captureWideReason(state, kind) : null)] as const));
 
   let next: SimState = {
     ...state,
@@ -479,9 +507,9 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
       matches.map((fault) => ({
         audit: {
           type: 'FAULT_CLEARED' as const,
-          message: `${describeFault(state, kind, fault.target, fault.reason ?? null).message} — cleared`,
+          message: `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared`,
           sessionId,
-          details: { kind, evt: FaultEvt[kind], target: fault.target, ...(fault.reason === undefined ? {} : { reason: fault.reason }) },
+          details: { kind, evt: FaultEvt[kind], target: fault.target, ...((causes.get(fault) ?? null) === null ? {} : { reason: causes.get(fault) }) },
         },
         event: {
           type: 'FAULT_CLEARED' as const,

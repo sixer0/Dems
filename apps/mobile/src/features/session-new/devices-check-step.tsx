@@ -25,11 +25,12 @@ import { spacing } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { PrecheckCaptureNotices, precheckSentence, usePrecheckSentence } from '@/features/capture-selector/capture-notices';
 import { PrecheckSourceBadge } from '@/features/capture-selector/development-source-badge';
+import { LocalSourcesChecking, useLocalSourcesChecking, useLocalSourcesCheckingHint } from '@/features/capture-selector/local-source-notice';
 import { REDUCED_FADE_MS, SPEC_LITERALS, animatePulseOnce, rowReveal, triggerHaptic, useMotionSettings, type MotionSettings } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
 import { CheckIcon } from './check-icon';
 import { DevicePreviews } from './device-previews';
-import { CHECK_ORDER, checkMicBinding, itemsWith, micRoleLine, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
+import { CHECK_ORDER, checkMicBinding, itemsWith, micRoleLine, precheckNoteOf, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
 
 export interface DevicesCheckStepProps {
   precheck: PrecheckSlice | null;
@@ -79,6 +80,9 @@ export function DevicesCheckStep({
   const blocks = itemsWith(items, 'BLOCK');
   const coreBlocked = live && blocks.some((item) => item.id === 'CORE');
   useGateHaptics(phase);
+  // Fix wave H (G70-08): "Run checks again" is disabled, with the reason, while the device classes of the selector are not known.
+  const sourcesChecking = useLocalSourcesChecking();
+  const sourcesCheckingHint = useLocalSourcesCheckingHint(sourcesChecking);
 
   const reasons = blocks
     .map(
@@ -177,12 +181,17 @@ export function DevicesCheckStep({
             size="md"
             onPress={onRetry}
             testID="session-new-retry-checks"
-            {...busyState(retryBusy)}
+            // Fix wave H (G70-08): a re-run opens the devices again; not while their classes are unknown.
+            isDisabled={sourcesChecking}
+            accessibilityLabel={t('features.session-new.devices.retry')}
+            {...sourcesCheckingHint}
+            {...busyState(retryBusy, sourcesChecking)}
           >
             {retryPending ? <PendingSpinner testID="session-new-retry-spinner" /> : null}
             <Button.Label>{t('features.session-new.devices.retry')}</Button.Label>
           </Button>
         ) : null}
+        {phase === 'block' || (phase === 'warn' && !armed) ? <LocalSourcesChecking checking={sourcesChecking} testID="session-new-retry-sources-checking" /> : null}
       </SectionCard>
     </View>
   );
@@ -199,7 +208,9 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
   const roleLine = useSim(micRoleLine);
   const status = item?.status ?? 'PENDING';
   const resolved = status === 'PASS' || status === 'WARN' || status === 'BLOCK';
-  const tone = precheckTone(status);
+  // Wave H closing pass Z2: a NOTE (the host-clock TIME item) is informative - its own chip word and tone.
+  const note = precheckNoteOf(item);
+  const tone = precheckTone(status, note);
   const value = item?.value ?? null;
   // Task 3 row 138 (D114): the sentence of an unreachable capture device, from `params.rule`; null for any other item.
   const unreachable = usePrecheckSentence(resolved ? item : null);
@@ -213,7 +224,7 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
   const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.role.${binding.role}`), input: binding.inputId }) : null;
 
   return (
-    <ListGroup.Item testID={`session-new-check-${id}`} accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${t(`common.precheckStatus.${status}`)}`}>
+    <ListGroup.Item testID={`session-new-check-${id}`} accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${note ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${status}`)}`}>
       <ListGroup.ItemPrefix>
         <CheckIcon id={id} tone={resolved ? tone : 'default'} />
       </ListGroup.ItemPrefix>
@@ -225,7 +236,11 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>
         {resolved ? (
-          <ResultChip status={status} settings={settings} testID={`session-new-check-${id}-status`} />
+          note ? (
+            <StatusChip size="sm" tone="info" label={t('sessionNew.precheckNote.chip')} icon="Info" testID={`session-new-check-${id}-status`} />
+          ) : (
+            <ResultChip status={status} settings={settings} testID={`session-new-check-${id}-status`} />
+          )
         ) : status === 'RUNNING' ? (
           <Spinner size="sm" testID={`session-new-check-${id}-spinner`} />
         ) : (

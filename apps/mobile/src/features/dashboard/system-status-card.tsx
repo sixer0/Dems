@@ -169,17 +169,21 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   const colour = status.kind === 'RECORDING' || status.kind === 'UNKNOWN' ? palette.foreground : toneTextHex[status.tone];
   const centred = align === 'center';
   const extra = status.flags.length - MAX_FLAGS;
+  // Wave H driver B (G75-07 (b)): CRITICAL while the open session is RECORDING - the recording continues, nothing is blocked.
+  const criticalRecording = status.kind === 'CRITICAL' && session.state === 'RECORDING' && !connecting;
 
   const subtitle =
     failedWords !== null
       ? `${failedWords.title}. ${failedWords.body}`
-      : status.kind === 'ATTENTION'
-        ? t('features.dashboard.status.ATTENTION.subtitle', { count: status.flags.length })
-        : status.kind === 'RECORDING'
-          ? connecting
-            ? (session.sessionId ?? '')
-            : t('features.dashboard.status.RECORDING.subtitle', { sessionId: session.sessionId ?? '' })
-          : t(`${status.copyKey}.subtitle`);
+      : criticalRecording
+        ? t('common.criticalWhileRecording.subtitle', { sessionId: session.sessionId ?? '' })
+        : status.kind === 'ATTENTION'
+          ? t('features.dashboard.status.ATTENTION.subtitle', { count: status.flags.length })
+          : status.kind === 'RECORDING'
+            ? connecting
+              ? (session.sessionId ?? '')
+              : t('features.dashboard.status.RECORDING.subtitle', { sessionId: session.sessionId ?? '' })
+            : t(`${status.copyKey}.subtitle`);
 
   return (
     <Animated.View key={status.kind} entering={crossFadeIn(settings)} style={[styles.text, centred ? styles.textCentre : null]}>
@@ -188,7 +192,7 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
         maxFontSizeMultiplier={1.2}
         style={[styles.title, { color: colour }, centred ? styles.centre : null]}
       >
-        {connecting ? t('common.session.connectingCameras') : t(`${status.copyKey}.title`)}
+        {connecting ? t('common.session.connectingCameras') : criticalRecording ? t('common.criticalWhileRecording.title') : t(`${status.copyKey}.title`)}
       </Text>
       <Text
         testID="home-status-subtitle"

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import type { TimeSource } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
 import {
+  isHostClockTime,
   selectEvidenceBySessionId,
   selectOperatorById,
   selectPendingSummaryId,
@@ -33,6 +34,7 @@ import {
 } from '@dems/shared/sim';
 import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { timeSourceAt } from './sim-adapter';
+import { summaryTimeSource } from './summary.model';
 
 /** The finished session (history entry) and where the route stands, as flat values. */
 export interface SummarySession {
@@ -54,11 +56,18 @@ export interface SummarySession {
   readonly pending: boolean;
   readonly startSource: TimeSource | null;
   readonly endSource: TimeSource | null;
+  /** Wave H closing pass Z2: the start / end source is the Core's host system clock (`summaryTimeSource`). */
+  readonly startHostClock: boolean;
+  readonly endHostClock: boolean;
 }
 
 export function useSummarySession(sessionId: string): SummarySession {
   return useSim((s) => {
     const entry = selectSessionHistoryById(s, sessionId);
+    // Wave H closing pass Z2: the session's own members first; the live slice's ring only for an entry without them.
+    const hostClock = isHostClockTime(s.time);
+    const start = summaryTimeSource({ member: entry?.startTimeSource, ring: timeSourceAt(s.time.history, entry?.startedAt ?? null), hostClock });
+    const end = summaryTimeSource({ member: entry?.endTimeSource, ring: timeSourceAt(s.time.history, entry?.endedAt ?? null), hostClock });
     return {
       found: entry !== null,
       activeId: s.session?.id ?? null,
@@ -75,8 +84,10 @@ export function useSummarySession(sessionId: string): SummarySession {
       sizeBytes: entry?.sizeBytes ?? 0,
       faultKind: entry?.faultKind ?? null,
       pending: selectPendingSummaryId(s) === sessionId,
-      startSource: timeSourceAt(s.time.history, entry?.startedAt ?? null),
-      endSource: timeSourceAt(s.time.history, entry?.endedAt ?? null),
+      startSource: (start?.source ?? null) as TimeSource | null,
+      endSource: (end?.source ?? null) as TimeSource | null,
+      startHostClock: start?.host ?? false,
+      endHostClock: end?.host ?? false,
     };
   });
 }

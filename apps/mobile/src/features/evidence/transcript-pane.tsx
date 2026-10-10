@@ -14,6 +14,16 @@
  * - Every row keeps a constant 1 px border; a revised segment changes its colour only (E-15).
  *   Timestamps are media pts of the segments; nothing here is driven by a timer or animated (E-13).
  * - "Load again" after a failed read is rate-limited by the Core's clock (3 s, 6 s, 12 s; three tries).
+ *
+ * Wave H C2 (finding 6):
+ * - **A simulated item** (G81-01): operation 84 refuses with `details.reason: SIMULATED_ITEM` - the
+ *   Core keeps no transcript for it and never will. The pane says that, not "not available yet".
+ * - **No speech** (G81-05, ruling D198): an ASSEMBLED transcript without a segment reads "No speech
+ *   was detected in this recording." in the neutral tone - never "Transcript assembled" as a
+ *   success - and has no revise control.
+ * - **Access** (G81-07): `access === false` (operation 40 says this caller is outside the scope of
+ *   the transcript operations) - NOTHING is asked of the Core on the page view (a refusal is an
+ *   audited row), and the pane says "You are not permitted to read this transcript."
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Spinner } from 'heroui-native';
@@ -29,20 +39,32 @@ import { useMobileLive } from '@/runtime';
 import type { ItemV2 } from './item-v2';
 import { formatMediaTime, permissionGate, type GateState } from './sealed-playback';
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript';
-import { currentRevisionNumber, deriveSegments, paneStateOf, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model';
+import {
+  TRANSCRIPT_REASON_SIMULATED_ITEM,
+  currentRevisionNumber,
+  deriveSegments,
+  isNoSpeech,
+  paneStateOf,
+  sealedWithoutDocument,
+  type DerivedSegment,
+  type TranscriptPaneState,
+  type TranscriptRevision,
+} from './transcript-model';
 import { TranscriptReviseSheet } from './transcript-revise-sheet';
 
 export interface TranscriptPaneProps {
   evidenceId: string;
   item: ItemV2;
   operatorNames: Readonly<Record<string, string>>;
+  /** `access.transcript` of operation 40: false = refused (nothing is asked); true / null / absent = asked as before. */
+  access?: boolean | null;
 }
 
 const STATE_TONE = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'default', DISABLED: 'default', UNKNOWN: 'default' } as const satisfies Record<TranscriptPaneState, 'success' | 'warning' | 'default'>;
 const RETRY_BASE_MS = 3_000;
 const RETRY_MAX = 3;
 
-export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPaneProps) {
+export function TranscriptPane({ evidenceId, item, operatorNames, access = null }: TranscriptPaneProps) {
   const { t } = useTranslation();
   const live = useMobileLive();
   const sim = useSimInstance();
@@ -52,7 +74,8 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
   const gate = permissionGate({ operatorKnown, permitted: canRevise });
   const summary = item.transcript;
   // No document was sealed (disabled, or unavailable at the seal): nothing is asked of the Core (R80-01).
-  const disabled = sealedWithoutDocument(summary);
+  const refusedByAccess = access === false;
+  const disabled = sealedWithoutDocument(summary) || refusedByAccess;
   const transcript = useTranscript(evidenceId, !disabled);
   const revisions = useTranscriptRevisions(evidenceId, !disabled && transcript.data !== undefined);
   // A revision another operator appended moves the head of the slice item: both reads are fetched again (pass D10).
@@ -60,8 +83,12 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
   const [revising, setRevising] = useState<{ key: number; index: number } | null>(null);
   const [retry, setRetry] = useState({ attempts: 0, until: 0 });
 
-  const document = transcript.data ?? null;
+  // A document read before the refusal was known is not drawn for a caller who may not read it.
+  const document = refusedByAccess ? null : (transcript.data ?? null);
   const state = paneStateOf(summary, document !== null);
+  const noSpeech = isNoSpeech(state, document);
+  /** The Core keeps no transcript for this item (a simulated item): it will never come (G81-01). */
+  const simulatedItem = transcript.error instanceof TranscriptReadError && transcript.error.refusal === 'NOT_READY' && transcript.error.reason === TRANSCRIPT_REASON_SIMULATED_ITEM;
   const revisionList = revisions.data ?? [];
   const derivedSegments = document === null ? [] : deriveSegments(document, revisionList);
   const baseRevision = currentRevisionNumber(document, revisionList);
@@ -81,13 +108,18 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
   };
 
   return (
-    <View style={styles.root} testID={`evidence-transcript-${state}`} accessibilityLabel={t('evidence.transcript.title')}>
+    <View style={styles.root} testID={`evidence-transcript-${noSpeech ? 'NO_SPEECH' : state}`} accessibilityLabel={t('evidence.transcript.title')}>
       <View style={styles.head}>
         <FileText size={16} color={palette.gold} />
         <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.title}>
           {t('evidence.transcript.title')}
         </Text>
-        <StatusChip size="sm" tone={STATE_TONE[state]} icon={null} label={t(`evidence.transcript.state.${state}`)} testID="evidence-transcript-state" />
+        {refusedByAccess ? null : noSpeech ? (
+          // Neutral, and not the word "assembled": no speech is a finding about the recording, not a success.
+          <StatusChip size="sm" tone="default" icon={null} label={t('evidence.itemFacts.transcript.noSpeech')} testID="evidence-transcript-no-speech" />
+        ) : (
+          <StatusChip size="sm" tone={STATE_TONE[state]} icon={null} label={t(`evidence.transcript.state.${state}`)} testID="evidence-transcript-state" />
+        )}
         {document !== null ? (
           <>
             <StatusChip size="sm" tone="default" icon={Lock} label={t('evidence.transcript.inPackage')} testID="evidence-transcript-in-package" />
@@ -109,7 +141,7 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
         </Text>
       ) : null}
 
-      {state === 'PARTIAL' && disabled ? (
+      {state === 'PARTIAL' && sealedWithoutDocument(summary) ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-no-document">
           {t('evidence.transcript.noDocument')}
         </Text>
@@ -124,7 +156,16 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
         </View>
       ) : null}
 
-      {refusal === 'NOT_READY' ? (
+      {refusedByAccess ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityRole="text" testID="evidence-transcript-may-not-read">
+          {t('evidence.itemFacts.transcript.mayNotRead')}
+        </Text>
+      ) : null}
+      {simulatedItem ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-simulated-item">
+          {t('evidence.itemFacts.transcript.simulatedItem')}
+        </Text>
+      ) : refusal === 'NOT_READY' ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-not-ready">
           {t('evidence.transcript.notReady')}
         </Text>
@@ -148,7 +189,7 @@ export function TranscriptPane({ evidenceId, item, operatorNames }: TranscriptPa
           <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-sealed-note">
             {t('evidence.transcript.sealedOriginal')}
           </Text>
-          {derivedSegments.length === 0 ? (
+          {noSpeech ? null : derivedSegments.length === 0 ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-empty">
               {t('evidence.transcript.noSegments')}
             </Text>

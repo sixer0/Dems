@@ -63,6 +63,12 @@ export const WorkerDownCode = {
    * allowlist of the boot check, held for EVERY `HELLO` of every session (review R63-04). Not retried.
    */
   VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
+  /**
+   * `HELLO` names a release word that is NOT the version this Core was built to drive
+   * (`CAPTURE_WORKER_VERSION`, `boot/checks.ts`; gate 64 condition C7, ruling D194): an older or a
+   * newer worker binary. `detail` is the word it named. Not retried.
+   */
+  VERSION_MISMATCH: 'CAPTURE_WORKER_VERSION_MISMATCH',
   /** A line that is no frame of the protocol. */
   PROTOCOL_VIOLATION: 'PROTOCOL_VIOLATION',
   /** `START` was answered with `ok=false`. */
@@ -81,6 +87,100 @@ export const WorkerDownCode = {
 } as const;
 export type WorkerDownCode = (typeof WorkerDownCode)[keyof typeof WorkerDownCode];
 
+/**
+ * WHAT THE SUPERVISOR REFUSES A WORKER'S OWN WORDS FOR (wave H driver F; tidy pass F-Y decision 6).
+ * The `detail` of a `PROTOCOL_VIOLATION` the supervisor itself decided: every one is a member of
+ * this object and nothing else - the supervisor writes no other literal (a test reads its source).
+ */
+export const SupervisorRefusal = {
+  /** A frame names another session than the one the worker was started for. */
+  SESSION_MISMATCH: 'SESSION_MISMATCH',
+  /** A second `HELLO`. */
+  HELLO_TWICE: 'HELLO_TWICE',
+  /** The first frame is not `HELLO`. */
+  HELLO_EXPECTED: 'HELLO_EXPECTED',
+  /** A `TELEMETRY` frame names a device that is no device of the session's plan. */
+  TELEMETRY_SUBJECT_UNKNOWN: 'TELEMETRY_SUBJECT_UNKNOWN',
+  /** A `WARNING` names a subject that is no device of the session's plan. */
+  WARNING_SUBJECT_UNKNOWN: 'WARNING_SUBJECT_UNKNOWN',
+  /** A `RECORD` before `START` was acknowledged. */
+  RECORD_BEFORE_START: 'RECORD_BEFORE_START',
+  /** A `RECORD` names a device that is no camera / microphone of the plan. */
+  RECORD_SUBJECT_UNKNOWN: 'RECORD_SUBJECT_UNKNOWN',
+  /** The sequence number of a `RECORD` is not one more than the last. */
+  RECORD_SEQUENCE_GAP: 'RECORD_SEQUENCE_GAP',
+  /** A `RECORD` after the seal completion. */
+  RECORD_AFTER_SEAL: 'RECORD_AFTER_SEAL',
+  /** A once-per-camera `RECORD` said a second time. */
+  RECORD_REPEATED: 'RECORD_REPEATED',
+  /** More records than the rate ceiling allows. */
+  RECORD_RATE_EXCEEDED: 'RECORD_RATE_EXCEEDED',
+  /** The interval of a microphone switch no command asked for. */
+  SWITCH_NOT_COMMANDED: 'SWITCH_NOT_COMMANDED',
+} as const;
+export type SupervisorRefusal = (typeof SupervisorRefusal)[keyof typeof SupervisorRefusal];
+
+/**
+ * WHY THE CAPTURE WORKER OF A SESSION IS DOWN, AS ONE CLOSED ENUMERATION (wave H driver F; gate 64
+ * condition C4, gate 75 finding G75-05; tidy pass F-Y decision 6). Every way the supervisor can end
+ * a worker, or find it ended, maps to exactly ONE member (`captureDownReasonOf`, `supervisor.ts`):
+ * it is `WorkerDown.reason`, it is the `cause` of the supervisor's own `CAPTURE_FAULT` warning, and
+ * the forwarder hands it to the engine as the fault's `reason` - so the operator reads WHY, and the
+ * alert and its `FAULT_RAISED` row carry the code. Each member has its own sentence in the shared
+ * wording source (`@dems/shared/sim` `capture-fault-wording.ts`); `fault-wording.test.ts` enumerates
+ * this object, so a member without a sentence fails a test.
+ *
+ * The members are the supervisor's own literals: never a text of the worker. A worker's `CRASH`
+ * code is NOT repeated here (it stays in `WorkerDown.detail`, for the log) - except the protocol's
+ * enumerated final codes (`FINAL_CRASH_CODES`: `NO_CAMERA_CONNECTED`), which are reasons of their own.
+ */
+export const CaptureDownReason = {
+  ...SupervisorRefusal,
+  /** The worker process could not be started. */
+  WORKER_SPAWN_FAILED: 'WORKER_SPAWN_FAILED',
+  /** No worker program is configured for this Core. */
+  WORKER_NOT_CONFIGURED: 'WORKER_NOT_CONFIGURED',
+  /** The worker said no `HELLO` within the limit. */
+  WORKER_HELLO_TIMEOUT: 'WORKER_HELLO_TIMEOUT',
+  /** The worker speaks another version of the capture protocol. */
+  WORKER_PROTOCOL_MISMATCH: 'WORKER_PROTOCOL_MISMATCH',
+  /** The worker is a proof build (a negative control): never recorded with. */
+  WORKER_PROOF_BUILD: 'WORKER_PROOF_BUILD',
+  /** The worker names a version that is no release word. */
+  WORKER_VERSION_UNKNOWN: 'WORKER_VERSION_UNKNOWN',
+  /** The worker is a release build of ANOTHER version than this Core drives. */
+  WORKER_VERSION_MISMATCH: 'WORKER_VERSION_MISMATCH',
+  /** The worker refuses to run on a media library it was not verified against. */
+  WORKER_MEDIA_LIBRARY_MISMATCH: 'WORKER_MEDIA_LIBRARY_MISMATCH',
+  /** A line of the worker is no frame of the protocol (the channel's own check). */
+  WORKER_FRAME_INVALID: 'WORKER_FRAME_INVALID',
+  /** The worker refused `START` because a file is already at an output path: nothing is overwritten. */
+  WORKER_OUTPUT_EXISTS: 'WORKER_OUTPUT_EXISTS',
+  /** The worker refused `START` with another code of its own. */
+  WORKER_START_REFUSED: 'WORKER_START_REFUSED',
+  /** The worker did not answer `START` within the limit. */
+  WORKER_START_TIMEOUT: 'WORKER_START_TIMEOUT',
+  /** No valid heartbeat within the limit: the worker was ended. */
+  WORKER_HEARTBEAT_TIMEOUT: 'WORKER_HEARTBEAT_TIMEOUT',
+  /** The worker gave up by itself: it said `CRASH` (its code is `WorkerDown.detail`). */
+  WORKER_CRASHED: 'WORKER_CRASHED',
+  /** The worker process was ended by a signal it did not get from the supervisor's stop (killed from outside, or by the system). */
+  WORKER_KILLED: 'WORKER_KILLED',
+  /** The worker process ended with a code other than 0 and said nothing. */
+  WORKER_EXIT_NONZERO: 'WORKER_EXIT_NONZERO',
+  /** The worker process ended with code 0 while its session was still recording. */
+  WORKER_EXIT_UNEXPECTED: 'WORKER_EXIT_UNEXPECTED',
+  /** A stop: the worker left with code 0 and never acknowledged the `STOP`. */
+  WORKER_STOP_NOT_ACKNOWLEDGED: 'WORKER_STOP_NOT_ACKNOWLEDGED',
+  /** A stop: the worker left without the record that ends the audio timeline it had begun. */
+  WORKER_TIMELINE_END_MISSING: 'WORKER_TIMELINE_END_MISSING',
+  /** A stop: the grace ran out and the supervisor KILLED the worker. */
+  STOP_TIMEOUT: 'STOP_TIMEOUT',
+  /** The protocol's final crash code: no camera connected within the ingest-open window. */
+  NO_CAMERA_CONNECTED: 'NO_CAMERA_CONNECTED',
+} as const;
+export type CaptureDownReason = (typeof CaptureDownReason)[keyof typeof CaptureDownReason];
+
 /** The last time a worker went down. Identifiers and codes only. */
 export interface WorkerDown {
   readonly at: number;
@@ -91,7 +191,42 @@ export interface WorkerDown {
   readonly signal: string | null;
   /** Which worker of the session it was (1 for the first). */
   readonly attempt: number;
+  /**
+   * WHY, as one member of the closed enumeration `CaptureDownReason` (wave H driver F). The
+   * supervisor ALWAYS sets it; it is optional in the type only so that a test double written before
+   * it still compiles - a reader treats an absent reason as "not stated".
+   */
+  readonly reason?: CaptureDownReason;
 }
+
+/**
+ * THE END OF ONE CAMERA INSIDE A SESSION THAT GOES ON (wave H driver F; gate 64 condition C3, gate
+ * 89 section 7). The worker gives a camera up - it never connected, its stream ended, its clock was
+ * refused by the clock floor - with a `CAPTURE_FAULT` warning naming the camera, and keeps
+ * recording the others. The supervisor keeps, per camera, WHICH, WHY and WHEN:
+ *
+ *   reason                   the worker's reason, one of `CAMERA_END_REASONS` (a closed set)
+ *   at                       the Core's clock when the supervisor read the statement (epoch ms)
+ *   lastDurableFragmentIndex the index of the last fragment of that camera file the worker had
+ *   lastDurableMediaEndMs    reported durable (`FRAGMENT_CHECKPOINT`) BEFORE the statement, and where
+ *                            it ends on the file's media timeline (`mediaStartMs + mediaDurationMs`);
+ *                            both null when no fragment of the camera was durable yet
+ *
+ * A LOWER BOUND, STATED AS ONE: the fragment that was open when the camera ended is closed and
+ * synced after the statement, so the file may hold up to one fragment more of that camera's video
+ * than `lastDurableMediaEndMs` says; the file's own checkpoints are the truth of what it holds.
+ * Camera conditions do not end inside a session (protocol 4): an end stays for the session.
+ */
+export interface CaptureCameraEnd {
+  readonly deviceId: string;
+  readonly reason: CaptureCameraEndReason;
+  readonly at: number;
+  readonly lastDurableFragmentIndex: number | null;
+  readonly lastDurableMediaEndMs: number | null;
+}
+/** The reasons of the protocol's `CAPTURE_FAULT` warning that END a camera for its session. */
+export const CAMERA_END_REASONS = ['CAMERA_NOT_CONNECTED', 'CAMERA_STREAM_ENDED', 'CAMERA_CLOCK_OUT_OF_BOUND'] as const satisfies readonly CaptureWarningReason[];
+export type CaptureCameraEndReason = (typeof CAMERA_END_REASONS)[number];
 
 export interface CaptureStatus {
   readonly phase: CapturePhase;
@@ -121,6 +256,12 @@ export interface CaptureStatus {
   readonly durable: boolean;
   /** Sequence number of the last record of the open session; 0 before the first. */
   readonly lastRecordSeq: number;
+  /**
+   * The cameras of the OPEN session the worker gave up while the session went on, in the order it
+   * said so (wave H driver F; see `CaptureCameraEnd`). Empty when none, and when no session is open.
+   * Optional in the type for a test double written before it.
+   */
+  readonly cameraEnds?: readonly CaptureCameraEnd[];
 }
 
 interface EventBase {
@@ -138,7 +279,21 @@ export type CaptureEvent =
    * camera or a microphone of the plan and `reason` says which cause of the code it is. Of the
    * supervisor itself (its `CAPTURE_FAULT`: the worker cannot be kept running): no subject, no reason.
    */
-  | (EventBase & { readonly name: 'warning'; readonly action: 'raiseCaptureWarning'; readonly code: CaptureWarningCode; readonly reason: CaptureWarningReason | null; readonly state: CaptureWarningState; readonly subject: string | null; readonly source: 'worker' | 'supervisor' })
+  | (EventBase & {
+      readonly name: 'warning';
+      readonly action: 'raiseCaptureWarning';
+      readonly code: CaptureWarningCode;
+      readonly reason: CaptureWarningReason | null;
+      readonly state: CaptureWarningState;
+      readonly subject: string | null;
+      readonly source: 'worker' | 'supervisor';
+      /**
+       * The supervisor's own `CAPTURE_FAULT` only (wave H driver F): WHY the worker is down for good,
+       * the `reason` of the `WorkerDown` that raised it. The protocol's `reason` stays null for it (it
+       * is no reason of a `WARNING` frame); the forwarder hands `cause` to the engine as the fault's reason.
+       */
+      readonly cause?: CaptureDownReason;
+    })
   | (EventBase & { readonly name: 'phase'; readonly phase: CapturePhase; readonly previous: CapturePhase })
   | (EventBase & { readonly name: 'workerDown'; readonly down: WorkerDown; readonly restartInMs: number | null })
   /** A lossless record of the worker (spec §B.2 R-1), in the order of `seq`, never through the queue of levels. */
@@ -200,6 +355,12 @@ export interface CaptureStopOutcome {
   readonly clean: boolean;
   /** Why the stop is not clean; null when it is. */
   readonly down: WorkerDown | null;
+  /**
+   * The cameras the worker gave up while the session went on (wave H driver F; `CaptureCameraEnd`):
+   * WHICH camera ended, WHY and WHEN - for a stop that is CLEAN as well (one camera lost, the other
+   * recorded to the end). Absent when none ended. The same list is `status().cameraEnds` until the stop.
+   */
+  readonly cameraEnds?: readonly CaptureCameraEnd[];
 }
 
 /** Refusals of the supervisor. `code` is one of `CaptureRefusal`. */

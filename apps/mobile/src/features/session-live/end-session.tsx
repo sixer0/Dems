@@ -268,7 +268,7 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
             <Button testID="monitor-end-keep" variant="outline" isDisabled={press.busy} onPress={dismiss}>
               <Button.Label>{t('session.actions.endSession.keepRecording')}</Button.Label>
             </Button>
-            <Button testID="monitor-end-confirm" variant="danger" isDisabled={!check.valid} onPress={confirm} {...busyState(press.busy, !check.valid)}>
+            <Button testID="monitor-end-confirm" variant="danger" isDisabled={!check.valid} onPress={confirm} accessibilityLabel={press.pending ? t('features.session-live.endSession.ending') : t('session.actions.endSession.confirm')} {...busyState(press.busy, !check.valid)}>
               {press.pending ? <PendingSpinner color={derived.dangerForeground} testID="monitor-end-confirm-spinner" /> : null}
               <Button.Label>
                 {press.pending ? t('features.session-live.endSession.ending') : t('session.actions.endSession.confirm')}

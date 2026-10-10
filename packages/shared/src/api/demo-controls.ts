@@ -53,7 +53,7 @@ import { apiText } from './text';
 const epoch = () => z.int().nonnegative();
 
 export const FaultTargetSchema = z
-  .object({
+  .strictObject({
     channel: z
       .enum([TrackId.AUDIO_01, TrackId.AUDIO_02])
       .optional()
@@ -78,12 +78,18 @@ export const FaultTargetSchema = z
   .describe('Optional target of a fault: the members of the simulator\'s `FaultTarget`.');
 export type FaultTargetBody = z.output<typeof FaultTargetSchema>;
 
+/**
+ * STRICT (wave H closing pass Z1; ruling D206 (3); gate findings G70-09 / G75-14): a member the
+ * contract does not name is `422 INVALID_INPUT`, here and inside `target`. A body with a top-level
+ * `cameraId` used to be accepted with the member dropped, and the fault was raised on the default
+ * camera - a request that says one thing and does another.
+ */
 export const DemoFaultRequestSchema = z
-  .object({
+  .strictObject({
     kind: z.enum(FaultKind),
     target: FaultTargetSchema.optional(),
   })
-  .describe('Request body of `POST /api/v1/demo/faults` and `POST /api/v1/demo/faults/clear`.');
+  .describe('Request body of `POST /api/v1/demo/faults` and `POST /api/v1/demo/faults/clear`. Strict: an unknown member, here or in `target`, is refused with 422.');
 export type DemoFaultRequest = z.output<typeof DemoFaultRequestSchema>;
 
 export const ScenarioLoadRequestSchema = z

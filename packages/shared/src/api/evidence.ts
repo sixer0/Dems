@@ -102,20 +102,64 @@ export const EvidenceMediaRefSchema = z
       .regex(DEMO_PACKAGE_SUFFIX_PATTERN)
       .nullable()
       .describe('The join key of the bundled package, e.g. `0004`; null when the source is not DEMO_PACKAGE.'),
+    // Wave H C1 (gate finding G94-01): what a Core states beside the source. Both optional: Simulated mode states neither.
+    fileIds: z
+      .array(z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]))
+      .min(1)
+      .max(2)
+      .optional()
+      .describe('Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one or two), in file order - the `fileId` values operation 88 accepts for it.'),
+    reason: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]{0,63}$/)
+      .optional()
+      .describe(
+        'Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core\'s store and no bundled demo package belongs to it), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.',
+      ),
   })
   .refine((ref) => (ref.source === EvidenceMediaSource.DEMO_PACKAGE) === (ref.packageSuffix !== null), {
     error: 'packageSuffix is set exactly when the source is DEMO_PACKAGE.',
     path: ['packageSuffix'],
   })
+  .refine((ref) => ref.fileIds === undefined || ref.source === EvidenceMediaSource.LIVE_STREAM, { error: 'fileIds are stated only with LIVE_STREAM.', path: ['fileIds'] })
+  .refine((ref) => ref.reason === undefined || ref.source === EvidenceMediaSource.NONE, { error: 'a reason is stated only with NONE.', path: ['reason'] })
   .describe(
     'Which media belongs to an evidence item. It names no file and no path: playback travels through the signed media session of operation 88 (E-31; the v1 MS-1 reading stays true for Simulated mode).',
   );
 export type EvidenceMediaRef = z.output<typeof EvidenceMediaRefSchema>;
 
+/** One finished export of an item, as operation 40 lists it (wave H C1; gate finding G94-05). */
+export const EvidenceFinishedExportSchema = z
+  .strictObject({
+    exportId: z.string().regex(/^EXP-[0-9]{6}$/).describe('`EXP-NNNNNN` of operation 42.'),
+    jobId: trimmedText(32).describe('`EXPJ-NNNNNN`: the `{id}` of operation 87, which answers a fresh signed download path for it.'),
+    kind: z.enum(['PACKAGE', 'COMPOSITE']),
+    completedAt: epochMs().describe('`export.exportedAt` of the signed export manifest.'),
+    exportedBy: trimmedText(64).describe('The operator ID the signed export manifest names (`export.exportedBy`).'),
+    archiveBytes: count().describe('The length of the archive file as it lies on the Core.'),
+    archiveSha256: sha256Hex().optional().describe('SHA-256 of the archive file, when the Core has computed it in this run; operation 87 always answers it (`archive.sha256`).'),
+  })
+  .describe('One finished export of an evidence item: the archive lies in the Core\'s store.');
+export type EvidenceFinishedExport = z.output<typeof EvidenceFinishedExportSchema>;
+
 export const EvidenceDetailSchema = z
   .strictObject({
     evidence: EvidenceItemSchema,
     media: EvidenceMediaRefSchema,
+    // Wave H C1 (gate notes G81-07, G94-06; finding G94-05). Optional: Simulated mode states neither.
+    access: z
+      .strictObject({
+        play: z.boolean().describe('This caller may open a media session for the item (operation 88): false for REAL evidence the caller does not hold (SEC35-16). A client that reads false does not ask.'),
+        readTranscript: z.boolean().describe('This caller is inside the case scope the transcript operations (84, 86) hold for the item.'),
+        export: z.boolean().describe('This caller has EVIDENCE_EXPORT and is inside the case scope of the item (operations 42, 87 and the download).'),
+      })
+      .optional()
+      .describe('Core server only: what THIS caller may do with the item, so that a page view asks for nothing it would be refused (a refusal is an audited row).'),
+    exports: z
+      .array(EvidenceFinishedExportSchema)
+      .max(100)
+      .optional()
+      .describe('Core server only, and only for a caller with `access.export`: the finished exports of the item whose archive lies in the Core\'s store, newest first. Each can be downloaded again through operation 87 by its `jobId`. Archives are kept until the package is removed; none is deleted by the product.'),
   })
   .describe('One evidence item and the reference to its media.');
 export type EvidenceDetail = z.output<typeof EvidenceDetailSchema>;
@@ -410,6 +454,10 @@ export const EvidenceExportJobSchema = z
     derived: z.boolean().describe('True for a COMPOSITE output: marked derived and hashed in the export manifest (OD-16).'),
     createdAt: epochMs(),
     completedAt: nullableEpochMs().optional(),
+    archive: z
+      .strictObject({ bytes: count(), sha256: sha256Hex() })
+      .optional()
+      .describe('Core server only, on a COMPLETE job whose archive lies in the Core\'s store (wave H C1; ruling D200): the length and SHA-256 of the archive FILE. The archive carries its export manifest and signature inside and therefore cannot contain its own hash: this answer and the download\'s audit row are where it is stated. `npm run evidence:verify-export -- <archive> --sha256 <this value>` holds a received file to it.'),
     failureReason: z
       .string()
       .regex(/^[A-Z][A-Z0-9_]*$/)
@@ -881,6 +929,36 @@ const VERIFY_FAILED: EvidenceVerifyResultBody = {
   signatureOk: true,
 };
 
+/**
+ * The item of the `getEvidence.productSealed` example: what a Core answers for an item it sealed itself
+ * (wave H C1). A constant since reconcile pass R, so that the other real-shape examples below restate it
+ * member for member and the two clients' tests import the SAME objects (no client hand-writes one).
+ */
+const EXAMPLE_PRODUCT_SEALED_ITEM = {
+  ...EXAMPLE_EVIDENCE_ITEM,
+  integritySource: 'REAL',
+  manifestVersion: 2,
+  transcriptSha256: null,
+  labelsStatus: null,
+  developmentSources: true,
+  tampered: false,
+  tamperedTrackId: null,
+  tracks: EXAMPLE_EVIDENCE_ITEM.tracks.filter((track) => track.trackId === TrackId.VIDEO_01 || track.trackId === TrackId.VIDEO_02),
+  signature: { value: 'c4'.repeat(64), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false, developmentKey: true },
+  sealedPackage: 'PRESENT',
+  interrupted: false,
+  files: [
+    { trackId: TrackId.VIDEO_01, fileName: 'fragments/VIDEO-01.mp4', sizeBytes: 68_363_781, sha256: '1a'.repeat(32), fragmentCount: 67, sha256Plain: '2b'.repeat(32), fragmentChainHead: '3c'.repeat(32) },
+    { trackId: TrackId.VIDEO_02, fileName: 'fragments/VIDEO-02.mp4', sizeBytes: 67_588_980, sha256: '4d'.repeat(32), fragmentCount: 67, sha256Plain: '5e'.repeat(32), fragmentChainHead: '6f'.repeat(32) },
+  ],
+  audioSourceIntervals: [
+    { seq: 1, inputId: 'MIC-01', role: 'PRIMARY', fromMs: 0, toMs: 17_601, reason: 'START', sourceClass: 'FAKE' },
+    { seq: 2, inputId: 'MIC-02', role: 'STANDBY', fromMs: 17_601, toMs: 49_001, reason: 'MANUAL', sourceClass: 'FAKE' },
+    { seq: 3, inputId: 'MIC-01', role: 'PRIMARY', fromMs: 49_001, toMs: 134_145, reason: 'MANUAL', sourceClass: 'FAKE' },
+  ],
+  transcript: { state: 'DISABLED', sha256: null, machineTranscriptHash: null, labelsStatus: null, revision: 0 },
+} satisfies EvidenceDetail['evidence'];
+
 export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   listEvidence: {
     responses: {
@@ -905,6 +983,84 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           value: {
             evidence: EXAMPLE_EVIDENCE_ITEM,
             media: { source: 'DEMO_PACKAGE', packageSuffix: '0004' },
+          } satisfies EvidenceDetail,
+        },
+        // Wave H C1 (gate finding G94-01; request of wave H C2): what a Core answers for an item it sealed itself.
+        productSealed: {
+          summary: 'A product-sealed item on a Core server: its sealed camera files play through a media session (operation 88); the sealed facts, what this caller may do and the finished exports are stated',
+          value: {
+            evidence: EXAMPLE_PRODUCT_SEALED_ITEM,
+            media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01, TrackId.VIDEO_02] },
+            access: { play: true, readTranscript: true, export: true },
+            exports: [{ exportId: 'EXP-000033', jobId: 'EXPJ-000033', kind: 'PACKAGE', completedAt: 1_791_620_071_205, exportedBy: 'OPR-002', archiveBytes: 136_096_844, archiveSha256: '7a'.repeat(32) }],
+          } satisfies EvidenceDetail,
+        },
+        // Reconcile pass R (decisions D205, D207): the other kinds of item a Core answers. Every evidence-item
+        // test of the two clients that asks "what does a real item look like" imports THESE - none hand-writes one.
+        productSealedInterrupted: {
+          summary: 'A product-sealed item whose recording did not end by a stop: the sealed manifest says `interrupted`, the cause is the code of the item\'s custody entry RECORDING_INTERRUPTED, and the durable prefix plays like any sealed package',
+          value: {
+            evidence: {
+              ...EXAMPLE_PRODUCT_SEALED_ITEM,
+              status: 'SEALED',
+              lifecycleStage: 'SEALED_LOCAL_EVIDENCE',
+              interrupted: true,
+              interruptedCause: 'CAPTURE_FAULT',
+              custody: [
+                { at: EXAMPLE_PRODUCT_SEALED_ITEM.recordedAt, action: 'RECORDING_STARTED', actorId: 'OPR-001', detail: null },
+                { at: EXAMPLE_PRODUCT_SEALED_ITEM.endedAt, action: 'RECORDING_INTERRUPTED', actorId: null, detail: 'CAPTURE_FAULT' },
+                { at: EXAMPLE_PRODUCT_SEALED_ITEM.sealedAt ?? EXAMPLE_PRODUCT_SEALED_ITEM.endedAt, action: 'SEALED', actorId: null, detail: 'Durable prefix sealed (interrupted)' },
+              ],
+            },
+            media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01, TrackId.VIDEO_02] },
+            access: { play: true, readTranscript: true, export: false },
+          } satisfies EvidenceDetail,
+        },
+        productSealedOneCamera: {
+          summary: 'A product-sealed item of a one-camera session: the package holds ONE camera file and operation 88 accepts that `fileId` only',
+          value: {
+            evidence: {
+              ...EXAMPLE_PRODUCT_SEALED_ITEM,
+              tracks: EXAMPLE_PRODUCT_SEALED_ITEM.tracks.filter((track) => track.trackId === TrackId.VIDEO_01),
+              files: EXAMPLE_PRODUCT_SEALED_ITEM.files.filter((file) => file.trackId === TrackId.VIDEO_01),
+            },
+            media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01] },
+            access: { play: true, readTranscript: true, export: false },
+          } satisfies EvidenceDetail,
+        },
+        noMedia: {
+          summary: 'A REAL item whose sealed package cannot be read in the Core\'s store: no media, with the reason as a code; the item states no sealed fact (`sealedPackage: NOT_READABLE`)',
+          value: {
+            evidence: (({ files: _files, audioSourceIntervals: _intervals, interrupted: _interrupted, ...item }) => ({
+              ...item,
+              signature: { value: item.signature.value, keyId: item.signature.keyId, algorithm: item.signature.algorithm, simulated: item.signature.simulated },
+              sealedPackage: 'NOT_READABLE' as const,
+            }))(EXAMPLE_PRODUCT_SEALED_ITEM),
+            media: { source: 'NONE', packageSuffix: null, reason: 'PACKAGE_MISSING' },
+            access: { play: true, readTranscript: true, export: false },
+          } satisfies EvidenceDetail,
+        },
+        outsideCaseScope: {
+          summary: 'A product-sealed item read by an operator who does not hold the case: the page is answered, and `access` says what a page view must not ask for (SEC35-16)',
+          value: {
+            evidence: EXAMPLE_PRODUCT_SEALED_ITEM,
+            media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01, TrackId.VIDEO_02] },
+            access: { play: false, readTranscript: false, export: false },
+          } satisfies EvidenceDetail,
+        },
+        seedSealedDemo: {
+          summary: 'A demonstration item the seed SEALED on this Core with the development key (decision D205): a real sealed package of a generated test picture. It plays through operation 88 like any sealed package and is marked by its own members (DEMO_PACKAGE, development sources, development key); no bundled media belongs to it',
+          value: {
+            evidence: {
+              ...EXAMPLE_PRODUCT_SEALED_ITEM,
+              integritySource: 'DEMO_PACKAGE',
+              developmentSources: true,
+              status: 'SEALED',
+              lifecycleStage: 'SEALED_LOCAL_EVIDENCE',
+            },
+            media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01, TrackId.VIDEO_02] },
+            access: { play: true, readTranscript: true, export: true },
+            exports: [],
           } satisfies EvidenceDetail,
         },
       },

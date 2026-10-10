@@ -18,7 +18,7 @@ import { STUB_WORKER, capturePlan, fakeLauncher, flush, manualCaptureTimers } fr
 import { captureLog, unitTestConfig } from '../../../test/support/config';
 import { buildApp } from '../../app';
 import { SEALING_MAX_FRAGMENT_BYTES } from '../../sealing';
-import { CAPTURE_WORKER_PROCESS_SETTINGS, CapturePhase, SUPERVISOR_REFUSAL_REASONS, createCaptureSupervisor, createProcessLauncher, createSystemTimers, forwardCaptureEvents, type CaptureEvent } from '../index';
+import { CAPTURE_WORKER_PROCESS_SETTINGS, CapturePhase, SUPERVISOR_REFUSAL_REASONS, captureWorkerArguments, createCaptureSupervisor, createProcessLauncher, createSystemTimers, forwardCaptureEvents, type CaptureEvent } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -84,21 +84,25 @@ describe('item 1: what the supervisor refused is said by name, not as a bare cra
     expect(h.faults()).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'SWITCH_NOT_COMMANDED' }]);
   });
 
-  it('CONTROL: a worker that simply dies raises the same fault WITHOUT a reason; so does a refusal that has no name here', async () => {
+  // Pin by delta (wave H driver F; F-Y decision 6, gate 64 C4): until then these two raised the fault WITHOUT a reason. Every
+  // end of a worker now has a reason of the closed enumeration `CaptureDownReason` - another one than the two named refusals above.
+  it('CONTROL: a worker that simply dies, and a line that is no frame, raise the same fault with ANOTHER reason than the two refusals', async () => {
     const h = await rig();
     (await h.recording()).exit(70);
     await flush();
-    expect(h.faults()).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
+    expect(h.faults()).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_EXIT_NONZERO' }]);
     const other = await rig();
     (await other.recording()).violate('FRAME_NOT_JSON');
     await flush();
     expect(other.supervisor.status().phase).toBe(CapturePhase.FAULTED);
-    expect(other.faults()).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
+    expect(other.faults()).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_FRAME_INVALID' }]);
   });
 
   it('each named refusal has its own sentence for the operator, about the capture as a whole, and is critical', () => {
-    expect([...SUPERVISOR_REFUSAL_REASONS].sort()).toEqual(['SWITCH_NOT_COMMANDED', 'TELEMETRY_SUBJECT_UNKNOWN']);
-    for (const reason of SUPERVISOR_REFUSAL_REASONS) {
+    // Pin by delta (wave H driver F): the list is every member of `SupervisorRefusal` now; the two of this pass are among them.
+    // That EVERY reason has its sentence is `fault-wording.test.ts` (it enumerates `CaptureDownReason`).
+    expect(SUPERVISOR_REFUSAL_REASONS).toEqual(expect.arrayContaining(['SWITCH_NOT_COMMANDED', 'TELEMETRY_SUBJECT_UNKNOWN']));
+    for (const reason of ['SWITCH_NOT_COMMANDED', 'TELEMETRY_SUBJECT_UNKNOWN']) {
       expect(isCaptureFaultReason(reason), reason).toBe(true);
       const sentence = captureFaultSentence(reason, null);
       expect(sentence, reason).toMatch(/^The capture was stopped: /);
@@ -263,7 +267,13 @@ describe('item 2: every start path of a worker passes the fragment bound of the 
     // ONE launcher of session workers in the production sources, built from those settings; the boot probe's launcher sends no START.
     const index = readFileSync(resolve(HERE, '../index.ts'), 'utf8');
     expect(index.match(/createProcessLauncher\(/g)).toHaveLength(1);
-    expect(index).toMatch(/createProcessLauncher\(\{[^\n]*\.\.\.captureWorkerSettingArguments\(CAPTURE_WORKER_PROCESS_SETTINGS\)\] \}\)/);
+    // Pin by delta (wave H driver F, gate 64 C7): the list is built by ONE function, `captureWorkerArguments` (`worker-arguments.ts`),
+    // which the boot probe uses too - so the probe passes the bound as well, and a worker that does not take it is refused at boot.
+    expect(index).toMatch(/createProcessLauncher\(\{[^\n]*args: captureWorkerArguments\(/);
+    const builder = readFileSync(resolve(HERE, '../worker-arguments.ts'), 'utf8');
+    expect(builder).toMatch(/\.\.\.captureWorkerSettingArguments\(CAPTURE_WORKER_PROCESS_SETTINGS\)\]/);
+    expect(position(captureWorkerArguments('/x/worker.jsonl'))).toBe(String(SEALING_MAX_FRAGMENT_BYTES));
+    expect(readFileSync(resolve(HERE, '../boot/index.ts'), 'utf8')).toMatch(/createProcessLauncher\(\{[^\n]*args: captureWorkerArguments\(/);
     expect(readFileSync(resolve(HERE, '../supervisor.ts'), 'utf8')).not.toMatch(/createProcessLauncher|spawn\(/);
   });
 });

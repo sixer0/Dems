@@ -23,6 +23,7 @@ import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useCoreSignedIn } from '@/lib/core-queries'
 import { CORE_QUERY_KEY, useWebLive } from '@/runtime'
+import { mediaKindOf, readDetailFacts, type DetailFacts } from './item-facts'
 import { logEvidence, newCorrelationId } from './log'
 import type { EvidenceRow } from './model'
 
@@ -53,17 +54,28 @@ export class EvidenceMediaReadError extends Error {
   }
 }
 
+/**
+ * `facts` (wave H C2): everything else the ONE answer of operation 40 states - access, the finished
+ * exports, the files and the reason of the media reference - read by `item-facts.ts`. null whenever
+ * there is no answer: nothing is then assumed.
+ */
 export type EvidenceMediaState =
   /** Simulated mode: nothing is asked; the guarded join stands. */
-  | { readonly status: 'simulated'; readonly media: null }
-  | { readonly status: 'loading'; readonly media: null }
-  | { readonly status: 'ready'; readonly media: EvidenceMediaRef }
+  | { readonly status: 'simulated'; readonly media: null; readonly facts: null }
+  | { readonly status: 'loading'; readonly media: null; readonly facts: null }
+  | { readonly status: 'ready'; readonly media: EvidenceMediaRef; readonly facts: DetailFacts }
   /** No answer: no bundled media is shown. */
-  | { readonly status: 'unavailable'; readonly media: null }
+  | { readonly status: 'unavailable'; readonly media: null; readonly facts: null }
 
-const SIMULATED: EvidenceMediaState = { status: 'simulated', media: null }
-const LOADING: EvidenceMediaState = { status: 'loading', media: null }
-const UNAVAILABLE: EvidenceMediaState = { status: 'unavailable', media: null }
+const SIMULATED: EvidenceMediaState = { status: 'simulated', media: null, facts: null }
+const LOADING: EvidenceMediaState = { status: 'loading', media: null, facts: null }
+const UNAVAILABLE: EvidenceMediaState = { status: 'unavailable', media: null, facts: null }
+
+/** What the query keeps of the answer: the media reference as the contract types it, and the facts read from the whole body. */
+interface EvidenceDetailRead {
+  readonly media: EvidenceMediaRef
+  readonly facts: DetailFacts
+}
 
 export function useEvidenceMedia(evidenceId: string): EvidenceMediaState {
   const live = useWebLive()
@@ -72,10 +84,10 @@ export function useEvidenceMedia(evidenceId: string): EvidenceMediaState {
   const query = useQuery({
     queryKey: evidenceMediaQueryKey(evidenceId),
     enabled: live !== null && signedIn,
-    queryFn: async (): Promise<EvidenceMediaRef> => {
+    queryFn: async (): Promise<EvidenceDetailRead> => {
       if (live === null) throw new Error('No Live source')
       const answer = await live.client.call('getEvidence', { params: { id: evidenceId } })
-      if (answer.ok) return answer.data.media
+      if (answer.ok) return { media: answer.data.media, facts: readDetailFacts(answer.data) }
       const error = new EvidenceMediaReadError(answer)
       if (presentCoreError(answer, { permission: Permission.EVIDENCE_VIEW }) === null) {
         logEvidence('warn', 'detail.mediaReference', error, { evidenceId, correlationId: newCorrelationId('media') })
@@ -84,7 +96,7 @@ export function useEvidenceMedia(evidenceId: string): EvidenceMediaState {
     },
   })
   if (live === null) return SIMULATED
-  if (query.data !== undefined) return { status: 'ready', media: query.data }
+  if (query.data !== undefined) return { status: 'ready', media: query.data.media, facts: query.data.facts }
   if (query.status === 'error') return UNAVAILABLE
   return LOADING
 }
@@ -93,14 +105,14 @@ export function useEvidenceMedia(evidenceId: string): EvidenceMediaState {
  * The row as the Core server's media reference allows it to be shown (MS-2). Simulated mode keeps
  * the row of the guarded join. In Live mode the package is the one the server names by its suffix,
  * and none for `NONE`, while the reference is unknown, or when this console bundles no package
- * with that suffix.
+ * with that suffix. An item that is not a v1 / simulated demo item by its own members never gets one,
+ * whatever the reference says (wave H C2, G94-02).
  */
 export function rowForMedia(row: EvidenceRow, media: EvidenceMediaState): EvidenceRow {
   if (media.status === 'simulated') return row
-  const pkg: DemoEvidencePackage | null =
-    media.status === 'ready' && media.media.source === 'DEMO_PACKAGE' && media.media.packageSuffix !== null
-      ? (row.pkg?.evidenceSuffix === media.media.packageSuffix ? row.pkg : (getDemoEvidencePackage(media.media.packageSuffix) ?? null))
-      : null
+  // Wave H C2 (G94-02): a bundled package only when the Core names one AND the item itself is a demo item.
+  const suffix = mediaKindOf(media.facts, row.item) === 'DEMO' ? (media.facts?.packageSuffix ?? null) : null
+  const pkg: DemoEvidencePackage | null = suffix !== null ? (row.pkg?.evidenceSuffix === suffix ? row.pkg : (getDemoEvidencePackage(suffix) ?? null)) : null
   if (pkg === row.pkg) return row
   const video = pkg?.tracks.find((track) => track.trackId === 'VIDEO-01') ?? null
   return { ...row, pkg, thumbPath: video?.thumbnail?.path ?? null, posterPath: video?.poster?.path ?? null }

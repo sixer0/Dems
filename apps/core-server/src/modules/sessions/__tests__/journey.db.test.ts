@@ -436,11 +436,11 @@ describe('the recovery after a restart fault (spec §8.6; operation 33)', () => 
     expect(faulted).toMatchObject({ id: sessionId, state: 'FAULT', fault: { kind: 'POWER_FAIL', fromState: 'RECORDING' } });
     // The fault is 10 s after the start of the recording: where the process stopped.
     expect(Date.parse(faulted?.fault?.at ?? '') - Date.parse(faulted?.startedAt ?? '')).toBe(10_000);
-    // SIM-GAP-W34-1 (reported, not fixed here): `elapsedMs` is the shared simulator's
-    // `selectElapsedMs`, which ends a recording at `stoppedAt` or else at the clock. A faulted
-    // session has no `stoppedAt`, so its elapsed time keeps counting through the fault and
-    // through the 90 s the server was down. The history entry below says 10 s.
-    expect(faulted?.elapsedMs).toBe(10_000 + 90_000);
+    // SIM-GAP-W34-1 IS CLOSED (pin moved by wave H closing pass Z1 for driver B's finished fix, finding
+    // G75-08): `selectElapsedMs` ends a recording at `recordingEndOf` - the stop, or the fault that
+    // ended it. The clock of a faulted recording stands at the fault; it no longer counts through
+    // the 90 s the server was down (the old pin said 100,000). The history entry below says 10 s too.
+    expect(faulted?.elapsedMs).toBe(10_000);
 
     // A session in FAULT cannot be stopped or cancelled: the simulator's own refusals.
     expect(outcome(await second.post(supervisor, on(sessionId, 'stop'), { reason: FIVE_CHARACTERS }))).toEqual([409, 'INVALID_STATE']);

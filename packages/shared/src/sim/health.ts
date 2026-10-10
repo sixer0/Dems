@@ -28,7 +28,8 @@ import { pushRing } from './events';
 import { timeNoise } from './initial-state';
 import { RngStream, type Rng } from './rng';
 import { storageStateFor } from './selectors';
-import type { AudioFrame, EpochMs, HealthSlice, MicLevelPoint, SimState, SimSubsystem, StorageSlice, TimeSlice } from './types';
+import { hostClockTimeTransition } from './core-facts';
+import type { AudioFrame, CaptureLevelSource, EpochMs, HealthSlice, MicLevelPoint, SimState, SimSubsystem, StorageSlice, TimeSlice } from './types';
 
 const HOUR_MS = 3_600_000;
 /** "Last sync" refreshes this often while GNSS or NTP disciplines the clock. */
@@ -174,13 +175,14 @@ export function healthStep(state: SimState, at: EpochMs, dtMs: number, rng: Rng)
     session,
     storage,
     health: { ...health, micLevels: pushRing(state.health.micLevels ?? [], [micLevelPoint(state, at)], SERIES_POINTS) },
-    time: stepTime(state.time, at, dtMs, rng),
+    // The host system clock (a Core in its own capture, wave H Z1) is not a time service: nothing is measured, nothing is stepped.
+    time: state.time.hostClock === true ? state.time : stepTime(state.time, at, dtMs, rng),
     network: stepNetwork(state.network, at, recording, rng),
   };
 }
 
 /** The 1 Hz subsystem: one step at each new whole second of the sim clock. */
-export function createHealthSubsystem(engine: EngineContext): SimSubsystem {
+export function createHealthSubsystem(engine: EngineContext, capture: CaptureLevelSource = 'simulated'): SimSubsystem {
   let lastSecond: number | null = null;
   return {
     name: 'health',
@@ -190,7 +192,9 @@ export function createHealthSubsystem(engine: EngineContext): SimSubsystem {
       const at = second * HEALTH_TICK_MS;
       const dtMs = lastSecond === null ? HEALTH_TICK_MS : (second - lastSecond) * HEALTH_TICK_MS;
       lastSecond = second;
-      engine.store.setState(healthStep(engine.store.getState(), at, dtMs, engine.rng.get(RngStream.HEALTH)));
+      // Wave H Z1 (D203 (1)): where the capture is the Core's own the slice says the host clock, whatever a stored state or a demo control last put there.
+      const state = capture === 'external' ? hostClockTimeTransition(engine.store.getState()) : engine.store.getState();
+      engine.store.setState(healthStep(state, at, dtMs, engine.rng.get(RngStream.HEALTH)));
     },
   };
 }

@@ -1328,3 +1328,125 @@ describe('F-Y item 4: the clock offset the worker measured is the source of mani
     expect(systemAlerts(of, 'CAMERA_CLOCK_OFFSET')).toEqual([]);
   });
 });
+
+// Fix wave H driver A, C3 (gate 64 condition C3, gate 89 section 7; decisions D199, D202): a camera
+// the worker GIVES UP while the session goes on. The supervisor states it (`CaptureCameraEnd`, wave H
+// driver F); this unit carries it into the capture facts of the session - where the seal reads it -
+// and on the hand-off event, for a CLEAN stop too.
+describe('C3: a camera given up while the session went on is handed to the seal with its cause', () => {
+  it('CAMERA_CLOCK_OUT_OF_BOUND on CAM-02 mid-recording, then a clean stop: STOPPED carries the end, and the capture facts name the camera, the reason and where its file ended', async () => {
+    const of = await fixRig('wha_c3_camera_end');
+    const id = await of.arm();
+    await of.start(id);
+    const worker = of.fake.last();
+    worker.firstDurableFragment('CAM-01');
+    worker.firstDurableFragment('CAM-02');
+    await of.settled();
+    worker.warning('CAPTURE_FAULT', 'CAM-02', 'ACTIVE', 'CAMERA_CLOCK_OUT_OF_BOUND');
+    await of.settled();
+    // The session goes on with the other camera.
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    await stopNow(of, id);
+    const told = of.events.at(-1);
+    expect(told).toMatchObject({ type: 'STOPPED', sessionId: id });
+    const ends = (told as Extract<SessionCaptureEvent, { type: 'STOPPED' }>).cameraEnds ?? [];
+    expect(ends.map((end) => [end.deviceId, end.reason])).toEqual([['CAM-02', 'CAMERA_CLOCK_OUT_OF_BOUND']]);
+    const facts = await readSessionCaptureFacts(of.app.config.mediaStoreDir, id);
+    expect(facts?.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.ended?.reason ?? null])).toEqual([['VIDEO-01', 'CAM-01', null], ['VIDEO-02', 'CAM-02', 'CAMERA_CLOCK_OUT_OF_BOUND']]);
+    // What the supervisor stated is what is kept: the instant and the last durable fragment of that file.
+    expect(facts?.cameras[1]?.ended).toEqual({ reason: ends[0]?.reason, at: ends[0]?.at, lastDurableFragmentIndex: ends[0]?.lastDurableFragmentIndex, lastDurableMediaEndMs: ends[0]?.lastDurableMediaEndMs });
+  });
+
+  it('CONTROL - no camera was given up: the hand-off carries no `cameraEnds` and no camera of the facts says `ended`', async () => {
+    const of = await fixRig('wha_c3_control');
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().firstDurableFragment('CAM-01');
+    of.fake.last().firstDurableFragment('CAM-02');
+    await of.settled();
+    await stopNow(of, id);
+    expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
+    expect('cameraEnds' in (of.events.at(-1) ?? {})).toBe(false);
+    expect((await readSessionCaptureFacts(of.app.config.mediaStoreDir, id))?.cameras.map((camera) => camera.ended ?? null)).toEqual([null, null]);
+  });
+});
+
+// ── Fix wave H, closing pass Z1 (driver A decision 3; ruling D203 (1)) ───────────────────────────
+describe('Z1: what the Core holds of a running recording reaches the session payload; the time it states is the host clock', () => {
+  const chainOf = async (of: Rig, previous: string, sha: string): Promise<string> => (await of.rows<{ chain: string }>("SELECT encode(sha256(decode($1, 'hex') || decode($2, 'hex')), 'hex') AS chain", [previous, sha]))[0]?.chain ?? '';
+  const held = (of: Rig) => (of.app.engine.slice('session') as { captureCheckpoints?: { fragments: number; bytes: number; lastAt: number; cameras: Array<{ deviceId: string; fragments: number; bytes: number }> } } | null)?.captureCheckpoints;
+
+  // ONE rig for both items (a rig holds a database and a pool for the length of the file; the db project runs files side by side).
+  it('items 1 and 4: the session starts on the host clock - slice, session, RECORDING_STARTED say RTC and the TIME note held nothing; then the checkpoints of the fake worker become `captureCheckpoints` - absent before the first, by camera, at most every 5 s, the final figure at the stop; no row is written for it', async () => {
+    const of = await rig('z1_time_checkpoints');
+    // ── Item 1 ──
+    expect(of.app.engine.slice('time')).toMatchObject({ hostClock: true, source: 'RTC', locked: false, gnss: { locked: false, satellites: 0 } });
+    await of.app.engine.setTabletLink('CONNECTED');
+    const created = await of.app.engine.command(of.investigator, 'createSession', { caseNumber: 'LP/2026/1001-0790', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25', investigatorId: of.investigator.operatorId });
+    if (!created.value.ok) throw new Error(`the session was not created: ${created.value.reason}`);
+    const id = created.value.sessionId;
+    await of.app.engine.command(of.investigator, 'beginPrecheck');
+    await of.drive(5_000);
+    // NOT acknowledged by anybody: the note does not hold the gate.
+    const armed = of.app.engine.slice('session');
+    expect(armed).toMatchObject({ state: 'ARMED', precheck: { outcome: 'PASS', warningsAcknowledged: false } });
+    expect(armed?.precheck.items.find((item) => item.id === 'TIME')).toMatchObject({ status: 'WARN', value: 'HOST_SYSTEM_CLOCK', reason: 'Time source: host system clock (no GNSS)', reasonCode: null, params: { rule: 'TIME_HOST_CLOCK' } });
+    await of.start(id);
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', startTimeSource: 'RTC' });
+    const started = await of.rows<{ details: Record<string, unknown> }>("SELECT details FROM public.audit_log WHERE type = 'RECORDING_STARTED' AND session_id = $1", [id]);
+    expect(started.map((row) => row.details)).toEqual([{ timeSource: 'RTC' }]);
+    // No row of this session says GNSS, and the pre-check row counts no warning.
+    const rows = await of.rows<{ type: string; details: Record<string, unknown> }>('SELECT type, details FROM public.audit_log WHERE session_id = $1 ORDER BY seq', [id]);
+    expect(JSON.stringify(rows)).not.toContain('GNSS');
+    expect(rows.find((row) => row.type === 'PRECHECK_PASSED')?.details).toMatchObject({ warnings: 0, acknowledged: false });
+
+    // ── Item 4 ──
+    const worker = of.fake.last();
+    worker.record(startInterval);
+    worker.firstDurableFragment('CAM-01');
+    worker.firstDurableFragment('CAM-02');
+    await of.settled();
+    // Durable, and no checkpoint yet: the member is ABSENT (not stated), never a 0.
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    expect(held(of)).toBeUndefined();
+
+    const sha = SHA('a');
+    const chain1 = await chainOf(of, GENESIS, sha);
+    const chain2 = await chainOf(of, chain1, sha);
+    const chain3 = await chainOf(of, chain2, sha);
+    const firstAt = of.app.clock.now();
+    worker.record(checkpoint(1, 1_231, chain1, sha));
+    await of.settled();
+    expect(held(of)).toEqual({ fragments: 1, bytes: 2_231, lastAt: firstAt, cameras: [{ deviceId: 'CAM-01', fragments: 1, bytes: 2_231 }] });
+
+    // Inside the 5 s window: heard, not said (one engine unit per window, not per fragment).
+    worker.record(checkpoint(2, 2_231, chain2, sha));
+    await of.settled();
+    expect(held(of)?.fragments).toBe(1);
+
+    // The window has passed on the Core clock: the next checkpoint says everything heard so far, by camera.
+    await of.drive(5_000);
+    const laterAt = of.app.clock.now();
+    worker.record({ ...checkpoint(1, 900, chain1, sha), deviceId: 'CAM-02' } as CaptureRecord);
+    await of.settled();
+    expect(held(of)).toEqual({
+      fragments: 3,
+      bytes: 3_231 + 1_900,
+      lastAt: laterAt,
+      cameras: [{ deviceId: 'CAM-01', fragments: 2, bytes: 3_231 }, { deviceId: 'CAM-02', fragments: 1, bytes: 1_900 }],
+    });
+
+    // One more inside the window, then the stop: the end of the capture says the final figure.
+    worker.record(checkpoint(3, 3_231, chain3, sha));
+    await of.settled();
+    expect(held(of)?.fragments).toBe(3);
+    worker.record({ kind: 'AUDIO_TIMELINE_END', samples: 480_000, sampleRateHz: 48_000, intervals: 1 });
+    await stopNow(of, id);
+    expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
+    expect(held(of)).toMatchObject({ fragments: 4, bytes: 4_231 + 1_900 });
+    // The figures agree with the rows the recorder stored, and the door itself wrote nothing.
+    expect(await of.rows('SELECT track_id, count(*)::int AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [id])).toEqual([{ track_id: 'VIDEO-01', n: 3 }, { track_id: 'VIDEO-02', n: 1 }]);
+    expect(await of.rows("SELECT type FROM public.audit_log WHERE type ILIKE '%CHECKPOINT%'")).toEqual([]);
+  });
+
+});

@@ -283,3 +283,35 @@ describe('one camera of two: a degraded session (WARNING)', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 })
+
+// Wave H, driver B - gate 75, F3 "NOT PROVEN as specified" / finding G75-07 (a): on the simulator lane the
+// demo control that makes a degraded start (`CAMERA_LOSS`) raises its own CRITICAL alert, which took the
+// banner; the WARNING that names the camera was in the bell only. The named warning has its own place.
+// Written RED: no such element.
+describe('G75-07 (a): the degraded-start warning is shown beside a more severe alert', () => {
+  it('a CRITICAL alert takes the banner title; the warning naming the missing camera is drawn in its own line', async () => {
+    mount(OPERATOR_IDS.BUDI, (created) => {
+      setDurable(created, true)
+      const state = created.store.getState()
+      const critical: SimAlert = { id: 'ALR-000903', at: state.clock.now, severity: 'CRITICAL', kind: 'CAMERA_LOSS', message: 'Camera 2 signal lost (VIDEO-02)', active: true, acknowledged: false, resolvedAt: null, target: 'VIDEO-02', params: { kind: 'CAMERA_LOSS', target: 'VIDEO-02' } }
+      created.store.setState({ alerts: [...state.alerts, notConnected('CAM-02', state.clock.now), critical] })
+    })
+    const shown = await banner()
+    await waitFor(() => expect(shown).toHaveAttribute('data-kind', 'FAULT'))
+    const degraded = within(shown).getByTestId('sm-banner-degraded')
+    expect(degraded).toHaveTextContent('Camera 2 (CAM-02) is not connected')
+    expect(degraded).toHaveTextContent(N.unreachable.sessionStart.body)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('CONTROL - when the warning itself is what the banner says, it is not drawn twice', async () => {
+    mount(OPERATOR_IDS.BUDI, (created) => {
+      setDurable(created, true)
+      const state = created.store.getState()
+      created.store.setState({ alerts: [...state.alerts, notConnected('CAM-02', state.clock.now)] })
+    })
+    const shown = await banner()
+    await waitFor(() => expect(shown).toHaveAttribute('data-kind', 'ATTENTION'))
+    expect(within(shown).queryByTestId('sm-banner-degraded')).toBeNull()
+  })
+})

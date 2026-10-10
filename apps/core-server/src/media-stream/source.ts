@@ -104,6 +104,30 @@ export function packageFolderOf(sessionId: string): string | null {
  * opens no key: one `hasKey` question.
  */
 export async function planMediaFile(ports: MediaSourcePorts, item: Pick<MediaItem, 'evidenceId' | 'sessionId' | 'manifestSha256'>, trackId: PackageVideoTrackId): Promise<MediaFilePlan> {
+  return planTrack(ports, await sealedManifestOf(ports, item), trackId);
+}
+
+/**
+ * THE CAMERA FILES AN ITEM'S PACKAGE CAN PLAY (wave H C1; gate finding G94-01): the files the sealed
+ * manifest names, in file order, each held to the SAME plan operation 88 makes before it issues a
+ * session - so what operation 40 says can be played is exactly what operation 88 will open. Throws
+ * the `MediaSourceError` of the first file that cannot be played (a package that plays one of its
+ * two files is not offered as playable: the item's page would show half a recording as whole).
+ * Reads no camera byte and opens no key.
+ */
+export async function listPlayableFiles(ports: MediaSourcePorts, item: Pick<MediaItem, 'evidenceId' | 'sessionId' | 'manifestSha256'>): Promise<PackageVideoTrackId[]> {
+  const manifest = await sealedManifestOf(ports, item);
+  const files: PackageVideoTrackId[] = [];
+  for (const track of manifest.tracks) {
+    await planTrack(ports, manifest, track.trackId);
+    files.push(track.trackId);
+  }
+  if (files.length === 0) throw new MediaSourceError(MediaSourceFailure.CAMERA_FILE_NOT_IN_PACKAGE);
+  return files;
+}
+
+/** The manifest of the item's package, believed only by the three rules of the header. */
+async function sealedManifestOf(ports: MediaSourcePorts, item: Pick<MediaItem, 'evidenceId' | 'sessionId' | 'manifestSha256'>): Promise<ReturnType<typeof parseManifestV2>> {
   const entry = await ports.reader.entry(PackageFile.MANIFEST);
   if (entry.kind !== 'FILE') throw new MediaSourceError(entry.kind === 'ABSENT' ? MediaSourceFailure.PACKAGE_MISSING : MediaSourceFailure.MANIFEST_UNREADABLE);
   let manifest: ReturnType<typeof parseManifestV2>;
@@ -116,7 +140,11 @@ export async function planMediaFile(ports: MediaSourcePorts, item: Pick<MediaIte
   if (manifest.manifestSha256 !== item.manifestSha256 || manifest.evidenceId !== item.evidenceId || manifest.sessionId !== item.sessionId || !manifestHashMatches(manifest)) {
     throw new MediaSourceError(MediaSourceFailure.MANIFEST_NOT_OF_ITEM);
   }
+  return manifest;
+}
 
+/** The plan of one camera file of a believed manifest. */
+async function planTrack(ports: MediaSourcePorts, manifest: ReturnType<typeof parseManifestV2>, trackId: PackageVideoTrackId): Promise<MediaFilePlan> {
   const track = manifest.tracks.find((candidate) => candidate.trackId === trackId);
   const file = manifest.files.find((candidate) => candidate.trackId === trackId);
   // A package of one camera holds one file: asking for the other is no defect of the package.

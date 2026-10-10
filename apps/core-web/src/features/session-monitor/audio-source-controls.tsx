@@ -3,7 +3,7 @@ import { ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api'
 import { useRetryCooldown } from '@dems/shared/realtime'
-import { useSim } from '@dems/shared/sim'
+import { recordingEndOf, useSim } from '@dems/shared/sim'
 import { AudioSourceBand } from '@/components/composed'
 import { useMicInputName } from '@/features/devices/source-class'
 import type { AudioSourceIntervalsView, AudioSourceSwitchControl, AudioSourceToggleBlock, AudioSourceView } from './audio-source'
@@ -146,7 +146,7 @@ export function AudioSourceFooter({
   const elapsedMs = useSim((s) => {
     const startedAt = s.session?.startedAt ?? null
     if (startedAt === null) return 0
-    const end = s.session?.stoppedAt ?? s.clock.now
+    const end = recordingEndOf(s.session) ?? s.clock.now
     return Math.max(0, Math.floor((end - startedAt) / BAND_STEP_MS) * BAND_STEP_MS)
   })
   const { read } = intervals

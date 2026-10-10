@@ -165,7 +165,7 @@ export function MicSourcePanel({
               <Button testID="monitor-mic-switch-cancel" variant="outline" onPress={onCancel} {...(busy ? { isDisabled: true } : {})}>
                 <Button.Label>{t('common.actions.cancel')}</Button.Label>
               </Button>
-              <Button testID="monitor-mic-switch-confirm" variant="primary" onPress={onConfirm} {...busyState(busy)}>
+              <Button testID="monitor-mic-switch-confirm" variant="primary" onPress={onConfirm} accessibilityLabel={t('session.audioSource.confirm.action')} {...busyState(busy)}>
                 {pending ? <PendingSpinner color={palette.black} testID="monitor-mic-switch-confirm-spinner" /> : null}
                 <Button.Label>{t('session.audioSource.confirm.action')}</Button.Label>
               </Button>

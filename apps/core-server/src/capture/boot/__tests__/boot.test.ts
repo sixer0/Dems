@@ -11,7 +11,7 @@ import type { ConfigInput } from '../../../config';
 import { BootError, createReadiness } from '../../../plugins/readiness';
 import { CaptureOperation } from '../../adapters/kinds';
 import { createSystemTimers } from '../../timers';
-import { CAPTURE_BOOT_STEP, CaptureBootError, CaptureBootRefusal, SIMULATED_WITHOUT_DEMO_CONTROLS, captureBootControl, mountCaptureBootChecks, type CaptureBootControl } from '../index';
+import { CAPTURE_BOOT_STEP, CAPTURE_WORKER_VERSION, CaptureBootError, CaptureBootRefusal, SIMULATED_WITHOUT_DEMO_CONTROLS, captureBootControl, mountCaptureBootChecks, type CaptureBootControl } from '../index';
 import { FIXTURE_NOW, realBootFixture, recordedSinks } from './support';
 
 const fixture = realBootFixture('boot');
@@ -61,22 +61,22 @@ describe('the boot step, with nothing replaced', () => {
   });
 
   it('real with demo controls on: refused, whatever else is configured', async () => {
-    const failure = await mounted({ captureMode: 'real', demoControls: true, captureWorkerPath: fixture.worker('worker-demo', 'capture-worker/0.3.0') }).refusal();
+    const failure = await mounted({ captureMode: 'real', demoControls: true, captureWorkerPath: fixture.worker('worker-demo') }).refusal();
     expect([failure.code, failure.reason]).toEqual([CaptureBootRefusal.OPERATION_REFUSED, 'REAL_CAPTURE_WITH_DEMO_CONTROLS']);
   });
 
   it('real, a worker path that is not there, and one that others can write: refused by the path rule, on real files', async () => {
     expect((await mounted({ captureMode: 'real', captureWorkerPath: `${fixture.dataDir}/no-such-worker` }).refusal()).reason).toBe('NOT_FOUND');
-    const loose = fixture.worker('worker-loose', 'capture-worker/0.3.0');
+    const loose = fixture.worker('worker-loose');
     chmodSync(loose, 0o777);
     expect((await mounted({ captureMode: 'real', captureWorkerPath: loose }).refusal()).reason).toBe('FILE_WRITABLE');
-    const plain = fixture.worker('worker-plain', 'capture-worker/0.3.0');
+    const plain = fixture.worker('worker-plain');
     chmodSync(plain, 0o600);
     expect((await mounted({ captureMode: 'real', captureWorkerPath: plain }).refusal()).reason).toBe('NOT_EXECUTABLE');
   });
 
   it('real, a usable worker, no signing key yet: refused KEY_ABSENT, and the media root was probed and left empty', async () => {
-    const failure = await mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-nokey', 'capture-worker/0.3.0') }).refusal();
+    const failure = await mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-nokey') }).refusal();
     expect([failure.code, failure.reason]).toEqual([CaptureBootRefusal.SIGNING_KEY_UNUSABLE, 'KEY_ABSENT']);
     expect(readdirSync(fixture.mediaStoreDir)).toEqual([]);
   });
@@ -84,10 +84,10 @@ describe('the boot step, with nothing replaced', () => {
   it('real, everything there: passes in both source classes; then a PROOF build of the same worker is refused at HELLO', async () => {
     fixture.provisionKey();
     for (const [captureDevSources, operation] of [[false, CaptureOperation.REAL_PRODUCTION], [true, CaptureOperation.REAL_DEVELOPMENT]] as const) {
-      const app = mounted({ captureMode: 'real', captureDevSources, captureWorkerPath: fixture.worker('worker-good', 'capture-worker/0.3.0') });
+      const app = mounted({ captureMode: 'real', captureDevSources, captureWorkerPath: fixture.worker('worker-good') });
       await app.boot();
       const outcome = app.control.outcome();
-      expect(outcome).toMatchObject({ operation, label: null, workerVersion: 'capture-worker/0.3.0' });
+      expect(outcome).toMatchObject({ operation, label: null, workerVersion: CAPTURE_WORKER_VERSION });
       expect(outcome?.evidenceVolume?.totalBytes).toBeGreaterThan(1_000_000_000);
       expect(app.recorded.persisted).toEqual([]);
     }
@@ -126,7 +126,7 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
     keyThere();
     const handed: Array<{ totalBytes: number; freeBytes: number }> = [];
     const door = async (volume: { readonly totalBytes: number; readonly freeBytes: number }): Promise<void> => void handed.push({ ...volume });
-    const real = mountedWithDoor({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-volume', 'capture-worker/0.3.0') }, door);
+    const real = mountedWithDoor({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-volume') }, door);
     await real.boot();
     const measured = real.control.outcome()?.evidenceVolume;
     expect(measured?.totalBytes).toBeGreaterThan(1_000_000_000);
@@ -142,7 +142,7 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
 
   it('a hand-over that fails does not refuse the start: the checks passed; it is logged and persisted with a code', async () => {
     keyThere();
-    const failing = mountedWithDoor({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-volume-2', 'capture-worker/0.3.0') }, async () => {
+    const failing = mountedWithDoor({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-volume-2') }, async () => {
       throw new Error('the engine is not running');
     });
     await failing.boot();

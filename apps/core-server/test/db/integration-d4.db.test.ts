@@ -11,6 +11,7 @@
 //
 // Row 82's own file (`src/engine/__tests__/seal-actions.db.test.ts`) holds two expectations marked
 // MEASURED, NOT WANTED that state the behaviour BEFORE this pass; they flip with it (not edited here).
+import { existsSync } from 'node:fs';
 import { EvidenceItemSchema } from '@dems/shared/api';
 import type { CompleteSealInput, SealingStepReport } from '@dems/shared/sim';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -19,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { diffSlices, fromRows, type DurableSlices } from '../../src/db/mapping';
 import { applyChanges, readStoredRows } from '../../src/db/store';
 import { sealDoorsOf } from '../../src/engine/seal-doors';
+import { sessionPackageDir } from '../../src/evidence-verify';
 import { SEALING_STEP_ORDER } from '../../src/sealing';
 import { useTestDatabase } from '../helpers/db';
 import { engineApp, storedSlices, type EngineApp } from '../support/engine';
@@ -96,13 +98,22 @@ describe('F-82-4 and F-82-3: a real seal, then a restart', () => {
       await second.app.readiness.boot();
       expect(second.engine.running).toBe(true);
       const rehydrated = second.engine.slice('evidence').find((item) => item.id === evidenceId);
-      expect(rehydrated).toEqual(sealed);
+      // Pass H-Y (wave H R, `sealedPackage`): this rig seals through the engine's door with a made-up manifest digest and writes
+      // NO package, so the start reads the store, finds none, and says so on the item - the one member the restart adds. A
+      // client then shows "no playable media" with the reason; the item states no sealed fact. CONTROL: no folder is there.
+      expect(existsSync(sessionPackageDir(second.app.config.mediaStoreDir, sessionId))).toBe(false);
+      expect(sealed !== undefined && 'sealedPackage' in sealed).toBe(false);
+      expect(rehydrated).toEqual({ ...sealed, sealedPackage: 'NOT_READABLE' });
       // It replicates: the strict slice schema of the realtime channel and of ops 39 / 40 admits it.
       expect(EvidenceItemSchema.safeParse(rehydrated).success).toBe(true);
-      expect((await storedSlices(owner)).evidence).toEqual(second.engine.slice('evidence'));
+      // What is stored is what is committed - less the ONE member no column holds: `sealedPackage` is a sealed fact the
+      // start puts on the REPLICATED item (`src/evidence-facts`, boot step `evidence.sealedFacts`), never a row's value.
+      const committed = (): unknown[] => second.engine.slice('evidence').map((item) => (item.id === evidenceId ? Object.fromEntries(Object.entries(item).filter(([member]) => member !== 'sealedPackage')) : item));
+      expect(second.engine.slice('evidence').filter((item) => 'sealedPackage' in item).map((item) => item.id)).toEqual([evidenceId]);
+      expect((await storedSlices(owner)).evidence).toEqual(committed());
       // And the restarted engine still writes: a hosted command on the rehydrated state commits.
       await second.engine.setTabletLink('CONNECTED');
-      expect((await storedSlices(owner)).evidence).toEqual(second.engine.slice('evidence'));
+      expect((await storedSlices(owner)).evidence).toEqual(committed());
       await second.app.close();
     });
   }

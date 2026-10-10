@@ -147,6 +147,7 @@ function double(): Double {
         return self.job;
       },
       idle: async () => undefined,
+      stop: async () => undefined,
     },
   };
   return self;
@@ -316,7 +317,9 @@ describe('R93-03: a request for a sealed package is committed DEFERRED; the comp
     test.actAs(operator('SUPERVISOR'));
     test.engineAnswers({ ok: true, status: 202, exportId: 'EXP-000032' });
     expect((await test.post(exportUrl(ID), { reason: 'Prosecutor request' })).statusCode).toBe(202);
-    expect(test.commands[0]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '', completion: 'DEFERRED' }]);
+    // G94-10 (wave H C1): the request of a JOB says its kind on the row also when the body left it to the default
+    // (C3 §5.2 `details.kind: PACKAGE|COMPOSITE`). Until wave H this pinned a request WITHOUT `kind`: the gate's finding.
+    expect(test.commands[0]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '', kind: 'PACKAGE', completion: 'DEFERRED' }]);
     expect(jobs.log).toEqual([`begin ${ID}`, 'accepted EXP-000032 PACKAGE deferred']);
   });
 

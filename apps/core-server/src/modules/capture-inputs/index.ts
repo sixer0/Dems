@@ -23,7 +23,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { captureNotices, registerCaptureNotices } from '../../capture-notices';
 import { registerCaptureInputsRoutes } from './routes';
 
-export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, STATE_ADAPTER_CODE, captureInputsOperation, type CaptureInputsModuleOperation, type CaptureInputsRouteSeams } from './routes';
+export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, captureInputsOperation, type CaptureInputsModuleOperation, type CaptureInputsRouteSeams } from './routes';
 
 /**
  * The ID of a re-read for its audit row: `DSC-` and the Core clock in milliseconds. Thirteen

@@ -84,11 +84,11 @@ describe('the scan itself', () => {
     expect(capture.filter((file) => file.path.startsWith(SIGNER)).map((file) => file.path).sort()).toEqual(['src/capture/signer/der.ts', 'src/capture/signer/host-key.ts', 'src/capture/signer/index.ts', 'src/capture/signer/key-record.ts', 'src/capture/signer/seal.ts', 'src/capture/signer/types.ts']);
     // The capture fence (row 136) is part of `capture` for every rule below too; its files are pinned here by name.
     const FENCE = 'src/capture/fence/';
-    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`));
+    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'development-discovery.ts', 'fake-mic.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`));
     // The boot checks of real capture (row 61) are part of `capture` for every rule below as well; their files are pinned here by name.
     const BOOT = 'src/capture/boot/';
     expect(capture.filter((file) => file.path.startsWith(BOOT)).map((file) => file.path).sort()).toEqual(['checks.ts', 'evidence-volume.ts', 'index.ts', 'worker-probe.ts'].map((name) => `${BOOT}${name}`));
-    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE) && !file.path.startsWith(BOOT)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
+    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE) && !file.path.startsWith(BOOT)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/stale-notices.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts', 'src/capture/worker-arguments.ts']); // pin by delta (wave H driver F): + stale-notices.ts (the boot clear of capture notices), + worker-arguments.ts (one argument list for a session start and the boot probe)
     expect(capture.filter((file) => file.path.startsWith(ADAPTERS)).length).toBeGreaterThanOrEqual(16);
     expect(hosts.length).toBeGreaterThan(100);
   });
@@ -571,14 +571,27 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' * the development fence. `DEMS_CAPTURE_DEV_SOURCES` (`1` or `0`, the default: development sources',
       ' * exist) and `DEMS_CAPTURE_HELPER_FFMPEG` (the program the development helpers run). What a start',
       " * refuses for them is the capture fence's decision (capture spec §A.1.2), not this file's.",
+      ' * WAIVED EDIT (task 3, fix wave H, ruling D198; the category of OD-14 and D108): one more key of the',
+      ' * development fence. `DEMS_CAPTURE_DEV_FAKE_MIC` (`tone`, the default, or `speech`): what the first',
+      " * generated test microphone plays. What a start refuses for it is the capture fence's decision.",
+      // Wave H closing pass Z1 (decision D207): the installation identity, two keys, in the same four places.
+      ' * WAIVED EDIT (task 3, fix wave H closing pass Z1, decision D207): the installation identity of the',
+      ' * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`',
+      ' * (a display name) are what the signed manifest of a sealed recording states as its device. Read',
+      " * once, at start. Whether a start without them is refused is the sealing host's decision.",
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
       "export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';",
       "export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';",
+      "export const ENV_CAPTURE_DEV_FAKE_MIC = 'DEMS_CAPTURE_DEV_FAKE_MIC';",
+      "export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';",
+      "export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';",
       "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
       'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
       "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
+      "export const CAPTURE_DEV_FAKE_MICS = ['tone', 'speech'] as const;",
+      'export type CaptureDevFakeMic = (typeof CAPTURE_DEV_FAKE_MICS)[number];',
       '/** Where the camera files live below the data directory when `DEMS_MEDIA_DIR` is unset (capture spec §H). */',
       "export const MEDIA_STORE_SUBPATH = 'media/sessions';",
       '',
@@ -592,6 +605,12 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureDevSources: boolean;',
       '  /** Absolute path of the program the development helpers run, or null when none is configured. */',
       '  readonly captureHelperFfmpegPath: string | null;',
+      '  /** What the first generated test microphone plays. Read by ONE function: `fakeMicDecisionOf` of the capture fence. */',
+      '  readonly captureDevFakeMic: CaptureDevFakeMic;',
+      '  /** The device id of this installation, or null when none is configured. Read by ONE function: `installationIdentityOf` of the sealing host. */',
+      '  readonly installationDeviceId: string | null;',
+      '  /** The display name of this installation, or null when none is configured. */',
+      '  readonly installationName: string | null;',
       '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
       'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
       "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
@@ -614,6 +633,28 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "  throw new ConfigError('CAPTURE_DEV_SOURCES_INVALID', `${ENV_CAPTURE_DEV_SOURCES} must be 1 or 0.`);",
       '}',
       '',
+      '/** Unset or empty means `tone`. Any other value than the two stops the boot. */',
+      'export function parseCaptureDevFakeMic(raw: string | undefined): CaptureDevFakeMic {',
+      "  if (raw === undefined || raw === '') return 'tone';",
+      '  const source = CAPTURE_DEV_FAKE_MICS.find((known) => known === raw);',
+      "  if (source === undefined) throw new ConfigError('CAPTURE_DEV_FAKE_MIC_INVALID', `${ENV_CAPTURE_DEV_FAKE_MIC} must be one of ${CAPTURE_DEV_FAKE_MICS.join(', ')}.`);",
+      '  return source;',
+      '}',
+      '',
+      '/** A device id of the contract\'s form (`DEMS-IR-01`), or null when the variable is unset. Any other value stops the boot. */',
+      'export function parseInstallationDeviceId(raw: string | undefined): string | null {',
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (!/^[A-Z][A-Z0-9-]{0,31}$/.test(raw)) throw new ConfigError('INSTALLATION_DEVICE_ID_INVALID', `${ENV_INSTALLATION_DEVICE_ID} must be a device id: a capital letter, then capitals, digits or hyphens, 32 characters at most.`);",
+      '  return raw;',
+      '}',
+      '',
+      '/** A display name of 1 to 120 printable characters, or null when the variable is unset. Any other value stops the boot. */',
+      'export function parseInstallationName(raw: string | undefined): string | null {',
+      "  if (raw === undefined || raw === '') return null;",
+      "  if (raw.length > 120 || raw !== raw.trim() || [...raw].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127)) throw new ConfigError('INSTALLATION_NAME_INVALID', `${ENV_INSTALLATION_NAME} must be 1 to 120 printable characters without a leading or trailing space.`);",
+      '  return raw;',
+      '}',
+      '',
       '  /** Default: `simulated`. */',
       '  readonly captureMode?: CaptureMode;',
       '  /** Default: null (no worker program). */',
@@ -624,6 +665,12 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureDevSources?: boolean;',
       '  /** Default: null (no helper program). */',
       '  readonly captureHelperFfmpegPath?: string | null;',
+      '  /** Default: `tone`. */',
+      '  readonly captureDevFakeMic?: CaptureDevFakeMic;',
+      '  /** Default: null (no installation identity is configured). */',
+      '  readonly installationDeviceId?: string | null;',
+      '  /** Default: null. */',
+      '  readonly installationName?: string | null;',
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
       '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
@@ -632,6 +679,9 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '    mediaStoreDir,',
       '    captureDevSources: input.captureDevSources ?? false,',
       '    captureHelperFfmpegPath,',
+      "    captureDevFakeMic: input.captureDevFakeMic ?? 'tone',",
+      '    installationDeviceId: parseInstallationDeviceId(input.installationDeviceId ?? undefined),',
+      '    installationName: parseInstallationName(input.installationName ?? undefined),',
     ];
     const withoutWaived = (lines: readonly string[]): string | null => {
       const rest = [...lines];
@@ -650,12 +700,16 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
     expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
     // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
-    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-5)).toEqual([
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-8)).toEqual([
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
       "export const ENV_CAPTURE_DEV_SOURCES = 'DEMS_CAPTURE_DEV_SOURCES';",
       "export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';",
+      "export const ENV_CAPTURE_DEV_FAKE_MIC = 'DEMS_CAPTURE_DEV_FAKE_MIC';",
+      // Wave H closing pass Z1 (decision D207): the two keys of the installation identity (pin 6 -> 8).
+      "export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';",
+      "export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';",
     ]);
     expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir|captureDevSources|captureHelperFfmpegPath): /.test(line))).toHaveLength(5);
     // The development flag has NO default but "off": a line that turned it on by default is not a waived one.

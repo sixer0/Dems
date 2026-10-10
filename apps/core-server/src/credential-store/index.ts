@@ -141,9 +141,21 @@ export function sessionKeyScopeOf(mediaStoreDir: string): string {
 /** The folder of one Core's session keys inside the store. */
 export const sessionKeyFolderOf = (mediaStoreDir: string): string => `session-keys-${sessionKeyScopeOf(mediaStoreDir)}`;
 
+/** The binding of a session key to its session: printable, no secret, at most 128 characters (G89-06). */
+export const SESSION_KEY_BINDING = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
+
 export interface SessionKeys {
-  /** A new random key for a session. `CREDENTIAL_KEY_EXISTS` when the session has one: a key is never reused or replaced. */
-  create(sessionId: string): FragmentKey;
+  /**
+   * A new random key for a session. `CREDENTIAL_KEY_EXISTS` when the session has one: a key is never reused or replaced.
+   *
+   * `binding` (fix wave H driver A, G89-06): a short text that names THIS session beyond its ID - a
+   * reset gives session IDs out again, so the ID alone does not say whose key it is. It is kept
+   * beside the key (a blob of the same reference, no secret) and read back with `bindingOf`: the
+   * sealer refuses a key whose binding is not its session's (`sealing-host/session-key.ts`).
+   */
+  create(sessionId: string, binding?: string): FragmentKey;
+  /** The binding THIS Core's own key was made with; null when it was made with none (an earlier build) or the key is not this Core's. */
+  bindingOf(keyId: string): string | null;
   /** `CREDENTIAL_KEY_NOT_FOUND` when the key is gone: the media of that session cannot be decrypted. */
   open(keyId: string): FragmentKey;
   has(keyId: string): boolean;
@@ -153,7 +165,7 @@ export interface SessionKeys {
    * own: a seal does not reuse it and `destroy` does not touch it (D180).
    */
   owns(keyId: string): boolean;
-  /** Destroys THIS Core's own key (a reset, a reseed, retention expiry after any export). The caller audits the FACT. True when a key was there. */
+  /** Destroys THIS Core's own key and its binding (a reset, a reseed, retention expiry after any export). The caller audits the FACT. True when a key was there. */
   destroy(keyId: string): boolean;
   /** Overwrites the in-memory copy a `create` or `open` handed out. */
   release(key: FragmentKey): void;
@@ -273,9 +285,29 @@ export function createCredentialStore(options: CredentialStoreOptions): CoreCred
       },
     },
     sessionKeys: {
-      create(sessionId) {
+      create(sessionId, binding) {
         const keyId = sessionKeyId(`${SESSION_KEY_PREFIX}${sessionId}`);
-        return { keyId, key: ownSessionKeys.create(keyId) };
+        if (binding !== undefined && !SESSION_KEY_BINDING.test(binding)) throw new CredentialStoreError(CredentialStoreFailure.KEY_REF_INVALID);
+        // A key that is there is never replaced (`KEY_EXISTS`), so a binding that is there without a key is a leftover of a key that was destroyed.
+        if (!ownSessionKeys.has(keyId) && ownSessionKeys.hasBlob(keyId)) ownSessionKeys.destroyBlob(keyId);
+        const key = ownSessionKeys.create(keyId);
+        if (binding !== undefined) {
+          try {
+            ownSessionKeys.putBlob(keyId, Buffer.from(binding, 'utf8'));
+          } catch (error) {
+            // A key without its binding would be refused by every later seal: it is not left behind.
+            disposeKey(key);
+            ownSessionKeys.destroy(keyId);
+            throw error;
+          }
+        }
+        return { keyId, key };
+      },
+      bindingOf(keyId) {
+        const id = sessionKeyId(keyId);
+        if (!ownSessionKeys.has(id) || !ownSessionKeys.hasBlob(id)) return null;
+        const text = ownSessionKeys.openBlob(id).toString('utf8');
+        return SESSION_KEY_BINDING.test(text) ? text : null;
       },
       open(keyId) {
         const id = sessionKeyId(keyId);
@@ -285,7 +317,12 @@ export function createCredentialStore(options: CredentialStoreOptions): CoreCred
       },
       has: (keyId) => ownSessionKeys.has(sessionKeyId(keyId)) || (sharedSessionKeys?.has(sessionKeyId(keyId)) ?? false),
       owns: (keyId) => ownSessionKeys.has(sessionKeyId(keyId)),
-      destroy: (keyId) => ownSessionKeys.destroy(sessionKeyId(keyId)),
+      destroy(keyId) {
+        const id = sessionKeyId(keyId);
+        const destroyed = ownSessionKeys.destroy(id);
+        ownSessionKeys.destroyBlob(id);
+        return destroyed;
+      },
       release: (key) => disposeKey(key.key),
     },
     keyWrapSecrets: {

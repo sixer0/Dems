@@ -9,6 +9,7 @@ import { useSim } from '@dems/shared/sim'
 import { toneHex } from '@dems/shared/tokens'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { useRouteEnterDelay } from '@/components/shell'
+import { useOwnCapture } from '@/lib/own-capture'
 import { HELD_BEAT_MS, useMotionPolicy } from '@/motion'
 import { PANEL_BEAT_MS } from './choreography'
 import { selectStorage, storageTone } from './model'
@@ -24,6 +25,11 @@ const CARD_SETTLE_MS = 360
  * centre % as AnimatedNumber, "3.2 TB Free of 4.0 TB", Write Speed, Session Size and Est.
  * Remaining (free ÷ 8.2 GB/h, AC-54), and a Recharts write-rate sparkline (no animation; it streams
  * at 1 Hz, §9.3). Threshold colours: gold READY, amber LOW, red FULL.
+ *
+ * A RECORDING OF THE CORE'S OWN CAPTURE (wave H closing pass Z2; driver A's line of 10:20:55Z): the
+ * write speed and its curve are the simulator's nominal rate (`health.ts`: 8.2 GB/h with a
+ * deterministic ripple), not a measurement of the Core. Beside such a session neither is drawn. The
+ * volume figures (used, free, total) and the estimate stay: the estimate is labelled as one.
  */
 export function StoragePanel() {
   const { t } = useTranslation()
@@ -31,6 +37,7 @@ export function StoragePanel() {
   const storage = useSim(selectStorage)
   const routeDelay = useRouteEnterDelay()
   const series = useWriteRateSeries()
+  const ownCapture = useOwnCapture()
   const [armed, setArmed] = useState(m.reduced)
   useEffect(() => {
     if (armed) return undefined
@@ -87,22 +94,26 @@ export function StoragePanel() {
             {t('session.storage.ofTotal', { total: t(`common.units.${storage.totalUnit}`, { value: storage.totalValue }) })}
           </span>
         </p>
-        <div className="sm-write-rate">
-          <span className="sm-write-rate-label" aria-hidden="true">
-            {t('session.storage.writeRate')}
-          </span>
-          <WriteRateSparkline
-            points={series}
-            label={t('session.storage.writeRateAria', { value: t('common.units.mbPerSecond', { value: writeMbps }) })}
-          />
-        </div>
+        {ownCapture ? null : (
+          <div className="sm-write-rate">
+            <span className="sm-write-rate-label" aria-hidden="true">
+              {t('session.storage.writeRate')}
+            </span>
+            <WriteRateSparkline
+              points={series}
+              label={t('session.storage.writeRateAria', { value: t('common.units.mbPerSecond', { value: writeMbps }) })}
+            />
+          </div>
+        )}
       </div>
 
       <dl className="sm-storage-kv">
-        <div>
-          <dt>{t('common.storage.writeSpeed')}</dt>
-          <dd>{t('common.units.mbPerSecond', { value: writeMbps })}</dd>
-        </div>
+        {ownCapture ? null : (
+          <div data-testid="sm-write-speed">
+            <dt>{t('common.storage.writeSpeed')}</dt>
+            <dd>{t('common.units.mbPerSecond', { value: writeMbps })}</dd>
+          </div>
+        )}
         <div>
           <dt>{t('common.storage.sessionSize')}</dt>
           <dd data-testid="sm-session-size">

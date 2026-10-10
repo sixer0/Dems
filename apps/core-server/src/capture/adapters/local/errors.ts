@@ -35,6 +35,8 @@ export const LocalSourceErrorReason = {
   LIST_UNAVAILABLE: 'LIST_UNAVAILABLE',
   /** The helper program is refused by the path rule (SEC35-43), or could not be started. */
   PROGRAM_REFUSED: 'PROGRAM_REFUSED',
+  /** The speech fixture of the development speech microphone is absent or refused by the path rule (fix wave H). */
+  FIXTURE_REFUSED: 'FIXTURE_REFUSED',
   /** The push target is not the loopback listener of a plan. */
   TARGET_REFUSED: 'TARGET_REFUSED',
   /** A helper of this device is running already. */

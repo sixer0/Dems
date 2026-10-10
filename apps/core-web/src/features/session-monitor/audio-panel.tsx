@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Mic, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { captureMicLines, micInputOfChannel, useSim } from '@dems/shared/sim'
+import { captureMicLines, micInputOfChannel, noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
 import { MicSourceMarks } from '@/features/devices/source-badge'
 import { cn } from '@/lib/utils'
@@ -33,6 +33,8 @@ export function AudioPanel({ paused }: { paused: boolean }) {
   // Integration pass D7 item 4 (row 139's leftover; ux §8e.2 "no meter presented as recording", D84): before the
   // first durable fragment no live level is drawn — the connecting state stands in the meter's place.
   const connecting = useSim(selectConnectingCameras)
+  // Wave H driver B (G75-04): a failed start recorded nothing - its cards draw no level either.
+  const failedStart = useSim((s) => noLiveLevelsOf(s.session) === 'FAILED_START')
   const source = useAudioSource()
   const control = useAudioSourceSwitch(source)
   const intervals = useAudioSourceIntervals(source)
@@ -77,6 +79,10 @@ export function AudioPanel({ paused }: { paused: boolean }) {
                   data-testid={`sm-audio-connecting-${mic.id}`}
                 >
                   {t('common.session.trackConnecting')}
+                </p>
+              ) : failedStart ? (
+                <p role="status" className="flex-1 font-mono text-caption uppercase tracking-[0.08em] text-foreground-2" aria-label={`${name}: ${t('common.session.failedStart.title')}`} data-testid={`sm-audio-no-level-${mic.id}`}>
+                  {t('common.session.failedStart.title')}
                 </p>
               ) : (
                 <DbfsMeter channel={mic.id} variant="panel" label={name} monitoringPaused={paused} />

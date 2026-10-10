@@ -13,6 +13,19 @@
  * Core's own - kept per media store root (ruling D180; fix pass F-M7c): a key another database's
  * Core made for an equal session ID is never sealed with.
  *
+ * A KEY IS NEVER REUSED FOR ANOTHER SESSION (fix wave H driver A; gate 89 finding G89-06 = R88-12
+ * live; ruling D199). A reset gives session IDs out again: `KID-SES-20261010-0024` sealed three
+ * different recordings in one day, because "a key of that ID is there" was read as "the key of this
+ * session". The sealer of the running Core is therefore given `instanceOf`: what names THIS session
+ * beyond its ID (the instant it was created, from the engine's committed state - the same after a
+ * restart, another for the next session of that ID). The key is made WITH that binding, and a key
+ * that is there is opened only when its binding is this session's. Otherwise - another session's
+ * key, a key an earlier build made without a binding, a session the engine does not hold - the
+ * seal is REFUSED by name (`CREDENTIAL_SESSION_KEY_NOT_OF_SESSION`): nothing is sealed, the key is
+ * not touched. The reset is what removes such a key (`db/reset/session-artefacts.ts`).
+ * A sealer built WITHOUT `instanceOf` (the seed-time generator of the demo packages, which renews
+ * its key before every seal; a test) keeps the rule of the ID alone.
+ *
  * THE IV RULE, STATED HONESTLY (R88-13): every fragment gets a RANDOM 96-bit IV. Uniqueness under
  * one key is PROBABILISTIC, not proven: the memo below refuses a repeat inside one process only.
  * What bounds the risk is the number of messages per key - the fragments of ONE session (a
@@ -35,7 +48,7 @@ import type { SessionFragmentSealer } from '../sealing';
 export const sessionKeyIdOf = (sessionId: string): string => `KID-${sessionId}`;
 
 /** The sealer for `SealingPorts.sealer`, over the Core credential store of the app. */
-export function coreFragmentSealer(app: CredentialStoreHost): SessionFragmentSealer {
+export function coreFragmentSealer(app: CredentialStoreHost, instanceOf?: (sessionId: string) => string | null): SessionFragmentSealer {
   const used = new Map<string, Set<string>>();
   return {
     seal(sessionId, position, plaintext) {
@@ -45,7 +58,10 @@ export function coreFragmentSealer(app: CredentialStoreHost): SessionFragmentSea
       const keyId = sessionKeyIdOf(sessionId);
       // THIS Core's own key (D180; fix pass F-M7c): a key of the shared folder of an earlier build is never sealed with.
       const made = !keys.owns(keyId);
-      const key = made ? keys.create(sessionId) : keys.open(keyId);
+      // G89-06: what names THIS session beyond its ID. Null (the engine holds no such session): nothing is sealed.
+      const binding = instanceOf === undefined ? undefined : instanceOf(sessionId);
+      if (binding === null || (!made && binding !== undefined && keys.bindingOf(keyId) !== binding)) throw new CredentialStoreError(CredentialStoreFailure.SESSION_KEY_NOT_OF_SESSION);
+      const key = made ? keys.create(sessionId, binding) : keys.open(keyId);
       // A NEW key starts with no nonce used: the memo of a key that was destroyed (a reseed) is dropped, so it never grows over keys that are gone (R88-13).
       if (made) used.delete(keyId);
       try {

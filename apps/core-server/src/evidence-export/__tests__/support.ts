@@ -9,7 +9,6 @@ import { join } from 'node:path';
 import type { ManifestV2Input, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import { NOW, buildPackage, scratch, type BuiltPackage } from '../../evidence-verify/__tests__/support';
 import type { CompositeEncoder } from '../composite';
-import { EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE } from '../export-manifest';
 import type { ExportOutcome, ExportPorts, ExportRequestFacts } from '../package-export';
 
 export const UNZIP = '/usr/bin/unzip';
@@ -39,23 +38,31 @@ export function treeHashes(dir: string, skip: (relative: string) => boolean = ()
 }
 
 export interface Delivered {
-  /** The folder with the three files. */
+  /** The `export/` folder of the UNPACKED archive: where the embedded export manifest and signature lie. */
   readonly exportDir: string;
   readonly unpackedDir: string;
+  /** The ONE file a receiver holds (wave H C1; ruling D200): the archive as downloaded. */
   readonly archive: string;
+  /** The embedded export manifest and signature of the unpacked archive, under their per-export names. */
+  readonly manifestFile: string;
+  readonly signatureFile: string;
+  /** The archive's hash as the Core states it OUTSIDE the archive (the job answer). */
+  readonly archiveSha256: string;
 }
 
-/** Copies the three files of an export to a destination folder and unpacks the archive there with the system's `unzip`. */
+/**
+ * Hands ONE file to a destination folder - the archive, as a download does (gate finding G94-03) -
+ * and unpacks it there with the system's `unzip`. Nothing else of the package folder is copied.
+ */
 export function deliver(built: BuiltPackage, outcome: ExportOutcome): Delivered {
-  const exportDir = scratch('destination');
-  const archive = join(exportDir, `${outcome.exportId}.zip`);
+  const destination = scratch('destination');
+  const archive = join(destination, `${outcome.exportId}.zip`);
   copyFileSync(built.path(outcome.files.archive), archive);
-  copyFileSync(built.path(outcome.files.manifest), join(exportDir, EXPORT_MANIFEST_FILE));
-  copyFileSync(built.path(outcome.files.signature), join(exportDir, EXPORT_SIGNATURE_FILE));
-  const unpackedDir = join(exportDir, 'unpacked');
+  const unpackedDir = join(destination, 'unpacked');
   mkdirSync(unpackedDir);
   execFileSync(UNZIP, ['-q', archive, '-d', unpackedDir]);
-  return { exportDir, unpackedDir, archive };
+  const exportDir = join(unpackedDir, 'export');
+  return { exportDir, unpackedDir, archive, manifestFile: join(exportDir, `${outcome.exportId}.manifest.json`), signatureFile: join(exportDir, `${outcome.exportId}.manifest.sig`), archiveSha256: outcome.archive.sha256 };
 }
 
 /** A STAND-IN for a video encoder: it reads both decrypted streams to their end and writes a digest of them. No video. */

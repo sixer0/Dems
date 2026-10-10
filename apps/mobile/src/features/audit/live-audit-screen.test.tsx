@@ -178,12 +178,13 @@ describe('SIMULATED: as before', () => {
 
     fireEvent.press(screen.getByTestId('audit-verify'));
     expect(screen.getByTestId('audit-verify')).toHaveTextContent('Verifying…');
-    expect(screen.getByTestId('audit-verify').props.accessibilityState?.busy).toBeUndefined();
+    // DELIBERATE PIN CHANGE (wave H closing pass Z2, G70-04): an idle control now STATES `busy: false` (`busyState`); it is never marked busy.
+    expect(screen.getByTestId('audit-verify').props.accessibilityState?.busy).toBe(false);
     await flushSimulated();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await flushSimulated();
     expect(screen.getByTestId('audit-verify-PASS')).toBeTruthy();
-    expect(screen.getByTestId('audit-verify').props.accessibilityState?.busy).toBeUndefined();
+    expect(screen.getByTestId('audit-verify').props.accessibilityState?.busy).toBe(false);
     expect(screen.queryByTestId('audit-live-chain')).toBeNull();
     expect(screen.queryByTestId('audit-link-offline')).toBeNull();
   });

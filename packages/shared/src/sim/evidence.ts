@@ -461,3 +461,104 @@ export function restoreEvidenceItem(item: EvidenceItem): EvidenceItem {
   }
   return { ...item, tampered: false, tamperedTrackId: null, verification: { status: 'NOT_RUN', at: null } };
 }
+
+// ── What kind of item is on screen (reconcile pass R; decisions D205, D207) ─────────────────────
+// ONE rule for both clients, built on the Core's own members. Every reader takes `unknown`, never
+// throws, and an absent member is NOT REPORTED - never the favourable value.
+
+const isFactRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** `sealedPackage` as the Core states it; null: not stated (Simulated mode, a v1 item, a simulated item). */
+export type SealedPackageFact = 'PRESENT' | 'NOT_READABLE';
+
+export function sealedPackageOf(item: unknown): SealedPackageFact | null {
+  const value = isFactRecord(item) ? item['sealedPackage'] : undefined;
+  return value === 'PRESENT' || value === 'NOT_READABLE' ? value : null;
+}
+
+/**
+ * THE KIND OF AN EVIDENCE ITEM, by its own members:
+ *   SEALED_HERE  the Core states `sealedPackage` (PRESENT or NOT_READABLE): a v2 package sealed on
+ *                this Core - a product seal (REAL) or a seed-sealed demonstration item
+ *                (DEMO_PACKAGE). Nothing bundled is ever drawn for it;
+ *   DEMO         `integritySource` DEMO_PACKAGE or SIMULATED and no `sealedPackage`: a v1 /
+ *                simulated demonstration item - the only kind bundled demo media may be drawn for;
+ *   RECORD       a REAL item for which the Core states no sealed package (never sealed, or the
+ *                answer came before the sealed facts were read): a record of this Core, no media;
+ *   UNKNOWN      no integrity source this client can read: nothing is assumed.
+ */
+export type EvidenceItemKind = 'SEALED_HERE' | 'DEMO' | 'RECORD' | 'UNKNOWN';
+
+export function evidenceItemKindOf(item: unknown): EvidenceItemKind {
+  if (!isFactRecord(item)) return 'UNKNOWN';
+  if (sealedPackageOf(item) !== null) return 'SEALED_HERE';
+  const source = item['integritySource'];
+  if (source === 'DEMO_PACKAGE' || source === 'SIMULATED') return 'DEMO';
+  return source === 'REAL' ? 'RECORD' : 'UNKNOWN';
+}
+
+/** A package sealed on this Core (the Core says so itself). */
+export const isSealedOnThisCore = (item: unknown): boolean => evidenceItemKindOf(item) === 'SEALED_HERE';
+/** A v1 / simulated demonstration item: the only kind bundled media belongs to. */
+export const isBundledDemoItem = (item: unknown): boolean => evidenceItemKindOf(item) === 'DEMO';
+
+/** The custody action the seal of an interrupted recording writes (`capture-session.ts` holds the same word). */
+const CUSTODY_INTERRUPTED_ACTION = 'RECORDING_INTERRUPTED';
+const FACT_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+export interface InterruptedFact {
+  /** true / false as stated; null: nothing states it. */
+  readonly interrupted: boolean | null;
+  /** The cause as a code, or null (none named / not interrupted). */
+  readonly cause: string | null;
+  /** Which member said it. */
+  readonly source: 'MANIFEST' | 'CUSTODY' | null;
+}
+
+/**
+ * THE INTERRUPTED FACT OF AN ITEM ON SCREEN (decision D207) - one answer for the evidence list
+ * row, the item header, the seal dialog, the Monitor and the Summary.
+ *
+ * The truth of a sealed package is its signed manifest: when the Core states `interrupted` (it
+ * reads `timeline.interrupted` of the sealed manifest), THAT is the answer, true or false. Only
+ * when the member is absent (Simulated mode, a client that holds the replicated item before the
+ * sealed facts were read) the item's custody entry `RECORDING_INTERRUPTED` answers - the member
+ * `interruptedSealOfItem` reads. The product's own seal writes both from ONE value
+ * (`closedTracks.interrupted` feeds the manifest and `completeSealTransition`), so the two never
+ * differ for an item it sealed; if they ever do, the manifest wins and `source` says which spoke.
+ * The cause is the Core's `interruptedCause`, else the custody entry's `detail`.
+ */
+export function interruptedFactOf(item: unknown): InterruptedFact {
+  if (!isFactRecord(item)) return { interrupted: null, cause: null, source: null };
+  const custody = item['custody'];
+  const entry = Array.isArray(custody) ? custody.find((candidate) => isFactRecord(candidate) && candidate['action'] === CUSTODY_INTERRUPTED_ACTION) : undefined;
+  const code = (value: unknown): string | null => (typeof value === 'string' && FACT_CODE.test(value) ? value : null);
+  const custodyCause = isFactRecord(entry) ? code(entry['detail']) : null;
+  const stated = item['interrupted'];
+  if (typeof stated === 'boolean') return { interrupted: stated, cause: stated ? (code(item['interruptedCause']) ?? custodyCause) : null, source: 'MANIFEST' };
+  if (entry !== undefined) return { interrupted: true, cause: custodyCause, source: 'CUSTODY' };
+  return { interrupted: null, cause: null, source: null };
+}
+
+/**
+ * The mapping table of the rule, as a vector both clients' tests and the shared test read: an item
+ * (its relevant members only) and what every reader must say of it.
+ */
+export const EVIDENCE_ITEM_KIND_VECTORS: readonly { readonly name: string; readonly item: unknown; readonly kind: EvidenceItemKind; readonly interrupted: boolean | null; readonly cause: string | null }[] = [
+  { name: 'product seal', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: false, custody: [] }, kind: 'SEALED_HERE', interrupted: false, cause: null },
+  { name: 'product seal, package not readable', item: { integritySource: 'REAL', sealedPackage: 'NOT_READABLE', custody: [] }, kind: 'SEALED_HERE', interrupted: null, cause: null },
+  { name: 'seed-sealed demonstration item', item: { integritySource: 'DEMO_PACKAGE', manifestVersion: 2, developmentSources: true, sealedPackage: 'PRESENT', interrupted: false }, kind: 'SEALED_HERE', interrupted: false, cause: null },
+  { name: 'v1 demonstration item', item: { integritySource: 'DEMO_PACKAGE', custody: [] }, kind: 'DEMO', interrupted: null, cause: null },
+  { name: 'v1 demonstration item that reads version 2 (D-85-1)', item: { integritySource: 'DEMO_PACKAGE', manifestVersion: 2 }, kind: 'DEMO', interrupted: null, cause: null },
+  { name: 'a real signature alone is not the Core saying "sealed here"', item: { integritySource: 'DEMO_PACKAGE', manifestVersion: 2, developmentSources: true, signature: { algorithm: 'Ed25519', simulated: false } }, kind: 'DEMO', interrupted: null, cause: null },
+  { name: 'simulated item', item: { integritySource: 'SIMULATED' }, kind: 'DEMO', interrupted: null, cause: null },
+  { name: 'REAL item, no sealed package stated', item: { integritySource: 'REAL' }, kind: 'RECORD', interrupted: null, cause: null },
+  { name: 'no integrity source', item: {}, kind: 'UNKNOWN', interrupted: null, cause: null },
+  { name: 'not an item', item: null, kind: 'UNKNOWN', interrupted: null, cause: null },
+  { name: 'an unknown value of sealedPackage is not stated', item: { integritySource: 'DEMO_PACKAGE', sealedPackage: 'YES' }, kind: 'DEMO', interrupted: null, cause: null },
+  { name: 'interrupted: manifest flag and custody entry (the product seal)', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: true, interruptedCause: 'CAPTURE_FAULT', custody: [{ action: 'RECORDING_INTERRUPTED', detail: 'CAPTURE_FAULT' }] }, kind: 'SEALED_HERE', interrupted: true, cause: 'CAPTURE_FAULT' },
+  { name: 'interrupted: custody entry only (the member is not stated yet)', item: { integritySource: 'REAL', custody: [{ action: 'RECORDING_INTERRUPTED', detail: 'CAPTURE_FAULT' }] }, kind: 'RECORD', interrupted: true, cause: 'CAPTURE_FAULT' },
+  { name: 'interrupted: manifest flag without a cause member - the custody names it', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: true, custody: [{ action: 'RECORDING_INTERRUPTED', detail: 'CAMERA_LOST' }] }, kind: 'SEALED_HERE', interrupted: true, cause: 'CAMERA_LOST' },
+  { name: 'disagreement: the manifest says NOT interrupted, a custody entry says it - the manifest wins', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: false, custody: [{ action: 'RECORDING_INTERRUPTED', detail: 'CAPTURE_FAULT' }] }, kind: 'SEALED_HERE', interrupted: false, cause: null },
+  { name: 'disagreement: the manifest says interrupted, no custody entry - the manifest wins, no cause', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: true, custody: [{ action: 'RECORDING_STOPPED', detail: null }] }, kind: 'SEALED_HERE', interrupted: true, cause: null },
+];

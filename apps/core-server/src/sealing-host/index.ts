@@ -50,7 +50,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { CaptureOperation } from '../capture/adapters';
 import { captureOperationOf } from '../capture/fence';
-import { readSessionCaptureFacts, readSessionVideoSampleEntry, sessionCapture } from '../capture-session';
+import { readSessionCaptureFacts, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCapture } from '../capture-session';
 import type { UnitContext } from '../core';
 import { SEAL_BLOCKED_REASON, sealDoorsOf, sealingNoticeDoorsOf, unsealableDoorsOf } from '../engine';
 import { provideCoreEvidenceExport } from '../evidence-export';
@@ -94,6 +94,8 @@ import {
 import { transcriptionControl } from '../transcription';
 import { coreFragmentSealer } from './session-key';
 import { SEAL_NOTICE, createSealSessionReader } from './session-reader';
+// Closing pass Z1 (decision D207): the installation identity - manifest fields 20 / 21 and the boot rule.
+import { installationIdentityOf, runInstallationIdentityBoot } from './installation-identity';
 import { createSealTranscriptStep, type SealTranscriptRuns } from './transcript-step';
 
 export { isTimedSeal, sealingProgressOf } from './progress';
@@ -106,6 +108,8 @@ export { NO_TRANSCRIPT_LIMITS, SealTranscriptCode, createSealTranscriptStep, typ
 const SOURCE = 'sealingHost';
 /** The boot step of RECOVERY. Registered after the engine's, so the committed state is there. */
 export const SEALING_RESUME_BOOT_STEP = 'sealing.resume';
+/** The boot step that holds a production Core to its installation identity (closing pass Z1, D207). */
+export const INSTALLATION_IDENTITY_BOOT_STEP = 'sealing.installation-identity';
 /** The offset the manifest states its instants in (the Core's one timezone, `clock.tz` of the state). */
 const TIMEZONE = '+07:00';
 
@@ -177,6 +181,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   }
 
   const mediaStoreDir = app.config.mediaStoreDir;
+  // Closing pass Z1 (D207): the ONE read of the installation identity, at the mount.
+  const installationIdentity = installationIdentityOf(app.config);
   const packageDir = (sessionId: string): string => sessionPackageDir(mediaStoreDir, sessionId);
   const now = (): number => app.clock.now();
   let last: SealOutcome | null = null;
@@ -322,7 +328,12 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
     const ports: SealingPorts = {
       journal,
       fragments,
-      sealer: coreFragmentSealer(app),
+      // G89-06 (fix wave H driver A): the key of a session is bound to THAT session - the instant the engine created it -
+      // so a key a cleared session of the same ID left behind is refused by name, never reused (`session-key.ts`).
+      sealer: coreFragmentSealer(app, (sessionId) => {
+        const open = app.engine.state().session;
+        return open !== null && open.id === sessionId ? `created-${String(open.createdAt)}` : null;
+      }),
       opener: coreFragmentOpener(app),
       session: createSealSessionReader({
         state: () => app.engine.state(),
@@ -338,6 +349,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         videoSampleEntry: (sessionId, trackId) => readSessionVideoSampleEntry(packageDir(sessionId), trackId),
         notice: operation === CaptureOperation.REAL_DEVELOPMENT ? SEAL_NOTICE.REAL_DEVELOPMENT : SEAL_NOTICE.REAL_PRODUCTION,
         timezone: TIMEZONE,
+        // Closing pass Z1 (D207): manifest fields 20 / 21 are the configured installation identity, read once at the mount.
+        identity: installationIdentity,
         onNoSttSnapshot: (sessionId) => app.log.warn({ code: 'SEALING_NO_STT_SNAPSHOT', source: SOURCE, sessionId }, 'the session has no STT snapshot: the manifest says that none was recorded'),
         onForeignCaptureFacts: (sessionId) => persist('warn', 'SEALING_CAPTURE_FACTS_FOREIGN', 'the capture facts kept under this session ID are of another session: they are not used', null, { sessionId }),
       }),
@@ -381,6 +394,14 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
           app.log.info({ code: 'SEALING_COMPLETE', source: SOURCE, sessionId: outcome.sessionId, evidenceId: outcome.evidenceId, attempt: outcome.attempt, interrupted: outcome.interrupted }, 'a session was sealed');
           // R80-04: the package is stored - the raw PCM tap and the rest of the session's transcriber scratch go (a normal seal, an interrupted one, a run a start finished).
           discardTranscriberScratch(outcome.sessionId, 'SEALED');
+          // G89-07 (fix wave H driver A): the manifest is signed and stored, its inputs are frozen in the seal's checkpoint - the capture
+          // facts file is not read again and goes. A FAILED or pending seal keeps it: this branch is the SEALED one only.
+          void track(
+            removeSessionCaptureFacts(mediaStoreDir, outcome.sessionId).then(
+              (removed) => void (removed ? app.log.info({ code: 'SEALING_CAPTURE_FACTS_REMOVED', source: SOURCE, sessionId: outcome.sessionId }, 'the capture facts file of a sealed session was removed') : undefined),
+              (error: unknown) => persist('error', 'SEALING_CAPTURE_FACTS_NOT_REMOVED', 'the capture facts file of a sealed session could not be removed', error, { sessionId: outcome.sessionId }),
+            ),
+          );
         }
         // A FAILED run is in the error log already (the pipeline wrote it, with its step and code).
         else if (outcome.status === 'FAILED') app.log.error({ code: outcome.code, source: SOURCE, sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, retriable: outcome.retriable }, 'the seal of a session failed');
@@ -546,6 +567,14 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
     off = null;
     // F-M7b: no retry of a failed seal fires into a Core that is closing.
     composed?.wayOut.close();
+  });
+
+  // INSTALLATION IDENTITY (closing pass Z1, decision D207): a production Core does not start without
+  // it; a development Core says once that its manifests will state NOT_CONFIGURED. Before the
+  // recovery step: a Core that is refused resumes no seal.
+  app.readiness.addBootStep({
+    id: INSTALLATION_IDENTITY_BOOT_STEP,
+    run: async () => runInstallationIdentityBoot(installationIdentity, operation, { persist: (level, code, message, context) => persist(level, code, message, null, context) }),
   });
 
   // RECOVERY: after the engine's boot step (this unit registers after the engine). Not awaited:

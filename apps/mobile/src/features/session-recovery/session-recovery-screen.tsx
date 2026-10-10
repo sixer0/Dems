@@ -458,7 +458,7 @@ function StatusCard({
 
           {phase === 'fault' ? (
             <View style={styles.actions}>
-              <Button testID="recovery-start" variant="primary" size="lg" onPress={onStartPress} {...busyState(press.busy)}>
+              <Button testID="recovery-start" variant="primary" size="lg" onPress={onStartPress} accessibilityLabel={t('features.session-recovery.actions.start')} {...busyState(press.busy)}>
                 {press.pending ? <PendingSpinner color={palette.black} testID="recovery-start-spinner" /> : null}
                 <Button.Label>{t('features.session-recovery.actions.start')}</Button.Label>
               </Button>
@@ -543,7 +543,7 @@ function FailedStartCard({ sessionId, kind, waiting, canStart, roleLabel, linkDo
 
           {waiting ? (
             <View style={styles.actions}>
-              <Button testID="recovery-close-session" variant="primary" size="lg" onPress={onClosePress} {...busyState(press.busy)}>
+              <Button testID="recovery-close-session" variant="primary" size="lg" onPress={onClosePress} accessibilityLabel={t('common.session.failedStart.close')} {...busyState(press.busy)}>
                 {press.pending ? <PendingSpinner color={palette.black} testID="recovery-close-session-spinner" /> : null}
                 <Button.Label>{t('common.session.failedStart.close')}</Button.Label>
               </Button>

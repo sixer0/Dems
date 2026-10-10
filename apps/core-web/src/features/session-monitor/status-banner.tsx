@@ -8,7 +8,9 @@ import { motion as tokens } from '@dems/shared/tokens'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { captureFailedStartText, captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
-import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, type BannerModel } from './model'
+import { useOwnCapture } from '@/lib/own-capture'
+import { useInterruptedSeal } from './use-interrupted-seal'
+import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, selectCoveredDegradedNotice, type BannerModel } from './model'
 
 export interface StatusBannerProps {
   canStart: boolean
@@ -27,8 +29,14 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
   const noticeAlert = useSim(selectBannerNoticeAlert)
   const notice = noticeAlert === null ? null : captureNoticeOf(noticeAlert)
   const reason = notice !== null ? captureNoticeLine(t, notice) : banner.reasonKind ? t(`common.faultKind.${banner.reasonKind}`) : (banner.reasonText ?? '')
+  // Wave H driver B (G75-03, ruling D197): a sealed recording that was interrupted is named, never the plain sealed state.
+  const interrupted = useInterruptedSeal(banner.kind === 'SEALED' ? banner.sessionId : null)
+  // Wave H closing pass Z2 (driver A's line of 10:20:55Z): beside a recording of the Core's own capture no
+  // integrity check runs and the media is not protected until the seal - the banner names the capture state.
+  const ownCapture = useOwnCapture()
   switch (banner.kind) {
     case 'ACTIVE':
+      if (ownCapture) return { title: t('session.captureFacts.banner.title'), detail: t('session.integrityFacts.capture.DURABLE') }
       return { title: t('session.banner.ACTIVE.title'), detail: t('session.banner.ACTIVE.detail') }
     case 'CONNECTING':
       return { title: t('session.audioSource.connecting.title'), detail: t('session.audioSource.connecting.detail') }
@@ -61,6 +69,7 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
         }),
       }
     case 'SEALED':
+      if (interrupted !== null) return { title: interrupted.title, detail: `${banner.evidenceId ?? '—'} · ${interrupted.cause} ${interrupted.kept}` }
       return {
         title: t('session.banner.SEALED.title'),
         detail: t('session.banner.SEALED.detail', { evidenceId: banner.evidenceId ?? '—' }),
@@ -88,8 +97,13 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const banner = useSim(selectBanner)
-  const tone = BANNER_TONE[banner.kind]
+  const interruptedSeal = useInterruptedSeal(banner.kind === 'SEALED' ? banner.sessionId : null) !== null
+  // An interrupted seal is not the calm sealed state: the warning tone.
+  const tone = interruptedSeal ? 'warning' : BANNER_TONE[banner.kind]
   const { title, detail } = useBannerText(banner)
+  // Wave H driver B (G75-07 (a)): the degraded-start warning keeps a place of its own when a more severe alert has the banner.
+  const coveredAlert = useSim(selectCoveredDegradedNotice)
+  const coveredNotice = coveredAlert === null ? null : captureNoticeOf(coveredAlert)
 
   // R8: one halo pulse each time the banner escalates (derived during render, no effect).
   const [escalation, setEscalation] = useState({ kind: banner.kind, pulses: 0 })
@@ -141,6 +155,7 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
       data-kind={banner.kind}
       data-tone={tone}
       data-failed-start={banner.failedStart ?? undefined}
+      data-interrupted={interruptedSeal ? 'true' : undefined}
       role={critical ? 'alert' : 'status'}
       aria-live={critical ? 'assertive' : 'polite'}
     >
@@ -178,6 +193,11 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
         <span className={cn('sm-banner-detail')} data-testid="sm-banner-detail">
           {detail}
         </span>
+        {coveredNotice !== null ? (
+          <span className={cn('sm-banner-detail')} data-testid="sm-banner-degraded">
+            {captureNoticeLine(t, coveredNotice)}
+          </span>
+        ) : null}
       </span>
       {cta ? (
         <span className="sm-banner-cta" aria-busy={recoverBusy || undefined}>

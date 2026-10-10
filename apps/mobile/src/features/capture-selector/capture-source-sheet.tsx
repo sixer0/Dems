@@ -5,7 +5,7 @@
  * | Field | Options | Operation on Save |
  * |---|---|---|
  * | the camera of a video track | every REGISTERED camera (`cameraOptions`; a search candidate is never one, PE-125-04) | 79 `setCaptureCameraSource` |
- * | the primary microphone | the two inputs | 80 `setPrimaryMic` (the other becomes STANDBY in the same republish) |
+ * | the microphone of the PRIMARY or of the STANDBY line (fix wave H, G70-02; ruling D196) | every REGISTERED microphone (`micOptions`) | `micLineCommand`: 80 `setPrimaryMic` when the two lines trade roles; 78 `updateCaptureConfig` (pair replacement, D133 (1)) for a microphone that is on no line. The primary microphone is refused on the standby line (`micOptionRefusal`): the option is disabled and says why |
  *
  * The sheet is portalled above the simulator's provider, so it reads no store: the options and the
  * current choice come in as props, and Save hands the command to the caller, which holds the port.
@@ -22,7 +22,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { ReduceMotion } from 'react-native-reanimated';
-import type { VideoTrackId } from '@dems/shared/domain';
+import type { MicRole, VideoTrackId } from '@dems/shared/domain';
 import { fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
@@ -30,7 +30,7 @@ import { withAlpha } from '@/components/media/color';
 import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
-import { cameraLineStatus, type CameraOption, type MicSelectorRow, type SelectorCommand } from './capture-selector-model';
+import { cameraLineStatus, micLineCommand, micOptionRefusal, type CameraOption, type MicOption, type SelectorCommand } from './capture-selector-model';
 import { MicrophoneLimitLine, SourceBadge } from './development-source-badge';
 import { SheetContentSignal, useSheetPresence } from '@/features/devices/use-sheet-presence';
 
@@ -41,7 +41,7 @@ export interface SourceBadgeMode {
 
 export type SourceSheetRequest =
   | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly currentDeviceId: string; readonly options: readonly CameraOption[]; readonly badgeMode?: SourceBadgeMode }
-  | { readonly kind: 'primaryMic'; readonly currentInputId: string | null; readonly inputs: readonly MicSelectorRow[]; readonly badgeMode?: SourceBadgeMode };
+  | { readonly kind: 'mic'; readonly role: MicRole; readonly currentInputId: string | null; readonly options: readonly MicOption[]; readonly badgeMode?: SourceBadgeMode };
 
 const NO_BADGE: SourceBadgeMode = { live: false };
 
@@ -82,7 +82,7 @@ export function CaptureSourceSheet({ request, fullHeight, busy, pending, onSave,
           {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}
         >
           <SheetContentSignal onChange={presence.setContentMounted}>
-            <SheetBody key={shown.kind === 'camera' ? shown.trackId : 'MIC'} request={shown} busy={busy} pending={pending} onSave={onSave} onClose={close} />
+            <SheetBody key={shown.kind === 'camera' ? shown.trackId : shown.role} request={shown} busy={busy} pending={pending} onSave={onSave} onClose={close} />
           </SheetContentSignal>
         </BottomSheet.Content>
       </BottomSheet.Portal>
@@ -102,13 +102,20 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
   const { t } = useTranslation();
   const current = request.kind === 'camera' ? request.currentDeviceId : request.currentInputId;
   const [draft, setDraft] = useState<string | null>(current);
-  const unchanged = draft === null || draft === current;
   const track = request.kind === 'camera' ? t(`features.capture-selector.selector.track.${request.trackId}`) : '';
+  // What Save would send; null when the draft is what the Core holds, or a choice the selector refuses.
+  const command: SelectorCommand | null =
+    draft === null || draft === current
+      ? null
+      : request.kind === 'camera'
+        ? { kind: 'camera', trackId: request.trackId, deviceId: draft }
+        : micLineCommand(request.role, draft, { mics: request.options.flatMap((option) => (option.role === null ? [] : [{ inputId: option.deviceId, role: option.role }])) });
+  const unchanged = command === null;
+  const sheetKey = request.kind === 'camera' ? 'camera' : request.role === 'PRIMARY' ? 'mic' : 'standbyMic';
 
   const save = () => {
-    if (unchanged || busy || draft === null) return;
-    if (request.kind === 'camera') onSave({ kind: 'camera', trackId: request.trackId, deviceId: draft });
-    else onSave({ kind: 'primaryMic', inputId: draft });
+    if (command === null || busy) return;
+    onSave(command);
   };
 
   return (
@@ -116,10 +123,10 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
       <View style={styles.header}>
         <View style={styles.headerText}>
           <BottomSheet.Title>
-            {request.kind === 'camera' ? t('features.capture-selector.selector.sheet.cameraTitle', { track }) : t('features.capture-selector.selector.sheet.micTitle')}
+            {t(`features.capture-selector.selector.sheet.${sheetKey}Title`, { track })}
           </BottomSheet.Title>
           <BottomSheet.Description>
-            {request.kind === 'camera' ? t('features.capture-selector.selector.sheet.cameraBody') : t('features.capture-selector.selector.sheet.micBody')}
+            {t(`features.capture-selector.selector.sheet.${sheetKey}Body`)}
           </BottomSheet.Description>
         </View>
         <BottomSheet.Close accessibilityLabel={t('features.capture-selector.selector.sheet.close')} testID="capture-source-close" onPress={onClose} />
@@ -148,33 +155,37 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
                 />
               );
             })
-          : request.inputs.map((input) => (
-              <OptionRow
-                key={input.inputId}
-                id={input.inputId}
-                icon="mic"
-                title={input.inputId}
-                detail={[input.model, input.transport].filter((part): part is string => part !== null && part !== '').join(' · ')}
-                source={developmentSourceOf({ sourceClass: input.sourceClass ?? undefined, adapter: input.adapter ?? undefined, deviceKind: 'MIC', ...(request.badgeMode ?? NO_BADGE) })}
-                chip={
-                  <StatusChip
-                    size="sm"
-                    tone={input.role === 'PRIMARY' ? 'success' : 'default'}
-                    label={t(`features.capture-selector.selector.role.${input.role}`)}
-                    icon={null}
-                  />
-                }
-                selected={draft === input.inputId}
-                disabled={busy}
-                onPress={setDraft}
-              />
-            ))}
+          : request.options.map((option) => {
+              const refusal = micOptionRefusal(request.role, option);
+              return (
+                <OptionRow
+                  key={option.deviceId}
+                  id={option.deviceId}
+                  icon="mic"
+                  title={option.deviceId}
+                  detail={[option.model, option.online ? null : t('features.capture-selector.selector.stream.OFFLINE')].filter((part): part is string => part !== null && part !== '').join(' · ')}
+                  source={developmentSourceOf({ sourceClass: option.sourceClass ?? undefined, adapter: option.adapter ?? undefined, deviceKind: 'MIC', ...(request.badgeMode ?? NO_BADGE) })}
+                  chip={
+                    <StatusChip
+                      size="sm"
+                      tone={option.role === 'PRIMARY' ? 'success' : 'default'}
+                      label={option.role === null ? t('features.capture-selector.selector.sheet.notAssigned') : t(`features.capture-selector.selector.role.${option.role}`)}
+                      icon={null}
+                    />
+                  }
+                  refusal={refusal === null ? null : t(`features.capture-selector.selector.sheet.refusal.${refusal}`)}
+                  selected={draft === option.deviceId}
+                  disabled={busy || refusal !== null}
+                  onPress={setDraft}
+                />
+              );
+            })}
       </ListGroup>
       <View style={styles.actions}>
         <Button variant="outline" isDisabled={busy} onPress={onClose} testID="capture-source-cancel">
           <Button.Label>{t('common.actions.cancel')}</Button.Label>
         </Button>
-        <Button variant="primary" isDisabled={unchanged && !busy} onPress={save} testID="capture-source-save" {...busyState(busy, unchanged)}>
+        <Button variant="primary" isDisabled={unchanged && !busy} onPress={save} testID="capture-source-save" accessibilityLabel={t('features.capture-selector.selector.sheet.save')} {...busyState(busy, unchanged)}>
           {pending ? <PendingSpinner color={palette.black} testID="capture-source-spinner" /> : null}
           <Button.Label>{t('features.capture-selector.selector.sheet.save')}</Button.Label>
         </Button>
@@ -191,12 +202,14 @@ interface OptionRowProps {
   chip: React.ReactNode;
   /** The "Development source" badge of the option, or null / left out for none. */
   source?: DevelopmentSourceKind | null;
+  /** Why this option cannot be chosen, as a sentence (the row is disabled with it); null / left out when it can. */
+  refusal?: string | null;
   selected: boolean;
   disabled: boolean;
   onPress: (id: string) => void;
 }
 
-function OptionRow({ id, icon, title, detail, chip, source = null, selected, disabled, onPress }: OptionRowProps) {
+function OptionRow({ id, icon, title, detail, chip, source = null, refusal = null, selected, disabled, onPress }: OptionRowProps) {
   const Icon = icon === 'camera' ? Camera : Mic;
   return (
     <View style={styles.wrap}>
@@ -205,6 +218,7 @@ function OptionRow({ id, icon, title, detail, chip, source = null, selected, dis
         accessibilityRole="radio"
         accessibilityState={{ selected, disabled }}
         accessibilityLabel={detail === '' ? title : `${title}, ${detail}`}
+        {...(refusal === null ? {} : { accessibilityHint: refusal })}
         disabled={disabled}
         onPress={() => onPress(id)}
         style={[styles.item, selected ? styles.itemSelected : null]}
@@ -225,6 +239,12 @@ function OptionRow({ id, icon, title, detail, chip, source = null, selected, dis
           {source === null ? null : <SourceBadge kind={source} testID={`capture-source-badge-${id}`} />}
           {/* Fix F-M4 (R69-07): the short limit of the Core Mac's microphone, where it is chosen; real capture only (`source` is null in Simulated mode). */}
           {source === 'localMicrophone' ? <MicrophoneLimitLine testID={`capture-source-limit-${id}`} /> : null}
+          {/* Fix wave H (G70-02): the reason a disabled option cannot be chosen, in visible text. */}
+          {refusal === null ? null : (
+            <Text maxFontSizeMultiplier={1.2} style={styles.detail} testID={`capture-source-refusal-${id}`}>
+              {refusal}
+            </Text>
+          )}
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix>{chip}</ListGroup.ItemSuffix>
       </ListGroup.Item>

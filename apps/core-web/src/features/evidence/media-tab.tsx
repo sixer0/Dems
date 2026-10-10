@@ -220,6 +220,12 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
             <Chip.Label>{t('evidence.media.excerptChip')}</Chip.Label>
           </Chip>
         </div>
+        {/* Wave H C2 (G94-02): on a Core, bundled media is drawn for a demo item only, and always under its label. */}
+        {live ? (
+          <p className="evi-caption evi-strong" role="note" data-testid="evidence-demo-label">
+            {t('evidence.itemFacts.media.demoLabel')}
+          </p>
+        ) : null}
         <div className="evi-player-stage">
           {poster ? <img src={poster} alt="" className="evi-player-poster" aria-hidden="true" /> : null}
           <motion.video

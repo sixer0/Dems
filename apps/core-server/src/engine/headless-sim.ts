@@ -74,6 +74,11 @@ export interface HeadlessSimOptions {
    * measures them, so the simulator generates none. Default `'simulated'`.
    */
   readonly capture?: CaptureLevelSource;
+  /**
+   * How long the connecting part of a start lasts in SIMULATED capture, in ms (wave H closing pass
+   * Z1; `CreateSimOptions.captureConnectMs`). A test / development control; absent = the default.
+   */
+  readonly captureConnectMs?: number;
 }
 
 /** A fresh `Sim` on the host's adapters. Its state is the idle dataset until the host sets the stored one. */
@@ -88,6 +93,7 @@ export async function createHeadlessSim(options: HeadlessSimOptions): Promise<Si
     visibility: ALWAYS_VISIBLE,
     onError: options.onError,
     capture: options.capture ?? 'simulated',
+    ...(options.captureConnectMs === undefined ? {} : { captureConnectMs: options.captureConnectMs }),
   });
   // With a storage that answers at once, hydration has ended before `createSim` returns.
   await sim.ready;

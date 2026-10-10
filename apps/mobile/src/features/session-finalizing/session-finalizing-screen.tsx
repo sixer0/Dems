@@ -43,6 +43,7 @@
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, Spinner, useToast } from 'heroui-native';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { LoaderCircle } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -68,6 +69,7 @@ import { FlowBoundary } from './flow-boundary';
 import { SessionSummaryScreen } from '@/features/session-summary/session-summary-screen';
 import { markSummaryHandoff } from '@/features/session-summary/summary-handoff';
 import { isFinalizingHandover, markFinalizingHandover } from './handover';
+import { InterruptedSealNotice, useInterruptedSeal } from './interrupted-seal';
 import { SealedStamp } from './sealed-stamp';
 import { UnsealableNotice } from './unsealable-notice';
 import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
@@ -271,6 +273,8 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
   // Row 87 (B9): a copy that is part of a hand-over starts no Reanimated motion at all.
   const still = handover || !enter;
   const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
+  // Wave H driver B (G75-03, ruling D197): the seal of an interrupted recording says so from its first step on.
+  const interrupted = useInterruptedSeal(session.id);
 
   return (
     <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
@@ -278,7 +282,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
         <SectionCard testID="finalizing-card">
           <View style={styles.cardHead}>
             <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title} testID="finalizing-title">
-              {t(sealed ? 'session.finalization.sealedTitle' : 'session.finalization.title')}
+              {sealed && interrupted !== null ? interrupted.title : t(sealed ? 'session.finalization.sealedTitle' : 'session.finalization.title')}
             </Text>
             {session.id ? (
               <Text maxFontSizeMultiplier={1.2} selectable style={styles.sessionId} testID="finalizing-session-id">
@@ -287,10 +291,13 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
             ) : null}
           </View>
 
+          <InterruptedSealNotice sessionId={session.id} testID="finalizing-interrupted" />
           <View style={styles.statusLine} accessibilityLiveRegion="polite" testID="finalizing-status">
             {phase === 'stopping' ? (
               <>
-                <Spinner size="sm" color={palette.gold} {...(still ? { animation: 'disable-all' as const } : {})} />
+                {/* Wave H driver B (G89-02 = B9): a hand-over copy owns no Reanimated indicator - the kit Spinner cancels a
+                    shared value when it unmounts (at STOPPING -> FINALIZING), a write to a view tag that is being removed. */}
+                {still ? <LoaderCircle testID="finalizing-stopping-still" size={18} color={palette.gold} /> : <Spinner size="sm" color={palette.gold} />}
                 <Text maxFontSizeMultiplier={1.2} style={styles.statusText}>
                   {t('session.finalization.stopping')}
                 </Text>
@@ -304,7 +311,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
                 {/* The animated stamp belongs to the Summary (F-80-1); here the chip is static. */}
                 <SealedStamp
                   play={false}
-                  label={t('session.finalization.sealed')}
+                  label={interrupted?.short ?? t('session.finalization.sealed')}
                   accessibilityLabel={t('features.session-finalizing.stampLabel')}
                   testID="finalizing-sealed"
                 />
@@ -324,7 +331,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
 
           {phase === 'finalizing' && progress.reportsProgress ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`finalizing-eta-${progress.etaMs === null ? 'none' : 'core'}`}>
-              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.finalization.eta', { seconds: etaSeconds(progress.etaMs) })}
+              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
             </Text>
           ) : null}
           {progress.resumed && !sealed ? (

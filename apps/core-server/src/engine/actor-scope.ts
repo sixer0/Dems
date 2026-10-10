@@ -18,9 +18,14 @@
  */
 import { AuthStatus, signedOutAuth, type AuthSlice, type SimStore } from '@dems/shared/sim';
 
-/** The `auth` slice of one command: signed in as `operatorId`, at the instant of the command. */
-export function actorAuth(operatorId: string, at: number): AuthSlice {
-  return { status: AuthStatus.SIGNED_IN, operatorId, method: null, issuedAt: at, lastActivityAt: at };
+/**
+ * The `auth` slice of one command: signed in as `operatorId`, at the instant of the command.
+ * `deviceId` (wave H driver B, finding G75-02): the paired device the command came from - the
+ * device a bearer session is bound to - or null / absent for a web console session. A hosted
+ * action that names the sending device in its row reads it there (`sendingDeviceOf`).
+ */
+export function actorAuth(operatorId: string, at: number, deviceId: string | null = null): AuthSlice {
+  return { status: AuthStatus.SIGNED_IN, operatorId, method: null, issuedAt: at, lastActivityAt: at, ...(deviceId === null ? {} : { deviceId }) };
 }
 
 /** True when nobody is signed in on the engine: the state between two commands. */
@@ -32,8 +37,8 @@ export function isSignedOut(auth: AuthSlice): boolean {
  * Runs `action` with the engine's `auth` slice set to `operatorId`, and clears the slice in a
  * `finally`. `action` must be synchronous: what it returns is returned, what it throws is thrown.
  */
-export function withActorScope<Result>(store: SimStore, operatorId: string, at: number, action: () => Result): Result {
-  store.setState({ auth: actorAuth(operatorId, at) });
+export function withActorScope<Result>(store: SimStore, operatorId: string, at: number, action: () => Result, deviceId: string | null = null): Result {
+  store.setState({ auth: actorAuth(operatorId, at, deviceId) });
   try {
     return action();
   } finally {

@@ -355,6 +355,12 @@ describe('operations 73 and 74: one hosted command with the caller\'s principal,
     ['a target member outside its value set', { kind: 'MIC_CLIP', target: { channel: 'AUDIO-03' } }, 422, 'INVALID_INPUT'],
     ['a negative audit index', { kind: 'AUDIT_TAMPER', target: { auditIndex: -1 } }, 422, 'INVALID_INPUT'],
     ['an evidence ID that is not one', { kind: 'TAMPER', target: { evidenceId: '../etc' } }, 422, 'INVALID_INPUT'],
+    // Wave H closing pass Z1, item 5 (ruling D206 (3); gate findings G70-09 / G75-14): the body is STRICT.
+    // A member the contract does not name is refused, never silently ignored (the gate's top-level
+    // `cameraId` raised the fault on the DEFAULT camera instead of the one that was meant).
+    ['a top-level cameraId instead of target.cameraId', { kind: 'CAMERA_LOSS', cameraId: 'VIDEO-02' }, 422, 'INVALID_INPUT'],
+    ['an unknown member beside a right target', { kind: 'CAMERA_LOSS', target: { cameraId: 'VIDEO-02' }, note: 'x' }, 422, 'INVALID_INPUT'],
+    ['an unknown member inside the target', { kind: 'CAMERA_LOSS', target: { camera: 'VIDEO-02' } }, 422, 'INVALID_INPUT'],
     ['a body that is no JSON', '{"kind":', 400, 'INVALID_JSON'],
   ] as const)('%s is refused by the schema stage on both operations, before the engine: %i %s', async (_label, payload, status, code) => {
     const built = await build({ demoControls: true });

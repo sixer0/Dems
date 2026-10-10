@@ -68,7 +68,7 @@ import {
   startRecordingTransition,
   stopRecordingTransition,
   switchAudioSourceTransition,
-  SIM_CONSOLE_DEVICE_ID,
+  sendingDeviceOf,
 } from './session-machine';
 import type { SimStore } from './store';
 import type {
@@ -261,10 +261,10 @@ export function createActions(context: ActionContext): SimActions {
     applyStorageVolume: (volume) => commit((state) => applyStorageVolumeTransition(state, volume)),
 
     // ── The capture selector and the mic switch (task 3, register SH-18): HOSTED (operations 78 to 81) ──
-    setCaptureConfig: (change) => commit((state, now) => setCaptureConfigTransition(state, now, change)),
+    setCaptureConfig: (change) => commit((state, now) => setCaptureConfigTransition(state, now, change, sendingDeviceOf(state, context.deviceConsole === true))),
     // The transition looks the input up in the selector (any `MIC-NN` it holds, D133 (1)); its
     // parameter type still names the built-in pair (`session-machine.ts`, request filed by pass D1b).
-    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId, context.deviceConsole === true ? SIM_CONSOLE_DEVICE_ID : null)),
+    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId, sendingDeviceOf(state, context.deviceConsole === true))),
     registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
   };
 }

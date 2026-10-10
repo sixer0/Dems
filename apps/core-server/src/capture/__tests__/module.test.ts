@@ -72,7 +72,8 @@ describe('the capture seam', () => {
       ['error', 'capture.supervisor', 'CAPTURE_FAULT'],
       ['error', 'capture.forwarder', 'CAPTURE_WARNING_NOT_RAISED'],
     ]);
-    expect(persisted[1]?.['context']).toEqual({ sessionId: SESSION, correlationId: `cap:${SESSION}:1` });
+    // Pin by delta (wave H driver F): the persisted fault says WHY, as one code of the closed enumeration.
+    expect(persisted[1]?.['context']).toEqual({ sessionId: SESSION, correlationId: `cap:${SESSION}:1`, reason: 'WORKER_NOT_CONFIGURED' });
 
     // Nothing of the plan (an address, a path) is in either.
     expect(`${log.text()}${readFileSync(errorLogFile, 'utf8')}`).not.toMatch(/rtsp|8554|\.mp4|media\/sessions/);

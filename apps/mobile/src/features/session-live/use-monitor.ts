@@ -36,6 +36,7 @@ import { useTranslation } from 'react-i18next';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
 import {
+  isHostClockTime,
   SimErrorCode,
   SimTransitionError,
   selectCameras,
@@ -59,7 +60,8 @@ import {
 } from '@/runtime';
 import { camerasNotConnectedOf } from '@/features/capture-selector/capture-notices-model';
 import { selectConnectingCameras } from './mic-source-model';
-import { statusStrip, type StripChip } from './session-live.math';
+import { useOwnCapture } from './own-capture';
+import { statusStrip, timelineOfCaptureFacts, type StripChip } from './session-live.math';
 
 /** The recording session's identity and counters (primitives only). */
 export interface MonitorSession {
@@ -136,7 +138,11 @@ export function useMonitorMics(): readonly MicStatus[] {
 }
 
 export function useMonitorTimeline(): readonly TimelineEvent[] {
-  return useSim(selectTimeline);
+  const timeline = useSim(selectTimeline);
+  // Fix wave H driver A (G75-01): beside a recording of the Core's own capture no row the simulator's
+  // generator invents is drawn ("Evidence Auto-Save", "Integrity check passed", "Device Health Normal").
+  const ownCapture = useOwnCapture();
+  return useMemo(() => timelineOfCaptureFacts(timeline, ownCapture), [timeline, ownCapture]);
 }
 
 /** S2b: VIDEO 1, VIDEO 2, STORAGE, TIME. */
@@ -148,6 +154,8 @@ export function useMonitorStrip(): StripChip[] {
   const storage = useSim((s) => s.storage.state);
   const timeSource = useSim((s) => s.time.source);
   const timeLocked = useSim((s) => s.time.locked);
+  // Wave H closing pass Z2: the time source as the Core states it (the slice), the host clock included.
+  const hostClock = useSim((s) => isHostClockTime(s.time));
   return statusStrip({
     cameras: cameras.map((camera, i) => ({
       index: (i === 0 ? 1 : 2) as 1 | 2,
@@ -159,6 +167,7 @@ export function useMonitorStrip(): StripChip[] {
     storage,
     timeSource,
     timeLocked,
+    hostClock,
   });
 }
 

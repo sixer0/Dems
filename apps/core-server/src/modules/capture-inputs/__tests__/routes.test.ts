@@ -29,7 +29,7 @@ async function build(options: Parameters<typeof inputsUnitApp>[0] = {}, withProb
 
 interface Scan {
   scannedAt: number;
-  inputs: { deviceId: string; inputId: string | null; present: boolean; adapter: string; sourceClass: string; errorCode: string | null }[];
+  inputs: { deviceId: string; inputId: string | null; present: boolean; adapter?: string; sourceClass?: string; errorCode: string | null }[];
   unregisteredCount: number;
 }
 
@@ -50,8 +50,11 @@ describe('the route of the module', () => {
 });
 
 describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
+  // Fix wave H (G70-01, decision D196): `adapter` / `sourceClass` are stated by a Core that captures
+  // for real and by no other. The two cases that read them run in real capture since then; what a
+  // SIMULATED Core answers is pinned by the two cases at the end of this block.
   it('one entry per registered microphone, the shape of the contract, ONE search row with scope MIC_LOCAL, 0 camera probes and 0 searches', async () => {
-    const built = await build();
+    const built = await build({ captureMode: 'real' });
     built.actAs(operatorOf('SUPERVISOR'));
     const devicesBefore = built.sim.store.getState().captureDevices.devices.map((device) => device.id);
     const response = await built.post();
@@ -94,7 +97,7 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
   });
 
   it('a removed microphone is reported absent with its named cause and reads not online; it is never replaced; plugged back it reads online again', async () => {
-    const built = await build();
+    const built = await build({ captureMode: 'real' });
     built.actAs(operatorOf('TECHNICIAN'));
     const online = () => built.sim.store.getState().captureDevices.devices.filter((device) => device.kind === 'MIC').map((device) => [device.id, device.online]);
     built.adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.PERMISSION_DENIED);
@@ -185,7 +188,7 @@ describe('who may call, and when it is not ready', () => {
     expect((await built.post()).statusCode).toBe(200);
   });
 
-  it('simulated capture with no probe: the answer of the simulator, from the device state, and still one search row', async () => {
+  it('G70-01 - simulated capture with no probe: the device state, NO adapter and NO source class, and still one search row', async () => {
     const built = await build({}, false);
     built.actAs(operatorOf('SUPERVISOR'));
     built.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: 'MIC-02', phase: 'PRESENCE' });
@@ -193,12 +196,27 @@ describe('who may call, and when it is not ready', () => {
     expect(response.statusCode).toBe(200);
     expect(validateCoreApiResponse('rescanCaptureInputs', 200, bodyOf(response))).toEqual({ ok: true });
     expect((response.json() as Scan).inputs).toEqual([
-      { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
-      { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+      { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
+      { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: null },
     ]);
+    expect(response.body).not.toMatch(/"adapter"|"sourceClass"|DEVELOPMENT|FAKE/);
     expect(built.appended.map((row) => row.details['scope'])).toEqual(['MIC_LOCAL']);
     // No adapter was asked.
     expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0]);
+  });
+
+  it('G70-01 - simulated capture with a probe handed in (a test rig; the product hands none): the adapters are asked, and the answer still states no adapter and no class', async () => {
+    const built = await build();
+    built.actAs(operatorOf('SUPERVISOR'));
+    built.adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.DEVICE_BUSY);
+    const response = await built.post();
+    expect(response.statusCode).toBe(200);
+    expect(validateCoreApiResponse('rescanCaptureInputs', 200, bodyOf(response))).toEqual({ ok: true });
+    expect((response.json() as Scan).inputs).toEqual([
+      { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
+      { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: 'DEVICE_BUSY' },
+    ]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
   });
 
   it('the engine is not running: 503, nothing read, no spacing slot taken', async () => {

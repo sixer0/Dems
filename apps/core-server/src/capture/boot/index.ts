@@ -26,7 +26,6 @@
  * is a display fact): it is logged and persisted, and the figures stay as they were.
  */
 import type { FastifyInstance } from 'fastify';
-import { CAPTURE_IPC_DEFAULTS } from '@dems/capture-protocol';
 import { isDevelopmentKeySubject } from '@dems/shared/evidence-verify';
 import { factDoorsOf } from '../../engine';
 import { inspectProgram, type ProgramInspector } from '../adapters/local';
@@ -34,12 +33,14 @@ import { captureOperationDecisionOf, type CaptureOperationDecision } from '../fe
 import { createProcessLauncher } from '../ipc';
 import { SignerError, loadSoftwareSigner } from '../signer';
 import type { CaptureTimers, WorkerLauncher } from '../types';
+import { BOOT_PROBE_LOG_NAME, captureWorkerArguments } from '../worker-arguments';
 import { CAPTURE_BOOT_STEP, SIGNING_STORE_SUBPATH, runCaptureBootChecks, type CaptureBootOutcome, type CaptureBootSinks, type EvidenceVolumeFacts, type WorkerHandshake } from './checks';
 import { probeEvidenceVolume } from './evidence-volume';
 import { probeWorkerHandshake } from './worker-probe';
 
 export {
   CAPTURE_BOOT_STEP,
+  CAPTURE_WORKER_VERSION,
   CaptureBootError,
   CaptureBootRefusal,
   EvidenceStoreProblem,
@@ -53,6 +54,7 @@ export {
   isProofWorkerVersion,
   runCaptureBootChecks,
   workerProgramProblemOf,
+  workerVersionMismatchReasonOf,
   workerVersionRefusalOf,
   type CaptureBootDeps,
   type CaptureBootOutcome,
@@ -62,9 +64,6 @@ export {
 } from './checks';
 export { probeEvidenceVolume } from './evidence-volume';
 export { BOOT_PROBE_SESSION, probeWorkerHandshake, type WorkerProbeOptions } from './worker-probe';
-
-/** The log of a worker the boot check started: beside the worker's own log, never the same file. */
-const BOOT_PROBE_LOG_NAME = 'capture-worker-boot.jsonl';
 
 export interface CaptureBootControl {
   /** The decision of the one function for this app's configuration. */
@@ -155,10 +154,9 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
 
   const { captureWorkerPath, mediaStoreDir, dataDir } = app.config;
   const handshake = (): Promise<WorkerHandshake> => {
-    // Reached only after the path rule passed, so the program is set.
-    const launcher =
-      mount.launcher ??
-      createProcessLauncher({ command: captureWorkerPath ?? '', args: ['--log', `${dataDir}/${BOOT_PROBE_LOG_NAME}`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs)] });
+    // Reached only after the path rule passed, so the program is set. THE SAME ARGUMENTS AS A SESSION START (gate 64 C7):
+    // a worker that does not accept one of them ends with its usage text HERE and the start is refused, not the first session.
+    const launcher = mount.launcher ?? createProcessLauncher({ command: captureWorkerPath ?? '', args: captureWorkerArguments(`${dataDir}/${BOOT_PROBE_LOG_NAME}`) });
     return probeWorkerHandshake({ launcher, timers: mount.timers, ...(mount.helloTimeoutMs === undefined ? {} : { helloTimeoutMs: mount.helloTimeoutMs }) });
   };
 

@@ -16,7 +16,7 @@
 import { CAPTURE_IPC_DEFAULTS, CAPTURE_PROTOCOL_VERSION, CaptureIngestState, CaptureMicRole, CaptureStopReason, LIBAVFORMAT_VERSION_MISMATCH, WorkerMessageType, type AudioSourceIntervalRecord, type CaptureIpcLimits } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers, type FakeWorkerBehaviour } from '../../../test/support/capture';
-import { CapturePhase, CaptureSupervisorError, WorkerDownCode, createCaptureSupervisor, type CaptureEvent, type CaptureReport } from '../index';
+import { CAPTURE_WORKER_VERSION, CapturePhase, CaptureSupervisorError, WorkerDownCode, createCaptureSupervisor, type CaptureEvent, type CaptureReport } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const LIMITS = CAPTURE_IPC_DEFAULTS;
@@ -204,7 +204,8 @@ describe('R63-04 / carried question 7: the version allowlist holds for every HEL
     const { supervisor, fake } = await setup({}, { hello: false });
     const starting = supervisor.start(SESSION, capturePlan(SESSION));
     await flush();
-    fake.last().say(hello('capture-worker/0.4.0'));
+    // Pin by delta (wave H driver F, gate 64 C7): the form is not enough - THE version this Core drives is taken, and only it.
+    fake.last().say(hello(CAPTURE_WORKER_VERSION));
     await starting;
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, lastCrash: null });
     expect(fake.last().commands('START')).toHaveLength(1);

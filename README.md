@@ -22,9 +22,14 @@ A demo stack for the DEMS Edge Client. Every name, case, recording, hash, key an
 | Shared package | `packages/shared` | Simulator, dataset, i18n, theme tokens, demo media and evidence packages |
 | Core server (Live mode, added 2026-10-06) | `apps/core-server` | Fastify backend on `127.0.0.1:4420` (lanes 4421-4423): roles and permissions enforced on the server, device pairing, PostgreSQL storage, WebSocket `/ws` (loopback only) |
 | PostgreSQL scripts (Live mode) | `scripts/pg` | Project-local PostgreSQL 18.4 on `127.0.0.1:4432`, data in the git-ignored `.data/`: `npm run pg:*` |
+| Capture worker (real capture, added 2026-10-09) | `apps/capture-worker` | A small C program against the installed FFmpeg libraries, started and supervised by the Core server: it records the camera files and the session audio. Built with `make -C apps/capture-worker`; never started in Simulated capture |
+| Capture protocol (real capture) | `packages/capture-protocol` | The message contract between the Core server and the capture worker |
+| Transcriber (real capture) | `apps/transcriber` | Speech-to-text pipeline called by the Core server: backends `cpu-local` and `omlx-server`, voice-activity detection, transcript assembly |
+| Lane script (Live mode, added 2026-10-10) | `scripts/lane/lane.sh` | Start, stop, status and reset of the four Core instances, each with its own media store root |
 
 The simulator runs in each client. Mock Core only supplies the health check and the heartbeat.
 That describes Simulated mode, the default. In Live mode (section **Live mode** below) the Core server is the Core instead: both clients read and write one PostgreSQL database through it.
+Since the third task a Core server can also record, seal and transcribe for real: section **Real capture, sealing and transcript**. That section holds what an operator and an installer must know, and the list of known limits.
 
 ## Quick start for presenters
 
@@ -254,6 +259,21 @@ npm run pg:stop
 - `pg:init` refuses (exit 1) when a cluster or any credential file already exists ("refused: already provisioned, or partly provisioned ... Nothing was changed."). That is its normal answer on a Mac that is already set up: it never overwrites anything.
 - Nothing starts PostgreSQL at login. After a reboot run `npm run pg:start`.
 
+**PostgreSQL server runbook (`scripts/pg/server.mjs`).** `pg:start` and `pg:stop` are thin commands over this one file; `pg:init`, `pg:status` and `pg:remove-data` use it too.
+
+| Situation | What the script does | What you do |
+|---|---|---|
+| `npm run pg:start`, server already running | Checks that the running server is the project's (127.0.0.1, port 4432, no Unix socket), rewrites `.locks/postgres.pid`, prints "already running … nothing done" | Nothing |
+| `npm run pg:start`, no cluster | Exit 4, "no cluster at .data/postgres: run \"npm run pg:init\" first." | `npm run pg:init` |
+| `npm run pg:start`, port 4432 held by another process | Refuses: "127.0.0.1:4432 is already in use by a process that is not this cluster. Not started." It never stops a foreign process | Find the holder with `lsof -nP -iTCP:4432 -sTCP:LISTEN` and decide yourself |
+| `npm run pg:start`, the start fails | Prints `pg_ctl start failed (exit n)` and the last 15 lines of `.data/postgres.log` | **Read both logs.** `.data/postgres.log` holds only what the server wrote before its log collector started. Everything after that is in `.data/postgres/log/postgresql-<hour>.log` (one file per hour of the day, overwritten the next day). The scripts' own log is `.data/pg-scripts.log` |
+| `npm run pg:stop` | `pg_ctl -m fast -w stop` on `.data/postgres` only, waits up to 60 s, removes the PID file; "nothing done" when no server runs | Stop the Core servers of its databases first (section Stop) |
+| After a reboot or a crash of the Mac | Nothing runs: no login item, no service | `npm run pg:status` (exit 3: stopped), then `npm run pg:start`. A PID file whose process is gone counts as stopped |
+
+- The server is started by `pg_ctl` with the listen address, the port and an empty Unix-socket directory given on its command line as well as in `postgresql.conf`, so that neither a later edit of that file nor an `ALTER SYSTEM` can open another interface, another port or a socket.
+- `pg:init`, `pg:start`, `pg:stop`, `pg:remove-data` and `pg:remove` take `.locks/postgres.lock` first (they wait for it: 120 s by default, `pg:init` 300 s), so two of them never run at the same time. `pg:status` only reads and takes no lock.
+- Commands verified by reading, not run for this text: the `pg:*` scripts of the root `package.json` (`pg:init` → `scripts/pg/init.mjs`, `pg:start` → `start.mjs`, `pg:stop` → `stop.mjs`, `pg:status` → `status.mjs`, `pg:remove-data` → `remove-data.mjs`, `pg:remove` → `remove.mjs`).
+
 **2. Database: create, migrate, seed, reset.** The main instance uses `dems_demo`.
 
 ```sh
@@ -368,6 +388,210 @@ npm run pg:remove        # pg:remove-data, then npm uninstall embedded-postgres 
 - `pg:remove` also edits `package.json` and `package-lock.json`. Its uninstall step is written but has not been run on this Mac. To use Live mode again afterwards, restore the two files, run the Install command and start again at `pg:init`.
 - Other Live-mode leftovers: the reverse rules (`adb -s emulator-5554 reverse --remove-all`, section Stop); in the browser, sign out, run `localStorage.removeItem('dems.core.mode.v1')` in the developer console of `http://127.0.0.1:5173` and clear the cookies of `127.0.0.1`; in the app, unpair (Settings → Pairing). Every host change of the backend task and the command that undoes it: `docs/2026-10-04_dems_backend_rbac_pairing/masterplan/02_plan.md` section 14.
 
+## Real capture, sealing and transcript
+
+Added by the third task (`docs/2026-10-07_dems_real_capture_sealing/`); this section describes the tree at commit `f293221` (2026-10-10). A Core server can now record: a capture worker (`apps/capture-worker`) writes one file per camera with the session audio in it, the Core seals the recording into an encrypted, signed evidence package, and a transcriber (`apps/transcriber`) can add a transcript. Decision numbers (`D…`) refer to `docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md`.
+
+**Read this first.** What has been proven so far was proven on generated test sources and test doubles on this Mac. No real camera, no real microphone and no real speech engine has been through a recorded, sealed session. Everything that is not proven, and every limit an operator or an installer has to know, is listed once under **Known limits** at the end of this section.
+
+### Capture operation: what a Core records
+
+The Core reads three environment variables once, at start, and decides its capture operation from them (`apps/core-server/src/capture/fence/operation.ts`). The operation is printed in the boot log line `capture fence passed`.
+
+| Capture operation | Set by | What it does | Demo controls |
+|---|---|---|---|
+| `SIMULATED` (the default) | `DEMS_CAPTURE_MODE` unset or `simulated` | Records nothing. No capture worker is started. Sessions and evidence come from the simulator, as in Live mode before this task | Available with `DEMS_DEMO_CONTROLS=1`. Without it the Core starts and labels itself `SIMULATED_WITHOUT_DEMO_CONTROLS` |
+| `REAL_DEVELOPMENT` | `DEMS_CAPTURE_MODE=real` and `DEMS_CAPTURE_DEV_SOURCES=1` | Records and seals from development sources only: the generated test camera and microphone sources, and this Mac's own camera and microphone | Never |
+| `REAL_PRODUCTION` | `DEMS_CAPTURE_MODE=real`, `DEMS_CAPTURE_DEV_SOURCES` unset | Records and seals from production sources only (cameras added through the camera search and connect flow) | Never |
+
+Demo controls (scenarios, fault injection, reset from the console) exist only in `SIMULATED`. One session is never a mix of development and production sources.
+
+**What refuses to start.** A refused start opens no listener. The log ends with `"the server stopped: boot"`, and the line names the check and a code; `scripts/lane/lane.sh start` prints both (`check <step>, code <code>`).
+
+| Code | Refused when | Applies to |
+|---|---|---|
+| `REAL_CAPTURE_WITH_DEMO_CONTROLS` | `DEMS_CAPTURE_MODE=real` together with `DEMS_DEMO_CONTROLS=1` | every real start |
+| `DEV_SOURCES_NEED_REAL_CAPTURE` | `DEMS_CAPTURE_DEV_SOURCES=1` with capture mode `simulated` | `SIMULATED` |
+| `DEV_FLAG_WITH_LAN_LISTENER` | `DEMS_CAPTURE_DEV_SOURCES=1` while a listener outside loopback is configured | development |
+| `DEV_SOURCE_WITHOUT_FLAG` | The selector assigns a development source and the development flag is not set | `REAL_PRODUCTION` |
+| `CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION` | The signing key in `<data directory>/signer` is a development key | `REAL_PRODUCTION` |
+| `DEV_FLAG_WITH_PRODUCTION_SOURCE` | The selector assigns a production source and the development flag is set | `REAL_DEVELOPMENT` |
+| `DEV_HELPER_PROGRAM_UNUSABLE` | `DEMS_CAPTURE_HELPER_FFMPEG` is unset, or the program fails the path rule (see set-up below) | `REAL_DEVELOPMENT` |
+| `CAPTURE_WORKER_NOT_CONFIGURED`, `CAPTURE_WORKER_PROGRAM_UNUSABLE` | `DEMS_CAPTURE_WORKER` is unset, or the worker program is not a private executable (owned by root or the server's user, not writable by group or others, no directory on the way writable by them) | both real operations |
+| `CAPTURE_EVIDENCE_STORE_UNUSABLE` | The media store fails a rule of **Evidence at rest** or **Evidence volume** below. The reason is named: `READABLE_BY_OTHERS`, `QUARANTINE_READABLE_BY_OTHERS`, `TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS`, `OWNER`, `NO_SYNC`, `NO_HARD_LINKS` and others | both real operations |
+| `CAPTURE_SIGNING_KEY_UNUSABLE` | No evidence signing key can be loaded from `<data directory>/signer` | both real operations |
+| `CAPTURE_WORKER_NO_HANDSHAKE`, `CAPTURE_WORKER_PROTOCOL_MISMATCH`, `CAPTURE_WORKER_PROOF_BUILD`, `CAPTURE_WORKER_VERSION_UNKNOWN`, `CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH` | The worker does not answer, speaks another protocol version, is a proof build (a negative control of the tests), names an unknown version, or runs with another libavformat than the one it was built and checked against | both real operations |
+| `TRANSCRIBER_CONFIG_UNRESOLVABLE` | The stored STT configuration cannot be resolved on this host (for example backend `cpu-local` with no transcriber host file; see **Transcription (STT)**) | both real operations |
+
+In `SIMULATED` none of the real checks run: a database that holds real or development device rows keeps starting.
+
+**Set-up of a development-capture Core, once per machine.** Each command is defined where the last column says.
+
+| Step | Command | Defined in |
+|---|---|---|
+| A private copy of FFmpeg as the helper program of the development sources (`.data/helpers/ffmpeg`). A package manager's FFmpeg does not pass the path rule. Run it again after an FFmpeg upgrade | `npm run capture:dev-setup` | root `package.json` script `capture:dev-setup` → `scripts/capture/dev-setup.mjs` |
+| Build the capture worker (static rules, their self-test, unit checks, `build/capture-worker`) | `make -C apps/capture-worker` | `apps/capture-worker/Makefile`, target `all` |
+| A DEVELOPMENT evidence signing key in `.data/signer`. It refuses when a key is already there and prints no key material | `npm run evidence:dev-key -w @dems/core-server` | `apps/core-server/package.json` script `evidence:dev-key` → `src/sealing/dev-key-cli.ts` |
+| The transcriber host file, written by hand (see **Transcription (STT)**) | none | `apps/core-server/src/transcription/host.ts` |
+| Start, stop, reset the development-capture instance (lane `2`) | `scripts/lane/lane.sh start 2`, `stop 2`, `reset 2`, `status` | `scripts/lane/lane.sh` |
+
+**The signing key.** The one command above provisions a development key: its certificate says `DEVELOPMENT KEY - NOT FOR PRODUCTION`. **No command of this repository provisions a production signing key.** A `REAL_PRODUCTION` Core refuses to start with a development key, and the seal refuses to sign a package of production sources with one (D138, D183).
+
+**Devices.** In the web console, the Devices page has **Search for cameras**. Searching connects to nothing; make, model and name in the result are what each device announced and are not checked. Connecting a camera asks for the user name and password set on that camera; they are typed in the web console only, are write-only and are never shown again. On the tablet and the phone the search exists and a camera is connected from the web console. In `REAL_PRODUCTION` the development sources are not listed. Agents never type, store or receive a real camera credential (D76).
+
+**Recording.** A session start shows "Connecting cameras…" and is shown as recording only after the first durable piece of video is on disk. A start with one of two cameras missing records with one camera and raises a warning that names the missing one; a start with no camera ends as a failed start with no evidence item. The session has one audio track, `AUDIO-01`. Two microphone inputs are assigned (primary and standby); the operator who started the session, or a Supervisor, can switch the audio source during the recording, and each switch is recorded as an interval and an audit row. The Core never switches by itself: a silent or disconnected microphone raises a warning only.
+
+### Evidence at rest: recordings are plaintext until the seal completes
+
+- **A recording lies in PLAINTEXT on the Core's media store from the start of the session until its seal completes.** The capture worker writes the camera files unencrypted; the Core encrypts them at seal time, one AES-256-GCM message per fragment. If the Core or the machine stops in between, the recording stays plaintext until the Core starts again and recovery seals it (D147).
+- **The raw audio tap of the transcriber is plaintext in the same way.** It lies under `<media store>/.transcriber/sessions/<sessionId>/` while a session with transcription runs (D180, D189).
+- **After a completed seal both are removed, and only by proof.** A plaintext recording is deleted only when the manifest names it, the sealed counterpart exists and the file's bytes hash to the manifest's plaintext hash; when the removal runs in a later attempt than the seal, the sealed file is decrypted and compared again first. A file that cannot be proven is not deleted: it is moved to the quarantine with one CRITICAL alert and one audit row (D167, D189).
+- **Only file permissions protect the plaintext.** The media store root must belong to the user the Core runs as and must be owner-only (`chmod 700`: no permission bit for group or others). The same holds for its hidden folders `.quarantine` and `.transcriber` (with `.transcriber/sessions`): each must be a real directory of that user, not a link, with no bit for group or others. A Core in real capture refuses to start otherwise (`CAPTURE_EVIDENCE_STORE_UNUSABLE`, D183, D189). The hidden folders `.sealing` (the staging of a seal) and `.capture-session` (the capture facts of a session) lie inside that owner-only root; the Core creates `.sealing` with mode 0700.
+- `scripts/lane/lane.sh start` creates the instance's media store root with mode 0700. A media store you create yourself must be given that mode by you.
+- A stolen or imaged disk exposes every recording that is not sealed yet, and everything in the quarantine.
+
+### Quarantine: a recording that cannot be sealed
+
+- A seal that fails for a cause that may clear is retried three times in the running Core (after 5 s, 30 s and 120 s), again at every start of the Core, and on demand. While the cause stays, the session stays in `FINALIZING`, the Core accepts no new session, and one CRITICAL alert (`SEAL_BLOCKED`) names the cause and what restores it (D186, D189).
+- A camera file that is damaged part-way has the fragments before the first bad one sealed, marked as interrupted; the whole original file goes to the quarantine (D183, D186).
+- When nothing can be sealed, or a cause that cannot clear remains after the third attempt, the session ends as **INCOMPLETE** with no evidence item, one CRITICAL alert and one audit row. **Its files are kept**: they are moved, never deleted, to `<media store>/.quarantine/<sessionId>/` (folders 0700, files 0600), in plaintext (D178, D186).
+- **The product has no way back into a seal for quarantined files.** There is no command and no screen that re-queues them; this is a known limit. Keeping, releasing or destroying a quarantine folder is an operator procedure outside the product (D186).
+- **A quarantine folder blocks a database reset** (see **Reset rules**).
+
+### One media store per database
+
+- **Every database has its own media store root.** A shared root makes one database's packages block every other database's reset, and before the fix two databases with equal session numbers shared scratch files and one encryption key (D171, D180, D189).
+- **Start and reset a Core with the SAME media root.** The Core records the root it was started with in its database. `scripts/lane/lane.sh` passes the same `DEMS_MEDIA_DIR` to `start` and `reset` of an instance; use it instead of the bare commands (Live mode, step 3).
+- **Moving a media store to another path means renaming its session-key folder.** The session keys are kept in `<data directory>/credential-store/session-keys-<scope>/`, where `<scope>` is the first 32 hexadecimal characters of the SHA-256 of the text `dems.session-keys/1`, a line feed, and the resolved absolute path of the media store root (`apps/core-server/src/credential-store/index.ts`, `sessionKeyScopeOf`). A Core started on the moved store looks for its keys under the new scope, so the folder must be renamed to it or the sealed packages cannot be decrypted. No command does this rename (D189).
+- Session keys written by the earlier build lie in `<data directory>/credential-store/keys/`. They stay readable, are never reused and are never destroyed by a Core.
+- **Old transcriber scratch.** Before the fix the transcriber kept its per-session work under `<data directory>/transcriber/sessions/`. That folder belongs to no Core now. What is left in it is raw session audio and is deleted by hand. Delete only the `sessions` folder: `<data directory>/transcriber/host.json` beside it is the transcriber host file and is still used (D189).
+
+### Cameras and time
+
+- **Set every camera to the same time as the Core.** The product does not set or correct a camera's clock.
+- A camera clock up to 2 s off is **accepted and recorded, not corrected**: the recording keeps the camera's own timeline, and the measured offset (camera minus Core, including the delivery delay) is written into the sealed manifest per track (`tracks[].clockOffsetMs`) (D179, D190).
+- Above 500 ms the operator sees an advisory: "Camera clock differs from the Core by … ms; the recording keeps the camera's own timeline and records the offset." Below 500 ms nothing is shown (D188, D190).
+- A camera whose clock is more than 2 s behind is given up and named in a CRITICAL fault ("The clock of … differs from the clock of the Core by more than the allowed bound."). When such a camera connected early, **up to 1 s of wrongly timed video may already be in its file** before it is given up (D188, gate 64 condition C1).
+
+### Evidence volume
+
+- The volume that holds the media store must support **hard links** (the worker gives a camera file its final name with a link) and exclusive file creation, and must confirm the **full durability sync** (`F_FULLFSYNC` on macOS). A real-capture Core probes exclusive create, sync and hard link at start and refuses a volume that fails (D127, D138).
+- The level of sync a volume really gives is known only when the worker writes: it is stated with the first durable fragment of each camera file. A volume that does not confirm the full sync raises **one alert per session, CRITICAL in production capture** (INFO in development capture): "The evidence volume does not confirm full durability; recordings may not survive a power loss." **Recording continues** (D189, D190).
+- **Behaviour at a power loss is not proven by any test**, and neither is a volume that really runs out of space or really has no hard links (D127, D194).
+
+### Sealed package facts for a verifier
+
+A sealed package of schema version 2 is the folder `SESSION-<sessionId>/` below the media store root: `session-manifest.json`, `signature.sig`, `device-certificate.pem`, `fragments/VIDEO-01.mp4` and / or `fragments/VIDEO-02.mp4` (encrypted), `fragments/fragments.json`, `audit-session-extract.jsonl`, the `transcript/` files when a transcript was sealed, and `export/` once it was exported.
+
+- **One or two camera files.** A session that recorded with one camera is sealed with that one file; the absent camera is the track the manifest does not list (D178, D183).
+- **The audit extract is NOT covered by the package signature.** `audit-session-extract.jsonl` must be present, but no manifest field holds its hash. Verify says so on every package of version 2 (notice `AUDIT_EXTRACT_NOT_SIGNED`: "Audit extract: present, NOT covered by the package signature."). The notice fails nothing. This also means that the record of lost audio, which is kept as microphone fault rows in that extract, is not signed (D182, D183).
+- **Development marks.** A package signed with a development key and a package recorded from development sources are shown as such by verify and by both clients ("DEVELOPMENT SOURCES — this package was not recorded from production devices."). The development-key mark is read from the certificate that verified the signature and is "not established" when the signature checks did not pass. Both are refused in production capture: a production Core does not start with a development key, does not list development sources, and never records one (D178, D181, D183).
+- **Transcript model provenance.** For the `cpu-local` backend the manifest holds the model's name, version, quantisation and file hash; the version is the one DECLARED in the transcriber host file, the other values are read from the model file by the Core. **For a server backend only the model NAME exists, as the STT server reported it**: version, quantisation and file hash are not available to the Core and were not verified. Verify prints exactly that (D160).
+- **A transcript revision never changes the sealed transcript.** A revision is a signed record appended to `transcript/transcript-revisions.json`; manifest, signature and the sealed transcript files stay byte-identical (D154, D162).
+- **A revision that cannot be healed (known limit).** A revision is committed to the database and staged in `transcript/transcript-revisions.json.next` before it joins the list; verify reports a pending staged file as the notice `REVISION_APPEND_PENDING` and does not fail on it. If the staged file is lost or damaged after the commit and before the next start of the Core, the revision cannot be rebuilt: the revisions of that item then cannot be read (D187).
+- A stray file in a package's `export/` folder is reported as the notice `EXPORT_FOLDER_UNEXPECTED_FILE`.
+
+**The tamper demonstration on version-2 packages.** A development-capture Core seals two demo packages at seed time (`db:seed`, `db:reset`; for example `scripts/lane/lane.sh reset 2`) from generated sources with the development key, under its own media store; nothing of them is in git. One verifies with all 15 checks passing; the other has one fragment altered after the seal, and verify names exactly that fragment (`VIDEO-02`, fragment 3) as TAMPERED. Without the helper program the seed says `NOT generated (HELPER_ABSENT)` and writes the dataset without them. The EV 0005 row of the Demo scenarios table above describes the version-1 demo packages of Simulated mode, which are unchanged.
+
+### Privacy, personal data and custody
+
+- **Real evidence can hold personal data**: a voice, a face, a name. The statement of the first demo, that everything is synthetic, does not hold for a recording made in real capture. The security design review recorded this as finding SEC35-26: no consent or legal-basis statement, no retention or erasure rule, no data protection impact assessment and no breach-notification statement exist for this product. This is carried as an **accepted risk of this phase**, not as a solved item. The review's own recommendation is the position this README can state: processing is under the operator's legal mandate; sealed evidence is under legal hold (the product has no erasure of a sealed package, and a reset is refused while real evidence exists); operation stays on loopback and on development sources until the hardware phase. The data protection impact assessment is still to be written by the owner of the deployment.
+- **Custody of what is not sealed.** Unsealed recordings, the transcriber's audio tap and the quarantine are plaintext personal data protected by file permissions only (see **Evidence at rest**). Who may read the Core's disk, how long a quarantine folder is kept and who may release it are operator procedures that this repository does not define.
+- **The Core Mac's own camera and microphone are a development feature.** They can be selected only in development capture; they do not exist in production capture.
+- **Every client shows a notice before they are turned on.** A pre-check and Start Recording on a selection that names this Mac's camera or microphone first ask for confirmation ("This will turn on this Mac's camera (…)."; at Start Recording the sentence adds "and keep it on until the recording ends"). The confirmation is asked again at every press and is never remembered; a reload sends nothing by itself. While a device is on, every client shows a line that says so ("This Mac's camera is on"; on the tablet and the phone "Core Mac's camera is on") (D163, D178, D181, D184).
+- **The local microphone is NOT fit for recording yet.** In measured runs it delivered about 8/9 of the sample rate it declares; the cause is not established. Use it for development checks only (D128).
+- No automated run and no agent selects, pre-checks or starts this Mac's camera or microphone; such runs are the user's own (D163).
+
+### Export
+
+- An export writes a **decrypted** archive on the Core, under the package's own folder: `SESSION-<sessionId>/export/EXP-<id>.zip`, with its own export manifest and signature. The archive holds the camera files in plaintext. It stays on the Core's disk after the download (D139).
+- The item is marked EXPORTED and the custody entry is written only when the export job completes. An export interrupted by a stop of the Core is not resumed: ask again. Unfinished `.partial` files in an `export/` folder are removed at the next start (D185).
+- **Download.** In the web console a finished export offers **Download export**. The link is signed, is bound to the operator's sign-in, and **lives 60 seconds**; every download is audited. The tablet and the phone show "Download from the web console." (D185).
+- **Composite video export is NOT available in this build**, pending a licence decision on the FFmpeg build. A composite export ends as a failed job with the code `COMPOSITE_ENCODER_NOT_SELECTED`, audited; the clients say "Composite video is not available in this build." The facts, exactly as the licence record states them (`THIRD_PARTY_NOTICES.md`, "FFmpeg for the on-demand composite: M8 licence check"):
+  - The helper binary is `.data/helpers/ffmpeg`, a private copy that is byte-identical to the Homebrew program `/opt/homebrew/Cellar/ffmpeg/9.0.2/bin/ffmpeg`; it is a launcher that loads the Homebrew FFmpeg libraries, so "the build" is that Homebrew installation.
+  - Its configure flags: `--enable-shared --enable-pthreads --enable-version3 --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon`.
+  - With `--enable-gpl` and `--enable-version3` the build is GPL-3.0-or-later as a whole. That is a property of the build, not of the encoder a command line names.
+  - For a distributed build the record states: distributing this GPL build with a DEMS Core puts the distributed FFmpeg under GPL-3.0-or-later, and whoever distributes owes the licence texts, the complete corresponding source of FFmpeg and of the GPL libraries linked into it (or a written offer), no further restrictions, and, for a device sold as a product, the installation information of GPLv3 section 6 for that program. Running it on this Mac creates no such obligation. Which FFmpeg build a distributed Core carries (none, this GPL build, or an LGPL-only build) is a decision of the product owner that has not been taken; until then no encoder is selected (D139, D141).
+
+### Transcription (STT)
+
+- **Two backends.** `cpu-local` runs the speech engine on the Core itself, on the CPU. The server backend (`omlx-server`) calls a speech-to-text server on a loopback address; on this Mac it is a development aid and is not part of a shipped Core.
+- **Settings.** Web console → System & Maintenance → Settings → **Transcription (STT)**: transcription on or off, backend, server address (a loopback address only), model, speaker labelling, the server credential, and **Test connection** (it tests the saved configuration). Supervisor and Technician may change it; a change applies to the next session. The tablet and the phone show the status read-only.
+- **The server's key is never typed into DEMS and never printed.** The settings hold a **credential reference**: a pointer to where the key is kept, never the key itself. The field is write-only: it opens empty and is not shown again after saving. Answers of the Core say only whether a credential is set and how it is held.
+- **The transcriber host file** tells the Core where the engine and the models are on this host. It is one file, written by hand, `<data directory>/transcriber/host.json` (here `.data/transcriber/host.json`), and it holds paths and statements only, no credential:
+
+  ```json
+  { "version": 1,
+    "cpuLocal": { "binaryPath": "/abs/path/whisper-cli", "modelDir": "/abs/path/models",
+                  "modelVersions": { "<model identifier>": "<version you declare>" } },
+    "vad":      { "binaryPath": "/abs/path/whisper-vad-speech-segments", "modelDir": "/abs/path/models", "model": "<vad model>" } }
+  ```
+
+  Every member is optional (`threads`, `processors` and `omlxServer.settingsPath` also exist). Paths are absolute. **`modelVersions` is a DECLARED value**: nothing in a model file states its version, so whoever installs the model states it here, and the sealed manifest carries it as declared. A model without an entry has no version, and its sessions are sealed without a transcript document. With no host file the server backend still works and `cpu-local` is refused. A host file that cannot be read in this form stops the start of a real-capture Core.
+- **CPU engine: build.** The engine of `cpu-local` is whisper.cpp 1.9.5 with its bundled ggml, built from the release source with every GPU backend off, under the git-ignored `.cache/stt/`; nothing of Homebrew is changed and nothing is installed system-wide. The exact commands (source fetch with its SHA-256, an isolated Python environment holding only `cmake`, the configure flags, the build) are in `docs/2026-10-07_dems_real_capture_sealing/initialization/04_whisper_cpp_cpu_build.md`, sections 4 to 6. The model file `ggml-large-v3-turbo.bin` is the pre-converted file published with whisper.cpp, checked against its published SHA-256 (`delegation_progress/coder-execution-local__row108.md` of the same folder). The voice-activity model and the speaker-labelling engine are recorded in `THIRD_PARTY_NOTICES.md`.
+- **CPU engine: uninstall.** Everything of the engine, the models and the build tools lies under `.cache/stt/`; the recorded uninstall is to delete that folder (section 9 of the build note; the notices file gives the narrower commands per component). Afterwards the host file points at nothing: switch the backend or switch transcription off in the settings first, or a real-capture Core that still selects `cpu-local` stops at start with `TRANSCRIBER_CONFIG_UNRESOLVABLE`.
+- **No speed figures.** This repository states no transcription speed or throughput figure anywhere (D230 of the predecessor task).
+- **Speaker labels.** The running Core composes no speaker-labelling engine in this build, so the speaker labels of a sealed transcript are "unavailable", with the reason, whatever the speaker-labelling switch says. The engine exists in `apps/transcriber` and is exercised by its own tests only (D90, D157).
+
+### Reset rules
+
+`db:reset` and the console's reset return a database to the seed. Since this task a reset is refused, with nothing changed, in these cases (`apps/core-server/src/db/reset/`):
+
+| Refusal | When |
+|---|---|
+| `RESET_BLOCKED_REAL_EVIDENCE` | Real sealed evidence exists in the database, on disk, or in only one of the two. Also: an unsealed recording of production sources, **any quarantine folder**, a package whose manifest cannot be read, and a media store root that cannot be listed (not mounted, no permission). Demo packages and proven development-source packages do not block; the reset says how many development packages it erases |
+| `RESET_STORE_ROOT_CONFLICT` | `DEMS_MEDIA_DIR` in the caller's environment names one media root and the database stores another (the root the Core recorded at its last start). The guard refuses to choose |
+| `RESET_STORE_ROOT_UNKNOWN` | The command line has no `DEMS_MEDIA_DIR` and the database stores no root |
+| `RESET_TARGET_IN_USE` | A Core of that database is running |
+
+- The command line prints the media store root it is about to judge before it reads it. It takes the root from `DEMS_MEDIA_DIR`, else from the root stored in the database; it never falls back to a default folder (D166, D169).
+- A permitted reset removes the folders of the development and demo packages it cleared and, on a development-capture Core, seals the two demo packages again.
+- `scripts/lane/lane.sh reset <instance>` runs the reset under the migrate lock with that instance's media root and refuses while its Core runs.
+
+### Known limits
+
+One list. Each item names the decision that recorded it.
+
+| # | Limit | Decision |
+|---|---|---|
+| 1 | Recorded media and the transcriber's raw audio tap are plaintext on the media store until the seal completes, and through a crash until recovery seals them. Protection is the owner-only media store. Encrypting while recording is not built | D147, D167, D183, D189 |
+| 2 | A recording that cannot be sealed ends its session INCOMPLETE; its files stay in `.quarantine/<sessionId>/` in plaintext. The product cannot bring them back into a seal, and there is no operator action to give up a seal that keeps failing for a cause that may clear: that session stays in FINALIZING and blocks new sessions until the cause is removed | D178, D186 |
+| 3 | Moving a media store needs a manual rename of its session-key folder; no command does it. Old scratch under `<data directory>/transcriber/sessions/` is deleted by hand | D180, D189 |
+| 4 | A camera clock up to 2 s off is recorded, not corrected; below 500 ms nothing is shown. A camera more than 2 s behind may leave up to 1 s of wrongly timed video before it is given up. Whether the sealed package marks such a track beyond the fault row in the audit extract is not established | D188, D190, D194 (C1, C3) |
+| 5 | Power loss, a volume that really runs out of space, and a volume without hard links are not proven by any test; the write-failure path was proven with an injected fault only | D127, D194 |
+| 6 | The fragment size bound was proven at a small bound (2 MiB), not at the product's 64 MiB | D188, D194 |
+| 7 | The audit extract inside a package is not covered by the package signature; a hash field for it is proposed for the next manifest revision. The record of lost audio lives in that extract and is therefore not signed | D182, D183 |
+| 8 | Transcript model provenance of a server backend is the server's reported name only; nothing of it is verified by the Core | D160 |
+| 9 | A committed transcript revision whose staged file is lost before the next start cannot be healed | D187 |
+| 10 | A sealed-package item shows its development-key mark only after a verification, not on the item detail before one | D183 |
+| 11 | The manifest states the session record as it was when the manifest was first built; a seal resumed after an upgrade keeps the earlier software version and names | D178 |
+| 12 | The local microphone delivers about 8/9 of its declared rate (cause not established) and is not fit for recording. The local camera is a variable-rate source: the fixed-grid playback check does not apply to it | D128, D136 |
+| 13 | Composite video export is not available: no encoder is selected until the licence decision on the FFmpeg build is taken. The generated test camera and the demo seed name `libx264` and therefore need a GPL build of the helper | D139, D141, D185 |
+| 14 | An export leaves a decrypted archive on the Core's disk. The download link lives 60 s; a download already running is not cut when it expires, it is cut when the sign-in ends. Playback uses a 60 s media session that the player renews on demand; whether a real player on a device fails during plain playback past 60 s has not been judged | D139, D140, D149, D185 |
+| 15 | Real cameras, real microphones and real speech engines are proven on doubles and generated sources only. No run exists in which a real session is transcribed by a real engine and sealed with an assembled transcript | D176, D194 |
+| 16 | Biometric sign-in is not gate-tested in this task: the biometric steps were skipped on the user's instruction | D151 |
+| 17 | The S7 and S8 cells of the kill matrix (10 cells) are parked on open decision OD-21 and were not run | D155, D172 |
+| 18 | In Simulated mode the list of audio-source intervals falls back to one boundary per switch pair once the session's timeline holds more than 200 items | D182 |
+| 19 | A Core that dies before the first telemetry of a restarted worker reopens the audio tap as "never lost" | D180 |
+| 20 | Two capture faults with different reasons and no device are one alert entry; a system notice raised by a Core that then dies stays active after the restart; some refusals of the capture supervisor raise a fault without a reason | D169, D190, D194 (C4) |
+| 21 | A worker binary of the previous version passes the boot checks and fails only at the first session start (it fails closed: nothing is recorded) | D194 (C7) |
+| 22 | A replaced camera-credential envelope is not cleaned up by the running Core | D181 |
+| 23 | The GCM nonce of a fragment is random: uniqueness under one session key is probabilistic, not proven. Destroying a session key is not built | D147, D189 |
+| 24 | Speaker labels are "unavailable" in every sealed transcript of this build: the running Core composes no speaker-labelling engine. The two segmentation models that were downloaded are not cleared for use (see `THIRD_PARTY_NOTICES.md`) | D90, D157 |
+| 25 | No production signing key can be provisioned by a command of this repository | D138 |
+| 26 | Personal data in real evidence: no consent, retention, erasure or impact-assessment statement exists (SEC35-26, accepted risk) | security review row 35 |
+| 27 | A Core that dies in the first moments of a recording, between the worker's first durable fragment and its database row, restarts showing "nothing was recorded" for that session until the start-up seal turns it into an interrupted recording. Nothing is lost; the sentence is wrong for that time | D187 (R74-14) |
+| 28 | On the server backend a transcript that is partial because the server had not finished its backlog when the seal stopped waiting is signed with the cause "backend could not be reached". The lost text is reported correctly; the stated cause can be wrong, permanently | D187 (R80-05) |
+| 29 | The folder of an unsealed development-source session blocks every reset of its database until it is sealed or removed by hand. Session keys of development packages that a reset removes are not destroyed (those of the reseeded demo packages are) | D189 (R88-10, R88-12) |
+| 30 | Verify trusts the Core's current signing certificate only; a retained set of earlier certificates is not built | D189 (R88-14) |
+| 31 | The manifest's clock-offset field cannot say "not measured": when the worker measured no offset the field holds a fallback value | D189 (R88-16), D190 |
+| 32 | The first group of pictures of a camera is not written at every start (specified behaviour; about one second on the test cameras, up to the camera's keyframe interval). The skipped span is reported by the worker and has no field in the sealed manifest | D142, D157 |
+| 33 | A recording whose two microphones both fail is not ended: video may be durable, and named warnings are raised. The switch boundary of the audio source lies a few tens of milliseconds before the instant of the command; the interval record states the exact boundary | D142, D163 |
+
+### Read-only areas
+
+`apps/mock-core` and the packages under `release/` are the 0.1.0 offline edition of the first demo. This task did not change them and they must stay as they are: they are Simulated-only and know nothing of real capture, of version-2 packages or of the transcript. The demo evidence under `packages/shared/assets/demo-evidence/` is still the 14 version-1 packages; the version-2 demo packages are never written there or into `release/`, they are sealed at seed time into the media store of a development-capture Core. Regenerating the version-1 demo data is described under **Demo data** below and does not touch `release/`; a release rebuild is a separate, explicit step (**Release packages**).
+
 ## Tests
 
 From the repository root:
@@ -379,6 +603,8 @@ npm test
 ```
 
 Last counts (2026-10-01): shared 508 tests, core-web 438, mobile 833 (72 suites), mock-core 19. Per workspace:
+
+Correction (2026-10-10): the line above is the first demo's state. At commit `f293221` the recorded counts are: shared 2476, capture-protocol 31, core-web 1900, transcriber 561, mock-core 19 (`docs/2026-10-07_dems_real_capture_sealing/test/06_checkpoint_wave_f.md`); core-server unit 6247 and database project 2381 (`gateway_check/08_m3_gate.md` of the same folder); mobile 2438 passed with one failing pin that was corrected afterwards and re-run by file. The Core server has two test projects: `npm test -w @dems/core-server` (unit) and `npm run test:db` (needs PostgreSQL running; throw-away databases; outside the sandbox). The capture worker's checks are `make -C apps/capture-worker` (static rules, self-test, unit checks) and `make -C apps/capture-worker e2e` (the end-to-end series on generated fixtures: about 35 minutes, loopback ports, not part of `npm test`; see `apps/capture-worker/README.md`).
 
 ```sh
 npm test -w @dems/shared -- --maxWorkers=2
@@ -456,11 +682,19 @@ cp packages/shared/assets/demo-media/mobile/* apps/mobile/assets/media/
 | Vite stops with `DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423` | Fix the value, or unset it for Simulated mode |
 | Live app: "Core server unreachable" | The emulator has no `tcp:4420` reverse rule: `ANDROID_SERIAL=<serial> npm run mobile:reverse` |
 | Live: the pre-check is blocked on the Core link | No paired device is connected: open the app on a paired device in Live mode (Live mode, known limits) |
-| Live: "Demo controls are disabled on this Core server." | Restart the server with `DEMS_DEMO_CONTROLS=1 npm run start:server` |
+| Live: "Demo controls are disabled on this Core server." | Restart the server with `DEMS_DEMO_CONTROLS=1 npm run start:server`, or use `scripts/lane/lane.sh start main` (demo controls on, own media root). Demo controls do not exist on a Core in real capture |
 | Live: `db:seed` exits 1, "already seeded" | Use `db:reset` |
 | Live: `db:reset` exits 1 because the database is in use | Stop the Core server of that database, then reset |
 | `device-session.sh` exits 77 (LOCKED) | The emulator has a screen lock and is locked. The user runs `apps/mobile/scripts/emulator-user-lock.sh unlock` in their own Terminal |
 | `device-session.sh` exits 69 | An emulator of the other AVD family (`dems_*` or `dems2_*`) holds the target's port |
+| Real capture: the Core stops at start, check `capture.fence` or `capture.boot` | The code names the cause: see the refusal table in **Real capture, sealing and transcript**. `CAPTURE_EVIDENCE_STORE_UNUSABLE` with reason `READABLE_BY_OTHERS`: the media store root is not owner-only (`chmod 700` it) |
+| Real capture: the Core stops at start, check `transcriber.config` | The stored STT configuration cannot be resolved on this host: the transcriber host file is missing or wrong, or the engine or model it names is not there (**Transcription (STT)**) |
+| `lane.sh start 2`: "the helper program is missing" / "the capture worker is missing" | `npm run capture:dev-setup` / `make -C apps/capture-worker` |
+| `db:reset` refuses with `RESET_STORE_ROOT_CONFLICT` | The Core of that database was started with another media root than this reset names. Use `scripts/lane/lane.sh reset <instance>`, or the same `DEMS_MEDIA_DIR` as the start |
+| `db:reset` refuses with `RESET_STORE_ROOT_UNKNOWN` | Set `DEMS_MEDIA_DIR` to the media root of that Core, or start the Core once so that it records its root |
+| `db:reset` refuses with `RESET_BLOCKED_REAL_EVIDENCE` | Real evidence, an unsealed recording or a quarantine folder exists below the media root. This is the guard working: nothing was changed (**Reset rules**) |
+| A session stays in FINALIZING and no new session can start; alert `SEAL_BLOCKED` | The seal keeps failing for the cause the alert names. Remove the cause; the seal is retried at the next start of the Core and on demand (**Quarantine**) |
+| Export: "Composite video is not available in this build." | By design until the licence decision on the FFmpeg build (**Export**) |
 
 ## Rollback
 
@@ -504,4 +738,5 @@ PostgreSQL and the other Live-mode changes are removed with the commands of **Li
 - Third-party assets and licences: `THIRD_PARTY_NOTICES.md`. The demo videos and stills are derived from the Pexels hero photo listed there. The demo voices are eSpeak NG 1.52.0 (Indonesian formant voice), and no macOS voices were used.
 - Known issues and deferred items: `docs/2026-09-30_dems_demo_stack_setup/verification/01_verification.md` (written by the final verification pass) and the decision log `docs/2026-09-30_dems_demo_stack_setup/decisions/decisions.md` (D112 lists what the fast-track deferred).
 - Everything here is a DEMO. Do not reuse its keystore, evidence key or credentials for anything real.
+- Real capture task (capture worker, sealing, transcript, export): `docs/2026-10-07_dems_real_capture_sealing/`, decisions in its `decisions/decisions.md`. Its limits are the list **Real capture, sealing and transcript → Known limits**. The licence record of everything that task added, including the FFmpeg build the capture worker links and the speech engine and models, is in `THIRD_PARTY_NOTICES.md`. Media, models, keys and recordings of that task live in the git-ignored `.data/` and `.cache/` and are never committed.
 - Backend task (Live mode, roles, pairing): `docs/2026-10-04_dems_backend_rbac_pairing/`, decisions in its `decisions/decisions.md`. The Live-mode limits are listed under **Live mode → Known limits in Live mode**. The PostgreSQL credential files in `.data/` are generated locally, never printed, and removed with the cluster.

@@ -130,7 +130,8 @@ describe('the pending control is the runtime\'s (09b §8, F.10; LB-1, S3-1)', ()
     expect(swap).toMatch(/testID="settings-core-mode-cancel" \{\.\.\.\(busy \? \{ isDisabled: true \} : \{\}\)\}/);
     expect(swap).toMatch(/\{\.\.\.busyState\(busy\)\}/);
     expect(swap).toMatch(/\{pending \? <PendingSpinner [^>]*testID="settings-core-mode-confirm-spinner" \/> : null\}/);
-    expect(swap).toMatch(/<Button variant="primary" onPress=\{onConfirm\} testID="settings-core-mode-confirm" \{\.\.\.busyState\(busy\)\}>/);
+    // Pin moved by delta (wave H closing pass Z2, G70-04): the control that takes the busy state carries its label.
+    expect(swap).toMatch(/<Button variant="primary" onPress=\{onConfirm\} testID="settings-core-mode-confirm" accessibilityLabel=\{.+?\} \{\.\.\.busyState\(busy\)\}>/);
   });
 });
 

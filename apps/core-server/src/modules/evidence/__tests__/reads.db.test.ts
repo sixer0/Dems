@@ -288,7 +288,9 @@ describe('operation 40 getEvidence', () => {
   it('SR-66, MS-3: the answer holds a reference and no file: no path, no URL, no file name, and exactly two members of media', async () => {
     const response = await host.get(itemUrl(committed()[0]?.id ?? ''), supervisor);
     const body = response.json() as { media: Record<string, unknown> };
-    expect(Object.keys(body).sort()).toEqual(['evidence', 'media']);
+    // Wave H C1: beside the item and its media reference the Core states what THIS caller may do (`access`: three booleans).
+    expect(Object.keys(body).sort()).toEqual(['access', 'evidence', 'media']);
+    expect((body as unknown as { access: unknown }).access).toEqual({ play: true, readTranscript: true, export: true });
     expect(Object.keys(body.media).sort()).toEqual(['packageSuffix', 'source']);
     expect(JSON.stringify(body.media)).not.toMatch(/[\\/]|\.\.|\.mp4|\.wav|https?:|file:|assets|demo-evidence/i);
     expect(response.headers['content-type']).toMatch(/^application\/json/);
@@ -429,7 +431,7 @@ describe('evidence made by the engine while a client walks the list (plan rule: 
     expect(live.id.slice(-4)).toBe('0014');
     const response = await host.get(itemUrl(live.id), investigator);
     const detail = detailOf(response.json());
-    expect(detail.media).toEqual({ source: 'NONE', packageSuffix: null });
+    expect(detail.media).toEqual({ source: 'NONE', packageSuffix: null, reason: 'NOT_A_SEALED_PACKAGE' });
     expect(detail.evidence).toStrictEqual(onTheWire(live));
     expect(validateCoreApiResponse('getEvidence', 200, response.json())).toEqual({ ok: true });
   });

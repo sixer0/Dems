@@ -631,4 +631,96 @@ export const evidence = {
     /** The signature line of the evidence detail, after the item was verified with a development-key answer. */
     detailDevelopment: 'Signed with a DEVELOPMENT key — not a production signature',
   },
+
+  /**
+   * Fix wave H, driver C2 (decision D200; gates 81 / 89 / 94): what the web console, the tablet and
+   * the phone say of ONE evidence item from the members the Core server reports for it. A sentence
+   * states what the Core knows; a member the Core did not send reads "not reported", never a guess.
+   * Nothing here says simulated, demo, verified, live or complete.
+   */
+  itemFacts: {
+    notReported: 'not reported',
+    /** G94-02 / G94-14: the media of an item that is neither streamable nor a v1 / simulated demo item. */
+    media: {
+      none: 'This recording has no playable media on this Core.',
+      noneTitle: 'No playable media',
+      reason: {
+        PACKAGE_MISSING: 'The sealed package is not in the evidence store of this Core.',
+        QUARANTINED: 'The sealed package is quarantined on this Core.',
+        UNSEALABLE: 'The recording could not be sealed.',
+        NOT_SEALED: 'The recording is not sealed.',
+        /** The codes wave H C1's operation 40 answers (an open set: any other code is shown as a code). */
+        NOT_A_SEALED_PACKAGE: 'No sealed package of this item is in the evidence store of this Core.',
+        MANIFEST_UNREADABLE: 'The manifest of the sealed package could not be read.',
+        CAMERA_FILE_MISSING: 'A camera file of the sealed package is missing.',
+        SESSION_KEY_UNAVAILABLE: 'The key of this recording is not available on this Core.',
+        NOT_REPORTED: 'The Core server reported no media source for this item.',
+      },
+      reasonOther: 'Reason reported by the Core server: {{reason}}.',
+      mayNotPlay: 'You are not permitted to play this recording.',
+      /** The label of bundled demo media: drawn only for a v1 / simulated demo item. */
+      demoLabel: 'DEMO media — bundled with this application, not a recording of this Core',
+      oneCamera: 'This recording has one camera file ({{track}}).',
+    },
+    /** G89-03 / G81-02: the signature line before and after a verify run. */
+    signature: {
+      real: 'Manifest signature ({{algorithm}}, Core key {{key}})',
+      realShort: '{{algorithm}}, Core key {{key}}',
+      developmentKey: 'Signed with a DEVELOPMENT key — not a production signature',
+      keyClassUnknown: 'Signing key class: not reported',
+      notReported: 'Signature: not reported',
+    },
+    /** G75-03 on the evidence surfaces: the list row and the item header of an interrupted recording. */
+    interrupted: {
+      status: 'Sealed — recording was interrupted',
+      cause: 'Cause: {{cause}}',
+      causeNotReported: 'Cause: not reported',
+    },
+    /** G89-04 / G89-09: the file, hash and key rows of a v2 item come from the item's own members. */
+    sealed: {
+      title: 'Sealed values of this item',
+      note: 'As the Core server reports them for this item. Run Verify to have the Core check the package.',
+      file: '{{track}} · sealed file',
+      manifestHash: 'Manifest hash',
+      manifestVersion: 'Manifest version',
+      noFiles: 'Sealed files: not reported',
+    },
+    /** G81-01 and the no-speech note of gate 81 (ruling D198). */
+    transcript: {
+      simulatedItem: 'This is a simulated item: the Core server keeps no transcript for it.',
+      noSpeech: 'No speech was detected in this recording.',
+      mayNotRead: 'You are not permitted to read this transcript.',
+    },
+    /** G94-05: the finished exports of an item. */
+    exports: {
+      title: 'Finished exports',
+      none: 'No finished export of this item.',
+      notReported: 'Finished exports: not reported',
+      entry: '{{exportId}} · {{kind}}',
+      at: 'Finished {{at}}',
+      mayNotDownload: 'You are not permitted to download this export.',
+    },
+    /** G94-09: the export dialog of a REAL item. The Core stores the export; the destination is a recorded label. */
+    exportReal: {
+      destinationLabel: 'Destination recorded with the export',
+      destination: {
+        CASE_FILE: 'Case file transfer',
+        USB: 'Encrypted USB drive',
+        NETWORK: 'Export/Transfer network',
+      },
+      note: 'The export is stored on the Core server. The destination is recorded with it; nothing is sent to it from here.',
+    },
+    /** G94-07: a stop caused by the end of the media session (TTL, sign-out) is not an integrity failure. */
+    playback: {
+      sessionEnded: 'Playback paused: the media session ended. Press Play to continue.',
+    },
+    /** Wave H C2, the web console only: the sentences the web surfaces need beside the block above. */
+    web: {
+      noPreview: 'No preview picture for this recording.',
+      coreRecordLine: "The Core server's record of this item.",
+      noSpeechChip: 'No speech detected',
+      signatureSimulated: 'Manifest signature (simulated stand-in)',
+      sourcesV1Title: 'Sources',
+    },
+  },
 } as const satisfies ResourceTree;

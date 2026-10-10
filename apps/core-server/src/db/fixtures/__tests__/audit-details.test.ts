@@ -195,7 +195,8 @@ describe('where each audit type is written', () => {
     expect(engine).toHaveLength(33);
     for (const type of engine) expect(shapes.get(type)?.rows ?? 0, type).toBeGreaterThan(0);
     // Both forms of a fault row: the engine's, and the seeded history's.
-    expect([...(shapes.get('FAULT_RAISED')?.signatures ?? [])].sort()).toEqual(['eventKind, evt, fromState, kind, target', 'fromState, kind']);
+    // +1 form, pin moved by wave H closing pass Z1 for driver B's finished fix (G75-09): the demo control's own capture fault carries `reason`.
+    expect([...(shapes.get('FAULT_RAISED')?.signatures ?? [])].sort()).toEqual(['eventKind, evt, fromState, kind, reason, target', 'eventKind, evt, fromState, kind, target', 'fromState, kind']);
     // A fault with and without a session, on a named part and on none.
     expect([...(shapes.get('FAULT_RAISED')?.kinds.get('fromState') ?? [])].sort()).toEqual(['null', 'string']);
     expect([...(shapes.get('FAULT_RAISED')?.kinds.get('target') ?? [])].sort()).toEqual(['null', 'string']);
@@ -475,7 +476,8 @@ describe('the comparisons can fail: what the fixture held before, and other drif
 
   it('an engine row with the keys it had, with one key too many, and with a value of another kind', () => {
     expect(simulatorFindings(planted('FAULT_CLEARED', { kind: 'MIC_CLIP', target: 'MIC-01', alertId: 'ALR-000001' }), shapes)).toEqual([
-      expect.stringMatching(/keys \{alertId, kind, target\}; the simulator writes \{evt, kind, target\}$/),
+      // Pin moved by wave H closing pass Z1 for driver B's finished fix (G75-05): a clear row of a fault whose alert names a reason carries it.
+      expect.stringMatching(/keys \{alertId, kind, target\}; the simulator writes \{evt, kind, target\} or \{evt, kind, reason, target\}$/),
     ]);
     expect(simulatorFindings(planted('MARKER_ADDED', { index: 1 }), shapes)).toEqual([expect.stringMatching(/keys \{index\}; the simulator writes \{index, label\}$/)]);
     expect(simulatorFindings(planted('FRAME_HASH', { segment: 1, track: 'VIDEO-01' }), shapes)).toHaveLength(1);

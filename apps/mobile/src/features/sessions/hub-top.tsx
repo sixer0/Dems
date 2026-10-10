@@ -92,7 +92,7 @@ function ActiveSessionCard({ row }: { row: SessionRow }) {
             </Text>
           </View>
         ) : (
-          <SessionStatusChip status={row.status} size="md" testID="sessions-active-status" />
+          <SessionStatusChip status={row.status} sessionId={row.id} size="md" testID="sessions-active-status" />
         )}
         {recording ? <ActiveTimer /> : null}
       </View>

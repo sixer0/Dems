@@ -12,6 +12,8 @@
  *   DEV_SOURCE_WITHOUT_FLAG          `REAL_PRODUCTION` and the selector assigns a development source
  *   DEV_FLAG_WITH_PRODUCTION_SOURCE  `REAL_DEVELOPMENT` and the selector assigns a production source
  *   DEV_HELPER_PROGRAM_UNUSABLE      `REAL_DEVELOPMENT` and the helper program is unset or fails the path rule
+ *   DEV_FAKE_MIC_NEEDS_DEV_SOURCES   the speech microphone setting outside `REAL_DEVELOPMENT`   (fix wave H; `fake-mic.ts`)
+ *   DEV_SPEECH_FIXTURE_UNUSABLE      `REAL_DEVELOPMENT`, the speech microphone setting, and no usable speech fixture
  *
  * "Stored sources" are the devices the SELECTOR ASSIGNS. A registered device nobody assigned is
  * ignored. In `SIMULATED` every stored kind is INERT: the registry is not even read, so a
@@ -31,7 +33,8 @@
  * environment: the helper program is named by its configuration key.
  */
 import { CaptureAdapterKind, CaptureOperation, CaptureSourceClass, sourceClassOf } from '../adapters/kinds';
-import { HelperProgramRefusal, helperProgramRefusal, type ProgramInspector } from '../adapters/local';
+import { HelperProgramRefusal, helperProgramRefusal, type FileHeadReader, type ProgramInspector } from '../adapters/local';
+import { FakeMicRefusal, FakeMicSource, fakeMicDecisionOf, type FakeMicInput, type SpeechFixtureProblem } from './fake-mic';
 import { CaptureFlagRefusal, captureOperationDecisionOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
 import { registerLocalDevices, type FenceExecutor, type LocalDeviceClass, type StoredCaptureDevice } from './registration';
 import { READ_ASSIGNED_SOURCES } from './statements';
@@ -44,6 +47,8 @@ export const CaptureFenceRefusal = {
   DEV_SOURCE_WITHOUT_FLAG: 'DEV_SOURCE_WITHOUT_FLAG',
   DEV_FLAG_WITH_PRODUCTION_SOURCE: 'DEV_FLAG_WITH_PRODUCTION_SOURCE',
   DEV_HELPER_PROGRAM_UNUSABLE: 'DEV_HELPER_PROGRAM_UNUSABLE',
+  // The speech microphone of development capture (fix wave H, driver E; ruling D198): `fake-mic.ts`.
+  ...FakeMicRefusal,
 } as const;
 export type CaptureFenceRefusal = (typeof CaptureFenceRefusal)[keyof typeof CaptureFenceRefusal];
 
@@ -84,6 +89,14 @@ const TEXT: Readonly<Record<CaptureFenceRefusal, string>> = Object.freeze({
   DEV_FLAG_WITH_PRODUCTION_SOURCE:
     'DEMS_CAPTURE_DEV_SOURCES=1 is refused: the selector assigns production sources, and one session is never both. Start without the flag; to use development sources, unassign the production sources first.',
   DEV_HELPER_PROGRAM_UNUSABLE: `DEMS_CAPTURE_DEV_SOURCES=1 needs a usable helper program in DEMS_CAPTURE_HELPER_FFMPEG. ${SETUP}`,
+  DEV_FAKE_MIC_NEEDS_DEV_SOURCES:
+    'DEMS_CAPTURE_DEV_FAKE_MIC=speech is refused outside development capture: the speech microphone is a development test source. ' +
+    'Unset it (or set it to tone), or start with DEMS_CAPTURE_MODE=real DEMS_CAPTURE_DEV_SOURCES=1.',
+  DEV_SPEECH_FIXTURE_UNUSABLE:
+    'DEMS_CAPTURE_DEV_FAKE_MIC=speech needs the speech fixture dev-fixtures/speech-mic/dialogue.wav in the data directory: a file of synthetic speech made on this machine. ' +
+    'Run `npm run capture:dev-setup` (it makes the fixture after the helper program and prints where it is), or unset the setting to use the test tone. ' +
+    'The file and every directory on the way to it must be owned by root or by the user of the server and not writable by group or others, ' +
+    'and the file must be RIFF / WAVE audio: integer PCM, mono, 16 bit, 48,000 Hz (a file that is not is named by the reason below; `npm run capture:dev-setup -- --renew-speech-fixture` makes it again).',
 });
 
 /** A configuration the fence refuses. `code` is stable; the message names keys, codes and registry ids only. */
@@ -93,12 +106,16 @@ export class CaptureFenceError extends Error {
   readonly deviceIds: readonly string[];
   /** For `DEV_HELPER_PROGRAM_UNUSABLE`: which rule failed. */
   readonly helperProblem: HelperProgramProblem | null;
-  constructor(code: CaptureFenceRefusal, deviceIds: readonly string[] = [], helperProblem: HelperProgramProblem | null = null) {
-    super(`${TEXT[code]}${deviceIds.length === 0 ? '' : ` Devices: ${deviceIds.join(', ')}.`}${helperProblem === null ? '' : ` Reason: ${helperProblem}.`}`);
+  /** For `DEV_SPEECH_FIXTURE_UNUSABLE`: which rule failed. */
+  readonly fixtureProblem: SpeechFixtureProblem | null;
+  constructor(code: CaptureFenceRefusal, deviceIds: readonly string[] = [], helperProblem: HelperProgramProblem | null = null, fixtureProblem: SpeechFixtureProblem | null = null) {
+    const reason = helperProblem ?? fixtureProblem;
+    super(`${TEXT[code]}${deviceIds.length === 0 ? '' : ` Devices: ${deviceIds.join(', ')}.`}${reason === null ? '' : ` Reason: ${reason}.`}`);
     this.name = 'CaptureFenceError';
     this.code = code;
     this.deviceIds = Object.freeze([...deviceIds]);
     this.helperProblem = helperProblem;
+    this.fixtureProblem = fixtureProblem;
   }
 }
 
@@ -153,10 +170,16 @@ export interface CaptureFenceUnit extends FenceExecutor {
 }
 
 export interface CaptureFenceBootDeps {
-  readonly config: CaptureOperationInput & { readonly captureHelperFfmpegPath: string | null };
+  readonly config: CaptureOperationInput & { readonly captureHelperFfmpegPath: string | null } & FakeMicInput;
   /** Runs `work` in ONE unit of the pipeline: everything it writes commits together or not at all. */
   inUnit<Value>(work: (unit: CaptureFenceUnit) => Promise<Value>): Promise<Value>;
   readonly inspect: ProgramInspector;
+  /**
+   * Closing pass Z1: reads the first bytes of the speech fixture, so its FORMAT is held at boot
+   * (`fake-mic.ts` `speechFixtureFormatProblem`). Absent = nothing can be read = a `speech` setting is
+   * refused `DEV_SPEECH_FIXTURE_UNUSABLE` / `UNREADABLE` (fail closed). Not asked for the tone.
+   */
+  readonly readHead?: FileHeadReader;
   /** The labels the two local device rows are registered with. */
   readonly labels: Readonly<Record<LocalDeviceClass, string>>;
   /** Whether a local device is in the device list now. Listing opens no device and asks for no permission. */
@@ -174,6 +197,8 @@ export interface CaptureFenceOutcome {
   readonly inserted: readonly string[];
   /** The helper program the fence vouched for, in `REAL_DEVELOPMENT`; null otherwise. */
   readonly helperProgram: string | null;
+  /** What the first generated microphone plays (fix wave H): the tone, or the speech fixture the fence vouched for (`REAL_DEVELOPMENT` only). */
+  readonly fakeMic: { readonly source: FakeMicSource; readonly fixturePath: string | null };
 }
 
 const SOURCE = 'capture.fence';
@@ -199,7 +224,8 @@ export async function runCaptureFenceBoot(deps: CaptureFenceBootDeps): Promise<C
   const decision = captureOperationDecisionOf(deps.config);
   const { operation } = decision;
   const refuse = (failure: CaptureFenceError): never => {
-    const context = { code: failure.code, devices: failure.deviceIds.join(','), ...(failure.helperProblem === null ? {} : { reason: failure.helperProblem }) };
+    const reason = failure.helperProblem ?? failure.fixtureProblem;
+    const context = { code: failure.code, devices: failure.deviceIds.join(','), ...(reason === null ? {} : { reason }) };
     deps.sinks.error(context, REFUSED);
     deps.sinks.persist({ level: 'error', source: SOURCE, message: REFUSED, code: failure.code, context });
     throw failure;
@@ -207,6 +233,9 @@ export async function runCaptureFenceBoot(deps: CaptureFenceBootDeps): Promise<C
   // Rows 4, 6 and 10: decided by the flags, before anything is read.
   const byFlags = captureFenceRefusalOf(decision, [], null);
   if (byFlags !== null) refuse(byFlags);
+  // The speech microphone setting (fix wave H): asked once, here, before anything is read or written.
+  const fakeMic = fakeMicDecisionOf(deps.config, operation, deps.inspect, deps.readHead);
+  if (fakeMic.refusal !== null) refuse(new CaptureFenceError(fakeMic.refusal, [], null, fakeMic.problem));
 
   const development = operation === CaptureOperation.REAL_DEVELOPMENT;
   const program = deps.config.captureHelperFfmpegPath;
@@ -229,10 +258,13 @@ export async function runCaptureFenceBoot(deps: CaptureFenceBootDeps): Promise<C
       local: registration === null ? null : { cameraId: registration.cameraId, micId: registration.micId },
       inserted: registration?.inserted ?? [],
       helperProgram: development ? program : null,
+      fakeMic: { source: fakeMic.source, fixturePath: fakeMic.fixturePath },
     };
   });
   if (decided instanceof CaptureFenceError) return refuse(decided);
   const outcome = decided;
   deps.sinks.info({ code: 'CAPTURE_FENCE_PASSED', operation, registered: outcome.inserted.join(','), local: outcome.local === null ? '' : `${outcome.local.cameraId},${outcome.local.micId}` }, PASSED);
+  // Said once per boot, and only when it is on: a session of this Core records synthetic speech on its first test microphone. No path.
+  if (outcome.fakeMic.source === FakeMicSource.SPEECH) deps.sinks.info({ code: 'DEV_FAKE_MIC_SPEECH', operation }, 'the first test microphone plays the speech fixture (synthetic speech, development capture only)');
   return outcome;
 }

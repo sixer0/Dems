@@ -146,6 +146,7 @@ export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pendi
                 else if (onConfirm) onConfirm();
                 else guard.leave();
               }}
+              accessibilityLabel={t(monitor ? 'mobile.backGuard.goHome' : 'mobile.backGuard.confirmCancel')}
               {...busyState(busy)}
             >
               {pending ? <PendingSpinner color={palette.foreground} testID="back-guard-leave-spinner" /> : null}

@@ -27,6 +27,7 @@
 // pipeline: the pipeline's own end-to-end proof is row 82's), the capture worker (a stand-in that
 // says HELLO and is never asked to record). No local device is selected, pre-checked or started.
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { validateCoreApiResponse, type EvidenceExportJobBody } from '@dems/shared/api';
@@ -45,7 +46,9 @@ import { sealDoorsOf } from '../../engine/seal-doors';
 import { sessionPackageDir } from '../../evidence-verify';
 import { buildPackage, removeScratch, scratch, type BuiltPackage } from '../../evidence-verify/__tests__/support';
 import { SEALING_STEP_ORDER, loadSealingSigner } from '../../sealing';
-import { EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, evidenceExport, parseExportManifest, parseExportSignature, verifyExportAtDestination } from '../index';
+import { evidenceExport, parseExportManifest, parseExportSignature, verifyExportAtDestination } from '../index';
+import { systemUnzip } from '../../../cli/verify-export';
+import { RECEIVER_EXIT, runReceiverCommand } from '../receiver-cli';
 import { UNZIP } from './support';
 
 vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
@@ -270,23 +273,66 @@ describe('fix F-M8: a real sealed item is exported by a job, recorded when it co
       expect(text).not.toContain('exs_');
     }
 
+    // ── Wave H C1 (gate findings G94-05, G94-01, G94-04): the item LISTS its finished exports, and any of them is
+    // reachable by its job ID from ANOTHER sign-in session of a permitted operator - not only from the dialog that asked.
+    const archiveSha256 = createHash('sha256').update(download.rawPayload).digest('hex');
+    const itemUrl = `/api/v1/evidence/${evidenceId}`;
+    const listedItem = (await app.inject({ method: 'GET', url: itemUrl, headers: again })).json() as { evidence: Record<string, unknown>; media: { source: string; files?: string[] }; access?: Record<string, boolean>; exports?: Record<string, unknown>[] };
+    expect(validateCoreApiResponse('getEvidence', 200, listedItem)).toEqual({ ok: true });
+    expect(listedItem.access).toEqual({ play: true, readTranscript: true, export: true });
+    expect(listedItem.exports).toEqual([{ exportId, jobId, kind: 'PACKAGE', completedAt: exportManifest.export.exportedAt, exportedBy: exportManifest.export.exportedBy, archiveBytes: download.rawPayload.byteLength, archiveSha256 }]);
+    // The same item, sealed by the product door in THIS run: its media state and its sealed facts were stated when the seal committed.
+    expect(listedItem.media).toEqual({ source: 'LIVE_STREAM', packageSuffix: null, fileIds: sealed.built.manifest.tracks.map((track) => track.trackId) });
+    expect(listedItem.evidence['sealedPackage']).toBe('PRESENT');
+    expect((listedItem.evidence['audioSourceIntervals'] as unknown[]).length).toBe(sealed.built.manifest.audio.sourceIntervals.length);
+    const replicated = app.engine.slice('evidence').find((item) => item.id === evidenceId) as Record<string, unknown> | undefined;
+    expect((replicated?.['audioSourceIntervals'] as unknown[] | undefined)?.length).toBe(sealed.built.manifest.audio.sourceIntervals.length);
+    const fresh = (await app.inject({ method: 'GET', url: jobUrl(jobId), headers: again })).json() as EvidenceExportJobBody;
+    expect(fresh).toMatchObject({ status: 'COMPLETE', archive: { bytes: download.rawPayload.byteLength, sha256: archiveSha256 } });
+    const own = await app.inject({ method: 'GET', url: fresh.download?.path ?? '', headers: again });
+    expect([own.statusCode, own.rawPayload.equals(download.rawPayload)]).toEqual([200, true]);
+    // NEGATIVE CONTROL: an operator without EVIDENCE_EXPORT reads no list, and is told so without asking.
+    const forInvestigator = (await app.inject({ method: 'GET', url: itemUrl, headers: investigator })).json() as { access?: Record<string, boolean>; exports?: unknown };
+    expect(forInvestigator.access?.['export']).toBe(false);
+    expect(forInvestigator.exports).toBeUndefined();
+
     // ── "the export verifies at the destination": what was DOWNLOADED, without any key of the Core ──
     const destination = scratch('fm8-destination');
     writeFileSync(join(destination, `${exportId}.zip`), download.rawPayload);
-    writeFileSync(join(destination, EXPORT_MANIFEST_FILE), readFileSync(join(packageDir, 'export', `${exportId}.manifest.json`)));
-    writeFileSync(join(destination, EXPORT_SIGNATURE_FILE), readFileSync(join(packageDir, 'export', `${exportId}.manifest.sig`)));
+    // Wave H C1 (gate finding G94-03, ruling D200): the DOWNLOAD ALONE is what a receiver holds. Nothing
+    // is copied out of the Core's package folder: the archive carries its export manifest and signature.
+    const lines: string[] = [];
+    const print = { out: (line: string) => void lines.push(line), err: (line: string) => void lines.push(line) };
+    const downloaded = join(destination, `${exportId}.zip`);
+    // The documented command of the repository, on the download alone: no Core, no database, no key.
+    expect(await runReceiverCommand([downloaded, '--sha256', String((done as { archive?: { sha256: string } }).archive?.sha256), '--trust', sealed.built.signer.certificate.sha256], destination, print, systemUnzip)).toBe(RECEIVER_EXIT.OK);
+    expect(lines.filter((line) => /^X-0[1-7]/.test(line)).map((line) => line.slice(0, 10))).toEqual(['X-01  PASS', 'X-02  PASS', 'X-03  PASS', 'X-04  PASS', 'X-05  PASS', 'X-06  PASS', 'X-07  PASS']);
+    expect(lines.at(-1)).toBe('RESULT: PASS');
+    // The job answer states the hash of the file that was downloaded, and the row of the download states it too.
+    expect((done as { archive?: { bytes: number; sha256: string } }).archive).toEqual({ bytes: download.rawPayload.byteLength, sha256: createHash('sha256').update(download.rawPayload).digest('hex') });
+    expect(exportedRows.at(-1)).toMatchObject({ archiveSha256: createHash('sha256').update(download.rawPayload).digest('hex') });
     const unpacked = join(destination, 'unpacked');
     mkdirSync(unpacked);
-    execFileSync(UNZIP, ['-q', join(destination, `${exportId}.zip`), '-d', unpacked]);
-    const received = await verifyExportAtDestination({ exportDir: destination, unpackedDir: unpacked, trustedCertificateSha256: [sealed.built.signer.certificate.sha256] });
+    execFileSync(UNZIP, ['-q', downloaded, '-d', unpacked]);
+    const received = await verifyExportAtDestination({ unpackedDir: unpacked, archiveFile: downloaded, trustedCertificateSha256: [sealed.built.signer.certificate.sha256] });
     expect(received.checks.filter((check) => !check.ok).map((check) => check.id)).toEqual([]);
     expect(received.ok).toBe(true);
+    expect(received.selfContained).toBe(true);
     // NEGATIVE CONTROL of the receiver: one flipped byte of the downloaded camera file fails it.
     const camera = join(unpacked, 'fragments', 'VIDEO-01.mp4');
     const bytes = readFileSync(camera);
     bytes[bytes.byteLength - 20] = (bytes[bytes.byteLength - 20] ?? 0) ^ 0xff;
     writeFileSync(camera, bytes);
-    expect((await verifyExportAtDestination({ exportDir: destination, unpackedDir: unpacked, trustedCertificateSha256: [sealed.built.signer.certificate.sha256] })).ok).toBe(false);
+    expect((await verifyExportAtDestination({ unpackedDir: unpacked, archiveFile: downloaded, trustedCertificateSha256: [sealed.built.signer.certificate.sha256] })).ok).toBe(false);
+    // NEGATIVE CONTROL of the command: ONE altered byte of the downloaded archive (inside a camera file) fails it, by name.
+    const altered = Buffer.from(download.rawPayload);
+    const at = altered.indexOf(Buffer.from('fragments/VIDEO-01.mp4')) + 2_000;
+    altered[at] = (altered[at] ?? 0) ^ 0xff;
+    writeFileSync(downloaded, altered);
+    lines.length = 0;
+    expect(await runReceiverCommand([downloaded, '--trust', sealed.built.signer.certificate.sha256], destination, print, systemUnzip)).toBe(RECEIVER_EXIT.FAILED);
+    expect(lines.some((line) => line.startsWith('X-04  FAIL') && line.includes('ENTRY_HASH_MISMATCH:fragments/VIDEO-01.mp4'))).toBe(true);
+    expect(lines.at(-1)).toBe('RESULT: FAIL');
     await app.close();
 
     // ── R93-04: a process that died during a later export left a partial; the next start removes it ──
@@ -302,6 +348,12 @@ describe('fix F-M8: a real sealed item is exported by a job, recorded when it co
     const afterRestart = await second.app.inject({ method: 'GET', url: jobUrl(jobId), headers: supervisorAgain });
     expect(afterRestart.json()).toMatchObject({ status: 'COMPLETE', manifestHash: exportManifest.export.manifestSha256, signature: exportSignature.signature });
     expect((afterRestart.json() as { download?: { path: string } }).download?.path).toMatch(/^\/exports\/exs_/);
+    // Wave H C1: after the restart the item still lists the export, and the item the engine READ BACK carries its sealed facts again (no column holds them).
+    const afterRestartItem = (await second.app.inject({ method: 'GET', url: `/api/v1/evidence/${evidenceId}`, headers: supervisorAgain })).json() as { exports?: { exportId: string }[]; media: { source: string } };
+    expect(afterRestartItem.exports?.map((entry) => entry.exportId)).toEqual([exportId]);
+    expect(afterRestartItem.media.source).toBe('LIVE_STREAM');
+    const readBack = second.app.engine.slice('evidence').find((item) => item.id === evidenceId) as Record<string, unknown> | undefined;
+    expect([readBack?.['sealedPackage'], (readBack?.['audioSourceIntervals'] as unknown[] | undefined)?.length]).toEqual(['PRESENT', sealed.built.manifest.audio.sourceIntervals.length]);
     await second.app.close();
     // A third start records nothing more.
     const third = await bootCore();

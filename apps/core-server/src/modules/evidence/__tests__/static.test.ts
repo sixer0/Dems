@@ -260,6 +260,8 @@ describe('rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched', () =>
       '../../engine',
       // Task 3 row 91: the seam of operation 42 to the export jobs (`evidenceExport(app)`, the kind of a body, one text). The module itself still opens no file.
       '../../evidence-export',
+      // Wave H C1: the seam of operations 39 / 40 to what the Core says of an item beyond its rows (`evidenceFacts(app)`). The module still opens no file.
+      '../../evidence-facts',
       '../../plugins/error-envelope',
       '../../plugins/permission-guard',
       './cursor',

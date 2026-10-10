@@ -418,4 +418,30 @@ export const devices = {
       unavailable: 'The device registry could not be read.',
     },
   },
+
+  /**
+   * Wave H, driver D, web console (gate 70; decision D196). `micLines`: G70-02, every registered
+   * microphone on the primary and on the standby line (operation 78, pair replacement). `noPreview`:
+   * G70-03, the tile that stands where a camera picture would be on a Core in real capture.
+   * `sourcesCheck`: G70-08, the reason of a pre-check / start control while the console does not
+   * know the selector's device classes.
+   */
+  micLines: {
+    label: {
+      PRIMARY: 'Microphone for the primary line',
+      STANDBY: 'Microphone for the standby line',
+    },
+    onOtherLine: {
+      PRIMARY: 'already on the primary line',
+      STANDBY: 'already on the standby line',
+    },
+  },
+  noPreview: {
+    title: 'No preview',
+    aria: '{{name}}. This build shows no live preview. {{state}}',
+  },
+  sourcesCheck: {
+    checking: 'Checking the capture sources…',
+    failed: 'The capture sources could not be read. The device check and the start stay off until they are read.',
+  },
 } as const satisfies ResourceTree;

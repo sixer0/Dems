@@ -84,6 +84,11 @@ import { endUnsealableTransition, type EndUnsealableInput } from '@dems/shared/s
 import { UNSEALABLE_DOOR_LABEL, type EngineUnsealableDoors } from './unsealable-doors';
 // Sealing notice block (fix pass F-M7c, ruling D186): kept plaintext of a sealed session, a blocked seal, an on-demand retry.
 import { SEALING_NOTICE_DOOR_LABEL, noteSealRetryOnDemandTransition, noteSealedPlaintextKeptTransition, raiseSealBlockedTransition, resolveSealBlockedTransition, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
+// Sealed-facts block (wave H C1, decision D200): what the sealed manifest of an item says and no stored column holds.
+import { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, type EngineSealedFactsDoors, type SealedItemFacts } from './sealed-facts-doors';
+// Capture-checkpoint block and time block (wave H closing pass Z1): what the Core holds of a running recording; the host clock as the time of a Core in its own capture.
+import { hostClockTimeTransition } from '@dems/shared/sim';
+import { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -185,6 +190,12 @@ export interface EngineHostDependencies {
    * in capture mode `real`, where the simulator must generate none. Default `'simulated'`.
    */
   readonly captureLevels?: CaptureLevelSource;
+  /**
+   * Wave H closing pass Z1 (driver B decision 6): how long the connecting part of a start lasts in
+   * SIMULATED capture, in ms. A test / development control handed in by the composition of a test
+   * rig; NO configuration key sets it today (`config.ts` is frozen: see implementation/128). Absent = 1,000.
+   */
+  readonly captureConnectMs?: number;
   /**
    * Device-list block (fix F-M4; review row 69, finding R69-03): the rule of the RUNNING capture
    * operation for the stored registry rows (`storedDeviceListingOf`, the capture fence's). A row it
@@ -697,7 +708,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     let result: HostedActionResult<Action>;
     try {
       const run = sim.actions[action] as (...parameters: HostedActionArguments<Action>) => HostedActionResult<Action>;
-      result = withActorScope(sim.store, principal.operatorId, stampOf(clock), () => run(...args));
+      result = withActorScope(sim.store, principal.operatorId, stampOf(clock), () => run(...args), principal.deviceId);
     } catch (error) {
       const refusal = simRefusal(error);
       if (refusal !== null) {
@@ -943,7 +954,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         const now = stampOf(clock);
 
         reportedSources.clear();
-        const sim = await createHeadlessSim({ seed: stored.slices.meta.seed, clock, onError: reportSimError, capture: dependencies.captureLevels ?? 'simulated' });
+        const sim = await createHeadlessSim({ seed: stored.slices.meta.seed, clock, onError: reportSimError, capture: dependencies.captureLevels ?? 'simulated', ...(dependencies.captureConnectMs === undefined ? {} : { captureConnectMs: dependencies.captureConnectMs }) });
         ignoredTelemetry.clear();
         const nextEpoch = mode === 'reset' ? stored.slices.meta.epoch : stored.slices.meta.epoch + 1;
         adoptStoredState(sim, stored, nextEpoch);
@@ -971,6 +982,14 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
           // Capture mode `simulated` (review R74-14 (1)): a failed start that is still open says so again from its stored facts.
           const derived = failedStartAtRehydrateTransition(sim.store.getState());
           if (derived !== sim.store.getState()) sim.store.setState(derived, true);
+        }
+
+        // Time block (wave H closing pass Z1; ruling D203 (1)): a Core in its own capture has the host
+        // system clock and no time service. The state this start read may still hold the dataset's GNSS
+        // values (a state stored before this rule): it says the host clock before anything reads it.
+        if (dependencies.captureLevels === 'external') {
+          const truthful = hostClockTimeTransition(sim.store.getState());
+          if (truthful !== sim.store.getState()) sim.store.setState(truthful, true);
         }
 
         // Source-fact block (integration pass D11; `fact-doors.ts`): no row holds the class of a
@@ -1099,7 +1118,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return committed;
   }
 
-  const host: EngineHost & EngineControl & EngineCaptureDoors & EngineSealDoors & EngineFactDoors & EngineExportDoors & EngineUnsealableDoors & EngineSealingNoticeDoors & { provideCaptureDeviceListing(listing: CaptureDeviceListing): void } & { readonly [CONTROL]: true } = {
+  const host: EngineHost & EngineControl & EngineCaptureDoors & EngineSealDoors & EngineFactDoors & EngineExportDoors & EngineUnsealableDoors & EngineSealingNoticeDoors & EngineSealedFactsDoors & EngineCaptureCheckpointDoors & { provideCaptureDeviceListing(listing: CaptureDeviceListing): void } & { readonly [CONTROL]: true } = {
     [CONTROL]: true,
 
     get epoch() {
@@ -1294,6 +1313,18 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     },
     noteSealRetryOnDemand(input: SealRetryNote) {
       return inUnit(SEALING_NOTICE_DOOR_LABEL.retry, 'command', (scope) => applySealTransition(scope, 'noteSealRetryOnDemand', (state, now) => noteSealRetryOnDemandTransition(state, now, input)));
+    },
+
+    // Sealed-facts block (wave H C1; `sealed-facts-doors.ts`; gate findings G94-01 / G94-04): one unit,
+    // one pure transition, members no row holds. A call that changes nothing sends no statement.
+    applySealedItemFacts(facts: readonly SealedItemFacts[]) {
+      return inUnit(SEALED_FACTS_DOOR_LABEL.applied, 'command', (scope) => applyCaptureTransition(scope, (state) => applySealedItemFactsTransition(state, facts)));
+    },
+
+    // Capture-checkpoint block (wave H closing pass Z1; `capture-checkpoint-doors.ts`): one unit, one
+    // pure transition, a member no row holds. A call that changes nothing sends no statement.
+    applyCaptureCheckpoints(sessionId: string, facts: CaptureCheckpointFacts) {
+      return inUnit(CAPTURE_CHECKPOINT_DOOR_LABEL.applied, 'command', (scope) => applyCaptureTransition(scope, (state) => applyCaptureCheckpointsTransition(state, sessionId, facts)));
     },
 
     mirrorOperators() {

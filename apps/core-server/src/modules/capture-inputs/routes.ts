@@ -25,8 +25,15 @@
  *        `CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS` since the last accepted re-read of this Core. No
  *        audit row, nothing read.
  *
- * WITHOUT A PROBE IN SIMULATED CAPTURE the answer is the simulator's: the registered microphones
- * with `present` from the device state (no adapter is registered there, rule RG-1).
+ * WITHOUT A PROBE IN SIMULATED CAPTURE the answer is from the device state: the registered
+ * microphones with `present` (no adapter is registered there, rule RG-1).
+ *
+ * A CORE IN SIMULATED CAPTURE STATES NO SOURCE (decision D196; gate 70 finding G70-01; D91 ruling
+ * R-2, D131): in capture operation `SIMULATED` no entry carries `adapter` or `sourceClass`,
+ * whatever the answer was read from. Both clients draw the "Development source" badge from the
+ * class the Core sent; until this fix operation 97 said `FAKE` / `DEVELOPMENT` on a simulated Core
+ * and the web console drew the badge there. In a real operation every entry carries both, from the
+ * adapter that was asked.
  *
  * ERRORS. A probe that fails is an unexpected failure: it reaches the error envelope, which
  * writes it to the log and to the persistent error log; the spacing slot it took stays taken.
@@ -39,7 +46,6 @@ import {
   CaptureDiscoveryScope,
   CaptureDiscoveryTrigger,
   CaptureInputScanSchema,
-  CaptureSourceClass,
   captureDiscoverySearchedDetails,
   type CaptureInputScan,
   type CoreApiRegistryOperation,
@@ -48,6 +54,7 @@ import { AuditType, Permission, isSessionActive } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { CaptureNotices, InputReading } from '../../capture-notices';
+import { captureOperationOf } from '../../capture/fence';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 
@@ -57,8 +64,8 @@ export type CaptureInputsModuleOperation = (typeof CAPTURE_INPUTS_MODULE_OPERATI
 /** Label of the unit that writes the search row. It appears in the pipeline's log lines. */
 export const CAPTURE_INPUTS_UNIT_LABEL = 'captureInputs.rescanCaptureInputs';
 
-/** The adapter code of a microphone the Core answers from its state, as the simulator names it. */
-export const STATE_ADAPTER_CODE = 'FAKE';
+/** The capture operation in which the Core states no adapter and no source class (decision D196, G70-01). */
+const SIMULATED = 'SIMULATED';
 
 const NOT_READY_TEXT = 'Capture is not ready yet.';
 const LIMITED_TEXT = 'The microphones were read a moment ago. Try again shortly.';
@@ -108,14 +115,16 @@ export function registerCaptureInputsRoutes(app: FastifyInstance, seams: Capture
       }
       lastAcceptedAt = now;
 
+      // The ONE decision of the capture operation (the fence's): a simulated Core states no adapter and no class.
+      const statesSource = captureOperationOf(app.config) !== SIMULATED;
       const registered = before.captureDevices.devices.filter((device) => device.kind === 'MIC');
       const inputOf = (deviceId: string) => before.captureConfig.mics.find((mic) => mic.deviceId === deviceId)?.inputId ?? null;
 
       let inputs: CaptureInputScan['inputs'];
       let unregisteredCount = 0;
       if (probe === null) {
-        // Simulated capture: the simulator's answer, from the device state.
-        inputs = registered.map((device) => ({ deviceId: device.id, inputId: inputOf(device.id), present: device.online, adapter: STATE_ADAPTER_CODE, sourceClass: CaptureSourceClass.DEVELOPMENT, errorCode: null }));
+        // Simulated capture (real capture without a probe was refused above): the device state, and no word about a source.
+        inputs = registered.map((device) => ({ deviceId: device.id, inputId: inputOf(device.id), present: device.online, errorCode: null }));
       } else {
         const reading: InputReading = await probe.microphones();
         const read = new Map(reading.microphones.map((entry) => [entry.deviceId, entry] as const));
@@ -124,7 +133,7 @@ export function registerCaptureInputsRoutes(app: FastifyInstance, seams: Capture
         inputs = registered.flatMap((device) => {
           const entry = read.get(device.id);
           if (entry === undefined) return [];
-          return [{ deviceId: device.id, inputId: inputOf(device.id), present: entry.present, adapter: entry.adapterKind, sourceClass: entry.sourceClass, errorCode: entry.present ? null : entry.errorCode }];
+          return [{ deviceId: device.id, inputId: inputOf(device.id), present: entry.present, ...(statesSource ? { adapter: entry.adapterKind, sourceClass: entry.sourceClass } : {}), errorCode: entry.present ? null : entry.errorCode }];
         });
         unregisteredCount = reading.unregisteredCount + reading.microphones.filter((entry) => !registered.some((device) => device.id === entry.deviceId)).length;
         // `online` of the microphones: one unit per microphone whose state differs, none otherwise.

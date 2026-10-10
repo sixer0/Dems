@@ -11,10 +11,10 @@ import { join } from 'node:path';
 import { PackageFile, cameraFilePath, canonicalJson } from '@dems/shared/evidence-package';
 import { verifyPackageV2 } from '@dems/shared/evidence-verify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildPackage, flipByte, removeScratch, throwAwaySigner, type BuiltPackage } from '../../evidence-verify/__tests__/support';
+import { buildPackage, flipByte, removeScratch, sha256Hex, throwAwaySigner, type BuiltPackage } from '../../evidence-verify/__tests__/support';
 import { corePorts } from '../../evidence-verify';
 import { COMPOSITE_ENCODER_GATE, GPL_ONLY_ENCODERS, compositeEncoderAllowed, selectedCompositeEncoder } from '../composite';
-import { EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, buildExportManifest, computeExportManifestSha256, parseExportManifest, signExportManifest, serializeExportSignature, type ExportManifest } from '../export-manifest';
+import { buildExportManifest, computeExportManifestSha256, parseExportManifest, signExportManifest, serializeExportSignature, type ExportManifest } from '../export-manifest';
 import { ExportFailure, exportPackage } from '../package-export';
 import { verifyExportAtDestination, type ReceiverVerifyResult } from '../receiver-verify';
 import { SecretForm, secretFormsIn } from '../secret-sweep';
@@ -31,18 +31,18 @@ const codeOf = async (run: Promise<unknown>): Promise<string> =>
     (error: unknown) => (error instanceof ExportFailure ? error.code : `NOT_AN_EXPORT_FAILURE:${String(error)}`),
   );
 const receive = (delivered: Delivered, built: BuiltPackage) =>
-  verifyExportAtDestination({ exportDir: delivered.exportDir, unpackedDir: delivered.unpackedDir, trustedCertificateSha256: [built.signer.certificate.sha256], chunkBytes: 512 });
+  verifyExportAtDestination({ unpackedDir: delivered.unpackedDir, archiveFile: delivered.archive, expectedArchiveSha256: delivered.archiveSha256, trustedCertificateSha256: [built.signer.certificate.sha256], chunkBytes: 512 });
 
 /** Rewrites the delivered export manifest with a change; optionally re-hashes it and signs it again. */
 async function editExportManifest(delivered: Delivered, change: (manifest: Record<string, any>) => void, options: { rehash?: boolean; resign?: BuiltPackage['signer'] } = {}): Promise<void> {
-  const file = join(delivered.exportDir, EXPORT_MANIFEST_FILE);
+  const file = delivered.manifestFile;
   const manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, any>;
   change(manifest);
   if (options.rehash === true || options.resign !== undefined) manifest.export.manifestSha256 = computeExportManifestSha256(manifest);
   writeFileSync(file, canonicalJson(manifest));
   if (options.resign !== undefined) {
     const signature = await signExportManifest(options.resign.signer, options.resign.certificate, manifest as ExportManifest, EXPORTED_AT, verifyEd25519);
-    writeFileSync(join(delivered.exportDir, EXPORT_SIGNATURE_FILE), serializeExportSignature(signature));
+    writeFileSync(delivered.signatureFile, serializeExportSignature(signature));
   }
 }
 
@@ -66,7 +66,7 @@ describe('M8-EXP-1: an exported package verifies at its destination, without a k
     expect(result).toMatchObject({ ok: true, exportId: 'EXP-000032', derived: false, anchored: true });
 
     // The 9 fields of spec §B.11, and the job's two values.
-    const manifest = parseExportManifest(readFileSync(join(delivered.exportDir, EXPORT_MANIFEST_FILE), 'utf8'));
+    const manifest = parseExportManifest(readFileSync(delivered.manifestFile, 'utf8'));
     expect(manifest.export).toEqual({
       exportId: 'EXP-000032',
       exportedAt: EXPORTED_AT,
@@ -130,7 +130,7 @@ describe('M8-EXP-1: an exported package verifies at its destination, without a k
 
     // The signature bytes altered.
     delivered = fresh();
-    const signatureFile = join(delivered.exportDir, EXPORT_SIGNATURE_FILE);
+    const signatureFile = delivered.signatureFile;
     const signature = JSON.parse(readFileSync(signatureFile, 'utf8')) as { signature: string };
     signature.signature = `${signature.signature.slice(0, -2)}${signature.signature.endsWith('00') ? '01' : '00'}`;
     writeFileSync(signatureFile, canonicalJson(signature));
@@ -155,9 +155,9 @@ describe('M8-EXP-1: an exported package verifies at its destination, without a k
   it('SEC35-06, stated: without an anchor a re-signed export verifies against itself only when its certificate travels with it - and with the anchor it never does', async () => {
     const built = await buildPackage();
     const delivered = deliver(built, await exportPackage(built.dir, built.item, requestFacts(), portsOf(built)));
-    const unanchored = await verifyExportAtDestination({ exportDir: delivered.exportDir, unpackedDir: delivered.unpackedDir, chunkBytes: 512 });
+    const unanchored = await verifyExportAtDestination({ unpackedDir: delivered.unpackedDir, archiveFile: delivered.archive, chunkBytes: 512 });
     expect(unanchored).toMatchObject({ ok: true, anchored: false });
-    const other = await verifyExportAtDestination({ exportDir: delivered.exportDir, unpackedDir: delivered.unpackedDir, trustedCertificateSha256: ['0'.repeat(64)], chunkBytes: 512 });
+    const other = await verifyExportAtDestination({ unpackedDir: delivered.unpackedDir, archiveFile: delivered.archive, trustedCertificateSha256: ['0'.repeat(64)], chunkBytes: 512 });
     expect(failedChecks(other)).toEqual(['X-02', 'X-05']);
   });
 });
@@ -223,7 +223,7 @@ describe('M8-CMP-1: the composite is made on demand, marked derived and hashed i
     expect(existsSync(built.path('composite'))).toBe(false);
 
     const delivered = deliver(built, outcome);
-    const manifest = parseExportManifest(readFileSync(join(delivered.exportDir, EXPORT_MANIFEST_FILE), 'utf8'));
+    const manifest = parseExportManifest(readFileSync(delivered.manifestFile, 'utf8'));
     const composite = readFileSync(join(delivered.unpackedDir, 'composite', 'composite.mp4'));
     const sha256 = treeHashes(join(delivered.unpackedDir, 'composite'))['composite.mp4'];
     expect(manifest.export.derived).toBe(true);
@@ -372,8 +372,20 @@ describe('SEC35-09 and the failure paths: nothing half-written stays, and nothin
     const one = readFileSync(built.path(first.files.archive));
     const two = readFileSync(built.path(second.files.archive));
     expect(one.byteLength).toBeGreaterThan(7_000);
-    expect(two.equals(one)).toBe(true);
-    expect(second.manifest.package.sha256).toBe(first.manifest.package.sha256);
+    // Wave H C1 (ruling D200): an archive carries the export manifest and signature of ITS export as its
+    // last two entries, so two exports are byte-identical UP TO those entries - every entry the signed
+    // manifest lists is reproduced bit for bit, in the same place - and each archive has its own hash.
+    const payloadEnd = (archive: Buffer, exportId: string): number => archive.indexOf(Buffer.from(`export/${exportId}.manifest.json`)) - 30;
+    expect(payloadEnd(one, 'EXP-000032')).toBeGreaterThan(7_000);
+    expect(payloadEnd(two, 'EXP-000033')).toBe(payloadEnd(one, 'EXP-000032'));
+    expect(two.subarray(0, payloadEnd(two, 'EXP-000033')).equals(one.subarray(0, payloadEnd(one, 'EXP-000032')))).toBe(true);
+    expect(second.manifest.package.entries).toEqual(first.manifest.package.entries);
+    expect(two.equals(one)).toBe(false);
+    expect(second.archive.sha256).not.toBe(first.archive.sha256);
+    // The manifest inside an archive names no hash of that archive; the outcome states it.
+    expect(first.manifest.package).not.toHaveProperty('sha256');
+    expect(first.manifest.package).not.toHaveProperty('bytes');
+    expect(first.archive).toEqual({ bytes: one.byteLength, sha256: sha256Hex(one) });
     // CONTROL: the comparison can fail - a composite makes another archive.
     const third = await exportPackage(built.dir, built.item, requestFacts({ exportId: 'EXP-000034', kind: 'COMPOSITE' }), portsOf(built, { composite: standInEncoder() }));
     expect(readFileSync(built.path(third.files.archive)).equals(one)).toBe(false);
@@ -386,7 +398,7 @@ describe('SEC35-09 and the failure paths: nothing half-written stays, and nothin
     const delivered = deliver(built, outcome);
     expect(existsSync(join(delivered.unpackedDir, 'certificates', `${today.certificate.sha256}.pem`))).toBe(true);
     const anchors = [built.signer.certificate.sha256, today.certificate.sha256];
-    expect(await verifyExportAtDestination({ exportDir: delivered.exportDir, unpackedDir: delivered.unpackedDir, trustedCertificateSha256: anchors, chunkBytes: 512 })).toMatchObject({ ok: true });
+    expect(await verifyExportAtDestination({ unpackedDir: delivered.unpackedDir, archiveFile: delivered.archive, trustedCertificateSha256: anchors, chunkBytes: 512 })).toMatchObject({ ok: true });
     // NEGATIVE CONTROL: with the sealing certificate as the only anchor the export signature is not trusted.
     expect(failedChecks(await receive(delivered, built))).toEqual(['X-02']);
   });

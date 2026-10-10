@@ -76,7 +76,7 @@ make -C apps/capture-worker e2e E2E_ARGS="--runs 1 --tag quick"      one run of 
 | Catalogue check | Checks of the series | Negative control (must FAIL) |
 |---|---|---|
 | M3-AV-1: 0 / +80 / -80 ms through the worker, incl. across a mic switch; the 2 ms regression bound and the +-40 ms product bound are two separate criteria | `av1_zero_switch_tap`, `av1_av2a_pm80` | `neg_av_forbidden_mux_option` (one forbidden mux option: fails both bounds, by seconds, while the files still decode); `neg_av_mic_latency_5ms` (the mics hand over 5 ms late: fails the regression bound and stays inside the product bound) |
-| M3-AV-2 (a): cameras in their own processes on their own clocks, mics in another process, +-80 ms; also through the production supervisor | `av1_av2a_pm80`, `sup_av2_pm80` | `neg_av_forbidden_mux_option`, `neg_sup_forbidden_mux_option` |
+| M3-AV-2 (a): cameras in their own processes on their own clocks, mics in another process, +-80 ms; also through the production supervisor | `av1_av2a_pm80`, `sup_av2_pm80` | `neg_av_forbidden_mux_option`, `neg_sup_av_judged_as_no_offset` (the AV judgement of the session recorded through the supervisor). Correction (2026-10-10): the control `neg_sup_forbidden_mux_option` named here before is retired. The supervisor refuses a proof build by design (`CAPTURE_WORKER_PROOF_BUILD`), so a forbidden mux option can no longer be started through it. In its place: `sup_refuses_proof_build` (the proof build through the supervisor is refused with that code and nothing is recorded) with its control `neg_sup_release_worker_is_accepted`; the forbidden option itself stays covered by the direct-driver control and the static rule (decision D170) |
 | M3-AV-2 (b): +-200 ppm keeps the injected slope | `av2b_drift_200ppm` | `neg_av2b_drift_judged_as_none` (the same files judged as if nothing drifted) |
 | M3-AV-2 (c): drift expressed in the sender reports | not here: blueprint row 62 builds that camera | - |
 | M3-RTSP-BIND-1: every socket of the worker is TCP on 127.0.0.1 while a client asks for UDP; listener snapshot of worker and fixtures | `bind_udp`, criteria `listeners_are_the_two_loopback_ports` and `fixture_and_worker_sockets_loopback_only` of every session | `neg_bind_skeleton` (the vendored row-111 worker opens `UDP *:5000` / `*:5001`) |
@@ -132,3 +132,14 @@ M3_PORTS=8559,8561 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock \
 ```
 Every check prints one JSON result with `verdict` and `criteria`. A negative control is run with
 `--expect-fail --must-fail-on <criteria>`: it exits 0 only when it fails on exactly those.
+
+## State at commit `f293221` (added 2026-10-10)
+
+- The worker names itself `capture-worker/0.5.0` (`src/worker.h`) and speaks capture protocol 4. The Core starts only a release build of that form and refuses a proof build, another protocol version and a worker whose libavformat is not the one it was built and checked against (`CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH`).
+- Checks added by the review fixes, in the series of `test/e2e.py`: `r63_02_fragment_size_bound` (control `neg_r63_02_no_size_bound`), `r63_12_clock_floor_wiring` (control `neg_r63_12_floor_not_acted_on`), `r63_11_moved_timestamp_is_said`. The Core passes the fragment size bound to the worker at every start (`--max-fragment-bytes`); the worker closes an open fragment at the bound and says so once per camera.
+- The whole series ran once on the final worker on 2026-10-10: 122 checks, every one as expected, aggregate exit code 0 (decision D188 of `docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md`).
+- What the series does not prove: a power loss, a volume that really runs out of space, a volume without hard links, a real camera, a real microphone. The fragment bound was proven at a small bound, not at the product's bound. A camera more than 2 s behind the Core's clock is given up by name, and up to 1 s of its video may be wrongly timed before that. The operator-facing list is in the repository `README.md`, section "Real capture, sealing and transcript", "Known limits".
+
+## Linked libraries and their licence
+
+`make -C apps/capture-worker versions` prints the FFmpeg libraries this build links. The worker links `libavformat`, `libavcodec`, `libavfilter`, `libswresample` and `libavutil` dynamically, through `pkg-config` (`Makefile`, `LIBS_PC`). On this Mac those are the libraries of the Homebrew FFmpeg 9.0.2, which is a GPL-3.0-or-later build. The record of that fact, and of what is and is not established for a distributed worker, is `THIRD_PARTY_NOTICES.md` at the repository root, section "Component register of the real-capture task", part 1. The binaries under `build/` are git-ignored and are in no package.

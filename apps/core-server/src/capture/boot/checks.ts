@@ -27,8 +27,11 @@
  *                          worker reaches the final name of a camera file by `link()`, D72(b),
  *                          D85 R-5: on a volume without hard links every session would end fatal)
  *                       4. the evidence signing key loads (fails closed, SEC35-07)
- *                       5. the worker answers `HELLO` with this protocol, a plain version and NO
- *                          proof-build mark (F-10)
+ *                       5. the worker - started with the SAME arguments a session start passes -
+ *                          answers `HELLO` with this protocol, NO proof-build mark (F-10) and THE
+ *                          version this Core was built to drive (`CAPTURE_WORKER_VERSION`; gate 64
+ *                          condition C7, ruling D194): an older or a newer worker binary is refused
+ *                          HERE, by name, and not at the first session start
  *
  * A refused combination of the flags (`decision.refusal`) is the capture fence's refusal; this
  * step repeats it with the fence's own code, so that it can never run a real check - or pass - on
@@ -64,6 +67,8 @@ export const CaptureBootRefusal = {
   WORKER_PROTOCOL_MISMATCH: 'CAPTURE_WORKER_PROTOCOL_MISMATCH',
   WORKER_PROOF_BUILD: 'CAPTURE_WORKER_PROOF_BUILD',
   WORKER_VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
+  /** The worker is a release build of ANOTHER version than this Core drives (wave H driver F; gate 64 C7, ruling D194). */
+  WORKER_VERSION_MISMATCH: 'CAPTURE_WORKER_VERSION_MISMATCH',
 } as const;
 export type CaptureBootRefusal = (typeof CaptureBootRefusal)[keyof typeof CaptureBootRefusal];
 
@@ -73,7 +78,7 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_PROGRAM_UNUSABLE:
     'The program in DEMS_CAPTURE_WORKER cannot be used: it must be a regular executable file owned by root or by the user of the server, not writable by group or others, with no directory on the way to it writable by them.',
   CAPTURE_EVIDENCE_STORE_UNUSABLE:
-    'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, owner-only (no permission for group or others: chmod 700), on a volume that supports exclusive create, sync and hard links. Recordings lie in this directory in PLAINTEXT from the start of a session until its seal completes (they are encrypted at seal time), recordings the Core could not seal stay in its .quarantine folder and the audio tap of a running session in its .transcriber folder: nobody but the server may read the store or these folders (chmod 700 each).',
+    'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, owner-only (no permission for group or others: chmod 700), on a volume that supports exclusive create, sync and hard links. Recordings lie in this directory in PLAINTEXT from the start of a session until its seal completes (they are encrypted at seal time), recordings the Core could not seal stay in its .quarantine folder, a recording that is being sealed is staged in its .sealing folder and the audio tap of a running session lies in its .transcriber folder: nobody but the server may read the store or these folders, and none of them may be a link (chmod 700 each).',
   CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION:
     'The evidence signing key in <data directory>/signer is a DEVELOPMENT key (its certificate says "DEVELOPMENT KEY - NOT FOR PRODUCTION"): a production Core does not start with it, because every package it sealed would carry a development signature. Provision the production signing key, or run the Core in development capture mode.',
   CAPTURE_SIGNING_KEY_UNUSABLE: 'The evidence signing key cannot be loaded from <data directory>/signer: real capture does not start without the key that seals its packages. Provision the key once, then start again.',
@@ -83,6 +88,8 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_PROTOCOL_MISMATCH: 'The capture worker speaks another version of the capture protocol than this server. Build the worker of this repository state (make -C apps/capture-worker).',
   CAPTURE_WORKER_PROOF_BUILD: 'The program in DEMS_CAPTURE_WORKER is a PROOF build (a negative control of the capture checks). It is never started by the Core. Set the key to build/capture-worker.',
   CAPTURE_WORKER_VERSION_UNKNOWN: 'The capture worker names a version this server does not know as a release build. Only capture-worker/<major>.<minor>.<patch> is started.',
+  CAPTURE_WORKER_VERSION_MISMATCH:
+    'The program in DEMS_CAPTURE_WORKER is a capture worker of another version than the one this server was built to drive: the two are released together and neither is used with another. Build the worker of this repository state (make -C apps/capture-worker) and set the key to it.',
 });
 
 /** A real start the boot checks refuse. `code` and `reason` are machine codes; the message names keys and the remedy. */
@@ -146,8 +153,8 @@ export interface EvidenceVolumeFacts {
   readonly freeBytes: number | null;
   /**
    * The HIDDEN FOLDERS of the store that hold plaintext, as far as they exist (fix pass F-M7c):
-   * `.quarantine` (recordings the Core could not seal) and `.transcriber`, `.transcriber/sessions`
-   * (the raw audio tap of a session, ruling D180). `directory` is false for a link or a file - the
+   * `.quarantine` (recordings the Core could not seal), `.sealing` (the staging of a seal; wave H
+   * driver F) and `.transcriber`, `.transcriber/sessions` (the raw audio tap of a session, ruling D180). `directory` is false for a link or a file - the
    * probe follows nothing. Absent: a probe that does not look (a test's facts).
    */
   readonly privateFolders?: readonly PrivateFolderFacts[];
@@ -162,8 +169,10 @@ export interface PrivateFolderFacts {
 }
 
 /** The hidden folders of the evidence store the boot holds to the owner-only rule, with the reason each is refused by. */
-export const EVIDENCE_STORE_PRIVATE_FOLDERS: Readonly<Record<string, 'QUARANTINE_READABLE_BY_OTHERS' | 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS'>> = Object.freeze({
+export const EVIDENCE_STORE_PRIVATE_FOLDERS: Readonly<Record<string, 'QUARANTINE_READABLE_BY_OTHERS' | 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS' | 'SEALING_STAGING_READABLE_BY_OTHERS'>> = Object.freeze({
   '.quarantine': 'QUARANTINE_READABLE_BY_OTHERS',
+  // The staging of a seal (wave H driver F; the row-96 docs note): `.sealing/<session>/` holds the session's files while they are sealed.
+  '.sealing': 'SEALING_STAGING_READABLE_BY_OTHERS',
   '.transcriber': 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
   '.transcriber/sessions': 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
 });
@@ -180,6 +189,11 @@ export const EvidenceStoreProblem = {
   QUARANTINE_READABLE_BY_OTHERS: 'QUARANTINE_READABLE_BY_OTHERS',
   /** The transcriber's scratch root exists and is not an owner-only directory of the server (fix pass F-M7c; D180): the raw audio tap of a session lies there. */
   TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS: 'TRANSCRIBER_SCRATCH_READABLE_BY_OTHERS',
+  /**
+   * The staging folder of the seal exists and is not an owner-only directory of the server (wave H driver F):
+   * a session's recording lies below `.sealing/<session>/` while it is sealed, plaintext until its files are encrypted.
+   */
+  SEALING_STAGING_READABLE_BY_OTHERS: 'SEALING_STAGING_READABLE_BY_OTHERS',
   NOT_WRITABLE: 'NOT_WRITABLE',
   NO_EXCLUSIVE_CREATE: 'NO_EXCLUSIVE_CREATE',
   NO_SYNC: 'NO_SYNC',
@@ -243,8 +257,17 @@ export type WorkerHandshake =
 
 /** The mark a proof build of the worker puts on its version (`apps/capture-worker/src/ipc.c`, the `HELLO` line). */
 export const PROOF_BUILD_MARK = '-PROOF';
-/** A release build names itself so, and nothing else is started (an allowlist: a proof build under another mark is refused as well). */
+/** The FORM of a release word. A word of another form is refused as unknown (a proof build under another mark as well). */
 export const RELEASE_WORKER_VERSION = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+/**
+ * THE VERSION OF THE CAPTURE WORKER THIS CORE WAS BUILT TO DRIVE (wave H driver F; gate 64 condition
+ * C7, ruling D194): the word `apps/capture-worker/src/worker.h` defines as `WORKER_VERSION` -
+ * `protocol-pins.test.ts` and `wave-h-f.test.ts` hold the two EQUAL, so a worker release without
+ * this constant fails a test. The allowlist is this ONE word: the protocol number does not move for
+ * an additive member, so a worker of an earlier tree (no fragment size bound, no stated sync level)
+ * speaks the same protocol and has the release FORM - only its version tells it apart.
+ */
+export const CAPTURE_WORKER_VERSION = 'capture-worker/0.5.0';
 
 /** True when a worker version carries the proof-build mark, in any case and at any place. */
 export function isProofWorkerVersion(workerVersion: string): boolean {
@@ -259,7 +282,14 @@ export function workerVersionRefusalOf(hello: { readonly protocolVersion: number
   if (hello.protocolVersion !== CAPTURE_PROTOCOL_VERSION) return CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH;
   if (isProofWorkerVersion(hello.workerVersion)) return CaptureBootRefusal.WORKER_PROOF_BUILD;
   if (!RELEASE_WORKER_VERSION.test(hello.workerVersion)) return CaptureBootRefusal.WORKER_VERSION_UNKNOWN;
+  // A release word, and not the one this Core drives: refused by name (gate 64 C7). The word has the release form, so it can be repeated.
+  if (hello.workerVersion !== CAPTURE_WORKER_VERSION) return CaptureBootRefusal.WORKER_VERSION_MISMATCH;
   return null;
+}
+
+/** What a refused version is said with: expected and found. Only for a word of the release form (checked by the caller's refusal code). */
+export function workerVersionMismatchReasonOf(found: string): string {
+  return `expected ${CAPTURE_WORKER_VERSION}, found ${found}`;
 }
 
 // ── the step ──────────────────────────────────────────────────────────────────────────────────
@@ -361,7 +391,7 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
   if (hello.outcome !== 'HELLO' && hello.failure === HandshakeFailure.MEDIA_LIBRARY_MISMATCH) return refuse(CaptureBootRefusal.WORKER_MEDIA_LIBRARY_MISMATCH, 'LIBAVFORMAT_VERSION_MISMATCH');
   if (hello.outcome !== 'HELLO') return refuse(CaptureBootRefusal.WORKER_NO_HANDSHAKE, hello.failure);
   const version = workerVersionRefusalOf(hello);
-  if (version !== null) return refuse(version, null);
+  if (version !== null) return refuse(version, version === CaptureBootRefusal.WORKER_VERSION_MISMATCH ? workerVersionMismatchReasonOf(hello.workerVersion) : null);
 
   const evidenceVolume = Object.freeze({ totalBytes: volume.totalBytes, freeBytes: volume.freeBytes });
   sinks.info({ code: 'CAPTURE_BOOT_CHECKS_PASSED', operation, checks: 'real', workerVersion: hello.workerVersion, volumeTotalBytes: volume.totalBytes ?? -1, volumeFreeBytes: volume.freeBytes ?? -1 }, PASSED);

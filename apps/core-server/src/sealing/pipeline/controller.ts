@@ -37,8 +37,34 @@ export interface SealingEngineHost {
   completeSeal(input: CompleteSealInput, also?: (unit: UnitContext, evidenceId: string) => Promise<void>): Promise<unknown>;
   state(): {
     readonly session: { readonly id: string; readonly state: string; readonly stoppedAt: number | null; readonly fault: { readonly fromState: string } | null } | null;
-    readonly evidence: readonly { readonly sessionId: string; readonly manifestHash: string; readonly integritySource?: string }[];
+    readonly evidence: readonly SealedItemOfState[];
   };
+}
+
+/** What the controller reads of an evidence item of the engine's state. */
+export interface SealedItemOfState {
+  readonly sessionId: string;
+  readonly manifestHash: string;
+  readonly integritySource?: string;
+  /** The stored custody of the item: the seal of an interrupted recording writes `RECORDING_INTERRUPTED` in the unit that commits the item. */
+  readonly custody?: readonly { readonly action: string }[];
+  /** The sealed manifest's own flag, where the Core states it on the item (`engine/sealed-facts-doors.ts`). */
+  readonly interrupted?: boolean;
+}
+
+/** Custody action the seal of an interrupted recording writes (`@dems/shared/sim` `CUSTODY_RECORDING_INTERRUPTED`). */
+const CUSTODY_RECORDING_INTERRUPTED = 'RECORDING_INTERRUPTED';
+
+/**
+ * THE INTERRUPTED FACT OF A SEALED SESSION, read from its committed item (closing pass Z1, item 7).
+ * `stoppedAt` cannot say it: since wave H driver B the seal of an interrupted recording writes
+ * `stoppedAt` (the end of the durable media) AT SEALED, so a sealed interrupted session has one as a
+ * stopped session has. The same rule as the shared `interruptedFactOf`: the sealed manifest's flag
+ * is the answer where the item states it; otherwise the custody entry of the seal.
+ */
+export function sealedItemInterrupted(item: SealedItemOfState): boolean {
+  if (typeof item.interrupted === 'boolean') return item.interrupted;
+  return (item.custody ?? []).some((entry) => entry.action === CUSTODY_RECORDING_INTERRUPTED);
 }
 
 /**
@@ -130,9 +156,10 @@ export function createSealingController(options: SealingControllerOptions): Seal
       const committed = options
         .engine()
         .state()
-        .evidence.some((item) => item.sessionId === session.id && item.integritySource === 'REAL');
-      if (!committed || !(await options.hasOpenSealingRows(session.id))) return { action: 'NONE' };
-      return { action: 'FINISH', sessionId: session.id, cause: stopped ? 'STOPPED' : 'INTERRUPTED' };
+        .evidence.find((item) => item.sessionId === session.id && item.integritySource === 'REAL');
+      if (committed === undefined || !(await options.hasOpenSealingRows(session.id))) return { action: 'NONE' };
+      // NOT `stoppedAt` (closing pass Z1): a sealed interrupted session has one too. The committed item says which it was.
+      return { action: 'FINISH', sessionId: session.id, cause: sealedItemInterrupted(committed) ? 'INTERRUPTED' : 'STOPPED' };
     }
     const from = session.state === 'FAULT' || session.state === 'RECOVERY' ? (session.fault?.fromState ?? null) : session.state === 'FINALIZING' || session.state === 'STOPPING' ? session.state : null;
     if (from === null || !RECORDED_STATES.includes(from)) return { action: 'NONE' };

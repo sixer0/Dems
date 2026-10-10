@@ -62,7 +62,7 @@ import {
   type MotionSettings,
 } from '@/motion';
 import { BackGuardDialog, useBackGuard, type SessionStep } from '@/navigation';
-import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
+import { PendingSpinner, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { DevicesCheckStep } from './devices-check-step';
 import { LiveDeviceColumn } from './device-previews';
 import { DiscardDialog, useFlowBackPrompt } from './flow-guard';
@@ -89,7 +89,7 @@ import {
   type WizardStep,
 } from './session-new-model';
 import { markMonitorHandoff } from '@/features/session-live/monitor-handoff';
-import { LocalSourceNotStarted, LocalSourceNoticeDialog } from '@/features/capture-selector/local-source-notice';
+import { LocalSourceNotStarted, LocalSourceNoticeDialog, LocalSourcesChecking, useLocalSourcesCheckingHint } from '@/features/capture-selector/local-source-notice';
 import { nextCaseNumber } from './sim-adapter';
 import { StepBoundary } from './step-boundary';
 import {
@@ -194,7 +194,11 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
 
   // A back attempt, or the state leaving ARMED (a fault), stops a running countdown; in Live mode so
   // does a Core link that went down (a recording starts only over a connected link).
-  const stopCountdown = remaining !== null && (back.guard.isPrompting || data.state !== 'ARMED' || linkDown);
+  // Wave H closing pass Z2 (D206, the mobile half): so does knowledge of the capture sources that is lost
+  // (`localSourceGate.checking`: the list gone, stale after a reconnect). The start is sent only if the
+  // sources are still known; the sender's gate refuses at the moment of sending anyway (`ask`), and here the
+  // countdown ENDS instead of running to a refused launch - the unused consent is dropped by the effect below.
+  const stopCountdown = remaining !== null && (back.guard.isPrompting || data.state !== 'ARMED' || linkDown || actions.localSourceGate.checking);
   if (stopCountdown) setRemaining(null);
 
   // Live mode: the wizard is left for Home once its permission is gone (the setup session stays on
@@ -370,9 +374,12 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
 
   // ── Footer (the MB 3 gold button, pinned on phones) ──────────────────────────────────────────
   const warningsAcknowledged = itemsWith(data.precheck?.items ?? [], 'WARN').length;
+  // Fix wave H (G70-08): while the device classes of the selector are not known, the controls that open a device are disabled with the reason.
+  const sourcesChecking = actions.localSourceGate.checking;
+  const sourcesCheckingHint = useLocalSourcesCheckingHint(sourcesChecking);
   let footer: ReactNode;
   if (current === 1) {
-    const invalid = !form.formState.isValid;
+    const invalid = !form.formState.isValid || sourcesChecking;
     footer = (
       <Button
         testID="session-new-next"
@@ -380,7 +387,11 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
         size="lg"
         isDisabled={invalid}
         onPress={() => void onNextInfo()}
-        {...busyState(createPress.busy, invalid)}
+        // Wave H closing pass Z2 (G70-04): Android appends the state words to the view's own description
+        // and skips a view that has none - without a label the button read only "busy".
+        accessibilityLabel={t('common.actions.next')}
+        {...sourcesCheckingHint}
+        {...controlState(createPress.busy, invalid)}
       >
         <Button.Label>{t('common.actions.next')}</Button.Label>
         {createPress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
@@ -389,15 +400,24 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   } else if (current === 2) {
     const blocked = !canLeaveGate(phase, acknowledged, data.state);
     footer = (
-      <Button testID="session-new-next" variant="primary" size="lg" isDisabled={blocked} onPress={onNextGate} {...busyState(gatePress.busy, blocked)}>
+      <Button testID="session-new-next" variant="primary" size="lg" isDisabled={blocked} onPress={onNextGate} accessibilityLabel={t('common.actions.next')} {...controlState(gatePress.busy, blocked)}>
         <Button.Label>{t('common.actions.next')}</Button.Label>
         {gatePress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
       </Button>
     );
   } else {
-    const startDisabled = data.state !== 'ARMED' || remaining !== null || launching || linkDown;
+    const startDisabled = data.state !== 'ARMED' || remaining !== null || launching || linkDown || sourcesChecking;
     footer = (
-      <Button testID="session-new-start" variant="primary" size="lg" isDisabled={startDisabled} onPress={onStart} {...busyState(startPress.busy, startDisabled)}>
+      <Button
+        testID="session-new-start"
+        variant="primary"
+        size="lg"
+        isDisabled={startDisabled}
+        onPress={onStart}
+        accessibilityLabel={launching ? t('sessionNew.ready.starting') : t('common.actions.startRecording')}
+        {...sourcesCheckingHint}
+        {...controlState(startPress.busy, startDisabled)}
+      >
         {startPress.pending ? (
           <PendingSpinner testID="session-new-start-spinner" color={palette.danger} />
         ) : (
@@ -494,7 +514,13 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
     </KeyboardAwareScrollView>
   );
 
-  const footerBar = <View style={[styles.footer, arrangement === 'phone' ? null : styles.footerWide]}>{footer}</View>;
+  const footerBar = (
+    <View style={[styles.footer, arrangement === 'phone' ? null : styles.footerWide]}>
+      {/* Fix wave H (G70-08): the reason of the disabled Next (step 1) / Start Recording (step 3), in visible text. */}
+      <LocalSourcesChecking checking={sourcesChecking && current !== 2} testID="session-new-sources-checking" />
+      {footer}
+    </View>
+  );
 
   return (
     <SafeScreen id="session-new">
@@ -659,7 +685,17 @@ function handOffToMonitor(navigation: StackNavigation, fallback: () => void): vo
   fallback();
 }
 
-// `busyState` and `PendingSpinner` (LB-1) come from `@/runtime` (row M1 follow-up, D164).
+// `PendingSpinner` (LB-1) comes from `@/runtime` (row M1 follow-up, D164); `busyState` of the same module is the rule the function below replaces here.
+
+/**
+ * THE ACCESSIBILITY STATE OF A FOOTER CONTROL, ALWAYS STATED (wave H driver B, finding G70-04; ux §14.3).
+ * `busyState` states `busy: true` while a command is out and DROPS the prop when idle. React Native's
+ * Android view ignores a removed `accessibilityState`, so the control went on announcing "busy" after
+ * its action had ended (Next after "Not now"). Here the idle control says `busy: false` itself.
+ */
+function controlState(busy: boolean, disabled: boolean): { accessibilityState: { busy: boolean; disabled: boolean } } {
+  return { accessibilityState: { busy, disabled } };
+}
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },

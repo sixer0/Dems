@@ -67,6 +67,44 @@ export const CAPTURE_FAULT_SENTENCES = {
   TELEMETRY_SUBJECT_UNKNOWN: 'The capture was stopped: the capture worker reported a device that is not part of this session.',
   /** The supervisor ended the worker because it said it changed the microphone and the Core had commanded no change (R63-05). */
   SWITCH_NOT_COMMANDED: 'The capture was stopped: the capture worker changed the microphone without a command from the Core.',
+  // ── The causes the Core's capture supervisor ends or refuses a capture with (`CaptureDownReason`; wave H, request of
+  //    driver F; gate 64 C4, finding G75-05). About the capture as a whole: whether the recording was interrupted or
+  //    nothing was recorded is the session's fact, said by the surface that shows the session, not by the cause. ─────
+  SESSION_MISMATCH: 'The capture was stopped: the capture worker answered for another session than this one.',
+  HELLO_TWICE: 'The capture was stopped: the capture worker introduced itself a second time.',
+  HELLO_EXPECTED: 'The capture was stopped: the capture worker sent other messages before it introduced itself.',
+  WARNING_SUBJECT_UNKNOWN: 'The capture was stopped: the capture worker raised a warning about a device that is not part of this session.',
+  RECORD_BEFORE_START: 'The capture was stopped: the capture worker reported recorded media before the recording was started.',
+  RECORD_SUBJECT_UNKNOWN: 'The capture was stopped: the capture worker reported recorded media for a device that is not part of this session.',
+  RECORD_SEQUENCE_GAP: 'The capture was stopped: a record of the capture worker arrived out of sequence, so the Core cannot account for every fragment.',
+  RECORD_AFTER_SEAL: 'The capture was stopped: the capture worker reported recorded media after it had reported its work complete.',
+  RECORD_REPEATED: 'The capture was stopped: the capture worker reported a once-only fact of a camera a second time.',
+  RECORD_RATE_EXCEEDED: 'The capture was stopped: the capture worker sent records faster than the allowed rate.',
+  WORKER_FRAME_INVALID: 'The capture was stopped: the capture worker sent a message the Core could not read.',
+  WORKER_SPAWN_FAILED: 'The capture worker program could not be started.',
+  WORKER_NOT_CONFIGURED: 'No capture worker program is configured on this Core.',
+  WORKER_HELLO_TIMEOUT: 'The capture worker did not answer after it was started.',
+  WORKER_PROTOCOL_MISMATCH: 'The capture worker speaks another version of the capture protocol than this Core.',
+  WORKER_PROOF_BUILD: 'The capture worker program is a test build. The Core does not record with it.',
+  WORKER_VERSION_UNKNOWN: 'The capture worker program does not name a release version. The Core does not record with it.',
+  WORKER_VERSION_MISMATCH: 'The capture worker program is another version than the one this Core was built to drive. The Core does not record with it.',
+  WORKER_MEDIA_LIBRARY_MISMATCH: 'The capture worker found another media library on this host than the one it was verified with. It does not record.',
+  WORKER_OUTPUT_EXISTS: 'The capture worker did not start: a recording file of this session already exists, and it is never overwritten.',
+  WORKER_START_REFUSED: 'The capture worker refused to start the recording.',
+  WORKER_START_TIMEOUT: 'The capture worker did not confirm the start of the recording in time.',
+  WORKER_HEARTBEAT_TIMEOUT: 'The capture worker stopped responding and was ended by the Core.',
+  WORKER_CRASHED: 'The capture worker reported a failure and ended.',
+  WORKER_KILLED: 'The capture worker process was killed.',
+  WORKER_EXIT_NONZERO: 'The capture worker process ended with an error.',
+  WORKER_EXIT_UNEXPECTED: 'The capture worker process ended although nobody had stopped the recording.',
+  WORKER_STOP_NOT_ACKNOWLEDGED: 'The capture worker ended without confirming the stop.',
+  WORKER_TIMELINE_END_MISSING: 'The capture worker ended without closing the audio timeline.',
+  STOP_TIMEOUT: 'The capture worker did not stop in time and was ended by the Core. The last seconds of the recording may be missing.',
+  /**
+   * The fault the DEMO control raised (operation 73 `inject CAPTURE_FAULT`; wave H, G75-09). The
+   * simulator's session keeps recording: the sentence says who raised it and claims no interruption.
+   */
+  DEMO_CAPTURE_FAULT: 'The demo control raised a capture fault. The recording is not affected.',
   // ── A notice of the session's capture that is no fault ───────────────────────────────────────
   /**
    * The first durable fragment of a camera file was NOT synced through the drive cache (the worker's
@@ -118,6 +156,37 @@ export const CAPTURE_REASON_SEVERITY: Readonly<Record<CaptureFaultReason, Captur
   CAPTURE_STOP_NOT_CLEAN: 'CRITICAL',
   TELEMETRY_SUBJECT_UNKNOWN: 'CRITICAL',
   SWITCH_NOT_COMMANDED: 'CRITICAL',
+  SESSION_MISMATCH: 'CRITICAL',
+  HELLO_TWICE: 'CRITICAL',
+  HELLO_EXPECTED: 'CRITICAL',
+  WARNING_SUBJECT_UNKNOWN: 'CRITICAL',
+  RECORD_BEFORE_START: 'CRITICAL',
+  RECORD_SUBJECT_UNKNOWN: 'CRITICAL',
+  RECORD_SEQUENCE_GAP: 'CRITICAL',
+  RECORD_AFTER_SEAL: 'CRITICAL',
+  RECORD_REPEATED: 'CRITICAL',
+  RECORD_RATE_EXCEEDED: 'CRITICAL',
+  WORKER_FRAME_INVALID: 'CRITICAL',
+  WORKER_SPAWN_FAILED: 'CRITICAL',
+  WORKER_NOT_CONFIGURED: 'CRITICAL',
+  WORKER_HELLO_TIMEOUT: 'CRITICAL',
+  WORKER_PROTOCOL_MISMATCH: 'CRITICAL',
+  WORKER_PROOF_BUILD: 'CRITICAL',
+  WORKER_VERSION_UNKNOWN: 'CRITICAL',
+  WORKER_VERSION_MISMATCH: 'CRITICAL',
+  WORKER_MEDIA_LIBRARY_MISMATCH: 'CRITICAL',
+  WORKER_OUTPUT_EXISTS: 'CRITICAL',
+  WORKER_START_REFUSED: 'CRITICAL',
+  WORKER_START_TIMEOUT: 'CRITICAL',
+  WORKER_HEARTBEAT_TIMEOUT: 'CRITICAL',
+  WORKER_CRASHED: 'CRITICAL',
+  WORKER_KILLED: 'CRITICAL',
+  WORKER_EXIT_NONZERO: 'CRITICAL',
+  WORKER_EXIT_UNEXPECTED: 'CRITICAL',
+  WORKER_STOP_NOT_ACKNOWLEDGED: 'CRITICAL',
+  WORKER_TIMELINE_END_MISSING: 'CRITICAL',
+  STOP_TIMEOUT: 'CRITICAL',
+  DEMO_CAPTURE_FAULT: 'CRITICAL',
   // In the development operation the capture side raises it as advice (INFO): `critical: false` of the notice.
   EVIDENCE_VOLUME_SYNC_NOT_FULL: 'CRITICAL',
 };
@@ -163,4 +232,40 @@ export function captureFaultSentence(reason: string | null | undefined, device: 
   }
   if (typeof reason === 'string' && REASON_CODE.test(reason)) return fill(device === null ? CAPTURE_FAULT_UNKNOWN_SENTENCES.capture : CAPTURE_FAULT_UNKNOWN_SENTENCES.device, name, reason);
   return fill(device === null ? CAPTURE_FAULT_NO_REASON_SENTENCES.capture : CAPTURE_FAULT_NO_REASON_SENTENCES.device, name, '');
+}
+
+// ── An INTERRUPTED SEAL (wave H, findings G75-03 / G75-08; ruling D197) ───────────────────────────
+
+/** The reason the demo control's own capture fault carries (`injectFaultTransition`). Never a capture's. */
+export const DEMO_CAPTURE_FAULT_REASON = 'DEMO_CAPTURE_FAULT' satisfies CaptureFaultReason;
+
+/**
+ * THE WORDS OF A SEALED RECORDING THAT WAS INTERRUPTED. Every session surface of every client names
+ * it with `title` - never the plain sealed state - followed by the sentence of its cause
+ * (`interruptedSealCauseSentence`) and `kept`. The English block `common.interruptedSeal` of the
+ * i18n resources IS this table (imported, not copied).
+ *
+ * `{{kind}}`: the code of a fault that is no capture fault (the simulator's own critical faults).
+ */
+export const INTERRUPTED_SEAL_SENTENCES = {
+  title: 'Sealed — recording was interrupted',
+  /** The short form for a stamp. */
+  short: 'Interrupted',
+  /** The form for a status chip of a list row (the full `title` is its accessibility label). */
+  chip: 'Sealed — interrupted',
+  kept: 'The evidence holds the recording up to the interruption.',
+  otherCause: 'The recording ended at a fault ({{kind}}) before it was stopped.',
+  noCause: 'The recording ended before it was stopped.',
+} as const;
+
+/**
+ * The cause sentence of an interrupted seal. `faultKind`: the fault that ended the recording, as
+ * the custody entry `RECORDING_INTERRUPTED` of the item (or the `fault` of the session) holds it;
+ * `reason`: the reason of the capture fault when one is known. A capture fault reads the capture's
+ * own sentence (`captureFaultSentence`); another fault is named by its code; none claims no cause.
+ */
+export function interruptedSealCauseSentence(faultKind: string | null | undefined, reason: string | null = null): string {
+  if (faultKind === 'CAPTURE_FAULT') return captureFaultSentence(reason, null);
+  if (typeof faultKind === 'string' && REASON_CODE.test(faultKind)) return INTERRUPTED_SEAL_SENTENCES.otherCause.replaceAll('{{kind}}', faultKind);
+  return INTERRUPTED_SEAL_SENTENCES.noCause;
 }

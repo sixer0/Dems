@@ -26,6 +26,18 @@ import {
   type SttConfig,
   type SttConfigUpdateRequest,
 } from '@dems/shared/api'
+import { OperatorRole, ROLE_PERMISSIONS, type Permission } from '@dems/shared/sim'
+
+/**
+ * EVERY role the access rule of a permission admits, least privileged first (gate 81, finding
+ * G81-03): the read-only hint of this section named "the Supervisor role" although the contract
+ * gives `CAPTURE_CONFIG` to the Supervisor AND the Technician (C3 §2.5, operations 91 / 92; ux
+ * §8a). A hint states the rule, not its first member. Read from the one role table.
+ */
+const ROLES_IN_ORDER = [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN] as const
+export function rolesHoldingPermission(permission: Permission): readonly OperatorRole[] {
+  return ROLES_IN_ORDER.filter((role) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission))
+}
 
 /**
  * What this section reads of a failed call of the typed client (`SttCallFailure`, which fits this

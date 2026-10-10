@@ -19,6 +19,7 @@ import {
   readProbeAnswer,
   serviceAddressFor,
 } from '../probe-answer';
+import { FAKE_ONVIF_NOT_XML_BODY } from '../../../../../test/support/fake-onvif-stub';
 import { answerXml, matchXml, scopesOf, uuidUrn } from './support';
 
 const HOST = '192.0.2.20';
@@ -106,6 +107,28 @@ describe('M4-SEC-DISC-1: hostile and odd answers are dropped with a reason and n
     expect(readProbeAnswer(Buffer.from(Array.from({ length: 512 }, (_unused, index) => (index * 97 + 13) % 256))).ok).toBe(false);
     expect(dropOf(good.slice(0, good.length - 40))).toBe('NOT_XML');
     expect(dropOf('<a><b></a></b>')).toBe('NOT_XML');
+  });
+
+  // Pass H-Y (checkpoint wave H: `{ NOT_XML: 3, DECLARATION: 1 }` once in a whole run). The reader gives ONE reason per
+  // input and its rules are ordered: byte length, then a `<!` declaration in the BYTES, then depth, then the parser. So
+  // bytes that are no XML but hold `<!` are a DECLARATION, by rule and every time. The stub's NOT_XML answer used to be
+  // random bytes, which hold `<!` about once in 130; it is a fixed body now, and each input is pinned to its one reason.
+  it('one reason per hostile input: the stub\'s NOT_XML body is NOT_XML, and bytes that are no XML but hold a declaration are a DECLARATION', () => {
+    const reasonOf = (input: Buffer): string => {
+      const reading = readProbeAnswer(input);
+      return reading.ok ? 'READ' : reading.drop;
+    };
+    expect(reasonOf(FAKE_ONVIF_NOT_XML_BODY)).toBe('NOT_XML');
+    // The same bytes with `<!` written over two of them: the declaration rule answers first.
+    const withDeclaration = Buffer.from(FAKE_ONVIF_NOT_XML_BODY);
+    withDeclaration.write('<!', 200, 'latin1');
+    expect(reasonOf(withDeclaration)).toBe('DECLARATION');
+    // CONTROL: `<!--` and `<![CDATA[` are no declaration - the same bytes with a comment opener stay NOT_XML.
+    const withComment = Buffer.from(FAKE_ONVIF_NOT_XML_BODY);
+    withComment.write('<!--', 200, 'latin1');
+    expect(reasonOf(withComment)).toBe('NOT_XML');
+    // The same answer however often it is asked.
+    expect(Array.from({ length: 4 }, () => reasonOf(Buffer.from(FAKE_ONVIF_NOT_XML_BODY)))).toEqual(['NOT_XML', 'NOT_XML', 'NOT_XML', 'NOT_XML']);
   });
 
   it('a body over 16 KiB is refused on its byte length, before any text is made', () => {

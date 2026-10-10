@@ -65,3 +65,13 @@ node --import tsx scripts/gen-demo-media.ts --as-of 2026-10-01T10:00
 - Encoded with ffmpeg 9.0.2 (libx264, native AAC).
 
 Media size (without this README and the index): 41.46 MiB.
+
+## Note on real capture and version-2 packages (added by hand on 2026-10-10, task 3 row 96, register DOC-04)
+
+This section is NOT written by `gen-demo-media.ts`: a regeneration replaces this file and removes it, until the generator's README text carries it. Everything above is unchanged and still describes this folder exactly.
+
+- The media here are the demo pictures and voices of Simulated mode and of the version-1 demo evidence packages (`../demo-evidence/`): four separate track files per item (`VIDEO-01`, `VIDEO-02`, `AUDIO-01` = MIC 1, `AUDIO-02` = MIC 2). The real-capture task did not change them.
+- **A real recording does not use this layout.** The capture worker writes one file per camera with the ONE session audio track (`AUDIO-01`) inside it; `AUDIO-02` exists in the version-1 demo data only. The two microphone inputs are `MIC-01` and `MIC-02` (primary and standby), and which one feeds the session audio at a given time is recorded as intervals.
+- **None of these files is used by a version-2 demo package.** The two version-2 demo packages of a development-capture Core are recorded at seed time from generated test sources (a test picture and generated audio) by the Core's helper program, and are sealed into that Core's media store. They are never stored in this folder or in git.
+- In Live mode the camera picture shown by the clients is still the demo loop of `live/`; there is no live preview of a real camera in this phase.
+- More: the repository `README.md`, section "Real capture, sealing and transcript".

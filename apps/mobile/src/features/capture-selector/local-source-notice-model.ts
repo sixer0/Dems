@@ -58,6 +58,44 @@ export function localSourceNoticeOf({ devices, selectors, live }: LocalSourceNot
   return camera === null && microphone === null ? null : { camera, microphone };
 }
 
+/**
+ * Whether the client KNOWS the device classes the decision above is made from (fix wave H, gate 70
+ * finding G70-08; ruling D196: the notice rule FAILS CLOSED while the device list is unknown).
+ * `localSourceNoticeOf` answers "no local device" for a line whose device it cannot find, so it may
+ * only be trusted when this is true. While it is false nothing that opens a device is sent.
+ *
+ * | Unknown | What the client detects |
+ * |---|---|
+ * | not loaded yet | the Live link is CONNECTING; or the store holds no selector line (no Core data) |
+ * | in error | the Live link is STALE or OFFLINE |
+ * | stale after a reconnect | the Live link is CONNECTING again or RESYNCING: the store still holds the list of the socket before |
+ * | incomplete | a selector line names a device the device list does not hold |
+ *
+ * Simulated client mode is always known: nothing is opened there and nothing is asked.
+ */
+export interface LocalSourcesKnownInput {
+  readonly devices: readonly { readonly id: string }[];
+  readonly selectors: readonly (NoticeSelector | null | undefined)[];
+  /** The data comes from a Core server (Live mode). */
+  readonly live: boolean;
+  /** The Live link state (`LiveLinkState`); null when there is none. */
+  readonly link: string | null;
+}
+
+export function localSourcesKnown({ devices, selectors, live, link }: LocalSourcesKnownInput): boolean {
+  if (!live) return true;
+  if (link !== 'ONLINE') return false;
+  let lines = 0;
+  for (const selector of selectors) {
+    if (selector === null || selector === undefined) continue;
+    for (const line of [...selector.cameras, ...selector.mics]) {
+      lines += 1;
+      if (!devices.some((device) => device.id === line.deviceId)) return false;
+    }
+  }
+  return lines > 0;
+}
+
 /** The slices the decision reads, as a simulator or Live store holds them. */
 export interface LocalSourceNoticeState {
   readonly captureDevices: { readonly devices: readonly NoticeDevice[] };
@@ -67,6 +105,10 @@ export interface LocalSourceNoticeState {
 
 export function localSourceNoticeOfState(state: LocalSourceNoticeState, live: boolean): LocalSourceNotice | null {
   return localSourceNoticeOf({ devices: state.captureDevices.devices, selectors: [state.session?.captureConfig, state.captureConfig], live });
+}
+
+export function localSourcesKnownOfState(state: LocalSourceNoticeState, live: boolean, link: string | null): boolean {
+  return localSourcesKnown({ devices: state.captureDevices.devices, selectors: [state.session?.captureConfig, state.captureConfig], live, link });
 }
 
 /** The decision as one comparable string for a `useSim` selector (F74-13); `''` = no notice. */

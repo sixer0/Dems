@@ -2,8 +2,11 @@
  * THE RECEIVER'S VERIFICATION of an export (blueprint row 91; evidence package spec §G.2; check
  * M8-EXP-1 "export verifies at the destination").
  *
- * What a receiver holds: the three files of the export - `EXP-<id>.zip`, `export-manifest.json`,
- * `export-manifest.sig` - and the archive unpacked into a folder. What it does NOT hold: the
+ * What a receiver holds, since wave H (gate finding G94-03, ruling D200): ONE FILE, the downloaded
+ * archive `EXP-<id>.zip`, which carries its export manifest and signature inside
+ * (`export/EXP-<id>.manifest.json`, `.sig`) - and the archive unpacked into a folder. An export
+ * written before wave H is three files (`EXP-<id>.zip`, `export-manifest.json`,
+ * `export-manifest.sig`, given as `exportDir`); both forms verify here. What it does NOT hold: the
  * Core's session key and the Core's signing key. It may hold the Core's certificate hash, received
  * out of band (`trustedCertificateSha256`); without it a re-signed export verifies against itself
  * (SEC35-06) and the result says so (`anchored: false`).
@@ -14,8 +17,15 @@
  *         marking is consistent, and `export.manifestSha256` is the hash of its canonical body
  *   X-02  the export signature: of this manifest, by the certificate it names, which lies in the
  *         unpacked archive (and is a trusted one when anchors are given)
- *   X-03  the archive file has the recorded length and SHA-256
+ *   X-03  the archive file. SELF-CONTAINED form: an archive cannot contain its own hash, so the
+ *         manifest names none; the check holds the embedded manifest and signature to their
+ *         per-export names, and - when the receiver was told the archive's hash out of band (the job
+ *         answer of operation 87, the audit row of the download: `expectedArchiveSha256`) - the
+ *         file to that hash. Without it the hash is computed and REPORTED (`archive.sha256`,
+ *         `archive.compared: false`): every byte of every entry is still held by X-04 through the
+ *         signed manifest. DETACHED form: the archive file has the recorded length and SHA-256
  *   X-04  the unpacked folder holds exactly the recorded entries, each with its length and SHA-256
+ *         (and, in the self-contained form, the two export files and nothing else)
  *   X-05  THE SEALED MANIFEST AND ITS FILES, with the ONE verifier of the project
  *         (`verifyPackageV2`) run over the unpacked folder without a key: manifest structure and
  *         hash, the seal's signature and certificate, the transcript and its signed revisions,
@@ -36,13 +46,13 @@
  * It writes nothing and never throws for anything an export can contain.
  */
 import { createHash } from 'node:crypto';
-import { open, readFile } from 'node:fs/promises';
+import { open, readFile, readdir } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { PackageFile, cameraFilePath, manifestSignedMessage, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
 import { pemCertificateSha256, retainedCertificatePath, verifyPackageV2, type VerifyCheckId } from '@dems/shared/evidence-verify';
 import { readSigningCertificate, verifyEd25519 } from '../capture';
 import { corePorts, createPackageReader } from '../evidence-verify';
-import { COMPOSITE_ENTRY, EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, compositeMarkingHolds, computeExportManifestSha256, parseExportManifest, parseExportSignature, type ExportManifest } from './export-manifest';
+import { COMPOSITE_ENTRY, EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, compositeMarkingHolds, computeExportManifestSha256, isSelfContainedExport, parseExportManifest, parseExportSignature, type ExportManifest } from './export-manifest';
 
 export const RECEIVER_CHECKS = [
   { id: 'X-01', name: 'Export manifest' },
@@ -76,13 +86,25 @@ export interface ReceiverVerifyResult {
   readonly derived: boolean | null;
   /** True when the signing certificates were held against anchors the caller gave. */
   readonly anchored: boolean;
+  /**
+   * The archive FILE, when the receiver gave it (or the detached form names it): its length and
+   * SHA-256 as computed here, and whether that hash was COMPARED with a value from outside the
+   * archive (the detached manifest's, or `expectedArchiveSha256`). Null: no archive file was read.
+   */
+  readonly archive: { readonly bytes: number; readonly sha256: string; readonly compared: boolean } | null;
+  /** True for the self-contained form: the export manifest and signature were read from inside the unpacked archive. */
+  readonly selfContained: boolean | null;
 }
 
 export interface ReceiverVerifyInput {
-  /** The folder with the three files of the export. */
-  readonly exportDir: string;
+  /** DETACHED form only: the folder with the three files of the export. Absent: the self-contained form. */
+  readonly exportDir?: string;
   /** The archive, unpacked. */
   readonly unpackedDir: string;
+  /** SELF-CONTAINED form: the archive file as received (hashed for the report and for `expectedArchiveSha256`). */
+  readonly archiveFile?: string;
+  /** SELF-CONTAINED form: the archive's SHA-256 as the Core stated it outside the archive (operation 87 `archive.sha256`). */
+  readonly expectedArchiveSha256?: string;
   /** SHA-256 of the Core's certificates, received out of band. */
   readonly trustedCertificateSha256?: readonly string[];
   readonly chunkBytes?: number;
@@ -117,10 +139,33 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   const findings = new Map<ReceiverCheckId, string[]>(RECEIVER_CHECKS.map((check) => [check.id, []]));
   const add = (id: ReceiverCheckId, code: string): void => void findings.get(id)?.push(code);
   const blocked = (...ids: readonly ReceiverCheckId[]): void => ids.forEach((id) => add(id, 'BLOCKED'));
-  const inExport = (name: string): string => `${input.exportDir}${sep}${name}`;
   const inUnpacked = (relative: string): string => `${input.unpackedDir}${sep}${relative.split('/').join(sep)}`;
   const anchors = input.trustedCertificateSha256;
   let development: boolean | null = null;
+  let archiveReport: ReceiverVerifyResult['archive'] = null;
+  let selfContained: boolean | null = null;
+
+  // WHERE THE EXPORT MANIFEST AND ITS SIGNATURE LIE. Detached: the two fixed names of the export
+  // folder. Self-contained: the ONE pair `export/EXP-<id>.manifest.{json,sig}` of the unpacked archive.
+  let manifestFile: string | null = null;
+  let signatureFile: string | null = null;
+  let embeddedId: string | null = null;
+  let locateFinding: string | null = null;
+  if (input.exportDir !== undefined) {
+    manifestFile = `${input.exportDir}${sep}${EXPORT_MANIFEST_FILE}`;
+    signatureFile = `${input.exportDir}${sep}${EXPORT_SIGNATURE_FILE}`;
+  } else {
+    try {
+      const ids = (await readdir(inUnpacked(PackageFile.EXPORT_DIR))).map((name) => /^(EXP-[0-9]{6})\.manifest\.json$/.exec(name)?.[1]).filter((id): id is string => id !== undefined);
+      if (ids.length === 1 && ids[0] !== undefined) {
+        embeddedId = ids[0];
+        manifestFile = inUnpacked(`${PackageFile.EXPORT_DIR}/${embeddedId}.manifest.json`);
+        signatureFile = inUnpacked(`${PackageFile.EXPORT_DIR}/${embeddedId}.manifest.sig`);
+      } else locateFinding = ids.length === 0 ? 'EXPORT_MANIFEST_UNREADABLE' : 'EXPORT_MANIFEST_AMBIGUOUS';
+    } catch {
+      locateFinding = 'EXPORT_MANIFEST_UNREADABLE';
+    }
+  }
 
   const result = (manifest: ExportManifest | null): ReceiverVerifyResult => {
     const checks = RECEIVER_CHECKS.map((check) => ({ ...check, ok: (findings.get(check.id) ?? []).length === 0, findings: Object.freeze([...(findings.get(check.id) ?? [])]) }));
@@ -132,13 +177,16 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
       development: findings.get('X-05')?.length === 0 ? development : null,
       derived: manifest === null ? null : manifest.export.derived,
       anchored: anchors !== undefined,
+      archive: archiveReport,
+      selfContained,
     });
   };
 
   // X-01
   let manifest: ExportManifest;
   try {
-    manifest = parseExportManifest(await readFile(inExport(EXPORT_MANIFEST_FILE), 'utf8'));
+    if (manifestFile === null) throw new Error(locateFinding ?? 'EXPORT_MANIFEST_UNREADABLE');
+    manifest = parseExportManifest(await readFile(manifestFile, 'utf8'));
   } catch (error) {
     add('X-01', error instanceof Error && error.message.startsWith('EXPORT_MANIFEST_') ? error.message : 'EXPORT_MANIFEST_UNREADABLE');
     blocked('X-02', 'X-03', 'X-04', 'X-05', 'X-06', 'X-07');
@@ -146,10 +194,15 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   }
   if (computeExportManifestSha256(manifest) !== manifest.export.manifestSha256) add('X-01', 'EXPORT_MANIFEST_HASH_MISMATCH');
   if (!compositeMarkingHolds(manifest)) add('X-01', 'EXPORT_COMPOSITE_MARKING');
+  selfContained = isSelfContainedExport(manifest);
+  // The form the manifest states is the form it was found in: a detached manifest inside an archive
+  // (or the reverse) is not the export the Core wrote.
+  if (selfContained !== (input.exportDir === undefined)) add('X-01', 'EXPORT_MANIFEST_FORM_MISMATCH');
+  if (embeddedId !== null && embeddedId !== manifest.export.exportId) add('X-01', 'EXPORT_MANIFEST_NAME_MISMATCH');
 
   // X-02
   try {
-    const signature = parseExportSignature(await readFile(inExport(EXPORT_SIGNATURE_FILE), 'utf8'));
+    const signature = parseExportSignature(await readFile(signatureFile ?? '', 'utf8'));
     if (signature.signedDigest !== manifest.export.manifestSha256) add('X-02', 'EXPORT_SIGNATURE_NOT_OF_MANIFEST');
     if (anchors !== undefined && !anchors.includes(signature.certificateSha256)) add('X-02', 'EXPORT_CERTIFICATE_NOT_TRUSTED');
     let pemText: string | null = null;
@@ -182,16 +235,35 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   }
 
   // X-03
-  const archive = await hashRange(inExport(manifest.package.file), 0, null, chunkBytes);
-  if (archive === null) add('X-03', 'ARCHIVE_MISSING');
-  else if (archive.bytes !== manifest.package.bytes || archive.sha256 !== manifest.package.sha256) add('X-03', 'ARCHIVE_HASH_MISMATCH');
+  const exportFiles = selfContained ? [`${PackageFile.EXPORT_DIR}/${manifest.export.exportId}.manifest.json`, `${PackageFile.EXPORT_DIR}/${manifest.export.exportId}.manifest.sig`] : [];
+  if (!selfContained) {
+    const archive = input.exportDir === undefined ? null : await hashRange(`${input.exportDir}${sep}${manifest.package.file}`, 0, null, chunkBytes);
+    if (archive === null) add('X-03', 'ARCHIVE_MISSING');
+    else {
+      archiveReport = { bytes: archive.bytes, sha256: archive.sha256, compared: true };
+      if (archive.bytes !== manifest.package.bytes || archive.sha256 !== manifest.package.sha256) add('X-03', 'ARCHIVE_HASH_MISMATCH');
+    }
+  } else {
+    const expected = input.expectedArchiveSha256;
+    if (expected !== undefined && !/^[0-9a-f]{64}$/.test(expected)) add('X-03', 'ARCHIVE_HASH_EXPECTATION_INVALID');
+    if (input.archiveFile !== undefined) {
+      const archive = await hashRange(input.archiveFile, 0, null, chunkBytes);
+      if (archive === null) add('X-03', 'ARCHIVE_MISSING');
+      else {
+        archiveReport = { bytes: archive.bytes, sha256: archive.sha256, compared: expected !== undefined };
+        if (expected !== undefined && archive.sha256 !== expected) add('X-03', 'ARCHIVE_HASH_MISMATCH');
+      }
+    } else if (expected !== undefined) add('X-03', 'ARCHIVE_MISSING');
+  }
 
   // X-04
   const listed = await createPackageReader(input.unpackedDir, { chunkBytes }).list(100_000);
   if (listed === null) add('X-04', 'UNPACKED_FOLDER_UNREADABLE');
   else {
     const recorded = new Map(manifest.package.entries.map((entry) => [entry.path, entry]));
-    for (const path of listed) if (!recorded.has(path)) add('X-04', `UNEXPECTED_ENTRY:${path}`);
+    // Self-contained: the two export files are entries of the archive that the manifest cannot list (it is one of them).
+    for (const path of listed) if (!recorded.has(path) && !exportFiles.includes(path)) add('X-04', `UNEXPECTED_ENTRY:${path}`);
+    for (const path of exportFiles) if (!listed.includes(path)) add('X-04', `ENTRY_MISSING:${path}`);
     for (const entry of manifest.package.entries) {
       const actual = listed.includes(entry.path) ? await hashRange(inUnpacked(entry.path), 0, null, chunkBytes) : null;
       if (actual === null) add('X-04', `ENTRY_MISSING:${entry.path}`);

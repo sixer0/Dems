@@ -20,7 +20,7 @@ import type { CaptureTimers } from '../types';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../adapters/errors';
 import { CaptureAdapterKind } from '../adapters/kinds';
 import { ConnectionTestOutcome, type AudioInputAdapter, type AudioInputDescriptor, type AudioOpenTarget, type CameraAdapter, type CameraSourceTarget, type CaptureDeviceEntry, type ConnectionTestResult, type DiscoveryResult, type MediaProfile, type SourceHandle } from '../adapters/types';
-import { LOCAL_CAMERA_PROFILE, MicGeneratedTone, createCameraHelpers, createMicHelper, type HelperDoor, type LocalMicStream, type LocalSourceError, type PipeFiles, type ProgramInspector } from '../adapters/local';
+import { LOCAL_CAMERA_PROFILE, MicGeneratedTone, createCameraHelpers, createMicHelper, type HelperDoor, type LocalMicStream, type LocalSourceError, type MicSource, type PipeFiles, type ProgramInspector } from '../adapters/local';
 
 interface GeneratedSourceOptions {
   /** The registry id of the built-in device this source stands behind (`CAM-02`, `MIC-02`, ...). */
@@ -98,6 +98,12 @@ export interface GeneratedMicOptions extends GeneratedSourceOptions {
   readonly runDir: string;
   /** Default: 880 Hz, the standby tone (audibly not a voice). */
   readonly tone?: MicGeneratedTone;
+  /**
+   * The speech fixture the boot fence vouched for (fix wave H; `fake-mic.ts`). When set, this
+   * microphone plays the file - synthetic speech, in real time, started again at its end - in the
+   * place of its tone. Still no device: a file input of the same helper, the same output line.
+   */
+  readonly speechFixture?: string;
   readonly files?: PipeFiles;
 }
 
@@ -108,6 +114,7 @@ export interface GeneratedMicAdapter extends AudioInputAdapter {
 
 export function createGeneratedMicAdapter(options: GeneratedMicOptions): GeneratedMicAdapter {
   const tone = options.tone ?? MicGeneratedTone.TONE_880;
+  const source: MicSource = options.speechFixture === undefined ? { kind: 'GENERATED', tone } : { kind: 'FIXTURE', path: options.speechFixture };
   const helper = createMicHelper({
     program: options.program,
     runDir: options.runDir,
@@ -132,7 +139,7 @@ export function createGeneratedMicAdapter(options: GeneratedMicOptions): Generat
     async open(inputId: string, target: AudioOpenTarget): Promise<LocalMicStream> {
       served(inputId);
       if (target.signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, inputId);
-      const stream = await helper.prepare({ deviceId: inputId, sessionId: target.sessionId, source: { kind: 'GENERATED', tone }, signal: target.signal });
+      const stream = await helper.prepare({ deviceId: inputId, sessionId: target.sessionId, source, signal: target.signal });
       stream.onLost((error) => options.onSourceLost?.(inputId, error));
       return stream;
     },

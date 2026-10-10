@@ -5,7 +5,9 @@
  */
 import type { SessionState } from '@dems/shared/domain';
 import {
+  HOST_CLOCK_PRECHECK_VALUE,
   PRECHECK_ORDER,
+  isPrecheckNote,
   roleHas,
   type PrecheckCheckId,
   type PrecheckItem,
@@ -146,12 +148,28 @@ export function resolvedCount(items: readonly PrecheckItem[]): number {
   return items.filter((item) => item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK').length;
 }
 
-export function itemsWith(items: readonly PrecheckItem[], status: 'WARN' | 'BLOCK'): PrecheckItem[] {
-  return items.filter((item) => item.status === status);
+/**
+ * A pre-check NOTE (wave H closing pass Z2; closing pass Z1's line of 10:30:00Z, ruling D203 (1)): an
+ * item at WARN level that states a fact of the installation and asks nothing of the operator - today
+ * the TIME item of a Core in its own capture, the host system clock (`isPrecheckNote`).
+ */
+export function precheckNoteOf(item: Pick<PrecheckItem, 'status' | 'params'> | null | undefined): boolean {
+  return item !== null && item !== undefined && isPrecheckNote(item);
 }
 
-/** Tone of a per-check result chip. */
-export function precheckTone(status: PrecheckItem['status']): StatusTone {
+/** The items at `status`. A NOTE is no warning: it is never among the WARN items to list, count or acknowledge. */
+export function itemsWith(items: readonly PrecheckItem[], status: 'WARN' | 'BLOCK'): PrecheckItem[] {
+  return items.filter((item) => item.status === status && !(status === 'WARN' && precheckNoteOf(item)));
+}
+
+/** True for the live value of the host-clock TIME item (`evaluatePrecheck` of a Core in its own capture); the encoded live row keeps no `params`. */
+export function hostClockValue(id: PrecheckCheckId, value: string): boolean {
+  return id === 'TIME' && value === HOST_CLOCK_PRECHECK_VALUE;
+}
+
+/** Tone of a per-check result chip. `note`: the item is a NOTE (`precheckNoteOf`) - informative, not a warning. */
+export function precheckTone(status: PrecheckItem['status'], note = false): StatusTone {
+  if (note) return 'info';
   switch (status) {
     case 'PASS':
       return 'success';
@@ -183,7 +201,8 @@ export function valueKey(id: PrecheckCheckId, value: string): string {
     case 'STORAGE':
       return `common.enums.storageState.${value}`;
     case 'TIME':
-      return `common.enums.timeSource.${value}`;
+      // Wave H closing pass Z2: the value of the host-clock note is no member of the time-source enumeration.
+      return value === HOST_CLOCK_PRECHECK_VALUE ? 'session.captureFacts.timeSource.hostClock' : `common.enums.timeSource.${value}`;
     case 'SECURITY':
       return `common.enums.securityState.${value}`;
     default:

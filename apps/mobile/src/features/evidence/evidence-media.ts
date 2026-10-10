@@ -26,6 +26,11 @@ export function mediaForEvidence(evidenceId: string): DemoMediaItem | null {
  * `EvidenceMediaRef`; only operation 40 does, one item per call. The detail asks operation 40 and
  * uses `posterOf` with the media the Core named. A media reference on the list's items (or on the
  * replicated `evidence` slice) would let the rows follow MS-2 as well.
+ *
+ * Wave H C2 (G94-02): the callers guard this join in Live mode. `evidence-row.tsx` draws a poster
+ * only for a v1 / simulated demo item by the item's own members (`item-facts.ts` `isDemoItem`), and
+ * `evidence-detail.tsx` only for bundled demo media of such an item; the room still below is the
+ * fallback of bundled DEMO media and is never drawn for a recording this Core sealed.
  */
 export function posterForEvidence(evidenceId: string): DemoMediaAsset {
   return posterOf(mediaForEvidence(evidenceId));

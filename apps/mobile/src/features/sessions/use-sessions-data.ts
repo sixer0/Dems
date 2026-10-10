@@ -10,6 +10,7 @@
 import { useMemo } from 'react';
 import type { SessionState } from '@dems/shared/domain';
 import {
+  recordingEndOf,
   selectOperatorById,
   selectPendingSummaryId,
   selectSessionHistory,
@@ -137,7 +138,7 @@ export function useSessionRow(sessionId: string | null): SessionRow | null {
  * the Recording bar and Home; `runtime/recording-elapsed.ts`).
  */
 export function useLiveElapsedSeconds(): number {
-  const fromStore = useSim((s) => elapsedSeconds(s.session?.startedAt ?? null, s.session?.stoppedAt ?? null, s.clock.now));
+  const fromStore = useSim((s) => elapsedSeconds(s.session?.startedAt ?? null, recordingEndOf(s.session), s.clock.now));
   return Math.max(fromStore, useRecordingTickerSeconds());
 }
 

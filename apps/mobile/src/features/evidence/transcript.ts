@@ -39,17 +39,30 @@ export interface TranscriptFailure {
   readonly code: string;
   /** The failed Live call (the Core's envelope), for the presenter; null outside Live mode or for an unreadable answer. */
   readonly failure: unknown;
+  /** `details.reason` of the refusal when it names one as a code (e.g. `SIMULATED_ITEM`); absent otherwise. Never a text. */
+  readonly reason?: string | null;
 }
 export type TranscriptAnswer<T> = { readonly ok: true; readonly data: T } | TranscriptFailure;
 
 const transcriptPath = (evidenceId: string): string => `/api/v1/evidence/${encodeURIComponent(evidenceId)}/transcript`;
 const UNREADABLE: TranscriptFailure = { ok: false, status: 200, code: 'ANSWER_UNREADABLE', failure: null };
 
-function simFailure(response: { readonly status: number; readonly body: unknown }): TranscriptFailure {
-  const error = (response.body as { error?: { code?: unknown } } | null)?.error;
-  return { ok: false, status: response.status, code: typeof error?.code === 'string' ? error.code : 'SIMULATOR_ERROR', failure: null };
+/** `details.reason` of an error envelope, when it is a code (wave H C2, G81-01). */
+function reasonOf(details: unknown): string | null {
+  const reason = typeof details === 'object' && details !== null ? (details as { reason?: unknown }).reason : null;
+  return typeof reason === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(reason) ? reason : null;
 }
-const liveFailure = (answer: { readonly status: number | null; readonly error: { readonly code: string } }): TranscriptFailure => ({ ok: false, status: answer.status, code: answer.error.code, failure: answer });
+function simFailure(response: { readonly status: number; readonly body: unknown }): TranscriptFailure {
+  const error = (response.body as { error?: { code?: unknown; details?: unknown } } | null)?.error;
+  return { ok: false, status: response.status, code: typeof error?.code === 'string' ? error.code : 'SIMULATOR_ERROR', failure: null, reason: reasonOf(error?.details) };
+}
+const liveFailure = (answer: { readonly status: number | null; readonly error: { readonly code: string; readonly details?: unknown } }): TranscriptFailure => ({
+  ok: false,
+  status: answer.status,
+  code: answer.error.code,
+  failure: answer,
+  reason: reasonOf(answer.error.details),
+});
 const parsed = <T,>(data: T | null): TranscriptAnswer<T> => (data === null ? UNREADABLE : { ok: true, data });
 
 /** Operation 84. */
@@ -89,10 +102,13 @@ export class TranscriptReadError extends Error {
   readonly status: number | null;
   readonly code: string;
   readonly refusal: TranscriptReadRefusal;
+  /** The Core's reason code of the refusal, or null (wave H C2: `SIMULATED_ITEM` words the pane, G81-01). */
+  readonly reason: string | null;
   constructor(failure: TranscriptFailure) {
     super('The transcript of an evidence item could not be read.');
     this.status = failure.status;
     this.code = failure.code;
+    this.reason = failure.reason ?? null;
     this.refusal = readRefusalOf(failure.status, failure.code);
   }
 }

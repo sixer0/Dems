@@ -9,6 +9,20 @@
  * - Otherwise: one operational event per 60 s (health check, time sync, storage integrity).
  * - Every arrival is stamped at its own scheduled time, so two runs with one seed produce the
  *   same rows (AC-51). A catch-up after a hidden period writes at most 120 rows.
+ *
+ * WHERE THE CAPTURE IS THE CORE'S OWN (`CreateSimOptions.capture: 'external'`; fix wave H driver A,
+ * finding G75-01, rulings D197 / D199) THIS FILE WRITES NO INTEGRITY STATEMENT. The recording
+ * stream above is a demonstration of what a recorder would log: random digests, a byte count read
+ * from a formula, a time source of the dataset. Beside a real recording each of those rows would
+ * be an invented fact in the Core's audit chain and in the sealed `audit-session-extract.jsonl`.
+ * So in that operation the recording stream does not run at all (no FRAME_HASH, WRITE_VERIFIED,
+ * TIMESTAMP_CONFIRMED row; no AUTOSAVE event; no AUTOSAVE / CHECK / HEALTH timeline item;
+ * `storage.lastWriteVerifiedAt` is not moved), and the idle stream writes nothing either:
+ * "Storage integrity check passed", "Time synchronized" and - since closing pass Z1, ruling
+ * D203 (4) - "System health check completed" are statements nobody measured.
+ * What a real recording has is written by the capture / sealing side: fragment checkpoints
+ * (`recording_fragments`), the capture state of the session, and at the seal the sealed facts.
+ * `captureFactsOf` below is what a session surface may say instead.
  */
 import { SessionState } from '../domain';
 import {
@@ -25,7 +39,7 @@ import { recordActivity } from './events';
 import { TRACK_ORDER, TRACK_SEGMENT_MS } from './evidence';
 import { RngStream, type Rng } from './rng';
 import { addTimelineItem, lastTimelineAt } from './session-machine';
-import type { EpochMs, SimState, SimSubsystem } from './types';
+import type { CaptureLevelSource, EpochMs, SimState, SimSubsystem } from './types';
 
 function segmentAt(startedAt: EpochMs, at: EpochMs): number {
   return Math.floor(Math.max(0, at - startedAt) / TRACK_SEGMENT_MS) + 1;
@@ -168,7 +182,44 @@ export function replayRecordingActivity(state: SimState, from: EpochMs, to: Epoc
   return next;
 }
 
-export function createGeneratorSubsystem(engine: EngineContext): SimSubsystem {
+/**
+ * WHAT A SESSION SURFACE MAY SAY OF THE CAPTURE AND ITS PROTECTION (finding G75-01), from the
+ * session payload alone. Null for a session of the simulator's own capture: its surfaces keep the
+ * demo checks.
+ *
+ * THE RULE OF THE STATE that tells the two apart is the member `captureDurable` (`capture-session.ts`,
+ * "why durable is no member here and `true` on the Core's real capture"): a recording of the Core's
+ * own capture CARRIES it from the accepted start on (`false` while the cameras connect, `true` from
+ * the first durable fragment, and after a restart again from the fragment rows); a durable recording
+ * of the simulator's capture does not. The simulator's own connecting second and its failed start
+ * carry `false` as well - there, too, nothing is recorded and no check has anything to pass.
+ *
+ *   capture      CONNECTING        accepted start, no durable fragment yet
+ *                DURABLE           recording, at least one fragment checkpoint is durable
+ *                ENDED             the recording ended (stopping, sealing, sealed, interrupted)
+ *                NOTHING_RECORDED  a failed start: no evidence file exists
+ *   protection   AT_SEAL           the media is plaintext on the evidence volume until the seal
+ *                                  encrypts it: NEVER "encrypted" while a recording runs
+ *                SEALED            the package was sealed: encrypted at the seal
+ *                NOTHING_RECORDED  there is nothing to protect
+ */
+export interface SessionCaptureFacts {
+  readonly capture: 'CONNECTING' | 'DURABLE' | 'ENDED' | 'NOTHING_RECORDED';
+  readonly protection: 'AT_SEAL' | 'SEALED' | 'NOTHING_RECORDED';
+}
+
+export function captureFactsOf(session: { readonly state: string; readonly captureDurable?: boolean } | null | undefined): SessionCaptureFacts | null {
+  if (session === null || session === undefined || typeof session.captureDurable !== 'boolean') return null;
+  if (session.captureDurable === false) {
+    return session.state === SessionState.RECORDING ? { capture: 'CONNECTING', protection: 'AT_SEAL' } : { capture: 'NOTHING_RECORDED', protection: 'NOTHING_RECORDED' };
+  }
+  if (session.state === SessionState.RECORDING) return { capture: 'DURABLE', protection: 'AT_SEAL' };
+  return { capture: 'ENDED', protection: session.state === SessionState.SEALED ? 'SEALED' : 'AT_SEAL' };
+}
+
+export function createGeneratorSubsystem(engine: EngineContext, capture: CaptureLevelSource = 'simulated'): SimSubsystem {
+  /** G75-01: the Core's own capture - this generator states no integrity fact (file header). */
+  const ownCapture = capture === 'external';
   let nextRecordingAt: number | null = null;
   let recordingSessionId: string | null = null;
   let nextIdleAt: number | null = null;
@@ -181,7 +232,12 @@ export function createGeneratorSubsystem(engine: EngineContext): SimSubsystem {
       const rng = engine.rng.get(RngStream.EVENTS);
       let next = state;
 
-      if (session && session.state === SessionState.RECORDING && session.startedAt !== null) {
+      if (ownCapture && session && session.state === SessionState.RECORDING && session.startedAt !== null) {
+        // A real recording: nothing is generated. Its facts are the capture side's.
+        nextIdleAt = null;
+        recordingSessionId = null;
+        nextRecordingAt = null;
+      } else if (session && session.state === SessionState.RECORDING && session.startedAt !== null) {
         nextIdleAt = null;
         if (recordingSessionId !== session.id || nextRecordingAt === null) {
           recordingSessionId = session.id;
@@ -203,7 +259,10 @@ export function createGeneratorSubsystem(engine: EngineContext): SimSubsystem {
         if (nextIdleAt === null) nextIdleAt = now + IDLE_EVENT_INTERVAL_MS;
         let count = 0;
         while (nextIdleAt <= now && count < 10) {
-          next = idleActivity(next, nextIdleAt, rng);
+          // Own capture: one draw as ever (the stream of the other subsystems does not shift) and NO event
+          // (closing pass Z1, ruling D203 (4)): the health-check line too is a statement nobody made there.
+          if (!ownCapture) next = idleActivity(next, nextIdleAt, rng);
+          else rng.int(0, 2);
           nextIdleAt += IDLE_EVENT_INTERVAL_MS;
           count += 1;
         }

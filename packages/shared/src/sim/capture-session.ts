@@ -43,13 +43,14 @@
  *    of a failed start: after a restart of a Core in simulated capture both read as absent.
  */
 import { SessionState } from '../domain';
-import { CAPTURE_CONNECT_MS } from './constants';
+import { CAPTURE_CONNECT_MS, CAPTURE_CONNECT_MS_MAX } from './constants';
 import { CaptureNoticeReason, CaptureUnreachableCause, CaptureUnreachablePhase, activeCaptureNotice, clearCaptureNoticeTransition, raiseCaptureNoticeTransition } from './capture-notices';
 import { raiseCaptureWarningTransition } from './capture-telemetry';
 import { isFaultActive } from './derive';
+import { interruptedFactOf } from './evidence';
 import { clearFaultAtKey } from './faults';
 import { addTimelineItem, enterFault } from './session-machine';
-import type { ActiveSession, CaptureConfigCamera, CaptureWarningInput, EpochMs, SimState } from './types';
+import type { ActiveSession, CaptureConfigCamera, CaptureWarningInput, EpochMs, EvidenceItem, SimState } from './types';
 import { FaultKind } from './vocabulary';
 
 /** The two fault kinds the capture side raises, and so the two it clears. */
@@ -122,8 +123,11 @@ export function failedCaptureStartTransition(state: SimState, now: EpochMs, sess
     bytesWritten: 0,
     captureDurable: false,
   };
+  // Finding G75-11: nothing started. The START node the accepted start wrote ("Recording started")
+  // leaves the session's timeline; the FAULT node below says what the start came to.
+  const timeline = faulted.timeline.filter((item) => item.kind !== 'START');
   return addTimelineItem(
-    { ...raised, alerts, session: faulted },
+    { ...raised, alerts, session: timeline.length === faulted.timeline.length ? faulted : { ...faulted, timeline } },
     {
       at: now,
       kind: 'FAULT',
@@ -152,6 +156,21 @@ export function isFailedCaptureStart(session: Pick<ActiveSession, 'captureDurabl
   return session !== null && session !== undefined && session.captureDurable === false && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT;
 }
 
+/** Why no live microphone level is drawn for the open session. */
+export type NoLiveLevels = 'CONNECTING' | 'FAILED_START';
+
+/**
+ * NO LIVE LEVEL BEFORE THE FIRST DURABLE FRAGMENT, AND NONE FOR A SESSION THAT RECORDED NOTHING
+ * (wave H driver B, finding G75-04; ux §8e.2 "no meters"; D84). One rule for every meter of every
+ * client: `CONNECTING` while the cameras of a start connect, `FAILED_START` for the open session
+ * that is a failed start (in FAULT, or being closed), null when a level may be drawn.
+ */
+export function noLiveLevelsOf(session: Pick<ActiveSession, 'state' | 'captureDurable' | 'fault' | 'startedAt'> | null | undefined): NoLiveLevels | null {
+  if (session === null || session === undefined) return null;
+  if (session.state === SessionState.RECORDING && session.captureDurable === false) return 'CONNECTING';
+  return isFailedCaptureStart(session) ? 'FAILED_START' : null;
+}
+
 /**
  * An INTERRUPTED recording (D84): the capture of the open RECORDING session ended for good while
  * a fragment is durable. The simulator's own move to FAULT (the bytes so far are kept, the
@@ -163,6 +182,69 @@ export function interruptedCaptureTransition(state: SimState, now: EpochMs, sess
   const faulted = enterFault(state, now, FaultKind.CAPTURE_FAULT);
   if (faulted.session === null) return state;
   return { ...faulted, session: { ...faulted.session, captureDurable: true } };
+}
+
+// ── An interrupted seal (wave H driver B; findings G75-03 / G75-08 / G75-10; ruling D197) ────────
+
+/** The custody action `completeSealTransition` writes for a recording that did not end by a stop. */
+export const CUSTODY_RECORDING_INTERRUPTED = 'RECORDING_INTERRUPTED';
+
+/** What every surface needs to NAME an interrupted seal: the fault that ended the recording and when. */
+export interface InterruptedSeal {
+  /** The fault kind as the custody entry / the session holds it (`CAPTURE_FAULT` for a capture that ended), or null. */
+  faultKind: string | null;
+  /** The instant the recording really ended: the end of the durable media. */
+  endedAt: EpochMs;
+}
+
+/**
+ * THE INTERRUPTED FACT OF AN EVIDENCE ITEM, from an EXISTING member: the custody entry
+ * `RECORDING_INTERRUPTED` the seal of an interrupted recording writes (its `detail` is the fault
+ * kind, its `at` the end of the durable media). Null for every other item. The evidence list and
+ * the item header read THIS (request line to the evidence folders).
+ */
+export function interruptedSealOfItem(item: (Pick<EvidenceItem, 'custody'> & Partial<Pick<EvidenceItem, 'endedAt'>>) | null | undefined): InterruptedSeal | null {
+  if (item === null || item === undefined) return null;
+  const entry = item.custody.find((candidate) => candidate.action === CUSTODY_RECORDING_INTERRUPTED);
+  // Reconcile pass R (decision D207): where the Core states the sealed manifest's own flag on the item
+  // (`interrupted`), THAT is the answer - the same one the evidence list and the item header draw
+  // (`interruptedFactOf`, evidence.ts). The custody entry answers only while the member is absent.
+  const fact = interruptedFactOf(item);
+  if (fact.interrupted !== true) return null;
+  return { faultKind: fact.source === 'MANIFEST' ? (fact.cause ?? entry?.detail ?? null) : (entry?.detail ?? null), endedAt: entry?.at ?? item.endedAt ?? 0 };
+}
+
+/**
+ * THE INTERRUPTED FACT OF A SESSION, open or in the history: the item of that session says it
+ * (`interruptedSealOfItem`); before the item exists - the session is FINALIZING after a fault that
+ * ended its recording - the session's own `fault` says it. Null for a session that was stopped, for
+ * a failed start (nothing was recorded) and for a session that is not being sealed.
+ *
+ * WHY NOT `faultKind` OF THE HISTORY ENTRY: the database admits a fault kind on an INCOMPLETE entry
+ * only (`session_history_outcome_check`), and a new column is a migration. The item of the session
+ * is in the same replicated state on every client, so nothing new is stored.
+ */
+export function interruptedSealOfSession(state: Pick<SimState, 'session' | 'evidence'>, sessionId: string | null | undefined): InterruptedSeal | null {
+  if (sessionId === null || sessionId === undefined) return null;
+  const ofItem = interruptedSealOfItem(state.evidence.find((item) => item.sessionId === sessionId));
+  if (ofItem !== null) return ofItem;
+  const session = state.session;
+  if (session === null || session.id !== sessionId || session.startedAt === null) return null;
+  if (session.state !== SessionState.FINALIZING && session.state !== SessionState.SEALED) return null;
+  if (session.fault === null || session.fault.fromState !== SessionState.RECORDING) return null;
+  return { faultKind: session.fault.kind, endedAt: session.stoppedAt ?? session.fault.at };
+}
+
+/**
+ * D84 R-4 AT THE SEAL (finding G75-10): the capture-wide `CAPTURE_FAULT` of the recording that was
+ * just sealed as interrupted is over - its session is closed, nothing is blocked, and the item says
+ * what happened. Cleared here (FAULT_CLEARED, the alert resolved) instead of standing as a critical
+ * fault until some later start. The same state when `session` did not end by a capture fault or no
+ * such fault is active.
+ */
+export function endCaptureFaultAtSeal(state: SimState, now: EpochMs, session: Pick<ActiveSession, 'fault'>): SimState {
+  if (session.fault?.kind !== FaultKind.CAPTURE_FAULT) return state;
+  return clearFaultAtKey(state, now, FaultKind.CAPTURE_FAULT, null);
 }
 
 /** Clears every active capture-originated fault (D84 R-4). The same state when none is active. */
@@ -187,18 +269,28 @@ export function camerasNotConnecting(state: SimState): readonly CaptureConfigCam
 }
 
 /** When the simulator decides the start of a connecting session, or null when none is connecting. */
-export function captureStartDueAt(session: ActiveSession | null): EpochMs | null {
+export function captureStartDueAt(session: ActiveSession | null, connectMs: number = CAPTURE_CONNECT_MS): EpochMs | null {
   if (session === null || session.state !== SessionState.RECORDING || session.captureDurable !== false || session.startedAt === null) return null;
-  return session.startedAt + CAPTURE_CONNECT_MS;
+  return session.startedAt + connectMs;
+}
+
+/**
+ * THE CONNECTING TIME A HOST ASKED FOR (`CreateSimOptions.captureConnectMs`; wave H closing pass Z1,
+ * driver B decision 6): a whole number of milliseconds from 0 to `CAPTURE_CONNECT_MS_MAX`, else the
+ * default. A test / development control of the host that creates the simulator - it holds the
+ * connecting state long enough for a gate to look at it. No action and no operation sets it.
+ */
+export function captureConnectMsOf(value: number | undefined): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= CAPTURE_CONNECT_MS_MAX ? value : CAPTURE_CONNECT_MS;
 }
 
 /**
  * The simulator's decision of a connecting start, once its time has come (see the file header).
  * Returns the same state before that instant and for every session that is not connecting.
  */
-export function advanceCaptureStart(state: SimState, now: EpochMs): SimState {
+export function advanceCaptureStart(state: SimState, now: EpochMs, connectMs: number = CAPTURE_CONNECT_MS): SimState {
   const session = state.session;
-  const at = captureStartDueAt(session);
+  const at = captureStartDueAt(session, connectMs);
   if (session === null || at === null || now < at) return state;
   const cameras = sessionCameras(state, session);
   const missing = camerasNotConnecting(state);
@@ -219,6 +311,26 @@ export function advanceCaptureStart(state: SimState, now: EpochMs): SimState {
       // The camera connects in a later session: the warning an earlier start left is resolved.
       next = clearCaptureNoticeTransition(next, at, notice);
     }
+  }
+  return next;
+}
+
+/**
+ * THE END OF A DEGRADED START'S WARNING in the simulator's own capture (finding G75-07 (c), (d)).
+ * The warning `CAPTURE_DEVICE_UNREACHABLE` of phase `SESSION_START` says "this session records
+ * without that camera". When no session records any more it is over: the alert is resolved and the
+ * device reads reachable again in the registry, so the NEXT pre-check judges the camera by what it
+ * is then (a camera that is still lost is caught by its own `CAMERA_LOSS` check), not by a warning
+ * of a closed session. The same state while a session records and when there is no such warning.
+ */
+export function advanceCaptureEnd(state: SimState, now: EpochMs): SimState {
+  if (state.session?.state === SessionState.RECORDING) return state;
+  let next = state;
+  for (const alert of state.alerts) {
+    if (!alert.active || alert.kind !== 'SYSTEM' || alert.params?.['reason'] !== CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE || alert.params['phase'] !== CaptureUnreachablePhase.SESSION_START) continue;
+    const subject = alert.target ?? null;
+    if (subject === null || !next.captureDevices.devices.some((device) => device.id === subject)) continue;
+    next = clearCaptureNoticeTransition(next, now, { code: CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE, subject, phase: CaptureUnreachablePhase.SESSION_START });
   }
   return next;
 }

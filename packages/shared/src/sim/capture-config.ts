@@ -30,7 +30,7 @@ import { AUDIO_CHANNELS, micInputOfChannel, noInputFrame } from './audio';
 import { requirePermission } from './auth';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { recordActivity } from './events';
-import { isSessionActive } from './session-machine';
+import { isSessionActive, sendingDeviceOf } from './session-machine';
 import type { CaptureConfigCamera, CaptureConfigChange, CaptureConfigMic, CaptureConfigMicChange, CaptureDeviceStatus, EpochMs, SimState } from './types';
 import { AuditType, Permission } from './vocabulary';
 
@@ -133,8 +133,14 @@ function replaceMicPair(
 /**
  * `setCaptureConfig`: one edit of the selector. Returns the same state when nothing changes.
  * Throws as the table of this file says; a refusal changes nothing.
+ *
+ * `sendingDeviceId` (fix wave H, driver D; gate 70 finding G70-05): the paired device the command
+ * came from - by default the device of the acting identity (`sendingDeviceOf`: what the Core's
+ * actor scope set for the command of a tablet or a phone), null for a web console session. Every
+ * row of the edit names it in its own `deviceId`, as `CAPTURE_DISCOVERY_SEARCHED` and the audio
+ * switch do. The DETAILS are unchanged: their `deviceId` is the capture device a line names.
  */
-export function setCaptureConfigTransition(state: SimState, now: EpochMs, change: CaptureConfigChange): SimState {
+export function setCaptureConfigTransition(state: SimState, now: EpochMs, change: CaptureConfigChange, sendingDeviceId: string | null = sendingDeviceOf(state, false)): SimState {
   const actor = requirePermission(state, SET_CAPTURE_CONFIG_ACTION, Permission.CAPTURE_CONFIG);
   if (isSessionActive(state.session)) {
     throw new SimTransitionError(state.session.state, SET_CAPTURE_CONFIG_ACTION, 'the capture configuration is locked while a session is open');
@@ -239,6 +245,7 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
           type: AuditType.CAPTURE_CONFIG_CHANGED,
           message: `Capture configuration changed (${details['field'] ?? 'FIELD'})`,
           actorId: actor.id,
+          ...(sendingDeviceId === null ? {} : { deviceId: sendingDeviceId }),
           details,
         },
       }),

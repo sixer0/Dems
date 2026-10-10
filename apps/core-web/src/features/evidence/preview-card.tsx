@@ -7,6 +7,8 @@ import { formatUtcOffset } from '@dems/shared/realtime'
 import { useMotionPolicy } from '@/motion'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { useEvidenceAssets } from './demo-assets'
+import { isDemoItem } from './item-facts'
+import { InterruptedMark } from './item-marks'
 import {
   byteSize,
   EXPORTABLE_STATUSES,
@@ -55,7 +57,8 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
               ) : (
                 <span className="evi-preview-still-empty">
                   <FileVideo className="size-8" aria-hidden="true" />
-                  <span>{t('evidence.media.noMedia')}</span>
+                  {/* Wave H C2 (G94-14): "No DEMO media" is said of a demo item only; any other Live item has no preview picture. */}
+                  <span>{t(live && !isDemoItem(row.item) ? 'evidence.itemFacts.web.noPreview' : 'evidence.media.noMedia')}</span>
                 </span>
               )}
             </div>
@@ -66,6 +69,7 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
                   <Chip.Label>{t('evidence.demo.chip')}</Chip.Label>
                 </Chip>
               ) : null}
+              <InterruptedMark item={row.item} testId="evidence-preview-interrupted" />
             </div>
 
             <div className="evi-preview-heading" data-header-origin={row.id}>
@@ -112,7 +116,7 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
             <p className="evi-preview-package" data-package={row.pkg ? 'demo' : live ? 'core' : 'simulated'}>
               {row.pkg
                 ? t('evidence.preview.packageLine', { digest: shortHash(row.pkg.signature.signedDigest) })
-                : t(live ? 'evidence.live.noPackage' : 'evidence.preview.noPackage')}
+                : t(!live ? 'evidence.preview.noPackage' : isDemoItem(row.item) ? 'evidence.live.noPackage' : 'evidence.itemFacts.web.coreRecordLine')}
             </p>
 
             <div className="evi-preview-actions">

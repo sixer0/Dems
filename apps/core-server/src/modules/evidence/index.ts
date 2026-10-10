@@ -18,7 +18,9 @@
  *
  * THE TWO READS (39, 40) answer from PostgreSQL, through the pool of the runtime role
  * (`reads.ts` says why, and why the answer equals the engine's committed `evidence` slice).
- * Operation 40 adds the media reference (`media.ts`): a source and four digits, never a file.
+ * Operation 40 adds the media reference (`media.ts`: the join of the bundled demo packages) and
+ * everything `src/evidence-facts` states of the item (wave H C1): the media state of a product-sealed
+ * item, the facts of its sealed manifest, what this caller may do, its finished exports.
  *
  * THE THREE COMMANDS (41, 42, 43) are hosted actions of the shared simulator: one call of
  * `app.engine.command` under the caller's identity, one unit of work, the answer after the
@@ -73,6 +75,7 @@ import { z } from 'zod';
 import { MappingError } from '../../db/mapping';
 import { simCodeOf, simRefusal, type EngineOutcome } from '../../engine';
 import { EXPORT_IN_PROGRESS_TEXT, createExportService, evidenceExport, exportJobIdOf, exportKindOfBody } from '../../evidence-export';
+import { evidenceFacts } from '../../evidence-facts';
 import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from './cursor';
@@ -165,6 +168,12 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
   // Fix pass F-M8: what operation 42 asks of the export unit before its hosted action (`evidence-export/service.ts`).
   const exportService = createExportService(app);
   const realVerification = evidenceVerification(app);
+  // Wave H C1 (gate findings G94-01, G94-04, G94-05; decision D200): what the Core says of an item
+  // beyond its stored rows - the media state of every kind of item, the facts of its sealed
+  // manifest, what this caller may do, its finished exports (`src/evidence-facts`). The module
+  // hands it the request whole and the item; it reads no package and decides nothing itself.
+  const facts = evidenceFacts(app);
+  facts.register();
 
   /**
    * One read on the pool of the runtime role, through the pool plugin's helper (`app.db.read`;
@@ -209,7 +218,7 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const page = await read(request, 'listEvidence', (pool) =>
         readEvidencePage(pool, { status, caseType, search: q, after, limit: limit ?? API_PAGE_LIMIT_DEFAULT }),
       );
-      return { items: page.items, nextCursor: page.next === null ? null : encodeEvidenceCursor(page.next) };
+      return { items: facts.overlay(page.items), nextCursor: page.next === null ? null : encodeEvidenceCursor(page.next) };
     },
   });
 
@@ -220,7 +229,8 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
     handler: async (request): Promise<EvidenceDetail> => {
       const evidence = await read(request, 'getEvidence', (pool) => readEvidenceItem(pool, request.params.id));
       if (evidence === null) throw evidenceNotFound();
-      return { evidence, media: mediaRefOf(evidence) };
+      // `mediaRefOf` is the join of the BUNDLED demo packages; a product-sealed item's media state is the Core's own (G94-01).
+      return facts.detail(request, evidence, mediaRefOf(evidence));
     },
   });
 
@@ -270,7 +280,9 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       let result: ExportResult;
       try {
         // R93-06: the kind the body named goes onto the request row; `completion` is the server's own member, never the body's.
-        const hostedRequest = body.kind === 'VALID' ? { ...body.request, ...(body.named ? { kind } : {}), ...(admitted.job ? { completion: 'DEFERRED' as const } : {}) } : NO_REASON;
+        // G94-10 (wave H C1): a request that becomes a JOB of this Core always says its kind on the row (C3 §5.2
+        // `details.kind: PACKAGE|COMPOSITE`), also when the body left it to the default.
+        const hostedRequest = body.kind === 'VALID' ? { ...body.request, ...(body.named || admitted.job ? { kind } : {}), ...(admitted.job ? { completion: 'DEFERRED' as const } : {}) } : NO_REASON;
         const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, hostedRequest);
         result = outcome.value;
       } catch (error) {

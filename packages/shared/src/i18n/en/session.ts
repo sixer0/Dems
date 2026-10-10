@@ -362,4 +362,65 @@ export const session = {
     done: 'Recovery complete',
     failed: 'Recovery could not start. Please try again.',
   },
+
+  /**
+   * N in a recording of the Core's own capture (fix wave H driver A; finding G75-01, rulings D197 /
+   * D199): the panel states what the Core has and nothing else. No "encryption active" while a
+   * recording runs - the media is encrypted when the session is sealed.
+   */
+  integrityFacts: {
+    capture: {
+      label: 'Capture',
+      CONNECTING: 'Connecting cameras. Nothing is recorded yet',
+      DURABLE: 'Recording. The first fragment is durable on the evidence volume',
+      ENDED: 'The recording has ended',
+      NOTHING_RECORDED: 'Nothing was recorded',
+    },
+    protection: {
+      label: 'Media Protection',
+      AT_SEAL: 'Not encrypted during recording. The media is encrypted when the session is sealed',
+      SEALED: 'Encrypted at seal',
+      NOTHING_RECORDED: 'No media to protect',
+    },
+    auditChain: {
+      label: 'Audit Log Hash Chain',
+    },
+    time: {
+      label: 'Time Source',
+      value: 'Core system clock (UTC{{offset}})',
+    },
+    note: 'Fragment hashes and the signature are stated on the evidence item once the session is sealed.',
+  },
+  /**
+   * Wave H driver B (gate 89, G89-11; decision D121): the ETA the finalization views draw is the
+   * Core's remaining time OF THE RUNNING STEP (`finalization.steps[].etaMs`), so the line names the
+   * step. "About 1 s left" stood for a whole simulated seal of eleven seconds, one short step after
+   * the other.
+   */
+  sealingEta: {
+    step: 'This step: about {{seconds}} s left',
+  },
+  /**
+   * Wave H closing pass Z2 (driver A's lines of 10:20:55Z; decisions D203, D207): the Session
+   * Monitor beside a recording of the Core's OWN capture. The banner names the capture state (its
+   * detail is `integrityFacts.capture.*`), never "secure" or "integrity checks passing"; the
+   * checkpoint line states the durable fragments as the Core counts them
+   * (`session.captureCheckpoints`). `timeSource.hostClock`: the `time` slice of such a Core says
+   * the host system clock (`isHostClockTime`).
+   */
+  captureFacts: {
+    banner: {
+      title: 'SESSION ACTIVE',
+    },
+    checkpoints: {
+      label: 'Durable Fragments',
+      fragments_one: '{{count}} fragment saved',
+      fragments_other: '{{count}} fragments saved',
+      lastSeconds: 'last {{seconds}} s ago',
+      lastMinutes: 'last {{minutes}} min ago',
+    },
+    timeSource: {
+      hostClock: 'Host system clock',
+    },
+  },
 } as const satisfies ResourceTree;

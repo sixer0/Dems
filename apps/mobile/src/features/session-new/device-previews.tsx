@@ -24,10 +24,12 @@ import { useSim, type SimState } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { SectionCard, StatusChip } from '@/components/kit';
-import { CameraFeed, DEMO_MEDIA_LIVE } from '@/components/media';
+import { DEMO_MEDIA_LIVE } from '@/components/media';
+// Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
+import { CameraPreview } from '@/features/devices/camera-preview';
 import { triggerHaptic, useMotionPolicy, useMotionState } from '@/motion';
 import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues, useCoreErrorPresenter, useCoreLink } from '@/runtime';
-import { CHECK_ORDER, decodeEvaluation, precheckTone, valueKey } from './session-new-model';
+import { CHECK_ORDER, decodeEvaluation, hostClockValue, precheckTone, valueKey } from './session-new-model';
 import { CheckIcon } from './check-icon';
 import { useLiveEvaluations, useMicSignals } from './use-session-new';
 
@@ -123,7 +125,8 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
     });
   };
   const feed = (
-    <CameraFeed
+    <CameraPreview
+      name={cameraLabel}
       testID={`session-new-feed-${cameraId}`}
       cameraId={cameraId}
       mode={poster === null ? 'live' : 'poster'}
@@ -213,12 +216,14 @@ function LiveChecks() {
     <ListGroup variant="transparent">
       {CHECK_ORDER.map((id, index) => {
         const { status, value } = decodeEvaluation(evaluations[index] ?? 'PASS|');
+        // Wave H closing pass Z2: the live TIME row of a Core in its own capture is the host clock - a note, not a warning.
+        const tone = precheckTone(status, hostClockValue(id, value));
         return (
           <Fragment key={id}>
             {index > 0 ? <Separator /> : null}
             <ListGroup.Item testID={`session-new-live-${id}`} className="py-2">
               <ListGroup.ItemPrefix>
-                <CheckIcon id={id} tone={precheckTone(status)} size={16} />
+                <CheckIcon id={id} tone={tone} size={16} />
               </ListGroup.ItemPrefix>
               <ListGroup.ItemContent>
                 <ListGroup.ItemTitle>{t(`sessionNew.devices.checks.${id}`)}</ListGroup.ItemTitle>
@@ -226,7 +231,7 @@ function LiveChecks() {
               <ListGroup.ItemSuffix>
                 <StatusChip
                   size="sm"
-                  tone={precheckTone(status)}
+                  tone={tone}
                   label={t(valueKey(id, value), { defaultValue: value })}
                   icon={null}
                 />

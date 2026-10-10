@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim, type TimelineEvent } from '@dems/shared/sim'
+import { captureFaultSentence, FaultKind, useSim, type TimelineEvent } from '@dems/shared/sim'
 import { SessionTimeline } from '@/components/composed'
 import { useMicInputName } from '@/features/devices/source-class'
 import { isMicInputId } from '@/lib/capture-notices'
+import { useOwnCapture } from '@/lib/own-capture'
 import { formatBytesParts } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
-import { audioPeakLevel, autosaveSegment, bytesAt } from './sim-adapter'
+import { audioPeakLevel, autosaveSegment, bytesAt, timelineOfOwnCapture } from './sim-adapter'
 
 const EMPTY: readonly TimelineEvent[] = []
 
@@ -19,11 +20,20 @@ const EMPTY: readonly TimelineEvent[] = []
  * composition inside its own kit ScrollShadow, so an insertion scrolls only this panel (step-39
  * B-1). Nodes stagger 50 ms on enter (M-PG-SM t = 400); insertions grow the rail, pop the node and
  * pulse its halo twice; marker and snapshot items arrive by flight (M-C-17, M-C-18).
+ *
+ * Wave H closing pass Z2: (a) beside a recording of the Core's own capture the rows the simulator's
+ * generator invents (AUTOSAVE with its byte formula, HEALTH, its CHECK) are not drawn
+ * (`timelineOfOwnCapture`, the rule of the tablet's timeline); (b) a FAULT row is WORDED for every
+ * session - the capture fault by the shared capture wording (`captureFaultSentence`, with the reason
+ * the item carries), any other fault by its name - never the code of the item's fallback label
+ * ("Critical fault: CAPTURE_FAULT").
  */
 export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation()
   const micName = useMicInputName()
-  const events = useSim((s) => s.session?.timeline ?? EMPTY)
+  const stored = useSim((s) => s.session?.timeline ?? EMPTY)
+  const ownCapture = useOwnCapture()
+  const events = useMemo(() => timelineOfOwnCapture(stored, ownCapture), [stored, ownCapture])
   const startedAt = useSim((s) => s.session?.startedAt ?? null)
   // The simulator never schedules timeline items in the future, so "now" is the newest item's time:
   // the list re-renders on insertions only, not on every clock second (§9.3).
@@ -62,6 +72,14 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
         const from = event.params?.from
         const to = event.params?.to
         if (isMicInputId(from) && isMicInputId(to)) return t('session.audioSource.timelineDetail', { from: micName(from), to: micName(to) })
+      }
+      if (event.kind === 'FAULT') {
+        const kind = event.params?.kind
+        if (kind === 'CAPTURE_FAULT') {
+          const reason = event.params?.reason
+          return captureFaultSentence(typeof reason === 'string' ? reason : null, null)
+        }
+        if (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FaultKind, kind)) return t(`common.faultKind.${kind as FaultKind}`)
       }
       if (event.detail) return event.detail
       return event.label
