@@ -304,11 +304,15 @@ describe('the credential search (positive control)', () => {
       .split('\n')
       .filter((line) => line.includes('a careless line'))
       .join('\n');
-    expect(credentialLeaks(careless).sort()).toEqual(
-      ['bearer value in line 1', 'session cookie in line 1', 'token in line 1'].sort(),
-    );
-    // The markers find the same leak, so the two searches agree on a real one.
-    expect(careless).toContain(MARKERS.authorization);
+    // Pass D1a (decision D134): layer 5 of the logger now blanks what it can know even under these
+    // keys - the member NAMED `token` and every `ses_` / `bio_` token inside a text - so the token
+    // entry and the authorization marker are gone. What it cannot know is still written and still
+    // found: the second cookie value and the free text of the body. The search reports the scheme
+    // and the session cookie by their shape (their values read `ses_***`).
+    expect(credentialLeaks(careless).sort()).toEqual(['bearer value in line 1', 'session cookie in line 1'].sort());
+    expect(careless).not.toContain(MARKERS.authorization);
+    expect(careless).toContain('ses_***');
+    // The markers find the leak that remains, so the two searches agree on a real one.
     expect(careless).toContain(MARKERS.cookie);
     expect(careless).toContain(MARKERS.body);
 

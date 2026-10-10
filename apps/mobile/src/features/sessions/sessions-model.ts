@@ -55,6 +55,11 @@ export interface SessionRow {
   pendingSummary: boolean;
   /** The simulator's current session (RECORDING, finalizing or interrupted). */
   active: boolean;
+  /**
+   * History only (integration pass D7 follow-up, D158 item 4; ux §8e.2 situation C): the session was closed
+   * without any recording — INCOMPLETE, never started, no evidence item, no byte. A closed failed start.
+   */
+  recordedNothing?: boolean;
   /** Sort key: newest first. History sorts on `endedAt`; the current session sorts first. */
   sortAt: EpochMs;
 }
@@ -77,6 +82,7 @@ export function historyRow(entry: SessionHistoryEntry, pendingSummaryId: string 
     faultKind: entry.faultKind,
     pendingSummary: sealed && pendingSummaryId === entry.id,
     active: false,
+    recordedNothing: !sealed && entry.startedAt === null && entry.evidenceId === null && entry.sizeBytes === 0,
     sortAt: entry.endedAt,
   };
 }

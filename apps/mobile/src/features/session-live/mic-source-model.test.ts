@@ -139,3 +139,35 @@ describe('"Connecting cameras…": the defensive read of `captureDurable` (D84, 
     expect(selectConnectingCameras(stateOf(null, MicInputId.MIC_01))).toBe(false);
   });
 });
+
+// Integration pass D2, item 5 (D133 (1)): the pair is read by the ids the Core sends — `MIC-NN` of
+// any number — never by the two built-in literals. Plain strings, so this compiles before and after
+// the contract's mic id is widened.
+describe('a microphone beyond the built-in pair (MIC-03)', () => {
+  const state = (over: Record<string, unknown>): SimState => ({ session: null, audio: { activeInputId: 'MIC-01' }, captureConfig: { cameras: [], mics: [] }, faults: { active: [] }, ...over }) as unknown as SimState;
+  const lines = [
+    { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
+    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' },
+  ];
+
+  it('the session names the pair: both ids are passed through as sent', () => {
+    const s = state({ session: { state: 'RECORDING', audioSource: { activeInputId: 'MIC-03', standbyInputId: 'MIC-01' } } });
+    expect(selectActiveInputId(s)).toBe('MIC-03');
+    expect(selectStandbyInputId(s)).toBe('MIC-01');
+    expect(micSourceRole('MIC-03', selectActiveInputId(s))).toBe('ACTIVE');
+    expect(micSourceRole('MIC-01', selectActiveInputId(s))).toBe('STANDBY');
+  });
+
+  it('no pair on the session: the standby is the other line of the selector the session records under, then of the stored selector', () => {
+    const snapshot = state({ session: { state: 'RECORDING', audioSource: null, captureConfig: { cameras: [], mics: lines } }, audio: { activeInputId: 'MIC-03' } });
+    expect(selectStandbyInputId(snapshot)).toBe('MIC-01');
+    const stored = state({ audio: { activeInputId: 'MIC-01' }, captureConfig: { cameras: [], mics: lines } });
+    expect(selectStandbyInputId(stored)).toBe('MIC-03');
+  });
+
+  it('a silence warning that names MIC-03 is about MIC-03', () => {
+    const fault = (target: string | null) => ({ kind: 'MIC_SILENT', target }) as unknown as SimState['faults']['active'][number];
+    expect(silentInputOf([fault('MIC-03')], 'MIC-01')).toBe('MIC-03');
+    expect(silentInputOf([fault(null)], 'MIC-03')).toBe('MIC-03');
+  });
+});

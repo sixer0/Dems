@@ -15,7 +15,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, check, foreignKey, integer, jsonb, pgTable, primaryKey, text } from 'drizzle-orm/pg-core';
-import { code, hex64, matches, oneOf, sessionId, signatureRule, signatureValue } from './checks';
+import { code, hex64, keyId, matches, oneOf, sessionId, signatureRule, signatureValue } from './checks';
 import { evidenceItems } from './evidence';
 import { operators } from './rbac';
 import {
@@ -153,7 +153,8 @@ export const transcriptRevisions = pgTable(
     check('transcript_revisions_revision_no_check', sql`${t.revisionNo} >= 1`),
     check('transcript_revisions_hashes_check', sql`${hex64(t.parentSha256)} AND ${hex64(t.sha256)}`),
     check('transcript_revisions_reason_check', sql`char_length(${t.reason}) BETWEEN 5 AND 500`),
-    check('transcript_revisions_key_id_check', code(t.signatureKeyId)),
+    // dbc-7 (migration 0013): the key-id form, not `CODE` - the product key id carries hyphens.
+    check('transcript_revisions_key_id_check', keyId(t.signatureKeyId)),
     check(
       'transcript_revisions_certificate_check',
       sql`${t.signatureCertificateSha256} IS NULL OR ${matches(t.signatureCertificateSha256, '^[0-9a-f]{64}$')}`,

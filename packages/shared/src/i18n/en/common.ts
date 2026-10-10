@@ -909,4 +909,89 @@ export const common = {
     unregistered_one: '{{count}} other microphone is connected to the Core but not registered.',
     unregistered_other: '{{count}} other microphones are connected to the Core but not registered.',
   },
+
+  /**
+   * Integration pass D2 (D133 (1)): the name of a microphone beyond the built-in pair, from the number of its `MIC-NN` id.
+   * Ruling D137: it reads "MIC 3", the form of the built-in "MIC 1" / "MIC 2" (`devices.mic1` / `devices.mic2`).
+   */
+  captureDeviceName: {
+    microphone: 'MIC {{number}}',
+  },
+
+  /**
+   * Blueprint row 139 (R-10 situation C; ux §8e.2, §14.2; decisions D84, D91): the session start in real capture.
+   * `connectingCameras` is the key of ux §14.2; the others word what that section describes without a key.
+   */
+  session: {
+    connectingCameras: 'Connecting cameras…',
+    /** Why End Session is disabled before the first durable fragment (the Core answers `CAPTURE_NOT_DURABLE`). */
+    stopWhileConnecting: 'Nothing is recorded yet: the cameras are still connecting. The session ends by itself if no camera connects.',
+    /** A camera or a recording row while the cameras connect: never "REC". */
+    trackConnecting: 'CONNECTING',
+    failedStart: {
+      /** A failed start whose cause is not "no camera connected". The body is `captureNotice.noCamera.body`. */
+      title: 'Recording did not start',
+      /** The pointer to the place where "Search again" is. */
+      openDevices: 'Open Devices',
+      next: 'Check the cameras on Devices, then close this session and start a new one.',
+      /** The close of a session that recorded nothing (the Core's recovery of it: a history entry, no evidence item). */
+      close: 'Close session',
+    },
+  },
+
+  /**
+   * Task 3, R-11 (blueprint row 140; rulings D137 (2), D128, D136 (3)): the cards / rows of the
+   * devices the Core registered beyond the four built-in ids (this Mac's camera `CAM-03` and
+   * microphone `MIC-03`, an added camera), drawn from the Core's device list on Devices of the web
+   * console, the tablet and the phone. The names and the badge are the blocks above
+   * (`sourceClass`, `localDevice`, `captureSearch.viewDevice`); this block holds what only the
+   * roster says. `MIC_RATE_AT_LIMIT` is the code of the capture protocol and stays as it is.
+   */
+  developmentRoster: {
+    cameras: 'Registered cameras',
+    microphones: 'Registered microphones',
+    kind: {
+      CAMERA: 'Camera',
+      MIC: 'Microphone',
+    },
+    name: '{{kind}} {{id}}',
+    usedAs: {
+      'VIDEO-01': 'Feeds Camera 1',
+      'VIDEO-02': 'Feeds Camera 2',
+      PRIMARY: 'Primary microphone',
+      STANDBY: 'Standby microphone',
+      NONE: 'Not assigned',
+    },
+    reachable: 'Reachable',
+    notReachable: 'Not reachable',
+    rateAtLimit: {
+      title: 'Rate correction at its limit (MIC_RATE_AT_LIMIT)',
+      body: 'This microphone does not keep the sample rate it declares. The Core is inserting or dropping samples to hold it in step. The recording continues.',
+    },
+    limits: {
+      title: 'Limits of this development source',
+      localMicrophone:
+        'Not fit for recording yet. In measured runs this microphone delivered about 8/9 of the sample rate it declares; the cause is not proven. Expect the warning MIC_RATE_AT_LIMIT during a session. Use it for development checks only.',
+      localCamera: 'Variable frame rate: each frame carries the time it was read. The fixed frame-grid check does not apply to this source.',
+      test: 'A generated test picture or tone. It records nothing of the room.',
+    },
+    field: {
+      id: 'Device ID',
+      kind: 'Kind',
+      model: 'Model',
+      source: 'Source',
+      address: 'Address',
+      usedAs: 'Used as',
+      stream: 'Stream',
+    },
+    modelUnknown: 'Not announced',
+    source: {
+      LOCAL_DEVICE: 'The Mac that runs the Core',
+      FAKE: 'Generated test source',
+      ONVIF_RTSP: 'Network camera',
+      USB_AUDIO: 'USB audio input',
+      OTHER: 'Registered device',
+    },
+    detailLabel: 'Details of {{name}}',
+  },
 } as const satisfies ResourceTree;

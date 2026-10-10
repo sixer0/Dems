@@ -434,7 +434,7 @@ describe('R-3: the target is not at the schema version of this code', () => {
     const injected = failAt('R-9');
     const error = await failing(other, { onCheckpoint: injected.onCheckpoint });
     expect(error).toMatchObject({ code: 'RESET_SCHEMA_MISMATCH', step: 'R-3' });
-    expect(error.message).toContain('is at schema version 1 (dbc-6); this code builds version 5 (dbc-6)');
+    expect(error.message).toContain('is at schema version 1 (dbc-7); this code builds version 6 (dbc-7)');
     expect(injected.seen).toEqual(['R-0', 'R-1', 'R-2', 'R-3']);
     await expectUntouched(other, before);
     await discard(maintenance, other, db.run.identity.prefix);

@@ -164,9 +164,9 @@ async function registryDigest(): Promise<unknown> {
 }
 
 describe('the database of this file', () => {
-  it("is at the schema version of the code: [5, 'dbc-6']", async () => {
+  it("is at the schema version of the code: [6, 'dbc-7']", async () => {
     const { rows } = await server.owner.query<{ schema_version: number | string; contract_revision: string }>('SELECT schema_version, contract_revision FROM schema_meta');
-    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([5, 'dbc-6']);
+    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([6, 'dbc-7']);
   });
 });
 
@@ -550,11 +550,11 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
       const base = `${DISCOVERY}/candidates/${candidate.candidateId}`;
       expect(stub.requestLog().every((entry) => entry.channel === 'discovery')).toBe(true);
 
-      // The search stayed on loopback. The guard of row 131 reads only `socket.connect({ host })`, and
-      // refuses the HTTP client the connection tester uses (`net.createConnection`), so it is taken
-      // off for the test and the adoption; the stub is on 127.0.0.1 and is the only address in play.
+      // The search stayed on loopback. The guard STAYS ON for the test and the adoption (pass D1a; pass C2
+      // narrowed it so that the HTTP client of the connection tester passes it for 127.0.0.1): every
+      // connection of the flow is counted below, and anything but loopback is refused.
       expect(guard.refused()).toEqual([]);
-      guard.restore();
+      const connectionsBefore = guard.connections().length;
 
       // TEST (95): one read-only attempt with the credential of this request. A password is taken exactly as typed (D117).
       const tested = await server.post('TECHNICIAN', `${base}/test`, { credential: account });
@@ -612,6 +612,10 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
       const trailNow = await readTrail(server.owner);
       expect(linkProblems(trailNow)).toEqual([]);
       expect(verifyTrail(trailNow, await readHead(server.owner)).ok).toBe(true);
+      // The guard saw the flow: the tester's connections went out through it, all to loopback, none refused.
+      expect(guard.connections().length).toBeGreaterThan(connectionsBefore);
+      expect(guard.connections().filter((host) => host !== '127.0.0.1')).toEqual([]);
+      expect(guard.refused()).toEqual([]);
       // The selector goes back to the built-in camera: the tests after this one start from it.
       expect((await server.post('TECHNICIAN', '/api/v1/capture/cameras/CAM-02/source', { trackId: 'VIDEO-02' })).statusCode).toBe(200);
     } finally {
@@ -719,9 +723,8 @@ describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during
 
 describe('the answer on a real listener (an ephemeral port on loopback)', () => {
   it('operation 94 over HTTP: 401 without a cookie, 200 with the supervisor\'s session, the five headers of the server', async () => {
-    // The guard's work is done (it refuses the HTTP client's own way of naming loopback): what it saw is asserted first.
+    // The guard stays on (pass D1a, D134; pass C2 narrowed it so the HTTP client's way of naming loopback passes).
     expect(guard.refused()).toEqual([]);
-    guard.restore();
     await server.app.listen({ host: '127.0.0.1', port: 0 });
     const { port } = server.app.server.address() as AddressInfo;
     const call = (headers: Record<string, string>): Promise<{ status: number; requestId: unknown; body: string }> =>

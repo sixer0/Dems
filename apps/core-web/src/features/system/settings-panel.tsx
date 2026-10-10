@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { useCoreActions } from '@dems/shared/live'
 import { selectOperator, useSim, type SimActions, type SimState } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
+import { CAMERA_SEARCH_ANCHOR } from '@/features/devices/camera-search'
 import { CAPTURE_SELECTOR_ANCHOR } from '@/features/devices/capture-selector'
 import { useMotionPolicy } from '@/motion'
 import { useSystemLiveMode } from './live'
@@ -245,6 +246,10 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
           {/* Task 3 row 67 (WB-07; ux §2.6): the entry to the capture device selector of Devices & Inputs. */}
           <Link to="/devices" hash={CAPTURE_SELECTOR_ANCHOR} className="sys-link" data-testid="system-capture-selector-entry">
             {t('devices.selector.openFromSystem')}
+          </Link>
+          {/* Pass D2 (WB-07; ux §8c.1; row 137's request): the entry to the camera search of Devices & Inputs. The link starts nothing. */}
+          <Link to="/devices" hash={CAMERA_SEARCH_ANCHOR} className="sys-link" data-testid="system-camera-search-entry">
+            {t('devices.search.openFromSystem')}
           </Link>
         </Item>
 

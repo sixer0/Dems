@@ -37,16 +37,20 @@
  * closed without the entry point (every test).
  */
 import type { FastifyPluginAsync } from 'fastify';
+import { captureDoorsOf } from '../engine';
 import { describeError } from '../plugins/logger';
-import { CAPTURE_IPC_DEFAULTS } from '@dems/capture-protocol';
-import { mountCaptureFence } from './fence';
+import { CAPTURE_IPC_DEFAULTS, CAPTURE_WORKER_SETTING_DEFAULTS, captureWorkerSettingArguments, type CaptureWorkerSettings } from '@dems/capture-protocol';
+import { MIC_DISCONNECT_DEBOUNCE_MS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
+import { CaptureOperation } from './adapters';
+import { mountCaptureBootChecks } from './boot';
+import { captureOperationOf, mountCaptureFence } from './fence';
 import { forwardCaptureEvents } from './forwarder';
 import { createProcessLauncher, unconfiguredLauncher } from './ipc';
 import { createCaptureSupervisor } from './supervisor';
 import { createSystemTimers } from './timers';
 import type { CaptureReport, CaptureSupervisor } from './types';
 
-export { CAPTURE_WARNING_CLEAR_HOLD_MS, ForwarderReportCode, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions } from './forwarder';
+export { CAPTURE_MIC_RATE_LIMIT_PPM, CAPTURE_WARNING_CLEAR_HOLD_MS, CaptureNoticeCode, ForwarderReportCode, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions, type CaptureNotice } from './forwarder';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, createCaptureSupervisor } from './supervisor';
 export { createSystemTimers } from './timers';
@@ -86,10 +90,29 @@ const RECOVERED = 'the capture supervisor finished a step that had failed';
 
 /** The worker's own log: one JSON object per line, beside the connection files of the data directory. */
 const WORKER_LOG_NAME = 'capture-worker.jsonl';
+const NOTICE = 'capture notice';
+const STALE_FAULTS_CLEARED = 'capture faults of an earlier run cleared at boot';
+const STALE_FAULTS_NOT_CLEARED = 'the capture faults of an earlier run could not be cleared at boot';
+
+/**
+ * THE NAMED SETTINGS OF THE WORKER PROCESS (protocol 4; decisions D72(k), D84; capture spec §E.1).
+ * The launcher passes every one of them to every worker; a worker's own default is never relied on.
+ * `ingestOpenWindowMs`: how long a camera may take to connect before a session with no camera
+ * FAULTS with `NO_CAMERA_CONNECTED` and nothing claims to record. The three microphone thresholds
+ * are the contract's constants (`@dems/shared/api`, CS-25).
+ */
+export const CAPTURE_WORKER_PROCESS_SETTINGS: CaptureWorkerSettings = Object.freeze({
+  ingestOpenWindowMs: CAPTURE_WORKER_SETTING_DEFAULTS.ingestOpenWindowMs,
+  micSilenceDbfs: MIC_SILENCE_DBFS,
+  micSilenceDurationMs: MIC_SILENCE_DURATION_MS,
+  micDisconnectDebounceMs: MIC_DISCONNECT_DEBOUNCE_MS,
+});
 
 export const captureModule: FastifyPluginAsync = async (app) => {
   const { captureMode, captureWorkerPath, dataDir } = app.config;
-  const configured = captureMode === 'real' && captureWorkerPath !== null;
+  // The ONE reader of the capture mode (static rule G-R16): a refused combination answers SIMULATED.
+  const realOperation = captureOperationOf(app.config) !== CaptureOperation.SIMULATED;
+  const configured = realOperation && captureWorkerPath !== null;
   const report = (failure: CaptureReport): void => {
     const context = { sessionId: failure.sessionId, correlationId: failure.correlationId };
     if (failure.err === null) {
@@ -107,12 +130,34 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     now: () => app.clock.now(),
     timers: createSystemTimers(),
     launcher: configured
-      ? createProcessLauncher({ command: captureWorkerPath, args: ['--log', `${dataDir}/${WORKER_LOG_NAME}`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs)] })
+      ? createProcessLauncher({ command: captureWorkerPath, args: ['--log', `${dataDir}/${WORKER_LOG_NAME}`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PROCESS_SETTINGS)] })
       : unconfiguredLauncher,
     report,
   });
   // The telemetry and the warnings of a recording go to the engine (SH-18 / CS-04, telemetry part).
-  const stopForwarding = forwardCaptureEvents({ capture: supervisor, engine: () => (app.seams.has('engine') ? app.engine : null), report, now: () => app.clock.now() });
+  const stopForwarding = forwardCaptureEvents({
+    capture: supervisor,
+    // The engine behind the seam, with the capture door of the host beside it (D84 R-4).
+    engine: () => {
+      if (!app.seams.has('engine')) return null;
+      const host = app.engine;
+      return {
+        applyCaptureTelemetry: (telemetry) => host.applyCaptureTelemetry(telemetry),
+        raiseCaptureWarning: (warning) => host.raiseCaptureWarning(warning),
+        clearCaptureWarning: (warning) => host.clearCaptureWarning(warning),
+        clearCaptureFaults: () => captureDoorsOf(host).clearCaptureFaults(),
+      };
+    },
+    report,
+    now: () => app.clock.now(),
+    // Something the operator should know that is no failure (a long keyframe interval, D127; a camera
+    // clock near the bound, D58-7; a microphone at its rate limit, D85): level `warn`, in the log and in the error log.
+    notice(entry) {
+      const context = { sessionId: entry.sessionId, correlationId: entry.correlationId, deviceId: entry.deviceId, value: entry.value, bound: entry.bound };
+      app.log.warn({ code: entry.code, ...context }, NOTICE);
+      app.errorLog.append({ level: 'warn', source: 'capture.forwarder', message: NOTICE, code: entry.code, context });
+    },
+  });
 
   supervisor.on('workerDown', (event) => {
     const context = {
@@ -145,6 +190,18 @@ export const captureModule: FastifyPluginAsync = async (app) => {
       await supervisor.boot();
       if (booted) return;
       booted = true;
+      // D84 R-4: no worker runs at boot, so a capture fault a Core that went down left raised is
+      // over. Cleared once, by the capture side, each with its FAULT_CLEARED row. Mode `real`
+      // only: a simulated Core raises these faults through its demo controls and keeps them.
+      if (realOperation && app.seams.has('engine') && app.engine.running) {
+        try {
+          const cleared = (await captureDoorsOf(app.engine).clearCaptureFaults()).value;
+          if (cleared > 0) app.log.info({ code: 'CAPTURE_STALE_FAULTS_CLEARED', cleared }, STALE_FAULTS_CLEARED);
+        } catch (err) {
+          app.log.error({ err, code: 'CAPTURE_STALE_FAULTS_NOT_CLEARED' }, STALE_FAULTS_NOT_CLEARED);
+          app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: STALE_FAULTS_NOT_CLEARED, ...describeError(err), code: 'CAPTURE_STALE_FAULTS_NOT_CLEARED', context: {} });
+        }
+      }
       app.log.info({ code: 'CAPTURE_SUPERVISOR_BOOTED', mode: captureMode, worker: configured ? 'configured' : 'not-configured' }, BOOTED);
     },
     async shutdown() {
@@ -173,6 +230,18 @@ export const captureModule: FastifyPluginAsync = async (app) => {
       if (!app.seams.has('engine')) return;
       await app.engine.stop();
       await app.engine.start('resync');
+    },
+  });
+
+  // The CS-22 boot checks (blueprint row 61; controller ruling D138): boot step `capture.boot`, after
+  // `capture.fence`. Inert in SIMULATED (no file, no process).
+  mountCaptureBootChecks(app, {
+    timers: createSystemTimers(),
+    sinks: {
+      info: (fields, message) => app.log.info(fields, message),
+      warn: (fields, message) => app.log.warn(fields, message),
+      error: (fields, message) => app.log.error(fields, message),
+      persist: (entry) => app.errorLog.append(entry),
     },
   });
 

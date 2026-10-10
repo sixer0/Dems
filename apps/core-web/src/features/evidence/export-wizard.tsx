@@ -51,11 +51,13 @@ import {
   reasonRefused as coreRefusedReason,
   type ExportOutcome,
 } from './export-outcome'
+import { answeredJobIdOf, type ExportJobKind } from './export-job-model'
+import { ExportJobStatus } from './export-job-status'
 import { LockShackle } from './lock-shackle'
 import { logEvidenceError, newCorrelationId } from './log'
 import { byteSize, shortHash, type EvidenceRow } from './model'
 import { latestAuditRowFor } from './sim-adapter'
-import { useEvidenceVerification, type VerifyState } from './use-verification'
+import { isV2Item, useEvidenceVerification, type VerifyState } from './use-verification'
 
 export interface ExportWizardProps {
   rows: EvidenceRow[]
@@ -66,6 +68,8 @@ export interface ExportWizardProps {
 type StepIndex = 0 | 1 | 2 | 3
 type Destination = 'CASE_FILE' | 'USB' | 'NETWORK'
 const DESTINATIONS: Destination[] = ['CASE_FILE', 'USB', 'NETWORK']
+/** Operation 42, schema v2 (integration pass D5): what a new export job builds. PACKAGE is the default and is not named in the request. */
+const EXPORT_KINDS: ExportJobKind[] = ['PACKAGE', 'COMPOSITE']
 const REASON_MAX = 500
 
 /**
@@ -115,6 +119,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
   /** Live mode: the Core answered `422 INVALID_REASON` for this reason (F59: the Core is the judge). */
   const [reasonRejected, setReasonRejected] = useState(false)
   const [destination, setDestination] = useState<Destination>('CASE_FILE')
+  const [kind, setKind] = useState<ExportJobKind>('PACKAGE')
   const [auth, setAuth] = useState<'idle' | 'granted' | 'denied'>('idle')
   const [verification, setVerification] = useState<Record<string, VerifyState>>({})
   const [outcomes, setOutcomes] = useState<ExportOutcome[] | null>(null)
@@ -155,7 +160,9 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
     correlationId: string,
     onAnswer: (result: ExportResult | null, failureText: string | null) => void,
   ) => {
-    settle(() => actions.exportEvidence(row.id, { reason: trimmed, destination: destinationText }), {
+    // The kind is a Live choice (the job of operations 42 / 87); the Core cannot say beforehand whether
+    // this build has a composite encoder, so a COMPOSITE is asked for and its job answers (FAILED with its cause).
+    settle(() => actions.exportEvidence(row.id, { reason: trimmed, destination: destinationText, ...(live && kind === 'COMPOSITE' ? { kind } : {}) }), {
       ok: (result) => onAnswer(result, null),
       fail: (error) => {
         // Rule 2: the presenter speaks first (an outage, a time-out, a limit); the page records the rest.
@@ -351,6 +358,31 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
           </ListBox>
         </Select.Popover>
       </Select>
+      {live ? (
+        <Select
+          value={kind}
+          onChange={(value) => {
+            if (value && EXPORT_KINDS.includes(value as ExportJobKind)) setKind(value as ExportJobKind)
+          }}
+          className="evi-field"
+        >
+          <Label>{t('evidence.exportJob.kindLabel')}</Label>
+          <Select.Trigger data-testid="export-kind">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {EXPORT_KINDS.map((key) => (
+                <ListBox.Item key={key} id={key} textValue={t(`evidence.exportJob.kind.${key}`)}>
+                  {t(`evidence.exportJob.kind.${key}`)}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+      ) : null}
     </div>,
 
     <div key="authorise" className="evi-wizard-panel" data-testid="export-step-authorise" aria-busy={authorising.busy || undefined}>
@@ -445,7 +477,9 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
                     <Alert.Content>
                       <Alert.Title>{row.id}</Alert.Title>
                       <Alert.Description>
-                        {outcome.result ? t(`evidence.exportWizard.failure.${outcome.result.reason}`) : (outcome.failureText ?? t('evidence.live.export.notCompleted'))}
+                        {outcome.result
+                          ? t(`evidence.exportWizard.failure.${outcome.result.reason}`)
+                          : (outcome.failureText ?? t('evidence.live.export.notCompleted'))}
                       </Alert.Description>
                     </Alert.Content>
                   </Alert>
@@ -455,6 +489,9 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
             const plan = exportDownloadPlan(row, outcome.result.exportId)
             const state = downloads[row.id] ?? 'idle'
             const zip = zipChecks[row.id]
+            // Row 92: a Core-sealed (schema-v2) item has no bundled DEMO file to hand over, and the
+            // contract sends no export archive to a client: its result is the Core's job, below.
+            const coreArchiveOnly = live && isV2Item(row)
             return (
               <li key={row.id} className="evi-export-result" data-export-id={outcome.result.exportId} data-plan={plan.kind}>
                 <div className="evi-export-result-head">
@@ -466,38 +503,42 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
                 <p className="evi-caption">
                   {t('evidence.exportWizard.auditRecorded', { audit: outcome.auditRowId ?? '—', hash: outcome.auditHash ? shortHash(outcome.auditHash) : '—' })}
                 </p>
-                <div className="evi-export-download">
-                  {plan.kind === 'zip' ? <FileArchive className="size-5 text-accent" aria-hidden="true" /> : <FileJson className="size-5 text-accent" aria-hidden="true" />}
-                  <div className="flex min-w-0 flex-col">
-                    <span className="evi-strong evi-mono">{plan.fileName}</span>
-                    <span className="evi-caption">
-                      {plan.kind === 'zip'
-                        ? t('evidence.exportWizard.zipLabel', {
-                            exportId: plan.prebuiltExportId,
-                            size: t(`common.units.${byteSize(plan.bytes).unit}`, { value: byteSize(plan.bytes).value }),
-                          })
-                        : t('evidence.exportWizard.manifestLabel')}
-                    </span>
-                    {zip ? (
-                      <span className={zip.ok ? 'evi-caption evi-ok' : 'evi-caption evi-bad'} data-testid="export-zip-check" data-ok={zip.ok ? 'true' : 'false'}>
-                        {zip.ok
-                          ? t('evidence.exportWizard.zipHashOk', { hash: zip.actual ? shortHash(zip.actual) : '—' })
-                          : t('evidence.exportWizard.zipHashBad')}
+                {/* Operation 42 only queued the export: operation 87 says when it is done, or that it FAILED. */}
+                {live ? <ExportJobStatus exportId={outcome.result.exportId} evidenceId={row.id} jobId={answeredJobIdOf(outcome.result)} /> : null}
+                {coreArchiveOnly ? null : (
+                  <div className="evi-export-download">
+                    {plan.kind === 'zip' ? <FileArchive className="size-5 text-accent" aria-hidden="true" /> : <FileJson className="size-5 text-accent" aria-hidden="true" />}
+                    <div className="flex min-w-0 flex-col">
+                      <span className="evi-strong evi-mono">{plan.fileName}</span>
+                      <span className="evi-caption">
+                        {plan.kind === 'zip'
+                          ? t('evidence.exportWizard.zipLabel', {
+                              exportId: plan.prebuiltExportId,
+                              size: t(`common.units.${byteSize(plan.bytes).unit}`, { value: byteSize(plan.bytes).value }),
+                            })
+                          : t('evidence.exportWizard.manifestLabel')}
                       </span>
-                    ) : null}
+                      {zip ? (
+                        <span className={zip.ok ? 'evi-caption evi-ok' : 'evi-caption evi-bad'} data-testid="export-zip-check" data-ok={zip.ok ? 'true' : 'false'}>
+                          {zip.ok
+                            ? t('evidence.exportWizard.zipHashOk', { hash: zip.actual ? shortHash(zip.actual) : '—' })
+                            : t('evidence.exportWizard.zipHashBad')}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Button
+                      variant={state === 'done' ? 'outline' : 'primary'}
+                      size="sm"
+                      isPending={state === 'busy'}
+                      onPress={() => void download(row, outcome, plan)}
+                      className="ml-auto"
+                      data-testid={`export-download-${row.id}`}
+                    >
+                      <Download className="size-4" aria-hidden="true" />
+                      {state === 'done' ? t('evidence.exportWizard.downloadAgain') : t('common.actions.download')}
+                    </Button>
                   </div>
-                  <Button
-                    variant={state === 'done' ? 'outline' : 'primary'}
-                    size="sm"
-                    isPending={state === 'busy'}
-                    onPress={() => void download(row, outcome, plan)}
-                    className="ml-auto"
-                    data-testid={`export-download-${row.id}`}
-                  >
-                    <Download className="size-4" aria-hidden="true" />
-                    {state === 'done' ? t('evidence.exportWizard.downloadAgain') : t('common.actions.download')}
-                  </Button>
-                </div>
+                )}
               </li>
             )
           })}

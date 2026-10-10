@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { createJSONStorage } from 'zustand/middleware';
 import {
+  passCaptureStart,
   createManualClock,
   createMemoryStateStorage,
   createSim,
@@ -90,6 +91,7 @@ describe('machine-readable error codes (review 40 m8)', () => {
     h.run(5_000);
     expect(simErrorCode(thrown(() => h.sim.actions.acknowledgePrecheckWarnings()))).toBe('ILLEGAL_STATE');
     h.sim.actions.startRecording();
+    passCaptureStart(h.clock.advance, h.sim.tick);
     expect(simErrorCode(thrown(() => h.sim.actions.stopRecording('no')))).toBe('REASON_TOO_SHORT');
     expect(simErrorCode(thrown(() => h.sim.actions.addNote(' ')))).toBe('NOTE_INVALID');
     expect(simErrorCode(thrown(() => h.sim.actions.deviceCommand('CAM-99', 'TEST_SIGNAL')))).toBe('NOT_FOUND');

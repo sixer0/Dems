@@ -37,7 +37,8 @@ import {
   type SessionPanelKind,
 } from './dashboard-model'
 import { DASH_BEATS } from './dashboard-motion'
-import { manifestSuffixKey, selectSystemStateValue, useSealedManifestDigest } from './sim-adapter'
+import { captureFailedStartOf, captureFailedStartText } from '@/lib/capture-notices'
+import { manifestSuffixKey, selectConnectingCameras, selectSystemStateValue, useSealedManifestDigest } from './sim-adapter'
 
 /** Ripple and ShineBorder share ONE of the four ambient slots (D63; §9.4 "Ripple/ShineBorder"). */
 const IDLE_INVITATION_GROUP = 'idle-invitation'
@@ -57,6 +58,10 @@ const selectSessionCard = (s: SimState) => {
     startedAt: session.startedAt,
     sealedAt: session.sealedAt,
     evidenceId: session.evidenceId,
+    // Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A), both primitives:
+    // RECORDING before the first durable fragment, and FAULT of a session that recorded nothing.
+    connecting: selectConnectingCameras(s),
+    failedStart: captureFailedStartOf(session, s.alerts),
   }
 }
 type SessionCard = NonNullable<ReturnType<typeof selectSessionCard>>
@@ -244,7 +249,8 @@ function RecordingView({ card }: { card: SessionCard }) {
     { key: 'case', label: t('dashboard.activeSession.recording.caseNumber'), value: card.caseNumber },
     { key: 'investigator', label: t('dashboard.activeSession.recording.investigator'), value: investigator },
     { key: 'subject', label: t('dashboard.activeSession.recording.subject'), value: `${t(`common.subjectType.${card.subjectType}`)} · ${card.subjectName}` },
-    { key: 'start', label: t('dashboard.activeSession.recording.startTime'), value: zoned(card.startedAt), wide: true },
+    // No start time before the first durable fragment: nothing has been recorded yet.
+    { key: 'start', label: t('dashboard.activeSession.recording.startTime'), value: card.connecting ? '—' : zoned(card.startedAt), wide: true },
   ]
   return (
     <View testId="session-recording">
@@ -258,11 +264,16 @@ function RecordingView({ card }: { card: SessionCard }) {
             cameraId="VIDEO-01"
             variant="thumb"
             live={false}
-            recordingSince={card.startedAt}
-            ariaLabel={t('dashboard.activeSession.recording.thumbnailLabel')}
+            recordingSince={card.connecting ? null : card.startedAt}
+            ariaLabel={card.connecting ? t('common.session.connectingCameras') : t('dashboard.activeSession.recording.thumbnailLabel')}
           />
         </motion.div>
         <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+          {card.connecting ? (
+            <p role="status" className="text-caption font-semibold text-foreground-2" data-testid="session-connecting">
+              {t('common.session.connectingCameras')}
+            </p>
+          ) : null}
           <dl className="dems-kv" data-testid="session-details">
             {rows.map((row, index) => (
               <motion.div
@@ -397,18 +408,25 @@ function IncidentView({ kind, card }: { kind: 'fault' | 'recovery'; card: Sessio
   const { t } = useTranslation()
   const navigate = useNavigate()
   const Icon = kind === 'fault' ? TriangleAlert : RotateCcw
+  // Pass D7 items 3 and 5: a session that recorded nothing is no "fault to recover" — it says "Nothing was
+  // recorded." in full (the cause from the alert's `params.reason`); the Monitor holds its close.
+  const failed = kind === 'fault' && card.failedStart !== null ? captureFailedStartText(t, card.failedStart) : null
   return (
     <View testId={`session-${kind}`}>
       <div className="flex h-full min-h-0 flex-col justify-center gap-2.5">
         <div className="flex items-center gap-2.5">
           <Icon aria-hidden="true" size={22} className={kind === 'fault' ? 'text-danger-soft-foreground' : 'text-warning-soft-foreground'} />
-          <h3 className="text-h3 text-foreground">{t(`dashboard.activeSession.${kind}.title`)}</h3>
+          <h3 className="text-h3 text-foreground" data-testid="session-incident-title">
+            {failed?.title ?? t(`dashboard.activeSession.${kind}.title`)}
+          </h3>
           <Chip size="sm" color={kind === 'fault' ? 'danger' : 'warning'} variant="soft" className="ml-auto">
             <Chip.Label>{t(`common.enums.sessionState.${card.state}`)}</Chip.Label>
           </Chip>
         </div>
         <p className="font-mono text-caption text-accent">{card.id}</p>
-        <p className="text-caption text-foreground-2">{t(`dashboard.activeSession.${kind}.body`)}</p>
+        <p className="text-caption text-foreground-2" data-testid="session-incident-body" data-failed-start={card.failedStart ?? undefined}>
+          {failed?.body ?? t(`dashboard.activeSession.${kind}.body`)}
+        </p>
         <div>
           <Button variant={kind === 'fault' ? 'danger-soft' : 'outline'} size="sm" onPress={() => void navigate({ to: '/session' })}>
             <MonitorPlay aria-hidden="true" size={15} />

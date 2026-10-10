@@ -46,7 +46,6 @@ import {
   EvidenceLifecycleStage,
   FinalizationStep,
   LensState,
-  MicInputId,
   MicRole,
   MicState,
   NetworkDomain,
@@ -336,8 +335,8 @@ export const ActiveSessionSchema = z
     audioSource: z
       .strictObject({
         sessionId: sessionId(),
-        activeInputId: z.enum(MicInputId),
-        standbyInputId: z.enum(MicInputId),
+        activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input behind AUDIO-01, `MIC-NN` (D133 (1)).'),
+        standbyInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The hot standby input, `MIC-NN`.'),
         switchedAt: nullableEpochMs().describe('When the last switch took effect; null before the first.'),
         intervalFromMs: count().describe('Media-pts start of the interval the switch opened (never wall clock).'),
       })
@@ -475,8 +474,11 @@ const AudioFrameSchema = z
  */
 export const AudioSliceSchema = z
   .strictObject({
-    inputs: z.strictObject({ [MicInputId.MIC_01]: AudioFrameSchema, [MicInputId.MIC_02]: AudioFrameSchema }),
-    activeInputId: z.enum(MicInputId).describe('The input whose level is the one inside AUDIO-01 right now (op 81 moves it).'),
+    inputs: z
+      .record(z.string().regex(MIC_INPUT_ID_PATTERN), AudioFrameSchema)
+      .refine((inputs) => Object.keys(inputs).length === 2, { message: 'Expected the frames of exactly two mic inputs.' })
+      .describe('The newest frame of each of the two mic inputs of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)).'),
+    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The input whose level is the one inside AUDIO-01 right now (op 81 moves it).'),
   })
   .describe('Slice `audio`: the newest frame of each mic input plus the active one. Streamed in `meters` messages only; not part of a snapshot.');
 export type AudioSliceBody = z.output<typeof AudioSliceSchema>;
@@ -734,11 +736,16 @@ export const EvidenceItemSchema = z
     transcriptSha256: sha256().nullable().optional().describe('Schema v2 item-level transcript hash (SH-07 preview; `evidence_items.transcript_sha256`, dbc-3 §B.11).'),
     manifestVersion: z.union([z.literal(1), z.literal(2)]).optional().describe('Manifest version of the seal (`evidence_items.manifest_version`, dbc-3 §B.11): 2 for every v2 seal, also one without a transcript hash. Absent: derived as before.'),
     labelsStatus: z.enum(['LABELLED', 'UNAVAILABLE']).nullable().optional().describe('Whether the sealed transcript carries speaker labels (`evidence_items.labels_status`); null or absent when the seal states none.'),
+    developmentSources: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe('Whether the seal recorded a development source (`evidence_items.development_sources`, manifest field 126; C3 §3.1 erratum PE-128-32). Null or absent: not recorded (a v1 item, or one sealed before the column existed) - never to be read as production.'),
     audioSourceIntervals: z
       .array(
         z.strictObject({
           seq: count(),
-          inputId: z.enum(MicInputId),
+          inputId: z.string().regex(MIC_INPUT_ID_PATTERN),
           role: z.enum(MicRole),
           fromMs: count().describe('Media-pts start (S2 §6 finding 3).'),
           toMs: nullableEpochMs().describe('Media-pts end; null for the open interval of a live session.'),
@@ -844,7 +851,18 @@ export type AuditSliceBody = z.output<typeof AuditSliceSchema>;
 
 export const FaultsSliceSchema = z
   .strictObject({
-    active: z.array(z.strictObject({ kind: z.enum(FaultKind), since: epochMs(), target: text().nullable() })),
+    active: z.array(
+      z.strictObject({
+        kind: z.enum(FaultKind),
+        since: epochMs(),
+        target: text().nullable(),
+        reason: z
+          .string()
+          .regex(/^[A-Z][A-Z0-9_]{1,63}$/)
+          .optional()
+          .describe('The enumerated cause of a capture fault. The key of a fault is (kind, reason, target): two causes on one device are two entries.'),
+      }),
+    ),
   })
   .describe('Slice `faults`: the demo faults that are injected and not cleared.');
 export type FaultsSliceBody = z.output<typeof FaultsSliceSchema>;
@@ -936,6 +954,12 @@ export const CaptureDeviceStatusSchema = z
       .enum(['PRODUCTION', 'DEVELOPMENT'])
       .optional()
       .describe('Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client.'),
+    sourceOpen: z
+      .boolean()
+      .optional()
+      .describe(
+        'True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the "is on" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.',
+      ),
   })
   .describe('One capture device (`dbc-3 §B.2`); carries no credential (RK-12).');
 export type CaptureDeviceStatusBody = z.output<typeof CaptureDeviceStatusSchema>;

@@ -13,11 +13,12 @@
  * running while the page or app was hidden). Audit and event rows go through
  * `recordActivity`, which keeps them in time order.
  */
-import { FINALIZATION_STEPS_V2, SessionState, type MicInputId, type TimeSource } from '../domain';
+import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, type FinalizationStep, type TimeSource } from '../domain';
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
-import { builtInMicInputOf, channelOfMicInput } from './audio';
+import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
 import { captureReachabilityOf } from './capture-notices';
+import { advanceCaptureStart } from './capture-session';
 import {
   FINALIZATION_STEP_MAX_MS,
   FINALIZATION_STEP_MIN_MS,
@@ -44,14 +45,19 @@ import {
 import { deriveDeviceState } from './derive';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
-import { createEvidenceItem } from './evidence';
+import { createEvidenceItem, EVIDENCE_STATUS_STAGE } from './evidence';
 import { RngStream, type Rng, type RngStreams } from './rng';
 import { cutText } from './text-cut';
 import type {
   ActiveSession,
+  CaptureLevelSource,
+  CaptureMicInputId,
   CreateSessionResult,
   EpochMs,
+  CustodyEntry,
+  EvidenceItem,
   EvidenceMarker,
+  EvidenceSignature,
   FinalizationStepState,
   PrecheckItem,
   PrecheckSlice,
@@ -65,6 +71,7 @@ import {
   CRITICAL_FAULTS,
   FaultEvt,
   FaultKind,
+  IntegritySource,
   OperatorRole,
   Permission,
   PRECHECK_ORDER,
@@ -74,6 +81,9 @@ import {
   type PrecheckCheckId,
   type PrecheckStatus,
 } from './vocabulary';
+
+/** `details.reason` of a stop refused while the cameras connect: the contract's `CAPTURE_NOT_DURABLE_REASON` (`api/sessions.ts`), by value. */
+const CAPTURE_NOT_DURABLE_REASON = 'CAPTURE_NOT_DURABLE';
 
 // ── State groups ─────────────────────────────────────────────────────────────────────────
 
@@ -490,7 +500,7 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       const unreachable = unreachableSource(state, role);
       if (unreachable !== null) return unreachable;
       const input = (state.session?.captureConfig?.mics ?? state.captureConfig.mics).find((line) => line.role === role)?.inputId ?? null;
-      const track = input === null ? null : channelOfMicInput(input);
+      const track = input === null ? null : channelOfMicLine(captureMicLines(state), input);
       const mic = track === null ? undefined : state.mics.find((m) => m.id === track);
       if (!mic || track === null || mic.state === 'NO_SIGNAL') {
         return { status: 'WARN', value: 'NO_SIGNAL', reason: `${mic?.name ?? id}: no signal`, reasonCode: R.MIC_NO_SIGNAL, params: track === null ? {} : { track } };
@@ -711,20 +721,14 @@ export function captureConfigSnapshot(state: SimState): ActiveSession['captureCo
  * (0 at the start of the recording — never an operator wall clock, S2 §6). Falls back to the two
  * seeded inputs when the selector names no roles (a hand-built state).
  */
-export function audioSourceAtStart(state: SimState, sessionId: string): ActiveSession['audioSource'] {
+export function audioSourceAtStart(state: SimState, sessionId: string): NonNullable<ActiveSession['audioSource']> {
   const mics = state.captureConfig.mics;
-  // The session audio source is keyed by the two built-in inputs in this contract version. A
-  // selector input beyond them (`MIC-03`, D115 (2)) is REFUSED here by name: it is never recorded
-  // under the ID of another microphone. (To wire with row 71: widen `audioSource` and the meters.)
-  const sourceOf = (role: 'PRIMARY' | 'STANDBY'): MicInputId | undefined => {
-    const inputId = mics.find((mic) => mic.role === role)?.inputId;
-    if (inputId === undefined) return undefined;
-    const builtIn = builtInMicInputOf(inputId);
-    if (builtIn === null) throw new SimTransitionError(state.session?.state ?? null, 'startRecording', `mic input ${inputId} has no session audio source`);
-    return builtIn;
-  };
-  const primary = sourceOf('PRIMARY') ?? state.audio.activeInputId;
-  const standby = sourceOf('STANDBY') ?? (primary === 'MIC-01' ? 'MIC-02' : 'MIC-01');
+  // The pair of the session is the selector's pair, by role, whatever its inputs are named: any
+  // registered `MIC-NN` (D133 (1), ruling D137; request of pass D1b). Where a role is not assigned,
+  // the line of that channel in selector input order stands in.
+  const sourceOf = (role: 'PRIMARY' | 'STANDBY'): CaptureMicInputId | undefined => mics.find((mic) => mic.role === role)?.inputId;
+  const primary = sourceOf('PRIMARY') ?? micInputOfChannel(mics, 'AUDIO-01');
+  const standby = sourceOf('STANDBY') ?? mics.find((mic) => mic.inputId !== primary)?.inputId ?? micInputOfChannel(mics, 'AUDIO-02');
   return {
     sessionId,
     activeInputId: primary,
@@ -736,22 +740,36 @@ export function audioSourceAtStart(state: SimState, sessionId: string): ActiveSe
 
 // ── RECORDING, STOPPING, cancel ──────────────────────────────────────────────────────────
 
-/** ARMED → RECORDING. `startedAt = now`; audit RECORDING_STARTED; timeline START. */
-export function startRecordingTransition(state: SimState, now: EpochMs): SimState {
+/**
+ * ARMED → RECORDING. `startedAt = now`; audit RECORDING_STARTED; timeline START.
+ *
+ * Where the simulator runs its own capture (`capture: 'simulated'`, the default) the start is a
+ * CONNECTING one, as the Core's (integration pass D10; D84, D91 R-1 option A): the session says
+ * `captureDurable: false` until `advanceCaptureStart` decides it, `CAPTURE_CONNECT_MS` later
+ * (durable = the member is removed: absent reads as durable, and the session is then exactly what
+ * the Core stores of it).
+ * With `'external'` the member is left to the Core's capture session, which writes it in the same
+ * unit (`captureConnectingTransition`).
+ */
+export function startRecordingTransition(state: SimState, now: EpochMs, capture: CaptureLevelSource = 'simulated'): SimState {
   const actorId = requireSessionOperator(state, 'startRecording');
   const session = requireSession(state, 'startRecording', [SessionState.ARMED]);
   // Schema v2 (register SH-06; OD-10): the selector is copied into the session the instant
   // recording starts, so a later edit never changes a running session. `audioSource` records which
   // mic input feeds `AUDIO-01` (PRIMARY) and which is the hot standby (STANDBY); op 81 moves the
   // active one through `switchAudioSourceTransition`.
+  const audioSource = audioSourceAtStart(state, session.id);
+  // The input whose level is inside `AUDIO-01` from the first sample on is the session's primary.
+  const armed: SimState = state.audio.activeInputId === audioSource.activeInputId ? state : { ...state, audio: { ...state.audio, activeInputId: audioSource.activeInputId } };
   const next = addTimelineItem(
-    withSession(state, {
+    withSession(armed, {
       ...session,
       state: SessionState.RECORDING,
       startedAt: now,
       startTimeSource: state.time.source,
       captureConfig: captureConfigSnapshot(state),
-      audioSource: audioSourceAtStart(state, session.id),
+      audioSource,
+      ...(capture === 'simulated' ? { captureDurable: false } : {}),
     }),
     {
       at: now,
@@ -784,6 +802,11 @@ export function startRecordingTransition(state: SimState, now: EpochMs): SimStat
 export function stopRecordingTransition(state: SimState, now: EpochMs, reason: string): SimState {
   const actorId = requireSessionOperator(state, 'stopRecording');
   const session = requireSession(state, 'stopRecording', [SessionState.RECORDING]);
+  // A recording that is still connecting its cameras holds nothing durable: there is nothing to
+  // stop and seal. A refusal of the STATE, so it comes before the reason, as the 409 before the 422 (D84; C3 §3.1: `409 INVALID_STATE`, `details.reason: CAPTURE_NOT_DURABLE`).
+  if (session.captureDurable === false) {
+    throw new SimTransitionError(session.state, 'stopRecording', 'the recording is still connecting its cameras', SimErrorCode.ILLEGAL_STATE, CAPTURE_NOT_DURABLE_REASON);
+  }
   const trimmed = typeof reason === 'string' ? reason.trim() : '';
   if (trimmed.length < STOP_REASON_MIN_LENGTH) {
     throw new SimTransitionError(
@@ -828,7 +851,7 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
  * audit row carrying the sending device id (E-30). Idempotent when the input is already active; a
  * recording session is required.
  */
-export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: MicInputId): SimState {
+export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId): SimState {
   const actorId = requireSessionOperator(state, 'switchAudioSource');
   const session = requireSession(state, 'switchAudioSource', [SessionState.RECORDING]);
   const mic = state.captureConfig.mics.find((entry) => entry.inputId === inputId);
@@ -857,7 +880,7 @@ export function switchAudioSourceTransition(state: SimState, now: EpochMs, input
     kind: 'AUDIO_SWITCH',
     label: `Active microphone switched to ${inputId}`,
     detail: null,
-    channel: inputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02',
+    channel: channelOfMicLine(captureMicLines(state), inputId) ?? 'AUDIO-01',
     params: { from: previousActive, to: inputId, deviceId: mic.deviceId },
   });
   return record(next, now, {
@@ -896,11 +919,19 @@ export function cancelTransition(state: SimState, now: EpochMs): SimState {
 export function advanceStopping(state: SimState, now: EpochMs, rng: RngStreams): SimState {
   const session = state.session;
   if (!session || session.state !== SessionState.STOPPING || session.stoppedAt === null) return state;
+  // A SESSION THE CORE'S CAPTURE RECORDED IS SEALED BY THE CORE'S PIPELINE, NEVER BY THE TIME
+  // (blueprint row 82b; decisions D67, D147). Such a session carries `captureDurable`. A session
+  // the simulator's own capture recorded never does when it stops: the member is `false` only
+  // while its cameras connect (a stop is refused then) and is REMOVED when the start is decided
+  // (`advanceCaptureStart`, pass D10). It stays STOPPING until the pipeline's first
+  // report moves it to FINALIZING (`applySealingProgressTransition`): the capture worker may need
+  // longer than `STOPPING_MS` to close its files, and a timed seal here would put a SIMULATED item
+  // beside a real recording.
+  if (session.captureDurable !== undefined) return state;
   const at = session.stoppedAt + STOPPING_MS;
   if (now < at) return state;
   const random = rng.get(RngStream.FINALIZATION);
   const stepDurations = FINALIZATION_ORDER.map(() => random.int(FINALIZATION_STEP_MIN_MS, FINALIZATION_STEP_MAX_MS));
-  const totalMs = stepDurations.reduce((sum, ms) => sum + ms, 0);
   const steps: FinalizationStepState[] = FINALIZATION_ORDER.map((id, index) => ({
     id,
     status: index === 0 ? 'active' : 'pending',
@@ -909,8 +940,11 @@ export function advanceStopping(state: SimState, now: EpochMs, rng: RngStreams):
     durationMs: stepDurations[index] ?? FINALIZATION_STEP_MIN_MS,
     // Schema v2 (SH-06; R-6 op 83): the driver reports per-step progress + ETA from Core instants.
     // A fresh run is attempt 1; a resumed run (RECOVERY) bumps it (`dbc-3 §B.4`).
-    progress: index === 0 ? 0 : 0,
-    etaMs: totalMs,
+    // `etaMs` is the remaining time of THIS step (decision D121; `sealing_jobs.eta_ms` is per step,
+    // `dbc-3 §B.4`): the running step carries its own duration, a step that has not started none.
+    // The remaining time of the whole run is op 83's own sum, never a step's member.
+    progress: 0,
+    etaMs: index === 0 ? (stepDurations[0] ?? FINALIZATION_STEP_MIN_MS) : null,
     detail: null,
     attempt: SEALING_FIRST_ATTEMPT,
   }));
@@ -1065,17 +1099,24 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
   });
 }
 
-/** The sealing ETA contribution of the steps from `fromIndex` on (their planned durations). */
-function remainingSealingMs(steps: readonly FinalizationStepState[], fromIndex: number): number {
-  let total = 0;
-  for (let i = fromIndex; i < steps.length; i += 1) total += steps[i]?.durationMs ?? FINALIZATION_STEP_MIN_MS;
-  return total;
+/**
+ * True while the Core's sealing pipeline drives the session's finalization (`applySealingProgressTransition`):
+ * a step that is not done carries NO planned duration, so no timed transition of this file advances
+ * it. The simulator's own seal gives every step a duration when STOPPING ends (`advanceStopping`).
+ */
+export function isCoreDrivenSeal(session: ActiveSession | null): boolean {
+  if (session === null || session.state !== SessionState.FINALIZING) return false;
+  const open = session.finalization.steps.filter((step) => step.status !== 'done');
+  return open.length > 0 && open.every((step) => step.durationMs === null);
 }
 
 /** Completes every finalization step whose time has come; seals after the sixth. */
 export function advanceFinalization(state: SimState, now: EpochMs): SimState {
   const session = state.session;
   if (!session || session.state !== SessionState.FINALIZING) return state;
+  // A seal the Core's pipeline drives is advanced by its progress and its completion only
+  // (`applySealingProgressTransition`, `completeSealTransition`): never by the time.
+  if (session.finalization.steps.some((step) => step.status === 'active' && step.durationMs === null)) return state;
   const steps = session.finalization.steps.slice();
   let changed = false;
   let sealAt: EpochMs | null = null;
@@ -1085,25 +1126,26 @@ export function advanceFinalization(state: SimState, now: EpochMs): SimState {
     if (!step || step.startedAt === null) break;
     const due = step.startedAt + (step.durationMs ?? FINALIZATION_STEP_MIN_MS);
     if (now < due) break;
-    steps[index] = { ...step, status: 'done', completedAt: due, progress: 100, etaMs: remainingSealingMs(steps, index + 1) };
+    steps[index] = { ...step, status: 'done', completedAt: due, progress: 100, etaMs: 0 };
     changed = true;
     const following = steps[index + 1];
-    if (following) steps[index + 1] = { ...following, status: 'active', startedAt: due };
+    if (following) steps[index + 1] = { ...following, status: 'active', startedAt: due, etaMs: following.durationMs ?? FINALIZATION_STEP_MIN_MS };
     else {
       sealAt = due;
       break;
     }
   }
   // Schema v2 (SH-06; R-6 op 83): while a step is still running, move its `progress` toward 100 and
-  // recompute the run's ETA from Core instants. The engine calls this every tick, so the client's
-  // progress line is forward-only and never derived from its own wall clock (E-13).
+  // recompute ITS remaining time from Core instants (decision D121: the running step's own ETA,
+  // not the run's). The engine calls this every tick, so the client's progress line is
+  // forward-only and never derived from its own wall clock (E-13).
   const activeIndex = steps.findIndex((step) => step.status === 'active');
   const active = activeIndex >= 0 ? steps[activeIndex] : undefined;
   if (active && sealAt === null && active.startedAt !== null) {
     const durationMs = active.durationMs ?? FINALIZATION_STEP_MIN_MS;
     const elapsed = Math.max(0, Math.min(now - active.startedAt, durationMs));
     const progress = Math.min(99, Math.floor((elapsed / durationMs) * 100));
-    const etaMs = durationMs - elapsed + remainingSealingMs(steps, activeIndex + 1);
+    const etaMs = durationMs - elapsed;
     if (progress !== active.progress || etaMs !== active.etaMs) {
       steps[activeIndex] = { ...active, progress, etaMs };
       changed = true;
@@ -1116,6 +1158,324 @@ export function advanceFinalization(state: SimState, now: EpochMs): SimState {
   };
   const next = { ...state, session: updated };
   return sealAt === null ? next : seal(next, updated, sealAt);
+}
+
+// ── The seal the Core's pipeline drives (schema v2; blueprint row 82) ────────────────────
+//
+// Register SH-06, SH-18, CS-04; evidence package spec §E.1, §E.2, §E.4; decisions D65(b), D67, D121.
+//
+// In real capture the finalization of a session is not a matter of time: the Core's sealing
+// pipeline works through the six steps on the files of the session and tells the engine where it
+// stands. Three pure transitions carry that, and the engine host applies each as one INTERNAL
+// action (no actor, no permission: the pipeline is the Core itself):
+//
+//   applySealingProgressTransition   the step states of `sealing_jobs`, forward-only per attempt.
+//                                    The first call moves the session to FINALIZING: from STOPPING
+//                                    (a clean stop), or from FAULT / RECOVERY (the interrupted
+//                                    durable-prefix seal of OD-08, and a seal resumed at a start).
+//   completeSealTransition           FINALIZING -> SEALED with the item of the REAL package: the
+//                                    hashes, the signature and the marks are the pipeline's, nothing
+//                                    is computed here.
+//   recordEvidenceVerificationTransition   the verdict the Core computed for a REAL item (D107 (1)).
+//
+// A step the pipeline has not finished carries no planned duration (`durationMs: null`), and that
+// is what keeps the timed `advanceFinalization` away from it (`isCoreDrivenSeal`).
+
+export type SealingStepReportStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+
+/** One step as the pipeline reports it: the members of its `sealing_jobs` row (`dbc-3 §B.4`). */
+export interface SealingStepReport {
+  id: FinalizationStep;
+  status: SealingStepReportStatus;
+  /** 0..100. */
+  progress: number;
+  /** The remaining time of THIS step in ms, or null when the pipeline has no estimate (D121). */
+  etaMs: number | null;
+  /** >= 1; one more for every resumed run. */
+  attempt: number;
+  /** Counts for the progress line (fragments, chunks). Never a path, a hash or transcript text. */
+  detail?: string | null;
+}
+
+export interface SealingProgressInput {
+  sessionId: string;
+  steps: readonly SealingStepReport[];
+  /**
+   * The camera files whose tail was no whole fragment and was dropped by the tail validation
+   * (capture spec §C.5; erratum AU2-08). Each is written ONCE into the session's timeline.
+   */
+  truncatedTails?: readonly { trackId: string; droppedBytes: number }[];
+}
+
+const STEP_STATUS_OF_REPORT = { PENDING: 'pending', RUNNING: 'active', DONE: 'done', FAILED: 'error' } as const;
+const SEALABLE_STATES: readonly SessionState[] = [SessionState.STOPPING, SessionState.FINALIZING, SessionState.FAULT, SessionState.RECOVERY];
+const wholeBetween = (value: number, least: number, most: number): number => Math.min(most, Math.max(least, Math.floor(Number.isFinite(value) ? value : least)));
+
+function coreDrivenStep(previous: FinalizationStepState | undefined, report: SealingStepReport | undefined, id: FinalizationStep, now: EpochMs): FinalizationStepState {
+  const attempt = Math.max(previous?.attempt ?? SEALING_FIRST_ATTEMPT, wholeBetween(report?.attempt ?? SEALING_FIRST_ATTEMPT, SEALING_FIRST_ATTEMPT, Number.MAX_SAFE_INTEGER));
+  // A step that is DONE stays DONE, with its instants, whatever a resumed run reports (D-87-3).
+  if (previous?.status === 'done' && previous.durationMs !== null) return { ...previous, progress: 100, etaMs: 0, attempt: previous.attempt ?? attempt };
+  if (report === undefined || report.status === 'PENDING') {
+    return { id, status: 'pending', startedAt: null, completedAt: null, durationMs: null, progress: 0, etaMs: null, detail: null, attempt };
+  }
+  const startedAt = previous?.startedAt ?? now;
+  if (report.status === 'DONE') {
+    return { id, status: 'done', startedAt, completedAt: now, durationMs: Math.max(0, now - startedAt), progress: 100, etaMs: 0, detail: report.detail ?? null, attempt };
+  }
+  // Forward-only inside one attempt; a resumed attempt may legitimately start lower (ev §E.2).
+  const sameAttempt = previous !== undefined && (previous.attempt ?? SEALING_FIRST_ATTEMPT) === attempt && previous.durationMs === null;
+  const reported = wholeBetween(report.progress, 0, 99);
+  const progress = sameAttempt ? Math.max(previous.progress ?? 0, reported) : reported;
+  const etaMs = report.etaMs === null ? null : wholeBetween(report.etaMs, 0, Number.MAX_SAFE_INTEGER);
+  return { id, status: STEP_STATUS_OF_REPORT[report.status], startedAt, completedAt: null, durationMs: null, progress, etaMs, detail: report.detail ?? null, attempt };
+}
+
+/**
+ * The sealing pipeline's step states (INTERNAL action `applySealingProgress`; no actor). The
+ * session must be the one named, in STOPPING, FINALIZING, FAULT or RECOVERY. Returns the same
+ * state when nothing a client would see changed.
+ */
+export function applySealingProgressTransition(state: SimState, now: EpochMs, input: SealingProgressInput): SimState {
+  const session = requireSession(state, 'applySealingProgress', SEALABLE_STATES);
+  if (session.id !== input.sessionId) throw new SimTransitionError(session.state, 'applySealingProgress', 'another session is active');
+  const entering = session.state !== SessionState.FINALIZING;
+  const previous = new Map(entering ? [] : session.finalization.steps.map((step) => [step.id, step] as const));
+  const reported = new Map(input.steps.map((step) => [step.id, step] as const));
+  const steps = FINALIZATION_ORDER.map((id) => coreDrivenStep(previous.get(id), reported.get(id), id, now));
+
+  const known = new Set(session.timeline.filter((item) => item.kind === 'CHECK' && item.params?.source === 'TAIL_VALIDATION').map((item) => item.params?.trackId));
+  const tails = (input.truncatedTails ?? []).filter((tail) => !known.has(tail.trackId));
+  const sameSteps =
+    !entering &&
+    steps.every((step, index) => {
+      const before = session.finalization.steps[index];
+      return before !== undefined && before.status === step.status && before.progress === step.progress && before.etaMs === step.etaMs && (before.detail ?? null) === (step.detail ?? null) && before.attempt === step.attempt;
+    });
+  if (sameSteps && tails.length === 0) return state;
+
+  const evidenceSeq = state.meta.counters.evidence;
+  const evidenceId = session.evidenceId ?? evidenceIdFor(evidenceSeq, session.createdAt);
+  const recovering = session.state === SessionState.FAULT || session.state === SessionState.RECOVERY;
+  const updated: ActiveSession = {
+    ...session,
+    state: SessionState.FINALIZING,
+    evidenceId,
+    // The interrupted seal ends the recording where it faulted: there was no operator stop.
+    recovery: null,
+    finalization: { steps, startedAt: entering ? now : session.finalization.startedAt, completedAt: null },
+  };
+  let next: SimState = deriveDeviceState({
+    ...state,
+    meta: session.evidenceId ? state.meta : { ...state.meta, counters: { ...state.meta.counters, evidence: evidenceSeq + 1 } },
+    session: updated,
+  });
+  for (const tail of tails) {
+    next = addTimelineItem(next, {
+      at: now,
+      kind: 'CHECK',
+      label: `Truncated tail dropped · ${tail.trackId}`,
+      detail: null,
+      channel: null,
+      params: { source: 'TAIL_VALIDATION', trackId: tail.trackId, droppedBytes: tail.droppedBytes, truncated: true },
+    });
+  }
+  if (!entering) return next;
+  const items: ActivityInput[] = [];
+  // A seal that starts from FAULT is the recovery of that session (the operator's `recover` wrote
+  // the row already when the session is in RECOVERY).
+  if (session.state === SessionState.FAULT) {
+    items.push({
+      audit: { type: 'RECOVERY_STARTED', message: `Recovery scan started for ${session.id}`, actorId: null, sessionId: session.id, details: { faultKind: session.fault?.kind ?? null } },
+      event: { type: 'RECOVERY_STARTED', message: `Recovery started · ${session.id}`, severity: 'WARNING', sessionId: session.id },
+    });
+  }
+  items.push({ event: { type: 'FINALIZATION_STARTED', message: `Finalizing evidence · ${evidenceId}`, sessionId: session.id, params: { evidenceId, ...(recovering ? { resumed: true } : {}) } } });
+  return record(next, now, items);
+}
+
+/** One sealed camera file as the item lists it: the stored-bytes hash of the whole file. */
+export interface SealedTrackInput {
+  trackId: 'VIDEO-01' | 'VIDEO-02';
+  sizeBytes: number;
+  /** SHA-256 of the stored bytes of the whole file (`tracks[].sha256` of the manifest). */
+  sha256: string;
+}
+
+export interface CompleteSealInput {
+  sessionId: string;
+  /** `timeline.sealedAt` of the signed manifest. */
+  sealedAt: EpochMs;
+  /** `manifestSha256`: the digest that was signed. */
+  manifestSha256: string;
+  /** The real signature of that digest (128 hex characters for Ed25519). */
+  signature: { value: string; keyId: string; algorithm: 'Ed25519' };
+  tracks: readonly SealedTrackInput[];
+  /** `timeline.interrupted`: the durable prefix of a recording that did not end by a stop (OD-08). */
+  interrupted: boolean;
+  /** `timeline.durableEndMs`: where the sealed media ends on the Core clock. */
+  durableEndAt: EpochMs;
+  /** The three sealed columns of `FINALIZE_TRANSCRIPT` (`SealedItemColumns`). */
+  transcriptSha256: string | null;
+  labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
+  /** Manifest field 126. */
+  developmentSources: boolean;
+}
+
+const HEX_64 = /^[0-9a-f]{64}$/;
+const HEX_128 = /^[0-9a-f]{128}$/;
+
+/**
+ * FINALIZING -> SEALED with the item of the REAL package (INTERNAL action `completeSeal`; no
+ * actor). Everything that identifies the evidence is handed in by the pipeline that hashed and
+ * signed it; a value that is no digest is refused, and nothing is derived or defaulted here.
+ * Audit EVIDENCE_SEALED (the keys of the simulator's seal), and RECOVERY_COMPLETED for a session
+ * that reached the seal through a fault.
+ */
+export function completeSealTransition(state: SimState, now: EpochMs, input: CompleteSealInput): SimState {
+  const session = requireSession(state, 'completeSeal', [SessionState.FINALIZING]);
+  const refuse = (reason: string): never => {
+    throw new SimTransitionError(session.state, 'completeSeal', reason);
+  };
+  if (session.id !== input.sessionId) refuse('another session is active');
+  if (session.finalization.steps.some((step) => step.status === 'error')) refuse('a sealing step failed');
+  if (!HEX_64.test(input.manifestSha256)) refuse('the manifest digest is no SHA-256');
+  if (input.signature.algorithm !== 'Ed25519' || !HEX_128.test(input.signature.value) || input.signature.keyId.length === 0) refuse('the signature is no Ed25519 signature');
+  if (input.tracks.length !== 2 || input.tracks[0]?.trackId !== 'VIDEO-01' || input.tracks[1]?.trackId !== 'VIDEO-02') refuse('a sealed package has the two camera files, VIDEO-01 then VIDEO-02');
+  for (const track of input.tracks) if (!HEX_64.test(track.sha256) || !Number.isSafeInteger(track.sizeBytes) || track.sizeBytes < 1) refuse('a camera file without its hash or its size');
+  if (input.transcriptSha256 !== null && !HEX_64.test(input.transcriptSha256)) refuse('the transcript digest is no SHA-256');
+  if (session.startedAt === null) refuse('a session that never recorded has nothing to seal');
+
+  const at = input.sealedAt;
+  const evidenceId = session.evidenceId ?? evidenceIdFor(state.meta.counters.evidence, session.createdAt);
+  const recordedAt = session.startedAt ?? session.createdAt;
+  const endedAt = input.interrupted ? input.durableEndAt : (session.stoppedAt ?? input.durableEndAt);
+  const sizeBytes = input.tracks.reduce((sum, track) => sum + track.sizeBytes, 0);
+  const faultKind = session.fault?.kind ?? null;
+  const custody: CustodyEntry[] = [
+    { at: recordedAt, action: 'RECORDING_STARTED', actorId: recordingActor(state, session, 'START'), detail: null },
+    input.interrupted
+      ? { at: endedAt, action: 'RECORDING_INTERRUPTED', actorId: null, detail: faultKind }
+      : { at: endedAt, action: 'RECORDING_STOPPED', actorId: recordingActor(state, session, 'STOP'), detail: session.stopReason },
+    { at, action: 'SEALED', actorId: null, detail: input.interrupted ? 'Durable prefix sealed (interrupted)' : null },
+  ];
+  const item: EvidenceItem = {
+    id: evidenceId,
+    sessionId: session.id,
+    caseNumber: session.input.caseNumber,
+    subjectName: session.input.subjectName,
+    subjectType: session.input.subjectType,
+    investigatorId: session.input.investigatorId,
+    room: session.input.room,
+    profileId: session.input.profileId,
+    recordedAt,
+    endedAt,
+    sealedAt: at,
+    durationMs: Math.max(0, endedAt - recordedAt),
+    sizeBytes,
+    status: 'SEALED',
+    lifecycleStage: EVIDENCE_STATUS_STAGE.SEALED,
+    tracks: input.tracks.map((track) => ({ trackId: track.trackId, label: track.trackId === 'VIDEO-01' ? 'Camera 1' : 'Camera 2', sizeBytes: track.sizeBytes, sha256: track.sha256 })),
+    manifestHash: input.manifestSha256,
+    // A REAL signature. The shared `EvidenceSignature` type still names the simulated stand-in only
+    // (the slice schema admits the Ed25519 pair since M2-W7): the widening of the type and of the
+    // database mapping's way back is requested by row 82 (`file_requests.md`).
+    signature: { value: input.signature.value, keyId: input.signature.keyId, algorithm: input.signature.algorithm, simulated: false } as unknown as EvidenceSignature,
+    custody,
+    verification: { status: 'NOT_RUN', at: null },
+    tampered: false,
+    tamperedTrackId: null,
+    caseType: session.input.subjectType,
+    markers: sessionMarkers(session),
+    notes: session.notes,
+    integritySource: IntegritySource.REAL,
+    startTimeSource: session.startTimeSource ?? null,
+    endTimeSource: session.stopTimeSource ?? null,
+    transcriptSha256: input.transcriptSha256,
+    manifestVersion: 2,
+    labelsStatus: input.labelsStatus,
+    developmentSources: input.developmentSources,
+  };
+  const steps = session.finalization.steps.map((step): FinalizationStepState => (step.status === 'done' ? step : { ...step, status: 'done', startedAt: step.startedAt ?? at, completedAt: at, durationMs: Math.max(0, at - (step.startedAt ?? at)), progress: 100, etaMs: 0 }));
+  const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId, bytesWritten: sizeBytes, finalization: { ...session.finalization, steps, completedAt: at } };
+  const next: SimState = {
+    ...state,
+    meta: session.evidenceId ? state.meta : { ...state.meta, counters: { ...state.meta.counters, evidence: state.meta.counters.evidence + 1 } },
+    session: sealed,
+    evidence: [...state.evidence, item],
+    lastSealedSessionId: session.id,
+    lastSealedAcknowledged: false,
+    // A SEALED entry names no fault (`session_history_outcome_check`: a fault kind belongs to an
+    // INCOMPLETE outcome only); the fault of an interrupted recording is in the custody and the audit trail.
+    sessionHistory: [historyEntry(sealed, SessionOutcome.SEALED, endedAt, evidenceId, null), ...state.sessionHistory],
+  };
+  const items: ActivityInput[] = [
+    {
+      audit: { type: 'EVIDENCE_SEALED', message: `Evidence ${evidenceId} sealed`, sessionId: session.id, evidenceId, details: { manifestHash: item.manifestHash, tracks: item.tracks.length, sizeBytes: item.sizeBytes } },
+      event: { type: 'EVIDENCE_SEALED', message: `Evidence sealed · ${evidenceId}`, severity: 'SUCCESS', sessionId: session.id, params: { evidenceId } },
+    },
+  ];
+  if (session.fault !== null) {
+    items.push({
+      audit: { type: 'RECOVERY_COMPLETED', message: `Recovery completed for ${session.id}`, sessionId: session.id },
+      event: { type: 'RECOVERY_COMPLETED', message: `Recovery completed · ${session.id}`, sessionId: session.id },
+    });
+  }
+  return record(deriveDeviceState(next), now, items);
+}
+
+/** The verdict of one verification run of a REAL item, as the Core computed it (`VerdictRecord`). */
+export interface EvidenceVerdictInput {
+  evidenceId: string;
+  ok: boolean;
+  /** The server clock of the run. */
+  at: EpochMs;
+  manifestOk: boolean;
+  signatureOk: boolean;
+  /** The camera files that did not verify, in track order. */
+  failedTracks: readonly string[];
+  /** The custody text: null for a pass; names, never values. */
+  detail: string | null;
+  /** The operator who asked for the verification. */
+  actorId: string | null;
+}
+
+/**
+ * Records a verdict the Core computed (INTERNAL action `recordEvidenceVerification`; decision
+ * D107 (1)): the item's verification state, the custody entry and the audit row + event of the
+ * hosted `verify`, with the same keys. Only for an item whose package is REAL: every other item
+ * is verified by the hosted action, which computes its own verdict.
+ */
+export function recordEvidenceVerificationTransition(state: SimState, now: EpochMs, verdict: EvidenceVerdictInput): SimState {
+  const item = state.evidence.find((existing) => existing.id === verdict.evidenceId);
+  if (!item) throw new SimNotFoundError('evidence', verdict.evidenceId);
+  // Integration pass E3: besides a REAL item, a SEED-SEALED demo item has a real sealed v2 package in the Core's
+  // store (sealed at seed time with the development key; ev F.2 - F.4): `DEMO_PACKAGE`, version 2, marked
+  // development sources, and signed for real. None of the frozen v1 demo items is one (stand-in signature).
+  const seedSealedDemo = item.integritySource === IntegritySource.DEMO_PACKAGE && item.manifestVersion === 2 && item.developmentSources === true && (item.signature as { simulated: boolean }).simulated === false;
+  if (item.integritySource !== IntegritySource.REAL && !seedSealedDemo) throw new SimTransitionError(state.session?.state ?? null, 'recordEvidenceVerification', 'the item has no real sealed package');
+  const failed = verdict.failedTracks.join(',');
+  const verified: EvidenceItem = {
+    ...item,
+    verification: { status: verdict.ok ? 'PASS' : 'FAIL', at: verdict.at },
+    custody: [...item.custody, { at: verdict.at, action: verdict.ok ? 'VERIFIED' : 'VERIFY_FAILED', actorId: verdict.actorId, detail: verdict.ok ? null : (verdict.detail ?? 'Mismatch: manifest or signature') }],
+  };
+  const next: SimState = { ...state, evidence: state.evidence.map((existing) => (existing.id === item.id ? verified : existing)) };
+  return record(next, now, {
+    audit: {
+      type: verdict.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',
+      message: verdict.ok ? `Evidence ${item.id} verified: every hash matches` : `Evidence ${item.id} failed verification (${failed || 'manifest or signature'})`,
+      severity: verdict.ok ? 'INFO' : 'CRITICAL',
+      actorId: verdict.actorId,
+      evidenceId: item.id,
+      details: { manifestOk: verdict.manifestOk, signatureOk: verdict.signatureOk, failedTracks: failed, ...(verdict.ok ? {} : { eventKind: AuditEventKind.TAMPER }) },
+    },
+    event: {
+      type: verdict.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',
+      message: verdict.ok ? `Evidence verified · ${item.id}` : `Integrity check FAILED · ${item.id}`,
+      severity: verdict.ok ? 'SUCCESS' : 'CRITICAL',
+      params: { evidenceId: item.id, failedTracks: failed },
+    },
+  });
 }
 
 // ── FAULT → RECOVERY → incomplete (§6.4, §18.1; SYS-008) ────────────────────────────────
@@ -1396,10 +1756,12 @@ export function acknowledgeSummaryTransition(state: SimState, now: EpochMs, sess
 // ── The machine tick ─────────────────────────────────────────────────────────────────────
 
 /** Runs every timed transition that is due at `now` (several in one call after a catch-up). */
-export function tickMachine(state: SimState, now: EpochMs, rng: RngStreams): SimState {
+export function tickMachine(state: SimState, now: EpochMs, rng: RngStreams, capture: CaptureLevelSource = 'simulated'): SimState {
   let current = state;
   for (let guard = 0; guard < 8; guard += 1) {
     let next = advancePrecheck(current, now);
+    // The simulator's own capture decides a connecting start by the time; an external one never.
+    if (capture === 'simulated') next = advanceCaptureStart(next, now);
     next = advanceStopping(next, now, rng);
     next = advanceFinalization(next, now);
     next = advanceRecovery(next, now);

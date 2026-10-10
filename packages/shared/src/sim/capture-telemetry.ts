@@ -23,16 +23,18 @@
  * `clearCaptureWarning` — the condition is over: that fault is cleared as `clearFault` clears it
  * (FAULT_CLEARED), so the next episode is a new fault with its own alert and audit row.
  */
-import { SessionState, type MicInputId, type MicRole } from '../domain';
-import { CHANNEL_OF_MIC_INPUT, builtInMicInputOf, channelOfMicInput, type AudioRuntime } from './audio';
+import { SessionState, type MicRole } from '../domain';
+import { activeMeterChannel, captureMicLines, channelOfMicLine, type AudioRuntime } from './audio';
 import { SimNotFoundError } from './errors';
 import { clearFaultAtKey, raiseFaultAtKey } from './faults';
 import type {
   ActiveSession,
   CaptureConfigMic,
   CaptureIngestStateName,
+  CaptureMicInputId,
   CaptureTelemetryInput,
   CaptureTelemetryLevel,
+  CaptureFaultFacts,
   CaptureWarningInput,
   EpochMs,
   SimState,
@@ -44,16 +46,15 @@ import { CaptureStreamState, FaultKind } from './vocabulary';
  * worker was started with it), else the selector.
  */
 function captureMics(state: SimState): readonly CaptureConfigMic[] {
-  return state.session?.captureConfig?.mics ?? state.captureConfig.mics;
+  return captureMicLines(state);
 }
 
 /**
- * The METERED mic input that holds `role`, or null when no row of the capture config names that
- * role or the row's input is a `MIC-NN` beyond the built-in pair (it has no meter channel).
+ * The mic input that holds `role` in the capture configuration, or null when no row names that
+ * role. Any `MIC-NN` of the pair: each of the two lines has its meter channel (ruling D137).
  */
-export function micInputOfCaptureRole(state: SimState, role: MicRole): MicInputId | null {
-  const inputId = captureMics(state).find((mic) => mic.role === role)?.inputId;
-  return inputId === undefined ? null : builtInMicInputOf(inputId);
+export function micInputOfCaptureRole(state: SimState, role: MicRole): CaptureMicInputId | null {
+  return captureMics(state).find((mic) => mic.role === role)?.inputId ?? null;
 }
 
 /**
@@ -184,11 +185,12 @@ function micOfSubject(state: SimState, subject: string): CaptureConfigMic | null
 function faultOfCaptureWarning(state: SimState, warning: CaptureWarningInput): { kind: FaultKind; key: string | null } {
   const { code, subject } = warning;
   if (code === FaultKind.MIC_SILENT) {
-    if (subject === null) return { kind: code, key: CHANNEL_OF_MIC_INPUT[state.audio.activeInputId] };
+    // The fault is keyed by a meter channel: that of the active input (ruling D137).
+    if (subject === null) return { kind: code, key: activeMeterChannel(state) };
     const mic = micOfSubject(state, subject);
     if (mic === null) throw new SimNotFoundError('captureMic', subject);
-    // The fault is keyed by a meter channel: an input beyond the built-in pair has none.
-    const channel = channelOfMicInput(mic.inputId);
+    // The fault is keyed by a meter channel: the place of the input among the two lines (ruling D137).
+    const channel = channelOfMicLine(captureMics(state), mic.inputId);
     if (channel === null) throw new SimNotFoundError('captureMic', subject);
     return { kind: code, key: channel };
   }
@@ -209,7 +211,28 @@ function faultOfCaptureWarning(state: SimState, warning: CaptureWarningInput): {
  */
 export function raiseCaptureWarningTransition(state: SimState, now: EpochMs, warning: CaptureWarningInput): SimState {
   const { kind, key } = faultOfCaptureWarning(state, warning);
-  return raiseFaultAtKey(state, now, kind, key);
+  return raiseFaultAtKey(state, now, kind, key, undefined, captureFaultFactsOf(kind, key, warning));
+}
+
+const CAPTURE_FAULT_REASON = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+/**
+ * The two facts of a capture fault that travel to its alert and its audit row (pass D6 item 14),
+ * each only in its own form. The input comes from another process: what is not a code or a count
+ * is dropped.
+ *
+ * `reason` - for every `CAPTURE_FAULT`, about the capture as a whole or about a device: it is the
+ * third member of the fault key (kind, reason, device; ruling D146), so two causes on one device
+ * are two faults. `evidenceFiles` - only for the capture as a whole (no subject): it counts the
+ * files of a session, not of a device.
+ */
+export function captureFaultFactsOf(kind: FaultKind, key: string | null, warning: CaptureWarningInput): CaptureFaultFacts | undefined {
+  if (kind !== FaultKind.CAPTURE_FAULT) return undefined;
+  const { reason, evidenceFiles } = warning as { reason?: unknown; evidenceFiles?: unknown };
+  const facts: CaptureFaultFacts = {};
+  if (typeof reason === 'string' && CAPTURE_FAULT_REASON.test(reason)) facts.reason = reason;
+  if (key === null && typeof evidenceFiles === 'number' && Number.isSafeInteger(evidenceFiles) && evidenceFiles >= 0) facts.evidenceFiles = evidenceFiles;
+  return facts.reason === undefined && facts.evidenceFiles === undefined ? undefined : facts;
 }
 
 /**
@@ -218,9 +241,12 @@ export function raiseCaptureWarningTransition(state: SimState, now: EpochMs, war
  * active. One exception to the table above: `MIC_SILENT` with NO subject clears every active
  * `MIC_SILENT`. The input that was active when it was raised may no longer be the active one
  * (the operator switched), and a clear that names no mic must not leave a warning behind.
+ *
+ * A clear of a `CAPTURE_FAULT` that names its `reason` (ruling D146) clears the fault of that
+ * cause alone; a clear without one clears every cause of the kind on that device, as before.
  */
 export function clearCaptureWarningTransition(state: SimState, now: EpochMs, warning: CaptureWarningInput): SimState {
   const { kind, key } = faultOfCaptureWarning(state, warning);
   if (kind === FaultKind.MIC_SILENT && warning.subject === null) return clearFaultAtKey(state, now, kind, undefined);
-  return clearFaultAtKey(state, now, kind, key);
+  return clearFaultAtKey(state, now, kind, key, captureFaultFactsOf(kind, key, warning)?.reason);
 }

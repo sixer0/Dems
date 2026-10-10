@@ -15,6 +15,9 @@ import {
   ANY_OF_SEPARATOR,
   AccessRuleError,
   AccessRuleErrorCode,
+  EVIDENCE_MEDIA_ROUTE_URL,
+  EVIDENCE_MEDIA_SESSION_OPERATION,
+  EVIDENCE_MEDIA_STREAM_ID,
   EXPORT_DENIALS,
   FORBIDDEN_OPERATION,
   REALTIME_CHANNEL_ID,
@@ -267,6 +270,39 @@ describe('which route gets which rule (RB-1: deny by default)', () => {
     // Only that method on that path.
     expect(problemOf(book.resolve({ method: 'POST', url: WS_PATH, operationId: undefined })).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
     expect(problemOf(book.resolve({ method: 'GET', url: `${WS_PATH}/other`, operationId: undefined })).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+  });
+
+  it('row 90, ruling D140: the evidence media route, GET /media/:token, is the second route outside the registry and gets THE RULE OF OPERATION 88 - never an open one', () => {
+    const session = book.ruleOf(EVIDENCE_MEDIA_SESSION_OPERATION);
+    if (!isAccessRule(session)) throw new Error('operation 88 has no rule');
+    expect(EVIDENCE_MEDIA_SESSION_OPERATION).toBe('createEvidenceMediaSession');
+    expect(EVIDENCE_MEDIA_ROUTE_URL).toBe('/media/:token');
+    const rule = book.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL);
+    if (!isAccessRule(rule)) throw new Error('the evidence media route has no rule');
+    for (const operationId of [undefined, 'whatever', EVIDENCE_MEDIA_SESSION_OPERATION]) {
+      expect(book.resolve({ method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, operationId })).toBe(rule);
+    }
+    // Everything of operation 88's rule but its name, its method, its path and its path parameter.
+    expect(rule).toEqual({ ...session, operationId: EVIDENCE_MEDIA_STREAM_ID, method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, idPattern: null });
+    expect(rule).toMatchObject({
+      kind: CoreApiAccessKind.PERMISSION,
+      permissions: ['EVIDENCE_VIEW'],
+      denial: { auditType: 'ACCESS_DENIED', errorCode: 'NOT_PERMITTED', permission: 'EVIDENCE_VIEW', export: null },
+      refusesRetiredDevice: true,
+    });
+    expect(Object.isFrozen(rule)).toBe(true);
+    expect(book.operationIds).not.toContain(EVIDENCE_MEDIA_STREAM_ID);
+    // Only that method on that path: nothing beside it inherits the rule.
+    for (const [method, url] of [['POST', EVIDENCE_MEDIA_ROUTE_URL], ['GET', '/media'], ['GET', '/media/:token/other'], ['GET', '/media/:id'], ['GET', '/api/v1/media/:token']] as const) {
+      expect(problemOf(book.resolve({ method, url, operationId: undefined })).code, `${method} ${url}`).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    }
+    // A registry WITHOUT operation 88 gives the route no rule at all: it cannot fall back to an open one.
+    const without = createRuleBook(book.operationIds.filter((id) => id !== EVIDENCE_MEDIA_SESSION_OPERATION).map((id) => operationOf(id)));
+    expect(problemOf(without.resolve({ method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, operationId: undefined })).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    expect(problemOf(without.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL)).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    // The rule follows the registry: a registry in which operation 88 asks for another permission gives the route that one.
+    const moved = createRuleBook(book.operationIds.map((id) => (id === EVIDENCE_MEDIA_SESSION_OPERATION ? { ...operationOf(id), access: operationOf('exportEvidence').access } : operationOf(id))));
+    expect(moved.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL)).toMatchObject({ permissions: ['EVIDENCE_EXPORT'], operationId: EVIDENCE_MEDIA_STREAM_ID });
   });
 
   it('ruleAt holds a route to the registry by method and path alone, for a route whose configuration cannot be read', () => {

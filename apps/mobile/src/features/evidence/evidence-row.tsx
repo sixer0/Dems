@@ -17,6 +17,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { DATE_PATTERNS, formatDate, formatDuration } from '@dems/shared/realtime';
 import type { EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { ItemDevelopmentBadge } from './development-source';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { posterForEvidence } from './evidence-media';
 import { isArchivable, isExportable, type EvidenceDensity } from './evidence-model';
@@ -75,6 +76,8 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
               </Text>
               <View style={styles.chips}>
                 <EvidenceSubjectChip subjectType={item.subjectType} />
+                {/* Row 92 (R-11): only for an item the Core recorded from development sources, in Live mode. */}
+                <ItemDevelopmentBadge item={item} testID={`evidence-row-development-${item.id}`} />
                 <Text maxFontSizeMultiplier={1.2} style={styles.duration}>
                   {duration}
                 </Text>

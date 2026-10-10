@@ -18,6 +18,10 @@
  *   36  takeSessionSnapshot          snapshot                      none                 204
  *   37  acknowledgeSessionSummary    acknowledgeSummary            the `{id}` of the path  204
  *   38  listSessionHistory           (a read of PostgreSQL)                             200
+ *   81  switchAudioSource            switchAudioSource (simulated)  body.inputId        200
+ *                                    or the capture worker (real): `src/capture-session`
+ *   82  listAudioSourceIntervals     (a read: PostgreSQL in capture mode real,          200
+ *                                    the state's derivation in simulated)
  *
  * THE RECIPE OF A COMMAND. One unit of work of the engine host per request; the answer is built
  * after it resolved, so after the commit. The engine's unit gives it the epoch and the revision
@@ -68,6 +72,10 @@
  * action as at stage 7; a start has no bound; a marker label may be empty.
  */
 import {
+  ApiErrorCode,
+  AudioSourceIntervalPageSchema,
+  AudioSourceStateSchema,
+  AudioSourceSwitchRequestSchema,
   CaseNumberScanSchema,
   CurrentSessionResponseSchema,
   PageQuerySchema,
@@ -78,20 +86,24 @@ import {
   SessionStartRequestSchema,
   SessionStopRequestSchema,
   sessionCreateSchema,
+  type AudioSourceIntervalPage,
+  type AudioSourceStateBody,
   type CaseNumberScan,
   type CurrentSessionResponse,
   type SessionCommandResponse,
   type SessionHistoryPage,
 } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
-import type { ActiveSession } from '@dems/shared/sim';
+import { audioSourceIntervalsOf, type ActiveSession } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { captureNotices } from '../../capture-notices';
+import { sessionCapture } from '../../capture-session';
 import type { EngineOutcome, EngineUnit } from '../../engine';
-import { invalidInput } from '../../plugins/error-envelope';
+import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
+import { listAudioSourceIntervals } from './audio-intervals';
 import { currentSessionResponse } from './current';
 import { listSessionHistory } from './history';
 import { actionOf, bodySchemaOf, operationOf, successesOf, type SessionOperationId } from './operations';
@@ -138,6 +150,14 @@ export function registerSessionRoutes(app: FastifyInstance): void {
    * handed on as it is (rule M3): the gate, not this module, reads who started the pre-check.
    */
   const beforePrecheck = (request: FastifyRequest, id: string, kind: 'BEGIN' | 'RETRY'): Promise<unknown> => captureNotices(app).beforePrecheckOf(request, id, kind);
+
+  /**
+   * Task 3 row 71 (capture spec §A.3; C3 §3.1 "recording start"): in capture mode `real` a start
+   * and a stop are also the capture worker's. The unit `src/capture-session` owns all of it; this
+   * module hands it the unit of the start and tells it when a start or a stop committed. In mode
+   * `simulated` every call below returns at once. Read at each request: it is built on first use.
+   */
+  const capture = () => sessionCapture(app);
 
   /**
    * One unit of work on the open session: `work` runs only when `id` names it, on the state
@@ -193,6 +213,9 @@ export function registerSessionRoutes(app: FastifyInstance): void {
         const acknowledge = request.body.acknowledgeWarnings === true;
         // From CREATE this start is the pre-check run (row 133): the gate asks only then.
         await beforePrecheck(request, id, 'BEGIN');
+        // Row 71: helper processes of an earlier run refuse a start before any unit (503).
+        await capture().beforeStart();
+        const started = { recording: false };
         const outcome = await onOpenSession('startSession', id, async (scope, session) => {
           if (session.state === SessionState.CREATE) {
             await scope.command(request.principal, action.beginPrecheck);
@@ -207,8 +230,16 @@ export function registerSessionRoutes(app: FastifyInstance): void {
           }
           // ARMED starts. Any other state is the simulator's own refusal: 409 `INVALID_STATE`.
           await scope.command(request.principal, action.startSession);
+          // Row 71: the sources of a real recording, in THIS unit (409 `SOURCE_KIND_NOT_RECORDABLE` un-does the start).
+          await capture().recordingStartedIn(scope, id);
+          started.recording = true;
           return recording;
+        }).catch((error: unknown) => {
+          capture().startAbandoned(id);
+          throw error;
         });
+        // Row 71: the unit committed; the capture worker is started in the background.
+        if (started.recording) capture().afterStartCommitted(id);
         void reply.code(outcome.value.status);
         return { sessionId: id, state: outcome.value.state };
       },
@@ -230,7 +261,13 @@ export function registerSessionRoutes(app: FastifyInstance): void {
         const { id } = request.params;
         // Line 10: the open session (404), then the action's own order: the state (409), the reason (422).
         const reason = body.kind === 'VALID' ? body.value.reason : NO_TEXT;
-        await onOpenSession('stopSession', id, (scope) => scope.command(request.principal, action.stopSession, reason));
+        await onOpenSession('stopSession', id, (scope) => {
+          // Row 71: a real recording that holds nothing durable yet is not stopped into a seal (409).
+          capture().stopRequestedIn(scope, id);
+          return scope.command(request.principal, action.stopSession, reason);
+        });
+        // Row 71: the unit committed; the capture worker is stopped in the background.
+        capture().afterStopCommitted(id);
         void reply.code(accepted);
         return { sessionId: id, state: SessionState.STOPPING };
       },
@@ -370,12 +407,44 @@ export function registerSessionRoutes(app: FastifyInstance): void {
     });
   }
 
-  // 38 listSessionHistory
+  // 38 listSessionHistory (registered here, before operations 81 and 82: the routes of the module are in registry order)
   successesOf('listSessionHistory', [200]);
   routes.route({
     ...route('listSessionHistory'),
     schema: { querystring: PageQuerySchema, response: { 200: SessionHistoryPageSchema } },
     handler: async (request): Promise<SessionHistoryPage> => listSessionHistory(app, request, request.query),
+  });
+
+  // 81 switchAudioSource (task 3 row 71): the command, its unit and its rows are `src/capture-session`'s.
+  {
+    const [switched] = successesOf('switchAudioSource', [200]);
+    routes.route({
+      ...route('switchAudioSource'),
+      schema: { params: sessionParams('switchAudioSource'), body: AudioSourceSwitchRequestSchema, response: { 200: AudioSourceStateSchema } },
+      handler: async (request, reply): Promise<AudioSourceStateBody> => {
+        // Pass D6 (F-D4-4; C3 §4): in simulated capture a well-formed input that is no input of the RECORDING open session is 409, as the simulator's REST layer answers it (the hosted action alone would say 404).
+        const open = app.engine.slice('session');
+        if (!capture().real && open !== null && open.id === request.params.id && open.state === SessionState.RECORDING && !(open.captureConfig?.mics ?? app.engine.slice('captureConfig').mics).some((mic) => mic.inputId === request.body.inputId)) throw new ApiFailure(409, ApiErrorCode.AUDIO_SOURCE_CONFLICT, 'The requested microphone is not one of the two inputs of this session.', { details: { reason: 'NO_SUCH_INPUT' } });
+        const answer = await capture().switchAudioSource(request.principal, request.params.id, request.body.inputId);
+        void reply.code(switched);
+        return answer;
+      },
+    });
+  }
+
+  // 82 listAudioSourceIntervals (integration pass D4): a read of the open session's intervals.
+  // The `{id}` is held against the COMMITTED state (a read opens no unit); `audio-intervals.ts`
+  // reads the table in capture mode `real` and pages the simulator's derivation otherwise.
+  successesOf('listAudioSourceIntervals', [200]);
+  routes.route({
+    ...route('listAudioSourceIntervals'),
+    schema: { params: sessionParams('listAudioSourceIntervals'), querystring: PageQuerySchema, response: { 200: AudioSourceIntervalPageSchema } },
+    handler: async (request): Promise<AudioSourceIntervalPage> => {
+      const committed = app.engine.state();
+      const session = committed.session;
+      if (session === null || session.id !== request.params.id) throw notOpenSession();
+      return listAudioSourceIntervals(app, request, session.id, request.query, capture().real ? null : audioSourceIntervalsOf(committed, session));
+    },
   });
   successesOf('getCurrentSession', [200]);
 }

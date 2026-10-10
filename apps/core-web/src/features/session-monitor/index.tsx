@@ -49,7 +49,7 @@ import { InputsPanel } from './inputs-panel'
 import { IntegrityPanel } from './integrity-panel'
 import { LiveFeedPanel } from './live-feed-panel'
 import { logSessionMonitorError } from './log'
-import { selectPageModel } from './model'
+import { selectFailedStart, selectFailedStartClosing, selectPageModel } from './model'
 import { PanelErrorBoundary } from './panel'
 import { StatusBanner } from './status-banner'
 import { StoragePanel } from './storage-panel'
@@ -86,7 +86,15 @@ export function SessionMonitorPage() {
   if (page.sessionId && page.phase === 'FINALIZING' && (overlay?.sessionId !== page.sessionId || overlay.mode !== 'finalization')) {
     setOverlay({ mode: 'finalization', sessionId: page.sessionId, dismissed: false })
   }
-  if (page.sessionId && page.phase === 'RECOVERY' && (overlay?.sessionId !== page.sessionId || overlay.mode !== 'recovery')) {
+  // Integration pass D7 follow-up (decision D158; ux §8e.2 situation C, OP-125-5): the close of a FAILED START
+  // is the Core's recovery of a session that recorded nothing. It gets no recovery overlay: the session is held
+  // by its id from the moment it is seen as a failed start, whatever the store says while the Core closes it.
+  const failedStart = useSim(selectFailedStart)
+  const failedClosing = useSim(selectFailedStartClosing)
+  const [failedStartId, setFailedStartId] = useState<string | null>(null)
+  if (page.sessionId && (failedStart !== null || failedClosing !== null) && failedStartId !== page.sessionId) setFailedStartId(page.sessionId)
+  const closesFailedStart = page.sessionId !== null && failedStartId === page.sessionId
+  if (page.sessionId && page.phase === 'RECOVERY' && !closesFailedStart && (overlay?.sessionId !== page.sessionId || overlay.mode !== 'recovery')) {
     setOverlay({ mode: 'recovery', sessionId: page.sessionId, dismissed: false })
   }
 

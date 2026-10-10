@@ -10,7 +10,8 @@
 //        locator with a user part;
 //   A-3  the statement of the microphone transport is held to the worker's source;
 //   A-4  the device commands are the contract's, and the operation map is the contract's inverted;
-//   A-5  the layer is registered nowhere: no file outside the folder imports it yet.
+//   A-5  the layer is reached by the units that wire it (a pinned list), and from outside the
+//        capture unit through its index only (row 61 closed the earlier "wired into nothing yet").
 //
 // Each rule has a control on a planted source that must be found.
 import { existsSync, readFileSync } from 'node:fs';
@@ -181,9 +182,78 @@ describe('A-4: the device commands are the contract\'s (E-12)', () => {
   });
 });
 
-describe('A-5: the layer is wired into nothing yet (rows 66 and 71 do that)', () => {
-  it('no production file outside the folder imports it', () => {
-    const outside = relativeImports(tree.filter((file) => isProductionSource(file.path) && !file.path.startsWith(ADAPTERS))).filter((entry) => entry.target.startsWith('src/capture/adapters'));
-    expect(outside.map((entry) => `${entry.file}:${entry.line}`)).toEqual([]);
+// Block A-5 until row 61: "the layer is wired into nothing yet" (true when row 65 landed, red by
+// design from the first importer on; ownership map D95 §7). Row 61 closes it as a pinned rule, the
+// same way G-R2 pins its allowlist: WHO may reach the adapter layer, and through WHAT.
+describe('A-5: the layer is reached by the units that wire it, and from outside the capture unit through its index only', () => {
+  /**
+   * The units the blueprint names as the wiring of the layer: the selector and plan builder (row 66),
+   * the camera search and connect flow (rows 132, 142), the no-device notices (row 133), the source
+   * class of a sealed package (row 141), the session wiring (row 71), and inside the capture unit the
+   * fence (row 136) and the boot checks (row 61). Another entry is a decision, not a habit.
+   */
+  const WIRING = ['src/capture-notices/', 'src/capture-session/', 'src/capture/boot/', 'src/capture/fence/', 'src/evidence-verify/', 'src/modules/capture-config/', 'src/modules/capture-discovery/', 'src/modules/sessions/'];
+  /**
+   * NAMED FILES (integration pass E3 item 4; rows 61 / 82b / 140 added them after this block was
+   * closed). A file, never a folder: its siblings stay refused (the control below). Each reads the
+   * layer's INDEX for ONE vocabulary constant and builds, opens or registers no adapter:
+   *
+   *   src/capture/index.ts        the composition root of the capture unit itself (rows 57 / 61): it
+   *                               mounts the two wiring units of this list (`capture/fence`,
+   *                               `capture/boot`) and reads `CaptureOperation` to decide whether the
+   *                               worker launcher is the real one or the unconfigured one. The
+   *                               supervisor's own files (`supervisor.ts`, `ipc.ts`, `forwarder.ts`)
+   *                               stay outside the layer.
+   *   src/sealing-host/index.ts   the composition of the sealing pipeline (row 82b, ruling D147 (E)):
+   *                               it reads `CaptureOperation` to mount NOTHING in `SIMULATED` and to
+   *                               choose the manifest notice of a development seal. The operation
+   *                               itself comes from the fence's one reader (`captureOperationOf`).
+   */
+  const NAMED = ['src/capture/index.ts', 'src/sealing-host/index.ts'];
+  const CAPTURE_UNIT = 'src/capture/';
+  /** What a file outside the capture unit may name: the index of the layer, and nothing inside it. */
+  const INDEX = 'src/capture/adapters';
+
+  const violations = (files: readonly SourceFile[]): string[] => {
+    const outside = relativeImports(files.filter((file) => isProductionSource(file.path) && !file.path.startsWith(ADAPTERS))).filter((entry) => entry.target.startsWith(INDEX));
+    return [
+      ...outside.filter((entry) => !WIRING.some((unit) => entry.file.startsWith(unit)) && !(NAMED.includes(entry.file) && entry.target === INDEX)).map((entry) => `${entry.file}:${entry.line} imports the adapter layer and is not a unit that wires it`),
+      ...outside.filter((entry) => !entry.file.startsWith(CAPTURE_UNIT) && entry.target !== INDEX).map((entry) => `${entry.file}:${entry.line} reaches into the adapter layer past its index`),
+    ];
+  };
+
+  it('finds an importer that is no wiring unit, and a deep import from outside the capture unit (control)', () => {
+    const UP = '..';
+    const planted: SourceFile[] = [
+      { path: 'src/modules/evidence/routes.ts', text: `import { CaptureAdapterKind } from '${UP}/${UP}/capture/adapters';\n` },
+      { path: 'src/modules/capture-config/plan.ts', text: `import { createFakeCameraAdapter } from '${UP}/${UP}/capture/adapters/fake';\n` },
+      { path: 'src/capture/supervisor.ts', text: "import { CaptureOperation } from './adapters/kinds';\n" },
+      // A sibling of a named file is not named; a named file past the index is not excused.
+      { path: 'src/sealing-host/session-reader.ts', text: `import { CaptureOperation } from '${UP}/capture/adapters';\n` },
+      { path: 'src/sealing-host/index.ts', text: `import { CaptureOperation } from '${UP}/capture/adapters/kinds';\n` },
+      // Allowed: a named file through the index.
+      { path: 'src/capture/index.ts', text: "import { CaptureOperation } from './adapters';\n" },
+      // Allowed: a wiring unit through the index, and a folder of the capture unit by file.
+      { path: 'src/modules/capture-config/index.ts', text: `import { CaptureAdapterKind } from '${UP}/${UP}/capture/adapters';\n` },
+      { path: 'src/capture/fence/boot.ts', text: `import { CaptureOperation } from '${UP}/adapters/kinds';\n` },
+    ];
+    expect(violations(planted)).toEqual([
+      'src/modules/evidence/routes.ts:1 imports the adapter layer and is not a unit that wires it',
+      'src/capture/supervisor.ts:1 imports the adapter layer and is not a unit that wires it',
+      'src/sealing-host/session-reader.ts:1 imports the adapter layer and is not a unit that wires it',
+      'src/sealing-host/index.ts:1 imports the adapter layer and is not a unit that wires it',
+      'src/modules/capture-config/plan.ts:1 reaches into the adapter layer past its index',
+      'src/sealing-host/index.ts:1 reaches into the adapter layer past its index',
+    ]);
+  });
+
+  it('every importer is a wiring unit; outside the capture unit only the index is named; the supervisor\'s own files load no adapter', () => {
+    expect(violations(tree)).toEqual([]);
+    // The layer IS wired now (the old statement of this block would be false): at least the selector and the fence reach it.
+    const importers = new Set(relativeImports(tree.filter((file) => isProductionSource(file.path) && !file.path.startsWith(ADAPTERS))).filter((entry) => entry.target.startsWith(INDEX)).map((entry) => entry.file));
+    expect([...importers].some((file) => file.startsWith('src/modules/capture-config/'))).toBe(true);
+    expect([...importers].some((file) => file.startsWith('src/capture/fence/'))).toBe(true);
+    // A named entry that names no importer any more is stale: it goes.
+    for (const file of NAMED) expect([...importers], file).toContain(file);
   });
 });

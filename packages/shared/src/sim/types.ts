@@ -17,7 +17,6 @@ import type {
   EvidenceLifecycleStage,
   FinalizationStep,
   LensState,
-  MicInputId,
   MicRole,
   MicState,
   NetworkDomain,
@@ -375,8 +374,9 @@ export interface CaptureConfigSnapshot {
 /** Which mic input is active inside `AUDIO-01` right now (SH-05; op 81; `dbc-3 §B.10`). */
 export interface AudioSourceState {
   sessionId: string;
-  activeInputId: MicInputId;
-  standbyInputId: MicInputId;
+  /** `MIC-NN`: an input of the session's selector snapshot (D133 (1)); the built-in pair unless the selector was replaced. */
+  activeInputId: CaptureMicInputId;
+  standbyInputId: CaptureMicInputId;
   /** When the last switch took effect (Core instant). */
   switchedAt: EpochMs | null;
   /** Media-pts start of the interval the switch opened (never operator wall clock, S2 §6). */
@@ -474,9 +474,11 @@ export interface ActiveSession {
    * Whether the capture of this session holds its first durable fragment (decisions D84, D91 R-1
    * option A): `false` from the accepted start until then ("connecting cameras"), `true` after.
    * The stored session state stays RECORDING either way. ABSENT READS AS DURABLE
-   * (`captureDurableOf`): the simulator has no notion of a fragment and never writes the member,
-   * so a simulated recording is durable from RECORDING. The Core writes it from the capture
-   * supervisor's `status().durable` (`captureDurableTransition`; wired by row 71).
+   * (`captureDurableOf`): a session stored before the member existed, or read back by a Core
+   * that keeps no column for it. The Core in real capture operation writes it from its capture
+   * session (`false`, then `true`); a simulator that runs its own capture writes `false` at the
+   * start and REMOVES the member when the start is decided as durable, `CAPTURE_CONNECT_MS` later
+   * (`capture-session.ts` `advanceCaptureStart`; pass D10).
    */
   captureDurable?: boolean;
   /** Incremental transcript state of this session (op 84; R-5). */
@@ -571,9 +573,14 @@ export interface AudioFrame {
  * both input levels and mark which one is active (OD-01 T1, OD-09).
  */
 export interface AudioSlice {
-  inputs: Record<MicInputId, AudioFrame>;
+  /**
+   * The newest frame of each of the two mic inputs, keyed by input ID `MIC-NN` (D133 (1)). The
+   * simulator meters the built-in pair `MIC-01` / `MIC-02`; a Core whose selector holds another
+   * registered microphone keys the frames by that pair.
+   */
+  inputs: Record<CaptureMicInputId, AudioFrame>;
   /** Which input currently feeds `AUDIO-01` (op 81 updates it with the switch). */
-  activeInputId: MicInputId;
+  activeInputId: CaptureMicInputId;
 }
 
 /** One camera row of the `captureConfig` slice (`C3 §6` slice 29). */
@@ -588,9 +595,9 @@ export interface CaptureConfigCamera {
 }
 
 /**
- * A microphone input of the device selector: `MIC-NN` (`MIC_INPUT_ID_PATTERN` of the contract).
- * Wider than `MicInputId`, which stays the two built-in inputs the meters and the session audio
- * source are keyed by (decision D115 (2)).
+ * A microphone input: `MIC-NN` (`MIC_INPUT_ID_PATTERN` of the contract). Wider than `MicInputId`,
+ * which names the two BUILT-IN inputs only. The selector (D115 (2)), the session audio source,
+ * operation 81 and the meters are keyed by this form (D133 (1)).
  */
 export type CaptureMicInputId = string;
 
@@ -639,6 +646,25 @@ export interface CaptureDeviceStatus {
   adapter?: string;
   /** Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client. */
   sourceClass?: 'PRODUCTION' | 'DEVELOPMENT';
+  /**
+   * True while the Core holds this source open (the "is on" fact of a `LOCAL_DEVICE`; C3 §2.6,
+   * erratum PE-128-38). A runtime fact, never stored: absent when not open and in simulated capture.
+   */
+  sourceOpen?: boolean;
+}
+
+/**
+ * What a Core in a real capture operation knows of one registered source beyond its stored row
+ * (integration pass D10; requests of row 140): the class its registry gives it and whether the
+ * Core holds it open now. The input of `applyCaptureSourceFactsTransition`.
+ */
+export interface CaptureSourceFact {
+  /** The capture-device ID (`CAM-01`, `MIC-03`). */
+  deviceId: string;
+  /** The adapter kind the registry of the running operation holds for the device; absent = say nothing of the class. */
+  adapter?: string;
+  /** True while the Core holds the source open. */
+  open: boolean;
 }
 
 /** The input of the INTERNAL action `registerCaptureDevice` (C3 §2.6 "What adoption stores"): a camera that operation 96 adopted. */
@@ -714,7 +740,33 @@ export type CaptureWarningCode = Extract<FaultKind, 'MIC_SILENT' | 'CAPTURE_FAUL
 export interface CaptureFaultWarningInput {
   code: CaptureWarningCode;
   subject: string | null;
+  /**
+   * Pass D6 item 14 (D160; C3 §5.3 / §5.4 row C): WHY the capture as a whole faulted, as a code
+   * (`NO_CAMERA_CONNECTED`), and how many evidence files exist (0 for a failed start). Carried to
+   * the NEW alert's `params` and to the `details` of its FAULT_RAISED row - only for
+   * `CAPTURE_FAULT`, only a code of the form `^[A-Z][A-Z0-9_]{1,63}$` and a non-negative integer.
+   * Anything else is dropped, never stored: no free text travels here.
+   *
+   * Since ruling D146 the reason is also THE THIRD MEMBER OF THE FAULT KEY (kind, reason, device)
+   * and travels for a fault ABOUT a device too: `MIC_DISCONNECTED` and another cause on one
+   * microphone are two faults. `evidenceFiles` stays a fact of the capture as a whole (no subject).
+   * A clear that names a reason clears that one fault; a clear without one clears every fault of
+   * the kind on that device.
+   */
 }
+
+/**
+ * The two optional members a capture fault warning may carry BESIDE `code` and `subject` (see the
+ * comment above). They are read from the object as it arrives and checked (`captureFaultFactsOf`);
+ * they are not members of `CaptureFaultWarningInput`, so a caller's own narrower type of them (the
+ * Core's forwarder: `ForwardedFaultWarning`) stays assignable.
+ */
+export interface CaptureFaultFacts {
+  reason?: string;
+  evidenceFiles?: number;
+}
+
+
 
 /**
  * What the INTERNAL pair `raiseCaptureWarning` / `clearCaptureWarning` takes: a capture fault, or
@@ -735,6 +787,12 @@ export interface CaptureConfigMicChange {
   inputId: CaptureMicInputId;
   deviceId: string;
   transport?: string | undefined;
+  /**
+   * PAIR REPLACEMENT (D133 (1)): present on BOTH lines of a two-line change, the lines are the new
+   * pair of inputs (one PRIMARY, one STANDBY, `deviceId == inputId`). Absent on every line: the
+   * line edits the input it names.
+   */
+  role?: MicRole | undefined;
 }
 
 /**
@@ -943,13 +1001,25 @@ export interface EvidenceTrack {
   sha256: string;
 }
 
-export interface EvidenceSignature {
-  /** sha256(manifestHash ‖ keyId): a simulated signature, never called a real one. */
+/** The simulated stand-in: sha256(manifestHash ‖ keyId), 64 hex characters; never called a real signature. */
+export interface SimulatedEvidenceSignature {
   value: string;
   keyId: string;
   algorithm: 'SIMULATED-SHA256';
   simulated: true;
 }
+/**
+ * The signature of a REAL v2 seal (the Core's sealing pipeline; `completeSealTransition`): Ed25519
+ * over the manifest digest, 128 hex characters. The pair (algorithm, simulated) is the second pair
+ * of `EvidenceItemSchema` and of the database rule (dbc-3 §C.4); `keyId` names the signing key.
+ */
+export interface RealEvidenceSignature {
+  value: string;
+  keyId: string;
+  algorithm: 'Ed25519';
+  simulated: false;
+}
+export type EvidenceSignature = SimulatedEvidenceSignature | RealEvidenceSignature;
 
 export interface CustodyEntry {
   at: EpochMs;
@@ -997,6 +1067,11 @@ export interface EvidenceItem {
   tampered: boolean;
   /** The track whose media the tamper hook altered (step 32); verification fails on exactly this track. */
   tamperedTrackId?: TrackId | null;
+  /**
+   * Whether the seal recorded a development source (`evidence_items.development_sources`, manifest
+   * field 126; C3 §3.1 erratum PE-128-32). Null or absent: not recorded - never read as production.
+   */
+  developmentSources?: boolean | null;
   /** Case (examination) type (step 54, SIM-GAP-W47-2); the subject type of the interview. */
   caseType?: CaseType;
   /** Markers set during the recording (step 54, SIM-GAP-W47-3); empty for the dataset items. */
@@ -1038,6 +1113,38 @@ export interface EvidenceItem {
    * on every item written before a revision exists, so v1 snapshots keep restoring (row 51a).
    */
   transcriptRevisions?: TranscriptRevisionRecord[];
+  /**
+   * The transcript summary of slice `evidence` (`EvidenceItemSchema.transcript`). Set by a Core
+   * when operation 85 stored a revision (pass D6, `noteTranscriptRevisionTransition`); absent
+   * otherwise - the document and the head are always read through operation 84.
+   */
+  transcript?: EvidenceTranscriptSummary | null;
+}
+
+/** The transcript summary inside an evidence item (the slice schema's `transcript` member). */
+export interface EvidenceTranscriptSummary {
+  state: 'PENDING' | 'PARTIAL' | 'READY' | 'FAILED' | 'DISABLED';
+  sha256: string | null;
+  machineTranscriptHash: string | null;
+  labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
+  /** Current max(revision_no); 0 when no revision exists. */
+  revision: number;
+}
+
+/** What a Core says after it stored a transcript revision (`noteTranscriptRevisionTransition`). */
+export interface TranscriptRevisionNote {
+  evidenceId: string;
+  /** The new head: the number of the stored revision. */
+  revision: number;
+  state: 'READY' | 'PARTIAL';
+  machineTranscriptHash: string;
+  labelsStatus: 'LABELLED' | 'UNAVAILABLE' | null;
+}
+
+/** The input of the INTERNAL action `applyStorageVolume` (CS-09): the measured figures of the evidence volume, in bytes. */
+export interface StorageVolumeInput {
+  totalBytes: number;
+  freeBytes: number;
 }
 
 /** One correction inside a transcript revision (`changes` of op 85/86). */
@@ -1184,9 +1291,19 @@ export interface SettingsSlice {
   notifySound: boolean;
 }
 
-/** Active fault flags (what `inject` set and `clearFault` has not cleared). */
+/**
+ * Active fault flags (what `inject` set and `clearFault` has not cleared).
+ *
+ * THE KEY OF A FAULT IS (kind, reason, device) (ruling D146; database contract erratum
+ * PE-0013-01). `reason` is the enumerated cause a capture warning names about a device
+ * (`MIC_DISCONNECTED`, `CAMERA_STREAM_ENDED`), in the code form `^[A-Z][A-Z0-9_]{1,63}$`: two
+ * causes of one kind on one device are two entries, each with its own alert and audit rows. A
+ * fault without a cause carries no member and is keyed as before. A fault WITHOUT a device
+ * (`target` null: the capture as a whole) is one at a time and carries no member either - its
+ * cause (`NO_CAMERA_CONNECTED`) is a fact of its alert and audit row, not a key.
+ */
 export interface FaultsSlice {
-  active: { kind: FaultKind; since: EpochMs; target: string | null }[];
+  active: { kind: FaultKind; since: EpochMs; target: string | null; reason?: string }[];
 }
 
 /** The whole simulator state. Pure data (see the file header). */
@@ -1279,6 +1396,11 @@ export interface ExportRequest {
   /** Mandatory reason (S21). */
   reason: string;
   destination: string;
+  /**
+   * Schema v2 (C3 §3 op 42, §5 `EVIDENCE_EXPORTED`): the kind the request named. Absent: PACKAGE.
+   * Written to the request row as `details.kind` only when the request names it (ruling D140).
+   */
+  kind?: 'PACKAGE' | 'COMPOSITE' | undefined;
 }
 
 /** `exportAudit(request)` / `exportLogs(request)` (step 54, SIM-GAP-W51-1, W52-7). */
@@ -1295,11 +1417,14 @@ export interface AuditExportRequest {
  * SECURITY_FAULT (TPM or security fault blocks export, FMEA §23.1; step 32), 422 INVALID_REASON.
  */
 export type ExportResult =
-  | { ok: true; status: 202; exportId: string }
+  // `jobId` (`EXPJ-NNNNNN`, the ID operation 87 is polled with; C3 §3, decisions D140 / D149): the
+  // Live source carries it from the Core's 202 when the Core answers it; the simulator's action does not.
+  | { ok: true; status: 202; exportId: string; jobId?: string }
   | {
       ok: false;
       status: 401 | 403 | 404 | 409 | 422;
-      reason: 'NOT_SIGNED_IN' | 'FORBIDDEN' | 'NOT_FOUND' | 'NOT_SEALED' | 'SECURITY_FAULT' | 'INVALID_REASON';
+      // `EXPORT_IN_PROGRESS` (pass D6; C3 §4, schema v2): only a Core answers it - an export job of the item is still QUEUED or RUNNING.
+      reason: 'NOT_SIGNED_IN' | 'FORBIDDEN' | 'NOT_FOUND' | 'NOT_SEALED' | 'SECURITY_FAULT' | 'INVALID_REASON' | 'EXPORT_IN_PROGRESS';
     };
 
 export type ChainVerifyResult =
@@ -1472,6 +1597,14 @@ export interface SimActions {
    * subject `raiseCaptureWarning` would refuse.
    */
   clearCaptureWarning(warning: CaptureWarningInput): void;
+  /**
+   * CS-09 (pass D6): the REAL total and free bytes of the evidence volume, as the Core's boot check
+   * measured them, become the figures of the evidence volume of slice `storage` (`usedBytes` =
+   * total - free; the storage state is recomputed; the history is untouched). INTERNAL: the Core
+   * calls it once after a boot in real capture operation; a simulated Core and every client never
+   * do. Figures that are no byte counts change nothing. Writes no audit row and no event.
+   */
+  applyStorageVolume(volume: StorageVolumeInput): void;
 
   // ── The capture selector and the in-session mic switch (task 3, register SH-18; C3 §2.4) ──
   // HOSTED: the Core server runs them under the caller's identity (operations 78, 79, 80 and 81).
@@ -1491,7 +1624,7 @@ export interface SimActions {
    * SESSION_START and a RECORDING session; the holder condition of the operation is the Core's.
    * Does nothing when the input is already the active one.
    */
-  switchAudioSource(inputId: MicInputId): void;
+  switchAudioSource(inputId: CaptureMicInputId): void;
   /**
    * INTERNAL (task 3 R-9; C3 §2.6 "Adoption"): a camera that operation 96 adopted joins the
    * `captureDevices` slice. No client calls it: on the Core server it runs inside the unit of work

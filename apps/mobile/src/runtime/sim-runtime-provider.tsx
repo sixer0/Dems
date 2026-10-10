@@ -44,6 +44,7 @@ import { liveOf } from '@dems/shared/live';
 import { HeartbeatContext } from '@dems/shared/realtime';
 import {
   selectPendingSummaryId,
+  SimContext,
   SimProvider,
   useSim,
   type Sim,
@@ -493,8 +494,15 @@ function RoleChangeNotice({ live }: { live: MobileLiveSim }) {
  * `useMobileLive()?.client.call(operationId, input)`.
  */
 export function useMobileLive(): MobileLiveSim | null {
-  const sim = useRuntimeInternals()?.sim;
-  return sim ? liveOf<MobileLiveSim>(sim) : null;
+  const own = useRuntimeInternals()?.sim;
+  // Integration pass D5: the kit's sheets and dialogs render through a portal, and a screen carries
+  // only the `SimContext` across it (the Evidence `SheetFrame`). Inside such a sheet this provider's
+  // own context is absent, so the source is read from the carried `SimContext` — and counted only
+  // when it is the app's own Live source (`createMobileLive`), never a bare one.
+  const carried = useContext(SimContext);
+  const sim = own ?? carried;
+  if (!sim) return null;
+  return own !== undefined || mobileLiveOf(sim) !== null ? liveOf<MobileLiveSim>(sim) : null;
 }
 
 /** The Live source with its adapters (`start`, the pairing gate, the biometric port), or `null` as above. */

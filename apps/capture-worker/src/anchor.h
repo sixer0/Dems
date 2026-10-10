@@ -65,6 +65,31 @@ int trend_near_bound(const ClockTrend *t);
  * packet may have waited inside the receiver before it was handed over (waiting only makes a lag larger).
  * 1 when -CLOCK_SANITY_MS <= lag_ms <= CLOCK_SANITY_MS + held_ms. */
 int clock_lag_sane(double lag_ms, double held_ms);
+/* THE CLOCK FLOOR (blueprint row 71; decision D127 (1), row 59's note D59-9). The allowance of
+ * clock_lag_sane at anchoring - the time the first packet may have waited inside the receiver - also
+ * hides a camera clock that is BEHIND by up to that much more than the bound. One later packet
+ * cannot close that gap: a camera that stalls delivers its next packets seconds late with a correct
+ * clock (row 62's re-check on the first live packet gave such a camera up: lag 3.9 s and 4.1 s).
+ * The rule over several packets: a delay - a wait inside the receiver, a stall, the network - can
+ * only make a lag LARGER, so the SMALLEST lag of every packet seen since the ingest opened is the
+ * tightest statement arrivals can make about the camera's clock. The floor collects it; the ingest
+ * judges it, without allowance, on the first packet that did not wait.
+ *   a stalled camera with a correct clock: an early packet arrived on time, the floor is small: kept;
+ *   a clock behind by more than the bound: NO packet ever has a lag below it: given up;
+ *   a clock ahead by more than the bound that a wait hid at anchoring: the first packet that did
+ *   not wait brings the floor below the lower bound: given up.
+ * WHAT IT CANNOT SEE: a camera whose every packet since the ingest opened was delivered more than
+ * the bound late reads like a clock that is behind, and is given up (no encode or network delay is
+ * that long, F-6); and an offset inside the bound stays class C (H-7), as before. */
+typedef struct ClockFloor {
+    double min_lag_ms;          /* the smallest lag of any packet since the ingest opened */
+    int packets;                /* how many packets it was taken over; 0: nothing seen yet */
+} ClockFloor;
+
+void clock_floor_init(ClockFloor *f);
+void clock_floor_add(ClockFloor *f, double lag_ms);
+/* 1 when the floor is inside +-CLOCK_SANITY_MS, or nothing was seen yet. No allowance. */
+int clock_floor_sane(const ClockFloor *f);
 /* Fitted change of the per-second best lag in parts per million; 0 with *fitted = 0 before CLOCK_TREND_MIN_SPAN_S. */
 double trend_ppm(const ClockTrend *t, int *fitted);
 

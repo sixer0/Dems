@@ -4,6 +4,9 @@
 // which no entry point sets and no argument or environment variable reaches. `dems_demo` and the
 // lanes are never touched by a test (TI-17): how the three lane databases are built with the
 // real command is recorded in the row's report.
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DEMO_OPERATOR_PASSWORD, DEMO_PAIRING_CODE } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,6 +24,8 @@ vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
 /** 2026-10-04 11:00:00 WIB: a "now" of the command line, after the fixtures. */
 const COMMAND_NOW = Date.UTC(2026, 9, 4, 4, 0, 0);
+/** An empty media store root of this file's own (never the run's shared data directory). */
+const MEDIA_ROOT = mkdtempSync(join(tmpdir(), 'dems-rc-media-'));
 /** The row counts of contract §9.4 after a first seed of scenario `idle`: all 30 tables. */
 const SEED_COUNTS: Readonly<Record<string, number>> = {
   active_session: 0,
@@ -66,6 +71,7 @@ afterAll(async () => {
   await db.database.closeResources();
   for (const name of [`${db.name}_fb`, `${db.name}_next`, `${db.name}_prev`, db.name]) await dropOwn(maintenance, name, db.run.identity.prefix);
   await maintenance.end();
+  rmSync(MEDIA_ROOT, { recursive: true, force: true });
 });
 
 function capture(): { io: CommandIo; out: string[]; err: string[] } {
@@ -84,6 +90,10 @@ async function reset(argv: string[], more: Partial<ResetCommandOptions> = {}): P
     // nothing when no session is there); the one call that expects a refusal passes a short one.
     sessionDrainMs: PATIENT_MS,
     internals: { testRunPrefix: db.run.identity.prefix },
+    // Since migration 0013 the command must know the media store root it judges (the variable of the
+    // server, or the root a Core recorded in the database). These databases never had a Core: the
+    // variable names an empty root of this file's own. The rules of that choice: `store-root.db.test.ts`.
+    environment: { DEMS_MEDIA_DIR: MEDIA_ROOT },
     ...more,
   });
   printed.push(...out, ...err);
@@ -104,7 +114,7 @@ describe('db:reset --database <a name that does not exist yet>: how a lane datab
     expect(out[0]).toBe(`db:reset: ${name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)');
     expect(out[2]).toBe(`db:reset: first build: ${name} did not exist. Nothing was carried over and no chain was discarded; epoch 0.`);
-    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 314 row\(s\) in 24 of 42 table\(s\)$/);
+    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 314 row\(s\) in 24 of 43 table\(s\)$/);
     for (const [table, rows] of Object.entries(SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-3)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-2)).toBe('lineage          0 row(s); 0 carried over, 0 appended');
@@ -158,7 +168,7 @@ describe('db:reset on a used database', () => {
     expect(done.err).toEqual([]);
     expect(done.out).toContain('db:reset: epoch 0 -> 1');
     expect(done.out).toContain(
-      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, audit_chain_history 0',
+      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, core_media_store 0, audit_chain_history 0',
     );
     expect(done.out).toContain('db:reset: pairing codes that were ACTIVE, now CANCELLED: 1; operators with a last sign-in from a kept session: 2');
     expect(done.out).toContain('db:reset: SCENARIO_LOADED is audit row 83 of the new chain');

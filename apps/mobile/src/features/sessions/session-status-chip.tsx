@@ -8,6 +8,7 @@ import type { ChipProps } from 'heroui-native';
 import { Circle, LoaderCircle, Lock, OctagonAlert, TriangleAlert, type LucideIcon } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StatusChip } from '@/components/kit';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { HUB_STATUS_SPEC, type HubStatus, type HubStatusIcon } from './sessions-model';
 
 const ICONS: Record<HubStatusIcon, LucideIcon> = {
@@ -25,6 +26,12 @@ export interface SessionStatusChipProps extends Omit<ChipProps, 'color' | 'child
 export function SessionStatusChip({ status, size = 'sm', ...chipProps }: SessionStatusChipProps) {
   const { t } = useTranslation();
   const spec = HUB_STATUS_SPEC[status];
+  // Integration pass D7 item 3 (ux §8e.2; D84, D91): the one RECORDING row of the hub is the open session; before
+  // its first durable fragment (`captureDurable: false`) it reads "Connecting cameras…", with no filled REC dot.
+  const connecting = useConnectingCameras() && status === 'RECORDING';
+  if (connecting) {
+    return <StatusChip {...chipProps} size={size} tone="info" icon={ICONS.loader} label={t('common.session.connectingCameras')} />;
+  }
   return (
     <StatusChip
       {...chipProps}

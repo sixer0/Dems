@@ -116,6 +116,10 @@ export interface BuildOptions {
   readonly headerBytes?: number;
   readonly tailBytes?: number;
   readonly transcript?: 'ASSEMBLED' | 'DISABLED';
+  /** The backend of the session and the model it sealed (pass D10, D160). Default: the example's `cpu-local` model with all four members. */
+  readonly transcriptModel?: { readonly backend: 'omlx-server' | 'cpu-local'; readonly model: { readonly name: string | null; readonly version: string | null; readonly quantisation: string | null; readonly modelSha256: string | null } };
+  /** The bytes of `transcript/transcript.json` instead of the document that says what the manifest says (a document that disagrees). */
+  readonly transcriptDocument?: string;
   /** Signed revisions appended to the transcript. */
   readonly revisions?: number;
   /**
@@ -155,7 +159,15 @@ export interface BuiltPackage {
   readonly fragment: (trackId: PackageVideoTrackId, seq: number) => ManifestFragment;
 }
 
-const TRANSCRIPT_TEXT = { json: '{"documentVersion":"dems.transcript/1","segments":[]}\n', srt: '1\n00:00:00,000 --> 00:00:01,000\nexample\n', vtt: 'WEBVTT\n\n00:00.000 --> 00:01.000\nexample\n' };
+/**
+ * The canonical document as far as verify reads it (V-10, pass D10): the header states the backend
+ * and the model, which must be the manifest's (`configSnapshot.backend`, `model.*`).
+ */
+export function transcriptDocumentText(backend: string, model: { readonly name: string | null; readonly version: string | null; readonly quantisation: string | null; readonly modelSha256: string | null }): string {
+  return `${JSON.stringify({ documentVersion: 'dems.transcript/1', header: { backend, model: { name: model.name, version: model.version, quantisation: model.quantisation, sha256: model.modelSha256 } }, segments: [] })}\n`;
+}
+
+const TRANSCRIPT_TEXT = { srt: '1\n00:00:00,000 --> 00:00:01,000\nexample\n', vtt: 'WEBVTT\n\n00:00.000 --> 00:01.000\nexample\n' };
 
 function write(dir: string, relative: string, bytes: Uint8Array | string): void {
   const target = join(dir, ...relative.split('/'));
@@ -163,21 +175,34 @@ function write(dir: string, relative: string, bytes: Uint8Array | string): void 
   writeFileSync(target, bytes);
 }
 
-/** One signed revision record over a canonical body. */
-export function revisionRecord(signer: LoadedSigner, revisionNo: number, parentSha256: string, certificateSha256: string | null = signer.certificate.sha256): TranscriptRevisionRecord {
-  const body = { revisionNo, parentSha256, changes: [{ segmentIndex: 0, from: 'example', to: `example ${revisionNo}` }] };
-  const digest = sha256Hex(canonicalJsonBytes(body));
-  const value = Buffer.from(signer.signer.sign(Buffer.from(digest, 'hex')) as Uint8Array).toString('hex');
-  return {
+/**
+ * One signed revision record over a canonical body. The body carries the members verify V-11 holds
+ * the record to (`REVISION_BOUND_MEMBERS`, pass D6): the item, the machine transcript, the number,
+ * the parent, who, why and when.
+ */
+export function revisionRecord(
+  signer: LoadedSigner,
+  of: { readonly evidenceId: string; readonly transcript: { readonly sha256: string | null } },
+  revisionNo: number,
+  parentSha256: string,
+  certificateSha256: string | null = signer.certificate.sha256,
+): TranscriptRevisionRecord {
+  const authorId = 'OP-0001';
+  const reason = 'a correction for the test';
+  const createdAt = SIGNED_AT + revisionNo * 1_000;
+  const body = {
+    evidenceId: of.evidenceId,
+    machineTranscriptSha256: of.transcript.sha256,
     revisionNo,
     parentSha256,
-    sha256: digest,
-    authorId: 'OP-0001',
-    reason: 'a correction for the test',
-    createdAt: SIGNED_AT + revisionNo * 1_000,
-    signature: { algorithm: 'Ed25519', keyId: signer.signer.keyId, value, certificateSha256 },
-    body,
+    authorId,
+    reason,
+    createdAt,
+    changes: [{ segmentIndex: 0, from: 'example', to: `example ${revisionNo}` }],
   };
+  const digest = sha256Hex(canonicalJsonBytes(body));
+  const value = Buffer.from(signer.signer.sign(Buffer.from(digest, 'hex')) as Uint8Array).toString('hex');
+  return { revisionNo, parentSha256, sha256: digest, authorId, reason, createdAt, signature: { algorithm: 'Ed25519', keyId: signer.signer.keyId, value, certificateSha256 }, body };
 }
 
 export function writeRevisions(dir: string, manifest: ManifestV2, revisions: readonly TranscriptRevisionRecord[]): void {
@@ -274,10 +299,16 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
       configSnapshot: { ...input.transcript.configSnapshot, enabled: false },
     };
   } else {
-    write(dir, PackageFile.TRANSCRIPT_JSON, TRANSCRIPT_TEXT.json);
+    // The model of the session: `options.transcriptModel` (a server session states the name only), else the example's.
+    if (options.transcriptModel !== undefined) {
+      input.transcript.model = { ...options.transcriptModel.model };
+      input.transcript.configSnapshot = { ...input.transcript.configSnapshot, backend: options.transcriptModel.backend, model: options.transcriptModel.model.name ?? input.transcript.configSnapshot.model };
+    }
+    const documentText = options.transcriptDocument ?? transcriptDocumentText(input.transcript.configSnapshot.backend, input.transcript.model);
+    write(dir, PackageFile.TRANSCRIPT_JSON, documentText);
     write(dir, PackageFile.TRANSCRIPT_SRT, TRANSCRIPT_TEXT.srt);
     write(dir, PackageFile.TRANSCRIPT_VTT, TRANSCRIPT_TEXT.vtt);
-    input.transcript.sha256 = sha256Hex(Buffer.from(TRANSCRIPT_TEXT.json));
+    input.transcript.sha256 = sha256Hex(Buffer.from(documentText));
     input.transcript.srtSha256 = sha256Hex(Buffer.from(TRANSCRIPT_TEXT.srt));
     input.transcript.vttSha256 = sha256Hex(Buffer.from(TRANSCRIPT_TEXT.vtt));
   }
@@ -298,7 +329,7 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
     const records: TranscriptRevisionRecord[] = [];
     let parent = manifest.transcript.sha256;
     for (let revisionNo = 1; revisionNo <= (options.revisions ?? 0); revisionNo += 1) {
-      const record = revisionRecord(signer, revisionNo, parent);
+      const record = revisionRecord(signer, manifest, revisionNo, parent);
       records.push(record);
       parent = record.sha256;
     }

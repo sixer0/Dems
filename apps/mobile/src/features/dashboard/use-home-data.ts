@@ -8,7 +8,8 @@
  */
 import { useMemo } from 'react';
 import {
-  MIC_INPUT_OF_CHANNEL,
+  captureMicLines,
+  micInputOfChannel,
   selectActiveAlerts,
   selectDeviceStats,
   selectElapsedMs,
@@ -192,8 +193,9 @@ export function useDeviceTiles(): DeviceTileInfo[] {
   const mics = useSim((s) => {
     const recording = s.session?.state === 'RECORDING';
     const activeInputId = s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
+    const lines = captureMicLines(s);
     return s.mics.map((m) => {
-      const role = micTileSourceRole({ recording, inputId: MIC_INPUT_OF_CHANNEL[m.id], activeInputId });
+      const role = micTileSourceRole({ recording, inputId: micInputOfChannel(lines, m.id), activeInputId });
       return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}`;
     });
   });

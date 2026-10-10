@@ -37,8 +37,9 @@ import { derived, fontFamily, motion as motionTokens, palette, radius, typograph
 import { CameraFeed } from '@/components/media';
 import { withAlpha } from '@/components/media/color';
 import { GlowLayer, triggerHaptic, useMotionSettings } from '@/motion';
+import { TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { busyState } from '@/runtime';
-import { RecTimer } from './rec-indicator';
+import { RecTimer, useConnectingCameras } from './rec-indicator';
 import { SHUTTER_MS, SHUTTER_PEAK, cameraIndexOf, otherCameraId } from './session-live.math';
 
 const RADIUS = radius.px.xl;
@@ -77,6 +78,7 @@ export function LiveFeed({
   style,
 }: LiveFeedProps) {
   const { t } = useTranslation();
+  const connecting = useConnectingCameras();
   const settings = useMotionSettings();
   const reduced = settings.policy === 'reduced';
   const camera = cameras.find((c) => c.id === activeCameraId) ?? cameras[0];
@@ -147,7 +149,8 @@ export function LiveFeed({
       cameraId={activeCameraId}
       mode="live"
       motion={settings.policy}
-      paused={paused || monitoringPaused}
+      // Row 139 (D84; ux §8e.2): before the first durable fragment the picture is not presented as live.
+      paused={paused || monitoringPaused || connecting}
       noSignal={noSignal}
       cameraLabel={short}
       labels={{ noSignal: t('session.feed.noSignal') }}
@@ -207,6 +210,8 @@ export function LiveFeed({
                   </Chip.Label>
                 </Chip>
               ) : null}
+              {/* Pass D2 (ux §8f.2; row 138's request): the one badge of the camera on screen; no node unless the Core sent the development class. */}
+              <TrackSourceBadge trackId={activeCameraId} testID="monitor-feed-source" />
             </View>
             <View style={styles.overlayRight}>
               {snapshotCount > 0 ? (
@@ -219,8 +224,9 @@ export function LiveFeed({
                 </Animated.View>
               ) : null}
               <Chip size="sm" variant="secondary" style={[styles.darkChip, styles.recChip]} testID="monitor-feed-rec">
-                <View style={styles.recDot} />
-                <Chip.Label style={styles.recLabel}>{t('session.feed.rec')}</Chip.Label>
+                {/* Row 139 (D84): no recording indicator while the cameras connect. The chip stays mounted; only its content changes. */}
+                {connecting ? null : <View style={styles.recDot} />}
+                <Chip.Label style={styles.recLabel}>{connecting ? t('common.session.trackConnecting') : t('session.feed.rec')}</Chip.Label>
                 <RecTimer size="data" testID="monitor-feed-timer" />
               </Chip>
             </View>

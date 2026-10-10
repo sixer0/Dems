@@ -39,9 +39,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { registerSessionRoutes } from './routes';
 
+export { INTERVALS_READ_SOURCE, intervalCursorOf, intervalPositionOf, listAudioSourceIntervals, pageOfIntervals, readIntervalPage } from './audio-intervals';
 export { currentSessionResponse, type CurrentSessionSource } from './current';
 export { cursorOf, listSessionHistory, positionOf, readHistoryPage, type HistoryPosition } from './history';
 export {
+  CAPTURE_SESSION_OPERATION_IDS,
   SESSION_OPERATION_IDS,
   SESSION_READ_IDS,
   actionOf,

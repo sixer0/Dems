@@ -31,14 +31,14 @@
 import { useToast } from 'heroui-native';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AudioTrackId, MicInputId } from '@dems/shared/domain';
+import type { AudioTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { Permission, selectOperator, selectRole, useSim, useSimInstance, type OperatorRole } from '@dems/shared/sim';
+import { captureMicLines, Permission, selectOperator, selectRole, useSim, useSimInstance, type OperatorRole } from '@dems/shared/sim';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { triggerHaptic } from '@/motion';
 import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly, usePendingPress } from '@/runtime';
+import { useMicInputName } from '@/features/capture-selector/development-source-badge';
 import {
-  MIC_INPUT_LABEL_KEY,
   inputOfChannel,
   isSessionHolder,
   micSourceRole,
@@ -57,12 +57,12 @@ export interface MicSourceView {
   readonly sessionId: string | null;
   readonly recording: boolean;
   /** The pair as the Core holds it. */
-  readonly activeInputId: MicInputId;
-  readonly standbyInputId: MicInputId;
+  readonly activeInputId: string;
+  readonly standbyInputId: string;
   /** G4 / G5: why the toggle is not offered; `null` when it is. */
   readonly block: MicSwitchBlock | null;
   /** The input of an active `MIC_SILENT` warning while recording, or `null`. */
-  readonly silentInputId: MicInputId | null;
+  readonly silentInputId: string | null;
 }
 
 /** The active/standby pair, the gate of the toggle and the silence warning, in both data modes. */
@@ -87,7 +87,8 @@ export function useMicSource(): MicSourceView {
     canStart: gate.allowed,
     holder: isSessionHolder({ operatorId, role, createdBy }),
   });
-  const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId) : null), [recording, faults, activeInputId]);
+  const micLines = useSim(captureMicLines);
+  const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines]);
 
   return { sessionId, recording, activeInputId, standbyInputId, block, silentInputId };
 }
@@ -97,7 +98,7 @@ export function useMicSource(): MicSourceView {
  * otherwise. A primitive selector, so a card renders again only when its own word changes.
  */
 export function useMicSourceRole(channel: AudioTrackId): MicSourceRole | null {
-  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel), selectActiveInputId(s)) : null));
+  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel, captureMicLines(s)), selectActiveInputId(s)) : null));
 }
 
 export interface MicSwitchControl {
@@ -128,6 +129,7 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
   const { toast } = useToast();
   const actions = useCoreActions();
   const sim = useSimInstance();
+  const micName = useMicInputName();
   const live = useCoreLink().source === 'LIVE';
   const presentCoreError = useCoreErrorPresenter();
   const press = usePendingPress();
@@ -153,14 +155,15 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
     const from = activeInputId;
     const to = standbyInputId;
     const started = press.run((release) => {
-      settle(() => actions.switchAudioSource(to), {
+      // The id is the Core's own text (`MIC-NN`); the cast holds before and after the contract's id is widened.
+      settle(() => actions.switchAudioSource(to as Parameters<typeof actions.switchAudioSource>[0]), {
         ok: () => {
           setConfirmOpen(false);
           // Read on the settle: the input the store holds, not the one that was asked for.
           const active = selectActiveInputId(sim.store.getState());
           toast.show({
             variant: 'success',
-            label: t('session.audioSource.switched', { mic: t(MIC_INPUT_LABEL_KEY[active]) }),
+            label: t('session.audioSource.switched', { mic: micName(active) }),
             placement: 'bottom',
             duration: 2500,
           });

@@ -603,11 +603,11 @@ describe('state: snapshot, then deltas of the real engine', () => {
     const h = harness();
     h.run(1_000);
     const audio = wire(h.state().audio);
-    const frame = { type: 'meters', v: 1, at: h.state().clock.now, seq: audio.inputs['MIC-01'].seq, audio };
+    const frame = { type: 'meters', v: 1, at: h.state().clock.now, seq: audio.inputs['MIC-01']!.seq, audio };
     expect(WsServerMessageSchema.parse(frame)).toStrictEqual(frame);
-    expect(audio.inputs['MIC-01'].seq).toBeGreaterThan(10);
+    expect(audio.inputs['MIC-01']!.seq).toBeGreaterThan(10);
     expect(MetersMessageSchema.safeParse({ ...frame, revision: 3 }).success).toBe(false);
-    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': audio.inputs['MIC-01'] }, activeInputId: 'MIC-01' } }).success).toBe(false);
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': audio.inputs['MIC-01']! }, activeInputId: 'MIC-01' } }).success).toBe(false);
   });
 });
 

@@ -3,7 +3,7 @@
 //
 // Every test boots the real app on a clone of the seed template (a process start), on a manual
 // clock and a manual timer, and reads what is stored as `dems_owner`.
-import { signedOutAuth, verifyAuditChain, type AuditRow, type SimState } from '@dems/shared/sim';
+import { passCaptureStart, signedOutAuth, verifyAuditChain, type AuditRow, type SimState } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
@@ -71,6 +71,8 @@ async function startRecording(host: Booted): Promise<void> {
   if (host.engine.slice('session')?.state === 'PRECHECK') await host.engine.command(investigator, 'acknowledgePrecheckWarnings');
   expect(host.engine.slice('session')?.state).toBe('ARMED');
   await host.engine.command(investigator, 'startRecording');
+  // Pass D10: past the connecting part of the start (a member no column holds; a stop is refused in it).
+  await passCaptureStart((ms) => host.drive(ms));
   expect(host.engine.slice('session')?.state).toBe('RECORDING');
 }
 

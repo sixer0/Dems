@@ -20,13 +20,13 @@ import {
   validateCoreApiResponse,
   type CoreApiSchemaName,
 } from '@dems/shared/api';
-import type { OperatorRole } from '@dems/shared/sim';
+import { passCaptureStart, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse, RouteOptions } from 'fastify';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createHost } from '../../../../test/support/seed';
 import { createFakePool } from '../../../../test/support/config';
 import { permissionGuard } from '../../../plugins/permission-guard';
-import { SESSION_OPERATION_IDS, SESSION_READ_IDS, actionOf, operationOf, sessionUnitLabel, successStatusesOf, type SessionCommandId, type SessionOperationId } from '../index';
+import { CAPTURE_SESSION_OPERATION_IDS, SESSION_OPERATION_IDS, SESSION_READ_IDS, actionOf, operationOf, sessionUnitLabel, successStatusesOf, type SessionCommandId, type SessionOperationId } from '../index';
 import { NOW, unitApp, type MemoryEngine, type UnitApp, type UnitAppOptions } from './memory-engine';
 import { CASE_NUMBER, CURRENT, HISTORY, OTHER_SESSION, SESSION, bodyOf, errorOf, on, outcome, sessionInput } from './support';
 
@@ -158,23 +158,34 @@ function requestOf(unit: UnitApp, operationId: SessionOperationId, id: string): 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('MODG: the route list of the module equals its registry operations', () => {
+  /** Everything this module routes: spec §7.8's fifteen, then operations 81 and 82 of task 3. */
+  const MODULE_OPERATION_IDS = [...SESSION_OPERATION_IDS, ...CAPTURE_SESSION_OPERATION_IDS];
+  /** Routed under `/api/v1/session` by ANOTHER unit: the sealing progress of `modules/sealing`. */
+  const SESSION_PATH_OPERATIONS_OF_OTHER_UNITS = ['getSealingProgress'];
   async function registered(): Promise<{ unit: UnitApp; routes: RouteOptions[] }> {
     const all: RouteOptions[] = [];
     const unit = await build({ beforeReady: (app: FastifyInstance) => void app.addHook('onRoute', (route) => void all.push(route)) });
-    const own = new Set<string>(SESSION_OPERATION_IDS);
-    return { unit, routes: all.filter((route) => route.url.startsWith(SESSION) || own.has(String(route.config?.operationId))) };
+    const own = new Set<string>(MODULE_OPERATION_IDS);
+    // Under the session prefix another unit routes too: operation 83 is `modules/sealing`'s (row 82b,
+    // decision D153). This block is about the routes of THIS module; that one is named below.
+    const others = new Set<string>(SESSION_PATH_OPERATIONS_OF_OTHER_UNITS);
+    return { unit, routes: all.filter((route) => (route.url.startsWith(SESSION) || own.has(String(route.config?.operationId))) && !others.has(String(route.config?.operationId))) };
   }
 
-  it('registers operations 24 to 38 with the method, the path and the operation ID of the registry, in registry order, and nothing else under /api/v1/session', async () => {
+  it('registers operations 24 to 38 and 81, 82 with the method, the path and the operation ID of the registry, in registry order, and nothing else under /api/v1/session', async () => {
     const { routes } = await registered();
     const signature = (method: string, path: string): string => `${method.toUpperCase()} ${path}`;
-    const fromRegistry = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.SESSION).map(
+    // The module's own list (pass D1b's filed change, applied by pass D4): the fifteen operations of
+    // spec §7.8 and the two of task 3 it routes (81, 82). The tag Session also holds operation 83,
+    // which the sealing unit routes: the second block of this describe names it.
+    const fromRegistry = CORE_API_OPERATIONS.filter((operation) => (MODULE_OPERATION_IDS as readonly string[]).includes(operation.operationId)).map(
       (operation) => `${signature(operation.method, operation.path)} ${operation.operationId}`,
     );
     const fromModule = routes.map((route) => `${signature(String(route.method), route.url.replace(':id', '{id}'))} ${String(route.config?.operationId)}`);
 
     expect(fromModule).toEqual(fromRegistry);
-    expect(fromModule).toHaveLength(15);
+    expect(fromModule).toHaveLength(MODULE_OPERATION_IDS.length);
+    expect(fromModule).toHaveLength(17);
     for (const route of routes) {
       expect(matchCoreApiOperation(String(route.method), route.url.replace(':id', OTHER_SESSION))?.operation.operationId).toBe(route.config?.operationId);
     }
@@ -182,9 +193,10 @@ describe('MODG: the route list of the module equals its registry operations', ()
     console.info(`[w34] MODG registry, tag Session (${fromRegistry.length}):\n${fromRegistry.map((line) => `[w34]   ${line}`).join('\n')}`);
   });
 
-  it('the tag Session of the registry is exactly the module\'s list, and the eleven entries of contract C are operations 28 to 38', () => {
+  it('the tag Session of the registry is the module\'s list and operation 83 of the sealing unit, and the eleven entries of contract C are operations 28 to 38', () => {
     const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.SESSION).map((operation) => operation.operationId);
-    expect(area).toEqual([...SESSION_OPERATION_IDS]);
+    // Registry order: 24 to 38, then 81, 82 (this module), then 83 (the sealing unit's route).
+    expect(area).toEqual([...MODULE_OPERATION_IDS, ...SESSION_PATH_OPERATIONS_OF_OTHER_UNITS]);
     const numberOf = (operationId: SessionOperationId): number => Number(/operation (\d+)/.exec(operationOf(operationId).source)?.[1]);
     expect(SESSION_OPERATION_IDS.slice(4).map(numberOf)).toEqual([28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]);
     // The first four are the design book's: operations 24 to 27 of spec §7.8.
@@ -1117,6 +1129,8 @@ describe('API-1: the four design-book operations answer as the simulator\'s REST
       host.runAs(host.operator('INVESTIGATOR'), () => host.sim.actions.beginPrecheck());
       host.drive(5_000);
       host.runAs(host.operator('INVESTIGATOR'), () => host.sim.actions.startRecording());
+      // Pass D10: past the connecting part of the start - this case is about the reason of a stop that can be taken.
+      passCaptureStart((ms) => host.drive(ms));
     }
     const id = unit.memory.session?.id ?? '';
     expect(unit.memory.session?.state).toBe('RECORDING');

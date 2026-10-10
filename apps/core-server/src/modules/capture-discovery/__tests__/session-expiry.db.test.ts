@@ -96,9 +96,9 @@ const expiredRows = async (): Promise<number> => Number((await server.owner.quer
 const openSessions = async (): Promise<number> => Number((await server.owner.query('SELECT count(*)::int AS n FROM public.auth_sessions WHERE ended_at IS NULL')).rows[0]?.n);
 
 describe('the database of this file', () => {
-  it("is at the schema version of the code: [5, 'dbc-6']", async () => {
+  it("is at the schema version of the code: [6, 'dbc-7']", async () => {
     const { rows } = await server.owner.query<{ schema_version: number | string; contract_revision: string }>('SELECT schema_version, contract_revision FROM schema_meta');
-    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([5, 'dbc-6']);
+    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([6, 'dbc-7']);
   });
 });
 

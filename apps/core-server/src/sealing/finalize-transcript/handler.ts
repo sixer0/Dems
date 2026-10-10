@@ -64,7 +64,7 @@
  * logs or stores transcript text, a path or a credential.
  */
 import { createHash } from 'node:crypto';
-import { MANIFEST_STT_MODEL_PATTERN, TRANSCRIPT_ABSENCE_REASONS, TRANSCRIPT_DISABLED_REASON, TRANSCRIPT_UNAVAILABLE_REASON } from '@dems/shared/evidence-package';
+import { MANIFEST_STT_MODEL_PATTERN, TRANSCRIPT_ABSENCE_REASONS, TRANSCRIPT_DISABLED_REASON, TRANSCRIPT_UNAVAILABLE_REASON, transcriptModelFaults } from '@dems/shared/evidence-package';
 import { z } from 'zod';
 import { describeError } from '../../plugins/logger';
 import { summariseChunkAttempts, type ChunkAttempt } from '../../modules/transcript-chunks';
@@ -205,10 +205,9 @@ function toFinalized(sessionId: string, checkpoint: CommittedCheckpoint): Finali
     manifest.srtSha256 !== null &&
     manifest.vttSha256 !== null &&
     manifest.speakerState !== null &&
+    // Fields 84-87 as the backend of the session's snapshot allows them (D160): the name always; version, quantisation and file hash null exactly for a server backend.
     model.name !== null &&
-    model.version !== null &&
-    model.quantisation !== null &&
-    model.modelSha256 !== null &&
+    transcriptModelFaults(manifest.configSnapshot.backend, { name: model.name, version: model.version, quantisation: model.quantisation, sha256: model.modelSha256 }).length === 0 &&
     diarization.numSpeakers !== null &&
     diarization.status !== null &&
     checkpoint.modelParams !== null;
@@ -223,7 +222,7 @@ function toFinalized(sessionId: string, checkpoint: CommittedCheckpoint): Finali
           jsonSha256: manifest.sha256 as string,
           srtSha256: manifest.srtSha256 as string,
           vttSha256: manifest.vttSha256 as string,
-          model: { name: model.name as string, version: model.version as string, quantisation: model.quantisation as string, modelSha256: model.modelSha256 as string, params: checkpoint.modelParams as NonNullable<CommittedCheckpoint['modelParams']> },
+          model: { name: model.name as string, version: model.version, quantisation: model.quantisation, modelSha256: model.modelSha256, params: checkpoint.modelParams as NonNullable<CommittedCheckpoint['modelParams']> },
           diarization: { numSpeakers: diarization.numSpeakers as number, status: diarization.status as NonNullable<typeof diarization.status>, confidence: diarization.confidence, reason: checkpoint.speakerReason },
           labelsStatus: manifest.speakerState as NonNullable<typeof manifest.speakerState>,
         }

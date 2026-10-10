@@ -48,6 +48,7 @@ import { buildScenarioState } from './scenarios';
 import { tickMachine } from './session-machine';
 import { createSimStore, type SimStore } from './store';
 import type {
+  CaptureLevelSource,
   CreateSimOptions,
   DetailValue,
   SimActions,
@@ -133,13 +134,13 @@ function authIdleSubsystem(engine: EngineContext): SimSubsystem {
 }
 
 /** Runs the session machine's timed transitions (precheck checks, STOPPING, finalization, recovery). */
-function machineSubsystem(engine: EngineContext): SimSubsystem {
+function machineSubsystem(engine: EngineContext, capture: CaptureLevelSource): SimSubsystem {
   return {
     name: 'session-machine',
     tick({ now }) {
       const state = engine.store.getState();
       if (!state.session) return;
-      const next = tickMachine(state, now, engine.rng);
+      const next = tickMachine(state, now, engine.rng, capture);
       if (next !== state) engine.store.setState(next);
     },
   };
@@ -153,7 +154,8 @@ export function createSubsystems(engine: EngineContext, audio: AudioRuntime = cr
   return [
     clockSubsystem(engine),
     authIdleSubsystem(engine),
-    machineSubsystem(engine),
+    // The machine decides a connecting start by the time only where the simulator runs its own capture.
+    machineSubsystem(engine, audio.levelSource),
     createHealthSubsystem(engine),
     createAudioSubsystem(engine, audio),
     createGeneratorSubsystem(engine),

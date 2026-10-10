@@ -25,10 +25,14 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { ENV_MEDIA_DIR, MEDIA_STORE_SUBPATH, parseCapturePath } from '../../config';
 import { DEFAULT_DATA_DIR } from '../../plugins/config';
 
-/** Where the sealed packages live below the data directory (`cap` §H: `<dataDir>/media/sessions`). */
-export const EVIDENCE_STORE_SUBPATH = 'media/sessions';
+/**
+ * Where the sealed packages live below the data directory WHEN NO MEDIA ROOT IS CONFIGURED
+ * (`cap` §H: `<dataDir>/media/sessions`). The configuration's own constant: one value, not a copy.
+ */
+export const EVIDENCE_STORE_SUBPATH = MEDIA_STORE_SUBPATH;
 /** The prefix of a sealed-package directory (`ev` §A.1: `SESSION-<sessionId>`). */
 export const PACKAGE_DIRECTORY_PREFIX = 'SESSION-';
 /** The manifest file of a package, the only file this reader opens. */
@@ -60,6 +64,21 @@ export interface EvidenceStoreScan {
 /** The store root of one data directory: the evidence-store package directory of `dbc-3` §E.2. */
 export function evidenceStoreRoot(dataDir: string = DEFAULT_DATA_DIR): string {
   return join(resolve(dataDir), EVIDENCE_STORE_SUBPATH);
+}
+
+/**
+ * THE store root of a process that holds no configuration object - the command line (`db:reset`):
+ * the rule of the configuration itself (`createConfig`, `config.ts`), from the same variable. An
+ * installation whose media store is configured elsewhere (`DEMS_MEDIA_DIR`) keeps its sealed
+ * packages THERE; a guard that looked below the data directory would find no package and let a
+ * reset run beside real evidence (controller decision D165). A value that is not an absolute path
+ * is refused as the configuration refuses it (`CAPTURE_PATH_NOT_ABSOLUTE`): never a silent default.
+ *
+ * The SERVER does not call this: it hands the root of its own configuration
+ * (`app.config.mediaStoreDir`, what the sealing composition writes to) to the guard and the routine.
+ */
+export function evidenceStoreRootOf(dataDir: string | undefined, environment: Readonly<Record<string, string | undefined>>): string {
+  return parseCapturePath(ENV_MEDIA_DIR, environment[ENV_MEDIA_DIR]) ?? evidenceStoreRoot(dataDir);
 }
 
 /** The session id a package directory names, or the empty string when its name holds none. */

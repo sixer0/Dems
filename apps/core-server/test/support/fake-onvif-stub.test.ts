@@ -6,13 +6,14 @@
 // produce each outcome and each hostile answer: it is test code, not the product's client, and
 // nothing under `src/` may import it.
 //
-// Real sockets on 127.0.0.1, ports of 8554-8564 (the sandbox must allow loopback binding). No
+// Real sockets on 127.0.0.1, ephemeral ports outside 8554-8564 (decision D170; the sandbox must allow loopback binding). No
 // test waits longer than the client timeout of the "no answer" cases (300 ms).
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createSocket } from 'node:dgram';
 import { request as httpRequest } from 'node:http';
 import { connect, createServer } from 'node:net';
+import { CAPTURE_MEDIA_PORT_MAX, CAPTURE_MEDIA_PORT_MIN } from '@dems/capture-protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   FAKE_ONVIF_ALLOWED_OPERATIONS,
@@ -23,7 +24,13 @@ import {
   WS_DISCOVERY_PROBE_MATCHES_ACTION,
   WS_DISCOVERY_TO,
   createFakeOnvifStub,
+  FAKE_ONVIF_HARNESS_PORT_MAX,
+  FAKE_ONVIF_HARNESS_PORT_MIN,
+  FAKE_ONVIF_PORT_MAX,
+  FAKE_ONVIF_PORT_MIN,
+  FakeOnvifPortBusyError,
   freeFakeOnvifPorts,
+  isCaptureHarnessPort,
   type FakeOnvifCredential,
   type FakeOnvifDiscoveryMode,
   type FakeOnvifStub,
@@ -224,9 +231,42 @@ const operations = (stub: FakeOnvifStub, channel: 'discovery' | 'device' | 'rtsp
 // ── The tests ───────────────────────────────────────────────────────────────────────────────────
 
 describe('fake ONVIF stub: where it listens (SEC35-23)', () => {
-  it('refuses a port outside 8554-8564, one TCP port for two listeners, and a missing credential', async () => {
+  it('DECISION D170: the ports are ephemeral and NEVER a port of the capture harnesses (the protocol media range 8554-8564), over many allocations', async () => {
+    // The one shared place: the protocol's own range, which every worker harness port is inside by the protocol's rule.
+    expect([FAKE_ONVIF_HARNESS_PORT_MIN, FAKE_ONVIF_HARNESS_PORT_MAX]).toEqual([CAPTURE_MEDIA_PORT_MIN, CAPTURE_MEDIA_PORT_MAX]);
+    expect([CAPTURE_MEDIA_PORT_MIN, CAPTURE_MEDIA_PORT_MAX]).toEqual([8554, 8564]);
+    // The harness numbers as their files state them today (e2e.py PORT_CANDIDATES and its series pair, m3worker.py default, kill matrix / seal e2e).
+    const HARNESS = [8554, 8555, 8556, 8557, 8559, 8560, 8561, 8562, 8563, 8564];
+    for (const port of HARNESS) expect(isCaptureHarnessPort(port), String(port)).toBe(true);
+    const handedOut: number[] = [];
+    for (let round = 0; round < 40; round += 1) {
+      const ports = await freeFakeOnvifPorts();
+      handedOut.push(ports.discovery, ports.device, ports.rtsp);
+      expect(ports.device).not.toBe(ports.rtsp);
+    }
+    expect(handedOut.filter((port) => isCaptureHarnessPort(port) || HARNESS.includes(port))).toEqual([]);
+    expect(handedOut.filter((port) => port < FAKE_ONVIF_PORT_MIN || port > FAKE_ONVIF_PORT_MAX)).toEqual([]);
+  });
+
+  it('a port that is busy at start is a NAMED failure, and the stub does not move to another port', async () => {
     const ports = await freeFakeOnvifPorts();
-    for (const bad of [0, 80, 3702, 8553, 8565, 8554.5]) {
+    const holder = createServer();
+    await new Promise<void>((done) => holder.listen({ host: FAKE_ONVIF_HOST, port: ports.rtsp, exclusive: true }, () => done()));
+    const stub = createFakeOnvifStub({ ports, credential: ACCOUNT });
+    try {
+      await expect(stub.start()).rejects.toMatchObject({ name: 'FakeOnvifPortBusyError', code: 'FAKE_ONVIF_PORT_BUSY', listener: 'rtsp', port: ports.rtsp });
+      await expect(stub.start()).rejects.toBeInstanceOf(FakeOnvifPortBusyError);
+      // Nothing is left listening, on these ports or on any other.
+      expect(stub.addresses().bound).toEqual([]);
+    } finally {
+      await stub.stop();
+      await new Promise<void>((done) => holder.close(() => done()));
+    }
+  });
+
+  it('refuses a port of the capture harnesses, a port below the ephemeral floor, one TCP port for two listeners, and a missing credential', async () => {
+    const ports = await freeFakeOnvifPorts();
+    for (const bad of [0, 80, 3702, 4420, 5173, 8554, 8555, 8560, 8563, 8564, 32_767, 65_536, 40_000.5]) {
       expect(() => createFakeOnvifStub({ ports: { ...ports, discovery: bad }, credential: ACCOUNT }), `discovery ${bad}`).toThrow(RangeError);
       expect(() => createFakeOnvifStub({ ports: { ...ports, device: bad }, credential: ACCOUNT }), `device ${bad}`).toThrow(RangeError);
       expect(() => createFakeOnvifStub({ ports: { ...ports, rtsp: bad }, credential: ACCOUNT }), `rtsp ${bad}`).toThrow(RangeError);
@@ -243,8 +283,8 @@ describe('fake ONVIF stub: where it listens (SEC35-23)', () => {
     expect(bound.map((entry) => entry.listener)).toEqual(['discovery', 'device', 'rtsp']);
     for (const entry of bound) {
       expect(entry.address).toBe(FAKE_ONVIF_HOST);
-      expect(entry.port).toBeGreaterThanOrEqual(8554);
-      expect(entry.port).toBeLessThanOrEqual(8564);
+      expect(entry.port).toBeGreaterThanOrEqual(FAKE_ONVIF_PORT_MIN);
+      expect(isCaptureHarnessPort(entry.port)).toBe(false);
     }
     // The listener snapshot: every internet socket this process holds on the three ports.
     const rows = execFileSync('lsof', ['-nP', '-a', '-p', String(process.pid), '-i'], { encoding: 'utf8' })
@@ -268,7 +308,8 @@ describe('fake ONVIF stub: where it listens (SEC35-23)', () => {
   it('a second stub on the same ports is refused by the operating system (no shared listener)', async () => {
     const stub = await startStub();
     const second = createFakeOnvifStub({ ports: { discovery: stub.addresses().discovery.port, device: stub.addresses().bound[1]?.port ?? 0, rtsp: stub.addresses().bound[2]?.port ?? 0 }, credential: ACCOUNT });
-    await expect(second.start()).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    // The operating system's refusal (EADDRINUSE, kept as the cause) under the stub's own name (decision D170).
+    await expect(second.start()).rejects.toMatchObject({ code: 'FAKE_ONVIF_PORT_BUSY', listener: 'discovery', cause: { code: 'EADDRINUSE' } });
     // The first one still answers.
     expect((await search(stub)).answers).toHaveLength(2);
   });

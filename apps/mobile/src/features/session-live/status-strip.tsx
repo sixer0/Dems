@@ -26,7 +26,11 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
       case 'video': {
         const name = t('features.session-live.strip.video', { index: chip.index });
         const value =
-          chip.value === 'OFFLINE' ? t('features.session-live.strip.offline') : t(`common.enums.trackRecState.${chip.value}`);
+          chip.value === 'OFFLINE'
+            ? t('features.session-live.strip.offline')
+            : chip.value === 'CONNECTING'
+              ? t('common.session.trackConnecting')
+              : t(`common.enums.trackRecState.${chip.value}`);
         return `${name} ${value}`;
       }
       case 'storage':

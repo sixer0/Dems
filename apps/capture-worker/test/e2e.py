@@ -23,6 +23,7 @@ libavformat's behaviour: `make -C apps/capture-worker versions`).
     make -C apps/capture-worker e2e E2E_ARGS="--only 'av1_|neg_av' "       a subset (regular expression on the names)
     make -C apps/capture-worker e2e E2E_ARGS="--ports 8559,8561"           another port pair
     make -C apps/capture-worker e2e E2E_ARGS="--runs 1"                    one run of each instead of two
+    make -C apps/capture-worker e2e E2E_ARGS="--tag B --only 'x|y' --on-tag A"   re-run some checks of series A as series B
     python3 apps/capture-worker/test/e2e.py --prove-aggregate <series dir> flips every recorded verdict in turn and
                                                                            requires a non-zero aggregate each time
     ... --flip NAME                 treat the verdict of that one check as its opposite (a simulated regression)
@@ -118,7 +119,20 @@ def series(runs):
         add("want_r2_near_bound_clock_step_r%d" % r, ["srcam", "--mode", "step"])
         add("want_f6_camera_clock_sanity_bound_r%d" % r, ["srcam", "--mode", "offset"])
         add("neg_bind_skeleton_r%d" % r, ["udp", "--variant", "skeleton", "--expect-fail", "--must-fail-on", "no_udp_socket,every_socket_on_loopback"], "FAIL")
-        add("neg_sup_forbidden_mux_option_r%d" % r, ["sup", "--mode", "run", "--case", "pm80", "--variant", "negctl", "--expect-fail", "--must-fail-on", AV], "FAIL")
+        # Integration pass E2. The control `neg_sup_forbidden_mux_option` ran the proof build `negctl` THROUGH THE
+        # SUPERVISOR and expected its AV criteria to fail. Since rows 61 / 71b the production supervisor refuses a
+        # proof build at its HELLO (CAPTURE_WORKER_PROOF_BUILD), by design and without a switch: that control cannot
+        # run any more. In its place, three checks that are each true of the product as it is:
+        #   sup_refuses_proof_build            the same binary through the supervisor: refused with that code, not
+        #                                      retried, nothing recorded, no listener and no worker left (expected PASS);
+        #   neg_sup_release_worker_is_accepted its control: the release worker is NOT refused (must FAIL on that criterion);
+        #   neg_sup_av_judged_as_no_offset     the AV judgement of the session recorded through the supervisor
+        #                                      (sup_av2_pm80) can fail: judged against "no offset injected" it is 80 ms off.
+        # That the forbidden mux option itself breaks AV is proven on the direct driver (neg_av_forbidden_mux_option,
+        # above) and refused in the product build by the static rules (`make check`).
+        add("sup_refuses_proof_build_r%d" % r, ["sup", "--mode", "refuse", "--variant", "negctl"])
+        add("neg_sup_release_worker_is_accepted_r%d" % r, ["sup", "--mode", "refuse", "--expect-fail", "--must-fail-on", "refused_with_proof_build_code"], "FAIL")
+        add("neg_sup_av_judged_as_no_offset_r%d" % r, ["avcheck", "--assume-inject-ms", "0,0", "--expect-fail", "--must-fail-on", AV], "FAIL", False, on="sup_av2_pm80_r%d" % r)
         add("neg_mic_no_compensation_r%d" % r, ["mic", "--mode", "slow", "--variant", "nocomp", "--expect-fail", "--must-fail-on", "av_within_mic_bound_5ms", "--may-fail-on", "av_product_40ms"], "FAIL")
         add("neg_kc3_no_restart_allowed_r%d" % r, ["sup", "--mode", "kc3", "--limits", '{"maxRestarts":0}', "--expect-fail", "--must-fail-on", "restarted_after_a_kill_before_any_fragment"], "FAIL")
         add("neg_continuity_cut_r%d" % r, ["continuity", "--control", "cut", "--expect-fail", "--must-fail-on", "spacing,position", "--may-fail-on", "count"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
@@ -130,6 +144,18 @@ def series(runs):
     add("p4_shape_delay", ["shape"], sensitive=False, on="p4_delay_pm80")
     add("p4_stall_pinned", ["session", "--case", "pm80", "--stall"])
     add("neg_p4_stall_delay_moov", ["session", "--case", "pm80", "--stall", "--variant", "delaymoov", "--expect-fail", "--must-fail-on", AV], "FAIL")
+    # Row 71 (worker half), once each (decision D122): the operator's switch - its bound, its interval records against
+    # the pre-encode tap, never a switch nobody commanded; the gap analyser M5-GAP-1 with its must-FAIL vector (1,000
+    # samples removed AT the switch); the mutation of the interval record; silence / disconnect / rate-limit warnings
+    # by device ID that never switch (the raiser itself, M5-WARN-1, is in `make unit`: test/micwatch_test.c).
+    add("m5_switch_bound_intervals", ["m5switch"])
+    add("m5_gap_analyser", ["m5gap"], sensitive=False, on="m5_switch_bound_intervals")
+    add("neg_m5_gap_1000_removed_at_the_switch", ["m5gap", "--control", "cut1000", "--expect-fail", "--must-fail-on", "spacing,position,tone_window_is_the_interval", "--may-fail-on", "count"], "FAIL", False, on="m5_switch_bound_intervals")
+    add("neg_m5_switch_bound_judged_at_1us", ["m5bound", "--bound-us", "1", "--expect-fail", "--must-fail-on", "switch_applied_within_the_bound"], "FAIL", False, on="m5_switch_bound_intervals")
+    add("neg_m5_interval_record_skewed", ["m5switch", "--variant", "intervalskew", "--expect-fail", "--must-fail-on", "interval_record_is_the_tap_boundary"], "FAIL")
+    add("m5_warn_silent_disconnect_never_switch", ["m5warn"])
+    add("m5_rate_limit_reported", ["m5rate", "--ppm", "-8000"])
+    add("neg_m5_rate_inside_the_range", ["m5rate", "--ppm", "-2000", "--expect-fail", "--must-fail-on", "rate_limit_warning_raised_and_named"], "FAIL")
     # Row 59, M3-MG-1: after every capture session of the series, 0 media in git (its control is inside the check).
     add("mg1_no_media_in_git", ["mg1"], sensitive=False)
     # Row 62: only with M3_WORKER_PROPOSED=<a worker built OUTSIDE the tree from a proposed change> - the same four
@@ -268,6 +294,7 @@ def main():
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--ports", default=None, help="two ports of 8554-8564, e.g. 8559,8561 (default: the first two free ones)")
     ap.add_argument("--tag", default=None, help="name of the series folder and prefix of its runs (default: a timestamp)")
+    ap.add_argument("--on-tag", default=None, help="with --only: a check on the files of a FINISHED run that is not selected here reads the run of that earlier series")
     ap.add_argument("--max-load", type=float, default=8.0)
     ap.add_argument("--load-wait", type=int, default=900, help="seconds to wait for a quiet host before a timing-sensitive check")
     ap.add_argument("--timeout", type=int, default=420, help="seconds per check")
@@ -326,10 +353,14 @@ def main():
             sys.exit(2)
     versions = subprocess.run(["make", "-C", APP, "versions"], capture_output=True, text=True).stdout.split()
 
-    checks, t_series = [], time.monotonic()
+    checks, t_series, selected = [], time.monotonic(), {c["name"] for c in S}
     for c in S:
         c = dict(c)
-        run_name = "e2e_%s_%s" % (tag, c["on"] or c["name"])
+        # A re-run of some checks (--only): a check that reads a finished run which is not part of this selection
+        # takes the run of the series named by --on-tag (it is written into the summary as `on_run`).
+        run_name = "e2e_%s_%s" % (a.on_tag if (c["on"] and a.on_tag and c["on"] not in selected) else tag, c["on"] or c["name"])
+        if c["on"]:
+            c["on_run"] = run_name
         if c["kind"] == "make":
             cmd = ["make", "-C", APP] + c["argv"]
         else:
@@ -343,6 +374,9 @@ def main():
         except subprocess.TimeoutExpired as e:
             c["rc"], text, res = "timeout", (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or ""), None
         open(os.path.join(out_dir, c["name"] + ".out"), "w").write(text)
+        waited = re.search(r"^ports were busy for .*$", text, re.M)        # the harness waited for a listener that was not its own
+        if waited:
+            c["ports_waited"] = waited.group(0)[:400]
         c["seconds"] = round(time.monotonic() - t, 1)
         c["command"] = " ".join(cmd[1:] if c["kind"] != "make" else cmd).replace(REPO + "/", "")
         if res:
@@ -377,6 +411,8 @@ def main():
             lines.append("      control: %s" % c["negative_control"])
         if c.get("numbers"):
             lines.append("      %s" % c["numbers"])
+        if c.get("ports_waited"):
+            lines.append("      NOTE %s" % c["ports_waited"])
     n_neg = sum(1 for c in checks if c["expect"] == "FAIL")
     lines += ["", "%d checks (%d expected PASS, %d negative controls expected FAIL): %d as expected, %d unexpected%s" % (
         len(checks), len(checks) - n_neg, n_neg, len(checks) - len(unexpected), len(unexpected), (": " + ", ".join(unexpected)) if unexpected else ""),

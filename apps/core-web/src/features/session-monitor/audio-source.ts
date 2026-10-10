@@ -24,10 +24,11 @@ import { toast } from '@heroui/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ApiErrorCode, type AudioSourceIntervalEntry } from '@dems/shared/api'
-import { MicInputId, SessionState } from '@dems/shared/domain'
+import { SessionState } from '@dems/shared/domain'
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
-  MIC_INPUT_OF_CHANNEL,
+  captureMicLines,
+  micInputOfChannel,
   OperatorRole,
   Permission,
   ROLE_PERMISSIONS,
@@ -40,6 +41,8 @@ import {
   useSimInstance,
   type SimState,
 } from '@dems/shared/sim'
+import { useMicInputName } from '@/features/devices/source-class'
+import { isMicInputId, otherMicInput } from '@/lib/capture-notices'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import {
   audioSourceIntervalsQueryKey,
@@ -51,7 +54,6 @@ import {
 } from '@/lib/core-queries'
 import { usePendingControl } from '@/lib/pending-control'
 import { logSessionMonitorError } from './log'
-import { MIC_INPUT_LABEL_KEY } from './model'
 
 // ── The gate (G4, G5) ────────────────────────────────────────────────────────────────────
 
@@ -124,23 +126,41 @@ export function switchFailureFacts(error: unknown): Record<string, unknown> {
 
 // ── The view ─────────────────────────────────────────────────────────────────────────────
 
-const OTHER_INPUT: Readonly<Record<MicInputId, MicInputId>> = { 'MIC-01': MicInputId.MIC_02, 'MIC-02': MicInputId.MIC_01 }
+/**
+ * The other input of the built-in pair: the last resort when neither the session nor the selector
+ * names a standby. Integration pass D2 (D133 (1)): a mic input id is the Core's `MIC-NN` text, so the
+ * ids of this file are typed `string` and nothing but this table knows the two built-in ids.
+ */
+const BUILT_IN_OTHER: Readonly<Record<string, string>> = { 'MIC-01': 'MIC-02', 'MIC-02': 'MIC-01' }
 
 /** The input the Core says is inside `AUDIO-01` now: the session's pair, else the meters' member. */
-export const selectActiveInputId = (s: SimState): MicInputId => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId
+export const selectActiveInputId = (s: SimState): string => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId
 
-/** The hot standby: the session's pair, else the other input. */
-export const selectStandbyInputId = (s: SimState): MicInputId => s.session?.audioSource?.standbyInputId ?? OTHER_INPUT[selectActiveInputId(s)]
+/**
+ * The hot standby: the session's pair; else the other microphone line of the selector the session
+ * records under (its snapshot, else the stored one), whatever its number; else the other input of
+ * the built-in pair.
+ */
+export const selectStandbyInputId = (s: SimState): string => {
+  const named = s.session?.audioSource?.standbyInputId
+  if (named !== undefined) return named
+  const active = selectActiveInputId(s)
+  const lines: readonly { readonly inputId: string }[] = (s.session?.captureConfig ?? s.captureConfig)?.mics ?? []
+  return otherMicInput(lines, active) ?? BUILT_IN_OTHER[active] ?? active
+}
 
 /**
  * The input an active `MIC_SILENT` warning names, or `null` when none is active. The fault's target
  * is the channel of the input; a warning without a readable target is about the active input.
+ * `mics`: the microphone lines of the capture configuration (`captureMicLines`) — a channel is the
+ * line at its position (ruling D137, integration pass D5); without lines, the built-in pair.
  */
-export function silentInputOf(faults: SimState['faults']['active'], activeInputId: MicInputId): MicInputId | null {
+export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string, mics: readonly { readonly inputId: string }[] = []): string | null {
   const fault = faults.find((entry) => entry.kind === 'MIC_SILENT')
   if (!fault) return null
-  if (fault.target === MicInputId.MIC_01 || fault.target === MicInputId.MIC_02) return fault.target
-  const input = fault.target === null ? undefined : (MIC_INPUT_OF_CHANNEL as Readonly<Record<string, MicInputId | undefined>>)[fault.target]
+  // The input itself, by the id the Core sent (`MIC-NN`, any number).
+  if (isMicInputId(fault.target)) return fault.target
+  const input = fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02' ? micInputOfChannel(mics, fault.target) : undefined
   return input ?? activeInputId
 }
 
@@ -148,14 +168,14 @@ export interface AudioSourceView {
   readonly sessionId: string | null
   readonly recording: boolean
   /** The pair as the Core holds it. */
-  readonly activeInputId: MicInputId
-  readonly standbyInputId: MicInputId
+  readonly activeInputId: string
+  readonly standbyInputId: string
   /** Core instant of the last switch; `null` before the first. */
   readonly switchedAt: number | null
   /** G4 / G5: why the toggle is not offered; `null` when it is. */
   readonly block: AudioSourceToggleBlock | null
   /** The input of an active `MIC_SILENT` warning, or `null`. */
-  readonly silentInputId: MicInputId | null
+  readonly silentInputId: string | null
 }
 
 /** The active/standby pair, the gate of the toggle and the silence warning, in both data modes. */
@@ -183,7 +203,8 @@ export function useAudioSource(): AudioSourceView {
     canStart: live ? corePermission : simPermission,
     holder: isSessionHolder({ operatorId, role, createdBy }),
   })
-  const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId) : null), [recording, faults, activeInputId])
+  const micLines = useSim(captureMicLines)
+  const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines])
 
   return { sessionId, recording, activeInputId, standbyInputId, switchedAt, block, silentInputId }
 }
@@ -219,6 +240,7 @@ export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchCo
   const actions = useCoreActions()
   const sim = useSimInstance()
   const presentCoreError = useCoreErrorPresenter()
+  const micName = useMicInputName()
   const press = usePendingControl()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [refusal, setRefusal] = useState<Exclude<SwitchRefusal, 'OTHER'> | null>(null)
@@ -236,12 +258,13 @@ export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchCo
     if (block !== null) return
     const from = activeInputId
     const to = standbyInputId
-    press.settle(() => actions.switchAudioSource(to), {
+    // The id is the Core's own text (`MIC-NN`); the cast holds before and after the contract's id is widened.
+    press.settle(() => actions.switchAudioSource(to as Parameters<typeof actions.switchAudioSource>[0]), {
       ok: () => {
         setConfirmOpen(false)
         // Read on the settle: the input the Core's state names, not the one that was asked for.
         const active = selectActiveInputId(sim.store.getState())
-        toast.success(t('session.audioSource.switched', { mic: t(MIC_INPUT_LABEL_KEY[active]) }))
+        toast.success(t('session.audioSource.switched', { mic: micName(active) }))
       },
       fail: (error) => {
         setConfirmOpen(false)

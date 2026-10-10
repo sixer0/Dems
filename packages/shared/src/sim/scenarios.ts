@@ -14,6 +14,8 @@
  * and the scenario name, so a scenario is deterministic (AC-51).
  */
 import { SessionState } from '../domain';
+import { advanceCaptureStart } from './capture-session';
+import { CAPTURE_CONNECT_MS } from './constants';
 import { caseNumberFor, operatorName, RECORDING_SCENARIO, recordingBytes } from './dataset';
 import { deriveDeviceState } from './derive';
 import { recordActivity } from './events';
@@ -116,6 +118,8 @@ function buildRecording(base: SimState, rng: RngStreams, until: EpochMs, extra: 
   state = beginPrecheckTransition(state, createdAt + 25_000, rng);
   state = tickMachine(state, createdAt + 35_000, rng);
   state = startRecordingTransition(state, startedAt);
+  // A pre-built recording is past its start: the cameras connected (pass D10).
+  state = advanceCaptureStart(state, startedAt + CAPTURE_CONNECT_MS);
   state = runScript(state, rng, startedAt, until, [
     [startedAt + 190_000, (s, at) => addNoteTransition(s, at, 'Subject identity and rights read and confirmed')],
     [startedAt + 465_000, (s, at) => addMarkerTransition(s, at, 'Key statement')],

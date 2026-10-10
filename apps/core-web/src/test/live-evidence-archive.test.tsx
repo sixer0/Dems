@@ -253,7 +253,18 @@ describe('static rules of the folder (AC-C-53, MD-6, TS-15; rules 1 and 2 of the
     expect(verification.indexOf('recordPackageVerification(actions')).toBeGreaterThan(verification.indexOf('} else if (target.pkg) {'))
     // The one call of an operation that is no action: operation 40, through `useWebLive()`.
     const clientCalls = production.flatMap(({ name, text }) => (code(text).match(/client\.call\('[A-Za-z]+'/g) ?? []).map((call) => `${name}: ${call}`))
-    expect(clientCalls).toEqual(["use-evidence-media.ts: client.call('getEvidence'"])
+    // Row 92 (M8-W3) adds the reads and commands of the sealed item that are no simulator action: the export
+    // job (87), the media session (88: once with the file, once without for a registry that has no body yet)
+    // and the transcript (84, 86, 85). Each goes through `useWebLive()`'s client, as operation 40 does.
+    expect(clientCalls).toEqual([
+      "export-job.ts: client.call('getEvidenceExportJob'",
+      "media-session.ts: client.call('createEvidenceMediaSession'",
+      "media-session.ts: client.call('createEvidenceMediaSession'",
+      "transcript.ts: client.call('getTranscript'",
+      "transcript.ts: client.call('listTranscriptRevisions'",
+      "transcript.ts: client.call('createTranscriptRevision'",
+      "use-evidence-media.ts: client.call('getEvidence'",
+    ])
   })
 
   it('rule 2: every refusal goes to the presenter before the page\'s own words', () => {
@@ -262,7 +273,8 @@ describe('static rules of the folder (AC-C-53, MD-6, TS-15; rules 1 and 2 of the
     expect(fileCode('export-wizard.tsx')).toMatch(/const notice = presentCoreError\(error\)/)
     expect(fileCode('use-evidence-media.ts')).toMatch(/presentCoreError\(answer, \{ permission: Permission\.EVIDENCE_VIEW \}\) === null/)
     // No page sentence of its own for an outage or a limit (the page reuses the presenter's words).
-    for (const { name, text } of production) expect(code(text), name).not.toMatch(/unreachable|limiting requests/i)
+    // (`backendUnreachable` is a member of the contract's transcript summary, not a sentence of the page: row 92.)
+    for (const { name, text } of production) expect(code(text).replaceAll('backendUnreachable', ''), name).not.toMatch(/unreachable|limiting requests/i)
   })
 
   it('MD-6, TS-15: no file loads the typed client or the Live source, builds a client, opens a socket or imports a test double', () => {

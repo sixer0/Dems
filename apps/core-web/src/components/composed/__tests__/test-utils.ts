@@ -3,7 +3,7 @@ import '@/i18n'
 import { createElement, useLayoutEffect, type ReactNode } from 'react'
 import { act } from '@testing-library/react'
 import type { AudioTrackId } from '@dems/shared/domain'
-import { ALWAYS_VISIBLE, createSim, MIC_INPUT_OF_CHANNEL, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, captureMicLines, createSim, micInputOfChannel, noInputFrame, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
 import {
   MotionPolicyProvider,
   useAmbientSnapshot,
@@ -29,8 +29,8 @@ export function pushAudioFrame(sim: Sim, channel: AudioTrackId, frame: Partial<A
     sim.store.setState((state) => {
       // The meters slice is keyed by mic input since schema v2 (SH-17); the channel a caller names
       // writes the input that feeds it. The rest of the slice (activeInputId) is preserved.
-      const input = MIC_INPUT_OF_CHANNEL[channel]
-      const previous = state.audio.inputs[input]
+      const input = micInputOfChannel(captureMicLines(state), channel)
+      const previous: AudioFrame = state.audio.inputs[input] ?? noInputFrame(state.clock.now)
       const next: AudioFrame = { ...previous, seq: previous.seq + 1, ...frame }
       return { audio: { ...state.audio, inputs: { ...state.audio.inputs, [input]: next } } }
     })

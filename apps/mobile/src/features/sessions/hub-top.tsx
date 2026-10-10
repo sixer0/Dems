@@ -26,7 +26,10 @@ import { SectionCard, SubjectTypeChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { enterRise, triggerHaptic, useMotionPolicy, useMotionSettings } from '@/motion';
 import { isSessionBusy, sessionResyncHref } from '@/navigation';
+import { failedStartWords } from '@/features/capture-selector/capture-notices-model';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
+import { useFailedStart } from '@/features/session-live/capture-start-notice';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { RecDot } from './rec-dot';
 import { SessionStatusChip } from './session-status-chip';
 import { activeRow, type SessionRow } from './sessions-model';
@@ -62,17 +65,26 @@ export function HubTop({ index }: HubTopProps) {
 function ActiveSessionCard({ row }: { row: SessionRow }) {
   const { t } = useTranslation();
   const push = useSafePush();
+  // Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A). Before the first durable fragment the
+  // open session is "Connecting cameras…": no REC dot, no timer, no red recording border. A session that
+  // recorded nothing (FAULT + `captureDurable: false`) says so in full and offers no recovery of evidence.
+  const connecting = useConnectingCameras() && row.status === 'RECORDING';
+  const failedStart = useFailedStart();
+  const failedWords = failedStart !== null && row.status === 'FAULT' ? failedStartWords(t, failedStart) : null;
+  const recording = row.status === 'RECORDING' && !connecting;
   const action =
     row.status === 'RECORDING'
       ? { label: t('features.sessions.active.returnToMonitor'), href: '/session/live', variant: 'primary' as const }
       : row.status === 'FINALIZING'
         ? { label: t('features.sessions.active.openFinalizing'), href: '/session/finalizing', variant: 'primary' as const }
-        : { label: t('features.sessions.active.openRecovery'), href: '/session/recovery', variant: 'danger' as const };
+        : failedWords !== null
+          ? { label: t('common.actions.viewDetails'), href: '/session/recovery', variant: 'danger' as const }
+          : { label: t('features.sessions.active.openRecovery'), href: '/session/recovery', variant: 'danger' as const };
 
   return (
-    <SectionCard testID="sessions-active" style={row.status === 'RECORDING' ? styles.cardRecording : undefined}>
+    <SectionCard testID="sessions-active" style={recording ? styles.cardRecording : undefined}>
       <View style={styles.activeHead}>
-        {row.status === 'RECORDING' ? (
+        {recording ? (
           <View style={styles.recLeft}>
             <RecDot testID="sessions-active-rec" />
             <Text maxFontSizeMultiplier={1.2} style={styles.recLabel}>
@@ -82,7 +94,7 @@ function ActiveSessionCard({ row }: { row: SessionRow }) {
         ) : (
           <SessionStatusChip status={row.status} size="md" testID="sessions-active-status" />
         )}
-        {row.status === 'RECORDING' ? <ActiveTimer /> : null}
+        {recording ? <ActiveTimer /> : null}
       </View>
       <Text maxFontSizeMultiplier={1.2} style={styles.overline}>
         {t('features.sessions.active.label')}
@@ -106,8 +118,9 @@ function ActiveSessionCard({ row }: { row: SessionRow }) {
       ) : null}
       {row.status === 'FAULT' ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.body} testID="sessions-active-fault">
-          {row.faultKind ? `${t(`common.faultKind.${row.faultKind}`)}. ` : ''}
-          {t('features.sessions.active.faultBody')}
+          {failedWords !== null
+            ? `${failedWords.title}. ${failedWords.body}`
+            : `${row.faultKind ? `${t(`common.faultKind.${row.faultKind}`)}. ` : ''}${t('features.sessions.active.faultBody')}`}
         </Text>
       ) : null}
       <Button

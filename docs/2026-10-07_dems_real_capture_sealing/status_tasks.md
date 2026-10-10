@@ -195,3 +195,7 @@ Last wave (uncommitted until the checkpoint commit): 59, 87, 137, 138, 141, C1, 
 
 ### Host
 Emulators and the lane stack are stopped. Project PostgreSQL on 127.0.0.1:4432. Local-device recordings kept under `.data/capture-local/runs/` (`l134_cam_t1`, `l134_cam_t2`) until the user says to delete them.
+
+## AFTER THE LAST ROW — standing instruction D150 (user, 2026-10-09)
+Go straight on to a full-feature judging session through the UI on the emulators (tablet + phone, web console alongside) and fix every finding; plan and limits in D150. Do not ask first.
+Biometric scenarios are skipped in the judging (D151) — listed as skipped, never as passed.

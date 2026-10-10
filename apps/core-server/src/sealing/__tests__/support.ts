@@ -179,7 +179,8 @@ export function transcribedSession(sessionId: string, options: SessionOptions): 
     identity: { sessionId, backend: adapter.backend, model: adapter.model, timeline },
     source,
     diarization: { enabled: true, engine: options.diarizer === undefined ? twoSpeakers : options.diarizer },
-    model: MODEL,
+    // Decision D160: a SERVER backend states the model NAME only (version / quantisation / hash are null); `cpu-local` (the default here) carries all four.
+    model: backend === 'omlx-server' ? { name: MODEL.name, version: null, quantisation: null, sha256: null } : MODEL,
     intervals: [{ source: 'MIC-01', fromMs: 0, toMs: null }],
     log,
   };

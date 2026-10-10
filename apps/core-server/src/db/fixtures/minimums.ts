@@ -31,7 +31,7 @@ export interface TableMinimum {
   readonly mix: string;
 }
 
-/** The 42 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10. */
+/** The 43 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10. */
 export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'roles', minimum: 3, mix: 'unchanged' },
   { table: 'permissions', minimum: 14, mix: 'the 14 seeded by schema v2 (dbc-3 §G revised): CAPTURE_CONFIG and TRANSCRIPT_REVISE joined the list' },
@@ -96,6 +96,9 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   // Schema v5 (erratum PE-129b-01): the per-session STT snapshot (T-42). The fixture builds none
   // (rule S-2: a generator that writes `transcript_chunks` for a REAL session writes its snapshot).
   { table: 'session_stt_config', minimum: 0, mix: 'PE-129b-01: none built; one row per session from the day a generator emits real transcription' },
+  // Schema v6 (erratum PE-0013-01): the media store root of a Core (T-43). The fixture builds none:
+  // the one row is a fact of a running installation, written by the Core at boot.
+  { table: 'core_media_store', minimum: 0, mix: 'PE-0013-01: none built; one row, written by the Core at boot' },
 ] as const);
 
 /** The required mix as numbers. Every value is a minimum, except `pairingCodes.activeAtMost`. */
@@ -148,7 +151,7 @@ export function minimumOf(table: string): number {
   return entry.minimum;
 }
 
-/** "entity, minimum, loaded" for all 42 tables, in the contract's order (§11 plus dbc-3 §G). A missing count is 0. */
+/** "entity, minimum, loaded" for all 43 tables, in the contract's order (§11 plus dbc-3 §G). A missing count is 0. */
 export function compareWithMinimums(counts: Readonly<Record<string, number>>): MinimumComparison[] {
   return BULK_MINIMUMS.map(({ table, minimum }) => {
     const loaded = counts[table] ?? 0;

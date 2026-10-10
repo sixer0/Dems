@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { MIC_INPUT_OF_CHANNEL, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
+import { captureMicLines, micInputOfChannel, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
 import { reportMeterFrame } from '@/motion/debug-metrics';
 
 /** Level of a silent or absent channel (the simulator's floor, SCR-01). */
@@ -91,8 +91,10 @@ export function useAudioAccessibilityValue(
   const sim = useSimInstance();
   const { noSignalText, intervalMs = AUDIO_A11Y_INTERVAL_MS } = options;
   const read = useCallback(() => {
-    // The meters slice is keyed by mic input since schema v2 (SH-17); the channel maps to its input.
-    const frame = sim.store.getState().audio.inputs[MIC_INPUT_OF_CHANNEL[channel]];
+    // The meters slice is keyed by mic input since schema v2 (SH-17); the channel maps to the microphone
+    // line at its position in the capture configuration (ruling D137), the input `useAudioChannel` reads.
+    const state = sim.store.getState();
+    const frame = state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)];
     return audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS, noSignalText, frame?.noSignal ?? false);
   }, [sim, channel, noSignalText]);
   const [value, setValue] = useState(read);

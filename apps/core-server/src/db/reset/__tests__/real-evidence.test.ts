@@ -235,3 +235,54 @@ describe('clearedDevelopmentPackages: which folders a signed development mark cl
     expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('e.id::text AS evidence_id, e.manifest_hash::text AS manifest_hash');
   });
 });
+
+// Integration pass E3 item 6 (c): the demo packages a seed SEALED into the store are held to the
+// rules of a development item - the flag, the four development source rows, the signed mark of
+// the folder - and to nothing looser. Their rows never block; their folders block unless cleared.
+describe('PASS E3: seed-sealed demo packages are exempt exactly like development items', () => {
+  const HASH = 'ab'.repeat(32);
+  const demo = (sessionId: string, more: Record<string, unknown> = {}) => ({ session_id: sessionId, evidence_id: `EV-${sessionId}`, manifest_hash: HASH, integrity_source: 'DEMO_PACKAGE', development_flag: true, source_rows: 4, development_rows: 4, ...more });
+  const run = (rows: readonly Record<string, unknown>[], packages: EvidenceStoreScan['packages'], signed: (dir: string) => boolean = () => true) => {
+    const asked: { dir: string; anchors: unknown }[] = [];
+    return findRealSealedEvidence({ query: async () => ({ rows }) } as unknown as RealEvidenceQueryable, {
+      database: 'dems_demo',
+      storeRoot: '/store',
+      readStore: () => scan(true, packages),
+      readSourceMark: async (dir, anchors) => {
+        asked.push({ dir, anchors });
+        return { signed: signed(dir), development: signed(dir) };
+      },
+    }).then((facts) => ({ facts, asked }));
+  };
+
+  it('the statement also reads DEMO_PACKAGE rows of version 2 whose signature is not the stand-in, with their integrity source', () => {
+    expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("e.integrity_source = 'DEMO_PACKAGE' AND e.manifest_version = 2 AND e.signature_simulated IS FALSE");
+    expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('e.integrity_source::text AS integrity_source');
+  });
+
+  it('PERMITTED: the row passes both rules and its folder carries the signed development mark of that item - not blocked, counted apart, cleared for removal', async () => {
+    const { facts, asked } = await run([demo('S-DEMO')], [pkg('S-DEMO', 'UNKNOWN')]);
+    expect(facts).toMatchObject({ blocked: false, dbSessions: [], developmentSessions: [], seedSealedDemoSessions: ['S-DEMO'], developmentPackagesOnDisk: ['SESSION-S-DEMO'], unprovablePackages: [] });
+    // The folder was held to the item's own anchors: the session, the item and the digest of its row.
+    expect(asked).toEqual([{ dir: '/store/SESSION-S-DEMO', anchors: { sessionId: 'S-DEMO', evidenceId: 'EV-S-DEMO', manifestSha256: HASH } }]);
+    expect(developmentPackagesMessage(facts)).toMatch(/^this reset replaces 1 seed-sealed demo package record\(s\) of dems_demo \(S-DEMO\)/);
+  });
+
+  it('BLOCKED, each control: no development flag; fewer than four development source rows; a folder whose manifest is not the signed development one; a folder no such row names', async () => {
+    for (const row of [demo('S-DEMO', { development_flag: false }), demo('S-DEMO', { development_flag: null }), demo('S-DEMO', { source_rows: 0, development_rows: 0 }), demo('S-DEMO', { development_rows: 3 })]) {
+      const { facts, asked } = await run([row], [pkg('S-DEMO', 'UNKNOWN')]);
+      // The ROW never blocks (a demo row is no real evidence) - the FOLDER does: it has no anchor, so it is never even asked.
+      expect(facts).toMatchObject({ blocked: true, dbSessions: [], seedSealedDemoSessions: [], developmentPackagesOnDisk: [], unprovablePackages: ['SESSION-S-DEMO'] });
+      expect(asked).toEqual([]);
+    }
+    const unsigned = await run([demo('S-DEMO')], [pkg('S-DEMO', 'UNKNOWN')], () => false);
+    expect(unsigned.facts).toMatchObject({ blocked: true, unprovablePackages: ['SESSION-S-DEMO'], developmentPackagesOnDisk: [] });
+    const orphan = await run([demo('S-DEMO')], [pkg('S-DEMO', 'UNKNOWN'), pkg('S-OTHER', 'UNKNOWN')]);
+    expect(orphan.facts).toMatchObject({ blocked: true, unprovablePackages: ['SESSION-S-OTHER'], developmentPackagesOnDisk: ['SESSION-S-DEMO'] });
+  });
+
+  it('a REAL row is judged as before, beside a demo row: an unflagged REAL item blocks and is named; a row without the member reads as REAL', async () => {
+    const { facts } = await run([demo('S-DEMO'), { session_id: 'S-REAL', evidence_id: 'EV-R', manifest_hash: HASH, integrity_source: 'REAL', development_flag: false, source_rows: 4, development_rows: 0 }, { session_id: 'S-OLD' }], [pkg('S-DEMO', 'UNKNOWN')]);
+    expect(facts).toMatchObject({ blocked: true, dbSessions: ['S-OLD', 'S-REAL'], seedSealedDemoSessions: ['S-DEMO'] });
+  });
+});

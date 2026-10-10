@@ -289,7 +289,7 @@ describe('store contract', () => {
   });
 
   it('audio frames are plain numbers and booleans (SCR-01)', () => {
-    const frame = createIdleState({ now: START, seed: SEED }).audio.inputs['MIC-02'];
+    const frame = createIdleState({ now: START, seed: SEED }).audio.inputs['MIC-02']!;
     for (const value of Object.values(frame)) expect(['number', 'boolean']).toContain(typeof value);
   });
 

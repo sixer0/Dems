@@ -71,6 +71,7 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-finalizing/use-finalizing.ts',
       'session-summary/hash-sheet.tsx',
       'session-summary/i18n.ts',
+      'session-summary/sealed-members.tsx',
       'session-summary/session-summary-screen.tsx',
       'session-summary/sim-adapter.ts',
       'session-summary/stamp-once.ts',

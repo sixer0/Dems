@@ -38,7 +38,7 @@ import {
   text,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { flat, matches, oneOf } from './checks';
+import { code, flat, matches, oneOf } from './checks';
 import {
   ENGINE_COUNTER,
   FAULT_KIND,
@@ -80,6 +80,12 @@ export const alerts = pgTable(
     resolvedAt: bigint('resolved_at', { mode: 'number' }),
     target: text('target'),
     params: jsonb('params').$type<Details>(),
+    // ── schema v6 addition (dbc-7, erratum PE-0013-01; D146). Declared LAST: `0013` appends it.
+    //    The enumerated cause of the alert, the third member of the fault key (kind, reason,
+    //    device): two causes of one kind on one device are two rows. NULL = an alert without a
+    //    cause, and every row older than 0013 (no backfill, MG-8). Written in the alert's INSERT
+    //    from `params.reason`; no UPDATE grant (`0014`). ──
+    reason: text('reason'),
   },
   (t) => [
     index('alerts_at_idx').on(t.at.desc().nullsFirst(), t.id.desc().nullsFirst()),
@@ -89,6 +95,7 @@ export const alerts = pgTable(
       sql`${oneOf(t.severity, SEVERITY)} AND (${t.kind} = 'SYSTEM' OR ${oneOf(t.kind, FAULT_KIND)})`,
     ),
     check('alerts_params_check', sql`${t.params} IS NULL OR ${flat(t.params)}`),
+    check('alerts_reason_check', sql`${t.reason} IS NULL OR ${code(t.reason)}`),
   ],
 );
 
@@ -271,6 +278,37 @@ export const healthSnapshots = pgTable(
   ],
 );
 
+/**
+ * T-43 (dbc-7, erratum PE-0013-01; ruling D166 / D11-9). One row: WHERE THIS CORE KEEPS ITS MEDIA.
+ *
+ * The Core writes its media store root (`config.mediaStoreDir`) here at every boot, as the runtime
+ * role; the command-line reset (`db:reset`) reads it when its own environment does not carry
+ * `DEMS_MEDIA_DIR`, so that it judges the folder the server really uses and not a default. KEPT
+ * across a reset (the thirteenth kept table): the fact describes the installation, not the demo
+ * data.
+ *
+ * A PATH, NOTHING ELSE. The CHECK admits an absolute POSIX path of at most 1,024 characters with
+ * no control character and no `://` - a URL (which could carry user information) has no place
+ * here, and no other column exists that could hold a value. Nothing of the row is secret.
+ */
+export const coreMediaStore = pgTable(
+  'core_media_store',
+  {
+    singleton: boolean('singleton').primaryKey().default(true),
+    mediaRoot: text('media_root').notNull(),
+    recordedAt: bigint('recorded_at', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    check('core_media_store_singleton_check', sql`${t.singleton}`),
+    check(
+      'core_media_store_root_check',
+      sql`char_length(${t.mediaRoot}) BETWEEN 1 AND 1024 AND ${matches(t.mediaRoot, '^/[^[:cntrl:]]*$')} AND position('://' in ${t.mediaRoot}) = 0`,
+    ),
+  ],
+);
+
+export type CoreMediaStoreRow = typeof coreMediaStore.$inferSelect;
+export type NewCoreMediaStoreRow = typeof coreMediaStore.$inferInsert;
 export type AlertRow = typeof alerts.$inferSelect;
 export type NewAlertRow = typeof alerts.$inferInsert;
 export type StoragePolicyRow = typeof storagePolicy.$inferSelect;

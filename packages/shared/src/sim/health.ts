@@ -21,6 +21,7 @@ import {
   SERIES_POINTS,
   STORAGE_HISTORY_POINTS,
 } from './constants';
+import { captureMicLines, micInputOfChannel } from './audio';
 import { recordingBytes } from './dataset';
 import type { EngineContext } from './engine';
 import { pushRing } from './events';
@@ -157,8 +158,10 @@ function stepNetwork(network: SimState['network'], at: EpochMs, recording: boole
 function micLevelPoint(state: SimState, at: EpochMs): MicLevelPoint {
   // The sample keeps its v1 channel keys (the dashboard series and its i18n read them); the frames
   // themselves are keyed by mic input since schema v2 (SH-17).
-  const level = (frame: AudioFrame) => (frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
-  return { at, 'AUDIO-01': level(state.audio.inputs['MIC-01']), 'AUDIO-02': level(state.audio.inputs['MIC-02']) };
+  // An input without a frame yet reads the floor (the slice is keyed by the two inputs of the capture configuration).
+  const level = (frame: AudioFrame | undefined) => (frame === undefined || frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
+  const lines = captureMicLines(state);
+  return { at, 'AUDIO-01': level(state.audio.inputs[micInputOfChannel(lines, 'AUDIO-01')]), 'AUDIO-02': level(state.audio.inputs[micInputOfChannel(lines, 'AUDIO-02')]) };
 }
 
 /** One 1 Hz health step at the whole second `at` (pure apart from the RNG draws). */

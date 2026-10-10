@@ -69,8 +69,8 @@ export interface CaptureSelector {
   readonly busy: boolean;
   readonly notice: SelectorNotice | null;
   readonly retry: SelectorRetry;
-  /** Task 3 row 138 (flow 12; D91): whether the data is a Core server's, and that Core's demo flag — the two facts the badge needs beside `sourceClass`. */
-  readonly badgeMode: { readonly live: boolean; readonly demoControls: boolean };
+  /** Task 3 row 138 (flow 12; D131): whether the data is a Core server's — the one fact the badge needs beside `sourceClass`. */
+  readonly badgeMode: { readonly live: boolean };
   /** Sends one command; resolves with its class (`ok` included). Never rejects. */
   send(command: SelectorCommand): Promise<AnswerClass>;
   dismissNotice(): void;
@@ -181,7 +181,7 @@ export function useCaptureSelector(): CaptureSelector {
     pendingKey,
     busy: outKey !== null,
     notice,
-    badgeMode: { live: live !== null, demoControls: live?.session?.demoControls === true },
+    badgeMode: { live: live !== null },
     retry: { canRetry: cooldownS === 0 && !exhausted && outKey === null, cooldownS, exhausted, run: runRetry },
     send: useCallback(
       (command: SelectorCommand) => (isNoChange(command, config) ? Promise.resolve<AnswerClass>('ok') : send(command)),

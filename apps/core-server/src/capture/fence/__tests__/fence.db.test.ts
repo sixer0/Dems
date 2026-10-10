@@ -10,18 +10,26 @@
 // so both local devices read "not listed" (no device is listed, opened or asked for by a test).
 import { existsSync } from 'node:fs';
 import type { Pool } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
 import type { ConfigInput } from '../../../config';
 import { engineControl } from '../../../engine';
 import { BootError } from '../../../plugins/readiness';
+import { realBootFixture } from '../../boot/__tests__/support';
 import { CAPTURE_FENCE_BOOT_STEP, CaptureFenceError, REGISTER_LOCAL_DEVICE, captureFenceControl } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
 const HELPER = '/bin/echo';
-const REAL = { captureMode: 'real', demoControls: false } as const;
+// A boot in capture mode real that the FENCE lets through then meets the boot checks of row 61
+// (`capture.boot`, mounted by row 71b; ruling D144): a worker program that says HELLO, a private
+// media root and a provisioned signing key. Row 61's fixture gives the three below `.data/`; the
+// worker is a stand-in script that records nothing, opens no port and reads no device.
+const realBoot = realBootFixture('fence');
+realBoot.provisionKey();
+afterAll(() => realBoot.remove());
+const REAL = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0') } as const;
 const DEVELOPMENT = { ...REAL, captureDevSources: true, captureHelperFfmpegPath: HELPER } as const;
 
 type Clone = Awaited<ReturnType<typeof db.another>>;
@@ -90,9 +98,9 @@ function expectRefused(booted: Booted, code: string, deviceIds: readonly string[
 }
 
 describe('the schema this row was written against', () => {
-  it('schema version 5, contract dbc-6', async () => {
+  it('schema version 6, contract dbc-7', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([5, 'dbc-6']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
   });
 });
 

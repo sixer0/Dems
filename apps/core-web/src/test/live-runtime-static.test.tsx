@@ -193,6 +193,8 @@ describe('the dev proxy passes the request through (WT-2; AC-C-102, the static h
     expect(entries).toEqual([
       { path: '/api/v1', keys: ['target'] },
       { path: '/ws', keys: ['target', 'ws'] },
+      // Row 92 (M8): the registry-external media route of operation 88's signed session, same-origin like `/ws`.
+      { path: '/media', keys: ['target'] },
     ])
     // The dev server's own CORS layer is off while the proxy is on (decisions D29, D34).
     expect(body).toMatch(/cors:\s*false/)

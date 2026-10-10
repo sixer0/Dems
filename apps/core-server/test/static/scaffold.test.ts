@@ -38,6 +38,14 @@ const UNITS: ReadonlyArray<readonly [folder: string, exportName: string, row: st
   // Task 3 R-9, R-10 (decision D114: the OD-14 waiver extended): operations 93, 94 and 97.
   ['modules/capture-discovery', 'captureDiscoveryModule', 'task 3 row 132'],
   ['modules/capture-inputs', 'captureInputsModule', 'task 3 row 133'],
+  // Task 3 M8, blueprint row 91 (C3 §3): operation 87; the export jobs are `src/evidence-export`.
+  ['modules/evidence-export', 'evidenceExportModule', 'task 3 row 91'],
+  // Task 3 M8, blueprint row 90 (C3 §2.4; ruling D140): operation 88 and the evidence media route; what they do is `src/media-stream`.
+  ['modules/media-stream', 'mediaStreamModule', 'task 3 row 90'],
+  // Task 3 integration pass D4 (C3 §2.2; decision D146): operations 84 to 86, the transcript read and its signed revisions.
+  ['modules/transcripts', 'transcriptsModule', 'task 3 integration pass D4'],
+  // Task 3 M7, blueprint row 82b (C3 §2.2; ruling D147): operation 83 and the mount of the sealing composition `src/sealing-host`.
+  ['modules/sealing', 'sealingModule', 'task 3 row 82b'],
 ];
 
 /** The plugins of the scaffold itself, which `app.ts` imports as well. */
@@ -49,9 +57,9 @@ const factory = codeOnly([{ path: 'src/app.ts', text: text('src/app.ts') }]);
 
 describe('the units of the scaffold', () => {
   it('are four stage plugins, core, engine, realtime, thirteen stubbed modules and health, and the two capture units, the STT configuration module and the two modules of the camera search and the local inputs of task 3', () => {
-    expect(UNITS).toHaveLength(26);
+    expect(UNITS).toHaveLength(30);
     expect(UNITS.filter(([folder]) => folder.startsWith('plugins/'))).toHaveLength(4);
-    expect(UNITS.filter(([folder]) => folder.startsWith('modules/'))).toHaveLength(18);
+    expect(UNITS.filter(([folder]) => folder.startsWith('modules/'))).toHaveLength(22);
   });
 
   it.each(UNITS)('src/%s/index.ts exports %s (owner %s)', (folder, exportName) => {

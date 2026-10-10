@@ -176,11 +176,16 @@ describe('M3: who may call is stage 6, only', () => {
     expect([...all.matchAll(/\bprincipal\s*\.\s*([A-Za-z]+)/g)].map((match) => match[1])).toEqual(['kind', 'operatorId']);
   });
 
-  it('it writes no denial row and takes no place in the denial budget; its one refusal of its own is the 503 of a reset that did not happen', () => {
-    expect(places(DENIAL)).toEqual([]);
-    expect(places(API_FAILURE)).toHaveLength(1);
+  it('it writes ONE denial row - the audited refusal of a reset the guard refused (pass D11), in the host - and takes no place in the denial budget; its two refusals of its own are the 503 of a reset that did not happen and the 409 of the reset guard', () => {
+    // Integration pass D11 (C3 §3 op 75 "refuses ... and audits the refusal"): one `ACCESS_DENIED` row, written by `host.ts` and nowhere else.
+    expect(filesOf(places(DENIAL))).toEqual(['src/modules/demo/host.ts']);
+    expect(places(DENIAL)).toHaveLength(1);
+    expect(count(/\bdenialBudget\b/g)).toBe(0);
+    // +1 by integration pass D10: the reset guard's refusal is `409 RESET_BLOCKED_REAL_EVIDENCE` (C3 §3 op 75, §4).
+    expect(places(API_FAILURE)).toHaveLength(2);
     expect(filesOf(places(API_FAILURE))).toEqual(['src/modules/demo/reset.ts']);
     expect(all).toMatch(/new ApiFailure\(503, EnvelopeCode\.NOT_READY,/);
+    expect(all).toMatch(/new ApiFailure\(409, ApiErrorCode\.RESET_BLOCKED_REAL_EVIDENCE,/);
   });
 
   it('no route carries a hook, and the module adds none to the server', () => {
@@ -189,8 +194,11 @@ describe('M3: who may call is stage 6, only', () => {
 });
 
 describe('M4, M5: a fault is a hosted action; the module writes no row', () => {
-  it('no audit row, no event, no unit of work of its own', () => {
-    expect(places(OWN_ROWS)).toEqual([]);
+  it('no event, and ONE audit row in ONE unit of work of its own: the audited refusal of a reset (pass D11), in the host', () => {
+    // `app.pipeline.run(...)` and `unit.audit.append(...)` of `auditRefusal`; a fault, a scenario load and a reset still write nothing here.
+    expect(places(OWN_ROWS)).toHaveLength(2);
+    expect(filesOf(places(OWN_ROWS))).toEqual(['src/modules/demo/host.ts']);
+    expect(count(/\bevents\s*\.\s*append/g)).toBe(0);
   });
 
   it('its statements are two, and both are reads', () => {
@@ -240,11 +248,18 @@ describe('SR-58, SR-68, HC-1 to HC-4: the reset routine and its credentials', ()
     expect(places(CREDENTIAL)).toEqual([]);
   });
 
-  it('the data directory is handed on and never opened: two mentions in the host (the getter), two in the reset (the type, the option)', () => {
+  it('the data directory is handed on and never opened: two mentions in the host (the getter), three in the reset (the type, the option); the media root likewise (decision D165: the root of both reset guards)', () => {
     expect(ownCode.map((file) => [file.path, [...file.text.matchAll(DATA_DIR)].length]).filter(([, hits]) => hits !== 0)).toEqual([
       ['src/modules/demo/host.ts', 2],
       ['src/modules/demo/reset.ts', 3],
     ]);
+    // The media root: the getter of the host (the configuration's value, as the sealing reads it) and its one use by the
+    // caller-side guard; the type and the option of the routine in the reset. No path is built from it.
+    expect(ownCode.map((file) => [file.path, [...file.text.matchAll(/\bmediaStoreDir\b/g)].length]).filter(([, hits]) => hits !== 0)).toEqual([
+      ['src/modules/demo/host.ts', 3],
+      ['src/modules/demo/reset.ts', 2],
+    ]);
+    expect(count(/\bconfig\s*\.\s*mediaStoreDir\b/g)).toBe(1);
     // No path is built from it: the folder imports no path and no file module.
     expect(count(/['"]node:(?:path|fs|os)(?:\/promises)?['"]/g)).toBe(0);
   });
@@ -282,7 +297,8 @@ describe('M8, M14: time, logging, and what the folder may touch', () => {
     const found = ownCode.flatMap((file) => [...file.text.matchAll(/(\w+)\s*\.\s*message\b/g)].map((match) => `${file.path} ${match[1]}`));
     expect(found).toEqual(['src/modules/demo/reset.ts entry']);
     // Every catch of the folder logs what it caught under `err`, or rethrows it wrapped.
-    expect(count(/\{\s*err\s*:/g)).toBe(5);
+    // +2 by integration pass D11: a guard that could not be asked, an audit row of a refusal that could not be written.
+    expect(count(/\{\s*err\s*:/g)).toBe(7);
     expect(count(/\{\s*(?:error|cause|e)\s*[,:}]/g)).toBe(0);
   });
 

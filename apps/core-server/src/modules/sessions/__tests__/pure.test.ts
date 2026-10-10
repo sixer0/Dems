@@ -275,6 +275,24 @@ describe('the answer of getCurrentSession (current.ts)', () => {
     },
   );
 
+  it('PASS D11 - `captureDurable` is carried exactly as the session of the state says it: explicit false while the cameras connect, explicit true where the Core\'s real capture states it, absent otherwise; each answer validates against the contract', async () => {
+    const host = await createHost({ scenario: 'recording', startAt: NOW });
+    const state = host.state();
+    if (state.session === null) throw new Error('the scenario holds no session');
+    const answer = (session: typeof state.session) => currentSessionResponse({ session, operators: state.operators }, host.now());
+    const { captureDurable: _held, ...plain } = state.session;
+    // Absent in the state (the simulator's own capture, durable): absent in the answer - never invented.
+    expect('captureDurable' in (answer(plain).session ?? {})).toBe(false);
+    for (const said of [false, true]) {
+      const response = answer({ ...plain, captureDurable: said });
+      expect(response.session?.captureDurable).toBe(said);
+      expect(validateCoreApiResponse('getCurrentSession', 200, response)).toEqual({ ok: true });
+    }
+    // CONTROL: nothing else of the answer moves with the member.
+    const { captureDurable: _said, ...rest } = answer({ ...plain, captureDurable: false }).session ?? {};
+    expect(rest).toEqual(answer(plain).session);
+  });
+
   it('the recording time is counted to the instant given, not to the engine\'s published clock; an investigator who is not among the operators has an empty name', async () => {
     const host = await createHost({ scenario: 'recording', startAt: NOW });
     const state = host.state();

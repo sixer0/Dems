@@ -54,6 +54,13 @@ describe('simRefusal: the table of spec §7.2', () => {
       event: 'startRecording',
     });
     expect(simRefusal(new SimTransitionError(null, 'cancel'))?.details).toEqual({ simCode: 'ILLEGAL_STATE', from: null, event: 'cancel' });
+    // Pass D11: the reason the simulator named travels with the refusal (a stop while the cameras connect); none named, no key.
+    expect(simRefusal(new SimTransitionError('RECORDING', 'stopRecording', undefined, SimErrorCode.ILLEGAL_STATE, 'CAPTURE_NOT_DURABLE'))).toMatchObject({
+      statusCode: 409,
+      code: 'INVALID_STATE',
+      details: { simCode: 'ILLEGAL_STATE', from: 'RECORDING', event: 'stopRecording', reason: 'CAPTURE_NOT_DURABLE' },
+    });
+    expect('reason' in (simRefusal(new SimTransitionError('RECORDING', 'stopRecording'))?.details ?? {})).toBe(false);
     expect(simRefusal(new SimPermissionError('stopRecording', 'SESSION_START'))?.details).toEqual({ simCode: 'NOT_PERMITTED', permission: 'SESSION_START' });
     expect(simRefusal(new SimPermissionError('cancel', 'SESSION_START', SimErrorCode.NOT_SIGNED_IN))).toMatchObject({
       statusCode: 401,

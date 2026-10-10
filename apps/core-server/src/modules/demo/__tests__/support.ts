@@ -41,7 +41,7 @@ import { buildApp } from '../../../app';
 import type { DatabaseConnection } from '../../../config';
 import { readTrail } from '../../../../test/support/core';
 import { pickDurable, type DurableSlices } from '../../../db/mapping';
-import { ResetError, resetDatabase, type ResetCheckpoint, type ResetErrorCode, type ResetOptions, type ResetReport, type ResetStep } from '../../../db/reset';
+import { ResetError, evaluateRealEvidence, resetDatabase, type ResetCheckpoint, type ResetErrorCode, type ResetOptions, type ResetReport, type ResetStep } from '../../../db/reset';
 import { PATIENT_MS, sessionsOf } from '../../../../test/support/reset';
 import { engineControl, type EngineControl, type EngineHost, type EngineStateChange } from '../../../engine';
 import { countingPool, manualTimer, type CountingPool, type ManualTimer } from '../../../../test/support/engine';
@@ -175,7 +175,7 @@ export function recordingLogger(onLine: (line: LoggedLine) => void = () => undef
 
 // ── The recording host ─────────────────────────────────────────────────────────────────────────
 
-export type HostMember = 'drain' | 'operatorRoles' | 'stopEngine' | 'closePool' | 'reopenPool' | 'bootChecks' | 'reloadMatrix' | 'reloadEngine' | 'resyncEngine';
+export type HostMember = 'realEvidence' | 'auditRefusal' | 'drain' | 'operatorRoles' | 'stopEngine' | 'closePool' | 'reopenPool' | 'bootChecks' | 'reloadMatrix' | 'reloadEngine' | 'resyncEngine';
 
 export interface RecordingHost {
   readonly host: ResetHost;
@@ -191,6 +191,16 @@ export interface RecordingHost {
   readonly failing: Partial<Record<HostMember, unknown>>;
   /** What the routine does once it was called. */
   routine: ResetRoutine;
+  /**
+   * Pass D11, the caller-side guard: the sessions of REAL sealed items the tables hold (empty: the
+   * guard lets the reset on). A guard that lets the reset on leaves NO line in `trace` (the traces
+   * of the reset order stay what they were); `guardAskedAt` holds the length of the trace at each
+   * ask, so 0 says "before anything". A blocked or failing guard writes `guard` into the trace.
+   */
+  realSessions: string[];
+  readonly guardAskedAt: number[];
+  /** The audit rows of refused resets the host was asked to write. */
+  readonly refusals: Array<{ operation: string; actorId: string; reason: string }>;
   /**
    * The engine's epoch. `reloadEngine` sets it to `epochAfterReload` (what the routine wrote into
    * the rebuilt database) when that is a number; `resyncEngine` adds 1 to it, as the engine's
@@ -267,6 +277,9 @@ export function recordingHost(): RecordingHost {
     heldNow: () => held,
     failing: {},
     routine: standInRoutine(trace),
+    realSessions: [],
+    guardAskedAt: [],
+    refusals: [],
     epoch: 4,
     epochAfterReload: 5,
     now: CLOCK_START,
@@ -276,6 +289,7 @@ export function recordingHost(): RecordingHost {
     host: {
       database: 'dems_demo',
       dataDir: '/nonexistent/dems-unit-test-data',
+      mediaStoreDir: '/nonexistent/dems-unit-test-media',
       now: () => recording.now,
       epoch: () => recording.epoch,
       routine: (options) => {
@@ -293,6 +307,13 @@ export function recordingHost(): RecordingHost {
           trace.push('release');
         };
       },
+      realEvidence: async () => {
+        recording.guardAskedAt.push(trace.length);
+        if ('realEvidence' in recording.failing || recording.realSessions.length > 0) trace.push('guard');
+        if ('realEvidence' in recording.failing) throw recording.failing.realEvidence;
+        return evaluateRealEvidence('dems_demo', '/nonexistent/dems-unit-test-data/media/sessions', recording.realSessions, { root: '/nonexistent/dems-unit-test-data/media/sessions', present: false, packages: [] });
+      },
+      auditRefusal: (refusal) => step('auditRefusal', 'audit.refusal', () => void recording.refusals.push({ ...refusal })),
       drain: () => step('drain', 'drain', () => undefined),
       operatorRoles: () => step('operatorRoles', 'roles', () => (reopened && recording.rolesAfterReopen !== null ? recording.rolesAfterReopen : recording.roles)),
       stopEngine: () => step('stopEngine', 'engine.stop', () => undefined),
@@ -557,6 +578,8 @@ export interface DemoAppOptions {
   readonly demoControls: boolean;
   /** The directory the configuration names for the connection files. */
   readonly dataDir: string;
+  /** The media root of the configuration. Default: the configuration's own (`<dataDir>/media/sessions`). */
+  readonly mediaStoreDir?: string;
 }
 
 /**
@@ -632,7 +655,7 @@ export async function demoApp(target: DemoTarget, options: DemoAppOptions): Prom
   const database = countingPool();
   const sql: string[] = [];
   const app = buildApp({
-    config: unitTestConfig({ database: target.runtime, dataDir: options.dataDir, logLevel: 'debug', port: 4420, demoControls: options.demoControls }),
+    config: unitTestConfig({ database: target.runtime, dataDir: options.dataDir, logLevel: 'debug', port: 4420, demoControls: options.demoControls, ...(options.mediaStoreDir === undefined ? {} : { mediaStoreDir: options.mediaStoreDir }) }),
     logStream: log.stream,
     createPool: recordingFactory(database.factory, sql),
   });

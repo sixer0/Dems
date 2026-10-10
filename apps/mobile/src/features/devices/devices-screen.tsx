@@ -45,6 +45,7 @@ import { DeviceDetail } from './device-detail';
 import { DeviceRow } from './device-row';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
+import { RegisteredDeviceRows, useRegisteredDevices } from './registered-device-rows';
 import { useDeviceStatuses } from './use-devices-data';
 
 export interface DevicesScreenProps {
@@ -59,8 +60,9 @@ export function DevicesScreen({ selectedId }: DevicesScreenProps) {
   const router = useRouter();
   const { layoutClass, isMultiPane } = useLayoutClass();
 
+  // Row 140: a registered device beyond the built-in ids (`CAM-03`, `MIC-03`) is selected by its id as text.
   const select = useCallback(
-    (id: DeviceId) => {
+    (id: string) => {
       if (isMultiPane) router.setParams({ selected: id });
       else router.push(`/devices/${id}` as Href);
     },
@@ -96,7 +98,7 @@ export function DevicesScreen({ selectedId }: DevicesScreenProps) {
 interface DevicesListProps {
   selectedId: string | null;
   twoColumns: boolean;
-  onSelect: (id: DeviceId) => void;
+  onSelect: (id: string) => void;
 }
 
 function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
@@ -106,6 +108,8 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
   const statuses = useDeviceStatuses();
   const { isMultiPane } = useLayoutClass();
   const attention = attentionDevices(statuses);
+  // Row 140 (D137 (2)): the devices the Core registered beyond the built-in ids, from its own list.
+  const registered = useRegisteredDevices();
 
   const section = (id: DeviceSection, index: number) => {
     const spec = SECTIONS.find((entry) => entry.id === id)!;
@@ -121,6 +125,9 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
                 </Animated.View>
               </Fragment>
             ))}
+            {/* Row 140: the registered cameras / microphones beyond the built-in ids; nothing when the Core lists none. */}
+            {id === 'cameras' ? <RegisteredDeviceRows kind="CAMERA" selectedId={selectedId} onPress={onSelect} /> : null}
+            {id === 'audio' ? <RegisteredDeviceRows kind="MIC" selectedId={selectedId} onPress={onSelect} /> : null}
           </ListGroup>
         </SectionCard>
       </Animated.View>
@@ -153,7 +160,7 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
             </PanelBoundary>
             <Animated.View entering={enterRise(1, m)}>
               <PanelBoundary name="camera-search">
-                <CameraSearchPanel viewDevice={(id) => (isDeviceId(id) ? () => onSelect(id) : null)} />
+                <CameraSearchPanel viewDevice={(id) => (isDeviceId(id) || registered.some((device) => device.id === id) ? () => onSelect(id) : null)} />
               </PanelBoundary>
             </Animated.View>
             {/* Task 3 row 68 (MB-08; ux §2 flow 1): the device selector, in its own boundary so a render

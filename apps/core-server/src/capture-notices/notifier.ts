@@ -90,8 +90,9 @@ export interface NoDeviceNotifier {
   /**
    * Situation C, for the session start (rows 71 / 139): no camera connected within the
    * ingest-open window. Raises `CAPTURE_FAULT` for the capture as a whole, which FAULTS the
-   * session. TO WIRE WHEN ROW 139 LANDS: the row's `reason: NO_CAMERA_CONNECTED` and
-   * `evidenceFiles: 0` keys (C3 §5.3) are that row's, with the optional reason of the fault raise.
+   * session. Row 139: called by `session-start.ts` ONLY as the net under the capture side's own
+   * raise (a failed start that has no capture fault alert); the keys `reason: NO_CAMERA_CONNECTED`
+   * and `evidenceFiles: 0` (C3 §5.3) are written by the capture side with its raise (row 71c).
    */
   notifyNoCameraConnected(session: { readonly sessionId: string }): Promise<boolean>;
   /** Situation C, degraded: one camera of two connected. One WARNING naming the missing camera. */

@@ -127,11 +127,11 @@ describe('testDeviceSignal: the two seconds of the tone are the simulator\'s', (
 
     // One frame per tick, gap-free, stamped on the 50 ms grid of the server clock.
     expect(frames).toHaveLength(TOTAL_MS / AUDIO_FRAME_MS);
-    expect(frames.map((frame) => frame.audio.inputs['MIC-01'].at)).toEqual(frames.map((_, index) => t0 + (index + 1) * AUDIO_FRAME_MS));
-    expect(referenceFrames.map((inputs) => inputs['MIC-01'].at)).toEqual(frames.map((frame) => frame.audio.inputs['MIC-01'].at));
+    expect(frames.map((frame) => frame.audio.inputs['MIC-01']!.at)).toEqual(frames.map((_, index) => t0 + (index + 1) * AUDIO_FRAME_MS));
+    expect(referenceFrames.map((inputs) => inputs['MIC-01']!.at)).toEqual(frames.map((frame) => frame.audio.inputs['MIC-01']!.at));
 
-    const mic1 = frames.map((frame) => frame.audio.inputs['MIC-01']);
-    const mic2 = frames.map((frame) => frame.audio.inputs['MIC-02']);
+    const mic1 = frames.map((frame) => frame.audio.inputs['MIC-01']!);
+    const mic2 = frames.map((frame) => frame.audio.inputs['MIC-02']!);
     const tone = mic1.filter((frame) => frame.at < t0 + AUDIO_TEST_TONE_MS);
     const after = mic1.filter((frame) => frame.at >= t0 + AUDIO_TEST_TONE_MS);
 
@@ -156,7 +156,7 @@ describe('testDeviceSignal: the two seconds of the tone are the simulator\'s', (
     // 4. As the simulator: the same frames carry the tone, the same frames have settled, and no
     //    frame differs by more than the two draws of noise can (the streams of the two engines
     //    are seeded apart: the server's by its epoch).
-    const referenceMic1 = referenceFrames.map((inputs) => inputs['MIC-01']);
+    const referenceMic1 = referenceFrames.map((inputs) => inputs['MIC-01']!);
     const loud = (frame: AudioFrame): boolean => frame.dbfs > AUDIO_TEST_TONE_DBFS - 1;
     const loudFrames = mic1.filter(loud).length;
     expect(Math.abs(loudFrames - referenceMic1.filter(loud).length)).toBeLessThanOrEqual(1);
@@ -318,7 +318,7 @@ describe('resetMicClip: the latch over time is the simulator\'s', () => {
     expect([latch(), referenceLatch()]).toEqual([true, true]);
     expect(await channel()).toMatchObject({ state: 'CLIP', clip: true, ...frameLevels() });
     // A burst was read from a frame: within 2.5 s of the fault at least one frame held the burst level.
-    expect(server.meterFrames().some((frame) => frame.audio.inputs['MIC-01'].dbfs === AUDIO_CLIP_BURST_DBFS)).toBe(true);
+    expect(server.meterFrames().some((frame) => frame.audio.inputs['MIC-01']!.dbfs === AUDIO_CLIP_BURST_DBFS)).toBe(true);
 
     // 3. The fault is cleared: the latch stays until someone resets it; then it stays clear.
     await server.engine.command(supervisor, 'clearFault', 'MIC_CLIP', { channel: 'AUDIO-01' });

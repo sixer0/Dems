@@ -210,10 +210,10 @@ beforeEach(() => {
 });
 
 describe('the database this file runs on', () => {
-  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [5, 'dbc-6'], read as dems_app`, async () => {
+  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [6, 'dbc-7'], read as dems_app`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([5, 'dbc-6']);
-    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([5, 'dbc-6']);
+    expect([row.schema_version, row.contract_revision]).toEqual([6, 'dbc-7']);
+    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([6, 'dbc-7']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
   });
 });
@@ -561,7 +561,7 @@ describe('M4-SEC-CRED-1: the two canaries through every channel (this block runs
     expect(hits(JSON.stringify([...held.values()].map((entry) => entry.candidate)))).toEqual([]);
 
     const tables = ((await owner.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1")).rows as { table_name: string }[]).map((row) => row.table_name);
-    expect(tables).toHaveLength(42);
+    expect(tables).toHaveLength(43);
     const found: string[] = [];
     for (const table of tables) {
       const dump = ((await owner.query(`SELECT row_to_json(t)::text AS row FROM public.${table} t`)).rows as { row: string }[]).map((row) => row.row).join('\n');

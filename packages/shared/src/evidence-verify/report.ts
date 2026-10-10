@@ -17,19 +17,38 @@
  */
 import type { PackageVerifyResult } from './types';
 
+/**
+ * THE DEVELOPMENT-KEY LINE (controller decision D147; row 82's `evidence:dev-key`). A signing key
+ * made for development carries this unit in its certificate subject, which is manifest field 25
+ * (`device.certificate.subject`, inside the signed digest) and the subject of
+ * `device-certificate.pem`. A package signed with such a key prints the line below directly after
+ * the source block (the source line and its entries), before the verdict. It is a statement about
+ * the KEY: the signature check (V-09) and the verdict pass or fail on their own merits.
+ */
+export const DEVELOPMENT_KEY_SUBJECT_MARK = 'OU=DEVELOPMENT KEY - NOT FOR PRODUCTION';
+export const DEVELOPMENT_KEY_REPORT_LINE = 'Signed with a DEVELOPMENT key \u2014 not a production signature.';
+
+/** True when a certificate subject text carries the development-key unit. */
+export function isDevelopmentKeySubject(subject: string): boolean {
+  return subject.includes(DEVELOPMENT_KEY_SUBJECT_MARK);
+}
+
 /** `Integrity: PASS`, or `Integrity: FAIL (TAMPERED)`. */
 export function integrityLineOf(result: Pick<PackageVerifyResult, 'ok' | 'overall'>): string {
   return result.ok ? 'Integrity: PASS' : `Integrity: FAIL (${result.overall})`;
 }
 
-/** The report of one run: the source line first, its entries, the verdict, the checks, the transcript state. */
+/** The report of one run: the source line first, its entries, the development-key line when it applies, the verdict, the checks, the transcript state, the transcript model when a document is sealed. */
 export function verifyReportLines(result: PackageVerifyResult): readonly string[] {
   return Object.freeze([
     result.sources.report,
     ...result.sources.lines,
+    ...(result.signature.developmentKey === true ? [DEVELOPMENT_KEY_REPORT_LINE] : []),
     integrityLineOf(result),
     ...result.checks.map((check) => `${check.id} ${check.name}: ${check.status}${check.failureClass === null ? '' : ` (${check.failureClass})`}${check.skipped === null ? '' : ` (${check.skipped})`}`),
     result.transcriptState.report,
+    // D160: which model made the transcript, and whether the Core verified a file or repeats a server's word.
+    ...(result.transcriptModel === null ? [] : [result.transcriptModel.report]),
     ...(result.interrupted ? ['Interrupted recording: the sealed durable prefix'] : []),
   ]);
 }

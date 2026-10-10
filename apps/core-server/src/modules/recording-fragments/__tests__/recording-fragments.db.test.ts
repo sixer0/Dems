@@ -209,8 +209,8 @@ describe('fed by checkpoint records: the recorder on the real table', () => {
   const a = checkpoints('CAM-01', 6);
   const b = checkpoints('CAM-02', 6);
   const interleaved: CaptureRecord[] = [
-    { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 2_520, timescale: 90_000 },
-    { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 1_800, timescale: 90_000 },
+    { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 2_520, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 },
+    { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 1_800, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 },
     { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: a[0]!.start + a[0]!.len },
     a[0]!,
     { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-02', bytes: b[0]!.start + b[0]!.len },

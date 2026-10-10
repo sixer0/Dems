@@ -749,6 +749,11 @@ export function sttConfig(overrides: Row = {}): Row {
   };
 }
 
+/** The one `core_media_store` row (T-43, erratum PE-0013-01): the media store root of a Core. */
+export function mediaStore(overrides: Row = {}): Row {
+  return { singleton: true, media_root: '/srv/dems/media/sessions', recorded_at: T, ...overrides };
+}
+
 /** One `session_stt_config` row (T-42, erratum PE-129b-01): the STT snapshot of `SESSION_ID`. */
 export function sessionSttSnapshot(overrides: Row = {}): Row {
   return {

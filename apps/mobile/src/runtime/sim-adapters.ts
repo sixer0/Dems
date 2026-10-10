@@ -149,8 +149,29 @@ export function createMobileSim(options: MobileSimOptions = {}): Sim {
 
 /** The typed client as the app builds it: the contract's own operation table, so a call is type-checked. */
 export type MobileCoreClient = CoreClient;
-/** The Live source of the app. None of its members returns a credential or a token (MP-3). */
-export type MobileLiveSim = LiveSim<MobileCoreClient>;
+/**
+ * Where the media route of this app's Core is reached, and the header that names the signed-in
+ * operator to it (task 3 row 92 / integration pass D5; client contract of row 90: only the PATH of
+ * the operation 88 url is used, resolved against the client's OWN Core base, with
+ * `Authorization: Bearer <session token>` on the player).
+ *
+ * `headers` is NOT enumerable: the object prints and serialises as `{ origin }`, so a caller that
+ * puts it in a log record, a query key or an error by mistake leaks nothing. It is read by name,
+ * for the source of a video player, and for nothing else.
+ */
+export interface MobileMediaTransport {
+  readonly origin: string;
+  readonly headers: { readonly Authorization: string };
+}
+
+/**
+ * The Live source of the app. No member returns a credential or a token (MP-3), with ONE exception,
+ * `mediaTransport()`: the session header for the media player, built from memory at each call,
+ * stored and logged nowhere by the runtime. It answers null while no operator is signed in (the
+ * device credential is never offered to the media route). Simulated client mode has no Live source
+ * at all: a feature reads "no transport" from `null`.
+ */
+export type MobileLiveSim = LiveSim<MobileCoreClient> & { mediaTransport(): MobileMediaTransport | null };
 
 /**
  * How long a call of the app's secure storage may take inside the secrets port. Below the Live
@@ -666,7 +687,16 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
       },
     };
 
-    const live: MobileLiveSim = createLiveSim({
+    /** Synchronous, from memory, as the socket's `headers` below; the SESSION token only. */
+    const mediaTransport = (): MobileMediaTransport | null => {
+      const value = memory.session;
+      if (value === null) return null;
+      const transport = { origin: CORE_SERVER_HTTP_ORIGIN } as MobileMediaTransport;
+      Object.defineProperty(transport, 'headers', { value: Object.freeze({ Authorization: `Bearer ${value}` }), enumerable: false });
+      return transport;
+    };
+
+    const live: MobileLiveSim = Object.assign(createLiveSim({
       client,
       socket: {
         url: CORE_SERVER_WS_URL,
@@ -701,7 +731,7 @@ export function createMobileLive(options: MobileLiveOptions = {}): MobileLive | 
         // old credential. Forget it here, then say so: `reconnect('CREDENTIAL')`.
         if (report.source === 'live.secrets' && report.context?.code === LIVE_DEVICE_CLEANUP_GAVE_UP_CODE) void forget('revoked');
       },
-    });
+    }), { mediaTransport });
 
     /**
      * MP-10 step 2: asks the Core for this device's registration. 200: confirmed, the `pairing`

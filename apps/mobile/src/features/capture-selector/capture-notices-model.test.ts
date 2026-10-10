@@ -85,8 +85,8 @@ describe('an unreachable pre-check row is read from `params.rule` (D114)', () =>
   });
 });
 
-describe('the badge is decided by the Core, and only in real capture (§8f.1; D83, D91)', () => {
-  const real = { live: true, demoControls: false };
+describe('the badge is decided by the Core`s `sourceClass` only (§8f.1; D83, D131)', () => {
+  const real = { live: true };
   it('is drawn only for `sourceClass: DEVELOPMENT` sent by the Core; absent = no badge', () => {
     expect(developmentSourceOf({ sourceClass: 'DEVELOPMENT', adapter: 'FAKE', deviceKind: 'CAMERA', ...real })).toBe('test');
     expect(developmentSourceOf({ sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE', deviceKind: 'CAMERA', ...real })).toBe('localCamera');
@@ -97,12 +97,15 @@ describe('the badge is decided by the Core, and only in real capture (§8f.1; D8
     expect(developmentSourceOf({ sourceClass: undefined, adapter: 'FAKE', deviceKind: 'CAMERA', ...real })).toBeNull();
   });
 
-  it('never in Simulated client mode, never while the Core runs SIMULATED (its demo flag is on)', () => {
+  it('never in Simulated client mode (no Core); the rule takes no demo flag at all (D131)', () => {
     const device = { sourceClass: 'DEVELOPMENT', adapter: 'FAKE', deviceKind: 'CAMERA' };
-    expect(developmentSourceOf({ ...device, live: false, demoControls: false })).toBeNull();
-    expect(developmentSourceOf({ ...device, live: true, demoControls: true })).toBeNull();
-    expect(candidateSourceOf({ development: true, live: false, demoControls: false })).toBeNull();
-    expect(candidateSourceOf({ development: true, live: true, demoControls: true })).toBeNull();
+    expect(developmentSourceOf({ ...device, live: false })).toBeNull();
+    expect(candidateSourceOf({ development: true, live: false })).toBeNull();
+    // A caller that still hands a demo flag in changes nothing: the member is not part of the rule.
+    for (const demoControls of [true, false]) {
+      expect(developmentSourceOf({ ...device, live: true, demoControls } as Parameters<typeof developmentSourceOf>[0])).toBe('test');
+      expect(developmentSourceOf({ sourceClass: undefined, adapter: 'FAKE', deviceKind: 'CAMERA', live: true, demoControls } as Parameters<typeof developmentSourceOf>[0])).toBeNull();
+    }
     expect(candidateSourceOf({ development: true, ...real })).toBe('test');
     expect(candidateSourceOf({ development: false, ...real })).toBeNull();
   });

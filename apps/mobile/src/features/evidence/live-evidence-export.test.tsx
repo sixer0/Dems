@@ -216,6 +216,49 @@ describe('S1-6: the export — the request starts with the build step; the resul
     expect(b.state().evidence.find((item) => item.id === id)?.status).toBe(EvidenceStatus.SEALED);
   });
 
+  it('pass D5 — Composite chosen on the Destination step: the request names `kind: COMPOSITE`, and the job is read by the `jobId` of the 202', async () => {
+    const { b, id } = await openExport('0001');
+    await throughSource(b);
+    await b.elapse(VERIFY_ASK_MS + 100);
+    fireEvent.press(screen.getByTestId('evidence-export-next'));
+    await b.flush();
+    fireEvent.press(screen.getByTestId('evidence-export-kind-COMPOSITE'));
+    fireEvent.press(screen.getByTestId('evidence-export-next'));
+    await b.flush();
+    fireEvent.changeText(screen.getByTestId('evidence-export-reason'), REASON);
+    await b.flush();
+    b.fake.answerOnce('exportEvidence', { status: 202, body: { exportId: 'EXP-000032', evidenceId: id, status: 'QUEUED', jobId: 'EXPJ-000777' } });
+    b.fake.answer('getEvidenceExportJob', () => ({
+      status: 200,
+      body: { jobId: 'EXPJ-000777', evidenceId: id, kind: 'COMPOSITE', status: 'FAILED', progressPct: 0, etaMs: null, derived: true, createdAt: 1_790_824_500_000, failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED' },
+    }));
+    fireEvent.press(screen.getByTestId('evidence-export-submit'));
+    await b.flush();
+    expect(b.requests('exportEvidence')).toHaveLength(1);
+    expect(b.requests('exportEvidence')[0]!.body).toMatchObject({ reason: REASON, kind: 'COMPOSITE' });
+    await b.elapse(EXPORT_BUILD_MS + 100);
+    await b.flush();
+    expect(screen.getByTestId('evidence-export-done')).toBeTruthy();
+    for (let turn = 0; turn < 20 && screen.queryByTestId('evidence-export-job-FAILED') === null; turn += 1) await b.elapse(100);
+    expect(b.requests('getEvidenceExportJob')[0]!.url).toMatch(/\/api\/v1\/evidence\/exports\/EXPJ-000777$/);
+    expect(screen.getByTestId('evidence-export-job-FAILED')).toHaveTextContent(/Composite video is not available in this build\./);
+  });
+
+  it('pass D5 — no kind chosen: the request names none; 409 EXPORT_IN_PROGRESS reads its own sentence, never "Only sealed evidence can be exported"', async () => {
+    const { b } = await openExport('0002');
+    await throughSource(b);
+    await b.elapse(VERIFY_ASK_MS + 100);
+    await toReason(b);
+    b.fake.answerOnce('exportEvidence', { status: 409, body: { error: { code: 'EXPORT_IN_PROGRESS', message: 'An export job is already running for this evidence item.' } } });
+    fireEvent.press(screen.getByTestId('evidence-export-submit'));
+    await b.flush();
+    expect(b.requests('exportEvidence')[0]!.body).not.toHaveProperty('kind');
+    await b.elapse(EXPORT_BUILD_MS + 100);
+    expect(screen.getByTestId('evidence-export-failed-EXPORT_IN_PROGRESS')).toHaveTextContent(/An export of this item is already running\./);
+    expect(screen.queryByText(evidenceEn.export.failed.NOT_SEALED)).toBeNull();
+    expect(b.requests('getEvidenceExportJob')).toHaveLength(0);
+  });
+
   it('the Core\'s 422 INVALID_REASON (F59: the Core is the judge) → back to Reason, the reason kept, the inline error shown', async () => {
     const { b } = await openExport('0003');
     await throughSource(b);

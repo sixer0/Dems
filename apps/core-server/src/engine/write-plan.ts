@@ -59,7 +59,8 @@ export interface WritePlan {
 
 type FaultEntry = SimState['faults']['active'][number];
 
-const sameFault = (a: FaultEntry, b: FaultEntry): boolean => a.kind === b.kind && a.target === b.target;
+/** The key of a fault is (kind, reason, target) (ruling D146): a second cause on one device is another fault. */
+const sameFault = (a: FaultEntry, b: FaultEntry): boolean => a.kind === b.kind && a.target === b.target && (a.reason ?? null) === (b.reason ?? null);
 
 /**
  * One health snapshot row per fault that `next` holds and `previous` did not (raised), and per

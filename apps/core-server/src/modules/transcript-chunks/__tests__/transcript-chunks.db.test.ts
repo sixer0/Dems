@@ -63,7 +63,7 @@ beforeEach(async () => {
 describe('the database this file runs on', () => {
   it('is at schema version 4 / dbc-5 (sets 4 and 5), and this row brought no migration', async () => {
     const meta = (await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([5, 'dbc-6']); // set 6, row 129b (PE-129b-01)
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']); // set 7 (PE-0013-01)
   });
 });
 

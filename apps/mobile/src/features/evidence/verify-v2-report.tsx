@@ -2,21 +2,24 @@
  * The schema-v2 result of one Verify run, as the Core server answered it (blueprint row 87;
  * evidence package spec §D, §F.3; UX spec flow 5 step 6; MB-07 / MB-12).
  *
- * Top to bottom: the transcript state of the package (row 119's fixed lines) and the interrupted
- * mark, when the answer carries them; one row per camera file (stored bytes, decrypted bytes,
- * fragment chain), the transcript hash, the manifest, the signature; on a failure the fragment the
- * answer names ("VIDEO-02 fragment 3 tampered (…)"); then the per-check list V-01 to V-14, when the
- * answer carries the report.
+ * Top to bottom: FIRST the source line (row 92; R-11, spec §D.1: "DEVELOPMENT SOURCES — this
+ * package was not recorded from production devices." with one entry per source, or the declared
+ * production line, or "not trustworthy"; never collapsed, and nothing at all when the answer carries
+ * no `sources` block); the transcript state of the package (row 119's fixed lines) and the
+ * interrupted mark, when the answer carries them; one row per camera file (stored bytes, decrypted
+ * bytes, fragment chain), the transcript hash, the manifest, the signature; on a failure the
+ * fragment the answer names ("VIDEO-02 fragment 3 tampered (…)"); then the per-check list V-01 to
+ * V-15, when the answer carries the report. The source line never changes the verdict.
  *
  * Every value drawn is the answer's (`verify-v2.ts`); a part the answer does not carry is not
  * drawn. Plain React Native views only: nothing here is animated, so there is no Reanimated state
  * to lose (E-13), and every row keeps a constant 1 px border whose colour alone says FAIL (E-15).
  */
-import { CircleCheck, CircleMinus, CircleX, FileText } from 'lucide-react-native';
+import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuestion } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
-import { v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Row, type VerifyV2Answer } from './verify-v2';
+import { V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Row, type V2Sources, type VerifyV2Answer } from './verify-v2';
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer;
@@ -31,6 +34,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
 
   return (
     <View style={styles.root} testID={`evidence-verify-v2-${answer.verdict}`}>
+      {answer.sources !== null ? <SourcesLine sources={answer.sources} /> : null}
       {answer.transcriptState !== null ? (
         <View style={styles.line} testID={`evidence-v2-transcript-state-${answer.transcriptState}`}>
           <FileText size={14} color={palette.gray} />
@@ -66,6 +70,11 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
               {t('evidence.verifyV2.fragment.chainOnly', { track: chain.trackId, from: chain.fromSeq })}
             </Text>
           ))}
+          {answer.failedFragmentCount !== null && answer.failedFragmentCount > answer.failedFragments.length ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.body} testID="evidence-v2-fragments-more">
+              {t('evidence.verifyV2.fragment.more', { count: answer.failedFragmentCount - answer.failedFragments.length })}
+            </Text>
+          ) : null}
         </View>
       ) : null}
       {failed && !namesPlace && fileFailed ? (
@@ -75,6 +84,59 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
       ) : null}
 
       {answer.checks !== null ? <CheckReport checks={answer.checks} /> : null}
+    </View>
+  );
+}
+
+/** The most audio intervals listed under the line; the rest are counted (a long session switches often). */
+const SOURCE_INTERVALS_SHOWN = 8;
+
+/**
+ * The source line and its entries: an icon AND the words (never colour alone), a constant 1 px
+ * border whose colour says which state (E-15). It is a plain view: no press, no collapse.
+ */
+function SourcesLine({ sources }: { sources: V2Sources }) {
+  const { t } = useTranslation();
+  const line = t(V2_SOURCES_LINE[sources.state]);
+  if (sources.state === 'DECLARED_PRODUCTION') {
+    return (
+      <Text maxFontSizeMultiplier={1.2} style={styles.strong} testID="evidence-v2-sources-DECLARED_PRODUCTION">
+        {line}
+      </Text>
+    );
+  }
+  const development = sources.state === 'DEVELOPMENT';
+  const Icon = development ? FlaskConical : ShieldQuestion;
+  const tone = development ? statusText.warning : statusText.danger;
+  const shown = sources.audioIntervals.slice(0, SOURCE_INTERVALS_SHOWN);
+  const more = sources.audioIntervals.length - shown.length;
+  return (
+    <View style={[styles.row, { borderColor: tone }]} accessibilityRole="text" testID={`evidence-v2-sources-${sources.state}`}>
+      <View style={styles.rowHead}>
+        <Icon size={16} color={tone} />
+        <Text maxFontSizeMultiplier={1.2} style={[styles.sourceLine, { color: tone }]} testID="evidence-v2-sources-line">
+          {line}
+        </Text>
+      </View>
+      {development ? (
+        <View accessibilityLabel={t('evidence.sources.entriesTitle')} testID="evidence-v2-source-entries">
+          {sources.tracks.map((track) => (
+            <Text key={track.trackId} maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-v2-source-track-${track.trackId}`}>
+              {t('evidence.sources.track', { track: track.trackId, device: track.deviceId, kind: t(`evidence.sources.kind.${track.sourceClass}`) })}
+            </Text>
+          ))}
+          {shown.map((interval) => (
+            <Text key={interval.seq} maxFontSizeMultiplier={1.2} style={styles.caption} testID={`evidence-v2-source-interval-${interval.seq}`}>
+              {t('evidence.sources.interval', { seq: interval.seq, device: interval.micDeviceId, kind: t(`evidence.sources.kind.${interval.sourceClass}`) })}
+            </Text>
+          ))}
+          {more > 0 ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+              {t('evidence.sources.moreIntervals', { count: more })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -157,6 +219,7 @@ const styles = StyleSheet.create({
   },
   rowFail: { borderColor: statusText.danger },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
+  sourceLine: { flex: 1, fontFamily: fontFamily.native.semibold, fontSize: typography.body.size, lineHeight: typography.body.lineHeight },
   rowLabel: { flex: 1, fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: derived.foreground2 },
   checkLine: { flexDirection: 'row', alignItems: 'center', gap: spacing[0] + 2 },
   checkName: { flex: 1, fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.foreground },

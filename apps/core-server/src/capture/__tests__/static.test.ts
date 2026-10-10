@@ -70,6 +70,8 @@ const ONVIF_SESSION = 'src/capture/adapters/camera/onvif-session.ts';
 const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
 /** Row 135: the ONE file that touches the named pipe of a microphone (pinned; G-R2, G-R6). */
 const LOCAL_PIPE_FILES = 'src/capture/adapters/local/pipe-files.ts';
+/** Row 61: the ONE file of the boot checks that touches the file system, the probe of the evidence store (pinned; G-R2, CS-22, CS-09). */
+const BOOT_EVIDENCE_VOLUME = 'src/capture/boot/evidence-volume.ts';
 
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
@@ -83,7 +85,10 @@ describe('the scan itself', () => {
     // The capture fence (row 136) is part of `capture` for every rule below too; its files are pinned here by name.
     const FENCE = 'src/capture/fence/';
     expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`));
-    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
+    // The boot checks of real capture (row 61) are part of `capture` for every rule below as well; their files are pinned here by name.
+    const BOOT = 'src/capture/boot/';
+    expect(capture.filter((file) => file.path.startsWith(BOOT)).map((file) => file.path).sort()).toEqual(['checks.ts', 'evidence-volume.ts', 'index.ts', 'worker-probe.ts'].map((name) => `${BOOT}${name}`));
+    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE) && !file.path.startsWith(BOOT)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts']);
     expect(capture.filter((file) => file.path.startsWith(ADAPTERS)).length).toBeGreaterThanOrEqual(16);
     expect(hosts.length).toBeGreaterThan(100);
   });
@@ -146,7 +151,7 @@ describe('G-R1: the host units open no door of their own', () => {
 
 describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   /** The files that own the spawn and the handshake (spec §G G-R2). */
-  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES];
+  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME];
 
   it('the process module and the file system are imported by files of the allowlist only', () => {
     const importers = [...new Set([...places(capture, PROCESS_MODULE), ...places(capture, FILE_SYSTEM)])];
@@ -155,7 +160,8 @@ describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
     expect(places(capture, PROCESS_MODULE).sort()).toEqual([LOCAL_HELPER_DOOR, 'src/capture/ipc.ts']);
     // Row 83: the software signer's key at rest (evidence package spec §C.3, SEC35-07). Rows 134 / 135: the facts of a program path
     // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else).
-    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, SIGNER_HOST_KEY]);
+    // Row 61: the probe of the evidence store (`boot/evidence-volume.ts`: one exclusive create, a sync, a link and the removal of its own two names).
+    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY].sort());
   });
 
   it('no file of the folder opens a socket or starts a worker thread', () => {
@@ -484,7 +490,15 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "import { captureConfigModule } from './modules/capture-config';",
       "import { captureDiscoveryModule } from './modules/capture-discovery';",
       "import { captureInputsModule } from './modules/capture-inputs';",
+      // Row 91, controller ruling D143: the registration of `modules/evidence-export` (operation 87) - this import and its unit line below.
+      "import { evidenceExportModule } from './modules/evidence-export';",
+      // Row 90, controller ruling D140: the registration of `modules/media-stream` (operation 88 and the evidence media route) - this import and its unit line below.
+      "import { mediaStreamModule } from './modules/media-stream';",
+      // Row 82b, controller ruling D147 (E): the registration of `modules/sealing` (operation 83 and the mount of the sealing composition) - this import and its unit line below.
+      "import { sealingModule } from './modules/sealing';",
       "import { sttConfigModule } from './modules/stt-config';",
+      // Integration pass D4, controller decision D146 (ops 84 to 86 had no owner in wave D): the registration of `modules/transcripts` - this import and its unit line below.
+      "import { transcriptsModule } from './modules/transcripts';",
       '  capture: CaptureSupervisor;',
       "  capture: 'src/capture (capture module)',",
       '    readonly capture: CaptureSupervisor;',
@@ -493,6 +507,14 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "  ['modules/capture-config', captureConfigModule],",
       "  ['modules/capture-discovery', captureDiscoveryModule],",
       "  ['modules/capture-inputs', captureInputsModule],",
+      // Row 91, controller ruling D143 (see the import above).
+      "  ['modules/evidence-export', evidenceExportModule],",
+      // Row 90, controller ruling D140 (see the import above).
+      "  ['modules/media-stream', mediaStreamModule],",
+      // Integration pass D4, controller decision D146 (see the import above).
+      "  ['modules/transcripts', transcriptsModule],",
+      // Row 82b, controller ruling D147 (E) (see the import above).
+      "  ['modules/sealing', sealingModule],",
       "  app.decorate('capture', { getter: () => seams.get('capture') });",
     ];
     /** The file without the waived lines, each taken where it stands after the one before; null when one is missing. */
@@ -511,12 +533,12 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     const current = raw('src/app.ts');
     expect(digest(withoutWaived(current))).toBe(FROZEN_APP_TS);
     // The two lines of the STT configuration module, exactly (edits 13 and 14).
-    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[11], WAIVED[15]]);
+    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[14], WAIVED[19]]);
     // Positive control: one more line, of any kind, anywhere, is seen; so is a waived line that changed.
     const at = current.indexOf("  ['modules/demo', demoModule],");
     expect(at).toBeGreaterThan(0);
     expect(digest(withoutWaived([...current.slice(0, at), "  ['modules/other', otherModule],", ...current.slice(at)]))).not.toBe(FROZEN_APP_TS);
-    expect(digest(withoutWaived(current.map((line) => (line === WAIVED[15] ? "  ['modules/stt-config', sttConfigModule, { early: true }]," : line))))).toBe('a waived line is missing');
+    expect(digest(withoutWaived(current.map((line) => (line === WAIVED[19] ? "  ['modules/stt-config', sttConfigModule, { early: true }]," : line))))).toBe('a waived line is missing');
   });
 
   it('index.ts: the supervisor boots after the boot steps and before the listener, and is shut down before the app closes', () => {
@@ -819,5 +841,74 @@ describe('SEC35-41 (c): every INSERT into capture_devices names adapter_kind', (
     // The typed writers (drizzle): the mapping of the engine's rows and the seed each name the member.
     expect(production.find((file) => file.path === 'src/db/mapping/rows.ts')?.text ?? '').toContain('adapterKind: adapterKindOf(device),');
     expect(production.find((file) => file.path === 'src/db/seed/seed.ts')?.text ?? '').toMatch(/adapterKind: 'FAKE',/);
+  });
+});
+
+// Row 61 (decisions D72(a), D72(l); pair-58 finding A-3; capture spec §A.1.2 "One definition"). The
+// relation of the capture mode to the demo flag is decided in ONE function,
+// `captureOperationDecisionOf`; the boot refuses what it refuses. Every other comparison of the
+// capture mode is a reader that should ASK that function. The readers that existed before the one
+// function are listed by name: the list may only SHRINK (each is a request to its owner), and a
+// file that is not on it fails here.
+describe('G-R16: the capture mode and the demo flag are related in one function; the boot checks ask it', () => {
+  const OPERATION = 'src/capture/fence/operation.ts';
+  const BOOT = 'src/capture/boot/';
+  /** A comparison of the capture mode with one of its two values, in either order. */
+  const MODE_COMPARED = new RegExp(`\\b${join('capture', 'Mode')}\\s*[!=]==?\\s*['"\`]|['"\`](?:real|simulated)['"\`]\\s*[!=]==?\\s*[\\w.]*${join('capture', 'Mode')}\\b`, 'g');
+  /** A read of the demo flag from an object. The member of the same name on the DECISION of the one function is its answer, not the flag. */
+  const DEMO_READ = new RegExp(`(?<!\\bdecision)\\.\\s*${join('demo', 'Controls')}\\b`, 'g');
+  /** The readers of the capture mode from before the one function (rows 57, 58, 115, 132, 133). Nothing is added here. */
+  const LEGACY_MODE_READERS = ['src/engine/index.ts', 'src/modules/capture-discovery/index.ts', 'src/modules/capture-inputs/routes.ts', 'src/transcription/boot.ts', 'src/transcription/index.ts'];
+  /**
+   * Who reads the demo flag: the one function; the configuration that builds it; the entry point's start line; the access
+   * rule and the sign-in answer, which are about the DEMO CONTROLS themselves; and the M2 fencing, the second definition
+   * of finding A-3 (a request of row 136: it becomes a caller of the one function).
+   */
+  const DEMO_READERS = [OPERATION, 'src/config.ts', 'src/index.ts', 'src/modules/capture-config/fencing.ts', 'src/modules/identity/sign-in.ts', 'src/plugins/permission-guard/decision.ts', 'src/plugins/permission-guard/index.ts'];
+
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...places(files, MODE_COMPARED).filter((path) => path !== OPERATION && !LEGACY_MODE_READERS.includes(path)).map((path) => `${path} compares the capture mode itself`),
+    ...places(files, DEMO_READ).filter((path) => !DEMO_READERS.includes(path)).map((path) => `${path} reads the demo flag`),
+    ...places(files.filter((file) => file.path.startsWith(BOOT)), new RegExp(`\\b(?:${join('capture', 'Mode')}|${join('demo', 'Controls')})\\b(?!\\s*[;,}]|\\s*\\?\\s*null)`, 'g')).map((path) => `${path} names a flag the one function decides`),
+  ];
+
+  it('finds a new comparison of the mode, a new reader of the demo flag, and a boot check that decides for itself (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/modules/sessions/start.ts', text: `if (app.config.${join('capture', 'Mode')} === 'real' && !app.config.${join('demo', 'Controls')}) startWorker();` },
+      { path: 'src/sealing/pipeline.ts', text: `const real = 'real' === config.${join('capture', 'Mode')};` },
+      { path: `${BOOT}checks.ts`, text: `if (deps.${join('capture', 'Mode')} !== 'real') return inert;` },
+    ];
+    expect(violations(planted)).toEqual([
+      'src/modules/sessions/start.ts compares the capture mode itself',
+      'src/sealing/pipeline.ts compares the capture mode itself',
+      `${BOOT}checks.ts compares the capture mode itself`,
+      'src/modules/sessions/start.ts reads the demo flag',
+      `${BOOT}checks.ts names a flag the one function decides`,
+    ]);
+  });
+
+  it('no production file compares the capture mode but the one function and the readers from before it; the list has no entry that is gone', () => {
+    expect(violations(production)).toEqual([]);
+    expect(places(production, MODE_COMPARED)).toContain(OPERATION);
+    // The list only shrinks: an entry whose file no longer compares the mode must be taken out.
+    expect(LEGACY_MODE_READERS.filter((path) => !places(production, MODE_COMPARED).includes(path))).toEqual([]);
+    expect(DEMO_READERS.filter((path) => !places(production, DEMO_READ).includes(path))).toEqual([]);
+  });
+
+  it('the boot checks take the decision of the one function and refuse what it refuses, before any real check', () => {
+    const mount = capture.find((file) => file.path === `${BOOT}index.ts`)?.text ?? '';
+    const checks = capture.find((file) => file.path === `${BOOT}checks.ts`)?.text ?? '';
+    expect(mount).toContain('const decision = captureOperationDecisionOf(app.config);');
+    expect([...mount.matchAll(/\bcaptureOperationDecisionOf\s*\(/g)]).toHaveLength(1);
+    const refusal = checks.indexOf('if (decision.refusal !== null) return refuse(CaptureBootRefusal.OPERATION_REFUSED, decision.refusal);');
+    expect(refusal).toBeGreaterThan(0);
+    for (const call of ['workerProgramProblemOf(deps.workerProgram', 'deps.probeEvidenceVolume()', 'deps.signingKeyProblem()', 'await deps.handshake()']) {
+      expect(checks.indexOf(call, refusal), call).toBeGreaterThan(refusal);
+    }
+    // The worker is started LAST: after the path rule, the store and the key.
+    expect(checks.lastIndexOf('await deps.handshake()')).toBeGreaterThan(checks.lastIndexOf('deps.signingKeyProblem()'));
+    // The boot folder starts no process and names no timer itself: the channel and the timers are handed in (G-R8).
+    expect(places(capture.filter((file) => file.path.startsWith(BOOT)), PROCESS_START)).toEqual([]);
+    expect(places(capture.filter((file) => file.path.startsWith(BOOT)), GLOBAL_TIMER)).toEqual([]);
   });
 });

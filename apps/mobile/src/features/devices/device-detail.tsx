@@ -43,7 +43,7 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
+import { captureMicLines, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { CameraFeed } from '@/components/media';
@@ -51,7 +51,7 @@ import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
-import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
+import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip } from './device-status-chip';
@@ -68,6 +68,9 @@ import {
 } from './devices-model';
 import { DiagnosticsSheet } from './diagnostics-sheet';
 import { HealthChart } from './health-chart';
+import { RegisteredDeviceDetail } from './registered-device-detail';
+import { useRegisteredDevice } from './registered-device-rows';
+import { rosterDeviceName } from './registered-devices-model';
 import { CAMERA_POE_PORT_KEY, channelOf } from './sim-adapter';
 import { usePendingPress } from './use-pending-press';
 import {
@@ -95,7 +98,11 @@ export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const known = isDeviceId(deviceId);
-  const name = known ? t(DEVICE_NAME_KEY[deviceId]) : deviceId;
+  // Row 140 (D137 (2)): a device the Core registered beyond the built-in ids has its own details, from the Core's list.
+  const registered = useRegisteredDevice(known ? null : deviceId);
+  // The same "Live" as the badge reads (one rule for the name and the badge, D83 / D131).
+  const { live } = useSourceBadgeMode();
+  const name = known ? t(DEVICE_NAME_KEY[deviceId]) : registered !== null ? rosterDeviceName(t, registered, live) : deviceId;
   const header =
     variant === 'screen' ? (
       <View style={styles.header}>
@@ -110,17 +117,18 @@ export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
           <ArrowLeft size={22} color={palette.gold} />
         </Button>
         <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
-          {known ? name : t('features.devices.header.detailTitle')}
+          {known || registered !== null ? name : t('features.devices.header.detailTitle')}
         </Text>
       </View>
     ) : (
       <View style={styles.paneHeader}>
         <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" numberOfLines={1} style={styles.headerTitle}>
-          {known ? name : t('features.devices.header.detailTitle')}
+          {known || registered !== null ? name : t('features.devices.header.detailTitle')}
         </Text>
       </View>
     );
 
+  if (!known && registered !== null) return <RegisteredDeviceDetail device={registered} header={header} />;
   if (!known) {
     return (
       <View style={styles.root} testID="device-detail-missing">
@@ -561,7 +569,8 @@ function TabletOverview({ status }: { status: DeviceStatus }) {
 
 // ── Health ───────────────────────────────────────────────────────────────────────────────
 function HealthTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
-  const channel = channelOf(deviceId);
+  // Ruling D137: the meter channel of a microphone is the position of its line in the capture configuration.
+  const channel = useSim((s) => channelOf(deviceId, captureMicLines(s)));
   return channel ? <MicHealth channel={channel} live={live} /> : <DeviceHealth deviceId={deviceId} live={live} />;
 }
 

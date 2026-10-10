@@ -20,7 +20,6 @@ import {
   DEMO_OPERATOR_PASSWORD,
   OPERATORS,
   SimNotFoundError,
-  SimTransitionError,
   audioSourceAtStart,
   builtInMicInputOf,
   captureDurableOf,
@@ -127,21 +126,33 @@ describe('1. the mic input id rule is MIC-NN', () => {
     expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/config', body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }).status).toBe(200);
   });
 
-  it('an input beyond the built-in pair has no meter channel and no session audio source: it is refused by name, never recorded as another microphone', () => {
+  it('a pair beyond the built-in one starts: the session audio source is the selector\'s pair by role (D133 (1), D137; row 82); a pair the registry does not hold is refused at the selector; its meter channel is its line', () => {
     expect([builtInMicInputOf('MIC-01'), builtInMicInputOf('MIC-02'), builtInMicInputOf('MIC-03'), builtInMicInputOf('toString')]).toEqual(['MIC-01', 'MIC-02', null, null]);
     expect([channelOfMicInput('MIC-01'), channelOfMicInput('MIC-02'), channelOfMicInput('MIC-03')]).toEqual(['AUDIO-01', 'AUDIO-02', null]);
     const h = harness();
     const local = withLocalMic(h.state(), 'MIC-03');
-    expect(() => audioSourceAtStart(local, 'SES-20261001-0001')).toThrow(SimTransitionError);
-    expect(() => audioSourceAtStart(local, 'SES-20261001-0001')).toThrow(/MIC-03 has no session audio source/);
-    // The STANDBY is held to the same rule.
-    expect(() => audioSourceAtStart(withLocalMic(h.state(), 'MIC-02'), 'SES-20261001-0001')).toThrow(/MIC-03 has no session audio source/);
+    // Since row 82 applied pass D1b's request in `session-machine.ts` (decision D148): the start is
+    // no longer refused by name. The pair of the session is the selector's pair, by ROLE.
+    expect(audioSourceAtStart(local, 'SES-20261001-0001')).toEqual({ sessionId: 'SES-20261001-0001', activeInputId: 'MIC-03', standbyInputId: 'MIC-02', switchedAt: null, intervalFromMs: 0 });
+    // The STANDBY is held to the same rule: MIC-03 as the standby is the standby of the session.
+    expect(audioSourceAtStart(withLocalMic(h.state(), 'MIC-02'), 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-03' });
+    // WHERE A PAIR IS REFUSED (C3 §2.4 op 78): at the selector, never at the start. A pair that
+    // names a microphone the registry does not hold answers 422 and changes nothing.
+    const refused = h.sim.request({ method: 'POST', path: '/api/v1/capture/config', body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-09', deviceId: 'MIC-09', role: 'STANDBY' }] } });
+    expect(refused.status).toBe(422);
+    expect(h.state().captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02']);
     // CONTROL: the built-in pair starts as before.
     expect(audioSourceAtStart(h.state(), 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02', intervalFromMs: 0 });
-    // The meters and the silence warning: no channel is borrowed for MIC-03.
-    expect(micInputOfCaptureRole(local, 'PRIMARY')).toBeNull();
+    // The meters and the silence warning (ruling D137, integration pass D1b - until then MIC-03 had
+    // no channel here): each of the two lines is a meter channel, in input order. MIC-03 is the
+    // second line of this selector, so its level and its silence warning are channel 2's - its
+    // own, never the channel of another microphone.
+    expect(micInputOfCaptureRole(local, 'PRIMARY')).toBe('MIC-03');
     expect(micInputOfCaptureRole(local, 'STANDBY')).toBe('MIC-02');
-    expect(() => raiseCaptureWarningTransition(local, START, { code: 'MIC_SILENT', subject: 'MIC-03' })).toThrow(SimNotFoundError);
+    const silent = raiseCaptureWarningTransition(local, START, { code: 'MIC_SILENT', subject: 'MIC-03' });
+    expect(silent.faults.active.filter((fault) => fault.kind === 'MIC_SILENT').map((fault) => fault.target)).toEqual(['AUDIO-02']);
+    // CONTROL: an input that is neither line of the selector is still no microphone of the capture.
+    expect(() => raiseCaptureWarningTransition(local, START, { code: 'MIC_SILENT', subject: 'MIC-01' })).toThrow(SimNotFoundError);
   });
 });
 
@@ -150,7 +161,7 @@ describe('2. captureDurable on the session payload', () => {
     const h = harness('recording');
     const session = h.state().session;
     if (session === null) throw new Error('the recording scenario holds no session');
-    // The simulator has no notion of a fragment: it never writes the member, and absent reads as durable.
+    // A durable simulated recording carries no member (pass D10: `false` only while its cameras connect), and absent reads as durable.
     expect('captureDurable' in session).toBe(false);
     expect(captureDurableOf(session)).toBe(true);
     expect(ActiveSessionSchema.safeParse(session).success).toBe(true);

@@ -27,10 +27,17 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * section N erratum PE-129b-01, row 129b, D109): T-42 `session_stt_config`, the STT configuration
  * of a session as it was at its start (R-8 AC-4). Code that keeps that snapshot fails at its first
  * statement on a database without the table, so B-3 refuses it there, and refuses older code here.
+ *
+ * 6 since migration set 7 (`0013_key_id_fault_reason_media_root.sql` +
+ * `0014_key_id_fault_reason_media_root_privileges.sql`; section N erratum PE-0013-01; rulings
+ * D146, D162, D166): the key-id form on `transcript_revisions`, `alerts.reason` (the third member
+ * of the fault key) and T-43 `core_media_store` (the media store root for the command-line reset).
+ * Code that writes the new column or table fails at its first statement on a database without the
+ * set, so B-3 refuses it there, and refuses older code here.
  */
-export const DB_SCHEMA_VERSION = 5;
+export const DB_SCHEMA_VERSION = 6;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-6';
+export const DB_CONTRACT_REVISION = 'dbc-7';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

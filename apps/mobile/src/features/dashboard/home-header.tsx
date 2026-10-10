@@ -38,9 +38,10 @@ import { Emblem } from '@/components/media/emblem';
 import type { LayoutClass } from '@/layout';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { captureNoticeTitle } from '@/features/capture-selector/capture-notices-model';
+import { useFailedStart } from '@/features/session-live/capture-start-notice';
 import { useCoreLinkChip } from '@/features/more/use-core-link-chip';
 import { reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
-import { clockText, displaySecondsOfDay, type HomeStatus } from './home-model';
+import { clockText, displaySecondsOfDay, failedStartAlertLabel, type HomeStatus } from './home-model';
 import { HOME_BEATS, homeEnter } from './home-motion';
 import { useAlertSummary } from './use-home-data';
 
@@ -180,6 +181,8 @@ function AlertsBell() {
   const actions = useCoreActions();
   const presentCoreError = useCoreErrorPresenter();
   const { count, alerts } = useAlertSummary();
+  // Pass D7 item 3: the failed start of the open session (the generic sentence needs it; "no camera" is read from the alert).
+  const failedStart = useFailedStart();
   const [open, setOpen] = useState(false);
 
   // Fire-and-forget (§7.4; CL-24): nothing reads the result. A refusal or an outage of the Core
@@ -233,7 +236,7 @@ function AlertsBell() {
                   <Text style={styles.alertText} numberOfLines={2}>
                     {t('features.dashboard.alerts.line', {
                       // Task 3 row 138 (ux §8e.1): a no-device notice is worded from `params.reason`, with the device's label.
-                      label: captureNoticeTitle(t, alert) ?? (alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message })),
+                      label: failedStartAlertLabel(t, alert, failedStart) ?? captureNoticeTitle(t, alert) ?? (alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message })),
                       time: formatDate(alert.at, 'HH:mm:ss'),
                     })}
                   </Text>

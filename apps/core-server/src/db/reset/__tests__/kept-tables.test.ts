@@ -1,4 +1,4 @@
-// The twelve kept tables: the list, the statements and the comparison of row images (plan row
+// The thirteen kept tables: the list, the statements and the comparison of row images (plan row
 // W29; database contract §8.5 "Kept tables", R-5c, R-6; dbc-3 §E.1 and blueprint row 54 add the
 // three capture tables and their `upsert` carry mode; dbc-3 §B.13 and blueprint row 114 add
 // `stt_config` as the twelfth). Database-free.
@@ -36,7 +36,7 @@ const table = (name: string) => {
 };
 
 describe('the kept list', () => {
-  it('is the twelve tables of the contract, in the carry-over order of R-5c', () => {
+  it('is the thirteen tables of the contract, in the carry-over order of R-5c', () => {
     expect(KEPT_TABLE_NAMES).toEqual([
       'registry_counters',
       'console_settings',
@@ -49,11 +49,13 @@ describe('the kept list', () => {
       'capture_device_credentials',
       'capture_config',
       'stt_config',
+      'core_media_store',
       'audit_chain_history',
     ]);
     // The two tables the seed writes are updated; the six it leaves empty are inserted into; the
     // three capture tables of OD-19 and the STT configuration of R-8 are carried by `upsert`
-    // (D-DB-08); the lineage is last.
+    // (D-DB-08), and so is the media store root of PE-0013-01 (the seed writes no row of it); the
+    // lineage is last.
     expect(KEPT_TABLES.map((entry) => entry.mode)).toEqual([
       'update',
       'update',
@@ -62,6 +64,7 @@ describe('the kept list', () => {
       'insert',
       'insert',
       'insert',
+      'upsert',
       'upsert',
       'upsert',
       'upsert',
@@ -124,6 +127,7 @@ describe('the kept list', () => {
       capture_device_credentials: schema.captureDeviceCredentials,
       capture_config: schema.captureConfig,
       stt_config: schema.sttConfig,
+      core_media_store: schema.coreMediaStore,
       audit_chain_history: schema.auditChainHistory,
     };
     for (const entry of KEPT_TABLES) {

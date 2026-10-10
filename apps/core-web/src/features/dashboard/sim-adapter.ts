@@ -26,14 +26,30 @@ export interface RingPrimitives {
   issues: number
   /** Recording start on the simulator clock, or null when not recording. */
   since: number | null
+  /** Pass D7: RECORDING before the first durable fragment — "Connecting cameras…", never the recording ring. */
+  connecting: boolean
 }
+
+/**
+ * Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A): in a real capture operation a session is
+ * RECORDING from the accepted start and its payload says `captureDurable: false` until the first durable
+ * fragment. Only an explicit `false` counts: a session without the member reads as recording, as before.
+ */
+export const selectConnectingCameras = (s: SimState): boolean =>
+  s.session?.state === SessionState.RECORDING && s.session.captureDurable === false
+
+/** The ring state under RECORDING: what the system's own flags say (the severity RECORDING never hides, D96). */
+const STATE_OF_SEVERITY = { OK: 'READY', WARNING: 'ATTENTION', CRITICAL: 'CRITICAL' } as const
 
 export const selectRingPrimitives = (s: SimState): RingPrimitives => {
   const status = selectSystemState(s)
+  const connecting = selectConnectingCameras(s)
   return {
-    state: status.state,
+    // While the cameras connect nothing records: the ring shows the system's own state, without REC or a timer.
+    state: connecting ? STATE_OF_SEVERITY[status.severity] : status.state,
     issues: status.flags.length,
-    since: s.session?.state === SessionState.RECORDING ? s.session.startedAt : null,
+    since: s.session?.state === SessionState.RECORDING && !connecting ? s.session.startedAt : null,
+    connecting,
   }
 }
 

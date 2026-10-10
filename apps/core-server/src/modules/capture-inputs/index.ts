@@ -16,10 +16,11 @@
  * register it on the app they build.
  *
  * The plugin function opens no database connection, no socket and no process, and registers no
- * boot step, no hook and no seam: `buildApp()` works without PostgreSQL.
+ * boot step, no hook of its own and no seam: `buildApp()` works without PostgreSQL. It makes the
+ * boot registration of the notices unit (`registerCaptureNotices`, integration pass D8).
  */
 import type { FastifyPluginAsync } from 'fastify';
-import { captureNotices } from '../../capture-notices';
+import { captureNotices, registerCaptureNotices } from '../../capture-notices';
 import { registerCaptureInputsRoutes } from './routes';
 
 export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, STATE_ADAPTER_CODE, captureInputsOperation, type CaptureInputsModuleOperation, type CaptureInputsRouteSeams } from './routes';
@@ -32,5 +33,7 @@ export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, STATE_ADAP
 export const rescanSearchId = (now: number): string => `DSC-${String(Math.trunc(now)).padStart(13, '0')}`;
 
 export const captureInputsModule: FastifyPluginAsync = async (app) => {
+  // The boot registration of the notices unit (integration pass D8): its session-start listener is attached when the app is ready.
+  registerCaptureNotices(app);
   registerCaptureInputsRoutes(app, { notices: () => captureNotices(app), nextSearchId: rescanSearchId });
 };

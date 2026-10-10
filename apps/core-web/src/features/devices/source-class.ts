@@ -18,8 +18,11 @@
  * so it is not the source of this rule (recorded for the controller in the row's note).
  */
 import { CaptureSourceClass } from '@dems/shared/api'
-import type { MicInputId, VideoTrackId } from '@dems/shared/domain'
+import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { VideoTrackId } from '@dems/shared/domain'
 import { useSim } from '@dems/shared/sim'
+import { micInputName } from '@/lib/capture-notices'
 import { useWebLive } from '@/runtime'
 import type { CaptureDevice } from './capture-selector'
 
@@ -71,12 +74,33 @@ export function useTrackDevice(trackId: VideoTrackId): CaptureDevice | undefined
   })
 }
 
-/** The device behind a microphone input now (the selector's line), or undefined. */
-export function useMicInputDevice(inputId: MicInputId): CaptureDevice | undefined {
+/**
+ * The device behind a microphone input now (the selector's line), or undefined. The id is the text
+ * the Core sent (`MIC-NN`, any number; integration pass D2).
+ */
+export function useMicInputDevice(inputId: string): CaptureDevice | undefined {
   return useSim((state) => {
     const line = state.captureConfig.mics.find((mic) => mic.inputId === inputId)
     return line === undefined ? undefined : state.captureDevices.devices.find((device) => device.id === line.deviceId)
   })
+}
+
+/**
+ * Names a microphone input from the id the Core sent (integration pass D2, item 5): "MIC 1",
+ * "Microphone 3", or "This Mac's microphone" when the Core marks the device of that id as its local
+ * microphone and the console shows real capture (the rule of the badge's kind text). The device
+ * facts are read as one flat string, so the result compares by value.
+ */
+export function useMicInputName(): (inputId: string) => string {
+  const { t } = useTranslation()
+  const realCapture = useRealCapture()
+  const locals = useSim((state) =>
+    state.captureDevices.devices
+      .filter((device) => device.kind === 'MIC' && isDevelopmentSource(device) && device.adapter === LOCAL_DEVICE_ADAPTER)
+      .map((device) => device.id)
+      .join(','),
+  )
+  return useCallback((inputId: string) => micInputName(t, inputId, realCapture && locals.split(',').includes(inputId)), [t, realCapture, locals])
 }
 
 /** The pre-check items that stand for a capture source (ux §8f.2 "Pre-check": camera and microphone rows). */

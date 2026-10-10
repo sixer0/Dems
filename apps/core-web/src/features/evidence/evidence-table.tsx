@@ -8,6 +8,7 @@ import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { ROW_REVEAL_DELAY_MS } from './choreography'
 import { useEvidenceAssets } from './demo-assets'
+import { ItemDevelopmentBadge } from './development-source'
 import {
   ARCHIVABLE_STATUSES,
   byteSize,
@@ -236,6 +237,8 @@ export function EvidenceTable(props: EvidenceTableProps) {
                         </Table.Cell>
                         <Table.Cell>
                           <EvidenceStatusChip status={row.item.status} />
+                          {/* Row 92 (R-11): drawn only for an item the Core recorded from development sources, in Live mode. */}
+                          <ItemDevelopmentBadge item={row.item} testId={`evidence-row-development-${row.id}`} />
                         </Table.Cell>
                         <Table.Cell className="evi-col-actions">
                           <Dropdown>

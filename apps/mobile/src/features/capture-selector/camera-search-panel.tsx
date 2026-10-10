@@ -55,7 +55,7 @@ export function CameraSearchPanel({ testID = 'camera-search', viewDevice }: Came
   if (search === null) return null;
   const { state, view } = search;
   const found = view?.search ?? null;
-  const badges = candidateSourceOf({ development: true, live: search.live, demoControls: search.demoControls }) !== null;
+  const badges = candidateSourceOf({ development: true, live: search.live }) !== null;
   // Simulated mode (no group, D91): every row in the Core's order.
   const network = badges ? search.groups.network : search.rows;
   const development = badges ? search.groups.development : [];

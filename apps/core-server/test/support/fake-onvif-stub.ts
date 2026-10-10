@@ -4,8 +4,12 @@
  *
  * It is the only "network" the automated suite ever searches or connects to (R-9 AC-14): the test
  * double that the discovery row (131) and the connect-flow row (142) drive. Three listeners, all on
- * the literal 127.0.0.1 and all on ports of 8554-8564 that the TEST chooses (SEC35-23; a port
- * outside the range is refused, there is no host option and no port 0):
+ * the literal 127.0.0.1 (SEC35-23: no host option) and all on EPHEMERAL ports the operating
+ * system hands out (`freeFakeOnvifPorts`; decision D170, integration pass E3 item 7). The stub is
+ * NEVER inside the protocol's media range 8554-8564: that range belongs to the capture worker's
+ * harnesses (the worker e2e series, the kill matrix, the seal e2e), and a stub that took a port
+ * there stopped 22 e2e checks on "ports busy". A port of that range, a port below the ephemeral
+ * floor and port 0 are refused when a stub is built:
  *
  *   discovery  UDP   answers a UNICAST WS-Discovery Probe (no multicast group is joined, nothing
  *                    is announced: DS-15). ST-1: N configurable ProbeMatches, each with an endpoint
@@ -41,6 +45,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createSocket, type RemoteInfo, type Socket as UdpSocket } from 'node:dgram';
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { createServer as createTcpServer, type Server as TcpServer, type Socket as TcpSocket } from 'node:net';
+import { CAPTURE_MEDIA_PORT_MAX, CAPTURE_MEDIA_PORT_MIN } from '@dems/capture-protocol';
 
 /** The only address any listener of the stub binds. */
 export const FAKE_ONVIF_HOST = '127.0.0.1';
@@ -64,9 +69,36 @@ export const FAKE_ONVIF_HOST = '127.0.0.1';
  * A flow that needs two adopted cameras runs the sequence twice against a stub of one device.
  */
 export const FAKE_ONVIF_TESTABLE_DEVICES_MAX = 1;
-/** `CAPTURE_MEDIA_PORT_MIN` / `MAX`: the range every fixture listener stays in (SEC35-23). */
-export const FAKE_ONVIF_PORT_MIN = 8554;
-export const FAKE_ONVIF_PORT_MAX = 8564;
+/**
+ * WHERE THE STUB MAY LISTEN (decision D170): the ephemeral ports of the operating system, never a
+ * port a harness or a service of this project uses. The floor is the lower of the two platforms'
+ * ephemeral ranges (Linux 32768, macOS 49152): everything this project binds by number - the Core
+ * 4420-4423, PostgreSQL 4432, the web lanes 5173-5175, the media range - lies far below it.
+ */
+export const FAKE_ONVIF_PORT_MIN = 32_768;
+export const FAKE_ONVIF_PORT_MAX = 65_535;
+/**
+ * THE PORTS OF THE CAPTURE HARNESSES: the protocol's whole media range (`CAPTURE_MEDIA_PORT_MIN` /
+ * `MAX` of `@dems/capture-protocol`, the ONE place both sides read; every `--ports` pair of
+ * `apps/capture-worker/test/e2e.py` and `m3worker.py`, and 8554 / 8556 of the kill matrix and the
+ * seal e2e, are inside it by the protocol's own rule). The stub never returns and never accepts one.
+ */
+export const FAKE_ONVIF_HARNESS_PORT_MIN = CAPTURE_MEDIA_PORT_MIN;
+export const FAKE_ONVIF_HARNESS_PORT_MAX = CAPTURE_MEDIA_PORT_MAX;
+export const isCaptureHarnessPort = (port: number): boolean => port >= FAKE_ONVIF_HARNESS_PORT_MIN && port <= FAKE_ONVIF_HARNESS_PORT_MAX;
+
+/** A port the stub was to listen on is held by another program: named, never answered by moving to another port. */
+export class FakeOnvifPortBusyError extends Error {
+  readonly code = 'FAKE_ONVIF_PORT_BUSY';
+  readonly listener: 'discovery' | 'device' | 'rtsp';
+  readonly port: number;
+  constructor(listener: 'discovery' | 'device' | 'rtsp', port: number, cause: unknown) {
+    super(`fake ONVIF stub: the ${listener} port ${String(port)} on 127.0.0.1 is busy (FAKE_ONVIF_PORT_BUSY); the stub does not move to another port - ask freeFakeOnvifPorts() again`, { cause });
+    this.name = 'FakeOnvifPortBusyError';
+    this.listener = listener;
+    this.port = port;
+  }
+}
 /** A documentation address (RFC 5737): the "other host" of the steering cases. It is never contacted. */
 export const FAKE_ONVIF_FOREIGN_HOST = '192.0.2.10';
 
@@ -185,51 +217,60 @@ export interface FakeOnvifStub {
   resetLog(): void;
 }
 
-/** Ports of the range that other programs of the development host hold (the Android emulators' gRPC endpoints). */
-const RESERVED_ON_DEV_HOST: readonly number[] = [8554, 8556, 8558];
-
-function tcpPortFree(port: number): Promise<boolean> {
-  return new Promise((resolvePromise) => {
+/** One ephemeral TCP port of 127.0.0.1: bound with port 0, read, released. */
+function ephemeralTcpPort(): Promise<number> {
+  return new Promise((resolvePromise, rejectPromise) => {
     const probe = createTcpServer();
-    probe.once('error', () => resolvePromise(false));
-    probe.listen({ host: FAKE_ONVIF_HOST, port, exclusive: true }, () => probe.close(() => resolvePromise(true)));
+    probe.once('error', rejectPromise);
+    probe.listen({ host: FAKE_ONVIF_HOST, port: 0, exclusive: true }, () => {
+      const address = probe.address();
+      const port = address !== null && typeof address === 'object' ? address.port : 0;
+      probe.close(() => resolvePromise(port));
+    });
   });
 }
 
-function udpPortFree(port: number): Promise<boolean> {
-  return new Promise((resolvePromise) => {
+function ephemeralUdpPort(): Promise<number> {
+  return new Promise((resolvePromise, rejectPromise) => {
     const probe = createSocket({ type: 'udp4', reuseAddr: false });
-    probe.once('error', () => resolvePromise(false));
-    probe.bind({ address: FAKE_ONVIF_HOST, port, exclusive: true }, () => probe.close(() => resolvePromise(true)));
+    probe.once('error', rejectPromise);
+    probe.bind({ address: FAKE_ONVIF_HOST, port: 0, exclusive: true }, () => {
+      const { port } = probe.address();
+      probe.close(() => resolvePromise(port));
+    });
   });
 }
+
+/** How often one port is asked for again when the system hands out a number the stub refuses. Never reached in practice. */
+const EPHEMERAL_ATTEMPTS = 16;
 
 /**
- * Three ports of the fixture range that are free on 127.0.0.1 right now, looked for from the top
- * of the range (the capture end-to-end harness takes its two from the bottom). A test asks for
- * them just before `start()`; if another program takes one in between, `start()` rejects.
+ * Three EPHEMERAL ports of 127.0.0.1, handed out by the operating system (decision D170). Never a
+ * port of the capture harnesses (8554-8564), never a port below the ephemeral floor: a number the
+ * system should hand out there is not taken, the system is asked again. A test asks for them just
+ * before `start()`; if another program takes one in between, `start()` rejects with
+ * `FakeOnvifPortBusyError` - the stub does not look for another port by itself.
  */
 export async function freeFakeOnvifPorts(): Promise<FakeOnvifPorts> {
-  const candidates: number[] = [];
-  for (let port = FAKE_ONVIF_PORT_MAX; port >= FAKE_ONVIF_PORT_MIN; port -= 1) if (!RESERVED_ON_DEV_HOST.includes(port)) candidates.push(port);
-  const tcp: number[] = [];
-  for (const port of candidates) {
-    if (tcp.length < 2 && (await tcpPortFree(port))) tcp.push(port);
-  }
-  let discovery: number | undefined;
-  for (const port of candidates) {
-    if (discovery === undefined && (await udpPortFree(port))) discovery = port;
-  }
-  const [device, rtsp] = tcp;
-  if (device === undefined || rtsp === undefined || discovery === undefined) {
-    throw new Error(`fake ONVIF stub: no free ports in ${FAKE_ONVIF_PORT_MIN}-${FAKE_ONVIF_PORT_MAX} on ${FAKE_ONVIF_HOST}`);
-  }
+  const usable = (port: number, taken: readonly number[]): boolean => Number.isInteger(port) && port >= FAKE_ONVIF_PORT_MIN && port <= FAKE_ONVIF_PORT_MAX && !isCaptureHarnessPort(port) && !taken.includes(port);
+  const one = async (ask: () => Promise<number>, taken: readonly number[]): Promise<number> => {
+    for (let attempt = 0; attempt < EPHEMERAL_ATTEMPTS; attempt += 1) {
+      const port = await ask();
+      if (usable(port, taken)) return port;
+    }
+    throw new Error(`fake ONVIF stub: the operating system handed out no usable ephemeral port on ${FAKE_ONVIF_HOST} (${FAKE_ONVIF_PORT_MIN}-${FAKE_ONVIF_PORT_MAX}, outside ${FAKE_ONVIF_HARNESS_PORT_MIN}-${FAKE_ONVIF_HARNESS_PORT_MAX})`);
+  };
+  const device = await one(ephemeralTcpPort, []);
+  const rtsp = await one(ephemeralTcpPort, [device]);
+  const discovery = await one(ephemeralUdpPort, []);
   return { discovery, device, rtsp };
 }
 
 function assertFixturePort(name: string, port: number): void {
-  if (!Number.isInteger(port) || port < FAKE_ONVIF_PORT_MIN || port > FAKE_ONVIF_PORT_MAX) {
-    throw new RangeError(`fake ONVIF stub: the ${name} port must be an integer in ${FAKE_ONVIF_PORT_MIN}-${FAKE_ONVIF_PORT_MAX}, got ${String(port)}`);
+  if (!Number.isInteger(port) || port < FAKE_ONVIF_PORT_MIN || port > FAKE_ONVIF_PORT_MAX || isCaptureHarnessPort(port)) {
+    throw new RangeError(
+      `fake ONVIF stub: the ${name} port must be an ephemeral port (an integer in ${FAKE_ONVIF_PORT_MIN}-${FAKE_ONVIF_PORT_MAX}) and never a port of the capture harnesses (${FAKE_ONVIF_HARNESS_PORT_MIN}-${FAKE_ONVIF_HARNESS_PORT_MAX}), got ${String(port)}`,
+    );
   }
 }
 
@@ -608,11 +649,12 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     });
   }
 
-  function listenTcp(server: HttpServer | TcpServer, port: number): Promise<void> {
+  function listenTcp(server: HttpServer | TcpServer, port: number, listener: 'device' | 'rtsp'): Promise<void> {
     return new Promise((resolvePromise, rejectPromise) => {
-      server.once('error', rejectPromise);
+      const failed = (error: NodeJS.ErrnoException): void => rejectPromise(error.code === 'EADDRINUSE' ? new FakeOnvifPortBusyError(listener, port, error) : error);
+      server.once('error', failed);
       server.listen({ host: FAKE_ONVIF_HOST, port, exclusive: true }, () => {
-        server.off('error', rejectPromise);
+        server.off('error', failed);
         resolvePromise();
       });
     });
@@ -632,9 +674,10 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         const socket = createSocket({ type: 'udp4', reuseAddr: false });
         udp = socket;
         await new Promise<void>((resolvePromise, rejectPromise) => {
-          socket.once('error', rejectPromise);
+          const failed = (error: NodeJS.ErrnoException): void => rejectPromise(error.code === 'EADDRINUSE' ? new FakeOnvifPortBusyError('discovery', ports.discovery, error) : error);
+          socket.once('error', failed);
           socket.bind({ address: FAKE_ONVIF_HOST, port: ports.discovery, exclusive: true }, () => {
-            socket.off('error', rejectPromise);
+            socket.off('error', failed);
             resolvePromise();
           });
         });
@@ -644,10 +687,10 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         socket.on('message', onDatagram);
         http = createHttpServer(onHttp);
         track(http);
-        await listenTcp(http, ports.device);
+        await listenTcp(http, ports.device, 'device');
         rtsp = createTcpServer(onRtspConnection);
         track(rtsp);
-        await listenTcp(rtsp, ports.rtsp);
+        await listenTcp(rtsp, ports.rtsp, 'rtsp');
       } catch (error) {
         await this.stop();
         throw error;

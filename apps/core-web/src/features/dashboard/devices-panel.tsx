@@ -1,5 +1,5 @@
-import { useCallback, useMemo, type Key, type ReactNode } from 'react'
-import { Button, Chip, Description, Dropdown, Label, Spinner, toast } from '@heroui/react'
+import { useCallback, useMemo, useState, type Key, type ReactNode } from 'react'
+import { AlertDialog, Button, Chip, Description, Dropdown, Label, Spinner, toast } from '@heroui/react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-react'
@@ -10,6 +10,7 @@ import { DeviceCommand, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
 import { CameraFeed } from '@/components/media'
+import { MicSourceMarks, TrackSourceMarks } from '@/features/devices/source-badge'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useDeviceCommandGate } from '@/lib/device-command-gate'
 import { usePendingControl } from '@/lib/pending-control'
@@ -78,6 +79,11 @@ interface DeviceCommandControl {
   /** True once the command has been out for `LIVE_PENDING_REVEAL_MS`: the trigger shows its spinner. */
   readonly showPending: boolean
   readonly onAction: (key: Key) => void
+  /** D100 (2): the confirmation of a camera's power cycle is open (Live mode only). */
+  readonly cycleOpen: boolean
+  readonly cancelCycle: () => void
+  /** The operator confirmed: sends `POE_CYCLE` (operation 48 with `{ confirm: true }`). */
+  readonly confirmCycle: () => void
 }
 
 /**
@@ -95,31 +101,41 @@ interface DeviceCommandControl {
  * `RECORDING_ACTIVE` or `COMMAND_UNSUPPORTED`, rebuilt as `SimTransitionError`) keeps the existing
  * friendly toast and one record in the page's own log. In Simulated mode the command settles
  * before the press returns, so the look never changes and the outcome is the predecessor's.
+ *
+ * Integration pass D2 (decision D100 (2); C3 §3 op 48), as on the Devices page: on a Core server a
+ * camera is not restarted by a plain `RESTART` (the Core refuses it). "Restart" of a camera tile
+ * asks for a confirmation first and then sends `POE_CYCLE`, which the shared Live binding carries as
+ * operation 48 with `{ confirm: true }`. A camera whose stream is not lost is not cycled: the Core's
+ * `CAMERA_NOT_LOST` is said as what it is. Simulated mode and the microphone tiles are unchanged.
  */
-function useDeviceCommand(deviceId: string, name: string): DeviceCommandControl {
+function useDeviceCommand(deviceId: string, name: string, camera = false): DeviceCommandControl {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const actions = useCoreActions()
   const presentCoreError = useCoreErrorPresenter()
-  const words = COMMAND_WORDS[useCoreMode()]
+  const mode = useCoreMode()
+  const words = COMMAND_WORDS[mode]
+  const confirmedCycle = camera && mode === CoreMode.LIVE
+  const [cycleOpen, setCycleOpen] = useState(false)
   // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0) ignores the next press at
   // once and reveals the spinner late; a command that settles in the press changes nothing.
   const { busy, pending: showPending, run } = usePendingControl()
 
-  const onAction = useCallback(
-    (key: Key) => {
-      if (key === 'details') {
-        void navigate({ to: '/devices' })
-        return
-      }
-      const command = key === 'test' ? DeviceCommand.TEST_SIGNAL : DeviceCommand.RESTART
+  const send = useCallback(
+    (command: DeviceCommand) => {
       run((release) => {
         settle(() => actions.deviceCommand(deviceId, command), {
           ok: () => {
-            toast.success(t(words[command], { name }))
+            if (command === DeviceCommand.POE_CYCLE) toast.success(t('devices.selector.poe.requested', { name }))
+            else if (command === DeviceCommand.TEST_SIGNAL || command === DeviceCommand.RESTART) toast.success(t(words[command], { name }))
           },
           fail: (error) => {
             if (presentCoreError(error) !== null) return
+            // C3 §3 operation 48: a camera whose stream is not lost is not cycled. Nothing was changed.
+            if (command === DeviceCommand.POE_CYCLE && (error as { readonly code?: unknown } | null)?.code === 'CAMERA_NOT_LOST') {
+              toast.info(t('devices.selector.poe.notLost'))
+              return
+            }
             reportDashboardError('features/dashboard.DeviceMenu', error, COMMAND_FAILED_RECORD, { deviceId, command })
             toast.danger(t('dashboard.devices.commandFailed'))
           },
@@ -127,9 +143,30 @@ function useDeviceCommand(deviceId: string, name: string): DeviceCommandControl 
         })
       })
     },
-    [actions, deviceId, name, navigate, presentCoreError, run, t, words],
+    [actions, deviceId, name, presentCoreError, run, t, words],
   )
-  return { busy, showPending, onAction }
+
+  const onAction = useCallback(
+    (key: Key) => {
+      if (key === 'details') {
+        void navigate({ to: '/devices' })
+        return
+      }
+      // D100 (2): a camera's restart on a Core server is the confirmed PoE cycle; nothing is sent before the confirmation.
+      if (key === 'restart' && confirmedCycle) {
+        if (!busy) setCycleOpen(true)
+        return
+      }
+      send(key === 'test' ? DeviceCommand.TEST_SIGNAL : DeviceCommand.RESTART)
+    },
+    [busy, confirmedCycle, navigate, send],
+  )
+  const cancelCycle = useCallback(() => setCycleOpen(false), [])
+  const confirmCycle = useCallback(() => {
+    setCycleOpen(false)
+    send(DeviceCommand.POE_CYCLE)
+  }, [send])
+  return { busy, showPending, onAction, cycleOpen, cancelCycle, confirmCycle }
 }
 
 /**
@@ -196,8 +233,9 @@ function DeviceMenu({ name, control }: { name: string; control: DeviceCommandCon
   )
 }
 
-function TileHead({ tone, name, state, deviceId }: { tone: StatusTone; name: string; state: string; deviceId: string }) {
-  const control = useDeviceCommand(deviceId, name)
+function TileHead({ tone, name, state, deviceId, camera = false }: { tone: StatusTone; name: string; state: string; deviceId: string; camera?: boolean }) {
+  const { t } = useTranslation()
+  const control = useDeviceCommand(deviceId, name, camera)
   // LB-1: the kit's Button does not pass `aria-busy` on, so the head of the tile carries it: the
   // region whose state the command changes. It is set only while a Live command is out.
   return (
@@ -210,6 +248,30 @@ function TileHead({ tone, name, state, deviceId }: { tone: StatusTone; name: str
         </div>
       </div>
       <DeviceMenu name={name} control={control} />
+      {/* D100 (2): the confirmation of a camera's power cycle; the same words as the Devices page. Mounted only for a camera tile. */}
+      {camera ? (
+        <AlertDialog.Backdrop isOpen={control.cycleOpen} onOpenChange={(open) => (open ? undefined : control.cancelCycle())}>
+          <AlertDialog.Container size="sm">
+            <AlertDialog.Dialog aria-label={t('devices.selector.poe.confirmTitle', { name })} data-testid={`dashboard-camera-restart-dialog-${deviceId}`}>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="warning" />
+                <AlertDialog.Heading>{t('devices.selector.poe.confirmTitle', { name })}</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <p>{t('devices.selector.poe.confirmBody')}</p>
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button variant="ghost" onPress={control.cancelCycle}>
+                  {t('common.actions.cancel')}
+                </Button>
+                <Button variant="danger" onPress={control.confirmCycle} data-testid={`dashboard-camera-restart-confirm-${deviceId}`}>
+                  {t('devices.selector.poe.confirm')}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      ) : null}
     </div>
   )
 }
@@ -245,7 +307,9 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
   const name = t(CAMERA_NAME_KEY[cameraId])
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${cameraId}`}>
-      <TileHead tone={tone} name={name} state={state} deviceId={camera.deviceId} />
+      <TileHead tone={tone} name={name} state={state} deviceId={camera.deviceId} camera />
+      {/* Pass D2 (ux §8f.2, WB-02): the one badge of the camera that feeds this track; nothing unless the Core sent the development class. */}
+      <TrackSourceMarks trackId={cameraId} place={`dashboard-${cameraId}`} />
       {/* The format chip sits top-left: bottom-left would cover the DEMO OSD line of the loop (N-39-3, P13). */}
       <CameraFeed
         cameraId={cameraId}
@@ -270,6 +334,8 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${channel}`}>
       <TileHead tone={tone} name={name} state={state} deviceId={mic.deviceId} />
+      {/* Pass D2 (ux §8f.2, WB-02): the one badge of the microphone behind this tile. */}
+      <MicSourceMarks inputId={mic.deviceId} place={`dashboard-${channel}`} />
       <div className="dems-mic-body" data-role={mic.role ?? undefined}>
         {mic.source ? (
           <Chip size="sm" variant="soft" color={mic.source === 'ACTIVE' ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-source-${channel}`} data-source={mic.source}>

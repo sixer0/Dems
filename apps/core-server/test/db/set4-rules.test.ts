@@ -23,6 +23,7 @@ import {
   realEvidenceMessage,
 } from '../../src/db/reset/real-evidence';
 import { CAPTURE_ADAPTER_KIND, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND, CAPTURE_PRODUCTION_ADAPTER_KINDS, CAPTURE_SOURCE_SLOT } from '../../src/db/schema/value-sets';
+import { SET_ADOPTED_CAMERA_COLUMNS } from '../../src/modules/capture-discovery/adoption';
 import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../static/scan';
 
 const NOW = 1_790_823_600_000;
@@ -110,13 +111,24 @@ describe('M4-MT-12 and SEC35-41 (c): the statements of the production sources', 
     expect(upsertSetLists(planted)).toEqual([['enabled', 'adapterKind']]);
   });
 
-  const UPDATE_OF_REGISTRY = /\bUPDATE\s+(?:ONLY\s+)?(?:public\.)?capture_devices\b[^;`'"]*\bSET\b[^;`'"]*\b(?:adapter_kind|kind)\s*=/gi;
+  // The SET list only (pass D1a, D132): the search stops at WHERE, so a statement that FILTERS on
+  // `kind` (adoption's `... WHERE id = $1 AND kind = 'CAMERA'`, which sets four discovery columns
+  // of the row it has just inserted) is not a finding; one that ASSIGNS either column still is.
+  const UPDATE_OF_REGISTRY = /\bUPDATE\s+(?:ONLY\s+)?(?:public\.)?capture_devices\b[^;`'"]*?\bSET\b(?:(?!\bWHERE\b)[^;`'"])*\b(?:adapter_kind|kind)\s*=/gi;
   const RAW_INSERT = /\bINSERT\s+INTO\s+(?:public\.)?capture_devices\b\s*\(([^)]*)\)/gi;
 
   it('no production statement updates adapter_kind or kind of capture_devices', () => {
     expect(occurrences(production, UPDATE_OF_REGISTRY)).toEqual([]);
     const planted: SourceFile[] = [{ path: 'y.ts', text: "await pool.query(\"UPDATE public.capture_devices SET enabled = true, adapter_kind = 'FAKE' WHERE id = $1\")" }];
     expect(occurrences(planted, UPDATE_OF_REGISTRY)).toEqual(['y.ts:1']);
+    // Each column, alone and after other assignments, with and without a WHERE that also names it.
+    const assigns = ["UPDATE capture_devices SET kind = $2 WHERE id = $1", "UPDATE ONLY public.capture_devices SET model = $2, kind = $3", "UPDATE public.capture_devices SET adapter_kind = $2 WHERE id = $1 AND kind = $3"];
+    expect(assigns.map((text) => occurrences([{ path: 'z.ts', text: `q(\`${text}\`)` }], UPDATE_OF_REGISTRY))).toEqual(assigns.map(() => ['z.ts:1']));
+    // A filter on the column is not an assignment: the statement of an adoption, and the plain form.
+    const filters = [SET_ADOPTED_CAMERA_COLUMNS, 'UPDATE public.capture_devices SET enabled = $2 WHERE id = $1 AND adapter_kind = $3'];
+    expect(filters.flatMap((text) => occurrences([{ path: 'z.ts', text: `q(\`${text}\`)` }], UPDATE_OF_REGISTRY))).toEqual([]);
+    // What an adoption's statement sets, column by column: the four discovery columns and no other.
+    expect(/\bSET\b(.*?)\bWHERE\b/.exec(SET_ADOPTED_CAMERA_COLUMNS)?.[1]?.split(',').map((assignment) => assignment.split('=')[0]?.trim())).toEqual(['transport', 'onvif_uuid', 'profiles', 'last_seen_at']);
   });
 
   it('SEC35-41 (c): every INSERT into capture_devices names adapter_kind', () => {
@@ -142,7 +154,8 @@ describe('M4-SEC-RESET-1 (rule): the exemption of the reset guard', () => {
     expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('(e.development_sources IS TRUE) AS development_flag');
     expect(REAL_SEALED_EVIDENCE_STATEMENT).not.toMatch(/IS\s+NOT\s+FALSE|<>\s*false|!=\s*false|COALESCE/i);
     expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("s.adapter_kind IN ('FAKE', 'LOCAL_DEVICE')");
-    expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("e.integrity_source = 'REAL' AND e.sealed_at IS NOT NULL");
+    // Pass E3: REAL items, and the demo items a seed really sealed (version 2, a signature that is not the stand-in); both sealed. Nothing else is read.
+    expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("WHERE (e.integrity_source = 'REAL' OR (e.integrity_source = 'DEMO_PACKAGE' AND e.manifest_version = 2 AND e.signature_simulated IS FALSE)) AND e.sealed_at IS NOT NULL");
     expect(REAL_SEALED_EVIDENCE_STATEMENT).not.toMatch(/\b(UPDATE|DELETE|INSERT|TRUNCATE|DROP)\b/);
     expect(SOURCE_ROWS_PER_SESSION).toBe(CAPTURE_SOURCE_SLOT.length);
     // The two development kinds are exactly the kinds that are not production kinds.

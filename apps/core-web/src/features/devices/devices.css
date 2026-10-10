@@ -1442,3 +1442,56 @@
     opacity: 0.4;
   }
 }
+
+/* ── Registered devices beyond the built-in ids (task 3 R-11, blueprint row 140) ─────────────── */
+@layer components {
+  .dev-roster {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .dev-roster-title {
+    margin: 0;
+    font-size: var(--text-caption, 12px);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-foreground-2);
+  }
+
+  .dev-roster-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--separator);
+    border-radius: 12px;
+    background: var(--surface-secondary);
+  }
+
+  .dev-roster-head,
+  .dev-roster-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dev-roster-foot {
+    justify-content: space-between;
+  }
+
+  .dev-roster-id {
+    font-size: var(--text-caption, 12px);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .dev-roster-limits {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+  }
+}

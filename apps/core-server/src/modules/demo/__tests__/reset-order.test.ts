@@ -94,8 +94,9 @@ describe('a reset that succeeds', () => {
     expect(recording.calls).toHaveLength(1);
     const options = recording.calls[0]!;
     // No credential, no test seam, no drain bound, no application name, no observer.
-    expect(Object.keys(options).sort()).toEqual(['actorId', 'clock', 'dataDir', 'database', 'log', 'quiesce', 'reason', 'scenario']);
-    expect(options).toMatchObject({ database: 'dems_demo', dataDir: '/nonexistent/dems-unit-test-data', actorId: 'OPR-002', reason: 'RESET', scenario: 'idle' });
+    // Decision D165: plus the evidence-store root - the media root of the server's configuration, NOT a directory below the data directory.
+    expect(Object.keys(options).sort()).toEqual(['actorId', 'clock', 'dataDir', 'database', 'evidenceStoreDir', 'log', 'quiesce', 'reason', 'scenario']);
+    expect(options).toMatchObject({ database: 'dems_demo', dataDir: '/nonexistent/dems-unit-test-data', evidenceStoreDir: '/nonexistent/dems-unit-test-media', actorId: 'OPR-002', reason: 'RESET', scenario: 'idle' });
     // The clock is the server's, read when the routine asks: after the quiesce.
     recording.now += 1_234;
     expect(options.clock?.()).toBe(recording.now);
@@ -467,5 +468,101 @@ describe('one reset at a time in one server', () => {
     recording.epoch = 5;
     await expect(reset.run(callOf().call)).resolves.toBeDefined();
     expect(recording.calls).toHaveLength(3);
+  });
+});
+
+// Integration pass D10, item 4 (pass D6 finding F-D6-1; C3 §3 ops 72 / 75, §4): the reset guard's
+// refusal - a REAL sealed package exists - is answered 409 with the code of the contract. The guard
+// itself (`src/db/reset/real-evidence.ts`, the routine's R-3) is closed and unchanged: only what
+// the route answers for its refusal is decided here.
+describe('the reset guard refuses (real sealed evidence): 409 RESET_BLOCKED_REAL_EVIDENCE, not the 503 of a failed reset', () => {
+  it('the routine refuses at R-3 with the guard\'s code: 409 with the documented code and no reason of a failed reset; the server is brought back exactly as after any refusal at R-3', async () => {
+    const recording = recordingHost();
+    recording.routine = standInRoutine(recording.trace, { fail: resetError('RESET_BLOCKED_REAL_EVIDENCE', 'R-3', true) });
+    const { report, failure, lines } = await run(recording);
+
+    expect(report).toBeNull();
+    expect(failure).toBeInstanceOf(ApiFailure);
+    expect(failure).toMatchObject({ statusCode: 409, code: 'RESET_BLOCKED_REAL_EVIDENCE' });
+    expect((failure as ApiFailure).details).toBeUndefined();
+    // What the guard found stays in the log: the answer names no count, no item and no path.
+    expect((failure as ApiFailure).message).toBe('The demo reset is blocked because real sealed evidence exists.');
+    // Nothing else changed: the same resume as for every refusal after the quiesce, the hold released.
+    expect(recording.trace).toEqual(['routine:R-0', 'routine:R-1', ...QUIESCE, `routine:clock ${recording.now}`, 'routine:R-2..R-8', ...RESUME_FAILED, 'release', 'roles']);
+    expect(recording.heldNow()).toBe(0);
+    expect(lines[1]?.fields).toMatchObject({ routineCode: 'RESET_BLOCKED_REAL_EVIDENCE', routineStep: 'R-3', targetUntouched: true });
+  });
+
+  it('the guard\'s refusal before anything was stopped (R-0, the caller-side guard): the same 409, and nothing was stopped', async () => {
+    const recording = recordingHost();
+    recording.routine = standInRoutine(recording.trace, { refuse: resetError('RESET_BLOCKED_REAL_EVIDENCE', 'R-0', true) });
+    const { failure } = await run(recording);
+    expect(failure).toMatchObject({ statusCode: 409, code: 'RESET_BLOCKED_REAL_EVIDENCE' });
+    expect(recording.trace).not.toContain('engine.stop');
+  });
+
+  // Integration pass D11 (pass D10's finding, a contract defect): the module asks the caller-side
+  // guard BEFORE the routine, so before the quiesce. A refused reset changes nothing.
+  it('PASS D11 - the caller-side guard refuses FIRST: the routine is never called, nothing is held or stopped, the epoch is the same, one audited refusal names the operation and the reason, 409', async () => {
+    const recording = recordingHost();
+    recording.realSessions = ['SES-20261001-0001'];
+    const epochBefore = recording.epoch;
+    const { report, failure, lines } = await run(recording);
+
+    expect(report).toBeNull();
+    expect(failure).toMatchObject({ statusCode: 409, code: 'RESET_BLOCKED_REAL_EVIDENCE' });
+    expect((failure as ApiFailure).details).toBeUndefined();
+    // The guard was asked before anything else, then the one audit row; the routine and the quiesce never ran.
+    expect(recording.guardAskedAt).toEqual([0]);
+    expect(recording.trace).toEqual(['guard', 'audit.refusal']);
+    expect(recording.calls).toEqual([]);
+    expect(recording.heldNow()).toBe(0);
+    expect(recording.epoch).toBe(epochBefore);
+    expect(recording.publications).toEqual([]);
+    expect(recording.refusals).toEqual([{ operation: 'resetDemo', actorId: 'OPR-002', reason: 'RESET_BLOCKED_REAL_EVIDENCE' }]);
+    // What the guard found is in the log and in the error log (counts only), never in the answer.
+    const said = lines.find((line) => line.fields['code'] === 'RESET_BLOCKED_REAL_EVIDENCE');
+    expect(said?.level).toBe('warn');
+    expect(said?.fields).toMatchObject({ realRows: 1, realPackages: 0, quiesced: false, epochBefore });
+    expect(recording.persisted.map((entry) => [entry.level, entry.code])).toEqual([['warn', 'RESET_BLOCKED_REAL_EVIDENCE']]);
+  });
+
+  it('PASS D11 - CONTROL: a guard that finds nothing lets the reset on exactly as before (asked first, no audit row of a refusal, the epoch moves by 1)', async () => {
+    const recording = recordingHost();
+    const epochBefore = recording.epoch;
+    const { report, failure } = await run(recording);
+    expect(failure).toBeNull();
+    expect(report).not.toBeNull();
+    expect(recording.guardAskedAt).toEqual([0]);
+    expect(recording.refusals).toEqual([]);
+    expect(recording.trace).not.toContain('guard');
+    expect(recording.trace.slice(0, 2)).toEqual(['routine:R-0', 'routine:R-1']);
+    expect(recording.trace).toContain('engine.stop');
+    expect(recording.epoch).toBe(epochBefore + 1);
+  });
+
+  it('PASS D11 - a guard that could not be asked refuses with the 503 of a reset that did not happen: nothing stopped, the routine not called, the failure in the error log; an audit row that cannot be written leaves the 409 standing', async () => {
+    const unasked = recordingHost();
+    unasked.failing.realEvidence = new Error('the pool is gone');
+    const first = await run(unasked);
+    expect(first.failure).toMatchObject({ statusCode: 503, code: 'NOT_READY', details: { reason: ResetRefusal.FAILED } });
+    expect(unasked.trace).toEqual(['guard']);
+    expect(unasked.calls).toEqual([]);
+    expect(unasked.persisted.map((entry) => [entry.level, entry.code])).toEqual([['error', 'DEMO_RESET_GUARD_NOT_ASKED']]);
+
+    const unaudited = recordingHost();
+    unaudited.realSessions = ['SES-20261001-0001'];
+    unaudited.failing.auditRefusal = new Error('the unit did not commit');
+    const second = await run(unaudited);
+    expect(second.failure).toMatchObject({ statusCode: 409, code: 'RESET_BLOCKED_REAL_EVIDENCE' });
+    expect(unaudited.calls).toEqual([]);
+    expect(unaudited.persisted.map((entry) => [entry.level, entry.code])).toEqual([['warn', 'RESET_BLOCKED_REAL_EVIDENCE'], ['error', 'DEMO_RESET_REFUSAL_NOT_AUDITED']]);
+  });
+
+  it('CONTROL: another refusal of the routine at the same step is still 503 NOT_READY with RESET_FAILED', async () => {
+    const recording = recordingHost();
+    recording.routine = standInRoutine(recording.trace, { fail: resetError('RESET_SCHEMA_MISMATCH', 'R-3', true) });
+    const { failure } = await run(recording);
+    expectRefused(failure, ResetRefusal.FAILED);
   });
 });

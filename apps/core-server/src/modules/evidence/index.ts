@@ -72,6 +72,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { MappingError } from '../../db/mapping';
 import { simCodeOf, simRefusal, type EngineOutcome } from '../../engine';
+import { EXPORT_IN_PROGRESS_TEXT, evidenceExport, exportKindOfBody } from '../../evidence-export';
 import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from './cursor';
@@ -104,6 +105,7 @@ const EXPORT_REFUSAL_TEXT: Readonly<Record<ExportRefusal['reason'], string>> = {
   NOT_SEALED: 'Only sealed evidence can be exported.',
   SECURITY_FAULT: 'A security fault blocks export.',
   INVALID_REASON: 'An export reason of at least 5 characters is required.',
+  EXPORT_IN_PROGRESS: EXPORT_IN_PROGRESS_TEXT,
 };
 
 const exportRefused = (refusal: ExportRefusal): ApiFailure => new ApiFailure(refusal.status, refusal.reason, EXPORT_REFUSAL_TEXT[refusal.reason]);
@@ -248,10 +250,29 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const evidenceId = pathIdOf(request);
       if (!exportIdPattern.test(evidenceId)) throw exportRefused({ ok: false, status: 404, reason: 'NOT_FOUND' });
 
-      const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, body.kind === 'VALID' ? body.request : NO_REASON);
+      // Task 3 row 91: an item with an unfinished export job takes no second request (C3 §4). The
+      // ticket is taken BEFORE the hosted action, so two requests cannot both pass; while no export
+      // jobs are provided (`src/evidence-export`), nothing is asked and nothing is refused here.
+      const exportJobs = evidenceExport(app).current();
+      const ticket = exportJobs === null ? null : exportJobs.begin(evidenceId);
+      if (exportJobs !== null && ticket === null) throw new ApiFailure(409, 'EXPORT_IN_PROGRESS', EXPORT_IN_PROGRESS_TEXT);
+
+      let result: ExportResult;
+      try {
+        const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, body.kind === 'VALID' ? body.request : NO_REASON);
+        result = outcome.value;
+      } catch (error) {
+        ticket?.cancel();
+        throw error;
+      }
       // The unit has ended. A refusal in the result is answered only now: it may have written a row.
-      const result = outcome.value;
-      if (!result.ok) throw exportRefused(result);
+      if (!result.ok) {
+        ticket?.cancel();
+        throw exportRefused(result);
+      }
+      // The request is committed. For a real sealed v2 package the background job is queued now
+      // (operation 87 polls it); for every other item this changes nothing. It never rejects.
+      await ticket?.accepted({ exportId: result.exportId, kind: exportKindOfBody(request.body) });
       void reply.code(202);
       return { exportId: result.exportId, evidenceId, status: 'QUEUED' };
     },

@@ -40,37 +40,83 @@ import type { EngineContext } from './engine';
 import { isFaultActive } from './derive';
 import type { Rng } from './rng';
 import { addTimelineItem, SPEECH_STATES } from './session-machine';
-import type { AudioFrame, CaptureLevelSource, EpochMs, SimState, SimSubsystem } from './types';
+import type { AudioFrame, CaptureConfigMic, CaptureLevelSource, CaptureMicInputId, EpochMs, SimState, SimSubsystem } from './types';
 import { FaultKind } from './vocabulary';
 
 export const AUDIO_CHANNELS = ['AUDIO-01', 'AUDIO-02'] as const satisfies readonly AudioTrackId[];
 
 /**
- * Which microphone **input** the v1 channel key addresses (OD-01 T1; register SH-17). The meters
- * slice is keyed by input since schema v2; the demo controls, the CLIP fault target and the
- * timeline still name a channel, so this map is the single place the two vocabularies meet.
- * It is the *default* pairing: `audio.activeInputId` says which of them feeds `AUDIO-01` now.
+ * The pairing of the two meter channels with the BUILT-IN microphone inputs: what the rule below
+ * gives for the seeded selector (`MIC-01`, `MIC-02`), and its answer where no microphone line exists.
  */
-export const MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = {
+export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = {
   'AUDIO-01': 'MIC-01',
   'AUDIO-02': 'MIC-02',
 };
 
-/** The inverse: the channel key a mic input is addressed by in the v1-shaped APIs. */
+/**
+ * @deprecated The fixed table of the built-in pair only. The input of a meter channel is a
+ * function of the capture configuration's microphone lines (`micInputOfChannel`, ruling D137):
+ * with another pair behind the capture (`MIC-03`, decision D133 (1)) this table names the wrong
+ * input. Kept as an alias while clients import it; new code asks `micInputOfChannel`.
+ */
+export const MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = DEFAULT_MIC_INPUT_OF_CHANNEL;
+
+/** One microphone line, as far as the channel rule reads it. */
+type MicLine = Pick<CaptureConfigMic, 'inputId'>;
+
+/**
+ * The microphone lines the meters and the session read: the snapshot of the open session when it
+ * has one (OD-10: the capture was started with it), else the selector. In input order (D106 (1)).
+ */
+export function captureMicLines(state: Pick<SimState, 'session' | 'captureConfig'>): readonly CaptureConfigMic[] {
+  return state.session?.captureConfig?.mics ?? state.captureConfig.mics;
+}
+
+/**
+ * Which microphone **input** a meter channel is (OD-01 T1; register SH-17; RULING D137): the
+ * channel order is the order of the microphone lines of the capture configuration, which is
+ * input order (D106 (1)) - channel 1 (`AUDIO-01`) is the first line, channel 2 (`AUDIO-02`) the
+ * second, whatever their IDs. The meters slice is keyed by input; the demo controls, the CLIP
+ * fault target and the timeline still name a channel, so this function is the single place the
+ * two vocabularies meet. `audio.activeInputId` says which of the two feeds the session track now.
+ */
+export function micInputOfChannel(mics: readonly MicLine[], channel: AudioTrackId): CaptureMicInputId {
+  return mics[AUDIO_CHANNELS.indexOf(channel)]?.inputId ?? DEFAULT_MIC_INPUT_OF_CHANNEL[channel];
+}
+
+/** The inverse: the meter channel of an input of these lines; null for an input that is neither line. */
+export function channelOfMicLine(mics: readonly MicLine[], inputId: string): AudioTrackId | null {
+  for (const channel of AUDIO_CHANNELS) if (micInputOfChannel(mics, channel) === inputId) return channel;
+  return null;
+}
+
+/** The meter channel of the input that feeds the session track now; channel 1 when that input is neither line. */
+export function activeMeterChannel(state: Pick<SimState, 'session' | 'captureConfig' | 'audio'>): AudioTrackId {
+  return channelOfMicLine(captureMicLines(state), state.audio.activeInputId) ?? 'AUDIO-01';
+}
+
+/** The frame of an input that has delivered none yet: NO SIGNAL at the floor. */
+export function noInputFrame(at: EpochMs): AudioFrame {
+  return { seq: 0, at, dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, clip: false, noSignal: true };
+}
+
+/** @deprecated The inverse of the built-in pair's table; `channelOfMicLine` reads the capture configuration (ruling D137). */
 export const CHANNEL_OF_MIC_INPUT: Readonly<Record<MicInputId, AudioTrackId>> = {
   'MIC-01': 'AUDIO-01',
   'MIC-02': 'AUDIO-02',
 };
 
 /**
- * The built-in (metered) input a selector input is, or null for a `MIC-NN` beyond the built-in
- * pair: such an input has no meter channel and no session audio source in this contract version.
+ * The built-in input a selector input is, or null for a `MIC-NN` beyond the built-in pair.
+ * @deprecated It says nothing about meters any more: every input of the capture configuration has
+ * a meter channel (`channelOfMicLine`, ruling D137). Kept for `session-machine.ts`.
  */
 export function builtInMicInputOf(inputId: string): MicInputId | null {
   return Object.hasOwn(CHANNEL_OF_MIC_INPUT, inputId) ? (inputId as MicInputId) : null;
 }
 
-/** The channel key of a selector input; null when the input is not one of the two built-in inputs. */
+/** @deprecated The channel of an input of the BUILT-IN pair only; `channelOfMicLine` reads the capture configuration (ruling D137). */
 export function channelOfMicInput(inputId: string): AudioTrackId | null {
   const builtIn = builtInMicInputOf(inputId);
   return builtIn === null ? null : CHANNEL_OF_MIC_INPUT[builtIn];
@@ -172,7 +218,7 @@ export interface AudioRuntime {
    * SH-18). While an entry is younger than `CAPTURE_LEVEL_HOLD_MS` the next frame of that input
    * shows it in place of the generated conversation. Transient like the test tone: never stored.
    */
-  captureLevels: Partial<Record<MicInputId, CaptureLevelFeed>>;
+  captureLevels: Partial<Record<CaptureMicInputId, CaptureLevelFeed>>;
   /**
    * `'external'` (`CreateSimOptions.capture`, register CS-04): a real worker measures the levels
    * and nothing is generated. An input without a fresh measured level reads NO SIGNAL.
@@ -193,7 +239,7 @@ export function createAudioRuntime(levelSource: CaptureLevelSource = 'simulated'
 }
 
 /** The measured level of `input` that the frame at `at` shows, or null when none is fresh enough. */
-export function captureLevelAt(runtime: AudioRuntime, input: MicInputId, at: EpochMs): CaptureLevelFeed | null {
+export function captureLevelAt(runtime: AudioRuntime, input: CaptureMicInputId, at: EpochMs): CaptureLevelFeed | null {
   const fed = runtime.captureLevels[input];
   if (fed === undefined || at - fed.at > CAPTURE_LEVEL_HOLD_MS) return null;
   return fed;
@@ -237,16 +283,19 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       const peakChannel: AudioTrackId = conversation.speaker === 2 ? 'AUDIO-02' : 'AUDIO-01';
 
       let next: SimState = state;
-      const frames = { ...state.audio.inputs };
+      // One frame per meter channel, keyed by the input that channel is NOW (ruling D137): the two
+      // microphone lines of the capture configuration. A frame of an input that left the pair is dropped.
+      const lines = captureMicLines(state);
+      const frames: Record<CaptureMicInputId, AudioFrame> = {};
       let mics = state.mics;
       let peakFrame: { channel: AudioTrackId; level: number } | null = null;
 
       for (const channel of AUDIO_CHANNELS) {
         // The frame is stored under the mic input it comes from (SH-17), while the demo controls,
         // the CLIP latch and the timeline keep naming the channel.
-        const input = MIC_INPUT_OF_CHANNEL[channel];
+        const input = micInputOfChannel(lines, channel);
         const rng = engine.rng.get(channel === 'AUDIO-01' ? 'audio:AUDIO-01' : 'audio:AUDIO-02');
-        const previous = frames[input];
+        const previous = state.audio.inputs[input] ?? noInputFrame(at);
         const mic = mics.find((m) => m.id === channel);
         let current = channels.get(channel) ?? {
           meter: meterAt(previous.at, previous.noSignal ? AUDIO_NOISE_FLOOR_DBFS : previous.dbfs),
@@ -320,7 +369,14 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       // The meters slice is keyed by mic input (SH-17); `activeInputId` is what op 81 moves.
       next = {
         ...next,
-        audio: { inputs: frames, activeInputId: state.audio.activeInputId },
+        // The active input stays what it was while it is one of the two; a pair that no longer
+        // holds it (a state put in place otherwise) reads its PRIMARY line as the active one.
+        audio: {
+          inputs: frames,
+          activeInputId: Object.hasOwn(frames, state.audio.activeInputId)
+            ? state.audio.activeInputId
+            : (lines.find((line) => line.role === 'PRIMARY')?.inputId ?? micInputOfChannel(lines, 'AUDIO-01')),
+        },
         ...(mics !== state.mics ? { mics } : {}),
       };
       if (peakFrame && next.session?.state === SessionState.RECORDING) {

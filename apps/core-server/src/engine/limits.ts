@@ -43,5 +43,11 @@ export const ENGINE_UNIT_LABEL = {
   captureTelemetry: 'engine.applyCaptureTelemetry',
   captureWarning: 'engine.raiseCaptureWarning',
   captureWarningClear: 'engine.clearCaptureWarning',
+  captureDurable: 'engine.markCaptureDurable',
+  captureEnded: 'engine.endCapture',
+  captureFaultsClear: 'engine.clearCaptureFaults',
+  sealingProgress: 'engine.applySealingProgress',
+  sealComplete: 'engine.completeSeal',
+  evidenceVerdict: 'engine.recordEvidenceVerification',
   operators: 'engine.mirrorOperators',
 } as const;

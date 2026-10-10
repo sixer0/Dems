@@ -66,7 +66,13 @@ const TECHNICIAN_SESSION: Pick<AuthSessionInfo, 'operator' | 'permissions'> = {
 }
 
 const W = en.dashboard.devices
-const LIVE_RESTART_SENT = (name: string) => W.live.restartSent.replace('{{name}}', name)
+// Integration pass D2 (D100 (2)): on a Core server "Restart" of a CAMERA tile is the confirmed PoE cycle
+// (operation 48 with `{ confirm: true }`), so its success toast is the cycle's, as on the Devices page.
+const LIVE_RESTART_SENT = (name: string) => en.devices.selector.poe.requested.replace('{{name}}', name)
+/** The confirmation of a camera's power cycle (Live mode): the second press that sends the command. */
+async function confirmCycle(): Promise<void> {
+  fireEvent.click(await screen.findByTestId(/^dashboard-camera-restart-confirm-/))
+}
 const LIVE_TEST_SENT = (name: string) => W.live.testSignalSent.replace('{{name}}', name)
 const DENIED = en.common.rbac.deniedTitle
 const REQUIRES = (role: string) => en.common.rbac.requiresRole.replace('{{role}}', role)
@@ -110,6 +116,8 @@ async function openMenu(name: string): Promise<HTMLElement> {
 async function press(name: string, item: RegExp): Promise<void> {
   const menu = await openMenu(name)
   fireEvent.click(within(menu).getByRole('menuitem', { name: item }))
+  // D100 (2): in Live mode (a bed is up) a camera's Restart sends nothing before the confirmation.
+  if (bed !== undefined && name.startsWith('Camera') && item.source.includes('Restart')) await confirmCycle()
 }
 const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
 /** The served state's cameras with one camera changed: the effect a restart has on the Core. */
@@ -148,11 +156,16 @@ describe('B-7 success (§8.3; LB-3)', () => {
     expect(menu.textContent ?? '').not.toMatch(/simulat/i)
     fireEvent.click(within(menu).getByRole('menuitem', { name: /^Restart/ }))
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    // D100 (2): nothing is sent before the confirmation; the dialog names the camera.
+    const dialog = await screen.findByTestId('dashboard-camera-restart-dialog-CAM-01')
+    expect(dialog).toHaveTextContent(en.devices.selector.poe.confirmTitle.replace('{{name}}', 'Camera 1'))
+    expect(requests('restartDevice')).toHaveLength(0)
+    await confirmCycle()
 
     await waitFor(() => expect(toastWith(LIVE_RESTART_SENT('Camera 1'))).toHaveLength(1))
     expect(command.deltaSent).toBe(true)
     expect(requests('restartDevice')).toHaveLength(1)
-    expect(requests('restartDevice')[0]).toMatchObject({ method: 'POST', path: '/api/v1/device/CAM-01/restart', params: { id: 'CAM-01' } })
+    expect(requests('restartDevice')[0]).toMatchObject({ method: 'POST', path: '/api/v1/device/CAM-01/restart', params: { id: 'CAM-01' }, body: { confirm: true } })
     expect(requests('testDeviceSignal')).toHaveLength(0)
     // The tile shows the Core's state of the device: the delta was applied before the toast (CL-16).
     expect(screen.getByTestId('tile-state-CAM-01')).toHaveTextContent(en.common.status.noSignal)
@@ -216,7 +229,7 @@ describe('B-7 refusal (§6.2; AC-C-48; LB-5)', () => {
     const records = webErrorSink.records().filter((record) => record.source === 'features/dashboard.DeviceMenu')
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({ level: 'error', message: 'A device command of the Dashboard was not carried out.' })
-    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-02', command: 'RESTART', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE' })
+    expect(records[0]?.context).toMatchObject({ deviceId: 'CAM-02', command: 'POE_CYCLE', errorName: 'SimTransitionError', code: 'RECORDING_ACTIVE' })
     expect(String(records[0]?.context?.correlationId)).toMatch(/^dash-/)
     expect(head('Camera 2')).not.toHaveAttribute('aria-busy')
   })

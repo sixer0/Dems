@@ -19,7 +19,7 @@
 //      although the manifest declares none, or missing although it declares one, fails (V-10, V-14).
 // No database, no process, no model, no oMLX; no wall-clock wait.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { PackageFile, type ManifestV2Input } from '@dems/shared/evidence-package';
+import { PackageFile, isServerSttBackend, type ManifestV2Input } from '@dems/shared/evidence-package';
 import { TRANSCRIPT_STATE_REPORT, VERIFY_V2_CHECKS, verifyPackageV2, type PackageVerifyResult, type VerifyCheckId, type VerifyExpectations } from '@dems/shared/evidence-verify';
 import { TranscriberError, createMemoryChunkMirror } from '@dems/transcriber';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -313,7 +313,13 @@ describe('M7-STTCFG-VERIFY: a tampered state FAILS — layer 3, the state agains
     const invented = { file: 'transcript/transcript.json', docVersion: 'dems.transcript/1', sha256: sha256Hex(Buffer.from('json')), srtSha256: sha256Hex(Buffer.from('srt')), vttSha256: sha256Hex(Buffer.from('vtt')), model: { name: 'm', version: '1', quantisation: 'none', modelSha256: sha256Hex(Buffer.from('model')) }, diarization: { numSpeakers: 2, status: 'LABELLED', confidence: 0.9 }, speakerState: 'LABELLED', state: 'ASSEMBLED', failedChunks: 0, revisionHead: 0, disabledReason: null, backendUnreachable: false };
     for (const on of ['DISABLED', 'UNAVAILABLE'] as const) {
       const sealed = await packageOf(on);
-      tamperManifest(sealed, 'FORGED', (m) => Object.assign(m.transcript, invented, { configSnapshot: { ...m.transcript.configSnapshot, enabled: true } }), other());
+      // A forger who knows the format follows decision D160 (a server backend states the model name only): the forgery must be WELL-FORMED, so that it is the files that fail it, not the schema.
+      tamperManifest(
+        sealed,
+        'FORGED',
+        (m) => Object.assign(m.transcript, invented, { configSnapshot: { ...m.transcript.configSnapshot, enabled: true } }, isServerSttBackend(m.transcript.configSnapshot.backend) ? { model: { name: 'm', version: null, quantisation: null, modelSha256: null } } : {}),
+        other(),
+      );
       const result = await verifyAlone(sealed);
       expect(failing(result), on).toEqual(['V-10', 'V-11', 'V-14']);
       expect(codes(result, 'V-10'), on).toEqual(['TRANSCRIPT_FILE_MISSING', 'TRANSCRIPT_FILE_MISSING', 'TRANSCRIPT_FILE_MISSING']);

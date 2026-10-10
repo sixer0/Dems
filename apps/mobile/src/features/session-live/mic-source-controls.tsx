@@ -28,11 +28,11 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
-import type { MicInputId } from '@dems/shared/domain';
 import { fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { triggerHaptic } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
-import { MIC_INPUT_LABEL_KEY, type MicSwitchBlock, type SwitchRefusal } from './mic-source-model';
+import { useMicInputName } from '@/features/capture-selector/development-source-badge';
+import { type MicSwitchBlock, type SwitchRefusal } from './mic-source-model';
 import { useMicSource, useMicSwitch } from './use-mic-source';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -62,10 +62,10 @@ export function micSwitchBlockText(block: MicSwitchBlock | null, t: Translate): 
 
 export interface MicSourcePanelProps {
   recording: boolean;
-  activeInputId: MicInputId;
-  standbyInputId: MicInputId;
+  activeInputId: string;
+  standbyInputId: string;
   block: MicSwitchBlock | null;
-  silentInputId: MicInputId | null;
+  silentInputId: string | null;
   confirmOpen: boolean;
   busy: boolean;
   pending: boolean;
@@ -93,8 +93,10 @@ export function MicSourcePanel({
   const { t } = useTranslation();
   const reason = micSwitchBlockText(block, t);
   const offered = block === null;
-  const standbyName = t(MIC_INPUT_LABEL_KEY[standbyInputId]);
-  const activeName = t(MIC_INPUT_LABEL_KEY[activeInputId]);
+  // Integration pass D2: named from the id the Core sent ("MIC 1", "Microphone 3", "Core Mac's microphone").
+  const micName = useMicInputName();
+  const standbyName = micName(standbyInputId);
+  const activeName = micName(activeInputId);
   const switchLabel = t('session.audioSource.switchTo', { mic: standbyName });
 
   return (
@@ -103,7 +105,7 @@ export function MicSourcePanel({
         <Alert status="warning" testID="monitor-mic-silent" accessibilityLiveRegion="polite">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>{t('session.audioSource.silent.title', { mic: t(MIC_INPUT_LABEL_KEY[silentInputId]) })}</Alert.Title>
+            <Alert.Title>{t('session.audioSource.silent.title', { mic: micName(silentInputId) })}</Alert.Title>
             <Alert.Description>
               {t('session.audioSource.silent.body', { dbfs: MIC_SILENCE_DBFS, seconds: MIC_SILENCE_DURATION_MS / 1000 })}
             </Alert.Description>

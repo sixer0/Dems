@@ -108,6 +108,8 @@ export const VERIFY_FAILURES = {
   TRANSCRIPT_FILE_UNREADABLE: { check: 'V-10', failureClass: 'UNREADABLE' },
   TRANSCRIPT_HASH_MISMATCH: { check: 'V-10', failureClass: 'TAMPERED' },
   TRANSCRIPT_NOT_OF_ITEM: { check: 'V-10', failureClass: 'TAMPERED' },
+  /** The header of the sealed document and the manifest disagree on the backend or on a model member, or the document's own model breaks the provenance rule (D160). */
+  TRANSCRIPT_MODEL_MISMATCH: { check: 'V-10', failureClass: 'TAMPERED' },
   // V-11
   REVISIONS_FILE_MISSING: { check: 'V-11', failureClass: 'MISSING' },
   REVISIONS_FILE_UNREADABLE: { check: 'V-11', failureClass: 'UNREADABLE' },
@@ -115,7 +117,9 @@ export const VERIFY_FAILURES = {
   REVISION_SEQUENCE_BROKEN: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_COUNT_MISMATCH: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_PARENT_MISMATCH: { check: 'V-11', failureClass: 'TAMPERED' },
+  REVISION_BODY_MISSING: { check: 'V-11', failureClass: 'MISSING' },
   REVISION_BODY_HASH_MISMATCH: { check: 'V-11', failureClass: 'TAMPERED' },
+  REVISION_MEMBER_MISMATCH: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_CERTIFICATE_MISSING: { check: 'V-11', failureClass: 'MISSING' },
   REVISION_CERTIFICATE_NOT_TRUSTED: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_SIGNATURE_INVALID: { check: 'V-11', failureClass: 'TAMPERED' },
@@ -154,7 +158,7 @@ export interface VerifyFinding {
   readonly seq?: number;
   /** A path inside the package folder, `/` separated. */
   readonly file?: string;
-  /** A dotted member path of the manifest. */
+  /** A dotted member path of the manifest; with `revisionNo`, a member of that revision's record. */
   readonly member?: string;
   readonly revisionNo?: number;
 }
@@ -235,6 +239,32 @@ export const TRANSCRIPT_STATE_REPORT: Readonly<Record<VerifiedTranscriptState, s
   NOT_TRUSTWORTHY: 'Transcript state: not trustworthy \u2014 the manifest was altered',
   UNKNOWN: 'Transcript state: unknown \u2014 the manifest cannot be read',
 });
+
+/**
+ * The model of the sealed transcript, for the report (ruling D160; integration pass D10). What the
+ * Core could know of the model depends on the backend the session's configuration snapshot names
+ * (manifest field 123): of a model file it read itself (`cpu-local`) the name, the declared
+ * version, the quantisation and the SHA-256 of the file; of a SERVER backend the name the server
+ * reported and nothing else - the three other members are null there, and ONLY there. The report
+ * line says which of the two it is, so a reader never takes a reported name for a verified file.
+ */
+export interface TranscriptModelReport {
+  readonly name: string;
+  readonly version: string | null;
+  readonly quantisation: string | null;
+  readonly modelSha256: string | null;
+  /** True when the snapshot's backend is a server: the name is the server's word, nothing of the model was verified by the Core. */
+  readonly reportedByServer: boolean;
+  /** The report line (`transcriptModelLineOf`). */
+  readonly report: string;
+}
+
+/** The report line of a transcript model. English; a client words its own from the members. */
+export function transcriptModelLineOf(model: Pick<TranscriptModelReport, 'name' | 'version' | 'quantisation' | 'modelSha256' | 'reportedByServer'>): string {
+  return model.reportedByServer
+    ? `Transcript model: ${model.name} (reported by the STT server; version, quantisation and file hash are not available to the Core and were not verified)`
+    : `Transcript model: ${model.name}, version ${model.version ?? 'not recorded'} (declared by the installation), quantisation ${model.quantisation ?? 'not recorded'}, file SHA-256 ${model.modelSha256 ?? 'not recorded'}`;
+}
 
 export interface TranscriptStateReport {
   readonly code: VerifiedTranscriptState;
@@ -318,6 +348,8 @@ export interface PackageVerifyResult {
   readonly transcript: { readonly state: 'VERIFIED' | 'FAILED' | 'DISABLED' | 'UNAVAILABLE' | 'NOT_CHECKED'; readonly revisions: number | null };
   /** What the package says of its transcript, for the report (row 119). Never turns a pass into a failure. */
   readonly transcriptState: TranscriptStateReport;
+  /** The model of the sealed transcript (D160). Null unless the manifest is the signed one AND declares a document. */
+  readonly transcriptModel: TranscriptModelReport | null;
   /** What the package says of its sources (row 141, V-15). A development class never turns a pass into a failure. */
   readonly sources: SourcesReport;
   readonly signature: {
@@ -325,6 +357,12 @@ export interface PackageVerifyResult {
     readonly algorithm: string | null;
     readonly keyId: string | null;
     readonly simulated: boolean | null;
+    /**
+     * The certificate subject the manifest records (field 25) carries the development-key mark
+     * (`DEVELOPMENT_KEY_SUBJECT_MARK`; decision D147). A FACT ABOUT THE KEY, not a verdict: `ok`
+     * above passes or fails on its own merits. Null when no manifest could be read.
+     */
+    readonly developmentKey: boolean | null;
     /** OD-03: the stored-bytes checks (V-04, V-06, V-07) need no key of any kind. */
     readonly integrityCheckedWithoutKey: true;
   };

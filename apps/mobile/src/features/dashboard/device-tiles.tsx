@@ -26,10 +26,11 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { MIC_INPUT_OF_CHANNEL, useSim, useSimInstance } from '@dems/shared/sim';
+import { captureMicLines, micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
+import { MicInputSourceBadge, TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { CameraFeed } from '@/components/media/camera-feed';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
@@ -94,6 +95,12 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
             </Text>
             <StatusChip tone={tone} label={t(stateKeyFor(tile))} icon={null} size="sm" />
           </View>
+          {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
+          {tile.kind === 'camera' ? (
+            <TrackSourceBadge trackId={tile.trackId} testID={`home-device-${tile.trackId}-source`} />
+          ) : (
+            <MicInputSourceBadge inputId={tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
+          )}
           {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>
       </PressableFeedback>
@@ -133,7 +140,8 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
 function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): AudioAccessibilityValue {
   const { t } = useTranslation();
   const sim = useSimInstance();
-  const input = MIC_INPUT_OF_CHANNEL[channel];
+  // Ruling D137: the input is the microphone line at the channel's position (a primitive selector).
+  const input = useSim((s) => micInputOfChannel(captureMicLines(s), channel));
   // Change-only: a boolean selector re-renders the tile when the flag flips, never per frame.
   const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
   const ticking = useAudioAccessibilityValue(channel, frozen ? { intervalMs: TEST_SWITCH_READOUT_MS } : {});

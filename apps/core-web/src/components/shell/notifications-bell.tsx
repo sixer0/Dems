@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
 import { selectActiveAlerts, selectUnacknowledgedAlertCount, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
-import { captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
+import { captureFailedStartOf, captureNoticeLine, captureNoticeOf, type CaptureFailedStart } from '@/lib/capture-notices'
+import { failedStartAlertLine } from './failed-start-alert'
 import { useMotionPolicy } from '@/motion'
 
 const LATEST_ALERTS = 5
@@ -27,6 +28,9 @@ function selectLatestAlerts(s: SimState) {
   return selectActiveAlerts(s).slice(-LATEST_ALERTS).reverse()
 }
 
+/** The failed start of the open session (FAULT with `captureDurable: false`), or null: a primitive. */
+const selectFailedStart = (s: SimState): CaptureFailedStart | null => captureFailedStartOf(s.session, s.alerts)
+
 /**
  * Bell (01_specs §14.4 item 8; research/04 §9 #37): kit icon-only `Button` with a `Badge` count of
  * unacknowledged alerts, opening a `Popover` of the latest alerts. Alert text is simulator data.
@@ -41,6 +45,7 @@ export function NotificationsBell() {
   const [open, setOpen] = useState(false)
   const count = useSim(selectUnacknowledgedAlertCount)
   const alerts = useSim(selectLatestAlerts)
+  const failedStart = useSim(selectFailedStart)
   const [swingScope, swings] = useAlertSwing(count)
   const label =
     count > 0
@@ -75,11 +80,13 @@ export function NotificationsBell() {
                 // Task 3 R-10 (blueprint row 137; ux §8e.1): a no-device notice is worded from `params.reason`,
                 // with the device by label and id; every other alert keeps the Core's text.
                 const notice = captureNoticeOf(alert)
+                // Pass D7 item 3: the critical alert of a session start that recorded nothing says so, from its reason.
+                const failedLine = failedStartAlertLine(t, alert, failedStart)
                 return (
                   <li key={alert.id} className="dems-alert-row" data-severity={alert.severity}>
                     <Icon className="dems-alert-icon" aria-hidden="true" size={16} />
-                    <span className="dems-alert-message" data-notice={notice?.kind}>
-                      {notice === null ? alert.message : captureNoticeLine(t, notice)}
+                    <span className="dems-alert-message" data-notice={failedLine !== null ? 'FAILED_START' : notice?.kind}>
+                      {failedLine ?? (notice === null ? alert.message : captureNoticeLine(t, notice))}
                     </span>
                     <time className="dems-alert-time" dateTime={new Date(alert.at).toISOString()}>
                       {formatDate(alert.at, DATE_PATTERNS.time)}

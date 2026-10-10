@@ -22,7 +22,7 @@ function runTicks(options: { seed?: number; scenario?: ScenarioName }, ticks: nu
   const sim = createSim({ ...options, clock, storage: null, authStorage: null });
   const frames: AudioFrame[] = [];
   sim.store.subscribe(
-    (state) => state.audio.inputs['MIC-02'],
+    (state) => state.audio.inputs['MIC-02']!,
     (frame) => frames.push(frame),
   );
   for (let i = 0; i < ticks; i += 1) {

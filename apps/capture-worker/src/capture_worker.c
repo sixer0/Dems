@@ -37,7 +37,8 @@
 Session S;
 atomic_int g_stop;
 atomic_int g_stop_ingest;
-int g_listen_timeout_s = 15;
+int g_listen_timeout_s = DEFAULT_INGEST_OPEN_WINDOW_MS / 1000;
+int g_mic_silence_dbfs = DEFAULT_MIC_SILENCE_DBFS, g_mic_silence_ms = DEFAULT_MIC_SILENCE_MS, g_mic_disconnect_ms = DEFAULT_MIC_DISCONNECT_MS;
 #ifdef DEMS_PROOF_MUX_EXTRA
 const char *g_mux_extra = DEMS_PROOF_MUX_EXTRA;     /* PROOF BUILD: the negative control of the AV checks */
 #else
@@ -83,13 +84,15 @@ void send_record(const char *fmt, ...) {
     pthread_mutex_unlock(&S.record_mx);
 }
 
-/* A warning whose condition began. Every subject is a capture device ID of the plan (or null): the
- * vocabulary of the engine, never a track name (decision D72, finding A-1). The conditions this
- * worker reports (a camera that is refused, ends or never connects) do not end inside a session,
- * so it writes no CLEARED; the frame can carry one for the warnings of the mic rows. */
-void send_warning(const char *code, const char *subject) {
-    if (subject) ipc_send("\"type\":\"WARNING\",\"sessionId\":\"%s\",\"code\":\"%s\",\"state\":\"ACTIVE\",\"subject\":\"%s\"", S.id, code, subject);
-    else ipc_send("\"type\":\"WARNING\",\"sessionId\":\"%s\",\"code\":\"%s\",\"state\":\"ACTIVE\",\"subject\":null", S.id, code);
+/* A warning whose condition began or ended. Every subject is the capture device ID of one camera
+ * or one microphone of the plan: the vocabulary of the engine, never a track name (decision D72,
+ * finding A-1), never a role and never null (protocol version 4; D84 R-1, R-2). The camera
+ * conditions (refused, never connected, ended, clock out of bound, long keyframe interval) do not
+ * end inside a session, so no CLEARED is written for them; the three microphone conditions
+ * (silent, disconnected, rate at its limit) are raised and cleared by the filtering thread. */
+void send_warning(const char *code, const char *reason, int active, const char *subject) {
+    if (!subject || !subject[0]) { logj("error", "main", "warning_without_subject", "\"code\":\"%s\",\"reason\":\"%s\"", code, reason); return; }
+    ipc_send("\"type\":\"WARNING\",\"sessionId\":\"%s\",\"code\":\"%s\",\"reason\":\"%s\",\"state\":\"%s\",\"subject\":\"%s\"", S.id, code, reason, active ? "ACTIVE" : "CLEARED", subject);
 }
 
 static void ack(const char *corr, const char *refusal) {
@@ -174,6 +177,13 @@ static const char *take_plan(Session *s, const JNode *plan) {
         snprintf(s->mic[at].path, sizeof s->mic[at].path, "%s", path->str);
     }
     if (s->mic[0].present && s->mic[1].present && (!strcmp(s->mic[0].device_id, s->mic[1].device_id) || !strcmp(s->mic[0].path, s->mic[1].path))) return "PLAN_INVALID";
+    /* Protocol version 4 (D84 R-2): a role is never an identity, and one ID names one device of the plan. */
+    for (i = 0; i < NCAM + NMIC; i++) {
+        const char *device = i < NCAM ? (s->cam[i].present ? s->cam[i].device_id : NULL) : (s->mic[i - NCAM].present ? s->mic[i - NCAM].device_id : NULL);
+        if (!device) continue;
+        if (!strcmp(device, "PRIMARY") || !strcmp(device, "STANDBY")) return "PLAN_INVALID";
+        for (int m = 0; i < NCAM && m < NMIC; m++) if (s->mic[m].present && !strcmp(device, s->mic[m].device_id)) return "PLAN_INVALID";
+    }
     s->active_mic = !strcmp(active->str, "PRIMARY") ? 0 : !strcmp(active->str, "STANDBY") ? 1 : -1;
     if (s->active_mic < 0 || !s->mic[s->active_mic].present) return "PLAN_INVALID";
     if (tap->t == J_STR) snprintf(s->tap_path, sizeof s->tap_path, "%s", tap->str);
@@ -218,8 +228,10 @@ static const char *session_start(const JNode *msg) {
     if (refusal) return refusal;
     int r = open_encoder(&S);
     if (r < 0) { fatal("main", "ENCODER_OPEN_FAILED", r); return "ENCODER_OPEN_FAILED"; }
-    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync\":\"%s\",\"gop_bound_ms\":%d",
-         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_level(), S.fragment_target_ms);
+    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync\":\"%s\",\"gop_bound_ms\":%d,"
+         "\"ingest_open_window_ms\":%d,\"mic_silence_dbfs\":%d,\"mic_silence_ms\":%d,\"mic_disconnect_ms\":%d",
+         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_level(), S.fragment_target_ms,
+         g_listen_timeout_s * 1000, g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms);
     for (int i = 0; i < NCAM; i++) {
         Cam *c = &S.cam[i];
         if (!c->present) continue;
@@ -322,9 +334,21 @@ static int on_line(char *line) {
     return -1;
 }
 
+/* A whole number of [min, max] on `step` (from min) and nothing after it. Returns 0 and the value, or 1. */
+static int whole_number(const char *text, long min, long max, long step, int *out) {
+    char *end;
+    errno = 0;
+    long value = strtol(text, &end, 10);
+    if (errno || end == text || *end || value < min || value > max || (value - min) % step) return 1;
+    *out = (int)value;
+    return 0;
+}
+
 static void usage(void) {
     static const char text[] =
-        "usage: capture-worker --log <file.jsonl> [--heartbeat-ms <50..10000>] [--listen-timeout-s <1..600>]\n"
+        "usage: capture-worker --log <file.jsonl> [--heartbeat-ms <50..10000>]\n"
+        "                      [--ingest-open-window-ms <1000..600000, whole seconds>]   (default 15000; --listen-timeout-s <1..600> is the same setting in seconds)\n"
+        "                      [--mic-silence-dbfs <-120..0>] [--mic-silence-ms <100..600000, step 100>] [--mic-disconnect-ms <100..600000, step 100>]\n"
         "                      [--audio-manifest <file.jsonl>]   (diagnostic: one line per encoder packet, hashes only)\n"
         "The session is not an argument: it arrives as START on standard input (@dems/capture-protocol).\n";
     if (write(STDERR_FILENO, text, sizeof text - 1) < 0) return;
@@ -336,7 +360,7 @@ int main(int argc, char **argv) {
     for (int fd = 0; fd <= 2; fd++)
         if (fcntl(fd, F_GETFD) < 0 && errno == EBADF && open("/dev/null", fd == 0 ? O_RDONLY : O_WRONLY) != fd) return EXIT_USAGE;
 
-    int heartbeat_ms = 500;
+    int heartbeat_ms = 500, bad_setting = 0;
     const char *log_path = NULL, *manifest_path = NULL;
     for (int i = 1; i < argc; i++) {
         const char *k = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -345,10 +369,15 @@ int main(int argc, char **argv) {
         if (!strcmp(k, "--log")) log_path = v;
         else if (!strcmp(k, "--heartbeat-ms")) heartbeat_ms = atoi(v);
         else if (!strcmp(k, "--listen-timeout-s")) g_listen_timeout_s = atoi(v);
+        /* The named settings (protocol version 4, CAPTURE_WORKER_SETTINGS): whole numbers inside their range, on their step. */
+        else if (!strcmp(k, "--ingest-open-window-ms")) { int ms; bad_setting |= whole_number(v, 1000, 600000, 1000, &ms); g_listen_timeout_s = ms / 1000; }
+        else if (!strcmp(k, "--mic-silence-dbfs")) bad_setting |= whole_number(v, -120, 0, 1, &g_mic_silence_dbfs);
+        else if (!strcmp(k, "--mic-silence-ms")) bad_setting |= whole_number(v, 100, 600000, 100, &g_mic_silence_ms);
+        else if (!strcmp(k, "--mic-disconnect-ms")) bad_setting |= whole_number(v, 100, 600000, 100, &g_mic_disconnect_ms);
         else if (!strcmp(k, "--audio-manifest")) manifest_path = v;
         else { usage(); return EXIT_USAGE; }
     }
-    if (!log_path || heartbeat_ms < 50 || heartbeat_ms > 10000 || g_listen_timeout_s < 1 || g_listen_timeout_s > 600) { usage(); return EXIT_USAGE; }
+    if (bad_setting || !log_path || heartbeat_ms < 50 || heartbeat_ms > 10000 || g_listen_timeout_s < 1 || g_listen_timeout_s > 600) { usage(); return EXIT_USAGE; }
     if (log_open(log_path) < 0 || (manifest_path && audio_set_manifest(manifest_path) < 0)) { usage(); return EXIT_USAGE; }
 
     for (int i = 0; i < NCAM; i++) {

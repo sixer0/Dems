@@ -76,6 +76,13 @@ export const PAIRING_CODE_LENGTH = 6;
 export const PRECHECK_CHECK_MIN_MS = 300;
 export const PRECHECK_CHECK_MAX_MS = 700;
 export const STOPPING_MS = 1_500;
+/**
+ * How long a simulated recording start connects its cameras (integration pass D10; decisions D84,
+ * D91 R-1 option A, D156): from the accepted start the session says `captureDurable: false`, and
+ * this long after `startedAt` the simulator decides the start as the Core's capture does at its
+ * first durable fragment (`capture-session.ts` `advanceCaptureStart`).
+ */
+export const CAPTURE_CONNECT_MS = 1_000;
 export const FINALIZATION_STEP_MIN_MS = 600;
 export const FINALIZATION_STEP_MAX_MS = 1_200;
 /**

@@ -789,7 +789,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     // schema to op 48 in the contract-C block (32 -> 33), and eighteen operation/nested schemas of
     // operations 76-89 at the end. M6 row 113 appends the six STT configuration schemas of 90-92;
     // R-9..R-11 append the eight of operations 93-97.
-    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6 + 8);
+    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6 + 8 + 1); // + EvidenceMediaSessionRequest, the optional body of op 88 (pass D1b, D140)
     // The 51 of contract A stay first and in their order, then the socket's schemas.
     expect(Object.keys(CORE_API_SCHEMAS).slice(51, 51 + 39 + 11)).toEqual(socket);
     expect(Object.keys(CORE_API_SCHEMAS).slice(51 + 39 + 11)).toEqual([
@@ -808,7 +808,8 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'AudioSourceSwitchRequest', 'AudioSourceState', 'AudioSourceIntervalEntry', 'AudioSourceIntervalPage',
       'SealingProgressStep', 'SealingProgress',
       'TranscriptSegment', 'TranscriptDocument', 'TranscriptRevisionRequest', 'TranscriptRevision', 'TranscriptRevisionPage',
-      'EvidenceExportJob', 'EvidenceMediaSession',
+      // + the optional body of operation 88 (pass D1b, ruling D140).
+      'EvidenceExportJob', 'EvidenceMediaSessionRequest', 'EvidenceMediaSession',
       // Task 3 M6 row 113 (`C3 §2.5`): the STT configuration schemas of operations 90-92.
       'SttLastTest', 'SttConfig', 'SttCredentialWrite', 'SttConfigUpdateRequest', 'SttConfigUpdateResult', 'SttConnectionTest',
       // Task 3 R-9..R-11 (blueprint row 132, D106; `C3 §2.6`): the schemas of operations 93-97.

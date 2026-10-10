@@ -87,6 +87,17 @@ export type ResetErrorCode =
    * quiesced and the target is exactly what it was.
    */
   | 'RESET_BLOCKED_REAL_EVIDENCE'
+  /**
+   * R-3: the caller cannot tell which folder holds this Core's media, so the real-evidence guard
+   * has nothing to judge (erratum PE-0013-01; ruling D166). The command line: its environment
+   * carries no media root and the database stores none. Read-only pass; the target is untouched.
+   */
+  | 'RESET_STORE_ROOT_UNKNOWN'
+  /**
+   * R-3: the caller's environment names one media root and the database stores another (what the
+   * Core recorded at its last start). The guard can judge one folder; it refuses to choose.
+   */
+  | 'RESET_STORE_ROOT_CONFLICT'
   /** R-1: the caller's quiesce hook failed. */
   | 'RESET_QUIESCE_FAILED'
   /** R-1, R-7: a session is open on the target (or on the staging database). Nobody's session is ended. */

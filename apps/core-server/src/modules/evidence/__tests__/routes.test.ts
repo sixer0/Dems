@@ -167,14 +167,26 @@ function hostRefusal(error: unknown): ApiFailure {
 const signature = (method: string, path: string, operationId: string): string => `${method.toUpperCase()} ${path} ${operationId}`;
 
 describe('MODG: the route list of the module equals the registry operations it owns', () => {
-  it('registers operations 39 to 43 with the method, the path and the operation ID of the registry, and nothing else under /api/v1/evidence', async () => {
+  // Task 3 (schema v2, C3 §2.2) added operations 84 to 88 under the tag Evidence and the path
+  // /api/v1/evidence. They are NOT this module's: the transcript read and its revisions (84 to 86),
+  // the export job (87, the evidence-export unit of row 91) and the media session (88, the
+  // media-stream unit of row 90). Until integration pass D1b the lists below were the five alone,
+  // which the registry - and then the mounted routes - outgrew.
+  const TASK_3_EVIDENCE_OPERATIONS = ['getTranscript', 'createTranscriptRevision', 'listTranscriptRevisions', 'getEvidenceExportJob', 'createEvidenceMediaSession'];
+
+  it('registers operations 39 to 43 with the method, the path and the operation ID of the registry; nothing else under /api/v1/evidence but task 3\'s operations of other units', async () => {
     const { registered } = await build();
     const fromRegistry = EVIDENCE_MODULE_OPERATIONS.map((operationId) => {
       const operation = findCoreApiOperation(operationId);
       if (operation === undefined) throw new Error(`no operation ${operationId}`);
       return signature(operation.method, routePatternOf(operation.path), operation.operationId);
     });
-    const mine = registered.filter((route) => route.url.startsWith(EVIDENCE));
+    const underPath = registered.filter((route) => route.url.startsWith(EVIDENCE));
+    const mine = underPath.filter((route) => (EVIDENCE_MODULE_OPERATIONS as readonly string[]).includes(String(route.config?.operationId)));
+    // Whatever else is mounted under the path is one of task 3's five, registered by its own unit - never an unnamed route.
+    const others = underPath.filter((route) => !mine.includes(route)).map((route) => String(route.config?.operationId));
+    expect(others.filter((operationId) => !TASK_3_EVIDENCE_OPERATIONS.includes(operationId))).toEqual([]);
+    expect(new Set(others).size).toBe(others.length);
     const fromModule = mine.map((route) => signature(String(route.method), route.url, String(route.config?.operationId)));
 
     expect(fromModule).toEqual(fromRegistry);
@@ -188,18 +200,23 @@ describe('MODG: the route list of the module equals the registry operations it o
     console.info(`[w35] MODG routes of src/modules/evidence: ${fromModule.join(' | ')}`);
     console.info(`[w35] MODG registry, operations 39 to 43:   ${fromRegistry.join(' | ')}`);
     // Each route, called with an ID, is matched by the registry to the operation it names.
-    for (const route of mine) {
+    for (const route of underPath) {
       expect(matchCoreApiOperation(String(route.method), route.url.replace(':id', ID))?.operation.operationId).toBe(route.config?.operationId);
     }
   });
 
-  it('the area of the registry is these five and no other: the four of contract C are numbered 39, 40, 41 and 43, and 42 is the design-book operation', () => {
-    const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.EVIDENCE).map((operation) => operation.operationId);
+  it('the area of the registry is these five and the five of task 3 that other units own: the four of contract C are numbered 39, 40, 41 and 43, and 42 is the design-book operation', () => {
+    const tagged = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.EVIDENCE).map((operation) => operation.operationId);
+    expect([...tagged].sort()).toEqual([...EVIDENCE_MODULE_OPERATIONS, ...TASK_3_EVIDENCE_OPERATIONS].sort());
+    expect(TASK_3_EVIDENCE_OPERATIONS.map((operationId) => Number(/operation (\d+)/.exec(findCoreApiOperation(operationId)?.source ?? '')?.[1]))).toEqual([84, 85, 86, 87, 88]);
+    // The module's own area: the five it registers, no more.
+    const area = tagged.filter((operationId) => (EVIDENCE_MODULE_OPERATIONS as readonly string[]).includes(operationId));
     expect([...area].sort()).toEqual([...EVIDENCE_MODULE_OPERATIONS].sort());
     const numberOf = (operationId: string): number => Number(/operation (\d+)/.exec(findCoreApiOperation(operationId)?.source ?? '')?.[1]);
     expect(['listEvidence', 'getEvidence', 'verifyEvidence', 'archiveEvidence'].map(numberOf)).toEqual([39, 40, 41, 43]);
     expect(findCoreApiOperation('exportEvidence')?.source).toContain('Design book');
-    // No operation of the area returns a file or takes one (MS-1, SR-66).
+    // No operation of the module's area returns a file or takes one (MS-1, SR-66). Media leaves
+    // the Core only through operation 88's session (the media-stream unit), never through these five.
     for (const operationId of area) {
       const operation = findCoreApiOperation(operationId);
       expect(operation?.path).not.toMatch(/media|file|download|upload|package/);

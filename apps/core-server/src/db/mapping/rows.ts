@@ -434,6 +434,64 @@ function sealedColumnsOf(item: EvidenceItem): { manifestVersion: 1 | 2; labelsSt
   return { manifestVersion, labelsStatus: labels as SealedLabelsStatus | null };
 }
 
+/** `development_sources` of one item: the seal's boolean, or NULL where the item states none. */
+function developmentSourcesOf(item: EvidenceItem): boolean | null {
+  const stated = item.developmentSources ?? null;
+  if (stated !== null && typeof stated !== 'boolean') {
+    throw new MappingError('ROW_SHAPE', `evidence_items.development_sources (${item.id})`, 'the development mark of an item is true, false or absent.');
+  }
+  return stated;
+}
+
+/**
+ * The signature of a stored item, on the way back (dbc-3 §C.4; finding F-82-4, pass D4). Two pairs
+ * exist and each has ONE writer:
+ *   (SIMULATED-SHA256, simulated, 64 hex)   every v1 item and the simulator's own v2 seal, as before;
+ *   (Ed25519, not simulated, 128 hex)       the item of a REAL v2 seal (`completeSealTransition`):
+ *                                           admitted on a row that is `integrity_source` REAL AND
+ *                                           `manifest_version` 2 - and on the row of a SEED-SEALED
+ *                                           demo item (pass E3: `DEMO_PACKAGE`, version 2,
+ *                                           `development_sources` true). No v1 row, no simulated
+ *                                           item and no frozen demo item can come back as really
+ *                                           signed.
+ * Any other combination is not a row the mapping wrote, and is refused. `ECDSA-P256-SHA256` is a
+ * value the column admits and no seal of this phase writes: refused.
+ */
+function signatureFromRow(row: EvidenceItemRow): EvidenceItem['signature'] {
+  if (row.signatureSimulated === true) {
+    // C.4 ties `simulated = true` to `algorithm = 'SIMULATED-SHA256'`.
+    if (row.signatureAlgorithm !== 'SIMULATED-SHA256') {
+      throw new MappingError(
+        'ROW_SHAPE',
+        `evidence_items.signature_algorithm (${row.id})`,
+        `a simulated signature must carry algorithm SIMULATED-SHA256; the row holds ${row.signatureAlgorithm}.`,
+      );
+    }
+    return { value: row.signatureValue, keyId: row.signatureKeyId, algorithm: 'SIMULATED-SHA256', simulated: true };
+  }
+  if (row.signatureAlgorithm !== 'Ed25519' || !REAL_SIGNATURE_VALUE.test(row.signatureValue)) {
+    throw new MappingError(
+      'ROW_SHAPE',
+      `evidence_items.signature_algorithm (${row.id})`,
+      `a real signature rehydrated into the state is an Ed25519 signature of 128 hex characters; the row holds ${row.signatureAlgorithm}.`,
+    );
+  }
+  // The ONE other writer of a real signature (integration pass E3; ev F.2 - F.4): the seed, for a demo
+  // item whose package it SEALED into this Core's store with the development key. Such a row is
+  // `DEMO_PACKAGE`, version 2 and marked `development_sources` true - all three, so that none of the
+  // 14 frozen v1 demo items (stand-in signature, no mark) can ever come back as really signed.
+  const seedSealedDemo = row.integritySource === 'DEMO_PACKAGE' && row.manifestVersion === 2 && row.developmentSources === true;
+  if (!(row.integritySource === 'REAL' && row.manifestVersion === 2) && !seedSealedDemo) {
+    throw new MappingError(
+      'ROW_SHAPE',
+      `evidence_items.signature_simulated (${row.id})`,
+      'a real signature belongs to a REAL item of manifest version 2, or to a seed-sealed demo item (DEMO_PACKAGE, version 2, development sources); this row is neither.',
+    );
+  }
+  return { value: row.signatureValue, keyId: row.signatureKeyId, algorithm: 'Ed25519', simulated: false };
+}
+const REAL_SIGNATURE_VALUE = /^[0-9a-f]{128}$/;
+
 export function evidenceItemToRow(item: EvidenceItem, context: RowContext): EvidenceItemRow {
   const place = (column: string): string => `evidence_items.${column} (${item.id})`;
   const sealed = sealedColumnsOf(item);
@@ -476,9 +534,10 @@ export function evidenceItemToRow(item: EvidenceItem, context: RowContext): Evid
     manifestVersion: sealed.manifestVersion,
     transcriptSha256: item.transcriptSha256 ?? null,
     labelsStatus: sealed.labelsStatus,
-    // Schema v3 (dbc-4 §N.4, MR-E1): the copy of manifest field 126. The state does not carry it
-    // until the v2 seal of rows 83 / 141 writes it in the item's INSERT; NULL reads "not recorded".
-    developmentSources: null,
+    // Schema v3 (dbc-4 §N.4, MR-E1; finding F-82-3, pass D4): the copy of manifest field 126, as
+    // the seal put it on the item (the Core derives it from `session_capture_sources`, never from
+    // a client). Absent or null = NULL = "not recorded" (a v1 item, the simulator's own seal).
+    developmentSources: developmentSourcesOf(item),
     createdAt: safeInteger(context.at, place('created_at')),
     updatedAt: safeInteger(context.at, place('updated_at')),
   };
@@ -544,22 +603,7 @@ export function evidenceItemFromRows(
   tracks: readonly EvidenceTrackRow[],
   custody: readonly EvidenceCustodyRow[],
 ): EvidenceItem {
-  if (row.signatureSimulated !== true) {
-    throw new MappingError(
-      'ROW_SHAPE',
-      `evidence_items.signature_simulated (${row.id})`,
-      'a stored signature rehydrated into the simulator state is always a simulated one; a real (Ed25519/ECDSA) seal is read through the evidence module, not the state.',
-    );
-  }
-  // C.4 ties `simulated = true` to `algorithm = 'SIMULATED-SHA256'`; the sim `EvidenceSignature`
-  // type carries only that literal, so the way back narrows the stored union to it (CS-18).
-  if (row.signatureAlgorithm !== 'SIMULATED-SHA256') {
-    throw new MappingError(
-      'ROW_SHAPE',
-      `evidence_items.signature_algorithm (${row.id})`,
-      `a simulated signature must carry algorithm SIMULATED-SHA256; the row holds ${row.signatureAlgorithm}.`,
-    );
-  }
+  const signature = signatureFromRow(row);
   const orderedTracks: EvidenceTrack[] = [...tracks]
     .sort((a, b) => a.position - b.position)
     .map((track) => ({ trackId: track.trackId, label: track.label, sizeBytes: track.sizeBytes, sha256: track.sha256 }));
@@ -605,16 +649,13 @@ export function evidenceItemFromRows(
     lifecycleStage: row.lifecycleStage,
     tracks: orderedTracks,
     manifestHash: row.manifestHash,
-    signature: {
-      value: row.signatureValue,
-      keyId: row.signatureKeyId,
-      algorithm: 'SIMULATED-SHA256',
-      simulated: true,
-    },
+    signature,
     custody: orderedCustody,
     verification: { status: row.verificationStatus, at: row.verificationAt },
     tampered: row.tampered,
     tamperedTrackId: row.tamperedTrackId,
+    // The seal's development mark (F-82-3): NULL stays absent, never `false` (never read as production).
+    ...(row.developmentSources === null ? {} : { developmentSources: row.developmentSources }),
     ...(row.caseType === null ? {} : { caseType: row.caseType }),
     markers: row.markers,
     notes: row.notes,
@@ -665,6 +706,14 @@ function sealedMembersOf(row: EvidenceItemRow): { transcriptSha256?: string | nu
  * discovered one until supervisor telemetry (row 57) names it. It is never read back into a slice.
  */
 const NEUTRAL_TRANSPORT = 'UNKNOWN';
+/**
+ * The same code, named for the write-through (`changes.ts`, pass D4): a row built with it says
+ * "the state holds no transport for this device", NOT "the transport became unknown". The
+ * write-through therefore never stores it over a registry row that exists - a device that leaves
+ * the selector keeps the transport it was registered with. It is still what a NEW row is inserted
+ * with (the column is NOT NULL).
+ */
+export const CAPTURE_TRANSPORT_NOT_IN_STATE = NEUTRAL_TRANSPORT;
 
 /**
  * The five built-ins' transport codes (RECON-B2a R5; dbc-3 §B.2, §E.3; D-52-3). The device slice
@@ -991,6 +1040,21 @@ export function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
 
 // ── alerts ─────────────────────────────────────────────────────────────────────────────────────
 
+/** The `CODE` form of `alerts_reason_check` (database contract erratum PE-0013-01). */
+const ALERT_REASON = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/**
+ * The enumerated cause of an alert: the third member of the fault key (kind, reason, device;
+ * ruling D146). The alert carries it as `params.reason` (the shared raise writes it there, and
+ * `params` of a stored alert never changes); the column `alerts.reason` is the same value in the
+ * `CODE` form, or NULL for an alert without a cause. A `params.reason` that is no code (free text)
+ * is no key member: the column stays NULL and the text stays in `params`.
+ */
+export function alertReasonOf(alert: Pick<SimAlert, 'params'>): string | null {
+  const reason = alert.params?.['reason'];
+  return typeof reason === 'string' && ALERT_REASON.test(reason) ? reason : null;
+}
+
 export function alertToRow(alert: SimAlert): AlertRow {
   const place = (column: string): string => `alerts.${column} (${alert.id})`;
   return {
@@ -1004,10 +1068,21 @@ export function alertToRow(alert: SimAlert): AlertRow {
     resolvedAt: safeIntegerOrNull(alert.resolvedAt, place('resolved_at')),
     target: storableTextOrNull(alert.target, place('target')),
     params: alert.params === undefined ? null : storableJson(alert.params, place('params')),
+    reason: alertReasonOf(alert),
   };
 }
 
+/**
+ * The way back. A row older than migration 0013 holds NULL in `reason` whatever its `params`
+ * say (no backfill, MG-8): it reads back as the alert it was. A row that DOES hold a cause must
+ * carry the same value in `params.reason` - the column is written from it and neither is ever
+ * updated - so a difference is a row no writer of this code produced, and it is refused rather
+ * than read under one of two keys.
+ */
 export function alertFromRow(row: AlertRow): SimAlert {
+  if (row.reason !== null && row.params?.['reason'] !== row.reason) {
+    throw new MappingError('ROW_SHAPE', `alerts.reason (${row.id})`, 'the cause column and the cause in params differ.');
+  }
   return {
     id: row.id,
     at: row.at,

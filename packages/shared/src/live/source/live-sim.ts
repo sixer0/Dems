@@ -909,7 +909,8 @@ export function createLiveSim<Client extends LiveClient>(options: CreateLiveSimO
     const audio = meters.audio;
     commit({
       audio: {
-        inputs: { 'MIC-01': audio.inputs['MIC-01'], 'MIC-02': audio.inputs['MIC-02'] },
+        // The two frames as the Core keyed them: `MIC-NN`, the built-in pair or the selector's (D133 (1)).
+        inputs: { ...audio.inputs },
         activeInputId: audio.activeInputId ?? store.getState().audio.activeInputId,
       },
     });

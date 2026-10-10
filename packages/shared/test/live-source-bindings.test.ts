@@ -35,6 +35,7 @@ import {
   CAPTURE_CONFIG_CHANGE_OPERATION_INDEX,
   DEVICE_COMMAND_OPERATION_INDEX,
   ENVELOPE_SIM_CODE,
+  EXPORT_IN_PROGRESS_REASON,
   LIVE_BINDINGS,
   LIVE_BINDING_NAMES,
   LIVE_SESSION_OPERATION,
@@ -142,6 +143,8 @@ const ARGS: { readonly [Name in keyof SimActions]: Parameters<SimActions[Name]> 
   setCaptureConfig: [{ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' }],
   switchAudioSource: ['MIC-02'],
   registerCaptureDevice: [{ id: 'CAM-03', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }],
+  // Pass D6 (CS-09): INTERNAL, bound LOCAL.
+  applyStorageVolume: [{ totalBytes: 500_000_000_000, freeBytes: 40_000_000_000 }],
 };
 
 /** A real state with a session that is ARMED: one engine, from sign-in through the pre-check. */
@@ -203,11 +206,11 @@ function expectContractRequest(name: string, plan: CallPlan): void {
   }
 }
 
-describe('the 48 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', () => {
+describe('the 49 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17; pass D6 CS-09: applyStorageVolume, 48 -> 49)', () => {
   it('has one binding per member of SimActions: the keys of the contract table, of the bindings and of a real simulator are equal', () => {
     const sim = createSim({ clock: createManualClock(NOW), storage: null, authStorage: null });
     const simulator = Object.keys(sim.actions).sort();
-    expect(simulator).toHaveLength(48);
+    expect(simulator).toHaveLength(49);
     expect([...LIVE_BINDING_NAMES].sort()).toEqual(simulator);
     expect(Object.keys(SIM_ACTION_OPERATIONS).sort()).toEqual(simulator);
     expect(Object.keys(ARGS).sort()).toEqual(simulator);
@@ -215,7 +218,7 @@ describe('the 48 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(LIVE_BINDING_NAMES).toEqual(Object.keys(SIM_ACTION_OPERATIONS));
   });
 
-  it('the flows: 35 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 6 local', () => {
+  it('the flows: 35 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 7 local', () => {
     const count = (flow: string) => LIVE_BINDING_NAMES.filter((name) => LIVE_BINDINGS[name].flow === flow);
     expect(count(LiveActionFlow.COMMAND)).toHaveLength(35);
     expect(count(LiveActionFlow.READ)).toEqual(['verifyAuditChain']);
@@ -224,7 +227,7 @@ describe('the 48 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17)', (
     expect(count(LiveActionFlow.TOUCH)).toEqual(['touch']);
     expect(count(LiveActionFlow.PAIR)).toEqual(['pair']);
     expect(count(LiveActionFlow.UNPAIR)).toEqual(['unpair']);
-    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'registerCaptureDevice']);
+    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice']);
     expect(Object.values(LiveActionFlow)).toHaveLength(8);
   });
 
@@ -700,6 +703,14 @@ describe('refusals and failures through the transport (AC-C-11, CL-19, CL-21)', 
     expect(short).toBeInstanceOf(SimTransitionError);
     expect(short).toMatchObject({ code: 'REASON_TOO_SHORT', from: 'ARMED', event: 'stopRecording' });
 
+    // Pass D6 (D156): a stop the Core refuses while the cameras still connect names why, and the rebuilt error carries it.
+    fake.answerOnce('stopSession', { status: 409, body: { error: { code: 'INVALID_STATE', message: 'The recording is still connecting its cameras.', details: { simCode: 'ILLEGAL_STATE', from: 'RECORDING', event: 'stopRecording', reason: 'CAPTURE_NOT_DURABLE' } } } });
+    const connecting = await caught(() => source.actions.stopRecording('Interview complete') as Promise<void>);
+    expect(connecting).toBeInstanceOf(SimTransitionError);
+    expect(connecting).toMatchObject({ code: 'ILLEGAL_STATE', from: 'RECORDING', event: 'stopRecording', reason: 'CAPTURE_NOT_DURABLE' });
+    // A refusal without a reason carries none.
+    expect(short).toMatchObject({ reason: null });
+
     fake.answerOnceFromExample('injectFault', 403, 'demoDisabled');
     const disabled = await caught(() => source.actions.inject('MIC_CLIP') as Promise<void>);
     expect(disabled).toBeInstanceOf(CoreRefusalError);
@@ -736,6 +747,31 @@ describe('refusals and failures through the transport (AC-C-11, CL-19, CL-21)', 
     await expect(create(refusal(403, 'ORIGIN_NOT_ALLOWED', 'This origin may not call the Core server.'))).rejects.toMatchObject({ name: 'CoreRefusalError', code: 'ORIGIN_NOT_ALLOWED' });
     // A union member is an answer of the action, not a rejection: only the last call is reported.
     expect(reports.map((report) => report.source)).toEqual(['live.action.createSession']);
+  });
+
+  it('pass D5 — operation 42, schema v2: the kind travels only when the request names it; 409 EXPORT_IN_PROGRESS has its own reason; the jobId of the 202 is carried when it is one', async () => {
+    const { source } = await signedIn();
+    const [evidenceId, request] = ARGS.exportEvidence;
+    const bodyOf = (kind?: unknown): unknown => (planOf('exportEvidence', [evidenceId, { ...request, ...(kind === undefined ? {} : { kind }) }]) as CallPlan).input.body;
+    // No kind named: the body of a v1 caller, unchanged (the Core reads PACKAGE).
+    expect(bodyOf()).toEqual({ reason: request.reason, destination: request.destination });
+    expect(bodyOf('COMPOSITE')).toEqual({ reason: request.reason, destination: request.destination, kind: 'COMPOSITE' });
+    expect(bodyOf('PACKAGE')).toEqual({ reason: request.reason, destination: request.destination, kind: 'PACKAGE' });
+    expect(bodyOf('VIDEO')).toEqual({ reason: request.reason, destination: request.destination });
+    // The audit and log exports have no kind.
+    expect((planOf('exportAudit', [{ reason: 'Monthly audit review', kind: 'COMPOSITE' }]) as CallPlan).input.body).toEqual({ reason: 'Monthly audit review' });
+
+    fake.answerOnce('exportEvidence', refusal(409, 'EXPORT_IN_PROGRESS', 'An export job is already running for this evidence item.'));
+    const running = await source.actions.exportEvidence(evidenceId, { ...request, kind: 'COMPOSITE' });
+    expect(running).toEqual({ ok: false, status: 409, reason: EXPORT_IN_PROGRESS_REASON });
+    expect(EXPORT_IN_PROGRESS_REASON).toBe('EXPORT_IN_PROGRESS');
+    expect(fake.log.requestsOf('exportEvidence').at(-1)?.body).toEqual({ reason: request.reason, destination: request.destination, kind: 'COMPOSITE' });
+
+    const accepted = (jobId?: unknown) => ({ status: 202, body: { exportId: 'EXP-000032', evidenceId, status: 'QUEUED', ...(jobId === undefined ? {} : { jobId }) } });
+    fake.answerOnce('exportEvidence', accepted('EXPJ-000777'));
+    expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000777' });
+    fake.answerOnce('exportEvidence', accepted());
+    expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032' });
   });
 
   it('a 401 on an export resolves with NOT_SIGNED_IN, and the client is signed out (CL-23)', async () => {

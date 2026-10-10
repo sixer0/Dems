@@ -70,6 +70,9 @@ import { COUNTED_DEVICES } from './model'
 import { OtherDevices } from './other-devices'
 import { DevicesPanel } from './panel'
 import { PortMap } from './port-map'
+import { RegisteredDeviceDrawer } from './registered-device-drawer'
+import { RegisteredDevices } from './registered-devices'
+import { BUILT_IN_SOURCE_IDS } from './registered-devices-model'
 import { reportDevicesError } from './report'
 import { IDENTIFY_BLINKS, IDENTIFY_PERIOD_MS, type DeviceId } from './sim-adapter'
 import { SummaryCards } from './summary-cards'
@@ -106,6 +109,8 @@ export function DevicesPage() {
   // D100 (2): the camera whose PoE cycle waits for the operator's confirmation (Live mode only).
   const live = useWebLive()
   const [cycleFor, setCycleFor] = useState<DeviceId | null>(null)
+  // Row 140 (D137 (2)): the registered device beyond the built-in ids whose details are open ("View device").
+  const [registeredId, setRegisteredId] = useState<string | null>(null)
 
   // R3: the hero (the two large meters) finishes last with one glow bloom on its panel.
   const bloomDelayMs = useHeroBloomDelayMs()
@@ -202,10 +207,16 @@ export function DevicesPage() {
   }, [cycleFor, send])
   const deviceActions = useMemo(() => ({ open: setDrawerId, run, pending }), [run, pending])
   // "View device" of a found camera that is already registered: the drawer for a device this page
-  // draws (CAM-01, CAM-02); for an added camera (`CAM-03`), the selector, where it is an option.
+  // draws (CAM-01, CAM-02). Row 140: an added or local device (`CAM-03`, `MIC-03`) opens its own
+  // details, built from the Core's device list; the drawer shows nothing for an id that list does
+  // not hold, so the selector (where a registered camera is an option) is scrolled to as before.
   const viewDevice = useCallback((deviceId: string) => {
-    if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) setDrawerId(deviceId as DeviceId)
-    else document.getElementById(CAPTURE_SELECTOR_ANCHOR)?.scrollIntoView?.({ block: 'start' })
+    if ((COUNTED_DEVICES as readonly string[]).includes(deviceId)) {
+      setDrawerId(deviceId as DeviceId)
+      return
+    }
+    if (!BUILT_IN_SOURCE_IDS.includes(deviceId)) setRegisteredId(deviceId)
+    document.getElementById(CAPTURE_SELECTOR_ANCHOR)?.scrollIntoView?.({ block: 'start' })
   }, [])
   const camerasStagger = useStaggerVariants(PANEL_BEAT_MS.cameras, ROW_STAGGER_MS)
   const audioStagger = useStaggerVariants(PANEL_BEAT_MS.audio, ROW_STAGGER_MS)
@@ -238,6 +249,8 @@ export function DevicesPage() {
                   <CameraTile cameraId="VIDEO-01" lens={1} />
                   <CameraTile cameraId="VIDEO-02" lens={2} />
                 </motion.div>
+                {/* Row 140 (D137 (2); ux §8f.3): the cameras the Core registered beyond the two built-in ids; nothing when there is none. */}
+                <RegisteredDevices kind="CAMERA" onView={setRegisteredId} />
               </DevicesPanel>
 
               <DevicesPanel id="summary" icon={LayoutGrid} title={t('devices.summary.title')}>
@@ -255,6 +268,8 @@ export function DevicesPage() {
                   <AudioInputCard channel="AUDIO-01" />
                   <AudioInputCard channel="AUDIO-02" />
                 </motion.div>
+                {/* Row 140: the microphones the Core registered beyond the two built-in ids (this Mac's microphone, `MIC-03`). */}
+                <RegisteredDevices kind="MIC" onView={setRegisteredId} />
                 {/* Flow 13 (R-10 AC-2): "Search again" re-reads the microphones connected to the Core (operation 97). */}
                 <MicRescan />
               </DevicesPanel>
@@ -280,6 +295,7 @@ export function DevicesPage() {
           </div>
           </CameraSearchProvider>
           <DeviceDrawer deviceId={drawerId} onClose={() => setDrawerId(null)} />
+          <RegisteredDeviceDrawer deviceId={registeredId} onClose={() => setRegisteredId(null)} />
           <AlertDialog.Backdrop isOpen={cycleFor !== null} onOpenChange={(open) => (open ? undefined : setCycleFor(null))}>
             <AlertDialog.Container size="sm">
               <AlertDialog.Dialog aria-label={t('devices.selector.poe.confirmTitle', { name: cycleFor === null ? '' : labels.name(cycleFor) })} data-testid="camera-restart-dialog">

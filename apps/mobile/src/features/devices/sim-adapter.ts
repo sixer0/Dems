@@ -21,7 +21,7 @@
  *   every role (every seeded role holds DIAGNOSTICS_RUN), as on the web page.
  */
 import { SessionState, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
-import { FaultKind, type AudioFrame, type AuditRow, type BandwidthPoint, type EpochMs, type SimState } from '@dems/shared/sim';
+import { channelOfMicLine, FaultKind, type AudioFrame, type AuditRow, type BandwidthPoint, type EpochMs, type SimState } from '@dems/shared/sim';
 import { DEVICE_CAMERA, isDeviceId, type DeviceId } from './device-ids';
 
 // ── SIM-GAP-M84-1: PoE, book view ────────────────────────────────────────────────────────
@@ -232,7 +232,11 @@ export function deviceLog(rows: readonly AuditRow[], deviceId: DeviceId, limit =
   return out;
 }
 
-/** Microphone channel of a mic device. */
-export function channelOf(deviceId: DeviceId): AudioTrackId | null {
-  return deviceId === 'MIC-01' ? 'AUDIO-01' : deviceId === 'MIC-02' ? 'AUDIO-02' : null;
+/**
+ * Microphone channel of a mic device: the position of its line in the capture configuration
+ * (`captureMicLines(state)`, input order; ruling D137, integration pass D5). Without lines, the
+ * built-in pair; a device that is neither line has no meter channel.
+ */
+export function channelOf(deviceId: DeviceId, mics: readonly { readonly inputId: string }[] = []): AudioTrackId | null {
+  return channelOfMicLine(mics, deviceId);
 }

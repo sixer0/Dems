@@ -12,7 +12,7 @@
 // | Operations 95 and 96 carry `credential: { username, secret }` exactly as typed (the password with its spaces), once per press | "sent" |
 // | A refused password, the state before row 84 (`503 CREDENTIAL_STORE_NOT_READY`) and a `422` leave NEITHER value in the error sink, the page's log, a console call, a toast, the markup, a query key, a query entry or error, the mutation cache, a URL, the location or browser storage | "reported nowhere" |
 // | No value in any attribute of either field, nor anywhere in the markup, while it is typed (ux §14.3) | "reported nowhere" |
-// | First line: the form check holds a field name and a message key, never a value. Second line: the sink blanks the pair by its member names. A `{ field: 'credential.password', value }` record is NOT blanked by the second line, so the dialog must never build one | "the two lines" |
+// | First line: the form check holds a field name and a message key, never a value. Second line: the sink blanks the pair by its member names, and since integration pass D1a also a `{ field: 'credential.password', value }` / `{ field: 'credential.username', value }` record (the gap D-137-7 is closed; pass D2 item 7) | "the two lines" |
 // | Negative control: the same search finds both values in the bodies that were sent | "sent" |
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
@@ -226,8 +226,15 @@ describe('the typed camera user name and password (Live mode, fake transport)', 
     const record = redactCredentials(JSON.stringify({ credential: { username: USER, secret: PASS } }))
     expect(record).not.toContain('CANARY')
     expect(record).not.toContain('s3cr3t')
-    // Negative control, and the reason the first line is tested: a record shaped `{ field, value }` is NOT
-    // blanked by the second line (the member name says nothing). The dialog never builds one.
-    expect(redactCredentials(JSON.stringify({ field: 'credential.password', value: PASS }))).toContain('CANARY')
+    // D-137-7, closed by integration pass D1a (pass D2 item 7): a record that NAMES its field,
+    // `{ field, value }`, is blanked too — the password and the account name. The dialog still never builds one.
+    for (const [field, value] of [['credential.password', PASS], ['credential.username', USER]] as const) {
+      const named = redactCredentials(JSON.stringify({ field, value }))
+      expect(named).not.toContain('CANARY')
+      expect(named).not.toContain('s3cr3t')
+      expect(named).toContain(field)
+    }
+    // Control: the rule reads the field's name, not every `value` — a record about another field keeps its value.
+    expect(redactCredentials(JSON.stringify({ field: 'model', value: 'kept-as-typed' }))).toContain('kept-as-typed')
   })
 })

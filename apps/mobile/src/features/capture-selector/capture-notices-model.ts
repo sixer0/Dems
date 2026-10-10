@@ -8,15 +8,17 @@
  * |---|---|---|
  * | The notifications of situations A and B | `captureNoticesOf` | one per ACTIVE alert of the `alerts` slice, told apart by `params.reason` — never by a fault kind, never counted or stored by the client (§8e.1) |
  * | The sentence of an unreachable pre-check row | `precheckUnreachableOf` | from `params.rule` of the item (D114), never "lens fault" / "no signal" |
- * | Whether a device carries the badge | `developmentSourceOf` | only from a `sourceClass` the Core sent, and only in real capture (D91); absent = no badge |
+ * | Whether a device carries the badge | `developmentSourceOf` | only from a `sourceClass` the Core sent (D131); absent = no badge, whatever the Core's demo flag says |
  * | The state of a local device | `localDeviceStateOf` | §8f.3: the row keeps its name and its badge; nothing replaces it |
  * | What an answer of operation 97 means | `classifyRescanAnswer` | §8g.1 states 4, 6, 7, 8 |
+ * | Situation C (row 139): a start with no camera, and one camera of two | `failedStartOf`, `camerasNotConnectedOf` | a failed start is FAULT with `captureDurable: false`; its cause is the alert's `params.reason`; the degraded warning is the `SESSION_START` phase |
  *
  * Names, never values (§8e.1): a notification carries a device id and counts. The LABEL is resolved
  * here from the id; no address, no user name and no URL is read from an alert.
  */
 import { CaptureInputScanSchema, type CaptureInputScan } from '@dems/shared/api';
 import type { PrecheckItem, SimAlert } from '@dems/shared/sim';
+import { micInputName, micInputNumber } from './mic-input-name';
 
 // ── Flow 11: situations A and B ──────────────────────────────────────────────────────────
 
@@ -107,10 +109,14 @@ export type NoticeTranslate = (key: string, options?: Record<string, unknown>) =
 
 const NOTICE_KEYS = 'features.capture-selector.notice';
 
-/** "Camera 2 (CAM-02)"; a device the vocabulary does not name is named by its id. */
+/**
+ * "Camera 2 (CAM-02)", "Microphone 3 (MIC-03)"; a device the vocabulary does not name is named by
+ * its id. A microphone is named by the number of the id the Core sent (`micInputName`, pass D2).
+ */
 export function deviceLabel(t: NoticeTranslate, deviceId: string): string {
   const key = deviceNameKey(deviceId);
-  return key === null ? deviceId : t(`${NOTICE_KEYS}.device`, { name: t(key), id: deviceId });
+  if (key !== null) return t(`${NOTICE_KEYS}.device`, { name: t(key), id: deviceId });
+  return micInputNumber(deviceId) === null ? deviceId : t(`${NOTICE_KEYS}.device`, { name: micInputName(t, deviceId), id: deviceId });
 }
 
 export function noticeTitle(t: NoticeTranslate, notice: CaptureNotice): string {
@@ -177,32 +183,33 @@ export interface DevelopmentSourceInput {
   readonly deviceKind: string;
   /** The data comes from a Core server (Live mode), not from the in-app simulator. */
   readonly live: boolean;
-  /** The Core's demo flag of the signed-in session: true means the Core runs SIMULATED. */
-  readonly demoControls: boolean;
 }
 
 /**
- * The badge of a device, or null. Drawn ONLY when all of this holds:
+ * The badge of a device, or null. Drawn ONLY when both of this hold:
  *
  * | Condition | Why |
  * |---|---|
  * | the Core sent `sourceClass: 'DEVELOPMENT'` | §8f.1 "Decided by the Core": no local rule, no switch, no filter; absent = no badge |
- * | the data is the Core server's (Live mode) | Simulated client mode never badges devices (D83): the mode banner says it |
- * | the Core's demo flag is off | D91 ruling R-2 option A: only in real capture, never when the Core runs SIMULATED |
+ * | the data is the Core server's (Live mode) | Simulated client mode never badges devices (D83): there is no Core, and the mode banner says it |
+ *
+ * Decision D131 (it settles D129 (2) for both clients): nothing is inferred from the session's demo
+ * flag (`demoControls`). "Never when the Core runs SIMULATED" (D91) is kept by the Core: in simulated
+ * capture it sends no `sourceClass` for its built-in devices, so there is nothing to draw.
  */
 export function developmentSourceOf(input: DevelopmentSourceInput): DevelopmentSourceKind | null {
   if (input.sourceClass !== 'DEVELOPMENT') return null;
-  if (!input.live || input.demoControls) return null;
+  if (!input.live) return null;
   if (input.adapter === 'LOCAL_DEVICE') return input.deviceKind === 'MIC' ? 'localMicrophone' : 'localCamera';
   return 'test';
 }
 
 /**
- * The badge of a search candidate, by the same three conditions. A candidate is never a local
+ * The badge of a search candidate, by the same two conditions. A candidate is never a local
  * device (D83 O-8): a development candidate is a test source.
  */
-export function candidateSourceOf(input: { development: boolean; live: boolean; demoControls: boolean }): DevelopmentSourceKind | null {
-  return input.development && input.live && !input.demoControls ? 'test' : null;
+export function candidateSourceOf(input: { development: boolean; live: boolean }): DevelopmentSourceKind | null {
+  return input.development && input.live ? 'test' : null;
 }
 
 // ── Flow 12: the local-device states (§8f.3) ─────────────────────────────────────────────
@@ -284,3 +291,39 @@ export function inputScanOf(body: unknown): CaptureInputScan | null {
 
 /** The gated control of flow 13 on these clients (§11; check `M4-MIC-RESCAN-T` / `-P`). */
 export const RESCAN_GATED_CONTROLS = ['G17'] as const;
+
+// ── Flow 11, situation C: a session start with no camera (blueprint row 139; ux §8e.2; D72(k), D84, D91) ──
+
+/** `params.reason` of the `CAPTURE_FAULT` alert of a start at which no camera connected (C3 §5.4). */
+export const NOTICE_REASON_NO_CAMERA_CONNECTED = 'NO_CAMERA_CONNECTED';
+
+/** Why a recording did not start: "no camera" only when the Core says so on its alert. Either way nothing was recorded. */
+export type FailedStart = typeof NOTICE_REASON_NO_CAMERA_CONNECTED | 'OTHER';
+
+/**
+ * The failed start a session is in, or null. A FAILED START is a session in FAULT whose payload says
+ * `captureDurable: false` (D84, D91 ruling R-1 option A): the capture ended before its first durable
+ * fragment, so there is no evidence file and no evidence item, and nothing to recover. Only an
+ * explicit `false` counts: a session without the member (the simulator, an interrupted recording)
+ * is not one.
+ */
+export function failedStartOf(session: unknown, alerts: readonly Pick<SimAlert, 'kind' | 'active' | 'params'>[]): FailedStart | null {
+  if (typeof session !== 'object' || session === null) return null;
+  const facts = session as { state?: unknown; captureDurable?: unknown };
+  if (facts.state !== 'FAULT' || facts.captureDurable !== false) return null;
+  const named = alerts.some((alert) => alert.active && alert.kind === 'CAPTURE_FAULT' && alert.params?.['reason'] === NOTICE_REASON_NO_CAMERA_CONNECTED);
+  return named ? NOTICE_REASON_NO_CAMERA_CONNECTED : 'OTHER';
+}
+
+/** "No camera connected" / "Nothing was recorded." (shared words, ux §14.2). The body is said in full for every failed start. */
+export function failedStartWords(t: NoticeTranslate, failed: FailedStart): { title: string; body: string } {
+  return {
+    title: failed === NOTICE_REASON_NO_CAMERA_CONNECTED ? t('common.captureNotice.noCamera.title') : t('common.session.failedStart.title'),
+    body: t('common.captureNotice.noCamera.body'),
+  };
+}
+
+/** The cameras a degraded session start names as not connected: the active `SESSION_START` notices of cameras, newest first. */
+export function camerasNotConnectedOf(alerts: readonly SimAlert[]): Extract<CaptureNotice, { kind: 'unreachable' }>[] {
+  return captureNoticesOf(alerts).flatMap((notice) => (notice.kind === 'unreachable' && notice.phase === 'SESSION_START' && notice.deviceKind === 'CAMERA' ? [notice] : []));
+}

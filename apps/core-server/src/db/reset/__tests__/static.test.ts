@@ -46,6 +46,7 @@ describe('the scan itself', () => {
       'src/db/reset/index.ts',
       'src/db/reset/kept-tables.ts',
       'src/db/reset/names.ts',
+      'src/db/reset/package-removal.ts',
       'src/db/reset/plan.ts',
       'src/db/reset/real-evidence.ts',
       'src/db/reset/routine.ts',

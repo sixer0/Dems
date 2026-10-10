@@ -1,8 +1,10 @@
 /**
- * The twelve kept tables and how their rows cross a reset (plan row W29; database contract §8.5
+ * The thirteen kept tables and how their rows cross a reset (plan row W29; database contract §8.5
  * "Kept tables", R-3, R-5c, R-5d, R-5e, R-6; spec §12.4; SA-08; the three capture tables and the
  * `upsert` mode are dbc-3 §E.1 / blueprint row 54, OD-19, D-DB-08; `stt_config` joins the same set
- * as the twelfth by dbc-3 §B.13/§E.1 and blueprint row 114, R-8 of D20 confirmed at D24).
+ * as the twelfth by dbc-3 §B.13/§E.1 and blueprint row 114, R-8 of D20 confirmed at D24; the
+ * thirteenth is `core_media_store`, erratum PE-0013-01 / ruling D166: where the Core keeps its
+ * media is a fact of the installation, and the command-line reset reads it).
  *
  * Pure: this file builds statement text from the typed schema and compares row images. It opens
  * nothing and sends nothing.
@@ -62,12 +64,13 @@ function kept(table: PgTable, mode: CarryMode, key: string): KeptTable {
 }
 
 /**
- * The twelve kept tables, in the carry-over order of R-5c: parents before the rows that name
+ * The thirteen kept tables, in the carry-over order of R-5c: parents before the rows that name
  * them (a device names its pairing code; a session and a token name a device). The three capture
  * tables of OD-19 join it in their own FK order — devices, then credentials, then the selector
  * that names a device (dbc-3 §E.1) — followed by the STT configuration singleton of R-8 (its one
- * foreign key names an operator, a table the seed has already written), and the lineage stays
- * last.
+ * foreign key names an operator, a table the seed has already written), then the media store
+ * root (no foreign key; the seed writes no row of it, so the carried row is simply inserted), and
+ * the lineage stays last.
  */
 export const KEPT_TABLES: readonly KeptTable[] = Object.freeze([
   kept(schema.registryCounters, 'update', 'name'),
@@ -81,6 +84,7 @@ export const KEPT_TABLES: readonly KeptTable[] = Object.freeze([
   kept(schema.captureDeviceCredentials, 'upsert', 'device_id'),
   kept(schema.captureConfig, 'upsert', 'singleton'),
   kept(schema.sttConfig, 'upsert', 'singleton'),
+  kept(schema.coreMediaStore, 'upsert', 'singleton'),
   kept(schema.auditChainHistory, 'insert', 'reset_no'),
 ]);
 
@@ -216,7 +220,7 @@ export interface PairingCodeImage {
   readonly closedBy: string | null;
 }
 
-/** What the routine read from one database: the images of the twelve kept tables. */
+/** What the routine read from one database: the images of the thirteen kept tables. */
 export interface KeptImages {
   /** By SQL table name; each list is in primary-key order. */
   readonly images: Readonly<Record<string, readonly string[]>>;

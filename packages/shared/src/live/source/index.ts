@@ -41,6 +41,7 @@ export {
   CAPTURE_CONFIG_CHANGE_OPERATION_INDEX,
   DEVICE_COMMAND_OPERATION_INDEX,
   LIVE_BINDINGS,
+  EXPORT_IN_PROGRESS_REASON,
   LIVE_BINDING_NAMES,
   LIVE_RESULT_DISCRIMINANT,
   LIVE_VALUE_ACTION_NAMES,
@@ -55,6 +56,7 @@ export {
   type LiveBinding,
   type LiveBindings,
   type LiveDeviceDescription,
+  type LiveExportAccepted,
 } from './bindings';
 export { createLiveClock, type LiveClock } from './clock';
 export {

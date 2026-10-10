@@ -53,7 +53,7 @@ describe('F-1: back-pressure never hides a sign of life or an acknowledgement', 
     const { supervisor, fake, clock } = await recording({ eventQueueLimit: 4 });
     supervisor.on('progress', never);
     for (let step = 0; step < 12; step += 1) fake.last().progress(`S${step}`, 0);
-    await expect(supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY)).resolves.toBeUndefined();
+    await expect(supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY)).resolves.toBeNull();
     // The next worker of the session starts with the source the operator chose.
     fake.last().exit(1);
     clock.advance(LIMITS.backoffBaseMs);
@@ -133,8 +133,8 @@ describe('F-4: eventQueueLimit is a hard bound', () => {
     say(() => worker.progress('B', 0.2)); // the same step: the newer value replaces the waiting one
     say(() => worker.telemetry(1));
     say(() => worker.telemetry(2)); // replaces telemetry 1
-    say(() => worker.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY'));
-    say(() => worker.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY')); // the same warning, still waiting: said once
+    say(() => worker.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01'));
+    say(() => worker.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01')); // the same warning, still waiting: said once
     say(() => worker.progress('C', 0));
     // Full: [B, T2, W, C]. Telemetry is the first to go, then the oldest progress; a warning stays.
     expect(supervisor.status()).toMatchObject({ queuedEvents: 4, droppedTelemetry: 1, droppedEvents: 2 });
@@ -151,7 +151,7 @@ describe('F-4: eventQueueLimit is a hard bound', () => {
     release();
     await flush();
     // The warning survived all of it; the newest three steps did too.
-    expect(delivered).toEqual(['PA:0', 'WPRIMARY', 'PX497:0', 'PX498:0', 'PX499:0']);
+    expect(delivered).toEqual(['PA:0', 'WMIC-01', 'PX497:0', 'PX498:0', 'PX499:0']);
     expect(supervisor.status().queuedEvents).toBe(0);
   });
 

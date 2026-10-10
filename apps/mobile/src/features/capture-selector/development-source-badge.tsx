@@ -8,9 +8,9 @@
  * tooltip; when space is short the device name is shortened, the badge stays.
  *
  * Decided by the Core (`developmentSourceOf`): the badge is drawn only from a `sourceClass` the Core
- * sent on the device (`captureDevices` slice, operation 77), only in Live mode and only while the
- * Core's demo flag is off. A device that carries no `sourceClass` draws NOTHING — no placeholder,
- * no wrapper. The client has no development switch, no filter and no local rule.
+ * sent on the device (`captureDevices` slice, operation 77) and only in Live mode. The session's demo
+ * flag is NOT read (D131). A device that carries no `sourceClass` draws NOTHING — no placeholder, no
+ * wrapper. The client has no development switch, no filter and no local rule.
  */
 import { FlaskConical } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
@@ -20,11 +20,11 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import { useMobileLive } from '@/runtime';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
+import { micInputName } from './mic-input-name';
 
-/** Whether this client may draw the badge at all: Live data, and a Core that does not run SIMULATED (D91). */
-export function useSourceBadgeMode(): { readonly live: boolean; readonly demoControls: boolean } {
-  const live = useMobileLive();
-  return { live: live !== null, demoControls: live?.session?.demoControls === true };
+/** Whether this client shows a Core server's data (Live mode): the one fact the badge needs beside `sourceClass` (D131). */
+export function useSourceBadgeMode(): { readonly live: boolean } {
+  return { live: useMobileLive() !== null };
 }
 
 /** The badge kind of a registered capture device, or null (unknown device, no `sourceClass`, Simulated mode). */
@@ -38,6 +38,29 @@ export function useDevelopmentSource(deviceId: string | null): DevelopmentSource
   if (facts === '') return null;
   const [sourceClass = '', adapter = '', deviceKind = ''] = facts.split('|');
   return developmentSourceOf({ sourceClass: sourceClass === '' ? undefined : sourceClass, adapter: adapter === '' ? undefined : adapter, deviceKind, ...mode });
+}
+
+/**
+ * Names a microphone input from the id the Core sent (integration pass D2, item 5): "MIC 1",
+ * "Microphone 3", or "Core Mac's microphone" when the Core says the device behind the id is its
+ * local microphone (`micInputName`). The device facts are read as one flat string, so the result
+ * compares by value (F74-13) and a meter frame renders nothing.
+ */
+export function useMicInputName(): (inputId: string) => string {
+  const { t } = useTranslation();
+  const { live } = useSourceBadgeMode();
+  const facts = useSim((s) =>
+    s.captureDevices.devices
+      .filter((device) => device.kind === 'MIC' && device.sourceClass !== undefined && device.sourceClass !== null)
+      .map((device) => `${device.id}|${device.sourceClass ?? ''}|${device.adapter ?? ''}`)
+      .join(','),
+  );
+  return (inputId) => {
+    const entry = facts === '' ? undefined : facts.split(',').find((fact) => fact.startsWith(`${inputId}|`));
+    const [, sourceClass = '', adapter = ''] = entry === undefined ? [] : entry.split('|');
+    const source = entry === undefined ? null : developmentSourceOf({ sourceClass, adapter: adapter === '' ? undefined : adapter, deviceKind: 'MIC', live });
+    return micInputName(t, inputId, source);
+  };
 }
 
 export interface SourceBadgeProps {
@@ -71,6 +94,26 @@ export function DevelopmentSourceBadge({ deviceId, testID }: DevelopmentSourceBa
   const kind = useDevelopmentSource(deviceId);
   if (kind === null) return null;
   return <SourceBadge kind={kind} testID={testID ?? `development-source-${deviceId ?? 'none'}`} />;
+}
+
+/**
+ * The badge of the camera that feeds a video track now (Session Live camera tile, MB-03; Home tile,
+ * MB-01 — ux §8f.2 "Session Monitor tiles"): the line of the open session's selector snapshot, else
+ * of the Core's current selector. Nothing is drawn unless the Core sent the development class.
+ */
+export function TrackSourceBadge({ trackId, testID }: { trackId: string; testID?: string }) {
+  const deviceId = useSim((s) => (s.session?.captureConfig ?? s.captureConfig).cameras.find((line) => line.trackId === trackId)?.deviceId ?? null);
+  return <DevelopmentSourceBadge deviceId={deviceId} testID={testID ?? `development-source-${trackId}`} />;
+}
+
+/**
+ * The badge of the microphone behind an input id (Session Live mic card, Home mic tile): the device
+ * of the selector line that holds the input, else the device of the same id (D106 (4): a microphone
+ * line's device id IS its input id).
+ */
+export function MicInputSourceBadge({ inputId, testID }: { inputId: string; testID?: string }) {
+  const deviceId = useSim((s) => (s.session?.captureConfig ?? s.captureConfig).mics.find((line) => line.inputId === inputId)?.deviceId ?? inputId);
+  return <DevelopmentSourceBadge deviceId={deviceId} testID={testID ?? `development-source-${inputId}`} />;
 }
 
 /**

@@ -31,7 +31,8 @@
  *        (SEC35-19; M4-LOCK-1) - the unit is left before the action is called.
  *   422  `INVALID_INPUT`: a line of operation 78 names no registered device of the right class (a
  *        discovery candidate is never one), a profile that is no code, one microphone behind both
- *        inputs, one camera on both tracks with one profile; a device the adapter registry refuses
+ *        inputs, one camera on both tracks with one profile, a replacing mic pair (lines with
+ *        `role`, decision D133 (1)) that is not one PRIMARY and one STANDBY line; a device the adapter registry refuses
  *        for the running operation carries `details.reason: DEVELOPMENT_SOURCE_NOT_ALLOWED`.
  *   503  the engine is not running, or the unit did not commit.
  *
@@ -59,6 +60,7 @@ import { CaptureAdapterError, CaptureAdapterRefusal, type CaptureDeviceRegistry 
 import type { DurableSlices } from '../../db/mapping';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
+import { readMicTransports } from './store';
 
 /** The operations this module answers, in registry order (operations 76 to 80). */
 export const CAPTURE_CONFIG_MODULE_OPERATIONS = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic'] as const;
@@ -158,13 +160,35 @@ function assertAssignable(registry: Pick<CaptureDeviceRegistry, 'assertAssignabl
   }
 }
 
+/**
+ * PAIR REPLACEMENT (operation 78 with `role` on its mic lines; decision D133 (1)): a line that
+ * names no transport, for an input the selector does not hold yet, takes the transport of its
+ * registry row. The replicated device slice has no transport member, so without this the new slot
+ * would say a code the stored row does not - and a restarted Core would publish another selector.
+ * One read of the registry, only for such a line; a line of the earlier form is returned as it is.
+ */
+async function withRegisteredTransports(app: FastifyInstance, change: CaptureConfigChange): Promise<CaptureConfigChange> {
+  if (change.kind !== 'UPDATE' || change.mics === undefined || !change.mics.some((line) => line.role !== undefined)) return change;
+  const held = new Set(app.engine.slice('captureConfig').mics.map((mic) => mic.inputId));
+  if (change.mics.every((line) => line.transport !== undefined || held.has(line.inputId))) return change;
+  const transports = await readMicTransports(app.db.pool);
+  return {
+    ...change,
+    mics: change.mics.map((line) => {
+      const transport = line.transport ?? (held.has(line.inputId) ? undefined : transports.get(line.deviceId));
+      return transport === undefined ? line : { ...line, transport };
+    }),
+  };
+}
+
 /** Registers operations 76 to 80 on the app. Called once, by the module's plugin. */
 export function registerCaptureConfigRoutes(app: FastifyInstance, seams: CaptureConfigRouteSeams): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
 
   /** One edit as one unit of the engine. Resolves, after the commit, with the selector as it is stored. */
-  const edit = async (request: FastifyRequest, operationId: CaptureConfigModuleOperation, change: CaptureConfigChange): Promise<CaptureConfigSliceBody> => {
-    assertStorable(change);
+  const edit = async (request: FastifyRequest, operationId: CaptureConfigModuleOperation, requested: CaptureConfigChange): Promise<CaptureConfigSliceBody> => {
+    assertStorable(requested);
+    const change = await withRegisteredTransports(app, requested);
     const outcome = await app.engine.run(`captureConfig.${operationId}`, async (scope) => {
       const before = scope.pending();
       // The simulator's order: an unknown path ID is 404 also while the selector is locked.

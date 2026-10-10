@@ -21,6 +21,9 @@ import { fontFamily, palette, toneHex, toneTextHex, typography } from '@dems/sha
 import { GlowRing } from '@/components/composed/glow-ring';
 import { RollingNumber } from '@/components/composed/rolling-number';
 import { SectionCard, StatusChip } from '@/components/kit';
+import { failedStartWords } from '@/features/capture-selector/capture-notices-model';
+import { useFailedStart } from '@/features/session-live/capture-start-notice';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { crossFadeIn, layoutTransition, useAmbientLoop, useMotionPolicy, useMotionSettings } from '@/motion';
 import { durationText, type FlagLine, type HomeStatus } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, beatDelay, homeEnter } from './home-motion';
@@ -45,6 +48,16 @@ export interface SystemStatusCardProps {
   variant: 'card' | 'hero';
   /** Hero ring size in dp (clamped by GlowRing to 240–340). */
   heroSize?: number;
+}
+
+/**
+ * Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A): RECORDING before the first durable
+ * fragment (`captureDurable: false`) is "Connecting cameras…" — no REC chip, no timer, no red ring,
+ * nothing that says a recording exists. A session without the member reads as recording, as before.
+ */
+function useConnectingStatus(status: HomeStatus): boolean {
+  const connecting = useConnectingCameras();
+  return connecting && status.kind === 'RECORDING';
 }
 
 export function SystemStatusCard({ status, variant, heroSize = 280 }: SystemStatusCardProps) {
@@ -91,25 +104,29 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
   const policy = useMotionPolicy();
   const settings = useMotionSettings();
   const focused = useIsFocused();
+  const connecting = useConnectingStatus(status);
   const breathing = useAmbientLoop(HOME_LOOPS.ringBreath, { paused: !focused });
   useAmbientLoop(HOME_LOOPS.ringRotate, { active: mode === 'hero', paused: !focused });
-  useAmbientLoop(HOME_LOOPS.ringRec, { active: status.ring === 'recording', paused: !focused });
-  const Icon = SHIELD[status.kind];
-  const tone = toneHex[status.tone];
+  useAmbientLoop(HOME_LOOPS.ringRec, { active: status.ring === 'recording' && !connecting, paused: !focused });
+  const Icon = connecting ? SHIELD.UNKNOWN : SHIELD[status.kind];
+  const tone = connecting ? palette.gray : toneHex[status.tone];
+  // The neutral ring while the cameras connect: not the red recording ring, not a fault colour.
+  const ringState = connecting ? 'offline' : status.ring;
+  const stateWord = connecting ? t('common.session.trackConnecting') : t(`common.systemState.${status.kind}`);
 
   return (
     <GlowRing
       testID="home-status-ring"
       mode={mode}
       size={size}
-      state={status.ring}
+      state={ringState}
       motion={policy}
       paused={!breathing}
       sweepDelayMs={beatDelay(HOME_BEATS.ringSweep, settings)}
-      accessibilityLabel={t('features.dashboard.status.ringLabel', { state: t(`common.systemState.${status.kind}`) })}
+      accessibilityLabel={t('features.dashboard.status.ringLabel', { state: stateWord })}
     >
       {mode === 'mini' ? (
-        status.kind === 'RECORDING' ? (
+        status.kind === 'RECORDING' && !connecting ? (
           <Icon size={22} color={tone} fill={tone} />
         ) : (
           <Icon size={34} color={palette.black} fill={status.kind === 'READY' ? palette.gold : tone} strokeWidth={1.75} />
@@ -125,9 +142,9 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
             adjustsFontSizeToFit
             minimumFontScale={0.5}
             maxFontSizeMultiplier={1.2}
-            style={[styles.stateWord, { color: status.kind === 'READY' ? palette.gold : toneTextHex[status.tone] }]}
+            style={[styles.stateWord, { color: connecting ? palette.gray : status.kind === 'READY' ? palette.gold : toneTextHex[status.tone] }]}
           >
-            {t(`common.systemState.${status.kind}`)}
+            {stateWord}
           </Text>
           {status.kind === 'READY' ? (
             <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.ringFlags}>
@@ -145,16 +162,24 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const session = useHomeSession();
+  const connecting = useConnectingStatus(status);
+  // Pass D7 item 3 (ux §8e.2 situation C): a session that recorded nothing says so, in full.
+  const failedStart = useFailedStart();
+  const failedWords = failedStart === null ? null : failedStartWords(t, failedStart);
   const colour = status.kind === 'RECORDING' || status.kind === 'UNKNOWN' ? palette.foreground : toneTextHex[status.tone];
   const centred = align === 'center';
   const extra = status.flags.length - MAX_FLAGS;
 
   const subtitle =
-    status.kind === 'ATTENTION'
-      ? t('features.dashboard.status.ATTENTION.subtitle', { count: status.flags.length })
-      : status.kind === 'RECORDING'
-        ? t('features.dashboard.status.RECORDING.subtitle', { sessionId: session.sessionId ?? '' })
-        : t(`${status.copyKey}.subtitle`);
+    failedWords !== null
+      ? `${failedWords.title}. ${failedWords.body}`
+      : status.kind === 'ATTENTION'
+        ? t('features.dashboard.status.ATTENTION.subtitle', { count: status.flags.length })
+        : status.kind === 'RECORDING'
+          ? connecting
+            ? (session.sessionId ?? '')
+            : t('features.dashboard.status.RECORDING.subtitle', { sessionId: session.sessionId ?? '' })
+          : t(`${status.copyKey}.subtitle`);
 
   return (
     <Animated.View key={status.kind} entering={crossFadeIn(settings)} style={[styles.text, centred ? styles.textCentre : null]}>
@@ -163,7 +188,7 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
         maxFontSizeMultiplier={1.2}
         style={[styles.title, { color: colour }, centred ? styles.centre : null]}
       >
-        {t(`${status.copyKey}.title`)}
+        {connecting ? t('common.session.connectingCameras') : t(`${status.copyKey}.title`)}
       </Text>
       <Text
         testID="home-status-subtitle"
@@ -172,7 +197,7 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
       >
         {subtitle}
       </Text>
-      {status.kind === 'RECORDING' ? <RecRow centred={centred} /> : null}
+      {status.kind === 'RECORDING' && !connecting ? <RecRow centred={centred} /> : null}
       {status.kind === 'ATTENTION' || status.kind === 'CRITICAL' ? (
         <View testID="home-status-flags" style={[styles.flags, centred ? styles.textCentre : null]}>
           {status.flags.slice(0, MAX_FLAGS).map((flag) => (

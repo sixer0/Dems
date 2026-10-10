@@ -52,7 +52,7 @@ export interface BulkFixture {
   readonly expectedHead: { readonly seq: number; readonly hash: string };
   /** Rows inserted per table, by SQL name. */
   readonly added: Readonly<Record<string, number>>;
-  /** The row count of each of the 42 tables after the load, by SQL name. */
+  /** The row count of each of the 43 tables after the load, by SQL name. */
   readonly expectedCounts: Readonly<Record<string, number>>;
   /** SHA-256 of a stable dump of `rows` and `updates`. */
   readonly digest: string;

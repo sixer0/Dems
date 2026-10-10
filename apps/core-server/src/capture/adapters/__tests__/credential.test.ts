@@ -174,7 +174,19 @@ describe('the canary through every channel of the layer', () => {
       Object.entries(rules).flatMap(([key, rule]) => [CANARY.secret, CANARY.username, WITH_USER_PART, String(sealed)].filter((value) => rule.accepts(value)).map((value) => `${type}.${key} takes ${value}`)),
     );
     expect(takers).toEqual([]);
-    expect(captureTypes.flatMap(([, rules]) => Object.keys(rules)).filter((key) => /secret|credential|passw|user|locator|url|uri/i.test(key))).toEqual([]);
+    // A key NAMED after credential material exists only as a yes/no fact (`credentialSet` of C3 §5.2, a boolean):
+    // one whose rule takes anything but `true` / `false` is a finding.
+    const notAFlag = (rule: { accepts(value: unknown): boolean }): boolean => ['', 'x', CANARY.secret, 0, 1, null, [], {}].some((value) => rule.accepts(value)) || !rule.accepts(true) || !rule.accepts(false);
+    const named = captureTypes.flatMap(([type, rules]) => Object.entries(rules).filter(([key]) => /secret|credential|passw|user|locator|url|uri/i.test(key)).map(([key, rule]) => ({ name: `${type}.${key}`, rule })));
+    expect(named.filter(({ rule }) => notAFlag(rule)).map(({ name }) => name)).toEqual([]);
+    expect(named.map(({ name }) => name)).toEqual(['CAPTURE_CANDIDATE_ADOPTED.credentialSet']);
+    expect(notAFlag(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CREDENTIAL_SET.deviceId)).toBe(true);
+    // Pass D1a (D132): `endpointRef` is a closed form (`urn:uuid:<UUID>`), not a length: no free text, a reference kept.
+    for (const type of ['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CANDIDATE_ADOPTED'] as const) {
+      const rule = SERVER_AUDIT_DETAIL_RULES[type].endpointRef;
+      expect(['free text', 'hunter2', 'urn:uuid:', 'uuid:00000000-0000-4000-8000-000000000001', 'urn:uuid:00000000-0000-4000-8000-000000000001 x', 'x'.repeat(40)].filter((value) => rule.accepts(value))).toEqual([]);
+      expect(rule.accepts('urn:uuid:00000000-0000-4000-8000-000000000001')).toBe(true);
+    }
 
     // Negative control: the same channels DO show a value that is passed in the clear.
     const control = captureLog();

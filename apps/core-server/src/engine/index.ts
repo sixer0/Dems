@@ -66,9 +66,10 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { followClock, raiseClockFloor } from '../core';
 import { registerStatePositionHeaders, statePositionOf } from './api-headers';
+import { EngineError } from './errors';
 import { createEngineHost, isEngineControl, type EngineControl } from './host';
 import { ENGINE_BOOT_STEP } from './limits';
-import type { EngineHost } from './types';
+import type { EngineCaptureDoors, EngineHost } from './types';
 
 export { actorAuth, isSignedOut, withActorScope } from './actor-scope';
 export { registerStatePositionHeaders, statePositionOf, type StatePosition, type StatePositionHeaders } from './api-headers';
@@ -83,7 +84,12 @@ export {
   type HostedActionResult,
 } from './hosted-actions';
 export { createEngineHost, isEngineControl, type EngineControl, type EngineHostDependencies } from './host';
-export { registerCaptureDeviceIn, type InternalActions } from './internal-actions';
+export { markCaptureConnectingIn, registerCaptureDeviceIn, switchCaptureAudioSourceIn, type InternalActions } from './internal-actions';
+// Seal block (blueprint row 82): the three INTERNAL sealing actions, beside the seam.
+export { sealDoorsOf } from './seal-doors';
+export { FACT_DOOR_LABEL, factDoorsOf, type EngineFactDoors } from './fact-doors';
+export type { EngineSealDoors } from './types';
+export { CAPTURE_FAULT_KINDS, type AudioSourceSwitch, type AudioSourceSwitched } from './capture-session';
 export {
   ENGINE_BOOT_STEP,
   ENGINE_TICK_MS,
@@ -97,6 +103,8 @@ export { createSystemTimer, type EngineTimer } from './timer';
 export type {
   EngineChangeCause,
   EngineDeltaOp,
+  CaptureEndOutcome,
+  EngineCaptureDoors,
   EngineHost,
   EngineMeterFrame,
   EngineOutcome,
@@ -110,6 +118,16 @@ export type {
 export function engineControl(app: FastifyInstance): EngineHost & EngineControl {
   const engine = app.engine;
   if (!isEngineControl(engine)) throw new Error('app.engine is not the host of src/engine: the seam was replaced');
+  return engine;
+}
+
+/**
+ * The capture doors of the host behind the seam (blueprint row 71). Throws `ENGINE_ACTION_NOT_HOSTED`
+ * when a test put an object behind the seam that is not the host of this folder: the capture of a
+ * real recording is never recorded on an engine that cannot hold it.
+ */
+export function captureDoorsOf(engine: EngineHost): EngineCaptureDoors {
+  if (!isEngineControl(engine)) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the engine behind the seam is not the host of src/engine: it has no capture doors');
   return engine;
 }
 

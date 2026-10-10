@@ -631,18 +631,18 @@ describe('the list queries (API-9; decision D51)', () => {
   });
 });
 
-describe('the 48 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9)', () => {
+describe('the 49 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9; pass D6 CS-09: applyStorageVolume, 48 -> 49)', () => {
   const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
   const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
 
   it('names exactly the actions of the real simulator', () => {
     const { actions } = rig('idle');
     expect([...names].sort()).toEqual(Object.keys(actions).sort());
-    expect(names).toHaveLength(48);
+    expect(names).toHaveLength(49);
   });
 
-  it('33 are hosted, 9 server-native, 1 is not available and 5 are internal', () => {
-    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 5]);
+  it('33 are hosted, 9 server-native, 1 is not available and 6 are internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 6]);
     // Blueprint row 66 (SH-18, C3 §2.4): the hosted pair of the capture selector and the mic switch,
     // the last two members. One is three operations (78, 79, 80), as `deviceCommand` is.
     expect(byExecution('hosted').slice(-2)).toEqual(['setCaptureConfig', 'switchAudioSource']);
@@ -656,7 +656,7 @@ describe('the 48 simulator actions and the operations they reach (01_specs §7.1
     // SH-18: the capture supervisor's three actions join the tablet link; no client reaches any of the four.
     // R-9 (row 132; C3 §2.6): the adoption's `registerCaptureDevice` is the fifth - run by the Core inside
     // operation 96's unit, reached by no client and by no operation of its own.
-    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'registerCaptureDevice']);
+    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice']);
     for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });

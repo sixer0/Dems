@@ -12,6 +12,7 @@ import Animated, {
   type EntryOrExitLayoutType,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSim, type SimState } from '@dems/shared/sim';
 import { fontFamily, motion as motionTokens, palette, typography } from '@dems/shared/tokens';
 import { RollingNumber } from '@/components/composed/rolling-number';
 import { withAlpha } from '@/components/media/color';
@@ -63,6 +64,14 @@ function useRecordingSeconds(): number {
 }
 
 /**
+ * Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A): in a real capture operation a session
+ * is RECORDING from the accepted start, and its payload says `captureDurable: false` until the first
+ * durable fragment. Only an explicit `false` counts (a session without the member reads as recording,
+ * as before). Until then the bar says "Connecting cameras…": no REC dot, no timer.
+ */
+const selectConnectingCameras = (s: SimState): boolean => s.session?.state === 'RECORDING' && s.session.captureDurable === false;
+
+/**
  * Live mini-bar (C-5; 04_mobile_specs §3.8): shown while RECORDING on any tab route (the monitor
  * itself is a flow screen without chrome). REC dot (M-C-05), "Recording", the session id in mono,
  * the timer (C-6 RollingNumber, slide: digit columns positioned by React, W93-3) and a chevron, on a `Surface` with a danger-tinted hairline;
@@ -76,7 +85,9 @@ export function LiveMiniBar({ session, placement }: LiveMiniBarProps) {
   const settings = useMotionSettings();
   const policy = useMotionPolicy();
   const seconds = useRecordingSeconds();
-  const pulsing = useAmbientLoop('mini-bar-rec', { active: true });
+  const connecting = useSim(selectConnectingCameras);
+  const label = connecting ? t('common.session.connectingCameras') : t('mobile.miniBar.recording');
+  const pulsing = useAmbientLoop('mini-bar-rec', { active: !connecting });
   const dot = useSharedValue(1);
 
   useEffect(() => {
@@ -93,15 +104,15 @@ export function LiveMiniBar({ session, placement }: LiveMiniBarProps) {
       <PressableFeedback
         testID="nav-mini-bar"
         accessibilityRole="button"
-        accessibilityLabel={`${t('mobile.miniBar.recording')} ${session.sessionId ?? ''}`.trim()}
+        accessibilityLabel={`${label} ${session.sessionId ?? ''}`.trim()}
         accessibilityHint={t('mobile.miniBar.openMonitor')}
         onPress={() => router.push('/session/live')}
       >
         <Surface variant="secondary" style={styles.surface}>
           <View style={styles.row}>
-            <Animated.View style={[styles.dot, dotStyle]} />
-            <Text maxFontSizeMultiplier={1.2} style={styles.recording}>
-              {t('mobile.miniBar.recording')}
+            {connecting ? null : <Animated.View testID="nav-mini-bar-rec" style={[styles.dot, dotStyle]} />}
+            <Text maxFontSizeMultiplier={1.2} style={styles.recording} testID="nav-mini-bar-label">
+              {label}
             </Text>
             {session.sessionId ? (
               <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.sessionId}>
@@ -110,16 +121,18 @@ export function LiveMiniBar({ session, placement }: LiveMiniBarProps) {
             ) : (
               <View style={styles.flex} />
             )}
-            <RollingNumber
-              value={seconds}
-              mode="slide"
-              format={{ kind: 'duration' }}
-              motion={policy}
-              size="data"
-              face="mono"
-              color={palette.foreground}
-              testID="nav-mini-bar-timer"
-            />
+            {connecting ? null : (
+              <RollingNumber
+                value={seconds}
+                mode="slide"
+                format={{ kind: 'duration' }}
+                motion={policy}
+                size="data"
+                face="mono"
+                color={palette.foreground}
+                testID="nav-mini-bar-timer"
+              />
+            )}
             <ChevronRight size={18} color={palette.gray} />
           </View>
         </Surface>

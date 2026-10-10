@@ -8,13 +8,13 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode, CaptureWarningReason, captureWorkerSettingArguments } from '@dems/capture-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../app';
 import { ConfigError, createConfig, parseCaptureMode, parseCapturePath, Secret } from '../../config';
 import { STUB_WORKER, capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
-import { CAPTURE_WARNING_CLEAR_HOLD_MS, CapturePhase, CaptureRefusal, ForwarderReportCode, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureEngine, type CaptureReport } from '../index';
+import { CAPTURE_WARNING_CLEAR_HOLD_MS, CAPTURE_WORKER_PROCESS_SETTINGS, CapturePhase, CaptureRefusal, ForwarderReportCode, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureEngine, type CaptureReport } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const scratch: string[] = [];
@@ -22,26 +22,31 @@ afterEach(() => {
   for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
+/** The three actions a case scripts; the fourth door (`clearCaptureFaults`, D84 R-4) is counted by the rig unless the case gives its own. */
+type ScriptedEngine = Omit<CaptureEngine, 'clearCaptureFaults'> & Partial<Pick<CaptureEngine, 'clearCaptureFaults'>>;
+
 interface Calls {
+  staleClears: number;
   telemetry: Array<Parameters<CaptureEngine['applyCaptureTelemetry']>[0]>;
   warnings: Array<Parameters<CaptureEngine['raiseCaptureWarning']>[0]>;
   cleared: Array<Parameters<CaptureEngine['clearCaptureWarning']>[0]>;
 }
 
-async function forwarding(engine: (calls: Calls) => CaptureEngine | null, limits = {}) {
+async function forwarding(engine: (calls: Calls) => ScriptedEngine | null, limits = {}) {
   const clock = manualCaptureTimers();
   const fake = fakeLauncher();
   const reports: CaptureReport[] = [];
-  const calls: Calls = { telemetry: [], warnings: [], cleared: [] };
+  const calls: Calls = { staleClears: 0, telemetry: [], warnings: [], cleared: [] };
   const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher, limits });
-  const host = engine(calls);
+  const scripted = engine(calls);
+  const host: CaptureEngine | null = scripted === null ? null : { clearCaptureFaults: async () => void (calls.staleClears += 1), ...scripted };
   const stop = forwardCaptureEvents({ capture: supervisor, engine: () => host, report: (entry) => void reports.push(entry), now: clock.now });
   await supervisor.boot();
   await supervisor.start(SESSION, capturePlan(SESSION));
   return { clock, fake, supervisor, reports, calls, stop };
 }
 
-const recordingEngine = (calls: Calls): CaptureEngine => ({
+const recordingEngine = (calls: Calls): ScriptedEngine => ({
   applyCaptureTelemetry: async (telemetry) => void calls.telemetry.push(telemetry),
   raiseCaptureWarning: async (warning) => void calls.warnings.push(warning),
   clearCaptureWarning: async (warning) => void calls.cleared.push(warning),
@@ -54,7 +59,7 @@ describe('the forwarder: telemetry and warnings reach the engine (SH-18 / CS-04,
     await flush();
     expect(calls.telemetry).toEqual([
       {
-        levels: [{ role: 'PRIMARY', dbfs: -20, clipped: false }],
+        levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 0 }],
         ingest: [{ deviceId: 'CAM-01', state: 'CONNECTED' }],
         fragments: [{ deviceId: 'CAM-01', count: 7, bytes: 7_000 }],
       },
@@ -65,14 +70,14 @@ describe('the forwarder: telemetry and warnings reach the engine (SH-18 / CS-04,
   it('a worker warning and the supervisor\'s own CAPTURE_FAULT both become raiseCaptureWarning; never a switch command (OD-11)', async () => {
     const { fake, calls, clock } = await forwarding(recordingEngine, { maxRestarts: 0 });
     const before = fake.last().received.length;
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
     expect(fake.last().received).toHaveLength(before);
     fake.last().exit(1);
     clock.advance(1);
     await flush();
     expect(calls.warnings).toEqual([
-      { code: 'MIC_SILENT', subject: 'PRIMARY' },
+      { code: 'MIC_SILENT', subject: 'MIC-01' },
       { code: 'CAPTURE_FAULT', subject: null },
     ]);
   });
@@ -81,15 +86,16 @@ describe('the forwarder: telemetry and warnings reach the engine (SH-18 / CS-04,
     const { fake, calls, stop } = await forwarding(recordingEngine);
     stop();
     fake.last().telemetry(1);
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
-    expect(calls).toEqual({ telemetry: [], warnings: [], cleared: [] });
+    // (the one call before the stop: the stale faults cleared when the session reached RECORDING, D84 R-4)
+    expect(calls).toEqual({ staleClears: 1, telemetry: [], warnings: [], cleared: [] });
   });
 
   it('no engine: nothing is forwarded and nothing is reported', async () => {
     const { fake, reports } = await forwarding(() => null);
     fake.last().telemetry(1);
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
     expect(reports).toEqual([]);
   });
@@ -115,7 +121,7 @@ describe('the forwarder never holds the supervisor\'s queue', () => {
       fake.last().telemetry(frame);
       await flush();
     }
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
     expect(seen).toEqual(Array.from({ length: 50 }, (_unused, index) => index + 1));
     expect(warned).toEqual(['MIC_SILENT']);
@@ -183,7 +189,7 @@ describe('the forwarder reports what the engine refuses, without flooding the er
       },
       clearCaptureWarning: async () => {},
     }));
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
     fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-01');
     await flush();
@@ -211,31 +217,66 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
     await tick(1_999);
     expect(calls.cleared).toEqual([]);
     await tick(1);
-    expect(calls.cleared).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02' }]);
+    // The fault is raised and cleared under the worker's reason: the engine's key is (kind, reason, device) (D146).
+    expect(calls.cleared).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }]);
     worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02');
     await flush();
-    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02' }, { code: 'CAPTURE_FAULT', subject: 'CAM-02' }]);
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }, { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }]);
+  });
+
+  it('ruling D146: two reasons on ONE camera are two raises; the CLEARED of one clears that one alone after the hold, the other stays raised', async () => {
+    const { fake, calls, clock } = await forwarding(recordingEngine);
+    const worker = fake.last();
+    const tick = async (ms: number): Promise<void> => {
+      clock.advance(ms);
+      worker.heartbeat();
+      worker.telemetry(1);
+      await flush();
+    };
+    worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.CAMERA_STREAM_ENDED);
+    await flush();
+    worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND);
+    await flush();
+    // The same reason again while it is active writes nothing.
+    worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.CAMERA_STREAM_ENDED);
+    await flush();
+    expect(calls.warnings).toEqual([
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_CLOCK_OUT_OF_BOUND' },
+    ]);
+    worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'CLEARED', CaptureWarningReason.CAMERA_STREAM_ENDED);
+    await tick(CAPTURE_WARNING_CLEAR_HOLD_MS);
+    expect(calls.cleared).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }]);
+    // The other cause is still active however long the first stays cleared.
+    for (let second = 0; second < 6; second += 1) await tick(1_000);
+    expect(calls.cleared).toHaveLength(1);
+    worker.warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'CLEARED', CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND);
+    await tick(CAPTURE_WARNING_CLEAR_HOLD_MS);
+    expect(calls.cleared).toEqual([
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_CLOCK_OUT_OF_BOUND' },
+    ]);
   });
 
   it('a condition that flaps 50 times inside the hold raises ONCE and clears nothing: one audit row, not one per flap', async () => {
     const { fake, calls, clock } = await forwarding(recordingEngine);
     const worker = fake.last();
     for (let flap = 0; flap < 50; flap += 1) {
-      worker.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+      worker.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
       await flush();
-      worker.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY', 'CLEARED');
+      worker.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01', 'CLEARED');
       await flush();
       clock.advance(100);
       worker.heartbeat();
       worker.telemetry(flap);
       await flush();
     }
-    expect(calls.warnings).toEqual([{ code: 'MIC_SILENT', subject: 'PRIMARY' }]);
+    expect(calls.warnings).toEqual([{ code: 'MIC_SILENT', subject: 'MIC-01' }]);
     expect(calls.cleared).toEqual([]);
   });
 
   it('a CLEARED for a fault this forwarder never raised clears nothing; a warning the engine refused is not cleared later', async () => {
-    const refused: Calls = { telemetry: [], warnings: [], cleared: [] };
+    const refused: Calls = { staleClears: 0, telemetry: [], warnings: [], cleared: [] };
     const { fake, clock } = await forwarding(() => ({
       applyCaptureTelemetry: async () => {},
       raiseCaptureWarning: async () => {
@@ -243,7 +284,7 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
       },
       clearCaptureWarning: async (warning) => void refused.cleared.push(warning),
     }));
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'STANDBY', 'CLEARED');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-02', 'CLEARED');
     fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-01');
     await flush();
     fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-01', 'CLEARED');
@@ -260,13 +301,14 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
     await flush();
     fake.last().exit(1);
     await flush();
-    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02' }, { code: 'CAPTURE_FAULT', subject: null }]);
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }, { code: 'CAPTURE_FAULT', subject: null }]);
     await supervisor.stop(SESSION, 'CRASH');
     expect(calls.cleared).toEqual([]);
     await supervisor.start('S-TEST-0002', capturePlan('S-TEST-0002'));
     await flush();
-    expect(calls.cleared).toEqual(expect.arrayContaining([{ code: 'CAPTURE_FAULT', subject: 'CAM-02' }, { code: 'CAPTURE_FAULT', subject: null }]));
-    expect(calls.cleared).toHaveLength(2);
+    // D84 R-4: ONE call clears every capture fault of the engine, whoever raised it (this table's two among them); the supervisor's own CLEARED finds nothing left to clear.
+    expect(calls.staleClears).toBe(2);
+    expect(calls.cleared).toEqual([]);
   });
 
   it('A-13: a report that throws does not become an unhandled rejection', async () => {
@@ -279,7 +321,7 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
       const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
       forwardCaptureEvents({
         capture: supervisor,
-        engine: () => ({ applyCaptureTelemetry: async () => Promise.reject(new Error('down')), raiseCaptureWarning: async () => Promise.reject(new Error('down')), clearCaptureWarning: async () => {} }),
+        engine: () => ({ applyCaptureTelemetry: async () => Promise.reject(new Error('down')), raiseCaptureWarning: async () => Promise.reject(new Error('down')), clearCaptureWarning: async () => {}, clearCaptureFaults: async () => {} }),
         report: () => {
           throw new Error('the error log is not writable');
         },
@@ -288,7 +330,7 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
       await supervisor.boot();
       await supervisor.start(SESSION, capturePlan(SESSION));
       fake.last().telemetry(1);
-      fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+      fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
       await flush();
       await flush();
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -296,6 +338,36 @@ describe('D72 (A-2): a fault a capture warning raised is cleared by the capture 
     } finally {
       process.off('unhandledRejection', onUnhandled);
     }
+  });
+});
+
+describe('the two keys of a failed start are on the RAISE of its fault (integration pass D8; C3 §5.3, §5.4 row C; D156)', () => {
+  const crash = (code: string) => ({ type: 'CRASH' as const, code, signal: null, exitCode: 70 });
+
+  it('the worker ends for good with NO_CAMERA_CONNECTED and nothing is durable: the supervisor fault is raised with reason NO_CAMERA_CONNECTED and evidenceFiles 0', async () => {
+    const { fake, calls, clock } = await forwarding(recordingEngine);
+    fake.last().say(crash('NO_CAMERA_CONNECTED'));
+    clock.advance(1);
+    await flush();
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 }]);
+  });
+
+  it('CONTROL: a crash code that is not a final one raises the fault WITHOUT the keys - the reason is the worker\'s enumerated code or nothing', async () => {
+    const { fake, calls, clock } = await forwarding(recordingEngine, { maxRestarts: 0 });
+    fake.last().say(crash('SOME_OTHER_END'));
+    clock.advance(1);
+    await flush();
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
+  });
+
+  it('CONTROL: a session that holds a durable fragment is not a failed start, whatever its worker says at its end - no keys, no count of 0', async () => {
+    const { fake, calls, clock } = await forwarding(recordingEngine);
+    fake.last().firstDurableFragment();
+    await flush();
+    fake.last().say(crash('NO_CAMERA_CONNECTED'));
+    clock.advance(1);
+    await flush();
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null }]);
   });
 });
 
@@ -354,7 +426,7 @@ describe('which launcher the capture unit is built with', () => {
     expect(app.capture.status().workerPid).toBeGreaterThan(0);
     await vi.waitFor(() => expect(existsSync(argsFile)).toBe(true));
     // Nothing of the session is an argument: where the worker logs, and how often it beats.
-    expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['--log', `${dataDir}/capture-worker.jsonl`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs)]);
+    expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['--log', `${dataDir}/capture-worker.jsonl`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PROCESS_SETTINGS)]);
     // The server's environment did not reach it (the shell itself adds PWD, SHLVL and _).
     expect(readFileSync(`${argsFile}.env`, 'utf8').split('\n').map((line) => line.split('=')[0]).filter((name) => name !== '' && !['PWD', 'SHLVL', '_', 'OLDPWD'].includes(name ?? ''))).toEqual([]);
     expect(log.lines().find((line) => line['code'] === 'CAPTURE_SUPERVISOR_BOOTED')).toMatchObject({ mode: 'real', worker: 'configured' });

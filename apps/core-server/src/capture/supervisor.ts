@@ -46,6 +46,18 @@
  *
  * THE SUPERVISOR'S OWN FAULT ENDS when a later session reaches `RECORDING`: the `CAPTURE_FAULT`
  * it raised is then said again with state `CLEARED`, so that the next failure is a new fault.
+ * Each session that fails says its own `ACTIVE` with its own correlation ID, and the fault held is
+ * the newest one's (decision D84 R-3): two sessions that fail in a row are two occurrences.
+ *
+ * ONE SUBJECT FORM PER DEVICE (decision D84 R-1, R-2; protocol 4). A warning of the worker names
+ * the DEVICE ID of a camera or a microphone of the plan, never null and never a mic role (the
+ * protocol's schema refuses both); anything else ends the worker (`WARNING_SUBJECT_UNKNOWN`). Only
+ * the supervisor's own `CAPTURE_FAULT` has no subject and no reason: it is about the capture.
+ *
+ * THE SWITCH (protocol 4). `switchAudioSource` resolves with the `AUDIO_SOURCE_INTERVAL` record
+ * the worker wrote for that command (it writes the record BEFORE the `ACK`), or with null when the
+ * role already fed the track: the caller gets the media time of the boundary from the capture
+ * side, never from a wall clock.
  *
  * RECORDS (spec §B.2 R-1 to R-3). A `RECORD` is handled the moment its line arrives, beside
  * `ACK`: its sequence number must be exactly one more than the last of the session (a gap or a
@@ -114,6 +126,7 @@ import {
   WorkerMessageType,
   backoffDelayMs,
   type AckMessage,
+  type AudioSourceIntervalRecord,
   type CaptureIpcLimits,
   type CapturePlan,
   type RecordMessage,
@@ -135,6 +148,7 @@ import {
   type WorkerChannel,
   type WorkerDown,
 } from './types';
+import { isProofWorkerVersion } from './boot/checks';
 
 /** Longest session ID the supervisor takes: a correlation ID built from it must fit the protocol's 128 characters. */
 export const MAX_SESSION_ID_CHARS = 80;
@@ -179,10 +193,14 @@ interface Session {
   durable: boolean;
   /** The sequence number of the last record of the session's worker; 0 before the first. */
   recordSeq: number;
-  /** What a warning of this session may be about: the device IDs and the mic roles of its plan. */
+  /** What a warning of this session may be about: the device IDs of its plan (protocol 4: a mic role is never a subject, D84 R-2). */
   readonly subjects: ReadonlySet<string>;
   /** The cameras of its plan: what a fragment record may be about. */
   readonly cameras: ReadonlySet<string>;
+  /** The microphones of its plan, by device ID: what an audio-source interval may be about. */
+  readonly mics: ReadonlySet<string>;
+  /** The interval record of a switch that is not acknowledged yet, by the command's correlation ID (protocol 4: the record precedes its `ACK`). */
+  readonly switchRecords: Map<string, AudioSourceIntervalRecord>;
   startWaiter: { resolve(): void; reject(error: CaptureSupervisorError): void } | null;
   stopping: CaptureStopReason | null;
   readonly stopWaiters: Array<() => void>;
@@ -305,7 +323,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
   function sameAs(event: WorkerEvent): (queued: CaptureEvent) => boolean {
     if (event.name === 'telemetry') return (queued) => queued.name === 'telemetry';
     if (event.name === 'progress') return (queued) => queued.name === 'progress' && queued.frame.step === event.frame.step;
-    return (queued) => queued.name === 'warning' && queued.code === event.code && queued.subject === event.subject && queued.state === event.state;
+    return (queued) => queued.name === 'warning' && queued.code === event.code && queued.reason === event.reason && queued.subject === event.subject && queued.state === event.state;
   }
 
   /** Makes room at the bound for a progress value or a warning. False when only warnings wait. */
@@ -499,8 +517,9 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     // Option C (D67): a session that may hold a fragment on the disk gets no further worker.
     if (cause.retryable === false || current.durable || current.restarts >= limits.maxRestarts) {
       emit({ name: 'workerDown', ...base, down: crash, restartInMs: null });
-      emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor' });
-      ownFault = ownFault ?? base;
+      emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor' });
+      // The newest failed session holds the fault: each failed session is an occurrence of its own (D84 R-3).
+      ownFault = base;
       const waiter = current.startWaiter;
       if (waiter === null) {
         // A recording that lost its worker for good: the session stays open until it is stopped,
@@ -551,8 +570,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     cancelBackoff();
     cancelBackoff = nothing;
     const base = { sessionId: current.id, correlationId: current.correlationId };
-    emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor' });
-    ownFault = ownFault ?? base;
+    emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor' });
+    ownFault = base;
     setPhase(CapturePhase.FAULTED);
   }
 
@@ -574,6 +593,12 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
       }
       if (message.protocolVersion !== CAPTURE_PROTOCOL_VERSION) {
         down(from, { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: `V${message.protocolVersion}`, retryable: false });
+        return;
+      }
+      if (isProofWorkerVersion(message.workerVersion)) {
+        // A proof build (a negative control of the capture checks) is never recorded with. The boot
+        // check refuses it once; a program replaced after the boot is seen here (pair-58 F-10). Not retried.
+        down(from, { code: WorkerDownCode.PROOF_BUILD, detail: 'PROOF_BUILD', retryable: false });
         return;
       }
       from.hello = true;
@@ -608,7 +633,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           setPhase(CapturePhase.RECORDING);
           if (ownFault !== null && ownFault.correlationId !== current.correlationId) {
             // A session records again: the fault the supervisor raised for an earlier one is over.
-            emit({ name: 'warning', ...ownFault, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, state: CaptureWarningState.CLEARED, subject: null, source: 'supervisor' });
+            emit({ name: 'warning', ...ownFault, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.CLEARED, subject: null, source: 'supervisor' });
             ownFault = null;
           }
           const waiter = current.startWaiter;
@@ -642,12 +667,12 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         if (from.started) emitFromWorker({ name: 'progress', ...base, action: CAPTURE_INTERNAL_ACTION.PROGRESS, frame: message });
         return;
       case WorkerMessageType.WARNING:
-        if (message.subject !== null && !current.subjects.has(message.subject)) {
+        if (!current.subjects.has(message.subject)) {
           // Not a device or a role of this session: a subject is never free text (pair-57 re-check N-3).
           down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'WARNING_SUBJECT_UNKNOWN' });
           return;
         }
-        emitFromWorker({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: message.code, state: message.state, subject: message.subject, source: 'worker' });
+        emitFromWorker({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: message.code, reason: message.reason, state: message.state, subject: message.subject, source: 'worker' });
         return;
       case WorkerMessageType.CRASH:
         down(from, { code: WorkerDownCode.EXITED, detail: message.code, exitCode: message.exitCode, signal: message.signal, ...(FINAL_CRASH_CODES.includes(message.code) ? { retryable: false } : {}) });
@@ -663,14 +688,15 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     const refuse = (detail: string): void => down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail });
     if (!from.started) return refuse('RECORD_BEFORE_START');
     const { record } = message;
-    if (record.kind !== CaptureRecordKind.SEAL_COMPLETE && !current.cameras.has(record.deviceId)) return refuse('RECORD_SUBJECT_UNKNOWN');
+    // Whose device a record names (protocol 4): a camera of the plan, a microphone of the plan, or none.
+    if ('deviceId' in record && !(record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL ? current.mics : current.cameras).has(record.deviceId)) return refuse('RECORD_SUBJECT_UNKNOWN');
     // A worker that reports a fragment has written: the session is durable BEFORE the sequence is
     // judged, so that a worker ended for a gap is not replaced either.
     if (DURABLE_RECORD_KINDS.includes(record.kind)) current.durable = true;
     if (message.seq !== current.recordSeq + 1) return refuse('RECORD_SEQUENCE_GAP');
     // Content (finding A-10): once-only records are said once per camera, and nothing follows the seal.
     if (from.sealed) return refuse('RECORD_AFTER_SEAL');
-    if (record.kind !== CaptureRecordKind.SEAL_COMPLETE && ONCE_PER_CAMERA_RECORD_KINDS.includes(record.kind)) {
+    if ('deviceId' in record && ONCE_PER_CAMERA_RECORD_KINDS.includes(record.kind)) {
       // First video sample, first durable fragment, observed keyframe interval (row 59): once per camera.
       const once = `${record.kind}:${record.deviceId}`;
       if (from.reported.has(once)) return refuse('RECORD_REPEATED');
@@ -683,6 +709,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     from.recordTimes.push(at);
     if (record.kind === CaptureRecordKind.SEAL_COMPLETE) from.sealed = true;
     current.recordSeq = message.seq;
+    // The record of a switch waits for the `ACK` of its command, which follows it (at most one per waiting command).
+    if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.correlationId !== null && from.pending.has(record.correlationId)) current.switchRecords.set(record.correlationId, record);
     emit({ name: 'record', sessionId: current.id, correlationId: current.correlationId, attempt: from.attempt, seq: message.seq, record });
   }
 
@@ -830,8 +858,10 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         commandSeq: 0,
         durable: false,
         recordSeq: 0,
-        subjects: new Set([...parsed.data.cameras.map((camera) => camera.deviceId), ...parsed.data.mics.flatMap((mic) => [mic.deviceId, mic.role])]),
+        subjects: new Set([...parsed.data.cameras.map((camera) => camera.deviceId), ...parsed.data.mics.map((mic) => mic.deviceId)]),
         cameras: new Set(parsed.data.cameras.map((camera) => camera.deviceId)),
+        mics: new Set(parsed.data.mics.map((mic) => mic.deviceId)),
+        switchRecords: new Map(),
         startWaiter: { resolve, reject },
         stopping: null,
         stopWaiters: [],
@@ -882,7 +912,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     return done;
   }
 
-  function switchSource(sessionId: string, to: CaptureMicRole): Promise<void> {
+  function switchSource(sessionId: string, to: CaptureMicRole): Promise<AudioSourceIntervalRecord | null> {
     let current: Session;
     try {
       current = openSession(sessionId);
@@ -902,12 +932,18 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     if (phase !== CapturePhase.RECORDING || live === null || !live.started) {
       return Promise.reject(new CaptureSupervisorError(CaptureRefusal.NOT_RECORDING, 'the capture session is not recording'));
     }
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<AudioSourceIntervalRecord | null>((resolve, reject) => {
+      let command = '';
       sendCommand(
         current,
         live,
-        (envelope) => ({ ...envelope, type: SupervisorMessageType.SWITCH_AUDIO_SOURCE, to }),
+        (envelope) => {
+          command = envelope.correlationId;
+          return { ...envelope, type: SupervisorMessageType.SWITCH_AUDIO_SOURCE, to };
+        },
         (result) => {
+          const interval = current.switchRecords.get(command) ?? null;
+          current.switchRecords.delete(command);
           if ('refusal' in result) {
             reject(result.refusal);
           } else if (!result.ack.ok) {
@@ -915,7 +951,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           } else {
             // A worker that restarts later starts with the source the operator chose.
             current.plan = { ...current.plan, activeMic: to };
-            resolve();
+            resolve(interval);
           }
         },
       );

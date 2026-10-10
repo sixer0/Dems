@@ -146,6 +146,8 @@ export interface LiveEvidenceBed {
   readonly engine: TestSim;
   readonly mobile: MobileLive;
   readonly app: ReturnType<typeof renderRoutes>;
+  /** The app's query client (row 92: a test reads its cache — what a screen may and may not keep there). */
+  readonly queryClient: QueryClient;
   /** Every evidence command's answer is delivered this much later on the fake clock (the delta goes first). */
   answerDelayMs: number;
   /** The media reference operation 40 answers for an item (default: `DEMO_PACKAGE`, the item's own suffix). */
@@ -239,12 +241,31 @@ export async function renderLiveEvidence({
   });
   answered('signOut', () => ({ status: 204 }));
   answered('touchSession', () => fake.example('touchSession'));
+  // Row 92: the export sheet reads the job of every export the Core accepted (operation 87). The
+  // bed's Core finishes an export at once, as the simulator does; a test about the job scripts its own.
+  answered('getEvidenceExportJob', (call) => ({
+    status: 200,
+    body: {
+      jobId: call.params.id ?? 'EXPJ-000000',
+      evidenceId: engine.sim.store.getState().evidence[0]?.id ?? 'EV-20260929-0001',
+      kind: 'PACKAGE',
+      status: 'COMPLETE',
+      progressPct: 100,
+      etaMs: 0,
+      manifestHash: 'ab'.repeat(32),
+      signature: 'cd'.repeat(64),
+      derived: false,
+      createdAt: now(),
+      completedAt: now(),
+    },
+  }));
 
   const bed: LiveEvidenceBed = {
     fake,
     engine,
     mobile: undefined as unknown as MobileLive,
     app: undefined as unknown as ReturnType<typeof renderRoutes>,
+    queryClient: undefined as unknown as QueryClient,
     answerDelayMs: 0,
     mediaRef: (evidenceId) => ({ source: 'DEMO_PACKAGE', packageSuffix: evidenceId.slice(-4) }),
     setReachable(next) {
@@ -353,6 +374,7 @@ export async function renderLiveEvidence({
   const { width, height } = WINDOWS[window];
   const metrics: Metrics = { frame: { x: 0, y: 0, width, height }, insets: TEST_INSETS };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } } });
+  (bed as { queryClient: QueryClient }).queryClient = queryClient;
   function LiveRoot() {
     const app = (
       <AppProviders sim={liveSim} safeAreaMetrics={metrics} queryClient={queryClient} heartbeatSocketFactory={() => new InertSocket()}>

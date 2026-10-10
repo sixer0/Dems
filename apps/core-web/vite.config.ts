@@ -37,6 +37,9 @@ function coreDevProxy(port: string | undefined): Pick<ServerOptions, 'proxy' | '
     proxy: {
       '/api/v1': { target },
       '/ws': { target, ws: true },
+      // Blueprint row 92 (M8): the media route of the signed media session (operation 88) is
+      // registry-external like `/ws`; the player asks it same-origin, so the session cookie travels.
+      '/media': { target },
     },
     cors: false,
   }

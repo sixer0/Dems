@@ -63,13 +63,15 @@ import {
   openPcmSource,
   resolveSileroVadConfig,
   resolveTranscriberConfig,
+  SerialQueue,
   TRANSCRIPT_CHECKPOINT_FILE,
   TranscriberError,
   TranscriberErrorCode,
+  type CheckpointIdentity,
   type ChunkMirror,
   type EncryptedCredentialSource,
   type FetchLike,
-  type SerialQueue,
+  type PcmSource,
   type StepReport,
   type TranscriberAdapter,
   type TranscriberConfig,
@@ -146,6 +148,21 @@ export interface EnabledSessionTranscription {
   /** Holds the runner back between chunks, or lets it go on. */
   hold(paused: boolean): void;
   step(options: { readonly final: boolean }): Promise<StepReport>;
+  /**
+   * WHAT THE ASSEMBLY OF THIS SESSION'S TRANSCRIPT IS GIVEN (row 71c): the identity and the audio
+   * the runner was built with. `assembleTranscript` of `@dems/transcriber` refuses any other.
+   */
+  readonly assembly: { readonly identity: CheckpointIdentity; readonly source: PcmSource };
+  /**
+   * THE CLOSE-OUT OF THE SEAL (row 116's rule, the reference of `sealing/__tests__/support.ts`, on
+   * the transcriber's public pipeline only): ONE MORE runner on the same scratch directory whose
+   * engine refuses every chunk at once with `chunkCode`, on a queue of its own (the engine of the
+   * session may be hanging in the other one). The runner's own rule then gives up every chunk that
+   * is not committed - FAILED, without text, the row mirrored - and ends the plan. It decodes
+   * nothing and asks no backend; an engine the session's own runner left running is stopped by
+   * the session's engine guard, as after a kill (N-2). Resolves true when the plan is complete.
+   */
+  closeOut(chunkCode: string): Promise<boolean>;
   /** Ends the telemetry subscription. The checkpoint and the files stay. */
   close(): void;
 }
@@ -241,12 +258,13 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
     const adapter = createTranscriberAdapter(config, { log: transcriberLog, queue: deps.queue, captureWorkerPid, onEngineStart, fetchImpl: deps.fetchImpl, ...(encryptedCredential === undefined ? {} : { encryptedCredential }) });
     const vad = host.vad === null ? null : createSileroVad(resolveSileroVadConfig(host.vad), { log: transcriberLog, captureWorkerPid, onEngineStart });
     const timeline = captureTapTimeline();
+    const source = openPcmSource({ container: 'raw', path: tapPath, sampleRateHz: timeline.sampleRateHz });
     const build = (): TranscriptRunner =>
       createTranscriptRunner({
         sessionId,
         adapter,
         timeline,
-        source: openPcmSource({ container: 'raw', path: tapPath, sampleRateHz: timeline.sampleRateHz }),
+        source,
         vad,
         sessionScratchDir: scratchDir,
         log: transcriberLog,
@@ -296,6 +314,21 @@ export async function openSessionTranscription(deps: SessionCompositionDeps, ses
         held = paused;
       },
       step: (step) => runner.step(step),
+      assembly: { identity: { sessionId, backend: adapter.backend, model: adapter.model, timeline }, source },
+      async closeOut(chunkCode) {
+        const refusing: TranscriberAdapter = {
+          backend: adapter.backend,
+          model: adapter.model,
+          queue: new SerialQueue(),
+          // It starts no engine, so no engine of it can outrank the capture worker: the sibling rule is stated as kept.
+          captureWorkerStated: true,
+          transcribe: async () => {
+            throw new TranscriberError(chunkCode as TranscriberErrorCode, 'the seal stopped waiting for this chunk', { reason: 'SEAL_WAIT_LIMIT' });
+          },
+        };
+        const closing = createTranscriptRunner({ sessionId, adapter: refusing, timeline, source, vad, sessionScratchDir: scratchDir, log: transcriberLog, mirror: deps.mirror, now: () => new Date(deps.now()), tapLost: () => lost, engineGuard });
+        return (await closing.step({ final: true })).complete;
+      },
       close: unsubscribe,
     };
   } catch (error) {

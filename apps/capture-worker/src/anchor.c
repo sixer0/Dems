@@ -86,6 +86,20 @@ int clock_lag_sane(double lag_ms, double held_ms) {
     return lag_ms >= -CLOCK_SANITY_MS && lag_ms <= CLOCK_SANITY_MS + held_ms;
 }
 
+void clock_floor_init(ClockFloor *f) {
+    f->min_lag_ms = 0;
+    f->packets = 0;
+}
+
+void clock_floor_add(ClockFloor *f, double lag_ms) {
+    if (!f->packets || lag_ms < f->min_lag_ms) f->min_lag_ms = lag_ms;
+    f->packets++;
+}
+
+int clock_floor_sane(const ClockFloor *f) {
+    return !f->packets || clock_lag_sane(f->min_lag_ms, 0);
+}
+
 double trend_ppm(const ClockTrend *t, int *fitted) {
     double den = t->n * t->sxx - t->sx * t->sx;
     *fitted = t->last_x >= CLOCK_TREND_MIN_SPAN_S && den > 0;

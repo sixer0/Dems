@@ -391,7 +391,7 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
   // Task 3 M5 (blueprint row 72; WB-10): the Session Monitor asks for the audio-source intervals of
   // the open session on mount (operation 82). Answered by what the model Core holds: the one interval
   // the run opened, for the input its session names as active; a page row that needs a switch in the
-  // list scripts its own.
+  // list scripts its own. `seq` counts from 1 (the contract's rule since pass D6 item 9).
   answered('listAudioSourceIntervals', () => {
     if (!core.alive()) return fake.example('listAudioSourceIntervals', 401)
     const session = core.served.session
@@ -400,7 +400,7 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
     return {
       status: 200,
       body: {
-        items: [{ sessionId: session.id, seq: 0, inputId, role: 'PRIMARY', fromMs: 0, toMs: null, fromAt: session.startedAt, toAt: null, switchedBy: null, reason: 'START' }],
+        items: [{ sessionId: session.id, seq: 1, inputId, role: 'PRIMARY', fromMs: 0, toMs: null, fromAt: session.startedAt, toAt: null, switchedBy: null, reason: 'START' }],
         nextCursor: null,
       },
     }

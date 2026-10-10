@@ -57,7 +57,7 @@ import {
 } from '@dems/shared/api';
 import { AuditType, Permission, isSessionActive } from '@dems/shared/sim';
 import { CaptureAdapterError, CaptureAdapterKind, sourceClassOf, usingCredential, type CameraCandidate, type ConnectionTestResult, type SealedCredential } from '../../../capture/adapters';
-import type { AuditEntry, UnitContext } from '../../../core';
+import { SERVER_AUDIT_DETAIL_RULES, type AuditEntry, type UnitContext } from '../../../core';
 import type { DurableSlices } from '../../../db/mapping';
 import type { EngineOutcome, EngineUnit } from '../../../engine';
 import type { Principal } from '../../../plugins/authenticate';
@@ -313,7 +313,7 @@ async function contact(
       sourceClass,
       operationId,
       host: candidate.camera.host,
-      endpointRef: candidate.camera.endpointRef,
+      endpointRef: auditEndpointRef(candidate.camera.endpointRef),
       // Marked on every refused credential: `true` on the one that closed the host (SEC35-46 (a)).
       ...(record.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED ? { guardTripped: verdict.guardTripped } : {}),
       permission: Permission.CAPTURE_CONFIG,
@@ -326,13 +326,49 @@ async function contact(
   return { record, verdict };
 }
 
+/**
+ * The endpoint reference as an audit row may hold it (pass D1a): the announced text when it has
+ * the one form the audit rule takes (`urn:uuid:<UUID>`), else nothing. The reference is DEVICE
+ * text; one of any other form is left out of the row rather than written or allowed to fail the
+ * write - the row of the attempt must stand for every outcome (SEC35-46), and `host` still says
+ * where the credential went.
+ */
+export function auditEndpointRef(announced: string | null): string | null {
+  return announced !== null && SERVER_AUDIT_DETAIL_RULES.CAPTURE_CONNECTION_TESTED.endpointRef.accepts(announced) ? announced : null;
+}
+
+/** From this many bytes on, a secret found in a ciphertext cannot be chance (80 positions x 2^-64). */
+export const CLEAR_SECRET_PROOF_BYTES = 8;
+
+/**
+ * Whether an answer of the sealer holds the secret in clear (a sealer that stores instead of
+ * sealing). Pass D1a (D132, `connect.db.test.ts:474`): the test used to be "the ciphertext
+ * contains the secret's bytes", which a SHORT secret meets by chance - a one-byte password is
+ * somewhere in 80 random bytes about once in four writes, and the write answered 500. So the
+ * bytes searched for are never fewer than `CLEAR_SECRET_PROOF_BYTES`: a shorter secret is
+ * searched for as it stands in a clear zero-padded frame (the secret followed by zero bytes),
+ * which is the form a non-encrypting sealer of this store's frame would hand back. A short secret
+ * kept in clear with other neighbours is not found by this check; the length rule above and the
+ * store's own tests are what stand against that.
+ */
+export function holdsClearSecret(ciphertext: Uint8Array, secret: string): boolean {
+  const clear = Buffer.from(secret, 'utf8');
+  const sought = clear.byteLength >= CLEAR_SECRET_PROOF_BYTES ? clear : Buffer.concat([clear, Buffer.alloc(CLEAR_SECRET_PROOF_BYTES - clear.byteLength)]);
+  try {
+    return clear.byteLength > 0 && Buffer.from(ciphertext.buffer, ciphertext.byteOffset, ciphertext.byteLength).includes(sought);
+  } finally {
+    sought.fill(0);
+    clear.fill(0);
+  }
+}
+
 /** Seals a secret for a device and holds the answer to the table's form before a statement is sent. */
 async function sealFor(sealer: CameraSecretSealer, deviceId: string, credential: OperatorCredential, at: number): Promise<CaptureCredentialRow> {
   return usingCredential(credential.sealed, async ({ username, secret }) => {
     const sealed = await sealer.seal(deviceId, secret);
     const wellFormed =
       typeof sealed.keyRef === 'string' && KEY_REF.test(sealed.keyRef) && sealed.ciphertext instanceof Uint8Array && sealed.ciphertext.byteLength >= 33 && sealed.nonce instanceof Uint8Array && sealed.nonce.byteLength === 12;
-    if (!wellFormed || Buffer.from(sealed.ciphertext).includes(Buffer.from(secret, 'utf8'))) throw new SealedCameraSecretRefused();
+    if (!wellFormed || holdsClearSecret(sealed.ciphertext, secret)) throw new SealedCameraSecretRefused();
     return { deviceId, username, ciphertext: sealed.ciphertext, nonce: sealed.nonce, keyRef: sealed.keyRef, at };
   });
 }
@@ -449,7 +485,7 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
         sourceClass,
         credentialSet: credential !== null,
         host: candidate.camera.host,
-        endpointRef: candidate.camera.endpointRef,
+        endpointRef: auditEndpointRef(candidate.camera.endpointRef),
         permission: Permission.CAPTURE_CONFIG,
       }),
     });

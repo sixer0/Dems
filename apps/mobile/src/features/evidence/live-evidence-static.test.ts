@@ -76,7 +76,10 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
   it('reads the folder: every production file, sub-folders included', () => {
     expect(production.map((file) => file.name)).toEqual([
       'archive-dialog.tsx',
+      // Blueprint row 92 (M8-W3): playback of the sealed files, the audio-source band, the transcript, the export job, the badge.
+      'audio-source-band.tsx',
       'detail-intent.ts',
+      'development-source.tsx',
       'evidence-chips.tsx',
       'evidence-detail-screen.tsx',
       'evidence-detail.tsx',
@@ -84,19 +87,30 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'evidence-media.ts',
       'evidence-model.ts',
       'evidence-row.tsx',
+      'export-job-model.ts',
+      'export-job-status.tsx',
+      'export-job.ts',
       'export-sheet.tsx',
       'i18n.ts',
       'integrity-tab.tsx',
+      'item-v2.ts',
       'live-integrity-tab.tsx',
+      'media-session.ts',
       'media-tab.tsx',
       // Closing-fix CF-M2 (R-T-1): a kit Menu item's title and reason stacked.
       'menu-item-text.tsx',
       'metadata-tab.tsx',
       'play-sheet.tsx',
+      'sealed-playback.ts',
+      'sealed-player.tsx',
       // CF2-B (RF-T-1): the always-mounted selection glow of the list rows.
       'selection-glow.tsx',
       'sheet-frame.tsx',
       'sim-adapter.ts',
+      'transcript-model.ts',
+      'transcript-pane.tsx',
+      'transcript-revise-sheet.tsx',
+      'transcript.ts',
       'use-clock-due.ts',
       'use-core-verify.ts',
       'use-evidence-data.ts',
@@ -121,7 +135,9 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
   });
 
   it('operation 40 is the one operation called through the Live client, from one file (rule 1)', () => {
-    expect(matching(/\.client\.call\(/)).toEqual(['use-evidence-media-ref.ts']);
+    // Row 92 (M8-W3) adds the reads and commands of the sealed item that are no simulator action: the export job
+    // (87), the media session (88) and the transcript (84, 85, 86), each through `useMobileLive()`'s client.
+    expect(matching(/\.client\.call\(/)).toEqual(['export-job.ts', 'media-session.ts', 'transcript.ts', 'use-evidence-media-ref.ts']);
     expect(fileText('use-evidence-media-ref.ts')).toMatch(/client\.call\('getEvidence'/);
   });
 });

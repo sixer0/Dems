@@ -358,3 +358,49 @@ Appended on 2026-10-09 by row 131. Version, licence identifier, licence file nam
 | `sax` | 1.6.1 (dependency of `xml2js`; already in the lockfile before this row) | BlueOak-1.0.0 | `LICENSE.md` | none: the file is the Blue Oak Model License 1.0.0 text ("# Blue Oak Model License", section "## Copyright") | `node_modules/sax/` | through `xml2js` |
 | `xmlbuilder` | 11.0.1 (dependency of `xml2js` 0.6.2) | MIT | `LICENSE` | "Copyright (c) 2013 Ozgur Ozcitak" | `apps/core-server/node_modules/xmlbuilder/` and `node_modules/onvif/node_modules/xmlbuilder/`; the hoisted `node_modules/xmlbuilder/` 15.1.1 (MIT) belongs to another workspace | loaded by `xml2js`; the Core builds no XML with it |
 
+
+### FFmpeg for the on-demand composite: M8 licence check (task 3, row 91; register DOC-05; OD-16; AU3-13)
+
+Appended on 2026-10-09 by row 91. This is the record the blueprint requires BEFORE a composite encoder is chosen (evidence package spec §G.3). Everything below was read on that day from the program itself (`-version`, `-buildconf`, `-encoders`, `-L`) and from the licence files installed beside it; nothing was installed, built or downloaded. **Conclusion: no encoder is selected. State of the composite: blocked on a licence decision of the product owner** (the decision and the recommendation are at the end).
+
+**Which program.** `.data/helpers/ffmpeg`, the private copy the development capture helpers use (`DEMS_CAPTURE_HELPER_FFMPEG`; git-ignored, not in any package). SHA-256 `c8173e9755795978bce8e104f8d7044fabe7d6d84044aba37d3648c6f4e4e1a8`, identical to `/opt/homebrew/Cellar/ffmpeg/9.0.2/bin/ffmpeg`. It is a 426,512-byte launcher that loads the Homebrew libraries (`otool -L`: `/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavcodec.63.dylib` and the other `libav*`), so "the build" is that Homebrew installation, not the copied file alone.
+
+**Its configuration** (`-buildconf`): `--enable-shared --enable-pthreads --enable-version3 --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon`. `ffmpeg -L` prints the GNU General Public License, "either version 3 of the License, or (at your option) any later version".
+
+**What that means, from FFmpeg's own `LICENSE.md`** (installed copy): most of FFmpeg is LGPL v2.1+; the optional GPL parts are used only with `--enable-gpl`, and "in this case, FFmpeg's license changes to GPL v2+"; x264 and x265 are listed under "The following libraries are under GPL version 2", and "when combining them with FFmpeg, FFmpeg needs to be licensed as GPL as well"; `--enable-version3` moves the build to version 3. **This build is therefore GPL-3.0-or-later as a whole. That is a property of the build, not of the encoder a command line names**: running it with `-c:v h264_videotoolbox` uses the same GPL binary as running it with `-c:v libx264`.
+
+**The video encoders this build offers for an MP4 composite** (`-encoders`), with the licence of the code each one brings:
+
+| Encoder (`-c:v`) | Codec | Code it needs | Licence of that code (source read) | Exists in a build WITHOUT `--enable-gpl`? |
+|---|---|---|---|---|
+| `libx264`, `libx264rgb` | H.264 | x264 r3222 | GPL version 2 (`/opt/homebrew/Cellar/x264/r3222/COPYING`; listed in FFmpeg `LICENSE.md` under "GPL version 2") | **No** |
+| `libx265` | HEVC | x265 4.3 | GPL v2 (`/opt/homebrew/Cellar/x265/4.3/COPYING`) | **No** |
+| `h264_videotoolbox`, `hevc_videotoolbox` | H.264 / HEVC | FFmpeg's own wrapper + the macOS VideoToolbox framework (part of the operating system, not shipped) | FFmpeg: LGPL v2.1+ (`LICENSE.md`) | Yes, on macOS only |
+| `libvpx-vp9` | VP9 | libvpx 1.17.0 | BSD-style, The WebM Project (`/opt/homebrew/Cellar/libvpx/1.17.0/LICENSE`) | Yes |
+| `libsvtav1` | AV1 | SVT-AV1 4.2.0 | BSD 3-Clause Clear, Alliance for Open Media (`/opt/homebrew/Cellar/svt-av1/4.2.0/LICENSE.md`) | Yes |
+| `mpeg4`, `mjpeg`, `prores*` | MPEG-4 part 2 / MJPEG / ProRes | FFmpeg's native encoders | FFmpeg: LGPL v2.1+ | Yes |
+
+**What each choice puts on a distributed build.**
+
+1. *Running this program on this Mac* (the demo, development): no obligation arises from any of the encoders; the GPL restricts distribution, not use. A composite it writes is its output, not a derivative of the program (GNU GPL FAQ `#GPLOutput`, the entry already cited above for eSpeak NG).
+2. *Distributing this GPL build with a DEMS Core* (any encoder selected): the distributed FFmpeg is under GPL-3.0-or-later. Whoever distributes owes the licence texts, the complete corresponding source of FFmpeg and of the GPL libraries linked into it (or a written offer), no further restrictions, and - for a device sold as a product - the installation information of GPLv3 section 6 for that program. DEMS code that only starts the program as a separate process is not thereby under the GPL (HYPOTHESIS, the usual reading of "mere aggregation"; it is not legal advice and has not been confirmed by counsel).
+3. *Distributing an LGPL-only build* (configured without `--enable-gpl`, so without `libx264` / `libx265`): LGPL v2.1+ obligations for FFmpeg (notices, source of the library, the user's ability to replace it), plus the BSD notices of whichever of libvpx / SVT-AV1 is linked. `libx264` and `libx265` do not exist in such a build.
+4. *Distributing no FFmpeg*: no obligation; the composite then exists only where an operator-provided program is present.
+
+**Not covered by this record.** Patent licensing of H.264 / HEVC encoding is separate from copyright licensing and was not assessed (UNKNOWN). Which operating system and hardware a production Core runs on is not decided in this task; `h264_videotoolbox` exists on macOS only.
+
+**Why no encoder is selected.** The choice follows from a decision this record cannot make: whether a distributed DEMS Core carries FFmpeg at all, and if so which build (option 2, 3 or 4 above). Until that is decided, `selectedCompositeEncoder()` in `apps/core-server/src/evidence-export/composite.ts` answers null and a COMPOSITE export ends as a FAILED job with `COMPOSITE_ENCODER_NOT_SELECTED` (audited). Independently of the decision, the encoders that exist only in a GPL build (`libx264`, `libx264rgb`, `libx265`) are refused by name in that file, so one cannot be wired in without a recorded decision.
+
+**Recommendation for the decision** (row 91): option 3 - an LGPL-only FFmpeg build for anything that is distributed - with `h264_videotoolbox` as the composite encoder on macOS (H.264 in MP4 plays in every client of the project; no GPL code involved) and `libvpx-vp9` as the encoder where VideoToolbox does not exist; on this development Mac the existing helper copy may run the same `h264_videotoolbox` command line unchanged. The GPL build stays what it is today: a development tool that is neither in the repository nor in a package.
+
+### ZIP writer of the evidence export in `@dems/core-server` (task 3, row 91; register DOC-05; controller ruling D139)
+
+Appended on 2026-10-09 by row 91. Version, licence and copyright line were read from each installed package's own `package.json` and `LICENSE` file on that day. Checked before the install with `npm view <pkg> scripts dist.tarball`: none of the three has an `install` / `preinstall` / `postinstall` script, none has a native build, every tarball is on `registry.npmjs.org`. Installed with `npm install --save-exact --ignore-scripts -w @dems/core-server` under `.locks/npm.lock`.
+
+| Package | Installed version | Licence (`package.json`) | Licence file | Copyright line in that file | Used for |
+|---|---|---|---|---|---|
+| `yazl` | 3.3.1 (exact pin; dependency) | MIT | `LICENSE` | "Copyright (c) 2014 Josh Wolfe" | writes `export/EXP-<id>.zip` of an evidence export (`apps/core-server/src/evidence-export/zip-store.ts`): stored entries, ZIP64, fixed entry time, streamed |
+| `buffer-crc32` | 1.0.0 (dependency of `yazl`) | MIT | `LICENSE` | "Copyright (c) 2013-2024 Brian J. Brennan" | through `yazl` (entry checksums) |
+| `@types/yazl` | 3.3.1 (exact pin; devDependency, types only, not in a running server) | MIT | `LICENSE` | "Copyright (c) Microsoft Corporation." | type declarations of `yazl` |
+
+Chosen over `fflate` (MIT, no dependency, but it writes no ZIP64 archive: a recording beyond 4 GiB could not be exported) and `archiver` (MIT, a large dependency tree for the same task).

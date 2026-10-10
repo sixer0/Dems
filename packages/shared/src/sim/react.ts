@@ -24,7 +24,7 @@ import {
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { AudioTrackId } from '../domain';
-import { MIC_INPUT_OF_CHANNEL } from './audio';
+import { captureMicLines, micInputOfChannel } from './audio';
 import { createSim, type Sim } from './engine';
 import type { AudioFrame, CreateSimOptions, SimActions, SimState } from './types';
 
@@ -96,12 +96,11 @@ export function useSimReady(): boolean {
  * subscribe. Never causes a React render; the latest `onFrame` is used without resubscribing.
  *
  * The meters slice is keyed by mic input since schema v2 (SH-17), so the channel a caller names is
- * mapped to the input that feeds it (`MIC_INPUT_OF_CHANNEL`). Register SH-22 retypes this hook to
+ * mapped to the input that channel is in the capture configuration (`micInputOfChannel`, ruling D137). Register SH-22 retypes this hook to
  * take the input ID directly; until then the five client call sites keep working unchanged.
  */
 export function useAudioChannel(channel: AudioTrackId, onFrame: (frame: AudioFrame) => void): void {
   const sim = useSimInstance();
-  const input = MIC_INPUT_OF_CHANNEL[channel];
   const callback = useRef(onFrame);
   useEffect(() => {
     callback.current = onFrame;
@@ -109,10 +108,13 @@ export function useAudioChannel(channel: AudioTrackId, onFrame: (frame: AudioFra
   useEffect(
     () =>
       sim.store.subscribe(
-        (state) => state.audio.inputs[input],
-        (frame) => callback.current(frame),
+        (state) => state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)],
+        // No frame of this input (a pair beyond the built-in inputs): nothing to draw.
+        (frame) => {
+          if (frame !== undefined) callback.current(frame);
+        },
         { fireImmediately: true },
       ),
-    [sim, input],
+    [sim, channel],
   );
 }

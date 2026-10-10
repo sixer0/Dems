@@ -42,8 +42,11 @@ export function SystemRingPanel() {
   // A critical fault during a recording does not stop it (the ring then reads CRITICAL while
   // `since` still carries the recording start): say so instead of "blocks recording" (F45-06).
   const captionKey = ring.state === 'CRITICAL' && ring.since !== null ? 'CRITICAL_RECORDING' : ring.state
-  const statusLine =
-    ring.state === 'READY'
+  // Integration pass D7 item 3 (ux §8e.2; D84, D91): before the first durable fragment the ring is not the
+  // recording ring (the adapter sends the system's own state, no REC, no timer) and the line under it says so.
+  const statusLine = ring.connecting
+    ? t('common.session.connectingCameras')
+    : ring.state === 'READY'
       ? t('dashboard.systemRing.flags')
       : ring.state === 'RECORDING' || ring.state === 'UNKNOWN'
         ? t(`dashboard.systemRing.statusLine.${ring.state}`)
@@ -51,7 +54,7 @@ export function SystemRingPanel() {
 
   return (
     <DashPanel id="a" beatMs={DASH_BEATS.hero} surface="bare" ariaLabel={t(`dashboard.systemRing.ariaLabel.${ring.state}`)}>
-      <div ref={measureRef} className="dems-dash-ring-cell" data-ring-size={size}>
+      <div ref={measureRef} className="dems-dash-ring-cell" data-ring-size={size} data-connecting={ring.connecting ? 'true' : undefined}>
         {/* The ring card's edge curving towards the hero (research/04 §3.1 A). Static. */}
         <svg className="dems-dash-ring-arc" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -78,7 +81,7 @@ export function SystemRingPanel() {
               {statusLine}
             </span>
             <span className={size < CAPTION_MIN_SIZE ? 'sr-only' : 'dems-ring-caption'}>
-              {t(`dashboard.systemRing.caption.${captionKey}`)}
+              {ring.connecting ? t('session.audioSource.connecting.detail') : t(`dashboard.systemRing.caption.${captionKey}`)}
             </span>
           </motion.div>
         </GlowRing>

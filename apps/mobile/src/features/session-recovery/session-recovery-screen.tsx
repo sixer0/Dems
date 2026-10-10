@@ -35,6 +35,18 @@
  * locally; Back is not held then, because the analysis runs on the Core, not on this device. One LIVE
  * line says that the check results are derived on this device from the Core's data (the Core reports
  * the stage and the outcome only, RESIDUAL-W73-1 (W83 ledger #48)). Simulated mode looks and behaves as at step 81.
+ *
+ * **Failed start** (task 3, integration pass D7 item 1; blueprint row 139's request; ux §8e.2
+ * situation C, OP-125-5; decisions D84, D91, D156). A session in FAULT whose payload says
+ * `captureDurable: false` recorded NOTHING: there is no evidence file, no evidence item and nothing
+ * to recover. For it this screen draws no recovery-of-evidence presentation at all (no "Session
+ * recovery" title, no pipeline, no track findings, no outcome card, no evidence link): it mounts row
+ * 139's `FailedStartNotice` ("No camera connected. Nothing was recorded." when the alert carries
+ * `params.reason: NO_CAMERA_CONNECTED`, the generic title otherwise), the pointer to Devices and
+ * "Close session" (the Core's recovery of that session: a history entry, no evidence item). The
+ * presentation is held for that session until the Core has closed it, then the screen goes Home
+ * (the idle state). A FAULT with a durable recording, and a session without the member, keep the
+ * recovery screen above.
  */
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { Alert, Button, useToast } from 'heroui-native';
@@ -52,6 +64,8 @@ import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { SPEC_LITERALS, animatePulseOnce, enterRise, glowShadow, triggerHaptic, useAmbientLoop, useMotionSettings } from '@/motion';
 import { sessionResyncHref } from '@/navigation';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
+import { failedStartWords, type FailedStart } from '@/features/capture-selector/capture-notices-model';
+import { FailedStartNotice, useFailedStart } from '@/features/session-live/capture-start-notice';
 import { RecoveryPipeline, TrackRows } from './recovery-analysis';
 import { RecoveryBoundary } from './recovery-boundary';
 import {
@@ -121,8 +135,24 @@ export function SessionRecoveryScreen() {
   // LIVE only: the runtime's one rule (rows M0, M1); outside LIVE `offline` is always false.
   const { offline: linkDown } = useCoreLinkNotice();
 
+  // Pass D7 item 1: the failed start of the followed session, held by its id while the Core closes it
+  // (the notice itself reads FAULT only). "Adjusting state while rendering", as `useFollowedRecovery`.
+  const failedNow = useFailedStart();
+  const followedId = followed?.id ?? null;
+  const [failedStart, setFailedStart] = useState<{ readonly id: string; readonly kind: FailedStart } | null>(null);
+  if (failedNow !== null && followedId !== null && (failedStart?.id !== followedId || failedStart.kind !== failedNow)) {
+    setFailedStart({ id: followedId, kind: failedNow });
+  }
+  const failed = failedStart !== null && failedStart.id === followedId && phase !== 'other' ? failedStart : null;
+  // Closed by the Core (the session left the store): the idle state, with no outcome card (OP-125-5).
+  const failedClosed = failed !== null && phase !== 'fault' && phase !== 'analysing';
+  useEffect(() => {
+    if (failedClosed && focused) go('/home', 'failedStartClosed');
+  }, [failedClosed, focused, go]);
+
   // While the Core link is down the analysis still runs on the Core, so Back is not held (LIVE only).
-  useRecoveryBack({ busy: isRecoveryBusy(phase) && !linkDown, focused, go, simNow });
+  // A failed start has no analysis to wait for: Back is never held for it.
+  useRecoveryBack({ busy: isRecoveryBusy(phase) && !linkDown && failed === null, focused, go, simNow });
 
   // One critical-fault haptic per interrupted session (§7.6 row 7).
   const faultId = phase === 'fault' ? (followed?.id ?? null) : null;
@@ -161,7 +191,23 @@ export function SessionRecoveryScreen() {
   const maxWidth = CARD_MAX_WIDTH[layoutClass];
 
   let body: ReactNode;
-  if (phase === 'idle' || phase === 'other' || followed === null) {
+  if (failed !== null) {
+    body = (
+      <RecoveryBoundary name="status">
+        <FailedStartCard
+          sessionId={failed.id}
+          kind={failed.kind}
+          waiting={phase === 'fault'}
+          canStart={canStartRecovery(role)}
+          roleLabel={role ? t(`common.roles.${role}`) : '—'}
+          linkDown={linkDown}
+          onClose={actions.start}
+          onOpenDevices={() => go('/devices' as Href, 'failedStart.devices', 'push')}
+          onHome={() => go('/home', 'home')}
+        />
+      </RecoveryBoundary>
+    );
+  } else if (phase === 'idle' || phase === 'other' || followed === null) {
     const resume = phase === 'other' ? sessionResyncHref(liveState, { sessionId: followed?.id ?? null }) : null;
     body = (
       <NoticeCard
@@ -415,6 +461,91 @@ function StatusCard({
                   ? t('features.session-recovery.actions.startHint')
                   : t('features.session-recovery.actions.needsRole', { role: roleLabel })}
               </Text>
+              <Button testID="recovery-home" variant="outline" size="lg" onPress={onHome}>
+                <Button.Label>{t('features.session-recovery.actions.goHome')}</Button.Label>
+              </Button>
+            </View>
+          ) : null}
+        </SectionCard>
+      </Pane>
+    </Animated.View>
+  );
+}
+
+interface FailedStartCardProps {
+  sessionId: string;
+  kind: FailedStart;
+  /** FAULT: the session waits for its close. Otherwise the Core is closing it. */
+  waiting: boolean;
+  canStart: boolean;
+  roleLabel: string;
+  linkDown: boolean;
+  onClose: RecoveryActions['start'];
+  onOpenDevices: () => void;
+  onHome: () => void;
+}
+
+/**
+ * The presentation of a session that recorded nothing (pass D7 item 1; ux §8e.2 situation C). No
+ * ring, no pipeline, no track rows, no outcome: row 139's notice, the Devices pointer inside it and
+ * "Close session". While the Core closes the session the same words stay, without the controls.
+ */
+function FailedStartCard({ sessionId, kind, waiting, canStart, roleLabel, linkDown, onClose, onOpenDevices, onHome }: FailedStartCardProps) {
+  const { t } = useTranslation();
+  const settings = useMotionSettings();
+  const press = usePendingPress();
+  const onClosePress = () => {
+    press.run((release) => onClose(release));
+  };
+  const words = failedStartWords(t, kind);
+  return (
+    <Animated.View entering={enterRise(0, settings)}>
+      <Pane name="recovery">
+        <SectionCard testID="recovery-failed-start">
+          <View style={styles.headText}>
+            <Text maxFontSizeMultiplier={1.2} selectable style={styles.sessionId} testID="recovery-session-id">
+              {sessionId}
+            </Text>
+            <StatusChip testID="recovery-state-chip" size="sm" tone="danger" icon={TriangleAlert} label={t('common.enums.sessionState.FAULT')} />
+          </View>
+
+          {linkDown ? (
+            <View style={styles.alert} testID="recovery-link-down">
+              <Alert status="warning">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>{t('features.session-recovery.live.linkDownTitle')}</Alert.Title>
+                  <Alert.Description>{t('features.session-recovery.live.linkDownBody')}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </View>
+          ) : null}
+
+          {waiting ? (
+            <FailedStartNotice onOpenDevices={onOpenDevices} />
+          ) : (
+            <View testID="recovery-failed-start-closing" accessibilityLiveRegion="polite">
+              <Alert status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>{words.title}</Alert.Title>
+                  <Alert.Description>{words.body}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </View>
+          )}
+
+          {waiting ? (
+            <View style={styles.actions}>
+              <Button testID="recovery-close-session" variant="primary" size="lg" onPress={onClosePress} {...busyState(press.busy)}>
+                {press.pending ? <PendingSpinner color={palette.black} testID="recovery-close-session-spinner" /> : null}
+                <Button.Label>{t('common.session.failedStart.close')}</Button.Label>
+              </Button>
+              {canStart ? null : (
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="recovery-close-session-hint">
+                  {t('features.session-recovery.actions.needsRole', { role: roleLabel })}
+                </Text>
+              )}
               <Button testID="recovery-home" variant="outline" size="lg" onPress={onHome}>
                 <Button.Label>{t('features.session-recovery.actions.goHome')}</Button.Label>
               </Button>

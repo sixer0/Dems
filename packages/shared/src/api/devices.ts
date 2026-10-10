@@ -20,7 +20,7 @@
  * `MIC-02`, `GNSS`, `TPM`, `FRONT-PANEL`), never a paired device of the registry (`DEV-NNNN`).
  */
 import { z } from 'zod';
-import { TrackId } from '../domain/enums';
+import { MicRole, TrackId } from '../domain/enums';
 import { AuditType, DeviceCommand, Permission } from '../sim/vocabulary';
 import { API_BASE_PATH } from './constants';
 import {
@@ -114,7 +114,17 @@ export const CaptureConfigCameraUpdateSchema = z
   .describe('One camera line of `CaptureConfigUpdate`: which capture device feeds which video track.');
 export type CaptureConfigCameraUpdate = z.output<typeof CaptureConfigCameraUpdateSchema>;
 
-/** One mic line of the whole-config update (op 78). The PRIMARY role itself moves through op 80. */
+/**
+ * One mic line of the whole-config update (op 78). Two forms (decision D133 (1)):
+ *
+ *   - WITHOUT `role` (the form published first, still valid): the line edits the input it names,
+ *     which must be one of the two inputs the selector holds; the PRIMARY role moves through op 80;
+ *   - WITH `role` on both lines (pair replacement): the two lines are the new pair of inputs, one
+ *     PRIMARY and one STANDBY, each `deviceId` equal to its `inputId`. It is the only way to put a
+ *     microphone registered later (`MIC-03`) behind the capture.
+ *
+ * A body that mixes the two forms, or a single line with `role`, is `422 INVALID_INPUT`.
+ */
 export const CaptureConfigMicUpdateSchema = z
   .strictObject({
     inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('A mic input of the selector, `MIC-NN`.'),
@@ -122,8 +132,12 @@ export const CaptureConfigMicUpdateSchema = z
     transport: trimmedText(32)
       .optional()
       .describe('Transport code (open set, e.g. `POE`, `USB`, `ANALOG`); absent: the device default.'),
+    role: z
+      .enum(MicRole)
+      .optional()
+      .describe('PAIR REPLACEMENT (D133 (1)): when the lines carry `role`, the two lines ARE the new pair - exactly one PRIMARY and one STANDBY, each with `deviceId` equal to `inputId`, any registered `MIC-NN`. Absent on every line: the line edits the input it names (the earlier form).'),
   })
-  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input.');
+  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, one line of the replacing pair.');
 export type CaptureConfigMicUpdate = z.output<typeof CaptureConfigMicUpdateSchema>;
 
 /** Request body of op 78: the whole selector at once; every member optional (partial update). */

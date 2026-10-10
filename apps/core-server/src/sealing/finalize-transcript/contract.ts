@@ -62,9 +62,10 @@ export interface AssembledTranscriptRecord {
   readonly vttSha256: string;
   readonly model: {
     readonly name: string;
-    readonly version: string;
-    readonly quantisation: string;
-    readonly modelSha256: string;
+    /** Null exactly for a server backend, with the two members below (decision D160; `transcriptModelFaults`). */
+    readonly version: string | null;
+    readonly quantisation: string | null;
+    readonly modelSha256: string | null;
     readonly params: { readonly backend: string; readonly modelId: string; readonly language: string };
   };
   readonly diarization: { readonly numSpeakers: number; readonly status: SpeakerStateValue; readonly confidence: number | null; readonly reason: string | null };

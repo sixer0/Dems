@@ -53,7 +53,15 @@ beforeAll(async () => {
 describe('M4-MT-12: the device UPSERT as dems_app on an existing id', () => {
   it('an ingest-state change of an adopted camera succeeds; adapter_kind, kind and the four discovery columns are unchanged', async () => {
     const before = await rehydrate(db.appPool());
-    expect(before.captureDevices.devices.find((device) => device.id === 'CAM-07')).toMatchObject({ online: true, streamState: 'LIVE' });
+    // An adopted camera reads back as operation 96 registered it (the INTERNAL action
+    // `registerCaptureDevice`, row 132; `captureDeviceOf` of the shared registry; C3 §2.6 "Adoption is
+    // not assignment"): online, NO stream state until a track is assigned, with its adapter and the
+    // class derived from it. The mapping must give exactly that shape back, or the stored state
+    // would differ from the committed one after every adoption. (Until row 132 this line expected
+    // the built-in cameras' `streamState: 'LIVE'`, which only CAM-01 / CAM-02 carry.)
+    expect(before.captureDevices.devices.find((device) => device.id === 'CAM-07')).toMatchObject({ online: true, streamState: null, adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' });
+    // CONTROL: a built-in camera still reads LIVE while it is enabled.
+    expect(before.captureDevices.devices.find((device) => device.id === 'CAM-01')).toMatchObject({ online: true, streamState: 'LIVE' });
     // The camera's ingest stops: the supervisor's telemetry turns the device offline.
     const applied = await writeThrough(before, withDevice(before, 'CAM-07', { online: false, streamState: 'LOST' }));
     expect(applied).toBe(1);
@@ -71,7 +79,17 @@ describe('M4-MT-12: the device UPSERT as dems_app on an existing id', () => {
   it('the same for a LOCAL_DEVICE row and for a seeded built-in: the kind each was inserted with stays', async () => {
     const before = await rehydrate(db.appPool());
     const next = withDevice(withDevice(before, 'CAM-08', { online: false, streamState: 'LOST' }), 'MIC-01', { online: false });
-    expect(await writeThrough(before, next)).toBe(1);
+    // TWO changes, by the planner's own rule (pass D4, `diffCapture` in db/mapping/changes.ts; pass
+    // E3 item 1 moved this expectation from 1): a device whose transport the state HOLDS (a
+    // built-in such as MIC-01) goes into the ONE batched UPSERT of whole rows; a device whose
+    // transport the state does NOT hold (this Mac's camera, an adopted camera) is ONE UPDATE of its
+    // own, of exactly the modelled columns that moved - so that the registry's transport is never
+    // overwritten. Each shape is asserted, not only the count.
+    const planned = diffSlices(before, next, Date.now()).filter((change) => change.table === 'captureDevices');
+    expect(planned.map((change) => change.op)).toEqual(['insert', 'update']);
+    expect(planned[0]).toMatchObject({ op: 'insert', rows: [expect.objectContaining({ id: 'MIC-01', enabled: false })] });
+    expect(planned[1]).toEqual({ op: 'update', table: 'captureDevices', key: { id: 'CAM-08' }, set: { enabled: false } });
+    expect(await writeThrough(before, next)).toBe(2);
     const { rows } = await db.ownerPool().query("SELECT id, adapter_kind, enabled FROM public.capture_devices WHERE id IN ('CAM-08', 'MIC-01') ORDER BY id");
     expect(rows).toEqual([
       { id: 'CAM-08', adapter_kind: 'LOCAL_DEVICE', enabled: false },

@@ -56,6 +56,7 @@ import { Pane, SafeScreen, useLayoutClass } from '@/layout';
 import { enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { BackGuardDialog, useBackGuard, type BackGuard } from '@/navigation';
 import { ActionTiles } from './action-tiles';
+import { CaptureStartNotice } from './capture-start-notice';
 import { ConnectionBanner } from './connection-banner';
 import { EndSession } from './end-session';
 import { LiveFeed } from './live-feed';
@@ -64,7 +65,7 @@ import { MicCard } from './mic-card';
 import { MicSourceControls } from './mic-source-controls';
 import { isMonitorHandoff } from './monitor-handoff';
 import { AudioMonitorSheet, MonitorSettingsSheet, TimelineSheet } from './monitor-sheets';
-import { RecDot, RecLabel, RecRow, RecTimer } from './rec-indicator';
+import { RecDot, RecLabel, RecRow, RecTimer, useConnectingCameras } from './rec-indicator';
 import {
   monitorArrangement,
   monitorColumnWidths,
@@ -126,6 +127,7 @@ export function SessionLiveScreen() {
   const events = useMonitorTimeline();
   const readOnly = useCoreLinkReadOnly();
   const actions = useMonitorActions();
+  const connecting = useConnectingCameras();
 
   // §3.6: while RECORDING, every way back asks first; leaving never touches the session.
   const recording = session.state === 'RECORDING';
@@ -287,7 +289,8 @@ export function SessionLiveScreen() {
       bookmarkRef={bookmarkRef}
     />
   );
-  const endSession = <EndSession disabled={readOnly} onEnd={onEnd} />;
+  // Row 139 (D84, D91): before the first durable fragment there is nothing to stop and seal; the control says so.
+  const endSession = <EndSession disabled={readOnly} blockedReason={connecting ? t('common.session.stopWhileConnecting') : undefined} onEnd={onEnd} />;
   const timeline = (
     <View ref={timelineRef} collapsable={false} style={styles.timelineHost}>
       <SessionTimeline
@@ -320,6 +323,8 @@ export function SessionLiveScreen() {
             removal happen inside it and never shift the index of the monitor's other children. */}
         <View style={styles.banner} collapsable={false} testID="monitor-banner-slot">
           <ConnectionBanner />
+          {/* Row 139 (ux §8e.2 "C, degraded"): one camera of two connected. Drawn from the Core's alert; cleared by the Core only. */}
+          <CaptureStartNotice />
         </View>
         <MonitorBody
           arrangement={arrangement}

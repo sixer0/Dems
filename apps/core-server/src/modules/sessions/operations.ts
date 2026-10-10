@@ -40,13 +40,20 @@ export const SESSION_OPERATION_IDS = [
   'acknowledgeSessionSummary',
   'listSessionHistory',
 ] as const;
-export type SessionOperationId = (typeof SESSION_OPERATION_IDS)[number];
+/**
+ * Task 3 blueprint row 71 (C3 §2.2 operation 81): the in-session microphone switch. Registered by
+ * this module's routes, answered by the unit `src/capture-session`; kept beside the fifteen
+ * operations of spec §7.8, not among them. Integration pass D4 (operation 82): the read of the
+ * intervals those switches leave, `audio-intervals.ts`. In registry order.
+ */
+export const CAPTURE_SESSION_OPERATION_IDS = ['switchAudioSource', 'listAudioSourceIntervals'] as const;
+export type SessionOperationId = (typeof SESSION_OPERATION_IDS)[number] | (typeof CAPTURE_SESSION_OPERATION_IDS)[number];
 
 /** The two reads: no hosted action, no state change. */
 export const SESSION_READ_IDS = ['getCurrentSession', 'listSessionHistory'] as const satisfies readonly SessionOperationId[];
 export type SessionReadId = (typeof SESSION_READ_IDS)[number];
-/** The thirteen commands: each runs hosted actions of the simulator as one unit of work. */
-export type SessionCommandId = Exclude<SessionOperationId, SessionReadId>;
+/** The thirteen commands of spec §7.8, each one hosted action as one unit of work; and operation 81, through `src/capture-session`. */
+export type SessionCommandId = Exclude<(typeof SESSION_OPERATION_IDS)[number], SessionReadId>;
 
 /** The registry entry of an operation of this module. Throws for a name the registry does not hold. */
 export function operationOf(operationId: SessionOperationId): CoreApiRegistryOperation {

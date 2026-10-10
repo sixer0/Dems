@@ -252,7 +252,10 @@ describe('a confirmed switch (ux §3.2 steps 1-4; operation 81)', () => {
     // The toggle now names the other input; the band has the interval the switch opened; the timeline names both inputs.
     await waitFor(() => expect(within(audio).getByTestId('sm-audio-switch')).toHaveTextContent('Switch to MIC 1'))
     await waitFor(() => expect(within(audio).getByTestId('audio-source-band')).toHaveAttribute('data-segments', '2'))
-    expect(within(audio).getByTestId('audio-source-band-segment-1')).toHaveAttribute('data-input', 'MIC-02')
+    // Pass D6 (item 9, D159): intervals are numbered from 1 (the manifest's rule; the simulator counted from 0).
+    // The segment's test id is its `seq`: 1 = the interval of the start, 2 = the interval the switch opened.
+    expect(within(audio).getByTestId('audio-source-band-segment-1')).toHaveAttribute('data-input', 'MIC-01')
+    expect(within(audio).getByTestId('audio-source-band-segment-2')).toHaveAttribute('data-input', 'MIC-02')
     const item = document.querySelector('[data-kind="AUDIO_SWITCH"]')
     expect(item).toHaveTextContent(en.session.timeline.kind.AUDIO_SWITCH)
     expect(item).toHaveTextContent('MIC 1 to MIC 2')
@@ -374,5 +377,48 @@ describe('the Dashboard mic tiles (WB-02)', () => {
     })
     await waitFor(() => expect(screen.getByTestId('device-tile-source-AUDIO-02')).toHaveAttribute('data-source', 'ACTIVE'))
     expect(screen.getByTestId('device-tile-source-AUDIO-01')).toHaveAttribute('data-source', 'STANDBY')
+  })
+})
+
+// Integration pass D5 (ruling D137): the input behind a meter channel is the microphone line at its
+// position in the capture configuration, not the fixed table of the built-in pair.
+describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
+  it('the second meter reads the second line (MIC-01), and the Active / Standby chips name MIC-03 and MIC-01', async () => {
+    mount(OPERATOR_IDS.BUDI, {
+      prepare: (sim) => {
+        const state = sim.store.getState()
+        const pair = ['MIC-03', 'MIC-01']
+        const lines = state.captureConfig.mics.slice(0, 2).map((line, index) => ({ ...line, inputId: pair[index]! }))
+        const frame = state.audio.inputs['MIC-01']!
+        sim.store.setState({
+          captureConfig: { ...state.captureConfig, mics: lines },
+          session: state.session === null ? null : { ...state.session, captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics: lines } : state.session.captureConfig, audioSource: { ...state.session.audioSource, activeInputId: 'MIC-03', standbyInputId: 'MIC-01' } },
+          audio: {
+            ...state.audio,
+            activeInputId: 'MIC-03',
+            inputs: {
+              ...state.audio.inputs,
+              'MIC-03': { ...frame, dbfs: -20, peak: -18, noSignal: false, clip: false },
+              'MIC-01': { ...frame, dbfs: -30, peak: -28, noSignal: false, clip: false },
+              // NEGATIVE CONTROL: the fixed table would read this frame for channel 2.
+              'MIC-02': { ...frame, dbfs: -120, peak: -120, noSignal: true, clip: false },
+            },
+          },
+        } as never)
+      },
+    })
+    const audio = await panel()
+    expect(role('MIC-03')).toHaveAttribute('data-role', 'ACTIVE')
+    expect(role('MIC-01')).toHaveAttribute('data-role', 'STANDBY')
+    expect(screen.queryByTestId('sm-audio-role-MIC-02')).not.toBeInTheDocument()
+    expect(audio.querySelector('[data-channel="AUDIO-01"].sm-audio-half')).toHaveAttribute('data-source', 'ACTIVE')
+    expect(audio.querySelector('[data-channel="AUDIO-02"].sm-audio-half')).toHaveAttribute('data-source', 'STANDBY')
+    const second = audio.querySelector('[data-testid="dbfs-meter"][data-channel="AUDIO-02"]')
+    expect(second).not.toBeNull()
+    expect(second).not.toHaveAttribute('data-no-signal')
+    expect(second?.querySelector('[role="meter"]')).toHaveAttribute('aria-valuenow', '-30')
+    // A silence warning that names channel 2 is about the second line.
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toBe('MIC-01')
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-01')).toBe('MIC-02')
   })
 })

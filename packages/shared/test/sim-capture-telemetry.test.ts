@@ -141,15 +141,15 @@ describe('applyCaptureTelemetry: the levels reach the meters and nothing else (S
     const h = harness();
     h.run(200);
     // Control: what the generator shows by itself is never these two values.
-    expect(h.state().audio.inputs['MIC-01'].dbfs).not.toBe(-6.25);
+    expect(h.state().audio.inputs['MIC-01']!.dbfs).not.toBe(-6.25);
     const held = h.state();
 
     h.sim.actions.applyCaptureTelemetry(frame({ levels: [{ role: 'PRIMARY', dbfs: -6.25, clipped: false }, { role: 'STANDBY', dbfs: -1.5, clipped: false }] }));
     // The action itself wrote nothing, not even the meters: the audio subsystem does, on its tick.
     expect(h.state()).toBe(held);
     h.run(50);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject({ dbfs: -6.25, noSignal: false, at: h.clock.now() });
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject({ dbfs: -1.5, noSignal: false });
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject({ dbfs: -6.25, noSignal: false, at: h.clock.now() });
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject({ dbfs: -1.5, noSignal: false });
     expect(h.state().audio.activeInputId).toBe('MIC-01');
   });
 
@@ -157,8 +157,8 @@ describe('applyCaptureTelemetry: the levels reach the meters and nothing else (S
     const h = harness();
     h.sim.actions.applyCaptureTelemetry(frame({ levels: [{ role: 'PRIMARY', dbfs: null, clipped: false }, { role: 'STANDBY', dbfs: -9, clipped: true }] }));
     h.run(50);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject({ dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, noSignal: true });
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject({ dbfs: -9, clip: true, noSignal: false });
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject({ dbfs: AUDIO_FLOOR_DBFS, peak: AUDIO_FLOOR_DBFS, noSignal: true });
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject({ dbfs: -9, clip: true, noSignal: false });
     expect(h.state().mics.find((mic) => mic.id === 'AUDIO-02')?.clipLatched).toBe(true);
     expect(h.state().mics.find((mic) => mic.id === 'AUDIO-01')?.clipLatched).toBe(false);
     // The level alone never raises a fault and never switches the input.
@@ -170,17 +170,17 @@ describe('applyCaptureTelemetry: the levels reach the meters and nothing else (S
     const h = harness();
     h.sim.actions.applyCaptureTelemetry(frame({ levels: [{ role: 'PRIMARY', dbfs: null, clipped: false }] }));
     h.run(CAPTURE_LEVEL_HOLD_MS);
-    expect(h.state().audio.inputs['MIC-01'].noSignal).toBe(true);
+    expect(h.state().audio.inputs['MIC-01']!.noSignal).toBe(true);
     h.run(100);
-    expect(h.state().audio.inputs['MIC-01'].noSignal).toBe(false);
+    expect(h.state().audio.inputs['MIC-01']!.noSignal).toBe(false);
   });
 
   it('a role that no mic row holds is ignored', () => {
     const h = harness();
     h.sim.actions.applyCaptureTelemetry(frame({ levels: [{ role: 'TERTIARY' as 'PRIMARY', dbfs: null, clipped: true }] }));
     h.run(50);
-    expect(h.state().audio.inputs['MIC-01'].noSignal).toBe(false);
-    expect(h.state().audio.inputs['MIC-02'].noSignal).toBe(false);
+    expect(h.state().audio.inputs['MIC-01']!.noSignal).toBe(false);
+    expect(h.state().audio.inputs['MIC-02']!.noSignal).toBe(false);
     expect(h.state().mics.every((mic) => !mic.clipLatched)).toBe(true);
   });
 });
@@ -372,21 +372,21 @@ describe('external levels (capture mode real; decision D72, A-4): nothing is gen
   it('before the first frame, after the last one and with no worker at all, both meters of a recording read NO SIGNAL', () => {
     const h = harness('recording', 'external');
     h.run(2_000);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject(silent);
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject(silent);
 
     // The worker measures: the level is shown, for the input it measured only.
     h.sim.actions.applyCaptureTelemetry(frame({ levels: [{ role: 'PRIMARY', dbfs: -14.5, clipped: false }] }));
     h.run(50);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject({ dbfs: -14.5, noSignal: false });
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject({ dbfs: -14.5, noSignal: false });
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject(silent);
 
     // The worker went down: when the last level is older than the hold, NO SIGNAL again. Never a generated level.
     h.run(CAPTURE_LEVEL_HOLD_MS + 100);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject(silent);
     h.run(30_000);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject(silent);
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject(silent);
     // A missing feed is not a fault by itself and switches nothing (OD-11); the worker warns.
     expect(h.state().faults.active.filter((fault) => /MIC/.test(fault.kind))).toEqual([]);
     expect(h.state().audio.activeInputId).toBe('MIC-01');
@@ -398,13 +398,13 @@ describe('external levels (capture mode real; decision D72, A-4): nothing is gen
     const before = peaks();
     h.run(200_000);
     expect(peaks()).toBe(before);
-    expect(h.state().audio.inputs['MIC-01']).toMatchObject(silent);
+    expect(h.state().audio.inputs['MIC-01']!).toMatchObject(silent);
 
     // Control: the simulated source does generate, levels and peaks, over the same time.
     const simulated = harness('recording', 'simulated');
     const simulatedBefore = (simulated.state().session?.timeline ?? []).filter((item) => item.kind === 'AUDIO_PEAK').length;
     simulated.run(200_000);
-    expect(simulated.state().audio.inputs['MIC-01'].noSignal).toBe(false);
+    expect(simulated.state().audio.inputs['MIC-01']!.noSignal).toBe(false);
     expect((simulated.state().session?.timeline ?? []).filter((item) => item.kind === 'AUDIO_PEAK').length).toBeGreaterThan(simulatedBefore);
   });
 
@@ -413,6 +413,6 @@ describe('external levels (capture mode real; decision D72, A-4): nothing is gen
     const sim = createSim({ clock, storage: null, authStorage: null, scenario: 'recording' });
     clock.advance(50);
     sim.tick();
-    expect(sim.store.getState().audio.inputs['MIC-01'].noSignal).toBe(false);
+    expect(sim.store.getState().audio.inputs['MIC-01']!.noSignal).toBe(false);
   });
 });

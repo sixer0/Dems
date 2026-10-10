@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
 import { useFlight } from './flight-context'
 import { logSessionMonitorError } from './log'
-import type { SessionPhase } from './model'
+import { selectConnectingCameras, type SessionPhase } from './model'
 
 /** Simulator input limits kept stable for steps 54/91 (D61): marker label 80, note 2000. */
 export const MARKER_MAX = 80
@@ -97,6 +97,8 @@ export function ActionBar(props: ActionBarProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS.P)
   const container = useStaggerVariants(PANEL_BEAT_MS.P - 120, 40, 6)
   const recording = props.phase === 'RECORDING'
+  // Row 139 (D84, D91; C3 §3.1): before the first durable fragment there is nothing to stop and seal.
+  const connecting = useSim(selectConnectingCameras)
   return (
     <motion.section
       className="sm-area-actions sm-actions-wrap"
@@ -117,6 +119,11 @@ export function ActionBar(props: ActionBarProps) {
           {t('session.actions.endSession.notPermitted')}
         </span>
       ) : null}
+      {connecting ? (
+        <span id={CONNECTING_ID} className="sr-only">
+          {t('common.session.stopWhileConnecting')}
+        </span>
+      ) : null}
       <Toolbar aria-label={t('session.actions.label')} className="sm-actions">
         <motion.div className="contents" variants={container}>
           <PauseAction recording={recording} paused={props.paused} onChange={props.onPausedChange} />
@@ -129,7 +136,7 @@ export function ActionBar(props: ActionBarProps) {
             onSnapshot={props.onSnapshot}
           />
           <QueueAction />
-          <EndSessionAction recording={recording} permitted={props.canStart} />
+          <EndSessionAction recording={recording} permitted={props.canStart} connecting={connecting} />
         </motion.div>
       </Toolbar>
     </motion.section>
@@ -171,6 +178,8 @@ function PendingIcon({ pending, children }: { pending: boolean; children: ReactN
 const UNAVAILABLE_ID = 'sm-actions-unavailable'
 /** Review 40 M5/R4: session control is gated on SESSION_START until step 54 enforces it in the simulator. */
 const NOT_PERMITTED_ID = 'sm-actions-not-permitted'
+/** Row 139: the id of the hidden text that says why End Session waits for the first durable fragment. */
+const CONNECTING_ID = 'sm-actions-connecting'
 
 /**
  * Says why a session action is disabled: a pointer hint (`title`) on the wrapper, and
@@ -555,11 +564,14 @@ function QueueAction() {
 }
 
 // ── 6. End Session: hold to confirm, then the mandatory reason ───────────────────────────
-function EndSessionAction({ recording, permitted }: { recording: boolean; permitted: boolean }) {
+function EndSessionAction({ recording, permitted, connecting }: { recording: boolean; permitted: boolean; connecting: boolean }) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const enabled = recording && permitted
-  const reason = !recording ? undefined : t('session.actions.endSession.notPermitted')
+  // Row 139: while the cameras connect the stop is disabled WITH its reason (the Core would answer
+  // 409 `CAPTURE_NOT_DURABLE`). The role comes first: an operator who may not stop is told that.
+  const waiting = recording && permitted && connecting
+  const enabled = recording && permitted && !connecting
+  const reason = !recording ? undefined : waiting ? t('common.session.stopWhileConnecting') : t('session.actions.endSession.notPermitted')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [hint, setHint] = useState(false)
   const [fillScope, animate] = useAnimate<HTMLSpanElement>()
@@ -593,8 +605,9 @@ function EndSessionAction({ recording, permitted }: { recording: boolean; permit
           className="sm-action sm-action-end"
           isDisabled={!enabled}
           data-testid="sm-action-end"
-          aria-describedby={hint ? 'sm-end-hint' : enabled ? undefined : recording ? NOT_PERMITTED_ID : UNAVAILABLE_ID}
+          aria-describedby={hint ? 'sm-end-hint' : enabled ? undefined : waiting ? CONNECTING_ID : recording ? NOT_PERMITTED_ID : UNAVAILABLE_ID}
           data-permitted={permitted ? 'true' : 'false'}
+          data-connecting={waiting ? 'true' : undefined}
           data-hint={hint ? 'true' : undefined}
           onPressStart={(event) => {
             if (direct || event.pointerType === 'keyboard' || event.pointerType === 'virtual') return
@@ -632,13 +645,14 @@ function EndSessionAction({ recording, permitted }: { recording: boolean; permit
           ) : null}
         </Button>
       </Unavailable>
-      <EndSessionDialog isOpen={dialogOpen} onOpenChange={setDialogOpen} />
+      <EndSessionDialog isOpen={dialogOpen && !waiting} onOpenChange={setDialogOpen} />
     </ActionSlot>
   )
 }
 
 function EndSessionDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation()
+  const sim = useSimInstance()
   const actions = useCoreActions()
   const presentCoreError = useCoreErrorPresenter()
   const press = usePendingControl()
@@ -681,6 +695,14 @@ function EndSessionDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenCha
         if (transition?.code === SimErrorCode.REASON_TOO_SHORT) {
           // 422 INVALID_REASON: the reason field's error; the dialog stays open with the text.
           setRefused(sent)
+          return
+        }
+        if (transition !== null && selectConnectingCameras(sim.store.getState())) {
+          // Row 139: the Core refused the stop (409 `INVALID_STATE`, `details.reason: CAPTURE_NOT_DURABLE`) while
+          // the session still says `captureDurable: false` - a stop sent in the instant before the control was
+          // disabled. The Live source carries no `details` to a page, so the session itself says which refusal it is.
+          toast.info(t('common.session.stopWhileConnecting'))
+          close()
           return
         }
         if (transition !== null && transition.from !== null && ENDED_STATES.has(transition.from)) {

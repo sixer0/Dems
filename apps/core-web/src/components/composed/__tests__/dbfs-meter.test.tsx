@@ -2,7 +2,7 @@
 import { Profiler } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { MIC_INPUT_OF_CHANNEL, type Sim } from '@dems/shared/sim'
+import { captureMicLines, micInputOfChannel, type Sim } from '@dems/shared/sim'
 import { drainMeterFrames, setDebugMetricsEnabled } from '@/motion'
 import { DbfsMeter } from '../dbfs-meter'
 import {
@@ -23,7 +23,8 @@ let t0: number
 
 beforeEach(() => {
   sim = createTestSim()
-  t0 = sim.store.getState().audio.inputs[MIC_INPUT_OF_CHANNEL['AUDIO-01']].at
+  const state = sim.store.getState()
+  t0 = state.audio.inputs[micInputOfChannel(captureMicLines(state), 'AUDIO-01')].at
   // A known starting frame: −18 dBFS on MIC 1 (the mockup value).
   pushAudioFrame(sim, 'AUDIO-01', { at: t0, dbfs: -18, peak: -12, clip: false, noSignal: false })
 })

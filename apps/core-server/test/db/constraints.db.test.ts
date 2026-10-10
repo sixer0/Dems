@@ -24,6 +24,7 @@ import {
   captureDevice,
   captureDeviceCredential,
   captureSource,
+  mediaStore,
   sessionSttSnapshot,
   consoleSettings,
   coreDevice,
@@ -254,6 +255,10 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['session_stt_config_language_check', 'session_stt_config', sessionSttSnapshot({ language: 'en' })],
   ['session_stt_config_credential_kind_check', 'session_stt_config', sessionSttSnapshot({ credential_kind: 'PLAIN' })],
   ['session_stt_config_revision_check', 'session_stt_config', sessionSttSnapshot({ config_revision: 0 })],
+  // ── schema v6 (erratum PE-0013-01): the cause of an alert in the CODE form; the two CHECKs of T-43. ──
+  ['alerts_reason_check', 'alerts', alert('ALR-000001', { reason: 'mic disconnected' })],
+  ['core_media_store_singleton_check', 'core_media_store', mediaStore({ singleton: false })],
+  ['core_media_store_root_check', 'core_media_store', mediaStore({ media_root: 'media/sessions' })],
 ];
 
 /**
@@ -284,11 +289,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 179 CHECKs of the contract: 174 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 182 CHECKs of the contract: 177 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(179);
-    expect(REFUSED_BY_CHECK).toHaveLength(174);
+    expect(named).toHaveLength(182);
+    expect(REFUSED_BY_CHECK).toHaveLength(177);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -314,7 +319,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 42 tables', async () => {
+  it('one valid row in each of the 43 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -337,6 +342,10 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'exports', exportRecord('EXP-000002', { scope: 'AUDIT', evidence_id: null }));
     await insertRow(owner, 'alerts', alert('ALR-000001', { params: json({ kind: 'STORAGE_LOW', target: null }) }));
     await insertRow(owner, 'alerts', alert('ALR-000002', { kind: 'SYSTEM' }));
+    // schema v6 (PE-0013-01): two causes of one kind on one device are two rows; a cause on a SYSTEM alert.
+    await insertRow(owner, 'alerts', alert('ALR-000003', { kind: 'CAPTURE_FAULT', severity: 'CRITICAL', target: 'MIC-01', reason: 'MIC_DISCONNECTED' }));
+    await insertRow(owner, 'alerts', alert('ALR-000004', { kind: 'CAPTURE_FAULT', severity: 'CRITICAL', target: 'MIC-01', reason: 'CAMERA_CLOCK_OUT_OF_BOUND' }));
+    await insertRow(owner, 'alerts', alert('ALR-000005', { kind: 'SYSTEM', severity: 'INFO', target: 'MIC-01', reason: 'MIC_RATE_AT_LIMIT' }));
     await insertRow(owner, 'storage_policy', storagePolicy());
     await insertRow(owner, 'console_settings', consoleSettings());
     for (const name of ['event', 'session', 'caseNumber', 'evidence', 'item', 'export']) {
@@ -371,6 +380,10 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     // schema v5 (PE-129b-01): the session's STT snapshot, and one for a disabled local backend.
     await insertRow(owner, 'session_stt_config', sessionSttSnapshot());
     await insertRow(owner, 'session_stt_config', sessionSttSnapshot({ session_id: 'SES-20261001-0003', enabled: false, backend: 'cpu-local', endpoint: null, credential_kind: null }));
+    // schema v6 (PE-0013-01): the media store root; and the two key ids of the specification on a revision.
+    await insertRow(owner, 'core_media_store', mediaStore());
+    await insertRow(owner, 'transcript_revisions', transcriptRevision(8, { signature_key_id: 'CORE-KEY-EVSIGN-01' }));
+    await insertRow(owner, 'transcript_revisions', transcriptRevision(9, { signature_key_id: 'DEMO-KEY-EVSIGN-01' }));
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),

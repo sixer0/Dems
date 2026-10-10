@@ -21,7 +21,9 @@ import {
   TailReason,
   classifyPartNames,
   compareWithCheckpoints,
+  VIDEO_SAMPLE_ENTRY_CODECS,
   validateCameraFile,
+  videoSampleEntryOf,
   walkCameraFile,
   type ByteSource,
   type RecordedCheckpoint,
@@ -318,5 +320,59 @@ describe('classifyPartNames: the names a killed worker leaves (pair-58 re-check 
     const camera = { name: 'VIDEO-01.mp4', device: 1, inode: 42, size: 10 };
     expect(classifyPartNames(camera, [{ name: 'a.part', device: 2, inode: 42, size: 10 }])[0]?.kind).toBe(PartNameKind.ORPHAN_OF_A_DEAD_WORKER);
     expect(classifyPartNames(camera, [{ name: 'b.part', device: 1n, inode: 42n, size: 10 }])[0]?.kind).toBe(PartNameKind.SECOND_NAME_OF_CAMERA_FILE);
+  });
+});
+
+// Integration pass D9, item 3: manifest field 43 `tracks[].codec` is what the init segment itself says.
+describe('videoSampleEntryOf: the video codec of a camera file, read from the sample entry of its init segment', () => {
+  const zeros = (length: number): Uint8Array => new Uint8Array(length);
+  const text = (value: string): Uint8Array => new TextEncoder().encode(value);
+  // A visual sample entry: 78 bytes of fixed members, then the codec configuration box.
+  const stsd = (...entries: string[]): Uint8Array => box('stsd', u32(0), u32(entries.length), ...entries.map((entry) => box(entry, zeros(78), box(entry.startsWith('hv') || entry.startsWith('he') ? 'hvcC' : 'avcC', fill(30, 3)))));
+  const trak = (id: number, handler: string, table: Uint8Array | null): Uint8Array =>
+    box(
+      'trak',
+      box('tkhd', u32(0), u32(0), u32(0), u32(id), zeros(68)),
+      box('mdia', box('mdhd', u32(0), u32(0), u32(0), u32(90_000), u32(0), u32(0)), box('hdlr', u32(0), u32(0), text(handler), zeros(13)), ...(table === null ? [] : [box('minf', box('vmhd', zeros(12)), box('stbl', table, box('stts', zeros(8))))])),
+    );
+  const audio = trak(2, 'soun', box('stsd', u32(0), u32(1), box('mp4a', zeros(28))));
+  const init = (video: Uint8Array | null): Uint8Array => concat(box('ftyp', text('isom'), u32(512), text('isomiso6mp41')), box('moov', box('mvhd', zeros(100)), audio, ...(video === null ? [] : [video])));
+  const file = (video: Uint8Array | null): Uint8Array => concat(init(video), fragment(1), fragment(2));
+
+  it.each([
+    ['avc1', 'H264'],
+    ['avc3', 'H264'],
+    ['hvc1', 'HEVC'],
+    ['hev1', 'HEVC'],
+  ] as const)('a generated init segment with the sample entry %s is %s - the audio track before it is not taken for it, and the walk of the same file is CLEAN', async (entry, codec) => {
+    const bytes = file(trak(1, 'vide', stsd(entry)));
+    expect(await videoSampleEntryOf(source(bytes))).toEqual({ state: 'KNOWN', codec, sampleEntry: entry });
+    expect((await walkCameraFile(source(bytes), sha256)).state).toBe(CameraFileState.CLEAN);
+  });
+
+  it('the names are these four and no other; the profile that was asked of the camera is never read', () => {
+    expect(VIDEO_SAMPLE_ENTRY_CODECS).toEqual({ avc1: 'H264', avc3: 'H264', hvc1: 'HEVC', hev1: 'HEVC' });
+  });
+
+  it('CONTROL: a sample entry this Core has no name for is UNKNOWN with codec null - never a guess, also for a name every object has', async () => {
+    for (const entry of ['mp4v', 'vp09', 'av01', 'encv']) expect(await videoSampleEntryOf(source(file(trak(1, 'vide', stsd(entry))))), entry).toEqual({ state: 'UNKNOWN_SAMPLE_ENTRY', codec: null, sampleEntry: entry });
+    expect(await videoSampleEntryOf(source(file(trak(1, 'vide', stsd('\u0000a/c')))))).toEqual({ state: 'UNKNOWN_SAMPLE_ENTRY', codec: null, sampleEntry: '?a?c' });
+  });
+
+  it('no video sample entry: an audio-only moov, a video track without a sample table, an empty stsd, an entry larger than its table', async () => {
+    const none = { state: 'NO_VIDEO_SAMPLE_ENTRY', codec: null, sampleEntry: null };
+    expect(await videoSampleEntryOf(source(file(null)))).toEqual(none);
+    expect(await videoSampleEntryOf(source(file(trak(1, 'vide', null))))).toEqual(none);
+    expect(await videoSampleEntryOf(source(file(trak(1, 'vide', box('stsd', u32(0), u32(0))))))).toEqual(none);
+    expect(await videoSampleEntryOf(source(file(trak(1, 'vide', box('stsd', u32(0), u32(1), u32(4_000), text('avc1'))))))).toEqual(none);
+  });
+
+  it('no init segment: an empty file, a file that starts with a fragment, a moov cut short - the walk names that, this reader guesses nothing', async () => {
+    const none = { state: 'NO_INIT_SEGMENT', codec: null, sampleEntry: null };
+    const whole = file(trak(1, 'vide', stsd('avc1')));
+    expect(await videoSampleEntryOf(source(new Uint8Array(0)))).toEqual(none);
+    expect(await videoSampleEntryOf(source(fragment(1)))).toEqual(none);
+    expect(await videoSampleEntryOf(source(whole.subarray(0, 120)))).toEqual(none);
+    expect(await videoSampleEntryOf(source(box('ftyp', fill(20, 1))))).toEqual(none);
   });
 });

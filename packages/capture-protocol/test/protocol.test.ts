@@ -8,9 +8,27 @@
 // Blueprint row 59 (M3-W3) adds: protocol version 3 (decision D84 R-7), the content of the
 // FRAGMENT_CHECKPOINT record (both chains, media time, keyframe flag, durable instant) and the
 // KEYFRAME_INTERVAL record.
+//
+// Blueprint row 71 (worker half, 71a) adds: protocol version 4 - the warning reason and the
+// device-ID-only subject (D84 R-1, R-2), the AUDIO_SOURCE_INTERVAL and AUDIO_TIMELINE_END records,
+// what FIRST_VIDEO_SAMPLE says about the video that was not written, the microphone identity and
+// rate in a telemetry level, and the named settings of a worker process.
 import { describe, expect, it } from 'vitest';
 import {
+  ADVISORY_WARNING_REASONS,
+  CAMERA_RECORD_KINDS,
+  CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
   CAPTURE_IPC_DEFAULTS,
+  CAPTURE_SWITCH_BOUND_US,
+  CAPTURE_WORKER_SETTINGS,
+  CAPTURE_WORKER_SETTING_DEFAULTS,
+  CaptureWarningReason,
+  MIC_RECORD_KINDS,
+  MIC_WARNING_REASONS,
+  SESSION_RECORD_KINDS,
+  SWITCH_REFUSAL_CODES,
+  WARNING_REASONS_OF,
+  captureWorkerSettingArguments,
   CAPTURE_MEDIA_PORT_MAX,
   CAPTURE_MEDIA_PORT_MIN,
   CAPTURE_CHAIN_GENESIS_SHA256,
@@ -67,13 +85,21 @@ const checkpointRecord = {
   gcmTag: null,
   keyId: null,
 } as const;
+/** What the worker says of the video it could not write before the first sample (version 4). */
+const nothingSkipped = { skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 } as const;
+const intervalOfTheStart = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, sampleRateHz: 48_000, capturedAtMs: 1_791_529_000_000, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null } as const;
+const intervalOfASwitch = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 124_800, sampleRateHz: 48_000, capturedAtMs: 1_791_529_002_600, reason: 'OPERATOR_SWITCH', correlationId: 'cap:S-1:1:3', appliedDelayUs: 4_210 } as const;
 
 describe('the messages', () => {
-  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(3);
+  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content, version 4 since the microphone rows', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
     expect(Object.values(SupervisorMessageType)).toEqual(['START', 'STOP', 'SWITCH_AUDIO_SOURCE']);
     expect(Object.values(WorkerMessageType)).toEqual(['HELLO', 'ACK', 'TELEMETRY', 'PROGRESS', 'HEARTBEAT', 'WARNING', 'CRASH', 'RECORD']);
-    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'SEAL_COMPLETE']);
+    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'AUDIO_SOURCE_INTERVAL', 'AUDIO_TIMELINE_END', 'SEAL_COMPLETE']);
+    // Every kind says whose device ID it carries: a camera's, a microphone's, or none.
+    expect([...CAMERA_RECORD_KINDS, ...MIC_RECORD_KINDS, ...SESSION_RECORD_KINDS].sort()).toEqual(Object.values(CaptureRecordKind).sort());
+    expect(MIC_RECORD_KINDS).toEqual(['AUDIO_SOURCE_INTERVAL']);
+    expect(SESSION_RECORD_KINDS).toEqual(['AUDIO_TIMELINE_END', 'SEAL_COMPLETE']);
     expect(DURABLE_RECORD_KINDS).toEqual(['FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT']);
     // The observed keyframe interval says nothing about the disk: it is no sign of durability.
     expect(ONCE_PER_CAMERA_RECORD_KINDS).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'KEYFRAME_INTERVAL']);
@@ -90,17 +116,21 @@ describe('the messages', () => {
       { v, type: 'ACK', correlationId: 'cap:S-1:1:1', ok: true },
       { v, type: 'ACK', correlationId: 'cap:S-1:1:3', ok: false, code: 'MIC_UNPLUGGED' },
       { v, type: 'HEARTBEAT', counter: 7 },
-      { v, type: 'TELEMETRY', sessionId: 'S-1', levels: [{ role: 'PRIMARY', dbfs: -18.5, clipped: false }], ingest: [{ deviceId: 'VIDEO-01', state: 'CONNECTED' }], fragments: [{ deviceId: 'VIDEO-01', count: 3, bytes: 4096 }], clocks: [{ deviceId: 'VIDEO-01', lagMs: 4.8, trendPpm: null, nearBound: false }], tapActive: false },
+      { v, type: 'TELEMETRY', sessionId: 'S-1', levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: -12.5 }, { deviceId: 'MIC-02', role: 'STANDBY', dbfs: null, clipped: false, ratePpm: null }], ingest: [{ deviceId: 'VIDEO-01', state: 'CONNECTED' }], fragments: [{ deviceId: 'VIDEO-01', count: 3, bytes: 4096 }], clocks: [{ deviceId: 'VIDEO-01', lagMs: 4.8, trendPpm: null, nearBound: false }], tapActive: false },
       { v, type: 'PROGRESS', sessionId: 'S-1', step: 'HASH', progress: 0.25, etaMs: 1200 },
-      { v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', state: 'ACTIVE', subject: 'PRIMARY' },
-      { v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'CLEARED', subject: 'CAM-02' },
+      { v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'ACTIVE', subject: 'MIC-01' },
+      { v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'MIC_DISCONNECTED', state: 'CLEARED', subject: 'MIC-02' },
+      { v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'KEYFRAME_INTERVAL_ABOVE_BOUND', state: 'ACTIVE', subject: 'CAM-02' },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 7, record: intervalOfTheStart },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 8, record: intervalOfASwitch },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 9, record: { kind: 'AUDIO_TIMELINE_END', samples: 480_000, sampleRateHz: 48_000, intervals: 2 } },
       { v, type: 'CRASH', sessionId: null, code: 'ENCODER_INIT', signal: null, exitCode: 3 },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 1, record: { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'VIDEO-01', bytes: 5131 } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 2, record: checkpointRecord },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 5, record: { ...checkpointRecord, index: 2, plaintextSha256: 'd'.repeat(64), plaintextChainSha256: 'e'.repeat(64), gcmIv: '0'.repeat(24), gcmTag: 'f'.repeat(32), keyId: 'KID-S-1' } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 6, record: { kind: 'KEYFRAME_INTERVAL', deviceId: 'CAM-01', observedMs: 5000, boundMs: 2000, intervals: 1, complete: true, aboveBound: true } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 3, record: { kind: 'SEAL_COMPLETE' } },
-      { v, type: 'RECORD', sessionId: 'S-1', seq: 4, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 526386, timescale: 90000 } },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 4, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 526386, timescale: 90000, skipped: { noTimestamp: 1, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 29 }, skippedSpanMs: 805 } },
     ];
     const commandSplitter = createLineSplitter();
     expect(commands.flatMap((command) => commandSplitter.push(encodeFrame(command))).map((line) => decodeSupervisorLine(line ?? ''))).toEqual(commands.map((message) => ({ ok: true, message })));
@@ -118,12 +148,13 @@ describe('the messages', () => {
     expect(not({ v, type: 'HEARTBEAT', counter: 1, extra: true })).toEqual(refused);
     expect(not({ v, type: 'PING' })).toEqual(refused);
     expect(not({ v, type: 'ACK', correlationId: 'c', ok: false, code: 'free text with spaces' })).toEqual(refused);
-    expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'AUTO_SWITCHED', state: 'ACTIVE', subject: null })).toEqual(refused);
-    expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', subject: null })).toEqual(refused);
-    expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', state: 'GONE', subject: null })).toEqual(refused);
-    expect(not({ v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', state: 'CLEARED', subject: null })).toMatchObject({ ok: true });
+    const silent = { v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'CLEARED', subject: 'MIC-01' };
+    expect(not(silent)).toMatchObject({ ok: true });
+    expect(not({ ...silent, code: 'AUTO_SWITCHED' })).toEqual(refused);
+    expect(not({ ...silent, state: undefined })).toEqual(refused);
+    expect(not({ ...silent, state: 'GONE' })).toEqual(refused);
     expect(not({ v, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).toEqual(refused);
-    expect(decodeWorkerLine('{"v":3,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
+    expect(decodeWorkerLine('{"v":4,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
     expect(decodeWorkerLine(JSON.stringify({ v, type: 'HEARTBEAT', counter: 1 }), 10)).toEqual({ ok: false, violation: FrameViolation.TOO_LONG });
   });
 
@@ -131,18 +162,151 @@ describe('the messages', () => {
     const frames = [
       { type: 'HELLO', protocolVersion: 2, workerVersion: 'capture-worker/0.2.0' },
       { type: 'HEARTBEAT', counter: 1 },
-      { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'ACTIVE', subject: 'CAM-01' },
+      { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'CAMERA_STREAM_ENDED', state: 'ACTIVE', subject: 'CAM-01' },
       { type: 'RECORD', sessionId: 'S-1', seq: 1, record: checkpointRecord },
     ];
     for (const frame of frames) {
       expect(decodeWorkerLine(JSON.stringify({ v: 2, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
       // CONTROL: the same frame under version 3 is a message (the version is what refuses it).
-      expect(decodeWorkerLine(JSON.stringify({ v: 3, ...frame })).ok, frame.type).toBe(true);
+      expect(decodeWorkerLine(JSON.stringify({ v, ...frame })).ok, frame.type).toBe(true);
     }
-    // What version 2 allowed inside the version: a WARNING without `state`. It is no message of version 3.
-    expect(decodeWorkerLine(JSON.stringify({ v: 3, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', subject: 'CAM-01' })).ok).toBe(false);
-    // A command of version 2 is no command for a version-3 worker either.
+    // What version 2 allowed inside the version: a WARNING without `state`. It is no message since version 3.
+    expect(decodeWorkerLine(JSON.stringify({ v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'CAMERA_STREAM_ENDED', subject: 'CAM-01' })).ok).toBe(false);
+    // A command of version 2 is no command for a later worker either.
     expect(decodeSupervisorLine(JSON.stringify({ v: 2, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).ok).toBe(false);
+  });
+
+  it('version 4 (row 71): no frame of a version-3 worker decodes, and the frames version 3 allowed are no messages of version 4', () => {
+    const today = [
+      { type: 'HELLO', protocolVersion: 3, workerVersion: 'capture-worker/0.3.0' },
+      { type: 'HEARTBEAT', counter: 1 },
+      { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'CAMERA_STREAM_ENDED', state: 'ACTIVE', subject: 'CAM-01' },
+      { type: 'RECORD', sessionId: 'S-1', seq: 1, record: intervalOfTheStart },
+    ];
+    for (const frame of today) {
+      expect(decodeWorkerLine(JSON.stringify({ v: 3, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
+      // CONTROL: the same frame under version 4 is a message.
+      expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })).ok, frame.type).toBe(true);
+    }
+    // The shapes of version 3, sent under version 4: each is refused by what version 4 requires.
+    const version3Shapes = [
+      { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'ACTIVE', subject: 'CAM-01' },
+      { type: 'TELEMETRY', sessionId: 'S-1', levels: [{ role: 'PRIMARY', dbfs: -18.5, clipped: false }], ingest: [], fragments: [], clocks: [], tapActive: false },
+      { type: 'RECORD', sessionId: 'S-1', seq: 1, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 0, timescale: 90000 } },
+    ];
+    for (const frame of version3Shapes) expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })).ok, frame.type).toBe(false);
+    expect(decodeSupervisorLine(JSON.stringify({ v: 3, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(false);
+    expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(true);
+    // The switch names a ROLE of the plan and nothing else: a device ID or a third value is no command.
+    expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'MIC-02' })).ok).toBe(false);
+    expect(SWITCH_REFUSAL_CODES).toEqual(['NOT_RECORDING', 'SESSION_MISMATCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED']);
+  });
+
+  it('a warning names ONE device by its ID and says which cause it is: never a null subject, never a role (D84 R-1, R-2)', () => {
+    const ok = (warning: object): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'WARNING', sessionId: 'S-1', ...warning })).ok;
+    const silent = { code: 'MIC_SILENT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'ACTIVE', subject: 'MIC-01' };
+    expect(ok(silent)).toBe(true);
+    expect(ok({ ...silent, state: 'CLEARED' })).toBe(true);
+    // R-1: a null subject is forbidden on the wire, for a raise and for a clear, for both codes.
+    expect(ok({ ...silent, subject: null })).toBe(false);
+    expect(ok({ ...silent, state: 'CLEARED', subject: null })).toBe(false);
+    expect(ok({ code: 'CAPTURE_FAULT', reason: 'CAMERA_STREAM_ENDED', state: 'ACTIVE', subject: null })).toBe(false);
+    const { subject: _dropped, ...noSubject } = silent;
+    expect(ok(noSubject)).toBe(false);
+    expect(ok({ ...silent, subject: '' })).toBe(false);
+    // R-2: one subject form per microphone. A role is not a subject.
+    expect(ok({ ...silent, subject: 'PRIMARY' })).toBe(false);
+    expect(ok({ ...silent, subject: 'STANDBY' })).toBe(false);
+    // The reason is required and belongs to its code.
+    const { reason: _reason, ...noReason } = silent;
+    expect(ok(noReason)).toBe(false);
+    expect(ok({ ...silent, reason: 'MIC_DISCONNECTED' })).toBe(false);
+    expect(ok({ ...silent, reason: 'SOMETHING_ELSE' })).toBe(false);
+    expect(ok({ code: 'CAPTURE_FAULT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'ACTIVE', subject: 'MIC-01' })).toBe(false);
+    for (const reason of WARNING_REASONS_OF.CAPTURE_FAULT) expect(ok({ code: 'CAPTURE_FAULT', reason, state: 'ACTIVE', subject: 'CAM-01' }), reason).toBe(true);
+    // Every reason belongs to exactly one code; the microphone reasons and the advisory one are named.
+    expect([...WARNING_REASONS_OF.MIC_SILENT, ...WARNING_REASONS_OF.CAPTURE_FAULT].sort()).toEqual(Object.values(CaptureWarningReason).sort());
+    expect(MIC_WARNING_REASONS).toEqual(['MIC_LEVEL_BELOW_THRESHOLD', 'MIC_DISCONNECTED', 'MIC_RATE_AT_LIMIT']);
+    expect(ADVISORY_WARNING_REASONS).toEqual(['KEYFRAME_INTERVAL_ABOVE_BOUND']);
+    // There is no code and no reason for an automatic switch (OD-11).
+    expect(Object.values(CaptureWarningReason).some((reason) => /SWITCH/.test(reason))).toBe(false);
+  });
+
+  it('the audio-source interval: the microphone by device ID and role, the first sample at an input-chunk boundary, the command it realises', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    expect(ok(intervalOfTheStart)).toBe(true);
+    expect(ok(intervalOfASwitch)).toBe(true);
+    expect([CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES, CAPTURE_SWITCH_BOUND_US]).toEqual([480, 21_333]);
+    // A source changes at a chunk boundary, and nowhere else.
+    expect(ok({ ...intervalOfASwitch, fromSample: 124_801 })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, fromSample: 124_800 + 480 })).toBe(true);
+    expect(ok({ ...intervalOfASwitch, fromSample: -480 })).toBe(false);
+    // The start is index 1 at sample 0 without a command; a switch is neither and names its command and its delay.
+    expect(ok({ ...intervalOfTheStart, index: 2 })).toBe(false);
+    expect(ok({ ...intervalOfTheStart, fromSample: 480 })).toBe(false);
+    expect(ok({ ...intervalOfTheStart, correlationId: 'cap:S-1:1:3' })).toBe(false);
+    expect(ok({ ...intervalOfTheStart, appliedDelayUs: 0 })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, index: 1 })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, fromSample: 0 })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, correlationId: null })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, appliedDelayUs: null })).toBe(false);
+    // No third reason: nothing but the start and the operator opens an interval.
+    expect(ok({ ...intervalOfASwitch, reason: 'AUTO_SWITCH' })).toBe(false);
+    expect(ok({ ...intervalOfASwitch, reason: 'MIC_SILENT' })).toBe(false);
+    // The microphone is a device ID with its role beside it; a role is no device ID.
+    expect(ok({ ...intervalOfASwitch, deviceId: 'STANDBY' })).toBe(false);
+    for (const member of ['deviceId', 'role', 'index', 'fromSample', 'sampleRateHz', 'capturedAtMs', 'reason', 'correlationId', 'appliedDelayUs'] as const) {
+      const { [member]: _dropped, ...rest } = intervalOfASwitch;
+      expect(ok(rest), member).toBe(false);
+    }
+    expect(ok({ ...intervalOfASwitch, toSample: 200_000 })).toBe(false);
+    // The end of the timeline closes the last interval.
+    const end = { kind: 'AUDIO_TIMELINE_END', samples: 480_000, sampleRateHz: 48_000, intervals: 3 };
+    expect(ok(end)).toBe(true);
+    expect(ok({ ...end, samples: 0 })).toBe(true);
+    expect(ok({ ...end, intervals: 0 })).toBe(false);
+    expect(ok({ ...end, samples: -1 })).toBe(false);
+    expect(ok({ ...end, deviceId: 'MIC-01' })).toBe(false);
+  });
+
+  it('the first video sample states the video that arrived before it and was not written (spec §C.4; D126, D130)', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    const first = { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 72_450, timescale: 90_000, skipped: { noTimestamp: 1, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 29 }, skippedSpanMs: 805 };
+    expect(ok(first)).toBe(true);
+    expect(ok({ ...first, ...nothingSkipped })).toBe(true);
+    const { skipped: _skipped, ...withoutCounts } = first;
+    expect(ok(withoutCounts)).toBe(false);
+    const { skippedSpanMs: _span, ...withoutSpan } = first;
+    expect(ok(withoutSpan)).toBe(false);
+    expect(ok({ ...first, skipped: { ...first.skipped, beforeKeyframe: -1 } })).toBe(false);
+    expect(ok({ ...first, skipped: { noTimestamp: 1, beforeAudioStart: 0, noCameraClock: 0 } })).toBe(false);
+    expect(ok({ ...first, skipped: { ...first.skipped, other: 3 } })).toBe(false);
+    expect(ok({ ...first, skippedSpanMs: 0.5 })).toBe(false);
+  });
+
+  it('a telemetry level names its microphone by device ID, with its role and the rate correction inside the controller limit', () => {
+    const ok = (level: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
+    const level = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 4_999.9 };
+    expect(ok(level)).toBe(true);
+    expect(ok({ ...level, ratePpm: -5_000 })).toBe(true);
+    expect(ok({ ...level, ratePpm: null })).toBe(true);
+    expect(ok({ ...level, ratePpm: 5_000.1 })).toBe(false);
+    expect(ok({ ...level, deviceId: 'PRIMARY' })).toBe(false);
+    const { deviceId: _dropped, ...noDevice } = level;
+    expect(ok(noDevice)).toBe(false);
+    const { ratePpm: _rate, ...noRate } = level;
+    expect(ok(noRate)).toBe(false);
+  });
+
+  it('the named settings of a worker process: the ingest-open window and the three microphone thresholds, as arguments with ranges', () => {
+    expect(CAPTURE_WORKER_SETTING_DEFAULTS).toEqual({ ingestOpenWindowMs: 15_000, micSilenceDbfs: -50, micSilenceDurationMs: 10_000, micDisconnectDebounceMs: 2_000 });
+    expect(captureWorkerSettingArguments()).toEqual(['--ingest-open-window-ms', '15000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '10000', '--mic-disconnect-ms', '2000']);
+    expect(captureWorkerSettingArguments({ ingestOpenWindowMs: 2_000, micSilenceDurationMs: 3_000 })).toEqual(['--ingest-open-window-ms', '2000', '--mic-silence-dbfs', '-50', '--mic-silence-ms', '3000', '--mic-disconnect-ms', '2000']);
+    expect(Object.values(CAPTURE_WORKER_SETTINGS).map((rule) => rule.argument)).toEqual(['--ingest-open-window-ms', '--mic-silence-dbfs', '--mic-silence-ms', '--mic-disconnect-ms']);
+    // Refused: outside the range, off the step (the listen timeout of the ingest is whole seconds), not a whole number.
+    for (const bad of [{ ingestOpenWindowMs: 999 }, { ingestOpenWindowMs: 1_500 }, { ingestOpenWindowMs: 601_000 }, { micSilenceDbfs: 1 }, { micSilenceDbfs: -50.5 }, { micSilenceDurationMs: 50 }, { micDisconnectDebounceMs: Number.NaN }]) {
+      expect(() => captureWorkerSettingArguments(bad), JSON.stringify(bad)).toThrow(RangeError);
+    }
   });
 
   it('the checkpoint of a durable fragment: both chains, media time, keyframe flag and the durable instant are required', () => {
@@ -204,9 +368,9 @@ describe('the messages', () => {
     expect(not({ ...first, record: { ...checkpoint, fragSha256: 'A'.repeat(64) } })).toBe(false);
     expect(not({ ...first, record: { ...checkpoint, index: 0 } })).toBe(false);
     expect(not({ ...first, record: { ...checkpoint, len: 0 } })).toBe(false);
-    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 0, timescale: 90000 } })).toBe(true);
-    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: -1, timescale: 90000 } })).toBe(false);
-    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 0, timescale: 0 } })).toBe(false);
+    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 0, timescale: 90000, ...nothingSkipped } })).toBe(true);
+    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: -1, timescale: 90000, ...nothingSkipped } })).toBe(false);
+    expect(not({ ...first, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 0, timescale: 0, ...nothingSkipped } })).toBe(false);
   });
 });
 
@@ -259,6 +423,10 @@ describe('the plan', () => {
       { ...plan, cameras: [{ ...plan.cameras[0], outputPath: 'media/VIDEO-01.mp4' }] },
       { ...plan, cameras: [] },
       { ...plan, password: 'x' },
+      // Version 4 (D84 R-2): a role is no identity, and one ID names one device of the plan.
+      { ...plan, mics: [{ ...plan.mics[0], deviceId: 'PRIMARY' }, plan.mics[1]] },
+      { ...plan, mics: [plan.mics[0], { ...plan.mics[1], deviceId: 'STANDBY' }] },
+      { ...plan, mics: [{ ...plan.mics[0], deviceId: 'CAM-01' }, plan.mics[1]] },
     ];
     expect(bad.map((value) => CapturePlanSchema.safeParse(value).success)).toEqual(bad.map(() => false));
   });

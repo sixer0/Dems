@@ -1,5 +1,5 @@
 /**
- * The typed schema of the DEMS Core database: 42 tables in schema `public` (database contract
+ * The typed schema of the DEMS Core database: 43 tables in schema `public` (database contract
  * §3.3, §4, `dbc-3` §B and `dbc-4` §N; plan rows W17 and M2-W2; table 40 = T-40 `stt_config`,
  * row 112; table 41 = T-41 `session_capture_sources`, row 129). This
  * file is the entry `drizzle.config.ts` names, and what every later row imports.
@@ -13,7 +13,8 @@
  *   sessions   T-15 active_session, T-16 session_history
  *   evidence   T-17 evidence_items, T-18 evidence_tracks, T-19 evidence_custody, T-20 exports
  *   core       T-21 alerts, T-22 storage_policy, T-23 console_settings, T-24 engine_counters,
- *              T-25 core_device, T-26 core_state, T-27 hardware_snapshot, T-28 health_snapshots
+ *              T-25 core_device, T-26 core_state, T-27 hardware_snapshot, T-28 health_snapshots,
+ *              T-43 core_media_store (erratum PE-0013-01; ruling D166)
  *   meta       T-29 schema_meta
  *   capture    T-32 capture_devices, T-31 capture_config, T-33 capture_device_credentials
  *   recording  T-34 session_audio_intervals, T-35 recording_fragments, T-39 sealing_jobs,
@@ -50,6 +51,11 @@
  * SCHEMA VERSION 5 (`dbc-6`; section N erratum PE-129b-01, row 129b): the generated
  * `0011_session_stt_config.sql` (T-42, the per-session STT snapshot, in `./stt`) plus the
  * hand-written `0012_session_stt_config_privileges.sql` (SELECT + INSERT only; the version step).
+ *
+ * SCHEMA VERSION 6 (`dbc-7`; section N erratum PE-0013-01; rulings D146, D162, D166): the
+ * generated `0013_key_id_fault_reason_media_root.sql` (the key-id form of
+ * `transcript_revisions_key_id_check`, `alerts.reason`, T-43 `core_media_store` in `./core`) plus
+ * the hand-written `0014_key_id_fault_reason_media_root_privileges.sql` (the version step).
  *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),

@@ -58,11 +58,14 @@ import {
   nextFragmentChainHash,
   parseDetachedSignature,
   parseManifestV2,
+  isServerSttBackend,
+  transcriptModelFaults,
   type ManifestFragment,
   type ManifestTrack,
   type ManifestV2,
 } from '../evidence-package';
-import { RETAINED_CERTIFICATES_DIR, TranscriptRevisionsFileSchema, retainedCertificatePath } from './revisions';
+import { isDevelopmentKeySubject } from './report';
+import { RETAINED_CERTIFICATES_DIR, REVISION_BOUND_MEMBERS, TranscriptRevisionsFileSchema, retainedCertificatePath } from './revisions';
 import {
   SOURCES_STATE_REPORT,
   TRANSCRIPT_STATE_REPORT,
@@ -71,7 +74,9 @@ import {
   VERIFY_V2_CHECKS,
   VerifiedSourcesState,
   VerifiedTranscriptState,
+  transcriptModelLineOf,
   type CertificateFacts,
+  type TranscriptModelReport,
   type FileVerifyResult,
   type FragmentVerifyResult,
   type HashFactory,
@@ -94,6 +99,8 @@ import {
 export const VERIFY_MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 export const VERIFY_MAX_SMALL_FILE_BYTES = 1024 * 1024;
 export const VERIFY_MAX_REVISIONS_BYTES = 16 * 1024 * 1024;
+/** The largest transcript document whose header V-10 reads (the hash of the file is held whatever its size). */
+export const VERIFY_MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024;
 export const VERIFY_MAX_OPEN_FRAGMENT_BYTES = 64 * 1024 * 1024;
 /** The most entries of a package folder that are looked at, and the most unexpected ones that are named. */
 export const VERIFY_MAX_LISTED_FILES = 10_000;
@@ -563,12 +570,58 @@ async function checkTranscript(ports: VerifyPorts, newHash: HashFactory, manifes
     [PackageFile.TRANSCRIPT_SRT, transcript.srtSha256],
     [PackageFile.TRANSCRIPT_VTT, transcript.vttSha256],
   ];
+  let documentIsTheSealedOne = false;
   for (const [file, expected] of sealed) {
     const actual = await hashFile(ports.reader, newHash, file);
     if (actual === null) verdict.add('TRANSCRIPT_FILE_MISSING', { file });
     else if (actual === 'UNREADABLE') verdict.add('TRANSCRIPT_FILE_UNREADABLE', { file });
     else if (actual !== expected) verdict.add('TRANSCRIPT_HASH_MISMATCH', { file });
+    else if (file === PackageFile.TRANSCRIPT_JSON) documentIsTheSealedOne = true;
   }
+  // The header is held against the manifest only for the document the manifest's hash names: of
+  // any other bytes the hash finding above is the whole truth.
+  if (documentIsTheSealedOne) await checkTranscriptModel(ports, manifest, verdict);
+}
+
+/**
+ * V-10, the model of the document (ruling D160; request of pass D9). The manifest and the sealed
+ * document each state the backend and the model. They must say the same, member by member (null
+ * equals null), and the document's own model must keep the provenance rule: version, quantisation
+ * and file hash are null EXACTLY for a server backend. So the nulls pass only under the server
+ * condition, in the manifest (V-01, its schema) AND in the document (here); for `cpu-local` a null
+ * stays a failure in both. One finding per member that disagrees.
+ */
+async function checkTranscriptModel(ports: VerifyPorts, manifest: ManifestV2, verdict: Verdict): Promise<void> {
+  const file = PackageFile.TRANSCRIPT_JSON;
+  const mismatch = (member: string): void => verdict.add('TRANSCRIPT_MODEL_MISMATCH', { file, member });
+  let header: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = JSON.parse(await ports.reader.readText(file, VERIFY_MAX_TRANSCRIPT_BYTES));
+    const candidate = (parsed as { header?: unknown } | null)?.header;
+    if (typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate)) header = candidate as Record<string, unknown>;
+  } catch {
+    header = null;
+  }
+  const stated = header?.['model'];
+  if (header === null || typeof header['backend'] !== 'string' || typeof stated !== 'object' || stated === null || Array.isArray(stated)) {
+    // The sealed document states no backend or no model: there is nothing to hold the manifest's model against.
+    mismatch('header');
+    return;
+  }
+  const textOrNull = (value: unknown): string | null | undefined => (value === null || typeof value === 'string' ? value : undefined);
+  const model = stated as Record<string, unknown>;
+  const document = { name: textOrNull(model['name']), version: textOrNull(model['version']), quantisation: textOrNull(model['quantisation']), sha256: textOrNull(model['sha256']) };
+  const sealed = manifest.transcript.model;
+  const members = new Set<string>();
+  if (header['backend'] !== manifest.transcript.configSnapshot.backend) members.add('backend');
+  if (document.name !== sealed.name) members.add('model.name');
+  if (document.version !== sealed.version) members.add('model.version');
+  if (document.quantisation !== sealed.quantisation) members.add('model.quantisation');
+  if (document.sha256 !== sealed.modelSha256) members.add('model.sha256');
+  // The document's own rule, whatever the manifest says (a member that is no text and not null counts as stated).
+  const own = { name: document.name ?? null, version: document.version === undefined ? '' : document.version, quantisation: document.quantisation === undefined ? '' : document.quantisation, sha256: document.sha256 === undefined ? '' : document.sha256 };
+  for (const fault of transcriptModelFaults(header['backend'], own)) members.add(`model.${fault.member}`);
+  for (const member of members) mismatch(member);
 }
 
 /** V-11. Resolves with the number of revisions, or null when the list could not be read. */
@@ -627,7 +680,11 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
     }
     if (revision.parentSha256 !== parent) verdict.add('REVISION_PARENT_MISMATCH', { revisionNo });
     parent = revision.sha256;
-    if (revision.body !== undefined) {
+    // The signature covers `sha256`; `sha256` must be the hash of a body that is IN the file, and what
+    // the record says of the revision must be what that body says (pass D6, erratum PE-D6-01).
+    if (revision.body === undefined) {
+      verdict.add('REVISION_BODY_MISSING', { revisionNo });
+    } else {
       let bodyOk = false;
       try {
         bodyOk = bytesToHex(sha256(canonicalJsonBytes(revision.body))) === revision.sha256;
@@ -635,6 +692,19 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
         bodyOk = false;
       }
       if (!bodyOk) verdict.add('REVISION_BODY_HASH_MISMATCH', { revisionNo });
+      const stated: Record<(typeof REVISION_BOUND_MEMBERS)[number], string | number | null> = {
+        // The item and the transcript are the MANIFEST's (signed), not the list's own header.
+        evidenceId: manifest.evidenceId,
+        machineTranscriptSha256: manifest.transcript.sha256,
+        revisionNo: revision.revisionNo,
+        parentSha256: revision.parentSha256,
+        authorId: revision.authorId,
+        reason: revision.reason,
+        createdAt: revision.createdAt,
+      };
+      for (const member of REVISION_BOUND_MEMBERS) {
+        if (!Object.hasOwn(revision.body, member) || revision.body[member] !== stated[member]) verdict.add('REVISION_MEMBER_MISMATCH', { revisionNo, member });
+      }
     }
     const digest = revision.signature.certificateSha256;
     const facts = digest === null ? null : await certificateOf(digest);
@@ -678,6 +748,20 @@ async function checkCompleteness(reader: PackageReader, transcript: boolean | nu
     if (named < VERIFY_MAX_UNEXPECTED_NAMED) verdict.add('UNEXPECTED_FILE', { file });
     named += 1;
   }
+}
+
+/**
+ * The model of the sealed transcript, for the report (D160). Only from the manifest the
+ * certificate's key signed, and only when it declares a document; null otherwise - nothing an
+ * unsigned manifest says of a model is repeated.
+ */
+function transcriptModelReport(manifest: ManifestV2 | null, trusted: boolean): TranscriptModelReport | null {
+  if (manifest === null || !trusted || !manifestDeclaresTranscript(manifest.transcript)) return null;
+  const { name, version, quantisation, modelSha256 } = manifest.transcript.model;
+  // A document is declared, so the schema (V-01) holds a name; a manifest that passed it has one.
+  if (name === null) return null;
+  const facts = { name, version, quantisation, modelSha256, reportedByServer: isServerSttBackend(manifest.transcript.configSnapshot.backend) };
+  return Object.freeze({ ...facts, report: transcriptModelLineOf(facts) });
 }
 
 /**
@@ -961,12 +1045,14 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
     fragments: Object.freeze(files.flatMap((file) => file.fragments)),
     transcript: Object.freeze({ state: transcriptState, revisions }),
     transcriptState: transcriptStateReport(manifest, trusted, statusOf('V-03') === 'FAIL'),
+    transcriptModel: transcriptModelReport(manifest, trusted),
     sources: sourcesReport(manifest, markReadable, trusted && statusOf('V-15') === 'PASS', statusOf('V-15') === 'PASS'),
     signature: Object.freeze({
       ok: statusOf('V-09') === 'PASS',
       algorithm: manifest?.signature.algorithm ?? null,
       keyId: manifest?.signature.keyId ?? null,
       simulated: manifest?.signature.simulated ?? null,
+      developmentKey: manifest === null ? null : isDevelopmentKeySubject(manifest.device.certificate.subject),
       integrityCheckedWithoutKey: true as const,
     }),
     interrupted: manifest?.timeline.interrupted ?? false,

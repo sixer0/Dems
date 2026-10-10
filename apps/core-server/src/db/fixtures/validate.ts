@@ -58,6 +58,8 @@ import type { BulkBase } from './world';
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+/** The key-id form of `transcript_revisions_key_id_check` since migration 0013 (erratum PE-0013-01). */
+const KEY_ID = /^[A-Z0-9][A-Z0-9_-]{0,63}$/;
 const SESSION_ID = /^SES-[0-9]{8}-[0-9]{4}$/;
 const EVIDENCE_ID = /^EV-[0-9]{8}-[0-9]{4}$/;
 const OPERATOR_ID = /^OPR-[0-9]{3}$/;
@@ -312,6 +314,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     must(ALERT_ID.test(row.id), 'alerts', 'alerts_id_check');
     must(isIn(SEVERITY, row.severity) && (row.kind === 'SYSTEM' || isIn(FAULT_KIND, row.kind)), 'alerts', 'alerts_kind_check');
     if (row.params !== null) flatMap(row.params, 'alerts', 'params');
+    must(row.reason === null || CODE.test(row.reason), 'alerts', 'alerts_reason_check');
     // An alert of a fault kind is resolved: the seeded hardware snapshot holds no active fault.
     must(row.kind === 'SYSTEM' || (!row.active && row.resolvedAt !== null), 'alerts', 'an alert of a fault kind is active, but the seeded snapshot has no active fault');
   }
@@ -576,7 +579,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     must(knownEvidence.has(row.evidenceId), 'transcript_revisions', 'transcript_revisions_evidence_id_fkey');
     operator(row.authorId, 'transcript_revisions');
     must(row.revisionNo === (revisionsByItem.get(row.evidenceId) ?? 0) + 1, 'transcript_revisions', 'revision_no does not run from 1 without a gap');
-    must(CODE.test(row.signatureKeyId), 'transcript_revisions', 'transcript_revisions_key_id_check');
+    must(KEY_ID.test(row.signatureKeyId), 'transcript_revisions', 'transcript_revisions_key_id_check');
     must(row.signatureCertificateSha256 === null || HEX64.test(row.signatureCertificateSha256), 'transcript_revisions', 'transcript_revisions_certificate_check');
     must(length(row.reason) >= 5 && length(row.reason) <= 500, 'transcript_revisions', 'transcript_revisions_reason_check');
     must(isIn(TRANSCRIPT_SIGNATURE_ALGORITHM, row.signatureAlgorithm), 'transcript_revisions', 'transcript_revisions_signature_check');

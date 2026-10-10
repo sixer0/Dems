@@ -59,6 +59,21 @@ import {
   type SimState,
   type TabletLinkState,
 } from '@dems/shared/sim';
+// Seal block (blueprint row 82): the three pure transitions of the Core-driven seal.
+import {
+  applySealingProgressTransition,
+  completeSealTransition,
+  recordEvidenceVerificationTransition,
+  type CompleteSealInput,
+  type EvidenceVerdictInput,
+  type SealingProgressInput,
+} from '@dems/shared/sim';
+import type { EngineSealDoors } from './types';
+// Fact block (integration pass D6): the measured evidence volume (CS-09) and the head of a transcript's revisions.
+import { applyStorageVolumeTransition, noteTranscriptRevisionTransition, type StorageVolumeInput, type TranscriptRevisionNote } from '@dems/shared/sim';
+import { FACT_DOOR_LABEL, type EngineFactDoors } from './fact-doors';
+// Source-fact block (integration pass D11): the class and the "is on" of the sources of a real capture operation.
+import { applyCaptureSourceFactsTransition, type CaptureSourceFact } from '@dems/shared/sim';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -78,6 +93,19 @@ import { changedSlices, changesRecords, deltaOps } from './delta';
 import { EngineError, engineNotReady, operatorRequired, simCodeOf, simRefusal } from './errors';
 import { isHostedAction, type HostedActionArguments, type HostedActionName, type HostedActionResult } from './hosted-actions';
 import { bindInternalActions } from './internal-actions';
+import {
+  CAPTURE_FAULT_KINDS,
+  READ_SESSION_HAS_FRAGMENT,
+  audioSourceSwitchTransition,
+  captureConnectingTransition,
+  captureDurableAtRehydrateTransition,
+  captureDurableOfSessionTransition,
+  clearCaptureFaultsTransition,
+  failedCaptureStartTransition,
+  interruptedCaptureTransition,
+  type AudioSourceSwitch,
+  type AudioSourceSwitched,
+} from './capture-session';
 import { createHeadlessSim, engineClock } from './headless-sim';
 import {
   ENGINE_BOOT_STEP,
@@ -102,6 +130,8 @@ import { TrailMismatch, hasTrail, mergeTrail } from './ring';
 import { createScheduler, type Scheduler } from './scheduler';
 import { createSystemTimer, type EngineTimer } from './timer';
 import type {
+  CaptureEndOutcome,
+  EngineCaptureDoors,
   EngineChangeCause,
   EngineHost,
   EngineMeterFrame,
@@ -166,7 +196,7 @@ export interface EngineControl {
 const CONTROL = Symbol('engine host of src/engine');
 
 /** True for the host this folder builds: a test may have put another object behind the seam. */
-export function isEngineControl(value: unknown): value is EngineHost & EngineControl {
+export function isEngineControl(value: unknown): value is EngineHost & EngineControl & EngineCaptureDoors {
   return typeof value === 'object' && value !== null && CONTROL in value;
 }
 
@@ -245,7 +275,7 @@ function framesOf(stack: string | undefined): string | undefined {
   return frames === '' ? undefined : frames;
 }
 
-export function createEngineHost(dependencies: EngineHostDependencies): EngineHost & EngineControl {
+export function createEngineHost(dependencies: EngineHostDependencies): EngineHost & EngineControl & EngineCaptureDoors {
   const { log, errorLog } = dependencies;
 
   let timer: EngineTimer = dependencies.timer ?? createSystemTimer();
@@ -275,6 +305,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
    * while it never ran. It outlives a stop: the sockets of the process do (finding F78).
    */
   let heldLink: TabletLink | null = null;
+  /** Source-fact block (pass D11): the list `applyCaptureSourceFacts` last took in THIS process; null while none was handed in. */
+  let heldSourceFacts: readonly CaptureSourceFact[] | null = null;
   /** The outcome of an earlier commit is not known: the next unit compares the stored head first. */
   let suspect = false;
   /** A reload after a diverged head that is under way, and how to end its wait between two tries. */
@@ -700,8 +732,82 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         command: (principal, action, ...args) => commandIn(scope, principal, action, args),
         pending: () => durableOf(scope.live.sim.store.getState()),
       },
-      { registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device) },
+      {
+        registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device),
+        // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
+        markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
+        switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),
+      },
     );
+  }
+
+  // ── Capture block (blueprint row 71): the capture of a REAL recording ───────────────────────────
+  // Pure transitions of `capture-session.ts`, applied to the hosted `Sim` inside a unit of the
+  // host and written through it like every other change. None of them runs in capture mode
+  // `simulated`: the session wiring calls them in mode `real` only.
+
+  /** Applies a pure transition in the unit and writes it. True when the state changed. */
+  async function applyCaptureTransition(scope: Scope, transition: (state: SimState, now: number) => SimState): Promise<boolean> {
+    syncNative(scope);
+    const store = scope.live.sim.store;
+    const before = store.getState();
+    const next = transition(before, stampOf(scope.live.clock));
+    if (next === before) return false;
+    store.setState(next, true);
+    await flush(scope);
+    return true;
+  }
+
+  /** `markCaptureConnectingIn`: `captureDurable: false` beside the RECORDING this unit persists. */
+  function markCaptureConnectingInScope(scope: Scope, sessionId: string): Promise<boolean> {
+    return applyCaptureTransition(scope, (state) => captureConnectingTransition(state, sessionId));
+  }
+
+  /** `switchCaptureAudioSourceIn`: the acknowledged switch as state, without an audit row of the engine. */
+  async function switchCaptureAudioSourceInScope(scope: Scope, change: AudioSourceSwitch): Promise<AudioSourceSwitched | null> {
+    let switched: AudioSourceSwitched | null = null;
+    await applyCaptureTransition(scope, (state, now) => {
+      const result = audioSourceSwitchTransition(state, now, change);
+      switched = result.switched;
+      return result.state;
+    });
+    return switched;
+  }
+
+  // ── Seal block (blueprint row 82) ────────────────────────────────────────────────────────────
+
+  /**
+   * One INTERNAL sealing action in its unit: the pure transition of the shared session machine,
+   * written whole. A refusal of the machine (another session, a state that cannot be sealed, a
+   * value that is no digest) is the mapped `ApiFailure`, as for a hosted action; anything else is
+   * a failure and goes to the error log by its action name only.
+   */
+  async function applySealTransition(scope: Scope, action: string, transition: (state: SimState, now: number) => SimState): Promise<boolean> {
+    syncNative(scope);
+    // The head is checked by `flush` when there is something to write: a report that changes
+    // nothing sends no statement (the pipeline reports often).
+    const store = scope.live.sim.store;
+    const before = store.getState();
+    counters.commands += 1;
+    let next: SimState;
+    try {
+      next = transition(before, stampOf(scope.live.clock));
+    } catch (error) {
+      const where = { unit: scope.unit.id, label: scope.unit.label, action };
+      const refusal = simRefusal(error);
+      if (refusal !== null) {
+        counters.commandsRefused += 1;
+        log.debug({ ...where, code: refusal.code, simCode: simCodeOf(refusal) }, 'internal action refused');
+        throw refusal;
+      }
+      log.error({ ...where, code: codeOf(error) }, 'internal action failed');
+      persist('error', 'an internal action failed', error, where);
+      throw error;
+    }
+    if (next === before) return false;
+    store.setState(next, true);
+    await flush(scope);
+    return true;
   }
 
   // ── Ticks ────────────────────────────────────────────────────────────────────────────────────
@@ -830,6 +936,28 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
             ? applyProcessStart(sim, stored.lastCommittedAt, now, heldLink)
             : { ...NO_EFFECTS, tamperCleared: clearTamperOverlay(sim, now), tabletLinkCarried: heldLink !== null && carryTabletLink(sim, heldLink) };
 
+        // Capture block (blueprint row 71; D91 R-1 option A): no column holds `captureDurable`, so
+        // in capture mode `real` it is derived here from the stored fragment rows of the session
+        // (`captureDurableAtRehydrateTransition` says what that value may and may not decide).
+        if (dependencies.captureLevels === 'external') {
+          const open = sim.store.getState().session;
+          if (open !== null) {
+            const hasFragmentRow = (await unit.query(READ_SESSION_HAS_FRAGMENT, [open.id])).rows.length > 0;
+            const derived = captureDurableAtRehydrateTransition(sim.store.getState(), hasFragmentRow);
+            if (derived !== sim.store.getState()) sim.store.setState(derived, true);
+          }
+        }
+
+        // Source-fact block (integration pass D11; `fact-doors.ts`): no row holds the class of a
+        // built-in test source or `sourceOpen`, so the list the Core last handed in is applied to the
+        // state this start read. A PROCESS start knows none: nothing is open after a boot until the
+        // caller says so again (a source never reads "on" from an earlier process).
+        if (mode === 'boot') heldSourceFacts = null;
+        else if (heldSourceFacts !== null) {
+          const marked = applyCaptureSourceFactsTransition(sim.store.getState(), heldSourceFacts);
+          if (marked !== sim.store.getState()) sim.store.setState(marked, true);
+        }
+
         const state = sim.store.getState();
         const target = durableOf(state);
         const plan = planWrite(stored.slices, target, { at: now, state });
@@ -946,7 +1074,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return committed;
   }
 
-  const host: EngineHost & EngineControl & { readonly [CONTROL]: true } = {
+  const host: EngineHost & EngineControl & EngineCaptureDoors & EngineSealDoors & EngineFactDoors & { readonly [CONTROL]: true } = {
     [CONTROL]: true,
 
     get epoch() {
@@ -1029,6 +1157,77 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         scope.live.sim.actions.clearCaptureWarning(warning);
         await flush(scope);
       });
+    },
+
+    // Capture block (blueprint row 71): the three doors of the capture session, each one unit.
+    markCaptureDurable(sessionId: string) {
+      return inUnit(ENGINE_UNIT_LABEL.captureDurable, 'command', (scope) => applyCaptureTransition(scope, (state) => captureDurableOfSessionTransition(state, sessionId)));
+    },
+
+    endCapture(sessionId: string, end: { readonly durable: boolean; readonly cause?: string | null }) {
+      return inUnit(ENGINE_UNIT_LABEL.captureEnded, 'command', async (scope): Promise<CaptureEndOutcome> => {
+        const session = scope.live.sim.store.getState().session;
+        // A session that says it holds a durable fragment is NEVER a failed start, whatever the
+        // caller reports: evidence on the disk is sealed as interrupted, not dropped (D84).
+        const durable = end.durable || session?.captureDurable === true;
+        const changed = await applyCaptureTransition(scope, (state, now) => (durable ? interruptedCaptureTransition(state, now, sessionId) : failedCaptureStartTransition(state, now, sessionId, end.cause ?? null)));
+        const outcome: CaptureEndOutcome = !changed ? 'IGNORED' : durable ? 'INTERRUPTED' : 'FAILED_START';
+        log.info({ label: scope.unit.label, sessionId, outcome }, 'the capture of a session ended');
+        return outcome;
+      });
+    },
+
+    clearCaptureFaults() {
+      return inUnit(ENGINE_UNIT_LABEL.captureFaultsClear, 'command', async (scope) => {
+        const active = scope.live.sim.store.getState().faults.active.filter((fault) => CAPTURE_FAULT_KINDS.includes(fault.kind)).length;
+        if (active === 0) return 0;
+        await applyCaptureTransition(scope, clearCaptureFaultsTransition);
+        return active;
+      });
+    },
+
+    // Seal block (blueprint row 82; register SH-18, CS-04): the INTERNAL actions of the sealing
+    // pipeline and the verdict of a real verification. No actor, no permission: the caller is the
+    // Core itself. Each is one unit; a transition that changes nothing sends no statement.
+    applySealingProgress(input: SealingProgressInput) {
+      return inUnit(ENGINE_UNIT_LABEL.sealingProgress, 'command', async (scope) => {
+        await applySealTransition(scope, 'applySealingProgress', (state, now) => applySealingProgressTransition(state, now, input));
+      });
+    },
+
+    completeSeal(input: CompleteSealInput, also?: (unit: UnitContext, evidenceId: string) => Promise<void>) {
+      return inUnit(ENGINE_UNIT_LABEL.sealComplete, 'command', async (scope) => {
+        await applySealTransition(scope, 'completeSeal', (state, now) => completeSealTransition(state, now, input));
+        const evidenceId = scope.live.sim.store.getState().session?.evidenceId ?? null;
+        if (evidenceId === null) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the sealed session names no evidence item after its seal');
+        // The item's row is written by now: rows that hang on it (the sealed transcript) commit in
+        // the same unit, or the seal does not commit at all.
+        if (also !== undefined) await also(scope.unit, evidenceId);
+        return { evidenceId };
+      });
+    },
+
+    recordEvidenceVerification(verdict: EvidenceVerdictInput) {
+      return inUnit(ENGINE_UNIT_LABEL.evidenceVerdict, 'command', async (scope) => {
+        await applySealTransition(scope, 'recordEvidenceVerification', (state, now) => recordEvidenceVerificationTransition(state, now, verdict));
+      });
+    },
+
+    // Fact block (integration pass D6; `fact-doors.ts`): two facts only a Core knows, each one unit
+    // with no actor and no audit row. A call that changes nothing sends no statement.
+    applyStorageVolume(volume: StorageVolumeInput) {
+      return inUnit(FACT_DOOR_LABEL.storageVolume, 'command', (scope) => applyCaptureTransition(scope, (state) => applyStorageVolumeTransition(state, volume)));
+    },
+
+    noteTranscriptRevision(note: TranscriptRevisionNote) {
+      return inUnit(FACT_DOOR_LABEL.transcriptRevision, 'command', (scope) => applyCaptureTransition(scope, (state) => noteTranscriptRevisionTransition(state, note)));
+    },
+
+    // Source-fact block (integration pass D11): the list is kept for the next rehydrate of this
+    // process, then applied as one unit with no actor and no audit row. Nothing is stored.
+    applyCaptureSourceFacts(facts: readonly CaptureSourceFact[]) {
+      heldSourceFacts = facts.map((fact) => ({ ...fact }));
+      return inUnit(FACT_DOOR_LABEL.captureSourceFacts, 'command', (scope) => applyCaptureTransition(scope, (state) => applyCaptureSourceFactsTransition(state, facts)));
     },
 
     mirrorOperators() {

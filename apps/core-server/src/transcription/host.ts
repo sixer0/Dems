@@ -9,7 +9,8 @@
  *
  *     <dataDir>/transcriber/host.json
  *     { "version": 1,
- *       "cpuLocal":   { "binaryPath": "/abs/whisper-cli", "modelDir": "/abs/models", "threads": 4 },
+ *       "cpuLocal":   { "binaryPath": "/abs/whisper-cli", "modelDir": "/abs/models", "threads": 4,
+ *                       "modelVersions": { "<model identifier>": "<version>" } },
  *       "vad":        { "binaryPath": "/abs/vad-speech-segments", "modelDir": "/abs/models", "model": "ggml-silero-v5.1.2" },
  *       "omlxServer": { "settingsPath": "/abs/settings.json" } }
  *
@@ -17,6 +18,12 @@
  * no host value), `cpu-local` is refused as `CPU_LOCAL_RUNTIME_MISSING` when a configuration
  * selects it. A file that is there and cannot be read as this form is a FAULT, never "no file": the
  * boot step refuses it (CS-22: a wrong host value fails the boot, not the first session).
+ *
+ * `cpuLocal.modelVersions` (integration pass D8; manifest field 85): the VERSION of a model file is
+ * stated by the party that put the file on the host - no member of the file and no output of the
+ * engine states one. A model identifier without an entry has no version: its sessions are sealed
+ * without a transcript document (`model-provenance.ts`). The Core reads the three other members
+ * of the provenance itself and never from this file.
  *
  * NOT IN THE FILE, ON PURPOSE: `nicePath` and `priority`. The row leaves `nicePath` at its default
  * and the controller ruled `priority: 'required'` (D91), which this module states itself.
@@ -45,10 +52,16 @@ const absolutePath = z
   // eslint-disable-next-line no-control-regex -- control characters are exactly what is refused here
   .regex(/^\/[^\u0000-\u001f\u007f]*$/);
 const count = z.number().int().min(1).max(256);
+/** A stated model version: printable ASCII, no leading or trailing blank. A statement, never parsed. */
+const modelVersion = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?$/);
 
 const HostFileSchema = z.strictObject({
   version: z.literal(1),
-  cpuLocal: z.strictObject({ binaryPath: absolutePath, modelDir: absolutePath, threads: count.optional(), processors: count.optional() }).optional(),
+  cpuLocal: z.strictObject({ binaryPath: absolutePath, modelDir: absolutePath, threads: count.optional(), processors: count.optional(), modelVersions: z.record(z.string().min(1).max(128), modelVersion).optional() }).optional(),
   vad: z.strictObject({ binaryPath: absolutePath, modelDir: absolutePath, model: z.string().min(1).max(128) }).optional(),
   omlxServer: z.strictObject({ settingsPath: absolutePath.optional() }).optional(),
 });
@@ -75,6 +88,8 @@ export interface TranscriberHost {
   readonly runtime: TranscriberRuntime;
   /** The VAD engine of the host, or null: fixed windows are used and flagged (`vad_fallback`). */
   readonly vad: SileroVadRuntime | null;
+  /** `cpuLocal.modelVersions`: model identifier -> the version the host states for it. Empty: none stated. */
+  readonly modelVersions: Readonly<Record<string, string>>;
   /** `<dataDir>/transcriber`. */
   readonly root: string;
 }
@@ -118,7 +133,7 @@ export function readTranscriberHost(dataDir: string, cores: () => number = physi
     if (errno !== 'ENOENT' && errno !== 'ENOTDIR') throw new TranscriberHostError(typeof errno === 'string' ? errno : 'UNREADABLE');
     text = null;
   }
-  if (text === null) return Object.freeze({ source: 'NONE', runtime: Object.freeze({ physicalCores: cores() }), vad: null, root });
+  if (text === null) return Object.freeze({ source: 'NONE', runtime: Object.freeze({ physicalCores: cores() }), vad: null, modelVersions: Object.freeze({}), root });
 
   let json: unknown;
   try {
@@ -148,5 +163,5 @@ export function readTranscriberHost(dataDir: string, cores: () => number = physi
     ...(stated.omlxServer?.settingsPath === undefined ? {} : { omlxServer: { settingsPath: stated.omlxServer.settingsPath } }),
   };
   const vad: SileroVadRuntime | null = stated.vad === undefined ? null : { binaryPath: stated.vad.binaryPath, modelDir: stated.vad.modelDir, model: stated.vad.model, priority: 'required' };
-  return Object.freeze({ source: 'FILE', runtime: Object.freeze(runtime), vad, root });
+  return Object.freeze({ source: 'FILE', runtime: Object.freeze(runtime), vad, modelVersions: Object.freeze({ ...stated.cpuLocal?.modelVersions }), root });
 }

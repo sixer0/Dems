@@ -356,12 +356,22 @@ export interface CaptureConnectionTestedFacts {
 }
 
 /**
+ * The one form of an endpoint reference an audit row may carry: `urn:uuid:` and a UUID, the form
+ * ONVIF defines for it (decision D134). It is the rule of the Core server's audit details
+ * (`core/audit-details.ts`, `ENDPOINT_REF_URN`): what a device ANNOUNCED is free text, and a row
+ * must not hold free text a device chose.
+ */
+export const CAPTURE_ENDPOINT_REF_PATTERN = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * `host` and `endpointRef` join a row for a PRODUCTION candidate only (D86 C-3): for any other
- * class the two members are dropped here, whatever the caller passed.
+ * class the two members are dropped here, whatever the caller passed. An announced reference that
+ * is not `urn:uuid:<UUID>` is left out as well (D134): the simulator builds no row the server refuses.
  */
 function productionIdentity(facts: { sourceClass: CaptureSourceClass; host?: string | null; endpointRef?: string | null }): AuditDetails {
   if (facts.sourceClass !== CaptureSourceClass.PRODUCTION) return {};
-  return { ...(facts.host ? { host: facts.host } : {}), ...(facts.endpointRef ? { endpointRef: facts.endpointRef } : {}) };
+  const endpointRef = typeof facts.endpointRef === 'string' && CAPTURE_ENDPOINT_REF_PATTERN.test(facts.endpointRef) ? facts.endpointRef : null;
+  return { ...(facts.host ? { host: facts.host } : {}), ...(endpointRef === null ? {} : { endpointRef }) };
 }
 
 /** `details` of CAPTURE_CONNECTION_TESTED (C3 §5.2): one row per attempt, every outcome. Never the username, the secret or a URL. */

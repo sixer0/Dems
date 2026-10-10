@@ -70,6 +70,8 @@ describe('the lines of a finished seed', () => {
     epoch: 0,
     counts: EXPECTED_SEED_COUNTS,
     auditHead: { seq: 82, hash: 'ab'.repeat(32) },
+    demoPackages: { status: 'NOT_ASKED', reason: null, message: null, items: [] },
+    demoPlacement: null,
     prepareMs: 61.4,
     writeMs: 38.2,
     totalMs: 104.9,
@@ -80,8 +82,8 @@ describe('the lines of a finished seed', () => {
     expect(lines.slice(0, 4)).toEqual([
       'db:seed: dems_demo on PostgreSQL 18.4 as dems_owner',
       'db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0',
-      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 314 row(s) in 24 of 42 table(s)',
-      'row counts       42 table(s)',
+      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 314 row(s) in 24 of 43 table(s)',
+      'row counts       43 table(s)',
     ]);
     // Four header lines, one line per table in the counts map (30 in v1; the map now names all 42 - T-41 of dbc-4 and T-42 of PE-129b-01 joined with 0 rows:
     // dbc-3's three capture tables and the seven v2 data tables, the last holding the single

@@ -1,7 +1,7 @@
 import { Chip } from '@heroui/react'
 import { FlaskConical, Radio } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { MicInputId, VideoTrackId } from '@dems/shared/domain'
+import type { VideoTrackId } from '@dems/shared/domain'
 import type { CaptureDevice } from './capture-selector'
 import {
   isDevelopmentSource,
@@ -14,6 +14,8 @@ import {
   useTrackDevice,
   type SourceDeviceKind,
 } from './source-class'
+// Pass D2: the badge is drawn outside the Devices page too (Monitor, Dashboard); its two classes live in the page's sheet.
+import './devices.css'
 
 export interface DevelopmentSourceBadgeProps {
   adapter: string | null | undefined
@@ -62,7 +64,7 @@ export function TrackSourceMarks({ trackId, place }: { trackId: VideoTrackId; pl
 }
 
 /** The badge and the 'is on' line of the device behind a microphone input now (an audio-input card). */
-export function MicSourceMarks({ inputId, place }: { inputId: MicInputId; place: string }) {
+export function MicSourceMarks({ inputId, place }: { inputId: string; place: string }) {
   const device = useMicInputDevice(inputId)
   return <SourceMarks device={device} place={place} />
 }

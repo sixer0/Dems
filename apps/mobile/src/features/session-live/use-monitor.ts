@@ -31,7 +31,7 @@
  * Every function that calls a hook is named `use*` (D66: the device build runs the React Compiler).
  */
 import { useToast } from 'heroui-native';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
@@ -44,6 +44,7 @@ import {
   useSim,
   type CameraStatus,
   type MicStatus,
+  type SimState,
   type TimelineEvent,
 } from '@dems/shared/sim';
 import {
@@ -56,6 +57,8 @@ import {
   useRecordingElapsedSeconds,
   type ElapsedTicker,
 } from '@/runtime';
+import { camerasNotConnectedOf } from '@/features/capture-selector/capture-notices-model';
+import { selectConnectingCameras } from './mic-source-model';
 import { statusStrip, type StripChip } from './session-live.math';
 
 /** The recording session's identity and counters (primitives only). */
@@ -101,9 +104,30 @@ export interface MonitorCameras {
   readonly cameras: readonly CameraStatus[];
 }
 
+/**
+ * Row 139 (ux §8e.2 "C, degraded"): the device ids of the cameras the Core says did not connect at
+ * this session start, as one text (a primitive, so the selector is stable). Empty: none.
+ */
+const selectCamerasNotConnected = (s: SimState): string =>
+  camerasNotConnectedOf(s.alerts)
+    .map((notice) => notice.deviceId)
+    .sort()
+    .join(',');
+
+/** The cameras with the ones a session start named as not connected shown offline: their tile reads NO SIGNAL. */
+function useCamerasOfSession(): readonly CameraStatus[] {
+  const cameras = useSim(selectCameras);
+  const missing = useSim(selectCamerasNotConnected);
+  return useMemo(() => {
+    if (missing === '') return cameras;
+    const ids = missing.split(',');
+    return cameras.map((camera) => (ids.includes(camera.deviceId) && camera.online ? { ...camera, online: false } : camera));
+  }, [cameras, missing]);
+}
+
 export function useMonitorCameras(): MonitorCameras {
   const activeCameraId = useSim((s) => s.activeCameraId);
-  const cameras = useSim(selectCameras);
+  const cameras = useCamerasOfSession();
   return { activeCameraId, cameras };
 }
 
@@ -117,7 +141,10 @@ export function useMonitorTimeline(): readonly TimelineEvent[] {
 
 /** S2b: VIDEO 1, VIDEO 2, STORAGE, TIME. */
 export function useMonitorStrip(): StripChip[] {
-  const cameras = useSim(selectCameras);
+  const cameras = useCamerasOfSession();
+  // Row 139 (D84): before the first durable fragment no camera row reads REC.
+  const connecting = useSim(selectConnectingCameras);
+  const missing = useSim(selectCamerasNotConnected);
   const storage = useSim((s) => s.storage.state);
   const timeSource = useSim((s) => s.time.source);
   const timeLocked = useSim((s) => s.time.locked);
@@ -126,7 +153,9 @@ export function useMonitorStrip(): StripChip[] {
       index: (i === 0 ? 1 : 2) as 1 | 2,
       online: camera.online,
       recState: camera.recState,
+      notConnected: missing !== '' && missing.split(',').includes(camera.deviceId),
     })),
+    connecting,
     storage,
     timeSource,
     timeLocked,

@@ -5,7 +5,9 @@ import { ArrowRight, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type TimelineEvent } from '@dems/shared/sim'
 import { SessionTimeline } from '@/components/composed'
-import { formatBytesParts, micInputLabelKey } from './model'
+import { useMicInputName } from '@/features/devices/source-class'
+import { isMicInputId } from '@/lib/capture-notices'
+import { formatBytesParts } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
 import { audioPeakLevel, autosaveSegment, bytesAt } from './sim-adapter'
@@ -20,6 +22,7 @@ const EMPTY: readonly TimelineEvent[] = []
  */
 export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation()
+  const micName = useMicInputName()
   const events = useSim((s) => s.session?.timeline ?? EMPTY)
   const startedAt = useSim((s) => s.session?.startedAt ?? null)
   // The simulator never schedules timeline items in the future, so "now" is the newest item's time:
@@ -55,14 +58,15 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
       }
       if (event.kind === 'AUDIO_SWITCH') {
         // WB-10: the switch names both inputs (`params.from` / `params.to`, written by operation 81).
-        const from = micInputLabelKey(event.params?.from)
-        const to = micInputLabelKey(event.params?.to)
-        if (from !== null && to !== null) return t('session.audioSource.timelineDetail', { from: t(from), to: t(to) })
+        // Pass D2: named from the ids the Core wrote (`MIC-NN`, any number).
+        const from = event.params?.from
+        const to = event.params?.to
+        if (isMicInputId(from) && isMicInputId(to)) return t('session.audioSource.timelineDetail', { from: micName(from), to: micName(to) })
       }
       if (event.detail) return event.detail
       return event.label
     },
-    [t, startedAt],
+    [t, startedAt, micName],
   )
 
   return (

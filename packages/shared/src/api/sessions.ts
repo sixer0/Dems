@@ -26,7 +26,7 @@
  * here; `addMarker`, `addNote` and `snapshot` take SESSION_NOTE (01_specs §7.8).
  */
 import { z } from 'zod';
-import { FinalizationStep, MicInputId, MicRole, SessionState } from '../domain/enums';
+import { FinalizationStep, MicRole, SessionState } from '../domain/enums';
 import { AuditType, Permission, StepStatus } from '../sim/vocabulary';
 import { API_BASE_PATH, API_PAGE_LIMIT_DEFAULT } from './constants';
 import {
@@ -55,7 +55,7 @@ import {
   hostedNote,
   notPermitted,
 } from './operation-parts';
-import { CASE_NUMBER_PATTERN, SESSION_ID_PATTERN } from './patterns';
+import { CASE_NUMBER_PATTERN, MIC_INPUT_ID_PATTERN, SESSION_ID_PATTERN } from './patterns';
 import { boundedText, count, epochMs, nextCursor, nullableEpochMs, operatorId, pageCursor, pageLimit, sessionId } from './schema-parts';
 import { EXAMPLE_SESSION_HISTORY, STATE_EXAMPLE_IDS } from './state-examples';
 import { SessionHistoryEntrySchema } from './state-slices';
@@ -127,12 +127,27 @@ export const SESSION_SCHEMAS = {
   SessionHistoryPage: SessionHistoryPageSchema,
 } as const;
 
+/**
+ * Two `details.reason` values of the session operations on a Core in a real capture operation
+ * (row 71b; ruling D144). Documented values of existing answers: no new status, no new code.
+ *
+ *   `CAPTURE_NOT_DURABLE`   `409 INVALID_STATE` of `stopSession`: the recording is still
+ *                           "connecting cameras" - nothing durable has been written yet
+ *                           (`captureDurable: false`), so there is nothing to stop and seal. Ask
+ *                           again once the session reports `captureDurable: true`, or cancel.
+ *   `CAPTURE_HELPERS_LEFT`  `503 NOT_READY` of `startSession` (envelope level): helper processes
+ *                           of an earlier capture are still running; the start is refused until
+ *                           they are gone, so that no device is opened twice.
+ */
+export const CAPTURE_NOT_DURABLE_REASON = 'CAPTURE_NOT_DURABLE';
+export const CAPTURE_HELPERS_LEFT_REASON = 'CAPTURE_HELPERS_LEFT';
+
 // ── Operations 81-83: mic switch and sealing progress (task 3 M2-W7; register SH-13; C3 §2) ────
 
 /** Request body of op 81: the input to make active, with an optional operator reason. */
 export const AudioSourceSwitchRequestSchema = z
   .strictObject({
-    inputId: z.enum(MicInputId).describe('The mic input to move behind AUDIO-01 (the other becomes STANDBY).'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the session (the other becomes STANDBY).'),
     reason: boundedText(500).optional().describe('Why the operator switched; audited as text, never as a secret.'),
   })
   .describe('Request body of `POST /api/v1/session/{id}/audio-source` (C3 §2.3 op 81).');
@@ -142,8 +157,8 @@ export type AudioSourceSwitchRequest = z.output<typeof AudioSourceSwitchRequestS
 export const AudioSourceStateSchema = z
   .strictObject({
     sessionId: sessionId(),
-    activeInputId: z.enum(MicInputId),
-    standbyInputId: z.enum(MicInputId),
+    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN),
+    standbyInputId: z.string().regex(MIC_INPUT_ID_PATTERN),
     switchedAt: epochMs().describe('Core instant the switch took effect (never the client clock, E-13).'),
     intervalFromMs: count().describe('Media-pts start of the interval the switch opened.'),
   })
@@ -158,8 +173,8 @@ export type AudioSourceStateBody = z.output<typeof AudioSourceStateSchema>;
 export const AudioSourceIntervalEntrySchema = z
   .strictObject({
     sessionId: sessionId(),
-    seq: count().describe('Interval number within the session, from 0.'),
-    inputId: z.enum(MicInputId).describe('The mic device of this interval.'),
+    seq: count().min(1).describe('Interval number within the session, from 1: the manifest\'s rule (ev §B.5) and the table\'s (`session_audio_intervals_seq_check`). Pass D6: the text said "from 0"; no Core ever answered 0 in real capture.'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic device of this interval, `MIC-NN`.'),
     role: z.enum(MicRole),
     fromMs: count().describe('Media-pts start (ms).'),
     toMs: nullableEpochMs().describe('Media-pts end (ms); null while the interval is open.'),
@@ -839,7 +854,7 @@ export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             items: [
               {
                 sessionId: STATE_EXAMPLE_IDS.openSessionId,
-                seq: 1,
+                seq: 2,
                 inputId: 'MIC-02',
                 role: 'PRIMARY',
                 fromMs: 5_324,
@@ -851,7 +866,7 @@ export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
               },
               {
                 sessionId: STATE_EXAMPLE_IDS.openSessionId,
-                seq: 0,
+                seq: 1,
                 inputId: 'MIC-01',
                 role: 'PRIMARY',
                 fromMs: 0,

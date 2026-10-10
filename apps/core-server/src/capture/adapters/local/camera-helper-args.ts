@@ -38,13 +38,41 @@ export type CameraHelperEncoder = (typeof CameraHelperEncoder)[keyof typeof Came
 const QUIET = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning'] as const;
 /** The device input. The device name follows `-i` as ONE argument, `<name>:none` (video only). */
 const DEVICE_INPUT = ['-f', 'avfoundation', '-use_wallclock_as_timestamps', '1', '-framerate', '30', '-video_size', '1280x720', '-pixel_format', 'nv12', '-i'] as const;
-/** The generated picture of the development fake camera (slot 2, D74 (2)): no device is opened. */
-const GENERATED_INPUT = ['-re', '-f', 'lavfi', '-use_wallclock_as_timestamps', '1', '-i', 'testsrc2=size=1280x720:rate=30,settb=1/1000000'] as const;
+/**
+ * The generated picture of the development fake camera (slot 2, D74 (2)): no device is opened.
+ *
+ * PACED BY THE `realtime` FILTER INSIDE THE GRAPH (row 140). `-re` paces an input by its
+ * timestamps, and this input is stamped with the wall clock at reading (as the camera is), so `-re`
+ * alone holds nothing back: measured with the program of this host, the list without the filter
+ * delivered 9,124 frames in 2 s, and through the worker about 800 video packets per second - camera
+ * files of more than 20 MB per second and a fragment of 111 MB, above the 64 MiB a seal accepts
+ * (`FRAGMENT_TOO_LARGE`). With the filter: 60 frames in 2 s, the 30 per second the graph asks for.
+ */
+const GENERATED_INPUT = ['-re', '-f', 'lavfi', '-use_wallclock_as_timestamps', '1', '-i', 'testsrc2=size=1280x720:rate=30,realtime,settb=1/1000000'] as const;
 const ENCODER = {
   VIDEOTOOLBOX: ['-an', '-c:v', 'h264_videotoolbox', '-realtime', '1', '-profile:v', 'main', '-bf', '0', '-g', '30', '-b:v', '4M', '-flags', '+global_header'],
-  X264: ['-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '0', '-flags', '+global_header'],
+  X264: ['-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '0', '-b:v', '4M', '-maxrate', '4M', '-bufsize', '4M', '-flags', '+global_header'],
 } as const satisfies Record<CameraHelperEncoder, readonly string[]>;
-/** Frames keep the time they were stamped with: none is repeated or dropped to fill a fixed grid. */
+/**
+ * THE FIXED GRID (integration pass D3; decisions D130 (b), D133 (4)). A camera stamped with the wall
+ * clock at reading is a VARIABLE-rate source: the attended run read frame intervals of 12.94 to
+ * 48.39 ms. Two frames closer than half a frame period land on one tick of a 30 fps grid, which is
+ * what a player or a decoder that re-times to the nominal rate reports (row 60's `playable`: one
+ * "non monotonically increasing dts" line per such pair; proven on a generated variable-rate source).
+ * This group puts the picture on the grid BEFORE the encoder: one frame per 1/30 s, the nearest
+ * input frame for each tick (a late frame is repeated, a crowded one dropped), timestamps exact
+ * multiples of 1/30 s of the same wall clock; a frame is moved by at most half a period (16.7 ms).
+ *
+ * A CANDIDATE, NOT THE DEFAULT (`fixedGrid` of `cameraPushArguments`, off unless asked). Measured in
+ * pass D3 on generated pictures through the worker: with it row 60's check is true (0 lines, every
+ * interval exactly 3,000 ticks) - and `M4-LOCAL-AV-1` FAILS: one camera lost one of four one-frame
+ * flashes (a crowded tick drops a frame) and the other read a sync error of 16.4 ms against the
+ * 2 ms regression bound. Whether evidence video may repeat and drop frames to sit on a grid is a
+ * ruling, not a default. (The encoder-side form, `-fps_mode cfr`, cannot be used at all: with
+ * wall-clock timestamps the program refuses every frame, "frame duplication too large".)
+ */
+const GRID = ['-vf', `fps=fps=${LOCAL_CAMERA_FRAME_RATE}:round=near`] as const;
+/** Frames keep the time they carry: the encoder and the muxer repeat or drop nothing to fill a fixed grid. */
 const TIMING = ['-fps_mode', 'passthrough', '-enc_time_base', '1/90000'] as const;
 /**
  * The progress report on standard output: how the Core learns that a first frame / sample went out
@@ -96,13 +124,15 @@ export interface CameraPushArguments {
   readonly ingestUrl: string;
   /** `S`: the Core's wall clock at the start of the helper, in whole milliseconds. */
   readonly startMs: number;
+  /** The fixed 30 fps grid before the encoder (see `GRID`): a measured candidate. Default: off - frames keep the time they were read. */
+  readonly fixedGrid?: boolean;
 }
 
 /** The argument list of a helper that pushes to the worker. */
 export function cameraPushArguments(input: CameraPushArguments): readonly string[] {
   if (!isLoopbackIngest(input.ingestUrl)) throw new CameraHelperArgumentError('TARGET');
   const source = input.source === 'DEVICE' ? [...DEVICE_INPUT, deviceArgument(input.deviceName ?? '')] : [...GENERATED_INPUT];
-  return Object.freeze([...QUIET, ...source, ...ENCODER[input.encoder], ...TIMING, ...clockArguments(input.startMs), ...PROGRESS, ...PUSH, input.ingestUrl]);
+  return Object.freeze([...QUIET, ...source, ...(input.fixedGrid === true ? GRID : []), ...ENCODER[input.encoder], ...TIMING, ...clockArguments(input.startMs), ...PROGRESS, ...PUSH, input.ingestUrl]);
 }
 
 /** The device list call: it opens no device and asks for no permission. */
@@ -120,7 +150,7 @@ export function cameraPrecheckArguments(deviceName: string): readonly string[] {
  * the literals of the tables, and where the input section of a push list ends.
  */
 export const CAMERA_HELPER_TABLE = Object.freeze({
-  literals: Object.freeze([...new Set<string>([...QUIET, ...DEVICE_INPUT, ...GENERATED_INPUT, ...ENCODER.VIDEOTOOLBOX, ...ENCODER.X264, ...TIMING, ...PROGRESS, ...PUSH, ...DEVICE_LIST, ...PRECHECK_OUTPUT, '-copyts', '-output_ts_offset', '-start_time_realtime'])]),
+  literals: Object.freeze([...new Set<string>([...QUIET, ...DEVICE_INPUT, ...GENERATED_INPUT, ...GRID, ...ENCODER.VIDEOTOOLBOX, ...ENCODER.X264, ...TIMING, ...PROGRESS, ...PUSH, ...DEVICE_LIST, ...PRECHECK_OUTPUT, '-copyts', '-output_ts_offset', '-start_time_realtime'])]),
   quietLength: QUIET.length,
   deviceInputLength: DEVICE_INPUT.length + 1,
 });

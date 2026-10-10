@@ -129,6 +129,72 @@ afterAll(async () => {
   await maintenance.end();
 });
 
+// Integration pass D11 (pass D10's finding, a contract defect; C3 §3 ops 72 / 75, `dbc-3` §E.2): the
+// module asks the reset guard on its OWN pool before the routine is called, so before the quiesce.
+// FIRST in this file: the epoch is still 1 and stays 1.
+describe('PASS D11 - refused by the caller-side guard (real sealed evidence): nothing was stopped, the epoch did not move, the refusal is audited', () => {
+  it('resetDemo and loadScenario on a database that holds a REAL sealed item: 409 RESET_BLOCKED_REAL_EVIDENCE; no hold, no engine stop, no pool reopen, the routine never asked; one ACCESS_DENIED row each names the operation and the reason; CONTROL: with the mark taken back the guard lets the routine be asked', async () => {
+    const item = (await owner().query<{ id: string; integrity_source: string; manifest_version: number }>('SELECT id, integrity_source, manifest_version FROM public.evidence_items WHERE sealed_at IS NOT NULL ORDER BY id LIMIT 1')).rows[0];
+    if (item === undefined) throw new Error('the clone holds no sealed evidence item');
+    await owner().query("UPDATE public.evidence_items SET integrity_source = 'REAL', manifest_version = 2 WHERE id = $1", [item.id]);
+    try {
+      const catalog = await catalogOf(maintenance, names());
+      const linesBefore = server.log.lines().length;
+      const publications = server.publications.length;
+      const head = await readHead(owner());
+
+      const response = await server.post('SUPERVISOR', RESET);
+      expect(outcome(response)).toEqual([409, 'RESET_BLOCKED_REAL_EVIDENCE']);
+      expect(errorOf(response).details).toBeUndefined();
+      expect(validateCoreApiResponse('resetDemo', 409, response.json())).toEqual({ ok: true });
+      const scenario = await server.post('SUPERVISOR', SCENARIO, { name: 'recording' });
+      expect(outcome(scenario)).toEqual([409, 'RESET_BLOCKED_REAL_EVIDENCE']);
+
+      // NOTHING was stopped or resumed: no readiness hold, no readiness change, no engine stop or start, the same pool, the same epoch.
+      expect(marksSince(linesBefore)).toEqual([]);
+      expect(server.app.db.generation).toBe(1);
+      expect(server.engine).toMatchObject({ running: true, epoch: 1 });
+      expect((await chainFacts(owner())).epoch).toBe('1');
+      expect(startsSince(publications)).toEqual([]);
+      // The routine was never asked (it logs a line with its code when it refuses): the refusal is the module's own, said twice.
+      expect(routineLine(linesBefore)).toBeUndefined();
+      const said = server.log.lines().slice(linesBefore).filter((line) => line['code'] === 'RESET_BLOCKED_REAL_EVIDENCE' && line['quiesced'] !== undefined);
+      expect(said.map((line) => [line['operation'], line['quiesced'], line['realRows'], line['epochBefore']])).toEqual([['resetDemo', false, 1, 1], ['loadScenario', false, 1, 1]]);
+      expect(await catalogOf(maintenance, names())).toEqual(catalog);
+
+      // The audited refusal the contract promises: one row per refused request, on the chain, by the caller.
+      const rows = (await trailOf(owner())).filter((row) => row.seq > head.seq);
+      expect(rows.map((row) => [row.type, row.actorId, row.details])).toEqual([
+        ['ACCESS_DENIED', 'OPR-002', { operationId: 'resetDemo', reason: 'RESET_BLOCKED_REAL_EVIDENCE' }],
+        ['ACCESS_DENIED', 'OPR-002', { operationId: 'loadScenario', reason: 'RESET_BLOCKED_REAL_EVIDENCE' }],
+      ]);
+      expect(rows[0]).toMatchObject({ seq: head.seq + 1, prevHash: head.hash });
+      expect(await checkStoredChain(server.app.db.pool, { verifyDigests: verifyStoredAuditRows })).toMatchObject({ ok: true, linkBreaks: 0 });
+      // The item is still there, still REAL: nothing was rebuilt.
+      expect((await owner().query("SELECT count(*)::int AS n FROM public.evidence_items WHERE id = $1 AND integrity_source = 'REAL'", [item.id])).rows[0]?.n).toBe(1);
+    } finally {
+      await owner().query('UPDATE public.evidence_items SET integrity_source = $2, manifest_version = $3 WHERE id = $1', [item.id, item.integrity_source, item.manifest_version]);
+    }
+
+    // CONTROL: the same request with the mark taken back passes the guard and reaches the routine (here made to refuse at R-0 by a held
+    // lock, so that this case moves no epoch; a reset that RUNS, with the epoch asserted + 1, is the second case of the next block).
+    const slot = guardResetTarget(db.name, { testRunPrefix: db.run.identity.prefix }).lockSlot;
+    const holder = await maintenance.connect();
+    try {
+      await holder.query('SELECT pg_advisory_lock($1::int, $2::int)', [RESET_LOCK_CLASS, slot]);
+      const linesBefore = server.log.lines().length;
+      const head = await readHead(owner());
+      expect(outcome(await server.post('SUPERVISOR', RESET))).toEqual([503, 'NOT_READY']);
+      expect(routineLine(linesBefore)).toMatchObject({ routineCode: 'RESET_ALREADY_RUNNING', routineStep: 'R-0' });
+      expect((await trailOf(owner())).filter((row) => row.seq > head.seq)).toEqual([]);
+    } finally {
+      await holder.query('SELECT pg_advisory_unlock($1::int, $2::int)', [RESET_LOCK_CLASS, slot]);
+      holder.release();
+    }
+    await expectUsable(1);
+  });
+});
+
 describe('refused at R-0: nothing of the server was stopped', () => {
   it('RESET_ALREADY_RUNNING: another session holds the reset lock of this database: 503 with RESET_IN_PROGRESS; no hold, engine and pool untouched; the next command works', async () => {
     const slot = guardResetTarget(db.name, { testRunPrefix: db.run.identity.prefix }).lockSlot;

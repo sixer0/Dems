@@ -51,7 +51,7 @@ export function silentAudio(at: EpochMs): AudioSlice {
 
 /** True when both inputs already show "no signal": resetting them again would only change references. */
 export function isSilentAudio(audio: AudioSlice): boolean {
-  return audio.inputs['MIC-01'].noSignal && audio.inputs['MIC-02'].noSignal;
+  return Object.values(audio.inputs).every((frame) => frame.noSignal);
 }
 
 export function clockSliceAt(now: EpochMs): ClockSlice {

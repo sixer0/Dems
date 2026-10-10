@@ -10,7 +10,7 @@
 //                   three facts can be changed.
 //   M4-MT-14        an adopted ONVIF_RTSP row and the LOCAL_DEVICE rows survive the permitted
 //                   reset with their kind; `session_capture_sources` is emptied; the version
-//                   stays at this code's pair, (5, 'dbc-6') since row 129b; the kept set stays 12.
+//                   stays at this code's pair, (6, 'dbc-7') since migration set 7; the kept set is 13 (12 until PE-0013-01).
 //   D98(1) / M7-SEC-SRC-2 (blueprint row 141): the DISK side follows the row side. A package folder
 //                   of the exempt item whose SIGNED manifest verifies and says development sources
 //                   does not block; an unsigned, tampered or all-PRODUCTION manifest on disk
@@ -20,7 +20,7 @@
 //
 // Every reset targets the database the helper created for THIS file, never `dems_demo` or a lane
 // (TI-17); the routine is reached through its function with the seam `testRunPrefix`.
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { PackageFile, packageFolderName, type SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import type { Pool } from 'pg';
@@ -111,7 +111,12 @@ async function attemptReset(storeRoot?: string): Promise<Attempt> {
 /** Expects a refusal that left the target exactly as it was. */
 async function expectBlocked(details: Record<string, number>, storeRoot?: string): Promise<string> {
   const before = await evidenceDigest(db.ownerPool());
+  // D133 (2): a refused reset removes no folder of the store, exempt-looking or not.
+  const foldersOf = (): string[] => (storeRoot === undefined || !existsSync(storeRoot) ? [] : readdirSync(storeRoot, { recursive: true }).map(String).sort());
+  const foldersBefore = foldersOf();
   const { error, logged } = await attemptReset(storeRoot);
+  expect(foldersOf()).toEqual(foldersBefore);
+  expect(logged.some((entry) => entry.code === 'RESET_DEVELOPMENT_PACKAGES_REMOVED')).toBe(false);
   expect(error).toMatchObject({ name: 'ResetError', code: 'RESET_BLOCKED_REAL_EVIDENCE', step: 'R-3', targetUntouched: true });
   const refusal = logged.find((entry) => entry.code === 'RESET_BLOCKED_REAL_EVIDENCE');
   expect(refusal?.details).toMatchObject({ database: db.name, ...details });
@@ -354,11 +359,17 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
     expect(stated?.message).toContain(`this reset erases 1 development-source package record(s) of ${db.name} (${sessionId})`);
     expect(stated?.details).toMatchObject({ realRows: 0, developmentUnproven: 0, developmentPackages: 1 });
     expect(logged.some((entry) => entry.code === 'RESET_BLOCKED_REAL_EVIDENCE')).toBe(false);
-    // D98(1): the folder was cleared by its signed mark, and the reset says that it leaves it in place.
-    expect(stated?.message).toContain('1 package folder(s) on disk carry the signed development mark of such a record and did not block (D98(1)); the folders themselves are not removed.');
-    // The folder is still there, and now no row names it: it blocks the NEXT reset (stated in the note of row 141).
-    const orphan = await findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot: onDisk.storeRoot });
-    expect(orphan).toMatchObject({ blocked: true, developmentSessions: [], developmentPackagesOnDisk: [], unprovablePackages: [packageFolderName(sessionId)] });
+    // D98(1): the folder was cleared by its signed mark; D133 (2): the reset says that it removes it, and does.
+    expect(stated?.message).toContain('1 package folder(s) on disk carry the signed development mark of such a record and did not block (D98(1)); the reset removes these folders once the database has been replaced (D133 (2)).');
+    const removed = logged.find((entry) => entry.code === 'RESET_DEVELOPMENT_PACKAGES_REMOVED');
+    expect(removed?.message).toContain(`removed 1 development-source package folder(s) from the evidence store: ${packageFolderName(sessionId)}.`);
+    expect(removed?.details).toMatchObject({ storeRoot: onDisk.storeRoot, removed: 1 });
+    expect(logged.some((entry) => entry.code === 'RESET_DEVELOPMENT_PACKAGE_LEFT')).toBe(false);
+    expect(existsSync(onDisk.built.dir)).toBe(false);
+    expect(existsSync(onDisk.storeRoot)).toBe(true);
+    // No orphan is left: the guard of the NEXT reset finds no package and does not block (it blocked here before D133 (2)).
+    const next = await findRealSealedEvidence(db.ownerPool(), { database: db.name, storeRoot: onDisk.storeRoot });
+    expect(next).toMatchObject({ blocked: false, developmentSessions: [], developmentPackagesOnDisk: [], unprovablePackages: [], diskSessions: [] });
 
     const after = db.ownerPool();
     // The development package record is gone with the rebuilt tables; the source table is empty.
@@ -371,8 +382,8 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
     );
     expect(rebuilt.rows).toEqual([{ real_items: 0, flagged: 0, items: 13, sources: 0, snapshots: 0 }]);
 
-    // M4-MT-14: the kept set is the same twelve tables and the registry crossed image for image.
-    expect(KEPT_TABLE_NAMES).toHaveLength(12);
+    // M4-MT-14: the kept set is the same twelve tables plus `core_media_store` (PE-0013-01) and the registry crossed image for image.
+    expect(KEPT_TABLE_NAMES).toHaveLength(13);
     expect(KEPT_TABLE_NAMES).toContain('capture_devices');
     expect(KEPT_TABLE_NAMES).not.toContain('session_capture_sources');
     expect(KEPT_TABLE_NAMES).not.toContain('session_stt_config');
@@ -392,6 +403,6 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
       { id: 'POE-SWITCH', adapter_kind: 'FAKE' },
     ]);
     const meta = await after.query('SELECT schema_version, contract_revision FROM public.schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 5, contract_revision: 'dbc-6' }]);
+    expect(meta.rows).toEqual([{ schema_version: 6, contract_revision: 'dbc-7' }]);
   });
 });

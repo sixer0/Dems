@@ -106,7 +106,36 @@ def bound_verdict(numbers, seconds, file_duration_s=None, margin_s=0.25, file_ma
             "file_bound_s": seconds + file_margin_s, "camera_within_bound": video_ok, "file_within_bound": file_ok, "pass": video_ok and file_ok}
 
 
+# Row 60's playable check lets the null muxer re-time video onto the nominal frame grid: two frames
+# closer than half a frame period (16.67 ms at 30 frames per second) land on one tick.
+CLOSE_PAIR_MS = 1000.0 / 30 / 2
+NOT_APPLICABLE = "not applicable - variable-rate development source"
+
+
+def fixed_grid_report(ok60, error_lines, deltas_ms, variable_rate):
+    """How row 60's fixed-grid check is REPORTED for a camera run (decision D136 (3); row 140).
+
+    A LOCAL_DEVICE camera is a variable-rate development source (`fixedGrid` is built and OFF by
+    ruling): its frames carry the time they were read, so the fixed-grid check does not apply to it.
+    It is then reported as not applicable, with the count of close frame pairs (intervals under
+    16.67 ms) - the number the check's own error lines follow (pass D3: 95 lines = 95 pairs). The
+    raw result of the check stays in the report beside it; nothing is hidden and nothing is judged.
+    For a fixed-rate source (the generated picture without jitter, the `--grid` candidate, every
+    production class) the check applies and its result is reported as it is: it is NOT weakened."""
+    close = len([d for d in deltas_ms if d < CLOSE_PAIR_MS])
+    report = {"close_frame_pairs_under_16_67_ms": close, "close_pair_threshold_ms": round(CLOSE_PAIR_MS, 2), "row60_decode_error_lines": error_lines}
+    if variable_rate:
+        report.update({"row60_fixed_grid_check": NOT_APPLICABLE, "row60_fixed_grid_check_applies": False, "row60_fixed_grid_check_raw_result": ok60})
+    else:
+        report.update({"row60_fixed_grid_check": "pass" if ok60 else "fail", "row60_fixed_grid_check_applies": True, "row60_fixed_grid_check_raw_result": ok60})
+    return report
+
+
 def main(argv):
+    if len(argv) >= 6 and argv[1] == "fixed-grid":
+        # fixed-grid <variable|fixed> <ok60: 0|1> <error lines> <interval ms>...
+        print(json.dumps(fixed_grid_report(argv[3] == "1", int(argv[4]), [float(x) for x in argv[5:]], argv[2] == "variable")))
+        return
     if len(argv) < 3 or argv[1] != "analyse":
         sys.exit(__doc__)
     opts = {"--gap-ms": None, "--helper-spawn-us": None, "--helper-gone-us": None, "--seconds": None, "--file-duration-s": None}

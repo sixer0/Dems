@@ -441,6 +441,94 @@ export async function walkCameraFile(source: ByteSource, sha256: Sha256Factory):
   return torn(CameraFileState.CLEAN, initLength, fragments, durableLength, null);
 }
 
+// ── The video codec of a camera file: the sample entry of its init segment (integration pass D9) ──
+
+/**
+ * Manifest field 43 `tracks[].codec` (evidence package spec §B.4, erratum PE-D9-03; database
+ * contract §B.12 "format CODE"). THE FILE SAYS IT, NOT THE PLAN: the worker copies what the camera
+ * sends, so the profile that was ASKED of the camera (`H264_720P30`) is not what is recorded here.
+ * The codec is the four-character type of the first sample entry of the video track
+ * (`moov/trak[hdlr vide]/mdia/minf/stbl/stsd`; ISO/IEC 14496-12 8.5.2, 14496-15):
+ *
+ *   `avc1`, `avc3` -> `H264`        `hvc1`, `hev1` -> `HEVC`
+ *
+ * Any other sample entry has NO name here: it is reported as it is and never mapped to a guess.
+ */
+export const VideoCodec = { H264: 'H264', HEVC: 'HEVC' } as const;
+export type VideoCodec = (typeof VideoCodec)[keyof typeof VideoCodec];
+export const VIDEO_SAMPLE_ENTRY_CODECS: Readonly<Record<string, VideoCodec>> = Object.freeze({ avc1: VideoCodec.H264, avc3: VideoCodec.H264, hvc1: VideoCodec.HEVC, hev1: VideoCodec.HEVC });
+
+export const VideoSampleEntryState = {
+  /** The sample entry is one this Core has a codec name for. */
+  KNOWN: 'KNOWN',
+  /** A video sample entry is there and its type has no codec name here. */
+  UNKNOWN_SAMPLE_ENTRY: 'UNKNOWN_SAMPLE_ENTRY',
+  /** The init segment is whole and names no video track with a sample entry. */
+  NO_VIDEO_SAMPLE_ENTRY: 'NO_VIDEO_SAMPLE_ENTRY',
+  /** No whole `moov` before the first fragment: the walk of the file names that (`NO_INIT_SEGMENT`). */
+  NO_INIT_SEGMENT: 'NO_INIT_SEGMENT',
+} as const;
+export type VideoSampleEntryState = (typeof VideoSampleEntryState)[keyof typeof VideoSampleEntryState];
+
+export type VideoSampleEntryRead =
+  | { readonly state: typeof VideoSampleEntryState.KNOWN; readonly codec: VideoCodec; readonly sampleEntry: string }
+  /** `sampleEntry`: the four characters as the file holds them, anything but a letter or a digit shown as `?` (for a log line, never for the manifest). */
+  | { readonly state: typeof VideoSampleEntryState.UNKNOWN_SAMPLE_ENTRY; readonly codec: null; readonly sampleEntry: string }
+  | { readonly state: typeof VideoSampleEntryState.NO_VIDEO_SAMPLE_ENTRY | typeof VideoSampleEntryState.NO_INIT_SEGMENT; readonly codec: null; readonly sampleEntry: null };
+
+/** The type of the first sample entry of the first video track of a `moov` held in memory, or null. */
+function videoSampleEntryIn(moov: Uint8Array, header: number): string | null {
+  const child = (from: number, to: number, type: string): readonly [number, number] | null => {
+    const found = (children(moov, from, to) ?? []).find(([name]) => name === type);
+    return found === undefined ? null : [found[1], found[2]];
+  };
+  for (const [type, payload, end] of children(moov, header, moov.length) ?? []) {
+    if (type !== 'trak') continue;
+    const mdia = child(payload, end, 'mdia');
+    if (mdia === null) continue;
+    const hdlr = child(mdia[0], mdia[1], 'hdlr');
+    // `hdlr`: version and flags (4), pre_defined (4), handler_type (4).
+    if (hdlr === null || hdlr[0] + 12 > hdlr[1] || typeOf(moov, hdlr[0] + 8) !== 'vide') continue;
+    const minf = child(mdia[0], mdia[1], 'minf');
+    const stbl = minf === null ? null : child(minf[0], minf[1], 'stbl');
+    const stsd = stbl === null ? null : child(stbl[0], stbl[1], 'stsd');
+    if (stsd === null) return null;
+    // `stsd`: version and flags (4), entry_count (4), then the entries, each a box.
+    const first = stsd[0] + 8;
+    if (first + HEADER > stsd[1] || be32(moov, stsd[0] + 4) < 1) return null;
+    const size = be32(moov, first);
+    if (size < HEADER || size > stsd[1] - first) return null;
+    return typeOf(moov, first + 4);
+  }
+  return null;
+}
+
+/**
+ * The video sample entry of a camera file's init segment. Reads the top-level box headers up to
+ * the first `moof` and the `moov` itself; every declared size is held against the bytes present,
+ * as the walk does. Decides nothing: the caller acts on the state.
+ */
+export async function videoSampleEntryOf(source: ByteSource): Promise<VideoSampleEntryRead> {
+  const none = (state: typeof VideoSampleEntryState.NO_VIDEO_SAMPLE_ENTRY | typeof VideoSampleEntryState.NO_INIT_SEGMENT): VideoSampleEntryRead => ({ state, codec: null, sampleEntry: null });
+  for (let at = 0; at < source.size; ) {
+    const result = await boxHead(source, at);
+    if ('reason' in result || result.head.type === 'moof' || result.head.type === 'mdat') return none(VideoSampleEntryState.NO_INIT_SEGMENT);
+    if (result.head.type !== 'moov') {
+      at += result.head.size;
+      continue;
+    }
+    if (result.head.size > MOOF_READ_LIMIT) return none(VideoSampleEntryState.NO_INIT_SEGMENT);
+    const moov = await source.read(at, result.head.size);
+    if (moov.length !== result.head.size) return none(VideoSampleEntryState.NO_INIT_SEGMENT);
+    const entry = videoSampleEntryIn(moov, result.head.header);
+    if (entry === null) return none(VideoSampleEntryState.NO_VIDEO_SAMPLE_ENTRY);
+    const codec = Object.prototype.hasOwnProperty.call(VIDEO_SAMPLE_ENTRY_CODECS, entry) ? VIDEO_SAMPLE_ENTRY_CODECS[entry] : undefined;
+    if (codec !== undefined) return { state: VideoSampleEntryState.KNOWN, codec, sampleEntry: entry };
+    return { state: VideoSampleEntryState.UNKNOWN_SAMPLE_ENTRY, codec: null, sampleEntry: entry.replace(/[^A-Za-z0-9]/g, '?') };
+  }
+  return none(VideoSampleEntryState.NO_INIT_SEGMENT);
+}
+
 // ── Against what was recorded ──────────────────────────────────────────────────────────────────
 
 /** What a `FRAGMENT_CHECKPOINT` record, or a row of `recording_fragments`, says about one fragment's stored bytes. */

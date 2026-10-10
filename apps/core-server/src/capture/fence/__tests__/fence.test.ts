@@ -3,12 +3,12 @@
 // run as `dems_app` in `fence.db.test.ts`.
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { REPOSITORY } from '../../../../test/static/scan';
 import { assertRecordableSelector, buildCapturePlan, CapturePlanError } from '../../../modules/capture-config';
 import { CaptureAdapterError, CaptureOperation, createCaptureDeviceRegistry, type CaptureDeviceRegistry } from '../../adapters';
 import { inspectProgram, type HelperDoor, type ProgramFacts } from '../../adapters/local';
-import { deviceListText, exitOf, scriptedDoor, trustedInspector } from '../../adapters/local/__tests__/mic-support';
+import { LIVING_PROGRESS, deviceListText, exitOf, manualTimers, scriptedDoor, trustedInspector } from '../../adapters/local/__tests__/mic-support';
 import type { CaptureTimers } from '../../types';
 import {
   BOOT_AUDIT_OPERATIONS,
@@ -347,7 +347,15 @@ const soon: CaptureTimers = {
 };
 const LIST = deviceListText(['MacBook Air Microphone'], ['MacBook Air Camera', 'MacBook Air Desk View Camera', 'Capture screen 0']);
 
-function development(door: HelperDoor = scriptedDoor(LIST, () => ({ lives: true })).door) {
+/**
+ * The stand-in of a LIVING helper (integration pass D3): it runs until it is signalled AND reports
+ * progress like the real program (`-progress pipe:1`), which is what the no-delivery bound of
+ * `camera-helper.ts` waits for. `SILENT` lives but never reports (the bound must then name it).
+ */
+const LIVING = { lives: true, reports: LIVING_PROGRESS } as const;
+const SILENT = { lives: true } as const;
+
+function development(door: HelperDoor = scriptedDoor(LIST, () => LIVING).door) {
   return buildDevelopmentRegistry({ devices: [...SEEDED, ...LOCAL], local: { cameraId: 'CAM-03', micId: 'MIC-03' }, program: HELPER, runDir: '/data/dems/run/capture', now: () => 1_760_000_000_000, timers: soon, door, inspect: trusted });
 }
 const DEVELOPMENT_SELECTOR = {
@@ -383,7 +391,7 @@ describe('M4-LOCAL-SEL-1 (registry half): development sources exist in REAL_DEVE
   });
 
   it('a stored production device gets no adapter in REAL_DEVELOPMENT: it is not assignable there', () => {
-    const built = buildDevelopmentRegistry({ devices: [...SEEDED, ...LOCAL, ...PRODUCTION], local: { cameraId: 'CAM-03', micId: 'MIC-03' }, program: HELPER, runDir: '/data/dems/run/capture', now: () => 0, timers: soon, door: scriptedDoor(LIST, () => ({ lives: true })).door, inspect: trusted });
+    const built = buildDevelopmentRegistry({ devices: [...SEEDED, ...LOCAL, ...PRODUCTION], local: { cameraId: 'CAM-03', micId: 'MIC-03' }, program: HELPER, runDir: '/data/dems/run/capture', now: () => 0, timers: soon, door: scriptedDoor(LIST, () => LIVING).door, inspect: trusted });
     expect(built.registry.list().map((entry) => entry.id)).not.toContain('CAM-11');
     expect(() => built.registry.assertAssignable('CAMERA', 'CAM-11')).toThrow(CaptureAdapterError);
   });
@@ -391,14 +399,15 @@ describe('M4-LOCAL-SEL-1 (registry half): development sources exist in REAL_DEVE
 
 describe('the development test sources (kind FAKE) feed the worker from a generated input; nothing is listed or opened', () => {
   it('the test camera pushes the generated picture to the loopback listener: no device list call, no device name, no avfoundation', async () => {
-    const scripted = scriptedDoor(LIST, () => ({ lives: true }));
+    const scripted = scriptedDoor(LIST, () => LIVING);
     const built = development(scripted.door);
     const handle = await built.registry.resolve('CAMERA', 'CAM-02').openSource('CAM-02', { ingestUrl: 'rtsp://127.0.0.1:8556/live/CAM-02', profile: 'H264_720P30' } as never, new AbortController().signal);
     expect(scripted.calls).toHaveLength(1);
     const [call] = scripted.calls;
     expect(call?.command).toBe(HELPER);
-    expect(call?.args).toContain('testsrc2=size=1280x720:rate=30,settb=1/1000000');
+    expect(call?.args).toContain('testsrc2=size=1280x720:rate=30,realtime,settb=1/1000000');
     expect(call?.args).toContain('libx264');
+    expect(call?.args.join(' ')).toContain('-b:v 4M -maxrate 4M -bufsize 4M');
     expect(call?.args.join(' ')).not.toMatch(/avfoundation|MacBook|list_devices|Capture screen/);
     expect(call?.env ?? {}).toEqual({});
     await handle.close();
@@ -406,7 +415,7 @@ describe('the development test sources (kind FAKE) feed the worker from a genera
   });
 
   it('CONTROL: the local camera reads the device list first and is opened by its exact name', async () => {
-    const scripted = scriptedDoor(LIST, () => ({ lives: true }));
+    const scripted = scriptedDoor(LIST, () => LIVING);
     const built = development(scripted.door);
     const handle = await built.registry.resolve('CAMERA', 'CAM-03').openSource('CAM-03', { ingestUrl: 'rtsp://127.0.0.1:8555/live/CAM-03', profile: 'H264_720P30' } as never, new AbortController().signal);
     expect(scripted.calls.map((call) => call.args.includes('-list_devices'))).toEqual([true, false]);
@@ -414,6 +423,42 @@ describe('the development test sources (kind FAKE) feed the worker from a genera
     expect(built.openSources()).toEqual(['CAM-03']);
     await handle.close();
     expect(built.openSources()).toEqual([]);
+  });
+
+  it('OPPOSITE CASE: a helper that lives but never reports is stopped at the bound and the loss is named OPEN_FAILED / NO_FRAME_WITHIN_8S', async () => {
+    // Timers fired by hand, in the order of the clock: the settle time (1.5 s) first, the first-frame bound (8 s) after it.
+    const timers = manualTimers();
+    const scripted = scriptedDoor(LIST, () => SILENT);
+    const lost: Array<[string, string, string]> = [];
+    const built = buildDevelopmentRegistry({ devices: [...SEEDED, ...LOCAL], local: { cameraId: 'CAM-03', micId: 'MIC-03' }, program: HELPER, runDir: '/data/dems/run/capture', now: () => 1_760_000_000_000, timers, door: scripted.door, inspect: trusted, onSourceLost: (deviceId, error) => lost.push([deviceId, error.code, error.reason]) });
+    const opening = built.registry.resolve('CAMERA', 'CAM-03').openSource('CAM-03', { ingestUrl: 'rtsp://127.0.0.1:8555/live/CAM-03', profile: 'H264_720P30' } as never, new AbortController().signal);
+    await vi.waitFor(() => expect(timers.pending()).toEqual(expect.arrayContaining([1_500, 8_000])));
+    expect(timers.fire(1_500)).toBe(true);
+    await opening;
+    expect(built.openSources()).toEqual(['CAM-03']);
+    expect(lost).toEqual([]);
+    // 8 s after the start: no report came -> killed, reported once, by name.
+    expect(timers.fire(8_000)).toBe(true);
+    await vi.waitFor(() => expect(lost).toEqual([['CAM-03', 'OPEN_FAILED', 'NO_FRAME_WITHIN_8S']]));
+    expect(scripted.ffmpeg[1]?.signals).toEqual(['SIGKILL']);
+    expect(built.openSources()).toEqual([]);
+  });
+
+  it('CONTROL of the opposite case: the same order of timers with a helper that reports - the bound finds a delivering helper and nothing is lost', async () => {
+    const timers = manualTimers();
+    const scripted = scriptedDoor(LIST, () => LIVING);
+    const lost: string[] = [];
+    const built = buildDevelopmentRegistry({ devices: [...SEEDED, ...LOCAL], local: { cameraId: 'CAM-03', micId: 'MIC-03' }, program: HELPER, runDir: '/data/dems/run/capture', now: () => 1_760_000_000_000, timers, door: scripted.door, inspect: trusted, onSourceLost: (deviceId) => lost.push(deviceId) });
+    const opening = built.registry.resolve('CAMERA', 'CAM-03').openSource('CAM-03', { ingestUrl: 'rtsp://127.0.0.1:8555/live/CAM-03', profile: 'H264_720P30' } as never, new AbortController().signal);
+    await vi.waitFor(() => expect(timers.pending()).toEqual(expect.arrayContaining([1_500, 8_000])));
+    timers.fire(1_500);
+    const handle = await opening;
+    expect(timers.fire(8_000)).toBe(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(scripted.ffmpeg[1]?.signals).toEqual([]);
+    expect(lost).toEqual([]);
+    expect(built.openSources()).toEqual(['CAM-03']);
+    await handle.close();
   });
 
   it('M4-LOCAL-ERR-1: a local camera that is not in the list is DEVICE_NOT_FOUND, 0 helpers started, and no test source takes its slot', async () => {

@@ -43,6 +43,17 @@
  * of is blanked, and after `CREDENTIAL_WALK_NODE_BUDGET` nodes everything not yet reached is
  * blanked whole.
  *
+ * A RECORD THAT NAMES ITS FIELD (integration pass D1a, row 137's finding D-137-7). A form or a
+ * validation report writes a field as two members: `{ field: 'credential.password', value: X }`.
+ * No member NAME says credential there; the text of `field` does. So: where a naming member
+ * (`field`, `name`, `key`, `path`, `param`, `parameter`, `property`) holds a text that is itself a
+ * credential name by `isCredentialKeyName` (`credential.password`, `credential.username`,
+ * `apiKey`, ...), the `value` and `ref` beside it are blanked - in an object, and in a text (a
+ * text with such a member "mentions a credential", rule 4). A naming text that is prose (a space
+ * in it) or a flag (`credentialSet`) names nothing; `{ field: 'username', value }` with no
+ * credential in the name is an ordinary record. Not covered: other member names for the value
+ * (`from` / `to`, `input`).
+ *
  * What it does not do: guess that a bare `value: x` in a text that names no credential is one, or
  * that `key: x` is a secret (`key` names storage keys and list keys in every log), or read prose
  * (`Basic authentication`, `the credential x was rejected`). An unquoted value ends at the next
@@ -53,7 +64,8 @@
 export const CREDENTIAL_BLANK = '***';
 
 /** A session token, a device credential and a biometric token start with these (01_specs §5.3). */
-const TOKEN = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g;
+// `mts`: the signed media session token of operation 88 (task 3 row 90; C3 §2.4, §7 `EVIDENCE_MEDIA_TOKEN_PREFIX`; SEC35-13; check M8-BLK-1).
+const TOKEN = /\b(ses|dvc|bio|mts)_[A-Za-z0-9_-]+/g;
 
 /**
  * An authentication scheme and what follows it. Written as a header writes it (`Bearer`, `Basic`,
@@ -62,7 +74,7 @@ const TOKEN = /\b(ses|dvc|bio)_[A-Za-z0-9_-]+/g;
  * `Basic` is held to the token test in every case: "Basic authentication" is a phrase. A token of
  * this server after the scheme keeps rule 1 (`Bearer ses_***`).
  */
-const SCHEME = /\b(bearer|basic)(\s+)(?!(?:ses|dvc|bio)_)(?:(["'])([^"'\n]*)\3|([^\s"',;)\]}]+))/gi;
+const SCHEME = /\b(bearer|basic)(\s+)(?!(?:ses|dvc|bio|mts)_)(?:(["'])([^"'\n]*)\3|([^\s"',;)\]}]+))/gi;
 /** Looks like a token, not a word: 8 characters or more, with a character that is no letter or a capital after the first. */
 const tokenLike = (value: string): boolean => value.length >= 8 && (/[^A-Za-z]/.test(value) || /[A-Z]/.test(value.slice(1)));
 
@@ -129,6 +141,16 @@ const isAccountName = (name: string): boolean => {
   return plain.endsWith('username') || plain === 'user' || plain === 'login' || plain === 'account';
 };
 
+/** A member that NAMES a field of a record: its text, not its own name, says what the `value` beside it is. */
+const NAMING_NAMES: ReadonlySet<string> = new Set(['field', 'name', 'key', 'path', 'param', 'parameter', 'property']);
+const isNamingName = (name: string): boolean => NAMING_NAMES.has(normalised(name));
+/** The text of a naming member when it has the form of a member name (one word, dots, brackets; no prose). */
+const FIELD_NAME_TEXT = /^[A-Za-z_][A-Za-z0-9_.[\]-]{0,63}$/;
+/** True when the text of a naming member names a credential field (`credential.password`, `credential.username`, `apiKey`). */
+const namesCredentialField = (text: unknown): boolean => typeof text === 'string' && FIELD_NAME_TEXT.test(text) && isCredentialKeyName(text);
+/** The same in a text: a naming member, its separator, and a field name as its WHOLE value, in any quoting. */
+const NAMING_MEMBER = /(?<![A-Za-z0-9_])(field|name|key|path|param|parameter|property)\\*["']?\s*[:=]\s*\\*["']?([A-Za-z_][A-Za-z0-9_.[\]-]{0,63})(?=\\*["']|\s*(?:[,;&})\]\n]|$))/gi;
+
 /** The part of `text` from `from` that is the value of a member: `[start, end)` without its quotes, or null when there is none. */
 function valueSpan(text: string, from: number, toLineEnd: boolean): { start: number; end: number } | null {
   const opener = /^(\\*)(["'])/.exec(text.slice(from, from + 64));
@@ -165,6 +187,8 @@ function blankedName(found: RegExpExecArray, context: boolean): string | null {
 /** True when a text names a credential at all: a credential member, a header tuple of one, or the kind of a credential write. */
 function mentionsCredential(text: string): boolean {
   if (CREDENTIAL_KIND.test(text)) return true;
+  NAMING_MEMBER.lastIndex = 0;
+  for (let found = NAMING_MEMBER.exec(text); found !== null; found = NAMING_MEMBER.exec(text)) if (isCredentialKeyName(found[2] ?? '')) return true;
   MEMBER.lastIndex = 0;
   for (let found = MEMBER.exec(text); found !== null; found = MEMBER.exec(text)) if (blankedName(found, false) !== null) return true;
   TUPLE.lastIndex = 0;
@@ -251,10 +275,12 @@ function walk(value: unknown, depth: number, state: Walk): unknown {
     const write = members.some(([key, entry]) => key.toLowerCase() === 'kind' && isCredentialWriteKind(entry));
     // SEC35-36: the account name beside a credential member is credential material too.
     const beside = members.some(([key]) => isCredentialKeyName(key));
+    // D-137-7: a record that names its field (`{ field: 'credential.password', value }`).
+    const named = members.some(([key, entry]) => isNamingName(key) && namesCredentialField(entry));
     return Object.fromEntries(
       members.map(([key, entry]) => [
         key,
-        isCredentialKeyName(key) || (write && isContextName(key)) || (beside && isAccountName(key)) ? CREDENTIAL_BLANK : walk(entry, depth + 1, state),
+        isCredentialKeyName(key) || ((write || named) && isContextName(key)) || (beside && isAccountName(key)) ? CREDENTIAL_BLANK : walk(entry, depth + 1, state),
       ]),
     );
   } finally {

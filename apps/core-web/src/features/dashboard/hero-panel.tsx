@@ -9,6 +9,7 @@ import { motion as tokens } from '@dems/shared/tokens'
 import { TextEffect } from '@/components/ui/text-effect'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
+import { selectConnectingCameras } from './sim-adapter'
 import {
   DASH_BEATS,
   HERO_PHOTO_FADE_MS,
@@ -26,8 +27,11 @@ const PILLARS_AFTER_MS = RULE_AFTER_MS + RULE_WIPE_MS
 /** TextEffect staggers lines 100 ms at speed 1; M-C-13 wants them 120 ms apart. */
 const LINE_SPEED_REVEAL = 100 / LINE_GAP_MS
 
+// Pass D7 item 3: `connecting` = RECORDING before the first durable fragment (`captureDurable: false`; D84, D91).
 const selectRecordingCopy = (s: SimState) =>
-  s.session?.state === SessionState.RECORDING ? { id: s.session.id, caseNumber: s.session.input.caseNumber } : null
+  s.session?.state === SessionState.RECORDING
+    ? { id: s.session.id, caseNumber: s.session.input.caseNumber, connecting: selectConnectingCameras(s) }
+    : null
 
 /** The element's current scale, so a resumed Ken Burns continues from where it paused (R10). */
 function currentScale(element: Element): number {
@@ -157,14 +161,17 @@ function IdleCopy({ taglineMs }: { taglineMs: number }) {
   )
 }
 
-function RecordingCopy({ sessionId, caseNumber }: { sessionId: string; caseNumber: string }) {
+function RecordingCopy({ sessionId, caseNumber, connecting }: { sessionId: string; caseNumber: string; connecting: boolean }) {
   const { t } = useTranslation()
   return (
     <>
       <p className="dems-hero-title">
         <span>{t('dashboard.hero.recordingTitle')}</span>
       </p>
-      <p className="dems-hero-paragraph">{t('dashboard.hero.recordingParagraph', { sessionId, caseNumber })}</p>
+      {/* Nothing says "Recording" before the first durable fragment (ux §8e.2). */}
+      <p className="dems-hero-paragraph" data-testid="hero-session-line" data-connecting={connecting ? 'true' : undefined}>
+        {connecting ? `${t('common.session.connectingCameras')} ${sessionId}` : t('dashboard.hero.recordingParagraph', { sessionId, caseNumber })}
+      </p>
       <span aria-hidden="true" className="dems-hero-rule" />
     </>
   )
@@ -226,7 +233,7 @@ export function HeroPanel() {
               transition={m.transitions.crossFade}
             >
               {recording ? (
-                <RecordingCopy sessionId={recording.id} caseNumber={recording.caseNumber} />
+                <RecordingCopy sessionId={recording.id} caseNumber={recording.caseNumber} connecting={recording.connecting} />
               ) : (
                 <IdleCopy taglineMs={taglineMs} />
               )}

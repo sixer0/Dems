@@ -55,10 +55,10 @@ async function dropWhenQuiet(database: TestDatabase): Promise<void> {
 }
 
 describe('the bulk template: the minimums of contract §11 as revised by dbc-3 §G', () => {
-  it('every one of the 42 tables holds at least its minimum (entity, minimum, loaded)', async () => {
+  it('every one of the 43 tables holds at least its minimum (entity, minimum, loaded)', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     const comparison = compareWithMinimums(counts);
-    expect(comparison).toHaveLength(42);
+    expect(comparison).toHaveLength(43);
     expect(Object.keys(counts).sort()).toEqual(BULK_MINIMUMS.map((entry) => entry.table).sort());
     console.log(
       [
@@ -479,11 +479,11 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts as landed: 179 named CHECKs, 40 foreign keys, 42 primary keys (the
+    // The contract's counts as landed: 182 named CHECKs, 40 foreign keys, 43 primary keys (the
     // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 179, invalid: 0 });
+    expect(byKind['c']).toEqual({ rows: 182, invalid: 0 });
     expect(byKind['f']).toEqual({ rows: 40, invalid: 0 });
-    expect(byKind['p']).toEqual({ rows: 42, invalid: 0 });
+    expect(byKind['p']).toEqual({ rows: 43, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
     const triggers = await pool.query<{ name: string; mode: string; internal: boolean }>(
@@ -567,7 +567,7 @@ describe('the bulk template: the audit chain verifies over all rows (BF-6)', () 
 
 describe('the loader', () => {
   it(
-    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 42 tables, and the pure builder announces the same digest',
+    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 43 tables, and the pure builder announces the same digest',
     async () => {
       const second = await db.another({ template: 'seed', slug: 'bulk_second_load' });
       const lines: string[] = [];
@@ -580,8 +580,8 @@ describe('the loader', () => {
       expect(report.database).toBe(second.name);
       expect(report.role).toBe('dems_owner');
       expect(lines).toEqual(formatBulkFixtureReport(report));
-      expect(lines).toHaveLength(45);
-      expect(lines[lines.length - 1]).toContain('every minimum of the 42 tables is met');
+      expect(lines).toHaveLength(46);
+      expect(lines[lines.length - 1]).toContain('every minimum of the 43 tables is met');
       console.log(lines.map((line) => `[test:db] ${line}`).join('\n'));
 
       // Equal rows, table by table, generated identifiers and hash columns included.
@@ -589,9 +589,9 @@ describe('the loader', () => {
       const again = await tableDigests(second.ownerPool());
       // The digest covers every table of the schema: 42 since PE-129b-01 (41 since dbc-4); since CS-20 (row 55) the
       // six pipeline tables digest with the rows their §G builders synthesised.
-      expect(Object.keys(first)).toHaveLength(42);
+      expect(Object.keys(first)).toHaveLength(43);
       expect(again).toEqual(first);
-      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 42 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
+      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 43 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
 
       // The rows are a function of the seed, the clock and the seeded dataset alone: the builder gives the same digest with no database.
       expect(report.digest).toBe(buildBulkFixture({ now: BULK_TEMPLATE_NOW, seed: BULK_TEMPLATE_SEED }, pureBase(BULK_TEMPLATE_NOW)).digest);
@@ -701,7 +701,7 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
       [ALL_TABLES.map((entry) => entry.sqlName)],
     );
     const held = Object.fromEntries(privileges.rows.map((row) => [row.table_name, row.held]));
-    expect(Object.keys(held)).toHaveLength(42);
+    expect(Object.keys(held)).toHaveLength(43);
     // Read-only for the runtime role: the RBAC tables, the chain head, the lineage, the schema version.
     for (const table of ['roles', 'permissions', 'role_permissions', 'audit_chain_head', 'audit_chain_history', 'schema_meta']) expect(held[table], table).toBe('S');
     // Append-only by privilege: insert and read, nothing else.

@@ -14,13 +14,14 @@
 // fixture): a root-owned program that passes the path rule and is never asked to capture.
 import { CaptureConfigSliceSchema } from '@dems/shared/api';
 import type { Pool } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { FIXED_NOW, engineApp, stateChanges, storedSlices } from '../../../../test/support/engine';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../test/support/identity';
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { buildApp } from '../../../app';
+import { realBootFixture } from '../../../capture/boot/__tests__/support';
 import { captureFenceControl } from '../../../capture/fence';
 import type { ConfigInput } from '../../../config';
 import { BootError } from '../../../plugins/readiness';
@@ -29,7 +30,14 @@ import { CONFIG, cameraSource } from './support';
 
 const db = useTestDatabase({ template: 'seed' });
 const HELPER = '/bin/echo';
-const DEVELOPMENT = { captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: HELPER } as const;
+// A whole boot in capture mode real passes the boot checks of row 61 (`capture.boot`): a worker
+// program that passes the path rule and says HELLO, a private media root and a provisioned signing
+// key. Row 61's fixture gives the three below `.data/`; the worker is a stand-in script and is
+// never asked to capture.
+const realBoot = realBootFixture('c1');
+realBoot.provisionKey();
+afterAll(() => realBoot.remove());
+const DEVELOPMENT = { captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: HELPER, dataDir: realBoot.dataDir, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0') } as const;
 
 type Clone = Awaited<ReturnType<typeof db.another>>;
 
@@ -41,9 +49,9 @@ const storedSelector = async (owner: Pool): Promise<Record<string, unknown> | un
 const changedRows = async (owner: Pool): Promise<number> => Number((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED'")).rows[0]?.n);
 
 describe('the schema this pass was written against', () => {
-  it("schema version 5, contract dbc-6", async () => {
+  it("schema version 6, contract dbc-7", async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([5, 'dbc-6']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
   });
 });
 

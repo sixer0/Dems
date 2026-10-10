@@ -176,7 +176,9 @@ export function exportEvidenceTransition(
           message: `Evidence ${evidenceId} exported`,
           actorId: operator.id,
           evidenceId,
-          details: { exportId, destination, reason, eventKind: AuditEventKind.EXPORT },
+          // `kind` (C3 §5; ruling D140) is on the row when the request named it: the export job reads it
+          // back after a restart of the Core. Absent reads as PACKAGE.
+          details: { exportId, destination, reason, eventKind: AuditEventKind.EXPORT, ...(request.kind === 'PACKAGE' || request.kind === 'COMPOSITE' ? { kind: request.kind } : {}) },
         },
         event: {
           type: 'EVIDENCE_EXPORTED',

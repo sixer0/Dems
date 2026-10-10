@@ -242,6 +242,19 @@ carry the single `AUDIO-01` session track (`evidence_tracks.contains_audio`, R-4
 | 50 | `tracks[].keyframeAligned` | boolean, not null | writer; **SP-4 fragment quantum** (`cap §C.1`); S1 §6.5 |
 | 51 | `tracks[].avOffsetMs` | number, nullable | S4 relative flash-to-beep offset, measured sample-exact (erratum AU2-03: the aligned copy path is 0.00 ms, not −1.333 ms); S4 §5; `cap §F` |
 
+**Erratum PE-D9-03 (D157, D160, D161; integration pass D9).** Field 43 `tracks[].codec`: the
+"capture worker" names no codec (protocol 4 has no such member; the worker copies the stream). The
+source is **the camera file's own init segment**: the four-character type of the first sample entry
+of the video track (`moov/trak[hdlr vide]/mdia/minf/stbl/stsd`), read by the Core before the seal.
+Stored form (this spec named no enumeration; `dbc-3 §B.12` says "format CODE"): **`H264`** for
+`avc1` / `avc3`, **`HEVC`** for `hvc1` / `hev1`. The profile that was asked of the camera
+(`H264_720P30`) is never the source. An init segment whose video sample entry is absent or has no
+name in that list is an unusable camera file: the seal stops with `CAMERA_FILE_UNUSABLE`
+(`reason: VIDEO_SAMPLE_ENTRY_UNKNOWN` / `NO_VIDEO_SAMPLE_ENTRY`), never with a guessed value. The
+field stays nullable for a file that is not there or has no init segment (CLOSE_TRACKS names it).
+Open, not decided here: the demo generator (row 82c) writes `H.264 + AAC-LC` in this field of the
+demo packages, which is neither form.
+
 **Erratum PE-124-03 (D73, D80 (9); D66, D72 (e)).** Three more fields belong to each `tracks[]` record: **124 `tracks[].sourceClass`**, **127 `tracks[].firstVideoSamplePts`** and **128 `tracks[].firstVideoSampleTimescale`** (§B.12).
 
 ### B.5 Session audio track and source intervals (10 fields)
@@ -321,6 +334,25 @@ Machine transcript revision 0 is byte-unchanged forever (OD-15). The document fo
 | 93 | `transcript.failedChunks` | n, not null (>= 0) | Core seal from `transcript_chunks.status='FAILED'`; `dbc-3 §B.7`; §E.5 |
 | 94 | `transcript.revisionHead` | n, not null (>= 0; 0 = no revision) | revisions store; `transcript_revisions.revision_no` max; OD-15 |
 
+**Erratum PE-D9-01 (D160; D-D8-1; integration pass D9) — model provenance is recorded as far as the
+Core can know it, and the backend says which kind it is.** Fields 84-87 are not "not null" without
+condition. Beside a sealed transcript document:
+
+| Backend in field 123 (`configSnapshot.backend`) | 84 `name` | 85 `version` | 86 `quantisation` | 87 `modelSha256` |
+|---|---|---|---|---|
+| a **server** (`omlx-server`): a program the Core does not start and whose model files it never reads | required: the model identifier the session's snapshot names / the server reported | **null** | **null** | **null** |
+| any other (`cpu-local`): the Core reads the model file | required: the adapter's model identifier | required: **declared by the installation** (`cpuLocal.modelVersions[<model id>]` of the host file) | required: the model file's own header | required: SHA-256 of the model file, hashed by the Core |
+
+A null in 85-87 is permitted **only** for a server backend, and a value there is refused for one
+(nobody verified it); nothing is loosened for `cpu-local`. No field is added (128 definitions, 119
+sealed). The version of a `cpu-local` model is a **declared value**: no member of the model file
+and no output of the engine states it; name + SHA-256 identify the file. The source column of rows
+84-87 reads "adapter identifier / host file / model file header / Core hash of the model file".
+The same rule holds in the transcript document (`header.backend` against `header.model`) and in
+`transcripts.model`. Verify prints which kind it is (request to pass D10): for a server backend
+"Transcript model: <name> (reported by the STT server; version, quantisation and file hash are not
+available to the Core and were not verified)".
+
 ### B.7a Transcript configuration state (CONFIRMED — D24, Q-STT-CFG answer (a); R-8, D20) **Erratum PE-R8-07 (D24)**
 
 > **Status: confirmed (D24, 2026-10-08: Q-STT-CFG answered (a), all 13 defaults).** These fields implement
@@ -335,6 +367,18 @@ Machine transcript revision 0 is byte-unchanged forever (OD-15). The document fo
 | 121 | `transcript.disabledReason` | string const `DISABLED_BY_CONFIGURATION`, nullable (set only when `state = 'DISABLED'`) | Core seal from the session's `stt_config` snapshot (`dbc-3 §B.13`); human-readable label "transcript disabled by configuration" |
 | 122 | `transcript.backendUnreachable` | boolean, not null | Core seal; `true` when STT was enabled but the configured backend could not be reached for one or more chunks (then `state = 'PARTIAL'` per D-EV-1) |
 | 123 | `transcript.configSnapshot` | object `{ enabled, backend, model, diarization, revision }`, not null | the `stt_config` snapshot taken at session start; **never** the endpoint credential or reference (E-31) |
+
+**Erratum PE-D9-02 — limit D-71c-2 (D157, D160; integration passes D8, D9).** A session that was
+started before the STT snapshot was written inside the unit of the start has no `stt_config`
+snapshot. It is sealed `PARTIAL` without a transcript document
+(`disabledReason: TRANSCRIPT_UNAVAILABLE_AT_SEAL`) and field 123 holds the fixed stand-in
+`{ enabled: true, backend, model: 'not-recorded', diarization, revision }`, whose members other
+than `model` describe nothing. No session started by a Core from pass D9 on can reach this state:
+**every real-mode start writes its snapshot or is refused** (`503 NOT_READY`,
+`details.reason: STT_SNAPSHOT_NOT_STORED`; nothing committed, no worker started) — also when the
+stored configuration cannot be read at that instant, when its row is not there, and when the
+transcription composition is absent. A readable configuration with STT disabled writes a snapshot
+that says disabled, and the session starts.
 
 **Disabled package shape.** When `transcript.state = 'DISABLED'`: no `transcript/` folder is written;
 fields 79-91 and 93-94 are `null` (the not-null rules of B.7 apply only to `ASSEMBLED`/`PARTIAL`);

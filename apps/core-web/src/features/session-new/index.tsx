@@ -357,7 +357,10 @@ export function SessionNewPage() {
       settle(() => actions.startRecording(), {
         // In Live mode the store already shows RECORDING here (CL-16).
         ok: () => {
-          toast.success(t('sessionNew.ready.startedToast', { sessionId: id ?? '' }))
+          // Row 139 (D84, D91; ux §8e.2): in real capture the accepted start is "Connecting cameras…" until the
+          // first durable fragment (`captureDurable: false`); nothing says "Recording started" before that.
+          if (sim.store.getState().session?.captureDurable === false) toast.info(t('common.session.connectingCameras'), { description: id ?? undefined })
+          else toast.success(t('sessionNew.ready.startedToast', { sessionId: id ?? '' }))
           void navigate({ to: '/session' })
         },
         fail: (error) => {

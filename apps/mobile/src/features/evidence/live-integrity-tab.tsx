@@ -75,7 +75,7 @@ import {
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { SCRAMBLE_MS } from './use-scramble';
-import { readVerifyV2, v2FailedNames, verdictOfAnswer } from './verify-v2';
+import { readVerifyV2, v2FailedNames, verdictOfAnswer, type VerifyV2Answer } from './verify-v2';
 import { VerifyV2Report } from './verify-v2-report';
 
 export interface LiveIntegrityTabProps {
@@ -85,11 +85,13 @@ export interface LiveIntegrityTabProps {
   autoVerify?: boolean;
   /** The bundled package the Core named (`DEMO_PACKAGE`), else null. Display only. */
   bundled: DemoEvidencePackage | null;
+  /** Row 92: called with the v2 reading of each verdict the Core gives on this tab (null for a v1 answer). */
+  onV2Answer?: (answer: VerifyV2Answer | null) => void;
 }
 
 type LivePhase = 'idle' | 'asking' | 'scrambling' | 'done';
 
-export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bundled }: LiveIntegrityTabProps) {
+export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bundled, onV2Answer }: LiveIntegrityTabProps) {
   const { t } = useTranslation();
   const reduced = useMotionPolicy() === 'reduced';
   const sim = useSimInstance();
@@ -125,6 +127,8 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
     (next: CoreVerdict) => {
       setVerdict(next);
       const nextV2 = readVerifyV2(next);
+      // Row 92: the screen keeps what this run said of the sources and the failed fragments (never the device list).
+      onV2Answer?.(nextV2);
       if (nextV2 !== null) {
         if (nextV2.malformed.length > 0) {
           reportRuntimeIssue('warn', 'evidence.verify.v2.malformed', new Error('The verify answer carries members this client cannot read.'), {
@@ -139,7 +143,7 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
       setPhase('scrambling');
       setScrambleAt(sim.store.getState().clock.now);
     },
-    [sim, reveal, item.id],
+    [sim, reveal, item.id, onV2Answer],
   );
   const onNoVerdict = useCallback(
     (presented: boolean) => {

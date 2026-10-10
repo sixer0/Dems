@@ -5,6 +5,7 @@
 // The tester is a SPY: it records every call and what it was handed, and answers what the test
 // says. A PRODUCTION candidate has a documentation address (RFC 5737) that nothing ever contacts.
 // The routes and the transaction are proven in `connect.db.test.ts`. EVERY RULE HAS ITS CONTROL.
+import { randomBytes } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
@@ -19,6 +20,9 @@ import type { Principal } from '../../../../plugins/authenticate';
 import { ApiFailure } from '../../../../plugins/error-envelope';
 import { createConnectionTestLimits } from '../limits';
 import {
+  CLEAR_SECRET_PROOF_BYTES,
+  auditEndpointRef,
+  holdsClearSecret,
   adoptCandidate,
   nextCameraId,
   operatorCredential,
@@ -278,6 +282,48 @@ describe('M4-SEC-AUD-1 / SEC35-46: the row of an attempt says where a credential
     // Nothing that was written or noted holds either canary.
     const kept = `${JSON.stringify(w.audit)}\n${JSON.stringify(w.notes)}\n${inspect([...w.candidates.values()], { depth: 8 })}\n${inspect(w.seams.limits, { depth: 8, showHidden: true })}`;
     expect(kept.includes(ACCOUNT.username) || kept.includes(ACCOUNT.secret)).toBe(false);
+  });
+});
+
+describe('pass D1a (D132): the endpoint reference of an audit row is the URN form or it is absent', () => {
+  it('a device that announces any other text gets a row WITHOUT endpointRef - the row is still written, with host', async () => {
+    const announced = [ACCOUNT.secret, ACCOUNT.username, 'canary-secret-9d02fa', '[credential]', 'uuid:11111111-2222-3333-4444-555555555555', `${ENDPOINT} x`, 'urn:uuid:not-a-uuid', 'rtsp://192.0.2.40/stream'];
+    const w = world();
+    announced.forEach((endpointRef, index) => w.add(`CND-0000000000${String(index + 10)}`, camera({ endpointRef, host: `192.0.2.${String(50 + index)}`, serviceAddress: `http://192.0.2.${String(50 + index)}/onvif/device_service` })));
+    for (const [index] of announced.entries()) {
+      later(w);
+      await testCandidate(w.seams, CALLER, `CND-0000000000${String(index + 10)}`, typed());
+    }
+    expect(w.audit).toHaveLength(announced.length);
+    expect(w.audit.map((entry) => 'endpointRef' in entry.details)).toEqual(announced.map(() => false));
+    expect(w.audit.map((entry) => entry.details['host'])).toEqual(announced.map((_, index) => `192.0.2.${String(50 + index)}`));
+    for (const text of announced) expect(JSON.stringify(w.audit).includes(text)).toBe(false);
+    expect(announced.map(auditEndpointRef)).toEqual(announced.map(() => null));
+    // Control: the URN form is kept, in either letter case.
+    expect([ENDPOINT, ENDPOINT.toUpperCase().replace('URN:UUID:', 'urn:uuid:'), null].map(auditEndpointRef)).toEqual([ENDPOINT, ENDPOINT.toUpperCase().replace('URN:UUID:', 'urn:uuid:'), null]);
+  });
+});
+
+describe('pass D1a (D132, connect.db.test.ts:474): a short secret is not refused by chance, a clear one still is', () => {
+  it('10,000 random 80-byte envelopes hold a one-, two- and three-character secret 0 times by the rule; the old rule (bare containment) is hit', () => {
+    const envelopes = Array.from({ length: 10_000 }, () => new Uint8Array(randomBytes(80)));
+    for (const secret of ['k', 'k9', 'k9!']) expect(envelopes.filter((envelope) => holdsClearSecret(envelope, secret)), secret).toHaveLength(0);
+    // Control: the defect. Bare containment of one byte in 80 random bytes is frequent (about 27%).
+    expect(envelopes.filter((envelope) => Buffer.from(envelope).includes(Buffer.from('k'))).length).toBeGreaterThan(1_000);
+  });
+
+  it('a sealer that hands the frame back in clear is found, for a short and for a long secret, at any offset', () => {
+    const clearFrame = (secret: string, offset: number): Uint8Array => {
+      const frame = Buffer.alloc(80);
+      frame.write(secret, offset, 'utf8');
+      return new Uint8Array(frame);
+    };
+    for (const secret of ['k', 'k9!', 'x'.repeat(CLEAR_SECRET_PROOF_BYTES - 1), 'x'.repeat(CLEAR_SECRET_PROOF_BYTES), ACCOUNT.secret]) {
+      for (const offset of [0, 3, 40]) expect(holdsClearSecret(clearFrame(secret, offset), secret), `${String(secret.length)} at ${String(offset)}`).toBe(true);
+    }
+    // A long secret among random bytes (no zero padding) is found as well; a different one is not.
+    const mixed = Buffer.concat([randomBytes(20), Buffer.from(ACCOUNT.secret), randomBytes(20)]);
+    expect([holdsClearSecret(mixed, ACCOUNT.secret), holdsClearSecret(mixed, `${ACCOUNT.secret}x`), holdsClearSecret(new Uint8Array(80), '')]).toEqual([true, false, false]);
   });
 });
 

@@ -14,6 +14,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { act } from '@testing-library/react-native';
+import { Profiler } from 'react';
 import { Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, ScenarioName, type Sim } from '@dems/shared/sim';
@@ -45,6 +46,8 @@ export interface RecoveryHarnessOptions {
   routeSync?: boolean;
   /** Default `/session/recovery`. */
   initialUrl?: string;
+  /** Pass D7: called in the commit callback of a Profiler around the routes (what one commit drew). */
+  onRender?: () => void;
 }
 
 export interface RecoveryHarness extends TestSim {
@@ -55,7 +58,7 @@ export interface RecoveryHarness extends TestSim {
   run(ms: number): void;
 }
 
-function recoveryRoot(sim: Sim, window: WindowName, routeSync: boolean) {
+function recoveryRoot(sim: Sim, window: WindowName, routeSync: boolean, onRender?: () => void) {
   const { width, height } = WINDOWS[window];
   const metrics: Metrics = { frame: { x: 0, y: 0, width, height }, insets: TEST_INSETS };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -63,7 +66,13 @@ function recoveryRoot(sim: Sim, window: WindowName, routeSync: boolean) {
     return (
       <AppProviders sim={sim} safeAreaMetrics={metrics} queryClient={queryClient} heartbeatSocketFactory={() => new FakeHeartbeatSocket()}>
         {routeSync ? <SessionRouteSync /> : null}
-        <Stack screenOptions={{ headerShown: false }} />
+        {onRender ? (
+          <Profiler id="recovery-routes" onRender={onRender}>
+            <Stack screenOptions={{ headerShown: false }} />
+          </Profiler>
+        ) : (
+          <Stack screenOptions={{ headerShown: false }} />
+        )}
       </AppProviders>
     );
   };
@@ -106,6 +115,7 @@ export function renderRecoveryApp({
   operator = 0,
   routeSync = true,
   initialUrl = '/session/recovery',
+  onRender,
 }: RecoveryHarnessOptions = {}): RecoveryHarness {
   resetShellState();
   setWindow(window);
@@ -117,9 +127,10 @@ export function renderRecoveryApp({
   const sessionId = test.sim.store.getState().session?.id ?? null;
 
   const routes = {
-    _layout: recoveryRoot(test.sim, window, routeSync),
+    _layout: recoveryRoot(test.sim, window, routeSync, onRender),
     index: () => <Text testID="screen-index">index</Text>,
     home: () => <Text testID="screen-home">home</Text>,
+    devices: () => <Text testID="screen-devices">devices</Text>,
     'session/live': () => <Text testID="screen-session-live">live</Text>,
     'session/new': () => <Text testID="screen-session-new">new</Text>,
     'session/finalizing': () => <Text testID="screen-session-finalizing">finalizing</Text>,

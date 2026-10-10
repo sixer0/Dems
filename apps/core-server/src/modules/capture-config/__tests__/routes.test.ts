@@ -101,7 +101,10 @@ describe('MODG: the route list of the module', () => {
     for (const operationId of SIM_ACTION_OPERATIONS.setCaptureConfig.operations) expect(hostedActionsOfOperation(operationId)).toEqual(['setCaptureConfig']);
     expect(hostedActionsOfOperation('switchAudioSource')).toEqual(['switchAudioSource']);
     expect([hostedActionsOfOperation('getCaptureConfig'), hostedActionsOfOperation('getCaptureDevices'), hostedActionsOfOperation('setCaptureDeviceCredential')]).toEqual([[], [], []]);
-    expect(app.hasRoute({ method: 'POST', url: '/api/v1/session/:id/audio-source' })).toBe(false);
+    // Operation 81 is routed since wave D (row 71b, the sessions module): a route of the app, no
+    // operation of this module. (Until then this line held that the route did not exist yet.)
+    expect(app.hasRoute({ method: 'POST', url: '/api/v1/session/:id/audio-source' })).toBe(true);
+    expect((CAPTURE_CONFIG_MODULE_OPERATIONS as readonly string[]).includes('switchAudioSource')).toBe(false);
     // The credential write (operation 89) is routed since row 142, by `modules/capture-discovery`:
     // it is a route of the app and no operation of this module.
     expect(app.hasRoute({ method: 'POST', url: '/api/v1/capture/devices/:id/credential' })).toBe(true);

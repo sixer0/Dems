@@ -18,6 +18,7 @@ import {
   type DeviceStats,
   type MicStatus,
   type SessionHistoryEntry,
+  type SimAlert,
   type StorageSummary,
   type SystemFlag,
   type SystemStatus,
@@ -25,6 +26,7 @@ import {
 import type { StatusTone } from '@dems/shared/tokens';
 import type { GlowRingState } from '@/components/composed/glow-ring.math';
 import { SUBJECT_TYPES, type SubjectType } from '@/components/kit';
+import { NOTICE_REASON_NO_CAMERA_CONNECTED, failedStartWords, type FailedStart, type NoticeTranslate } from '@/features/capture-selector/capture-notices-model';
 import { resyncTarget } from '@/runtime/route-sync';
 
 const DAY_MS = 86_400_000;
@@ -163,6 +165,29 @@ export function homeStatusFor(system: SystemStatus): HomeStatus {
     copyKey: `features.dashboard.status.${kind}`,
     flags: [...critical, ...warnings].map(flagLineFor),
   };
+}
+
+// ── Header bell: the alert of a session start that recorded nothing (integration pass D7 item 3) ──
+
+/**
+ * The alert-centre line of a `CAPTURE_FAULT` alert that belongs to a FAILED START (ux §8e.1 "told
+ * apart by reason", §8e.2 situation C), or null for any other alert:
+ *
+ * | The alert | The line |
+ * |---|---|
+ * | carries `params.reason: NO_CAMERA_CONNECTED` | "No camera connected. Nothing was recorded." |
+ * | is active, names no cause, and the open session is a failed start | "Recording did not start. Nothing was recorded." |
+ * | anything else | null: the fault's own label |
+ *
+ * "Nothing was recorded." is said in full; nothing here names a value of the device.
+ */
+export function failedStartAlertLabel(t: NoticeTranslate, alert: Pick<SimAlert, 'kind' | 'active' | 'params'>, failedStart: FailedStart | null): string | null {
+  if (alert.kind !== 'CAPTURE_FAULT') return null;
+  const kind: FailedStart | null =
+    alert.params?.['reason'] === NOTICE_REASON_NO_CAMERA_CONNECTED ? NOTICE_REASON_NO_CAMERA_CONNECTED : alert.active && failedStart !== null ? 'OTHER' : null;
+  if (kind === null) return null;
+  const words = failedStartWords(t, kind);
+  return `${words.title}. ${words.body}`;
 }
 
 // ── H3: status tiles ────────────────────────────────────────────────────────────────────────

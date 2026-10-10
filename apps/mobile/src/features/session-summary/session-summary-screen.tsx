@@ -54,6 +54,7 @@ import { SealedStamp } from '@/features/session-finalizing/sealed-stamp';
 import { HashSheet, type HashSheetValue } from './hash-sheet';
 import { hasStamped, markStamped } from './stamp-once';
 import { isSummaryHandoff } from './summary-handoff';
+import { SealedMembersCard } from './sealed-members';
 import { LIFECYCLE_STAGES, lifecycleStatuses, orderedTracks, shortHash, sizeParts, summaryAvailability } from './summary.model';
 import {
   useAcknowledgeSummary,
@@ -185,7 +186,13 @@ export function SessionSummaryScreen({ sessionId, handover = false }: SessionSum
   const openHash = (value: HashSheetValue) => setSheet(value);
   const hero = <HeroCard sessionId={sessionId} session={session} evidence={evidence} playStamp={playStamp} index={enter ? 0 : null} />;
   const details = <DetailsCard session={session} evidence={evidence} index={enter ? 1 : null} />;
-  const hashes = <HashesCard evidence={evidence} onOpen={openHash} index={enter ? 2 : null} />;
+  const hashes = (
+    <>
+      <HashesCard evidence={evidence} onOpen={openHash} index={enter ? 2 : null} />
+      {/* Row 92 (MB-05): the sealed members of a schema-v2 item; nothing for a v1 item. */}
+      <SealedMembersCard sessionId={sessionId} onOpen={openHash} />
+    </>
+  );
   const pipeline = finalization ? <FinalizationCard finalization={finalization} index={enter ? (twoPane ? 1 : 3) : null} /> : null;
   // Row 87 (B9 = FXR-DEV-2, MB-05): every copy that is part of the sealed hand-over (the in-place copy and the
   // route's copy after it, `enter` false) draws its Steppers from React alone, like the Finalizing screen.

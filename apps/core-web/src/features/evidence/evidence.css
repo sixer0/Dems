@@ -1140,3 +1140,167 @@
     }
   }
 }
+
+/*
+ * Blueprint row 92 (M8-W3): playback of the sealed camera files, the audio-source band, the
+ * transcript pane and the export job. Same layer, theme variables only; nothing here animates.
+ */
+@layer components {
+  .evi-sealed {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+  .evi-sealed-stages {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .evi-sealed-stages[data-files='1'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evi-sealed-file {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .evi-sealed-file .evi-player-stage {
+    width: 100%;
+  }
+  @media (max-width: 767px) {
+    .evi-sealed-stages {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .evi-band {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .evi-band-track {
+    width: 100%;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid var(--evi-hairline);
+    background: rgb(255 255 255 / 0.03);
+  }
+  .evi-band-segment {
+    stroke: #0a0806;
+    stroke-width: 0.15;
+    vector-effect: non-scaling-stroke;
+  }
+  .evi-band-tone-0 {
+    fill: var(--accent);
+    background: var(--accent);
+  }
+  .evi-band-tone-1 {
+    fill: var(--evi-violet);
+    background: var(--evi-violet);
+  }
+  .evi-band-tone-2 {
+    fill: #5eb5e6;
+    background: #5eb5e6;
+  }
+  .evi-band-tone-3 {
+    fill: var(--evi-muted);
+    background: var(--evi-muted);
+  }
+  .evi-band-head {
+    stroke: var(--foreground);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+  .evi-band-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .evi-band-legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .evi-band-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex: none;
+  }
+
+  .evi-transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+  .evi-transcript-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .evi-transcript-list {
+    max-height: min(56vh, 560px);
+    overflow-y: auto;
+    border-radius: 12px;
+    border: 1px solid var(--evi-hairline);
+  }
+  .evi-transcript-segment {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: start;
+    padding: 10px 12px;
+    /* A constant border: a revised segment changes its colour only (drift E-15). */
+    border-bottom: 1px solid var(--evi-hairline);
+    /* Long transcripts: the browser skips the layout and paint of segments outside the viewport. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+  .evi-transcript-segment[data-revised='true'] {
+    box-shadow: inset 2px 0 0 var(--evi-violet);
+  }
+  .evi-transcript-text {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .evi-transcript-derived {
+    grid-column: 2 / -1;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px dashed var(--evi-violet);
+    background: rgb(167 139 250 / 0.06);
+  }
+  .evi-revisions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .evi-revision {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--evi-hairline);
+    background: rgb(255 255 255 / 0.02);
+  }
+
+  .evi-export-job {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--evi-hairline);
+    background: rgb(255 255 255 / 0.02);
+  }
+}

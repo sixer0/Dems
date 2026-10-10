@@ -92,6 +92,20 @@
       "when": 1791541242662,
       "tag": "0012_session_stt_config_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791595399197,
+      "tag": "0013_key_id_fault_reason_media_root",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791595402815,
+      "tag": "0014_key_id_fault_reason_media_root_privileges",
+      "breakpoints": true
     }
   ]
 }

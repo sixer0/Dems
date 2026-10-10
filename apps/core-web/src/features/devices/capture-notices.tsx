@@ -1,6 +1,6 @@
 import { Alert, Chip } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
-import type { MicInputId, VideoTrackId } from '@dems/shared/domain'
+import type { VideoTrackId } from '@dems/shared/domain'
 import { useSim, type SimAlert, type SimState } from '@dems/shared/sim'
 import { activeCaptureNotices, captureNoticeText, type CaptureNotice } from '@/lib/capture-notices'
 import { SearchCamerasButton, SearchMicrophonesButton } from './camera-search-context'
@@ -82,7 +82,7 @@ export function TrackUnreachableMark({ trackId }: { trackId: VideoTrackId }) {
 }
 
 /** The unreachable mark of the device behind a microphone input now (an audio-input card). */
-export function MicUnreachableMark({ inputId }: { inputId: MicInputId }) {
+export function MicUnreachableMark({ inputId }: { inputId: string }) {
   const device = useMicInputDevice(inputId)
   return <UnreachableMark deviceId={device?.id} kind="MIC" place={inputId} />
 }

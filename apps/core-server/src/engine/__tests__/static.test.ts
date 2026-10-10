@@ -41,7 +41,10 @@ describe('the scan itself', () => {
       expect(paths, expected).toContain(`src/engine/${expected}`);
     }
     // 15 until task 3 row 132 added `internal-actions.ts` (the in-unit door of `registerCaptureDevice`).
-    expect(paths).toHaveLength(16);
+    // +1 by task 3 row 71: `capture-session.ts` (the pure transitions of the capture of a real recording).
+    // +1 by task 3 row 82: `seal-doors.ts` (the three INTERNAL sealing actions, beside the seam).
+    // +1 by integration pass D6: `fact-doors.ts` (the measured evidence volume, the head of a transcript's revisions).
+    expect(paths).toHaveLength(19);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 

@@ -4,7 +4,7 @@
 // What is proven here:
 //   1. the v2 seed writes the SINGLE `stt_config` row with the confirmed default of Q-STT-CFG
 //      item 11, and no credential VALUE of any kind (the three credential columns stay null);
-//   2. the kept set is twelve tables and `stt_config` crosses by mode `upsert`;
+//   2. the kept set is thirteen tables (twelve until PE-0013-01) and `stt_config` crosses by mode `upsert`;
 //   3. the seeded row is image-equal after a permitted `db:reset`;
 //   4. an EDITED configuration is image-equal after a permitted `db:reset` too — the carried row
 //      replaces the fresh seed row of key `true`, which is exactly what `upsert` means here.
@@ -116,10 +116,10 @@ describe('M2-STTCFG-DB (seed clause): the seed writes the one confirmed row and 
   });
 });
 
-describe('M2-STTCFG-DB (kept clause): the kept set is twelve with stt_config by upsert', () => {
-  it('twelve names, stt_config among them, carried by upsert on its singleton key', () => {
+describe('M2-STTCFG-DB (kept clause): the kept set is thirteen with stt_config by upsert', () => {
+  it('thirteen names, stt_config among them, carried by upsert on its singleton key', () => {
     console.log(`[row114] kept set (${String(KEPT_TABLE_NAMES.length)}) | ${KEPT_TABLE_NAMES.join(', ')}`);
-    expect(KEPT_TABLE_NAMES).toHaveLength(12);
+    expect(KEPT_TABLE_NAMES).toHaveLength(13);
     expect(KEPT_TABLE_NAMES).toContain('stt_config');
     const entry = KEPT_TABLES.find((table) => table.name === 'stt_config');
     expect(entry?.mode).toBe('upsert');

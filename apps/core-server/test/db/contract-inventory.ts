@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { V2 } from './contract-v2-delta';
 import { V3 } from './contract-v3-delta';
 import { V5 } from './contract-v5-delta';
+import { V6 } from './contract-v6-delta';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The workspace root of the repository: this folder is four levels below it. */
@@ -276,7 +277,13 @@ export function parseContract(text: string): ContractInventory {
   for (const added of V5.newTables) {
     tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
   }
-  for (const change of [...V2.changedTables, ...V3.changedTables]) {
+  // ── Schema v6 (section N erratum PE-0013-01; rulings D146, D162, D166): T-43 `core_media_store`,
+  // `alerts.reason` with its CHECK, and the key-id form of `transcript_revisions_key_id_check`
+  // (contract-v6-delta.ts).
+  for (const added of V6.newTables) {
+    tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
+  }
+  for (const change of [...V2.changedTables, ...V3.changedTables, ...V6.changedTables]) {
     const table = tables.find((candidate) => candidate.name === change.name);
     if (table === undefined) throw new Error(`dbc-3/dbc-4 delta: the composed inventory has no table ${change.name}`);
     const mutable = table as unknown as { columns: ContractColumn[]; constraints: ContractConstraint[] };
@@ -291,7 +298,7 @@ export function parseContract(text: string): ContractInventory {
   const all = tables.flatMap((table) => table.constraints);
   const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
   return {
-    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts)',
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts)',
     valueSets,
     formats,
     tables,

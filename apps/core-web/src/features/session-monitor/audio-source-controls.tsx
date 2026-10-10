@@ -2,12 +2,11 @@ import { Alert, AlertDialog, Button, Chip, Spinner } from '@heroui/react'
 import { ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api'
-import type { MicInputId } from '@dems/shared/domain'
 import { useRetryCooldown } from '@dems/shared/realtime'
 import { useSim } from '@dems/shared/sim'
 import { AudioSourceBand } from '@/components/composed'
+import { useMicInputName } from '@/features/devices/source-class'
 import type { AudioSourceIntervalsView, AudioSourceSwitchControl, AudioSourceToggleBlock, AudioSourceView } from './audio-source'
-import { MIC_INPUT_LABEL_KEY } from './model'
 
 /** The band's end moves in steps of this many ms of media time: the panel renders at most at 0.2 Hz (§9.3). */
 const BAND_STEP_MS = 5_000
@@ -27,7 +26,7 @@ function useBlockReason(): (block: AudioSourceToggleBlock | null) => string | nu
 }
 
 /** The chip of one input: Active (inside `AUDIO-01` now) or Standby, as the Core holds the pair. */
-export function AudioSourceRoleChip({ inputId, view }: { inputId: MicInputId; view: AudioSourceView }) {
+export function AudioSourceRoleChip({ inputId, view }: { inputId: string; view: AudioSourceView }) {
   const { t } = useTranslation()
   const active = view.activeInputId === inputId
   return (
@@ -51,6 +50,7 @@ export function AudioSourceRoleChip({ inputId, view }: { inputId: MicInputId; vi
  */
 export function AudioSourceToggle({ view, control }: { view: AudioSourceView; control: AudioSourceSwitchControl }) {
   const { t } = useTranslation()
+  const micName = useMicInputName()
   if (view.block?.kind === 'NOT_RECORDING') return null
   return (
     <Button
@@ -64,7 +64,7 @@ export function AudioSourceToggle({ view, control }: { view: AudioSourceView; co
       data-testid="sm-audio-switch"
     >
       {control.pending ? <Spinner size="sm" color="current" /> : <ArrowLeftRight className="size-3.5" aria-hidden="true" />}
-      {t('session.audioSource.switchTo', { mic: t(MIC_INPUT_LABEL_KEY[view.standbyInputId]) })}
+      {t('session.audioSource.switchTo', { mic: micName(view.standbyInputId) })}
     </Button>
   )
 }
@@ -76,6 +76,7 @@ export function AudioSourceToggle({ view, control }: { view: AudioSourceView; co
  */
 export function AudioSilentWarning({ view, control }: { view: AudioSourceView; control: AudioSourceSwitchControl }) {
   const { t } = useTranslation()
+  const micName = useMicInputName()
   const reasonOf = useBlockReason()
   if (view.silentInputId === null) return null
   const offered = view.silentInputId === view.activeInputId
@@ -83,7 +84,7 @@ export function AudioSilentWarning({ view, control }: { view: AudioSourceView; c
     <Alert status="warning" className="sm-audio-warning" data-testid="sm-audio-silent" data-input={view.silentInputId}>
       <Alert.Indicator />
       <Alert.Content>
-        <Alert.Title>{t('session.audioSource.silent.title', { mic: t(MIC_INPUT_LABEL_KEY[view.silentInputId]) })}</Alert.Title>
+        <Alert.Title>{t('session.audioSource.silent.title', { mic: micName(view.silentInputId) })}</Alert.Title>
         <Alert.Description>
           {t('session.audioSource.silent.body', { dbfs: MIC_SILENCE_DBFS, seconds: MIC_SILENCE_DURATION_MS / 1000 })}
         </Alert.Description>
@@ -138,6 +139,7 @@ export function AudioSourceFooter({
   intervals: AudioSourceIntervalsView
 }) {
   const { t } = useTranslation()
+  const micName = useMicInputName()
   const reasonOf = useBlockReason()
   const reason = reasonOf(view.block)
   // Media time of "now", in coarse steps; 0 without a started session.
@@ -153,7 +155,7 @@ export function AudioSourceFooter({
       {read.kind === 'READY' && read.items.length > 0 ? (
         <div className="sm-audio-band">
           <span className="sm-audio-band-caption">{t('session.audioSource.band.caption')}</span>
-          <AudioSourceBand intervals={read.items} endMs={elapsedMs} inputLabel={(inputId) => t(MIC_INPUT_LABEL_KEY[inputId])} className="flex-1" />
+          <AudioSourceBand intervals={read.items} endMs={elapsedMs} inputLabel={micName} className="flex-1" />
         </div>
       ) : null}
       {read.kind === 'FAILED' ? <BandRetry onRetry={intervals.retry} /> : null}
@@ -174,8 +176,9 @@ export function AudioSourceFooter({
 /** The confirmation of a switch (ux §3.2 step 2): an explicit second press; the confirm is busy until the Core answered. */
 export function AudioSourceConfirm({ view, control }: { view: AudioSourceView; control: AudioSourceSwitchControl }) {
   const { t } = useTranslation()
-  const to = t(MIC_INPUT_LABEL_KEY[view.standbyInputId])
-  const from = t(MIC_INPUT_LABEL_KEY[view.activeInputId])
+  const micName = useMicInputName()
+  const to = micName(view.standbyInputId)
+  const from = micName(view.activeInputId)
   const title = t('session.audioSource.confirm.title', { mic: to })
   const { ref: confirmRef } = control
   return (

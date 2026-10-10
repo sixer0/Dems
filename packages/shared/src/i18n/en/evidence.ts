@@ -283,6 +283,7 @@ export const evidence = {
     skipped: {
       BLOCKED: 'Not run: an earlier check failed',
       KEY_UNAVAILABLE: 'Not run: no session key',
+      OUT_OF_SCOPE: 'Not run: outside this run',
     },
     failureClass: {
       TAMPERED: 'Tampered',
@@ -298,6 +299,8 @@ export const evidence = {
       failed: '{{track}} fragment {{seq}} did not verify ({{reason}})',
       chainOnly: '{{track}}: fragment chain broken from fragment {{from}}',
       notNamed: 'This answer does not name the fragment. The chain of custody entry of this run names it.',
+      more_one: '{{count}} more fragment did not verify.',
+      more_other: '{{count}} more fragments did not verify.',
     },
     checksTitle: 'Checks of this run',
     checksSummary: '{{passed}} of {{total}} checks passed',
@@ -316,6 +319,7 @@ export const evidence = {
       'V-12': 'Interrupted-seal flag',
       'V-13': 'Certificate validity',
       'V-14': 'File completeness',
+      'V-15': 'Source class',
     },
     transcriptState: {
       READY: 'Transcript sealed',
@@ -402,6 +406,8 @@ export const evidence = {
       NOT_SEALED: 'Only sealed evidence can be exported.',
       SECURITY_FAULT: 'Export is blocked while a security fault is active.',
       INVALID_REASON: 'The export reason is too short.',
+      /** Pass D6 (D152 / D5-3): the 409 names no job, so the sentence promises no progress display. */
+      EXPORT_IN_PROGRESS: 'An export of this item is already running. Wait until it has finished, then export again.',
     },
     deniedTitle: 'Export not permitted',
     deniedBody: 'Exporting evidence requires the {{role}} role. This attempt was recorded in the audit log.',
@@ -441,5 +447,162 @@ export const evidence = {
        */
       success: 'Export of {{id}} accepted by the Core',
     },
+  },
+
+  /**
+   * Blueprint row 92 (M8-W3; UX spec flows 5 and 6; R-3, R-4, R-5, R-11): the four blocks below are
+   * shared by the web console and the mobile app. `sources`: the entries under the source line of a
+   * verify result and on a sealed item (the line itself and the badge are `common.sourceClass`).
+   */
+  sources: {
+    entriesTitle: 'Sources of this package',
+    track: '{{track}}: {{device}} · {{kind}}',
+    interval: 'Audio interval {{seq}}: {{device}} · {{kind}}',
+    kind: {
+      PRODUCTION: 'Production device',
+      LOCAL_DEVICE: 'Local device of the Core Mac',
+      FAKE: 'Test source',
+    },
+    moreIntervals_one: '{{count}} more audio interval',
+    moreIntervals_other: '{{count}} more audio intervals',
+  },
+
+  /** Flow 5: playback of the sealed camera files through the media session of operation 88, and the audio-source band. */
+  playback: {
+    title: 'Sealed recording',
+    note: 'Played from the sealed camera files through a short-lived media session of the Core server.',
+    open: 'Open playback',
+    opening: 'Opening the media session…',
+    checking: 'Checking your permissions...',
+    notAvailable: 'No playback media is available for this evidence item.',
+    notPermitted: 'Your role cannot play this evidence item.',
+    failed: 'The media session could not be opened.',
+    stopped: 'Playback stopped. The media session may have ended.',
+    stoppedAt: 'Playback stopped at {{at}} and did not resume. A recording that fails its integrity check stops at the failed fragment: run Verify to see which.',
+    integrity: 'This recording failed its integrity check at {{file}} fragment {{seq}}.',
+    integrityNoPlace: 'This recording failed its integrity check.',
+    renewing: 'Renewing the media session…',
+    reopen: 'Open again',
+    reopenIn: 'Open again in {{seconds}} s',
+    reopenExhausted: 'Reload the page to try again',
+    oneFile: 'The Core server opened {{track}} only. The other camera file is not shown.',
+    file: '{{track}} · sealed file',
+    band: {
+      title: 'Audio source',
+      label: 'Which microphone fed the audio track over the recording',
+      segment: '{{mic}}, {{from}} to {{to}}',
+      now: 'Audio at the playhead: {{mic}}',
+      nowNone: 'Audio at the playhead: no interval',
+      none: 'This item carries no audio-source intervals.',
+      reason: {
+        START: 'recording start',
+        MANUAL: 'switched by the operator',
+        STOP: 'recording end',
+      },
+    },
+  },
+
+  /** Flow 6: the transcript pane, the signed revisions (operations 84, 85, 86) and the revise form. */
+  transcript: {
+    title: 'Transcript',
+    sealedOriginal: 'Sealed original — immutable',
+    inPackage: 'Inside the sealed package',
+    loading: 'Loading the transcript…',
+    notReady: 'The transcript is not available yet.',
+    notPermitted: 'Your role cannot read this transcript.',
+    failed: 'The transcript could not be loaded.',
+    retry: 'Load again',
+    state: {
+      ASSEMBLED: 'Transcript assembled',
+      PARTIAL: 'Transcript partial',
+      UNAVAILABLE: 'Transcript unavailable',
+      DISABLED: 'Transcript disabled by configuration',
+    },
+    failedChunks_one: '{{count}} part of the audio has no text. No text stands in for it.',
+    failedChunks_other: '{{count}} parts of the audio have no text. No text stands in for them.',
+    backendUnreachable: 'The transcription backend could not be reached for part of the recording.',
+    speakersUnavailable: 'speaker labels unavailable',
+    speakersLabelled: 'Speaker labels from diarization',
+    noSegments: 'This transcript has no segments.',
+    segmentLabel: 'Segment {{index}}, {{start}} to {{end}}',
+    derived: 'Revision {{number}} · derived, not part of the sealed transcript',
+    revisions: {
+      title: 'Revisions',
+      none: 'No revisions',
+      entry: 'Revision {{number}}',
+      author: 'by {{author}}',
+      base: 'based on revision {{base}}',
+      baseOriginal: 'based on the sealed original',
+      change: 'Segment {{index}}',
+      signed: 'Signed by the Core key {{key}}',
+      simulated: 'Simulated signature',
+      loadFailed: 'The revisions could not be loaded.',
+    },
+    revise: {
+      action: 'Revise',
+      title: 'Revise segment {{index}}',
+      lead: 'A revision is appended and signed by the Core server, with you as its author. The sealed transcript is not changed.',
+      original: 'Sealed original',
+      current: 'Current text (revision {{number}})',
+      field: 'Corrected text',
+      note: 'Reason',
+      noteRule: 'Give a reason of {{min}} to {{max}} characters. It is signed with the revision.',
+      save: 'Sign and append',
+      unchanged: 'Change the text to make a revision.',
+      tooLong: 'Use {{max}} characters or fewer.',
+      conflict: 'The transcript revision is based on a revision that is no longer current.',
+      conflictHint: 'The revisions were loaded again. Check the current text, then save again.',
+      denied: 'Your role cannot revise a transcript.',
+      failed: 'The revision was not saved.',
+      success: 'Revision {{number}} appended',
+    },
+  },
+
+  /** Flow 5 step 7: the background export job of operations 42 and 87. */
+  exportJob: {
+    title: 'Export job {{jobId}}',
+    status: {
+      QUEUED: 'Queued',
+      RUNNING: 'Running',
+      COMPLETE: 'Complete',
+      FAILED: 'FAILED',
+    },
+    kind: {
+      PACKAGE: 'Package',
+      COMPOSITE: 'Composite',
+    },
+    derived: 'Derived output — not the sealed evidence',
+    progress: '{{percent}}% done',
+    waiting: 'Waiting for the Core server…',
+    manifestHash: 'Export manifest hash',
+    signature: 'Export manifest signature',
+    failed: 'The export job FAILED ({{reason}}).',
+    failedNoReason: 'The export job FAILED.',
+    unknown: 'The Core server has no job for this export.',
+    pollFailed: 'The state of the export job could not be read.',
+    retry: 'Read again',
+    onCore: 'The export is stored on the Core ({{exportId}}).',
+    compositeUnavailable: 'Composite video is not available in this build.',
+    inProgress: 'An export of this item is already running. Wait until it has finished, then export again.',
+    /** Integration pass D5: the label of the control that names the kind of a new export (options: `kind.PACKAGE`, `kind.COMPOSITE`). */
+    kindLabel: 'Export output',
+  },
+
+  /** MB-05 Session Summary (row 92): the sealed members of a schema-v2 item, as the Core's seal states them. */
+  sealedMembers: {
+    title: 'Sealed files',
+    hint: 'Hashes of the seal, from the Core server. Tap a value to see it in full.',
+    storedHash: '{{track}} · stored bytes',
+    plainHash: '{{track}} · decrypted bytes',
+    transcriptHash: 'Transcript hash',
+    noTranscript: 'This seal carries no transcript hash.',
+    labels: 'Speaker labels',
+    labelsStatus: {
+      LABELLED: 'labelled',
+      UNAVAILABLE: 'speaker labels unavailable',
+      NOT_STATED: 'not stated by the seal',
+    },
+    signature: 'Signature',
+    signatureReal: 'Ed25519, Core key {{key}}',
   },
 } as const satisfies ResourceTree;

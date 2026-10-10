@@ -22,7 +22,16 @@
                       `--source generated` runs the SAME steps with the generated picture in place of
                       the device (no camera, no permission; an agent may run it): the proof that the
                       bound holds. `--open-delay-s` gives the generated helper the device's start-up
-                      shape; `--overrun-s` is the negative control of the bound (generated only).
+                      shape; `--overrun-s` is the negative control of the bound (generated only);
+                      `--jitter-ms J` makes the generated picture a VARIABLE-rate source (frames leave
+                      the generator -J, 0, +J ms off the 30 fps grid in turn: intervals of 33.3+J, 33.3+J
+                      and 33.3-2J ms, like a camera stamped at reading; pass D3, D133 (4)). `--grid`
+                      asks the table for its fixed-grid CANDIDATE (not the product default): on the
+                      variable-rate source row 60's fixed-grid check is false without it, true with it.
+                      THE STOP ORDER (pass D3, D130 (a)): the SESSION is stopped first (the worker's
+                      STOP), the helper right after; a helper that is ended while the session still
+                      runs is, correctly, a lost camera for the worker (`INGEST_ENDED` ->
+                      warning CAPTURE_FAULT). `--helper-first` keeps the old order (the control).
 
 Truth. The picture is generated inside the helper process, so this script cannot choose the
 instant of a flash. Instead a side branch of the SAME filter graph writes, for every frame, the
@@ -68,6 +77,9 @@ def parse():
     p.add_argument("--source", choices=("device", "generated"), default="device", help="cam: the real camera (user-attended) or the generated picture (no device)")
     p.add_argument("--open-delay-s", type=float, default=0.0, help="cam, generated only: the helper pushes nothing for this long after its start (the shape of a device that opens slowly)")
     p.add_argument("--overrun-s", type=float, default=0.0, help="cam, generated only: stop this much AFTER the bound (negative control of the bound)")
+    p.add_argument("--jitter-ms", type=float, default=0.0, help="cam, generated only: frames leave the generator -J, 0, +J ms off the 30 fps grid in turn (a variable-rate source)")
+    p.add_argument("--grid", action="store_true", help="the table's fixed-grid CANDIDATE (30 fps filter before the encoder; pass D3). Not the product default; never with the device")
+    p.add_argument("--helper-first", action="store_true", help="cam, generated only: stop the helper BEFORE the session (the old order: the worker then reports a lost camera)")
     p.add_argument("--expect-fail", action="store_true")
     p.add_argument("--must-fail-on", default="")
     p.add_argument("--may-fail-on", default="")
@@ -82,11 +94,13 @@ os.environ["M3_PORTS"] = A.ports
 if A.mode == "cam":
     if A.seconds > 10 or A.seconds < 2:
         sys.exit("refused: a local-device test recording is 2 to 10 s")
+    if A.jitter_ms < 0 or A.jitter_ms > 15:
+        sys.exit("refused: --jitter-ms is 0 to 15 (the frames must stay in order)")
     if A.source == "device":
         if os.environ.get("DEMS_USER_ATTENDED") != "1":
             sys.exit("refused: `cam` opens this Mac's camera. It is run by the user only (DEMS_USER_ATTENDED=1), never by an agent.")
-        if A.open_delay_s or A.overrun_s:
-            sys.exit("refused: --open-delay-s and --overrun-s are for the generated source only")
+        if A.open_delay_s or A.overrun_s or A.jitter_ms or A.helper_first or A.grid:
+            sys.exit("refused: --open-delay-s, --overrun-s, --jitter-ms, --helper-first and --grid are for the generated source only")
         os.environ["M3_RUNS"] = os.path.join(REPO, ".data", "capture-local", "runs")     # local-device media: only under git-ignored .data/
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(REPO, "apps", "capture-worker", "test"))
@@ -100,7 +114,7 @@ FF = os.environ.get("DEMS_CAPTURE_HELPER_FFMPEG") or "/opt/homebrew/bin/ffmpeg"
 
 def product_lists(start_ms, urls):
     """The argument lists of the product table, printed by the table's own module."""
-    r = subprocess.run(["node", "--import", "tsx", os.path.join(HERE, "print-camera-args.ts"), A.encoder, str(start_ms)] + urls, cwd=REPO, capture_output=True, text=True)
+    r = subprocess.run(["node", "--import", "tsx", os.path.join(HERE, "print-camera-args.ts")] + (["--grid"] if A.grid else []) + [A.encoder, str(start_ms)] + urls, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit("the argument table could not be printed: %s" % r.stderr[-600:])
     return json.loads(r.stdout.strip().splitlines()[-1])
@@ -119,8 +133,11 @@ def without(args, parts):
     return out
 
 
-def generated_input(first, side_log):
-    graph = ("color=c=black:s=1280x720:r=%d,realtime,"
+def generated_input(first, side_log, jitter_ms=0.0):
+    # A variable-rate source: every frame is moved off the grid by -J, 0, +J ms in turn BEFORE the pacing filter,
+    # so it leaves the generator (and is stamped with the wall clock at reading) at that moment.
+    jitter = "setpts='PTS+(mod(N,3)-1)*%.6f/TB'," % (jitter_ms / 1000.0) if jitter_ms else ""
+    graph = ("color=c=black:s=1280x720:r=%d," + jitter + "realtime,"
              "drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(n,%d,%d)*eq(mod(n-%d,%d),0)',"
              "format=nv12,settb=1/1000000,split[out0][side];"
              "[side]setpts=RTCTIME,metadata=mode=add:key=w:value=1,metadata=mode=print:file=%s:direct=1,nullsink") % (
@@ -150,7 +167,7 @@ def helper_sockets(pid, port):
             "tcp_all_loopback": all(h == "127.0.0.1" for e in ends for h, _ in e), "tcp_to_plan_port": len([e for e in ends if len(e) == 2 and e[1][1] == str(port)])}
 
 
-def decodes(path):
+def decodes(path, variable_rate=True):
     """Playable, for a source whose frames carry the time they were READ (not a fixed grid): every stream
     decodes without one error line WITH THE FILE'S TIMESTAMPS PASSED THROUGH, the boxes tile the file, both
     streams hold frames. The row-60 `playable()` is reported beside it and not judged here: its decode
@@ -166,7 +183,9 @@ def decodes(path):
                 "tiles_exactly": p["tiles_exactly"], "video_timestamps_strictly_increasing": all(d > 0 for d in deltas),
                 "video_frame_interval_ms_min_median_max": [round(deltas[0], 2), round(deltas[len(deltas) // 2], 2), round(deltas[-1], 2)] if deltas else None,
                 "gap_after_first_frame_ms": round((pts[1] - pts[0]) / 90.0, 1) if len(pts) > 1 else None,
-                "row60_playable_fixed_grid_check": ok60, "row60_decode_error_lines": p["decode_error_lines"], "playable": ok}
+                # Decision D136 (3), row 140: for a variable-rate development source (this Mac's camera) row 60's
+                # fixed-grid check is reported "not applicable" with the count of close frame pairs; its raw result stays beside it.
+                **N.fixed_grid_report(ok60, p["decode_error_lines"], deltas, variable_rate), "playable": ok}
 
 
 def stop_helpers(helpers):
@@ -312,7 +331,7 @@ def cmd_av():
         v("no_leftover_process", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
         files_ok = all(os.path.exists(p) and os.path.getsize(p) > 0 for p in paths)
         if v("both_files_written", files_ok):
-            play = [decodes(p) for p in paths]
+            play = [decodes(p, variable_rate=False) for p in paths]                 # generated pictures on the frame grid: row 60's check applies as it is
             info["files"] = [x[1] for x in play]
             v("both_files_playable", all(x[0] for x in play))
             try:
@@ -336,6 +355,7 @@ def cmd_av():
 STOP_LEAD_S = 0.5            # the helper is ASKED to stop this long before the bound ...
 BOUND_MARGIN_S = 0.25        # ... is killed AT the bound, and is judged gone within this margin after it
 FILE_MARGIN_S = 2.0          # the file may be this much longer than the bound (audio before the first recorded frame and after the stop)
+SESSION_STOP_WAIT_S = 0.15   # how long the helper's stop waits for the worker to have HEARD the session stop (then it goes on regardless)
 OPEN_WAIT_S = 60             # the device open may wait for the user's answer to the macOS question
 
 
@@ -351,11 +371,15 @@ def sleep_until_us(at_us):
         time.sleep(min(left, 0.05))
 
 
-def stop_at_bound(helper, bound_us):
-    """SIGTERM half a second before the bound (FFmpeg ends the RTSP session with TEARDOWN, HL-8), SIGKILL AT the bound.
+def stop_at_bound(helper, bound_us, session_stop=None):
+    """Half a second before the bound: the SESSION is stopped first (`session_stop`, the worker's STOP: from then on the
+    end of the camera's connection is the stop, not a lost camera), then SIGTERM to the helper (FFmpeg ends the RTSP
+    session with TEARDOWN, HL-8); SIGKILL AT the bound. The camera is closed by the bound whatever the worker does.
     Returns (exit status, how it ended, the wall clock at which the helper was gone)."""
     sleep_until_us(bound_us - int(STOP_LEAD_S * 1e6))
     how = "ended by itself"
+    if session_stop is not None:
+        session_stop()                                          # returns within SESSION_STOP_WAIT_S, heard or not
     if helper.poll() is None:
         helper.send_signal(signal.SIGTERM)
         how = "SIGTERM"
@@ -391,7 +415,7 @@ def cmd_cam():
     sid = "S-L134-%s" % A.name.upper().replace("_", "-")[-36:].strip("-")
     if H.tcp_listeners():
         sys.exit("ports busy before start: %r" % H.tcp_listeners())
-    v, info, procs = H.Crit(), {"check": "M4-LOCAL-CAM-1", "source": A.source, "encoder": A.encoder, "ports": list(ports), "seconds": A.seconds}, []
+    v, info, procs = H.Crit(), {"check": "M4-LOCAL-CAM-1", "source": A.source, "fixed_grid_candidate": A.grid, "jitter_ms": A.jitter_ms, "encoder": A.encoder, "ports": list(ports), "seconds": A.seconds}, []
     lists = product_lists(time.time_ns() // 1_000_000, ["rtsp://127.0.0.1:%d/cam1" % ports[0]])
     if not generated:
         # The exact-name rule, on the list (listing opens no device).
@@ -412,13 +436,14 @@ def cmd_cam():
     w, plan = start_worker(d, sid, 1, listen_timeout_s=OPEN_WAIT_S + 15)      # the user may need time to answer the macOS question
     procs.append(w.p)
     first_frame_us = spawn_us = gone_us = None
+    stop_sent = {}
     try:
         start_ms = time.time_ns() // 1_000_000
         product = product_lists(start_ms, [plan["cameras"][0]["ingestUrl"]])
         argv = product["push"][0]
         if generated:
             q, n_in = product["quietLength"], product["deviceInputLength"]
-            argv = argv[:q] + generated_input(FIRST_A, os.path.join(d, "gen1.txt")) + argv[q + n_in:]     # everything after the input section: the product's
+            argv = argv[:q] + generated_input(FIRST_A, os.path.join(d, "gen1.txt"), A.jitter_ms) + argv[q + n_in:]     # everything after the input section: the product's
         spawn_us = now_us()
         if generated and A.open_delay_s > 0:
             time.sleep(A.open_delay_s)                              # a device that needs this long to open: nothing is pushed meanwhile
@@ -452,13 +477,31 @@ def cmd_cam():
             if now_us() < bound_us - int(2.5e6):
                 time.sleep(1.0)
                 info["helper_sockets"] = helper_sockets(helper.pid, ports[0])
-            rc, how, gone_us = stop_at_bound(helper, bound_us)
+            def session_stop():
+                # The session's stop, written to the worker; the helper's stop follows when the worker has heard it.
+                try:
+                    stop_sent["corr"] = w.command(sid, "STOP", reason="STOPPED")
+                except (BrokenPipeError, OSError):
+                    return
+                t = time.monotonic()
+                while time.monotonic() - t < SESSION_STOP_WAIT_S and not any(l.get("message") == "stop_received" for l in H.worker_log(d)):
+                    time.sleep(0.005)
+            rc, how, gone_us = stop_at_bound(helper, bound_us, None if A.helper_first else session_stop)
             info["helper_rc"], info["helper_stop"] = [rc], how
+            info["stop_order"] = "helper first (control)" if A.helper_first else "session first"
+            info["session_stop_heard_before_helper_stop"] = "corr" in stop_sent and any(l.get("message") == "stop_received" for l in H.worker_log(d))
         else:
             info["helper_rc"] = stop_helpers([helper])
             info["helper_stop"] = "no first frame: stopped"
         time.sleep(0.2)
-        info["worker_rc"] = stop_worker(w, sid)
+        if "corr" in stop_sent:
+            try:
+                w.ack(stop_sent["corr"])
+            except (RuntimeError, BrokenPipeError):
+                pass
+            info["worker_rc"] = w.exit(20)
+        else:
+            info["worker_rc"] = stop_worker(w, sid)
     finally:
         H.killall(procs)
     time.sleep(0.3)
@@ -476,11 +519,16 @@ def cmd_cam():
     s = info.get("helper_sockets")
     v("helper_holds_only_one_loopback_tcp_connection", bool(s) and s["listening"] == 0 and s["udp"] == 0 and s["tcp"] == 1 and s["rows"] == 1 and s["tcp_all_loopback"] and s["tcp_to_plan_port"] == 1)
     v("worker_reports_no_missing_wall_clock", info["worker"]["no_camera_wall_clock_lines"] == 0)
+    # A clean stop raises nothing (pass D3): with the session stopped first, the worker has no warning to give.
+    if not A.helper_first:
+        v("clean_stop_raises_no_warning", info["worker"]["warnings"] == [])
     v("no_leftover_process", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
     v("helper_progress_reported_frames", (info["helper_progress"]["last_frame_count"] or 0) > 0)
     dur = None
     if v("file_written", os.path.exists(path) and os.path.getsize(path) > 0):
-        ok, p = decodes(path)
+        # This Mac's camera (kind LOCAL_DEVICE) is a variable-rate source; so is the generated picture with --jitter-ms.
+        # With --grid (the constant-rate candidate, OFF in the product) and for the plain generated picture the check applies.
+        ok, p = decodes(path, variable_rate=(A.source == "device" or A.jitter_ms > 0) and not A.grid)
         v("file_playable", ok)
         info["file_checks"] = {k: p[k] for k in p if k not in ("bytes", "decoded_frames")}
         info["first_frame_gap"] = N.decompose_gap(p.get("gap_after_first_frame_ms"), numbers)

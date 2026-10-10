@@ -273,7 +273,7 @@ export async function loadBulkFixture(pool: Pool, options: LoadBulkFixtureOption
 }
 
 /**
- * Vacuums and analyzes the 42 tables, in one statement that names the tables of the typed schema
+ * Vacuums and analyzes the 43 tables, in one statement that names the tables of the typed schema
  * (constants). It changes no row. Two reasons:
  *
  *   - A template is locked right after its hook returns, so nothing would ever analyze it:

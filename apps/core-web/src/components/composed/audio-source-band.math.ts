@@ -3,12 +3,11 @@
  * `masterplan/03_api_contract.md` §2.4 operation 82). The intervals are in **media pts** (ms from
  * the start of the recording), so the band is a manifest overlay and never a clock.
  */
-import type { MicInputId } from '@dems/shared/domain'
-
 /** The members of one interval of operation 82 that the band draws. */
 export interface AudioSourceBandInterval {
   readonly seq: number
-  readonly inputId: MicInputId
+  /** The mic input as the Core sent it (`MIC-NN`, any number; integration pass D2). */
+  readonly inputId: string
   /** Media-pts start (ms). */
   readonly fromMs: number
   /** Media-pts end (ms); `null` while the interval is open. */
@@ -17,7 +16,7 @@ export interface AudioSourceBandInterval {
 
 export interface AudioSourceBandSegment {
   readonly seq: number
-  readonly inputId: MicInputId
+  readonly inputId: string
   readonly fromMs: number
   /** The end drawn: the interval's own end, or `endMs` for the open interval. */
   readonly toMs: number
@@ -59,4 +58,13 @@ export function formatMediaMs(ms: number): string {
   const seconds = total % 60
   const two = (value: number) => String(value).padStart(2, '0')
   return hours > 0 ? `${hours}:${two(minutes)}:${two(seconds)}` : `${minutes}:${two(seconds)}`
+}
+
+/**
+ * The position of each input among the inputs of a band, sorted by id (integration pass D2): the
+ * band's colour index. `MIC-01` / `MIC-02` are 0 / 1 as before; a third input (`MIC-03`) is 2.
+ */
+export function audioSourceBandPositions(intervals: readonly Pick<AudioSourceBandInterval, 'inputId'>[]): ReadonlyMap<string, number> {
+  const ordered = [...new Set(intervals.map((interval) => interval.inputId))].sort()
+  return new Map(ordered.map((inputId, index) => [inputId, index]))
 }

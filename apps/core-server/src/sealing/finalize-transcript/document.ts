@@ -22,6 +22,7 @@
  * The form is held to the transcriber's by a test of this folder that reads documents the real
  * `@dems/transcriber` wrote. Pure: no file, no statement, no clock.
  */
+import { transcriptModelFaults } from '@dems/shared/evidence-package';
 import { z } from 'zod';
 import type { ChunkAttempt } from '../../modules/transcript-chunks';
 
@@ -40,7 +41,8 @@ export const SealedTranscriptDocumentSchema = z
       session_id: z.string().min(1),
       language: z.literal('id'),
       backend: z.enum(['omlx-server', 'cpu-local']),
-      model: z.strictObject({ id: z.string().min(1), name: z.string().min(1), version: z.string().min(1), quantisation: z.string().min(1), sha256: hex64 }),
+      // D160: version, quantisation and file hash are null exactly for a server backend (the refinement below).
+      model: z.strictObject({ id: z.string().min(1), name: z.string().min(1), version: z.string().min(1).nullable(), quantisation: z.string().min(1).nullable(), sha256: hex64.nullable() }),
       audio: z.strictObject({ kind: z.string().min(1), sample_rate_hz: z.number().int().positive() }),
       state: z.enum(['ASSEMBLED', 'PARTIAL']),
       partial_reason: z.enum(['TRANSCRIPT_AUDIO_UNAVAILABLE', 'CHUNKS_FAILED']).nullable(),
@@ -59,6 +61,7 @@ export const SealedTranscriptDocumentSchema = z
     qa_flags: z.array(z.string().min(1)),
   })
   .refine((doc) => doc.segments.every((segment, index) => segment.index === index && segment.end_ms > segment.start_ms), { message: 'segments are numbered in order and have a positive length' })
+  .refine((doc) => transcriptModelFaults(doc.header.backend, doc.header.model).length === 0, { message: 'the model version, quantisation and file hash are null exactly for a server backend' })
   .refine((doc) => (doc.header.state === 'PARTIAL') === (doc.header.partial_reason !== null), { message: 'PARTIAL carries its reason, ASSEMBLED carries none' })
   .refine((doc) => doc.header.failed_chunks === 0 || doc.header.state === 'PARTIAL', { message: 'a failed chunk makes the document PARTIAL' })
   .refine((doc) => doc.header.failed_chunks <= doc.header.chunks, { message: 'no more failed chunks than chunks' })

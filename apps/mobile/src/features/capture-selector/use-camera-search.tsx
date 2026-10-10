@@ -65,8 +65,6 @@ export interface CameraSearch {
   readonly canSearch: boolean;
   /** The data is a Core server's (Live mode). */
   readonly live: boolean;
-  /** The Core's demo flag of the signed-in session (true = the Core runs SIMULATED). */
-  readonly demoControls: boolean;
   /** Operation 93, then operation 94. Never rejects. */
   start(): void;
   /** Operation 94, when the gate lets the caller read. Never rejects. */
@@ -248,7 +246,6 @@ export function useCameraSearchController(): CameraSearch {
     limitedSeconds,
     canSearch: gate === 'allowed' && !starting && limitedSeconds === null && state !== 'searching',
     live: live !== null,
-    demoControls: live?.session?.demoControls === true,
     start,
     refresh,
   };

@@ -62,6 +62,8 @@ import {
   type CoreVerdict,
   type ExportDestination,
 } from './evidence-model';
+import { EXPORT_IN_PROGRESS, answeredJobIdOf, type ExportJobKind } from './export-job-model';
+import { ExportJobStatus } from './export-job-status';
 import { VERIFY_ASK_MS } from './integrity-tab';
 import { SheetFrame } from './sheet-frame';
 import { useClockDue } from './use-clock-due';
@@ -74,7 +76,9 @@ export const EXPORT_BUILD_MS = 900;
 
 /** `probing`: Live mode, the denied role's call is out and the Core has not answered yet. */
 type AuthState = 'checking' | 'probing' | 'authorized' | 'denied';
-type FailureReason = Extract<ExportResult, { ok: false }>['reason'] | 'UNKNOWN';
+type FailureReason = Extract<ExportResult, { ok: false }>['reason'] | 'UNKNOWN' | typeof EXPORT_IN_PROGRESS;
+/** Operation 42, schema v2 (integration pass D5): what a new export job builds. PACKAGE is the default and is not named in the request. */
+const EXPORT_KINDS: readonly ExportJobKind[] = ['PACKAGE', 'COMPOSITE'];
 /** Live: what the export request got, kept until the build step's minimum time has run (LB-2). */
 type BuildAnswer = { readonly kind: 'result'; readonly result: ExportResult } | { readonly kind: 'error'; readonly error: unknown };
 /** Live: the Core's verdict of the source (step 1); `asking` while operation 41 is out, `none` without a verdict. */
@@ -119,6 +123,9 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
   const [building, setBuilding] = useState(false);
   const [failure, setFailure] = useState<FailureReason | null>(null);
   const [exportId, setExportId] = useState<string | null>(null);
+  /** The job the 202 answer named (Live), or null: the job is then derived from the export ID. */
+  const [answeredJobId, setAnsweredJobId] = useState<string | null>(null);
+  const [kind, setKind] = useState<ExportJobKind>('PACKAGE');
   const [correlationId] = useState(() => newCorrelationId('export'));
   // Live mode only (all neutral in Simulated mode).
   /** The store's clock when the wizard opened: the Authorize step's minimum time counts from it. */
@@ -214,11 +221,12 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
     // Live (S1-6): the request starts with the build step.
     setBuildAnswer(null);
     setBuildFrom(sim.store.getState().clock.now);
-    settle(() => actions.exportEvidence(evidenceId, { reason: check.value, destination: destinationText }), {
+    // The Core cannot say beforehand whether this build has a composite encoder: a COMPOSITE is asked for and its job answers.
+    settle(() => actions.exportEvidence(evidenceId, { reason: check.value, destination: destinationText, ...(kind === 'COMPOSITE' ? { kind } : {}) }), {
       ok: (result) => setBuildAnswer({ kind: 'result', result }),
       fail: (error) => setBuildAnswer({ kind: 'error', error }),
     });
-  }, [check.valid, check.value, building, live, sim, actions, evidenceId, destinationText]);
+  }, [check.valid, check.value, building, live, sim, actions, evidenceId, destinationText, kind]);
 
   /** The answer of the export, shown: Done, or the refusal's message (the union maps as today). */
   const finishBuild = useCallback(
@@ -226,6 +234,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
       setBuilding(false);
       if (result?.ok) {
         setExportId(result.exportId);
+        setAnsweredJobId(answeredJobIdOf(result));
         setStep(5);
         triggerHaptic('sealedStamp');
         // The shared success sentence says "(simulated)": Live mode has its shared twin (rule 8; closing copy round, D162 DN-5).
@@ -375,6 +384,18 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
               </RadioGroup.Item>
             ))}
           </RadioGroup>
+          {live ? (
+            <>
+              <Label>{t('evidence.exportJob.kindLabel')}</Label>
+              <RadioGroup value={kind} onValueChange={(value) => setKind(value === 'COMPOSITE' ? 'COMPOSITE' : 'PACKAGE')} testID="evidence-export-kind">
+                {EXPORT_KINDS.map((key) => (
+                  <RadioGroup.Item key={key} value={key} testID={`evidence-export-kind-${key}`}>
+                    {t(`evidence.exportJob.kind.${key}`)}
+                  </RadioGroup.Item>
+                ))}
+              </RadioGroup>
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -417,7 +438,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
           <Alert status="danger" testID={`evidence-export-failed-${failure}`}>
             <Alert.Indicator />
             <Alert.Content>
-              <Alert.Title>{t(`features.evidence.export.failed.${failure}`)}</Alert.Title>
+              <Alert.Title>{failure === EXPORT_IN_PROGRESS ? t('evidence.exportJob.inProgress') : t(`features.evidence.export.failed.${failure}`)}</Alert.Title>
             </Alert.Content>
           </Alert>
         ) : null
@@ -444,6 +465,8 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
                   : []),
             ]}
           />
+          {/* Row 92: operation 42 only queued the export; operation 87 says when it is done, or that it FAILED. */}
+          {live ? <ExportJobStatus exportId={exportId} jobId={answeredJobId} /> : null}
           <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
             {t(live ? 'features.evidence.export.zipNoteLive' : 'features.evidence.export.zipNote')}
           </Text>

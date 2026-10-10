@@ -27,9 +27,15 @@ const FOLDER = 'src/credential-store/';
 const CREDENTIAL_STORE_USERS: readonly string[] = [
   // Integration pass A (D109), row 85's request: the fragment opener of verify v2 (`sessionKeys` + `openFragment`).
   'src/evidence-verify/fragment-opener.ts',
+  // Row 90 (C3 §2.4, SEC35-12: the media-session signing key is "held in the Core credential store"): `namedSecrets` for
+  // that ONE key (HMAC inside `use`) and the pure `planRangeRead`; never a session key, never `openFragment` - held by
+  // `src/media-stream/__tests__/static.test.ts`.
+  'src/media-stream/store-door.ts',
   // Row 142 (decision D114): the connect flow seals a camera credential (`capture.seal` only: never `open`, never a reveal).
   'src/modules/capture-discovery/connect/index.ts',
   'src/modules/stt-config/index.ts',
+  // Row 82b (ruling D147 (A), (E)): the seal-time cipher - the session key `KID-<sessionId>` (`sessionKeys` create / open) and `createFragmentSealer`; never `openFragment` (the opener is evidence-verify's).
+  'src/sealing-host/session-key.ts',
   // Integration pass A (D109), row 115's mount: the opener of an `ENCRYPTED` STT credential, handed to the transcriber's key-loader.
   'src/transcription/credential-opener.ts',
 ];

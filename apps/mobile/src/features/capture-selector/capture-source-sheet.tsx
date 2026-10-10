@@ -34,17 +34,16 @@ import { cameraLineStatus, type CameraOption, type MicSelectorRow, type Selector
 import { SourceBadge } from './development-source-badge';
 import { SheetContentSignal, useSheetPresence } from '@/features/devices/use-sheet-presence';
 
-/** Task 3 row 138 (flow 12; D91): handed in as plain values — the sheet is portalled, so it reads no store itself. */
+/** Task 3 row 138 (flow 12; D131): handed in as a plain value — the sheet is portalled, so it reads no store itself. */
 export interface SourceBadgeMode {
   readonly live: boolean;
-  readonly demoControls: boolean;
 }
 
 export type SourceSheetRequest =
   | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly currentDeviceId: string; readonly options: readonly CameraOption[]; readonly badgeMode?: SourceBadgeMode }
   | { readonly kind: 'primaryMic'; readonly currentInputId: string | null; readonly inputs: readonly MicSelectorRow[]; readonly badgeMode?: SourceBadgeMode };
 
-const NO_BADGE: SourceBadgeMode = { live: false, demoControls: false };
+const NO_BADGE: SourceBadgeMode = { live: false };
 
 export interface CaptureSourceSheetProps {
   /** The field to edit, or null when closed. */

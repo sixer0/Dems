@@ -52,19 +52,24 @@ import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionSettings } from '@/motion';
 import { reportRuntimeIssue, useCoreLink } from '@/runtime';
 import { ArchiveDialog } from './archive-dialog';
+import { ItemDevelopmentBadge } from './development-source';
 import { consumeDetailIntent, useDetailIntent, type DetailTab } from './detail-intent';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { clipMsFor, mediaForEvidence, posterOf } from './evidence-media';
 import { fileSizeParts, integrityFor, isArchivable, isExportable, packageFor, packageTimeSource } from './evidence-model';
 import { ExportSheet } from './export-sheet';
 import { IntegrityTab } from './integrity-tab';
+import { readItemV2 } from './item-v2';
 import { LiveIntegrityTab } from './live-integrity-tab';
 import { MediaTab } from './media-tab';
 import { MenuItemText } from './menu-item-text';
 import { MetadataTab } from './metadata-tab';
 import { PlaySheet } from './play-sheet';
+import { SealedPlayer } from './sealed-player';
+import { TranscriptPane } from './transcript-pane';
 import { useCanArchive, useEvidenceItem, useOperatorNames } from './use-evidence-data';
 import { useEvidenceMediaRef } from './use-evidence-media-ref';
+import type { VerifyV2Answer } from './verify-v2';
 
 const TABS: readonly DetailTab[] = ['media', 'metadata', 'integrity'];
 const TAB_LABEL_KEYS: Record<DetailTab, string> = {
@@ -104,6 +109,13 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const [play, setPlay] = useState<PlayRequest | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [archiveId, setArchiveId] = useState<string | null>(null);
+  // Row 92 (M8-W3): playback of the sealed files, the transcript pane, and what the last verify run said.
+  const [sealedPlay, setSealedPlay] = useState<number | null>(null);
+  const [verified, setVerified] = useState<VerifyV2Answer | null>(null);
+  const v2 = useMemo(() => readItemV2(item), [item]);
+  // Flow 5 step 1: the Core says the sealed files can be played through a signed media session.
+  const sealedPlayback = live && mediaRef.status === 'ready' && mediaRef.media.source === 'LIVE_STREAM';
+  const hasTranscript = v2.isV2 || v2.transcript !== null || v2.transcriptSha256 !== null;
 
   // A kebab "Verify" from the list: adjust state during render, clear the intent after commit.
   if (intent && intent.seq !== handledIntent) {
@@ -207,6 +219,9 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         <View style={styles.heroChip}>
           <EvidenceStatusChip status={item.status} size="md" testID="evidence-detail-status" />
         </View>
+        <View style={styles.heroBadge}>
+          <ItemDevelopmentBadge item={item} testID="evidence-detail-development" />
+        </View>
         <View style={styles.heroText}>
           <Text maxFontSizeMultiplier={1.2} selectable style={styles.heroId} testID="evidence-detail-id">
             {item.id}
@@ -264,13 +279,27 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             {t('features.evidence.media.unavailable')}
           </Text>
         ) : tab === 'media' ? (
-          <MediaTab
-            media={media}
-            durationMs={item.durationMs}
-            clipMs={clipMsFor(pkg)}
-            onOpenCamera={(camera) => setPlay({ camera, mic: 'AUDIO-01' })}
-            onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
-          />
+          <View style={styles.mediaPanel} testID={`evidence-media-panel-${sealedPlayback ? 'sealed' : 'bundled'}`}>
+            {sealedPlayback ? (
+              <SealedPlayer
+                evidenceId={item.id}
+                durationMs={item.durationMs}
+                item={v2}
+                sources={verified?.sources ?? null}
+                failedFragments={verified?.failedFragments}
+                playToken={sealedPlay}
+              />
+            ) : (
+              <MediaTab
+                media={media}
+                durationMs={item.durationMs}
+                clipMs={clipMsFor(pkg)}
+                onOpenCamera={(camera) => setPlay({ camera, mic: 'AUDIO-01' })}
+                onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
+              />
+            )}
+            {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} operatorNames={operatorNames} /> : null}
+          </View>
         ) : tab === 'metadata' ? (
           // E2E-T-6 (E-fix FX-M2): an item without a package shows its record (the Core's in Live mode).
           <MetadataTab
@@ -287,6 +316,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             operatorNames={operatorNames}
             autoVerify={verifySeq !== null}
             bundled={pkg}
+            onV2Answer={setVerified}
           />
         ) : (
           <IntegrityTab
@@ -308,7 +338,11 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         style={styles.action}
         onPress={() => {
           triggerHaptic('primaryPress');
-          setPlay({ camera: 'VIDEO-01', mic: 'AUDIO-01' });
+          if (sealedPlayback) {
+            // The sealed files play on the Media tab, through the media session of operation 88.
+            setTab('media');
+            setSealedPlay((previous) => (previous ?? 0) + 1);
+          } else setPlay({ camera: 'VIDEO-01', mic: 'AUDIO-01' });
         }}
         testID="evidence-action-play"
       >
@@ -488,6 +522,8 @@ const styles = StyleSheet.create({
   },
   heroPane: { height: 232 },
   // A dark backing keeps the soft (15% alpha) status chip legible over a bright poster.
+  heroBadge: { position: 'absolute', top: spacing[2], left: spacing[2], borderRadius: radius.px.full, backgroundColor: withAlpha(palette.black, 0.7) },
+  mediaPanel: { gap: spacing[3] },
   heroChip: { position: 'absolute', top: spacing[2], right: spacing[2], borderRadius: radius.px.full, backgroundColor: withAlpha(palette.black, 0.7) },
   heroText: { padding: spacing[2], gap: 4 },
   heroId: { fontFamily: fontFamily.native.monoMedium, fontSize: typography.h2.size, lineHeight: typography.h2.lineHeight, color: palette.foreground },

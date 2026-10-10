@@ -242,7 +242,20 @@ function signInRefusal(failure: CoreCallFailure, view: BindingView): SignInResul
   return undefined;
 }
 
-/** CL-19: 401 → NOT_SIGNED_IN, any 403 → FORBIDDEN, 404 → NOT_FOUND, 409 → NOT_SEALED or SECURITY_FAULT, 422 → INVALID_REASON. */
+/**
+ * The reason of an export the Core refused with `409 EXPORT_IN_PROGRESS` (C3 §3 op 42, schema v2: a
+ * job of the item is still QUEUED or RUNNING). Integration pass D5; a member of `ExportResult`
+ * since pass D6. A client compares against this constant.
+ */
+export const EXPORT_IN_PROGRESS_REASON = 'EXPORT_IN_PROGRESS';
+function exportInProgress(): ExportResult {
+  return { ok: false, status: 409, reason: EXPORT_IN_PROGRESS_REASON };
+}
+
+/** What an accepted export of the Live source carries beyond `ExportResult`: the job operation 87 polls, when the 202 names it. */
+export type LiveExportAccepted = Extract<ExportResult, { ok: true }> & { readonly jobId?: string };
+
+/** CL-19: 401 → NOT_SIGNED_IN, any 403 → FORBIDDEN, 404 → NOT_FOUND, 409 → EXPORT_IN_PROGRESS, SECURITY_FAULT or NOT_SEALED, 422 → INVALID_REASON. */
 function exportRefusal(failure: CoreCallFailure): ExportResult | undefined {
   switch (failure.status) {
     case 401:
@@ -252,6 +265,7 @@ function exportRefusal(failure: CoreCallFailure): ExportResult | undefined {
     case 404:
       return { ok: false, status: 404, reason: 'NOT_FOUND' };
     case 409:
+      if (isRefusal(failure, 409, ApiErrorCode.EXPORT_IN_PROGRESS)) return exportInProgress();
       return { ok: false, status: 409, reason: isRefusal(failure, 409, ApiErrorCode.SECURITY_FAULT) ? 'SECURITY_FAULT' : 'NOT_SEALED' };
     case 422:
       return { ok: false, status: 422, reason: 'INVALID_REASON' };
@@ -268,11 +282,27 @@ function exportBody(request: ExportRequest | AuditExportRequest | undefined): { 
   };
 }
 
+/**
+ * Operation 42 only (schema v2): the kind the request names travels; a request that names none sends
+ * none, and the Core reads that as PACKAGE (so the body of a v1 caller is unchanged).
+ */
+function evidenceExportBody(request: ExportRequest | undefined): { reason: string; destination?: string; kind?: 'PACKAGE' | 'COMPOSITE' } {
+  const kind = request?.kind;
+  return { ...exportBody(request), ...(kind === 'PACKAGE' || kind === 'COMPOSITE' ? { kind } : {}) };
+}
+
 const exported = (success: CoreCallSuccess): ExportResult => ({
   ok: true,
   status: 202,
   exportId: (success.data as EvidenceExportAccepted | AuditExportAccepted).exportId,
 });
+
+/** Operation 42: as `exported`, with the job ID of the 202 when the Core names one (optional member; ruling D140). */
+const evidenceExported = (success: CoreCallSuccess): ExportResult => {
+  const jobId = (success.data as { jobId?: unknown }).jobId;
+  const accepted: LiveExportAccepted = { ...(exported(success) as LiveExportAccepted), ...(typeof jobId === 'string' && /^EXPJ-\d{6,}$/.test(jobId) ? { jobId } : {}) };
+  return accepted;
+};
 
 /** A scenario load and a reset start a new epoch: the action settles when the snapshot of that epoch is applied (CL-18). */
 const newEpoch = (success: CoreCallSuccess): ReplicaPosition => ({ epoch: (success.data as DemoEpoch).epoch, revision: 0 });
@@ -400,8 +430,8 @@ export const LIVE_BINDINGS: LiveBindings = {
   exportEvidence: {
     flow: LiveActionFlow.COMMAND,
     plan: ([evidenceId, request]) =>
-      call(operationOf('exportEvidence'), { params: { id: evidenceId }, body: exportBody(request) }, { kind: 'evidence', id: evidenceId }),
-    result: exported,
+      call(operationOf('exportEvidence'), { params: { id: evidenceId }, body: evidenceExportBody(request) }, { kind: 'evidence', id: evidenceId }),
+    result: evidenceExported,
     refusal: exportRefusal,
   },
   archiveEvidence: {
@@ -570,6 +600,12 @@ export const LIVE_BINDINGS: LiveBindings = {
   clearCaptureWarning: {
     flow: LiveActionFlow.LOCAL,
     // SH-18: nor clears one. Operation 74 (`clearFault`) stays the demo control it was.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
+  applyStorageVolume: {
+    flow: LiveActionFlow.LOCAL,
+    // CS-09 (pass D6): no client states the evidence volume; the Core measures it at boot and it arrives in slice `storage`.
     plan: () => resolve(undefined),
     result: nothing,
   },

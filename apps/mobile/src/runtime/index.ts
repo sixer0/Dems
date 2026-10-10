@@ -114,6 +114,7 @@ export {
   type MobileLive,
   type MobileLiveOptions,
   type MobileLiveSim,
+  type MobileMediaTransport,
   type MobileSimOptions,
 } from './sim-adapters';
 export {

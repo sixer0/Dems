@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createManualClock,
   createSim,
+  passCaptureStart,
   PRECHECK_TOTAL_MAX_MS,
   selectSealedHourly,
   selectSealedToday,
@@ -47,6 +48,8 @@ function harness(operator: 'budi.santoso' | 'andi.pratama' | 'rina.wijaya' | nul
   const toRecording = () => {
     toArmed();
     sim.actions.startRecording();
+    // Pass D10: a start connects its cameras first; these tests need a recording that can be stopped.
+    passCaptureStart(clock.advance, sim.tick);
   };
   return { sim, clock, state, run, auditTypes, toArmed, toRecording };
 }
@@ -306,6 +309,7 @@ describe('disallowed transitions throw SimTransitionError', () => {
     expect(() => h.sim.actions.cancel()).toThrow(SimTransitionError); // RECORDING ↛ cancel
     expect(() => h.sim.actions.beginPrecheck()).toThrow(SimTransitionError);
     expect(() => h.sim.actions.addNote('   ')).toThrow(SimTransitionError);
+    passCaptureStart(h.clock.advance, h.sim.tick);
     h.sim.actions.stopRecording('Interview completed');
     expect(() => h.sim.actions.addMarker()).toThrow(SimTransitionError); // STOPPING
     expect(sessionState(h.state())).toBe('STOPPING');

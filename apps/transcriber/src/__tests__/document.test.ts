@@ -340,3 +340,32 @@ describe('renderings (dbc-3 §B.8 `srt_sha256`, `vtt_sha256`): pure functions of
     expect(new Set([rendered.sha256, rendered.srtSha256, rendered.vttSha256]).size).toBe(3);
   });
 });
+
+// Integration pass D9 (decision D160): the provenance of the model is written as far as the Core can know it.
+describe('the model provenance of the header against its backend (ev §B.7 fields 84-87; D160)', () => {
+  const SERVER = { name: 'stand-in-model', version: null, quantisation: null, sha256: null };
+  const onServer = (): Checkpoint => ({ ...finished(), backend: 'omlx-server' });
+  const built = (checkpoint: Checkpoint, model: typeof SERVER | typeof MODEL_PROVENANCE): TranscriptDocument => buildTranscriptDocument({ checkpoint, labelling: LABELLED, model, intervals: INTERVALS });
+
+  it('a server backend: the name and three nulls; the record of the seal and the canonical bytes carry the nulls', () => {
+    const doc = built(onServer(), SERVER);
+    expect([doc.header.backend, doc.header.model]).toEqual(['omlx-server', { id: 'stand-in-model', ...SERVER }]);
+    const rendered = renderTranscript(doc);
+    expect(sealRecordOf(doc, rendered).model).toEqual({ name: 'stand-in-model', version: null, quantisation: null, modelSha256: null, params: { backend: 'omlx-server', modelId: 'stand-in-model', language: 'id' } });
+    expect(canonicalTranscriptJson(doc)).toContain('"model":{"id":"stand-in-model","name":"stand-in-model","quantisation":null,"sha256":null,"version":null}');
+  });
+
+  it('CONTROL: a server backend with an invented version, quantisation or hash is no transcript document; cpu-local with a null one is none either', () => {
+    expect(() => built(onServer(), MODEL_PROVENANCE)).toThrow();
+    expect(() => built(finished(), SERVER)).toThrow();
+    for (const member of ['version', 'quantisation', 'sha256'] as const) {
+      expect(() => built(onServer(), { ...SERVER, [member]: MODEL_PROVENANCE[member] }), member).toThrow();
+      expect(() => built(finished(), { ...MODEL_PROVENANCE, [member]: null }), member).toThrow();
+      const local = JSON.parse(JSON.stringify(build())) as { header: { model: Record<string, unknown> } };
+      local.header.model[member] = null;
+      expect(TranscriptDocumentSchema.safeParse(local).success, member).toBe(false);
+    }
+    // Unchanged for cpu-local: all four members.
+    expect(built(finished(), MODEL_PROVENANCE).header.model).toEqual({ id: 'stand-in-model', ...MODEL_PROVENANCE });
+  });
+});

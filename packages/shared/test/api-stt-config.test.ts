@@ -298,7 +298,8 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     const schema = document.components.schemas['SttConfigUpdateRequest'] as { properties: { model: { pattern?: string } } };
     expect(schema.properties.model.pattern).toBe(STT_MODEL_ID_PATTERN.source);
     // The totals after R-9..R-11 (row 132, D106; C3 §10.1): 158 -> 166 schemas, 92 -> 97 operations.
-    expect(Object.keys(document.components.schemas)).toHaveLength(166);
+    // Pass D1b (D140): the optional body of op 88 is one more schema, 166 -> 167; the operations stay 97.
+    expect(Object.keys(document.components.schemas)).toHaveLength(167);
     expect(CORE_API_OPERATIONS).toHaveLength(97);
   });
 });

@@ -31,6 +31,7 @@
 import { createHash } from 'node:crypto';
 import { sep } from 'node:path';
 import { VERIFY_REPORT_MAX_FINDINGS, VERIFY_REPORT_MAX_FRAGMENTS, type EvidenceVerifyResultBody } from '@dems/shared/api';
+import { PackageFile, packageFolderName } from '@dems/shared/evidence-package';
 import { verifyPackageV2, type FragmentOpener, type HashFactory, type PackageVerifyResult, type VerifyCheckId, type VerifyPorts } from '@dems/shared/evidence-verify';
 import { readSigningCertificate, verifyEd25519 } from '../capture';
 import type { Principal } from '../plugins/authenticate';
@@ -38,6 +39,37 @@ import { createPackageReader } from './package-reader';
 
 export { coreFragmentOpener } from './fragment-opener';
 export { PACKAGE_READ_CHUNK_BYTES, createPackageReader } from './package-reader';
+
+/** The members of an evidence item the two package predicates below read (the shared `EvidenceItem`, structurally). */
+export interface PackagedItemFacts {
+  readonly integritySource?: string | null | undefined;
+  readonly manifestVersion?: number | undefined;
+  readonly developmentSources?: boolean | null | undefined;
+  readonly signature: { readonly algorithm: string; readonly simulated: boolean };
+}
+
+/**
+ * A SEED-SEALED v2 DEMO ITEM (integration pass E3, row 82c's decision D-82c-7; ev F.2 - F.4): a demo
+ * item whose package the seed sealed INTO THIS CORE'S STORE with the product pipeline and the
+ * development key (`sealing-host/demo-seed`). `manifestVersion === 2` alone cannot tell it from one
+ * of the 14 frozen v1 demo items (the mapping derives the version from the transcript hash): what
+ * tells them apart is the SIGNATURE of the row. The frozen and the simulated items carry the
+ * stand-in pair (`SIMULATED-SHA256`, simulated); only a package that was really sealed carries an
+ * Ed25519 signature that is not simulated, and the mapping admits that pair on a `DEMO_PACKAGE` row
+ * only when it is version 2 AND marked `developmentSources: true` (`signatureFromRow`).
+ */
+export function isSeedSealedDemoItem(item: PackagedItemFacts): boolean {
+  return item.integritySource === 'DEMO_PACKAGE' && item.manifestVersion === 2 && item.developmentSources === true && item.signature.algorithm === 'Ed25519' && item.signature.simulated === false;
+}
+
+/**
+ * An item whose sealed v2 package lies in THIS Core's evidence store: a REAL seal, or a seed-sealed
+ * demo item. Every other item (the frozen v1 demo packages, the simulator's own items, a fixture's)
+ * has no folder here by design - a reader that finds none for them has found the normal state.
+ */
+export function hasSealedPackageHere(item: PackagedItemFacts): boolean {
+  return (item.integritySource === 'REAL' && item.manifestVersion === 2) || isSeedSealedDemoItem(item);
+}
 
 /** What the Core knows of a real v2 item from outside its package. */
 export interface RealEvidenceItem {
@@ -102,10 +134,27 @@ export interface RealVerification {
 
 const SESSION_FOLDER = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 
-/** `<mediaStoreDir>/<sessionId>` (spec §A.1 tree; capture spec §H). */
+/** The manifest file of a v1 package (`SESSION-<sessionId>/manifest.json`; the 14 frozen demo packages). */
+export const PACKAGE_MANIFEST_FILE_V1 = 'manifest.json';
+
+/**
+ * The folder of a session's sealed package: `<mediaStoreDir>/SESSION-<sessionId>` (evidence
+ * package spec §A.1, §A.2; decision D133 (2)). It is the one form the store scan of the reset
+ * guard lists and the sealing pipeline writes. A folder named after the session alone
+ * (`<mediaStoreDir>/<sessionId>`, the live media directory of capture spec §H) is NOT a package
+ * and is never answered here.
+ */
 export function sessionPackageDir(mediaStoreDir: string, sessionId: string): string {
   if (!SESSION_FOLDER.test(sessionId)) throw new Error('a session ID that is no folder name');
-  return `${mediaStoreDir}${sep}${sessionId}`;
+  return `${mediaStoreDir}${sep}${packageFolderName(sessionId)}`;
+}
+
+/**
+ * Where the manifest of a session's package lies, by manifest version (decision D133 (2)):
+ * v2 `SESSION-<sessionId>/session-manifest.json`, v1 `SESSION-<sessionId>/manifest.json`.
+ */
+export function sessionManifestPath(mediaStoreDir: string, sessionId: string, manifestVersion: 1 | 2): string {
+  return `${sessionPackageDir(mediaStoreDir, sessionId)}${sep}${manifestVersion === 2 ? PackageFile.MANIFEST : PACKAGE_MANIFEST_FILE_V1}`;
 }
 
 const nativeSha256: HashFactory = () => {
@@ -189,6 +238,8 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
     fragments: report.fragments.slice(0, VERIFY_REPORT_MAX_FRAGMENTS).map((fragment) => ({ ...fragment, trackId: fragment.trackId as 'VIDEO-01' | 'VIDEO-02' })),
     failedFragmentCount: report.fragments.length,
     transcriptState: { ...report.transcriptState },
+    // Decision D160: the model of the sealed transcript, when a document is sealed and the manifest is the signed one.
+    ...(report.transcriptModel === null ? {} : { transcriptModel: { ...report.transcriptModel } }),
     sources: {
       ok: report.sources.ok,
       code: report.sources.code,
@@ -197,6 +248,8 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       tracks: report.sources.tracks.map((track) => ({ ...track, trackId: track.trackId as 'VIDEO-01' | 'VIDEO-02' })),
       audioIntervals: report.sources.audioIntervals.map((interval) => ({ ...interval })),
     },
+    // Decision D147: the development-key fact, when a manifest was read. Never part of `signatureOk`.
+    ...(report.signature.developmentKey === null ? {} : { signature: { developmentKey: report.signature.developmentKey } }),
   };
 }
 

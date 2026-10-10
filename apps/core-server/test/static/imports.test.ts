@@ -64,10 +64,20 @@ const CLOSED_UNITS: readonly string[] = [
   'src/sealing',
   // Verify v2 at the Core (task 3 row 85): closed from its first day; not registered by app.ts.
   'src/evidence-verify',
+  // The export jobs and the export artefact (task 3 row 91): closed from its first day; reached through `evidenceExport(app)`, its route (op 87) is registered by modules/evidence-export.
+  'src/evidence-export',
   // The transcription composition (task 3 row 115): closed from its first day; mounted by modules/stt-config, not by app.ts.
   'src/transcription',
   // The no-device notices (task 3 row 133): closed from its first day; reached through `captureNotices(app)`, not registered by app.ts.
   'src/capture-notices',
+  // The capture of a session (task 3 row 71): closed from its first day; reached through `sessionCapture(app)`, not registered by app.ts; operation 81 is registered by modules/sessions.
+  'src/capture-session',
+  // Media streaming (task 3 row 90): closed from its first day; reached through `mediaStream(app)` / `createMediaStreamService`, its routes (op 88, the media route) are registered by modules/media-stream.
+  'src/media-stream',
+  // The transcript files of a sealed package (task 3 integration pass D4): closed from its first day; not registered by app.ts; imported by modules/transcripts (operations 84 to 86).
+  'src/transcript-package',
+  // The composition of the sealing pipeline (task 3 row 82b): closed from its first day; mounted by modules/sealing (`mountSealingHost`), which also registers its route (op 83).
+  'src/sealing-host',
   'src/plugins/',
   'src/modules/',
   'src/db/mapping',

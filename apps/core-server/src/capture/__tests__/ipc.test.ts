@@ -186,7 +186,7 @@ describe('a listener that never returns, on a real process (navigator findings F
     expect(downs()).toEqual([]);
     expect(supervisor.status().queuedEvents).toBeLessThanOrEqual(8);
     expect(supervisor.status().heartbeatAgeMs).toBeLessThan(600);
-    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toBeUndefined();
+    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toBeNull();
     await supervisor.stop(SESSION, 'STOPPED');
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: null });
   }, TEST_TIMEOUT_MS);
@@ -238,7 +238,7 @@ describe('no orphan', () => {
 
   it('a worker ends by itself when its input ends', async () => {
     const { channel, messages, exit } = rawChannel();
-    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 3 }), WAIT);
+    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 4 }), WAIT);
     const pid = channel.pid ?? -1;
     expect(alive(pid)).toBe(true);
     channel.closeInput();

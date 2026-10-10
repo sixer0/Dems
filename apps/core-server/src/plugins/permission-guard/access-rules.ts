@@ -17,6 +17,14 @@
  *      decides what a socket may see and closes an unknown or retired credential with 4401 or
  *      4403 (spec §9.2, §14.2 upgrade table). The guard writes no row for an upgrade.
  *
+ *   3. it is the evidence media route, `GET /media/:token` (`EVIDENCE_MEDIA_ROUTE_URL`): the
+ *      registry-external route of contract C3 §2.4 that serves the decrypted camera file of a
+ *      signed media session (task 3 row 90; controller ruling D140). It has no rule of its own
+ *      making: it gets THE RULE OF OPERATION 88 (`createEvidenceMediaSession`, the operation that
+ *      issues the session it serves) - the same permission, conditions and denial - at its own
+ *      method and path. A caller without that permission is refused here, with the row, before
+ *      the handler looks at the token. A registry without operation 88 gives the route no rule.
+ *
  * Every other route has no rule: `resolve` answers with a problem instead, the boot check stops
  * the start with it, and a request that reaches such a route all the same is refused.
  *
@@ -326,6 +334,23 @@ export const REALTIME_CHANNEL_RULE: AccessRule = Object.freeze({
   idPattern: null,
 });
 
+/** `operationId` of the rule of the evidence media route in log lines and denial rows. It is no registry operation. */
+export const EVIDENCE_MEDIA_STREAM_ID = 'evidenceMediaStream';
+/** The evidence media route as the router holds it (C3 §2.4; the last path segment is the signed media session token). */
+export const EVIDENCE_MEDIA_ROUTE_URL = '/media/:token';
+/** The registry operation whose rule the evidence media route gets: the one that issues the session (ruling D140). */
+export const EVIDENCE_MEDIA_SESSION_OPERATION = 'createEvidenceMediaSession' satisfies RegistryOperationId;
+
+/**
+ * The rule of the evidence media route, from the rule of operation 88 as this registry compiled
+ * it: everything of that rule but its name, its method, its path and its path parameter. Null
+ * when the registry has no usable rule for operation 88: the route then has no rule at all.
+ */
+export function evidenceMediaStreamRuleOf(session: AccessRule | AccessRuleProblem | undefined): AccessRule | null {
+  if (session === undefined || !isAccessRule(session) || session.denial === null) return null;
+  return Object.freeze({ ...session, operationId: EVIDENCE_MEDIA_STREAM_ID, method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, idPattern: null });
+}
+
 export function isAccessRule(resolved: AccessRule | AccessRuleProblem): resolved is AccessRule {
   return 'kind' in resolved;
 }
@@ -376,12 +401,16 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
   });
   const isChannel = (method: string, url: string): boolean =>
     method.toUpperCase() === REALTIME_CHANNEL_RULE.method && url === REALTIME_CHANNEL_RULE.url;
+  // Registry-external entry 3 of the header (ruling D140): made once, from this registry's operation 88.
+  const mediaStream = evidenceMediaStreamRuleOf(byId.get(EVIDENCE_MEDIA_SESSION_OPERATION));
+  const isMediaStream = (method: string, url: string): boolean => mediaStream !== null && method.toUpperCase() === mediaStream.method && url === mediaStream.url;
 
   return {
     operationIds: operations.map((operation) => operation.operationId),
 
     ruleAt(method, url) {
       if (isChannel(method, url)) return REALTIME_CHANNEL_RULE;
+      if (mediaStream !== null && isMediaStream(method, url)) return mediaStream;
       const name = routeName(method, url);
       return byRoute.get(name) ?? withoutRules(name);
     },
@@ -389,6 +418,7 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
     resolve(route) {
       const name = routeName(route.method, route.url);
       if (isChannel(route.method, route.url)) return REALTIME_CHANNEL_RULE;
+      if (mediaStream !== null && isMediaStream(route.method, route.url)) return mediaStream;
       const compiled = byRoute.get(name);
       if (compiled === undefined) {
         const claimed = route.operationId === undefined ? undefined : byId.get(route.operationId);

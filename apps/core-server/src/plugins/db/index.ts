@@ -41,6 +41,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { Pool } from 'pg';
 import { SERVICE_NAME, type DatabaseConnection } from '../../config';
+import { recordMediaStoreRoot } from '../../db/commands/media-store-root';
 import { ApiFailure, notReady } from '../error-envelope';
 import { describeError } from '../logger';
 
@@ -72,11 +73,19 @@ export const SEARCH_PATH_QUESTION = "SELECT current_setting('search_path') AS se
 /** The code of the boot failure when a pooled connection has another search path. */
 export const SEARCH_PATH_NOT_PINNED = 'SEARCH_PATH_NOT_PINNED';
 
-/** Boot step B-1 stops the boot with this. `code` names the reason; the text is fixed. */
-export class DatabaseBootError extends Error {
-  readonly code: typeof SEARCH_PATH_NOT_PINNED;
+/**
+ * ID of the boot step that writes the media store root of this Core into `core_media_store`
+ * (database contract erratum PE-0013-01). No `B-` number: it checks nothing, it records a fact.
+ */
+export const BOOT_STEP_MEDIA_STORE_ROOT = 'db.mediaStoreRoot';
+/** The code of the boot failure when that root could not be stored. */
+export const MEDIA_STORE_ROOT_NOT_RECORDED = 'MEDIA_STORE_ROOT_NOT_RECORDED';
 
-  constructor(code: typeof SEARCH_PATH_NOT_PINNED, message: string) {
+/** A boot step of this plugin stops the boot with this. `code` names the reason; the text is fixed. */
+export class DatabaseBootError extends Error {
+  readonly code: typeof SEARCH_PATH_NOT_PINNED | typeof MEDIA_STORE_ROOT_NOT_RECORDED;
+
+  constructor(code: typeof SEARCH_PATH_NOT_PINNED | typeof MEDIA_STORE_ROOT_NOT_RECORDED, message: string) {
     super(message);
     this.name = 'DatabaseBootError';
     this.code = code;
@@ -319,6 +328,35 @@ export const dbPlugin: FastifyPluginAsync<DatabasePluginOptions> = async (app, o
       if (!(await database.probe({ fresh: true }))) throw new Error('the database does not answer');
       await checkSearchPath();
     },
+  });
+
+  // WHERE THIS CORE KEEPS ITS MEDIA (database contract erratum PE-0013-01; ruling D166). The
+  // command-line reset judges the folder the server seals into; its shell may not carry the
+  // server's environment, so the server writes its media store root into the one row of
+  // `core_media_store` at every start, as the runtime role. The step is ADDED WHEN THE APP IS
+  // READY, so it runs after every step a unit registered: the schema version is checked (B-3 - a
+  // database without migration 0013 is refused there, by name, before this statement could fail)
+  // and the configuration is the one the server runs with. A root that cannot be stored stops the
+  // start: a server that kept running would leave the root of an EARLIER configuration in the
+  // table, and a reset would then judge the wrong folder. A start with the root the table already
+  // holds writes nothing.
+  app.addHook('onReady', async () => {
+    app.readiness.addBootStep({
+      id: BOOT_STEP_MEDIA_STORE_ROOT,
+      async run() {
+        try {
+          const stored = await recordMediaStoreRoot(database.pool, app.config.mediaStoreDir, app.clock.now());
+          // The line states the fact, not the path: by default the root lies below the data directory, which
+          // no log line of the server names (the owner connection file lives there). `db:reset` prints the root.
+          app.log.info({ step: BOOT_STEP_MEDIA_STORE_ROOT, recordedAt: stored.recordedAt }, 'the media store root of this Core is recorded for the command-line reset');
+        } catch (error) {
+          const description = describeError(error);
+          app.log.error({ step: BOOT_STEP_MEDIA_STORE_ROOT, code: MEDIA_STORE_ROOT_NOT_RECORDED, sqlState: description.code ?? null, errorName: description.errorName }, 'the media store root could not be recorded');
+          app.errorLog.append({ level: 'fatal', source: 'plugins.db', message: 'the media store root could not be recorded', ...description, code: MEDIA_STORE_ROOT_NOT_RECORDED, context: { step: BOOT_STEP_MEDIA_STORE_ROOT } });
+          throw new DatabaseBootError(MEDIA_STORE_ROOT_NOT_RECORDED, `${BOOT_STEP_MEDIA_STORE_ROOT}: the media store root of this Core could not be written to core_media_store.`);
+        }
+      },
+    });
   });
 
   // Registered first among the plugins, so it runs last at shutdown: `onClose` hooks run in

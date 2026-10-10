@@ -17,6 +17,18 @@
 //      the down set written out as an if-chain, an `includes`, a `Set` or a one-line table. A type
 //      union (`'ONLINE' | 'STALE' | 'OFFLINE'`, one bar) is no rule and does not fire.
 //
+// ONE NAMED ALLOWANCE under C1 (integration pass D11): the CAMERA chip of the Session Live strip
+// (row 139 / pass D7, D84). While a recording has no durable fragment yet its camera chips read
+// "Connecting" - the chip VALUE `'CONNECTING'` of a video track in
+// `features/session-live/session-live.math.ts` (the strip's model) and
+// `features/session-live/status-strip.tsx` (its label). That word is a state of a camera of the
+// recording, taken from `captureDurable` of the session; it is not the link's transient and decides
+// nothing about the offline notice. The allowance is by file AND by shape: in those two files, a
+// line that holds the quoted literal and names nothing of a link (`link`, `heartbeat`,
+// `LiveLinkState`, `RESYNCING`). Everything else fires as before: the same word in any other file,
+// an unquoted member (`LiveLinkState.CONNECTING`), a line that reads a link. The number of allowed
+// lines is pinned, so a new use is seen.
+//
 // What it cannot see, by design: a copy that names neither a transient nor STALE (for example one
 // that keys on the two-valued `coreLink.state` and on `heartbeat === 'LIVE'`); a table spread over
 // several lines; names assembled from parts; a copy outside `features/` (the runtime's own banner,
@@ -56,12 +68,26 @@ const CHECKS: Record<string, RegExp> = {
   'C3 OFFLINE and STALE in one expression or list': /\bOFFLINE\b[^;\n]*(?:\|\||,)[^;\n]*\bSTALE\b|\bSTALE\b[^;\n]*(?:\|\||,)[^;\n]*\bOFFLINE\b/,
 };
 
-/** `path:line: text` of every line of the code that a check finds. */
-function hits(pattern: RegExp): string[] {
-  return production.flatMap((file) =>
-    file.text.split('\n').flatMap((line, index) => (pattern.test(line) ? [`${file.path}:${index + 1}: ${line.trim()}`] : [])),
+/** The two files of the Session Live strip whose camera chip may read 'CONNECTING' (the allowance of C1). */
+const CAMERA_CHIP_FILES: readonly string[] = ['features/session-live/session-live.math.ts', 'features/session-live/status-strip.tsx'];
+const CHIP_LITERAL = /'CONNECTING'/;
+const LINK_WORD = /link|heartbeat|RESYNCING/i;
+
+/** True for a line of the camera chip: in one of the two files, the quoted chip value, and nothing of a link on the line. */
+function isCameraChipLine(path: string, line: string): boolean {
+  if (!CAMERA_CHIP_FILES.includes(path) || LINK_WORD.test(line)) return false;
+  // Every `CONNECTING` of the line is the quoted literal: an unquoted member (`X.CONNECTING`) is not the chip.
+  return CHIP_LITERAL.test(line) && (line.match(/\bCONNECTING\b/g) ?? []).length === (line.match(/'CONNECTING'/g) ?? []).length;
+}
+
+/** `path:line: text` of every line of `files` that a check finds; the camera chip lines are left out of C1. */
+function hitsIn(files: readonly { path: string; text: string }[], pattern: RegExp, allowChip: boolean): string[] {
+  return files.flatMap((file) =>
+    file.text.split('\n').flatMap((line, index) => (pattern.test(line) && !(allowChip && isCameraChipLine(file.path, line)) ? [`${file.path}:${index + 1}: ${line.trim()}`] : [])),
   );
 }
+
+const hits = (pattern: RegExp): string[] => hitsIn(production, pattern, pattern === CHECKS['C1 a transient link state by name']);
 
 const fires = (pattern: RegExp, text: string): boolean => code(text).split('\n').some((line) => pattern.test(line));
 
@@ -129,6 +155,28 @@ describe('no screen writes its own offline-notice rule (CPM1-3; the one rule is 
     for (const line of quiet) {
       for (const [name, pattern] of Object.entries(CHECKS)) expect([name, line, fires(pattern, line)]).toEqual([name, line, false]);
     }
+  });
+
+  it('the allowance of C1 is the camera chip and nothing else (pass D11): five lines in two files; the same word about a link, in another file, or as a member still fires', () => {
+    const c1 = CHECKS['C1 a transient link state by name'] as RegExp;
+    // What is allowed today, by file: the chip's type, its value (two lines), its tone; the label of the strip.
+    const allowed = production.flatMap((file) => file.text.split('\n').filter((line) => c1.test(line) && isCameraChipLine(file.path, line)).map(() => file.path));
+    expect(allowed).toEqual([...Array.from({ length: 4 }, () => CAMERA_CHIP_FILES[0]), CAMERA_CHIP_FILES[1]]);
+
+    const planted = (path: string, line: string): string[] => hitsIn([{ path, text: code(line) }], c1, true);
+    const [math, strip] = CAMERA_CHIP_FILES as [string, string];
+    // CONTROL: the chip's own lines are quiet in the two files ...
+    expect(planted(math, "tone: value === 'OFFLINE' ? 'danger' : value === 'CONNECTING' ? 'info' : TRACK_TONE[value],")).toEqual([]);
+    expect(planted(strip, ": chip.value === 'CONNECTING'")).toEqual([]);
+    // ... and fire anywhere else: the allowance is by name.
+    expect(planted('features/session-live/use-monitor.ts', ": chip.value === 'CONNECTING'")).toHaveLength(1);
+    expect(planted('features/login/login-live-model.ts', "if (value === 'CONNECTING') return shown;")).toHaveLength(1);
+    // A copy of the notice rule inside the two files still fires: it reads a link, or names the member, or the other transient.
+    expect(planted(math, "if (link.heartbeat === 'CONNECTING') return current;")).toHaveLength(1);
+    expect(planted(math, "if (coreLink.state === 'CONNECTING') return shown;")).toHaveLength(1);
+    expect(planted(strip, 'case LiveLinkState.CONNECTING:')).toHaveLength(1);
+    expect(planted(strip, "if (state === 'CONNECTING' || state === 'RESYNCING') return shown;")).toHaveLength(1);
+    expect(planted(math, "const settling = value === 'CONNECTING' || other === TrackState.CONNECTING;")).toHaveLength(1);
   });
 
   for (const [name, pattern] of Object.entries(CHECKS)) {

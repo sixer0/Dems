@@ -165,3 +165,34 @@ export function developmentSourceLabelOf(operation: CaptureOperation, deviceClas
   if (deviceClass === 'CAMERA') return DevelopmentSourceLabel.LOCAL_CAMERA;
   return deviceClass === 'MIC' ? DevelopmentSourceLabel.LOCAL_MICROPHONE : DevelopmentSourceLabel.TEST_SOURCE;
 }
+
+// ── The open local sources: who is told, and the short pre-check open (row 140; SEC35-44 (4)) ─────
+// Kept in this file, not in the registry's: the file that builds the test sources holds no error
+// path at all (static rule G-R14: a local device is never replaced by a fake in one).
+
+/** Calls every listener. One that throws is handed to `failed` and the others are still told: an open or a close of a source is never stopped by a listener. */
+export function tellEach(listeners: Iterable<() => void>, failed: (err: unknown) => void): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch (err) {
+      failed(err);
+    }
+  }
+}
+
+/**
+ * Runs `work` with `deviceId` in the set of short opens, telling `changed` when it enters and when
+ * it leaves - also when `work` rejects: a local device never stays "on" after its short open ended.
+ */
+export async function whileShortOpen<Value>(open: Set<string>, deviceId: string, changed: () => void, work: () => Promise<Value>): Promise<Value> {
+  open.add(deviceId);
+  changed();
+  try {
+    return await work();
+  } finally {
+    open.delete(deviceId);
+    changed();
+  }
+}
+

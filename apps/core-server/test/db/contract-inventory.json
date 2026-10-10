@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -2601,6 +2601,12 @@
           "type": "jsonb",
           "notNull": false,
           "default": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
         }
       ],
       "constraints": [
@@ -2628,6 +2634,11 @@
           "name": "alerts_kind_check",
           "kind": "CHECK",
           "definition": "\"alerts\".\"severity\" IN ('INFO', 'SUCCESS', 'WARNING', 'CRITICAL') AND (\"alerts\".\"kind\" = 'SYSTEM' OR \"alerts\".\"kind\" IN ('CAMERA_LOSS', 'MIC_NO_SIGNAL', 'MIC_CLIP', 'STORAGE_LOW', 'STORAGE_FULL', 'GNSS_LOSS', 'TAMPER', 'FAN_STALL', 'POWER_FAIL', 'TPM_FAILURE', 'SECURITY_FAULT', 'AUDIT_TAMPER', 'MIC_SILENT', 'CAPTURE_FAULT'))"
+        },
+        {
+          "name": "alerts_reason_check",
+          "kind": "CHECK",
+          "definition": "\"alerts\".\"reason\" IS NULL OR \"alerts\".\"reason\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
         }
       ]
     },
@@ -4274,11 +4285,6 @@
           "definition": "char_length(\"transcript_revisions\".\"reason\") BETWEEN 5 AND 500"
         },
         {
-          "name": "transcript_revisions_key_id_check",
-          "kind": "CHECK",
-          "definition": "\"transcript_revisions\".\"signature_key_id\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
-        },
-        {
           "name": "transcript_revisions_certificate_check",
           "kind": "CHECK",
           "definition": "\"transcript_revisions\".\"signature_certificate_sha256\" IS NULL OR \"transcript_revisions\".\"signature_certificate_sha256\" ~ '^[0-9a-f]{64}$'"
@@ -4302,6 +4308,11 @@
           "name": "transcript_revisions_author_id_fkey",
           "kind": "FOREIGN KEY",
           "definition": "(author_id) REFERENCES operators (id)"
+        },
+        {
+          "name": "transcript_revisions_key_id_check",
+          "kind": "CHECK",
+          "definition": "\"transcript_revisions\".\"signature_key_id\" ~ '^[A-Z0-9][A-Z0-9_-]{0,63}$'"
         }
       ]
     },
@@ -4745,16 +4756,57 @@
           "definition": "\"session_stt_config\".\"config_revision\" >= 1"
         }
       ]
+    },
+    {
+      "id": "T-43",
+      "name": "core_media_store",
+      "columns": [
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "notNull": true,
+          "default": "true"
+        },
+        {
+          "name": "media_root",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "recorded_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "core_media_store_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(singleton)"
+        },
+        {
+          "name": "core_media_store_singleton_check",
+          "kind": "CHECK",
+          "definition": "\"core_media_store\".\"singleton\""
+        },
+        {
+          "name": "core_media_store_root_check",
+          "kind": "CHECK",
+          "definition": "char_length(\"core_media_store\".\"media_root\") BETWEEN 1 AND 1024 AND \"core_media_store\".\"media_root\" ~ '^/[^[:cntrl:]]*$' AND position('://' in \"core_media_store\".\"media_root\") = 0"
+        }
+      ]
     }
   ],
   "counts": {
-    "tables": 42,
-    "columns": 436,
-    "primaryKeys": 42,
+    "tables": 43,
+    "columns": 440,
+    "primaryKeys": 43,
     "foreignKeys": 40,
     "uniques": 15,
     "uniqueIndexes": 4,
     "indexes": 23,
-    "checks": 179
+    "checks": 182
   }
 }

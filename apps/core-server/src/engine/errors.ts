@@ -101,8 +101,8 @@ function isRefusedSimCode(code: SimErrorCode): code is RefusedSimCode {
  * (an unexpected failure: the caller lets it propagate and the request answers 500).
  *
  * `details` carries `simCode` and, as spec §7.2 lists them, `permission` of a permission refusal
- * and `from` and `event` of a refused transition: names of the vocabulary, never a part of the
- * input. `message`, when given, replaces the general text (a module knows its own wording).
+ * and `from` and `event` of a refused transition - with its `reason` when the simulator named one
+ * (`CAPTURE_NOT_DURABLE`): names of the vocabulary, never a part of the input. `message`, when given, replaces the general text (a module knows its own wording).
  */
 export function simRefusal(error: unknown, message?: string): ApiFailure | null {
   const simCode = simErrorCode(error);
@@ -113,6 +113,8 @@ export function simRefusal(error: unknown, message?: string): ApiFailure | null 
   if (error instanceof SimTransitionError) {
     details['from'] = error.from;
     details['event'] = error.event;
+    // The named reason of a refused transition (pass D11): `CAPTURE_NOT_DURABLE` of a stop while the cameras connect - a code of the vocabulary.
+    if (error.reason !== null) details['reason'] = error.reason;
   }
   return new ApiFailure(rule.status, rule.code, message ?? rule.message, { details: details as ErrorDetails, cause: error });
 }

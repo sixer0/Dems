@@ -601,10 +601,19 @@ describe('CAPTURE IS NOT ON THIS PATH: the step cannot touch a fragment', () => 
 
   it('no production file of `src/sealing` imports the capture unit, the capture worker or a process; the step has no capture port', () => {
     const files = production(root);
-    expect(files.map((file) => file.slice(root.length + 1)).sort()).toEqual(['finalize-transcript/bounds.ts', 'finalize-transcript/commit.ts', 'finalize-transcript/contract.ts', 'finalize-transcript/document.ts', 'finalize-transcript/files.ts', 'finalize-transcript/handler.ts', 'index.ts', 'step-journal.ts']);
+    // Row 82 added the pipeline to this unit (`pipeline/`, `signing.ts`, `dev-key-cli.ts`): the list is pinned whole.
+    expect(files.map((file) => file.slice(root.length + 1)).sort()).toEqual(['dev-key-cli.ts', 'finalize-transcript/bounds.ts', 'finalize-transcript/commit.ts', 'finalize-transcript/contract.ts', 'finalize-transcript/document.ts', 'finalize-transcript/files.ts', 'finalize-transcript/handler.ts', 'index.ts', 'pipeline/camera-files.ts', 'pipeline/contract.ts', 'pipeline/controller.ts', 'pipeline/package-writer.ts', 'pipeline/pipeline.ts', 'signing.ts', 'step-journal.ts']);
     const imports = files.flatMap((file) => [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)].map((match) => `${file.slice(root.length + 1)} <- ${match[1] ?? ''}`));
     expect(imports.length).toBeGreaterThan(10);
-    expect(imports.filter((line) => /capture|child_process|node:net|node:dgram|worker/.test(line.split(' <- ')[1] ?? ''))).toEqual([]);
+    const reaching = imports.filter((line) => /capture|child_process|node:net|node:dgram|worker/.test(line.split(' <- ')[1] ?? ''));
+    // THE STEP (this test's subject) and the journal still reach nothing of capture. Since row 82 the
+    // unit also holds the pipeline, whose first two steps READ the camera files through the capture
+    // unit's index (box walk, signer): those importers are pinned by name, and none of them - and no
+    // other file of the unit - names a process, a socket or the worker.
+    expect(reaching.filter((line) => line.startsWith('finalize-transcript/') || line.startsWith('step-journal.ts'))).toEqual([]);
+    expect(reaching.map((line) => line.split(' <- ')[0]).filter((file, index, all) => all.indexOf(file) === index).sort()).toEqual(['dev-key-cli.ts', 'pipeline/camera-files.ts', 'pipeline/contract.ts', 'pipeline/pipeline.ts', 'signing.ts']);
+    expect(reaching.map((line) => line.split(' <- ')[1])).toEqual(reaching.map(() => '../../capture').map((path, index) => (reaching[index]?.startsWith('pipeline/') ? path : '../capture')));
+    expect(imports.filter((line) => /child_process|node:net|node:dgram|node:worker|capture-worker/.test(line.split(' <- ')[1] ?? ''))).toEqual([]);
     // POSITIVE CONTROL of the pattern: it does see an import of the capture unit.
     expect(/capture|child_process/.test("../../capture")).toBe(true);
     const r = rig();

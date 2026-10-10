@@ -60,4 +60,11 @@ export const READ_REVISION_HEAD = 'SELECT revision_no, sha256 FROM public.transc
 /** One signed revision, appended. No conflict clause: a taken number must fail (23505). */
 export const INSERT_TRANSCRIPT_REVISION = `INSERT INTO public.transcript_revisions (${REVISION_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`;
 
+/**
+ * The newest revision number of every item that has a revision, with what its sealed transcript row
+ * says (integration pass D11: the heads a start of the Core publishes on the replicated items).
+ */
+export const READ_REVISION_HEADS =
+  'SELECT r.evidence_id, max(r.revision_no) AS revision, t.json_sha256, t.labels_status FROM public.transcript_revisions r JOIN public.transcripts t ON t.evidence_id = r.evidence_id GROUP BY r.evidence_id, t.json_sha256, t.labels_status ORDER BY r.evidence_id';
+
 export const READ_TRANSCRIPT_REVISIONS = `SELECT ${REVISION_COLUMNS} FROM public.transcript_revisions WHERE evidence_id = $1 ORDER BY revision_no`;

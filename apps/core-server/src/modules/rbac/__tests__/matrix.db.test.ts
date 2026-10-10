@@ -168,7 +168,11 @@ describe('AC-B-16, unit form: the decision for all 75 operations with a principa
     }
     const needed: readonly string[] = access.kind === CoreApiAccessKind.PERMISSION ? [access.permission] : access.permissions;
     const holds = stored.grants.some((grant) => grant.role === principal.role && needed.includes(grant.permission));
-    return holds ? 'ALLOW' : 'NOT_PERMITTED';
+    // C3 §0 / §2.6 (erratum PE-121-04; D80(3)): an operation with WEB_CONSOLE_SESSION is refused to a
+    // session bound to a paired device, whatever the role holds (pass D1a, D132: this derivation had
+    // not learnt the condition; the guard was right). Read from the registry entry.
+    const webConsoleOnly = access.kind === CoreApiAccessKind.PERMISSION && (access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION);
+    return holds && !(webConsoleOnly && principal.deviceId !== null) ? 'ALLOW' : 'NOT_PERMITTED';
   }
 
   beforeAll(async () => {
@@ -185,6 +189,30 @@ describe('AC-B-16, unit form: the decision for all 75 operations with a principa
       if (got !== want) wrong.push(`${operation.operationId}: ${got}, expected ${want}`);
     }
     expect(wrong).toEqual([]);
+  });
+
+  it('ops 89 / 95 / 96 (C3 §2.6 access column: CAPTURE_CONFIG + WEB_CONSOLE_SESSION): SUPERVISOR and TECHNICIAN from a web console session only; a device session and INVESTIGATOR stay refused', () => {
+    const cells = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'].flatMap((operationId) =>
+      ROLES.flatMap((role) =>
+        [null, 'DEV-0001'].map((deviceId) => {
+          const principal = operator(role, deviceId) as Extract<Principal, { kind: 'OPERATOR' }>;
+          const decision = decideAccess(ruleOf(operationId), { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: principal.operatorId });
+          return `${operationId} ${role} ${deviceId ?? 'web'}: ${decision.allowed ? 'ALLOW' : `${decision.refusal.kind}${'reason' in decision.refusal && decision.refusal.reason ? ` ${String(decision.refusal.reason)}` : ''}`}`;
+        }),
+      ),
+    );
+    const want = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'].flatMap((operationId) =>
+      ROLES.flatMap((role) => {
+        const holds = (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG);
+        return [`${operationId} ${role} web: ${holds ? 'ALLOW' : 'NOT_PERMITTED'}`, `${operationId} ${role} DEV-0001: ${holds ? 'NOT_PERMITTED WEB_CONSOLE_ONLY' : 'NOT_PERMITTED'}`];
+      }),
+    );
+    expect(cells).toEqual(want);
+    // The role table itself, stated: exactly these two roles hold the permission (C3 §4, line "CAPTURE_CONFIG (discovery and connect flow)").
+    expect(ROLES.filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['SUPERVISOR', 'TECHNICIAN']);
+    // Control: an operation with the same permission and no condition is allowed from the device session.
+    const tablet = operator(OperatorRole.SUPERVISOR, 'DEV-0001') as Extract<Principal, { kind: 'OPERATOR' }>;
+    expect(decideAccess(ruleOf('startCaptureDiscovery'), { principal: tablet, consoleIdentity: true, demoControls: true, sessionCreatorId: tablet.operatorId }).allowed).toBe(true);
   });
 
   it('the denied cells of each role: what the guard refuses equals, cell for cell, what the shared role table says the role lacks', () => {

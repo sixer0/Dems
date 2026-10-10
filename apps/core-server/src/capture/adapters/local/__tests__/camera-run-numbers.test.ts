@@ -121,3 +121,40 @@ describe('the bound of the attended step: at most 10 s of the camera, and a file
     expect(analyse(empty, '--seconds', 10).bound).toMatchObject({ pass: false, camera_recorded_s_upper_bound: null });
   });
 });
+
+// ── Row 140 (decision D136 (3)): how row 60's fixed-grid check is REPORTED for a camera run ────────
+// Generated interval lists only (numbers in milliseconds): no media, no device, no worker.
+describe('row 60\'s fixed-grid check for a variable-rate development source is reported "not applicable" with the count of close frame pairs', () => {
+  interface GridReport {
+    row60_fixed_grid_check: string;
+    row60_fixed_grid_check_applies: boolean;
+    row60_fixed_grid_check_raw_result: boolean;
+    row60_decode_error_lines: number;
+    close_frame_pairs_under_16_67_ms: number;
+    close_pair_threshold_ms: number;
+  }
+  const report = (rate: 'variable' | 'fixed', ok60: boolean, errorLines: number, intervals: readonly number[]): GridReport =>
+    JSON.parse(execFileSync('python3', [SCRIPT, 'fixed-grid', rate, ok60 ? '1' : '0', String(errorLines), ...intervals.map(String)], { encoding: 'utf8' })) as GridReport;
+  // The shape of the user's run (D130): intervals between 12.94 and 48.39 ms; three of these six are under 16.67 ms.
+  const VARIABLE = [12.94, 35.33, 48.39, 14.2, 33.3, 16.6];
+
+  it('this Mac\'s camera (variable rate): "not applicable", 3 close pairs counted, the raw result and the error lines kept beside it', () => {
+    expect(report('variable', false, 3, VARIABLE)).toEqual({
+      row60_fixed_grid_check: 'not applicable - variable-rate development source',
+      row60_fixed_grid_check_applies: false,
+      row60_fixed_grid_check_raw_result: false,
+      row60_decode_error_lines: 3,
+      close_frame_pairs_under_16_67_ms: 3,
+      close_pair_threshold_ms: 16.67,
+    });
+  });
+
+  it('CONTROL - the check is NOT weakened for a fixed-rate source: the same failing result is reported as "fail" and applies', () => {
+    expect(report('fixed', false, 3, VARIABLE)).toMatchObject({ row60_fixed_grid_check: 'fail', row60_fixed_grid_check_applies: true, close_frame_pairs_under_16_67_ms: 3 });
+    expect(report('fixed', true, 0, [33.33, 33.33, 33.34])).toMatchObject({ row60_fixed_grid_check: 'pass', row60_fixed_grid_check_applies: true, close_frame_pairs_under_16_67_ms: 0 });
+  });
+
+  it('the threshold is half a frame period: 16.66 ms is a close pair, 16.67 ms is not', () => {
+    expect(report('variable', true, 0, [16.66, 16.67, 33.33]).close_frame_pairs_under_16_67_ms).toBe(1);
+  });
+});

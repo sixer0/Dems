@@ -85,7 +85,10 @@ function recorded(bed: LiveTestBed, name: keyof typeof RECORDED_VERIFY_V2, evide
 
 const card = () => screen.getByTestId('evidence-verify-card')
 const chip = () => within(card()).getByTestId('evidence-verdict')
-const drawnRows = () => Array.from(card().querySelectorAll<HTMLElement>('[data-check]')).map((row) => `${row.dataset.check}:${row.dataset.phase}`)
+/** The rows of the result (camera files, transcript, manifest, signature) — or, before an answer, any row at all. */
+const drawnRows = () => Array.from((screen.queryByTestId('evidence-v2-rows') ?? card()).querySelectorAll<HTMLElement>('[data-check]')).map((row) => `${row.dataset.check}:${row.dataset.phase}`)
+const drawnChecks = () => Array.from(screen.getByTestId('evidence-v2-checks').querySelectorAll<HTMLElement>('[data-check]')).map((row) => `${row.dataset.check}:${row.dataset.status}`)
+const SPEC_LINE = 'VIDEO-02 fragment 3 tampered (stored-bytes hash mismatch; chain broken from fragment 3)'
 const requests = (operationId: string) => opened!.bed.fake.log.requestsOf(operationId)
 const demoRequests = () => opened!.bed.fake.log.requests.filter((call) => call.operationId !== null && DEMO_OPERATIONS.includes(call.operationId))
 
@@ -118,6 +121,11 @@ describe('a schema-v2 item, while the Core has not answered', () => {
     await waitFor(() => expect(chip()).toHaveAttribute('data-verdict', 'PASS'), UI)
     // Whole, in the commit that has the verdict: no row is pending or running at any time.
     expect(drawnRows()).toEqual(['file:VIDEO-01:pass', 'file:VIDEO-02:pass', 'transcript:pass', 'manifest:pass', 'signature:pass'])
+    // Row 92: the whole report of operation 41 arrives with it — 15 checks, and the source line first.
+    expect(drawnChecks()).toHaveLength(15)
+    expect(drawnChecks().every((check) => check.endsWith(':PASS'))).toBe(true)
+    expect(screen.getByTestId('evidence-verify-v2').firstElementChild).toBe(screen.getByTestId('evidence-v2-sources'))
+    expect(screen.getByTestId('evidence-v2-sources')).toHaveTextContent(en.common.sourceClass.verify.development)
     expect(screen.queryByTestId('evidence-verify-v2-waiting')).toBeNull()
     expect(screen.queryByTestId('evidence-checks')).toBeNull()
     expect(requests('verifyEvidence')).toHaveLength(1)
@@ -128,7 +136,7 @@ describe('a schema-v2 item, while the Core has not answered', () => {
 })
 
 describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
-  it("the Core's FAIL is FAIL on the chip, on the file's row and in the toast; the other rows pass; today's answer names no fragment", async () => {
+  it("the Core's FAIL is FAIL on the chip, on the file's row and in the toast; the other rows pass; the answer names the fragment", async () => {
     const { bed } = await openV2Integrity(EV.tampered)
     bed.fake.answer('verifyEvidence', (call) => ({ status: 200, body: recorded(bed, 'tamperedFragment', call.params.id ?? '') }))
 
@@ -137,7 +145,9 @@ describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
     expect(screen.getByTestId('evidence-verify-v2')).toHaveAttribute('data-verdict', 'FAIL')
     expect(drawnRows()).toEqual(['file:VIDEO-01:pass', 'file:VIDEO-02:fail', 'transcript:pass', 'manifest:pass', 'signature:pass'])
     expect(card().querySelector('[data-check="file:VIDEO-02"]')).toHaveTextContent('Stored bytes FAIL · decrypted bytes FAIL · fragment chain FAIL')
-    expect(screen.getByTestId('evidence-v2-fragment-not-named')).toHaveTextContent(V2.fragment.notNamed)
+    expect(screen.getByTestId('evidence-v2-fragments')).toHaveTextContent(SPEC_LINE)
+    expect(screen.queryByTestId('evidence-v2-fragment-not-named')).toBeNull()
+    expect(drawnChecks().filter((check) => check.endsWith(':FAIL'))).toEqual(['V-04:FAIL', 'V-06:FAIL', 'V-08:FAIL'])
     expect(toastWith(en.evidence.verify.toastFail.replace('{{id}}', EV.tampered).replace('{{checks}}', 'VIDEO-02'))).toHaveLength(1)
     expect(toastWith('PASS')).toHaveLength(0)
     expect(requests('verifyEvidence')).toHaveLength(1)

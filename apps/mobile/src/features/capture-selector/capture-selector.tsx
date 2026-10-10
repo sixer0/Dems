@@ -217,7 +217,7 @@ interface LineBadgeProps {
   sourceClass: string | null;
   adapter: string | null;
   deviceKind: 'CAMERA' | 'MIC';
-  mode: { readonly live: boolean; readonly demoControls: boolean };
+  mode: { readonly live: boolean };
   testID: string;
 }
 

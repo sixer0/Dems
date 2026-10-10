@@ -55,8 +55,9 @@ const LOG_CALL = /\blog\s*\.\s*(?:trace|debug|info|warn|error|fatal)\s*\(\s*(\{[
 const IMPORT_FROM = /from\s+'([^']+)'/g;
 
 describe('the scan itself', () => {
-  it('reads the seven production sources of the module', () => {
+  it('reads the eight production sources of the module', () => {
     expect(own.map((file) => file.path)).toEqual([
+      'src/modules/sessions/audio-intervals.ts',
       'src/modules/sessions/current.ts',
       'src/modules/sessions/history.ts',
       'src/modules/sessions/index.ts',
@@ -109,11 +110,13 @@ describe('rule M3: who may call is stage 6, only', () => {
   it('the principal is only ever handed on, as it is, to the engine: every use of it is an argument of a hosted command', () => {
     const uses = places(/\brequest\s*\.\s*principal\b/g);
     expect(files(/\brequest\s*\.\s*principal\b/g)).toEqual(['src/modules/sessions/routes.ts']);
-    const handedOn = places(/\.\s*command\s*\(\s*request\s*\.\s*principal\s*,/g);
+    // Task 3 row 71: operation 81 hands it on, as it is, to the capture-session unit (which names the actor and the sending device of the switch).
+    const handedOn = places(/\.\s*(?:command|switchAudioSource)\s*\(\s*request\s*\.\s*principal\s*,/g);
     expect(handedOn).toEqual(uses);
+    expect(places(/\.\s*switchAudioSource\s*\(\s*request\s*\.\s*principal\s*,/g)).toHaveLength(1);
     // Thirteen call sites: the three steps of the composite start, the shared handler of the
     // three transitions, and one for each of the other nine commands.
-    expect(uses).toHaveLength(13);
+    expect(uses).toHaveLength(14);
   });
 
   it('the module writes no denial row and takes no place in the denial budget: both are the guard\'s', () => {
@@ -141,8 +144,10 @@ describe('rules M4 and M5: a command is the engine host\'s', () => {
     const routes = textOf('src/modules/sessions/routes.ts');
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*command\s*\(/g)).toHaveLength(3);
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*run\s*\(/g)).toHaveLength(1);
-    // The two reads of the committed state: the open session after a create, and the monitor.
-    expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*(?:state|slice)\s*\(/g)).toHaveLength(2);
+    // The three reads of the committed state: the open session after a create, the monitor, and
+    // the open session of operation 82 (integration pass D4). Pass D6 (F-D4-4): + 2 in operation 81's
+    // one line - the open session and the selector, for `409 AUDIO_SOURCE_CONFLICT` in simulated capture.
+    expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*(?:state|slice)\s*\(/g)).toHaveLength(5);
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*\w+/g)?.every((call) => /\.(?:command|run|state|slice)$/.test(call))).toBe(true);
   });
 
@@ -153,12 +158,13 @@ describe('rules M4 and M5: a command is the engine host\'s', () => {
     expect(routes).not.toMatch(/return\s+scope\s*\.\s*pending/);
   });
 
-  it('the one statement of the module is a read: the history page, through the typed builder on the pool the pool plugin\'s helper hands over', () => {
-    expect(files(/\.\s*select\s*\(/g)).toEqual(['src/modules/sessions/history.ts']);
-    expect(places(/\.\s*select\s*\(/g)).toHaveLength(1);
+  it('the two statements of the module are reads: the history page and the audio-source intervals (operation 82), through the typed builder on the pool the pool plugin\'s helper hands over', () => {
+    expect(files(/\.\s*select\s*\(/g)).toEqual(['src/modules/sessions/audio-intervals.ts', 'src/modules/sessions/history.ts']);
+    expect(places(/\.\s*select\s*\(/g)).toHaveLength(2);
     // `app.db.read` (review finding CPB1-8): the module keeps no pool and probes nothing itself.
-    expect(files(/\bapp\s*\.\s*db\s*\.\s*read\s*\(/g)).toEqual(['src/modules/sessions/history.ts']);
+    expect(files(/\bapp\s*\.\s*db\s*\.\s*read\s*\(/g)).toEqual(['src/modules/sessions/audio-intervals.ts', 'src/modules/sessions/history.ts']);
     expect(places(/\bapp\s*\.\s*db\s*\.\s*read\s*\(HISTORY_READ_SOURCE, .*, request\);/g)).toHaveLength(1);
+    expect(places(/\bapp\s*\.\s*db\s*\.\s*read\s*\(INTERVALS_READ_SOURCE, .*, request\);/g)).toHaveLength(1);
     expect(files(/\bapp\s*\.\s*db\s*\.\s*(?:pool|probe)\b/g)).toEqual([]);
   });
 });
@@ -207,7 +213,9 @@ describe('decision D94: one error precedence for the two texts the hosted action
     expect(routes()).toMatch(/const reason = body\.kind === 'VALID' \? body\.value\.reason : NO_TEXT;/);
     expect(routes()).toMatch(/const text = body\.kind === 'VALID' \? body\.value\.text : NO_TEXT;/);
     // In those two handlers nothing else of the body is read: the action gets `reason` or `text`.
-    expect(routes().match(/\brequest\s*\.\s*body\b/g)).toHaveLength(5);
+    // (the sixth read is operation 81's `inputId`, validated by the route's body schema; the seventh
+    // is the same `inputId` in the 409 rule of pass D6)
+    expect(routes().match(/\brequest\s*\.\s*body\b/g)).toHaveLength(7);
     expect(places(/\brequest\s*\.\s*body\b/g).every((place) => place.startsWith('src/modules/sessions/routes.ts'))).toBe(true);
   });
 
@@ -231,6 +239,7 @@ describe('what the module depends on', () => {
       }
     }
     // `../../capture-notices`: the gate of a pre-check run (task 3 row 133; C3 §3.1).
-    expect([...imported].sort()).toEqual(['../../capture-notices', '../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard']);
+    // `../../capture-session`: the capture of a real recording and operation 81 (task 3 row 71).
+    expect([...imported].sort()).toEqual(['../../capture-notices', '../../capture-session', '../../db/mapping', '../../db/schema', '../../engine', '../../plugins/error-envelope', '../../plugins/permission-guard']);
   });
 });

@@ -266,6 +266,8 @@ describe('the export subpath @dems/shared/live/source', () => {
       'CAPTURE_CONFIG_CHANGE_OPERATION_INDEX',
       'DEVICE_COMMAND_OPERATION_INDEX',
       'ENVELOPE_SIM_CODE',
+      // Pass D5 exported it (the reason of `409 EXPORT_IN_PROGRESS`); a member of `ExportResult` since pass D6.
+      'EXPORT_IN_PROGRESS_REASON',
       'LIVE_BINDINGS',
       'LIVE_BINDING_NAMES',
       'LIVE_BOOT_TIMEOUT_MS',

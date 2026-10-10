@@ -37,6 +37,7 @@
  * missing stretch is absent, never made up.
  */
 import { createHash } from 'node:crypto';
+import { transcriptModelFaults } from '@dems/shared/evidence-package';
 import { canonicalJSON } from '@dems/shared/sim';
 import { z } from 'zod';
 import { TRANSCRIBER_BACKEND_IDS, TRANSCRIBER_LANGUAGE } from '../types';
@@ -56,14 +57,26 @@ export type TranscriptPartialReason = (typeof TranscriptPartialReason)[keyof typ
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 const wholeMs = z.number().int().nonnegative();
 
-/** The provenance of the STT model (ev §B.7 fields 84-87; `transcripts.model`). Given by the Core; never a path. */
+/**
+ * The provenance of the STT model (ev §B.7 fields 84-87; `transcripts.model`). Given by the Core;
+ * never a path. RECORDED AS FAR AS THE CORE CAN KNOW IT (decision D160): `version`, `quantisation`
+ * and `sha256` are null exactly when the backend of the document is a SERVER (the Core reads no
+ * model file of it), and set for every other backend. The members alone cannot say which: the
+ * rule is held against the document's `backend` (`modelProvenanceFault`, the shared
+ * `transcriptModelFaults`).
+ */
 export const TranscriptModelProvenanceSchema = z.strictObject({
   name: z.string().min(1),
-  version: z.string().min(1),
-  quantisation: z.string().min(1),
-  sha256: hex64,
+  version: z.string().min(1).nullable(),
+  quantisation: z.string().min(1).nullable(),
+  sha256: hex64.nullable(),
 });
 export type TranscriptModelProvenance = z.output<typeof TranscriptModelProvenanceSchema>;
+
+/** The first member of a provenance that the backend does not allow as it is, or null. A member name, never a value. */
+export function modelProvenanceFault(backend: string, model: TranscriptModelProvenance): string | null {
+  return transcriptModelFaults(backend, model)[0]?.member ?? null;
+}
 
 const DiarizationEngineSchema = z.strictObject({
   engine: z.string().min(1),
@@ -106,6 +119,9 @@ export const TranscriptDocumentSchema = z
   })
   // The rules that tie the members together: a document that breaks one is not a transcript document.
   .refine((doc) => doc.segments.every((segment, index) => segment.index === index && segment.end_ms > segment.start_ms), { message: 'segments are numbered in order and have a positive length' })
+  .refine((doc) => modelProvenanceFault(doc.header.backend, { name: doc.header.model.name, version: doc.header.model.version, quantisation: doc.header.model.quantisation, sha256: doc.header.model.sha256 }) === null, {
+    message: 'the model version, quantisation and file hash are null exactly for a server backend',
+  })
   .refine((doc) => (doc.header.state === TranscriptDocumentState.PARTIAL) === (doc.header.partial_reason !== null), { message: 'PARTIAL carries its reason, ASSEMBLED carries none' })
   .refine((doc) => doc.header.failed_chunks === 0 || doc.header.state === TranscriptDocumentState.PARTIAL, { message: 'a failed chunk makes the document PARTIAL' })
   .refine((doc) => (doc.speaker_state === SpeakerState.UNAVAILABLE) === (doc.header.speaker_reason !== null), { message: 'UNAVAILABLE carries its reason, LABELLED carries none' })
@@ -241,7 +257,7 @@ export interface TranscriptSealRecord {
   readonly srtSha256: string;
   readonly vttSha256: string;
   /** `transcripts.model` (ev fields 84-87). */
-  readonly model: { readonly name: string; readonly version: string; readonly quantisation: string; readonly modelSha256: string; readonly params: { readonly backend: string; readonly modelId: string; readonly language: string } };
+  readonly model: { readonly name: string; readonly version: string | null; readonly quantisation: string | null; readonly modelSha256: string | null; readonly params: { readonly backend: string; readonly modelId: string; readonly language: string } };
   /** `transcripts.diarization` (ev fields 88-90), with the reason of an unlabelled transcript. */
   readonly diarization: { readonly numSpeakers: number; readonly status: SpeakerState; readonly confidence: number | null; readonly reason: SpeakerUnavailableReason | null };
   /** `transcripts.labels_status` (ev field 91). */

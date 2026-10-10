@@ -135,6 +135,18 @@ function recordsOf(value: unknown): readonly CaptureDeviceRecord[] {
   });
 }
 
+/**
+ * The transport code of every registered microphone, by device ID: the registry aggregate of the
+ * module's ONE read statement, nothing else of it. The replicated device slice carries no
+ * transport, so a pair replacement of operation 78 (decision D133 (1)) that puts a microphone
+ * behind the capture for the first time reads its stored transport here; the selector slot then
+ * says what the registry row says, before and after a restart.
+ */
+export async function readMicTransports(reader: CaptureStoreReader): Promise<ReadonlyMap<string, string>> {
+  const { rows } = await reader.query<CaptureStateRow>(READ_CAPTURE_STATE);
+  return new Map(recordsOf(rows[0]?.devices ?? null).filter((device) => device.kind === 'MIC').map((device) => [device.id, device.transport]));
+}
+
 /** Creates the store. One instance per app; the boot step of the module loads it. */
 export function createCaptureConfigStore(): CaptureConfigStore {
   let current: CaptureSnapshot | null = null;

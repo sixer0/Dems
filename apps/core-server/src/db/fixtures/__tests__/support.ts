@@ -87,6 +87,8 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   session_capture_sources: 'session_id, slot',
   // Schema v5 (PE-129b-01): T-42, one row per session.
   session_stt_config: 'session_id',
+  // Schema v6 (PE-0013-01): T-43, one row.
+  core_media_store: 'singleton',
 };
 
 /**

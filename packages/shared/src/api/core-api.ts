@@ -57,7 +57,6 @@ import { z } from 'zod';
 import {
   FinalizationStep,
   LensState,
-  MicInputId,
   MicRole,
   MicState,
   SecurityState,
@@ -120,6 +119,8 @@ import {
   API_ERROR_CODE_PATTERN,
   EVIDENCE_ID_PATTERN,
   EXPORT_ID_PATTERN,
+  EXPORT_JOB_ID_PATTERN,
+  MIC_INPUT_ID_PATTERN,
   OPERATOR_ID_PATTERN,
   SESSION_ID_PATTERN,
 } from './patterns';
@@ -335,8 +336,8 @@ export const SessionResourceSchema = z
       .describe('The capture-config snapshot taken when recording started; a later edit never changes it (OD-10).'),
     audioSource: z
       .strictObject({
-        activeInputId: z.enum(MicInputId),
-        standbyInputId: z.enum(MicInputId),
+        activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN),
+        standbyInputId: z.string().regex(MIC_INPUT_ID_PATTERN),
         switchedAt: z.int().nonnegative().nullable().describe('When the last switch took effect; null before the first.'),
         intervalFromMs: count().describe('Media-pts start of the interval the switch opened (never wall clock).'),
       })
@@ -418,7 +419,7 @@ export type VideoTrackStatus = z.output<typeof VideoTrackStatusSchema>;
  */
 export const AudioChannelStatusSchema = z
   .object({
-    inputId: z.enum(MicInputId).describe('The physical input: MIC-01 or MIC-02 (never a track).'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The physical input, `MIC-NN`: the built-in MIC-01 / MIC-02 or a microphone registered later (never a track).'),
     deviceId: z.string().min(1).describe('e.g. MIC-01.'),
     name: z.string().min(1).describe('e.g. "MIC 1 – Interviewer".'),
     role: z.enum(MicRole).describe('PRIMARY feeds AUDIO-01; STANDBY is the hot failover (OD-09).'),
@@ -441,8 +442,8 @@ export type VideoStatusResponse = z.output<typeof VideoStatusResponseSchema>;
 
 export const AudioStatusResponseSchema = z
   .object({
-    channels: z.array(AudioChannelStatusSchema).length(2).describe('The two mic inputs MIC-01 and MIC-02, never merged (SYS-003).'),
-    activeInputId: z.enum(MicInputId).describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15).'),
+    channels: z.array(AudioChannelStatusSchema).length(2).describe('The two mic inputs of the capture (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), never merged (SYS-003).'),
+    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15).'),
   })
   .describe('Per-input audio snapshot with the active/standby pair. Meters use it as their initial value; live levels run at 20 Hz in-process.');
 export type AudioStatusResponse = z.output<typeof AudioStatusResponseSchema>;
@@ -489,8 +490,8 @@ export const DeviceHealthResponseSchema = z
       .array(z.object({ id: z.string().min(1), severity: z.enum(Severity), message: z.string().min(1) }))
       .describe('What makes the state ATTENTION or CRITICAL.'),
     cameras: z.array(VideoTrackStatusSchema).length(2).describe('Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22).'),
-    audio: z.array(AudioChannelStatusSchema).length(2).describe('Schema v2: keyed by the mic inputs MIC-01/MIC-02 with their roles.'),
-    activeInputId: z.enum(MicInputId).describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now.'),
+    audio: z.array(AudioChannelStatusSchema).length(2).describe('Schema v2: keyed by the two mic inputs (`MIC-NN`) with their roles.'),
+    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now.'),
     storage: StorageStatusResponseSchema,
     time: z.object({
       source: z.enum(TimeSource).describe('Active source, priority GNSS → NTP → RTC.'),
@@ -572,6 +573,11 @@ export const EvidenceExportAcceptedSchema = z
      * is the REQUEST row; a failing job writes EVIDENCE_EXPORT_FAILED (§5.2).
      */
     status: z.literal('QUEUED'),
+    jobId: z
+      .string()
+      .regex(EXPORT_JOB_ID_PATTERN)
+      .optional()
+      .describe('The job operation 87 polls: `EXPJ-` and the six digits of `exportId` (`EXP-000012` -> `EXPJ-000012`). Optional: a client that does not find it derives it by that rule.'),
   })
   .describe(
     'Export accepted and queued (schema v2). The ExportEvent (book §19.2: operator, time, destination, reason) is the EVIDENCE_EXPORTED audit row it wrote; completion arrives through operation 87.',
@@ -801,6 +807,7 @@ const OPERATION_TABLE = [
     coreServerDescription: [
       ...START_SESSION_TEXT,
       SESSION_START_REFUSAL,
+      'In a real capture operation a start is refused `503 NOT_READY` with `details.reason: CAPTURE_HELPERS_LEFT` while helper processes of an earlier capture are still running (envelope level; nothing is opened twice).',
       'A body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.',
       CORE_SERVER_SESSION_TEXTS,
       CORE_SERVER_ANSWERS,
@@ -843,6 +850,7 @@ const OPERATION_TABLE = [
     coreServerDescription: [
       ...STOP_SESSION_TEXT,
       SESSION_START_REFUSAL,
+      'A stop while the recording is still connecting its cameras (`captureDurable: false`: nothing durable is written yet) is refused `409 INVALID_STATE` with `details.reason: CAPTURE_NOT_DURABLE`; nothing is changed.',
       'The operator who stops a recording need not be the one who started it. A reason that is absent, or shorter than 5 characters after trimming, answers `422 INVALID_REASON` after the `404` and the `409`; a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, and a malformed `{id}`, answer `422 INVALID_INPUT`.',
       CORE_SERVER_SESSION_TEXTS,
       CORE_SERVER_ANSWERS,
@@ -997,7 +1005,8 @@ const OPERATION_TABLE = [
       },
       404: { description: 'Unknown evidence ID (NOT_FOUND).', schema: 'ApiError' },
       409: {
-        description: 'The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT).',
+        description:
+          'The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED.',
         schema: 'ApiError',
       },
       422: {

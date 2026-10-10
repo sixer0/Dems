@@ -641,7 +641,8 @@ describe('V-11 revision signatures and the per-revision certificate (SEC35-20)',
 
     const parent = await buildPackage({ revisions: 2 });
     rewrite(parent, (file) => (file.revisions[0].parentSha256 = sha256Hex(Buffer.from('another transcript'))));
-    expect(codes(await verify(parent), 'V-11')).toEqual(['REVISION_PARENT_MISMATCH']);
+    // Pass D6: the record's parent is also no longer the parent its signed body names.
+    expect(codes(await verify(parent), 'V-11')).toEqual(['REVISION_PARENT_MISMATCH', 'REVISION_MEMBER_MISMATCH']);
 
     const reordered = await buildPackage({ revisions: 3 });
     rewrite(reordered, (file) => file.revisions.reverse());
@@ -676,12 +677,44 @@ describe('V-11 revision signatures and the per-revision certificate (SEC35-20)',
     expect(codes(await verify(broken), 'V-11')).toEqual(['REVISIONS_FILE_UNREADABLE']);
   });
 
+  it('PASS D6 (F-D4-1): the record is held to its signed body - a removed body is MISSING; an altered reason, author, time or body is TAMPERED; each names the revision', async () => {
+    // Control: untouched, two revisions verify.
+    const control = await buildPackage({ revisions: 2 });
+    expect(failing(await verify(control))).toEqual([]);
+
+    const bodiless = await buildPackage({ revisions: 2 });
+    rewrite(bodiless, (file) => delete file.revisions[1].body);
+    const missing = await verify(bodiless);
+    expectFailed(missing, ['V-11']);
+    expect(missing.overall).toBe('MISSING');
+    expect(check(missing, 'V-11').findings).toEqual([{ code: 'REVISION_BODY_MISSING', failureClass: 'MISSING', revisionNo: 2 }]);
+
+    for (const [member, value] of [['reason', 'A reason nobody gave.'], ['authorId', 'OP-0999'], ['createdAt', 1]] as const) {
+      const altered = await buildPackage({ revisions: 2 });
+      rewrite(altered, (file) => (file.revisions[0][member] = value));
+      const result = await verify(altered);
+      expectFailed(result, ['V-11']);
+      expect(result.overall, member).toBe('TAMPERED');
+      expect(check(result, 'V-11').findings, member).toEqual([{ code: 'REVISION_MEMBER_MISMATCH', failureClass: 'TAMPERED', revisionNo: 1, member }]);
+    }
+
+    // The record AND its body changed together: the signed hash no longer is the body's.
+    const both = await buildPackage({ revisions: 2 });
+    rewrite(both, (file) => (file.revisions[0].reason = file.revisions[0].body.reason = 'A reason nobody gave.'));
+    expect(check(await verify(both), 'V-11').findings).toEqual([{ code: 'REVISION_BODY_HASH_MISMATCH', failureClass: 'TAMPERED', revisionNo: 1 }]);
+
+    // A body that verifies but belongs to another item: a signed revision cannot be moved between packages.
+    const moved = await buildPackage({ revisions: 1 });
+    writeRevisions(moved.dir, moved.manifest, [revisionRecord(moved.signer, { evidenceId: 'EV-2099-0001', transcript: moved.manifest.transcript }, 1, moved.manifest.transcript.sha256 as string)]);
+    expect(check(await verify(moved), 'V-11').findings).toEqual([{ code: 'REVISION_MEMBER_MISMATCH', failureClass: 'TAMPERED', revisionNo: 1, member: 'evidenceId' }]);
+  });
+
   it('after a key rotation an old revision still verifies against ITS certificate, and only against it', async () => {
     const first = throwAwaySigner();
     const second = throwAwaySigner('CORE-KEY-EVSIGN-02');
     const built = await buildPackage({ signer: first, revisions: 1 });
     const kept = (readJson(built.path(PackageFile.TRANSCRIPT_REVISIONS)).revisions as any[])[0];
-    const rotated = revisionRecord(second, 2, kept.sha256 as string);
+    const rotated = revisionRecord(second, built.manifest, 2, kept.sha256 as string);
     writeRevisions(built.dir, built.manifest, [kept, rotated]);
     retainCertificate(built, second);
     const trusted = [first.certificate.sha256, second.certificate.sha256];
@@ -700,16 +733,16 @@ describe('V-11 revision signatures and the per-revision certificate (SEC35-20)',
     expect(codes(await verifyAnchored(built, item, trusted), 'V-11')).toEqual(['REVISION_CERTIFICATE_MISSING']);
 
     // Revision 2 claiming the FIRST certificate: signed by the second key, it does not verify under the first.
-    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(second, 2, kept.sha256 as string, first.certificate.sha256)]);
+    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(second, built.manifest, 2, kept.sha256 as string, first.certificate.sha256)]);
     expect(codes(await verifyAnchored(built, item, trusted), 'V-11')).toEqual(['REVISION_SIGNATURE_INVALID']);
 
     // A revision without a recorded certificate cannot be verified at all.
-    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(second, 2, kept.sha256 as string, null)]);
+    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(second, built.manifest, 2, kept.sha256 as string, null)]);
     expect(codes(await verifyAnchored(built, item, trusted), 'V-11')).toEqual(['REVISION_CERTIFICATE_MISSING']);
 
     // A revision signed by a key the Core never had, its certificate retained in the package.
     const stranger = throwAwaySigner('CORE-KEY-EVSIGN-03');
-    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(stranger, 2, kept.sha256 as string)]);
+    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(stranger, built.manifest, 2, kept.sha256 as string)]);
     retainCertificate(built, stranger);
     const forged = await verifyAnchored(built, item, trusted);
     expectFailed(forged, ['V-11']);

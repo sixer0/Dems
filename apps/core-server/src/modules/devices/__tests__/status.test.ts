@@ -354,3 +354,61 @@ describe('the reads use the committed state and nothing else', () => {
     }).not.toThrow();
   });
 });
+
+// ── Task 3 row 140 (R-11; ruling D137 (2)): the reads follow the STORED selector ───────────────────
+// The local camera and microphone are NEW devices with their own IDs (`CAM-03`, `MIC-03`, D106 (4)).
+// Until this row the module's routes passed no selector slots, so the built-in pair answered
+// whatever the selector said. The state below holds a selector as a development Core stores it:
+// track 1 = this Mac's camera, primary microphone = this Mac's microphone, slot 2 = the test sources.
+describe('row 140: the four reads name the devices of the stored selector (an adopted or local device beyond the built-in pair)', () => {
+  const developmentState = (): SimState => {
+    const state = scenarioState('idle');
+    return {
+      ...state,
+      captureConfig: {
+        ...state.captureConfig,
+        cameras: state.captureConfig.cameras.map((camera) => (camera.trackId === 'VIDEO-01' ? { ...camera, deviceId: 'CAM-03' } : camera)),
+        mics: [
+          { ...state.captureConfig.mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
+          { ...state.captureConfig.mics[1]!, inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
+        ],
+      },
+    } as SimState;
+  };
+
+  it('operation 46: track 1 is fed by CAM-03, track 2 by CAM-02 - the simulator\'s own answer on the same state', () => {
+    const state = developmentState();
+    const video = videoStatusOf(committedOf(state));
+    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-03'], ['VIDEO-02', 'CAM-02']]);
+    expect(video).toEqual(simulatorAnswer(state, VIDEO));
+    expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+  });
+
+  it('operations 45 and 44: the microphone lines are MIC-03 (PRIMARY, active) and MIC-02 (STANDBY)', () => {
+    const state = developmentState();
+    const audio = audioStatusOf(committedOf(state), NOW);
+    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.role])).toEqual([['MIC-03', 'MIC-03', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']]);
+    expect(audio.activeInputId).toBe('MIC-03');
+    expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
+    const health = deviceHealthOf(committedOf(state), NOW);
+    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual(['CAM-03', 'CAM-02']);
+    expect(health.audio.map((channel) => channel.inputId)).toEqual(['MIC-03', 'MIC-02']);
+    expect(health.activeInputId).toBe('MIC-03');
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+  });
+
+  it('operation 47: the selector of the answer IS the stored one (by reference), not the built-in baseline', () => {
+    const state = developmentState();
+    const inventory = deviceInventoryOf(committedOf(state));
+    expect(inventory.captureConfig).toBe(state.captureConfig);
+    expect(inventory.captureConfig.cameras[0]?.deviceId).toBe('CAM-03');
+    expect(DeviceInventorySchema.safeParse(JSON.parse(JSON.stringify(inventory))).success).toBe(true);
+  });
+
+  it('CONTROL: with the built-in slots handed in, the same state answers the built-in pair - the default is what changed', () => {
+    const state = developmentState();
+    const builtin = { cameras: scenarioState('idle').captureConfig.cameras, mics: scenarioState('idle').captureConfig.mics };
+    expect(videoStatusOf(committedOf(state), builtin).tracks.map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(audioStatusOf(committedOf(state), NOW, null, builtin).channels.map((channel) => channel.inputId)).toEqual(['MIC-01', 'MIC-02']);
+  });
+});

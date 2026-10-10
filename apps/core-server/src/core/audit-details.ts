@@ -23,7 +23,6 @@
  */
 import {
   CAPTURE_CANDIDATE_ID_PATTERN,
-  CAPTURE_CANDIDATE_TEXT_MAX_LENGTH,
   CAPTURE_DEVICE_UNREACHABLE_REASONS,
   CAPTURE_HOST_LITERAL_PATTERN,
   CAPTURE_SEARCH_ID_PATTERN,
@@ -33,6 +32,7 @@ import {
   CaptureSourceClass,
   DEVICE_ID_PATTERN,
   HARDWARE_DEVICE_ID_PATTERN,
+  MIC_INPUT_ID_PATTERN,
   OPERATOR_ID_PATTERN,
   PAIRING_CODE_ID_PATTERN,
   PairingCodeCloseReason,
@@ -76,6 +76,7 @@ const operatorId = matching(OPERATOR_ID_PATTERN, 'an operator ID');
 const deviceId = matching(DEVICE_ID_PATTERN, 'a registry device ID');
 const pairingCodeId = matching(PAIRING_CODE_ID_PATTERN, 'a pairing code ID (never the code)');
 // Task 3 M2-W7 (C3 §5.2): the forms the nine capture-phase lists name.
+const micInputId = matching(MIC_INPUT_ID_PATTERN, 'a mic input (MIC-NN)');
 const hardwareDeviceId = matching(HARDWARE_DEVICE_ID_PATTERN, 'a Core hardware device id (CAM-01, MIC-02, POE-SWITCH)');
 const sha256Hex = matching(SHA256_HEX_PATTERN, 'a SHA-256 as 64 lower-case hex characters');
 const revisionId = matching(/^TRV-\d{6,}$/, 'a transcript revision id (TRV-NNNNNN)');
@@ -154,14 +155,18 @@ const sessionId = matching(SESSION_ID_PATTERN, 'a session ID');
 /** The address an answer came from: an IP literal. Never a URL and never `user:password@` (C-N8; D86 C-3). */
 const hostLiteral = matching(CAPTURE_HOST_LITERAL_PATTERN, 'an IP literal (never a URL)');
 /**
- * The announced endpoint reference of a PRODUCTION candidate (D86 C-3): 1 to 120 characters, with
- * no `@` and no `://` — the forms of a credential-bearing address. An endpoint reference is a URN
- * (`urn:uuid:…`); one that reads like a URL with user-info is not written.
+ * The announced endpoint reference of a PRODUCTION candidate (D86 C-3; pass D1a, D132): the ONE
+ * form ONVIF defines for it — `urn:uuid:` and a UUID (cap §A.6.1 V-7; the example of C3 §5.2) —
+ * and nothing else. The value is text a device announced, so the rule is a closed form, not a
+ * length: an audit row cannot hold a free text here, whatever a device (or a caller that passed
+ * the wrong member) supplies. A writer drops a reference of any other form before it builds the
+ * row (`auditEndpointRef` of the connect flow).
  */
+const ENDPOINT_REF_URN = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const endpointRef = (required: boolean): DetailRule => ({
   required,
-  form: `an endpoint reference of 1 to ${CAPTURE_CANDIDATE_TEXT_MAX_LENGTH} characters, no URL`,
-  accepts: (value) => typeof value === 'string' && value.length >= 1 && value.length <= CAPTURE_CANDIDATE_TEXT_MAX_LENGTH && !value.includes('@') && !value.includes('://'),
+  form: 'an endpoint reference of the form urn:uuid:<UUID>',
+  accepts: (value) => typeof value === 'string' && ENDPOINT_REF_URN.test(value),
 });
 
 const REQUIRED = true;
@@ -225,15 +230,17 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     scope: oneOf(['CONFIG', 'CAMERA', 'MIC'], 'one of CONFIG, CAMERA, MIC')(REQUIRED),
     field: oneOf(['CAMERAS', 'MICS', 'SOURCE', 'ROLE'], 'one of CAMERAS, MICS, SOURCE, ROLE')(REQUIRED),
     trackId: oneOf(['VIDEO-01', 'VIDEO-02'], 'VIDEO-01 or VIDEO-02')(OPTIONAL),
-    inputId: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(OPTIONAL),
+    // D145: the numbered mic rule of the shared contract (`MIC-NN`).
+    inputId: micInputId(OPTIONAL),
     deviceId: hardwareDeviceId(OPTIONAL),
     from: configValue(OPTIONAL),
     to: configValue(OPTIONAL),
     permission: code(OPTIONAL),
   },
   [AuditType.AUDIO_SOURCE_SWITCHED]: {
-    fromInput: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
-    toInput: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
+    // D144 (D133(1); row 71b): any numbered mic input the registry accepts, by the shared contract's pattern.
+    fromInput: micInputId(REQUIRED),
+    toInput: micInputId(REQUIRED),
     fromMs: count(REQUIRED),
     toMs: count(REQUIRED),
     // SEC35-17: REQUIRED when the actor is a paired device (B15/OD-09); the writer cannot see the
@@ -262,7 +269,8 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     permission: code(OPTIONAL),
   },
   [AuditType.MIC_SILENT]: {
-    inputId: oneOf(['MIC-01', 'MIC-02'], 'MIC-01 or MIC-02')(REQUIRED),
+    // D145: the numbered mic rule of the shared contract (`MIC-NN`).
+    inputId: micInputId(REQUIRED),
     thresholdDbfs: finiteNumber(REQUIRED),
     durationMs: count(REQUIRED),
     sinceMs: count(REQUIRED),

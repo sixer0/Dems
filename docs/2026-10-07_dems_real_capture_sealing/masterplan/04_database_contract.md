@@ -1580,6 +1580,106 @@ speaker state — both from the seal's item columns, no longer derived from `tra
 (request of row 79). (b) §B.1: the selector's two microphone lines read back in input order,
 `MIC-01` then `MIC-02`; the role is a member of the line (D106 (1), AC-B-70).
 
+### N.18 Key-id form, fault reason, media store root — migration set 7 (`0013` + `0014`) — Erratum PE-0013-01
+
+**Erratum PE-0013-01 (2026-10-10; controller rulings D146, D162, D166, D167; requests of passes
+D1b, D6 and D11) — contract revision `dbc-7`, schema version 6.** The rulings call the set
+"migration 0013"; by MG-2, MG-5 and MG-6 it is two files, as every set since `0004` (N.8).
+Migrations `0000`-`0012` are not edited (MG-4). Nothing of sections A to N.17 is rewritten: read
+them with this section.
+
+| # | What changed | Why |
+|--:|---|---|
+| (a) | `transcript_revisions_key_id_check`: `CODE` (`^[A-Z][A-Z0-9_]{0,63}$`) -> the **key-id form** `^[A-Z0-9][A-Z0-9_-]{0,63}$` | §B.9 said "format `CODE`"; the evidence specification names the Core key `CORE-KEY-EVSIGN-01` (ev §C.1; v1 `DEMO-KEY-EVSIGN-01`) and the signer's own rule is `^[A-Z0-9][A-Z0-9-]{2,62}$`. A revision signed with the product key was refused (`23514`, operation 85 answered `503 SIGNING_KEY_ID_NOT_STORABLE`). The stored id must equal the id of the package record (D162): no `-` -> `_` rewriting |
+| (b) | `alerts.reason text NULL`, CHECK `alerts_reason_check` (NULL or `CODE`); no UPDATE grant | D146: the key of a fault is (kind, reason, device); two causes of one kind on one device are two alerts. The cause needs a typed, checked place beside `params` |
+| (c) | New table **T-43 `core_media_store`**, one row, KEPT across a reset | D166 (finding D11-9): the command-line reset judged a default folder when its shell did not carry the server's `DEMS_MEDIA_DIR`; the Core now records its media store root and the command reads it |
+
+**(a) One rule for every key-id column.** Read §B.9 "`signature_key_id` … format `CODE`" as
+"key-id form". Columns that hold a signing-key id:
+
+| Column | Rule before | Rule in dbc-7 | Takes `CORE-KEY-EVSIGN-01` |
+|---|---|---|---|
+| `transcript_revisions.signature_key_id` | `CODE` | key-id form | yes (was no) |
+| `evidence_items.signature_key_id` | none (NOT NULL only, `0001_tables.sql:316`) | **unchanged: none** | yes (always did) |
+
+No other column holds a key id (`key_ref` of the two credential tables is the reference of a
+wrapping key, another vocabulary, §B.3 / §B.13 — untouched). The new form is a superset of `CODE`
+and of the signer's rule, so every stored revision stays valid and the re-added CHECK validates
+without a data rewrite (MG-8). **Decision D-DB-20:** no CHECK is added to
+`evidence_items.signature_key_id`: it would be a tightening that has to validate against rows this
+row may not read (the four development databases); the mapping and the signer are the writers.
+
+**(b) The fault key.** Where an active fault and its alert are stored:
+
+| Fact | Place | Change |
+|---|---|---|
+| the active fault | `hardware_snapshot.faults` (jsonb, slice `faults`): `active[] { kind, since, target }` | the entry gains the optional member `reason` (no DDL: jsonb) |
+| its alert | `alerts` row; the cause travels in `params.reason` since pass D6 | new column `reason`, written in the alert's INSERT from `params.reason` when that is a code; never updated (`42501`) |
+
+| Rule | Text |
+|---|---|
+| MR-F1 | The key of a fault is **(kind, reason, device)**. `reason` is an enumerated code; two causes of one kind on one device are two entries of `faults.active`, two alerts, two `FAULT_RAISED` rows; a clear that names a cause ends that fault alone; a clear without one ends every cause of the kind on that device |
+| MR-F2 | A fault without a cause is valid and keyed by (kind, device) as before: no member, `alerts.reason` NULL |
+| MR-F3 | A fault **without a device** (`target` NULL: the capture as a whole) is one at a time. Its cause (`NO_CAMERA_CONNECTED`) is a fact of the alert (`params.reason`, column `reason`) and of the audit row, not a second key: the forwarder and the failed start of the session tell the same event and cannot agree on a code (**D-DB-22**) |
+| MR-F4 | `alerts.reason` equals `params.reason` whenever it is not NULL; a row where the two differ is refused at load (`ROW_SHAPE`). A row older than `0013` holds NULL whatever its `params` say and reads back as the alert it was: **no backfill** (MG-8) |
+| MR-F5 | **No unique rule in the database (D-DB-21).** There was none on (kind, target) either: "one active fault per key" is held by the engine (`isFaultActive`), and the table keeps every alert, resolved ones of the same key included. A partial unique index would have to validate against the four development databases and against the bulk fixture's mix, and would turn a model rule into a refused write-through of the engine |
+
+**(c) T-43 `core_media_store`.**
+
+| Column | Type | Null | Key / Check |
+|---|---|---|---|
+| `singleton` | boolean | no | PK `core_media_store_pkey`, default `true`; `core_media_store_singleton_check` |
+| `media_root` | text | no | `core_media_store_root_check`: 1..1,024 characters, starts with `/`, no control character, no `://` |
+| `recorded_at` | bigint | no | epoch-ms of the Core start that wrote the row |
+
+| Point | Rule |
+|---|---|
+| Why a table | the contract has no general kept settings table: `console_settings` (T-23) is the typed row of slice `settings`, owned by the engine's write-through. A column there would have to be carried through the engine's mapping although it is no state — the reasoning of N.3 / N.17 (**D-DB-23**) |
+| Writer | the Core, at every start, as `dems_app`: `INSERT … ON CONFLICT (singleton) DO UPDATE SET media_root, recorded_at` — boot step `db.mediaStoreRoot`, added when the app is ready, so it runs after B-3 and after the engine. The value is `config.mediaStoreDir`, absolute and normalised. A root that cannot be stored **stops the start** (`MEDIA_STORE_ROOT_NOT_RECORDED`): a server that kept running would leave the root of an earlier configuration in the table |
+| Reader | the reset routine, as `dems_owner`, inside its read-only pass at R-3 and after the schema-version check. `db:reset` uses `DEMS_MEDIA_DIR` of its own environment, else the stored root; it PRINTS the root before the guard reads it; neither -> `RESET_STORE_ROOT_UNKNOWN`; both and different -> `RESET_STORE_ROOT_CONFLICT` (**D-DB-24**); in both the target is untouched. The server keeps stating `config.mediaStoreDir` (D165) |
+| Privileges (`0014`) | `dems_app`: SELECT, INSERT, UPDATE (`media_root`, `recorded_at`); no DELETE, no TRUNCATE, no UPDATE of the key |
+| Not a secret | a path and nothing else: no JSON, no `bytea`; a URL (which could carry user information) is refused by the CHECK. The audit / log blanking rules do not apply; the value is logged and printed |
+| Reset | **kept**, the thirteenth kept table, mode `upsert` (the seed writes no row; the carried row is inserted). Seed and bulk fixture: 0 rows |
+| Replication | none: the engine's mapping never names the table |
+
+**Migration set 7.** `0013_key_id_fault_reason_media_root.sql` (generated: 1 CREATE TABLE, 1 ADD
+COLUMN, 1 DROP CONSTRAINT, 2 ADD CONSTRAINT; no statement that writes a row) and
+`0014_key_id_fault_reason_media_root_privileges.sql` (hand-written: 2 GRANT, 2 boundary REVOKE,
+the version row). **Version (MG-5, N.9 reasoning):** `(6, 'dbc-7')`; code that writes
+`alerts.reason` or `core_media_store` fails at its first statement on a database without the set,
+so B-3 refuses it there and refuses the code of row 129b on a migrated one. Down path: none
+(roll-forward only, N.8).
+
+**Totals.** 43 tables (+1), 440 columns (+4: 3 of T-43, `alerts.reason`), 182 named CHECKs (+3;
+the key-id CHECK keeps its name), 40 foreign keys, 43 primary keys, 85 index relations, INSERT for
+`dems_app` on 27 tables, value sets unchanged (44), **kept tables 13** (+1), 15 files / 9
+hand-written; unreadable columns for `dems_app` unchanged (9). Wherever sections N.8 to N.17 say
+"42 tables", "436 columns", "179 CHECKs", "thirteen files", "12 kept tables" or "(5, 'dbc-6')",
+read them with this paragraph.
+
+**Checks.** `M7S-1..8` (`apps/core-server/test/db/set7.db.test.ts`): the pre-state is a genuine
+`(5, 'dbc-6')` database with rows (a session, an item, its transcript, two revisions, five
+alerts); the set rewrites no stored row; the bounds of the three rules; the grants; B-3 both ways;
+the files. Consumers: `transcript-routes.db.test.ts` (operation 85 with the product key: stored,
+V-11 PASS), `db/mapping/__tests__/fault-key.db.test.ts` (round trip and restart),
+`db/reset/__tests__/store-root.db.test.ts` (boot step, the command line, the removal below a
+configured root).
+
+**Application to the four development databases — NOT done by this row.** Order and commands as
+N.8 (stop every Core; `db:status` before; lanes 1, 2, 3; `dems_demo` last; each under the migrate
+lock; `db:status` after: `6; contract revision dbc-7`, `15 file(s); ledger matches`, 43 tables,
+`core_media_store 0`; a second run applies nothing). No reseed and no reset is needed for the
+migration itself. After it, a Core must start once on each database (it writes the root) before a
+`db:reset` without `DEMS_MEDIA_DIR` is accepted there.
+
+| ID | Decision | Alternative rejected | Why |
+|---|---|---|---|
+| D-DB-20 | no CHECK on `evidence_items.signature_key_id` | the key-id CHECK on both columns | a tightening; must validate against live rows this row may not read |
+| D-DB-21 | no unique index for the fault key | partial unique index on `(kind, coalesce(reason,''), coalesce(target,''))` where active | MR-F5 |
+| D-DB-22 | a fault without a device is one at a time; its cause is not a key | a second whole-capture fault per cause | MR-F3: two raisers of one event; a duplicate alert and audit row for every failed start otherwise |
+| D-DB-23 | a table of its own for the media store root | a column of `console_settings` | that row is engine state (slice `settings`) |
+| D-DB-24 | variable and stored root disagree -> refused | the variable wins silently | the guard judges one folder; a stale shell variable would point it at an empty one |
+
 ---
 *Generated: 2026-10-07 10:05*
-*Last Updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-40..45 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11; migration set `0008` + `0009` specified, not written, not applied; new totals 41 tables / 426 columns / 172 CHECKs / 40 foreign keys in N.11); 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*
+*Last Updated: 2026-10-10 (erratum PE-0013-01: section N.18 — dbc-7, schema version 6, migration set `0013` + `0014`; 43 tables / 440 columns / 182 CHECKs / 13 kept tables); 2026-10-09 (row-128 spec-gate fix pass PE-128-40..45 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 122, errata PE-122-01..15: section N — delta dbc-4 for R-9..R-11; migration set `0008` + `0009` specified, not written, not applied; new totals 41 tables / 426 columns / 172 CHECKs / 40 foreign keys in N.11); 2026-10-09 (status sweep PE-R8-01..05: §B.13 confirmed by D24); 2026-10-08 (RV-SPEC: §B.13 `stt_config`, R-8/D20, added as a proposal; earlier: row-35 security remediation SEC35-02/03/20/21/22)*

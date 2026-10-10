@@ -122,10 +122,29 @@ export function scriptMedia(bed: LiveTestBed, refs: Readonly<Record<string, Evid
 
 export const demoPackage = (suffix: string): EvidenceMediaRef => ({ source: 'DEMO_PACKAGE', packageSuffix: suffix })
 
+/**
+ * Scripts operation 87 (`getEvidenceExportJob`; blueprint row 92): the bed's Core finishes every
+ * export at once, as the simulator does — any job ID answers a COMPLETE package job. The export
+ * wizard reads the job of every export the Core accepted, so every Live test that exports needs an
+ * answer; a test about the job itself scripts its own in `before`.
+ */
+export function scriptExportJobs(bed: LiveTestBed): void {
+  bed.fake.answer('getEvidenceExportJob', (call): FakeAnswer => {
+    const now = bed.fake.clock.now()
+    const evidenceId = bed.core.served.evidence[0]?.id ?? EV.sealed
+    return {
+      status: 200,
+      body: { jobId: call.params.id ?? 'EXPJ-000000', evidenceId, kind: 'PACKAGE', status: 'COMPLETE', progressPct: 100, etaMs: 0, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64), derived: false, createdAt: now, completedAt: now },
+    }
+  })
+}
+
 export interface LiveEvidence {
   readonly bed: LiveTestBed
   readonly page: LivePage
   readonly router: AppRouter
+  /** The page's query client (a test reads its cache: what a page may and may not keep there). */
+  readonly queryClient: QueryClient
 }
 
 export interface LiveEvidenceOptions {
@@ -146,11 +165,13 @@ export interface LiveEvidenceOptions {
 export async function openLiveEvidence(path: string, options: LiveEvidenceOptions = {}): Promise<LiveEvidence> {
   const bed = createLiveTestBed({ session: options.session ?? SUPERVISOR_SESSION })
   scriptMedia(bed, options.media)
+  scriptExportJobs(bed)
   options.before?.(bed)
   const page = await bed.load()
   const assets = await diskAssets()
+  const queryClient = new QueryClient()
   const router = createAppRouter(
-    { sim: page.runtime.sim, queryClient: new QueryClient() },
+    { sim: page.runtime.sim, queryClient },
     { history: createMemoryHistory({ initialEntries: [path] }) },
   )
   const app = createElement(EvidenceAssetsContext.Provider, { value: assets }, createElement(RouterProvider, { router }))
@@ -159,7 +180,7 @@ export async function openLiveEvidence(path: string, options: LiveEvidenceOption
     await router.load()
   })
   await bed.flush()
-  return { bed, page, router }
+  return { bed, page, router, queryClient }
 }
 
 /** Waits for the detail page and its body (the lazy chunk, then the Core's media reference). */

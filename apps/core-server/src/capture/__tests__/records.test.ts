@@ -70,7 +70,7 @@ describe('M3-REC-1 (a): every record carries the next sequence number of its ses
     const { supervisor, fake, clock } = await recording();
     const seen: string[] = [];
     supervisor.on('record', (event) => void seen.push(`${event.seq} ${event.record.kind}`));
-    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 526_386, timescale: 90_000 });
+    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 526_386, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 });
     expect(supervisor.status()).toMatchObject({ durable: false, lastRecordSeq: 1 });
     // Not durable yet: a crash here is still restarted (CONTROL of the option-C sibling in liveness.test.ts).
     fake.last().exit(1);
@@ -79,7 +79,7 @@ describe('M3-REC-1 (a): every record carries the next sequence number of its ses
     expect(fake.calls()).toBe(2);
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2, durable: false, lastRecordSeq: 0 });
     // The new worker is a new process: it counts its own records from 1 (it cannot know the old one's).
-    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 90_000, timescale: 90_000 });
+    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 90_000, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 });
     fake.last().record({ kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 5_131 });
     expect(seen).toEqual(['1 FIRST_VIDEO_SAMPLE', '1 FIRST_VIDEO_SAMPLE', '2 FIRST_DURABLE_FRAGMENT']);
     expect(supervisor.status()).toMatchObject({ durable: true, lastRecordSeq: 2, lastCrash: { attempt: 1 } });
@@ -146,7 +146,7 @@ describe('M3-REC-1 (b): no record is dropped or reordered under a flooded queue 
     for (let round = 0; round < 500; round += 1) {
       worker.telemetry(round);
       for (let step = 0; step < 4; step += 1) worker.progress(`R${round}S${step}`, 0);
-      if (round % 10 === 0) worker.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+      if (round % 10 === 0) worker.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
       // A record in the middle of every round of the flood.
       worker.record(round === 0 ? { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 5_131 } : checkpoint(round));
       sent += 1;
@@ -292,7 +292,7 @@ describe('N-2: the worker events of a session that is over are not delivered int
     supervisor.on('warning', (event) => void delivered.push(`${event.sessionId} ${event.code}`));
     fake.last().progress('A', 0); // with the listener
     fake.last().progress('B', 0);
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     fake.last().telemetry(1);
     expect(supervisor.status()).toMatchObject({ queuedEvents: 3, droppedEvents: 0, droppedTelemetry: 0 });
 
@@ -318,7 +318,7 @@ describe('N-2: the worker events of a session that is over are not delivered int
     supervisor.on('telemetry', () => void delivered.push('T'));
     fake.last().progress('A', 0);
     fake.last().progress('B', 0);
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     fake.last().telemetry(1);
     release();
     await flush();
@@ -326,8 +326,8 @@ describe('N-2: the worker events of a session that is over are not delivered int
   });
 });
 
-describe('N-3: a warning is about a device or a mic role of the plan, or about nothing', () => {
-  it.each(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY', null])('the subject %s is handed on', async (subject) => {
+describe('N-3: a warning of the worker is about a device of the plan (protocol 4: never a mic role, never nothing; D84 R-1, R-2)', () => {
+  it.each(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'])('the subject %s is handed on', async (subject) => {
     const { supervisor, fake } = await recording();
     const seen: Array<string | null> = [];
     supervisor.on('warning', (event) => void seen.push(event.subject));
@@ -337,7 +337,7 @@ describe('N-3: a warning is about a device or a mic role of the plan, or about n
     expect(supervisor.status().lastCrash).toBeNull();
   });
 
-  it.each(['CAM-03', 'worker', 'primary', 'rtsp', 'S-TEST-0001', ' '])('the subject %j is a PROTOCOL_VIOLATION: the worker is ended and nothing is queued', async (subject) => {
+  it.each(['CAM-03', 'worker', 'primary', 'PRIMARY', 'STANDBY', 'rtsp', 'S-TEST-0001', ' '])('the subject %j is a PROTOCOL_VIOLATION: the worker is ended and nothing is queued', async (subject) => {
     const { supervisor, fake } = await recording();
     const seen: unknown[] = [];
     supervisor.on('warning', (event) => void seen.push(event.subject));
@@ -362,7 +362,7 @@ describe('N-3: a warning is about a device or a mic role of the plan, or about n
     await supervisor.boot();
     const plan = capturePlan(SESSION);
     await supervisor.start(SESSION, { ...plan, mics: [plan.mics[0]!] });
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'STANDBY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-02');
     expect(supervisor.status().lastCrash).toMatchObject({ detail: 'WARNING_SUBJECT_UNKNOWN' });
   });
 });
@@ -405,11 +405,11 @@ describe('A-6: a record says which worker of the session wrote it', () => {
     const { supervisor, fake, clock } = await recording();
     const seen: string[] = [];
     supervisor.on('record', (event) => void seen.push(`attempt ${event.attempt} seq ${event.seq} ${event.record.kind}`));
-    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 526_386, timescale: 90_000 });
+    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 526_386, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 });
     fake.last().exit(1);
     clock.advance(LIMITS.backoffBaseMs);
     await flush();
-    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 90_000, timescale: 90_000 });
+    fake.last().record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 90_000, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 });
     expect(seen).toEqual(['attempt 1 seq 1 FIRST_VIDEO_SAMPLE', 'attempt 2 seq 1 FIRST_VIDEO_SAMPLE']);
   });
 });
@@ -417,7 +417,7 @@ describe('A-6: a record says which worker of the session wrote it', () => {
 describe('A-10: the content of a record is held to what a worker can truthfully say', () => {
   it.each([
     ['a second FIRST_DURABLE_FRAGMENT of the same camera', [{ kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 1 }, { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 2 }], 'RECORD_REPEATED'],
-    ['a second FIRST_VIDEO_SAMPLE of the same camera', [{ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 1, timescale: 90_000 }, { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 2, timescale: 90_000 }], 'RECORD_REPEATED'],
+    ['a second FIRST_VIDEO_SAMPLE of the same camera', [{ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 1, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 }, { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-02', pts: 2, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 }], 'RECORD_REPEATED'],
     ['a record after SEAL_COMPLETE', [{ kind: 'SEAL_COMPLETE' }, { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-01', bytes: 1 }], 'RECORD_AFTER_SEAL'],
     ['a second SEAL_COMPLETE', [{ kind: 'SEAL_COMPLETE' }, { kind: 'SEAL_COMPLETE' }], 'RECORD_AFTER_SEAL'],
   ] as const)('%s is a PROTOCOL_VIOLATION and is not handed on', async (_label, records, detail) => {
@@ -504,8 +504,8 @@ describe('A-8: the lines of a worker the supervisor ended', () => {
     const late = fake.last();
     late.telemetry(1);
     late.progress('SEAL', 1);
-    late.warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
-    late.record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 1, timescale: 90_000 });
+    late.warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
+    late.record({ kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 1, timescale: 90_000, skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 });
     late.heartbeat();
     late.violate('FRAME_NOT_JSON');
     await flush();
@@ -556,9 +556,9 @@ describe('D72 (A-2): the supervisor\'s own CAPTURE_FAULT ends when a later sessi
 
 // ── Blueprint row 59 ───────────────────────────────────────────────────────────────────────────
 
-describe('row 59: protocol version 3 is a gate at HELLO (decision D84 R-7)', () => {
-  it('the supervisor speaks version 3, and a worker that says 2 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(3);
+describe('row 59: protocol version 4 is a gate at HELLO (decision D84 R-7)', () => {
+  it('the supervisor speaks version 4, and a worker that says 3 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
     const clock = manualCaptureTimers();
     const fake = fakeLauncher({ protocolVersion: 2 });
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
@@ -572,10 +572,10 @@ describe('row 59: protocol version 3 is a gate at HELLO (decision D84 R-7)', () 
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: 'V2' } });
   });
 
-  it('CONTROL: the same start with a worker that says 3 records, and its START carries version 3', async () => {
+  it('CONTROL: the same start with a worker that says 4 records, and its START carries version 4', async () => {
     const { supervisor, fake } = await recording();
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, lastCrash: null });
-    expect(fake.last().commands('START')[0]).toMatchObject({ v: 3, attempt: 1 });
+    expect(fake.last().commands('START')[0]).toMatchObject({ v: 4, attempt: 1 });
   });
 });
 

@@ -18,12 +18,20 @@
  *      line; it gets a fixed text instead. A quoted path inside a message text is replaced:
  *      Fastify has warnings that quote the raw URL (a handler that answered twice). And an
  *      error passed as a value for a `%s` or `%o` of the text is described the same way.
+ *   5. Member names (integration pass D1a, decision D134). Layers 1 to 4 rest on "no credential
+ *      is handed to the log". This one stands when one is: the object of every line goes through
+ *      the ONE rule set of the clients' log lists (`@dems/shared/redaction`), so the value of a
+ *      member whose name says credential (`password`, `secret`, `token`, `apiKey`, ...) at any
+ *      depth, the `value` beside a naming member (`{ field: 'credential.password', value }`), the
+ *      account name beside a credential member, and a token of this server inside a text are
+ *      written as `***`. No second list lives here.
  * Request and response bodies are logged nowhere in the server.
  *
  * What layer 2 does not reach: the bindings of a child logger. The logger serialises them when
  * the child is created and applies no formatter to them, so only the three serializers act
  * there. The server creates no child logger of its own; the static test keeps that too.
  */
+import { redactCredentialValue } from '@dems/shared/redaction';
 import type { FastifyRequest, FastifyServerOptions } from 'fastify';
 import type { LogLevel } from '../../config';
 import { describeError } from './error-log';
@@ -182,6 +190,40 @@ export function safeLogObject<T extends object>(object: T): T | Record<string, u
   return copy ?? object;
 }
 
+/**
+ * `value` with every object that has its own JSON form replaced by that form (a date, a buffer, a
+ * sealed credential's fixed mark): what the serialiser would write, so that the member-name rule
+ * judges the line as written and never walks the inside of such an object. Runs on the answer of
+ * `safeLogObject`, which is already bounded in depth and size.
+ */
+function writtenForm(value: unknown, depth: number): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  if (depth > LOG_DEPTH_LIMIT + 2) return NOT_LOGGED;
+  try {
+    if ('toJSON' in value && typeof value.toJSON === 'function') return writtenForm((value.toJSON as () => unknown).call(value), depth + 1);
+    if (Array.isArray(value)) return (value as readonly unknown[]).map((item) => writtenForm(item, depth + 1));
+    return Object.fromEntries(Object.entries(value).map(([key, member]) => [key, writtenForm(member, depth + 1)]));
+  } catch {
+    return NOT_LOGGED;
+  }
+}
+
+/**
+ * Layer 5 of the header: the object of a log line with credential members blanked by the shared
+ * rule set. `req`, `res` and `err` at the top stay as they are for their serializers. Never
+ * throws: a line that cannot be judged loses its members, not the process its log.
+ */
+export function blankCredentialMembers(object: Record<string, unknown>): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  const judged: Record<string, unknown> = {};
+  for (const key of Object.keys(object)) (SERIALIZED_KEYS.has(key) ? kept : judged)[key] = object[key];
+  try {
+    return { ...(redactCredentialValue(writtenForm(judged, 0)) as Record<string, unknown>), ...kept };
+  } catch {
+    return { ...kept, members: NOT_LOGGED };
+  }
+}
+
 function isErrorCarrier(value: unknown): value is { err: Error } {
   return typeof value === 'object' && value !== null && 'err' in value && value.err instanceof Error;
 }
@@ -210,7 +252,8 @@ export function buildLoggerOptions(input: LoggerOptionsInput): LoggerOptions {
     },
     formatters: {
       // Layer 2: runs on the object of every line, before the serializers.
-      log: (object) => safeLogObject(object),
+      // Then layer 5: credential members by name, through the shared rule set.
+      log: (object) => blankCredentialMembers(safeLogObject(object) as Record<string, unknown>),
     },
     hooks: {
       logMethod(args, method) {

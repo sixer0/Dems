@@ -36,7 +36,8 @@
 // code are taken from an answer and handed on. None is printed, logged, put into a test name or
 // compared in an assertion whose failure message would show it.
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ALLOW_HEADER_NAME,
@@ -84,6 +85,7 @@ import { FIXED_NOW, manualTimer } from '../support/engine';
 import { createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifStub } from '../support/fake-onvif-stub';
 import { FOREIGN_ORIGIN, WEB_ORIGIN, cookieValue, type Headers } from '../support/identity';
 import { dropOwn, maintenancePool, resetApplicationName } from '../support/reset';
+import { sealRealItemWithTranscript, type RealTranscriptItem } from './contract.transcripts';
 import {
   Ledger,
   OR9_HEADERS,
@@ -126,6 +128,12 @@ const methodOf = (operation: CoreApiRegistryOperation): 'GET' | 'POST' => (opera
 const REGISTRY_ROUTES = OPERATIONS.map((operation) => routeKey(operation.method, operation.path));
 /** Decision D83 DN-3: `GET /ws` is the one route outside the registry. */
 const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
+/**
+ * Task 3 row 90 (C3 §2.4; controller ruling D140): `GET /media/{token}`, the evidence media route, is the second
+ * route outside the registry. The guard gives it the rule of operation 88, the operation that issues its sessions.
+ */
+const MEDIA_ROUTE = routeKey('GET', '/media/{token}');
+const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE];
 
 /**
  * The 14 registry routes whose handlers land with later rows (R4, ruling D44): ops 76-80 and 89
@@ -141,16 +149,18 @@ const CHANNEL_ROUTE = routeKey('GET', WS_PATH);
 // Blueprint row 66 / M4-W2 landed the handlers of operations 76 to 80 (the capture-config module):
 // their five routes left this list. Task 3 R-9..R-11 (decisions D106, D114): the registry gained
 // operations 93 to 97; rows 132, 133 and 142 routed them and operation 89 (`modules/capture-discovery`
-// with its `connect` routes, `modules/capture-inputs`), so none of the six is here. The list is 8.
+// with its `connect` routes, `modules/capture-inputs`), so none of the six is here. The list was 8.
+// Wave D (decision D133; integration pass D1b): row 91 routed operation 87 (`GET
+// /api/v1/evidence/exports/{id}`, the evidence-export unit) and row 71b operation 81 (`POST
+// /api/v1/session/{id}/audio-source`): their two entries left the list. The list was 6.
+// Integration pass D4 (decision D146) routed operation 82 (`modules/sessions`) and operations 84, 85
+// and 86 (`modules/transcripts`): their four entries left the list. What is left is another row's.
+// Row 90 (ruling D140) routed operation 88 (`modules/media-stream`): its entry left the list. The list was 5, by owner:
+//   83 getSealingProgress          rows 82 / 86 (the sealing pipeline's progress)
+//   82 listAudioSourceIntervals    the session wiring of row 71 (no route in wave D yet)
+//   84 getTranscript, 85 createTranscriptRevision, 86 listTranscriptRevisions
+//                                  the transcript read / revision routes (the server side of row 92's UI)
 const LANDED_UNROUTED: readonly string[] = [
-  'GET /api/v1/evidence/exports/{id}',
-  'GET /api/v1/evidence/{id}/transcript',
-  'GET /api/v1/evidence/{id}/transcript/revisions',
-  'GET /api/v1/session/{id}/audio-source',
-  'GET /api/v1/session/{id}/sealing',
-  'POST /api/v1/evidence/{id}/media-sessions',
-  'POST /api/v1/evidence/{id}/transcript/revisions',
-  'POST /api/v1/session/{id}/audio-source',
 ];
 
 const COMMITTED_OPENAPI = fileURLToPath(new URL('../../../../packages/shared/openapi/openapi.json', import.meta.url));
@@ -178,10 +188,23 @@ interface Target {
   readonly runtime: DatabaseConnection;
 }
 
+/**
+ * THE MEDIA ROOT OF THIS FILE'S SERVERS IS THEIR OWN (integration pass E3 item 5; pass D11's
+ * finding, decision D166). Area 4b copies a REAL sealed package into the media root of the `main`
+ * server. With the default root - `<run dataDir>/media/sessions`, which every db file of a run
+ * shares - the reset guard of ANOTHER file's server found that package as "a REAL package no row
+ * names" and refused (`RESET_BLOCKED_REAL_EVIDENCE`; `modules/demo/__tests__/reset.db.test.ts`
+ * failed when it ran beside this file). Each server of this file therefore gets a directory of its
+ * own below one per-file folder of the data directory; the folder is removed at the end.
+ */
+// Read at use: the run exists once the file's database hook has run.
+const mediaScratch = (): string => join(db.run.dataDir, `test-contract-media-${process.pid}`);
+const ownMediaRoot = (server: string): string => join(mediaScratch(), server.replace(/[^A-Za-z0-9]+/g, '-'), 'sessions');
+
 /** A process start: the real app factory on the database, as `dems_app`, booted as the entry point boots it. */
 async function startServer(name: string, target: Target, options: { demoControls: boolean; at?: number }): Promise<Server> {
   const app = buildApp({
-    config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', port: 4420, demoControls: options.demoControls }),
+    config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, mediaStoreDir: ownMediaRoot(name), logLevel: 'info', port: 4420, demoControls: options.demoControls }),
     logStream: captureLog().stream,
   });
   await app.ready();
@@ -369,6 +392,10 @@ let retired: Tablet;
 let retiredSession: Caller;
 /** The session and the sealed evidence of the journey. */
 let sealedEvidenceId = '';
+/** The job of the export area 5 makes (operation 87), for the walk of the reads. */
+let exportJobId = '';
+/** Integration pass D4: the REAL item with a sealed machine transcript (operations 84 to 86). */
+let transcriptItem: RealTranscriptItem | null = null;
 let unsealedEvidenceId = '';
 
 const owner = (): Pool => db.ownerPool();
@@ -402,7 +429,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  transcriptItem?.remove();
   await main?.app.close();
+  rmSync(mediaScratch(), { recursive: true, force: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -438,8 +467,8 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     const rules = permissionGuard(main.app).registeredRules();
     const guarded = rules.map((rule) => routeKey(rule.method, templateOf(rule.url)));
 
-    const byRouter = compareRoutes(router, REGISTRY_ROUTES, [CHANNEL_ROUTE]);
-    const byGuard = compareRoutes(guarded, REGISTRY_ROUTES, [CHANNEL_ROUTE]);
+    const byRouter = compareRoutes(router, REGISTRY_ROUTES, EXTERNAL_ROUTES);
+    const byGuard = compareRoutes(guarded, REGISTRY_ROUTES, EXTERNAL_ROUTES);
     console.info(`[w52] routes of the router: ${router.length}; rules of the guard: ${guarded.length}; operations of the registry: ${REGISTRY_ROUTES.length}`);
     console.info(`[w52] undocumented routes (router against registry): ${JSON.stringify(byRouter.undocumented)}`);
     console.info(`[w52] undocumented routes (guard against registry): ${JSON.stringify(byGuard.undocumented)}`);
@@ -448,17 +477,25 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     console.info(`[w52] the one route outside the registry: ${router.filter((route) => !REGISTRY_ROUTES.includes(route)).join(', ')}`);
     expect(byRouter).toEqual({ undocumented: [], unregistered: [] });
     expect(byGuard).toEqual({ undocumented: [], unregistered: [] });
-    // 75 operations of the base, the three STT configuration operations 90 to 92 (task 3 row 113)
-    // and the channel, each once; the exception is there and is the only one.
-    expect(router).toHaveLength(79);
-    expect(new Set(router).size).toBe(79);
-    expect(router.filter((route) => !REGISTRY_ROUTES.includes(route))).toEqual([CHANNEL_ROUTE]);
+    // The 97 operations of the registry and the channel, each once; the exception is there and is
+    // the only one. (The pin read 79 - the base, operations 90 to 92 and the channel - and was never
+    // moved while the registry grew; it is reached only once nothing is unrouted, and then it is 98.)
+    // Row 90 (ruling D140): and the evidence media route - two routes outside the registry, 99 in all.
+    expect(router).toHaveLength(REGISTRY_ROUTES.length + EXTERNAL_ROUTES.length);
+    expect(router).toHaveLength(99);
+    expect(new Set(router).size).toBe(99);
+    expect(router.filter((route) => !REGISTRY_ROUTES.includes(route)).sort()).toEqual([...EXTERNAL_ROUTES].sort());
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
 
     // Each rule carries the operation ID of the registry entry with its method and path.
     for (const rule of rules) {
       if (routeKey(rule.method, templateOf(rule.url)) === CHANNEL_ROUTE) continue;
+      if (routeKey(rule.method, templateOf(rule.url)) === MEDIA_ROUTE) {
+        // Ruling D140: the rule of operation 88, under the route's own name.
+        expect(rule.marker).toBe(describeCoreApiAccess(operationOf('createEvidenceMediaSession').access));
+        continue;
+      }
       const operation = operationOf(rule.operationId);
       expect(routeKey(rule.method, templateOf(rule.url)), rule.operationId).toBe(routeKey(operation.method, operation.path));
       expect(rule.marker, rule.operationId).toBe(describeCoreApiAccess(operation.access));
@@ -473,7 +510,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
     const router = routesOfPrintedTable(main.app.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
-    const comparison = compareRoutes(router, documented, [CHANNEL_ROUTE]);
+    const comparison = compareRoutes(router, documented, EXTERNAL_ROUTES);
     console.info(`[w52] undocumented routes (router against the committed openapi.json): ${JSON.stringify(comparison.undocumented)}`);
     console.info(`[w52] unregistered operations (committed openapi.json against router): ${JSON.stringify(comparison.unregistered)}`);
     // Row-55 F3: the document is no longer frozen at 75 - row 50 regenerated it to the 89 of the
@@ -764,6 +801,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'updateCaptureConfig', supervisor, 'the two cameras back on their tracks', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] } }, 200);
     const restored = await expectCall(main, 'setPrimaryMic', supervisor, 'MIC-01 is the primary input again', { id: 'MIC-01' }, 200);
     expect(bodyOf<Selector>(restored)).toMatchObject({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
+    // 79, accepted (integration pass D4: the cell was never produced): the camera on the track it holds.
+    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera on the track it already feeds', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 200);
     settle();
   });
 
@@ -928,7 +967,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const input = (n: number): Record<string, unknown> => ({ caseNumber: `LP/2026/1001-00${90 + n}`, subjectType: 'SAKSI', subjectName: 'Test Subject', investigatorId, room: 'Interview Room 1', profileId: 'STANDARD_1080P25' });
     const OTHER_SESSION = 'SES-20200101-0001';
     const onSession = OPERATIONS.filter((operation) => operation.path.startsWith('/api/v1/session/{id}'));
-    expect(onSession).toHaveLength(11);
+    // The eleven of the base and the three of schema v2 (operations 81, 82 and 83).
+    expect(onSession).toHaveLength(14);
 
     // ── No session is open: the {id} of the path (decision D94 DN-11: 422 for a malformed one on all eleven).
     for (const operation of onSession) {
@@ -974,6 +1014,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     for (const [operationId, payload] of [['addSessionMarker', { label: 'Key statement' }], ['addSessionNote', { text: 'A note' }], ['takeSessionSnapshot', undefined]] as const) {
       await expectCall(main, operationId, investigator, 'a session that does not record', { id: blockedId, ...(payload === undefined ? {} : { payload }) }, 409, 'INVALID_STATE');
     }
+    await expectCall(main, 'switchAudioSource', supervisor, 'a switch in a session that does not record', { id: blockedId, payload: { inputId: 'MIC-02' } }, 409, 'INVALID_STATE');
     await expectCall(main, 'cancelSession', supervisor, 'the armed session is cancelled', { id: blockedId }, 204);
 
     // ── A microphone without a signal: the pre-check ends with a warning.
@@ -997,6 +1038,20 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'addSessionNote', supervisor, 'a note from the web console', { id: sessionId, payload: { text: 'Subject asked for a break' } }, 204);
     await expectCall(main, 'addSessionNote', supervisor, 'a note that is no text', { id: sessionId, payload: { text: 5 } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'takeSessionSnapshot', investigator, 'a snapshot', { id: sessionId }, 204);
+    // Operations 81 and 82 (C3 §2.4 "Mic switch"; integration pass D4): the intervals before and after a switch.
+    const oneInterval = await expectCall(main, 'listAudioSourceIntervals', tabletSession, 'the interval of the start, read on the tablet', { id: sessionId }, 200);
+    expect(bodyOf<{ items: Array<{ inputId: string; reason: string }> }>(oneInterval).items.map((item) => [item.inputId, item.reason])).toEqual([['MIC-01', 'START']]);
+    // C3 §2.2: the creator of the session or any SUPERVISOR. The CREATOR switches (pass D6: the guard's
+    // holder fact reads the creator now); the SUPERVISOR switches back below.
+    await expectCall(main, 'switchAudioSource', investigator, 'the standby microphone becomes the source, switched by the creator of the session', { id: sessionId, payload: { inputId: 'MIC-02' } }, 200);
+    await expectCall(main, 'switchAudioSource', investigator, 'a well-formed input that is no input of the session', { id: sessionId, payload: { inputId: 'MIC-09' } }, 409, 'AUDIO_SOURCE_CONFLICT');
+    const twoIntervals = await expectCall(main, 'listAudioSourceIntervals', technician, 'two intervals, newest first, one a page', { id: sessionId, query: '?limit=1' }, 200);
+    expect(bodyOf<{ items: Array<{ inputId: string; reason: string }>; nextCursor: string | null }>(twoIntervals)).toMatchObject({ items: [{ inputId: 'MIC-02', reason: 'MANUAL' }], nextCursor: '2' });
+    await expectCall(main, 'listAudioSourceIntervals', supervisor, 'a limit outside 1 to 200', { id: sessionId, query: '?limit=0' }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'switchAudioSource', supervisor, 'an input ID of another form', { id: sessionId, payload: { inputId: 'MIC-2' } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'switchAudioSource', supervisor, 'back to the first microphone', { id: sessionId, payload: { inputId: 'MIC-01' } }, 200);
+    // Operation 83 (row 82b; the walk is pass D4's): no sealing has started while the session records.
+    await expectCall(main, 'getSealingProgress', investigator, 'the sealing progress of a session that still records', { id: sessionId }, 409, 'INVALID_STATE');
     await expectCall(main, 'cancelSession', supervisor, 'a recording cannot be cancelled', { id: sessionId }, 409, 'INVALID_STATE');
     await expectCall(main, 'beginPrecheck', investigator, 'a recording has passed its pre-check', { id: sessionId }, 409, 'INVALID_STATE');
     await expectCall(main, 'startSession', investigator, 'a recording cannot be started', { id: sessionId }, 409, 'INVALID_STATE');
@@ -1008,6 +1063,11 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'restartServices', technician, 'a services restart during a session', {}, 409, 'SESSION_ACTIVE');
     await expectCall(main, 'startSoftwareUpdate', technician, 'a software update during a session', {}, 409, 'SESSION_ACTIVE');
     await expectCall(main, 'restartDevice', technician, 'a camera restart during a recording', { id: 'CAM-01' }, 409, 'RECORDING_ACTIVE');
+    // C3 §2.4 (OD-10): the selector and the camera credential are locked while a session is open.
+    await expectCall(main, 'updateCaptureConfig', supervisor, 'a selector edit during a session', { payload: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera assignment during a session', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setPrimaryMic', supervisor, 'a primary microphone change during a session', { id: 'MIC-01' }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a camera credential during a session', { id: 'CAM-03', payload: exampleBody(operationOf('setCaptureDeviceCredential')) }, 409, 'CAPTURE_CONFIG_LOCKED');
 
     // ── A power failure moves the recording to FAULT; the recovery closes it as incomplete.
     await expectCall(main, 'injectFault', supervisor, 'the power fails', { payload: { kind: 'POWER_FAIL' } }, 204);
@@ -1036,9 +1096,59 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const sealed = await expectCall(main, 'getCurrentSession', investigator, 'the sealed session', {}, 200);
     const current = bodyOf<{ session: { state: string; evidenceId: string | null } | null }>(sealed).session;
     expect(current?.state).toBe('SEALED');
+    const progress = await expectCall(main, 'getSealingProgress', tabletSession, 'the sealing progress of the sealed session, read on the tablet', { id: sealedId }, 200);
+    expect(bodyOf<{ sessionId: string; progressPct: number }>(progress)).toMatchObject({ sessionId: sealedId, progressPct: 100 });
     sealedEvidenceId = current?.evidenceId ?? '';
     expect(sealedEvidenceId).not.toBe('');
     await expectCall(main, 'acknowledgeSessionSummary', investigator, 'the summary is acknowledged', { id: sealedId }, 204);
+    settle();
+  });
+
+  it('the transcript (operations 84 to 86; C3 §2.4, integration pass D4): the sealed machine transcript of a REAL item, a signed revision, the revision list, their refusals', async () => {
+    fresh(main);
+    const investigator = web.INVESTIGATOR;
+    const supervisor = web.SUPERVISOR;
+    const UNKNOWN = 'EV-20200101-0001';
+    // A recording of its own, stopped through the API and sealed as a REAL item (`contract.transcripts.ts`).
+    const created = await expectCall(main, 'createSession', investigator, 'a session is created', { payload: { caseNumber: 'LP/2026/1001-0084', subjectType: 'SAKSI', subjectName: 'Test Subject', investigatorId: operatorIdOf('INVESTIGATOR'), room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } }, 201);
+    const sessionId = bodyOf<{ sessionId: string }>(created).sessionId;
+    await expectCall(main, 'startSession', investigator, 'the first start begins the pre-check', { id: sessionId }, 202);
+    await main.drive(PRECHECK_MS);
+    await expectCall(main, 'startSession', investigator, 'the armed session starts to record', { id: sessionId }, 200);
+    await main.drive(3 * SECOND);
+    await expectCall(main, 'stopSession', investigator, 'the recording is stopped', { id: sessionId, payload: { reason: 'Interview completed' } }, 202);
+    transcriptItem = await sealRealItemWithTranscript(main.app, sessionId, db.run.dataDir);
+    const id = transcriptItem.evidenceId;
+    await expectCall(main, 'acknowledgeSessionSummary', investigator, 'the summary is acknowledged', { id: sessionId }, 204);
+    const withoutTranscript = sealedEvidenceId;
+
+    const read = await expectCall(main, 'getTranscript', tabletSession, 'the sealed machine transcript, read on the tablet', { id }, 200);
+    const document = bodyOf<{ segments: Array<{ text: string }>; sha256: string; machineTranscriptHash: string; revision: number }>(read);
+    expect([document.segments.length, document.revision, document.sha256 === document.machineTranscriptHash]).toEqual([2, 0, true]);
+    await expectCall(main, 'getTranscript', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
+    await expectCall(main, 'getTranscript', supervisor, 'an item sealed without a machine transcript document', { id: withoutTranscript }, 409, 'TRANSCRIPT_NOT_READY');
+    await expectCall(main, 'getTranscript', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
+
+    await expectCall(main, 'listTranscriptRevisions', supervisor, 'no revision yet', { id }, 200);
+    const revise = { baseRevision: 0, changes: [{ segmentIndex: 1, from: transcriptItem.segmentText, to: 'Terima kasih, Bu.' }], note: 'The witness addressed a woman officer.' };
+    const revised = await expectCall(main, 'createTranscriptRevision', investigator, 'a signed revision by the INVESTIGATOR', { id, payload: revise }, 201);
+    expect(bodyOf<{ number: number; baseRevision: number; machineTranscriptHash: string; signature: { simulated: boolean } }>(revised)).toMatchObject({ number: 1, baseRevision: 0, machineTranscriptHash: document.sha256, signature: { simulated: false } });
+    await expectCall(main, 'createTranscriptRevision', supervisor, 'a revision built on a revision that is no longer current', { id, payload: revise }, 409, 'TRANSCRIPT_REVISION_CONFLICT');
+    await expectCall(main, 'createTranscriptRevision', supervisor, 'an item sealed without a machine transcript document', { id: withoutTranscript, payload: revise }, 409, 'TRANSCRIPT_NOT_READY');
+    await expectCall(main, 'createTranscriptRevision', supervisor, 'an item the Core does not have', { id: UNKNOWN, payload: revise }, 404, 'NOT_FOUND');
+    await expectCall(main, 'createTranscriptRevision', supervisor, 'a revision without a reason', { id, payload: { baseRevision: 1, changes: revise.changes } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'createTranscriptRevision', web.TECHNICIAN, 'a role without TRANSCRIPT_REVISE', { id, payload: { ...revise, baseRevision: 1 } }, 403, 'NOT_PERMITTED');
+    // The machine transcript is the same after the revision: only the head moved.
+    const after = bodyOf<{ sha256: string; revision: number; segments: Array<{ text: string }> }>(await expectCall(main, 'getTranscript', supervisor, 'the machine transcript after a revision', { id }, 200));
+    expect([after.sha256, after.revision, after.segments.map((segment) => segment.text)]).toEqual([document.sha256, 1, document.segments.map((segment) => segment.text)]);
+
+    const listed = await expectCall(main, 'listTranscriptRevisions', web.TECHNICIAN, 'the one revision, with its changes', { id }, 200);
+    expect(bodyOf<{ items: Array<{ number: number; changes: Array<{ to: string }> }> }>(listed).items.map((item) => [item.number, item.changes[0]?.to])).toEqual([[1, 'Terima kasih, Bu.']]);
+    await expectCall(main, 'listTranscriptRevisions', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
+    await expectCall(main, 'listTranscriptRevisions', supervisor, 'an item sealed without a machine transcript document', { id: withoutTranscript }, 409, 'TRANSCRIPT_NOT_READY');
+    await expectCall(main, 'listTranscriptRevisions', supervisor, 'a limit outside 1 to 200', { id, query: '?limit=0' }, 422, 'INVALID_INPUT');
+    // Operation 88, its 201 (pass D6): the REAL item of this block is playable (`contract.transcripts.ts`).
+    await expectCall(main, 'createEvidenceMediaSession', supervisor, 'a media session of a real sealed item', { id, payload: { fileId: 'VIDEO-01' } }, 201);
     settle();
   });
 
@@ -1064,7 +1174,17 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'verifyEvidence', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
 
     // Spec §7.3 line 10 for the export: 404, then 409, then 422 (decision D92 DN-2).
-    await expectCall(main, 'exportEvidence', supervisor, 'the sealed item is exported', { id: sealedEvidenceId, payload: export_ }, 202);
+    const exported = await expectCall(main, 'exportEvidence', supervisor, 'the sealed item is exported', { id: sealedEvidenceId, payload: export_ }, 202);
+    // Operation 87 (row 91; integration pass D4 for the walk): the job of that export, by the rule of C3 §3 (`EXP-NNNNNN` -> `EXPJ-NNNNNN`).
+    const exportId = bodyOf<{ exportId: string }>(exported).exportId;
+    exportJobId = `EXPJ-${exportId.slice('EXP-'.length)}`;
+    await expectCall(main, 'getEvidenceExportJob', supervisor, 'the job of the export', { id: exportJobId }, 200);
+    await expectCall(main, 'getEvidenceExportJob', supervisor, 'a job the Core does not have', { id: 'EXPJ-999999' }, 404, 'NOT_FOUND');
+    await expectCall(main, 'getEvidenceExportJob', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
+    // Operation 88 (row 90): the refusals. Its 201 is in the transcript block, on the REAL item (pass D6).
+    await expectCall(main, 'createEvidenceMediaSession', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
+    await expectCall(main, 'createEvidenceMediaSession', supervisor, 'an item without a sealed package to play', { id: sealedEvidenceId }, 409, 'MEDIA_NOT_AVAILABLE');
+    await expectCall(main, 'createEvidenceMediaSession', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
     await expectCall(main, 'exportEvidence', supervisor, 'an item the Core does not have', { id: UNKNOWN, payload: export_ }, 404, 'NOT_FOUND');
     await expectCall(main, 'exportEvidence', supervisor, 'an ID of another form (decision D92: 404 on this operation)', { id: 'x', payload: export_ }, 404, 'NOT_FOUND');
     await expectCall(main, 'exportEvidence', supervisor, 'an item that was never sealed', { id: unsealedEvidenceId, payload: export_ }, 409, 'NOT_SEALED');
@@ -1100,7 +1220,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
 describe('AC-B-14: the refusals of the stages, generated for every operation of the registry', () => {
   it('401 NOT_SIGNED_IN: every operation that is not PUBLIC, called without a credential', async () => {
     const guarded = OPERATIONS.filter((operation) => operation.access.kind !== CoreApiAccessKind.PUBLIC);
-    expect(guarded).toHaveLength(71);
+    // 97 operations, four of them PUBLIC (the pin read 71 of the 75 of the base).
+    expect(OPERATIONS.length - guarded.length).toBe(4);
+    expect(guarded).toHaveLength(93);
     for (const operation of guarded) {
       fresh(main);
       await expectCall(main, operation.operationId, NOBODY, 'no credential', {}, 401, 'NOT_SIGNED_IN');
@@ -1366,7 +1488,20 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
       const permissions = coreApiAccessPermissions(operation.access);
       return permissions.length > 0 && ROLES.every((role) => holdsOneOf(role, permissions));
     });
-    expect(everyRole.map((operation) => operation.operationId)).toEqual(['listEvidence', 'getEvidence', 'verifyEvidence', 'testDeviceSignal', 'identifyDevice', 'runDiagnostics']);
+    // The six of the base, and the three of schema v2 that need EVIDENCE_VIEW alone (operations 84,
+    // 86 and 88; the pin read the six only). The three are called below like the others: their
+    // routes have landed (88 with row 90, 84 and 86 with integration pass D4), so the guard answers.
+    expect(everyRole.map((operation) => operation.operationId)).toEqual([
+      'listEvidence',
+      'getEvidence',
+      'verifyEvidence',
+      'testDeviceSignal',
+      'identifyDevice',
+      'runDiagnostics',
+      'getTranscript',
+      'listTranscriptRevisions',
+      'createEvidenceMediaSession',
+    ]);
     for (const permission of ['EVIDENCE_VIEW', 'DIAGNOSTICS_RUN']) {
       const removed = await target.ownerPool().query('DELETE FROM public.role_permissions WHERE role_id = $1 AND permission_id = $2', ['INVESTIGATOR', permission]);
       expect(removed.rowCount, permission).toBe(1);
@@ -1389,8 +1524,22 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
   it('every GET operation, as each kind of caller its rule lets through: the audit count, the event count and the digest of every table are equal before and after', async () => {
     fresh(main);
     const reads = OPERATIONS.filter((operation) => operation.method === 'get');
-    expect(reads).toHaveLength(27);
-    const ids: Readonly<Record<string, string>> = { getEvidence: sealedEvidenceId };
+    // The 36 GET operations of the registry (the pin read 27, the base's; AC-B-09's first block holds 36 / 61).
+    expect(reads).toHaveLength(36);
+    // Operations 82 and 83 read the OPEN session, and 83 one whose sealing has started: a session is
+    // recorded and sealed for this walk (before the first reading) and its summary is acknowledged
+    // after it. Operations 84 and 86 read the REAL item with a sealed transcript.
+    const openForRead = await expectCall(main, 'createSession', web.INVESTIGATOR, 'a session is open for the reads', { payload: { caseNumber: 'LP/2026/1001-0082', subjectType: 'SAKSI', subjectName: 'Test Subject', investigatorId: operatorIdOf('INVESTIGATOR'), room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } }, 201);
+    const openSessionId = bodyOf<{ sessionId: string }>(openForRead).sessionId;
+    await expectCall(main, 'startSession', web.INVESTIGATOR, 'the first start begins the pre-check', { id: openSessionId }, 202);
+    await main.drive(PRECHECK_MS);
+    await expectCall(main, 'startSession', web.INVESTIGATOR, 'the armed session starts to record', { id: openSessionId }, 200);
+    await main.drive(3 * SECOND);
+    await expectCall(main, 'stopSession', web.INVESTIGATOR, 'the recording is stopped', { id: openSessionId, payload: { reason: 'Interview completed' } }, 202);
+    await main.drive(FINALIZE_MS);
+    const transcriptEvidenceId = transcriptItem?.evidenceId ?? '';
+    expect(transcriptEvidenceId).not.toBe('');
+    const ids: Readonly<Record<string, string>> = { getEvidence: sealedEvidenceId, listAudioSourceIntervals: openSessionId, getSealingProgress: openSessionId, getEvidenceExportJob: exportJobId, getTranscript: transcriptEvidenceId, listTranscriptRevisions: transcriptEvidenceId };
     const queries: Readonly<Record<string, string>> = { listSessionHistory: '?limit=200', listEvidence: '?limit=200&q=LP', listAuditRows: '?limit=200&order=DESC', listEvents: '?limit=200' };
     // Each caller has sent a request at this instant of the standing clock: what stage 4 writes
     // once a minute for a paired device (pairing row DN-8) is written before the first reading.
@@ -1401,23 +1550,32 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
 
     const lines: string[] = [];
     let compared = 0;
-    for (const operation of reads) {
-      const callers = [allowedCaller(operation)];
-      // The reads any operator may call are read from the tablet session too (a bearer value, stage 4's device path).
-      if (operation.access.kind === CoreApiAccessKind.AUTHENTICATED) callers.push(tabletSession);
-      for (const caller of callers) {
-        const before = await readTables(owner());
-        const answer = await call(main, operation.operationId, caller, 'a read between two readings of every table', { id: ids[operation.operationId] ?? exampleId(operation), query: queries[operation.operationId] ?? '' });
-        await main.app.pipeline.drain();
-        const after = await readTables(owner());
-        expect(answer.status, `${operation.operationId} as ${caller.label}`).toBe(200);
-        expect(movedTables(before, after), `${operation.operationId} as ${caller.label}`).toEqual([]);
-        expect(counts(after), `${operation.operationId} as ${caller.label}`).toEqual(counts(before));
-        compared += 1;
-        if (caller === callers[0]) lines.push(`${operation.operationId} (${Object.keys(after.digests).length} tables, audit ${counts(after).audit}, events ${counts(after).events})`);
+    try {
+      for (const operation of reads) {
+        const callers = [allowedCaller(operation)];
+        // The reads any operator may call are read from the tablet session too (a bearer value, stage 4's device path).
+        if (operation.access.kind === CoreApiAccessKind.AUTHENTICATED) callers.push(tabletSession);
+        for (const caller of callers) {
+          const before = await readTables(owner());
+          const answer = await call(main, operation.operationId, caller, 'a read between two readings of every table', { id: ids[operation.operationId] ?? exampleId(operation), query: queries[operation.operationId] ?? '' });
+          await main.app.pipeline.drain();
+          const after = await readTables(owner());
+          expect(answer.status, `${operation.operationId} as ${caller.label}`).toBe(200);
+          expect(movedTables(before, after), `${operation.operationId} as ${caller.label}`).toEqual([]);
+          expect(counts(after), `${operation.operationId} as ${caller.label}`).toEqual(counts(before));
+          compared += 1;
+          if (caller === callers[0]) lines.push(`${operation.operationId} (${Object.keys(after.digests).length} tables, audit ${counts(after).audit}, events ${counts(after).events})`);
+        }
       }
+      console.info(`[w52] no GET handler writes: ${compared} reads of ${reads.length} GET operations, every table of schema public digested before and after each:\n[w52]   ${lines.join('; ')}`);
+    } finally {
+      // Whatever a read answered, the session of this walk does not stay open for the blocks that follow.
+      // Nor does the REAL package of the transcript walk stay in the media store, which this file's servers share:
+      // the reset block below runs the real routine on another database, whose guard would find a package
+      // without an item of its own and refuse (fail-safe, by design). No block after this one reads a transcript.
+      transcriptItem?.remove();
+      await expectCall(main, 'acknowledgeSessionSummary', web.INVESTIGATOR, 'the summary of the session of the reads is acknowledged', { id: openSessionId }, 204);
     }
-    console.info(`[w52] no GET handler writes: ${compared} reads of ${reads.length} GET operations, every table of schema public digested before and after each:\n[w52]   ${lines.join('; ')}`);
     expect(compared).toBeGreaterThanOrEqual(27);
     settle();
   });
@@ -1660,6 +1818,30 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
       }),
     );
 
+    // Pass D6 (coverage cell `resetDemo 409`): a database that holds a REAL sealed item is never
+    // reset. FIRST in this block, while the owner pool still names this database (a rebuild swaps
+    // databases under a pool). A sealed item of the seed is marked REAL / version 2 by `dems_owner`
+    // (the reset guard reads the tables); the reset is refused, nothing is rebuilt, and the mark is
+    // taken back so the two rebuilds below run as before.
+    const ownerPool = target.ownerPool();
+    const seededItem = (await ownerPool.query<{ id: string; integrity_source: string; manifest_version: number }>('SELECT id, integrity_source, manifest_version FROM public.evidence_items WHERE sealed_at IS NOT NULL ORDER BY id LIMIT 1')).rows[0];
+    if (seededItem === undefined) throw new Error('the clone holds no sealed evidence item');
+    await ownerPool.query("UPDATE public.evidence_items SET integrity_source = 'REAL', manifest_version = 2 WHERE id = $1", [seededItem.id]);
+    // Pass D10 (pass D6 finding F-D6-1, closed): the module answers the guard's refusal with the
+    // documented code. Pass D11: the module asks the guard on its OWN pool BEFORE the routine and
+    // the quiesce, so a refused reset stops nothing - the epoch is the same, no request met a 503
+    // meanwhile - and it is audited (C3 §3 op 75 "refuses ... and audits the refusal").
+    const epochBeforeRefusal = server.app.engine.epoch;
+    await expectCall(server, 'resetDemo', supervisor, 'a reset of a database that holds real sealed evidence', {}, 409, 'RESET_BLOCKED_REAL_EVIDENCE');
+    expect(server.app.engine.epoch).toBe(epochBeforeRefusal);
+    expect(server.app.readiness.isReady()).toBe(true);
+    const refusalPage = await expectCall(server, 'listAuditRows', supervisor, 'the newest rows after the refused reset', { query: '?order=DESC&limit=5' }, 200);
+    expect(bodyOf<{ rows: Array<{ type: string; details: Record<string, unknown> }> }>(refusalPage).rows.find((row) => row.type === 'ACCESS_DENIED')?.details).toMatchObject({ operationId: 'resetDemo', reason: 'RESET_BLOCKED_REAL_EVIDENCE' });
+    // Nothing was rebuilt: the mark is still on the row of THIS database (a rebuilt seed would not carry it).
+    expect((await target.ownerPool().query("SELECT count(*)::int AS n FROM public.evidence_items WHERE id = $1 AND integrity_source = 'REAL'", [seededItem.id])).rows[0]?.n).toBe(1);
+    await target.ownerPool().query('UPDATE public.evidence_items SET integrity_source = $2, manifest_version = $3 WHERE id = $1', [seededItem.id, seededItem.integrity_source, seededItem.manifest_version]);
+    during.length = 0;
+
     const epoch = server.app.engine.epoch;
     // Two cursors of the chain before the rebuild: one on a row of the seed, which the rebuilt
     // chain holds again with the same hash, and one on the newest row, which only this chain has.
@@ -1695,6 +1877,7 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
     expect(refused.length).toBeGreaterThan(0);
     expect(refused.every((answer) => answer.code === 'NOT_READY')).toBe(true);
     expect(health.every((answer) => answer.status === 200)).toBe(true);
+
     settle();
   });
 });
@@ -1729,6 +1912,10 @@ describe('SC6: what the whole file received', () => {
         const ids = value.flatMap((element: unknown) => {
           if (typeof element !== 'object' || element === null) return [];
           const record = element as Record<string, unknown>;
+          // An audio-source INTERVAL names the one microphone that fed the track over a span of
+          // media time (operation 82; the item's `audioSourceIntervals`): a list of intervals is a
+          // history, not a list of the two tracks or the two inputs, and is not held to the pair rule.
+          if ('fromMs' in record && 'seq' in record) return [];
           return [record['trackId'], record['inputId'], record['id']].filter(
             (id): id is string => typeof id === 'string' && (id.startsWith('AUDIO-') || id.startsWith('MIC-')),
           );
@@ -1838,9 +2025,9 @@ describe('SC6: what the whole file received', () => {
 
 describe('the checks of this file fail when their input departs from the contract', () => {
   it('an extra route on a scratch app is an undocumented route; an operation taken out of the expectation is an unregistered one', async () => {
-    // The module-level LANDED_UNROUTED names the 8 registry routes whose handlers land with
+    // The module-level LANDED_UNROUTED names the 6 registry routes whose handlers land with
     // later rows (R4, ruling D44); this file's own detector is checked against the landed
-    // baseline: exactly those 8 are reported unregistered, no more. (Rows 132, 133 and 142
+    // baseline: exactly those 6 are reported unregistered, no more. (Rows 132, 133 and 142
     // routed operations 89 and 93 to 97, decision D114: their six entries left the list.)
     const scratch = buildApp({ config: unitTestConfig() });
     // A route that is no operation of the registry, added by a plugin of this test. The guard
@@ -1852,14 +2039,14 @@ describe('the checks of this file fail when their input departs from the contrac
     await scratch.ready();
     const router = routesOfPrintedTable(scratch.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
     await scratch.close();
-    expect(compareRoutes(router, REGISTRY_ROUTES, [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/w52/extra'], unregistered: LANDED_UNROUTED });
+    expect(compareRoutes(router, REGISTRY_ROUTES, EXTERNAL_ROUTES)).toEqual({ undocumented: ['GET /api/v1/w52/extra'], unregistered: LANDED_UNROUTED });
 
     // The registered routes of the real server against a registry that documents one operation more, and one less.
     const real = routesOfPrintedTable(main.app.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
-    expect(compareRoutes(real, [...REGISTRY_ROUTES, 'POST /api/v1/w52/planned'], [CHANNEL_ROUTE])).toEqual({ undocumented: [], unregistered: [...LANDED_UNROUTED, 'POST /api/v1/w52/planned'] });
-    expect(compareRoutes(real, REGISTRY_ROUTES.filter((route) => route !== 'GET /api/v1/health'), [CHANNEL_ROUTE])).toEqual({ undocumented: ['GET /api/v1/health'], unregistered: LANDED_UNROUTED });
-    // Without the named exception the channel route is reported.
-    expect(compareRoutes(real, REGISTRY_ROUTES).undocumented).toEqual([CHANNEL_ROUTE]);
+    expect(compareRoutes(real, [...REGISTRY_ROUTES, 'POST /api/v1/w52/planned'], EXTERNAL_ROUTES)).toEqual({ undocumented: [], unregistered: [...LANDED_UNROUTED, 'POST /api/v1/w52/planned'] });
+    expect(compareRoutes(real, REGISTRY_ROUTES.filter((route) => route !== 'GET /api/v1/health'), EXTERNAL_ROUTES)).toEqual({ undocumented: ['GET /api/v1/health'], unregistered: LANDED_UNROUTED });
+    // Without the named exceptions the channel route and the evidence media route are reported.
+    expect([...compareRoutes(real, REGISTRY_ROUTES).undocumented].sort()).toEqual([...EXTERNAL_ROUTES].sort());
   });
 
   it('a row that is rewritten with the values it had is a moved table; an empty ledger covers nothing; a listed status that was produced is reported', async () => {

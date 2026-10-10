@@ -19,6 +19,7 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
+import { captureFailedStartOf, captureFailedStartText } from '@/lib/capture-notices'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { newestOwnRow, useSystemLiveMode } from './live'
@@ -43,7 +44,13 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 const selectActiveFaults = (s: SimState) => s.faults.active
 const selectAuditRows = (s: SimState) => s.audit.rows
-const selectDemoContext = (s: SimState) => ({ scenario: s.meta.scenario, sessionState: s.session?.state ?? null })
+// `failedStart` (integration pass D7 follow-up, D158 item 3): FAULT of a session that recorded nothing
+// (`captureDurable: false`) — a primitive; the control then says what is true, not "run recovery".
+const selectDemoContext = (s: SimState) => ({
+  scenario: s.meta.scenario,
+  sessionState: s.session?.state ?? null,
+  failedStart: captureFailedStartOf(s.session, s.alerts),
+})
 const selectOperatorId = (s: SimState) => selectOperator(s)?.id ?? null
 
 /** The audit types a fault command writes (the simulator's fault rows; AUDIT_TAMPER raises a discontinuity row). */
@@ -166,6 +173,7 @@ function DemoBody() {
   const active = useSim(selectActiveFaults)
   const rows = useSim(selectAuditRows)
   const context = useSim(selectDemoContext)
+  const failedStartText = context.failedStart === null ? null : captureFailedStartText(t, context.failedStart)
   const operatorId = useSim(selectOperatorId)
   const nowSecond = useSim(selectClockSecond)
   const asOf = useDemoAsOf()
@@ -327,11 +335,13 @@ function DemoBody() {
           <p className="sys-muted sys-small">{t('system.demo.resetHint')}</p>
 
           {context.sessionState === 'FAULT' ? (
-            <div className="sys-demo-recover" data-testid="system-demo-recover">
-              <p className="sys-small">{t('system.demo.recoverHint')}</p>
+            <div className="sys-demo-recover" data-testid="system-demo-recover" data-failed-start={context.failedStart ?? undefined}>
+              <p className="sys-small" data-testid="system-demo-recover-hint">
+                {failedStartText === null ? t('system.demo.recoverHint') : `${failedStartText.title}. ${failedStartText.body}`}
+              </p>
               <Button size="sm" variant="danger-soft" isPending={pendingOn('recover')} onPress={recover}>
                 {pendingOn('recover') ? <Spinner size="sm" color="current" aria-hidden="true" /> : <LifeBuoy className="size-4" aria-hidden="true" />}
-                {t('system.demo.recover')}
+                {failedStartText === null ? t('system.demo.recover') : t('common.session.failedStart.close')}
               </Button>
             </div>
           ) : null}

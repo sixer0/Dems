@@ -9,6 +9,7 @@ import {
   evidenceCustodyToRows,
   evidenceItemFromRows,
   evidenceItemToRow,
+  diffSlices,
   evidenceTracksToRows,
   fromRows,
   toRows,
@@ -95,5 +96,136 @@ describe('capture_config: the microphones come back in input order (D106 (1), AC
     // NEGATIVE CONTROL: primary-first, the order before this row, is not what the engine holds.
     expect([...back.mics].sort((left) => (left.role === 'PRIMARY' ? -1 : 1)).map((mic) => mic.inputId)).toEqual(['MIC-02', 'MIC-01']);
     expect(back.mics).toStrictEqual(state.captureConfig.mics);
+  });
+});
+
+// ── Integration pass D4 (controller decision D147; findings F-82-3 and F-82-4 of row 82) ────────
+
+describe('evidence_items.development_sources: the seal\'s mark travels both ways (F-82-3)', () => {
+  const base = idle().evidence[0] as EvidenceItem;
+  const back = (item: EvidenceItem): EvidenceItem => evidenceItemFromRows(evidenceItemToRow(item, context), evidenceTracksToRows(item), evidenceCustodyToRows(item));
+
+  it('true, false and "not recorded" are three stored values; NULL never comes back as false', () => {
+    expect(evidenceItemToRow({ ...base, developmentSources: true }, context).developmentSources).toBe(true);
+    expect(evidenceItemToRow({ ...base, developmentSources: false }, context).developmentSources).toBe(false);
+    expect(evidenceItemToRow({ ...base, developmentSources: null }, context).developmentSources).toBeNull();
+    expect(evidenceItemToRow(base, context).developmentSources).toBeNull();
+
+    expect(back({ ...base, developmentSources: true }).developmentSources).toBe(true);
+    expect(back({ ...base, developmentSources: false }).developmentSources).toBe(false);
+    // A v1 item (and the simulator's own seal): the member is ABSENT on the way back, not false.
+    expect('developmentSources' in back(base)).toBe(false);
+    expect('developmentSources' in back({ ...base, developmentSources: null })).toBe(false);
+  });
+
+  it('toRow(fromRow(row)) is the same row for the three values; another value is refused', () => {
+    for (const developmentSources of [true, false, null]) {
+      const row = { ...evidenceItemToRow(base, context), developmentSources };
+      expect(evidenceItemToRow(evidenceItemFromRows(row, evidenceTracksToRows(base), evidenceCustodyToRows(base)), context)).toEqual(row);
+    }
+    expect(() => evidenceItemToRow({ ...base, developmentSources: 'yes' as unknown as boolean }, context)).toThrow(MappingError);
+  });
+});
+
+describe('evidence_items: the item of a REAL v2 seal comes back with its real signature (F-82-4)', () => {
+  const v1 = ((): EvidenceItem => {
+    const { transcriptSha256: _hash, files: _files, fragmentChainHead: _head, ...rest } = idle().evidence[0] as EvidenceItem;
+    return rest;
+  })();
+  const SIGNATURE = 'cd'.repeat(64);
+  /** What `completeSealTransition` puts on the item: two camera files as tracks, no `files`, the pipeline's signature. */
+  const real: EvidenceItem = {
+    ...v1,
+    integritySource: 'REAL',
+    tracks: [
+      { trackId: 'VIDEO-01', label: 'Camera 1', sizeBytes: 4_000, sha256: '01'.repeat(32) },
+      { trackId: 'VIDEO-02', label: 'Camera 2', sizeBytes: 5_000, sha256: '02'.repeat(32) },
+    ],
+    signature: { value: SIGNATURE, keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false },
+    manifestVersion: 2,
+    transcriptSha256: null,
+    labelsStatus: null,
+    developmentSources: true,
+  } as EvidenceItem;
+  const row = evidenceItemToRow(real, context);
+  const back = (columns: Partial<typeof row> = {}): EvidenceItem => evidenceItemFromRows({ ...row, ...columns }, evidenceTracksToRows(real), evidenceCustodyToRows(real));
+
+  it('the row is the real pair, and the item comes back equal: signature, two tracks, no files, the sealed members', () => {
+    expect(row).toMatchObject({ integritySource: 'REAL', manifestVersion: 2, signatureAlgorithm: 'Ed25519', signatureSimulated: false, signatureValue: SIGNATURE, developmentSources: true });
+    const found = back();
+    expect(found.signature).toEqual({ value: SIGNATURE, keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false });
+    expect(found.tracks.map((track) => track.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect('files' in found).toBe(false);
+    expect(found).toMatchObject({ integritySource: 'REAL', manifestVersion: 2, transcriptSha256: null, labelsStatus: null, developmentSources: true });
+    expect(evidenceItemToRow(found, context)).toEqual(row);
+  });
+
+  it('NOT LOOSENED FOR V1: a real signature on a row that is not REAL, or not version 2, is refused', () => {
+    expect(() => back({ integritySource: 'SIMULATED' })).toThrow(MappingError);
+    expect(() => back({ integritySource: null })).toThrow(MappingError);
+    expect(() => back({ manifestVersion: 1 })).toThrow(MappingError);
+    // A demo row: refused unless it is the row of a SEED-SEALED item (the next case) - without the development mark, or at version 1, it is not one.
+    expect(() => back({ integritySource: 'DEMO_PACKAGE', developmentSources: null })).toThrow(MappingError);
+    expect(() => back({ integritySource: 'DEMO_PACKAGE', developmentSources: false })).toThrow(MappingError);
+    expect(() => back({ integritySource: 'DEMO_PACKAGE', manifestVersion: 1 })).toThrow(MappingError);
+    expect(() => back({ integritySource: 'SIMULATED', developmentSources: true })).toThrow(MappingError);
+  });
+
+  it('PASS E3 - THE ONE OTHER WRITER: the row of a seed-sealed demo item (DEMO_PACKAGE, version 2, development sources) comes back with its real signature, byte-stable', () => {
+    const demo = back({ integritySource: 'DEMO_PACKAGE', tampered: true, tamperedTrackId: 'VIDEO-02' });
+    expect(demo.signature).toEqual({ value: SIGNATURE, keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false });
+    expect(demo).toMatchObject({ integritySource: 'DEMO_PACKAGE', manifestVersion: 2, developmentSources: true, tampered: true, tamperedTrackId: 'VIDEO-02' });
+    expect(demo.tracks.map((track) => track.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect(evidenceItemToRow(demo, context)).toEqual({ ...row, integritySource: 'DEMO_PACKAGE', tampered: true, tamperedTrackId: 'VIDEO-02' });
+  });
+
+  it('refuses every other pair: Ed25519 marked simulated, the stand-in marked real, a short value, another algorithm', () => {
+    expect(() => back({ signatureSimulated: true })).toThrow(MappingError);
+    expect(() => back({ signatureAlgorithm: 'SIMULATED-SHA256' })).toThrow(MappingError);
+    expect(() => back({ signatureValue: 'cd'.repeat(32) })).toThrow(MappingError);
+    expect(() => back({ signatureAlgorithm: 'ECDSA-P256-SHA256' })).toThrow(MappingError);
+  });
+
+  it('CONTROL: the simulated stand-in of a v1 item still comes back as it did', () => {
+    const stored = evidenceItemToRow(v1, context);
+    const found = evidenceItemFromRows(stored, evidenceTracksToRows(v1), evidenceCustodyToRows(v1));
+    expect(found.signature).toEqual(v1.signature);
+    expect(found.signature.simulated).toBe(true);
+  });
+});
+
+describe('capture_devices: a device the state holds no transport for keeps the registry\'s (pass D4)', () => {
+  const base = idle();
+  const LOCAL_MIC = { id: 'MIC-03', kind: 'MIC', model: 'Core Mac microphone', firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: [], adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' };
+  const withLocalMic = (state: SimState): SimState => ({ ...state, captureDevices: { devices: [...state.captureDevices.devices, LOCAL_MIC] } }) as unknown as SimState;
+  /** MIC-03 replaces MIC-02 as the STANDBY, with the transport the registry row gave the selector slot. */
+  const selected = (state: SimState): SimState =>
+    ({ ...state, captureConfig: { ...state.captureConfig, mics: [state.captureConfig.mics[0], { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY', transport: 'AVFOUNDATION', online: true }] } }) as unknown as SimState;
+  const deviceChanges = (previous: SimState, next: SimState) => diffSlices(previous, next, FIXED_NOW + 1).filter((change) => change.table === 'captureDevices');
+
+  it('leaving the selector writes NOTHING to the device row; a later state change names its own column only', () => {
+    const inSelector = selected(withLocalMic(base));
+    const out = withLocalMic(base);
+    expect(toRows(inSelector, context).captureDevices.find((row) => row.id === 'MIC-03')?.transport).toBe('AVFOUNDATION');
+    // The selector moved back to the built-in pair: the device slice object is rebuilt, as a unit of the engine does.
+    expect(deviceChanges(inSelector, { ...out, captureDevices: { devices: [...out.captureDevices.devices] } })).toEqual([]);
+
+    const offline = { ...out, captureDevices: { devices: out.captureDevices.devices.map((device) => (device.id === 'MIC-03' ? { ...device, online: false } : device)) } } as SimState;
+    expect(deviceChanges(out, offline)).toEqual([{ op: 'update', table: 'captureDevices', key: { id: 'MIC-03' }, set: { enabled: false } }]);
+  });
+
+  it('CONTROL: a selected microphone and a built-in device are still written whole, transport included', () => {
+    const inSelector = selected(withLocalMic(base));
+    const offline = { ...inSelector, captureDevices: { devices: inSelector.captureDevices.devices.map((device) => (device.id === 'MIC-03' || device.id === 'CAM-01' ? { ...device, online: false } : device)) } } as SimState;
+    const changes = deviceChanges(inSelector, offline);
+    expect(changes).toHaveLength(1);
+    const [change] = changes;
+    expect(change?.op).toBe('insert');
+    expect(change?.op === 'insert' ? change.rows.map((row) => [(row as { id: string }).id, (row as { transport: string }).transport]) : []).toEqual([['CAM-01', 'RTSP'], ['MIC-03', 'AVFOUNDATION']]);
+  });
+
+  it('a NEW device is still inserted (with the neutral code: the column is NOT NULL)', () => {
+    const changes = deviceChanges(base, withLocalMic(base));
+    expect(changes.map((change) => (change.op === 'insert' ? change.rows.map((row) => [(row as { id: string }).id, (row as { transport: string }).transport]) : null))).toEqual([[['MIC-03', 'UNKNOWN']]]);
   });
 });

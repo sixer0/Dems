@@ -24,3 +24,29 @@ D59-3	sink.c	static int planted_p(const char *p) { return truncate(p, 0); }
 D59-2	sink.c	static int planted_q(int fd) { return fcntl(fd, F_FULLFSYNC); }
 D59-4	audio.c	static void planted_r(void) { sink_fault_hook = NULL; }
 SR-3	ingest.c	static void planted_s(AVDictionary *o) { av_dict_set(&o, "frag_interleave", "1", 0); }
+# Row 61 (decisions D84 R-6, D85 R-8; pair-58 F-10): the evasions the spelling rules let through. Each is refused by the pinned-call rule (test/static/pinned_calls.py).
+R-6	sink.c	static int planted_r6_a(const char *p) { return open(p, O_WRONLY); }
+R-6	sink.c	static int planted_r6_b(const char *p) { return creat(p, 0600); }
+R-6	sink.c	static int planted_r6_c(const char *p) { int f = O_WRONLY | O_CREAT | O_EXCL; f &= ~O_EXCL; return open(p, f, 0600); }
+R-6	sink.c	static int planted_r6_d(const char *p) { return open(p, O_WRONLY | O_CREAT, 0600); } /* O_CREAT | O_EXCL */
+R-6	audio.c	static void *planted_r6_e(const char *p) { return fopen(p,"w"); }
+R-6	audio.c	static void *planted_r6_f(const char *p, const char *m) { return fopen(p, m); }
+R-6	ipc.c	static int planted_r6_g(const char *p) { return truncate(p, 0); }
+R-6	ipc.c	static int planted_r6_h(const char *a, const char *b) { return renameat(AT_FDCWD, a, AT_FDCWD, b); }
+R-6	ingest.c	static int planted_r6_i(AVIOContext **pb, const char *p) { return avio_open(pb, p, AVIO_FLAG_WRITE); }
+R-6	sink.c	static int planted_r6_j(const char *a, const char *b) { return linkat(AT_FDCWD, a, AT_FDCWD, b, 0); }
+R-6	audio.c	static int planted_r6_k(const char *p) { return unlink(p); }
+R-6	sink.c	static int planted_r8_a(int fd) { return ftruncate(fd, 0); }
+R-6	audio.c	static void *planted_r8_b(const char *p, void *f) { return freopen(p, "w", f); }
+R-6	sink.c	static int (*planted_r8_c)(const char *, int, ...) = open;
+R-6	sink.c	static int planted_r8_d(const char *a, const char *b) { return rename(a, b); }
+R-6	sink.c	static int planted_r8_e(const char *p) { return openat(AT_FDCWD, p, O_WRONLY | O_CREAT | O_EXCL, 0600); }
+R-6	sink.c	static long planted_r8_f(const char *p) { return syscall(5, p, 0x601, 0600); }
+R-6	sink.c	#define PLANTED_GLUE(a, b) a##b
+F-10	ingest.c	static const char *planted_f10_a = "use_" "editlist=1";
+F-10	audio.c	static int (*planted_f10_b)(AVFilterGraph *, const char *, const char *, const char *, char *, int, int) = avfilter_graph_send_command;
+F-10	ingest.c	#define PLANTED_OPT "avoid_negative" "_ts"
+F-10	ingest.c	static void planted_f10_d(AVDictionary **d, const char *k) { av_dict_set(d, k, "1", 0); }
+F-10	ingest.c	static void planted_f10_e(AVDictionary **d, const char *s) { av_dict_parse_string(d, s, "=", ":", 0); }
+F-10	ingest.c	static void planted_f10_f(AVDictionary **d) { av_dict_set(d, "frag_duration", "1", 0); }
+F-10	ingest.c	static const char *planted_f10_g = PLANTED_STR(negative_cts_offsets);

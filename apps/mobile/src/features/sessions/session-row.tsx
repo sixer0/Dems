@@ -27,6 +27,7 @@ import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { withAlpha } from '@/components/media/color';
 import { DEMO_MEDIA_LIVE, demoMediaForEvidence, type DemoMediaAsset } from '@/components/media/demo-media';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { SessionStatusChip } from './session-status-chip';
 import { evidenceSuffix, handOffFor, type SessionRow as SessionRowModel } from './sessions-model';
 import { useLiveElapsedSeconds } from './use-sessions-data';
@@ -57,7 +58,9 @@ export const PANE_ROW = { thumbWidth: 64, thumbHeight: 50, gap: PHONE_ROW.gap } 
 function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps) {
   const { t } = useTranslation();
   const date = formatDate(row.startedAt, DATE_PATTERNS.dateTimeMinutes);
-  const status = t(`common.enums.sessionState.${row.status}`);
+  // Pass D7 item 3: the open session before its first durable fragment is not "Recording" (the chip says the same).
+  const connecting = useConnectingCameras() && row.status === 'RECORDING';
+  const status = connecting ? t('common.session.connectingCameras') : t(`common.enums.sessionState.${row.status}`);
   const duration = row.durationMs === null ? null : formatDuration(row.durationMs);
   const hint = t(`features.sessions.list.hint.${handOffFor(row, isMultiPane).kind}`);
   const poster = posterForRow(row);
@@ -91,7 +94,7 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
                 recyclingKey={row.id}
                 transition={0}
               />
-              {row.active ? (
+              {row.active && !connecting ? (
                 <View style={styles.liveBadge} testID={`session-row-live-${row.id}`}>
                   <View style={styles.liveDot} />
                   <Text maxFontSizeMultiplier={1.2} style={styles.liveText}>
@@ -112,7 +115,7 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
               </Text>
               <View style={[styles.chips, isMultiPane ? styles.chipsPane : null]} testID={`session-row-chips-${row.id}`}>
                 <SubjectTypeChip type={row.subjectType} size="sm" testID={`session-row-subject-${row.id}`} />
-                {duration === null ? (
+                {duration === null && connecting ? null : duration === null ? (
                   <LiveDuration testID={`session-row-duration-${row.id}`} oneLine={isMultiPane} />
                 ) : (
                   <Text

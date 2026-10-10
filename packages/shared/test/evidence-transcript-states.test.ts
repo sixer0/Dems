@@ -7,6 +7,10 @@ import { STT_MODEL_ID_PATTERN } from '../src/api';
 import {
   EXAMPLE_SOURCE_ROWS,
   MANIFEST_STT_MODEL_PATTERN,
+  MANIFEST_V2_FIELDS,
+  SERVER_STT_BACKENDS,
+  isServerSttBackend,
+  transcriptModelFaults,
   ManifestV2Schema,
   TRANSCRIPT_ABSENCE_REASONS,
   TRANSCRIPT_DISABLED_REASON,
@@ -74,6 +78,55 @@ const DOCUMENT_MEMBERS: readonly (readonly [string, (block: any, value: unknown)
   ['speakerState', (b, v) => (b.speakerState = v), 'LABELLED'],
   ['revisionHead', (b, v) => (b.revisionHead = v), 0],
 ];
+
+describe('the provenance of the STT model is recorded as far as the Core can know it (fields 84-87 against field 123; decision D160)', () => {
+  const SERVER_SNAPSHOT = { ...READY.configSnapshot, backend: 'omlx-server' as const };
+  const SERVER_MODEL = { name: 'a-served-model', version: null, quantisation: null, modelSha256: null };
+  const SERVER: Block = { ...READY, model: SERVER_MODEL, configSnapshot: SERVER_SNAPSHOT };
+
+  it('a SERVER backend: the name and three nulls is accepted, ASSEMBLED and PARTIAL with a document, and survives the builder unchanged', () => {
+    expect(refused(SERVER)).toBe(false);
+    expect(refused({ ...SERVER, state: 'PARTIAL', failedChunks: 1 })).toBe(false);
+    expect(sealedWith(SERVER).transcript.model).toEqual(SERVER_MODEL);
+    expect(sealedWith(SERVER).transcript.configSnapshot.backend).toBe('omlx-server');
+  });
+
+  it('CONTROL: cpu-local with a null file hash is REFUSED, and so with a null version or a null quantisation - nothing is loosened', () => {
+    expect(READY.configSnapshot.backend).toBe('cpu-local');
+    for (const member of ['modelSha256', 'version', 'quantisation'] as const) {
+      const failure = ManifestV2Schema.safeParse({ ...clone(sealedWith(READY)), transcript: { ...READY, model: { ...READY.model, [member]: null } } });
+      expect(refused({ ...READY, model: { ...READY.model, [member]: null } }), member).toBe(true);
+      expect(failure.success ? [] : failure.error.issues.map((issue) => issue.path.join('.')), member).toEqual([`transcript.model.${member}`]);
+    }
+    // The three nulls of a server are refused beside cpu-local as a whole, too.
+    expect(refused({ ...READY, model: SERVER_MODEL })).toBe(true);
+  });
+
+  it('CONTROL: a server backend with a version, a quantisation or a file hash is REFUSED - a value nobody verified is not sealed', () => {
+    for (const member of ['modelSha256', 'version', 'quantisation'] as const) expect(refused({ ...SERVER, model: { ...SERVER_MODEL, [member]: READY.model[member] } }), member).toBe(true);
+    expect(refused({ ...SERVER, model: READY.model })).toBe(true);
+  });
+
+  it('the name is required with a document for both backends; without a document all four are null for both', () => {
+    expect(refused({ ...SERVER, model: { ...SERVER_MODEL, name: null } })).toBe(true);
+    expect(refused({ ...READY, model: { ...READY.model, name: null } })).toBe(true);
+    expect(refused({ ...UNAVAILABLE, configSnapshot: SERVER_SNAPSHOT })).toBe(false);
+    expect(refused({ ...UNAVAILABLE, configSnapshot: SERVER_SNAPSHOT, model: { ...NO_DOCUMENT.model, name: 'a-served-model' } })).toBe(true);
+  });
+
+  it('the rule itself: one function for the manifest, the transcript document and the provider port; an unnamed backend is not a server', () => {
+    expect(SERVER_STT_BACKENDS).toEqual(['omlx-server']);
+    expect([isServerSttBackend('omlx-server'), isServerSttBackend('cpu-local'), isServerSttBackend('another')]).toEqual([true, false, false]);
+    const nulls = { name: 'm', version: null, quantisation: null, sha256: null };
+    expect(transcriptModelFaults('omlx-server', nulls)).toEqual([]);
+    expect(transcriptModelFaults('another', nulls).map((fault) => fault.member)).toEqual(['version', 'quantisation', 'sha256']);
+    expect(transcriptModelFaults('omlx-server', { ...nulls, sha256: 'a'.repeat(64) }).map((fault) => fault.member)).toEqual(['sha256']);
+  });
+
+  it('the rule adds no field: 128 definitions, 119 in the sealed manifest', () => {
+    expect([MANIFEST_V2_FIELDS.length, MANIFEST_V2_FIELDS.filter((field) => field.block === 'sealed').length]).toEqual([128, 119]);
+  });
+});
 
 describe('the four shapes of the transcript block (§B.7, §B.7a, D110)', () => {
   it('each is accepted: ASSEMBLED, PARTIAL with a document (reachable or not), PARTIAL without a document, DISABLED', () => {

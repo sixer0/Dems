@@ -23,6 +23,8 @@
 import { isEntryPoint, main, readDatabaseFacts, runCommand, type CommandOptions } from '../commands/cli';
 import { MIGRATE_LOCK_DATABASE, MIGRATE_LOCK_HINT, TEST_DATABASE_PATTERN } from '../commands/database-names';
 import { DbCommandError, OWNER_ROLE } from '../commands/owner-connection';
+import { demoPackagesOfEnvironment, seedDemoLines } from './demo-core';
+import type { SeedDemoPackages } from './demo-packages';
 import { SeedError, seedDatabase, type SeedDependencies, type SeedReport } from './seed';
 
 const COMMAND = 'db:seed';
@@ -35,6 +37,14 @@ export interface SeedCommandOptions extends CommandOptions {
   readonly clock?: () => number;
   /** Tests only: another password hasher. */
   readonly dependencies?: SeedDependencies;
+  /**
+   * The v2 demo packages (pass E3). Default: the port of the Core this command's ENVIRONMENT
+   * describes (`demoPackagesOfEnvironment`: a development-capture Core gets them, any other Core a
+   * named skip). `null`: none is asked for. A test passes its own port.
+   */
+  readonly demoPackages?: SeedDemoPackages | null;
+  /** The environment of the Core this database is seeded for. Default: the process environment. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
 }
 
 const iso = (ms: number): string => `${new Date(ms).toISOString()} (${ms})`;
@@ -85,12 +95,15 @@ export async function runSeed(argv: readonly string[], options: SeedCommandOptio
       const now = (options.clock ?? Date.now)();
       let report: SeedReport;
       try {
+        // The v2 demo packages of the Core this environment describes; a test database gets none unless the test hands a port in.
+        const test = TEST_DATABASE_PATTERN.test(target);
+        const demoPackages = options.demoPackages === undefined ? (test ? null : demoPackagesOfEnvironment({ environment: options.environment ?? process.env, dataDir: options.dataDir, now: () => now })) : options.demoPackages;
         report = await seedDatabase(
           pool,
           // A test database is reachable only when a test set `allowTestDatabase` (the name guard
           // of the command refused it otherwise); the seed then insists on a test name (TI-13).
-          { now, target: TEST_DATABASE_PATTERN.test(target) ? 'test' : 'project' },
-          options.dependencies,
+          { now, target: test ? 'test' : 'project' },
+          { ...options.dependencies, ...(demoPackages === null ? {} : { demoPackages }) },
         );
       } catch (error) {
         if (!(error instanceof SeedError)) throw error;
@@ -102,6 +115,9 @@ export async function runSeed(argv: readonly string[], options: SeedCommandOptio
         return 1;
       }
       for (const line of formatSeedReport(report)) io.out(line);
+      const demo = seedDemoLines(report.demoPackages, report.demoPlacement);
+      for (const line of demo.out) io.out(`${COMMAND}: ${line}`);
+      for (const line of demo.err) io.err(`${COMMAND}: ${line}`);
       io.out(`${COMMAND}: OK: ${target} is seeded. State: npm run db:status -w @dems/core-server -- --database ${target}`);
       return 0;
     });

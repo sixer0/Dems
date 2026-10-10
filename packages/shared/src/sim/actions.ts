@@ -13,6 +13,7 @@
  * Actions with a result type (sign-in, createSession, exportEvidence, exportAudit, pair)
  * report refusals in the result instead of throwing.
  */
+import type { MicInputId } from '../domain';
 import type { AudioRuntime } from './audio';
 import {
   biometricFailure,
@@ -25,6 +26,7 @@ import {
 } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
 import { registerCaptureDeviceTransition } from './capture-registry';
+import { applyStorageVolumeTransition } from './core-facts';
 import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
 import { deriveDeviceState } from './derive';
@@ -155,7 +157,8 @@ export function createActions(context: ActionContext): SimActions {
     beginPrecheck: () => commit((state, now) => beginPrecheckTransition(state, now, rng)),
     acknowledgePrecheckWarnings: () => commit(acknowledgePrecheckWarningsTransition),
     retryPrecheck: () => commit((state, now) => retryPrecheckTransition(state, now, rng)),
-    startRecording: () => commit(startRecordingTransition),
+    // A simulator that runs its own capture starts CONNECTING (pass D10); an external capture writes the member itself.
+    startRecording: () => commit((state, now) => startRecordingTransition(state, now, audio.levelSource)),
     stopRecording: (reason) => commit((state, now) => stopRecordingTransition(state, now, reason)),
     cancel: () => commit(cancelTransition),
     recover: () =>
@@ -251,9 +254,14 @@ export function createActions(context: ActionContext): SimActions {
     raiseCaptureWarning: (warning) => commit((state, now) => (isCaptureNotice(warning) ? raiseCaptureNoticeTransition(state, now, warning) : raiseCaptureWarningTransition(state, now, warning))),
     clearCaptureWarning: (warning) => commit((state, now) => (isCaptureNotice(warning) ? clearCaptureNoticeTransition(state, now, warning) : clearCaptureWarningTransition(state, now, warning))),
 
+    // CS-09 (pass D6): the measured evidence volume of a Core in real capture operation. INTERNAL.
+    applyStorageVolume: (volume) => commit((state) => applyStorageVolumeTransition(state, volume)),
+
     // ── The capture selector and the mic switch (task 3, register SH-18): HOSTED (operations 78 to 81) ──
     setCaptureConfig: (change) => commit((state, now) => setCaptureConfigTransition(state, now, change)),
-    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId)),
+    // The transition looks the input up in the selector (any `MIC-NN` it holds, D133 (1)); its
+    // parameter type still names the built-in pair (`session-machine.ts`, request filed by pass D1b).
+    switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId)),
     registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
   };
 }

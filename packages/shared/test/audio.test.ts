@@ -23,7 +23,7 @@ function harness(scenario: ScenarioName = 'idle') {
   const frames: Record<AudioTrackId, AudioFrame[]> = { 'AUDIO-01': [], 'AUDIO-02': [] };
   for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
     sim.store.subscribe(
-      (state) => state.audio.inputs[MIC_INPUT_OF_CHANNEL[channel]],
+      (state) => state.audio.inputs[MIC_INPUT_OF_CHANNEL[channel]]!,
       (frame) => frames[channel].push(frame),
     );
   }
@@ -154,8 +154,8 @@ describe('CLIP latch (fault injection only) and NO SIGNAL', () => {
 
     h.sim.actions.inject('MIC_CLIP', { channel: 'AUDIO-02' });
     expect(h.state().mics.find((mic) => mic.id === 'AUDIO-02')).toMatchObject({ clipLatched: true, state: 'CLIP' });
-    expect(h.state().audio.inputs['MIC-02']).toMatchObject({ clip: true });
-    expect(h.state().audio.inputs['MIC-02'].dbfs).toBeGreaterThanOrEqual(-0.5);
+    expect(h.state().audio.inputs['MIC-02']!).toMatchObject({ clip: true });
+    expect(h.state().audio.inputs['MIC-02']!.dbfs).toBeGreaterThanOrEqual(-0.5);
     h.run(3_000);
     expect(h.frames['AUDIO-02'].slice(-60).every((frame) => frame.clip)).toBe(true);
     expect(h.frames['AUDIO-02'].slice(-60).some((frame) => frame.dbfs >= -0.5)).toBe(true);
@@ -192,8 +192,8 @@ describe('CLIP latch (fault injection only) and NO SIGNAL', () => {
     expect(h.state().mics.find((mic) => mic.id === 'AUDIO-01')).toMatchObject({ state: 'NO_SIGNAL', recState: 'LOST' });
     h.sim.actions.clearFault('MIC_NO_SIGNAL');
     h.run(1_000);
-    expect(h.state().audio.inputs['MIC-01'].noSignal).toBe(false);
-    expect(h.state().audio.inputs['MIC-01'].dbfs).toBeGreaterThan(-90);
+    expect(h.state().audio.inputs['MIC-01']!.noSignal).toBe(false);
+    expect(h.state().audio.inputs['MIC-01']!.dbfs).toBeGreaterThan(-90);
   });
 
   it('a TEST_SIGNAL device command plays a steady −18 dBFS tone for 2 s', () => {
@@ -206,7 +206,7 @@ describe('CLIP latch (fault injection only) and NO SIGNAL', () => {
     const tone = h.frames['AUDIO-01'].slice(-10);
     expect(tone.every((frame) => Math.abs(frame.dbfs - -18) < 1.5)).toBe(true);
     h.run(3_000);
-    expect(h.state().audio.inputs['MIC-01'].dbfs).toBeLessThan(-45);
+    expect(h.state().audio.inputs['MIC-01']!.dbfs).toBeLessThan(-45);
     expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', deviceId: 'MIC-01', details: { command: 'TEST_SIGNAL' } });
   });
 });

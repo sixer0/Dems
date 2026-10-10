@@ -9,12 +9,34 @@
 // switches the audio source.
 import { SimNotFoundError, type CaptureTelemetryInput } from '@dems/shared/sim';
 import type { Pool } from 'pg';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
 import { readHead, readTrail, verifyTrail } from '../../../test/support/core';
+import { realBootFixture } from '../../capture/boot/__tests__/support';
 import { engineApp, meterFrames, stateChanges, storedSlices, type EngineApp } from './support';
 
 const db = useTestDatabase({ template: 'seed' });
+// A boot in capture mode real passes the boot checks of row 61 (`capture.boot`, mounted by row 71b;
+// ruling D144): a worker program that says HELLO, a private media root and a provisioned signing
+// key. Row 61's fixture gives the three below `.data/`; the worker is a stand-in script that
+// records nothing, opens no port and reads no device.
+const realBoot = realBootFixture('r58');
+realBoot.provisionKey();
+afterAll(() => realBoot.remove());
+// Integration pass D11 (item 8), second half of the same cause: the seed's selector assigns the four
+// built-in devices, which are development sources (kind FAKE). A real boot WITHOUT the development
+// flag is refused by the capture fence (`DEV_SOURCE_WITHOUT_FLAG`, row 136), so the fixture boots
+// the operation that records them: REAL_DEVELOPMENT. The helper program is `/bin/echo` (a system
+// program that prints no device list): nothing is listed, opened or asked for, and no case of this
+// file starts a capture - it speaks to the engine's two entry points directly.
+const REAL_BOOT = {
+  dataDir: realBoot.dataDir,
+  mediaStoreDir: realBoot.mediaStoreDir,
+  demoControls: false,
+  captureDevSources: true,
+  captureHelperFfmpegPath: '/bin/echo',
+  captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0'),
+} as const;
 
 interface Booted extends EngineApp {
   readonly owner: Pool;
@@ -23,7 +45,16 @@ interface Booted extends EngineApp {
 /** A process start on a fresh clone of the seed. */
 async function booted(slug: string, captureMode?: 'simulated' | 'real'): Promise<Booted> {
   const target = await db.another({ template: 'seed', slug });
-  const host = await engineApp(target, db.run.dataDir, captureMode === undefined ? {} : { captureMode });
+  // Integration pass D11 (item 8). The seed's STT configuration is the confirmed default of this Mac:
+  // ENABLED, backend `cpu-local` (`db/seed/seed.ts` `STT_CONFIG_SEED_DEFAULT`). A boot in capture
+  // mode real resolves that selection first (boot step `transcriber.config`, row 115), and the data
+  // directory of this fixture states no speech runtime (no host file), so the boot was refused
+  // `CPU_LOCAL_RUNTIME_MISSING` before the engine was asked anything - case A-4 never reached the
+  // meters it is about. The transcriber is not the subject of this file: STT is switched off in the
+  // clone, as the other real-mode fixtures do (`capture/fence`, `capture-session`). Written by the
+  // owner, as a fixture; the simulated boots are untouched (the step is inert there).
+  if (captureMode === 'real') await target.ownerPool().query('UPDATE public.stt_config SET enabled = false');
+  const host = await engineApp(target, db.run.dataDir, captureMode === undefined ? {} : { captureMode, ...(captureMode === 'real' ? { config: REAL_BOOT } : {}) });
   await host.app.readiness.boot();
   return { ...host, owner: target.ownerPool() };
 }
@@ -84,10 +115,10 @@ describe('engine.applyCaptureTelemetry (SH-18, CS-04): about 20 frames a second'
     expect(units.mock.calls.map(([label]) => label)).toEqual([]);
 
     // The level is on the next meter frame (the streamed slice), as the worker measured it.
-    expect(meterFrames(host.publications).some((meter) => meter.audio.inputs['MIC-01'].dbfs === -6.25)).toBe(false);
+    expect(meterFrames(host.publications).some((meter) => meter.audio.inputs['MIC-01']!.dbfs === -6.25)).toBe(false);
     await host.drive(50);
     expect(meterFrames(host.publications).at(-1)?.audio.inputs['MIC-01']).toMatchObject({ dbfs: -6.25, noSignal: false });
-    expect(host.engine.meters()?.audio.inputs['MIC-01'].dbfs).toBe(-6.25);
+    expect(host.engine.meters()?.audio.inputs['MIC-01']?.dbfs).toBe(-6.25);
 
     // Control: a frame that DOES change a stored slice is a unit: statements, one revision, one publication.
     const before = host.database.statements.length;
@@ -284,13 +315,13 @@ describe('fix round 1 (decision D72): the clear, the ignored IDs, and NO SIGNAL 
     await real.drive(1_200);
     expect(real.engine.meters()?.audio.inputs['MIC-01']).toMatchObject(silent);
     await real.drive(5_000);
-    expect(meterFrames(real.publications).slice(-20).every((meter) => meter.audio.inputs['MIC-01'].noSignal && meter.audio.inputs['MIC-02'].noSignal)).toBe(true);
+    expect(meterFrames(real.publications).slice(-20).every((meter) => meter.audio.inputs['MIC-01']!.noSignal && meter.audio.inputs['MIC-02']!.noSignal)).toBe(true);
     expect(real.engine.slice('session')?.state).toBe('RECORDING');
 
     // Control: the default mode keeps the generated levels.
     const simulated = await booted('r58_simulated_meters');
     await startRecording(simulated);
     await simulated.drive(1_000);
-    expect(simulated.engine.meters()?.audio.inputs['MIC-01'].noSignal).toBe(false);
+    expect(simulated.engine.meters()?.audio.inputs['MIC-01']?.noSignal).toBe(false);
   });
 });

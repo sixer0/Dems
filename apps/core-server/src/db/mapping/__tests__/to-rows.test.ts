@@ -130,7 +130,7 @@ describe('the slices', () => {
       clock: { ...before.clock, now: FIXED_NOW + 5_000 },
       auth: { status: 'SIGNED_IN', operatorId: 'OPR-001', method: 'PASSWORD', issuedAt: FIXED_NOW, lastActivityAt: FIXED_NOW },
       authLockout: { failures: [FIXED_NOW], lockedUntil: FIXED_NOW + 60_000 },
-      audio: { ...before.audio, inputs: { ...before.audio.inputs, 'MIC-01': { ...before.audio.inputs['MIC-01'], dbfs: -1 } } },
+      audio: { ...before.audio, inputs: { ...before.audio.inputs, 'MIC-01': { ...before.audio.inputs['MIC-01']!, dbfs: -1 } } },
     };
     const after: SimState = { ...before, [key]: changed[key] };
     expect(toRows(after, context)).toStrictEqual(toRows(before, context));
@@ -257,6 +257,37 @@ describe('an absent optional member (MR-2)', () => {
     const back = fromRows(asStored(rows)).alerts[0];
     expect(back?.target).toBeNull();
     expect('params' in (back ?? {})).toBe(false);
+  });
+
+  it('of an alert (dbc-7, migration 0013): the cause in params is the column `reason`; none, or one that is no code, is NULL', () => {
+    const alert = (id: string, params?: SimState['alerts'][number]['params']): SimState['alerts'][number] => ({
+      id, at: FIXED_NOW, severity: 'CRITICAL', kind: 'CAPTURE_FAULT', message: 'x', active: true, acknowledged: false, resolvedAt: null, target: 'CAM-01', ...(params === undefined ? {} : { params }),
+    });
+    const keyed: SimState = {
+      ...state,
+      alerts: [
+        alert('ALR-000001', { kind: 'CAPTURE_FAULT', target: 'CAM-01', reason: 'CAMERA_STREAM_ENDED' }),
+        alert('ALR-000002', { kind: 'CAPTURE_FAULT', target: 'CAM-01', reason: 'CAMERA_CLOCK_OUT_OF_BOUND' }),
+        alert('ALR-000003', { kind: 'CAPTURE_FAULT', target: 'CAM-01' }),
+        alert('ALR-000004'),
+        alert('ALR-000005', { reason: 'free text is no key' }),
+      ],
+    };
+    const rows = toRows(keyed, context);
+    expect(rows.alerts.map((row) => row.reason)).toEqual(['CAMERA_STREAM_ENDED', 'CAMERA_CLOCK_OUT_OF_BOUND', null, null, null]);
+    // The way back gives the alerts as they were, each with its own cause in params.
+    expect(fromRows(asStored(rows)).alerts).toEqual(keyed.alerts);
+    // A row older than 0013: NULL in the column whatever params say. It reads back as the alert it was.
+    const old = asStored(rows);
+    old.alerts = old.alerts.map((row) => ({ ...row, reason: null }));
+    expect(fromRows(old).alerts).toEqual(keyed.alerts);
+    // A row whose column and params differ was written by nobody: it is refused, not read under one of two keys.
+    const broken = asStored(rows);
+    broken.alerts = broken.alerts.map((row) => (row.id === 'ALR-000001' ? { ...row, reason: 'CAMERA_NOT_CONNECTED' } : row));
+    expect(() => fromRows(broken)).toThrow(/alerts\.reason \(ALR-000001\)/);
+    const orphan = asStored(rows);
+    orphan.alerts = orphan.alerts.map((row) => (row.id === 'ALR-000004' ? { ...row, reason: 'CAMERA_NOT_CONNECTED' } : row));
+    expect(() => fromRows(orphan)).toThrow(/alerts\.reason \(ALR-000004\)/);
   });
 
   it('the export counter has no row until the first export, and comes back absent', () => {

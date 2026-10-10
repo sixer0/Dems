@@ -14,6 +14,7 @@ import { Pressable, Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import {
   CORE_API_EXAMPLES,
+  CORE_SERVER_HTTP_ORIGIN,
   pickReplicatedState,
   type AuthSessionInfo,
   type DeviceRegistration,
@@ -1240,6 +1241,34 @@ describe('what the runtime exposes (MP-3)', () => {
     expect(visible).not.toContain(STORED.deviceCredential);
     expect(visible).not.toContain(FAKE_CREDENTIALS.sessionToken);
     expect(visible).not.toMatch(/(?:dvc|ses|bio)_/);
+    unmount();
+  });
+
+  it('pass D5, `mediaTransport()`: null without an operator session (the device credential is never offered); then the Core origin + the session header, which does not print, serialise or reach the log; null again after sign-out', async () => {
+    pairTablet();
+    const live = createLive();
+    const { unmount } = mountLive(live);
+    await flush();
+    // Paired, nobody signed in: the device credential is in memory and is NOT handed out.
+    expect(live.live.mediaTransport()).toBeNull();
+    await signIn(live);
+    const transport = live.live.mediaTransport();
+    expect(transport?.origin).toBe(CORE_SERVER_HTTP_ORIGIN);
+    // NEGATIVE CONTROL: the header is there, read by name.
+    expect(transport?.headers).toEqual({ Authorization: `Bearer ${FAKE_CREDENTIALS.sessionToken}` });
+    expect(Object.keys(transport ?? {})).toEqual(['origin']);
+    const visible = [JSON.stringify(transport), String(transport), JSON.stringify({ ...transport }), JSON.stringify([live.live.store.getState(), live.live.errors(), runtimeLog.records()])].join('\n');
+    expect(visible).not.toContain(FAKE_CREDENTIALS.sessionToken);
+    expect(visible).not.toContain(STORED.deviceCredential);
+    fake.answer('signOut', () => {
+      core.session = null;
+      return { status: 204 };
+    });
+    await act(async () => {
+      await live.live.actions.signOut('USER');
+    });
+    await flush();
+    expect(live.live.mediaTransport()).toBeNull();
     unmount();
   });
 

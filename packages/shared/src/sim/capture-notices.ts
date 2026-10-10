@@ -49,6 +49,44 @@ export const CaptureNoticeReason = {
 } as const;
 export type CaptureNoticeReason = (typeof CaptureNoticeReason)[keyof typeof CaptureNoticeReason];
 
+/**
+ * THE ADVISORY NOTICES (ruling D144; integration pass D1b). Three conditions of a running capture
+ * that are no fault and stop nothing, and that the capture side used to write to the error log
+ * only. Each is one more value of `params.reason` of the same alert kind `SYSTEM`, with severity
+ * INFO (advisory) and the device as its target:
+ *
+ * | `code` | Device | Meaning |
+ * |--------|--------|---------|
+ * | `KEYFRAME_INTERVAL_ABOVE_BOUND` | a camera | the camera's keyframe interval is above the bound the capture plans its fragments with |
+ * | `AV_OFFSET_NEAR_BOUND` | a camera | the camera's clock is near the bound of the audio/video offset (`nearBound`) |
+ * | `MIC_RATE_AT_LIMIT` | a microphone | the microphone's rate correction is held at its limit (±5,000 ppm) |
+ *
+ * Like the other notices they have NO fault life cycle (nothing in `faults.active`, no demo
+ * control injects or clears them), at most one is active per (`reason`, device), a raise while it
+ * is active writes nothing, and a clear resolves it. They write NO audit row and move no device
+ * state: they are advice. `MIC_RATE_AT_LIMIT` is therefore an alert of its own beside a
+ * `MIC_SILENT` fault and a `CAPTURE_FAULT` of the same microphone.
+ */
+export const CaptureAdvisoryReason = {
+  KEYFRAME_INTERVAL_ABOVE_BOUND: 'KEYFRAME_INTERVAL_ABOVE_BOUND',
+  AV_OFFSET_NEAR_BOUND: 'AV_OFFSET_NEAR_BOUND',
+  MIC_RATE_AT_LIMIT: 'MIC_RATE_AT_LIMIT',
+} as const;
+export type CaptureAdvisoryReason = (typeof CaptureAdvisoryReason)[keyof typeof CaptureAdvisoryReason];
+
+/** The class of device each advisory notice is about: a notice for a device of another class is refused. */
+export const CAPTURE_ADVISORY_DEVICE_KIND = {
+  KEYFRAME_INTERVAL_ABOVE_BOUND: 'CAMERA',
+  AV_OFFSET_NEAR_BOUND: 'CAMERA',
+  MIC_RATE_AT_LIMIT: 'MIC',
+} as const satisfies Record<CaptureAdvisoryReason, 'CAMERA' | 'MIC'>;
+
+const ADVISORY_TEXT = {
+  KEYFRAME_INTERVAL_ABOVE_BOUND: 'keyframe interval is above the bound',
+  AV_OFFSET_NEAR_BOUND: 'clock is near the bound of the audio/video offset',
+  MIC_RATE_AT_LIMIT: 'rate correction is at its limit',
+} as const satisfies Record<CaptureAdvisoryReason, string>;
+
 /** The alert target of situation A (C3 §5.4). */
 export const CAPTURE_NOTICE_DISCOVERY_TARGET = 'CAPTURE_DISCOVERY';
 
@@ -99,25 +137,39 @@ export interface CaptureDeviceUnreachableNotice {
   searchResponderCount?: number;
 }
 
-export type CaptureNoticeInput = CaptureDiscoveryEmptyNotice | CaptureDeviceUnreachableNotice;
+/** An advisory notice of a running capture (ruling D144): a code and the capture device it is about. */
+export interface CaptureAdvisoryNotice {
+  code: CaptureAdvisoryReason;
+  /** The capture-device ID (`CAM-02`, `MIC-03`): the alert target. */
+  subject: string;
+  /** The open session. Read at a raise only; the open session of the state when absent. */
+  sessionId?: string | null;
+}
+
+export type CaptureNoticeInput = CaptureDiscoveryEmptyNotice | CaptureDeviceUnreachableNotice | CaptureAdvisoryNotice;
+
+/** True for a notice that is advice (ruling D144), not a no-device notice. */
+export function isCaptureAdvisoryNotice(input: { readonly code: string }): input is CaptureAdvisoryNotice {
+  return Object.hasOwn(CaptureAdvisoryReason, input.code);
+}
 
 /** True for an input of `raiseCaptureWarning` / `clearCaptureWarning` that is a notice, not a fault. */
 export function isCaptureNotice(input: { readonly code: string }): input is CaptureNoticeInput {
-  return input.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY || input.code === CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE;
+  return input.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY || input.code === CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE || isCaptureAdvisoryNotice(input);
 }
 
 /** The active notice alert of (`reason`, `target`), or undefined. */
-export function activeCaptureNotice(state: Pick<SimState, 'alerts'>, reason: CaptureNoticeReason, target: string): SimAlert | undefined {
+export function activeCaptureNotice(state: Pick<SimState, 'alerts'>, reason: CaptureNoticeReason | CaptureAdvisoryReason, target: string): SimAlert | undefined {
   return state.alerts.find((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === reason && (alert.target ?? null) === target);
 }
 
-function raiseNoticeAlert(state: SimState, at: EpochMs, message: string, target: string, params: NonNullable<SimAlert['params']>): SimState {
+function raiseNoticeAlert(state: SimState, at: EpochMs, message: string, target: string, params: NonNullable<SimAlert['params']>, severity: SimAlert['severity'] = 'WARNING'): SimState {
   const { id, meta } = nextItemId(state.meta, 'ALR');
-  const alert: SimAlert = { id, at, severity: 'WARNING', kind: 'SYSTEM', message, active: true, acknowledged: false, resolvedAt: null, target, params };
+  const alert: SimAlert = { id, at, severity, kind: 'SYSTEM', message, active: true, acknowledged: false, resolvedAt: null, target, params };
   return { ...state, meta, alerts: pushRing(state.alerts, [alert], ALERT_RING_SIZE) };
 }
 
-function resolveNoticeAlert(state: SimState, at: EpochMs, reason: CaptureNoticeReason, target: string): SimState {
+function resolveNoticeAlert(state: SimState, at: EpochMs, reason: CaptureNoticeReason | CaptureAdvisoryReason, target: string): SimState {
   const active = activeCaptureNotice(state, reason, target);
   if (active === undefined) return state;
   return { ...state, alerts: state.alerts.map((alert) => (alert === active ? { ...alert, active: false, resolvedAt: at } : alert)) };
@@ -127,6 +179,13 @@ function resolveNoticeAlert(state: SimState, at: EpochMs, reason: CaptureNoticeR
 function sourceDeviceOf(state: SimState, deviceId: string): CaptureDeviceStatus {
   const device = state.captureDevices.devices.find((candidate) => candidate.id === deviceId && (candidate.kind === 'CAMERA' || candidate.kind === 'MIC'));
   if (device === undefined) throw new SimNotFoundError('captureDevice', deviceId);
+  return device;
+}
+
+/** The device of an advisory notice: a registered device of the class the notice is about. Throws for anything else. */
+function advisoryDeviceOf(state: SimState, notice: CaptureAdvisoryNotice): CaptureDeviceStatus {
+  const device = sourceDeviceOf(state, notice.subject);
+  if (device.kind !== CAPTURE_ADVISORY_DEVICE_KIND[notice.code]) throw new SimNotFoundError('captureDevice', notice.subject);
   return device;
 }
 
@@ -161,6 +220,21 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
       ...(notice.searchId === undefined ? {} : { searchId: notice.searchId }),
       trigger: notice.trigger ?? 'MANUAL',
     });
+  }
+
+  if (isCaptureAdvisoryNotice(notice)) {
+    const about = advisoryDeviceOf(state, notice);
+    if (activeCaptureNotice(state, notice.code, about.id) !== undefined) return state;
+    const session = notice.sessionId ?? state.session?.id ?? null;
+    // The device ID and codes only (R-10 AC-6): no label, no address, no measured value.
+    return raiseNoticeAlert(
+      state,
+      now,
+      `${about.id}: ${ADVISORY_TEXT[notice.code]}`,
+      about.id,
+      { reason: notice.code, deviceId: about.id, deviceKind: about.kind, ...(session === null ? {} : { sessionId: session }) },
+      'INFO',
+    );
   }
 
   const device = sourceDeviceOf(state, notice.subject);
@@ -203,6 +277,8 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
 /** The clear of a notice (`clearCaptureWarning`): no audit row (C3 §5.4). Returns the same state when nothing changes. */
 export function clearCaptureNoticeTransition(state: SimState, now: EpochMs, notice: CaptureNoticeInput): SimState {
   if (notice.code === CaptureNoticeReason.CAPTURE_DISCOVERY_EMPTY) return resolveNoticeAlert(state, now, notice.code, CAPTURE_NOTICE_DISCOVERY_TARGET);
+  // Advice ends: the alert is resolved, nothing else moves.
+  if (isCaptureAdvisoryNotice(notice)) return resolveNoticeAlert(state, now, notice.code, advisoryDeviceOf(state, notice).id);
   const device = sourceDeviceOf(state, notice.subject);
   const next = withDeviceOnline(state, device, true);
   // A re-read of the inputs says what is plugged in; only a later pre-check (or the capture side) resolves the alert.

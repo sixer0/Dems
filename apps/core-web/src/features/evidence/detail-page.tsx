@@ -15,9 +15,11 @@ import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { copyText } from './clipboard'
 import { DETAIL_BEAT_MS, usePanelVariants } from './choreography'
 import { useEvidenceAssets } from './demo-assets'
+import { ItemDevelopmentBadge } from './development-source'
 import { saveBytes } from './export-download'
 import { ExportWizard } from './export-wizard'
 import { IntegrityTab } from './integrity-tab'
+import { readItemV2 } from './item-v2'
 import { logEvidenceError } from './log'
 import { MediaTab } from './media-tab'
 import { MetadataTab } from './metadata-tab'
@@ -31,7 +33,9 @@ import {
   formatWibDateTime,
 } from './model'
 import { consumeAutoVerify, takeHeaderOrigin, type HeaderOrigin } from './pending-actions'
+import { SealedPlayer } from './sealed-player'
 import { selectOperators } from './selectors'
+import { TranscriptPane } from './transcript-pane'
 import { useArchiveEvidence } from './use-archive'
 import { rowForMedia, useEvidenceMedia, type EvidenceMediaState } from './use-evidence-media'
 import { useEvidenceVerification } from './use-verification'
@@ -54,6 +58,13 @@ const TABS: TabKey[] = ['media', 'metadata', 'integrity']
  * skeleton, so the media, the poster and the bundled check never appear and vanish again. Without
  * an answer the page shows no bundled media and says so on the header chip. Archive is settle site
  * B-1 (`use-archive.ts`).
+ *
+ * Schema v2 (blueprint row 92, M8-W3; UX spec flows 5 and 6): when the Core answers
+ * `media.source: LIVE_STREAM`, the Media tab plays the SEALED camera files through the media
+ * session of operation 88 (`sealed-player.tsx`) with the audio-source band, and Play opens it. An
+ * item that carries a transcript shows the transcript pane (`transcript-pane.tsx`) on the same tab,
+ * in both data modes. An item the Core recorded from development sources carries the badge in the
+ * header (`development-source.tsx`). The v1 demo items keep everything they had.
  */
 export function EvidenceDetailBody({ item }: { item: EvidenceItem }) {
   const search = detailRoute.useSearch()
@@ -93,6 +104,12 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const routeDelay = useRouteEnterDelay()
   const row = useMemo(() => rowForMedia(buildEvidenceRow(item, operators), media), [item, media, operators])
   const verification = useEvidenceVerification(row)
+  const v2 = useMemo(() => readItemV2(item), [item])
+  // Flow 5 step 1: the Core says the sealed files can be played through a signed media session.
+  const sealedPlayback = live && media.status === 'ready' && media.media.source === 'LIVE_STREAM'
+  const hasTranscript = v2.isV2 || v2.transcript !== null || v2.transcriptSha256 !== null
+  // The source classes of the last verify run on this page (never the current device list).
+  const verifiedSources = verification.state.v2?.sources ?? null
   const [playToken, setPlayToken] = useState<number | null>(null)
   const onPlayHandled = useCallback(() => setPlayToken(null), [])
   const [wizard, setWizard] = useState({ key: 0, open: false })
@@ -210,6 +227,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
               <Chip size="sm" variant="secondary" className="evi-demo-chip" data-testid="evidence-package-chip" data-package={packageChip.kind}>
                 <Chip.Label>{packageChip.label}</Chip.Label>
               </Chip>
+              <ItemDevelopmentBadge item={item} testId="evidence-detail-development" />
             </div>
           </div>
 
@@ -272,7 +290,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
             </dl>
             {/* LB-1: the kit's Button drops `aria-busy` (F63-2), so the action row carries it while an archive is out. */}
             <div className="evi-detail-actions" aria-busy={archiving.busy || undefined}>
-              <Button variant="primary" onPress={onPlay} isDisabled={!row.pkg} data-testid="evidence-play">
+              <Button variant="primary" onPress={onPlay} isDisabled={!row.pkg && !sealedPlayback} data-testid="evidence-play">
                 <Play className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.play')}
               </Button>
@@ -335,7 +353,14 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                   transition={m.reduced ? m.transitions.crossFade : m.transitions.enter}
                 >
                   {key === 'media' ? (
-                    <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} mediaUnavailable={media.status === 'unavailable'} />
+                    <div className="evi-body" data-testid="evidence-media-panel" data-playback={sealedPlayback ? 'sealed' : 'bundled'}>
+                      {sealedPlayback ? (
+                        <SealedPlayer evidenceId={item.id} durationMs={item.durationMs} item={v2} sources={verifiedSources} failedFragments={verification.state.v2?.failedFragments} playToken={playToken} onPlayHandled={onPlayHandled} />
+                      ) : (
+                        <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} mediaUnavailable={media.status === 'unavailable'} />
+                      )}
+                      {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} /> : null}
+                    </div>
                   ) : key === 'metadata' ? (
                     <MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />
                   ) : (

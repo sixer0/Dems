@@ -12,7 +12,7 @@
 // | B-6 resume effect `beginPrecheck` (FC-7) | under StrictMode (as `main.tsx` renders) ONE request while it is in flight; the delta moves the gate on | one request, the denied toast | one request, the offline toast |
 // | B-6 `acknowledgePrecheckWarnings` | step 3 in `ok` | step 2 stays, Next idle | step 2 stays |
 // | B-6 `retryPrecheck` | the gate runs again; F69's wording on the blocked Core link before | still blocked | still blocked |
-// | B-6 `startRecording`, C-4 the ID read before the call | the toast names that ID, then `/session` | no navigation, Start idle | no navigation |
+// | B-6 `startRecording`, C-4 the ID read before the call | a durable Core: "Recording started" names that ID; a Core still connecting (row 139): "Connecting cameras…" with that ID, no "Recording started"; then `/session` | no navigation, Start idle | no navigation |
 // | B-6 `cancel` | "Session discarded.", then `/dashboard` | the dialog stays open | the dialog stays open |
 import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -220,18 +220,41 @@ describe('B-6 startRecording and C-4 (the session ID is read before the call)', 
   }
   const startedToast = (id: string) => en.sessionNew.ready.startedToast.replace('{{sessionId}}', id)
 
-  it('success: the toast names the ID read before the call, then /session; one request', async () => {
+  const connectingToast = en.common.session.connectingCameras
+
+  it('success, a Core that answers with a durable recording: the toast names the ID read before the call, then /session; one request', async () => {
     const core = await armed()
     const id = core.state().session!.id
     core.sim.actions.startRecording()
+    // The Core's engine starts a session in "connecting cameras" (pass D10); this Core is past it
+    // when it answers: the first fragment is durable, so the page says "Recording started".
+    expect(core.runUntil((state) => state.session?.captureDurable !== false, 5_000)).toBe(true)
+    expect(core.state().session).toMatchObject({ state: 'RECORDING' })
     live!.bed.fake.scriptCommand('startSession', { ops: sessionOps(core), order: 'delta-first' })
     // The Session Monitor (another row's page) may ask the Core for its own data when it opens.
     live!.bed.fake.answerAllFromExamples()
     fireEvent.click(screen.getByTestId('sn-start'))
     await waitFor(() => expect(toastsWith(startedToast(id))).toHaveLength(1))
+    expect(toastsWith(connectingToast)).toHaveLength(0)
     await waitFor(() => expect(pathname()).toBe('/session'))
     expect(requests('startSession')).toBe(1)
     expect(live!.bed.fake.log.requestsOf('startSession')[0]?.params).toEqual({ id })
+  })
+
+  it('success, a Core that is still connecting its cameras (row 139; ux §8e.2, D84): "Connecting cameras…" with the ID read before the call, never "Recording started"; then /session', async () => {
+    const core = await armed()
+    const id = core.state().session!.id
+    core.sim.actions.startRecording()
+    // The accepted start as the engine answers it: RECORDING, nothing durable yet.
+    expect(core.state().session).toMatchObject({ state: 'RECORDING', captureDurable: false })
+    live!.bed.fake.scriptCommand('startSession', { ops: sessionOps(core), order: 'delta-first' })
+    live!.bed.fake.answerAllFromExamples()
+    fireEvent.click(screen.getByTestId('sn-start'))
+    await waitFor(() => expect(toastsWith(connectingToast)).toHaveLength(1))
+    expect(toastsWith(connectingToast)[0]).toHaveTextContent(id)
+    expect(toastsWith(startedToast(id))).toHaveLength(0)
+    await waitFor(() => expect(pathname()).toBe('/session'))
+    expect(requests('startSession')).toBe(1)
   })
 
   it('refusal: a 403 shows the denied toast; no "Recording started", no navigation, Start idle', async () => {

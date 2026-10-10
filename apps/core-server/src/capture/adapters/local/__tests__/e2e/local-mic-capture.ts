@@ -16,6 +16,19 @@
 // discarded; the output is NUMBERS ONLY (one JSON line and a few labelled lines). Nothing is played,
 // uploaded or described. Exit code: 0 pass, 1 a check failed, 2 refused before any open.
 //
+// THE DIAGNOSTIC (pass D3, D128 / D133 (3)): `--diagnose` in place of `--source` / `--seconds`.
+//
+//   npx tsx <this file> --program <absolute path of FFmpeg> --diagnose
+//
+// It runs the four argument variants of `mic-diagnose.ts` one after another, each reading for 5 s and
+// killed at 5.75 s at the latest: THE MICROPHONE IS OPEN FOR AT MOST 23 SECONDS IN TOTAL, and the first
+// printed line says so. It prints, per variant, one JSON line of numbers (declared rate, observed rate
+// from the first to the last chunk, median arrival interval, modal chunk size, the count of FFmpeg's
+// own diagnostic lines, the input format FFmpeg reports) and one closing line with the reading. No
+// pipe, no file: the samples come over standard output, are counted and dropped. FFmpeg's text is
+// counted, never printed. `--proof TRUE_48K | LOSSY_8_OF_9 | RELABEL_441` runs the same variants on a
+// generated source: no device, an agent may run it. Exit code: 0 ran, 2 refused before any open.
+//
 // THE RATE (pass C2, D117) is judged by `judgeArrivalRate`: samples that arrived after the first chunk
 // over the time since the first chunk, within 2 % of 48,000. The opening time is never charged to it.
 // A generated input is judged from one second after its first chunk (the program's pacing burst).
@@ -29,7 +42,8 @@ import { MIC_TRANSPORTS } from '../../../mic-transport';
 import { helperProgramRefusal } from '../../helper-program';
 import { LOCAL_MIC_DEVICE_NAME, MicGeneratedTone, type MicSource } from '../../mic-helper-args';
 import { createMicHelper } from '../../mic-helper';
-import { inspectProgram } from '../../process-door';
+import { inspectProgram, startHelperProcess } from '../../process-door';
+import { MIC_DIAGNOSE_GENERATED, MIC_DIAGNOSE_KILL_MS, MIC_DIAGNOSE_MAX_OPEN_SECONDS, MIC_DIAGNOSE_READ_MS, micDiagnoseVariants, micVariantNumbers, readingOf, reportedInputOf, type ByteArrival, type MicDiagnoseGenerated, type MicDiagnoseSource, type MicVariantNumbers } from '../mic-diagnose';
 import { judgeArrivalRate, streamFacts, streamRefusals, type ChunkArrival } from '../mic-stream-check';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +64,77 @@ function refuse(why: string): never {
   say(`REFUSED before any open: ${why}`);
   process.exit(2);
 }
+
+/**
+ * The diagnostic run (see the header). Opens the microphone only with no `--proof`, for at most
+ * `MIC_DIAGNOSE_MAX_OPEN_SECONDS` in total; never returns.
+ */
+async function diagnose(): Promise<never> {
+  const programPath = argument('--program');
+  const proof = argument('--proof');
+  if (programPath === undefined || !programPath.startsWith('/')) refuse('--program must be an absolute path');
+  if (proof !== undefined && !Object.hasOwn(MIC_DIAGNOSE_GENERATED, proof)) refuse(`--proof must be one of ${Object.keys(MIC_DIAGNOSE_GENERATED).join(', ')}`);
+  const diagnosed: MicDiagnoseSource = proof === undefined ? { kind: 'DEVICE', name: LOCAL_MIC_DEVICE_NAME } : { kind: 'PROOF', generated: proof as MicDiagnoseGenerated };
+  const variants = micDiagnoseVariants(diagnosed);
+  // THE FIRST LINE: how long the microphone indicator will be on.
+  say(
+    diagnosed.kind === 'DEVICE'
+      ? `MICROPHONE: open for at most ${MIC_DIAGNOSE_MAX_OPEN_SECONDS} seconds in total (${variants.length} variants one after another, each read for ${MIC_DIAGNOSE_READ_MS / 1000} s and stopped at ${MIC_DIAGNOSE_KILL_MS / 1000} s at the latest; the orange indicator may go off for a moment between them). Nothing is written to disk; numbers only.`
+      : `PROOF on the generated source ${proof}: no device is opened, the microphone indicator stays off. ${variants.length} variants, ${MIC_DIAGNOSE_READ_MS / 1000} s each.`,
+  );
+  const programRule = helperProgramRefusal(inspectProgram(programPath));
+  if (programRule !== null) refuse(`the program path fails the production rule (${programRule}). Copy the program into a private folder, e.g. .data/helpers/, and pass that path.`);
+  const clock = createSystemTimers();
+  if (diagnosed.kind === 'DEVICE') {
+    // The list: it opens nothing and asks for nothing.
+    const lister = createMicHelper({ program: programPath, runDir: resolve(REPOSITORY, '.data/run/capture'), timers: clock });
+    const absent = await lister.presence('MIC-03', LOCAL_MIC_DEVICE_NAME);
+    if (absent !== null) refuse(`the device is not in the audio device list (${absent.code}). If this command runs inside an agent sandbox the list is empty; run it in your own Terminal.`);
+  }
+  const results: MicVariantNumbers[] = [];
+  for (const variant of variants) {
+    const arrivals: ByteArrival[] = [];
+    let zeros = 0;
+    let zeroRun = 0;
+    let longestZeroRun = 0;
+    let carry: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+    const startedAtMs = performance.now();
+    const child = startHelperProcess({
+      command: programPath,
+      args: variant.args,
+      env: {},
+      onOutput: (chunk) => {
+        arrivals.push({ atMs: performance.now(), bytes: chunk.length });
+        if (!variant.float32Mono) return;
+        // Counted as they arrive and dropped: exact zeros are what a resampler writes into a hole.
+        const joined = carry.length === 0 ? chunk : Buffer.concat([carry, chunk]);
+        const whole = joined.length - (joined.length % 4);
+        for (let offset = 0; offset < whole; offset += 4) {
+          if (joined.readFloatLE(offset) === 0) {
+            zeros += 1;
+            zeroRun += 1;
+            if (zeroRun > longestZeroRun) longestZeroRun = zeroRun;
+          } else zeroRun = 0;
+        }
+        carry = Buffer.from(joined.subarray(whole));
+      },
+    });
+    const cancelStop = clock.after(MIC_DIAGNOSE_READ_MS, () => child.kill('SIGTERM'));
+    const cancelKill = clock.after(MIC_DIAGNOSE_KILL_MS, () => child.kill('SIGKILL'));
+    const exit = await child.ended;
+    cancelStop();
+    cancelKill();
+    const numbers = micVariantNumbers({ variant, startedAtMs, arrivals, reported: reportedInputOf(exit.diagnostics), zeroSamples: zeros, longestZeroRunSamples: longestZeroRun });
+    results.push(numbers);
+    say(JSON.stringify({ letter: variant.letter, ...numbers, helperOpenMs: Math.round(performance.now() - startedAtMs), helperStarted: !exit.spawnFailed }));
+    // A plain timer: it keeps the run alive between two helpers (the capture timers do not).
+    await new Promise<void>((next) => setTimeout(next, 300));
+  }
+  say(JSON.stringify({ check: 'M4-LOCAL-MIC-1 diagnostic', source: diagnosed.kind === 'DEVICE' ? 'device' : proof, reading: readingOf(results), ratios: Object.fromEntries(results.map((result) => [result.variant, result.ratioIs ?? result.ratio])) }));
+  if (diagnosed.kind === 'DEVICE' && results.every((result) => result.chunks === 0)) say('No sample arrived in any variant. If you refused the permission: System Settings > Privacy & Security > Microphone, switch the app on, then run this again. (An agent never does this for you.)');
+  process.exit(0);
+}
+if (process.argv.includes('--diagnose')) await diagnose();
 
 const program = argument('--program');
 const sourceName = argument('--source');

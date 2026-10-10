@@ -118,3 +118,24 @@ Schema is at version 5 / `dbc-6` (42 tables). Shared contract: 97 operations / 3
 | `apps/capture-worker/**`, `packages/capture-protocol/**`, supervisor record handling | 59 (in flight) |
 
 OpenAPI / lockfile: 141 and C1 both regenerate `openapi.json` — each takes `/usr/bin/lockf -k .locks/npm.lock`, re-reads the file first and regenerates from the registry (the generator is deterministic; the second writer simply includes the first one's entries). Count pins move by delta.
+
+## §9 Wave D (decision D133, 2026-10-09, after the pause)
+
+Everything landed before commit `e296ce7` is CLOSED unless listed here. A line you need in a closed or foreign file = a request in `file_requests.md`. Declare your exact paths in `file_claims.md` before the first write.
+
+| Owner | Area |
+|---|---|
+| row 61 | core-server boot checks and capture-mode boot refusals (`src/boot/**` or where the boot steps live), `src/config.ts` capture keys, the static-rule TESTS for `capture/` and `capture-worker/` (`test/static/**`, `apps/capture-worker/test/static/**`, `check.sh` static part), storage volume check. NOT the worker's C sources (row 71a) |
+| row 71a | `apps/capture-worker/src/**` (audio switch, mic lateness report, first-GOP / held-first-frame rule, clock gap), `apps/capture-worker/test/**` except `test/static/**`, `packages/capture-protocol/**`. Writes `delegation_progress/contract_71a_protocol_landed.md` when the protocol part is in |
+| row 71b | `apps/core-server/src/modules/sessions/**`, `src/capture/supervisor.ts` + `src/capture/index.ts` consumers, the capture blocks of `src/engine/host.ts` (capture transitions, fault lifecycle, `captureDurable`), `session_capture_sources` writer, op 81 route, audit `AUDIO_SOURCE_SWITCHED` |
+| row 82 | `apps/core-server/src/sealing/**`, `src/modules/recording-fragments/**` (mounting), the SEAL blocks of `src/engine/host.ts` (`applySealingProgress` / `completeSeal`), `packages/shared/src/sim/session-machine.ts` (v2 seal), RECOVERY resume, `packages/shared/scripts/gen-demo-evidence.ts` |
+| pass D1a | `apps/core-server/src/modules/capture-discovery/**`, `src/capture/adapters/camera/**` + `adapters/__tests__/credential.test.ts`, `src/credential-store/**`, the capture rows of `src/core/audit-details.ts`, `packages/shared/src/redaction/**`, `src/modules/rbac/**` (matrix rows of ops 89 / 95 / 96 only), `test/db/set4-rules.test.ts` |
+| pass D1b | `packages/shared/src/api/**` and `src/sim/**` (except `session-machine.ts`), `openapi.json` (generator only), `apps/core-server/src/modules/capture-config/**`, `src/modules/devices/**`, `src/db/reset/**`, `apps/core-server/src/evidence-verify/**` + `packages/shared/src/evidence-verify/**` (layout only), `test/acceptance/contract.test.ts`, `test/db/device-upsert.db.test.ts`, MODG route-list tests |
+| pass D2 | `apps/core-web/src/features/devices/**`, `features/dashboard/**`, `features/system/**` (WB-07 link); `apps/mobile/src/features/capture-selector/**`, `features/devices/**`, `features/session-live/**` + `features/dashboard/**` (badge mounts only) |
+| pass D3 | `apps/core-server/src/capture/adapters/local/**`, `src/capture/fence/**` |
+| row 90 | NEW `apps/core-server/src/modules/media-stream/**` (or the name it claims), op 88 route, `mts_` log-blanking entries |
+| row 91 | NEW `apps/core-server/src/modules/evidence-export/**` (or the name it claims), ops 42 / 87 routes, composite |
+| row 92 | `apps/core-web/src/features/evidence/**`, `apps/mobile/src/features/evidence/**` (incl. the `verify-v2` tests of row 87), transcript revise UI |
+
+Shared hot files, section rule (re-read immediately before each edit, exact-string Edit, touch only your own block, never reformat): `apps/core-server/src/app.ts` (one mount line per module), `src/engine/host.ts` (71b capture blocks, 82 seal blocks), `packages/shared/src/sim/api.ts` (D1b writer; others request), `packages/shared/src/i18n/en/*.ts` (append-only blocks), `apps/core-server/test/static/*` file-list pins (by delta).
+Single-writer resources: OpenAPI generator under `.locks/npm.lock` (D1b; rows 90 / 91 regenerate only if they add response members, same lock); migrations: NONE planned — a row that needs one stops and asks; heavy host lock for any run that starts the worker.

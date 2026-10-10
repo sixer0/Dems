@@ -15,7 +15,7 @@
  * until `recover()`.
  */
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
-import { MIC_INPUT_OF_CHANNEL } from './audio';
+import { activeMeterChannel, captureMicLines, micInputOfChannel } from './audio';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
 import { DEVICE_ID } from './dataset';
 import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
@@ -24,7 +24,7 @@ import { nextItemId, pushRing, recordActivity, tamperAuditRow } from './events';
 import { DEFAULT_TAMPER_TRACK, restoreEvidenceItem, tamperEvidenceItem } from './evidence';
 import { noSignalFrame } from './initial-state';
 import { addTimelineItem, enterFault, isCriticalFault } from './session-machine';
-import type { AuditLogSlice, AudioFrame, EpochMs, FaultTarget, SimAlert, SimState } from './types';
+import type { AuditLogSlice, AudioFrame, CaptureFaultFacts, EpochMs, FaultTarget, SimAlert, SimState } from './types';
 import { FaultEvt, FaultKind, type Severity } from './vocabulary';
 
 /** Book audit-event kind (§21.3, 01 L665) each fault is reported as (AC-65 "audit AUDIO_CLIP"). */
@@ -93,7 +93,7 @@ export function faultTargetKey(state: SimState, kind: FaultKind, target?: FaultT
     // Schema v2 (SH-08): the silence warning is keyed to the channel that feeds AUDIO-01 right now,
     // so `describeFault` finds the active microphone and clearing it resolves exactly that alert.
     case FaultKind.MIC_SILENT:
-      return target?.channel ?? (state.audio.activeInputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02');
+      return target?.channel ?? activeMeterChannel(state);
     case FaultKind.GNSS_LOSS:
       return target?.fallback ?? 'NTP';
     case FaultKind.TAMPER:
@@ -177,6 +177,7 @@ function raiseAlert(
   kind: FaultKind,
   target: string | null,
   message: string,
+  facts?: CaptureFaultFacts,
 ): SimState {
   const { id, meta } = nextItemId(state.meta, 'ALR');
   const alert: SimAlert = {
@@ -190,16 +191,25 @@ function raiseAlert(
     resolvedAt: null,
     target,
     // Step 54 (review 40 m4): values for the alert copy, so no UI parses `message`.
-    params: { kind, target, evt: FaultEvt[kind], eventKind: FAULT_EVENT_KIND[kind] },
+    // `facts` (pass D6 item 14): the checked reason code and file count of a capture fault, written at the raise only.
+    params: { kind, target, evt: FaultEvt[kind], eventKind: FAULT_EVENT_KIND[kind], ...facts },
   };
   return { ...state, meta, alerts: pushRing(state.alerts, [alert], ALERT_RING_SIZE) };
 }
 
-function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: string | null | undefined): SimState {
+/** The cause an alert of a fault was raised with (`params.reason`, written at the raise only), or null. */
+function alertReason(alert: SimAlert): string | null {
+  const reason = alert.params?.['reason'];
+  return typeof reason === 'string' ? reason : null;
+}
+
+/** `reason` undefined: the alerts of every cause; null: the alert without a cause; a code: that one (ruling D146). */
+function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: string | null | undefined, reason?: string | null): SimState {
   let changed = false;
   const alerts = state.alerts.map((alert) => {
     if (!alert.active || alert.kind !== kind) return alert;
     if (target !== undefined && (alert.target ?? null) !== target) return alert;
+    if (reason !== undefined && alertReason(alert) !== reason) return alert;
     changed = true;
     return { ...alert, active: false, resolvedAt: at };
   });
@@ -209,11 +219,11 @@ function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: st
 /**
  * Writes one frame of the meters slice. The fault target is still a **channel** (the demo control
  * panel and `FaultTarget.channel` name one); the slice itself is keyed by mic input (SH-17), so the
- * write goes through `MIC_INPUT_OF_CHANNEL`.
+ * write goes through `micInputOfChannel` (the input that channel is in the capture configuration).
  */
 function setAudioFrame(state: SimState, channel: AudioTrackId, patch: Partial<AudioFrame>): SimState {
-  const input = MIC_INPUT_OF_CHANNEL[channel];
-  const frame = state.audio.inputs[input];
+  const input = micInputOfChannel(captureMicLines(state), channel);
+  const frame = state.audio.inputs[input] ?? noSignalFrame(patch.at ?? 0);
   return {
     ...state,
     audio: {
@@ -249,9 +259,20 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
  * Raises `kind` under the target key `key`: the body of `inject`, for a caller that already knows
  * the key. `raiseCaptureWarning` uses it for `CAPTURE_FAULT`, whose key is a capture-device ID that
  * `FaultTarget` has no member for. Returns the same state while that fault is active for that key.
+ *
+ * THE KEY IS (kind, reason, device) (ruling D146): `facts.reason` is the cause. The same kind on
+ * the same DEVICE with another cause is another fault - its own entry, alert and audit row; a
+ * raise without a cause is keyed by kind and target, as it always was.
+ *
+ * WITHOUT A DEVICE (key null: the capture as a whole) THERE IS ONE FAULT OF A KIND AT A TIME. Its
+ * cause is a fact of the alert and of the audit row (`params.reason`, the column `alerts.reason`),
+ * not a second key: the end of a capture is told by two raisers that cannot agree on a code (the
+ * forwarder, from the supervisor's own warning, and the failed start of the session), and it must
+ * stay one alert and one FAULT_RAISED row whichever of them comes first.
  */
-export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget): SimState {
-  if (isFaultActive(state.faults, kind, key)) return state;
+export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget, facts?: CaptureFaultFacts): SimState {
+  const reason = key === null ? null : (facts?.reason ?? null);
+  if (isFaultActive(state.faults, kind, key, key === null ? undefined : reason)) return state;
 
   let next: SimState = state;
   if (kind === FaultKind.GNSS_LOSS && isFaultActive(state.faults, kind)) {
@@ -269,7 +290,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
     throw new SimNotFoundError('evidence', evidenceTamper.evidenceId);
   }
   const { message, deviceId } = describeFault(next, kind, key);
-  next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key }] } };
+  next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key, ...(reason === null ? {} : { reason }) }] } };
 
   // Immediate effects that are not pure derivations.
   let auditIndex: number | null = null;
@@ -292,7 +313,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
     next = setAudioFrame(
       next,
       channel,
-      noSignalFrame(now, next.audio.inputs[MIC_INPUT_OF_CHANNEL[channel]].seq),
+      noSignalFrame(now, next.audio.inputs[micInputOfChannel(captureMicLines(next), channel)]?.seq ?? 0),
     );
   } else if (kind === FaultKind.AUDIT_TAMPER) {
     auditIndex = auditTamperIndex(next.audit, target);
@@ -308,7 +329,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   }
 
   next = deriveDeviceState(next);
-  next = raiseAlert(next, now, kind, key, message);
+  next = raiseAlert(next, now, kind, key, message, facts);
   const sessionId = next.session?.id ?? null;
   const fromState = next.session?.state ?? null;
   next = {
@@ -352,6 +373,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
                 eventKind: FAULT_EVENT_KIND[kind],
                 target: key,
                 fromState,
+                ...facts,
               },
             },
             event: {
@@ -393,9 +415,17 @@ export function clearFaultTransition(state: SimState, now: EpochMs, kind: FaultK
  * Clears `kind` under the target key `key` (`undefined`: every active fault of that kind): the body
  * of `clearFault`, for a caller that already knows the key. `clearCaptureWarning` uses it, as
  * `raiseCaptureWarning` uses `raiseFaultAtKey`. Returns the same state when no such fault is active.
+ *
+ * `reason` (ruling D146): undefined - the faults of every cause under that key, as before; null -
+ * only the fault without a cause; a code - only the fault of that cause, so the other causes of
+ * the same kind on the same device stay raised with their alerts. A fault WITHOUT a device (key
+ * null) has no cause in its key (see `raiseFaultAtKey`): a clear of it is never narrowed by one.
  */
-export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null | undefined): SimState {
-  const matches = state.faults.active.filter((fault) => fault.kind === kind && (key === undefined || fault.target === key));
+export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null | undefined, reason?: string | null): SimState {
+  const wanted = key === null ? undefined : reason;
+  const matches = state.faults.active.filter(
+    (fault) => fault.kind === kind && (key === undefined || fault.target === key) && (wanted === undefined || fault.target === null || (fault.reason ?? null) === wanted),
+  );
   if (matches.length === 0) return state;
 
   let next: SimState = {
@@ -413,7 +443,8 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
         evidence: next.evidence.map((item) => (item.id === evidenceTamper.evidenceId ? restoreEvidenceItem(item) : item)),
       };
     }
-    next = resolveAlerts(next, now, kind, fault.target);
+    // The alert of a fault about a device is the one of its cause; a fault without a device has one alert, whatever cause it names.
+    next = resolveAlerts(next, now, kind, fault.target, fault.target === null ? undefined : (fault.reason ?? null));
   }
   next = deriveDeviceState(next);
   const sessionId = next.session?.id ?? null;
@@ -427,7 +458,7 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
           type: 'FAULT_CLEARED' as const,
           message: `${describeFault(state, kind, fault.target).message} — cleared`,
           sessionId,
-          details: { kind, evt: FaultEvt[kind], target: fault.target },
+          details: { kind, evt: FaultEvt[kind], target: fault.target, ...(fault.reason === undefined ? {} : { reason: fault.reason }) },
         },
         event: {
           type: 'FAULT_CLEARED' as const,
@@ -472,8 +503,8 @@ export function acknowledgeAlertTransition(state: SimState, alertId: string): Si
  */
 export function maybeRaiseMicSilentWarning(state: SimState, now: EpochMs, activeSilentSince: EpochMs): SimState {
   if (state.session?.state !== SessionState.RECORDING) return state;
-  const activeChannel: AudioTrackId = state.audio.activeInputId === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02';
-  const activeFrame = state.audio.inputs[MIC_INPUT_OF_CHANNEL[activeChannel]];
+  const activeChannel: AudioTrackId = activeMeterChannel(state);
+  const activeFrame = state.audio.inputs[micInputOfChannel(captureMicLines(state), activeChannel)];
   if (!activeFrame?.noSignal) return state;
   if (now - activeSilentSince < MIC_SILENCE_DURATION_MS) return state;
   // Never switch: assert the active input is unchanged before and after the inject below.

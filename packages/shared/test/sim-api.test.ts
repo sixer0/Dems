@@ -3,6 +3,7 @@
 // plus an audit row, SUPERVISOR 202); the health endpoint is LIVE, not simulated.
 import { describe, expect, it } from 'vitest';
 import {
+  CAPTURE_CONNECT_MS,
   createManualClock,
   createSim,
   SIM_API_ROUTES,
@@ -109,6 +110,18 @@ describe('session endpoints', () => {
     h.run(5_000);
     expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` })).toMatchObject({ status: 200, body: { state: 'RECORDING' } });
     expect(h.sim.request({ method: 'POST', path: '/api/v1/session/SES-X/stop', body: { reason: 'Interview completed' } }).status).toBe(404);
+    // Pass D10: while the cameras connect a stop is refused 409 with its reason, before the 422 of the reason.
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/stop`, body: { reason: 'ok' } })).toMatchObject({ status: 409, body: { error: { code: 'INVALID_STATE', details: { reason: 'CAPTURE_NOT_DURABLE' } } } });
+    // Pass D11: the session answer of the API says it as the replicated slice does - explicit `false` while the cameras connect ...
+    const connecting = h.sim.request({ method: 'GET', path: '/api/v1/session/current' }).body as { session: Record<string, unknown> };
+    expect(connecting.session).toMatchObject({ state: 'RECORDING', captureDurable: false });
+    expect(connecting.session['captureDurable']).toBe(h.sim.store.getState().session?.captureDurable);
+    h.run(CAPTURE_CONNECT_MS);
+    // ... and ABSENT once the simulator's own capture is durable (decision D10-2: absent reads as durable; the member is never invented).
+    const durable = h.sim.request({ method: 'GET', path: '/api/v1/session/current' }).body as { session: Record<string, unknown> };
+    expect(durable.session['state']).toBe('RECORDING');
+    expect('captureDurable' in durable.session).toBe(false);
+    expect(h.sim.store.getState().session?.captureDurable).toBeUndefined();
     expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/stop`, body: { reason: 'ok' } }).status).toBe(422);
     expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/stop`, body: { reason: 'Interview completed' } })).toMatchObject({
       status: 202,
@@ -340,7 +353,9 @@ describe('POST+GET /session/{id}/audio-source and GET /session/{id}/sealing (ops
   it('switches the active input, records the interval, and locks the capture selector (OD-09/OD-10)', () => {
     const { h, id } = recording();
     expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: '[1]' }).status).toBe(400);
-    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-09' } }).status).toBe(422);
+    // D133 (1): an input is any `MIC-NN`; a malformed id is 422, a well-formed one that is no input of the session is 409.
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-9' } }).status).toBe(422);
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-09' } }).status).toBe(409);
     expect(h.sim.request({ method: 'POST', path: '/api/v1/session/SES-20261001-9999/audio-source', body: { inputId: 'MIC-02' } }).status).toBe(404);
 
     const switched = h.sim.request({
@@ -358,8 +373,9 @@ describe('POST+GET /session/{id}/audio-source and GET /session/{id}/sealing (ops
     };
     expect(intervals.nextCursor).toBeNull();
     expect(intervals.items.map((item) => [item.seq, item.inputId, item.reason])).toEqual([
-      [1, 'MIC-02', 'MANUAL'],
-      [0, 'MIC-01', 'START'],
+      // Pass D6: intervals are numbered from 1 (the manifest's rule).
+      [2, 'MIC-02', 'MANUAL'],
+      [1, 'MIC-01', 'START'],
     ]);
     expect(intervals.items[0]?.toMs).toBeNull();
     expect(intervals.items[1]?.toMs).not.toBeNull();
@@ -468,7 +484,7 @@ describe('transcript and export-job endpoints (ops 84/85/86/87)', () => {
       h.sim.request({
         method: 'POST',
         path: `${evidencePath}/transcript/revisions`,
-        body: { baseRevision: 7, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }] },
+        body: { baseRevision: 7, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }], note: 'A stale base' },
       }),
     ).toMatchObject({ status: 409, body: { error: { code: 'TRANSCRIPT_REVISION_CONFLICT' } } });
 

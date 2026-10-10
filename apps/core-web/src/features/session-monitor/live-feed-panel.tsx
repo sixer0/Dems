@@ -13,7 +13,9 @@ import { CameraFeed, RecIndicator, useSimSecond, type CameraFeedHandle } from '@
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
+import { TrackSourceMarks } from '@/features/devices/source-badge'
 import { logSessionMonitorError } from './log'
+import { captureFailedStartText, type CaptureFailedStart } from '@/lib/capture-notices'
 import { selectFeed, type SessionPhase } from './model'
 import { Panel } from './panel'
 
@@ -77,7 +79,8 @@ export function LiveFeedPanel({
   const [pendingCamera, setPendingCamera] = useState<VideoTrackId | null>(null)
   const selectedCamera = pendingCamera ?? feed.activeCameraId
   const [fullscreen, setFullscreen] = useState(false)
-  const live = phase === 'RECORDING' || phase === 'FINALIZING'
+  // Row 139 (D84; ux §8e.2): before the first durable fragment nothing is presented as live.
+  const live = (phase === 'RECORDING' && !feed.connecting) || phase === 'FINALIZING'
   const label = t('session.feed.cameraLabel', { camera: feed.cameraName, room: feed.room })
   const formatLabel = t('common.devices.cameraFormatCodec', {
     resolution: feed.resolution,
@@ -143,6 +146,8 @@ export function LiveFeedPanel({
         </ToggleButtonGroup>
       }
     >
+      {/* Pass D2 (ux §8f.2, WB-01; row 137's "not wired" list): the one badge of the camera on screen; nothing unless the Core sent the development class. */}
+      <TrackSourceMarks trackId={feed.activeCameraId} place={`monitor-${feed.activeCameraId}`} />
       <div className="sm-feed-stage" ref={stageRef}>
         <div className="sm-feed-frame" data-idle={live ? undefined : 'true'}>
           <CameraFeed
@@ -187,6 +192,8 @@ export function LiveFeedPanel({
             >
               <Invitation
                 phase={phase}
+                connecting={feed.connecting}
+                failedStart={feed.failedStart}
                 evidenceId={evidenceId}
                 canStart={canStart}
                 onRecover={onRecover}
@@ -255,6 +262,10 @@ function FullscreenRec({ since }: { since: number }) {
 
 interface InvitationProps {
   phase: SessionPhase
+  /** Row 139: RECORDING before the first durable fragment. */
+  connecting: boolean
+  /** Row 139: the open session recorded nothing. */
+  failedStart: CaptureFailedStart | null
   evidenceId: string | null
   canStart: boolean
   onRecover: () => void
@@ -263,41 +274,61 @@ interface InvitationProps {
 }
 
 /** The feed panel's idle, setup, sealed and fault content (M-PG-SM NO SESSION state). */
-function Invitation({ phase, evidenceId, canStart, onRecover, recoverBusy, recoverPending }: InvitationProps) {
+function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRecover, recoverBusy, recoverPending }: InvitationProps) {
   const { t } = useTranslation()
   const systemState = useSim((s) => selectSystemState(s).state)
+  // D158: the failed start keeps its words while the Core closes it (the store passes through RECOVERY).
+  const failed = (phase === 'FAULT' || phase === 'RECOVERY') && failedStart !== null ? captureFailedStartText(t, failedStart) : null
+  // Row 139 (ux §8e.2): "Connecting cameras…" and the failed start come first; neither words a recording or evidence.
+  const situationC = connecting
+    ? { title: t('common.session.connectingCameras'), body: t('session.audioSource.connecting.detail') }
+    : failed !== null
+      ? { title: failed.title, body: `${failed.body} ${t('common.session.failedStart.next')}` }
+      : null
   const copy =
-    phase === 'SETUP'
+    situationC ??
+    (phase === 'SETUP'
       ? { title: t('session.idle.setupTitle'), body: t('session.idle.setupBody') }
       : phase === 'SEALED'
         ? { title: t('session.idle.sealedTitle'), body: t('session.idle.sealedBody', { evidenceId: evidenceId ?? '—' }) }
         : phase === 'FAULT' || phase === 'RECOVERY'
           ? { title: t('session.idle.faultTitle'), body: t('session.idle.faultBody') }
-          : { title: t('session.idle.title'), body: t('session.idle.body') }
+          : { title: t('session.idle.title'), body: t('session.idle.body') })
 
   return (
-    <div className="sm-invitation" data-testid="sm-invitation" data-phase={phase}>
+    <div
+      className="sm-invitation"
+      data-testid="sm-invitation"
+      data-phase={phase}
+      data-connecting={connecting ? 'true' : undefined}
+      data-failed-start={failed !== null ? failedStart ?? undefined : undefined}
+    >
       <GlowRing state={systemState} size={112} mode="mini" className="sm-invitation-ring" />
       <div className="sm-invitation-copy">
         <p className="sm-invitation-title">{copy.title}</p>
         <p className="sm-invitation-body">{copy.body}</p>
       </div>
       <div className="sm-invitation-actions" aria-busy={recoverBusy || undefined}>
-        {!canStart && (phase === 'SETUP' || phase === 'FAULT') ? null : phase === 'SETUP' ? (
+        {connecting ? null : !canStart && (phase === 'SETUP' || phase === 'FAULT') ? null : phase === 'SETUP' ? (
           <Link to="/session/new" className={buttonVariants({ variant: 'primary', size: 'md' })}>
             {t('session.banner.cta.continueSetup')}
           </Link>
         ) : phase === 'FAULT' ? (
           <Button variant="danger-soft" onPress={onRecover} isPending={recoverPending} data-busy={recoverBusy || undefined}>
             {recoverPending ? <Spinner size="sm" color="current" /> : null}
-            {t('session.banner.cta.recover')}
+            {failed !== null ? t('common.session.failedStart.close') : t('session.banner.cta.recover')}
           </Button>
         ) : phase === 'RECOVERY' ? null : canStart ? (
           <Link to="/session/new" className={buttonVariants({ variant: 'primary', size: 'md' })} data-testid="sm-start-new-session">
             {t('common.actions.startNewSession')}
           </Link>
         ) : null}
-        {phase === 'SEALED' && evidenceId ? (
+        {connecting ? null : failed !== null ? (
+          // Row 139: the pointer to "Search again" (Devices). No evidence link: this session has none.
+          <Link to="/devices" className={buttonVariants({ variant: 'outline', size: 'md' })} data-testid="sm-failed-start-devices">
+            {t('common.session.failedStart.openDevices')}
+          </Link>
+        ) : phase === 'SEALED' && evidenceId ? (
           <Link
             to="/evidence/$evidenceId"
             params={{ evidenceId }}

@@ -8,7 +8,7 @@
 // Every test boots the real app on its own clone of the seed (a process start), on a manual
 // clock and a manual timer, and reads what is stored as `dems_owner`.
 import { validateCoreApiResponse, type SessionCommandResponse } from '@dems/shared/api';
-import type { AuditRow } from '@dems/shared/sim';
+import { passCaptureStart, type AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
@@ -208,6 +208,8 @@ describe('the pre-check that ends with a warning (operations 25 and 30)', () => 
     expect(host.engine.revision).toBe(revision + 1);
     expect(started.response.headers['x-dems-revision']).toBe(String(revision + 1));
     expect(host.engine.slice('session')).toMatchObject({ state: 'RECORDING', startedAt: host.clock.now(), precheck: { warningsAcknowledged: true } });
+    // Pass D10: the stored state is compared past the connecting part of the start (`captureDurable: false` has no column).
+    await passCaptureStart((ms) => host.drive(ms));
     await verified(host);
   });
 });
@@ -421,6 +423,47 @@ describe('who may call, through the real stages 4 and 6 against PostgreSQL', () 
     expect(validateCoreApiResponse('getCurrentSession', 200, monitor.json())).toEqual({ ok: true });
     expect(monitor.json()).toMatchObject({ session: { id: sessionId, state: 'RECORDING' } });
     expect((await host.get(null, CURRENT)).statusCode).toBe(401);
+    // Pass D10: the stored state is compared past the connecting part of the start (`captureDurable: false` has no column).
+    await passCaptureStart((ms) => host.drive(ms));
     await verified(host);
+  });
+});
+
+// Integration pass D11, items 3 and 5. A Core in SIMULATED capture hosts the shared simulator, whose
+// start connects for CAPTURE_CONNECT_MS (pass D10): a stop inside that second is refused by the
+// simulator with the reason `CAPTURE_NOT_DURABLE`, and the engine's refusal table now carries the
+// reason into `details` (it dropped it). The session answer of the API (operation 26) carries
+// `captureDurable` exactly as the replicated slice does.
+describe('PASS D11: a stop while the cameras connect, and `captureDurable` in the session answer (a Core in SIMULATED capture)', () => {
+  it('stop inside the connecting second: 409 INVALID_STATE with details.reason CAPTURE_NOT_DURABLE, nothing stored; the session answer says captureDurable false. After the second: the answer carries no member, as the slice, and the same stop is 202', async () => {
+    const { host, investigator } = await booted('d11_stop_connecting');
+    await host.engine.setTabletLink('CONNECTED');
+    const sessionId = await create(host, investigator);
+    await host.post(investigator, on(sessionId, 'start'));
+    await host.drive(PRECHECK_MS);
+    expect((await host.post(investigator, on(sessionId, 'start'))).statusCode).toBe(200);
+    expect(host.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: false });
+
+    const connecting = await host.get(investigator, CURRENT);
+    expect(validateCoreApiResponse('getCurrentSession', 200, connecting.json())).toEqual({ ok: true });
+    expect((connecting.json() as { session: { captureDurable?: boolean } }).session.captureDurable).toBe(false);
+
+    const refused = await command(host, 'stopSession', 409, () => host.post(investigator, on(sessionId, 'stop'), { reason: 'Interview completed' }));
+    expect(errorOf(refused.response)).toMatchObject({ code: 'INVALID_STATE', details: { simCode: 'ILLEGAL_STATE', from: 'RECORDING', event: 'stopRecording', reason: 'CAPTURE_NOT_DURABLE' } });
+    expect(refused.rows).toEqual([]);
+    expect(host.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: false });
+
+    await passCaptureStart((ms) => host.drive(ms));
+    // Durable in the simulator's own capture = the member is absent from the slice (D10-2), and so from the answer.
+    expect('captureDurable' in (host.engine.slice('session') ?? {})).toBe(false);
+    const durable = await host.get(investigator, CURRENT);
+    expect(durable.json()).toMatchObject({ session: { id: sessionId, state: 'RECORDING' } });
+    expect('captureDurable' in (durable.json() as { session: object }).session).toBe(false);
+    // CONTROL: the same request is taken now, and a refusal that names no reason carries no `reason` key.
+    const stopped = await command(host, 'stopSession', 202, () => host.post(investigator, on(sessionId, 'stop'), { reason: 'Interview completed' }));
+    expect(stopped.response.json()).toMatchObject({ sessionId, state: 'STOPPING' });
+    const again = await command(host, 'stopSession', 409, () => host.post(investigator, on(sessionId, 'stop'), { reason: 'Interview completed' }));
+    expect(errorOf(again.response).code).toBe('INVALID_STATE');
+    expect('reason' in (errorOf(again.response).details ?? {})).toBe(false);
   });
 });

@@ -34,6 +34,14 @@ export function matches(column: AnyPgColumn, pattern: string): SQL {
 export const hex64 = (column: AnyPgColumn): SQL => matches(column, '^[0-9a-f]{64}$');
 /** `CODE(c)`: an open set of SCREAMING_SNAKE_CASE values. */
 export const code = (column: AnyPgColumn): SQL => matches(column, '^[A-Z][A-Z0-9_]{0,63}$');
+/**
+ * `KEY_ID(c)`: the id of a signing key as the evidence specification writes it (ev section C.1:
+ * `CORE-KEY-EVSIGN-01`; v1 `DEMO-KEY-EVSIGN-01`) - upper-case letters, digits, `_` and `-`, at
+ * most 64 characters. A superset of `CODE` (every value `CODE` admitted stays valid) and of the
+ * signer's own rule (`capture/signer`: `^[A-Z0-9][A-Z0-9-]{2,62}$`). THE ONE RULE of every
+ * key-id column that carries a CHECK (dbc-7 erratum PE-0013-01).
+ */
+export const keyId = (column: AnyPgColumn): SQL => matches(column, '^[A-Z0-9][A-Z0-9_-]{0,63}$');
 /** `SESSION_ID(c)` (`api/patterns.ts:11`). */
 export const sessionId = (column: AnyPgColumn): SQL => matches(column, '^SES-[0-9]{8}-[0-9]{4}$');
 /** `EVIDENCE_ID(c)` (`api/patterns.ts:14`). */

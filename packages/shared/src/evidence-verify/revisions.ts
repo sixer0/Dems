@@ -42,10 +42,23 @@ export const TranscriptRevisionRecordSchema = z.strictObject({
     /** SEC35-20. null (a revision written before the column existed) cannot be verified and fails V-11. */
     certificateSha256: hex64.nullable(),
   }),
-  /** The canonical revision body, when the file carries it: then its hash is recomputed. */
+  /**
+   * The canonical revision body. REQUIRED by verify V-11 (pass D6, erratum PE-D6-01): its hash is
+   * recomputed against `sha256`, and its own members `REVISION_BOUND_MEMBERS` must equal what this
+   * record and the list say. Optional in the SCHEMA only so that a record whose body was removed
+   * is reported by its revision number (`REVISION_BODY_MISSING`), not as an unreadable file.
+   */
   body: z.record(z.string(), z.json()).optional(),
 });
 export type TranscriptRevisionRecord = z.output<typeof TranscriptRevisionRecordSchema>;
+
+/**
+ * The members every revision body carries, each equal to the record's (`revisionNo`,
+ * `parentSha256`, `authorId`, `reason`, `createdAt`) or the sealed manifest's (`evidenceId`,
+ * `machineTranscriptSha256` = `transcript.sha256`) value. The body is what is hashed and signed (spec
+ * §C.1), so through it the signature covers who revised, why, when, on what and for which item.
+ */
+export const REVISION_BOUND_MEMBERS = ['evidenceId', 'machineTranscriptSha256', 'revisionNo', 'parentSha256', 'authorId', 'reason', 'createdAt'] as const;
 
 export const TranscriptRevisionsFileSchema = z.strictObject({
   schema: z.literal(TRANSCRIPT_REVISIONS_SCHEMA_ID),

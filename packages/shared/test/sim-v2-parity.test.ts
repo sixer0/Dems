@@ -6,6 +6,7 @@
 // Every assertion is falsifiable: it names the exact value schema v2 must produce.
 import { describe, expect, it } from 'vitest';
 import {
+  passCaptureStart,
   buildEvidenceFilesV2,
   captureConfigSnapshot,
   createManualClock,
@@ -50,6 +51,8 @@ function harness() {
     sim.actions.beginPrecheck();
     run(5_000);
     sim.actions.startRecording();
+    // Pass D10: past the connecting part of the start, so the recording can be stopped and switched.
+    passCaptureStart(clock.advance, sim.tick);
   };
   return { sim, clock, state, run, toRecording };
 }
@@ -188,8 +191,9 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(h.state().session?.state).toBe('SEALED');
     const item = h.state().evidence.at(-1);
     expect(item).toBeDefined();
-    // One whole file per camera plus the single session audio track (D224/D225); AUDIO-02 is legacy.
-    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01']);
+    // One whole fMP4 per camera and no audio file (C3 §3 row 39; ev §A.1; integration pass D4,
+    // AC-B-70): the session audio is inside the camera files. Until pass D4 a third entry `AUDIO-01` stood here.
+    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
     expect(item?.files?.every((file) => /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);
     expect(item?.fragmentChainHead).toMatch(/^[0-9a-f]{64}$/);
     expect(item?.transcriptSha256).toMatch(/^[0-9a-f]{64}$/);
@@ -206,7 +210,7 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(buildEvidenceFilesV2({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,
-    })).toHaveLength(3);
+    })).toHaveLength(2);
     expect(transcriptSha256({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,

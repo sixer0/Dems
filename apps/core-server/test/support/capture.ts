@@ -21,6 +21,7 @@ import {
   CAPTURE_PROTOCOL_VERSION,
   CaptureIngestState,
   CaptureMicRole,
+  CaptureWarningReason,
   SupervisorMessageType,
   WorkerMessageType,
   type CapturePlan,
@@ -204,7 +205,7 @@ export class FakeWorkerProcess implements WorkerChannel {
   telemetry(count: number): void {
     this.say({
       type: WorkerMessageType.TELEMETRY,
-      levels: [{ role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false }],
+      levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 0 }],
       ingest: [{ deviceId: 'CAM-01', state: CaptureIngestState.CONNECTED }],
       fragments: [{ deviceId: 'CAM-01', count, bytes: count * 1_000 }],
       clocks: [],
@@ -216,8 +217,15 @@ export class FakeWorkerProcess implements WorkerChannel {
     this.say({ type: WorkerMessageType.PROGRESS, step, progress, etaMs: null });
   }
 
-  warning(code: CaptureWarningCode, subject: string | null = null, state: 'ACTIVE' | 'CLEARED' = 'ACTIVE'): void {
-    this.say({ type: WorkerMessageType.WARNING, code, state, subject });
+  /**
+   * A warning of protocol 4: the subject is a DEVICE ID of the plan and the reason one of the code.
+   * Without a subject the first device the code is about is named (`MIC-01` for `MIC_SILENT`,
+   * `CAM-01` for `CAPTURE_FAULT`); without a reason, the usual one of that code and device.
+   */
+  warning(code: CaptureWarningCode, subject: string | null = null, state: 'ACTIVE' | 'CLEARED' = 'ACTIVE', reason?: CaptureWarningReason): void {
+    const about = subject ?? (code === 'MIC_SILENT' ? 'MIC-01' : 'CAM-01');
+    const why = reason ?? (code === 'MIC_SILENT' ? CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD : about.startsWith('MIC') ? CaptureWarningReason.MIC_DISCONNECTED : CaptureWarningReason.CAMERA_STREAM_ENDED);
+    this.say({ type: WorkerMessageType.WARNING, code, reason: why, state, subject: about });
   }
 
   /** A record with the next sequence number of this process, or with the one given (a gap, a repeat). */

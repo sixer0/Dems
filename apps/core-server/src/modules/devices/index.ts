@@ -17,6 +17,9 @@
  *
  * READS (44 to 47) answer from the engine's COMMITTED state (`app.engine.state()`): no unit of
  * work, no statement, nothing changes. The mapping is `status.ts`.
+ * Task 3 row 140 (R-11; D137 (2)): the mapping reads the selector of that same state, so a track
+ * names the device that feeds it now (an adopted camera, this Mac's camera) and a microphone line
+ * the input it holds (`MIC-03`), instead of the built-in pair.
  *
  * COMMANDS (48 to 52) are hosted actions of the shared simulator: ONE call of
  * `app.engine.command(request.principal, action, ...args)`, which runs the action as one unit of
@@ -36,7 +39,12 @@
  * Operations 51 and 52 run actions the simulator does not check at all, so that rule is the
  * only check there is.
  *
- * ERRORS. The module catches nothing: an unexpected failure reaches the error envelope, which
+ * SOURCE FACTS (integration pass D11; `source-facts.ts`): in a REAL capture operation the module
+ * hands the engine what the capture side knows of the registered sources - the class of a test
+ * source and whether a source is open now (`adapter` / `sourceClass` / `sourceOpen` of slice
+ * `captureDevices`). No route, no actor, no audit row; never in capture operation SIMULATED.
+ *
+ * ERRORS. The routes catch nothing (the one failure path of the folder is in `source-facts.ts`): an unexpected failure reaches the error envelope, which
  * writes it to the log and to the persistent error log; a hosted action that fails is logged
  * and persisted by the engine host.
  *
@@ -62,13 +70,16 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation } from './operations';
+import { mountCaptureSourceFacts } from './source-facts';
 import { audioStatusOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from './status';
 
+export { SOURCE_FACTS_BOOT_STEP, SOURCE_FACTS_NOT_APPLIED, captureSourceFacts, mountCaptureSourceFacts, sourceFactsOf, type CaptureSourceFactsFeed, type RegisteredSource, type SourceFactsPorts } from './source-facts';
 export { DEVICES_OPERATIONS, DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation, type DevicesOperation } from './operations';
 export {
   activeInputOf,
   audioChannelsOf,
   audioStatusOf,
+  captureSlotsOf,
   deviceHealthOf,
   deviceInventoryOf,
   stateLevelsOf,
@@ -94,6 +105,10 @@ const commandDone = (reply: FastifyReply): FastifyReply => reply.code(204).send(
 
 export const devicesModule: FastifyPluginAsync = async (app) => {
   const routes = app.withTypeProvider<ZodTypeProvider>();
+
+  // Integration pass D11: the class and the "is on" of the sources of a REAL capture operation go
+  // into slice `captureDevices` through the engine's fact door (`source-facts.ts`). Nothing in SIMULATED.
+  mountCaptureSourceFacts(app);
 
   // 44 getDeviceHealth
   routes.route({

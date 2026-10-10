@@ -110,7 +110,7 @@ describe('ready resolves after hydration (injected async storage)', () => {
     // Transient slices come from the live store, never from storage.
     expect(state.auth.status).toBe('SIGNED_OUT');
     expect(state.clock.now).toBe(START + 60_000);
-    expect(state.audio.inputs['MIC-01'].noSignal).toBe(false);
+    expect(state.audio.inputs['MIC-01']!.noSignal).toBe(false);
     expect(sim.errors()).toEqual([]);
   });
 
@@ -314,7 +314,7 @@ describe('transient audio subscription (the useAudioChannel path)', () => {
     const sim = createSim({ clock: createManualClock(START), storage: null, authStorage: null });
     const frames: number[] = [];
     const unsubscribe = sim.store.subscribe(
-      (state) => state.audio.inputs['MIC-02'],
+      (state) => state.audio.inputs['MIC-02']!,
       (frame) => frames.push(frame.dbfs),
       { fireImmediately: true },
     );
@@ -322,11 +322,11 @@ describe('transient audio subscription (the useAudioChannel path)', () => {
 
     const { audio } = sim.store.getState();
     sim.store.setState({
-      audio: { inputs: { ...audio.inputs, 'MIC-02': { ...audio.inputs['MIC-02'], seq: 1, dbfs: -18 } }, activeInputId: audio.activeInputId },
+      audio: { inputs: { ...audio.inputs, 'MIC-02': { ...audio.inputs['MIC-02']!, seq: 1, dbfs: -18 } }, activeInputId: audio.activeInputId },
     });
     const after = sim.store.getState().audio;
     sim.store.setState({
-      audio: { inputs: { ...after.inputs, 'MIC-01': { ...after.inputs['MIC-01'], seq: 1, dbfs: -20 } }, activeInputId: after.activeInputId },
+      audio: { inputs: { ...after.inputs, 'MIC-01': { ...after.inputs['MIC-01']!, seq: 1, dbfs: -20 } }, activeInputId: after.activeInputId },
     });
     sim.actions.setTabletLink('OFFLINE');
     expect(frames).toEqual([-52, -18]);

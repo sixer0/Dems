@@ -5,6 +5,10 @@
  * a step was taken): the F-1 check must then FAIL - the red run of this test.
  * With -DNO_TICK a packet without a report does not advance the reference (the ingest as it was
  * before row 60): the R-1 check must then FAIL - its red run.
+ * With -DFIRST_LIVE_ONLY the clock is judged on the first live packet alone (row 62's proposal, not
+ * applied by row 59): the stalled camera of check (2e) is then given up - the red run of the clock
+ * floor of row 71. With -DNO_FLOOR nothing is judged after anchoring (the worker of row 59): the
+ * clock behind by 2.6 s of check (2e) is then recorded at a wrong time - its second red run.
  */
 #include "../src/anchor.h"
 
@@ -137,6 +141,40 @@ int main(void) {
     CHECK(clock_lag_sane(CLOCK_SANITY_MS + 900.0, 900.0) && !clock_lag_sane(CLOCK_SANITY_MS + 901.0, 900.0), "the wait inside the receiver is not allowed for exactly");
     CHECK(!clock_lag_sane(-CLOCK_SANITY_MS - 1.0, 5000.0), "a wait excuses a clock that is ahead");
     CHECK(clock_lag_sane(CLOCK_SANITY_MS, 0) && clock_lag_sane(-CLOCK_SANITY_MS, 0), "the bound itself is refused");
+    /* (2e) Row 71, the clock floor (D127 (1)). `judge` is what the ingest does on the first packet that did not wait.
+     *   case A  a camera with a CORRECT clock that stalls: its first packets arrive on time (lag 20 ms; the one at
+     *           anchoring had waited 300 ms), then it freezes 4 s and every later packet comes 3.9 to 4.1 s late
+     *           (`p4_stall_pinned`). It must be KEPT.
+     *   case B  a clock 2.6 s BEHIND: at anchoring the packet had waited 0.25 s of an allowance of 0.9 s (lag 2,850 ms,
+     *           inside 2,000 + 900: the anchoring check passes - the gap of row 59). No packet ever has a lag below
+     *           2,600 ms. It must be GIVEN UP on the first live packet.
+     *   case C  a clock 2.5 s AHEAD whose packet at anchoring had waited 0.8 s (lag -1,700 ms: passes). GIVEN UP.
+     *   case D  a healthy camera behind 35 ms of delay. KEPT. */
+    {
+        struct { const char *name; double lag_at_anchor, held_at_anchor, early[3], live[3]; int n_early; int keep; } cases[] = {
+            { "A stalled, correct clock", 320.0, 300.0, { 20.0, 22.0, 19.0 }, { 3900.0, 4100.0, 3950.0 }, 3, 1 },
+            { "B clock 2.6 s behind",     2850.0, 900.0, { 2610.0, 2605.0, 0 }, { 2600.0, 2604.0, 2602.0 }, 2, 0 },
+            { "C clock 2.5 s ahead",      -1700.0, 800.0, { -2480.0, 0, 0 }, { -2495.0, -2490.0, -2493.0 }, 1, 0 },
+            { "D healthy, 35 ms",         335.0, 300.0, { 36.0, 35.0, 37.0 }, { 35.0, 36.0, 35.5 }, 3, 1 },
+        };
+        for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            ClockFloor f;
+            clock_floor_init(&f);
+            CHECK(clock_floor_sane(&f), "%s: an empty floor is refused", cases[i].name);
+            CHECK(clock_lag_sane(cases[i].lag_at_anchor, cases[i].held_at_anchor), "%s: refused at anchoring already (the case does not exercise the floor)", cases[i].name);
+            clock_floor_add(&f, cases[i].lag_at_anchor);
+            for (int k = 0; k < cases[i].n_early; k++) clock_floor_add(&f, cases[i].early[k]);
+            clock_floor_add(&f, cases[i].live[0]);
+#if defined(FIRST_LIVE_ONLY)
+            int kept = clock_lag_sane(cases[i].live[0], 0);
+#elif defined(NO_FLOOR)
+            int kept = 1;
+#else
+            int kept = clock_floor_sane(&f);
+#endif
+            CHECK(kept == cases[i].keep, "%s: %s on the first live packet (floor %.1f ms over %d packets)", cases[i].name, kept ? "KEPT" : "GIVEN UP", f.min_lag_ms, f.packets);
+        }
+    }
     /* (3) a drift of 3.5 ms per second: the lag is 30 ms above its 5 ms baseline at second 8.6; the flag follows at most one window
      * (10 s) later, because it reads the BEST arrival of the window (what keeps a stall out). The trend says 3,500 ppm. */
     trend_init(&t);

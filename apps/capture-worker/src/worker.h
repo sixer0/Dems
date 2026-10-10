@@ -12,7 +12,10 @@
  *   ingest.c          one RTSP/TCP listen ingest per camera, video stream copy, PRFT anchoring,
  *                     the fMP4 muxer of the camera file.
  *   audio.c           THE filtering thread: two mic inputs -> selector -> ONE AAC encoder -> both
- *                     camera files, meters, PCM tap. The only unit that names libavfilter.
+ *                     camera files, meters, PCM tap, the operator's switch and its interval
+ *                     records. The only unit that names libavfilter.
+ *   micwatch.c        the microphone warning raiser (silence, disconnect, rate limit): pure.
+ *   anchor.c          video anchoring arithmetic and the camera-clock rules: pure.
  *
  * Thread rules. The filtering thread is the only thread that touches the filter graph (erratum
  * AU2-07; `make check` holds it). Each output muxer is guarded by its camera's mutex. Everything
@@ -33,11 +36,19 @@
 
 /* The protocol this worker speaks: packages/capture-protocol/src/index.ts. A test of the Core
  * server holds these three numbers equal to the package's. */
-#define CAPTURE_PROTOCOL_VERSION 3
+#define CAPTURE_PROTOCOL_VERSION 4
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
-#define WORKER_VERSION "capture-worker/0.3.0"
+#define WORKER_VERSION "capture-worker/0.4.0"
+
+/* THE NAMED SETTINGS of a worker process (protocol version 4, CAPTURE_WORKER_SETTINGS): what each is
+ * when the launcher does not pass its argument. The same Core test holds these four equal to the
+ * package's defaults and to the contract constants of @dems/shared/api (capture spec E.1; D84). */
+#define DEFAULT_INGEST_OPEN_WINDOW_MS 15000
+#define DEFAULT_MIC_SILENCE_DBFS -50
+#define DEFAULT_MIC_SILENCE_MS 10000
+#define DEFAULT_MIC_DISCONNECT_MS 2000
 
 #define SR 48000            /* AUDIO-01: AAC-LC 48 kHz mono (OD-06) */
 #define QUANTUM 480         /* worker input quantum: 10 ms (AU2-07 bound) */
@@ -199,6 +210,8 @@ typedef struct Cam {
     int anchored, started;
     Anchor anchor;
     int64_t last_dts, first_pts;
+    int64_t first_skipped_pts_us;   /* camera time of the first video packet that had a time and was not written */
+    ClockFloor clock_floor;         /* the smallest arrival lag of any packet since the ingest opened (anchor.h) */
     atomic_int th_done;             /* the ingest thread has ended */
     atomic_int abandoned;           /* it did not end when it had to: nobody waits for it any more */
     atomic_int ever_connected;
@@ -233,7 +246,8 @@ typedef struct Session {
 extern Session S;
 extern atomic_int g_stop;           /* stop recording: flush, close, exit */
 extern atomic_int g_stop_ingest;
-extern int g_listen_timeout_s;
+extern int g_listen_timeout_s;      /* the ingest-open window, in the whole seconds libavformat's listen timeout takes */
+extern int g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms;
 extern const char *g_mux_extra;     /* PROOF BUILD ONLY (negative control); NULL in the worker */
 
 /* A fatal error: logs it, remembers the first code, and forces exit code EXIT_FATAL. */
@@ -241,7 +255,11 @@ void fatal(const char *source, const char *code, int averror);
 int fatal_pending(void);
 /* The next record of the session (lossless class). `fmt` produces the members of `record`. */
 void send_record(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
-void send_warning(const char *code, const char *subject);
+/* A warning began (`active` 1) or ended (0). `reason` is one of CaptureWarningReason and belongs to
+ * `code`; `subject` is the DEVICE ID of one camera or one microphone of the plan - never NULL and
+ * never a role (protocol version 4; D84 R-1, R-2). A call without a subject is a bug of the worker:
+ * it is logged and nothing is sent, because the frame would be a protocol violation. */
+void send_warning(const char *code, const char *reason, int active, const char *subject);
 /* The writer's callbacks of one camera file (sync thread): the records of a durable fragment. */
 void cam_fragment_durable(void *cam, const Checkpoint *cp);
 void cam_sync_failed(void *cam, const char *code, int averror);
@@ -265,8 +283,9 @@ extern const char *const MUX_MOVFLAGS;
 
 /* ---------------------------------------------------------------- audio.c */
 void *audio_main(void *arg);
-/* The operator's switch: asked by the command thread, applied by the filtering thread, which
- * also acknowledges it. Returns 0 when it was taken, -1 when another one is still waiting. */
+/* The operator's switch: asked by the command thread, applied by the filtering thread at its next
+ * input chunk, which writes the interval record and then acknowledges it. Returns 0 when it was
+ * taken, -1 when another one is still waiting. NOTHING ELSE changes the audio source (OD-11). */
 int audio_request_switch(int mic_index, const char *correlation_id);
 int audio_set_manifest(const char *path);
 

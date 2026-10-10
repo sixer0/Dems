@@ -287,3 +287,54 @@ describe('SEC35-36: the account name beside a credential is blanked, in object a
     expect(redactCredentialValue({ usernameHint: 'first letter', secret: PASS })).toEqual({ usernameHint: 'first letter', secret: '***' });
   });
 });
+
+// Integration pass D1a (row 137's finding D-137-7): a record that names its field in a TEXT member.
+describe('a record that names its field: { field: \'credential.password\', value }', () => {
+  const FIELDS = ['credential.password', 'credential.username', 'credential[secret]', 'apiKey', 'body.credential.value', 'Credential.Password'];
+  const NAMING = ['field', 'name', 'key', 'path', 'param', 'parameter', 'property', 'Field'];
+
+  it('object: `value` and `ref` beside a naming member that names a credential field are blanked, at any depth and in any member order', () => {
+    for (const field of FIELDS) {
+      for (const naming of NAMING) {
+        expect(redactCredentialValue({ [naming]: field, value: KEY }), `${naming} ${field}`).toEqual({ [naming]: field, value: '***' });
+        expect(redactCredentialValue({ value: KEY, ref: REF, [naming]: field, touched: true })).toEqual({ value: '***', ref: '***', [naming]: field, touched: true });
+      }
+      const nested = redactCredentialValue({ form: { errors: [{ field: 'label', value: 'Lobby' }, { field, value: KEY, message: 'too long' }] } });
+      expect(nested).toEqual({ form: { errors: [{ field: 'label', value: 'Lobby' }, { field, value: '***', message: 'too long' }] } });
+      expect(JSON.stringify(nested)).not.toContain('MARKER');
+    }
+  });
+
+  it('text: the same record written as JSON (escaped up to 3 times), as a log line and as a query string', () => {
+    for (const field of ['credential.password', 'credential.username']) {
+      for (const times of [0, 1, 2, 3]) {
+        for (const record of [{ field, value: KEY }, { value: KEY, field }]) {
+          const blanked = redactCredentialText(escaped(record, times));
+          expect(blanked, escaped(record, times)).not.toContain('MARKER');
+          expect(blanked).toContain(field);
+        }
+      }
+      expect(redactCredentialText(`{"field":"${field}","value":"${KEY}"}`)).toBe(`{"field":"${field}","value":"***"}`);
+      expect(redactCredentialText(`field=${field}&value=${KEY}&x=1`)).toBe(`field=${field}&value=***&x=1`);
+      expect(redactCredentialText(`changed field: ${field}, value: ${KEY}`)).toBe(`changed field: ${field}, value: ***`);
+      expect(redactCredentialText(`changed field: '${field}', value: '${KEY}'`)).toBe(`changed field: '${field}', value: '***'`);
+    }
+  });
+
+  it('control: a record of an ordinary field, a flag, prose in the naming member, or no naming member keeps its value', () => {
+    const kept = [
+      { field: 'label', value: KEY },
+      { field: 'username', value: 'operator-1' },
+      { field: 'credentialSet', value: true },
+      { name: 'the credential store answered', value: 'CAPTURE_DEVICE_K1' },
+      { title: 'credential.password', value: 'x' },
+      { field: 42, value: 'x' },
+    ];
+    for (const record of kept) expect(redactCredentialValue(record), JSON.stringify(record)).toEqual(record);
+    for (const text of ['{"field":"label","value":"Lobby"}', 'field: username, value: operator-1', 'field=credentialSet&value=true', '{"name":"credential store answered","value":"K1"}']) {
+      expect(redactCredentialText(text), text).toBe(text);
+    }
+    // And the measured gap of D-137-7 itself, as the negative control of this rule: without the naming member the value stands.
+    expect(JSON.stringify(redactCredentialValue({ label: 'credential.password', value: KEY }))).toContain('MARKER');
+  });
+});

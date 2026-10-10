@@ -171,7 +171,17 @@ describe('the argument tables (G-R12; HL-3)', () => {
       ].flat(),
     );
     const fallback = lists[1] ?? [];
-    expect(fallback.slice(fallback.indexOf('-an'), fallback.indexOf('-fps_mode'))).toEqual(['-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '0', '-flags', '+global_header']);
+    expect(fallback.slice(fallback.indexOf('-an'), fallback.indexOf('-fps_mode'))).toEqual(['-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '0', '-b:v', '4M', '-maxrate', '4M', '-bufsize', '4M', '-flags', '+global_header']);
+  });
+
+  it('the generated picture of the FAKE camera is paced to real time (realtime filter in the graph) and capped at the plan profile rate (4 Mbit/s), so a fragment cannot follow host speed (F-82c-1)', () => {
+    const generated = lists[2] ?? [];
+    expect(generated).toContain('testsrc2=size=1280x720:rate=30,realtime,settb=1/1000000');
+    const encoder = generated.slice(generated.indexOf('-an'), generated.indexOf('-fps_mode'));
+    expect(encoder.join(' ')).toContain('-bf 0 -b:v 4M -maxrate 4M -bufsize 4M -flags');
+    expect(generated).not.toContain('avfoundation');
+    // The real camera's default encoder list is the one the request did not touch.
+    expect(lists[0]).not.toContain('-maxrate');
   });
 
   it('every argument is a literal of the table or one of the four computed values', () => {

@@ -499,7 +499,7 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     const CFG_PATH = '/api/v1/capture/config';
     const DEV_PATH = '/api/v1/capture/devices';
     const micBody = { inputId: 'MIC-02', reason: 'Subject answers' };
-    const revBody = { baseRevision: 0, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }] };
+    const revBody = { baseRevision: 0, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }], note: 'A correction for the walk' };
 
     // Flow 3: signed-out refusals, then an INVESTIGATOR (lacks CAPTURE_CONFIG -> 403) reading the two
     // capture slices (200) and attempting the four selector writes (403).
@@ -572,7 +572,9 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     f.sim.request({ method: 'POST', path: `${SBASE}/${fid}/start` });
     f.advance(2_000); // RECORDING
     expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, '[1]').status).toBe(400);
-    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-09' }).status).toBe(422);
+    // D133 (1): an input is any `MIC-NN`; a malformed id is 422, a well-formed one that is no input of the session is 409 AUDIO_SOURCE_CONFLICT.
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-9' }).status).toBe(422);
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-09' }).status).toBe(409);
     expect(f.call('getSealingProgress', 'GET', `${SBASE}/${fid}/sealing`).status).toBe(409); // sealing not started
     expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, micBody).status).toBe(200);
     expect(f.call('listAudioSourceIntervals', 'GET', `${SBASE}/${fid}/audio-source`).status).toBe(200);
@@ -615,7 +617,7 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(h.call('listTranscriptRevisions', 'GET', `${ep}/transcript/revisions`).status).toBe(200);
     expect(h.call('createTranscriptRevision', 'POST', `${ep}/transcript/revisions`, '[1]').status).toBe(400);
     expect(h.call('createTranscriptRevision', 'POST', `${ep}/transcript/revisions`, { baseRevision: 'x' }).status).toBe(422);
-    expect(h.call('createTranscriptRevision', 'POST', `${ep}/transcript/revisions`, { baseRevision: 9, changes: [{ segmentIndex: 0, from: 'a', to: 'b' }] }).status).toBe(409);
+    expect(h.call('createTranscriptRevision', 'POST', `${ep}/transcript/revisions`, { ...revBody, baseRevision: 9 }).status).toBe(409);
     expect(
       h.call('createTranscriptRevision', 'POST', `${ep}/transcript/revisions`, {
         baseRevision: 0,

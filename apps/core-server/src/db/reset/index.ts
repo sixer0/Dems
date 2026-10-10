@@ -7,6 +7,7 @@
  *   kept-tables.ts  the twelve kept tables: how a row is read, written and compared, unchanged;
  *   real-evidence.ts the R-0 guard: real sealed evidence in the database or on disk refuses the
  *                   reset (`RESET_BLOCKED_REAL_EVIDENCE`; dbc-3 §E.2, OD-19, RK-16);
+ *   package-removal.ts the one place that removes a package folder: the containment rule (D133 (2));
  *   plan.ts         the epoch, the lineage row and the SCENARIO_LOADED row, from what R-3 read;
  *   errors.ts       `ResetError`: the code, the step, and whether the target is untouched;
  *   cli.ts          `db:reset` (not re-exported here: it is an entry file).
@@ -77,6 +78,10 @@ export {
   findRealSealedEvidence,
   realEvidenceDetails,
   realEvidenceMessage,
+  removeClearedDevelopmentPackages,
+  type DevelopmentPackageRemoval,
+  type DevelopmentPackageRemovalOptions,
+  type PackageKeptReason,
   type RealEvidenceFacts,
   type RealSealedEvidenceRow,
   type RealSealedRows,
@@ -85,6 +90,7 @@ export {
   type DevelopmentItem,
   type SealedSourceMarkReader,
 } from './real-evidence';
+export { PackageRemovalRefusal, REMOVABLE_PACKAGE_DIRECTORY, removePackageFolder, type PackageFolderRemover, type PackageRemoval } from './package-removal';
 export {
   PREVIOUS_SUFFIX,
   PROTECTED_DATABASES,

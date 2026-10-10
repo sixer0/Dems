@@ -22,9 +22,11 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { DATE_PATTERNS, formatDate, formatDuration } from '@dems/shared/realtime';
+import { useSim } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
+import { NOTICE_REASON_NO_CAMERA_CONNECTED, failedStartWords, type FailedStart } from '@/features/capture-selector/capture-notices-model';
 import { HERO_FOCUS } from '@/components/media/brand-assets';
 import { useLayoutClass } from '@/layout';
 import { enterRise, triggerHaptic, useMotionSettings } from '@/motion';
@@ -155,8 +157,25 @@ function Hero({ row }: { row: SessionRow }) {
   );
 }
 
+/**
+ * Integration pass D7 follow-up (D158 item 4): the cause of a closed session that recorded nothing. "No
+ * camera connected" only when the Core said so: a `CAPTURE_FAULT` alert with `params.reason:
+ * NO_CAMERA_CONNECTED` raised while that session was open (one session at a time on a Core, so the
+ * window from its creation to its end names it). Otherwise the generic title.
+ */
+function useClosedFailedStart(row: SessionRow): FailedStart | null {
+  const named = useSim((s) =>
+    row.recordedNothing === true && row.endedAt !== null
+      ? s.alerts.some((alert) => alert.kind === 'CAPTURE_FAULT' && alert.params?.['reason'] === NOTICE_REASON_NO_CAMERA_CONNECTED && alert.at >= row.startedAt && alert.at <= (row.endedAt ?? 0))
+      : false,
+  );
+  if (row.recordedNothing !== true) return null;
+  return named ? NOTICE_REASON_NO_CAMERA_CONNECTED : 'OTHER';
+}
+
 function Notice({ row }: { row: SessionRow }) {
   const { t } = useTranslation();
+  const closedFailedStart = useClosedFailedStart(row);
   if (row.pendingSummary) {
     return (
       <Alert status="accent" testID="session-detail-pending">
@@ -175,10 +194,11 @@ function Notice({ row }: { row: SessionRow }) {
       <Alert.Content>
         <Alert.Title>{t('features.sessions.detail.incompleteTitle')}</Alert.Title>
         <Alert.Description>
-          {row.faultKind ? `${t(`common.faultKind.${row.faultKind}`)}. ` : ''}
-          {row.evidenceId
-            ? t('features.sessions.detail.incompleteBody', { evidenceId: row.evidenceId })
-            : t('features.sessions.detail.incompleteBodyNoEvidence')}
+          {closedFailedStart !== null
+            ? `${failedStartWords(t, closedFailedStart).title}. ${failedStartWords(t, closedFailedStart).body}`
+            : `${row.faultKind ? `${t(`common.faultKind.${row.faultKind}`)}. ` : ''}${
+                row.evidenceId ? t('features.sessions.detail.incompleteBody', { evidenceId: row.evidenceId }) : t('features.sessions.detail.incompleteBodyNoEvidence')
+              }`}
         </Alert.Description>
       </Alert.Content>
     </Alert>

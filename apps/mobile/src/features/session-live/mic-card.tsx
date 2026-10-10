@@ -23,13 +23,15 @@
 import { Chip, Surface } from 'heroui-native';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
 import type { MicStatus } from '@dems/shared/sim';
-import { MicStateTone, palette, toneHex } from '@dems/shared/tokens';
+import { MicStateTone, fontFamily, palette, toneHex, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
+import { MicInputSourceBadge } from '@/features/capture-selector/development-source-badge';
+import { useConnectingCameras } from './rec-indicator';
 import { useMicSourceRole } from './use-mic-source';
 import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { useAnimatedReaction } from 'react-native-reanimated';
@@ -57,6 +59,24 @@ export function MicMeter({ mic, variant, paused, monitoringPaused, onClipReset, 
   const a11y = useAudioAccessibilityValue(mic.id, { noSignalText });
   const clipPress = usePendingPress();
   const shortName = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  // Integration pass D7 item 4 (row 139's leftover; ux §8e.2 "no meter presented as recording", D84): before the
+  // first durable fragment no live level is drawn — real capture sends no meter then, and a moving bar would read
+  // as a recording. The card and the Audio sheet show the connecting state in the meter's place.
+  const connecting = useConnectingCameras();
+  if (connecting) {
+    return (
+      <View
+        accessible
+        accessibilityLabel={`${t('features.session-live.mic.meterLabel', { mic: shortName })}: ${t('common.session.connectingCameras')}`}
+        style={styles.connecting}
+        testID={testID === undefined ? `monitor-meter-connecting-${mic.channel}` : `${testID}-connecting`}
+      >
+        <Text maxFontSizeMultiplier={1.2} style={styles.connectingText}>
+          {t('common.session.trackConnecting')}
+        </Text>
+      </View>
+    );
+  }
   return (
     <DbfsMeter
       level={values.level}
@@ -151,6 +171,8 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
           />
         ) : null}
       </View>
+      {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
+      <MicInputSourceBadge inputId={mic.deviceId} testID={`monitor-mic-source-${mic.channel}`} />
       <MicMeter mic={mic} testID={`monitor-meter-${mic.channel}`} {...meter} />
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
       <SelectionGlow selected={active} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />
@@ -165,4 +187,13 @@ const styles = StyleSheet.create({
   cardActive: { borderColor: palette.gold },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  /** The meter's place while the cameras connect (the `card` meter's height; no canvas, no level). */
+  connecting: { minHeight: 64, alignItems: 'center', justifyContent: 'center' },
+  connectingText: {
+    fontFamily: fontFamily.native.mono,
+    fontSize: typography.caption.size,
+    lineHeight: typography.caption.lineHeight,
+    color: palette.gray,
+    letterSpacing: 0.6,
+  },
 });

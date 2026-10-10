@@ -56,12 +56,20 @@ export function mapIfChanged<T>(items: readonly T[], map: (item: T) => T): T[] {
   return changed ? next : (items as T[]);
 }
 
+/**
+ * Whether a fault is active. `target` undefined: on any target. `reason` (ruling D146; the fault
+ * key is (kind, reason, target)): undefined - whatever its cause; null - the fault WITHOUT a
+ * cause; a code - the fault of that cause.
+ */
 export function isFaultActive(
   faults: FaultsSlice,
   kind: FaultKind,
   target?: string | null,
+  reason?: string | null,
 ): boolean {
-  return faults.active.some((fault) => fault.kind === kind && (target === undefined || fault.target === target));
+  return faults.active.some(
+    (fault) => fault.kind === kind && (target === undefined || fault.target === target) && (reason === undefined || (fault.reason ?? null) === reason),
+  );
 }
 
 function targetsOf(active: readonly ActiveFault[], kind: FaultKind): Set<string | null> {

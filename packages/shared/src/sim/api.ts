@@ -46,6 +46,7 @@ import {
 import { WEB_CONSOLE_ONLY_REASON } from '../api/contract-model';
 import { CaptureCredentialWriteRequestSchema } from '../api/devices';
 import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN } from '../api/patterns';
+import { CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
 import {
   STT_CONFIG_CHANGED_MESSAGE,
   STT_CONFIG_DEFAULT,
@@ -64,8 +65,8 @@ import {
   type SttCredentialKind,
   type SttLastTest,
 } from '../api/transcription';
-import { FINALIZATION_STEPS_V2, MicInputId, MicRole, SessionState, TrackId, type VideoTrackId } from '../domain';
-import { MIC_INPUT_OF_CHANNEL } from './audio';
+import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, type MicInputId, type VideoTrackId } from '../domain';
+import { captureMicLines, micInputOfChannel } from './audio';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
 import { findOperatorById, roleHas } from './auth';
@@ -74,6 +75,7 @@ import { nextCaptureCameraId, registerCaptureDeviceTransition } from './capture-
 import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from './errors';
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
+import { noSignalFrame } from './initial-state';
 import { isSessionActive, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
 import { selectElapsedMs, selectSystemState, storageSummary } from './selectors';
 import type { SimStore } from './store';
@@ -82,6 +84,7 @@ import type {
   CaptureConfigChange,
   CaptureConfigSlice,
   CaptureDevicesSlice,
+  CaptureMicInputId,
   EpochMs,
   EvidenceItem,
   ExportResult,
@@ -187,6 +190,8 @@ export interface ApiSession {
   evidenceId: string | null;
   precheck: { outcome: string | null; items: ApiPrecheckItem[] } | null;
   fault: { kind: string; at: string; fromState: string } | null;
+  /** As the `session` slice says it: `false` while the cameras connect, `true` where a Core's real capture states it; absent reads as durable. */
+  captureDurable?: boolean;
 }
 
 export interface ApiCurrentSessionBody {
@@ -223,7 +228,7 @@ export interface ApiVideoTrack {
  * `AUDIO-01` (OD-01 T1). The meters slice is keyed the same way since SH-17.
  */
 export interface ApiAudioChannel {
-  inputId: MicInputId;
+  inputId: CaptureMicInputId;
   deviceId: string;
   name: string;
   /** PRIMARY feeds `AUDIO-01`; STANDBY is the hot failover (OD-09). */
@@ -241,7 +246,7 @@ export interface ApiAudioChannel {
 /** Response of `GET /api/v1/audio/status` (schema v2: the two inputs plus the active one). */
 export interface ApiAudioStatus {
   channels: ApiAudioChannel[];
-  activeInputId: MicInputId;
+  activeInputId: CaptureMicInputId;
 }
 
 
@@ -265,7 +270,7 @@ export interface ApiDeviceHealth {
   cameras: ApiVideoTrack[];
   audio: ApiAudioChannel[];
   /** Schema v2 (C3 §3 op 44): the input feeding `AUDIO-01` right now. */
-  activeInputId: MicInputId;
+  activeInputId: CaptureMicInputId;
   storage: ApiStorageStatus;
   time: { source: string; locked: boolean; stratum: number; offsetMs: number; lastSyncAt: string };
   security: { state: string; posture: string; tpmOk: boolean; secureBoot: boolean; tamper: boolean };
@@ -282,6 +287,13 @@ export interface ApiExportBody {
   exportId: string;
   evidenceId: string;
   status: 'QUEUED';
+  /** The job op 87 polls: `EXPJ-` and the six digits of `exportId` (ruling D140). */
+  jobId?: string;
+}
+
+/** `EXPJ-NNNNNN` of `EXP-NNNNNN`: the same digits (C3 §3 ops 42 / 87; ruling D140). */
+export function exportJobIdOf(exportId: string): string {
+  return `EXPJ-${exportId.slice('EXP-'.length)}`;
 }
 
 
@@ -324,6 +336,10 @@ export function toApiSession(state: SimState, session: ActiveSession): ApiSessio
     fault: session.fault
       ? { kind: session.fault.kind, at: toWibIso(session.fault.at), fromState: session.fault.fromState }
       : null,
+    // Exactly as the replicated `session` slice says it (pass D11; decision D10-2): explicit `false`
+    // while the cameras connect, explicit `true` where a Core's real capture states it, ABSENT
+    // otherwise (absent reads as durable in the simulator's own capture). Never invented here.
+    ...(session.captureDurable === undefined ? {} : { captureDurable: session.captureDurable }),
   };
 }
 
@@ -350,15 +366,19 @@ function videoTracks(state: SimState): ApiVideoTrack[] {
 }
 
 function audioInputs(state: SimState): ApiAudioChannel[] {
+  const lines = captureMicLines(state);
   return state.mics.map((mic) => {
     // Schema v2 (SH-15/SH-17): the read is keyed by the microphone INPUT, never by a track, and
-    // names the PRIMARY/STANDBY role the selector holds inside AUDIO-01 (OD-01 T1).
-    const inputId = MIC_INPUT_OF_CHANNEL[mic.id];
-    const frame = state.audio.inputs[inputId];
-    const role = state.captureConfig.mics.find((entry) => entry.inputId === inputId)?.role ?? mic.micRole;
+    // names the PRIMARY/STANDBY role the selector holds inside AUDIO-01 (OD-01 T1). The input of a
+    // meter channel is its microphone line of the capture configuration (ruling D137).
+    const inputId = micInputOfChannel(lines, mic.id);
+    const line = lines.find((entry) => entry.inputId === inputId);
+    // An input without a frame yet reads NO SIGNAL.
+    const frame = state.audio.inputs[inputId] ?? noSignalFrame(0);
+    const role = line?.role ?? mic.micRole;
     return {
       inputId,
-      deviceId: mic.deviceId,
+      deviceId: line?.deviceId ?? mic.deviceId,
       name: mic.name,
       role,
       state: mic.state,
@@ -487,6 +507,8 @@ function exportFailure(result: Extract<ExportResult, { ok: false }>): SimApiResp
     NOT_SEALED: 'Only sealed evidence can be exported.',
     SECURITY_FAULT: 'A security fault blocks export.',
     INVALID_REASON: 'An export reason of at least 5 characters is required.',
+    // Pass D6: a member of the union since the Core answers it; the simulator's own action never returns it.
+    EXPORT_IN_PROGRESS: 'An export job is already running for this evidence item.',
   };
   return fail(result.status, result.reason, messages[result.reason]);
 }
@@ -528,8 +550,8 @@ export type ApiCaptureDevices = CaptureDevicesSlice;
 /** Op 81 answer: the new active/standby pair (E-13: Core instants and media pts only). */
 export interface ApiAudioSourceState {
   sessionId: string;
-  activeInputId: MicInputId;
-  standbyInputId: MicInputId;
+  activeInputId: CaptureMicInputId;
+  standbyInputId: CaptureMicInputId;
   switchedAt: EpochMs;
   intervalFromMs: number;
 }
@@ -538,7 +560,7 @@ export interface ApiAudioSourceState {
 export interface ApiAudioSourceInterval {
   sessionId: string;
   seq: number;
-  inputId: MicInputId;
+  inputId: CaptureMicInputId;
   role: MicRole;
   fromMs: number;
   toMs: number | null;
@@ -645,6 +667,8 @@ interface CaptureMicLine {
   inputId: string;
   deviceId: string;
   transport?: string;
+  /** Pair replacement (D133 (1)): present on both lines, the lines are the new pair. */
+  role?: MicRole;
 }
 
 type BodyCheck = { ok: true } | { ok: false; path: string; message: string };
@@ -683,7 +707,7 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
     for (const [index, line] of body.mics.entries()) {
       const item = typeof line === 'object' && line !== null ? (line as Record<string, unknown>) : null;
       if (!item) return { ok: false, path: `mics.${index}`, message: 'Expected an object.' };
-      const extra = Object.keys(item).find((key) => key !== 'inputId' && key !== 'deviceId' && key !== 'transport');
+      const extra = Object.keys(item).find((key) => key !== 'inputId' && key !== 'deviceId' && key !== 'transport' && key !== 'role');
       if (extra !== undefined) return { ok: false, path: `mics.${index}.${extra}`, message: 'Unknown member.' };
       if (typeof item.inputId !== 'string' || !MIC_INPUT_ID_PATTERN.test(item.inputId)) {
         return { ok: false, path: `mics.${index}.inputId`, message: 'Expected a mic input id, e.g. MIC-01.' };
@@ -694,7 +718,15 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       if (item.transport !== undefined && !isCode(item.transport, 32)) {
         return { ok: false, path: `mics.${index}.transport`, message: 'Expected a transport code.' };
       }
-      mics.push({ inputId: item.inputId, deviceId: item.deviceId.trim(), ...(item.transport === undefined ? {} : { transport: item.transport }) });
+      if (item.role !== undefined && item.role !== MicRole.PRIMARY && item.role !== MicRole.STANDBY) {
+        return { ok: false, path: `mics.${index}.role`, message: 'Expected PRIMARY or STANDBY.' };
+      }
+      mics.push({
+        inputId: item.inputId,
+        deviceId: item.deviceId.trim(),
+        ...(item.transport === undefined ? {} : { transport: item.transport }),
+        ...(item.role === undefined ? {} : { role: item.role }),
+      });
     }
   }
   return { ok: true, ...(cameras.length > 0 ? { cameras } : {}), ...(mics.length > 0 ? { mics } : {}) };
@@ -725,7 +757,7 @@ function editCaptureConfig({ store, clock }: SimApiTarget, change: CaptureConfig
   } catch (error) {
     // What the selector as a whole refuses (C3 §2.4): the Core server answers the same 422.
     if (error instanceof SimTransitionError && error.code === SimErrorCode.INVALID_INPUT) {
-      return fail(422, 'INVALID_INPUT', 'The capture configuration is not accepted: a line names no registered device of its class, or the selector would hold one source twice.');
+      return fail(422, 'INVALID_INPUT', 'The capture configuration is not accepted: a line names no registered device of its class, the selector would hold one source twice, or a replacing mic pair is not one PRIMARY and one STANDBY input.');
     }
     throw error;
   }
@@ -743,18 +775,32 @@ function webConsoleOnlyRefusal(target: SimApiTarget): SimApiResponse | null {
   });
 }
 
-/** The audio-source intervals of one session, newest first (op 82). */
-function audioSourceIntervals(state: SimState, session: ActiveSession): ApiAudioSourceInterval[] {
+/**
+ * The audio-source intervals of one session, newest first (op 82). Exported (integration pass D4):
+ * a Core in capture mode `simulated` answers operation 82 with this same derivation of the state,
+ * so the simulator and the hosted Core cannot answer two different lists for one state.
+ */
+export function audioSourceIntervalsOf(state: Pick<SimState, 'audit'> & { readonly audio?: Pick<SimState['audio'], 'activeInputId'> }, session: ActiveSession): ApiAudioSourceInterval[] {
   const startedAt = session.startedAt;
   if (startedAt === null) return [];
   const source = session.audioSource;
-  const initialInputId = source?.standbyInputId ?? state.audio.activeInputId;
+  // The input of the FIRST interval: before any switch it is the active input of the session;
+  // after a switch the input that was active is the standby. (Until pass D4 an unswitched session
+  // listed its STANDBY here.) A hand-built session without a pair falls back to the selector
+  // snapshot's PRIMARY, then to the meters' active input (the Core's durable state holds no meters).
+  const initialInputId: CaptureMicInputId =
+    source !== null && source !== undefined
+      ? source.switchedAt === null
+        ? source.activeInputId
+        : source.standbyInputId
+      : (session.captureConfig?.mics.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? 'MIC-01');
   const switchedBy = [...state.audit.rows]
     .reverse()
     .find((row) => row.type === AuditType.AUDIO_SOURCE_SWITCHED && row.sessionId === session.id)?.actorId ?? null;
   const first: ApiAudioSourceInterval = {
     sessionId: session.id,
-    seq: 0,
+    // Pass D6: numbered from 1, as the manifest and the table number them (the simulator counted from 0).
+    seq: 1,
     inputId: initialInputId,
     role: MicRole.PRIMARY,
     fromMs: 0,
@@ -767,7 +813,7 @@ function audioSourceIntervals(state: SimState, session: ActiveSession): ApiAudio
   if (source === null || source === undefined || source.switchedAt === null) return [first];
   const second: ApiAudioSourceInterval = {
     sessionId: session.id,
-    seq: 1,
+    seq: 2,
     inputId: source.activeInputId,
     role: MicRole.PRIMARY,
     fromMs: source.intervalFromMs,
@@ -853,13 +899,9 @@ function checkTranscriptRevisionRequest(body: Record<string, unknown>): { ok: tr
     }
     changes.push({ segmentIndex: item.segmentIndex, from: item.from, to: item.to });
   }
-  if (body.note !== undefined && !isCode(body.note, 500)) return { ok: false, path: 'note', message: 'Expected a note of at most 500 characters.' };
-  return {
-    ok: true,
-    baseRevision: body.baseRevision,
-    changes,
-    ...(body.note === undefined ? {} : { note: body.note as string }),
-  };
+  // Pass D6: the note is REQUIRED, 5 to 500 characters after trimming (the contract's `note`; dbc-3 §B.9 `reason`).
+  if (!isCode(body.note, 500) || body.note.trim().length < 5) return { ok: false, path: 'note', message: 'Expected a note of 5 to 500 characters that says why the revision was made.' };
+  return { ok: true, baseRevision: body.baseRevision, changes, note: body.note.trim() };
 }
 
 /** Appends one signed revision to an item (op 85) and writes its TRANSCRIPT_REVISED row (C3 §5.2). */
@@ -932,16 +974,19 @@ function exportJob(state: SimState, jobId: string): ApiExportJob | null {
     .find((candidate) => candidate.type === AuditType.EVIDENCE_EXPORTED && candidate.details?.['exportId'] === exportId);
   if (!row?.evidenceId) return null;
   const item = evidenceItem(state, row.evidenceId);
+  // The kind the request named (`details.kind` of the request row; absent = PACKAGE).
+  const kind = row.details?.['kind'] === 'COMPOSITE' ? 'COMPOSITE' : 'PACKAGE';
   return {
     jobId,
     evidenceId: row.evidenceId,
-    kind: 'PACKAGE',
+    kind,
     // The simulated export completes inside the request that queued it, so the job is already done.
     status: 'COMPLETE',
     progressPct: 100,
     etaMs: 0,
     ...(item ? { manifestHash: item.manifestHash, signature: item.signature.value } : {}),
-    derived: false,
+    // A COMPOSITE output is marked derived (OD-16).
+    derived: kind === 'COMPOSITE',
     createdAt: row.at,
     completedAt: row.at,
   };
@@ -1596,11 +1641,19 @@ const CAPTURE_ROUTES: readonly Route[] = [
       }
       if (session.state !== SessionState.RECORDING) return fail(409, 'INVALID_STATE', `Session ${id} is ${session.state}.`);
       const extra = Object.keys(body).find((key) => key !== 'inputId' && key !== 'reason');
-      if (extra !== undefined || (body.inputId !== MicInputId.MIC_01 && body.inputId !== MicInputId.MIC_02)) {
-        return fail(422, 'INVALID_INPUT', 'inputId: Expected MIC-01 or MIC-02.');
+      const inputId = body.inputId;
+      if (extra !== undefined || typeof inputId !== 'string' || !MIC_INPUT_ID_PATTERN.test(inputId)) {
+        return fail(422, 'INVALID_INPUT', 'inputId: Expected a mic input id, e.g. MIC-01.');
       }
       if (body.reason !== undefined && !isCode(body.reason, 500)) return fail(422, 'INVALID_INPUT', 'reason: At most 500 characters.');
-      const next = switchAudioSourceTransition(state, clock.now(), body.inputId);
+      // D133 (1): any `MIC-NN` is a well-formed input; only one of the two inputs of this session's
+      // selector can become the active source (C3 §4 `AUDIO_SOURCE_CONFLICT`).
+      const selectorInputs = session.captureConfig?.mics ?? state.captureConfig.mics;
+      if (!selectorInputs.some((mic) => mic.inputId === inputId)) {
+        return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
+      }
+      // The transition's parameter type still names the built-in pair (`session-machine.ts`); it reads the selector.
+      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId);
       if (next !== state) store.setState(next);
       const source = next.session?.audioSource;
       if (!source) return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
@@ -1622,7 +1675,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
       if (refused) return refused;
       const session = currentSession(state, id);
       if (!session) return fail(404, 'NOT_FOUND', NOT_OPEN);
-      return respond(200, { items: audioSourceIntervals(state, session), nextCursor: null });
+      return respond(200, { items: audioSourceIntervalsOf(state, session), nextCursor: null });
     },
   },
   {
@@ -1784,6 +1837,10 @@ const ROUTES: readonly Route[] = [
       const session = currentSession(store.getState(), id);
       if (!session) return fail(404, 'NOT_FOUND', `Session ${id} is not the current session.`);
       if (session.state !== SessionState.RECORDING) return fail(409, 'INVALID_STATE', `Session ${id} is ${session.state}.`);
+      // Still connecting its cameras: nothing durable to stop and seal (D84; C3 §3.1; pass D10). A 409, so before the 422.
+      if (session.captureDurable === false) {
+        return failWith(409, 'INVALID_STATE', `Session ${id} is still connecting its cameras: nothing is recorded yet.`, { reason: CAPTURE_NOT_DURABLE_REASON });
+      }
       const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
       if (reason.length < 5) return fail(422, 'INVALID_REASON', 'A stop reason of at least 5 characters is required.');
       actions.stopRecording(reason);
@@ -1823,10 +1880,11 @@ const ROUTES: readonly Route[] = [
       const result = actions.exportEvidence(id, {
         reason: typeof body.reason === 'string' ? body.reason : '',
         destination: typeof body.destination === 'string' ? body.destination : '',
+        ...(body.kind === 'PACKAGE' || body.kind === 'COMPOSITE' ? { kind: body.kind } : {}),
       });
       if (!result.ok) return exportFailure(result);
       // Schema v2 (C3 §3 op 42): the answer is the queue receipt; op 87 polls the job to completion.
-      return respond(202, { exportId: result.exportId, evidenceId: id, status: 'QUEUED' } satisfies ApiExportBody);
+      return respond(202, { exportId: result.exportId, evidenceId: id, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) } satisfies ApiExportBody);
     },
   },
 ];
@@ -1840,6 +1898,8 @@ function errorResponse(error: unknown): SimApiResponse {
   }
   if (error instanceof SimTransitionError) {
     if (error.code === SimErrorCode.REASON_TOO_SHORT) return fail(422, 'INVALID_REASON', error.message);
+    // A refusal that names its reason (`CAPTURE_NOT_DURABLE`) says so in `details.reason`, as the Core does.
+    if (error.reason !== null) return failWith(409, 'INVALID_STATE', error.message, { reason: error.reason });
     return fail(409, 'INVALID_STATE', error.message);
   }
   if (error instanceof SimNotFoundError) return fail(404, 'NOT_FOUND', error.message);

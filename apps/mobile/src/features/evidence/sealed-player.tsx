@@ -1,0 +1,458 @@
+/**
+ * Playback of the sealed camera files of a schema-v2 item on the tablet and the phone (blueprint
+ * row 92, M8-W3; UX spec flow 5; R-3, R-4; MB-07): one expo-video player per camera file, fed by a
+ * signed media session of operation 88 with the operator's `Authorization` header, synchronised on
+ * the one audio timeline, with the audio-source band under the scrubber.
+ *
+ * - **Opening is a press.** Each session is a bearer path and writes an audit row on the Core, so
+ *   the app asks for it when the operator presses Play, never on mount. G7: "Checking your
+ *   permissions..." until the role is known.
+ * - **The path** goes from the session object straight into the source handed to the player
+ *   (`videoSourceOf`) and is in no state that is logged, cached or stored. A player error is
+ *   recorded by the file and the position only — never by a source or a message of the player.
+ * - **Two files, one clock.** Both files carry the same audio track (R-4): the first one leads and
+ *   is audible, the second follows it muted and is re-aligned when it drifts. The playhead and the
+ *   band follow the leading player's `timeUpdate` events; no timer of this screen drives them.
+ * - **The session lives 60 s.** The player renews ON DEMAND, never on a timer: before a Play or a
+ *   seek on a session that is at its end (the Core's clock, 5 s margin), and once after a player
+ *   error — then it goes back to the same position and plays on if it was playing. A second error
+ *   at the same place is not renewed again: playback stops there with its position.
+ * - **A failed fragment is an integrity failure, not a player error**: when operation 88 answers
+ *   `FRAGMENT_NOT_AUTHENTIC`, or playback stopped and the last verify run of this screen names a
+ *   failed fragment, the player says which file and fragment.
+ * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal
+ *   for the role says so; anything else goes to the shared presenter first and offers a
+ *   rate-limited "Open again" (3 s, 6 s, 12 s; three tries, by the Core's clock).
+ * - Plain views and the kit; nothing here is animated (E-13).
+ */
+import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
+import { Alert, Button, Slider, Spinner } from 'heroui-native';
+import { Pause, Play, RotateCcw } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { StyleSheet, Text, View } from 'react-native';
+import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
+import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { newCorrelationId, reportRuntimeIssue, useCoreErrorPresenter, useMobileLive } from '@/runtime';
+import { AudioSourceBand } from './audio-source-band';
+import { VerifiedSourceBadge } from './development-source';
+import { CAMERA_FILE_IDS, type CameraFileId, type ItemV2 } from './item-v2';
+import { mediaSessionStale, mediaTransportOf, openMediaSessions, videoSourceOf, type MediaSessionFailure, type MediaSessionRefusal, type MediaSessions } from './media-session';
+import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, type VerifiedSources } from './sealed-playback';
+
+export interface SealedPlayerProps {
+  evidenceId: string;
+  /** The recorded duration of the item, in ms. */
+  durationMs: number;
+  item: ItemV2;
+  /** The source classes of the last verify run on this screen, or null. */
+  sources: VerifiedSources | null;
+  /** The fragments the last verify run on this screen named as failed (operation 41), if any. */
+  failedFragments?: readonly { readonly trackId: string; readonly seq: number }[];
+  /** Raised by the screen's Play action; the player opens (or starts) once per value. */
+  playToken: number | null;
+}
+
+type Phase =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'opening' }
+  | { readonly kind: 'ready'; readonly sessions: MediaSessions; readonly stoppedAtMs: number | null; readonly renewing: boolean }
+  | { readonly kind: 'refused'; readonly refusal: MediaSessionRefusal | 'NO_TRANSPORT'; readonly integrity: MediaSessionFailure['integrity'] };
+
+interface Resume {
+  readonly seconds: number;
+  readonly play: boolean;
+}
+
+const IDLE: Phase = { kind: 'idle' };
+/** A player error that comes back within this much media time of the last automatic renewal is not renewed again. */
+const SAME_PLACE_MS = 1_500;
+/** "Open again": at least 3 s between tries, doubling, three tries (by the Core's clock; no timer here). */
+const RETRY_BASE_MS = 3_000;
+const RETRY_MAX = 3;
+const TIME_UPDATE_S = 0.25;
+
+// Player property writes live in module functions: the React Compiler forbids assigning to a value
+// returned from a hook inside the component, and expo-video exposes these as properties.
+function setupPlayer(muted: boolean) {
+  return (player: VideoPlayer) => {
+    player.loop = false;
+    player.muted = muted;
+    player.timeUpdateEventInterval = TIME_UPDATE_S;
+  };
+}
+function setTime(player: VideoPlayer, seconds: number): void {
+  try {
+    player.currentTime = seconds;
+  } catch {
+    // Not seekable yet; the next time update re-aligns it.
+  }
+}
+
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken }: SealedPlayerProps) {
+  const { t } = useTranslation();
+  const live = useMobileLive();
+  const sim = useSimInstance();
+  const presentCoreError = useCoreErrorPresenter();
+  const operatorKnown = useSim((s) => selectOperator(s) !== null);
+  const canView = useSim((s) => selectCan(s, Permission.EVIDENCE_VIEW));
+  const gate = permissionGate({ operatorKnown, permitted: canView });
+  const leadPlayer = useVideoPlayer(null, setupPlayer(false));
+  const followPlayer = useVideoPlayer(null, setupPlayer(true));
+  const [phase, setPhase] = useState<Phase>(IDLE);
+  const [playing, setPlaying] = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const [dragMs, setDragMs] = useState<number | null>(null);
+  const [retry, setRetry] = useState({ attempts: 0, until: 0 });
+  const busy = useRef(false);
+  const resume = useRef<Resume | null>(null);
+  const renewedAtMs = useRef<number | null>(null);
+  const position = useRef(0);
+  const playingRef = useRef(false);
+
+  const segments = useMemo(() => bandSegments(item.audioIntervals, durationMs), [item.audioIntervals, durationMs]);
+  const totalMs = bandDurationMs(item.audioIntervals, durationMs);
+  const coreNow = useCallback((): number => sim.store.getState().clock.now, [sim]);
+
+  const sessions = phase.kind === 'ready' ? phase.sessions : null;
+  const opened = useMemo(() => (sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)), [sessions]);
+  const players = useMemo(() => [leadPlayer, followPlayer].slice(0, opened.length), [leadPlayer, followPlayer, opened.length]);
+
+  const markPlaying = (value: boolean) => {
+    playingRef.current = value;
+    setPlaying(value);
+  };
+
+  const open = useCallback(
+    async (then: Resume | null, renewal: boolean) => {
+      if (live === null || busy.current) return;
+      if (mediaTransportOf(live) === null) {
+        // The runtime holds no operator session to name to the media route (pass D5). Nothing is asked.
+        reportRuntimeIssue('warn', 'evidence.playback.transport', 'no media transport on the Live source', { evidenceId });
+        setPhase({ kind: 'refused', refusal: 'NO_TRANSPORT', integrity: null });
+        return;
+      }
+      busy.current = true;
+      setPhase((current) => (renewal && current.kind === 'ready' ? { ...current, renewing: true } : { kind: 'opening' }));
+      const correlationId = newCorrelationId('evidence');
+      const result = await openMediaSessions(live, evidenceId);
+      busy.current = false;
+      // Pass D5: an integrity refusal of EITHER file stops playback with its sentence, also when the other file opened.
+      if (Object.keys(result.sessions).length === 0 || result.failure?.refusal === 'INTEGRITY') {
+        const failure = result.failure;
+        const refusal = failure?.refusal ?? 'FAILED';
+        if (refusal === 'FAILED' || refusal === 'NOT_PERMITTED') {
+          const presented = failure?.failure != null && presentCoreError(failure.failure);
+          reportRuntimeIssue(presented ? 'warn' : 'error', 'evidence.playback.open', `createEvidenceMediaSession -> ${failure?.code ?? 'NO_SESSION'}`, { evidenceId, status: failure?.status ?? null, code: failure?.code ?? 'NO_SESSION' }, correlationId);
+        }
+        resume.current = null;
+        playingRef.current = false;
+        setPlaying(false);
+        setPhase({ kind: 'refused', refusal, integrity: failure?.integrity ?? null });
+        return;
+      }
+      resume.current = then;
+      if (then === null) {
+        position.current = 0;
+        setPositionMs(0);
+      }
+      if (then?.play === true) {
+        playingRef.current = true;
+        setPlaying(true);
+      }
+      setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, renewing: false });
+    },
+    [evidenceId, live, presentCoreError],
+  );
+
+  // The bearer path goes into the player's source here; it is taken out again when the sessions or the screen go.
+  useEffect(() => {
+    if (sessions === null || live === null) return undefined;
+    const transport = mediaTransportOf(live);
+    if (transport === null) return undefined;
+    const target = resume.current;
+    resume.current = null;
+    let alive = true;
+    const active = [leadPlayer, followPlayer].slice(0, opened.length);
+    void Promise.all(active.map((player, index) => player.replaceAsync(videoSourceOf(sessions[opened[index] as CameraFileId]!, transport))))
+      .then(() => {
+        if (!alive) return;
+        // Back to the same place on the new session (nothing to do for a first open at 0).
+        if (target !== null && target.seconds > 0) for (const player of active) setTime(player, target.seconds);
+        if (target?.play === true) for (const player of active) player.play();
+      })
+      .catch(() => {
+        // The error itself may quote the source: only the fact is recorded.
+        reportRuntimeIssue('warn', 'evidence.playback.source', 'a sealed file could not be handed to its player', { evidenceId });
+      });
+    return () => {
+      alive = false;
+      for (const player of active) {
+        try {
+          player.pause();
+          void player.replaceAsync(null).catch(() => undefined);
+        } catch {
+          // The player is already released with the screen.
+        }
+      }
+    };
+  }, [sessions, live, leadPlayer, followPlayer, opened, evidenceId]);
+
+  const pause = useCallback(() => {
+    for (const player of [leadPlayer, followPlayer]) {
+      try {
+        player.pause();
+      } catch {
+        // Released with the screen.
+      }
+    }
+    playingRef.current = false;
+    setPlaying(false);
+  }, [leadPlayer, followPlayer]);
+
+  const stale = (): boolean => sessions !== null && opened.some((fileId) => mediaSessionStale(sessions[fileId]!, coreNow()));
+
+  const play = () => {
+    if (stale()) {
+      void open({ seconds: position.current / 1000, play: true }, true);
+      return;
+    }
+    if (players.length > 1 && needsResync(leadPlayer.currentTime, followPlayer.currentTime, 0)) setTime(followPlayer, leadPlayer.currentTime);
+    for (const player of players) player.play();
+    markPlaying(true);
+  };
+
+  const seekTo = (ms: number) => {
+    const seconds = clampSeek(ms / 1000, totalMs / 1000);
+    position.current = seconds * 1000;
+    setPositionMs(seconds * 1000);
+    if (stale()) {
+      // The seek would be a new range request on a session at its end: renew first, then go there.
+      void open({ seconds, play: playingRef.current }, true);
+      return;
+    }
+    for (const player of players) setTime(player, seconds);
+  };
+
+  const canRetry = retry.attempts < RETRY_MAX && coreNow() >= retry.until;
+  const consumeRetry = (): boolean => {
+    const now = coreNow();
+    if (retry.attempts >= RETRY_MAX || now < retry.until) return false;
+    setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
+    return true;
+  };
+
+  const onPlayerError = (fileId: CameraFileId) => {
+    const at = position.current;
+    reportRuntimeIssue('warn', 'evidence.playback.player', 'a player of a sealed file reported an error', { evidenceId, fileId, positionMs: Math.round(at) });
+    const wasPlaying = playingRef.current;
+    pause();
+    const samePlace = renewedAtMs.current !== null && Math.abs(at - renewedAtMs.current) <= SAME_PLACE_MS;
+    if (!samePlace && !busy.current && consumeRetry()) {
+      renewedAtMs.current = at;
+      void open({ seconds: at / 1000, play: wasPlaying }, true);
+      return;
+    }
+    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: at, renewing: false } : current));
+  };
+
+  // The media clock of the leading player, its end, and the errors of both players.
+  useEffect(() => {
+    if (sessions === null) return undefined;
+    const subscriptions = [
+      leadPlayer.addListener('timeUpdate', ({ currentTime }) => {
+        const nowMs = Math.min(currentTime * 1000, totalMs);
+        position.current = nowMs;
+        setPositionMs(nowMs);
+        if (renewedAtMs.current !== null && nowMs - renewedAtMs.current > SAME_PLACE_MS) {
+          renewedAtMs.current = null;
+          setRetry({ attempts: 0, until: 0 });
+        }
+        if (opened.length > 1 && needsResync(currentTime, followPlayer.currentTime)) setTime(followPlayer, currentTime);
+      }),
+      leadPlayer.addListener('playToEnd', () => pause()),
+      ...[leadPlayer, followPlayer].slice(0, opened.length).map((player, index) =>
+        player.addListener('statusChange', ({ status }) => {
+          if (status === 'error') onPlayerError(opened[index] as CameraFileId);
+        }),
+      ),
+    ];
+    return () => {
+      for (const subscription of subscriptions) subscription.remove();
+    };
+    // The handlers read refs and the players; they are bound once per set of sessions.
+  }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The screen's Play action: open the sessions first, or start the players that are open.
+  // The start waits one microtask, so a StrictMode remount cancels the first start instead of asking twice.
+  useEffect(() => {
+    if (playToken === null || gate !== 'ALLOWED') return undefined;
+    let alive = true;
+    queueMicrotask(() => {
+      if (!alive) return;
+      if (phase.kind === 'ready') play();
+      else if (phase.kind === 'idle') void open({ seconds: 0, play: true }, false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [playToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reopen = () => {
+    if (!consumeRetry()) return;
+    renewedAtMs.current = null;
+    void open(phase.kind === 'ready' ? { seconds: position.current / 1000, play: false } : null, phase.kind === 'ready');
+  };
+  const reopenButton = (
+    <Button size="sm" variant="outline" onPress={reopen} isDisabled={!canRetry} testID="evidence-playback-reopen">
+      <RotateCcw size={16} color={canRetry ? palette.gold : palette.gray} />
+      <Button.Label>{retry.attempts >= RETRY_MAX ? t('common.errors.maxRetries') : t('evidence.playback.reopen')}</Button.Label>
+    </Button>
+  );
+  const integrityText = (place: { readonly fileId: string | null; readonly seq: number | null } | null): string =>
+    place !== null && place.fileId !== null && place.seq !== null ? t('evidence.playback.integrity', { file: place.fileId, seq: place.seq }) : t('evidence.playback.integrityNoPlace');
+
+  if (phase.kind === 'refused') {
+    const text =
+      phase.refusal === 'INTEGRITY'
+        ? integrityText(phase.integrity)
+        : t(`evidence.playback.${phase.refusal === 'NOT_AVAILABLE' ? 'notAvailable' : phase.refusal === 'NOT_PERMITTED' ? 'notPermitted' : 'failed'}`);
+    return (
+      <View style={styles.root} testID={`evidence-playback-refused-${phase.refusal}`}>
+        <Alert status={phase.refusal === 'FAILED' || phase.refusal === 'INTEGRITY' || phase.refusal === 'NO_TRANSPORT' ? 'danger' : 'warning'}>
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{text}</Alert.Title>
+          </Alert.Content>
+        </Alert>
+        {phase.refusal === 'FAILED' ? reopenButton : null}
+      </View>
+    );
+  }
+
+  if (phase.kind !== 'ready') {
+    const opening = phase.kind === 'opening';
+    return (
+      <View style={styles.root} testID={`evidence-playback-${phase.kind}`}>
+        <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+          {t('evidence.playback.title')}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
+          {gate === 'REFUSED' ? t('evidence.playback.notPermitted') : t('evidence.playback.note')}
+        </Text>
+        <Button variant="tertiary" onPress={() => void open(null, false)} isDisabled={gate !== 'ALLOWED' || opening} testID={`evidence-playback-open-${gate}`}>
+          {opening ? <Spinner size="sm" /> : <Play size={18} color={palette.gold} fill={palette.gold} />}
+          <Button.Label>{gate === 'CHECKING' ? t('evidence.playback.checking') : opening ? t('evidence.playback.opening') : t('evidence.playback.open')}</Button.Label>
+        </Button>
+      </View>
+    );
+  }
+
+  const missing = CAMERA_FILE_IDS.find((fileId) => phase.sessions[fileId] === undefined) ?? null;
+  const stopped = phase.stoppedAtMs !== null;
+  const verifiedFailure = stopped ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null;
+  const shownMs = dragMs ?? positionMs;
+  return (
+    <View style={styles.root} testID={`evidence-playback-ready-${opened.join('+')}`}>
+      <View style={styles.stages}>
+        {opened.map((fileId, index) => {
+          const track = sources?.state === 'DEVELOPMENT' ? sources.tracks.find((entry) => entry.trackId === fileId) : undefined;
+          return (
+            <View key={fileId} style={styles.file}>
+              <View style={styles.fileHead}>
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption} numberOfLines={1}>
+                  {t('evidence.playback.file', { track: t(`common.tracks.${fileId}`) })}
+                </Text>
+                {track ? <VerifiedSourceBadge sourceClass={track.sourceClass} testID={`evidence-playback-development-${fileId}`} /> : null}
+              </View>
+              <View style={styles.stage}>
+                <VideoView
+                  testID={`evidence-sealed-video-${fileId}`}
+                  player={index === 0 ? leadPlayer : followPlayer}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="contain"
+                  nativeControls={false}
+                  allowsPictureInPicture={false}
+                  surfaceType="textureView"
+                  accessible={false}
+                />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+      {missing !== null ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-playback-one-file">
+          {t('evidence.playback.oneFile', { track: t(`common.tracks.${opened[0] ?? missing}`) })}
+        </Text>
+      ) : null}
+      {phase.renewing ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityLiveRegion="polite" testID="evidence-playback-renewing">
+          {t('evidence.playback.renewing')}
+        </Text>
+      ) : null}
+      {stopped ? (
+        <View style={styles.stoppedBlock} testID={`evidence-playback-stopped-${verifiedFailure ? 'integrity' : 'position'}`}>
+          <Alert status={verifiedFailure ? 'danger' : 'warning'}>
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>
+                {verifiedFailure ? integrityText({ fileId: verifiedFailure.trackId, seq: verifiedFailure.seq }) : t('evidence.playback.stoppedAt', { at: formatMediaTime(phase.stoppedAtMs ?? 0) })}
+              </Alert.Title>
+            </Alert.Content>
+          </Alert>
+          {verifiedFailure ? null : reopenButton}
+        </View>
+      ) : null}
+
+      <Slider
+        value={shownMs}
+        minValue={0}
+        maxValue={Math.max(1, totalMs)}
+        step={1000}
+        onChange={(value) => setDragMs(Array.isArray(value) ? (value[0] ?? 0) : value)}
+        onChangeEnd={(value) => {
+          setDragMs(null);
+          seekTo(Array.isArray(value) ? (value[0] ?? 0) : value);
+        }}
+        accessibilityLabel={t('evidence.media.scrub')}
+        testID="evidence-sealed-scrubber"
+      >
+        <Slider.Track>
+          <Slider.Fill />
+          <Slider.Thumb />
+        </Slider.Track>
+      </Slider>
+      <View style={styles.transport}>
+        <Button
+          size="md"
+          variant="tertiary"
+          isDisabled={stopped || phase.renewing}
+          onPress={() => (playing ? pause() : play())}
+          accessibilityLabel={playing ? t('evidence.media.pause') : t('evidence.media.play')}
+          testID={`evidence-sealed-toggle-${playing ? 'playing' : 'paused'}`}
+        >
+          {playing ? <Pause size={18} color={palette.gold} /> : <Play size={18} color={palette.gold} />}
+          <Button.Label>{playing ? t('evidence.media.pause') : t('evidence.media.play')}</Button.Label>
+        </Button>
+        <Text maxFontSizeMultiplier={1.2} style={styles.time} testID="evidence-sealed-time">
+          {formatMediaTime(shownMs)} / {formatMediaTime(totalMs)}
+        </Text>
+      </View>
+      <AudioSourceBand segments={segments} totalMs={totalMs} positionMs={shownMs} sources={sources} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { gap: spacing[2] },
+  stages: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[1] + 2 },
+  file: { flexGrow: 1, flexBasis: 240, minWidth: 0, gap: 4 },
+  fileHead: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[1] },
+  stage: { aspectRatio: 16 / 9, borderRadius: radius.px.lg, overflow: 'hidden', backgroundColor: palette.black, borderWidth: 1, borderColor: derived.border },
+  stoppedBlock: { gap: spacing[1] },
+  transport: { flexDirection: 'row', alignItems: 'center', gap: spacing[2] },
+  time: { fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.foreground, fontVariant: ['tabular-nums'] },
+  strong: { fontFamily: fontFamily.native.semibold, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
+  caption: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
+});

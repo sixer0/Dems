@@ -37,7 +37,8 @@ export const MIGRATIONS_TABLE = '__drizzle_migrations';
  * migration set 4 of dbc-4 §N.8 (row 129) - `0008` generated, `0009` hand-written. The eleventh
  * file is migration set 5 (row 129a, erratum PE-129a-01): `0010`, hand-written, schema version 4.
  * Files twelve and thirteen are migration set 6 (row 129b, erratum PE-129b-01): `0011` generated,
- * `0012` hand-written, schema version 5.
+ * `0012` hand-written, schema version 5. Files fourteen and fifteen are migration set 7 (erratum
+ * PE-0013-01; rulings D146, D162, D166): `0013` generated, `0014` hand-written, schema version 6.
  */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
@@ -53,6 +54,8 @@ export const INITIAL_MIGRATION_TAGS = [
   '0010_credential_replace_privileges',
   '0011_session_stt_config',
   '0012_session_stt_config_privileges',
+  '0013_key_id_fault_reason_media_root',
+  '0014_key_id_fault_reason_media_root_privileges',
 ] as const;
 
 export interface MigrationFile {

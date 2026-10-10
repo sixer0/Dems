@@ -539,7 +539,7 @@ describe('scope all: every operation of the registry, as the Core server answers
 
   it('holds one component per registry schema, and the ten existing operations with the schemas of the offline scope', () => {
     expect(Object.keys(all.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
-    expect(Object.keys(all.components.schemas)).toHaveLength(166); // 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132)
+    expect(Object.keys(all.components.schemas)).toHaveLength(167); // 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132) + the optional body of op 88 (pass D1b, D140)
     const offline = createOpenApiDocument();
     for (const [name, schema] of Object.entries(offline.components.schemas)) expect(all.components.schemas[name], name).toEqual(schema);
     // Changed by design (W27; 01_specs §7.19): in this scope the ten are described as the Core

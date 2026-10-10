@@ -29,17 +29,26 @@
  * and operation 92 keeps answering `503 TRANSCRIBER_NOT_READY`. The product always has a data
  * directory (the connection file lives in it).
  *
- * WHAT ROW 71 CALLS (session start and stop; see "to wire" in the implementation note):
- *   at session start   `snapshotSttConfigForSession(sessionId)` - never throws, never waits for a
- *                      backend, never blocks a start;
- *   for the plan       `tapPathFor(sessionId)` - the `pcmTapPath` of the capture plan, or null
- *                      when the snapshot disables STT (no tap: no CPU taken from capture);
- *   while recording    `openSession(sessionId)` then `step({ final: false })` as the tap grows;
- *   after the stop     `step({ final: true })` until `complete`, then `close()`.
+ * WHAT THE CAPTURE SESSION CALLS (row 71c, decision D153; `src/capture-session`):
+ *   in the unit of the start   `snapshotSttConfigIn(unit, sessionId)` - the snapshot row is written
+ *                              in the transaction that persists RECORDING and the four source rows
+ *                              (dbc-6 MR-T1). It asks no backend and starts nothing;
+ *   after that unit committed  `sessionStartCommitted(sessionId)` - the scratch directory and the
+ *                              one background check of the backend (never waited for, RK-1);
+ *   for the plan               `tapPathFor(sessionId)` - the `pcmTapPath` of the capture plan, or
+ *                              null when the snapshot disables STT (no tap: no CPU taken from capture);
+ *   when the worker listens    `runs.begin(sessionId)` - `openSession`, then the runner is stepped
+ *                              as the tap grows (`session-run.ts`);
+ *   on every end of a capture  `runs.end(sessionId, { recorded })` - stepped to its end, or dropped.
+ * `snapshotSttConfigForSession(sessionId)` is the two first calls in one, on the runtime pool: for
+ * a caller that has no unit (the tests of this folder).
+ *
+ * WHAT THE SEAL CALLS (`src/sealing-host`): `runs.availability`, `runs.assemble`, `runs.closeOut`,
+ * `runs.locate`, and `manifestSnapshot(sessionId)`.
  */
 import { mkdirSync, statSync } from 'node:fs';
 import { SttConnectionDetailCode } from '@dems/shared/api';
-import { SerialQueue, createEngineGuard, type ChunkMirror, type FetchLike, type TranscriberLog } from '@dems/transcriber';
+import { SerialQueue, createEngineGuard, type ChunkMirror, type DocumentInterval, type FetchLike, type SpeakerEmbeddingEngine, type TranscriberLog } from '@dems/transcriber';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
 import type { SttConnectionProbe } from '../modules/stt-config';
 import { TRANSCRIBER_BOOT_STEP, runTranscriberBoot, type TranscriberBootOutcome } from './boot';
@@ -48,8 +57,11 @@ import { revealSttCredential, type RevealedSttCredential } from './credential-re
 import { readTranscriberHost, sessionScratchDir, sessionTapPath, type TranscriberHost } from './host';
 import { createCoreTranscriberLog } from './log';
 import { createCoreSttProbe } from './probe';
-import { openSessionTranscription, type CaptureFacts, type OpenSessionOptions, type SessionTranscription } from './session';
+import { openSessionTranscription, type CaptureFacts, type EnabledSessionTranscription, type OpenSessionOptions, type SessionTranscription } from './session';
+import { createModelProvenanceProvider, type ModelProvenanceAnswer } from './model-provenance';
+import { createSessionRuns, type SessionRuns } from './session-run';
 import { createDatabaseSnapshotStore, manifestSnapshotOf, type ManifestSttSnapshot, type SttSessionSnapshot, type SttSnapshotStore, type StoredSttSelection } from './snapshot';
+import type { Queryable } from './statements';
 
 export { TRANSCRIBER_BOOT_STEP, TranscriberBootError, TranscriberBootFailure, runTranscriberBoot, type TranscriberBootDeps, type TranscriberBootOutcome } from './boot';
 export { SttCredentialOpenError, SttCredentialOpenFailure, coreSttEnvelopeOpener, type SttEnvelopeOpener } from './credential-opener';
@@ -77,6 +89,19 @@ export {
   type SessionCompositionDeps,
   type SessionTranscription,
 } from './session';
+export {
+  SESSION_RUN_STEP_INTERVAL_MS,
+  SessionRunCode,
+  createSessionRuns,
+  type SessionRunDeps,
+  type SessionRunPhase,
+  type SessionRunStatus,
+  type SessionRuns,
+  type SessionTranscriptAnswer,
+  type SessionTranscriptAvailability,
+  type SessionTranscriptFiles,
+} from './session-run';
+export { GGML_FTYPE_NAMES, GGML_HEADER_BYTES, GGML_MAGIC, ModelProvenanceCode, createModelProvenanceProvider, isProvenanceUnknown, quantisationOfGgmlHeader, type ModelProvenanceAnswer, type ModelProvenanceProvider, type ModelProvenanceSubject, type ModelProvenanceUnknown } from './model-provenance';
 export { MEMORY_SNAPSHOT_SESSIONS, createDatabaseSnapshotStore, createMemorySnapshotStore, manifestSnapshotOf, type ManifestSttSnapshot, type SttSessionSnapshot, type SttSnapshotStore, type StoredSttSelection } from './snapshot';
 
 /** The states `modules/system` reads (`TranscriberServiceState` there; the same four words). */
@@ -118,6 +143,23 @@ export interface TranscriptionControl {
    * fails because of it (RK-1). Never throws.
    */
   snapshotSttConfigForSession(sessionId: string): Promise<SnapshotOutcome>;
+  /**
+   * THE SNAPSHOT IN THE UNIT OF THE SESSION START (row 71c; dbc-6 MR-T1): the same snapshot,
+   * written through `db` - the transaction that persists RECORDING and the four source rows - so
+   * that it is committed with them or not at all. It asks no backend, makes no directory and
+   * starts nothing: that is `sessionStartCommitted`, after the commit.
+   *
+   * The stored configuration is read on the runtime pool, outside `db`: a configuration that
+   * cannot be read, or is not seeded, is an outcome with a code (the session then has NO snapshot
+   * and is never transcribed), and the start goes on. A statement that fails ON `db` is the
+   * outcome `SNAPSHOT_STORE_FAILED` - and has ended the caller's transaction, as any failed
+   * statement of a unit does: such a start cannot commit. Never throws.
+   */
+  snapshotSttConfigIn(db: Queryable, sessionId: string): Promise<SnapshotOutcome>;
+  /** AFTER the unit of the start committed: what a taken snapshot starts. Returns at once; never throws. */
+  sessionStartCommitted(sessionId: string): void;
+  /** The transcriber session of a recording, from capture start to the seal (`session-run.ts`). */
+  readonly runs: SessionRuns;
   sessionSnapshot(sessionId: string): Promise<SttSessionSnapshot | null>;
   /** The five members the seal records (manifest field 123), or null without a snapshot. */
   manifestSnapshot(sessionId: string): Promise<ManifestSttSnapshot | null>;
@@ -157,7 +199,22 @@ export interface MountTranscriptionDeps {
   readonly availabilityTimeoutMs?: number;
   /** The opener of a stored `ENCRYPTED` credential. Default: the Core credential store of the app (`coreSttEnvelopeOpener`). */
   readonly openEncrypted?: SttEnvelopeOpener;
+  /**
+   * Manifest fields 84 to 87 of a session's STT model. DEFAULT: THE PRODUCTION PROVIDER
+   * (`model-provenance.ts`, integration pass D8): name from the adapter, version from the host
+   * file, quantisation and SHA-256 from the model file of a `cpu-local` session; a member without
+   * a source is answered by a code and no transcript document is assembled for that session.
+   * Tests hand in another answer.
+   */
+  readonly modelProvenance?: (session: EnabledSessionTranscription) => Promise<ModelProvenanceAnswer>;
+  /** The speaker embedding engine of this Core. DEFAULT: null - none; speaker labels are UNAVAILABLE with the reason. */
+  readonly speakerEngine?: (session: EnabledSessionTranscription) => SpeakerEmbeddingEngine | null;
+  /** Tests: how often a recording session's runner is stepped. */
+  readonly sessionStepIntervalMs?: number;
 }
+
+/** The audio-source intervals of a session, in media time, for its transcript document. */
+export const READ_SESSION_INTERVALS_FOR_TRANSCRIPT = 'SELECT mic_device_id, from_media_ms, to_media_ms FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq';
 
 /** The time limit of the one background check a session start makes. A bound, never a measurement. */
 export const SESSION_START_CHECK_TIMEOUT_MS = 3_000;
@@ -252,6 +309,107 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
       .finally(() => clearTimeout(timer));
   };
 
+  /** The snapshot of a session, through `store`: the pool, or the unit of the session start. Never throws. */
+  const take = async (store: SttSnapshotStore, sessionId: string): Promise<SnapshotOutcome> => {
+    const fail = (code: Extract<SnapshotOutcome, { ok: false }>['code'], error?: unknown): SnapshotOutcome => {
+      const errorName = error instanceof Error ? error.name : undefined;
+      const sqlstate = typeof (error as { code?: unknown } | undefined)?.code === 'string' ? (error as { code: string }).code : undefined;
+      app.log.error({ code, source: `${SOURCE}.snapshot`, sessionId, ...(errorName === undefined ? {} : { errorName }) }, SNAPSHOT_FAILED);
+      app.errorLog.append({ level: 'error', source: `${SOURCE}.snapshot`, message: SNAPSHOT_FAILED, code, context: { correlationId: sessionId, ...(errorName === undefined ? {} : { errorName }), ...(sqlstate === undefined ? {} : { sqlstate }) } });
+      return { ok: false, code };
+    };
+    try {
+      const known = await store.get(sessionId);
+      if (known !== null) return { ok: true, snapshot: known, taken: false };
+    } catch (error) {
+      return fail('SNAPSHOT_STORE_FAILED', error);
+    }
+    // The stored row is read on the runtime pool: a read that fails never touches the caller's transaction.
+    let stored: StoredSttSelection | null;
+    try {
+      stored = await deps.readConfig();
+    } catch (error) {
+      return fail('STT_CONFIG_READ_FAILED', error);
+    }
+    if (stored === null) return fail('STT_CONFIG_NOT_SEEDED');
+    let snapshot: SttSessionSnapshot;
+    try {
+      snapshot = await store.put({
+        sessionId,
+        takenAt: app.clock.now(),
+        enabled: stored.enabled,
+        backend: stored.backend,
+        endpoint: stored.endpoint,
+        model: stored.model,
+        language: stored.language,
+        diarization: stored.diarization,
+        credentialKind: stored.credentialKind,
+        revision: stored.revision,
+      });
+    } catch (error) {
+      return fail('SNAPSHOT_STORE_FAILED', error);
+    }
+    enabled = stored.enabled;
+    app.log.info({ code: 'STT_SNAPSHOT_TAKEN', source: `${SOURCE}.snapshot`, sessionId, enabled: snapshot.enabled, backend: snapshot.backend, revision: snapshot.revision }, 'STT configuration snapshot taken for the session');
+    return { ok: true, snapshot, taken: true };
+  };
+
+  /** What a taken snapshot starts, once it is committed: the scratch directory and the one background check. */
+  const checked = new Set<string>();
+  const started = (snapshot: SttSessionSnapshot): void => {
+    if (!snapshot.enabled || !mounted || checked.has(snapshot.sessionId)) return;
+    checked.add(snapshot.sessionId);
+    try {
+      // The directory of the tap and of the checkpoint: private, below the git-ignored data directory.
+      mkdirSync(sessionScratchDir(dataDir, snapshot.sessionId), { recursive: true, mode: 0o700 });
+    } catch {
+      // The tap then cannot be written: the capture worker records without it and says so (tapActive false).
+    }
+    checkAtSessionStart(snapshot);
+  };
+
+  const openSession = (sessionId: string, options?: OpenSessionOptions): Promise<SessionTranscription> =>
+    openSessionTranscription({ dataDir, host, snapshots, reveal, openEncrypted, engineGuard: createEngineGuard, capture: app.capture, mirror, transcriberLog, queue, now: () => app.clock.now(), fetchImpl: deps.fetchImpl }, sessionId, options);
+
+  // ONE provider per app: the hash of a model file is taken once per file and process.
+  const provenance = createModelProvenanceProvider({ statedVersions: () => host().modelVersions });
+  const productionProvenance = (session: EnabledSessionTranscription): Promise<ModelProvenanceAnswer> =>
+    provenance.of({ backend: session.config.backend, model: session.adapter.model, modelPath: session.config.backend === 'cpu-local' ? session.config.modelPath : null });
+
+  const runs: SessionRuns = createSessionRuns({
+    // An app without a data directory has no transcriber: nothing is opened for any session.
+    open: async (sessionId) => {
+      if (mounted) return openSession(sessionId);
+      const snapshot = await snapshots.get(sessionId);
+      return snapshot === null ? { state: 'NO_SNAPSHOT', snapshot: null } : !snapshot.enabled ? { state: 'DISABLED', snapshot } : { state: 'UNAVAILABLE', snapshot, code: 'TRANSCRIBER_NOT_MOUNTED' };
+    },
+    scratchDirFor: (sessionId) => sessionScratchDir(dataDir, sessionId),
+    modelProvenance: deps.modelProvenance ?? productionProvenance,
+    speakerEngine: deps.speakerEngine ?? (() => null),
+    async intervals(sessionId): Promise<readonly DocumentInterval[]> {
+      const { rows } = (await app.db.pool.query(READ_SESSION_INTERVALS_FOR_TRANSCRIPT, [sessionId])) as unknown as { rows: { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null }[] };
+      return rows.map((row) => ({ source: row.mic_device_id, fromMs: Number(row.from_media_ms), toMs: row.to_media_ms === null ? null : Number(row.to_media_ms) }));
+    },
+    transcriberLog,
+    report(level, code, message, sessionId, more = {}, error) {
+      const errorName = error instanceof Error ? error.name : undefined;
+      const fields = { code, source: `${SOURCE}.sessionRun`, sessionId, ...more, ...(errorName === undefined ? {} : { errorName }) };
+      if (level === 'info') app.log.info(fields, message);
+      else if (level === 'warn') app.log.warn(fields, message);
+      else app.log.error(fields, message);
+      if (level !== 'info') app.errorLog.append({ level, source: `${SOURCE}.sessionRun`, message, code, context: { correlationId: sessionId, ...more, ...(errorName === undefined ? {} : { errorName }) } });
+    },
+    timer: {
+      after(ms, fire) {
+        const handle = setTimeout(fire, ms);
+        // A step that waits never keeps the process alive.
+        handle.unref();
+        return () => clearTimeout(handle);
+      },
+    },
+    ...(deps.sessionStepIntervalMs === undefined ? {} : { stepIntervalMs: deps.sessionStepIntervalMs }),
+  });
+
   const control: TranscriptionControl = {
     mounted,
     probe,
@@ -261,56 +419,24 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
       return { state: availability === false ? TranscriptionServiceState.DEGRADED : TranscriptionServiceState.RUNNING, startedAt };
     },
     async snapshotSttConfigForSession(sessionId) {
-      const fail = (code: Extract<SnapshotOutcome, { ok: false }>['code'], error?: unknown): SnapshotOutcome => {
-        const errorName = error instanceof Error ? error.name : undefined;
-        const sqlstate = typeof (error as { code?: unknown } | undefined)?.code === 'string' ? (error as { code: string }).code : undefined;
-        app.log.error({ code, source: `${SOURCE}.snapshot`, sessionId, ...(errorName === undefined ? {} : { errorName }) }, SNAPSHOT_FAILED);
-        app.errorLog.append({ level: 'error', source: `${SOURCE}.snapshot`, message: SNAPSHOT_FAILED, code, context: { correlationId: sessionId, ...(errorName === undefined ? {} : { errorName }), ...(sqlstate === undefined ? {} : { sqlstate }) } });
-        return { ok: false, code };
-      };
-      try {
-        const known = await snapshots.get(sessionId);
-        if (known !== null) return { ok: true, snapshot: known, taken: false };
-      } catch (error) {
-        return fail('SNAPSHOT_STORE_FAILED', error);
-      }
-      let stored: StoredSttSelection | null;
-      try {
-        stored = await deps.readConfig();
-      } catch (error) {
-        return fail('STT_CONFIG_READ_FAILED', error);
-      }
-      if (stored === null) return fail('STT_CONFIG_NOT_SEEDED');
-      let snapshot: SttSessionSnapshot;
-      try {
-        snapshot = await snapshots.put({
-          sessionId,
-          takenAt: app.clock.now(),
-          enabled: stored.enabled,
-          backend: stored.backend,
-          endpoint: stored.endpoint,
-          model: stored.model,
-          language: stored.language,
-          diarization: stored.diarization,
-          credentialKind: stored.credentialKind,
-          revision: stored.revision,
-        });
-      } catch (error) {
-        return fail('SNAPSHOT_STORE_FAILED', error);
-      }
-      enabled = stored.enabled;
-      app.log.info({ code: 'STT_SNAPSHOT_TAKEN', source: `${SOURCE}.snapshot`, sessionId, enabled: snapshot.enabled, backend: snapshot.backend, revision: snapshot.revision }, 'STT configuration snapshot taken for the session');
-      if (snapshot.enabled && mounted) {
-        try {
-          // The directory of the tap and of the checkpoint: private, below the git-ignored data directory.
-          mkdirSync(sessionScratchDir(dataDir, sessionId), { recursive: true, mode: 0o700 });
-        } catch {
-          // The tap then cannot be written: the capture worker records without it and says so (tapActive false).
-        }
-        checkAtSessionStart(snapshot);
-      }
-      return { ok: true, snapshot, taken: true };
+      const outcome = await take(snapshots, sessionId);
+      if (outcome.ok && outcome.taken) started(outcome.snapshot);
+      return outcome;
     },
+    snapshotSttConfigIn: (db, sessionId) => take(createDatabaseSnapshotStore(db), sessionId),
+    sessionStartCommitted(sessionId) {
+      void snapshots.get(sessionId).then(
+        (snapshot) => {
+          if (snapshot !== null) started(snapshot);
+        },
+        (error: unknown) => {
+          const errorName = error instanceof Error ? error.name : 'Error';
+          app.log.error({ code: 'SNAPSHOT_STORE_FAILED', source: `${SOURCE}.snapshot`, sessionId, errorName }, 'the STT snapshot of a started session could not be read');
+          app.errorLog.append({ level: 'error', source: `${SOURCE}.snapshot`, message: 'the STT snapshot of a started session could not be read', code: 'SNAPSHOT_STORE_FAILED', context: { correlationId: sessionId, errorName } });
+        },
+      );
+    },
+    runs,
     sessionSnapshot: (sessionId) => snapshots.get(sessionId),
     async manifestSnapshot(sessionId) {
       const snapshot = await snapshots.get(sessionId);
@@ -321,7 +447,7 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
       return snapshot === null || !snapshot.enabled || !mounted ? null : sessionTapPath(dataDir, sessionId);
     },
     scratchDirFor: (sessionId) => sessionScratchDir(dataDir, sessionId),
-    openSession: (sessionId, options) => openSessionTranscription({ dataDir, host, snapshots, reveal, openEncrypted, engineGuard: createEngineGuard, capture: app.capture, mirror, transcriberLog, queue, now: () => app.clock.now(), fetchImpl: deps.fetchImpl }, sessionId, options),
+    openSession,
     onSessionWarning(listener) {
       listeners.add(listener);
       return () => void listeners.delete(listener);

@@ -50,7 +50,7 @@ describe('a session', () => {
     const { supervisor, fake, named } = await recording();
     expect(fake.workers).toHaveLength(1);
     const [start] = fake.last().commands(SupervisorMessageType.START);
-    expect(start).toMatchObject({ v: 3, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
+    expect(start).toMatchObject({ v: 4, sessionId: SESSION, attempt: 1, plan: capturePlan(SESSION) });
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, sessionId: SESSION, workerPid: fake.last().pid, attempt: 1, restarts: 0, heartbeatAgeMs: 0, lastCrash: null });
     expect(named('phase').map((event) => `${event.previous}>${event.phase}`)).toEqual(['IDLE>STARTING', 'STARTING>RECORDING']);
   });
@@ -309,7 +309,7 @@ describe('M3-KC-3: heartbeat and back-off', () => {
       [FrameViolation.NOT_JSON, (worker) => worker.violate(FrameViolation.NOT_JSON)],
       [FrameViolation.TOO_LONG, (worker) => worker.violate(FrameViolation.TOO_LONG)],
       ['HELLO_TWICE', (worker) => worker.hello()],
-      ['SESSION_MISMATCH', (worker) => worker.say({ type: 'WARNING', code: 'MIC_SILENT', state: 'ACTIVE', subject: null }, 'S-ANOTHER')],
+      ['SESSION_MISMATCH', (worker) => worker.say({ type: 'WARNING', code: 'MIC_SILENT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'ACTIVE', subject: 'MIC-01' }, 'S-ANOTHER')],
     ];
     for (const [detail, act] of cases) {
       const { supervisor, fake } = await recording();
@@ -444,9 +444,9 @@ describe('switchAudioSource (the operator\'s switch; never automatic, OD-11)', (
   it('a MIC_SILENT warning is handed on as a warning and sends NO command to the worker', async () => {
     const { fake, named } = await recording();
     const before = fake.last().received.length;
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'PRIMARY');
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-01');
     await flush();
-    expect(named('warning')).toMatchObject([{ code: 'MIC_SILENT', subject: 'PRIMARY', source: 'worker', action: 'raiseCaptureWarning' }]);
+    expect(named('warning')).toMatchObject([{ code: 'MIC_SILENT', subject: 'MIC-01', source: 'worker', action: 'raiseCaptureWarning' }]);
     expect(fake.last().received).toHaveLength(before);
   });
 

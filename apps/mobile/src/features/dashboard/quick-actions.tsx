@@ -35,6 +35,7 @@ import { SectionCard } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { EASING, durationMs, useAmbientLoop, useHaptics, useMotionSettings } from '@/motion';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
+import { useFailedStart } from '@/features/session-live/capture-start-notice';
 import type { PrimaryAction, PrimaryActionKind } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, SHEEN_EVERY_MS, SHEEN_SWEEP_MS, homeEnter } from './home-motion';
 
@@ -65,6 +66,10 @@ export function QuickActions({ action, stacked = false }: QuickActionsProps) {
   const settings = useMotionSettings();
   const startGate = useRoleGate(Permission.SESSION_START);
   const Icon = PRIMARY_ICON[action.kind];
+  // Integration pass D7 follow-up (D158 item 4; ux §8e.2 situation C): a session that recorded nothing has
+  // nothing to recover — the way to it reads "View details" (as on the Sessions hub), not "Open recovery".
+  const failedStart = useFailedStart();
+  const label = action.kind === 'recovery' && failedStart !== null ? t('common.actions.viewDetails') : t(action.labelKey);
   // R2: without SESSION_START the wizard's entries are locked (the Core would refuse the session); while the
   // role is not known yet they are locked too, with the reason "Checking your permissions…" (ruling W93-11).
   const locked = startsWizard(action.kind) && !startGate.allowed;
@@ -78,7 +83,7 @@ export function QuickActions({ action, stacked = false }: QuickActionsProps) {
             variant="primary"
             size="lg"
             className={stacked ? 'h-16 flex-row gap-2' : 'h-20 flex-1 flex-col gap-1'}
-            accessibilityLabel={t(action.labelKey)}
+            accessibilityLabel={label}
             isDisabled={locked}
             {...(locked && startGate.hint ? { accessibilityHint: startGate.hint } : {})}
             background={<PrimaryFill sheen={action.kind === 'start' && !locked} />}
@@ -90,7 +95,7 @@ export function QuickActions({ action, stacked = false }: QuickActionsProps) {
           >
             <Icon size={22} color={palette.black} fill={action.kind === 'start' ? palette.black : 'none'} />
             <Button.Label numberOfLines={1} className="text-base">
-              {t(action.labelKey)}
+              {label}
             </Button.Label>
           </Button>
           <Button

@@ -31,6 +31,7 @@
  */
 #include "worker.h"
 
+#include <libavformat/version.h>
 #include <libavutil/opt.h>
 #include <libavutil/time.h>
 
@@ -46,6 +47,18 @@
 #define DEMS_MOVFLAGS "+frag_keyframe+empty_moov+default_base_moof+skip_trailer"
 #endif
 const char *const MUX_MOVFLAGS = DEMS_MOVFLAGS;
+
+/* THE libavformat THIS UNIT WAS VERIFIED AGAINST (blueprint rows 61 and 71; decision D85). The anchoring below
+ * rests on behaviour of ONE library version: it attaches the reference time (PRFT) of the latest sender report to
+ * every packet, hands the first packet over without a timestamp until that report came, retries a refused
+ * transport in a loop, and holds the first sample under the pinned mux flags. `check.sh` refuses another installed
+ * version (test/static/libavformat.pin); this refuses another set of HEADERS at compile time, so the two cannot
+ * part. A new version is a decision: re-run the capture e2e series on it, then move both. (A test compile names
+ * another number through DEMS_VERIFIED_LAVF_VERSION_INT to show that the build stops.) */
+#ifndef DEMS_VERIFIED_LAVF_VERSION_INT
+#define DEMS_VERIFIED_LAVF_VERSION_INT AV_VERSION_INT(63, 1, 102)       /* FFmpeg 9.0.2 */
+#endif
+_Static_assert(LIBAVFORMAT_VERSION_INT == DEMS_VERIFIED_LAVF_VERSION_INT, "libavformat is not the version the capture worker was verified against (63.1.102, FFmpeg 9.0.2): see test/static/libavformat.pin");
 
 #define AVIO_BUFFER 65536
 #define PENDING_AUDIO_LIMIT 4096
@@ -95,8 +108,11 @@ static void ingest_over(Cam *c, const char *source, const char *code, int averro
     atomic_store(&c->state, ING_ENDED);
     if (atomic_load(&g_stop_ingest)) return;                /* the session is stopping: not a fault */
     atomic_store(&c->failed, 1);
-    logj("warn", source, code, "\"port\":%d,\"av_error\":\"%s\",\"video_packets\":%lld", c->port, errstr(averror, b, sizeof b), (long long)atomic_load(&c->v_written));
-    send_warning("CAPTURE_FAULT", c->device_id);
+    /* Which of the causes of CAPTURE_FAULT it is (protocol version 4): the camera's clock was refused, a camera
+     * that had connected stopped, or - every other code of this unit - its ingest never delivered a usable stream. */
+    const char *reason = !strcmp(code, "CAMERA_CLOCK_OUT_OF_BOUND") ? code : !strcmp(code, "INGEST_ENDED") ? "CAMERA_STREAM_ENDED" : "CAMERA_NOT_CONNECTED";
+    logj("warn", source, code, "\"port\":%d,\"av_error\":\"%s\",\"video_packets\":%lld,\"reason\":\"%s\"", c->port, errstr(averror, b, sizeof b), (long long)atomic_load(&c->v_written), reason);
+    send_warning("CAPTURE_FAULT", reason, 1, c->device_id);
 }
 
 /* libav's messages. Errors go to the worker's log without any address; the refusal of a
@@ -186,7 +202,9 @@ void cam_sync_failed(void *cam, const char *code, int averror) {
  *   - the moment an interval - complete, or still open - is longer than the target of the plan
  *     (`fragmentTargetMs`, the contract's 2 s) by more than GOP_TOLERANCE_PERMILLE, a WARNING on
  *     the existing capture-warning channel (code CAPTURE_FAULT, subject = the camera; no new
- *     error or audit code), once per camera;
+ *     error or audit code), once per camera. Since protocol version 4 its reason is
+ *     KEYFRAME_INTERVAL_ABOVE_BOUND - an ADVISORY: the camera records, and the Core can tell this
+ *     warning from a camera that is gone (row 71; decision D127 (2));
  *   - ONE record `KEYFRAME_INTERVAL` per camera with the number (lossless: the manifest states
  *     the crash-loss window of the file from it): after GOP_OBSERVE_INTERVALS complete intervals,
  *     or at the first complete interval once the warning was raised, or at the end of the ingest
@@ -217,7 +235,7 @@ static void gop_observe(Cam *c, const char *src, int key, int64_t pts_us) {
     if (since > bound_us && !c->gop_warned) {
         c->gop_warned = 1;
         logj("warn", src, "keyframe_interval_above_bound", "\"cam\":%d,\"since_keyframe_ms\":%lld,\"bound_ms\":%d,\"open\":%s", c->idx + 1, (long long)(since / 1000), S.fragment_target_ms, key ? "false" : "true");
-        send_warning("CAPTURE_FAULT", c->device_id);
+        send_warning("CAPTURE_FAULT", "KEYFRAME_INTERVAL_ABOVE_BOUND", 1, c->device_id);
     }
     if (!key || since <= 0) return;
     if (since > c->gop_max_us) c->gop_max_us = since;
@@ -409,6 +427,9 @@ static void *ingest_body(Cam *c) {
     int64_t opened_mono = mono_us();     /* a packet handed over from here on waited at most since now (F-6) */
     int64_t live_after = opened_mono + US;
     c->gop_last_key_us = c->gop_last_us = AV_NOPTS_VALUE;
+    c->first_skipped_pts_us = AV_NOPTS_VALUE;
+    clock_floor_init(&c->clock_floor);
+    int floor_judged = 0;
     AVPacket *p = av_packet_alloc();
     if (!p) { fatal(src, "PACKET_ALLOC_FAILED", AVERROR(ENOMEM)); atomic_store(&c->state, ING_ENDED); return NULL; }
     int end = 0, clock_refused = 0;
@@ -418,7 +439,6 @@ static void *ingest_body(Cam *c) {
         if (p->stream_index != c->vidx) { av_packet_unref(p); continue; }
         /* Before the camera's first sender report a packet has no time: it cannot be placed (counted, finding F-8). */
         if (p->pts == AV_NOPTS_VALUE) { atomic_fetch_add(&c->v_dropped_no_pts, 1); av_packet_unref(p); continue; }
-        if (!atomic_load(&S.armed)) { atomic_fetch_add(&c->v_dropped_prearm, 1); av_packet_unref(p); continue; }
 
         int64_t pts_us = av_rescale_q(p->pts, is->time_base, AV_TIME_BASE_Q);
         /* The camera's wall clock of pts 0, as this packet states it. */
@@ -429,9 +449,21 @@ static void *ingest_body(Cam *c) {
             seen = ((const AVProducerReferenceTime *)sd)->wallclock - pts_us;
         else if (!c->anchored && c->in->start_time_realtime != AV_NOPTS_VALUE)
             seen = c->in->start_time_realtime;
+        /* THE CLOCK FLOOR (anchor.h; row 71): the arrival lag of EVERY packet that states a camera wall clock,
+         * written or not, from the moment the ingest opened - also the ones that come before T0. */
+        if (!c->anchored && seen != AV_NOPTS_VALUE) clock_floor_add(&c->clock_floor, (double)(real_us() - (seen + pts_us)) / 1000.0);
+        /* Before T0 the audio timeline does not exist: the packet cannot be placed (counted; spec C.4). */
+        if (!atomic_load(&S.armed)) {
+            if (c->first_skipped_pts_us == AV_NOPTS_VALUE) c->first_skipped_pts_us = pts_us;
+            atomic_fetch_add(&c->v_dropped_prearm, 1);
+            av_packet_unref(p);
+            continue;
+        }
+        int was_anchored = c->anchored;
         if (!c->anchored) {
             if (seen == AV_NOPTS_VALUE) {
                 /* No camera wall clock yet (no sender report): the packet cannot be placed. */
+                if (c->first_skipped_pts_us == AV_NOPTS_VALUE) c->first_skipped_pts_us = pts_us;
                 if (atomic_fetch_add(&c->v_dropped_unanchored, 1) == 100) logj("error", src, "no_camera_wall_clock", "\"dropped\":%d", 100);
                 av_packet_unref(p);
                 continue;
@@ -456,11 +488,26 @@ static void *ingest_body(Cam *c) {
         }
         /* The packets that waited inside libavformat while it analysed the stream are handed over
          * at once: their arrival says nothing. The trend starts when the ingest is live. */
-        /* Row 62 proposed a second look at the same bound on the first packet that did not wait (a clock that is
-         * behind by less than the wait at anchoring). It is NOT applied (row 59): a camera that STALLS for a few
-         * seconds delivers its first live packet that late with a correct clock, and was given up for it (the stall
-         * regression of row 58, `p4_stall_pinned`: lag 3.9 s and 4.1 s, both cameras lost). One packet cannot tell a
-         * late delivery from a slow clock; that case needs a rule over several packets (follow-up, row 71). */
+        /* ROW 71, THE RULE OVER SEVERAL PACKETS (D127 (1); anchor.h "the clock floor"). Row 62 proposed a second look
+         * at the same bound on the first packet that did not wait; applied alone it gave up a camera that STALLS for a
+         * few seconds (`p4_stall_pinned`: lag 3.9 s and 4.1 s on the first live packet, with a correct clock). One
+         * packet cannot tell a late delivery from a slow clock; the smallest lag of ALL packets since the ingest
+         * opened can: a delay only ever makes a lag larger. On the first packet that did not wait, that floor is held
+         * to the bound WITHOUT the allowance of the anchoring: a stalled camera has an early packet that was on time
+         * and is kept; a clock behind (or ahead) by more than the bound that the wait at anchoring hid is given up
+         * here, at most one second of video after the stream opened. */
+        if (was_anchored) clock_floor_add(&c->clock_floor, (double)(real_us() - (c->anchor.anchor_us + pts_us)) / 1000.0);
+        if (!floor_judged && mono_us() >= live_after) {
+            floor_judged = 1;
+            int sane = clock_floor_sane(&c->clock_floor);
+            logj(sane ? "info" : "error", src, sane ? "camera_clock_floor" : "camera_clock_out_of_bound", "\"lag_ms\":%.1f,\"bound_ms\":%.0f,\"packets\":%d,\"rule\":\"floor\"", c->clock_floor.min_lag_ms, CLOCK_SANITY_MS, c->clock_floor.packets);
+            if (!sane) {
+                av_packet_unref(p);
+                end = AVERROR(ERANGE);
+                clock_refused = 1;
+                break;
+            }
+        }
         if (mono_us() >= live_after) {
             pthread_mutex_lock(&c->trend_mx);
             trend_add(&c->trend, (double)pts_us / US, (double)(real_us() - (c->anchor.anchor_us + pts_us)) / 1000.0);
@@ -470,15 +517,31 @@ static void *ingest_body(Cam *c) {
         int64_t shift = av_rescale_q(c->anchor.anchor_us - atomic_load(&S.t0_real_us), AV_TIME_BASE_Q, c->ov->time_base);
         int64_t pts = av_rescale_q(p->pts, is->time_base, c->ov->time_base) + shift;
         if (!c->started) {
-            if (!(p->flags & AV_PKT_FLAG_KEY) || pts < 0) { atomic_fetch_add(&c->v_dropped_prestart, 1); av_packet_unref(p); continue; }
+            if (!(p->flags & AV_PKT_FLAG_KEY) || pts < 0) {
+                /* A file cannot begin with it: not a keyframe, or a keyframe from before T0 (spec C.4). */
+                if (c->first_skipped_pts_us == AV_NOPTS_VALUE) c->first_skipped_pts_us = pts_us;
+                atomic_fetch_add(&c->v_dropped_prestart, 1);
+                av_packet_unref(p);
+                continue;
+            }
             c->started = 1;
             c->first_pts = pts;
             c->last_dts = pts - 1;
-            /* The true time of the first video sample of this file, in ticks of the track (the
-             * muxer holds the first sample from file time 0 under the pinned flags: spec C.4). */
-            logj("info", src, "video_started", "\"first_pts\":%lld,\"time_base_den\":%d", (long long)pts, c->ov->time_base.den);
+            /* THE START OF A CAMERA FILE (spec C.4, "held first frame - up to one GOP"; row 71, decisions D126, D130).
+             * The file begins with the first keyframe that can be placed at or after T0. What the camera delivered
+             * before it is NOT in the file - by specification, a stream copy cannot begin anywhere else - and the
+             * muxer holds this first sample from file time 0 under the pinned flags. Both amounts are stated in the
+             * record, once: `pts` (how long the frame is held, from T0) and what was skipped, by its reason, with the
+             * camera time it spans (packets without a timestamp have none and are only counted). */
+            long long no_pts = (long long)atomic_load(&c->v_dropped_no_pts), prearm = (long long)atomic_load(&c->v_dropped_prearm),
+                      unanchored = (long long)atomic_load(&c->v_dropped_unanchored), prestart = (long long)atomic_load(&c->v_dropped_prestart);
+            int64_t span_ms = c->first_skipped_pts_us == AV_NOPTS_VALUE || pts_us <= c->first_skipped_pts_us ? 0 : (pts_us - c->first_skipped_pts_us + 500) / 1000;
+            logj("info", src, "video_started", "\"first_pts\":%lld,\"time_base_den\":%d,\"skipped_no_timestamp\":%lld,\"skipped_before_audio_start\":%lld,\"skipped_no_camera_clock\":%lld,\"skipped_before_keyframe\":%lld,\"skipped_span_ms\":%lld",
+                 (long long)pts, c->ov->time_base.den, no_pts, prearm, unanchored, prestart, (long long)span_ms);
             if (c->ov->time_base.num == 1)
-                send_record("\"kind\":\"FIRST_VIDEO_SAMPLE\",\"deviceId\":\"%s\",\"pts\":%lld,\"timescale\":%d", c->device_id, (long long)pts, c->ov->time_base.den);
+                send_record("\"kind\":\"FIRST_VIDEO_SAMPLE\",\"deviceId\":\"%s\",\"pts\":%lld,\"timescale\":%d,"
+                            "\"skipped\":{\"noTimestamp\":%lld,\"beforeAudioStart\":%lld,\"noCameraClock\":%lld,\"beforeKeyframe\":%lld},\"skippedSpanMs\":%lld",
+                            c->device_id, (long long)pts, c->ov->time_base.den, no_pts, prearm, unanchored, prestart, (long long)span_ms);
         }
         int64_t dts = p->dts == AV_NOPTS_VALUE ? pts : av_rescale_q(p->dts, is->time_base, c->ov->time_base) + shift;
         if (dts <= c->last_dts) dts = c->last_dts + 1;      /* the slew never makes the file's time go backwards */

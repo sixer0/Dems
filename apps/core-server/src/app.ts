@@ -94,16 +94,20 @@ import { captureInputsModule } from './modules/capture-inputs';
 import { demoModule } from './modules/demo';
 import { devicesModule } from './modules/devices';
 import { evidenceModule } from './modules/evidence';
+import { evidenceExportModule } from './modules/evidence-export';
 import { healthModule } from './modules/health';
 import { identityModule, type SessionRegistry } from './modules/identity';
+import { mediaStreamModule } from './modules/media-stream';
 import { networkTimeModule } from './modules/network-time';
 import { pairingModule, type DeviceResolver } from './modules/pairing';
 import { rbacModule } from './modules/rbac';
+import { sealingModule } from './modules/sealing';
 import { securityAuditModule } from './modules/security-audit';
 import { sessionsModule } from './modules/sessions';
 import { storageModule } from './modules/storage';
 import { sttConfigModule } from './modules/stt-config';
 import { systemModule } from './modules/system';
+import { transcriptsModule } from './modules/transcripts';
 import { ANONYMOUS_PRINCIPAL, authenticatePlugin, type Principal } from './plugins/authenticate';
 import { dbPlugin, type Database, type PoolFactory } from './plugins/db';
 import { createRouteTable, errorEnvelopePlugin, handleFrameworkError } from './plugins/error-envelope';
@@ -328,6 +332,10 @@ const UNITS: ReadonlyArray<readonly [name: string, plugin: FastifyPluginAsync]> 
   ['modules/capture-config', captureConfigModule],
   ['modules/capture-discovery', captureDiscoveryModule],
   ['modules/capture-inputs', captureInputsModule],
+  ['modules/evidence-export', evidenceExportModule],
+  ['modules/media-stream', mediaStreamModule],
+  ['modules/transcripts', transcriptsModule],
+  ['modules/sealing', sealingModule],
 ];
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {

@@ -9,6 +9,11 @@
  *   hold            `app.readiness.hold`: stage 2 answers 503 to every other request
  *   drain           `app.pipeline.drain`: the units that run or wait have ended
  *   operatorRoles   one read on the runtime pool (`app.db.read`)
+ *   realEvidence    the caller-side reset guard (`findRealSealedEvidence` of `src/db/reset`): one
+ *                   read on the runtime pool and a listing of the evidence store - the media root
+ *                   of the configuration, which is also handed to the routine (decision D165)
+ *   auditRefusal    one unit of work (`app.pipeline.run`): the `ACCESS_DENIED` row of a reset the
+ *                   guard refused (integration pass D11; the one row this module writes itself)
  *   stopEngine      `app.engine.stop`: the scheduler is off, the last snapshot is written
  *   closePool       `app.db.close`: the pool of the runtime role is ended
  *   reopenPool      `app.db.reopen`: a new pool from the same configuration, so with the same
@@ -30,7 +35,9 @@
  * start.
  */
 import type { FastifyInstance } from 'fastify';
+import { AuditType, Severity } from '@dems/shared/sim';
 import { runDatabaseBootChecks } from '../../core';
+import { findRealSealedEvidence } from '../../db/reset';
 import { permissionGuard } from '../../plugins/permission-guard';
 import { BootError } from '../../plugins/readiness';
 import { RESET_HOLD_NAME, ResumeFailure, type OperatorRoleRow, type ResetHost, type ResetRoutine } from './reset';
@@ -39,6 +46,10 @@ import { RESET_HOLD_NAME, ResumeFailure, type OperatorRoleRow, type ResetHost, t
 export const READ_OPERATOR_ROLES = 'SELECT id, role_id AS role FROM public.operators ORDER BY id';
 /** `source` of the read above in a log line. */
 export const OPERATOR_ROLES_SOURCE = 'demo.operatorRoles';
+/** `source` of the read of the caller-side reset guard in a log line. */
+export const REAL_EVIDENCE_SOURCE = 'demo.realEvidence';
+/** Label of the unit of work that writes the audit row of a refused reset. */
+export const RESET_REFUSAL_UNIT_LABEL = 'demo.reset.refused';
 
 /**
  * B-1 to B-9 on the current pool, in the order of the contract. Rejects with a `ResumeFailure`
@@ -57,7 +68,7 @@ export async function runBootChecks(app: FastifyInstance): Promise<void> {
  * routine of `src/db/reset` as it is; a test may put one in place through the module's control.
  */
 export function createResetHost(app: FastifyInstance, routine: () => ResetRoutine): ResetHost {
-  return {
+  const host: ResetHost = {
     get database() {
       // The database follows the listen port (`config.ts`): one of the four project databases.
       return app.config.database.database;
@@ -65,12 +76,30 @@ export function createResetHost(app: FastifyInstance, routine: () => ResetRoutin
     get dataDir() {
       return app.config.dataDir;
     },
+    get mediaStoreDir() {
+      // What the sealing composition writes to (`sealing-host/index.ts`: `app.config.mediaStoreDir`).
+      return app.config.mediaStoreDir;
+    },
     now: () => app.clock.now(),
     epoch: () => app.engine.epoch,
     routine: (options) => routine()(options),
     hold: () => app.readiness.hold(RESET_HOLD_NAME),
     drain: () => app.pipeline.drain(),
     operatorRoles: () => app.db.read(OPERATOR_ROLES_SOURCE, async (pool) => (await pool.query<OperatorRoleRow>(READ_OPERATOR_ROLES)).rows),
+    // The same two sides the routine asks at R-3, with the same store root: the configured media root (decision D165).
+    realEvidence: () => app.db.read(REAL_EVIDENCE_SOURCE, (pool) => findRealSealedEvidence(pool, { database: host.database, storeRoot: host.mediaStoreDir })),
+    async auditRefusal({ operation, actorId, reason }) {
+      await app.pipeline.run(RESET_REFUSAL_UNIT_LABEL, (unit) =>
+        unit.audit.append({
+          type: AuditType.ACCESS_DENIED,
+          severity: Severity.WARNING,
+          message: `Demo reset refused: real sealed evidence exists (${operation})`,
+          actorId,
+          deviceId: null,
+          details: { operationId: operation, reason },
+        }),
+      );
+    },
     stopEngine: () => app.engine.stop(),
     closePool: () => app.db.close(),
     reopenPool: () => app.db.reopen(),
@@ -81,4 +110,5 @@ export function createResetHost(app: FastifyInstance, routine: () => ResetRoutin
     publish: (publication) => app.publish(publication),
     persist: (entry) => app.errorLog.append(entry),
   };
+  return host;
 }

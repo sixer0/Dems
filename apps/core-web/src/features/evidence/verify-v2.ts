@@ -12,16 +12,20 @@
  *    plaintext, fragment chain, fragment count per camera file), `transcriptOk?`, `manifestOk`,
  *    `signatureOk`. A member that is absent or of another type reads as NOT passed: nothing here is
  *    a pass by default.
- * 2. PENDING MEMBERS, not in the schema yet (requests of rows 85 and 119 in
- *    `delegation_progress/file_requests.md`; shapes = `PackageVerifyResult` of
+ * 2. THE REPORT MEMBERS (optional in the schema since row 141; shapes = `PackageVerifyResult` of
  *    `@dems/shared/evidence-verify`): `overall`, `interrupted`, `checks[]` (the per-check report
- *    with its findings), `fragments[]`, `transcriptState`. Absent = `null` = the view shows nothing
- *    extra. A member that is present but malformed is dropped, named in `malformed`, and never
- *    guessed. TO WIRE when the op 41 schema gains them: nothing in this file — the client parses
- *    the answer with the registry schema (CL-4), so the members arrive here as soon as it does.
+ *    V-01 to V-15 with its findings), `fragments[]`, `failedFragmentCount`, `transcriptState`,
+ *    `sources`. Absent = `null` = the view shows nothing extra. A member that is present but
+ *    malformed is dropped, named in `malformed`, and never guessed.
  *
- * SLOT for row 141 (V-15 and the `sources` block): a check with an ID this reader does not know is
- * kept and drawn by its ID, so a fifteenth check is never hidden; `sources` is not read here.
+ * THE SOURCES BLOCK (row 92; R-11, spec §D.1): `sources` absent = `null` = nothing is drawn (a v1
+ * answer). Present: its `state` is DEVELOPMENT only for `development === true` with the code
+ * DEVELOPMENT, DECLARED_PRODUCTION only for `development === false` with that code, and
+ * NOT_TRUSTWORTHY for everything else: `development: null`, the codes NOT_TRUSTWORTHY and UNKNOWN,
+ * a block that cannot be read. Nothing that is unclear is ever read as production.
+ *
+ * A check with an ID this reader does not know is kept and drawn by its ID, so a sixteenth check
+ * would never be hidden.
  *
  * The verdict is the Core's `ok` and nothing else: no row, check or finding is ever combined into
  * it, and `ok` is PASS only for the boolean `true`.
@@ -32,7 +36,7 @@ import { en } from '@dems/shared/i18n'
 export type V2Verdict = 'PASS' | 'FAIL'
 export type V2FailureClass = 'TAMPERED' | 'CORRUPT' | 'MISSING' | 'UNREADABLE'
 export type V2CheckStatus = 'PASS' | 'FAIL' | 'SKIPPED'
-export type V2SkipReason = 'BLOCKED' | 'KEY_UNAVAILABLE'
+export type V2SkipReason = 'BLOCKED' | 'KEY_UNAVAILABLE' | 'OUT_OF_SCOPE'
 export type V2Overall = 'PASS' | V2FailureClass
 
 /**
@@ -44,8 +48,8 @@ export type V2Overall = 'PASS' | V2FailureClass
 export type V2TranscriptState = keyof typeof en.evidence.verifyV2.transcriptState
 export const V2_TRANSCRIPT_STATES = Object.keys(en.evidence.verifyV2.transcriptState) as readonly V2TranscriptState[]
 
-/** The 14 checks this row words (spec §D); V-15 is row 141's. */
-export const V2_KNOWN_CHECK_IDS = ['V-01', 'V-02', 'V-03', 'V-04', 'V-05', 'V-06', 'V-07', 'V-08', 'V-09', 'V-10', 'V-11', 'V-12', 'V-13', 'V-14'] as const
+/** The 15 checks of the verifier (spec §D; V-15 `Source class` is row 141's). */
+export const V2_KNOWN_CHECK_IDS = ['V-01', 'V-02', 'V-03', 'V-04', 'V-05', 'V-06', 'V-07', 'V-08', 'V-09', 'V-10', 'V-11', 'V-12', 'V-13', 'V-14', 'V-15'] as const
 export type V2KnownCheckId = (typeof V2_KNOWN_CHECK_IDS)[number]
 
 export interface V2FileRow {
@@ -89,6 +93,19 @@ export interface V2FailedFragment {
   readonly chainBrokenFromSeq: number | null
 }
 
+/** What the verified package says of its sources, as the view may word it. */
+export type V2SourcesState = 'DEVELOPMENT' | 'DECLARED_PRODUCTION' | 'NOT_TRUSTWORTHY'
+/** The manifest's three source classes (fields 124, 125). */
+export type V2SourceClass = 'PRODUCTION' | 'LOCAL_DEVICE' | 'FAKE'
+
+export interface V2Sources {
+  readonly state: V2SourcesState
+  /** One entry per camera file; empty unless the state is stated (DEVELOPMENT or DECLARED_PRODUCTION). */
+  readonly tracks: readonly { readonly trackId: string; readonly deviceId: string; readonly sourceClass: V2SourceClass }[]
+  /** One entry per interval of the session audio track; empty unless the state is stated. */
+  readonly audioIntervals: readonly { readonly seq: number; readonly micDeviceId: string; readonly sourceClass: V2SourceClass }[]
+}
+
 export interface VerifyV2Answer {
   /** The Core's verdict: PASS only for `ok === true`. */
   readonly verdict: V2Verdict
@@ -98,11 +115,15 @@ export interface VerifyV2Answer {
   readonly transcriptOk: boolean | null
   readonly manifestOk: boolean
   readonly signatureOk: boolean
-  // ── Pending members: null = the answer does not carry it ──
+  // ── Report members: null = the answer does not carry it ──
   readonly overall: V2Overall | null
   readonly interrupted: boolean | null
   readonly checks: readonly V2Check[] | null
   readonly transcriptState: V2TranscriptState | null
+  /** null: the answer carries no `sources` block (a v1 answer): nothing is drawn. */
+  readonly sources: V2Sources | null
+  /** How many fragments did not verify, when the answer says it; larger than the list when the Core cut it. */
+  readonly failedFragmentCount: number | null
   /** Every fragment the answer names as failed (from `fragments[]` and the findings); empty when it names none. */
   readonly failedFragments: readonly V2FailedFragment[]
   /** A chain break named for a file without a failed fragment of its own. */
@@ -113,7 +134,9 @@ export interface VerifyV2Answer {
 
 const FAILURE_CLASSES: readonly string[] = ['TAMPERED', 'CORRUPT', 'MISSING', 'UNREADABLE']
 const CHECK_STATUSES: readonly string[] = ['PASS', 'FAIL', 'SKIPPED']
-const SKIP_REASONS: readonly string[] = ['BLOCKED', 'KEY_UNAVAILABLE']
+const SKIP_REASONS: readonly string[] = ['BLOCKED', 'KEY_UNAVAILABLE', 'OUT_OF_SCOPE']
+const SOURCE_CLASSES: readonly string[] = ['PRODUCTION', 'LOCAL_DEVICE', 'FAKE']
+const MAX_INTERVALS = 4096
 const CHECK_ID = /^V-\d{2}$/
 /** The largest report this reader walks (a hostile or broken answer must not be drawn at any length). */
 const MAX_CHECKS = 32
@@ -247,6 +270,47 @@ function fragmentsOf(checks: readonly V2Check[] | null, listed: unknown, malform
   return { failedFragments, chainBreaks }
 }
 
+const NOT_TRUSTWORTHY_SOURCES: V2Sources = { state: 'NOT_TRUSTWORTHY', tracks: [], audioIntervals: [] }
+const sourceClass = (value: unknown): V2SourceClass | null => (typeof value === 'string' && SOURCE_CLASSES.includes(value) ? (value as V2SourceClass) : null)
+
+/**
+ * The `sources` block (R-11). `null`: absent. A block this reader cannot read whole is NOT
+ * TRUSTWORTHY and named in `malformed`: an entry that is dropped could be the development one.
+ */
+function readSources(value: unknown, malformed: string[]): V2Sources | null {
+  if (value === undefined) return null
+  const broken = (): V2Sources => {
+    malformed.push('sources')
+    return NOT_TRUSTWORTHY_SOURCES
+  }
+  if (!isRecord(value)) return broken()
+  const { code, development } = value
+  if (code === 'NOT_TRUSTWORTHY' || code === 'UNKNOWN') return development === null ? NOT_TRUSTWORTHY_SOURCES : broken()
+  // Stated only when the code and the recomputed boolean agree; `null` is never production.
+  const state: V2SourcesState | null = code === 'DEVELOPMENT' && development === true ? 'DEVELOPMENT' : code === 'DECLARED_PRODUCTION' && development === false ? 'DECLARED_PRODUCTION' : null
+  if (state === null || !Array.isArray(value.tracks) || value.tracks.length > 2 || !Array.isArray(value.audioIntervals) || value.audioIntervals.length > MAX_INTERVALS) return broken()
+  const tracks: V2Sources['tracks'][number][] = []
+  for (const entry of value.tracks) {
+    const trackId = isRecord(entry) ? text(entry.trackId) : null
+    const deviceId = isRecord(entry) ? text(entry.deviceId, 64) : null
+    const held = isRecord(entry) ? sourceClass(entry.sourceClass) : null
+    if (trackId === null || deviceId === null || held === null) return broken()
+    tracks.push({ trackId, deviceId, sourceClass: held })
+  }
+  const audioIntervals: V2Sources['audioIntervals'][number][] = []
+  for (const entry of value.audioIntervals) {
+    const seq = isRecord(entry) ? whole(entry.seq) : null
+    const micDeviceId = isRecord(entry) ? text(entry.micDeviceId, 64) : null
+    const held = isRecord(entry) ? sourceClass(entry.sourceClass) : null
+    if (seq === null || micDeviceId === null || held === null) return broken()
+    audioIntervals.push({ seq, micDeviceId, sourceClass: held })
+  }
+  // A block that says "production" while it lists a development class contradicts itself.
+  const listsDevelopment = [...tracks, ...audioIntervals].some((entry) => entry.sourceClass !== 'PRODUCTION')
+  if (listsDevelopment !== (state === 'DEVELOPMENT')) return broken()
+  return { state, tracks, audioIntervals }
+}
+
 /**
  * Reads an answer of operation 41. `null`: not a v2 answer (it has no `files` member), the caller
  * keeps the v1 view.
@@ -282,6 +346,12 @@ export function readVerifyV2(answer: unknown): VerifyV2Answer | null {
     if (typeof code === 'string' && (V2_TRANSCRIPT_STATES as readonly string[]).includes(code)) transcriptState = code as V2TranscriptState
     else malformed.push('transcriptState')
   }
+  const sources = readSources(answer.sources, malformed)
+  let failedFragmentCount: number | null = null
+  if (answer.failedFragmentCount !== undefined && answer.failedFragmentCount !== null) {
+    failedFragmentCount = whole(answer.failedFragmentCount)
+    if (failedFragmentCount === null) malformed.push('failedFragmentCount')
+  }
 
   return {
     // A file entry that cannot be read is a contract break: never a pass.
@@ -295,6 +365,8 @@ export function readVerifyV2(answer: unknown): VerifyV2Answer | null {
     interrupted,
     checks,
     transcriptState,
+    sources,
+    failedFragmentCount,
     ...fragmentsOf(checks, answer.fragments, malformed),
     malformed: [...new Set(malformed)],
   }
@@ -352,7 +424,14 @@ export function v2FragmentLine(fragment: V2FailedFragment, t: TFunction): string
   return t('evidence.verifyV2.fragment.tamperedOther', place)
 }
 
-/** The name of a check: this row's wording for V-01 to V-14, the bare ID for any other (row 141's slot). */
+/** The key of the source line, the FIRST line of a v2 result (spec §D.1; `common.sourceClass.verify`). */
+export const V2_SOURCES_LINE = {
+  DEVELOPMENT: 'common.sourceClass.verify.development',
+  DECLARED_PRODUCTION: 'common.sourceClass.verify.production',
+  NOT_TRUSTWORTHY: 'common.sourceClass.verify.untrusted',
+} as const satisfies Record<V2SourcesState, string>
+
+/** The name of a check: the verifier's wording for V-01 to V-15, the bare ID for any other. */
 export function v2CheckName(id: string, t: TFunction): string {
   return (V2_KNOWN_CHECK_IDS as readonly string[]).includes(id) ? `${id} · ${t(`evidence.verifyV2.checks.${id as V2KnownCheckId}`)}` : id
 }

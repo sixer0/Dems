@@ -43,28 +43,35 @@ import type { MonitorHandlers } from './use-monitor';
 
 export interface EndSessionProps {
   disabled: boolean;
+  /**
+   * Row 139 (D84, D91; C3 §3.1): why the control is disabled, said under it in place of the hold hint and read
+   * as its hint. Set while the cameras connect: the Core would refuse the stop (`CAPTURE_NOT_DURABLE`).
+   */
+  blockedReason?: string | undefined;
   /** Sends `stopRecording(reason)`; the handlers run once the command settled (S2-1). */
   onEnd: (reason: string, handlers: MonitorHandlers) => void;
 }
 
 /** The pinned End Session control plus its reason Dialog. */
-export function EndSession({ disabled, onEnd }: EndSessionProps) {
+export function EndSession({ disabled, blockedReason, onEnd }: EndSessionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const blocked = blockedReason !== undefined;
   return (
     <>
-      <EndSessionButton disabled={disabled} dialogOpen={dialogOpen} onConfirmHold={() => setDialogOpen(true)} />
-      <EndSessionDialog isOpen={dialogOpen} onOpenChange={setDialogOpen} onEnd={onEnd} />
+      <EndSessionButton disabled={disabled || blocked} blockedReason={blockedReason} dialogOpen={dialogOpen} onConfirmHold={() => setDialogOpen(true)} />
+      <EndSessionDialog isOpen={dialogOpen && !blocked} onOpenChange={setDialogOpen} onEnd={onEnd} />
     </>
   );
 }
 
 interface EndSessionButtonProps {
   disabled: boolean;
+  blockedReason?: string | undefined;
   dialogOpen: boolean;
   onConfirmHold: () => void;
 }
 
-function EndSessionButton({ disabled, dialogOpen, onConfirmHold }: EndSessionButtonProps) {
+function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }: EndSessionButtonProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const policy = useMotionPolicy();
@@ -155,7 +162,7 @@ function EndSessionButton({ disabled, dialogOpen, onConfirmHold }: EndSessionBut
         delayLongPress={HOLD_TO_CONFIRM_MS}
         onPress={onPress}
         accessibilityLabel={t('session.actions.endSession.title')}
-        accessibilityHint={t('features.session-live.endSession.holdA11yHint')}
+        accessibilityHint={blockedReason ?? t('features.session-live.endSession.holdA11yHint')}
         accessibilityActions={[{ name: 'activate', label: t('session.actions.endSession.title') }]}
         onAccessibilityAction={onAccessibilityAction}
         style={styles.button}
@@ -166,7 +173,11 @@ function EndSessionButton({ disabled, dialogOpen, onConfirmHold }: EndSessionBut
           {holding ? t('features.session-live.endSession.holding') : t('session.actions.endSession.title')}
         </Text>
       </Button>
-      {!reduced ? (
+      {blockedReason !== undefined ? (
+        <Text testID="monitor-end-session-blocked" maxFontSizeMultiplier={1.2} accessibilityLiveRegion="polite" style={styles.hint}>
+          {blockedReason}
+        </Text>
+      ) : !reduced ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.hint}>
           {t('session.actions.endSession.holdHint')}
         </Text>

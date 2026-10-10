@@ -71,6 +71,9 @@ export interface EngineMeterFrame {
 
 // ── The host ───────────────────────────────────────────────────────────────────────────────────
 
+/** What `endCapture` did to the session (blueprint row 71). */
+export type CaptureEndOutcome = 'FAILED_START' | 'INTERRUPTED' | 'IGNORED';
+
 /**
  * How a start treats the stored state (spec §8.6, §12.4; database contract §7.4, §8.5 R-9):
  *
@@ -299,4 +302,82 @@ export interface EngineHost {
   stop(): Promise<void>;
 
   stats(): EngineStats;
+}
+
+/**
+ * The doors of the capture of a REAL recording (blueprint row 71; `capture-session.ts`). The host
+ * of `src/engine` offers them beside the seam; they are reached with `captureDoorsOf(app.engine)`
+ * and are NOT members of `EngineHost`: only the capture side calls them, in capture mode `real`,
+ * and an object a test put behind the seam does not have to know them.
+ */
+export interface EngineCaptureDoors {
+  /**
+   * The first durable fragment of that session (the supervisor's `FIRST_DURABLE_FRAGMENT`): the
+   * session payload says `captureDurable: true`, one unit. From then on the clients present
+   * 'recording' (decisions D84, D91 R-1 option A). Resolves false, and writes nothing, when that
+   * session is not the open RECORDING session or says so already. No audit row.
+   */
+  markCaptureDurable(sessionId: string): Promise<EngineOutcome<boolean>>;
+
+  /**
+   * The capture of that session ended for good while the session is RECORDING (the supervisor's
+   * `FAULTED`, or a start that was refused), one unit:
+   *
+   *   `durable: false`   a FAILED START - FAULT, `startedAt` null again, 0 bytes: the recovery of
+   *                      that session makes no evidence item (`FAILED_START`);
+   *   `durable: true`    an INTERRUPTED recording - FAULT with the bytes so far; the sealing row
+   *                      seals what is on the disk (`INTERRUPTED`).
+   *
+   * A session that already says `captureDurable: true` is never turned into a failed start,
+   * whatever the caller says: `INTERRUPTED`. `IGNORED` when that session is not the open RECORDING
+   * session. The fault's audit row is the capture warning's (`raiseCaptureWarning`), not this call's.
+   *
+   * `cause` (row 71c): the code the capture ended with. A failed start writes it on the session's
+   * fault row as `reason`, beside `evidenceFiles: 0` (C3 §5.3: `NO_CAMERA_CONNECTED`).
+   */
+  endCapture(sessionId: string, end: { readonly durable: boolean; readonly cause?: string | null }): Promise<EngineOutcome<CaptureEndOutcome>>;
+
+  /**
+   * Clears every active `MIC_SILENT` / `CAPTURE_FAULT`, each with its FAULT_CLEARED row, one unit
+   * (decision D84 R-4): the capture side calls it when a session reaches RECORDING and at boot, so
+   * a fault that outlived its worker (a Core restart) does not stay raised and its next occurrence
+   * is a new fault. Resolves with how many were cleared; 0 writes nothing.
+   */
+  clearCaptureFaults(): Promise<EngineOutcome<number>>;
+}
+
+/**
+ * The doors of the seal of a REAL recording (blueprint row 82; register SH-18, CS-04). Like the
+ * capture doors they stand beside the seam and are NOT members of `EngineHost`: only the sealing
+ * pipeline and the real verification call them. Reached with `sealDoorsOf(app.engine)`.
+ */
+export interface EngineSealDoors {
+  /**
+   * Where the Core's sealing pipeline stands (the INTERNAL `applySealingProgress`, no actor, one
+   * unit): the step states of `sealing_jobs`, forward-only inside one attempt. The first call
+   * moves the session to FINALIZING - from STOPPING, or from FAULT / RECOVERY for the interrupted
+   * durable-prefix seal and for a seal resumed after a restart - and from then on no timed
+   * transition of the simulator advances or seals it. A report that changes nothing sends no
+   * statement. Rejects with the mapped refusal of the session machine (another session, a session
+   * that cannot be sealed) and with 503 `NOT_READY` while the engine is not running.
+   */
+  applySealingProgress(input: import('@dems/shared/sim').SealingProgressInput): Promise<EngineOutcome<void>>;
+
+  /**
+   * FINALIZING -> SEALED with the item of the REAL package (the INTERNAL `completeSeal`, one
+   * unit): the evidence item, the session history entry and the audit row EVIDENCE_SEALED. Called
+   * by the sealing pipeline when its last step has made the package durable - the trigger is the
+   * pipeline's own completion, never a progress value (decision D67). `also` runs in the same unit
+   * AFTER the item's row is written (the row of `transcripts` hangs on it): when it rejects,
+   * nothing of the seal commits.
+   */
+  completeSeal(input: import('@dems/shared/sim').CompleteSealInput, also?: (unit: UnitContext, evidenceId: string) => Promise<void>): Promise<EngineOutcome<{ readonly evidenceId: string }>>;
+
+  /**
+   * Records a verdict the Core computed for an item with a REAL package (the INTERNAL
+   * `recordEvidenceVerification`; decision D107 (1)): the item's verification state, the custody
+   * entry, and the audit row + event of the hosted `verify` with the same keys. Refused for every
+   * other item: the hosted action computes its own verdict for those.
+   */
+  recordEvidenceVerification(verdict: import('@dems/shared/sim').EvidenceVerdictInput): Promise<EngineOutcome<void>>;
 }

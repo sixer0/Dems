@@ -16,6 +16,8 @@
 #                                                            fails (row 59: the file must be back at its last good length)
 #                     build/capture-worker-writefault-notrunc the same without the truncation: the negative control
 #                                                            (the torn tail stays; the tail validation must flag it)
+#                     build/capture-worker-intervalskew      the AUDIO_SOURCE_INTERVAL record of a switch names a sample one
+#                                                            input chunk late (row 71: the mutation the interval check must catch)
 #   make fixtures   the NM-14 fixture set from test-fixtures/ (fake camera, fake mics, the vendored
 #                   row-111 skeleton used as the negative control of the socket check)
 #   make e2e        THE capture end-to-end series with one aggregate exit code (test/e2e.py; sandbox
@@ -25,7 +27,10 @@
 #                   camera file under kill -9 (test/sink_kill_test.c, 200 kills), the fMP4 writer
 #                   (test/writer_test.c: chains re-derived from the file, failed and short writes;
 #                   its red run is the same file with -DDEMS_PROOF_KEEP_TORN_TAIL) and the per-source
-#                   log quota (test/log_test.c; its red run: -DLOG_SHARED_QUOTA)
+#                   log quota (test/log_test.c; its red run: -DLOG_SHARED_QUOTA), the clock floor of row 71
+#                   (anchor_test.c check (2e); red runs -DFIRST_LIVE_ONLY and -DNO_FLOOR) and the microphone
+#                   warning raiser on a sample-count clock (test/micwatch_test.c = M5-WARN-1; red run
+#                   -DMICWATCH_PROOF_NO_DEBOUNCE)
 CC         := clang
 PKG_CONFIG ?= pkg-config
 LIBS_PC    := libavformat libavcodec libavfilter libswresample libavutil
@@ -35,10 +40,10 @@ LDLIBS     := $(shell $(PKG_CONFIG) --libs $(LIBS_PC)) -lm -lpthread
 
 BUILD := build
 BIN   := $(BUILD)/capture-worker
-SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c
-HDR   := src/worker.h src/anchor.h
+SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c src/micwatch.c
+HDR   := src/worker.h src/anchor.h src/micwatch.h
 
-FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay
+FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic
 
 .PHONY: all clean check selftest versions proof unit fixtures e2e
 
@@ -65,12 +70,17 @@ proof: check
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DMIC_MAX_PPM=0 -o $(BUILD)/capture-worker-nocomp $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -o $(BUILD)/capture-worker-writefault $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -DDEMS_PROOF_KEEP_TORN_TAIL -o $(BUILD)/capture-worker-writefault-notrunc $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_INTERVAL_SKEW=480 -o $(BUILD)/capture-worker-intervalskew $(SRC) $(LDLIBS)
 
 unit:
 	@mkdir -p $(BUILD)
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -o $(BUILD)/anchor_test test/anchor_test.c src/anchor.c -lm && $(BUILD)/anchor_test
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DOLD_SLEW -o $(BUILD)/anchor_test_old test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_old >/dev/null && { echo "anchor_test: the old slew rule passes: the test cannot fail"; exit 1; } || echo "anchor_test: the old slew rule fails it, as required (negative control)"; }
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DNO_TICK -o $(BUILD)/anchor_test_notick test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_notick >/dev/null && { echo "anchor_test: without the tick on report-less packets the test passes: the R-1 check cannot fail"; exit 1; } || echo "anchor_test: without the tick on report-less packets it fails, as required (negative control, R-1)"; }
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DFIRST_LIVE_ONLY -o $(BUILD)/anchor_test_firstlive test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_firstlive >/dev/null && { echo "anchor_test: judging the first live packet alone passes: the clock-floor check cannot fail"; exit 1; } || echo "anchor_test: judging the first live packet alone gives the stalled camera up, as required (negative control, row 71 clock floor)"; }
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DNO_FLOOR -o $(BUILD)/anchor_test_nofloor test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_nofloor >/dev/null && { echo "anchor_test: without the clock floor the test passes: the check of a clock behind cannot fail"; exit 1; } || echo "anchor_test: without the clock floor a clock 2.6 s behind is kept, as required (negative control, row 71 clock floor)"; }
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -o $(BUILD)/micwatch_test test/micwatch_test.c src/micwatch.c -lm && $(BUILD)/micwatch_test
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DMICWATCH_PROOF_NO_DEBOUNCE -o $(BUILD)/micwatch_test_nodebounce test/micwatch_test.c src/micwatch.c -lm && { $(BUILD)/micwatch_test_nodebounce >/dev/null && { echo "micwatch_test: a raiser without its durations passes: M5-WARN-1 cannot fail"; exit 1; } || echo "micwatch_test: a raiser that warns at once fails it, as required (negative control, M5-WARN-1)"; }
 	@$(CC) $(CFLAGS) -o $(BUILD)/sink_kill_test test/sink_kill_test.c src/sink.c $(LDLIBS) && $(BUILD)/sink_kill_test $(BUILD)/sink_kill 200
 	@$(CC) $(CFLAGS) -o $(BUILD)/writer_test test/writer_test.c src/sink.c $(LDLIBS) && $(BUILD)/writer_test $(BUILD)/writer_scratch
 	@$(CC) $(CFLAGS) -DDEMS_PROOF_KEEP_TORN_TAIL -o $(BUILD)/writer_test_notrunc test/writer_test.c src/sink.c $(LDLIBS) && { $(BUILD)/writer_test_notrunc $(BUILD)/writer_scratch_notrunc > $(BUILD)/writer_test_notrunc.out; rc=$$?; \
@@ -89,6 +99,11 @@ $(BUILD)/fake_cam: test-fixtures/fake_cam.c Makefile
 	$(CC) -O2 -Wall -Wextra -o $@ $< $(shell $(PKG_CONFIG) --cflags --libs libavformat libavcodec libavutil) -lm
 
 $(BUILD)/fake_mic: test-fixtures/fake_mic.c Makefile
+	@mkdir -p $(BUILD)
+	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -o $@ $< -lm
+
+# Row 71: the scripted fake microphones of the warning checks (silence, no delivery). Source in test/ (a test tool of m5mic.py).
+$(BUILD)/m5_mic: test/m5_mic.c Makefile
 	@mkdir -p $(BUILD)
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -o $@ $< -lm
 

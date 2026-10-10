@@ -7,7 +7,8 @@ import { useSim } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
-import { BANNER_RANK, BANNER_TONE, selectBanner, type BannerModel } from './model'
+import { captureFailedStartText, captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
+import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, type BannerModel } from './model'
 
 export interface StatusBannerProps {
   canStart: boolean
@@ -21,7 +22,11 @@ export interface StatusBannerProps {
 /** Detail line of the banner (research/04 §3.2 K states plus the step-44 additions). */
 function useBannerText(banner: BannerModel): { title: string; detail: string } {
   const { t } = useTranslation()
-  const reason = banner.reasonKind ? t(`common.faultKind.${banner.reasonKind}`) : (banner.reasonText ?? '')
+  // Row 139 (ux §8e.1 "told apart by reason"; §8e.2 "C, degraded"): a no-device notice is worded from its
+  // `params`, with the device named by label and id, never by the alert's own text.
+  const noticeAlert = useSim(selectBannerNoticeAlert)
+  const notice = noticeAlert === null ? null : captureNoticeOf(noticeAlert)
+  const reason = notice !== null ? captureNoticeLine(t, notice) : banner.reasonKind ? t(`common.faultKind.${banner.reasonKind}`) : (banner.reasonText ?? '')
   switch (banner.kind) {
     case 'ACTIVE':
       return { title: t('session.banner.ACTIVE.title'), detail: t('session.banner.ACTIVE.detail') }
@@ -30,6 +35,11 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
     case 'ATTENTION':
       return { title: t('session.banner.ATTENTION.title'), detail: t('session.banner.ATTENTION.detail', { reason }) }
     case 'FAULT':
+      // Row 139 (ux §8e.2 situation C): a failed start. "Nothing was recorded." is said in full.
+      if (banner.failedStart !== null) {
+        const failed = captureFailedStartText(t, banner.failedStart)
+        return { title: t('session.banner.FAULT.title'), detail: `${failed.title}. ${failed.body}` }
+      }
       return {
         title: t('session.banner.FAULT.title'),
         detail: banner.whileRecording
@@ -105,7 +115,7 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
         {t('session.banner.cta.continueSetup')}
       </Link>
     )
-  } else if (banner.kind === 'FAULT' && !banner.whileRecording && canStart) {
+  } else if (banner.kind === 'FAULT' && !banner.whileRecording && !banner.failedStartClosing && canStart) {
     cta = (
       <Button
         size="sm"
@@ -116,10 +126,13 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
         data-testid="sm-banner-cta"
       >
         {recoverPending ? <Spinner size="sm" color="current" /> : null}
-        {t('session.banner.cta.recover')}
+        {/* Row 139 (OP-125-5): a session that recorded nothing is closed; no recovery of evidence is offered. */}
+        {banner.failedStart !== null ? t('common.session.failedStart.close') : t('session.banner.cta.recover')}
       </Button>
     )
   }
+  // ux §8e.6: banners are `role="status"`; the CRITICAL fault of situation C is `role="alert"`.
+  const critical = banner.failedStart !== null
 
   return (
     <div
@@ -127,8 +140,9 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
       data-testid="sm-status-banner"
       data-kind={banner.kind}
       data-tone={tone}
-      role="status"
-      aria-live="polite"
+      data-failed-start={banner.failedStart ?? undefined}
+      role={critical ? 'alert' : 'status'}
+      aria-live={critical ? 'assertive' : 'polite'}
     >
       <span ref={dotRef} className="sm-banner-dot" aria-hidden="true" {...breath.attrs}>
         <motion.span

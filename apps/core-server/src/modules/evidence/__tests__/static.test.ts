@@ -258,6 +258,8 @@ describe('rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched', () =>
       '../../db/mapping',
       '../../db/schema',
       '../../engine',
+      // Task 3 row 91: the seam of operation 42 to the export jobs (`evidenceExport(app)`, the kind of a body, one text). The module itself still opens no file.
+      '../../evidence-export',
       '../../plugins/error-envelope',
       '../../plugins/permission-guard',
       './cursor',

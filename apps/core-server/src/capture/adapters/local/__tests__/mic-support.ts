@@ -59,7 +59,16 @@ export interface ProcessScript {
   readonly lives?: boolean;
   /** `lives` only: SIGTERM does nothing (a helper blocked at the pipe), so only SIGKILL ends it. */
   readonly ignoresTerm?: boolean;
+  /**
+   * `lives` only: what the helper writes to standard output right after its start, handed to the
+   * caller's `onOutput` like the real door does. `LIVING_PROGRESS` is the report of a helper that
+   * delivers (the no-delivery bound of `camera-helper.ts` waits for it). Absent = it never reports.
+   */
+  readonly reports?: string;
 }
+
+/** One block of the program's `-progress` report after a first frame / first bytes: the signal of a helper that delivers. */
+export const LIVING_PROGRESS = 'frame=1\nfps=0.00\ntotal_size=4096\nout_time_us=33333\nprogress=continue\n';
 
 export interface ScriptedProcess extends HelperProcess {
   readonly signals: string[];
@@ -133,6 +142,9 @@ export function scriptedDoor(list: string | ((listCall: number) => string | Proc
     }
     const process = scriptedProcess(played, 4000 + ffmpeg.length);
     ffmpeg.push(process);
+    // The report arrives after the start, as from a real child: never inside the door call itself.
+    const { reports } = played;
+    if (reports !== undefined && played.lives === true) queueMicrotask(() => options.onOutput?.(Buffer.from(reports)));
     return process;
   };
   return { door, calls, ffmpeg, pushes: () => calls.filter((call) => call.command !== MKFIFO && !call.args.includes('-list_devices')) };

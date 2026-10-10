@@ -528,6 +528,10 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           summary: `${EXAMPLE_IDS.recordedEvidenceId}: incomplete session, never sealed`,
           value: apiError('NOT_SEALED', 'Only sealed evidence can be exported.'),
         },
+        exportInProgress: {
+          summary: 'Core server: an export job of this item is still running',
+          value: apiError('EXPORT_IN_PROGRESS', 'An export job is already running for this evidence item.'),
+        },
       },
       422: {
         invalidReason: {

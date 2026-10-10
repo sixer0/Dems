@@ -50,6 +50,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import type { DatabaseConnection } from '../../config';
 import { evidenceStoreRoot, type EvidenceStoreScan } from '../commands/evidence-store';
+import { readMediaStoreRoot, type StoredMediaStoreRoot } from '../commands/media-store-root';
 import { applyMigrations, readSchemaVersion } from '../commands/migrations';
 import {
   DbCommandError,
@@ -70,7 +71,7 @@ import {
   checkOwnerRole,
 } from '../schema/boot-checks';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../schema';
-import { SeedError, prepareSeed, writeSeed, type SeedDependencies } from '../seed';
+import { SeedError, prepareSeed, writeSeed, type SeedDemoPackages, type SeedDemoPlacement, type SeedDemoReport, type SeedDependencies } from '../seed';
 import { StoreError, applyChanges, countAllTables } from '../store';
 import {
   ResetError,
@@ -102,7 +103,7 @@ import {
 } from './kept-tables';
 import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarget, recoverStatement, swapStatements, type DisposableDatabase, type ResetTarget } from './names';
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
-import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage } from './real-evidence';
+import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage, removeClearedDevelopmentPackages, type RealEvidenceFacts } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
 export const RESET_APPLICATION_NAME = 'dems-db-reset';
@@ -213,10 +214,32 @@ export interface ResetOptions {
    */
   readonly driverEnvironment?: Record<string, string | undefined> | undefined;
   /**
-   * The evidence-store package directory the real-evidence guard of R-0 reads (`dbc-3` §E.2).
-   * Default: `<dataDir>/media/sessions`, the media root of `cap` §H.
+   * The evidence-store package directory the real-evidence guard reads AND the removal of a
+   * permitted reset works below (`dbc-3` §E.2): the media root the Core's sealing writes to. EVERY
+   * entry point states it (decision D165) - the server its configuration's `mediaStoreDir`, the
+   * command line the configuration's rule over its environment (`evidenceStoreRootOf`). Omitted
+   * (a test, a caller without a configured root): `<dataDir>/media/sessions`, the default of
+   * `cap` §H - which is the wrong directory on an installation that configured another one.
    */
   readonly evidenceStoreDir?: string | undefined;
+  /**
+   * For a caller that does NOT know the root by itself (the command line; erratum PE-0013-01,
+   * ruling D166): called at R-3, inside the read-only pass and after the schema-version check,
+   * with the root the Core recorded in `core_media_store` at its last start (null: no row). It
+   * returns the root the guard judges, or throws a `ResetError` (`RESET_STORE_ROOT_UNKNOWN`,
+   * `RESET_STORE_ROOT_CONFLICT`) - the target is then untouched. When given, it decides and
+   * `evidenceStoreDir` is not read. The server passes none: it states its configuration's root.
+   */
+  readonly resolveEvidenceStoreDir?: ((stored: StoredMediaStoreRoot | null) => string) | undefined;
+  /**
+   * THE v2 DEMO PACKAGES of the reseed (integration pass E3; `db/seed/demo-packages.ts`). The
+   * command line hands in the port of the Core its environment describes; the server hands in
+   * none (its resets exist in capture operation SIMULATED only, which holds no v2 package). The
+   * routine asks it to SEAL at R-5 (telling it which old folders this reset will remove and the
+   * store root it judged), has it PLACE the packages after the swap and after those folders were
+   * removed, and has it DISCARD what it staged when the reset fails before the swap.
+   */
+  readonly demoPackages?: SeedDemoPackages | undefined;
 }
 
 /** Seams for tests. No entry point sets any of them, and no argument or environment variable reaches them. */
@@ -268,6 +291,10 @@ export interface ResetReport {
   readonly leftoversRemoved: readonly string[];
   /** True when R-8 dropped `<t>_prev`; false when it is left for R-2 of the next run; null for a first build. */
   readonly previousDropped: boolean | null;
+  /** The v2 demo items of the reseed: sealed, skipped (with the reason by name) or not asked for. Stated when the caller handed in the port; absent = not asked. */
+  readonly demoPackages?: SeedDemoReport;
+  /** Where the sealed packages went; null unless they were sealed. */
+  readonly demoPlacement?: SeedDemoPlacement | null;
   /** Milliseconds per step, and for the whole call. */
   readonly stepMs: Readonly<Record<ResetStep, number>>;
   readonly totalMs: number;
@@ -422,6 +449,8 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
   let sideDatabase: string = target.name;
   let locked = false;
   let stagingMayExist = false;
+  /** True while the demo-package port holds sealed packages in its staging root that no committed row of the target names yet. */
+  let demoStaged = false;
   let swapped = false;
   /** False once the swap's COMMIT was sent and its outcome is not known. */
   let targetUntouched = true;
@@ -616,16 +645,19 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     await enter('R-3');
     let carried: KeptImages | null = null;
     let facts: SourceFacts | null = null;
+    // What the real-evidence guard read at R-3: the package folders it cleared are removed after the swap (D133 (2)).
+    let evidence: RealEvidenceFacts | null = null;
     if (targetExists) {
       sideDatabase = target.name;
       side = openPool(target.name);
       const read = await readSource(side, target, assertOwnerRole, {
         log,
-        storeRoot: options.evidenceStoreDir ?? evidenceStoreRoot(options.dataDir),
+        storeRoot: options.resolveEvidenceStoreDir ?? options.evidenceStoreDir ?? evidenceStoreRoot(options.dataDir),
         readStore: internals.readEvidenceStore,
       });
       carried = read.kept;
       facts = read.facts;
+      evidence = read.evidence;
       await closeSide();
     }
     const plan: ResetPlan = planReset(facts, request, now);
@@ -644,8 +676,16 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     // The password derivations run before the transaction, which then holds the chain lock only while it writes.
     const prepared = await prepareSeed(
       { now, scenario: request.scenario, epoch: plan.epoch, lastResetAt: now },
-      internals.seedDependencies,
+      {
+        ...internals.seedDependencies,
+        // Pass E3: the two demo packages are sealed here (staged, not yet in the store). The old
+        // folders this reset cleared are the only ones a new package may take the place of.
+        ...(options.demoPackages === undefined
+          ? {}
+          : { demoPackages: options.demoPackages, demoContext: { replaceable: evidence?.developmentPackagesOnDisk ?? [], ...(evidence === null ? {} : { storeRoot: evidence.storeRoot }) } }),
+      },
     );
+    demoStaged = prepared.demo.report.status === 'SEALED';
 
     let cancelledPairingCodes = 0;
     let operatorsWithSignIn = 0;
@@ -791,6 +831,57 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
         });
       }
     }
+    // Decision D133 (2): the package folders of the development records this reset erased are
+    // removed, so that they do not block the next reset as packages no row names. Only folders the
+    // guard cleared at R-3, judged again now, below the store root it read. A folder that stays is
+    // reported and blocks the next reset (fail-safe); it never fails a reset that has succeeded.
+    if (evidence !== null && evidence.developmentPackagesOnDisk.length > 0) {
+      try {
+        const removal = await removeClearedDevelopmentPackages(evidence, { readStore: internals.readEvidenceStore });
+        if (removal.removed.length > 0) {
+          log({
+            level: 'warn',
+            code: 'RESET_DEVELOPMENT_PACKAGES_REMOVED',
+            message: `the reset of ${target.name} removed ${String(removal.removed.length)} development-source package folder(s) from the evidence store: ${removal.removed.join(', ')}.`,
+            details: { database: target.name, storeRoot: evidence.storeRoot, removed: removal.removed.length },
+          });
+        }
+        for (const left of removal.kept) {
+          log({
+            level: 'error',
+            code: 'RESET_DEVELOPMENT_PACKAGE_LEFT',
+            message: `the reset of ${target.name} succeeded, but the package folder ${left.directory} was not removed (${left.reason}); it blocks the next reset until it is examined.`,
+            details: { database: target.name, storeRoot: evidence.storeRoot, directory: left.directory, reason: left.reason },
+          });
+        }
+      } catch {
+        log({
+          level: 'error',
+          code: 'RESET_DEVELOPMENT_PACKAGE_LEFT',
+          message: `the reset of ${target.name} succeeded, but its cleared package folders could not be examined for removal; they block the next reset.`,
+          details: { database: target.name, storeRoot: evidence.storeRoot },
+        });
+      }
+    }
+    // Pass E3: the database is replaced and the old folders are gone - the packages the new rows name
+    // go to their place. One that cannot be placed is reported by name; the reset itself has succeeded.
+    let demoPlacement: SeedDemoPlacement | null = null;
+    if (demoStaged && options.demoPackages !== undefined) {
+      demoStaged = false;
+      try {
+        demoPlacement = await options.demoPackages.place();
+      } catch {
+        demoPlacement = { placed: [], notPlaced: prepared.demo.report.items.map((item) => ({ directory: `SESSION-${item.sessionId}`, reason: 'PLACE_FAILED' })) };
+      }
+      for (const left of demoPlacement.notPlaced) {
+        log({
+          level: 'error',
+          code: 'RESET_DEMO_PACKAGE_NOT_PLACED',
+          message: `the reset of ${target.name} succeeded, but the demo package folder ${left.directory} was not put in place (${left.reason}): its item row names a package that is not there. Examine the folder that is in the way and reset again.`,
+          details: { database: target.name, directory: left.directory, reason: left.reason },
+        });
+      }
+    }
     if (plan.lineage !== null) {
       const row = plan.lineage;
       // DC-7: one log line with the values of the lineage row. The head hash is an integrity value, not a secret.
@@ -846,12 +937,17 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
       counts,
       leftoversRemoved,
       previousDropped,
+      // Stated only by a caller that handed in the port (the command line): the report of every other caller is what it was.
+      ...(options.demoPackages === undefined ? {} : { demoPackages: prepared.demo.report, demoPlacement }),
       stepMs,
       totalMs: finished - started,
     };
   } catch (error) {
     const failure = asResetError(error, step, targetUntouched);
     await closeSide();
+    // Pass E3: packages sealed for a database that did not take the target's name belong to no row.
+    // After the swap they are NOT discarded: the rows that name them are the target's now.
+    if (!swapped) await options.demoPackages?.discard().catch(noop);
     // "Drop <t>_next (best effort; R-2 removes it next time)": only a staging database, only
     // before the swap, and only when this call may have created it.
     if (stagingMayExist && !swapped && maintenance !== undefined) {
@@ -914,8 +1010,8 @@ async function readSource(
   pool: Pool,
   target: ResetTarget,
   assertOwnerRole: (client: Queryable) => Promise<void>,
-  guard: { log: (entry: ResetLogEntry) => void; storeRoot: string; readStore: ((root: string) => EvidenceStoreScan) | undefined },
-): Promise<{ kept: KeptImages; facts: SourceFacts }> {
+  guard: { log: (entry: ResetLogEntry) => void; storeRoot: string | ((stored: StoredMediaStoreRoot | null) => string); readStore: ((root: string) => EvidenceStoreScan) | undefined },
+): Promise<{ kept: KeptImages; facts: SourceFacts; evidence: RealEvidenceFacts }> {
   const client = await pool.connect();
   client.on('error', noop);
   try {
@@ -940,7 +1036,10 @@ async function readSource(
       // read-only pass and before R-4 creates any staging database: a REAL sealed item in the
       // database or on disk refuses with the target untouched. It runs after the schema-version
       // check above, so an unmigrated database still reports `RESET_SCHEMA_MISMATCH` first.
-      const evidence = await findRealSealedEvidence(client, { database: target.name, storeRoot: guard.storeRoot, readStore: guard.readStore });
+      // A caller that does not know the root by itself decides it here, from what the Core recorded
+      // (erratum PE-0013-01). Its refusal leaves this pass as every other one does: nothing changed.
+      const storeRoot = typeof guard.storeRoot === 'function' ? guard.storeRoot(await readMediaStoreRoot(client)) : guard.storeRoot;
+      const evidence = await findRealSealedEvidence(client, { database: target.name, storeRoot, readStore: guard.readStore });
       if (evidence.blocked) {
         const refusal = realEvidenceMessage(evidence);
         guard.log({ level: 'warn', code: 'RESET_BLOCKED_REAL_EVIDENCE', message: refusal, details: realEvidenceDetails(evidence) });
@@ -949,7 +1048,7 @@ async function readSource(
       // SEC35-42 (3): a permitted reset says how many development packages it is about to erase,
       // before R-4 builds anything. The caller's own confirmation (the command line, or the
       // confirmation of operation 75) is what let the routine start.
-      if (evidence.developmentSessions.length > 0) {
+      if (evidence.developmentSessions.length > 0 || evidence.seedSealedDemoSessions.length > 0) {
         guard.log({ level: 'warn', code: 'RESET_DEVELOPMENT_PACKAGES', message: developmentPackagesMessage(evidence), details: realEvidenceDetails(evidence) });
       }
       const kept = await readKept(client);
@@ -970,6 +1069,7 @@ async function readSource(
       await client.query('COMMIT');
       return {
         kept,
+        evidence,
         facts: {
           epoch: row.epoch,
           headSeq: row.head_seq,

@@ -19,7 +19,7 @@
 //                        (a worker that breaks both rules: only a signal ends it)
 import { createInterface } from 'node:readline';
 
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const found = args.find((arg) => arg.startsWith(`--${name}=`));

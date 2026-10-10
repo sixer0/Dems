@@ -253,9 +253,32 @@ export const EvidenceVerifyResultSchema = z
       .describe('Schema v2: the fragments that did not verify, over both camera files (V-08 names the fragment). Fragments that verified are counted in `files`, not listed.'),
     failedFragmentCount: count().optional().describe('Schema v2: how many fragments did not verify; larger than `fragments.length` when the list was cut.'),
     transcriptState: VerifyTranscriptStateSchema.optional().describe('Schema v2: what the verified package says of its transcript (seven codes; D110).'),
+    transcriptModel: z
+      .strictObject({
+        name: trimmedText(256).describe('The model name the sealed manifest records.'),
+        version: trimmedText(256).nullable().describe('The version the installation declared; null for a server backend.'),
+        quantisation: trimmedText(256).nullable().describe('The quantisation read from the model file; null for a server backend.'),
+        modelSha256: sha256Hex().nullable().describe('SHA-256 of the model file as the Core hashed it; null for a server backend.'),
+        reportedByServer: z.boolean().describe('True when the session\'s STT backend was a server: the name is what the server reported, and the Core verified nothing of the model.'),
+        report: trimmedText(256).describe('The report line of the model.'),
+      })
+      .optional()
+      .describe(
+        'Schema v2 (decision D160): the model of the sealed transcript, from the signed manifest. For a server backend only the name exists, as reported by the STT server; version, quantisation and file hash are null and were not verified by the Core. Absent when no transcript document is sealed, for a v1 item, and when the manifest is not the signed one.',
+      ),
     sources: VerifySourcesSchema.optional().describe(
       'Schema v2 (V-15; R-11): the source class of every recorded source. A development package verifies with `ok: true` at the top level and `sources.code: DEVELOPMENT`; the value of the mark never changes the verdict. Absent for a v1 item: its source class is not recorded, which is never read as production.',
     ),
+    signature: z
+      .strictObject({
+        developmentKey: z
+          .boolean()
+          .describe('True when the certificate subject recorded in the signed manifest carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`).'),
+      })
+      .optional()
+      .describe(
+        'Schema v2 (decision D147): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. Absent for a v1 item and when no manifest could be read.',
+      ),
   })
   .describe('The verdict of record of an integrity verification (schema v2: per-file chains, transcript hash, real signature).');
 export type EvidenceVerifyResultBody = z.output<typeof EvidenceVerifyResultSchema>;
@@ -309,7 +332,9 @@ export const TranscriptRevisionRequestSchema = z
       )
       .min(1)
       .describe('The corrections, applied in order.'),
-    note: boundedText(500).optional().describe('Why the revision was made; travels to the audit row as `reason`.'),
+    note: boundedText(500, 5).describe(
+      'REQUIRED (pass D6): why the revision was made, 5 to 500 characters after trimming. It is stored as the revision\'s `reason` (dbc-3 §B.9: NOT NULL, 5..500), is inside the signed revision body, and travels to the audit row as `reason`. A revision of evidence without a stated reason is refused: 422 INVALID_INPUT.',
+    ),
   })
   .describe('Request body of `POST /api/v1/evidence/{id}/transcript/revisions` (C3 §2.3 op 85).');
 export type TranscriptRevisionRequest = z.output<typeof TranscriptRevisionRequestSchema>;
@@ -356,7 +381,7 @@ export type TranscriptRevisionPage = z.output<typeof TranscriptRevisionPageSchem
 /** Success of op 87: the export job (NM-12). A FAILED job is a 200 answer, not an HTTP error (§4). */
 export const EvidenceExportJobSchema = z
   .strictObject({
-    jobId: trimmedText(32).describe('`EXPJ-NNNNNN`.'),
+    jobId: trimmedText(32).describe('`EXPJ-NNNNNN`: `EXPJ-` and the six digits of the export ID of operation 42 (`EXP-000012` -> `EXPJ-000012`).'),
     evidenceId: evidenceId(),
     kind: z.enum(['PACKAGE', 'COMPOSITE']),
     status: z.enum(['QUEUED', 'RUNNING', 'COMPLETE', 'FAILED']),
@@ -371,10 +396,24 @@ export const EvidenceExportJobSchema = z
       .string()
       .regex(/^[A-Z][A-Z0-9_]*$/)
       .optional()
-      .describe('SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code.'),
+      .describe(
+        'SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code. An open set of codes. Among them: `COMPOSITE_ENCODER_NOT_SELECTED` (a COMPOSITE was asked for and no encoder is selected), `EXPORT_INTERRUPTED` (the server stopped while the job ran; the job is not resumed - ask again), `SESSION_KEY_UNAVAILABLE`, `SOURCE_VERIFY_FAILED`, `PLAINTEXT_HASH_MISMATCH`, `EXPORT_WRITE_FAILED`, `EXPORT_FAILED`.',
+      ),
   })
   .describe('The background export job of op 42/87 (NM-12; OD-16).');
 export type EvidenceExportJobBody = z.output<typeof EvidenceExportJobSchema>;
+
+/**
+ * Optional request body of op 88 (ruling D140; the server of row 90): which camera file the session
+ * plays. No body, or `{}`, is `VIDEO-01`. Strict: any other member or value is `422 INVALID_INPUT`.
+ * One session plays one file, so two synchronised players ask twice.
+ */
+export const EvidenceMediaSessionRequestSchema = z
+  .strictObject({
+    fileId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).optional().describe('The camera file to play; absent: `VIDEO-01`.'),
+  })
+  .describe('Optional request body of `POST /api/v1/evidence/{id}/media-sessions` (op 88): the camera file of the session.');
+export type EvidenceMediaSessionRequest = z.output<typeof EvidenceMediaSessionRequestSchema>;
 
 /**
  * Success of op 88: the short-lived signed media session (NM-11; SEC35-12/13). The URL is a BEARER
@@ -404,6 +443,7 @@ export const TRANSCRIPT_MEDIA_SCHEMAS = {
   TranscriptRevision: TranscriptRevisionSchema,
   TranscriptRevisionPage: TranscriptRevisionPageSchema,
   EvidenceExportJob: EvidenceExportJobSchema,
+  EvidenceMediaSessionRequest: EvidenceMediaSessionRequestSchema,
   EvidenceMediaSession: EvidenceMediaSessionSchema,
 } as const;
 
@@ -673,18 +713,21 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
       'Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).',
       'The URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).',
       'LIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.',
+      'Request (ruling D140): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 }`; no body or `{}` plays `VIDEO-01`. Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).',
       'Writes EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).',
       CORE_SERVER_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 88; register NM-11/WB-04/MB-07/E-31 (not in the design book)',
     pathParam: EVIDENCE_PARAM,
+    requestBody: { schema: 'EvidenceMediaSessionRequest', required: false },
     responses: {
       201: { description: 'The signed media session.', schema: 'EvidenceMediaSession' },
+      400: INVALID_JSON,
       401: NOT_SIGNED_IN,
       403: VIEW_REFUSED,
       404: UNKNOWN_EVIDENCE,
-      409: { description: 'No playback media is available for this evidence item (MEDIA_NOT_AVAILABLE).', schema: 'ApiError' },
-      422: INVALID_PATH_PARAMETER,
+      409: { description: 'No playback media is available for this evidence item (MEDIA_NOT_AVAILABLE); `details.reason` says why a sealed package cannot be played.', schema: 'ApiError' },
+      422: INVALID_INPUT,
     },
     access: EVIDENCE_VIEW,
     audit: { success: AuditType.EVIDENCE_MEDIA_SERVED, ...DENIED },
@@ -1023,7 +1066,11 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   },
   createEvidenceMediaSession: {
     pathParams: ITEM,
+    request: {
+      secondCamera: { summary: 'The session of the second camera file', value: { fileId: 'VIDEO-02' } satisfies EvidenceMediaSessionRequest },
+    },
     responses: {
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       201: {
         video01: {
           // The token is a PLACEHOLDER: a real signed URL is a bearer value and never an example
@@ -1048,8 +1095,15 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           'No playback media is available for this evidence item.',
           'MEDIA_NOT_AVAILABLE',
         ),
+        packageMissing: simRefusalExample(
+          'Core server: the sealed package of the item is not in the evidence store',
+          'MEDIA_NOT_AVAILABLE',
+          'No playback media is available for this evidence item.',
+          'MEDIA_NOT_AVAILABLE',
+          { reason: 'PACKAGE_MISSING' },
+        ),
       },
-      422: BAD_PATH,
+      422: { ...BAD_PATH, invalidInput: ERROR_EXAMPLES.invalidInput },
     },
   },
 };

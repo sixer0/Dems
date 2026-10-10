@@ -26,7 +26,8 @@ describe('the hosted actions', () => {
   it('are the 33 members that contract C marks as hosted, in the order of SimActions', () => {
     expect(HOSTED_ACTIONS).toHaveLength(33);
     // 47 until task 3 row 132 added the INTERNAL `registerCaptureDevice` (C3 §2.6: the adoption).
-    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(48);
+    // Pass D6 (CS-09): the INTERNAL `applyStorageVolume`, 48 -> 49; the hosted 33 are unchanged.
+    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(49);
     const expected = Object.entries(SIM_ACTION_OPERATIONS)
       .filter(([, binding]) => binding.execution === 'hosted')
       .map(([name]) => name);

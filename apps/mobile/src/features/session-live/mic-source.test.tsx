@@ -22,6 +22,7 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { RuntimeTestProviders, createTestSim } from '@/runtime/testing/test-sim';
 import { MicSourcePanel, type MicSourcePanelProps } from './mic-source-controls';
+import { inputOfChannel, silentInputOf } from './mic-source-model';
 import { renderMonitorApp, settle, type MonitorHarness, type MonitorHarnessOptions } from './testing/monitor-harness';
 
 afterEach(() => {
@@ -321,5 +322,52 @@ describe('the panel alone: the states a signed-in monitor cannot hold still (E-1
       </RuntimeTestProviders>,
     );
     expect(within(screen.getByTestId('monitor-mic-switch-refusal')).getByText('That session is not the open session.')).toBeTruthy();
+  });
+});
+
+// Integration pass D5 (ruling D137): the input behind a meter channel is the microphone line at its
+// position in the capture configuration, not the fixed table of the built-in pair.
+describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
+  it('card 2 is the second line: its meter reads MIC-01 and it says Active while MIC-01 records; card 1 (MIC-03) says Standby', async () => {
+    const h = renderMonitorApp({ window: 'phonePortrait' });
+    await settle();
+    act(() => {
+      const state = h.sim.store.getState();
+      const pair = ['MIC-03', 'MIC-01'];
+      const lines = state.captureConfig.mics.slice(0, 2).map((line, index) => ({ ...line, inputId: pair[index]! }));
+      const frame = state.audio.inputs['MIC-01']!;
+      h.sim.store.setState({
+        captureConfig: { ...state.captureConfig, mics: lines },
+        session:
+          state.session === null
+            ? null
+            : {
+                ...state.session,
+                captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics: lines } : state.session.captureConfig,
+                audioSource: { ...state.session.audioSource, activeInputId: 'MIC-01', standbyInputId: 'MIC-03' },
+              },
+        audio: {
+          ...state.audio,
+          activeInputId: 'MIC-01',
+          inputs: {
+            ...state.audio.inputs,
+            'MIC-03': { ...frame, dbfs: -20, peak: -18, noSignal: false, clip: false },
+            'MIC-01': { ...frame, dbfs: -30, peak: -28, noSignal: false, clip: false },
+            // NEGATIVE CONTROL: the fixed table would read this frame for card 2, and call card 1 Active.
+            'MIC-02': { ...frame, dbfs: -120, peak: -120, noSignal: true, clip: false },
+          },
+        },
+      } as never);
+    });
+    h.openMonitor();
+    expect(screen.getByTestId('screen-session-live')).toBeTruthy();
+    expect(chipText(1)).toBe('Standby');
+    expect(chipText(2)).toBe('Active');
+    expect(glowOf(1)).toBe(0);
+    expect(glowOf(2)).toBe(1);
+    expect(screen.getByTestId('monitor-meter-1').props.accessibilityValue).toMatchObject({ now: -20 });
+    expect(screen.getByTestId('monitor-meter-2').props.accessibilityValue).toMatchObject({ now: -30 });
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toBe('MIC-01');
+    expect(inputOfChannel('AUDIO-02')).toBe('MIC-02');
   });
 });

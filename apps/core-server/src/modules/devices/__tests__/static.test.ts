@@ -14,6 +14,13 @@
 //   6. Of a request only the validated path ID and the validated body are read.
 //   7. M14 (decision D87): the folder logs nothing itself and catches nothing, so no error is
 //      ever logged under a key other than `err`.
+//   8. Integration pass D11: ONE file of the folder is not a route - `source-facts.ts`, the feed of
+//      the engine's fact door `applyCaptureSourceFacts`. Rules 1 to 6 hold for it as for the
+//      others. What it alone may do is held below, by name and by count: one `onReady` hook (it
+//      adds its boot step after the capture unit's), one boot step, the capture fence and the
+//      capture-session unit through their indexes, the engine's fact doors (the one value import
+//      of the engine), and ONE failure path that writes one log line under `err` and one entry of
+//      the persistent error log.
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
@@ -26,6 +33,10 @@ const own = tree.filter((file) => isProductionSource(file.path) && file.path.sta
 const ownCode = codeOnly(own);
 const all = ownCode.map((file) => file.text).join('\n');
 
+/** The feed of the source facts (pass D11): the one file of the folder that is not a route. */
+const FEED = 'src/modules/devices/source-facts.ts';
+const routesCode = ownCode.filter((file) => file.path !== FEED);
+const feedCode = ownCode.filter((file) => file.path === FEED);
 const places = (pattern: RegExp, where: readonly SourceFile[] = ownCode): string[] => occurrences(where, pattern);
 const count = (pattern: RegExp): number => places(pattern).length;
 
@@ -66,8 +77,9 @@ const COOKIE_OR_HOST = new RegExp(`\\bset${'Cookie'}\\b|set-${'cookie'}|\\buser-
 const IMPORT_SOURCE = /from\s+'([^']+)'/g;
 
 describe('the scan itself', () => {
-  it('reads the three production files of the folder', () => {
-    expect(own.map((file) => file.path)).toEqual(['src/modules/devices/index.ts', 'src/modules/devices/operations.ts', 'src/modules/devices/status.ts']);
+  it('reads the four production files of the folder', () => {
+    expect(own.map((file) => file.path)).toEqual(['src/modules/devices/index.ts', 'src/modules/devices/operations.ts', FEED, 'src/modules/devices/status.ts']);
+    expect(feedCode).toHaveLength(1);
     expect(all.length).toBeGreaterThan(2_000);
   });
 
@@ -129,8 +141,12 @@ describe('M3: who may call is stage 6, only', () => {
     expect(places(DENIAL)).toEqual([]);
   });
 
-  it('no route carries a hook, and the module adds none to the server', () => {
-    expect(places(ROUTE_HOOK)).toEqual([]);
+  it('no route carries a hook; the one hook of the folder is the feed\'s `onReady` (pass D11), which adds its boot step after the capture unit\'s', () => {
+    expect(places(ROUTE_HOOK, routesCode)).toEqual([]);
+    expect(places(ROUTE_HOOK, feedCode)).toHaveLength(1);
+    expect(feedCode[0]?.text).toMatch(/app\.addHook\('onReady',/);
+    expect(places(/\baddBootStep\s*\(/g)).toHaveLength(1);
+    expect(places(/\baddBootStep\s*\(/g, feedCode)).toHaveLength(1);
   });
 });
 
@@ -147,7 +163,10 @@ describe('M4, M5: a state change is a hosted action; the module writes nothing i
     // The newest meter frame (decisions D89, D122): a required member of the seam, called without a fallback.
     expect(members.filter((member) => member === 'meters')).toHaveLength(2);
     expect([...all.matchAll(/\bengine\s*\.\s*meters\s*(\?\.)?\s*\(\s*\)/g)].map((match) => match[1])).toEqual([undefined, undefined]);
-    expect([...new Set(members)].sort()).toEqual(['command', 'meters', 'state']);
+    // Pass D11: the feed reads `running` once (a stopped engine is handed nothing); it reaches the fact doors through `factDoorsOf(app.engine)`.
+    expect(members.filter((member) => member === 'running')).toHaveLength(1);
+    expect(feedCode.flatMap((file) => [...file.text.matchAll(ENGINE_MEMBER)].map((match) => match[1]))).toEqual(['running']);
+    expect([...new Set(members)].sort()).toEqual(['command', 'meters', 'running', 'state']);
   });
 
   it('it calls no simulator action directly, runs no transition and reads no working state of the simulator', () => {
@@ -174,9 +193,14 @@ describe('M8: time, and what the folder may touch', () => {
   it('M14: the folder writes no log line and no error-log entry of its own, so no error can be logged under a key other than err', () => {
     // An unexpected failure is the error envelope's to log (as `{ err }`) and to persist; a
     // hosted action that fails is the engine host's.
-    expect(places(LOG_CALL)).toEqual([]);
-    expect(places(/\berrorLog\b/g)).toEqual([]);
+    expect(places(LOG_CALL, routesCode)).toEqual([]);
+    expect(places(/\berrorLog\b/g, routesCode)).toEqual([]);
     expect(places(/\btry\s*\{|\bcatch\s*[({]|\.\s*catch\s*\(/g)).toEqual([]);
+    // Pass D11, the feed: ONE failure path (the rejection handler of the hand-over), one log line under `err`, one entry of the error log.
+    expect(places(LOG_CALL, feedCode)).toHaveLength(1);
+    expect(places(/\berrorLog\s*\.\s*append\s*\(/g, feedCode)).toHaveLength(1);
+    expect(places(/\{\s*err\s*,/g, feedCode)).toHaveLength(1);
+    expect(places(/\{\s*(?:error|cause|e)\s*[,:}]/g, feedCode)).toEqual([]);
     // Positive control of the two patterns.
     const sample: SourceFile[] = [{ path: 'src/sample.ts', text: `try { run(); } catch (error) { request.log.warn({ error }, 'failed'); app.log.error({ err: error }, 'failed'); }` }];
     expect(occurrences(sample, LOG_CALL)).toHaveLength(2);
@@ -195,9 +219,14 @@ describe('M8: time, and what the folder may touch', () => {
   it('the folder imports the contract, the shared simulator\'s pure exports, the engine\'s types and the guard\'s route helper, and nothing else of the server', () => {
     const sources = new Set(ownCode.flatMap((file) => [...file.text.matchAll(IMPORT_SOURCE)].map((match) => match[1] ?? '')));
     expect([...sources].sort()).toEqual([
+      // Pass D11, the feed only: the capture-session unit's events, the fence's registry and open sources, the error description of the logger.
+      '../../capture-session',
+      '../../capture/fence',
       '../../engine',
+      '../../plugins/logger',
       '../../plugins/permission-guard',
       './operations',
+      './source-facts',
       './status',
       '@dems/shared/api',
       '@dems/shared/domain',
@@ -207,9 +236,14 @@ describe('M8: time, and what the folder may touch', () => {
       'zod',
     ]);
     // The engine is imported for its types only: nothing of it runs in this folder.
-    const engineImports = ownCode.flatMap((file) => file.text.split('\n').filter((line) => line.includes(`'../../engine'`)));
+    const engineImports = routesCode.flatMap((file) => file.text.split('\n').filter((line) => line.includes(`'../../engine'`)));
     expect(engineImports).toHaveLength(1);
     expect(engineImports.every((line) => line.trimStart().startsWith('import type '))).toBe(true);
+    // Pass D11: the feed imports the fact doors, and the three capture / logger sources are its alone.
+    expect(feedCode[0]?.text.split('\n').filter((line) => line.includes(`'../../engine'`))).toEqual(["import { factDoorsOf } from '../../engine';"]);
+    for (const source of ['../../capture-session', '../../capture/fence', '../../plugins/logger']) {
+      expect(routesCode.some((file) => file.text.includes(`'${source}'`)), source).toBe(false);
+    }
   });
 });
 

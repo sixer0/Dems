@@ -7,6 +7,15 @@
 #   sh check.sh --selftest       the rules over copies of src/ with ONE planted line each
 #                                (test/static/planted.tsv): every copy MUST be refused, by its rule
 #
+#   Row 61 (decisions D84 R-6, D85 R-8, D85 "version pin"; pair-58 F-10):
+#     R-6 / F-10   test/static/pinned_calls.py over the TOKENS of the sources: every call that makes, truncates,
+#                  renames, links or removes a file, sets a mux option or commands the filter graph is counted and
+#                  placed (test/static/pinned-calls.tsv); forbidden option names are found in strings written in
+#                  pieces. The spelling rules below (D58-1, D58-2, D59-3, C.4, SR-3) STAY: two nets, not one.
+#     D85          the libavformat the anchor logic was verified against (test/static/libavformat.pin) is the one
+#                  the build links; another version is refused here, before anything is compiled.
+#     F-10         every proof build of the Makefile says so in its HELLO (the Core refuses it at boot).
+#
 # Every forbidden text below is written with a bracket in it, so that this file does not contain it.
 # Run from apps/capture-worker (the Makefile does).
 set -u
@@ -84,6 +93,37 @@ rules() {
   [ "$(files 'STDOUT_FILENO')" = "ipc.c" ] || say "B.2: standard output is written outside ipc.c: $(files 'STDOUT_FILENO')"
   [ "$(count '[^fnsv]printf(\|puts(\|putchar(\|fputs(\|stdou[t]')" = "0" ] || say "B.2: a print to standard output (only frames go there)"
   [ "$(count 'geten[v](')" = "0" ] || say "B.2: the worker reads no environment variable"
+  # Row 61 (D84 R-6, D85 R-8, pair-58 F-10): the pinned calls, read as tokens. One line per violation, tagged R-6 or F-10.
+  if command -v python3 >/dev/null 2>&1; then
+    pinned=$(python3 test/static/pinned_calls.py "$dir" test/static/pinned-calls.tsv 2>&1)
+    [ $? -eq 0 ] || { printf '%s\n' "$pinned" | sed "s|^|check.sh: $dir: |"; fail=1; }
+  else
+    say "R-6: python3 is needed for the pinned-call rule (test/static/pinned_calls.py)"
+  fi
+  return $fail
+}
+
+# Row 61 (decision D85): the build links the libavformat the worker was verified against, and no other.
+#   version_rule <pin file> <version found>
+version_rule() {
+  want=$(grep -v '^#' "$1" 2>/dev/null | awk -F'\t' '$1 == "libavformat" { print $2 }' | head -1)
+  [ -n "$want" ] || { echo "check.sh: D85: $1 names no libavformat version"; return 1; }
+  [ "$2" = "$want" ] || { echo "check.sh: D85: the installed libavformat is ${2:-not found}, the worker was verified against $want (FFmpeg $(grep -v '^#' "$1" | awk -F'\t' '$1 == "libavformat" { print $3 }' | head -1)). Do not build: re-run the capture e2e series on the new version and move the pin by decision"; return 1; }
+  return 0
+}
+
+# Row 61 (pair-58 F-10): EVERY proof build names itself in HELLO. The mark is put on the version when the proof-build
+# seam is defined (ipc.c), so every build line of a capture-worker-<name> defines it, and the worker's own line does not.
+#   proof_rule <Makefile> <source dir>
+proof_rule() {
+  fail=0
+  builds=$(grep -c -- '-o $(BUILD)/capture-worker-[a-z]' "$1")
+  marked=$(grep -- '-o $(BUILD)/capture-worker-[a-z]' "$1" | grep -c -- '-DDEMS_PROOF_MUX_EXTR[A]=')
+  [ "$builds" -ge 6 ] || { echo "check.sh: F-10: $1: expected the proof builds of the worker, found $builds"; fail=1; }
+  [ "$builds" = "$marked" ] || { echo "check.sh: F-10: $1: $((builds - marked)) proof build(s) do not define the proof-build seam: their HELLO would not say PROOF"; fail=1; }
+  [ "$(grep -A2 '^$(BIN):' "$1" | grep -c 'DEMS_PROO[F]')" = "0" ] || { echo "check.sh: F-10: $1: the worker's own build line defines a proof switch"; fail=1; }
+  [ "$(grep -c 'g_mux_extra ? WORKER_VERSION "-PROOF" : WORKER_VERSION' "$2/ipc.c" 2>/dev/null)" = "1" ] || { echo "check.sh: F-10: $2/ipc.c: HELLO does not mark a proof build"; fail=1; }
+  [ "$(grep -B1 'const char \*g_mux_extra = DEMS_PROOF_MUX_EXTRA;' "$2/capture_worker.c" 2>/dev/null | head -1)" = "#ifdef DEMS_PROOF_MUX_EXTRA" ] || { echo "check.sh: F-10: $2/capture_worker.c: the proof-build seam is not behind its switch"; fail=1; }
   return $fail
 }
 
@@ -122,7 +162,39 @@ if [ "${1:-}" = "--selftest" ]; then
     elif ! echo "$out" | grep -q ": $tag"; then echo "check.sh selftest: planted line $n was refused, but not by rule $tag: $out"; bad=1
     else echo "check.sh selftest: refused as required ($tag): $(echo "$out" | head -1 | sed "s|^check.sh: $dir: ||")"; fi
   done < test/static/planted.tsv
-  [ "$n" -ge 23 ] || { echo "check.sh selftest: expected at least 23 planted lines, found $n"; bad=1; }
+  [ "$n" -ge 48 ] || { echo "check.sh selftest: expected at least 48 planted lines, found $n"; bad=1; }
+  # Row 61: evasions that CHANGE a pinned line instead of adding one (planted.tsv can only append).
+  for mutation in 'sink.c~s/O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0600/part_flags, 0600/~R-6~the flags of the exclusive create moved into a variable' \
+                  'sink.c~s/link(s->part, s->path)/link(s->part, other)/~R-6~the link to the final name with another target' \
+                  'audio.c~s/fopen(path, "w")/fopen(path, mode)/~R-6~the mode of the manifest stream in a variable' \
+                  'ingest.c~s/av_dict_set(&o, "flush_packets", "1", 0)/av_dict_set(\&o, key, "1", 0)/~F-10~a mux option key in a variable' \
+                  'ingest.c~s/"protocol_whitelist", "tcp"/"protocol_whitelist", "tcp,udp"/~F-10~another value of a pinned option'; do
+    file=${mutation%%~*}; rest=${mutation#*~}; script=${rest%%~*}; rest=${rest#*~}; tag=${rest%%~*}; what=${rest#*~}
+    n=$((n + 1)); dir="$work/mutated$n"; mkdir -p "$dir"; cp src/*.c src/*.h "$dir/"
+    sed "$script" "src/$file" > "$dir/$file"
+    if cmp -s "src/$file" "$dir/$file"; then echo "check.sh selftest: the mutation '$what' changed nothing in $file: the control is stale"; bad=1; continue; fi
+    out=$(rules "$dir" 2>&1)
+    if [ $? -eq 0 ]; then echo "check.sh selftest: mutation ($what) was NOT refused: the rule cannot fail"; bad=1
+    elif ! echo "$out" | grep -q ": $tag: "; then echo "check.sh selftest: mutation ($what) was refused, but not by rule $tag: $out"; bad=1
+    else echo "check.sh selftest: refused as required ($tag): $what"; fi
+  done
+  # The pattern in a COMMENT neither satisfies nor breaks the pinned-call rule: a copy with one comment line more passes it.
+  mkdir -p "$work/comment"; cp src/*.c src/*.h "$work/comment/"
+  printf '%s\n' '/* open(p, O_WRONLY | O_TRUNC); creat(p, 0600); "use_" "editlist" */' >> "$work/comment/ingest.c"
+  python3 test/static/pinned_calls.py "$work/comment" test/static/pinned-calls.tsv >/dev/null 2>&1 && echo "check.sh selftest: accepted as required (R-6): the forbidden texts inside a comment are not code" || { echo "check.sh selftest: a comment was read as code by the pinned-call rule"; bad=1; }
+  # Row 61 (D85): the version pin refuses another libavformat and a missing one, and accepts the pinned one.
+  pinned_version=$(grep -v '^#' test/static/libavformat.pin | awk -F'\t' '$1 == "libavformat" { print $2 }' | head -1)
+  version_rule test/static/libavformat.pin "$pinned_version" >/dev/null 2>&1 || { echo "check.sh selftest: the pinned libavformat version is refused"; bad=1; }
+  for other in '62.3.100' '63.1.103' ''; do
+    version_rule test/static/libavformat.pin "$other" >/dev/null 2>&1 && { echo "check.sh selftest: libavformat '$other' was NOT refused: the version pin cannot fail"; bad=1; } || echo "check.sh selftest: refused as required (D85): libavformat '${other:-not installed}'"
+  done
+  # Row 61 (F-10): a proof build without the seam, and a HELLO without the mark, are refused.
+  proof_rule Makefile src >/dev/null 2>&1 || { echo "check.sh selftest: the untouched Makefile is refused by the proof-build rule"; bad=1; }
+  mkdir -p "$work/proof"; cp src/*.c src/*.h "$work/proof/"
+  sed "s/-DDEMS_PROOF_MUX_EXTRA='\"\"' -DMIC_MAX_PPM=0/-DMIC_MAX_PPM=0/" Makefile > "$work/proof/Makefile"
+  proof_rule "$work/proof/Makefile" "$work/proof" 2>&1 | grep -q 'do not define the proof-build seam' && echo "check.sh selftest: refused as required (F-10): a proof build whose HELLO would not say PROOF" || { echo "check.sh selftest: a proof build without the seam was NOT refused"; bad=1; }
+  sed 's/g_mux_extra ? WORKER_VERSION "-PROOF" : WORKER_VERSION/WORKER_VERSION/' src/ipc.c > "$work/proof/ipc.c"
+  proof_rule Makefile "$work/proof" 2>&1 | grep -q 'HELLO does not mark a proof build' && echo "check.sh selftest: refused as required (F-10): a HELLO without the proof mark" || { echo "check.sh selftest: a HELLO without the proof mark was NOT refused"; bad=1; }
   # The fixture rules, the same way: an untouched copy passes, each planted line is refused.
   mkdir -p "$work/fix0"; cp test-fixtures/fake_cam.c test-fixtures/fake_mic.c test-fixtures/av_analyse.py test-fixtures/fake_cam_sr.py "$work/fix0/"
   fixture_rules "$work/fix0" >/dev/null 2>&1 || { echo "check.sh selftest: an untouched copy of the fixtures is refused"; bad=1; }
@@ -155,4 +227,6 @@ n=$(grep -c 'use_editlis[t]\|negative_cts_offset[s]\|avoid_negative_t[s]' Makefi
 [ "$n" = "1" ] || { echo "check.sh: Makefile: expected exactly 1 line with a forbidden mux option (the proof build), found $n"; exit 1; }
 grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefile || { echo "check.sh: Makefile: the forbidden option is not on the line of the negative-control build"; exit 1; }
 fixture_rules test-fixtures || exit 1
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2; fixtures: SEC35-23)"
+proof_rule Makefile "$1" || exit 1
+version_rule test/static/libavformat.pin "$(${PKG_CONFIG:-pkg-config} --modversion libavformat 2>/dev/null)" || exit 1
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, R-6 pinned file calls, F-10 pinned mux calls + proof builds marked, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"

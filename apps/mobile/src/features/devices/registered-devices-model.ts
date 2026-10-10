@@ -1,0 +1,140 @@
+/**
+ * The registered devices beyond the built-in ids, as the tablet and the phone draw them (task 3,
+ * R-11, blueprint row 140; rulings D137 (2), D128, D136 (3); ux spec §8f flow 12, §8f.3). Pure: no
+ * React, no simulator instance.
+ *
+ * The Devices screens list a CLOSED set of ids (`DEVICE_IDS`). The Core registers more: its own
+ * camera and microphone (`CAM-03` / `MIC-03`, D106 (4)) and every camera added on the web console.
+ * This roster is built from the Core's device list — the replicated `captureDevices` slice
+ * (operation 77) — and from nothing else:
+ *
+ * | Fact | From (never client state) |
+ * |---|---|
+ * | which devices | `captureDevices.devices` of kind CAMERA / MIC whose id is not a built-in id |
+ * | badge, kind text, the name "Core Mac's ..." | `sourceClass`, `adapter` (decided by the Core; Live mode only, D83 / D131) |
+ * | 'is on' | `sourceOpen` — specified (SEC35-44 (4)), not yet in the shared slice: read as an optional member, absent = not on |
+ * | used as | the selector line that names the device (`captureConfig`) |
+ * | state | `online`, and the named cause of the active "not reachable" notice of the device |
+ * | rate warning | an active advisory alert `params.reason: MIC_RATE_AT_LIMIT` with the device as `target` |
+ *
+ * A selector hands a screen `rosterLine(state)`: ONE string, so it compares by value (F74-13) and a
+ * 20 Hz meter frame renders nothing.
+ */
+import type { SimState } from '@dems/shared/sim';
+import { captureNoticesOf, developmentSourceOf, localDeviceStateOf, type DevelopmentSourceKind, type LocalDeviceState } from '@/features/capture-selector/capture-notices-model';
+import { micInputName, type MicNameTranslate } from '@/features/capture-selector/mic-input-name';
+
+/** The four ids the screens' own rows already draw. */
+export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'];
+
+/** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4). */
+export const MIC_RATE_AT_LIMIT = 'MIC_RATE_AT_LIMIT';
+
+export type RosterKind = 'CAMERA' | 'MIC';
+export type RosterSlot = 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY';
+
+export interface RegisteredDevice {
+  readonly id: string;
+  readonly kind: RosterKind;
+  /** What the device announced: untrusted text, never the name. */
+  readonly model: string | null;
+  readonly host: string | null;
+  readonly adapter: string | null;
+  readonly sourceClass: string | null;
+  readonly online: boolean;
+  readonly streamState: string | null;
+  /** True only when the Core sent `sourceOpen: true`. */
+  readonly sourceOpen: boolean;
+  readonly slot: RosterSlot | null;
+  /** The named cause of the device's active "not reachable" notice, or null. */
+  readonly cause: string | null;
+  readonly rateAtLimit: boolean;
+}
+
+type RosterState = Pick<SimState, 'captureDevices' | 'captureConfig' | 'alerts'>;
+
+/** The roster in the Core's order: cameras and microphones beyond the built-in ids. */
+export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
+  const notices = captureNoticesOf(state.alerts);
+  const out: RegisteredDevice[] = [];
+  for (const device of state.captureDevices.devices) {
+    if ((device.kind !== 'CAMERA' && device.kind !== 'MIC') || BUILT_IN_SOURCE_IDS.includes(device.id)) continue;
+    const kind: RosterKind = device.kind;
+    const camera = kind === 'CAMERA' ? state.captureConfig.cameras.find((line) => line.deviceId === device.id) : undefined;
+    const mic = kind === 'MIC' ? state.captureConfig.mics.find((line) => line.deviceId === device.id) : undefined;
+    const slot: RosterSlot | null = camera !== undefined ? (camera.trackId === 'VIDEO-01' || camera.trackId === 'VIDEO-02' ? camera.trackId : null) : mic !== undefined ? (mic.role === 'PRIMARY' ? 'PRIMARY' : 'STANDBY') : null;
+    const notice = notices.find((entry) => entry.kind === 'unreachable' && entry.deviceId === device.id);
+    out.push({
+      id: device.id,
+      kind,
+      model: device.model,
+      host: device.host,
+      adapter: device.adapter ?? null,
+      sourceClass: device.sourceClass ?? null,
+      online: device.online,
+      streamState: device.streamState,
+      sourceOpen: (device as { readonly sourceOpen?: unknown }).sourceOpen === true,
+      slot,
+      cause: notice !== undefined && notice.kind === 'unreachable' ? notice.cause : null,
+      rateAtLimit: kind === 'MIC' && state.alerts.some((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === MIC_RATE_AT_LIMIT && (alert.target ?? null) === device.id),
+    });
+  }
+  return out;
+}
+
+/** The roster as one comparable string (for a `useSim` selector). */
+export function rosterLine(state: RosterState): string {
+  return JSON.stringify(registeredDevicesOf(state));
+}
+
+export function parseRosterLine(line: string): RegisteredDevice[] {
+  return JSON.parse(line) as RegisteredDevice[];
+}
+
+/** The badge kind of a roster device, by the one rule of the badge (`developmentSourceOf`). */
+export function rosterSourceKind(device: Pick<RegisteredDevice, 'sourceClass' | 'adapter' | 'kind'>, live: boolean): DevelopmentSourceKind | null {
+  return developmentSourceOf({ sourceClass: device.sourceClass ?? undefined, adapter: device.adapter ?? undefined, deviceKind: device.kind, live });
+}
+
+/**
+ * The name of a roster device. The Core's local device, in Live mode: "Core Mac's camera" / "Core
+ * Mac's microphone" (D83, OP-125-7: the tablet is not the Mac). Another microphone: "MIC 3". Another
+ * camera: "Camera CAM-04" — its announced model is never the name.
+ */
+export function rosterDeviceName(t: MicNameTranslate, device: Pick<RegisteredDevice, 'id' | 'kind' | 'sourceClass' | 'adapter'>, live: boolean): string {
+  const source = rosterSourceKind(device, live);
+  if (device.kind === 'MIC') return micInputName(t, device.id, source);
+  if (source === 'localCamera') return t('features.capture-selector.source.kind.localCamera');
+  return t('common.developmentRoster.name', { kind: t('common.developmentRoster.kind.CAMERA'), id: device.id });
+}
+
+/** The state of a roster device: a named cause wins over `online` (§8f.3). */
+export function rosterDeviceState(device: Pick<RegisteredDevice, 'online' | 'cause'>): LocalDeviceState {
+  return localDeviceStateOf(device.online && device.cause === null, device.cause === 'UNREACHABLE' ? null : device.cause);
+}
+
+/** The chip words of a state: the local-device words for the Core's local device, "Reachable" / "Not reachable" for any other. */
+export function rosterStateLabelKey(state: LocalDeviceState, local: boolean): string {
+  if (local) return `features.capture-selector.localDevice.state.${state}`;
+  return state === 'READY' ? 'common.developmentRoster.reachable' : 'common.developmentRoster.notReachable';
+}
+
+/** 'Is on' (SEC35-44 (4)): the Core's local device, open, in Live mode. The key of its fixed line, or null. */
+export function rosterOnKey(device: Pick<RegisteredDevice, 'sourceOpen' | 'sourceClass' | 'adapter' | 'kind'>, live: boolean): string | null {
+  const source = rosterSourceKind(device, live);
+  if (!device.sourceOpen) return null;
+  if (source === 'localCamera') return 'common.sourceClass.cameraOn.mobile';
+  if (source === 'localMicrophone') return 'common.sourceClass.microphoneOn.mobile';
+  return null;
+}
+
+/** The stated limit of a development source (D128, D136 (3)); null for any other device and outside Live mode. */
+export function rosterLimitKey(device: Pick<RegisteredDevice, 'sourceClass' | 'adapter' | 'kind'>, live: boolean): string | null {
+  const source = rosterSourceKind(device, live);
+  return source === null ? null : `common.developmentRoster.limits.${source}`;
+}
+
+/** The words for the adapter kind the Core sent. */
+export function rosterSourceKey(adapter: string | null): string {
+  return `common.developmentRoster.source.${adapter === 'LOCAL_DEVICE' || adapter === 'FAKE' || adapter === 'ONVIF_RTSP' || adapter === 'USB_AUDIO' ? adapter : 'OTHER'}`;
+}

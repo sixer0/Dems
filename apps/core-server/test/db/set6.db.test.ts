@@ -17,6 +17,11 @@
 //   M6S-7  B-3 across the step, in both directions
 //   M6S-8  the files; 0008 to 0010 are the files the four development databases hold
 //
+// SINCE MIGRATION SET 7 (erratum PE-0013-01) the set of this file stops at 0012: its database is a
+// genuine (5, 'dbc-6') one, and the applier - which ends by comparing the version with this code's
+// constants - reports SCHEMA_VERSION_MISMATCH after it committed the two files (the device of
+// `set5.db.test.ts`). Set 7 on such a database is `set7.db.test.ts`.
+//
 // Every database here is a throw-away of this test run (TI-17). No value in this file is a
 // credential.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -45,6 +50,9 @@ const TAGS = ['0011_session_stt_config', '0012_session_stt_config_privileges'] a
 const TABLE = 'public.session_stt_config';
 const COLUMNS = ['session_id', 'enabled', 'backend', 'endpoint', 'model', 'language', 'diarization', 'credential_kind', 'config_revision', 'taken_at'] as const;
 const SET_5 = { schemaVersion: 4, contractRevision: 'dbc-5' } as const;
+const SET_6 = { schemaVersion: 5, contractRevision: 'dbc-6' } as const;
+/** The two files of set 7, pending on every database of this file. */
+const LATER = ['0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges'] as const;
 const SESSION_A = 'SES-20261009-0001';
 const SESSION_B = 'SES-20261009-0002';
 const temporary: string[] = [];
@@ -108,12 +116,13 @@ describe('M6S-1: the pre-state, a (4, dbc-5) database that holds rows', () => {
     await migrateShort(owner, 11);
     const ledger = await inspectLedger(owner);
     expect(ledger.ok).toBe(true);
-    expect(ledger.pending).toEqual([...TAGS]);
+    expect(ledger.pending).toEqual([...TAGS, ...LATER]);
+    expect((await inspectLedger(owner, folderOf(13))).pending).toEqual([...TAGS]);
     expect((await owner.query(`SELECT to_regclass('${TABLE}') IS NOT NULL AS present`)).rows).toEqual([{ present: false }]);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 4 (dbc-5); this server expects 5 (dbc-6). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      'B-3: the database is at schema version 4 (dbc-5); this server expects 6 (dbc-7). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
     );
     await expect(checkSchemaVersion(db.appPool(), SET_5)).resolves.toBeUndefined();
   });
@@ -141,17 +150,22 @@ describe('M6S-2: NEGATIVE CONTROL - without 0012 the runtime role holds nothing 
 });
 
 describe('M6S-3: set 6 applies its two files and changes no stored row', () => {
-  it('db:migrate applies exactly 0011 and 0012 and steps the version to (5, dbc-6); the ledger holds thirteen files', async () => {
+  it('db:migrate applies exactly 0011 and 0012 and steps the version to (5, dbc-6); the ledger holds thirteen files (the set stops at 0012)', async () => {
     const owner = db.ownerPool();
     const rowsBefore = await storedBefore(owner);
     const objectsBefore = (await owner.query<{ objects: number }>(objects)).rows[0]?.objects ?? 0;
-    const result = await applyMigrations(owner);
-    expect(result.versionBefore).toEqual(SET_5);
-    expect(result.applied).toEqual([...TAGS]);
-    expect(result.versionAfter).toEqual({ schemaVersion: 5, contractRevision: 'dbc-6' });
-    expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    expect(result.ledger.ok).toBe(true);
-    expect(result.ledger.pending).toEqual([]);
+    // The set stops at 0012: the applier commits the two files, then reports that the version is
+    // not this code's (6, 'dbc-7').
+    const folder = folderOf(13);
+    expect(await readSchemaVersion(owner)).toEqual(SET_5);
+    expect((await inspectLedger(owner, folder)).pending).toEqual([...TAGS]);
+    const error = await applyMigrations(owner, folder).catch((thrown: unknown) => thrown);
+    expect(error).toMatchObject({ code: 'SCHEMA_VERSION_MISMATCH' });
+    expect(await readSchemaVersion(owner)).toEqual(SET_6);
+    expect({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION }).not.toEqual(SET_6);
+    const ledger = await inspectLedger(owner, folder);
+    expect(ledger.ok).toBe(true);
+    expect(ledger.pending).toEqual([]);
     expect(await readAppliedMigrations(owner)).toHaveLength(13);
     // Exactly two new objects: the table and the index of its primary key.
     expect((await owner.query<{ objects: number }>(objects)).rows[0]?.objects).toBe(objectsBefore + 2);
@@ -163,10 +177,8 @@ describe('M6S-3: set 6 applies its two files and changes no stored row', () => {
     const owner = db.ownerPool();
     const before = await readAppliedMigrations(owner);
     const objectsBefore = await owner.query(objects);
-    const result = await applyMigrations(owner);
-    expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual({ schemaVersion: 5, contractRevision: 'dbc-6' });
-    expect(result.versionAfter).toEqual({ schemaVersion: 5, contractRevision: 'dbc-6' });
+    await applyMigrations(owner, folderOf(13)).catch(() => undefined);
+    expect(await readSchemaVersion(owner)).toEqual(SET_6);
     expect(await readAppliedMigrations(owner)).toEqual(before);
     expect((await owner.query(objects)).rows).toEqual(objectsBefore.rows);
   });
@@ -290,11 +302,13 @@ describe('M6S-6: the grants', () => {
 });
 
 describe('M6S-7: B-3 across the step, in both directions', () => {
-  it('the code of row 129a (4, dbc-5) on the migrated database is refused; this code passes', async () => {
+  it('the code of row 129a (4, dbc-5) on the migrated database is refused; the code of row 129b (5, dbc-6) passes', async () => {
     const error = await checkSchemaVersion(db.appPool(), SET_5).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toContain('the database is at schema version 5 (dbc-6); this server expects 4 (dbc-5)');
-    await expect(checkSchemaVersion(db.appPool())).resolves.toBeUndefined();
+    await expect(checkSchemaVersion(db.appPool(), SET_6)).resolves.toBeUndefined();
+    // And the code of set 7 is refused here until 0013 and 0014 are applied (set7.db.test.ts).
+    await expect(checkSchemaVersion(db.appPool())).rejects.toBeInstanceOf(BootCheckError);
   });
 });
 

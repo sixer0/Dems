@@ -25,7 +25,6 @@ import { RECORDED_VERIFY_V2 } from './testing/verify-v2-recorded';
 
 jest.setTimeout(30_000);
 
-const V2 = en.evidence.verifyV2;
 let bed: LiveEvidenceBed | null = null;
 
 beforeEach(async () => {
@@ -91,7 +90,7 @@ describe('while the Core has not answered', () => {
 });
 
 describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
-  it("the Core's FAIL is FAIL on the chip, on the file's row and in the toast; no v1 track is marked; today's answer names no fragment", async () => {
+  it("the Core's FAIL is FAIL on the chip, on the file's row and in the toast; no v1 track is marked; the answer names the fragment", async () => {
     const { b, id } = await openIntegrity('0005');
     b.fake.answerOnce('verifyEvidence', recorded(b, 'tamperedFragment', id));
     fireEvent.press(screen.getByTestId('evidence-verify'));
@@ -105,7 +104,11 @@ describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
     expect(screen.getByTestId('evidence-verify-v2-FAIL')).toBeTruthy();
     expect(screen.getByTestId('evidence-v2-row-file:VIDEO-02-fail')).toHaveTextContent(/Stored bytes FAIL · decrypted bytes FAIL · fragment chain FAIL/);
     for (const row of ['file:VIDEO-01', 'transcript', 'manifest', 'signature']) expect(screen.getByTestId(`evidence-v2-row-${row}-ok`)).toBeTruthy();
-    expect(screen.getByTestId('evidence-v2-fragment-not-named')).toHaveTextContent(V2.fragment.notNamed);
+    expect(screen.getByTestId('evidence-v2-fragment-VIDEO-02-3')).toHaveTextContent('VIDEO-02 fragment 3 tampered (stored-bytes hash mismatch; chain broken from fragment 3)');
+    expect(screen.queryByTestId('evidence-v2-fragment-not-named')).toBeNull();
+    for (const check of ['V-04', 'V-06', 'V-08']) expect(screen.getByTestId(`evidence-v2-check-${check}-FAIL`)).toBeTruthy();
+    // Row 92: the source line of the package is drawn with the result.
+    expect(screen.getByTestId('evidence-v2-sources-line')).toHaveTextContent(en.common.sourceClass.verify.development);
     expect(toastShown(evidenceEn.integrity.failToast.replace('{{id}}', id))).toBe(true);
     expect(toastShown(evidenceEn.integrity.passToast.replace('{{id}}', id))).toBe(false);
     expect(screen.getByTestId('evidence-integrity-heading-FAIL')).toBeTruthy();

@@ -96,6 +96,8 @@ export const SIM_ACTION_OPERATIONS = {
   applyCaptureTelemetry: { operations: [], execution: SimActionExecution.INTERNAL },
   raiseCaptureWarning: { operations: [], execution: SimActionExecution.INTERNAL },
   clearCaptureWarning: { operations: [], execution: SimActionExecution.INTERNAL },
+  // CS-09 (pass D6): the measured evidence volume of a Core in real capture operation, set by the Core at boot, never by a client.
+  applyStorageVolume: { operations: [], execution: SimActionExecution.INTERNAL },
   // The capture selector and the in-session mic switch (task 3, register SH-18; C3 §2.4): hosted.
   setCaptureConfig: hosted('updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic'),
   switchAudioSource: hosted('switchAudioSource'),

@@ -70,6 +70,10 @@ describe('Devices takes the Core through the light Live API (CLG c, AC-C-53)', (
       'i18n.ts',
       // E-fix row FX-M2 (E2E-T-2): the panel error boundary (the Storage folder's copy of step 77's).
       'panel-boundary.tsx',
+      // Task 3 row 140 (D137 (2)): the registered devices beyond the built-in ids, from the Core's device list.
+      'registered-device-detail.tsx',
+      'registered-device-rows.tsx',
+      'registered-devices-model.ts',
       'sim-adapter.ts',
       'use-devices-data.ts',
       'use-pending-press.ts',

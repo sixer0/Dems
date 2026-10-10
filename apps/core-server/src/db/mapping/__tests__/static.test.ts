@@ -99,7 +99,8 @@ describe('the two folders', () => {
       'mapping/slices.ts',
       'mapping/to-rows.ts',
     ]);
-    expect(seed.map((file) => file.path)).toEqual(['seed/cli.ts', 'seed/dataset.ts', 'seed/index.ts', 'seed/seed.ts']);
+    // Integration pass E3 added three: the v2 demo items of a seed (pure), the Core a command seeds for, and the command's one-shot helper run.
+    expect(seed.map((file) => file.path)).toEqual(['seed/cli.ts', 'seed/dataset.ts', 'seed/demo-core.ts', 'seed/demo-helper.ts', 'seed/demo-packages.ts', 'seed/index.ts', 'seed/seed.ts']);
     expect(sources.filter(isTest).length).toBeGreaterThanOrEqual(8);
   });
 });

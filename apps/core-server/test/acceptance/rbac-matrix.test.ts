@@ -161,17 +161,14 @@ function routedOperations(): CoreApiRegistryOperation[] {
 // Blueprint row 66 / M4-W2 landed operations 76 to 80: their five entries left this record and
 // their cells joined every walk. Rows 132, 133 and 142 (decision D114) routed operation 89 and
 // operations 93 to 97 (`modules/capture-discovery` with its `connect` routes, `modules/capture-inputs`):
-// their six entries left it as well.
-const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
-  switchAudioSource: 'M5',
-  listAudioSourceIntervals: 'M5/M7',
-  getSealingProgress: 'M7',
-  getTranscript: 'M6/M8',
-  createTranscriptRevision: 'M7/M8',
-  listTranscriptRevisions: 'M7/M8',
-  getEvidenceExportJob: 'M8',
-  createEvidenceMediaSession: 'M8',
-};
+// their six entries left it as well. Wave D (decision D133; integration pass D1b, ruling D140): row
+// 71b routed operation 81 (`switchAudioSource`, the sessions module) and row 91 operation 87
+// (`getEvidenceExportJob`, the evidence-export unit): their two entries left it. Integration pass D4
+// (decision D146) routed operation 82 (`listAudioSourceIntervals`, the sessions module) and
+// operations 84, 85 and 86 (`modules/transcripts`): their four entries left it.
+// Row 82b (decision D153) routed operation 83 (`getSealingProgress`, `modules/sealing`): the last
+// entry left it. Every operation of the registry is routed; the record stays as the named, empty set.
+const DEFERRED_ROUTE: Readonly<Record<string, string>> = {};
 
 /**
  * The answer the specification gives a caller on an operation: `expectationOf` with what it takes
@@ -795,13 +792,23 @@ interface CellOptions {
   readonly grants: readonly Grant[];
   /** Sends every command with a body that is no JSON, whatever its registry entry says. */
   readonly probeOnly?: boolean;
+  /** Pass D6: false = the model is NOT given the creator of the open session (the impostor control only). */
+  readonly holderFact?: boolean;
 }
 
 async function runCell(server: Server, caller: Caller, operation: CoreApiRegistryOperation, options: CellOptions): Promise<Cell> {
   const row = specRowOf(operation);
   const mode: CellMode = options.probeOnly === true && operation.method === 'post' ? 'PROBE' : cellModeOf(operation);
   const request = cellRequestOf(operation, mode);
-  const expectation = expectationFor(operation, caller, options.grants, server.demoFlag);
+  // Pass D6 (F-D4-3): the SESSION_HOLDER fact is a fact of the database at the moment of the call -
+  // the operator who CREATED the open session (C3 §2.2). The matrix reads it itself, as `dems_owner`
+  // and with its own statement, and gives it to the model: the column that created the open session
+  // is its holder and passes stage 6; every other non-SUPERVISOR is refused. (Until pass D6 the guard
+  // read a column that is always NULL, so no creator ever passed and the matrix never had to ask.)
+  // Not for the impostor control (`holderFact: false`): it presents ANOTHER role's session and must not have its expectation moved by a fact of the run.
+  const holderRule = options.holderFact !== false && (operation.access.conditions ?? []).some((condition) => condition === 'SESSION_HOLDER');
+  const creator = holderRule ? ((await server.owner.query<{ created_by: string | null }>('SELECT created_by FROM public.active_session LIMIT 1')).rows[0]?.created_by ?? null) : null;
+  const expectation = expectationFor(operation, holderRule ? { ...caller, sessionCreatorId: creator } : caller, options.grants, server.demoFlag);
 
   // A permitted search (operation 93) is bounded per session and per Core (C3 §5.4: 10 s, 5 s, 6 a
   // minute). The matrix asks who may call, not how often: the search of each permitted cell runs
@@ -1187,8 +1194,11 @@ describe('the matrix as a whole', () => {
     // The 75 of the closed base and the three STT configuration operations (C3 §2.5), which are
     // routed since task 3 row 113; the fourteen of C3 §2.2 join as their rows land (DEFERRED_ROUTE):
     // blueprint row 66 landed the five selector operations 76 to 80, 78 + 5 = 83; rows 132, 133 and
-    // 142 routed operation 89 and operations 93 to 97 (C3 §2.6), 83 + 6 = 89.
-    expect(routedOperations()).toHaveLength(89);
+    // 142 routed operation 89 and operations 93 to 97 (C3 §2.6), 83 + 6 = 89; rows 71b, 91 and 90
+    // routed operations 81, 87 and 88 (wave D), 89 + 3 = 92; integration pass D4 routed operations
+    // 82, 84, 85 and 86, 92 + 4 = 96; row 82b routed operation 83, 96 + 1 = 97 = the whole registry.
+    expect(routedOperations()).toHaveLength(97);
+    expect(routedOperations()).toHaveLength(CORE_API_OPERATIONS.length - Object.keys(DEFERRED_ROUTE).length);
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
       const five = of(columns);
       expect(five).toHaveLength(routedOperations().length * 5);
@@ -1212,8 +1222,38 @@ describe('the matrix as a whole', () => {
     const routedIds = new Set(routedOperations().map((operation) => operation.operationId));
     const routedDelta = deniedCellsFromTable(spec.operations.filter((operation) => isApiContractSection(operation.section) && routedIds.has(operation.operationId)), spec.grants, spec.roles);
     // Rows 132, 133 and 142 routed operation 89 and operations 93 to 97, all on `CAPTURE_CONFIG`:
-    // six more cells an INVESTIGATOR is denied, 5 + 6.
-    expect(routedDelta).toEqual({ INVESTIGATOR: 11, SUPERVISOR: 0, TECHNICIAN: 0 });
+    // six more cells an INVESTIGATOR is denied, 5 + 6 = 11.
+    // Wave D and integration pass D4, EVERY cell by operation and role against the access table of
+    // C3 §2.2 (rows 81 to 88) and the grants of C3 §0 / spec §6:
+    //   81 switchAudioSource         `SESSION_START` + condition `SESSION_HOLDER`. INVESTIGATOR +1:
+    //                                the role HOLDS the permission and is refused by the CONDITION -
+    //                                the holder is the operator who created the open session, and
+    //                                this fixture has no open session (C3 §2.2 access note: "an
+    //                                operator who holds SESSION_START but is neither is refused 403").
+    //                                (This count is the TABLE's, without a session. In the run, the
+    //                                column that created the open session is its holder and passes:
+    //                                `runCell` reads the creator before the call - pass D6.)
+    //                                `deniedCellsFromTable` counts a SESSION_HOLDER row for every
+    //                                role but SUPERVISOR for that reason. TECHNICIAN +1: the same
+    //                                condition (and the role does not hold SESSION_START either).
+    //   87 getEvidenceExportJob      `EVIDENCE_EXPORT`, granted to SUPERVISOR only: INVESTIGATOR +1,
+    //                                TECHNICIAN +1.
+    //   85 createTranscriptRevision  `TRANSCRIPT_REVISE`, granted to INVESTIGATOR and SUPERVISOR
+    //                                (OD-15): TECHNICIAN +1.
+    //   82 listAudioSourceIntervals  AUTHENTICATED: no cell.
+    //   84, 86, 88                   `EVIDENCE_VIEW`, which every role holds: no cell.
+    // INVESTIGATOR 11 + 2 = 13; SUPERVISOR 0; TECHNICIAN 0 + 3 = 3.
+    expect(routedDelta).toEqual({ INVESTIGATOR: 13, SUPERVISOR: 0, TECHNICIAN: 3 });
+    const cellsOf = (role: string): string[] =>
+      spec.operations
+        .filter((operation) => isApiContractSection(operation.section) && routedIds.has(operation.operationId))
+        .filter((operation) => (deniedCellsFromTable([operation], spec.grants, [role])[role] ?? 0) === 1)
+        .map((operation) => operation.operationId);
+    // The same account, by name: the cells that joined since the literal read 11 / 0 / 0.
+    const sinceEleven = ['switchAudioSource', 'getEvidenceExportJob', 'createTranscriptRevision'];
+    expect(cellsOf('INVESTIGATOR').filter((operationId) => sinceEleven.includes(operationId)).sort()).toEqual(['getEvidenceExportJob', 'switchAudioSource']);
+    expect(cellsOf('TECHNICIAN').sort()).toEqual(['createTranscriptRevision', 'getEvidenceExportJob', 'switchAudioSource']);
+    expect(cellsOf('SUPERVISOR')).toEqual([]);
     // On a paired device the condition WEB_CONSOLE_SESSION (C3 §0; D80(3)) adds one denied cell per
     // ROUTED operation that carries it, for a role that HOLDS its permission. None is routed today
     // (operations 89, 95 and 96 land with row 142): the count is derived, so it follows their routes.
@@ -1223,10 +1263,17 @@ describe('the matrix as a whole', () => {
           conditionsOf(operation).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION) &&
           coreApiAccessPermissions(operation.access).some((permission) => world.stored.some((grant) => grant.role === role && grant.permission === permission)),
       ).length;
+    // Pass D6: a SESSION_HOLDER cell the MODEL allowed (the column created the open session; the fact
+    // is read from the database before the call, `runCell`) is no denied cell of that column. Counted
+    // from the expectation, never from the answer.
+    const holderOperations = CORE_API_OPERATIONS.filter((operation) => conditionsOf(operation).includes(CoreApiAccessCondition.SESSION_HOLDER)).map((operation) => operation.operationId);
+    const heldBy = (column: string): number => matrix().filter((cell) => cell.column === column && holderOperations.includes(cell.operationId) && cell.expected === 'allowed' && !column.startsWith('SUPERVISOR')).length;
     for (const [role, stated] of Object.entries(spec.statedDeniedCells)) {
-      expect(denied.filter((cell) => cell.column === role)).toHaveLength(stated + (routedDelta[role] ?? 0));
-      expect(denied.filter((cell) => cell.column === `${role}@DEVICE`)).toHaveLength(stated + (routedDelta[role] ?? 0) + webOnlyOnDevice(role));
+      expect(denied.filter((cell) => cell.column === role)).toHaveLength(stated + (routedDelta[role] ?? 0) - heldBy(role));
+      expect(denied.filter((cell) => cell.column === `${role}@DEVICE`)).toHaveLength(stated + (routedDelta[role] ?? 0) + webOnlyOnDevice(role) - heldBy(`${role}@DEVICE`));
     }
+    // The holder rule is exercised on BOTH sides in this run: a column that is refused by it, and one that holds.
+    expect(matrix().filter((cell) => holderOperations.includes(cell.operationId) && cell.expected !== 'allowed' && cell.column.startsWith('INVESTIGATOR') || holderOperations.includes(cell.operationId) && cell.column.startsWith('TECHNICIAN')).length).toBeGreaterThan(0);
     expect(operators.filter((cell) => cell.allowed && cell.rows.some((type) => DENIAL_ROW_TYPES.includes(type)))).toEqual([]);
     // A 401 and a DEVICE_NOT_PAIRED wrote none, in any column.
     expect(matrix().filter((cell) => !cell.allowed && (cell.status === 401 || cell.code === 'DEVICE_NOT_PAIRED') && cell.rows.length > 0)).toEqual([]);
@@ -1469,7 +1516,7 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     if (paired === undefined || retired === undefined) throw new Error('the device callers are missing');
     // The expectation of the PAIRED device, the credential and the throttle key of the retired one.
     const impostor: Caller = { ...paired, headersFor: retired.headersFor, keyFor: retired.keyFor };
-    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
+    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true, holderFact: false });
     expect(redOperations(run)).toHaveLength(routedOperations().length);
     const deviceOperations = CORE_API_OPERATIONS.filter((operation) => operation.access.kind === CoreApiAccessKind.DEVICE).map((operation) => operation.operationId);
     expect(run.filter((cell) => deviceOperations.includes(cell.operationId)).map((cell) => [cell.expected, cell.status, cell.code])).toEqual(deviceOperations.map(() => ['allowed', 403, 'DEVICE_REVOKED']));
@@ -1516,7 +1563,7 @@ describe('can the matrix fail? The clone or the caller is changed, the expectati
     const presented = pair === undefined ? undefined : world.callers[pair.presented];
     if (pair === undefined || expected === undefined || presented === undefined) throw new Error('spec §4.4 names fewer than two roles');
     const impostor: Caller = { ...expected, headersFor: presented.headersFor, keyFor: presented.keyFor };
-    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true });
+    const run = await runColumn(world.server, impostor, routedOperations(), { table: 'CAN_IT_FAIL', grants: world.stored, probeOnly: true, holderFact: false });
     expect(redOperations(run)).toHaveLength(routedOperations().length);
     const refusedForBoth = run.filter((cell) => pair.both.includes(cell.operationId));
     expect(refusedForBoth.length).toBeGreaterThan(0);

@@ -10,7 +10,9 @@
  * | Names, never values: the device by label and id ("Camera 2 (CAM-02)") and counts. Never an address, a user name, a password or a URL | `captureDeviceNameKey`; the alert carries ids, counts and codes only |
  * | Cleared by the Core only: a banner or an item is a snapshot of the slice and changes only when the slice does | callers select from the store; nothing here keeps state or a timer |
  *
- * Situation C (no camera connected at session start) is blueprint row 139's and is not read here.
+ * Situation C (blueprint row 139; ux §8e.2): a session start with no camera is a FAILED START, read
+ * from the session itself (`captureFailedStartOf`: FAULT with `captureDurable: false`) and worded
+ * by `captureFailedStartText`; the degraded warning is the `SESSION_START` phase of `UNREACHABLE`.
  * In `lib/` because three places draw the same notice: Devices & Inputs, the pre-check of Session
  * New, and the alert centre of the shell.
  */
@@ -108,10 +110,56 @@ export function captureDeviceNameKey(deviceId: string): 'common.devices.camera1'
 
 type Translate = TFunction
 
-/** "Camera 2 (CAM-02)": the label and the id; the id alone when the console has no label for it. */
+// ── Microphones by the id the Core sends (integration pass D2, item 5; D106 (4), D115 (2), D133 (1)) ──
+
+/** `MIC-NN` (the shared `MIC_INPUT_ID_PATTERN`, with the number captured). */
+const MIC_INPUT_ID = /^MIC-(\d{2,})$/
+
+/** The number of a microphone id (`MIC-03` -> 3), or `null` when the text is no microphone id. */
+export function micInputNumber(inputId: string): number | null {
+  const match = MIC_INPUT_ID.exec(inputId)
+  if (match === null) return null
+  const number = Number(match[1])
+  return Number.isSafeInteger(number) && number > 0 ? number : null
+}
+
+/** True for a text that is a microphone input id. */
+export function isMicInputId(value: unknown): value is string {
+  return typeof value === 'string' && micInputNumber(value) !== null
+}
+
+/**
+ * The name of a microphone input, from the id the Core sent — never from the two built-in literals:
+ *
+ * | The Core sent | Name |
+ * |---|---|
+ * | a device it marks as its local microphone (`local`: `sourceClass: DEVELOPMENT`, `adapter: LOCAL_DEVICE`, real capture) | "This Mac's microphone" (D83) |
+ * | `MIC-01`, `MIC-02` | "MIC 1", "MIC 2" — the words the console already uses |
+ * | `MIC-NN` | "Microphone N" |
+ * | anything else | the id as sent |
+ */
+export function micInputName(t: Translate, inputId: string, local = false): string {
+  if (local) return t('common.sourceClass.kind.localMicrophone')
+  const number = micInputNumber(inputId)
+  if (number === null) return inputId
+  if (number === 1) return t('common.devices.mic1')
+  if (number === 2) return t('common.devices.mic2')
+  return t('common.captureDeviceName.microphone', { number })
+}
+
+/** The microphone that is not `inputId` among the selector's lines, in the Core's order (the hot standby of a pair); `null` when there is none. */
+export function otherMicInput(inputs: readonly { readonly inputId: string }[], inputId: string): string | null {
+  return inputs.find((line) => line.inputId !== inputId)?.inputId ?? null
+}
+
+/**
+ * "Camera 2 (CAM-02)", "Microphone 3 (MIC-03)": the label and the id; the id alone when the console
+ * has no label for it (an added camera).
+ */
 export function captureDeviceName(t: Translate, deviceId: string): string {
   const key = captureDeviceNameKey(deviceId)
-  return key === null ? deviceId : `${t(key)} (${deviceId})`
+  if (key !== null) return `${t(key)} (${deviceId})`
+  return micInputNumber(deviceId) === null ? deviceId : `${micInputName(t, deviceId)} (${deviceId})`
 }
 
 /** The cause sentence of a notice; `null` for the plain "did not answer", which the body already says. */
@@ -203,4 +251,49 @@ export function unreachablePrecheckText(t: Translate, source: UnreachablePrechec
   // The active microphone without a second one to name: the rule still blocks; the sentence says what cannot start.
   if (source.rule === 'activeMicrophone' && source.otherDeviceId === null) return t('common.captureNotice.start.noMicrophone')
   return t(`common.captureNotice.start.${source.rule}`, { device, other })
+}
+
+// ── Situation C: a session start with no camera (blueprint row 139; ux §8e.2; D72(k), D84, D91) ──
+
+/** `params.reason` of the `CAPTURE_FAULT` alert of a start at which no camera connected (C3 §5.4). */
+export const NO_CAMERA_CONNECTED_REASON = 'NO_CAMERA_CONNECTED'
+
+/**
+ * Why a recording did not start. `NO_CAMERA_CONNECTED` only when the Core says so on its alert;
+ * anything else is `OTHER` — in both cases nothing was recorded.
+ */
+export type CaptureFailedStart = typeof NO_CAMERA_CONNECTED_REASON | 'OTHER'
+
+/**
+ * The failed start a session is in, or `null`. A FAILED START is a session in FAULT whose payload
+ * says `captureDurable: false` (D84, D91 ruling R-1 option A): the capture ended before its first
+ * durable fragment, so there is no evidence file and no evidence item. Only an explicit `false`
+ * counts: a session without the member (the simulator, a recording that was interrupted) is not one.
+ */
+export function captureFailedStartOf(
+  session: unknown,
+  alerts: readonly Pick<SimAlert, 'kind' | 'active' | 'params'>[],
+): CaptureFailedStart | null {
+  if (typeof session !== 'object' || session === null) return null
+  const facts = session as { state?: unknown; captureDurable?: unknown }
+  if (facts.state !== 'FAULT' || facts.captureDurable !== false) return null
+  const named = alerts.some(
+    (alert) => alert.active && alert.kind === 'CAPTURE_FAULT' && alert.params?.['reason'] === NO_CAMERA_CONNECTED_REASON,
+  )
+  return named ? NO_CAMERA_CONNECTED_REASON : 'OTHER'
+}
+
+/** "No camera connected" / "Nothing was recorded." — the body is said in full for every failed start (ux §8e.2). */
+export function captureFailedStartText(t: Translate, failed: CaptureFailedStart): CaptureNoticeText {
+  return {
+    title: failed === NO_CAMERA_CONNECTED_REASON ? t('common.captureNotice.noCamera.title') : t('common.session.failedStart.title'),
+    body: t('common.captureNotice.noCamera.body'),
+  }
+}
+
+/** The devices a degraded session start names as not connected (the active `SESSION_START` notices). */
+export function camerasNotConnectedOf(alerts: readonly (NoticeAlert & { readonly active: boolean })[]): string[] {
+  return activeCaptureNotices(alerts).flatMap((notice) =>
+    notice.kind === 'UNREACHABLE' && notice.phase === 'SESSION_START' && notice.deviceKind === 'CAMERA' ? [notice.deviceId] : [],
+  )
 }

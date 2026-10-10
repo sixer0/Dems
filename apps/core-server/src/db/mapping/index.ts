@@ -43,6 +43,7 @@ export {
   activeSessionFromRow,
   activeSessionToRow,
   alertFromRow,
+  alertReasonOf,
   alertToRow,
   auditRowFromRow,
   auditRowToRow,

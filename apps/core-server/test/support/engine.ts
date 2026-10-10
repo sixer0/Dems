@@ -21,7 +21,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance } from 'fastify';
 import type { Pool, PoolClient, QueryConfig } from 'pg';
 import { buildApp } from '../../src/app';
-import type { DatabaseConnection, LogLevel } from '../../src/config';
+import type { ConfigInput, DatabaseConnection, LogLevel } from '../../src/config';
 import { fromRows, type DurableSlices } from '../../src/db/mapping';
 import { countAllTables, readStoredRows } from '../../src/db/store';
 import type { Principal } from '../../src/plugins/authenticate';
@@ -182,6 +182,8 @@ export interface EngineAppOptions {
   readonly logLevel?: LogLevel;
   /** Capture mode of the app's configuration. Default: the configuration's own (`simulated`). */
   readonly captureMode?: 'simulated' | 'real';
+  /** Further configuration of the app (e.g. the worker program and data directory of a real-mode boot fixture). Wins over the options above. */
+  readonly config?: Partial<ConfigInput>;
 }
 
 /**
@@ -198,6 +200,7 @@ export async function engineApp(target: EngineAppTarget, dataDir: string, option
       dataDir,
       logLevel: options.logLevel ?? 'debug',
       ...(options.captureMode === undefined ? {} : { captureMode: options.captureMode }),
+      ...options.config,
     }),
     logStream: log.stream,
     createPool: database.factory,

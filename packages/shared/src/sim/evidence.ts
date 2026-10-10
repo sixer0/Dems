@@ -171,10 +171,16 @@ export function buildItemIntegrity(input: EvidenceIntegrityInput & { subjectName
 }
 
 /**
- * The sealed FILES of a v2 item (register SH-07; D224/D225): one whole file per camera plus the
- * single session audio track `AUDIO-01`. `AUDIO-02` is legacy v1 only and never gets a file here.
+ * The sealed FILES of a v2 item (register SH-07; D224/D225; C3 §3 row 39: "`files[]` (one whole
+ * fMP4 per camera ...)"; evidence package spec §A.1: the package holds `fragments/VIDEO-01.mp4`
+ * and `fragments/VIDEO-02.mp4` and no audio file - the session audio track is muxed into the
+ * camera files). So the list is the two camera files and nothing else.
+ *
+ * Until integration pass D4 this list also held `AUDIO-01` as a third "file": a file no v2
+ * package has, and the one member of an answer that listed half of an audio pair (AC-B-70). The
+ * session audio is reported by `tracks` (v1 view) and `audioSourceIntervals`, never by `files`.
  */
-export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.AUDIO_01] as const satisfies readonly TrackId[];
+export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02] as const satisfies readonly TrackId[];
 
 /** The fragment quantum used to derive a synthetic fragment count for the running chain. */
 const FRAGMENT_MS = 2_000;

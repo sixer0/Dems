@@ -52,6 +52,54 @@ export type TranscriptAbsenceReason = (typeof TRANSCRIPT_ABSENCE_REASONS)[number
  */
 export const MANIFEST_STT_MODEL_PATTERN = /^(?!.*\.\.)(?!.*\.$)(?!.*\.[bB][iI][nN]$)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+/**
+ * THE PROVENANCE OF THE STT MODEL IS RECORDED AS FAR AS THE CORE CAN KNOW IT, AND THE BACKEND SAYS
+ * WHICH KIND IT IS (decision D160; spec §B.7 fields 84-87, erratum PE-D9-01). No field is added:
+ * the backend is already sealed in field 123 (`configSnapshot.backend`).
+ *
+ *   backend                 84 name    85 version   86 quantisation   87 file SHA-256
+ *   a SERVER (`omlx-server`) required   null         null              null
+ *   any other (`cpu-local`)  required   required     required          required
+ *
+ * A server backend is a program the Core does not start and whose model files it never reads:
+ * the name is the identifier the session's snapshot names / the server reported; a version, a
+ * quantisation or a file hash beside it would be a value nobody verified, so one that is NOT null
+ * is refused. For a backend whose model file the Core itself reads nothing is loosened: a null is
+ * refused. A backend this list does not name is not a server (it fails closed: all four required).
+ */
+export const SERVER_STT_BACKENDS: readonly string[] = ['omlx-server'];
+export const isServerSttBackend = (backend: string): boolean => SERVER_STT_BACKENDS.includes(backend);
+
+export type TranscriptModelMember = 'name' | 'version' | 'quantisation' | 'sha256';
+export interface TranscriptModelValues {
+  readonly name: string | null;
+  readonly version: string | null;
+  readonly quantisation: string | null;
+  /** SHA-256 of the model FILE (manifest: `modelSha256`; transcript document: `sha256`). */
+  readonly sha256: string | null;
+}
+export interface TranscriptModelFault {
+  readonly member: TranscriptModelMember;
+  readonly message: string;
+}
+const CORE_READ_MEMBERS: readonly Exclude<TranscriptModelMember, 'name'>[] = ['version', 'quantisation', 'sha256'];
+
+/**
+ * The members of a SEALED transcript's model provenance that break the rule above; empty when it
+ * holds. ONE rule for the manifest schema, the transcript document (both writers) and the Core's
+ * provider port. Messages name members, never values.
+ */
+export function transcriptModelFaults(backend: string, model: TranscriptModelValues): TranscriptModelFault[] {
+  const faults: TranscriptModelFault[] = [];
+  if (model.name === null) faults.push({ member: 'name', message: 'not null where a transcript is sealed' });
+  const server = isServerSttBackend(backend);
+  for (const member of CORE_READ_MEMBERS) {
+    if (server && model[member] !== null) faults.push({ member, message: 'null for a server backend: the Core cannot know it' });
+    if (!server && model[member] === null) faults.push({ member, message: 'not null for a backend whose model file the Core reads' });
+  }
+  return faults;
+}
+
 // ── B.2 timeline (11) ────────────────────────────────────────────────────────────────────────
 const TimelineSchema = z.strictObject({
   timezone: z.string().regex(/^[+-][0-9]{2}:[0-9]{2}$/),
@@ -321,10 +369,13 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
  * §B.7 / §B.7a and decision D110: the transcript block is ONE of four shapes, and nothing between.
  *
  *   state      document            field 121 (reason)               snapshot.enabled  backendUnreachable
- *   ASSEMBLED  sealed, 79-94 set   null                             true              false
- *   PARTIAL    sealed, 79-94 set   null                             true              either
+ *   ASSEMBLED  sealed, 79-94 set*  null                             true              false
+ *   PARTIAL    sealed, 79-94 set*  null                             true              either
  *   PARTIAL    NONE, 79-91, 94 null TRANSCRIPT_UNAVAILABLE_AT_SEAL  true              either
  *   DISABLED   NONE, 79-94 null    DISABLED_BY_CONFIGURATION        false             false
+ *
+ * (*) Fields 85-87 (model version, quantisation, file SHA-256) are null beside a document exactly
+ * when the snapshot's backend is a SERVER, and set for every other backend: `transcriptModelFaults`.
  *
  * "Document" is fields 79-91 and 94 (and 90, which a document may leave null). Field 93
  * `failedChunks` is a count wherever a document is sealed; without one it is null when disabled,
@@ -334,25 +385,29 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
  */
 function transcriptRules(transcript: BodyShape['transcript'], issue: Issue): void {
   const at = (path: readonly string[], message: string): void => issue(['transcript', ...path], message);
-  /** Fields 79-89, 91, 94: set exactly when a document is sealed. */
+  /** Fields 79-83, 88, 89, 91, 94: set exactly when a document is sealed. */
   const docFields: readonly (readonly [readonly string[], unknown])[] = [
     [['file'], transcript.file],
     [['docVersion'], transcript.docVersion],
     [['sha256'], transcript.sha256],
     [['srtSha256'], transcript.srtSha256],
     [['vttSha256'], transcript.vttSha256],
-    [['model', 'name'], transcript.model.name],
-    [['model', 'version'], transcript.model.version],
-    [['model', 'quantisation'], transcript.model.quantisation],
-    [['model', 'modelSha256'], transcript.model.modelSha256],
     [['diarization', 'numSpeakers'], transcript.diarization.numSpeakers],
     [['diarization', 'status'], transcript.diarization.status],
     [['speakerState'], transcript.speakerState],
     [['revisionHead'], transcript.revisionHead],
   ];
   const reason = transcript.disabledReason;
+  /** Fields 84-87: all null without a document; with one, as the backend of field 123 allows (D160). */
+  const model = transcript.model;
+  const modelFields: readonly (readonly [readonly string[], unknown])[] = [
+    [['model', 'name'], model.name],
+    [['model', 'version'], model.version],
+    [['model', 'quantisation'], model.quantisation],
+    [['model', 'modelSha256'], model.modelSha256],
+  ];
   const absent = (why: string): void => {
-    for (const [path, value] of docFields) if (value !== null) at(path, why);
+    for (const [path, value] of [...docFields, ...modelFields]) if (value !== null) at(path, why);
     if (transcript.diarization.confidence !== null) at(['diarization', 'confidence'], why);
   };
 
@@ -379,6 +434,10 @@ function transcriptRules(transcript: BodyShape['transcript'], issue: Issue): voi
   // A transcript that is declared there: every member of its document, and the failed-chunk count.
   for (const [path, value] of docFields) if (value === null) at(path, 'not null unless the transcript is disabled or was unavailable at the seal');
   if (transcript.failedChunks === null) at(['failedChunks'], 'not null unless the transcript is disabled or was unavailable at the seal');
+  // ... and the provenance of its model, as far as the backend of the snapshot lets the Core know it.
+  for (const fault of transcriptModelFaults(transcript.configSnapshot.backend, { name: model.name, version: model.version, quantisation: model.quantisation, sha256: model.modelSha256 })) {
+    at(['model', fault.member === 'sha256' ? 'modelSha256' : fault.member], fault.message);
+  }
 }
 
 /** True when the manifest declares a transcript document: the `transcript/` folder is part of the package. */

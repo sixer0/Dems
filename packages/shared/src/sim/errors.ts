@@ -63,8 +63,14 @@ export class SimTransitionError extends Error {
   readonly from: string | null;
   readonly event: string;
   readonly code: SimErrorCode;
+  /**
+   * `error.details.reason` of the Core's refusal, when it named one (pass D6, decision D156): a
+   * code such as `CAPTURE_NOT_DURABLE`, so a page words the refusal from the refusal itself. Null
+   * for every refusal the simulator throws itself.
+   */
+  readonly reason: string | null;
 
-  constructor(from: string | null, event: string, detail?: string, code: SimErrorCode = SimErrorCode.ILLEGAL_STATE) {
+  constructor(from: string | null, event: string, detail?: string, code: SimErrorCode = SimErrorCode.ILLEGAL_STATE, reason: string | null = null) {
     super(
       `Illegal session transition: ${event} from ${from ?? 'IDLE'}${detail ? ` (${detail})` : ''}.`,
     );
@@ -72,6 +78,7 @@ export class SimTransitionError extends Error {
     this.from = from;
     this.event = event;
     this.code = code;
+    this.reason = reason;
   }
 }
 

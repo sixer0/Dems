@@ -7,12 +7,14 @@
  * through it and through nothing else.
  */
 import type {
+  AudioSourceIntervalRecord,
   CaptureIpcLimits,
   CaptureMicRole,
   CapturePlan,
   CaptureRecord,
   CaptureStopReason,
   CaptureWarningCode,
+  CaptureWarningReason,
   CaptureWarningState,
   FrameViolation,
   ProgressMessage,
@@ -54,6 +56,8 @@ export const WorkerDownCode = {
   HELLO_TIMEOUT: 'HELLO_TIMEOUT',
   /** `HELLO` named another protocol version. Not retried. */
   PROTOCOL_MISMATCH: 'PROTOCOL_MISMATCH',
+  /** `HELLO` carries the proof-build mark: a negative control of the capture checks, never recorded with. Not retried. */
+  PROOF_BUILD: 'CAPTURE_WORKER_PROOF_BUILD',
   /** A line that is no frame of the protocol. */
   PROTOCOL_VIOLATION: 'PROTOCOL_VIOLATION',
   /** `START` was answered with `ok=false`. */
@@ -119,7 +123,12 @@ interface EventBase {
 export type CaptureEvent =
   | (EventBase & { readonly name: 'telemetry'; readonly action: 'applyCaptureTelemetry'; readonly frame: TelemetryMessage })
   | (EventBase & { readonly name: 'progress'; readonly action: 'applySealingProgress'; readonly frame: ProgressMessage })
-  | (EventBase & { readonly name: 'warning'; readonly action: 'raiseCaptureWarning'; readonly code: CaptureWarningCode; readonly state: CaptureWarningState; readonly subject: string | null; readonly source: 'worker' | 'supervisor' })
+  /**
+   * A warning. Of the worker (`source: 'worker'`, protocol 4): `subject` is the device ID of a
+   * camera or a microphone of the plan and `reason` says which cause of the code it is. Of the
+   * supervisor itself (its `CAPTURE_FAULT`: the worker cannot be kept running): no subject, no reason.
+   */
+  | (EventBase & { readonly name: 'warning'; readonly action: 'raiseCaptureWarning'; readonly code: CaptureWarningCode; readonly reason: CaptureWarningReason | null; readonly state: CaptureWarningState; readonly subject: string | null; readonly source: 'worker' | 'supervisor' })
   | (EventBase & { readonly name: 'phase'; readonly phase: CapturePhase; readonly previous: CapturePhase })
   | (EventBase & { readonly name: 'workerDown'; readonly down: WorkerDown; readonly restartInMs: number | null })
   /** A lossless record of the worker (spec §B.2 R-1), in the order of `seq`, never through the queue of levels. */
@@ -147,8 +156,12 @@ export interface CaptureSupervisor {
   start(sessionId: string, plan: CapturePlan): Promise<void>;
   /** Stops the session's worker and waits for it to exit. Resolves at once when no session is open. */
   stop(sessionId: string, reason: CaptureStopReason): Promise<void>;
-  /** The operator's switch (never automatic, OD-11). Resolves when the worker acknowledged it. */
-  switchAudioSource(sessionId: string, to: CaptureMicRole): Promise<void>;
+  /**
+   * The operator's switch (never automatic, OD-11). Resolves when the worker acknowledged it, with
+   * the `AUDIO_SOURCE_INTERVAL` record of that switch (the interval it opened: microphone, first
+   * sample, capture instant), or with null when that role already fed the track (nothing changed).
+   */
+  switchAudioSource(sessionId: string, to: CaptureMicRole): Promise<AudioSourceIntervalRecord | null>;
   status(): CaptureStatus;
   /** Returns the function that removes the listener. */
   on<Name extends CaptureEventName>(event: Name, listener: CaptureListener<Name>): () => void;

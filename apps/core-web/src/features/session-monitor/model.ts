@@ -14,6 +14,7 @@ import {
   type FaultKind,
   type SimState,
 } from '@dems/shared/sim'
+import { camerasNotConnectedOf, captureFailedStartOf, captureNoticeOf, type CaptureFailedStart } from '@/lib/capture-notices'
 
 // ── Session phase ────────────────────────────────────────────────────────────────────────
 export type SessionPhase =
@@ -148,7 +149,40 @@ export interface BannerModel {
   stopping: boolean
   evidenceId: string | null
   recoveryStage: BootRecoveryState | null
+  /**
+   * Row 139 (ux §8e.2 situation C): FAULT of a session that recorded NOTHING (`captureDurable: false`).
+   * The banner then says "Nothing was recorded." and offers no recovery of evidence.
+   */
+  failedStart: CaptureFailedStart | null
+  /** D158: the Core is closing that failed start (the store passes through RECOVERY): the same words, no control. */
+  failedStartClosing: boolean
 }
+
+/**
+ * Row 139 (ux §8e.2 "C, degraded"): the alert the banner escalated on, when it is a no-device notice.
+ * The stored alert object itself (stable between store updates); the banner words it with
+ * `captureNoticeLine`, naming the device by label and id, instead of the alert's own text.
+ */
+export function selectBannerNoticeAlert(s: SimState) {
+  if (!selectRecordingDurable(s)) return null
+  const worst = selectWorstAlert(s)
+  return worst !== null && captureNoticeOf(worst) !== null ? worst : null
+}
+
+/** Row 139: the failed start of the open session, or `null` (flat, for a selector). */
+export const selectFailedStart = (s: SimState): CaptureFailedStart | null => captureFailedStartOf(s.session, s.alerts)
+
+/**
+ * Integration pass D7 follow-up (decision D158; ux §8e.2 situation C, OP-125-5): a failed start the Core
+ * is CLOSING. "Close session" is the Core's recovery of a session that recorded nothing, so the store
+ * passes through RECOVERY with `captureDurable` still `false` — only a failed start can be there (a
+ * recording that was interrupted is durable). The console presents no recovery for it: the failed-start
+ * words stay until the session has left the store. The cause is read as for the FAULT.
+ */
+export const selectFailedStartClosing = (s: SimState): CaptureFailedStart | null =>
+  s.session?.state === SessionState.RECOVERY && !captureDurableOf(s.session)
+    ? captureFailedStartOf({ state: SessionState.FAULT, captureDurable: false }, s.alerts)
+    : null
 
 export function selectBanner(s: SimState): BannerModel {
   const session = s.session
@@ -165,6 +199,8 @@ export function selectBanner(s: SimState): BannerModel {
     stopping: false,
     evidenceId: session?.evidenceId ?? null,
     recoveryStage: null,
+    failedStart: null,
+    failedStartClosing: false,
   }
   switch (phase) {
     case 'IDLE':
@@ -186,9 +222,13 @@ export function selectBanner(s: SimState): BannerModel {
       }
     }
     case 'FAULT':
-      return { ...base, kind: 'FAULT', reasonKind: session?.fault?.kind ?? null }
-    case 'RECOVERY':
+      return { ...base, kind: 'FAULT', reasonKind: session?.fault?.kind ?? null, failedStart: selectFailedStart(s) }
+    case 'RECOVERY': {
+      // D158: the close of a failed start is no recovery of evidence — the fault banner keeps its words.
+      const closing = selectFailedStartClosing(s)
+      if (closing !== null) return { ...base, kind: 'FAULT', reasonKind: session?.fault?.kind ?? null, failedStart: closing, failedStartClosing: true }
       return { ...base, kind: 'RECOVERY', recoveryStage: session?.recovery?.stage ?? null }
+    }
     case 'RECORDING': {
       // D84: nothing claims to record before the first durable fragment, an alert's
       // "Recording continues" included.
@@ -259,7 +299,9 @@ export interface IntegrityModel {
 }
 
 export function selectIntegrity(s: SimState): IntegrityModel {
-  const recording = s.session?.state === SessionState.RECORDING
+  // Integration pass D7 item 4 (row 139's leftover; D84): "recording" is the durable recording only. While the
+  // cameras connect nothing is written, so "Storage Write Verified" reads Standby, not Continuous.
+  const recording = selectRecordingDurable(s)
   const chainBroken = s.faults.active.some((fault) => fault.kind === 'AUDIT_TAMPER')
   const storageState = s.storage.state
   return {
@@ -345,6 +387,18 @@ export interface FeedModel {
   startedAt: number | null
   recording: boolean
   snapshotCount: number
+  /** Row 139 (D84): RECORDING before the first durable fragment. Nothing is presented as live or recording. */
+  connecting: boolean
+  /** Row 139: the open session recorded nothing (situation C), or `null`. */
+  failedStart: CaptureFailedStart | null
+}
+
+/** Row 139: whether the camera behind a video track is named by an active session-start notice. */
+function trackNotConnected(s: SimState, trackId: string): boolean {
+  const missing = camerasNotConnectedOf(s.alerts)
+  if (missing.length === 0) return false
+  const deviceId = s.captureConfig.cameras.find((camera) => camera.trackId === trackId)?.deviceId
+  return deviceId !== undefined && missing.includes(deviceId)
 }
 
 export function selectFeed(s: SimState): FeedModel {
@@ -355,13 +409,17 @@ export function selectFeed(s: SimState): FeedModel {
     activeCameraId: s.activeCameraId,
     cameraName: camera?.name ?? s.activeCameraId,
     room: camera?.room ?? '',
-    noSignal: camera ? !camera.online || camera.lens === 'FAULT' : true,
+    // Row 139 ("C, degraded"): the camera the Core says did not connect at this session start reads NO SIGNAL.
+    noSignal: (camera ? !camera.online || camera.lens === 'FAULT' : true) || trackNotConnected(s, s.activeCameraId),
     resolution: camera?.resolution ?? '1080p',
     fps: camera?.fps ?? 25,
     codec: camera?.codec ?? 'H.264',
     startedAt: s.session?.startedAt ?? null,
     recording,
     snapshotCount: s.session?.snapshotCount ?? 0,
+    connecting: selectConnectingCameras(s),
+    // D158: held while the Core closes the failed start.
+    failedStart: selectFailedStart(s) ?? selectFailedStartClosing(s),
   }
 }
 

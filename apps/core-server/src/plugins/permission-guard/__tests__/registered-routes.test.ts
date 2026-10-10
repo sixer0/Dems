@@ -25,7 +25,7 @@ import { CLOCK_START, standInDatabase, type StandInDatabase } from '../../../../
 import { ANONYMOUS_PRINCIPAL, type Principal } from '../../authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { throttleControl } from '../../throttle';
-import { REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
+import { EVIDENCE_MEDIA_ROUTE_URL, EVIDENCE_MEDIA_SESSION_OPERATION, EVIDENCE_MEDIA_STREAM_ID, REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
 import { MALFORMED_JSON, recordPassed, type PassedRequest } from '../../../../test/support/guard';
 
 let app: FastifyInstance;
@@ -107,6 +107,16 @@ describe('the routes the server registers, whichever modules have landed', () =>
         expect(rule).toBe(REALTIME_CHANNEL_RULE);
         continue;
       }
+      if (rule.operationId === EVIDENCE_MEDIA_STREAM_ID) {
+        // Row 90, ruling D140: the evidence media route, the second route outside the registry. Its
+        // rule is the rule of operation 88 at its own method and path - and the walks below ask it
+        // of this route like of every other (401 for nobody, 403 with one row without the permission).
+        const session = guard.rules.ruleOf(EVIDENCE_MEDIA_SESSION_OPERATION);
+        expect(rule).toBe(guard.rules.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL));
+        expect(rule).toEqual({ ...session, operationId: EVIDENCE_MEDIA_STREAM_ID, method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, idPattern: null });
+        expect(rule.denial).not.toBeNull();
+        continue;
+      }
       expect(contract).toContain(rule.operationId);
       expect(guard.rules.ruleOf(rule.operationId)).toBe(rule);
       const operation = CORE_API_OPERATIONS.find((candidate) => candidate.operationId === rule.operationId);
@@ -115,7 +125,7 @@ describe('the routes the server registers, whichever modules have landed', () =>
     }
     // What this row's own tests call is among them. Nothing else is named, and nothing is counted.
     for (const operationId of NEEDED_HERE) expect(ids).toContain(operationId);
-    expect(ids.length).toBeLessThanOrEqual(contract.length + 1);
+    expect(ids.length).toBeLessThanOrEqual(contract.length + 2);
   });
 
   it('the walk of the router finds exactly the routes the boot check was shown, and passes', () => {
@@ -178,8 +188,12 @@ describe('stage 6 stands in front of every registered route (decided before the 
         passed.length = 0;
         const [status, code] = outcomeOf(await call(rule, operator(role), true));
         // A demo operation is refused for the flag, which is off in this app (DC-2): after the permission, with no row.
-        const want = rule.conditions.includes(CoreApiAccessCondition.DEMO_FLAG) ? [403, 'DEMO_DISABLED', 0] : [400, 'INVALID_JSON', 1];
-        if (status !== want[0] || code !== want[1] || passed.length !== want[2] || database.committed.auditSeqs.length !== rows) {
+        // Operation 81 (task 3 row 71; C3 §2.2: SESSION_START **and** SESSION_HOLDER): no session is open in this app, so
+        // nobody is its holder - the permission alone does not pass. Only a SUPERVISOR does; anyone else is refused
+        // 403 NOT_PERMITTED after the permission, with the ONE audited row of that condition (C3 §5.3).
+        const notHolder = rule.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER) && role !== 'SUPERVISOR';
+        const want = rule.conditions.includes(CoreApiAccessCondition.DEMO_FLAG) ? [403, 'DEMO_DISABLED', 0] : notHolder ? [403, 'NOT_PERMITTED', 0] : [400, 'INVALID_JSON', 1];
+        if (status !== want[0] || code !== want[1] || passed.length !== want[2] || database.committed.auditSeqs.length !== rows + (notHolder ? 1 : 0)) {
           wrong.push(`${rule.operationId} as ${role}: ${status} ${code}, passed ${passed.length}`);
         }
       }

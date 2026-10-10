@@ -28,13 +28,26 @@
  * `KEYFRAME_INTERVAL` is new. A worker of version 2 is refused at `HELLO` (`PROTOCOL_MISMATCH`,
  * not retried), and none of its frames decodes.
  *
+ * VERSION 4 (blueprint row 71, worker half "71a"; capture spec §E, §E.1, §C.4; decisions D84 R-1,
+ * R-2, D85, D127, D130). One version step for the microphone rows:
+ *   - `WARNING` carries a required `reason` (which of the causes of its code it is), its `subject`
+ *     is ALWAYS a capture device ID of the plan - never null, never a mic role (one subject form
+ *     per microphone) - and the worker now raises and clears `MIC_SILENT`, a microphone that
+ *     stopped delivering, and a microphone whose rate controller is held at its limit;
+ *   - the records `AUDIO_SOURCE_INTERVAL` (which microphone feeds the one audio track from which
+ *     sample on: one at the start, one per realised switch, written BEFORE the `ACK` of that
+ *     switch) and `AUDIO_TIMELINE_END` are new;
+ *   - `FIRST_VIDEO_SAMPLE` also says how much camera video arrived before it and was not written;
+ *   - every `TELEMETRY` level names its microphone by device ID and states the rate correction.
+ * A worker of version 3 is refused at `HELLO`, and none of its frames decodes.
+ *
  *   supervisor -> worker   START, STOP, SWITCH_AUDIO_SOURCE
  *   worker -> supervisor   HELLO, ACK, TELEMETRY, PROGRESS, HEARTBEAT, WARNING, CRASH, RECORD
  *
  * LEVELS AND RECORDS. `TELEMETRY` and `PROGRESS` are LEVELS: the supervisor hands them on through
  * a bounded queue that replaces and evicts them, and a worker `WARNING` travels the same queue.
  * A `RECORD` is the one LOSSLESS class: first video sample, first durable fragment, fragment
- * checkpoint, observed keyframe interval, seal completion. The supervisor handles it the moment its line arrives, beside `ACK`, and never puts
+ * checkpoint, observed keyframe interval, audio-source interval, end of the audio timeline, seal completion. The supervisor handles it the moment its line arrives, beside `ACK`, and never puts
  * it in that queue. Every record carries `seq`: a worker counts its records from 1, by exactly 1;
  * a gap or a repeat is a protocol violation that ends the worker. A session gets a second worker
  * only while it holds no durable fragment, so the fragment records of one session are always ONE
@@ -45,7 +58,9 @@
  *
  * RECORDS ARE LOW-RATE BY CONTRACT (fix round 1, navigator finding A-5). A worker writes: one
  * first-video-sample, one first-durable-fragment and one keyframe-interval per camera, one
- * checkpoint per fragment per camera, one seal completion. Checkpoints of fragments that were
+ * checkpoint per fragment per camera, one audio-source interval at the start and one per operator
+ * switch (at most one per input chunk: a second switch is refused while one waits), one end of the
+ * audio timeline, one seal completion. Checkpoints of fragments that were
  * written while one disk sync ran leave together when the next sync returned: after a sync that
  * took t seconds, about t / 2 checkpoints per camera arrive at once, far below the ceiling. A fragment is a camera GOP of about 2 s (never shorter than a
  * stall cut every `fragmentTargetMs`), so two cameras write about 2 records a second at most.
@@ -55,10 +70,13 @@
  * backlog: it must not hold a record waiting on a slow store without a limit of its own.
  *
  * IDENTITIES (decision D72, navigator finding A-1). Every device a frame names - the `deviceId`
- * of an ingest state, a fragment counter, a clock entry or a record, and the `subject` of a
- * warning - is a CAPTURE DEVICE ID, the vocabulary of the capture-config tables and of the
- * engine (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`), or a mic role. `VIDEO-01` / `VIDEO-02` are
- * names of output TRACKS: a plan carries one per camera as `trackId`, and no frame carries it.
+ * of an ingest state, a fragment counter, a clock entry, a level or a record, and the `subject` of
+ * a warning - is a CAPTURE DEVICE ID, the vocabulary of the capture-config tables and of the
+ * engine (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`). `VIDEO-01` / `VIDEO-02` are names of output
+ * TRACKS: a plan carries one per camera as `trackId`, and no frame carries it. A MIC ROLE IS NOT
+ * AN IDENTITY (version 4, D84 R-2): a role says which place of the plan a microphone holds; it is
+ * the argument of `SWITCH_AUDIO_SOURCE` and a member beside the device ID, never a subject. A
+ * plan whose device is named like a role is refused, so the two can never be confused.
  *
  * CORRELATION IDS. Every command carries the `sessionId` and a `correlationId` chosen by the
  * supervisor; the worker copies the correlation ID into the `ACK` of that command. A worker learns
@@ -73,7 +91,12 @@
  *     (`SESSION_ALREADY_SERVED`). The RTSP listen ingest exits on the client's TEARDOWN and
  *     refuses a re-push, so the supervisor starts a fresh process per session (S1 G-1, D10(b));
  *   - it exits when its standard input ends: a worker whose supervisor died is never an orphan;
- *   - it never switches the audio source by itself (OD-11): `MIC_SILENT` is a warning.
+ *   - it never switches the audio source by itself (OD-11): `MIC_SILENT` is a warning. The only
+ *     `AUDIO_SOURCE_INTERVAL` records it writes are the one of the start and one per
+ *     `SWITCH_AUDIO_SOURCE` it acknowledged with `ok`, each naming that command's correlation ID;
+ *   - a switch is realised at the next input chunk of the filtering thread
+ *     (`CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES`, 10 ms): a hard cut, no crossfade (gate answer
+ *     Q-CLICK, default). The record states the first sample of the new source; the `ACK` follows it;
  *   - it NEVER truncates or overwrites an output file that already exists (OD-08: the bytes
  *     already written are evidence). Decided by D67, option C: a worker creates a camera file
  *     only when its first fragment is complete, and only if nothing is at that path. A `START`
@@ -101,7 +124,7 @@
 import { z } from 'zod';
 
 /** Version of this protocol. The worker names it in `HELLO`; a mismatch ends the worker. */
-export const CAPTURE_PROTOCOL_VERSION = 3;
+export const CAPTURE_PROTOCOL_VERSION = 4;
 
 /**
  * The loopback media ports (spec §A.8: fixture readers and the worker ingest listen only on
@@ -150,6 +173,61 @@ export type CaptureMicRole = (typeof CaptureMicRole)[keyof typeof CaptureMicRole
 export const CaptureWarningCode = { MIC_SILENT: 'MIC_SILENT', CAPTURE_FAULT: 'CAPTURE_FAULT' } as const;
 export type CaptureWarningCode = (typeof CaptureWarningCode)[keyof typeof CaptureWarningCode];
 
+/**
+ * WHICH of the causes of its code a warning is (version 4). The two codes stay the pinned set; the
+ * reason is what lets the Core tell a camera that is gone from a camera that records with a long
+ * keyframe interval, and a silent microphone from one that stopped delivering.
+ *
+ *   code MIC_SILENT     MIC_LEVEL_BELOW_THRESHOLD        the microphone DELIVERS samples and their level stayed at or
+ *                                                        below the silence threshold for the silence duration (spec §E.1).
+ *                                                        `CLEARED` when the level is above it again. Never a switch.
+ *   code CAPTURE_FAULT  CAMERA_NOT_CONNECTED             the camera's ingest never delivered video (refused, no connection
+ *                                                        within the ingest-open window, no usable stream)
+ *                       CAMERA_STREAM_ENDED              a camera that delivered video stopped
+ *                       CAMERA_CLOCK_OUT_OF_BOUND        the camera's wall clock is beyond any delay: not recorded at a wrong time
+ *                       KEYFRAME_INTERVAL_ABOVE_BOUND    ADVISORY: the camera RECORDS; its keyframe interval is above the
+ *                                                        target, so a crash loses more than the target (record `KEYFRAME_INTERVAL`)
+ *                       MIC_DISCONNECTED                 the microphone delivered no sample for the disconnect debounce (spec §E.1).
+ *                                                        `CLEARED` when it delivers again
+ *                       MIC_RATE_AT_LIMIT                the microphone's clock differs from the host's by the limit the rate
+ *                                                        controller can absorb (+-5,000 ppm, D85) or more: samples are being
+ *                                                        inserted or dropped. `CLEARED` when the controller is inside its range again
+ *
+ * The camera conditions do not end inside a session (a listen ingest takes one connection), so the
+ * worker writes no `CLEARED` for them; the three microphone conditions are raised and cleared, and
+ * every later occurrence is a new `ACTIVE`.
+ */
+export const CaptureWarningReason = {
+  MIC_LEVEL_BELOW_THRESHOLD: 'MIC_LEVEL_BELOW_THRESHOLD',
+  CAMERA_NOT_CONNECTED: 'CAMERA_NOT_CONNECTED',
+  CAMERA_STREAM_ENDED: 'CAMERA_STREAM_ENDED',
+  CAMERA_CLOCK_OUT_OF_BOUND: 'CAMERA_CLOCK_OUT_OF_BOUND',
+  KEYFRAME_INTERVAL_ABOVE_BOUND: 'KEYFRAME_INTERVAL_ABOVE_BOUND',
+  MIC_DISCONNECTED: 'MIC_DISCONNECTED',
+  MIC_RATE_AT_LIMIT: 'MIC_RATE_AT_LIMIT',
+} as const;
+export type CaptureWarningReason = (typeof CaptureWarningReason)[keyof typeof CaptureWarningReason];
+/** The reasons each code may carry. A frame with a reason of the other code is no message. */
+export const WARNING_REASONS_OF: { readonly [Code in CaptureWarningCode]: readonly CaptureWarningReason[] } = {
+  MIC_SILENT: [CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD],
+  CAPTURE_FAULT: [
+    CaptureWarningReason.CAMERA_NOT_CONNECTED,
+    CaptureWarningReason.CAMERA_STREAM_ENDED,
+    CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND,
+    CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND,
+    CaptureWarningReason.MIC_DISCONNECTED,
+    CaptureWarningReason.MIC_RATE_AT_LIMIT,
+  ],
+};
+/** The reasons whose subject is a microphone of the plan (every other reason names a camera). */
+export const MIC_WARNING_REASONS: readonly CaptureWarningReason[] = [CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD, CaptureWarningReason.MIC_DISCONNECTED, CaptureWarningReason.MIC_RATE_AT_LIMIT];
+/**
+ * The reasons that are NOT a failed device: the subject keeps recording. `KEYFRAME_INTERVAL_ABOVE_BOUND`
+ * says the crash-loss window of that camera file is longer than the target (decision D127 (2)): a
+ * consumer shows it as a notice with the number of the record, not as a camera fault.
+ */
+export const ADVISORY_WARNING_REASONS: readonly CaptureWarningReason[] = [CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND];
+
 /** Whether a warning's condition began or ended. */
 export const CaptureWarningState = { ACTIVE: 'ACTIVE', CLEARED: 'CLEARED' } as const;
 export type CaptureWarningState = (typeof CaptureWarningState)[keyof typeof CaptureWarningState];
@@ -187,6 +265,14 @@ export const CaptureRecordKind = {
    * camera. On stream copy the camera sets it, and it IS the crash-loss window of the file.
    */
   KEYFRAME_INTERVAL: 'KEYFRAME_INTERVAL',
+  /**
+   * Which microphone feeds the one audio track from which sample on (spec §E "interval records"):
+   * one at the start of the audio timeline, one per realised operator switch. Media time, derived
+   * on the capture side; never reconstructed from the operator's clock.
+   */
+  AUDIO_SOURCE_INTERVAL: 'AUDIO_SOURCE_INTERVAL',
+  /** The audio timeline ended: how many samples the one encoder was fed. Closes the last interval. */
+  AUDIO_TIMELINE_END: 'AUDIO_TIMELINE_END',
   /** Sealing finished. Never read from `PROGRESS` with progress 1, which is a level and can be evicted. */
   SEAL_COMPLETE: 'SEAL_COMPLETE',
 } as const;
@@ -212,6 +298,83 @@ export const CAPTURE_INTERNAL_ACTION = {
   PROGRESS: 'applySealingProgress',
   WARNING: 'raiseCaptureWarning',
 } as const satisfies Partial<Record<WorkerMessageType, string>>;
+
+/** Why an audio-source interval began. There is no third value: the worker never switches by itself (OD-11). */
+export const AudioSourceIntervalReason = { SESSION_START: 'SESSION_START', OPERATOR_SWITCH: 'OPERATOR_SWITCH' } as const;
+export type AudioSourceIntervalReason = (typeof AudioSourceIntervalReason)[keyof typeof AudioSourceIntervalReason];
+
+/**
+ * What a worker refuses a `SWITCH_AUDIO_SOURCE` with (`ACK ok=false`). None of them changed the
+ * audio source, and none wrote a record.
+ *   NOT_RECORDING            no session runs, or it is stopping (also the answer to a switch that still waited at the stop)
+ *   SESSION_MISMATCH         the command names another session
+ *   NO_SUCH_MIC              the plan has no microphone in that role
+ *   SWITCH_PENDING           the switch before it is not realised yet (at most one input chunk): ask again
+ *   SELECTOR_COMMAND_FAILED  the filter graph refused the command: the worker ends with `CRASH`
+ * A switch to the role that already feeds the track is acknowledged `ok` and writes NO record:
+ * nothing changed.
+ */
+export const SWITCH_REFUSAL_CODES: readonly string[] = ['NOT_RECORDING', 'SESSION_MISMATCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED'];
+
+/**
+ * The input chunk of the worker's filtering thread, in samples (10 ms at 48 kHz). A switch is
+ * realised at a chunk boundary: `fromSample` of every `AUDIO_SOURCE_INTERVAL` is a multiple of it.
+ * The bound of the switch (spec §E, erratum AU2-07) is ONE chunk plus the IPC latency; the spec's
+ * ceiling `CAPTURE_SWITCH_BOUND_US` (one 1,024-sample AAC frame, 21,333 us) is what a check holds
+ * the measured `appliedDelayUs` against. Held equal to the worker's `QUANTUM` by the Core's pin test.
+ */
+export const CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES = 480;
+export const CAPTURE_SWITCH_BOUND_US = 21_333;
+
+/**
+ * THE NAMED SETTINGS OF A WORKER PROCESS (version 4; decision D84 "the ingest-open window is a
+ * named setting passed by the launcher", capture spec §E.1 "tunable without a code change").
+ * They are fixed per installation, so they are ARGUMENTS of the process (like its log file and its
+ * heartbeat interval), not members of a session's plan. The launcher builds them with
+ * `captureWorkerSettingArguments`; a worker started without one of them uses the default below,
+ * which the Core's pin test holds equal to the worker's own define and to the contract constants
+ * of `@dems/shared/api` (`MIC_SILENCE_DBFS`, `MIC_SILENCE_DURATION_MS`, `MIC_DISCONNECT_DEBOUNCE_MS`).
+ *
+ *   ingestOpenWindowMs       how long a camera may take to connect to its ingest. When NO camera
+ *                            connected within it the session ends `CRASH NO_CAMERA_CONNECTED`
+ *                            (D72(k)); a single camera that did not is given up with a warning.
+ *                            Whole seconds (the listen timeout of the RTSP ingest is one).
+ *   micSilenceDbfs           the level at or below which a delivering microphone counts as silent
+ *   micSilenceDurationMs     for how long, before `MIC_SILENT` is raised
+ *   micDisconnectDebounceMs  no sample for this long: `CAPTURE_FAULT` / `MIC_DISCONNECTED`
+ */
+export const CAPTURE_WORKER_SETTINGS = {
+  ingestOpenWindowMs: { argument: '--ingest-open-window-ms', default: 15_000, min: 1_000, max: 600_000, step: 1_000 },
+  micSilenceDbfs: { argument: '--mic-silence-dbfs', default: -50, min: -120, max: 0, step: 1 },
+  micSilenceDurationMs: { argument: '--mic-silence-ms', default: 10_000, min: 100, max: 600_000, step: 100 },
+  micDisconnectDebounceMs: { argument: '--mic-disconnect-ms', default: 2_000, min: 100, max: 600_000, step: 100 },
+} as const;
+export type CaptureWorkerSettingName = keyof typeof CAPTURE_WORKER_SETTINGS;
+export type CaptureWorkerSettings = { readonly [Name in CaptureWorkerSettingName]: number };
+export const CAPTURE_WORKER_SETTING_DEFAULTS: CaptureWorkerSettings = {
+  ingestOpenWindowMs: CAPTURE_WORKER_SETTINGS.ingestOpenWindowMs.default,
+  micSilenceDbfs: CAPTURE_WORKER_SETTINGS.micSilenceDbfs.default,
+  micSilenceDurationMs: CAPTURE_WORKER_SETTINGS.micSilenceDurationMs.default,
+  micDisconnectDebounceMs: CAPTURE_WORKER_SETTINGS.micDisconnectDebounceMs.default,
+};
+
+/**
+ * The arguments that hand the named settings to a worker process, in a fixed order: what a launcher
+ * appends to the worker's own arguments. A value outside its range, or off its step, is refused
+ * here (the worker refuses it too, with its usage text and exit code 2).
+ */
+export function captureWorkerSettingArguments(settings: Partial<CaptureWorkerSettings> = {}): string[] {
+  const out: string[] = [];
+  for (const name of Object.keys(CAPTURE_WORKER_SETTINGS) as CaptureWorkerSettingName[]) {
+    const rule = CAPTURE_WORKER_SETTINGS[name];
+    const value = settings[name] ?? rule.default;
+    if (!Number.isInteger(value) || value < rule.min || value > rule.max || (value - rule.min) % rule.step !== 0) {
+      throw new RangeError(`the worker setting ${name} is a whole number from ${rule.min} to ${rule.max} in steps of ${rule.step}`);
+    }
+    out.push(rule.argument, String(value));
+  }
+  return out;
+}
 
 // ── Limits and timing defaults ────────────────────────────────────────────────────────────────
 
@@ -255,7 +418,8 @@ export const CAPTURE_IPC_DEFAULTS = {
   commandQueueLimit: 16,
   /**
    * Most records inside `recordWindowMs`. The contract rate is about 2 a second (two cameras,
-   * one checkpoint per fragment of about 2 s, plus five one-off records); 64 in a second is 32
+   * one checkpoint per fragment of about 2 s, plus the one-off records and one interval record per
+   * operator switch, which no person makes faster than a few a second); 64 in a second is 32
    * times that and still a finite inflow for a consumer. One more ends the worker.
    */
   recordBurstLimit: 64,
@@ -267,6 +431,11 @@ export type CaptureIpcLimits = { readonly [Key in keyof typeof CAPTURE_IPC_DEFAU
 
 const id = z.string().min(1).max(128);
 const wholeNumber = z.number().int().nonnegative();
+function isMicRoleWord(value: string): boolean {
+  return (Object.values(CaptureMicRole) as string[]).includes(value);
+}
+/** A capture device ID as a frame names it: never a mic role (version 4, D84 R-2). */
+const deviceIdOnWire = id.refine((value) => !isMicRoleWord(value), 'a mic role is not a device ID');
 
 /**
  * An RTSP listen address of the worker: loopback only (SEC35-23), an explicit port, a path, no
@@ -351,6 +520,11 @@ export const CapturePlanSchema = z
     const paths = [...plan.cameras.map((camera) => camera.outputPath), ...plan.mics.map((mic) => mic.input.path), ...(plan.pcmTapPath === null ? [] : [plan.pcmTapPath])];
     if (!unique(paths)) context.addIssue({ code: 'custom', message: 'one path is used twice', path: ['cameras'] });
     if (!plan.mics.some((mic) => mic.role === plan.activeMic)) context.addIssue({ code: 'custom', message: 'no mic holds the active role', path: ['activeMic'] });
+    // Version 4 (D84 R-2): a role is never an identity, so no device may be named like one, and a
+    // camera and a microphone never share an ID (a warning names ONE device of the plan).
+    const devices = [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId)];
+    if (devices.some((device) => isMicRoleWord(device))) context.addIssue({ code: 'custom', message: 'a device is named like a mic role', path: ['mics'] });
+    if (!unique(devices)) context.addIssue({ code: 'custom', message: 'a camera and a mic share a device ID', path: ['mics'] });
   });
 export type CapturePlan = z.infer<typeof CapturePlanSchema>;
 
@@ -400,8 +574,15 @@ export const AckMessageSchema = z.strictObject({
 export const TelemetryMessageSchema = z.strictObject({
   ...envelope,
   type: z.literal(WorkerMessageType.TELEMETRY),
-  /** One entry per mic role: the level in dBFS (null: no samples). */
-  levels: z.array(z.strictObject({ role: z.enum(CaptureMicRole), dbfs: z.number().max(0).nullable(), clipped: z.boolean() })).max(2),
+  /**
+   * One entry per microphone of the plan, named by its device ID (version 4) with the role it holds:
+   * the level in dBFS (null: no samples), and `ratePpm`: what the rate controller asks of the
+   * resampler now, in parts per million of the sample rate (positive: the microphone's clock is
+   * slow; null while the microphone does not run). At +-5,000 the controller is at its limit (D85).
+   */
+  levels: z
+    .array(z.strictObject({ deviceId: deviceIdOnWire, role: z.enum(CaptureMicRole), dbfs: z.number().max(0).nullable(), clipped: z.boolean(), ratePpm: z.number().min(-5_000).max(5_000).nullable() }))
+    .max(2),
   ingest: z.array(z.strictObject({ deviceId: id, state: z.enum(CaptureIngestState) })).max(2),
   /** Fragments written so far, per camera file. */
   fragments: z.array(z.strictObject({ deviceId: id, count: wholeNumber, bytes: wholeNumber })).max(2),
@@ -424,22 +605,31 @@ export const ProgressMessageSchema = z.strictObject({
   etaMs: wholeNumber.nullable(),
 });
 export const HeartbeatMessageSchema = z.strictObject({ ...version, type: z.literal(WorkerMessageType.HEARTBEAT), counter: wholeNumber });
-export const WarningMessageSchema = z.strictObject({
-  ...envelope,
-  type: z.literal(WorkerMessageType.WARNING),
-  code: z.enum(CaptureWarningCode),
-  /**
-   * `ACTIVE`: the condition began. `CLEARED`: the worker saw it END (decision D72, finding A-2):
-   * a fault a capture warning raised is cleared by the capture side, never by a demo operation.
-   */
-  state: z.enum(CaptureWarningState),
-  /**
-   * What the warning is about: a device ID or a mic role OF THE PLAN, or null. Anything else is a
-   * protocol violation (the supervisor checks it): a subject is never free text, a credential or
-   * an address.
-   */
-  subject: id.nullable(),
-});
+export const WarningMessageSchema = z
+  .strictObject({
+    ...envelope,
+    type: z.literal(WorkerMessageType.WARNING),
+    code: z.enum(CaptureWarningCode),
+    /** Which of the causes of `code` it is (version 4): see `CaptureWarningReason`. */
+    reason: z.enum(CaptureWarningReason),
+    /**
+     * `ACTIVE`: the condition began. `CLEARED`: the worker saw it END (decision D72, finding A-2):
+     * a fault a capture warning raised is cleared by the capture side, never by a demo operation.
+     * A `CLEARED` names the same code, reason and subject as the `ACTIVE` it ends.
+     */
+    state: z.enum(CaptureWarningState),
+    /**
+     * What the warning is about: THE DEVICE ID of one camera or one microphone of the plan
+     * (version 4; D84 R-1, R-2). Never null and never a mic role on the wire: one microphone has
+     * one subject form, so "the same mic by ID and by role" cannot be two faults, and a clear can
+     * never miss its fault. Anything that is no device of the plan is a protocol violation (the
+     * supervisor checks it): a subject is never free text, a credential or an address.
+     */
+    subject: deviceIdOnWire,
+  })
+  .superRefine((warning, context) => {
+    if (!WARNING_REASONS_OF[warning.code].includes(warning.reason)) context.addIssue({ code: 'custom', message: 'the reason is not one of this code', path: ['reason'] });
+  });
 export const CrashMessageSchema = z.strictObject({
   ...version,
   /** Null when the worker fails before it was given a session. */
@@ -465,6 +655,24 @@ export const FirstVideoSampleRecordSchema = z.strictObject({
   pts: wholeNumber,
   /** Ticks per second of the video track. */
   timescale: wholeNumber.positive(),
+  /**
+   * WHAT ARRIVED BEFORE IT AND IS NOT IN THE FILE (version 4; spec §C.4 "held first frame, up to
+   * one GOP"; decisions D126, D130). A camera file starts with the first keyframe that can be
+   * placed at or after T0; the video packets the camera delivered before it are counted here, by
+   * the reason each could not be written. They are the specified start-up of a stream copy, not a
+   * fault: the amount is stated so that the manifest can carry it.
+   *   noTimestamp       before the camera's first sender report: the packet has no time
+   *   beforeAudioStart  before T0 was taken (the audio timeline did not exist yet)
+   *   noCameraClock     no camera wall clock yet: the packet could not be anchored
+   *   beforeKeyframe    anchored, but not a keyframe at or after T0: a file cannot begin with it
+   */
+  skipped: z.strictObject({ noTimestamp: wholeNumber, beforeAudioStart: wholeNumber, noCameraClock: wholeNumber, beforeKeyframe: wholeNumber }),
+  /**
+   * Camera time from the first skipped packet that had a timestamp to this sample, in ms: how much
+   * delivered video the file does not hold. 0 when nothing with a timestamp was skipped. Skipped
+   * packets without a timestamp are counted above and are not in this span.
+   */
+  skippedSpanMs: wholeNumber,
 });
 export const FirstDurableFragmentRecordSchema = z.strictObject({
   kind: z.literal(CaptureRecordKind.FIRST_DURABLE_FRAGMENT),
@@ -541,15 +749,77 @@ export const KeyframeIntervalRecordSchema = z.strictObject({
   /** True when `observedMs` is above the bound by more than the worker's tolerance (5 %): the warning of the channel was raised. */
   aboveBound: z.boolean(),
 });
+/**
+ * One interval of the one audio track (spec §E "interval records"; table `session_audio_intervals`).
+ * `index` 1 is the interval of the start; every realised operator switch opens the next one, and an
+ * interval ends where the next begins (the last one at `AUDIO_TIMELINE_END.samples`). The worker
+ * writes the record of a switch BEFORE the `ACK` of its command, so a supervisor that resolves the
+ * command has already handled the record.
+ *
+ * TIME. `fromSample` is the first sample of this source in the encoder's input, counted from T0
+ * (sample 0 is the capture instant T0; it is also the index in the PCM tap). Its time in the FILE
+ * is `fromSample + CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES` samples (`@dems/shared/api`; the AAC priming
+ * of the pinned mux flags), the same rule as `FIRST_VIDEO_SAMPLE.pts`. It is a multiple of
+ * `CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES`: the switch is a hard cut at an input-chunk boundary.
+ */
+export const AudioSourceIntervalRecordSchema = z
+  .strictObject({
+    kind: z.literal(CaptureRecordKind.AUDIO_SOURCE_INTERVAL),
+    /** The microphone that feeds the track from `fromSample` on: its device ID, and the role it holds in the plan. */
+    deviceId: deviceIdOnWire,
+    role: z.enum(CaptureMicRole),
+    /** 1, 2, 3 ... of this worker, without a gap. */
+    index: wholeNumber.positive(),
+    fromSample: wholeNumber,
+    sampleRateHz: wholeNumber.positive(),
+    /** Epoch ms of the capture instant of `fromSample` on the host clock (T0 + fromSample / rate). */
+    capturedAtMs: wholeNumber.positive(),
+    reason: z.enum(AudioSourceIntervalReason),
+    /** The correlation ID of the `SWITCH_AUDIO_SOURCE` this realises; null for the interval of the start. */
+    correlationId: id.nullable(),
+    /**
+     * Microseconds from the moment the worker read the command to the moment the selector was
+     * switched on the filtering thread (the switch bound, measured by the worker); null for the start.
+     */
+    appliedDelayUs: wholeNumber.nullable(),
+  })
+  .superRefine((record, context) => {
+    const start = record.reason === AudioSourceIntervalReason.SESSION_START;
+    if (record.fromSample % CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES !== 0) context.addIssue({ code: 'custom', message: 'a source changes at an input-chunk boundary', path: ['fromSample'] });
+    if (start !== (record.index === 1) || start !== (record.fromSample === 0)) context.addIssue({ code: 'custom', message: 'the interval of the start is index 1 at sample 0, and only it', path: ['index'] });
+    if (start !== (record.correlationId === null) || start !== (record.appliedDelayUs === null)) context.addIssue({ code: 'custom', message: 'a switch names its command and its delay; the start names neither', path: ['correlationId'] });
+  });
+/** The end of the audio timeline: `samples` were fed to the one encoder since T0, in `intervals` intervals. Written once, when the filtering thread ends. */
+export const AudioTimelineEndRecordSchema = z.strictObject({
+  kind: z.literal(CaptureRecordKind.AUDIO_TIMELINE_END),
+  samples: wholeNumber,
+  sampleRateHz: wholeNumber.positive(),
+  intervals: wholeNumber.positive(),
+});
 export const SealCompleteRecordSchema = z.strictObject({ kind: z.literal(CaptureRecordKind.SEAL_COMPLETE) });
-export const CaptureRecordSchema = z.discriminatedUnion('kind', [FirstVideoSampleRecordSchema, FirstDurableFragmentRecordSchema, FragmentCheckpointRecordSchema, KeyframeIntervalRecordSchema, SealCompleteRecordSchema]);
+export const CaptureRecordSchema = z.discriminatedUnion('kind', [
+  FirstVideoSampleRecordSchema,
+  FirstDurableFragmentRecordSchema,
+  FragmentCheckpointRecordSchema,
+  KeyframeIntervalRecordSchema,
+  AudioSourceIntervalRecordSchema,
+  AudioTimelineEndRecordSchema,
+  SealCompleteRecordSchema,
+]);
 /** `chain_0`: SHA-256 of nothing, what the chain of the first fragment is built on (spec §C.3). */
 export const CAPTURE_CHAIN_GENESIS_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 /** The records a worker writes at most once per camera: a second one is a protocol violation. */
 export const ONCE_PER_CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.KEYFRAME_INTERVAL];
 /** The record kinds that say a fragment is on the disk: from the first of them a session is durable. */
 export const DURABLE_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT];
+/** Whose device ID a record carries (version 4): a camera's, a microphone's, or none (a record of the session). */
+export const CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL];
+export const MIC_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_SOURCE_INTERVAL];
+export const SESSION_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.SEAL_COMPLETE];
 export type CaptureRecord = z.infer<typeof CaptureRecordSchema>;
+export type AudioSourceIntervalRecord = z.infer<typeof AudioSourceIntervalRecordSchema>;
+export type AudioTimelineEndRecord = z.infer<typeof AudioTimelineEndRecordSchema>;
+export type FirstVideoSampleRecord = z.infer<typeof FirstVideoSampleRecordSchema>;
 export type FragmentCheckpointRecord = z.infer<typeof FragmentCheckpointRecordSchema>;
 export type KeyframeIntervalRecord = z.infer<typeof KeyframeIntervalRecordSchema>;
 

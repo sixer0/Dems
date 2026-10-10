@@ -152,7 +152,8 @@ export function rebuildRefusal(failure: CoreCallFailure, context: RefusalContext
           ? details.from
           : null
         : context.sessionState;
-      return new SimTransitionError(from, detailText(failure, 'event') ?? context.action, undefined, simCode);
+      // Pass D6 (D156): the Core's `details.reason` travels on the rebuilt error (a code, never a value of the request).
+      return new SimTransitionError(from, detailText(failure, 'event') ?? context.action, undefined, simCode, detailText(failure, 'reason'));
     }
   }
   return new CoreRefusalError(code, { status, requestId: failure.requestId });

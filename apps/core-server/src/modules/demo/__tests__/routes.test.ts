@@ -431,7 +431,9 @@ describe('operations 72 and 75: the reset routine, through the server\'s own wir
     expect(demoControl(built.app).resetInFlight).toBe(false);
 
     expect(calls).toHaveLength(1);
-    expect(Object.keys(calls[0] ?? {}).sort()).toEqual(['actorId', 'clock', 'dataDir', 'database', 'log', 'quiesce', 'reason', 'scenario']);
+    expect(Object.keys(calls[0] ?? {}).sort()).toEqual(['actorId', 'clock', 'dataDir', 'database', 'evidenceStoreDir', 'log', 'quiesce', 'reason', 'scenario']);
+    // Decision D165: the root the routine's guard reads is the media root of THIS app's configuration.
+    expect(calls[0]?.evidenceStoreDir).toBe(built.app.config.mediaStoreDir);
     // The clock the routine reads is the server clock of the app (here: a manual one), not the system's.
     expect(calls[0]?.clock?.()).toBe(CLOCK_START);
     expect(built.trace).toContain(`routine:clock ${CLOCK_START}`);

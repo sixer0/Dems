@@ -252,6 +252,9 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
     AUDIO_SOURCE_SWITCHED: [
       { type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', deviceId: null, message: 'Switched', details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200 } },
       { type: 'AUDIO_SOURCE_SWITCHED', actorId: null, deviceId: 'DEV-0001', message: 'Switched', details: { fromInput: 'MIC-02', toInput: 'MIC-01', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200, sendingDeviceId: 'DEV-0001' } },
+      // D144: any numbered mic input (`MIC-NN`), not only the first pair.
+      { type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', deviceId: null, message: 'Switched', details: { fromInput: 'MIC-03', toInput: 'MIC-01', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200 } },
+      { type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', deviceId: null, message: 'Switched', details: { fromInput: 'MIC-02', toInput: 'MIC-03', fromMs: 1_790_823_600_000, toMs: 1_790_823_600_200 } },
     ],
     CAMERA_POE_CYCLED: [{ type: 'CAMERA_POE_CYCLED', actorId: 'OPR-003', deviceId: null, message: 'Port cycled', details: { deviceId: 'CAM-02', poePort: 'POE_CAM_2_AUX', streamWasLost: true, confirmed: true, gapFromMs: 1_790_823_600_000, gapToMs: 1_790_823_604_000 } }],
     TRANSCRIPT_REVISED: [{ type: 'TRANSCRIPT_REVISED', actorId: 'OPR-001', deviceId: null, message: 'Revised', details: { revisionId: 'TRV-000001', authorId: 'OPR-001', number: 1, baseRevision: 0, changeCount: 2, machineTranscriptHash: 'a'.repeat(64), reason: 'Subject name corrected' } }],
@@ -381,6 +384,9 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       [tested, 'host', 'camera.local'],
       [tested, 'endpointRef', 'http://admin:pass@192.0.2.10/'],
       [tested, 'endpointRef', 'x'.repeat(121)],
+      // Pass D1a (D134): a closed form, `urn:uuid:<UUID>` - free text a device announced is refused, and `uuid:` without `urn:` too.
+      [tested, 'endpointRef', 'free-text-a-device-announced'],
+      [adopted, 'endpointRef', 'uuid:00000000-0000-4000-8000-000000000001'],
       [tested, 'guardTripped', 1],
       [adopted, 'deviceId', 'DEV-0001x'.toLowerCase()],
       [adopted, 'operationId', 'testCaptureCandidateConnection'],
@@ -391,6 +397,23 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       [unreachable, 'sessionId', 'the open session'],
     ];
     for (const [item, key, value] of invalid) expect(codeOf(() => auditInputOf(withDetail(item, key, value))), `${item.type}.${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    // D145: `inputId` of CAPTURE_CONFIG_CHANGED and of MIC_SILENT take the same rule: MIC-03 is written, the other forms are refused.
+    const selector: AuditEntry = { type: 'CAPTURE_CONFIG_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Selector changed', details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' } };
+    const silent: AuditEntry = { type: 'MIC_SILENT', actorId: null, deviceId: null, message: 'Silent', details: { inputId: 'MIC-03', thresholdDbfs: -60, durationMs: 5_000, sinceMs: 1_790_823_600_000, active: true } };
+    for (const item of [selector, silent]) {
+      expect(() => auditInputOf(item), item.type).not.toThrow();
+      for (const value of ['MIC-3', 'CAM-01', 'the desk microphone', 'mic-03', 'MIC-03 ', '', 3]) {
+        expect(codeOf(() => auditInputOf(withDetail(item, 'inputId', value))), `${item.type}.inputId=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+      }
+    }
+    // D144: `fromInput` / `toInput` of AUDIO_SOURCE_SWITCHED take the numbered mic rule (`MIC-NN`) and nothing else.
+    const switched: AuditEntry = { type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', deviceId: null, message: 'Switched', details: { fromInput: 'MIC-01', toInput: 'MIC-03', fromMs: 1, toMs: 2 } };
+    expect(() => auditInputOf(switched)).not.toThrow();
+    for (const key of ['fromInput', 'toInput']) {
+      for (const value of ['MIC-3', 'CAM-01', 'the desk microphone', 'mic-03', 'MIC-03 ', '', 3]) {
+        expect(codeOf(() => auditInputOf(withDetail(switched, key, value))), `${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+      }
+    }
   });
 
   it.each(Object.entries(accepted))('%s: the rows of the specification are accepted', (_type, entries) => {

@@ -4,8 +4,26 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAPTURE_IPC_DEFAULTS, CAPTURE_MEDIA_PORT_MAX, CAPTURE_MEDIA_PORT_MIN, CAPTURE_PROTOCOL_VERSION, CaptureIngestState, CaptureMicRole, CaptureRecordKind, CaptureWarningCode, WorkerMessageType } from '@dems/capture-protocol';
-import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_CHANNELS, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
+import {
+  AudioSourceIntervalReason,
+  CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
+  CAPTURE_IPC_DEFAULTS,
+  CAPTURE_MEDIA_PORT_MAX,
+  CAPTURE_MEDIA_PORT_MIN,
+  CAPTURE_PROTOCOL_VERSION,
+  CAPTURE_SWITCH_BOUND_US,
+  CAPTURE_WORKER_SETTINGS,
+  CAPTURE_WORKER_SETTING_DEFAULTS,
+  CaptureIngestState,
+  CaptureMicRole,
+  CaptureRecordKind,
+  CaptureWarningCode,
+  CaptureWarningReason,
+  SWITCH_REFUSAL_CODES,
+  WARNING_REASONS_OF,
+  WorkerMessageType,
+} from '@dems/capture-protocol';
+import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_CHANNELS, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, MIC_DISCONNECT_DEBOUNCE_MS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
 import { MicRole } from '@dems/shared/domain';
 import { FaultKind } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
@@ -31,7 +49,7 @@ describe('what the C capture worker restates from the protocol package and the c
   const source = (name: string): string => readFileSync(resolve(root, 'src', name), 'utf8');
   const header = source('worker.h');
   const define = (name: string): string | undefined => new RegExp(`^#define ${name} +(\\S+)`, 'm').exec(header)?.[1];
-  const all = ['capture_worker.c', 'ipc.c', 'ingest.c', 'audio.c', 'sink.c'].map(source).join('\n');
+  const all = ['capture_worker.c', 'ipc.c', 'ingest.c', 'audio.c', 'sink.c', 'micwatch.c', 'anchor.c'].map(source).join('\n');
 
   it('the protocol version, the media port range, the longest frame and the audio format', () => {
     expect(define('CAPTURE_PROTOCOL_VERSION')).toBe(String(CAPTURE_PROTOCOL_VERSION));
@@ -51,10 +69,49 @@ describe('what the C capture worker restates from the protocol package and the c
     // PROGRESS is the sealing rows': the worker of this row writes none.
     expect(written('type')).not.toContain(WorkerMessageType.PROGRESS);
     // Row 59: the fMP4 writer's checkpoint and the observed keyframe interval joined the two of row 58.
-    expect(written('kind')).toEqual([CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL].sort());
+    // Row 71 (protocol version 4): the audio-source interval and the end of the audio timeline joined them.
+    expect(written('kind')).toEqual(
+      [CaptureRecordKind.AUDIO_SOURCE_INTERVAL, CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL].sort(),
+    );
     for (const state of Object.values(CaptureIngestState)) expect(all, state).toContain(`"${state}"`);
     for (const role of Object.values(CaptureMicRole)) expect(all, role).toContain(`"${role}"`);
     expect(all).toContain(`send_warning("${CaptureWarningCode.CAPTURE_FAULT}"`);
+  });
+
+  // Blueprint row 71 (worker half): protocol version 4. What the worker restates of it is held here.
+  it('version 4: every warning reason, interval reason and switch refusal the worker writes is one of the package, and each reason is written', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
+    const reasons = Object.values(CaptureWarningReason) as string[];
+    // Every reason the package names is a literal of the worker's sources, and the mic warnings name their code.
+    for (const reason of reasons) expect(all, reason).toContain(`"${reason}"`);
+    expect(all).toContain(`"${CaptureWarningCode.MIC_SILENT}", "${CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD}"`);
+    expect(all).toContain(`"${CaptureWarningCode.CAPTURE_FAULT}", "${CaptureWarningReason.MIC_DISCONNECTED}"`);
+    expect(all).toContain(`"${CaptureWarningCode.CAPTURE_FAULT}", "${CaptureWarningReason.MIC_RATE_AT_LIMIT}"`);
+    expect(WARNING_REASONS_OF.MIC_SILENT).toEqual([CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD]);
+    // The frame itself: reason before state, a subject that is always a string, and no way to write a null one.
+    expect(all).toContain('\\"code\\":\\"%s\\",\\"reason\\":\\"%s\\",\\"state\\":\\"%s\\",\\"subject\\":\\"%s\\"');
+    expect(all).not.toContain('\\"subject\\":null');
+    // Interval reasons: the start and the operator, nothing else.
+    const intervalReasons = [...new Set([...all.matchAll(/\\"reason\\":\\"([A-Z_]+)\\",\\"correlationId\\"/g)].map((match) => match[1] ?? ''))].sort();
+    expect(intervalReasons).toEqual(Object.values(AudioSourceIntervalReason).sort());
+    // Switch refusals the worker acknowledges with are the package's list.
+    for (const code of SWITCH_REFUSAL_CODES) expect(all, code).toContain(`"${code}`);
+    // The input chunk and the switch bound.
+    expect(define('QUANTUM')).toBe(String(CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES));
+    expect(CAPTURE_SWITCH_BOUND_US).toBe(Math.floor((CAPTURE_AAC_FRAME_SAMPLES * 1_000_000) / CAPTURE_AUDIO_SAMPLE_RATE_HZ));
+  });
+
+  it('version 4: the named settings of a worker process - the worker\'s defaults, the package\'s defaults and the contract constants are one set of numbers', () => {
+    expect(define('DEFAULT_INGEST_OPEN_WINDOW_MS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.ingestOpenWindowMs));
+    expect(define('DEFAULT_MIC_SILENCE_DBFS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDbfs));
+    expect(define('DEFAULT_MIC_SILENCE_MS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDurationMs));
+    expect(define('DEFAULT_MIC_DISCONNECT_MS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.micDisconnectDebounceMs));
+    // Capture spec §E.1: the three thresholds live in @dems/shared/api; the protocol package restates them.
+    expect(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDbfs).toBe(MIC_SILENCE_DBFS);
+    expect(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDurationMs).toBe(MIC_SILENCE_DURATION_MS);
+    expect(CAPTURE_WORKER_SETTING_DEFAULTS.micDisconnectDebounceMs).toBe(MIC_DISCONNECT_DEBOUNCE_MS);
+    // Every argument the package spells is one the worker reads.
+    for (const rule of Object.values(CAPTURE_WORKER_SETTINGS)) expect(source('capture_worker.c'), rule.argument).toContain(`"${rule.argument}"`);
   });
 
   it('the media-time origin is the AAC priming of the pinned mux flags: the contract constant follows the worker\'s flags', () => {

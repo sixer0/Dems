@@ -255,3 +255,14 @@ export function answerer(models: readonly string[] = [SERVER_MODEL]): Answerer {
   };
   return { fetchImpl, calls, authorizations };
 }
+
+/**
+ * The bytes of a stand-in model file: a ggml HEADER as whisper.cpp reads it, with the given
+ * `ftype`, then `tail`. The ten other hyper-parameters are those of a large-v3-turbo file. No model.
+ */
+export function ggmlBytes(ftype: number, tail = 'filler'): Buffer {
+  const header = Buffer.alloc(48);
+  header.writeUInt32LE(0x67676d6c, 0);
+  [51866, 1500, 1280, 20, 32, 448, 1280, 20, 4, 128, ftype].forEach((value, index) => header.writeInt32LE(value, 4 + index * 4));
+  return Buffer.concat([header, Buffer.from(tail)]);
+}

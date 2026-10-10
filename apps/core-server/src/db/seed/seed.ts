@@ -61,8 +61,20 @@ import {
 } from '../mapping';
 import * as schema from '../schema';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../schema';
-import { REGISTRY_COUNTER, type CaptureConfigRow, type CaptureDeviceRow, type NewOperatorCredentialRow, type NewSttConfigRow, type RegistryCounterRow } from '../schema';
+import { REGISTRY_COUNTER, type CaptureConfigRow, type CaptureDeviceRow, type NewOperatorCredentialRow, type NewSessionCaptureSourceRow, type NewSttConfigRow, type RegistryCounterRow } from '../schema';
 import { DatasetOptionError, buildSeedState, resolveDatasetOptions, type DatasetOptions, type ResolvedDatasetOptions } from './dataset';
+import {
+  SEED_DEMO_NOT_ASKED,
+  SEED_DEMO_NO_PAIR,
+  seedDemoItemsOf,
+  seedDemoSealProblem,
+  seedDemoSourceRows,
+  withSeedSealedPackages,
+  type SeedDemoContext,
+  type SeedDemoPackages,
+  type SeedDemoPlacement,
+  type SeedDemoReport,
+} from './demo-packages';
 import { StoreError, countAllTables, insertRows, lockAuditChain, writeRbacRows, type ChainHead, type RowExecutor } from '../store';
 
 export type SeedErrorCode =
@@ -203,6 +215,15 @@ export interface SeedOptions extends DatasetOptions {
 export interface SeedDependencies {
   /** The password hasher. Default: the Argon2id wrapper of the identity module. */
   readonly hashPassword?: (password: string) => Promise<PasswordHashRecord>;
+  /**
+   * THE v2 DEMO PACKAGES (integration pass E3; `demo-packages.ts`): the port that seals the two demo
+   * items of the dataset into the evidence store of the Core this database belongs to. Absent (a
+   * test, a template): the dataset is written as it is. The entry points hand it in; `prepareSeed`
+   * calls `seal`, and whoever commits the rows calls `place` after the commit or `discard`.
+   */
+  readonly demoPackages?: SeedDemoPackages | undefined;
+  /** What the port is told of the store (a reset: the folders it will remove, the root it judged). */
+  readonly demoContext?: SeedDemoContext | undefined;
 }
 
 /** Everything a seed writes, built before a transaction is open. Holds hash records, never a password. */
@@ -215,6 +236,8 @@ export interface PreparedSeed {
   readonly registryCounters: RegistryCounterRow[];
   /** The head the chain must have after the last audit row. */
   readonly expectedHead: ChainHead;
+  /** What the seed did about its v2 demo items, and the source rows of the sealed ones (empty unless SEALED). */
+  readonly demo: { readonly report: SeedDemoReport; readonly sourceRows: readonly NewSessionCaptureSourceRow[] };
 }
 
 /** A project database, the staging copy of one, or (for `test`) a test database. */
@@ -241,10 +264,19 @@ export async function prepareSeed(options: SeedOptions, dependencies: SeedDepend
   let resolved: ResolvedDatasetOptions;
   let state: SimState;
   let rows: MappedRows;
+  let demo: PreparedSeed['demo'] = { report: SEED_DEMO_NOT_ASKED, sourceRows: [] };
   const lastResetAt = options.lastResetAt ?? null;
   try {
     resolved = resolveDatasetOptions(options);
     state = buildSeedState(resolved);
+    // The v2 demo items: sealed BEFORE the rows are mapped (a row is written from its seal), both
+    // or neither. A port that answers SKIPPED, or a seal the row cannot be written from, leaves
+    // the dataset exactly as it is.
+    if (dependencies.demoPackages !== undefined) {
+      const sealed = await sealDemoItems(state, dependencies.demoPackages, dependencies.demoContext ?? { replaceable: [] });
+      state = sealed.state;
+      demo = { report: sealed.report, sourceRows: sealed.report.status === 'SEALED' ? seedDemoSourceRows(sealed.packages, resolved.now) : [] };
+    }
     // The tables keep every audit row and event: the dataset must hold its whole chain.
     assertCompleteRings(state);
     // CS-21 / dbc-3 §E.3 "Site config" (RECON-B2a R5): the two KEPT capture tables are written as
@@ -256,6 +288,8 @@ export async function prepareSeed(options: SeedOptions, dependencies: SeedDepend
     // `capture_device_credentials` stays empty).
     rows = toRows(state, { at: resolved.now, seededAt: resolved.now, lastResetAt });
   } catch (error) {
+    // Whatever the port staged is of no row now.
+    await dependencies.demoPackages?.discard();
     if (error instanceof DatasetOptionError || error instanceof MappingError) throw new SeedError('DATASET_INVALID', error.message);
     throw error;
   }
@@ -296,6 +330,38 @@ export async function prepareSeed(options: SeedOptions, dependencies: SeedDepend
     // The two registry counters have no dataset entity: both start at 1 (contract §4.11).
     registryCounters: REGISTRY_COUNTER.map((name) => ({ name, nextValue: 1 })),
     expectedHead: { seq: head.seq, hash: head.hash },
+    demo,
+  };
+}
+
+/** Asks the port for the two demo packages and puts their rows on the dataset; never throws for a port that could not seal. */
+async function sealDemoItems(state: SimState, port: SeedDemoPackages, context: SeedDemoContext): Promise<{ state: SimState; report: SeedDemoReport; packages: Parameters<typeof seedDemoSourceRows>[0] }> {
+  const skipped = (reason: string, message: string) => ({ state, report: { status: 'SKIPPED' as const, reason, message, items: [] }, packages: [] });
+  const items = seedDemoItemsOf(state);
+  if (items.length === 0) return skipped(SEED_DEMO_NO_PAIR, 'the dataset of this scenario holds no sealed demo item pair (the tamper item and one clean item)');
+  let outcome: Awaited<ReturnType<SeedDemoPackages['seal']>>;
+  try {
+    outcome = await port.seal(items, context);
+  } catch {
+    // A port that rejects left nothing it may keep: it is told to remove what it staged. No detail of its failure is passed on.
+    await port.discard();
+    return skipped('GENERATION_FAILED', 'the v2 demo packages could not be generated');
+  }
+  if (outcome.status === 'SKIPPED') return skipped(outcome.reason, outcome.message);
+  const problem = seedDemoSealProblem(items, outcome.packages);
+  if (problem !== null) {
+    await port.discard();
+    return skipped('SEAL_NOT_USABLE', problem);
+  }
+  return {
+    state: withSeedSealedPackages(state, outcome.packages),
+    report: {
+      status: 'SEALED',
+      reason: null,
+      message: null,
+      items: outcome.packages.map((entry) => ({ evidenceId: entry.evidenceId, sessionId: entry.sessionId, tampered: entry.tampered, manifestSha256: entry.seal.manifestSha256 })),
+    },
+    packages: outcome.packages,
   };
 }
 
@@ -356,6 +422,16 @@ export async function writeSeed(executor: RowExecutor, prepared: PreparedSeed): 
       }
     }
 
+    // The four source rows of each seed-sealed demo session (pass E3; after `capture_devices`, which
+    // they reference). None unless the port sealed.
+    if (prepared.demo.sourceRows.length > 0) {
+      try {
+        await executor.insert(schema.sessionCaptureSources).values([...prepared.demo.sourceRows]);
+      } catch {
+        throw new StoreError('WRITE_FAILED', 'session_capture_sources', 'the statement was refused.');
+      }
+    }
+
     // The guard trigger moved the head with every row: it must now be the dataset's own head.
     const after = await executor.select().from(schema.auditChainHead);
     const stored = after[0];
@@ -381,6 +457,10 @@ export interface SeedReport {
   /** The row count of each of the 30 tables after the commit, by SQL name. */
   readonly counts: Readonly<Record<string, number>>;
   readonly auditHead: ChainHead;
+  /** The v2 demo items of this seed: sealed, skipped (with the reason by name) or not asked for. */
+  readonly demoPackages: SeedDemoReport;
+  /** Where the sealed packages went; null unless they were sealed. */
+  readonly demoPlacement: SeedDemoPlacement | null;
   /** Milliseconds: building and mapping the dataset with the three hashes; the transaction; both with the checks. */
   readonly prepareMs: number;
   readonly writeMs: number;
@@ -429,13 +509,27 @@ export async function seedDatabase(pool: Pool, options: SeedDatabaseOptions, dep
     );
   }
 
-  const prepared = await prepareSeed(options, dependencies);
+  let prepared: PreparedSeed;
+  try {
+    prepared = await prepareSeed(options, dependencies);
+  } catch (error) {
+    await dependencies.demoPackages?.discard();
+    throw error;
+  }
   const preparedAt = performance.now();
 
-  await drizzle(pool).transaction(async (transaction) => {
-    await writeSeed(transaction, prepared);
-  });
+  try {
+    await drizzle(pool).transaction(async (transaction) => {
+      await writeSeed(transaction, prepared);
+    });
+  } catch (error) {
+    // No row names them: the staged packages go.
+    await dependencies.demoPackages?.discard();
+    throw error;
+  }
   const writtenAt = performance.now();
+  // The rows are committed: the packages they name go to their place in the store.
+  const demoPlacement = prepared.demo.report.status === 'SEALED' && dependencies.demoPackages !== undefined ? await dependencies.demoPackages.place() : null;
 
   const counts = await countAllTables(drizzle(pool));
   return {
@@ -448,6 +542,8 @@ export async function seedDatabase(pool: Pool, options: SeedDatabaseOptions, dep
     epoch: prepared.options.epoch,
     counts,
     auditHead: prepared.expectedHead,
+    demoPackages: prepared.demo.report,
+    demoPlacement,
     prepareMs: preparedAt - started,
     writeMs: writtenAt - preparedAt,
     totalMs: performance.now() - started,

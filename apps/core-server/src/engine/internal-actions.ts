@@ -19,11 +19,16 @@
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
 import type { CaptureDeviceStatus, RegisterCaptureDeviceInput } from '@dems/shared/sim';
+import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
 
 export interface InternalActions {
   registerCaptureDevice(device: RegisterCaptureDeviceInput): Promise<CaptureDeviceStatus>;
+  /** Blueprint row 71 (capture session): see `markCaptureConnectingIn`. */
+  markCaptureConnecting(sessionId: string): Promise<boolean>;
+  /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
+  switchCaptureAudioSource(change: AudioSourceSwitch): Promise<AudioSourceSwitched | null>;
 }
 
 const bound = new WeakMap<EngineUnit, InternalActions>();
@@ -47,4 +52,31 @@ export function registerCaptureDeviceIn(unit: EngineUnit, device: RegisterCaptur
     return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', 'this unit was not opened by the engine host: an INTERNAL action runs in a unit of `app.engine.run` only'));
   }
   return actions.registerCaptureDevice(device);
+}
+
+const NOT_A_HOST_UNIT = 'this unit was not opened by the engine host: an INTERNAL action runs in a unit of `app.engine.run` only';
+
+/**
+ * Blueprint row 71 (D84, D91 R-1 option A; `dbc-4` MR-S1): in the unit that persists RECORDING of
+ * a REAL recording, the session payload gains `captureDurable: false` ("connecting cameras"). The
+ * session wiring calls it right after the hosted `startRecording`, so the start, the member and the
+ * four source rows commit together. Resolves true when the member was set; false when that session
+ * is not RECORDING in this unit.
+ */
+export function markCaptureConnectingIn(unit: EngineUnit, sessionId: string): Promise<boolean> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.markCaptureConnecting(sessionId);
+}
+
+/**
+ * Blueprint row 71 (operation 81 in capture mode `real`): the switch the worker ACKNOWLEDGED becomes
+ * the state of the open session - the active / standby pair, the media time of the boundary, the
+ * timeline item - in the unit in which the caller writes the interval rows and the
+ * `AUDIO_SOURCE_SWITCHED` row. Writes no audit row itself. Resolves null when nothing changed.
+ */
+export function switchCaptureAudioSourceIn(unit: EngineUnit, change: AudioSourceSwitch): Promise<AudioSourceSwitched | null> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.switchCaptureAudioSource(change);
 }

@@ -42,3 +42,7 @@ sections it cites.
 4. **A red result goes back to the driver.** The runner reports the failing command and output; the controller resumes the row's driver with it. The driver fixes, and the failed check is run again (rule 1).
 5. **The controller schedules the runs** by the state of the wave: heavy runs go when the host and the locks are free, grouped per commit where rows overlap; a row's successors may start on its code before its runner has reported (optimistic, D92) — a red runner result then goes to the driver and to the successors that built on it.
 6. Negative controls and mutation proofs stay only where the row is about security or evidence integrity (sealing, signer, verify, credentials, access rules); elsewhere one failing-first test is enough.
+
+## Local devices — hard rule for every agent run (decision D163, 2026-10-10)
+
+A pre-check or a session start on a selector that names a LOCAL_DEVICE source (`CAM-03` / `MIC-03` or whatever the registry lists as this Mac's camera / microphone) OPENS the real device. No agent run — driver, test runner, gate session, judging session — selects, pre-checks or starts such a selector, and no agent sets `DEMS_LOCAL_SESSION_ATTENDED` or `DEMS_USER_ATTENDED`. Use FAKE (generated) sources or the scripted process door. Runs with the real devices are the user's, from the user's own Terminal.

@@ -137,13 +137,15 @@ describe('the guard and the RBAC module', () => {
   it('send one statement to the database, a read with no parameter: the three tables of the matrix', () => {
     expect(places(WRITE_STATEMENT)).toEqual([]);
     // Ruling D44 R2: `session-holder.ts` joined the list - the SEC35-18 holder read, one SELECT of
-    // `active_session.started_by` with no parameter, exactly the idiom of the matrix read.
+    // the open session's creator with no parameter, exactly the idiom of the matrix read. Pass D6
+    // (F-D4-3): the column is `created_by`; `started_by` is always NULL and must not be read.
     expect(files(/\bSELECT\b/g).sort()).toEqual(['src/plugins/permission-guard/matrix.ts', 'src/plugins/permission-guard/session-holder.ts']);
     const matrix = own.find((file) => file.path === 'src/plugins/permission-guard/matrix.ts')?.text ?? '';
     for (const table of ['public.roles', 'public.permissions', 'public.role_permissions']) expect(matrix).toContain(table);
     expect(matrix).not.toMatch(/\$\d/);
     const holder = own.find((file) => file.path === 'src/plugins/permission-guard/session-holder.ts')?.text ?? '';
-    expect(holder).toContain('SELECT started_by FROM public.active_session LIMIT 1');
+    expect(holder).toContain("'SELECT created_by FROM public.active_session LIMIT 1'");
+    expect(holder).not.toMatch(/SELECT\s+started_by/);
     expect(holder).not.toMatch(/\$\d/);
   });
 

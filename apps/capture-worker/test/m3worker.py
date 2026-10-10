@@ -43,6 +43,7 @@ WORKER = os.path.join(BUILD, "capture-worker")
 VARIANTS = {"worker": WORKER, "negctl": os.path.join(BUILD, "capture-worker-negctl"), "delaymoov": os.path.join(BUILD, "capture-worker-delaymoov"),
             "skeleton": os.path.join(BUILD, "capture-worker-skeleton111"), "norefusal": os.path.join(BUILD, "capture-worker-norefusal"), "nocomp": os.path.join(BUILD, "capture-worker-nocomp")}
 CAM, MIC = os.path.join(BUILD, "fake_cam"), os.path.join(BUILD, "fake_mic")
+VARIANTS["intervalskew"] = os.path.join(BUILD, "capture-worker-intervalskew")     # row 71: the interval record of a switch names a sample one chunk late
 DRIVER = os.path.join(REPO, "apps", "core-server", "test", "support", "capture-session-driver.ts")
 PORT_MIN, PORT_MAX = 8554, 8564                      # CAPTURE_MEDIA_PORT_MIN/MAX: every fixture and worker listener (SEC35-23)
 RESERVED_PORTS = (8554, 8556, 8558)                  # the Android emulators' gRPC endpoints on this host: never touched
@@ -52,7 +53,7 @@ if len(PORTS) != 2 or PORTS[0] == PORTS[1] or any(p < PORT_MIN or p > PORT_MAX o
 # Ports of other systems on this host that no process of a run may ever hold or reach (the SMART WMS stack and the
 # DEMS dev servers): checked on every socket snapshot.
 FOREIGN_PORTS = frozenset((5173, 5174, 5175, 5176, 5177, 5178, 8000, 5432, 4421, 4422, 4423, 4432, 8081))
-V = 3                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content)
+V = 4                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content; row 71: 4 since the microphone rows)
 FPS, FRAME_US, SR = 50, 20000, 48000
 REGRESSION_MS, PRODUCT_MS = 2.0, 40.0      # two different tolerances (AU2-04): never merged
 PRIMING = 1024
@@ -86,6 +87,40 @@ def tcp_listeners():
     """Listeners on the two media ports of this run, whoever owns them (the "ports busy" check before a start)."""
     txt = sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"]).stdout
     return [l for l in txt.splitlines() if any(l.rstrip().endswith(":%d (LISTEN)" % p) for p in PORTS)]
+
+
+PORT_WAIT_S = float(os.environ.get("M3_PORT_WAIT_S", "90"))
+
+
+def port_holders(rows):
+    """The lsof rows of the listeners, each with the command line of its process: WHO holds the port (integration
+    pass E2: `node 62736` alone did not say that it was a test worker of another suite)."""
+    out = []
+    for l in rows:
+        parts = l.split()
+        cmd = sh(["ps", "-o", "command=", "-p", parts[1]]).stdout.strip() if len(parts) > 1 and parts[1].isdigit() else ""
+        out.append("%s  <- %s" % (" ".join(parts), cmd[:240] or "?"))
+    return out
+
+
+def ports_free_or_exit():
+    """The guard before a check starts anything: nobody listens on the two media ports of this run. This process has
+    started nothing yet, so a listener is NOT of this check: a fixture of another suite on the shared range 8554-8564
+    (the fake ONVIF stub of the core-server unit tests takes its two TCP ports from the TOP of the range and holds them
+    for seconds) or what an earlier check left. It is waited for, up to M3_PORT_WAIT_S (default 90 s), and NAMED on
+    standard error either way; a port still held after that ends the check without a verdict, as before. Nothing is
+    hidden by the wait: every check judges its own leftovers (`no_leftover`), and the runner looks at both ports again
+    after the series."""
+    rows = tcp_listeners()
+    if not rows:
+        return
+    t0, first = time.monotonic(), port_holders(rows)
+    while rows and time.monotonic() - t0 < PORT_WAIT_S:
+        time.sleep(0.5)
+        rows = tcp_listeners()
+    if rows:
+        sys.exit("ports busy before start: %r (waited %.0f s; first seen: %r)" % (port_holders(rows), time.monotonic() - t0, first))
+    sys.stderr.write("ports were busy for %.1f s before start, free now; the holder was not of this check: %r\n" % (time.monotonic() - t0, first))
 
 
 # Every process this run started, and the pids a process of ours started on our behalf (the worker the
@@ -229,9 +264,9 @@ def cmd_build(_):
 class Worker:
     """One worker process driven over its standard streams, with an EMPTY environment (protocol rule)."""
 
-    def __init__(self, d, binary=WORKER, heartbeat_ms=500, listen_timeout_s=12, manifest=True):
+    def __init__(self, d, binary=WORKER, heartbeat_ms=500, listen_timeout_s=12, manifest=True, extra=()):
         self.d, self.frames, self.raw, self.lock = d, [], [], threading.Lock()
-        args = [binary, "--log", os.path.join(d, "worker.jsonl"), "--heartbeat-ms", str(heartbeat_ms), "--listen-timeout-s", str(listen_timeout_s)]
+        args = [binary, "--log", os.path.join(d, "worker.jsonl"), "--heartbeat-ms", str(heartbeat_ms), "--listen-timeout-s", str(listen_timeout_s)] + list(extra)   # extra: named settings (row 71)
         if manifest:
             args += ["--audio-manifest", os.path.join(d, "manifest.jsonl")]
         self.t_spawn = time.monotonic()
@@ -519,12 +554,11 @@ def worker_log(d):
 # ------------------------------------------------------------------------------------------ session (M3-WI-1, H-4, H-10)
 def run_session(a, d, binary, truth, after_start=None, mic_extra=(), stop_after_last_cam=1.5):
     sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[-40:].strip("-")
-    if tcp_listeners():
-        sys.exit("ports busy before start: %r" % tcp_listeners())
+    ports_free_or_exit()
     plan = make_plan(d, sid, tap=os.path.join(d, "tap.s16") if getattr(a, "tap", False) else None)
     json.dump(truth, open(os.path.join(d, "truth.json"), "w"), indent=1)
     procs, info = [], {"sessionId": sid}
-    w = Worker(d, binary)
+    w = Worker(d, binary, extra=getattr(a, "worker_args", ()))
     procs.append(w.p)
     try:
         t_hello, hello = w.wait(lambda f: f.get("type") == "HELLO", 5, "HELLO")
@@ -661,7 +695,7 @@ def cmd_session(a):
         t0 = [l for l in worker_log(d) if l["message"] == "audio_started"][0]["t0_real_us"]
         res["t0"] = {"mic_e0_real_us": mic["e0_real_us"], "worker_t0_real_us": t0, "t0_error_us": t0 - mic["e0_real_us"]}
         recs = info["records"]
-        kinds = sorted((r["record"]["kind"], r["record"]["deviceId"]) for r in recs)
+        kinds = sorted((r["record"]["kind"], r["record"]["deviceId"]) for r in recs if r["record"]["kind"] in ROW58_RECORD_KINDS)   # row 71: a record of the session has no deviceId
         # Row 59: the writer's checkpoints and the keyframe-interval record travel in the same sequence; the four
         # once-only records of row 58 are still exactly these four, and the sequence has no gap.
         kinds = [k for k in kinds if k[0] in ROW58_RECORD_KINDS]
@@ -703,10 +737,22 @@ def cmd_avcheck(a):
     product bound - the control of M3-AV-2 (b) that shows the analyser sees the slope."""
     d, truth, paths = finished(a)
     v = Crit()
+    if a.assume_inject_ms is not None:
+        # The files are judged against ANOTHER injected offset than the cameras had (integration pass E2): a +-80 ms
+        # session judged as "0, 0" is 80 ms off on both cameras and must FAIL both bounds. On a session recorded
+        # THROUGH THE SUPERVISOR this is the control that its AV judgement can fail (a proof build of the worker can
+        # no longer be started there: the supervisor refuses it at HELLO).
+        assumed = [float(x) for x in a.assume_inject_ms.split(",")]
+        if len(assumed) != len(truth["cams"]):
+            sys.exit("--assume-inject-ms needs one value per camera (%d)" % len(truth["cams"]))
+        for c, ms in zip(truth["cams"], assumed):
+            for e in c["events"]:
+                e["truth_offset_us"] += int(round((ms - c["inject_ms"]) * 1000))
+            c["inject_ms"] = ms
     reg, prod, rav = av_offsets(d, truth, paths, assume_drift_ppm=a.assume_drift_ppm)
     v("av_regression_2ms", reg)
     v("av_product_40ms", prod)
-    finish({"check": "AV judgement of a finished run", "run": a.name, "assume_drift_ppm": a.assume_drift_ppm, "av_offsets": rav}, True, a.expect_fail, None, v)
+    finish({"check": "AV judgement of a finished run", "run": a.name, "assume_drift_ppm": a.assume_drift_ppm, "assume_inject_ms": a.assume_inject_ms, "av_offsets": rav}, True, a.expect_fail, None, v)
 
 
 def cmd_gopcheck(a):
@@ -930,7 +976,7 @@ def cmd_camstop(a):
         tail = [n for n, v in zip(audio_per_moof, video_per_moof) if v == 0]
         res["fragments_file2"]["longest_audio_only_run_s"] = round(max(tail) * 1024 / SR, 3) if tail else None
         ok &= bool(tail) and max(tail) * 1024 / SR <= 4.5 and len(tail) >= 2
-        ok &= {"v": V, "type": "WARNING", "sessionId": info["sessionId"], "code": "CAPTURE_FAULT", "state": "ACTIVE", "subject": "CAM-02"} in info["warnings"]
+        ok &= {"v": V, "type": "WARNING", "sessionId": info["sessionId"], "code": "CAPTURE_FAULT", "reason": "CAMERA_STREAM_ENDED", "state": "ACTIVE", "subject": "CAM-02"} in info["warnings"]
         ok &= not info["crash"] and not info["lines_that_are_no_frame"]
     ok &= not info["leftovers"]["processes"] and not info["leftovers"]["listeners"]
     finish(res, ok, a.expect_fail, d)
@@ -994,8 +1040,7 @@ def cmd_udp(a):
     socket of the worker is taken while the UDP client is connected. PASS = no UDP socket, every socket on 127.0.0.1.
     With --variant skeleton the row-111 binary is measured the same way and must FAIL (the negative control)."""
     d = rundir(a.name, fresh=True)
-    if tcp_listeners():
-        sys.exit("ports busy before start: %r" % tcp_listeners())
+    ports_free_or_exit()
     procs, res, snaps = [], {"check": "M3-RTSP-BIND-1 (worker sockets, TCP and UDP)", "run": a.name, "variant": a.variant}, []
     sid = "S-M3W-UDP"
     plan = make_plan(d, sid)
@@ -1085,7 +1130,7 @@ def cmd_udp(a):
         res["refusal_logged"] = [l["message"] for l in worker_log(d) if l["message"] in ("INGEST_OPEN_REFUSED", "INGEST_OPEN_STUCK")]
         res["libav_error_lines_before_the_refusal"] = sum(1 for l in worker_log(d) if l["message"] == "LIBAV_MESSAGE")
         # The refused camera is reported as a fault, records nothing, and the other camera is not disturbed.
-        v("refused_camera_is_a_fault_and_worker_exits_0", res["worker_rc"] == 0 and {"v": V, "type": "WARNING", "sessionId": sid, "code": "CAPTURE_FAULT", "state": "ACTIVE", "subject": "CAM-01"} in res["warnings"])
+        v("refused_camera_is_a_fault_and_worker_exits_0", res["worker_rc"] == 0 and {"v": V, "type": "WARNING", "sessionId": sid, "code": "CAPTURE_FAULT", "reason": "CAMERA_NOT_CONNECTED", "state": "ACTIVE", "subject": "CAM-01"} in res["warnings"])
         v("refused_camera_has_no_file", not res["camera1_file_exists"] and res["refusal_logged"] == ["INGEST_OPEN_REFUSED"])
         v("other_camera_recorded", bool(res["camera2_playable"]) and res["camera2_playable"]["playable"])
     time.sleep(0.3)
@@ -1391,10 +1436,14 @@ def cmd_sup(a):
                      respawn (option C), its files keep their durable prefix untouched, and the NEXT session on the same
                      supervisor gets a new process and a fresh playable file.
        mode kc3    : M3-KC-3 on the real worker: killed BEFORE any fragment -> respawned with back-off, same paths,
-                     and the respawned worker records playable files."""
+                     and the respawned worker records playable files.
+       mode refuse : rows 61 / 71b on the REAL binaries (integration pass E2): a PROOF build of the worker (--variant
+                     negctl: the forbidden mux option) is refused by the production supervisor at its HELLO with
+                     CAPTURE_WORKER_PROOF_BUILD - never started, never retried, nothing recorded, no listener and no
+                     worker process left while the supervisor lives. With the release worker (--variant worker) the
+                     start is accepted: the control, which must FAIL on `refused_with_proof_build_code`."""
     d = rundir(a.name, fresh=True)
-    if tcp_listeners():
-        sys.exit("ports busy before start: %r" % tcp_listeners())
+    ports_free_or_exit()
     procs, res, ok, v, early = [], {"check": "supervisor + real worker (%s)" % a.mode, "run": a.name}, True, Crit(), False
     cfg = {"command": VARIANTS[a.variant], "args": ["--log", os.path.join(d, "worker.jsonl"), "--audio-manifest", os.path.join(d, "manifest.jsonl")] + (["--listen-timeout-s", "4"] if a.mode == "nocam" else []),
            "limits": json.loads(a.limits)}
@@ -1417,7 +1466,7 @@ def cmd_sup(a):
             reg, prod, rav = av_offsets(d, truth, paths)
             res["h4_one_encoder_both_files"], res["av_offsets"] = r4, rav
             recs = drv.all("record")
-            res["records"] = [[e["seq"], e["record"]["kind"], e["record"]["deviceId"]] for e in recs]
+            res["records"] = [[e["seq"], e["record"]["kind"], e["record"].get("deviceId")] for e in recs]
             v("av_regression_2ms", reg)
             v("av_product_40ms", prod)
             v("files_growth_h4_records", all(o for o, _ in pl) and min(grew) >= 3 and o4 and [r[0] for r in res["records"]] == list(range(1, len(res["records"]) + 1)) and sorted(r[1] for r in res["records"] if r[1] in ROW58_RECORD_KINDS) == ["FIRST_DURABLE_FRAGMENT"] * 2 + ["FIRST_VIDEO_SAMPLE"] * 2)
@@ -1489,6 +1538,42 @@ def cmd_sup(a):
             ok &= res["status"] == {"phase": "FAULTED", "attempt": 1, "durable": False, "workerPid": None} and res["files_exist"] == [False, False]
             ok &= len(downs) == 1 and res["worker_down"][0][1] == "NO_CAMERA_CONNECTED" and res["worker_down"][0][3] is None
             ok &= sorted(w[2] or "" for w in res["warnings"]) == ["", "CAM-01", "CAM-02"] and res["seconds_to_faulted"] < 12
+        elif a.mode == "refuse":
+            sid = "S-M3SUP-REFUSE"
+            plan = make_plan(d, sid)
+            json.dump(plan, open(os.path.join(d, "plan.json"), "w"), indent=1)
+            drv.say(cmd="start", sessionId=sid, plan=plan)
+            e = drv.wait(lambda e: e.get("event") in ("started", "startFailed") and e.get("sessionId") == sid, 15, "the answer to the start of " + sid)
+            res["start_answer"] = {k: e.get(k) for k in ("event", "error", "code", "detail")}
+            downs = drv.all("workerDown")
+            res["worker_down"] = [[x["down"]["code"], x["down"]["detail"], x["restartInMs"]] for x in downs]
+            v("refused_with_proof_build_code", e["event"] == "startFailed" and e.get("code") == "CAPTURE_FAULT" and e.get("detail") == "CAPTURE_WORKER_PROOF_BUILD"
+              and res["worker_down"] == [["CAPTURE_WORKER_PROOF_BUILD", "PROOF_BUILD", None]])
+            if e["event"] == "started":
+                # The worker was accepted (the control runs the release build): the session is ended, nothing else is judged.
+                res["status_after_start"] = drv.status()
+                mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
+                            stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                procs.append(mic)
+                drv.say(cmd="stop", sessionId=sid, reason="CRASH")
+                drv.wait(lambda e: e.get("event") == "stopped" and e.get("sessionId") == sid, 30, "stopped " + sid)
+            else:
+                time.sleep(3.0)                                # every back-off there could be: nothing may start
+                st = drv.status()
+                res["status_3s_after_the_refusal"] = st
+                launched = drv.all("timing")
+                alive = [(pid, cmd[:150]) for pid, cmd in own_processes() if cmd.split()[:1] == [cfg["command"]]]
+                res["worker_launches"], res["worker_processes_alive"] = len(launched), alive
+                v("not_retried_idle_worker_gone", st["phase"] == "IDLE" and st.get("workerPid") is None and len(launched) == 1 and len(drv.all("workerDown")) == 1 and not alive
+                  and not [x for x in drv.all("phase") if x.get("phase") in ("RECORDING", "RESTARTING")])
+                # While the supervisor process is still alive: nobody listens on the media ports, and no process of this run listens at all.
+                socks = own_sockets()
+                res["sockets_while_the_supervisor_lives"] = {"media_port_listeners": tcp_listeners(), "own_listeners": socks["listeners"], "own_processes": socks.get("processes", 0)}
+                v("no_listener_after_the_refusal", not tcp_listeners() and not socks["listeners"] and socks.get("processes", 0) >= 1)
+                media = sorted(os.listdir(os.path.join(d, "media")))
+                log = worker_log(d)
+                res["media_folder"], res["worker_log_messages"] = media, [l.get("message") for l in log]
+                v("nothing_recorded", not media and not drv.all("record") and bool(log) and not [l for l in log if l.get("message") != "worker_starting"])     # the worker never got a START: its log is its first line
         res["timing"] = [e for e in drv.all("timing")]
         res["supervisor_reports"] = [e for e in drv.all("report")]
         v("mode_checks", ok)
@@ -1751,8 +1836,7 @@ def run_until(a, d, binary, truth, ready, hold_s):
     """A worker-level session that is ended by SIGKILL: sources started, `ready(worker)` awaited, `hold_s` slept, kill.
     Returns (worker, plan, info): info carries the kill instant and how long the harness needed to know the tail."""
     sid = "S-M3W-%s" % a.name.upper().replace("_", "-")[-40:].strip("-")
-    if tcp_listeners():
-        sys.exit("ports busy before start: %r" % tcp_listeners())
+    ports_free_or_exit()
     plan = make_plan(d, sid)
     json.dump(truth, open(os.path.join(d, "truth.json"), "w"), indent=1)
     procs, info = [], {"sessionId": sid}
@@ -2048,6 +2132,15 @@ def cmd_mg1(a):
     finish(res, True, a.expect_fail, None, v)
 
 
+def m5(name):
+    """A check of test/m5mic.py (row 71), handed this module: its Worker, its sessions, its analysers."""
+    def run(a):
+        sys.path.insert(0, HERE)
+        import m5mic
+        getattr(m5mic, name)(a, sys.modules[__name__])
+    return run
+
+
 def main():
     ap = argparse.ArgumentParser()
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -2067,7 +2160,8 @@ def main():
     case("session", cmd_session, case={"choices": list(CASES), "default": "zero"}, switch={"action": "store_true"}, tap={"action": "store_true"}, stall={"action": "store_true"},
          gop={"type": int, "default": FPS, "help": "the fake cameras' GOP in frames (250 = the long-GOP camera, a keyframe every 5 s)"},
          **{"mic-late-us": {"type": int, "default": 0, "help": "the fake mics hand every chunk over this late (a device latency the worker cannot know)"}})
-    case("avcheck", cmd_avcheck, **{"assume-drift-ppm": {"type": float, "default": None}})
+    case("avcheck", cmd_avcheck, **{"assume-drift-ppm": {"type": float, "default": None},
+                                    "assume-inject-ms": {"default": None, "help": "judge against these injected offsets, one per camera (e.g. 0,0): the control of a supervisor session"}})
     case("gopcheck", cmd_gopcheck, gop={"type": int, "required": True})
     case("continuity", cmd_continuity, control={"choices": ["cut", "toneslip"], "default": None})
     case("selfcheck", cmd_selfcheck)
@@ -2079,7 +2173,7 @@ def main():
     case("shape", cmd_shape)
     case("mic", cmd_mic, mode={"choices": list(MIC_MODES), "required": True})
     case("nocam", cmd_nocam, mode={"choices": ["none", "one"], "required": True})
-    case("sup", cmd_sup, mode={"choices": ["run", "kc1", "kc3", "nocam"], "required": True}, case={"choices": list(CASES), "default": "zero"},
+    case("sup", cmd_sup, mode={"choices": ["run", "kc1", "kc3", "nocam", "refuse"], "required": True}, case={"choices": list(CASES), "default": "zero"},
          limits={"default": "{}", "help": "overrides of CAPTURE_IPC_DEFAULTS as JSON (negative controls: '{\"maxRestarts\":0}')"})
     # Row 62: cameras with hand-written sender reports (M3-AV-2 (c); nearBound; the camera clock sanity bound).
     case("srcam", cmd_srcam, mode={"choices": list(SR_MODES), "required": True},
@@ -2090,6 +2184,12 @@ def main():
     case("writefault", cmd_writefault)
     case("replay", cmd_replay, control={"choices": ["flip"], "default": None}, other={"default": None})
     case("mg1", cmd_mg1)
+    # Row 71 (worker half): the microphone switch, its interval records and the warnings (test/m5mic.py).
+    case("m5switch", m5("cmd_switch"))
+    case("m5gap", m5("cmd_gap"), control={"choices": ["cut1000"], "default": None})
+    case("m5bound", m5("cmd_bound"), **{"bound-us": {"type": int, "default": 21333}})
+    case("m5warn", m5("cmd_warn"))
+    case("m5rate", m5("cmd_rate"), ppm={"type": int, "default": -8000})
     global ARGS
     a = ARGS = ap.parse_args()
     a.fn(a)

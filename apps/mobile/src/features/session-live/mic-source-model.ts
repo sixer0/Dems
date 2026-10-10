@@ -21,9 +21,9 @@
  * command (OD-11).
  */
 import { ApiErrorCode } from '@dems/shared/api';
-import { MicInputId, SessionState, type AudioTrackId } from '@dems/shared/domain';
+import { SessionState, type AudioTrackId, type MicInputId } from '@dems/shared/domain';
 import {
-  MIC_INPUT_OF_CHANNEL,
+  micInputOfChannel,
   OperatorRole,
   Permission,
   ROLE_PERMISSIONS,
@@ -31,6 +31,7 @@ import {
   SimTransitionError,
   type SimState,
 } from '@dems/shared/sim';
+import { isMicInputId, otherMicInput } from '@/features/capture-selector/mic-input-name';
 
 // ── The gate (G4, G5) ────────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,12 @@ export function switchFailureFacts(error: unknown): Readonly<Record<string, stri
 
 // ── The view ─────────────────────────────────────────────────────────────────────────────
 
-const OTHER_INPUT: Readonly<Record<MicInputId, MicInputId>> = { 'MIC-01': MicInputId.MIC_02, 'MIC-02': MicInputId.MIC_01 };
+/**
+ * The other input of the built-in pair: the last resort when neither the session nor the selector
+ * names a standby. Integration pass D2 (D133 (1)): a mic input id is the Core's `MIC-NN` text, so the
+ * ids below are typed `string` and nothing but this table knows the two built-in ids.
+ */
+const BUILT_IN_OTHER: Readonly<Record<string, string>> = { 'MIC-01': 'MIC-02', 'MIC-02': 'MIC-01' };
 
 /** `common.devices.*` key of a mic input's short name ("MIC 1"). */
 export const MIC_INPUT_LABEL_KEY: Readonly<Record<MicInputId, string>> = {
@@ -125,31 +131,50 @@ export const MIC_INPUT_LABEL_KEY: Readonly<Record<MicInputId, string>> = {
   'MIC-02': 'common.devices.mic2',
 };
 
-/** The mic input behind a meter channel (SH-17: the meters are keyed by input since schema v2). */
-export const inputOfChannel = (channel: AudioTrackId): MicInputId => MIC_INPUT_OF_CHANNEL[channel];
+/** One microphone line of the capture configuration, as far as the channel rule reads it. */
+export type MicLine = { readonly inputId: string };
+
+/**
+ * The mic input behind a meter channel (SH-17: the meters are keyed by input since schema v2).
+ * Ruling D137 (integration pass D5): it is the microphone line at the channel's position in the
+ * capture configuration (`captureMicLines(state)`, input order), whatever its id; without lines,
+ * the built-in pair.
+ */
+export const inputOfChannel = (channel: AudioTrackId, mics: readonly MicLine[] = []): string => micInputOfChannel(mics, channel);
 
 /** The input the Core says is inside `AUDIO-01` now: the session's pair, else the meters' member. */
-export const selectActiveInputId = (s: SimState): MicInputId => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
+export const selectActiveInputId = (s: SimState): string => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
 
-/** The hot standby: the session's pair, else the other input. */
-export const selectStandbyInputId = (s: SimState): MicInputId => s.session?.audioSource?.standbyInputId ?? OTHER_INPUT[selectActiveInputId(s)];
+/**
+ * The hot standby: the session's pair; else the other microphone line of the selector the session
+ * records under (its snapshot, else the stored one), whatever its number; else the other input of
+ * the built-in pair.
+ */
+export const selectStandbyInputId = (s: SimState): string => {
+  const named = s.session?.audioSource?.standbyInputId;
+  if (named !== undefined) return named;
+  const active = selectActiveInputId(s);
+  const lines: readonly { readonly inputId: string }[] = (s.session?.captureConfig ?? s.captureConfig)?.mics ?? [];
+  return otherMicInput(lines, active) ?? BUILT_IN_OTHER[active] ?? active;
+};
 
 /** What a mic card or tile says about its input while a session records. */
 export type MicSourceRole = 'ACTIVE' | 'STANDBY';
 
 /** The role of `inputId` in the pair; pure. */
-export const micSourceRole = (inputId: MicInputId, activeInputId: MicInputId): MicSourceRole => (inputId === activeInputId ? 'ACTIVE' : 'STANDBY');
+export const micSourceRole = (inputId: string, activeInputId: string): MicSourceRole => (inputId === activeInputId ? 'ACTIVE' : 'STANDBY');
 
 /**
  * The input an active `MIC_SILENT` warning names, or `null` when none is active. The fault's target
  * is the channel of the input or the input itself; a warning without a readable target is about the
  * active input.
  */
-export function silentInputOf(faults: SimState['faults']['active'], activeInputId: MicInputId): MicInputId | null {
+export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string, mics: readonly MicLine[] = []): string | null {
   const fault = faults.find((entry) => entry.kind === 'MIC_SILENT');
   if (!fault) return null;
-  if (fault.target === MicInputId.MIC_01 || fault.target === MicInputId.MIC_02) return fault.target;
-  const input = fault.target === null ? undefined : (MIC_INPUT_OF_CHANNEL as Readonly<Record<string, MicInputId | undefined>>)[fault.target];
+  // The input itself, by the id the Core sent (`MIC-NN`, any number).
+  if (isMicInputId(fault.target)) return fault.target;
+  const input = fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02' ? micInputOfChannel(mics, fault.target) : undefined;
   return input ?? activeInputId;
 }
 

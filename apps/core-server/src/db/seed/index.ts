@@ -29,3 +29,20 @@ export {
   type SeedReport,
   type SeedTarget,
 } from './seed';
+export {
+  SEED_DEMO_NOT_ASKED,
+  SEED_DEMO_NO_PAIR,
+  seedDemoItemsOf,
+  seedDemoSealProblem,
+  seedDemoSourceRows,
+  withSeedSealedPackages,
+  type SeedDemoContext,
+  type SeedDemoItem,
+  type SeedDemoOutcome,
+  type SeedDemoPackages,
+  type SeedDemoPlacement,
+  type SeedDemoReport,
+  type SeedDemoSeal,
+} from './demo-packages';
+export { DEMO_HELPER_TIMEOUT_MS, SeedHelperProblem, runSeedHelper, seedHelperProblemOf } from './demo-helper';
+export { demoPackagesOfEnvironment, seedDemoLines, type DemoCoreEnvironment } from './demo-core';

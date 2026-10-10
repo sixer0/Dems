@@ -13,6 +13,32 @@
  * Another thread asks for a switch with audio_request_switch(); it is applied before the next
  * input quantum (10 ms) and acknowledged from here, once it is real.
  *
+ * THE SWITCH (blueprint row 71; capture spec E; OD-09, OD-11; errata AU2-05, AU2-07).
+ *   - WHO: the operator's command, and nothing else. `cur_map` is written in filter_build() and
+ *     in filter_apply_commands(); the warning raiser (micwatch.c) has no way to reach either.
+ *   - WHEN: at the next input quantum after the command was read. Every frame the graph was given
+ *     before the command is already through the selector (the graph is drained after every
+ *     quantum, and the selector emits a frame as soon as both inputs hold it), so the first sample
+ *     of the new source is EXACTLY the first sample of that quantum: `fromSample` of the record.
+ *     The bound is one quantum (10 ms) plus the time the command waited in the pipe; the record
+ *     states what it was (`appliedDelayUs`) and a check holds it to 21,333 us.
+ *   - HOW: a HARD CUT (gate answer Q-CLICK, the default): no crossfade, no sample inserted and
+ *     none dropped - both inputs run on the same sample counter, and the selector passes one of
+ *     them. The cut is audible as a click when the two signals differ at that sample (AU2-07:
+ *     a step of 0.42 to 0.71 against 0.02 to 0.03 per sample); a crossfade would mix both
+ *     microphones for its length, which "one active microphone" (OD-09) does not allow without
+ *     a decision.
+ *   - THE RECORD: one AUDIO_SOURCE_INTERVAL when T0 is taken and one per realised switch, written
+ *     BEFORE the ACK of that switch; AUDIO_TIMELINE_END when the thread ends. Media time, counted
+ *     here from the sample counter of the encoder's input; never from the operator's clock.
+ *   A switch that arrives before T0 is refused (NOT_RECORDING): there is no timeline to place it on.
+ *
+ * WARNINGS, NEVER A SWITCH (spec E.1; micwatch.h). Per microphone, by its DEVICE ID: MIC_SILENT
+ * (delivered samples at or below the silence level for the silence duration), CAPTURE_FAULT /
+ * MIC_DISCONNECTED (no sample for the debounce) and CAPTURE_FAULT / MIC_RATE_AT_LIMIT (the rate
+ * controller held at +-MIC_MAX_PPM: D85 R-3 - such a microphone was degrading without a word).
+ * Each is raised and cleared; the source that feeds the encoder stays what the operator chose.
+ *
  * MIC INPUT. Each mic is a named pipe written by ANOTHER PROCESS (a fixture, later an adapter
  * process): 32-bit float PCM, 48 kHz, mono. The worker generates no audio itself, so nothing in
  * it can cancel an error of its own clock (W-5).
@@ -39,6 +65,7 @@
  * CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES in @dems/shared/api.
  */
 #include "worker.h"
+#include "micwatch.h"
 
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
@@ -87,6 +114,9 @@ typedef struct MicIn {
     int n_meter;
     int64_t missing, dropped, restarts;
     double ppm;                         /* what the controller asks of the resampler now */
+    MicWatch watch;                     /* silence, disconnect, rate at its limit (micwatch.h): says, never switches */
+    int taken;                          /* samples it delivered into the last quantum */
+    double taken_sumsq;                 /* the sum of their squares */
 } MicIn;
 
 /* Private to the filtering thread. */
@@ -94,7 +124,8 @@ static AVFilterGraph *graph;
 static AVFilterContext *src[NMIC], *sink;
 static pthread_t filter_tid;
 static MicIn mics[NMIC];
-static int cur_map;
+static int cur_map;                     /* the input the selector passes: written by filter_build and filter_apply_commands only */
+static int intervals;                   /* AUDIO_SOURCE_INTERVAL records written */
 static FILE *manifest;
 static int tap_fd = -1, tap_is_fifo;
 static int64_t a_pkts, tap_samples;
@@ -102,6 +133,7 @@ static int64_t a_pkts, tap_samples;
 /* The switch another thread asked for. */
 static pthread_mutex_t sw_mx = PTHREAD_MUTEX_INITIALIZER;
 static int sw_pending, sw_map;
+static int64_t sw_asked_mono;
 static char sw_corr[ID_CHARS + 1];
 
 int audio_request_switch(int mic_index, const char *correlation_id) {
@@ -110,6 +142,7 @@ int audio_request_switch(int mic_index, const char *correlation_id) {
     if (!sw_pending) {
         sw_pending = 1;
         sw_map = mic_index;
+        sw_asked_mono = mono_us();
         snprintf(sw_corr, sizeof sw_corr, "%s", correlation_id);
         r = 0;
     }
@@ -122,7 +155,23 @@ int audio_set_manifest(const char *path) { return (manifest = fopen(path, "w")) 
 /* ---------------------------------------------------------------- selector (AU2-07) */
 /* The ONE call site of avfilter_graph_send_command. Any other thread only fills the request;
  * this function refuses to run anywhere but on the filtering thread. */
-static void filter_apply_commands(int64_t next_sample) {
+/* One AUDIO_SOURCE_INTERVAL record: the microphone `cur_map` feeds the encoder from `from_sample` on.
+ * `corr` NULL: the interval of the start. */
+static void interval_record(Session *s, int64_t from_sample, int64_t t0_real, const char *corr, int64_t delay_us) {
+    static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
+    int64_t at_ms = (t0_real + from_sample * US / SR) / 1000;
+    intervals++;
+    if (corr)
+        send_record("\"kind\":\"AUDIO_SOURCE_INTERVAL\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"sampleRateHz\":%d,\"capturedAtMs\":%lld,\"reason\":\"OPERATOR_SWITCH\",\"correlationId\":\"%s\",\"appliedDelayUs\":%lld",
+                    s->mic[cur_map].device_id, role[cur_map], intervals, (long long)from_sample, SR, (long long)at_ms, corr, (long long)(delay_us < 0 ? 0 : delay_us));
+    else
+        send_record("\"kind\":\"AUDIO_SOURCE_INTERVAL\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"sampleRateHz\":%d,\"capturedAtMs\":%lld,\"reason\":\"SESSION_START\",\"correlationId\":null,\"appliedDelayUs\":null",
+                    s->mic[cur_map].device_id, role[cur_map], intervals, (long long)from_sample, SR, (long long)at_ms);
+}
+
+/* `next_sample`: the first sample of the quantum that is pushed next, or -1 before T0 (no timeline
+ * yet: a switch is refused). `t0_real`: the wall clock of sample 0. */
+static void filter_apply_commands(Session *s, int64_t next_sample, int64_t t0_real) {
     if (!pthread_equal(pthread_self(), filter_tid)) {
         logj("error", "filter", "send_command_off_filter_thread", "%s", "");
         abort();
@@ -130,23 +179,53 @@ static void filter_apply_commands(int64_t next_sample) {
     char corr[ID_CHARS + 1];
     pthread_mutex_lock(&sw_mx);
     int pending = sw_pending, want = sw_map;
+    int64_t asked = sw_asked_mono;
     memcpy(corr, sw_corr, sizeof corr);
     sw_pending = 0;
     pthread_mutex_unlock(&sw_mx);
     if (!pending) return;
+    if (next_sample < 0) {
+        ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":false,\"code\":\"NOT_RECORDING\"", corr);
+        logj("warn", "filter", "switch_refused_before_t0", "\"map\":%d", want);
+        return;
+    }
     if (want != cur_map) {
         char m[4];
         snprintf(m, sizeof m, "%d", want);
         int r = avfilter_graph_send_command(graph, "astreamselect@asel", "map", m, NULL, 0, 0);
+        int64_t delay = mono_us() - asked;
         if (r < 0) {
             ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":false,\"code\":\"SELECTOR_COMMAND_FAILED\"", corr);
             fatal("filter", "SELECTOR_COMMAND_FAILED", r);
             return;
         }
         cur_map = want;
-        logj("info", "filter", "selector_switched", "\"map\":%d,\"applied_before_sample\":%lld", want, (long long)next_sample);
+        logj("info", "filter", "selector_switched", "\"map\":%d,\"applied_before_sample\":%lld,\"applied_delay_us\":%lld,\"edge\":\"hard_cut\"", want, (long long)next_sample, (long long)delay);
+        /* The record first, then the acknowledgement: who waits for the ACK has the interval already. */
+#ifdef DEMS_PROOF_INTERVAL_SKEW             /* PROOF BUILD ONLY: the record names another sample than the one the selector switched at */
+        interval_record(s, next_sample + DEMS_PROOF_INTERVAL_SKEW, t0_real, corr, delay);
+#else
+        interval_record(s, next_sample, t0_real, corr, delay);
+#endif
     }
+    /* A switch to the source that already feeds the encoder changed nothing: acknowledged, no record. */
     ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":true", corr);
+}
+
+/* What the raiser saw begin or end on one microphone, as warnings by its device ID. */
+static void mic_warn(Session *s, int i, int events) {
+    static const struct { int began, ended; const char *code, *reason; } w[] = {
+        { MW_SILENT_BEGAN, MW_SILENT_ENDED, "MIC_SILENT", "MIC_LEVEL_BELOW_THRESHOLD" },
+        { MW_DISCONNECT_BEGAN, MW_DISCONNECT_ENDED, "CAPTURE_FAULT", "MIC_DISCONNECTED" },
+        { MW_RATE_LIMIT_BEGAN, MW_RATE_LIMIT_ENDED, "CAPTURE_FAULT", "MIC_RATE_AT_LIMIT" },
+    };
+    for (unsigned k = 0; events && k < sizeof w / sizeof w[0]; k++) {
+        if (!(events & (w[k].began | w[k].ended))) continue;
+        int active = (events & w[k].began) != 0;
+        logj("warn", "filter", active ? "mic_warning_raised" : "mic_warning_cleared", "\"mic\":%d,\"reason\":\"%s\",\"active_input\":%d,\"received\":%lld,\"asked_ppm\":%.1f",
+             i + 1, w[k].reason, cur_map + 1, (long long)mics[i].received, mics[i].ppm);
+        send_warning(w[k].code, w[k].reason, active, s->mic[i].device_id);
+    }
 }
 
 static int filter_build(int initial_map) {
@@ -337,8 +416,10 @@ static void mic_start(MicIn *m, int64_t lead_silence) {
 
 /* One quantum of one mic; silence where it delivers nothing. Then the controller: hold the
  * buffer's level by asking the resampler for a little more or a little less. */
-static void mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
+/* Returns the MW_ bits of the rate controller's limit (micwatch.h); the quantum's own level is left in `taken`. */
+static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
     int present = 0;
+    double sumsq = 0;
     if (m->running && !m->have && now_mono - m->last_data_mono > MIC_GAP_US) {
         /* The mic stopped. What it sends when it returns is placed anew. */
         m->running = 0;
@@ -359,13 +440,16 @@ static void mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
             else if (present < m->have) v = m->fifo[present++];
         }
         dst[i] = v;
-        m->sumsq += (double)v * v;
+        sumsq += (double)v * v;
         if (fabsf(v) > m->peak) m->peak = fabsf(v);
     }
     fifo_drop_oldest(m, present);
+    m->sumsq += sumsq;
     m->n_meter += present;
     m->missing += QUANTUM - present;
-    if (!m->running || !realtime || m->lead_silence > 0) return;
+    m->taken = present;
+    m->taken_sumsq = sumsq;
+    if (!m->running || !realtime || m->lead_silence > 0) return 0;
     /* The level right after a quantum was taken, smoothed over about half a second. */
     /* The mic delivers in chunks: between two of them its samples go on being captured. The
      * level is therefore read as "what is buffered plus what the mic has captured since its last
@@ -374,8 +458,8 @@ static void mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
     double since = (double)(now_mono - m->last_data_mono) * SR / US, level = m->have + (since < 2 * QUANTUM ? since : 2 * QUANTUM);
     m->run_samples += QUANTUM;
     m->level = m->run_samples == QUANTUM ? level : m->level + (level - m->level) / (m->run_samples <= MIC_CALIBRATE_SAMPLES ? 10.0 : 50.0);
-    if (m->run_samples <= MIC_CALIBRATE_SAMPLES) { m->target = m->level; return; }
-    if (m->run_samples % (QUANTUM * 10)) return;
+    if (m->run_samples <= MIC_CALIBRATE_SAMPLES) { m->target = m->level; return 0; }
+    if (m->run_samples % (QUANTUM * 10)) return 0;
     /* Ten times a second. Too low a level: the mic's clock is slow, the resampler is asked for more samples. */
     double err = m->target - m->level, limit = (double)SR * MIC_MAX_PPM / 1e6;
     /* Inside one millisecond of the level to hold nothing new is asked: a mic on the host's own
@@ -392,24 +476,30 @@ static void mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
         logj("info", "filter", "mic_clock", "\"mic\":%d,\"level\":%.1f,\"target\":%.1f,\"asked_ppm\":%.1f", (int)(m - mics) + 1, m->level, m->target, m->ppm);
     int r = swr_set_compensation(m->swr, (int)lrint(rate), SR);
     if (r < 0) fatal("filter", "MIC_COMPENSATION_FAILED", r);
+    /* D85 R-3: a controller that stays at its limit means the clock difference is beyond what it absorbs. */
+    return micwatch_rate(&m->watch, m->ppm, (double)MIC_MAX_PPM);
 }
 
 /* ---------------------------------------------------------------- telemetry */
 static void telemetry(Session *s) {
     static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
     static const char *const state[] = { "WAITING", "CONNECTED", "ENDED" };
-    char levels[256] = "", ingest[512] = "", frags[512] = "", clocks[512] = "";
+    char levels[768] = "", ingest[512] = "", frags[512] = "", clocks[512] = "";
     size_t l = 0, g = 0, f = 0, k = 0;
     for (int i = 0; i < NMIC; i++) {
         MicIn *m = &mics[i];
         if (!s->mic[i].present) continue;
+        /* The microphone by its device ID (protocol version 4), and what its rate controller asks now. */
+        char rate[32] = "null";
+        if (m->running) snprintf(rate, sizeof rate, "%.1f", m->ppm > MIC_MAX_PPM ? (double)MIC_MAX_PPM : m->ppm < -MIC_MAX_PPM ? (double)-MIC_MAX_PPM : m->ppm);
+        if (l >= sizeof levels) continue;
         if (m->n_meter > 0) {
             double db = m->sumsq > 0 ? 10.0 * log10(m->sumsq / m->n_meter) : -120.0;
             if (db > 0) db = 0;
             if (db < -120.0) db = -120.0;
-            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"role\":\"%s\",\"dbfs\":%.2f,\"clipped\":%s}", l ? "," : "", role[i], db, m->peak >= 0.999f ? "true" : "false");
+            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":%.2f,\"clipped\":%s,\"ratePpm\":%s}", l ? "," : "", s->mic[i].device_id, role[i], db, m->peak >= 0.999f ? "true" : "false", rate);
         } else {
-            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"role\":\"%s\",\"dbfs\":null,\"clipped\":false}", l ? "," : "", role[i]);
+            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":null,\"clipped\":false,\"ratePpm\":%s}", l ? "," : "", s->mic[i].device_id, role[i], rate);
         }
         m->sumsq = 0;
         m->peak = 0;
@@ -473,7 +563,7 @@ void *audio_main(void *arg) {
     int64_t began = mono_us(), first_data = 0;
     while (!atomic_load(&g_stop)) {
         for (int i = 0; i < NMIC; i++) mic_read(&mics[i]);
-        filter_apply_commands(0);
+        filter_apply_commands(s, -1, 0);                    /* no timeline yet: a switch is refused */
         int64_t now = mono_us();
         if (!first_data && (mics[0].has_data || mics[1].has_data)) first_data = now;
         if (first_data && now - first_data >= PREBUFFER_US) break;
@@ -492,7 +582,11 @@ void *audio_main(void *arg) {
         if (off < 0) { fifo_drop_oldest(m, (int)(-off > m->have ? m->have : -off)); off = 0; }
         mic_start(m, off);
     }
+    for (int i = 0; i < NMIC; i++) micwatch_init(&mics[i].watch, (double)g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, SR);
     atomic_store(&s->t0_real_us, t0_real);
+    /* The interval of the start: which microphone feeds the one audio track from sample 0. Written before T0 is
+     * published, so it precedes every record of a camera (no video is placed before `armed`). */
+    if (!atomic_load(&g_stop)) interval_record(s, 0, t0_real, NULL, 0);
     atomic_store(&s->armed, 1);
     if (manifest) fprintf(manifest, "{\"type\":\"t0\",\"t0_real_us\":%lld,\"master_mic\":%d}\n", (long long)t0_real, master);
     logj("info", "filter", "audio_started", "\"t0_real_us\":%lld,\"encoders\":1,\"quantum_samples\":%d,\"master_mic\":%d,\"movflags\":\"%s\"",
@@ -512,7 +606,9 @@ void *audio_main(void *arg) {
             nap(due - now);
         }
         if (atomic_load(&g_stop)) break;
-        filter_apply_commands(n);
+        /* The operator's switch, at this quantum's boundary. Sample 0 belongs to the interval of the start: a
+         * command that is already waiting then is applied one quantum later. */
+        if (n > 0) filter_apply_commands(s, n, t0_real);
         for (int i = 0; i < NMIC && !fatal_pending(); i++) {
             AVFrame *f = av_frame_alloc();
             if (!f) { fatal("filter", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); break; }
@@ -523,10 +619,13 @@ void *audio_main(void *arg) {
             av_channel_layout_default(&f->ch_layout, 1);
             if ((r = av_frame_get_buffer(f, 0)) < 0) { fatal("filter", "FRAME_ALLOC_FAILED", r); av_frame_free(&f); break; }
             /* `waited`: this quantum was taken on time, so the buffer level is a measurement (not the catch-up after T0). */
-            mic_take(&mics[i], (float *)(void *)f->data[0], now, waited);
+            int events = mic_take(&mics[i], (float *)(void *)f->data[0], now, waited);
             r = av_buffersrc_add_frame_flags(src[i], f, AV_BUFFERSRC_FLAG_KEEP_REF);
             av_frame_free(&f);
             if (r < 0) { fatal("filter", "BUFFERSRC_ADD_FAILED", r); break; }
+            /* The warning raiser, on the timeline's own clock: what this microphone delivered into this quantum.
+             * It says; it never switches (OD-11). */
+            if (s->mic[i].present) mic_warn(s, i, events | micwatch_chunk(&mics[i].watch, QUANTUM, mics[i].taken, mics[i].taken_sumsq));
         }
         n += QUANTUM;
         filter_drain(s, o, pkt, 0);
@@ -554,7 +653,9 @@ void *audio_main(void *arg) {
         logj("info", "filter", "mic_summary", "\"mic\":%d,\"received\":%lld,\"missing\":%lld,\"dropped\":%lld,\"restarts\":%lld,\"last_ppm\":%.1f",
              i + 1, (long long)mics[i].received, (long long)mics[i].missing, (long long)mics[i].dropped, (long long)mics[i].restarts, mics[i].ppm);
     }
-    logj("info", "filter", "audio_finished", "\"samples_in\":%lld,\"encoder_packets\":%lld,\"tap_samples\":%lld", (long long)n, (long long)a_pkts, (long long)tap_samples);
+    logj("info", "filter", "audio_finished", "\"samples_in\":%lld,\"encoder_packets\":%lld,\"tap_samples\":%lld,\"intervals\":%d", (long long)n, (long long)a_pkts, (long long)tap_samples, intervals);
+    /* The end of the audio timeline closes the last interval (lossless; absent only when the worker was killed). */
+    if (intervals) send_record("\"kind\":\"AUDIO_TIMELINE_END\",\"samples\":%lld,\"sampleRateHz\":%d,\"intervals\":%d", (long long)n, SR, intervals);
     if (tap_fd >= 0) close(tap_fd);
     tap_fd = -1;
     for (int i = 0; i < NMIC; i++) mic_close(&mics[i]);

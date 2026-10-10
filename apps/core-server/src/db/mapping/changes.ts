@@ -34,6 +34,7 @@ import {
   activeSessionToRow,
   alertToRow,
   auditRowToRow,
+  CAPTURE_TRANSPORT_NOT_IN_STATE,
   captureConfigToRow,
   captureDevicesToRows,
   coreDeviceToRow,
@@ -66,6 +67,10 @@ export const RUNTIME_UPDATABLE_COLUMNS = {
   // name only the four device/profile columns and `updated_at`; `revision` and `updated_by` belong
   // to operation 77 (the module), which is why the row builder never varies them.
   captureConfig: ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'micPrimaryId', 'micStandbyId', 'revision', 'updatedBy', 'updatedAt'],
+  // Pass D4: the columns of a registry row the engine state models, for a device whose TRANSPORT
+  // the state does not hold (see `diffCapture`). `transport` is deliberately not here: on that
+  // path the registry's own value stays. `kind` and `adapter_kind` are never updated (dbc-4 §N.2).
+  captureDevices: ['model', 'firmware', 'address', 'poePort', 'enabled'],
 } as const satisfies { readonly [K in WrittenTable]?: readonly (keyof MappedRow<K>)[] };
 
 export type UpdatedTable = keyof typeof RUNTIME_UPDATABLE_COLUMNS | 'activeSession';
@@ -190,6 +195,7 @@ function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buck
   if (previous.captureDevices !== next.captureDevices) {
     const before = new Map(captureDevicesToRows(previous.captureDevices, previous.captureConfig).map((row) => [row.id, row] as const));
     const fresh: MappedRow<'captureDevices'>[] = [];
+    const updates: RowChange[] = [];
     for (const row of captureDevicesToRows(next.captureDevices, next.captureConfig)) {
       const old = before.get(row.id);
       before.delete(row.id);
@@ -201,10 +207,31 @@ function diffCapture(previous: DurableSlices, next: DurableSlices, buckets: Buck
       if (old !== undefined && old.adapterKind !== row.adapterKind) {
         throw notWritable('capture_devices', `the adapter kind of ${row.id} changed; it is written at INSERT and never updated (dbc-4 §N.2).`);
       }
-      if (old === undefined || !isDeepStrictEqual(old, row)) fresh.push(row);
+      if (old === undefined) {
+        fresh.push(row);
+        continue;
+      }
+      if (isDeepStrictEqual(old, row)) continue;
+      // The state holds a transport for this device (a built-in, or a microphone a selector slot
+      // names): the UPSERT of the whole row, as before.
+      if (row.transport !== CAPTURE_TRANSPORT_NOT_IN_STATE) {
+        fresh.push(row);
+        continue;
+      }
+      // THE STATE HOLDS NO TRANSPORT FOR IT (pass D4; request of pass D1b): an adopted camera, a
+      // local device, a microphone that LEFT the selector. De-selecting is not un-registering
+      // (C3 §2.6 "Adoption is not assignment"; dbc-3 §B.2: the transport is a fact of the registry
+      // row), so the registry's transport is never overwritten with the neutral code: the change
+      // is an UPDATE of exactly the modelled columns that moved, and `transport` is never one.
+      const writable: readonly (keyof MappedRow<'captureDevices'>)[] = RUNTIME_UPDATABLE_COLUMNS.captureDevices;
+      const changed = (Object.keys(row) as (keyof MappedRow<'captureDevices'>)[]).filter((column) => column !== 'transport' && !isDeepStrictEqual(old[column], row[column]));
+      const refused = changed.filter((column) => !writable.includes(column));
+      if (refused.length > 0) throw notWritable('capture_devices', `the column(s) ${refused.join(', ')} of ${row.id} are not the engine's to change.`);
+      if (changed.length > 0) updates.push({ op: 'update', table: 'captureDevices', key: { id: row.id }, set: pick(row, changed) });
     }
     if (before.size > 0) throw notWritable('capture_devices', `${before.size} device(s) left the registry; discovery only adds and updates (dbc-3 §B.2).`);
     if (fresh.length > 0) push(buckets, { op: 'insert', table: 'captureDevices', rows: fresh });
+    for (const update of updates) push(buckets, update);
   }
   if (previous.captureConfig !== next.captureConfig) {
     const before = captureConfigToRow(previous.captureConfig);

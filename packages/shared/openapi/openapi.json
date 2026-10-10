@@ -436,7 +436,7 @@
           "Session"
         ],
         "summary": "Start recording",
-        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Runs the Core pre-check (book §5.3: 8 checks) and starts recording.\n\n- From **CREATE**: begins the pre-check and answers `202` with state **PRECHECK**. Poll `GET /api/v1/session/current` and call again once it is **ARMED**.\n- From **ARMED**: starts recording and answers `200` with state **RECORDING**.\n- Pre-check ended with **WARN**: send `{\"acknowledgeWarnings\": true}` to acknowledge and start; without it the answer is `409 PRECHECK_WARNINGS`.\n- Pre-check with a **BLOCK** (Core offline, lens fault, storage full, security fault): `409 PRECHECK_BLOCKED` with the reasons.\n\nRequires a signed-in operator holding SESSION_START; the audit rows name that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nIn a real capture operation a start is refused `503 NOT_READY` with `details.reason: CAPTURE_HELPERS_LEFT` while helper processes of an earlier capture are still running (envelope level; nothing is opened twice).\n\nA body that does not match its schema answers `422 INVALID_INPUT`. The pre-check and its outcome also have operations of their own: `beginPrecheck`, `retryPrecheck` and `acknowledgePrecheckWarnings`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
             "description": "Recording started (state RECORDING).",
@@ -753,7 +753,7 @@
           "Session"
         ],
         "summary": "Stop recording",
-        "description": "Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).\n\nAnswers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.\n\nRequires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nThe operator who stops a recording need not be the one who started it. A reason that is absent, or shorter than 5 characters after trimming, answers `422 INVALID_REASON` after the `404` and the `409`; a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, and a malformed `{id}`, answer `422 INVALID_INPUT`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Stops the recording with a mandatory reason and moves the session to finalization: **STOPPING** → **FINALIZING** (hashes, manifest, encryption, signature) → **SEALED** (book §6.2, §12.2 steps 5-10).\n\nAnswers `202` at STOPPING; poll `GET /api/v1/session/current` for the seal.\n\nRequires a signed-in operator holding SESSION_START; the RECORDING_STOPPED row names that operator.\n\nOne session is open per Core, and any operator holding SESSION_START may act on it. A caller whose role lacks the permission is refused with `403 NOT_PERMITTED` and one ACCESS_DENIED audit row, before the body is read.\n\nA stop while the recording is still connecting its cameras (`captureDurable: false`: nothing durable is written yet) is refused `409 INVALID_STATE` with `details.reason: CAPTURE_NOT_DURABLE`; nothing is changed.\n\nThe operator who stops a recording need not be the one who started it. A reason that is absent, or shorter than 5 characters after trimming, answers `422 INVALID_REASON` after the `404` and the `409`; a reason that is not text, holds U+0000 or an unpaired surrogate, or is longer than its maximum, and a malformed `{id}`, answer `422 INVALID_INPUT`.\n\nThe Core server's refusal texts are fixed and quote no part of the request: a session that is not the open one answers `404 NOT_FOUND` \"This session is not the open session.\" (`details.simCode: NOT_FOUND`), and an action that does not fit the session's state answers `409 INVALID_STATE` \"The action is not allowed in the current state.\" with `details.simCode: ILLEGAL_STATE`, `from` and `event`. A `409 SESSION_ACTIVE` names the open session in `details.sessionId`. The examples show the texts of the in-app simulator.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "202": {
             "description": "Stop accepted (state STOPPING); finalization follows.",
@@ -2266,7 +2266,7 @@
             }
           },
           "409": {
-            "description": "The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT).",
+            "description": "The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2284,6 +2284,15 @@
                       "error": {
                         "code": "NOT_SEALED",
                         "message": "Only sealed evidence can be exported."
+                      }
+                    }
+                  },
+                  "exportInProgress": {
+                    "summary": "Core server: an export job of this item is still running",
+                    "value": {
+                      "error": {
+                        "code": "EXPORT_IN_PROGRESS",
+                        "message": "An export job is already running for this evidence item."
                       }
                     }
                   }
@@ -19072,7 +19081,7 @@
                       "items": [
                         {
                           "sessionId": "SES-20261001-0024",
-                          "seq": 1,
+                          "seq": 2,
                           "inputId": "MIC-02",
                           "role": "PRIMARY",
                           "fromMs": 5324,
@@ -19084,7 +19093,7 @@
                         },
                         {
                           "sessionId": "SES-20261001-0024",
-                          "seq": 0,
+                          "seq": 1,
                           "inputId": "MIC-01",
                           "role": "PRIMARY",
                           "fromMs": 0,
@@ -20700,7 +20709,7 @@
           "Evidence"
         ],
         "summary": "Open a signed media session",
-        "description": "Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).\n\nThe URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).\n\nLIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.\n\nWrites EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).\n\nThe URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).\n\nLIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.\n\nRequest (ruling D140): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 }`; no body or `{}` plays `VIDEO-01`. Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).\n\nWrites EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "201": {
             "description": "The signed media session.",
@@ -20729,6 +20738,33 @@
                       "url": "http://127.0.0.1:4420/media/mts_000000000000000000000000000000000000000000000",
                       "expiresAt": 1790825000000,
                       "ranges": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
                     }
                   }
                 }
@@ -20833,7 +20869,7 @@
             }
           },
           "409": {
-            "description": "No playback media is available for this evidence item (MEDIA_NOT_AVAILABLE).",
+            "description": "No playback media is available for this evidence item (MEDIA_NOT_AVAILABLE); `details.reason` says why a sealed package cannot be played.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -20857,13 +20893,27 @@
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
+                  },
+                  "packageMissing": {
+                    "summary": "Core server: the sealed package of the item is not in the evidence store",
+                    "value": {
+                      "error": {
+                        "code": "MEDIA_NOT_AVAILABLE",
+                        "message": "No playback media is available for this evidence item.",
+                        "details": {
+                          "simCode": "MEDIA_NOT_AVAILABLE",
+                          "reason": "PACKAGE_MISSING"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
                   }
                 }
               }
             }
           },
           "422": {
-            "description": "The path parameter does not match its pattern (INVALID_INPUT).",
+            "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -20883,6 +20933,19 @@
                         "message": "The request does not match the expected input.",
                         "details": {
                           "in": "params"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -20915,6 +20978,24 @@
             "example": "EV-20260930-0004"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceMediaSessionRequest"
+              },
+              "examples": {
+                "secondCamera": {
+                  "summary": "The session of the second camera file",
+                  "value": {
+                    "fileId": "VIDEO-02"
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
             "sessionCookie": []
@@ -23904,17 +23985,11 @@
                 "properties": {
                   "activeInputId": {
                     "type": "string",
-                    "enum": [
-                      "MIC-01",
-                      "MIC-02"
-                    ]
+                    "pattern": "^MIC-\\d{2,}$"
                   },
                   "standbyInputId": {
                     "type": "string",
-                    "enum": [
-                      "MIC-01",
-                      "MIC-02"
-                    ]
+                    "pattern": "^MIC-\\d{2,}$"
                   },
                   "switchedAt": {
                     "anyOf": [
@@ -24229,11 +24304,8 @@
         "properties": {
           "inputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
-            "description": "The physical input: MIC-01 or MIC-02 (never a track)."
+            "pattern": "^MIC-\\d{2,}$",
+            "description": "The physical input, `MIC-NN`: the built-in MIC-01 / MIC-02 or a microphone registered later (never a track)."
           },
           "deviceId": {
             "type": "string",
@@ -24346,14 +24418,11 @@
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "The two mic inputs MIC-01 and MIC-02, never merged (SYS-003)."
+            "description": "The two mic inputs of the capture (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), never merged (SYS-003)."
           },
           "activeInputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
+            "pattern": "^MIC-\\d{2,}$",
             "description": "The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15)."
           }
         },
@@ -24572,14 +24641,11 @@
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "Schema v2: keyed by the mic inputs MIC-01/MIC-02 with their roles."
+            "description": "Schema v2: keyed by the two mic inputs (`MIC-NN`) with their roles."
           },
           "activeInputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
+            "pattern": "^MIC-\\d{2,}$",
             "description": "Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now."
           },
           "storage": {
@@ -24753,6 +24819,11 @@
           "status": {
             "type": "string",
             "const": "QUEUED"
+          },
+          "jobId": {
+            "description": "The job operation 87 polls: `EXPJ-` and the six digits of `exportId` (`EXP-000012` -> `EXPJ-000012`). Optional: a client that does not find it derives it by that rule.",
+            "type": "string",
+            "pattern": "^EXPJ-\\d{6,}$"
           }
         },
         "required": [
@@ -27455,6 +27526,11 @@
                     "string",
                     "null"
                   ]
+                },
+                "reason": {
+                  "description": "The enumerated cause of a capture fault. The key of a fault is (kind, reason, target): two causes on one device are two entries.",
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
                 }
               },
               "required": [
@@ -27906,6 +27982,10 @@
                     "PRODUCTION",
                     "DEVELOPMENT"
                   ]
+                },
+                "sourceOpen": {
+                  "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -27935,102 +28015,56 @@
         "properties": {
           "inputs": {
             "type": "object",
-            "properties": {
-              "MIC-01": {
-                "type": "object",
-                "properties": {
-                  "seq": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "at": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "dbfs": {
-                    "type": "number",
-                    "minimum": -90,
-                    "maximum": 0,
-                    "description": "Ballistic level in dBFS; -90 means no signal."
-                  },
-                  "peak": {
-                    "type": "number",
-                    "minimum": -90,
-                    "maximum": 0,
-                    "description": "Peak-hold level in dBFS."
-                  },
-                  "clip": {
-                    "type": "boolean"
-                  },
-                  "noSignal": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "seq",
-                  "at",
-                  "dbfs",
-                  "peak",
-                  "clip",
-                  "noSignal"
-                ],
-                "additionalProperties": false,
-                "description": "One 20 Hz audio frame: numbers and booleans only."
-              },
-              "MIC-02": {
-                "type": "object",
-                "properties": {
-                  "seq": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "at": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "dbfs": {
-                    "type": "number",
-                    "minimum": -90,
-                    "maximum": 0,
-                    "description": "Ballistic level in dBFS; -90 means no signal."
-                  },
-                  "peak": {
-                    "type": "number",
-                    "minimum": -90,
-                    "maximum": 0,
-                    "description": "Peak-hold level in dBFS."
-                  },
-                  "clip": {
-                    "type": "boolean"
-                  },
-                  "noSignal": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "seq",
-                  "at",
-                  "dbfs",
-                  "peak",
-                  "clip",
-                  "noSignal"
-                ],
-                "additionalProperties": false,
-                "description": "One 20 Hz audio frame: numbers and booleans only."
-              }
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^MIC-\\d{2,}$"
             },
-            "required": [
-              "MIC-01",
-              "MIC-02"
-            ],
-            "additionalProperties": false
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "seq": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "at": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "dbfs": {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 0,
+                  "description": "Ballistic level in dBFS; -90 means no signal."
+                },
+                "peak": {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 0,
+                  "description": "Peak-hold level in dBFS."
+                },
+                "clip": {
+                  "type": "boolean"
+                },
+                "noSignal": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "seq",
+                "at",
+                "dbfs",
+                "peak",
+                "clip",
+                "noSignal"
+              ],
+              "additionalProperties": false,
+              "description": "One 20 Hz audio frame: numbers and booleans only."
+            },
+            "description": "The newest frame of each of the two mic inputs of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1))."
           },
           "activeInputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
+            "pattern": "^MIC-\\d{2,}$",
             "description": "The input whose level is the one inside AUDIO-01 right now (op 81 moves it)."
           }
         },
@@ -28952,17 +28986,13 @@
                   },
                   "activeInputId": {
                     "type": "string",
-                    "enum": [
-                      "MIC-01",
-                      "MIC-02"
-                    ]
+                    "pattern": "^MIC-\\d{2,}$",
+                    "description": "The mic input behind AUDIO-01, `MIC-NN` (D133 (1))."
                   },
                   "standbyInputId": {
                     "type": "string",
-                    "enum": [
-                      "MIC-01",
-                      "MIC-02"
-                    ]
+                    "pattern": "^MIC-\\d{2,}$",
+                    "description": "The hot standby input, `MIC-NN`."
                   },
                   "switchedAt": {
                     "anyOf": [
@@ -29715,6 +29745,13 @@
               }
             ]
           },
+          "developmentSources": {
+            "description": "Whether the seal recorded a development source (`evidence_items.development_sources`, manifest field 126; C3 §3.1 erratum PE-128-32). Null or absent: not recorded (a v1 item, or one sealed before the column existed) - never to be read as production.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "audioSourceIntervals": {
             "description": "Schema v2: which mic input fed AUDIO-01 over which media-pts spans (op 82 serves the full rows).",
             "type": "array",
@@ -29727,10 +29764,7 @@
                 },
                 "inputId": {
                   "type": "string",
-                  "enum": [
-                    "MIC-01",
-                    "MIC-02"
-                  ]
+                  "pattern": "^MIC-\\d{2,}$"
                 },
                 "role": {
                   "type": "string",
@@ -32126,6 +32160,75 @@
             ],
             "additionalProperties": false
           },
+          "transcriptModel": {
+            "description": "Schema v2 (decision D160): the model of the sealed transcript, from the signed manifest. For a server backend only the name exists, as reported by the STT server; version, quantisation and file hash are null and were not verified by the Core. Absent when no transcript document is sealed, for a v1 item, and when the manifest is not the signed one.",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "The model name the sealed manifest records."
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The version the installation declared; null for a server backend."
+              },
+              "quantisation": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The quantisation read from the model file; null for a server backend."
+              },
+              "modelSha256": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "SHA-256 of the model file as the Core hashed it; null for a server backend."
+              },
+              "reportedByServer": {
+                "type": "boolean",
+                "description": "True when the session's STT backend was a server: the name is what the server reported, and the Core verified nothing of the model."
+              },
+              "report": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "The report line of the model."
+              }
+            },
+            "required": [
+              "name",
+              "version",
+              "quantisation",
+              "modelSha256",
+              "reportedByServer",
+              "report"
+            ],
+            "additionalProperties": false
+          },
           "sources": {
             "description": "Schema v2 (V-15; R-11): the source class of every recorded source. A development package verifies with `ok: true` at the top level and `sources.code: DEVELOPMENT`; the value of the mark never changes the verdict. Absent for a v1 item: its source class is not recorded, which is never read as production.",
             "type": "object",
@@ -32234,6 +32337,20 @@
               "report",
               "tracks",
               "audioIntervals"
+            ],
+            "additionalProperties": false
+          },
+          "signature": {
+            "description": "Schema v2 (decision D147): what the verified package says of its signing KEY. A fact about the key, never the verdict: `signatureOk` passes or fails on its own merits. Absent for a v1 item and when no manifest could be read.",
+            "type": "object",
+            "properties": {
+              "developmentKey": {
+                "type": "boolean",
+                "description": "True when the certificate subject recorded in the signed manifest carries the development-key mark (`OU=DEVELOPMENT KEY - NOT FOR PRODUCTION`)."
+              }
+            },
+            "required": [
+              "developmentKey"
             ],
             "additionalProperties": false
           }
@@ -33162,6 +33279,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 32
+          },
+          "role": {
+            "description": "PAIR REPLACEMENT (D133 (1)): when the lines carry `role`, the two lines ARE the new pair - exactly one PRIMARY and one STANDBY, each with `deviceId` equal to `inputId`, any registered `MIC-NN`. Absent on every line: the line edits the input it names (the earlier form).",
+            "type": "string",
+            "enum": [
+              "PRIMARY",
+              "STANDBY"
+            ]
           }
         },
         "required": [
@@ -33169,7 +33294,7 @@
           "deviceId"
         ],
         "additionalProperties": false,
-        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input."
+        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, one line of the replacing pair."
       },
       "CaptureConfigUpdateRequest": {
         "type": "object",
@@ -33242,11 +33367,8 @@
         "properties": {
           "inputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
-            "description": "The mic input to move behind AUDIO-01 (the other becomes STANDBY)."
+            "pattern": "^MIC-\\d{2,}$",
+            "description": "The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the session (the other becomes STANDBY)."
           },
           "reason": {
             "description": "Why the operator switched; audited as text, never as a secret.",
@@ -33270,17 +33392,11 @@
           },
           "activeInputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ]
+            "pattern": "^MIC-\\d{2,}$"
           },
           "standbyInputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ]
+            "pattern": "^MIC-\\d{2,}$"
           },
           "switchedAt": {
             "type": "integer",
@@ -33312,16 +33428,13 @@
           },
           "seq": {
             "type": "integer",
-            "minimum": 0,
-            "description": "Interval number within the session, from 0."
+            "minimum": 1,
+            "description": "Interval number within the session, from 1: the manifest's rule (ev §B.5) and the table's (`session_audio_intervals_seq_check`). Pass D6: the text said \"from 0\"; no Core ever answered 0 in real capture."
           },
           "inputId": {
             "type": "string",
-            "enum": [
-              "MIC-01",
-              "MIC-02"
-            ],
-            "description": "The mic device of this interval."
+            "pattern": "^MIC-\\d{2,}$",
+            "description": "The mic device of this interval, `MIC-NN`."
           },
           "role": {
             "type": "string",
@@ -33712,15 +33825,16 @@
             "description": "The corrections, applied in order."
           },
           "note": {
-            "description": "Why the revision was made; travels to the audit row as `reason`.",
             "type": "string",
-            "minLength": 1,
-            "maxLength": 500
+            "minLength": 5,
+            "maxLength": 500,
+            "description": "REQUIRED (pass D6): why the revision was made, 5 to 500 characters after trimming. It is stored as the revision's `reason` (dbc-3 §B.9: NOT NULL, 5..500), is inside the signed revision body, and travels to the audit row as `reason`. A revision of evidence without a stated reason is refused: 422 INVALID_INPUT."
           }
         },
         "required": [
           "baseRevision",
-          "changes"
+          "changes",
+          "note"
         ],
         "additionalProperties": false,
         "description": "Request body of `POST /api/v1/evidence/{id}/transcript/revisions` (C3 §2.3 op 85)."
@@ -33872,7 +33986,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 32,
-            "description": "`EXPJ-NNNNNN`."
+            "description": "`EXPJ-NNNNNN`: `EXPJ-` and the six digits of the export ID of operation 42 (`EXP-000012` -> `EXPJ-000012`)."
           },
           "evidenceId": {
             "type": "string",
@@ -33940,7 +34054,7 @@
             ]
           },
           "failureReason": {
-            "description": "SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code.",
+            "description": "SCREAMING_SNAKE cause when FAILED; the EVIDENCE_EXPORT_FAILED row carries the same code. An open set of codes. Among them: `COMPOSITE_ENCODER_NOT_SELECTED` (a COMPOSITE was asked for and no encoder is selected), `EXPORT_INTERRUPTED` (the server stopped while the job ran; the job is not resumed - ask again), `SESSION_KEY_UNAVAILABLE`, `SOURCE_VERIFY_FAILED`, `PLAINTEXT_HASH_MISMATCH`, `EXPORT_WRITE_FAILED`, `EXPORT_FAILED`.",
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]*$"
           }
@@ -33957,6 +34071,21 @@
         ],
         "additionalProperties": false,
         "description": "The background export job of op 42/87 (NM-12; OD-16)."
+      },
+      "EvidenceMediaSessionRequest": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "description": "The camera file to play; absent: `VIDEO-01`.",
+            "type": "string",
+            "enum": [
+              "VIDEO-01",
+              "VIDEO-02"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Optional request body of `POST /api/v1/evidence/{id}/media-sessions` (op 88): the camera file of the session."
       },
       "EvidenceMediaSession": {
         "type": "object",
@@ -34782,6 +34911,10 @@
                   "PRODUCTION",
                   "DEVELOPMENT"
                 ]
+              },
+              "sourceOpen": {
+                "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
+                "type": "boolean"
               }
             },
             "required": [

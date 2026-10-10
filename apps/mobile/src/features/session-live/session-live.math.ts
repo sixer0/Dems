@@ -113,10 +113,14 @@ export interface StripTrackInput {
   index: 1 | 2;
   online: boolean;
   recState: TrackRecState | null;
+  /** Row 139: the Core named this camera as not connected at the session start. */
+  notConnected?: boolean;
 }
 
 export interface StripInput {
   cameras: readonly StripTrackInput[];
+  /** Row 139 (D84): RECORDING before the first durable fragment. Absent: the recording is durable. */
+  connecting?: boolean;
   storage: StorageStateName;
   timeSource: TimeSourceName;
   timeLocked: boolean;
@@ -124,7 +128,7 @@ export interface StripInput {
 
 /** One chip of the strip; `value` is a key into the shared enum labels (the screen translates it). */
 export type StripChip =
-  | { kind: 'video'; id: string; index: 1 | 2; value: TrackRecState | 'OFFLINE'; tone: StatusTone }
+  | { kind: 'video'; id: string; index: 1 | 2; value: TrackRecState | 'OFFLINE' | 'CONNECTING'; tone: StatusTone }
   | { kind: 'storage'; id: 'storage'; value: StorageStateName; tone: StatusTone }
   | { kind: 'time'; id: 'time'; value: TimeSourceName; locked: boolean; tone: StatusTone };
 
@@ -140,13 +144,16 @@ const TIME_TONE: Record<TimeSourceName, StatusTone> = { GNSS: 'success', NTP: 'i
  */
 export function statusStrip(input: StripInput): StripChip[] {
   const chips: StripChip[] = input.cameras.map((camera) => {
-    const value: TrackRecState | 'OFFLINE' = camera.recState ?? (camera.online ? 'REC' : 'OFFLINE');
+    // Row 139 (ux §8e.2; D84): a camera the session start named as not connected is OFFLINE whatever its
+    // track state says; and before the first durable fragment no camera reads REC - it is CONNECTING.
+    const value: TrackRecState | 'OFFLINE' | 'CONNECTING' =
+      camera.notConnected === true ? 'OFFLINE' : input.connecting === true ? 'CONNECTING' : (camera.recState ?? (camera.online ? 'REC' : 'OFFLINE'));
     return {
       kind: 'video' as const,
       id: `video-${camera.index}`,
       index: camera.index,
       value,
-      tone: value === 'OFFLINE' ? 'danger' : TRACK_TONE[value],
+      tone: value === 'OFFLINE' ? 'danger' : value === 'CONNECTING' ? 'info' : TRACK_TONE[value],
     };
   });
   chips.push({ kind: 'storage', id: 'storage', value: input.storage, tone: STORAGE_TONE[input.storage] });

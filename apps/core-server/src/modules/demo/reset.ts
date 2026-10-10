@@ -13,6 +13,11 @@
  *
  *    1  one reset at a time      a second call of this server is refused at once, before the
  *                                routine is asked: nothing of the first is disturbed
+ *    1b the caller-side guard    `dbc-3` §E.2, asked on the server's OWN pool BEFORE the routine
+ *       (integration pass D11)   and so before the quiesce: a REAL sealed package in the database
+ *                                or on disk refuses here. NOTHING is stopped, the epoch does not
+ *                                move, ONE audit row records the refusal, the answer is 409. The
+ *                                routine's own pass at R-3 stays the authoritative one
  *    2  the routine, R-0         the name guard, the owner file, the role check, the advisory
  *                                lock. A refusal here has stopped nothing: the answer is 503 and
  *                                the server never noticed
@@ -60,16 +65,29 @@
  * `details.reason` `RESET_IN_PROGRESS` (another reset holds the database: try again) or
  * `RESET_FAILED` (this reset did not happen: the server log says why). The routine's own code
  * and step go to the log and to the persistent error log, never into the answer.
+ * ONE EXCEPTION (C3 §3 ops 72 / 75, §4; integration pass D10): the reset guard's refusal - a REAL
+ * sealed package exists and a reset would destroy it - is `409 RESET_BLOCKED_REAL_EVIDENCE`. It is
+ * a refusal of the request, not a failed reset: nothing was rebuilt, and trying again changes
+ * nothing while the evidence exists.
+ * Since integration pass D11 that refusal is made at step 1b, before anything is stopped, and it
+ * is AUDITED as the contract says ("refuses ... and audits the refusal"): one `ACCESS_DENIED` row
+ * with the operator as actor, `details.operationId` and `details.reason:
+ * RESET_BLOCKED_REAL_EVIDENCE` (the contract names no type of its own for it; the denial row is
+ * the one type whose rule carries an operation and a reason code). A row that could not be written
+ * is in the error log; the refusal stands. A guard that could not be ASKED refuses with the 503 of
+ * a reset that did not happen: the server never rebuilds on an answer it does not have. The 409
+ * after the routine's own refusal (R-3) is kept for the case that evidence was sealed between the
+ * two looks; that path stops and resumes the server as before.
  *
  * CREDENTIALS. Nothing here opens, receives or keeps a credential. The routine reads the owner
  * connection file itself, at R-0, into a local variable of its one call (HC-3); this file hands
  * it the DIRECTORY the configuration names, and gets a report of counts and integrity values.
  */
-import { DemoRebuildRefusalReason } from '@dems/shared/api';
+import { ApiErrorCode, DemoRebuildRefusalReason } from '@dems/shared/api';
 import type { OperatorRole, Permission, ScenarioName } from '@dems/shared/sim';
 import { OperatorRole as OperatorRoles, Permission as Permissions } from '@dems/shared/sim';
 import type { FastifyBaseLogger } from 'fastify';
-import { ResetError, type ResetOptions, type ResetReport } from '../../db/reset';
+import { ResetError, realEvidenceDetails, type RealEvidenceFacts, type ResetOptions, type ResetReport } from '../../db/reset';
 import { ApiFailure, EnvelopeCode } from '../../plugins/error-envelope';
 import { describeError, type ErrorLogEntry } from '../../plugins/logger';
 import type { Publication } from '../../realtime';
@@ -99,11 +117,24 @@ export interface ResetHost {
   readonly database: string;
   /** The directory of the connection files. The routine, and only it, opens the owner file there. */
   readonly dataDir: string;
+  /**
+   * The media root of this server's configuration: where its sealing writes the packages. Both
+   * reset guards read THIS directory, and the removal of a permitted reset works below it
+   * (decision D165) - never a directory derived from the data directory.
+   */
+  readonly mediaStoreDir: string;
   /** The server clock. The routine reads it once, after the quiesce. */
   now(): number;
   /** The engine's epoch. */
   epoch(): number;
   routine: ResetRoutine;
+  /**
+   * The caller-side guard of `dbc-3` §E.2, on the server's own pool: both sides (the tables, the
+   * evidence store) of this instant. A read; it stops nothing. Rejects when it could not be asked.
+   */
+  realEvidence(): Promise<RealEvidenceFacts>;
+  /** The audit row of a reset the guard refused: one unit of work, the operator as actor. */
+  auditRefusal(refusal: { readonly operation: ResetOperation; readonly actorId: string; readonly reason: string }): Promise<void>;
   /** Refuses every other request until the returned function is called. */
   hold(): () => void;
   drain(): Promise<void>;
@@ -183,6 +214,9 @@ const DONE = 'demo reset done';
 const BUSY = 'demo reset refused: another reset of this server is running';
 const QUIESCE_FAILED = 'the quiesce of a demo reset failed';
 const REFUSED = 'demo reset refused by the routine; nothing was stopped';
+const BLOCKED = 'demo reset refused: real sealed evidence exists and a reset would destroy it; nothing was stopped and the epoch did not move';
+const GUARD_NOT_ASKED = 'demo reset refused: the real-evidence guard could not be asked; nothing was stopped';
+const REFUSAL_NOT_AUDITED = 'the audit row of a refused demo reset could not be written; the reset stays refused';
 const FAILED = 'demo reset failed after the server was quiesced; the server is brought back on the database the name points at';
 const NEW_EPOCH = 'no reset was completed; the engine was reloaded under a new epoch, so that every client takes a fresh snapshot';
 const NOT_RESUMED = 'the server could not resume after a demo reset; it stays not ready and answers 503 to every request but health';
@@ -193,6 +227,18 @@ const ROLES_NOT_READ = 'the operators could not be read after a demo reset; no r
 
 function refusal(reason: ResetRefusal): ApiFailure {
   return new ApiFailure(503, EnvelopeCode.NOT_READY, 'The server is not ready. Try again shortly.', { details: { reason } });
+}
+
+/** The routine's code of the reset guard (`src/db/reset/real-evidence.ts`): a REAL sealed package exists. */
+const REAL_EVIDENCE_REFUSAL = 'RESET_BLOCKED_REAL_EVIDENCE';
+
+/**
+ * The answer of a reset the guard refused (C3 §3 ops 72 / 75, §4): `409` with the code of the
+ * contract. The message is the contract's sentence; what the guard found (counts, places) went to
+ * the log with the routine's own line and never into the answer.
+ */
+function blockedByRealEvidence(): ApiFailure {
+  return new ApiFailure(409, ApiErrorCode.RESET_BLOCKED_REAL_EVIDENCE, 'The demo reset is blocked because real sealed evidence exists.');
 }
 
 /** The code of a failure for the log: the routine's own, else the error's code or its name. */
@@ -261,6 +307,29 @@ export function createDemoReset(host: ResetHost): DemoReset {
 
     log.info(who, REQUESTED);
 
+    // Step 1b (integration pass D11): the guard is asked FIRST. A refusal here has stopped nothing.
+    let evidence: RealEvidenceFacts;
+    try {
+      evidence = await host.realEvidence();
+    } catch (error) {
+      log.warn({ err: error, code: 'DEMO_RESET_GUARD_NOT_ASKED', ...who }, GUARD_NOT_ASKED);
+      host.persist({ level: 'error', source: RESET_ERROR_SOURCE, message: GUARD_NOT_ASKED, ...describeError(error), code: 'DEMO_RESET_GUARD_NOT_ASKED', context: { ...context, epochBefore } });
+      throw refusal(ResetRefusal.FAILED);
+    }
+    if (evidence.blocked) {
+      // Counts and names only (DC-7): what the guard found goes to the log, never into the answer.
+      const found = realEvidenceDetails(evidence);
+      log.warn({ code: REAL_EVIDENCE_REFUSAL, ...who, ...found, epochBefore, quiesced: false }, BLOCKED);
+      host.persist({ level: 'warn', source: RESET_ERROR_SOURCE, message: BLOCKED, code: REAL_EVIDENCE_REFUSAL, context: { ...context, ...found, epochBefore, quiesced: false } });
+      try {
+        await host.auditRefusal({ operation: call.operation, actorId: call.actorId, reason: REAL_EVIDENCE_REFUSAL });
+      } catch (error) {
+        log.error({ err: error, code: 'DEMO_RESET_REFUSAL_NOT_AUDITED', ...who }, REFUSAL_NOT_AUDITED);
+        host.persist({ level: 'error', source: RESET_ERROR_SOURCE, message: REFUSAL_NOT_AUDITED, ...describeError(error), code: 'DEMO_RESET_REFUSAL_NOT_AUDITED', context });
+      }
+      throw blockedByRealEvidence();
+    }
+
     let report: ResetReport | null = null;
     let thrown: unknown;
     let rejected = false;
@@ -268,6 +337,7 @@ export function createDemoReset(host: ResetHost): DemoReset {
       report = await host.routine({
         database: host.database,
         dataDir: host.dataDir,
+        evidenceStoreDir: host.mediaStoreDir,
         clock: () => host.now(),
         actorId: call.actorId,
         reason: RESET_REASON_OF_OPERATION[call.operation],
@@ -363,6 +433,9 @@ export function createDemoReset(host: ResetHost): DemoReset {
     }
 
     if (rejected || report === null) {
+      // The reset guard's refusal (real sealed evidence exists) is an answer of its own, not a
+      // reset that failed: 409 with the documented code (C3 §3 op 75, §4; pass D6 finding F-D6-1).
+      if (thrown instanceof ResetError && thrown.code === REAL_EVIDENCE_REFUSAL) throw blockedByRealEvidence();
       const running = thrown instanceof ResetError && thrown.code === 'RESET_ALREADY_RUNNING';
       throw refusal(running ? ResetRefusal.IN_PROGRESS : ResetRefusal.FAILED);
     }

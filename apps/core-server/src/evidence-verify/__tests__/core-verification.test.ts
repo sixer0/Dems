@@ -3,9 +3,11 @@
 // item to it (C3 §3 operation 41). The recorder and the item lookup are stand-ins of this file:
 // nothing writes a verdict of the Core into the evidence state yet (note of row 85, "to wire").
 import { EvidenceVerifyResultSchema, type EvidenceVerifyResultBody } from '@dems/shared/api';
-import { cameraFilePath } from '@dems/shared/evidence-package';
+import { cameraFilePath, packageFolderName } from '@dems/shared/evidence-package';
 import { ROLE_PERMISSIONS } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
+import { existsSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
@@ -14,7 +16,7 @@ import { buildApp } from '../../app';
 import type { EngineHost } from '../../engine';
 import { evidenceVerification } from '../../modules/evidence';
 import type { Principal } from '../../plugins/authenticate';
-import { createRealEvidenceVerification, sessionPackageDir, type RealVerificationOptions, type VerdictRecord } from '../index';
+import { createRealEvidenceVerification, sessionManifestPath, sessionPackageDir, type RealVerificationOptions, type VerdictRecord } from '../index';
 import { buildPackage, flipByte, removeScratch, type BuiltPackage } from './support';
 
 afterAll(removeScratch);
@@ -67,6 +69,15 @@ describe('the verdict of record of a real v2 item', () => {
       fragments: [],
       failedFragmentCount: 0,
       transcriptState: { code: 'READY', report: 'Transcript sealed', sealedState: 'ASSEMBLED', reason: null, documentSealed: true, failedChunks: 0, backendUnreachable: false },
+      // Pass D10 (D160): the model of the sealed transcript; the example session is `cpu-local`, so all four members are stated.
+      transcriptModel: {
+        name: built.manifest.transcript.model.name,
+        version: built.manifest.transcript.model.version,
+        quantisation: built.manifest.transcript.model.quantisation,
+        modelSha256: built.manifest.transcript.model.modelSha256,
+        reportedByServer: false,
+        report: `Transcript model: ${built.manifest.transcript.model.name}, version ${built.manifest.transcript.model.version} (declared by the installation), quantisation ${built.manifest.transcript.model.quantisation}, file SHA-256 ${built.manifest.transcript.model.modelSha256}`,
+      },
       sources: {
         ok: true,
         code: 'DEVELOPMENT',
@@ -81,6 +92,8 @@ describe('the verdict of record of a real v2 item', () => {
           { seq: 2, micDeviceId: 'MIC-02', sourceClass: 'FAKE' },
         ],
       },
+      // Decision D147: the key of this package carries no development mark (a throw-away key of the signer).
+      signature: { developmentKey: false },
     });
     expect(run.report.checks.map((check) => check.status)).toEqual(Array.from({ length: 15 }, () => 'PASS'));
     expect(recorded).toEqual([{ principal: OPERATOR, verdict: { evidenceId: 'EV-20261009-0001', ok: true, at: AT, manifestOk: true, signatureOk: true, failedTracks: [], detail: null } }]);
@@ -143,9 +156,30 @@ describe('the verdict of record of a real v2 item', () => {
     expect(clockReads()).toBe(0);
   });
 
-  it('a folder of a session is a plain name below the media store', () => {
-    expect(sessionPackageDir('/data/media/sessions', 'SES-20261009-0001')).toBe('/data/media/sessions/SES-20261009-0001');
+  it('the package folder of a session is SESSION-<sessionId> below the media store; the manifest file follows the version (D133 (2))', () => {
+    expect(sessionPackageDir('/data/media/sessions', 'SES-20261009-0001')).toBe('/data/media/sessions/SESSION-SES-20261009-0001');
+    expect(sessionManifestPath('/data/media/sessions', 'SES-20261009-0001', 2)).toBe('/data/media/sessions/SESSION-SES-20261009-0001/session-manifest.json');
+    expect(sessionManifestPath('/data/media/sessions', 'SES-20261009-0001', 1)).toBe('/data/media/sessions/SESSION-SES-20261009-0001/manifest.json');
     for (const name of ['..', '../SES-1', 'a/b', '', '.hidden']) expect(() => sessionPackageDir('/data/media/sessions', name)).toThrow();
+  });
+
+  it('a package in SESSION-<sessionId>/ verifies through the store layout; the same package in a bare <sessionId>/ folder is not a package', async () => {
+    const layout = (store: string) => ({ packageDirOf: (sessionId: string) => sessionPackageDir(store, sessionId) });
+    const inPlace = await buildPackage({ folderName: packageFolderName('SES-20261009-0001') });
+    expect(inPlace.dir).toBe(sessionPackageDir(dirname(inPlace.dir), inPlace.item.sessionId));
+    expect(existsSync(sessionManifestPath(dirname(inPlace.dir), inPlace.item.sessionId, 2))).toBe(true);
+    const found = await coreVerification(inPlace, layout(dirname(inPlace.dir))).verification.run(OPERATOR, inPlace.item.evidenceId);
+    expect(found?.body).toMatchObject({ ok: true, overall: 'PASS' });
+
+    // The SAME builder, the folder named after the session alone: every file is there, and the layout does not read it.
+    const bare = await buildPackage({});
+    expect(basename(bare.dir)).toBe(bare.item.sessionId);
+    expect(existsSync(join(bare.dir, 'session-manifest.json'))).toBe(true);
+    const missed = await coreVerification(bare, layout(dirname(bare.dir))).verification.run(OPERATOR, bare.item.evidenceId);
+    expect(missed?.body.ok).toBe(false);
+    expect(missed?.body.overall).not.toBe('PASS');
+    // CONTROL: handed its own folder directly, the bare-folder package is intact - only the layout refuses it.
+    expect((await coreVerification(bare).verification.run(OPERATOR, bare.item.evidenceId))?.body.ok).toBe(true);
   });
 });
 

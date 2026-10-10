@@ -72,14 +72,22 @@ vi.mock('../../../modules/capture-inputs', stubs.module('captureInputsModule'));
 vi.mock('../../../modules/demo', stubs.module('demoModule'));
 vi.mock('../../../modules/devices', stubs.module('devicesModule'));
 vi.mock('../../../modules/evidence', stubs.module('evidenceModule'));
+// Task 3 M8, blueprint row 91 (ruling D143): the evidence-export module (operation 87) is a domain module too.
+vi.mock('../../../modules/evidence-export', stubs.module('evidenceExportModule'));
+// Task 3 M8, blueprint row 90 (ruling D140): the media-stream module (operation 88 and the evidence media route) is a domain module too.
+vi.mock('../../../modules/media-stream', stubs.module('mediaStreamModule'));
 vi.mock('../../../modules/network-time', stubs.module('networkTimeModule'));
 vi.mock('../../../modules/pairing', stubs.pairing);
+// Task 3 M7, blueprint row 82b (ruling D147): the sealing module (operation 83 and the mount of the sealing composition) is a domain module too.
+vi.mock('../../../modules/sealing', stubs.module('sealingModule'));
 vi.mock('../../../modules/security-audit', stubs.module('securityAuditModule'));
 vi.mock('../../../modules/sessions', stubs.module('sessionsModule'));
 vi.mock('../../../modules/storage', stubs.module('storageModule'));
 // Task 3 M6, blueprint row 113: the STT configuration module (operations 90 to 92) is a domain module too.
 vi.mock('../../../modules/stt-config', stubs.module('sttConfigModule'));
 vi.mock('../../../modules/system', stubs.module('systemModule'));
+// Task 3 integration pass D4 (decision D146): the transcripts module (operations 84 to 86) is a domain module too.
+vi.mock('../../../modules/transcripts', stubs.module('transcriptsModule'));
 vi.mock('../../../realtime', stubs.realtime);
 
 /** The units this file takes the routes from, as `app.ts` names them. */
@@ -92,13 +100,17 @@ export const ROUTELESS_UNITS = [
   'modules/demo',
   'modules/devices',
   'modules/evidence',
+  'modules/evidence-export',
+  'modules/media-stream',
   'modules/network-time',
   'modules/pairing',
+  'modules/sealing',
   'modules/security-audit',
   'modules/sessions',
   'modules/storage',
   'modules/stt-config',
   'modules/system',
+  'modules/transcripts',
   'realtime',
 ] as const;
 

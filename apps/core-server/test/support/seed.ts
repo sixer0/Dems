@@ -84,6 +84,8 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   session_capture_sources: 0,
   // Schema v5 (erratum PE-129b-01, row 129b): the seed starts no session, so no STT snapshot.
   session_stt_config: 0,
+  // Schema v6 (erratum PE-0013-01): the seed writes no media store root; the Core does, at boot.
+  core_media_store: 0,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

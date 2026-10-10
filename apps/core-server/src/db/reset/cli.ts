@@ -5,7 +5,7 @@
  *   npm run db:reset -w @dems/core-server -- --database <name> [--scenario <name>]
  *
  * It builds a new database beside the named one (migrations, the seed as of the server clock at
- * this moment), copies the twelve kept tables into it unchanged, swaps the two names and drops
+ * this moment), copies the thirteen kept tables into it unchanged, swaps the two names and drops
  * the old database last. Sessions, paired devices, device credentials, biometric tokens,
  * settings, pairing codes, the two registry counters, the capture configuration with its devices
  * and credentials, the STT configuration row and the lineage of discarded audit chains
@@ -29,13 +29,29 @@
  * routine takes itself is the advisory lock (442001, slot) on the maintenance database, so two
  * resets of one database can never run at the same time, whoever called them.
  *
+ * WHICH FOLDER THE REAL-EVIDENCE GUARD JUDGES (erratum PE-0013-01; ruling D166). The reset is
+ * refused while a real sealed package exists below the Core's media store root. This command
+ * learns that root in this order, PRINTS it before the guard reads it, and refuses by name when
+ * it cannot know it - it never falls back to a default folder:
+ *
+ *   1. `DEMS_MEDIA_DIR` of its own environment (the variable the server is configured with);
+ *   2. else the root the Core of that database recorded at its last start (`core_media_store`);
+ *   3. neither: `RESET_STORE_ROOT_UNKNOWN`. Both, and they differ: `RESET_STORE_ROOT_CONFLICT`.
+ *
+ * In both refusals nothing was changed. A first build (the database does not exist) has nothing
+ * to judge and asks for no root.
+ *
  * It prints the row count of every table, the audit head and the lineage row of the discarded
  * chain. It prints no credential and no row of a kept table. The head hash of an audit chain is
  * an integrity value, not a secret.
  */
+import { resolve } from 'node:path';
+import { ENV_MEDIA_DIR, parseCapturePath } from '../../config';
 import { isEntryPoint, main, type CommandIo } from '../commands/cli';
+import type { StoredMediaStoreRoot } from '../commands/media-store-root';
 import { MIGRATE_LOCK_DATABASE, MIGRATE_LOCK_HINT, PROJECT_DATABASES } from '../commands/database-names';
 import { SCENARIO } from '../schema';
+import { SEED_DEMO_NOT_ASKED, demoPackagesOfEnvironment, seedDemoLines, type SeedDemoPackages } from '../seed';
 import { ResetError } from './errors';
 import { resetDatabase, type ResetInternals, type ResetLogEntry, type ResetOptions, type ResetReport } from './routine';
 
@@ -46,8 +62,18 @@ export interface ResetCommandOptions {
   readonly io?: CommandIo;
   /** The directory that holds the owner connection file. Default: `<repository>/.data`. */
   readonly dataDir?: string;
+  /** The evidence-store root, stated by the caller: it is judged as it is, and neither the environment nor the database is asked. A test passes its own. */
+  readonly evidenceStoreDir?: string;
+  /** The environment `DEMS_MEDIA_DIR` is read from. Default: the process environment. A test passes its own. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
   /** The server clock: read ONCE by the routine. Default: the real clock. A test passes a fixed instant. */
   readonly clock?: () => number;
+  /**
+   * The v2 demo packages of the reseed (pass E3). Default: the port of the Core this command's
+   * environment describes (`demoPackagesOfEnvironment`) for a project database, none for a test
+   * database. `null`: none is asked for. A test passes its own port.
+   */
+  readonly demoPackages?: SeedDemoPackages | null;
   /** Tests only: observes, or stops, the routine at a checkpoint. */
   readonly onCheckpoint?: ResetOptions['onCheckpoint'];
   /** Tests only: a shorter wait for sessions to end. */
@@ -110,6 +136,36 @@ export function parseResetArguments(argv: readonly string[]): ResetArguments {
 
 const iso = (ms: number): string => `${new Date(ms).toISOString()} (${ms})`;
 const round = (ms: number): number => Math.round(ms);
+
+/**
+ * The media store root this command lets the real-evidence guard judge (see the header), said
+ * through `say` BEFORE it is returned. `fromEnvironment`: the value of `DEMS_MEDIA_DIR`, already
+ * checked to be an absolute path, or undefined. `stored`: what the Core recorded, or null.
+ * Throws the named refusal when the root is not known or the two sources disagree.
+ */
+export function resetStoreRootOf(database: string, fromEnvironment: string | undefined, stored: StoredMediaStoreRoot | null, say: (line: string) => void): string {
+  if (fromEnvironment !== undefined) {
+    const root = resolve(fromEnvironment);
+    if (stored !== null && stored.root !== root) {
+      throw new ResetError(
+        'RESET_STORE_ROOT_CONFLICT',
+        'R-3',
+        `refused: ${ENV_MEDIA_DIR} of this command names the media store root ${root}, and the Core of ${database} recorded ${stored.root} at its start of ${iso(stored.recordedAt)}. The guard judges one folder and will not choose. Run the command with the server's ${ENV_MEDIA_DIR}, or without the variable to judge the recorded root. Nothing was changed.`,
+      );
+    }
+    say(`media store root the real-evidence guard judges: ${root} (${ENV_MEDIA_DIR} of this command${stored === null ? '; the database records none' : '; equal to the root the Core recorded'})`);
+    return root;
+  }
+  if (stored !== null) {
+    say(`media store root the real-evidence guard judges: ${stored.root} (recorded by the Core of ${database} at its start of ${iso(stored.recordedAt)}; ${ENV_MEDIA_DIR} is not set for this command)`);
+    return stored.root;
+  }
+  throw new ResetError(
+    'RESET_STORE_ROOT_UNKNOWN',
+    'R-3',
+    `refused: this command cannot tell where the Core of ${database} keeps its media: ${ENV_MEDIA_DIR} is not set in its environment, and the database records no root (no Core has started on it since migration 0013). Set ${ENV_MEDIA_DIR} to the server's media store root, or start the Core once. Nothing was changed.`,
+  );
+}
 
 /** The lines `db:reset` prints for a finished reset. */
 export function formatResetReport(report: ResetReport): string[] {
@@ -176,6 +232,18 @@ export async function runReset(argv: readonly string[], options: ResetCommandOpt
   }
 
   try {
+    // A value of the variable that is no absolute path is refused as the configuration refuses it, before anything is opened.
+    const fromEnvironment = options.evidenceStoreDir === undefined ? parseCapturePath(ENV_MEDIA_DIR, (options.environment ?? process.env)[ENV_MEDIA_DIR]) ?? undefined : undefined;
+    // DR-1 holds for the packages too: they are sealed at the routine's one clock reading, whenever it is taken.
+    let sealedAt: number | null = null;
+    const clock = (): number => (sealedAt ??= (options.clock ?? Date.now)());
+    const project: readonly string[] = PROJECT_DATABASES;
+    const demoPackages =
+      options.demoPackages === undefined
+        ? project.includes(parsed.database)
+          ? demoPackagesOfEnvironment({ environment: options.environment ?? process.env, dataDir: options.dataDir, now: clock })
+          : null
+        : options.demoPackages;
     const report = await resetDatabase(
       {
         database: parsed.database,
@@ -184,8 +252,15 @@ export async function runReset(argv: readonly string[], options: ResetCommandOpt
         // DC-9: a reset from the command line has no actor.
         actorId: null,
         reason: 'RESET',
-        clock: options.clock,
+        clock,
         dataDir: options.dataDir,
+        ...(demoPackages === null ? {} : { demoPackages }),
+        // Rulings D165 / D166: the guard reads the directory the Core seals into - `DEMS_MEDIA_DIR` of this
+        // command, else the root the Core recorded in the database; never a default folder. The root is
+        // printed before it is judged. A caller's own root (a test) is judged as stated.
+        evidenceStoreDir: options.evidenceStoreDir,
+        resolveEvidenceStoreDir:
+          options.evidenceStoreDir !== undefined ? undefined : (stored) => resetStoreRootOf(parsed.database, fromEnvironment, stored, (line) => io.out(`${COMMAND}: ${line}`)),
         onCheckpoint: options.onCheckpoint,
         sessionDrainMs: options.sessionDrainMs,
         // A command-line run owns its process: the routine cleans the driver's variables of it
@@ -196,6 +271,9 @@ export async function runReset(argv: readonly string[], options: ResetCommandOpt
       options.internals,
     );
     for (const line of formatResetReport(report)) io.out(line);
+    const demo = seedDemoLines(report.demoPackages ?? SEED_DEMO_NOT_ASKED, report.demoPlacement ?? null);
+    for (const line of demo.out) io.out(`${COMMAND}: ${line}`);
+    // A package that was not put in place is in the routine's own log line already (RESET_DEMO_PACKAGE_NOT_PLACED).
     io.out(`${COMMAND}: OK: ${report.database} is reset. State: npm run db:status -w @dems/core-server -- --database ${report.database}`);
     return 0;
   } catch (error) {

@@ -51,13 +51,13 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
     expect(new Date(FIXED_NOW).toISOString()).toBe('2026-10-01T03:00:00.000Z');
   });
 
-  it('all 42 tables hold what the seed of the landed contract states: 24 with rows, 18 empty', async () => {
+  it('all 43 tables hold what the seed of the landed contract states: 24 with rows, 19 empty', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     console.log(`[w20] ST-1 row counts of ${db.name}:\n${Object.entries(counts).map(([table, rows]) => `  ${table.padEnd(24)} ${rows}`).join('\n')}`);
     expect(counts).toEqual(EXPECTED_SEED_COUNTS);
-    expect(Object.keys(counts)).toHaveLength(42);
+    expect(Object.keys(counts)).toHaveLength(43);
     expect(Object.values(counts).filter((rows) => rows > 0)).toHaveLength(24);
-    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(18);
+    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(19);
   });
 
   it('AC-B-02: 3 operators, 3 roles, 14 permissions, 22 grants, 1 Core device, 13 items with 52 tracks, 13 history entries', async () => {
@@ -109,7 +109,7 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
   it('the two mechanism rows and the seed bookkeeping are as the contract says', async () => {
     const pool = db.ownerPool();
     const meta = await pool.query('SELECT schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 5, contract_revision: 'dbc-6' }]);
+    expect(meta.rows).toEqual([{ schema_version: 6, contract_revision: 'dbc-7' }]);
     const state = await pool.query('SELECT seed, sim_schema_version, scenario, epoch, created_at, seeded_at, last_reset_at, last_sealed_session_id, last_sealed_acknowledged, updated_at FROM core_state');
     expect(state.rows).toEqual([
       {
