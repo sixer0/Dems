@@ -9,7 +9,7 @@ import { useSim } from '@dems/shared/sim'
 import { toneHex } from '@dems/shared/tokens'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { useRouteEnterDelay } from '@/components/shell'
-import { useOwnCapture } from '@/lib/own-capture'
+import { useOwnCapture, useSelfCaptureCore } from '@/lib/own-capture'
 import { HELD_BEAT_MS, useMotionPolicy } from '@/motion'
 import { captureCheckpointsOf } from './capture-checkpoints-model'
 import { PANEL_BEAT_MS } from './choreography'
@@ -44,6 +44,7 @@ export function StoragePanel() {
   const routeDelay = useRouteEnterDelay()
   const series = useWriteRateSeries()
   const ownCapture = useOwnCapture()
+  const selfCapture = useSelfCaptureCore()
   const durableBytes = useSim((s) => captureCheckpointsOf(s.session)?.bytes ?? null)
   const durable = durableBytes === null ? null : formatBytesParts(durableBytes)
   const sessionSize = ownCapture
@@ -137,7 +138,10 @@ export function StoragePanel() {
         </div>
         <div>
           <dt>{t('common.storage.estRemaining')}</dt>
-          <dd>{t('common.units.hoursMinutes', { hours: storage.remainingHours, minutes: storage.remainingMinutes })}</dd>
+          {/* Fix wave K (G75c-04): free space divided by the device model's 8.2 GB per hour is no estimate of a Core that measures no write rate. */}
+          <dd data-testid="sm-est-remaining" data-reported={selfCapture || ownCapture ? 'false' : undefined}>
+            {selfCapture || ownCapture ? t('common.platformNotReported.value') : t('common.units.hoursMinutes', { hours: storage.remainingHours, minutes: storage.remainingMinutes })}
+          </dd>
         </div>
       </dl>
     </Panel>

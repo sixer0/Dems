@@ -102,7 +102,9 @@ describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
     expect(drawn()).toEqual({ pass: false, fail: true, report: true, rows: true, v1Marks: [] });
     expect(screen.getByTestId('evidence-verdict-FAIL')).toHaveTextContent(/VIDEO-02/);
     expect(screen.getByTestId('evidence-verify-v2-FAIL')).toBeTruthy();
-    expect(screen.getByTestId('evidence-v2-row-file:VIDEO-02-fail')).toHaveTextContent(/Stored bytes FAIL · decrypted bytes FAIL · fragment chain FAIL/);
+    // Fix wave K (G89b-06): V-05 of this recorded answer is SKIPPED ("an earlier check failed") - the decrypted bytes were
+    // not checked, so the part reads "Not run", never FAIL.
+    expect(screen.getByTestId('evidence-v2-row-file:VIDEO-02-fail')).toHaveTextContent(/Stored bytes FAIL · decrypted bytes Not run · fragment chain FAIL/);
     for (const row of ['file:VIDEO-01', 'transcript', 'manifest', 'signature']) expect(screen.getByTestId(`evidence-v2-row-${row}-ok`)).toBeTruthy();
     expect(screen.getByTestId('evidence-v2-fragment-VIDEO-02-3')).toHaveTextContent('VIDEO-02 fragment 3 tampered (stored-bytes hash mismatch; chain broken from fragment 3)');
     expect(screen.queryByTestId('evidence-v2-fragment-not-named')).toBeNull();

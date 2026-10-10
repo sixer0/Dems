@@ -4,6 +4,7 @@ import { ShieldAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type FaultKind } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { cn } from '@/lib/utils'
 import { useAuditLog } from './audit-context'
 import { Feed, type FeedItem } from './feed'
@@ -31,6 +32,8 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
   const { t } = useTranslation()
   const { rows } = useAuditLog()
   const enclosureOpen = useSim((s) => s.security.tamper)
+  // Fix wave K (C-2 / G75c-04): a Core in its own capture has no enclosure switch to read; "Closed" is the device model's constant. A raised tamper fault is a fact of the state and stays.
+  const enclosureNotReported = useSelfCaptureCore() && !enclosureOpen
   const evidence = useSim((s) => s.evidence)
   const integrity = useMemo(() => packageIntegrity(evidence), [evidence])
   const recent = useStableRows(useMemo(() => newestMatching(rows, isTamperRow, FEED_SIZE), [rows]))
@@ -50,10 +53,10 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
   return (
     <Panel id="tamper" icon={ShieldAlert} title={t('securityAudit.tamper.title')} className={className}>
       <div className="sa-tiles">
-        <div className={cn('sa-kpi', enclosureOpen ? 'sa-tone-warning' : 'sa-tone-success')} data-testid="tamper-enclosure">
+        <div className={cn('sa-kpi', enclosureOpen ? 'sa-tone-warning' : enclosureNotReported ? 'sa-tone-default' : 'sa-tone-success')} data-testid="tamper-enclosure" data-reported={enclosureNotReported ? 'false' : undefined}>
           <span className="sa-stat-label">{t('securityAudit.tamper.enclosure')}</span>
           <span className="sa-kpi-value" data-tone>
-            {enclosureOpen ? t('securityAudit.tamper.open') : t('securityAudit.tamper.closed')}
+            {enclosureOpen ? t('securityAudit.tamper.open') : enclosureNotReported ? t('common.platformNotReported.value') : t('securityAudit.tamper.closed')}
           </span>
         </div>
         <div className={cn('sa-kpi', chainOk ? 'sa-tone-success' : 'sa-tone-danger')} data-testid="tamper-chain">

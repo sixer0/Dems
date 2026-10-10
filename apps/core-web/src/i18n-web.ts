@@ -84,5 +84,102 @@ export const enWeb = {
     source: {
       notChecked: 'Not checked',
     },
+    /**
+     * Fix wave K, driver W (C-2 / G75c-04, ruling D222 (1)): a Core in its OWN capture
+     * (`security.platformNotReported` or `time.hostClock`). The simulator's device model is not a
+     * reading there: a surface shows the Core's own fact or "Not reported".
+     */
+    realCore: {
+      developmentKey: 'The Core says this is a DEVELOPMENT key - not a production signature.',
+      controls: {
+        summary: '{{ok}} of {{total}} active · {{notReported}} not reported',
+        bannerSummary: '{{ok}} of {{total}} controls active, {{notReported}} not reported',
+        signingKey: '{{algorithm}}, Core key {{keyId}} - the key the sealed items of this Core are signed with.',
+        noSigningKey: 'No sealed item of this Core names a signing key yet.',
+        hostClock: 'Host system clock. No time service is configured: nothing is locked and nothing is in holdover.',
+        notRead: {
+          ENCRYPTION: 'This Core reports no encryption status here. Each sealed item states how it is encrypted.',
+          TAMPER: 'This Core has no enclosure switch to read.',
+          SIGNED_FIRMWARE: 'This Core reports no firmware signature.',
+        },
+      },
+      devices: {
+        gnssNotConfigured: 'No GNSS receiver is configured. The time is the host system clock.',
+        lcdRemaining: 'REMAINING TIME NOT REPORTED',
+        lcdPlatform: 'TPM NOT REPORTED · SECURE BOOT NOT REPORTED',
+        camerasSubtitle: 'The camera sources of the two video tracks',
+      },
+      networkTime: {
+        avSync: 'This Core reports no A/V sync figure here. Source metadata: host system clock. A capture that nears its A/V bound raises a capture notice.',
+      },
+      dashboard: {
+        securityHeader: 'Platform security: not reported',
+        ringFlags: 'OPERATIONAL • NO FAULT REPORTED',
+      },
+      storage: {
+        bannerFree: '{{free}} free',
+        writeSpeed: 'This Core does not measure a write speed.',
+        estRemaining: 'No estimate: this Core does not measure a write speed to compute one from.',
+      },
+      keys: {
+        developmentChip: 'DEVELOPMENT KEY',
+        signedWith: 'The key the sealed items of this Core are signed with (newest: {{evidenceId}}).',
+        note: 'As this Core reports them. It reports no device certificate, no TLS certificate and no hardware root key.',
+        notReported: {
+          DEVICE_CERT: 'This Core reports no device certificate.',
+          EVIDENCE_SIGNING_KEY: 'No sealed item of this Core names a signing key yet.',
+          TLS_SERVER: 'This Core reports no TLS server certificate.',
+          HARDWARE_ROOT: 'This Core reports no hardware root key. It does not read a TPM.',
+        },
+      },
+    },
+    /** Fix wave K, driver W (ruling D222 (2)): the profile of a session whose recorded stream is not the configured one. */
+    profile: {
+      configuredLabel: 'Configured profile',
+    },
+    /** Fix wave K, driver W (G75c-10): an interrupted recording WHILE its seal still runs - nothing is sealed yet. */
+    interrupted: {
+      sealingTitle: 'The recording was interrupted',
+      sealingKept: 'The Core is sealing the recording up to the interruption.',
+    },
+    /** Fix wave K, driver W (G81b-06, G81b-09): the transcript pane of an evidence item. */
+    transcript: {
+      model: {
+        title: 'Transcript model',
+        name: 'Model',
+        version: 'Version (declared by the installation)',
+        quantisation: 'Quantisation',
+        hash: 'Model file SHA-256',
+      },
+      reason: 'Reason: {{reason}}',
+      reasonNotReported: 'Reason: not reported',
+    },
+    /**
+     * Fix wave K, Z2 (G94b-06): what an export job says about its archive, from `archiveOnCore` of the 202 of
+     * operation 42. "Stored on the Core" stays the shared sentence (`evidence.exportJob.onCore`).
+     */
+    exportJob: {
+      noArchive: 'Demonstration: no archive is written.',
+      archiveNotStated: 'The Core server states no archive for this export.',
+    },
+    /** Fix wave K, driver W (G89b-05): the "Evidence sealed" dialog of a REAL item. */
+    sealDialog: {
+      developmentSources: 'Recorded from development sources - not from production devices.',
+    },
+    /**
+     * Fix wave K, driver W (G94b-02, -09): the sealed player. "This recording failed its integrity
+     * check at {{file}} fragment {{seq}}." is the shared sentence (`evidence.playback.integrity`);
+     * the file and the fragment in it are the ones the Core's media route named in its refusal.
+     */
+    player: {
+      fileStopped: 'Stopped: this file failed its integrity check at fragment {{seq}}.',
+      fileStoppedNoPlace: 'Stopped: this file failed its integrity check.',
+      refusedByCore: 'The Core server refused the fragment: it does not match the sealed package, and none of its bytes was sent.',
+      otherPlays: '{{stopped}} is stopped. {{playing}} plays on.',
+      nothingPlays: 'Playback is stopped.',
+      runVerify: 'Run Verify for the full result.',
+      notLoaded: 'This file has not loaded.',
+      interruptedEnd: 'End of the sealed recording at {{at}}: the recording was interrupted, so it ends here.',
+    },
   },
 } as const satisfies ResourceTree

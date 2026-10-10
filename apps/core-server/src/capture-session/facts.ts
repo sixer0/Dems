@@ -54,7 +54,7 @@ import { lstat, open, readFile, rename, rm, type FileHandle } from 'node:fs/prom
 import { join } from 'node:path';
 import { CaptureSyncLevel } from '@dems/capture-protocol';
 import { cameraFileName, cameraFilePath, type PackageVideoTrackId } from '@dems/shared/evidence-package';
-import { videoSampleEntryOf, type VideoSampleEntryRead } from '../capture';
+import { videoSampleEntryOf, videoStreamFormatOf, type VideoSampleEntryRead, type VideoStreamFormat } from '../capture';
 
 export const SESSION_CAPTURE_FACTS_FOLDER = '.capture-session';
 export const SESSION_CAPTURE_FACTS_VERSION = 1;
@@ -258,6 +258,47 @@ export async function readSessionVideoSampleEntry(packageDir: string, trackId: P
       const facts = await handle.stat();
       if (!facts.isFile()) throw new Error('a camera file name that is no regular file');
       return await videoSampleEntryOf({
+        size: facts.size,
+        read: async (offset, length) => {
+          const buffer = Buffer.alloc(length);
+          let done = 0;
+          while (done < length) {
+            const { bytesRead } = await handle.read(buffer, done, length - done, offset + done);
+            if (bytesRead === 0) break;
+            done += bytesRead;
+          }
+          return new Uint8Array(buffer.buffer, buffer.byteOffset, done);
+        },
+      });
+    } finally {
+      await handle.close();
+    }
+  }
+  return null;
+}
+
+/**
+ * WHAT THE VIDEO STREAM OF A SESSION'S CAMERA FILE IS (fix wave K, driver S1; G89b-01, ruling D222
+ * (2); manifest field 36): picture size and measured frame rate, read from the file itself
+ * (`videoStreamFormatOf`). Asked like the sample entry: the RECORDING file first - its fragments are
+ * in the clear, so the frame rate is measured - then the SEALED camera file, whose init segment is
+ * the same bytes in the clear (its frame rate reads null: the fragments are ciphertext; a resumed
+ * build takes the manifest input the first build froze, never this second answer).
+ * Null when neither file is there or the init segment names no picture size. No media byte, no key.
+ */
+export async function readSessionVideoFormat(packageDir: string, trackId: PackageVideoTrackId): Promise<VideoStreamFormat | null> {
+  for (const path of [join(packageDir, cameraFileName(trackId)), join(packageDir, ...cameraFilePath(trackId).split('/'))]) {
+    let handle: FileHandle;
+    try {
+      handle = await open(path, FS.O_RDONLY | FS.O_NOFOLLOW);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw new Error('a camera file of the session could not be opened', { cause: error });
+    }
+    try {
+      const facts = await handle.stat();
+      if (!facts.isFile()) throw new Error('a camera file name that is no regular file');
+      return await videoStreamFormatOf({
         size: facts.size,
         read: async (offset, length) => {
           const buffer = Buffer.alloc(length);

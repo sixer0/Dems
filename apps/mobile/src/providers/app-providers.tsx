@@ -10,6 +10,7 @@ import { HeartbeatProvider, type SocketFactory } from '@dems/shared/realtime';
 import type { Sim } from '@dems/shared/sim';
 import { AuthProvider } from '@/auth';
 import { i18n } from '@/i18n';
+import { OperatorQueryScope } from '@/lib/operator-query-scope';
 import { SimRuntimeProvider, createResyncBus, installRuntimeLogSinks, type MobileSimOptions } from '@/runtime';
 
 /** Font scaling cap that keeps layouts stable at large system font sizes (01S §5.4, 04 §2.6). */
@@ -112,6 +113,8 @@ export function AppProviders({
                   {...(heartbeatSocketFactory ? { socketFactory: heartbeatSocketFactory } : {})}
                 >
                   <SimRuntimeProvider resyncBus={resyncBus} {...(sim ? { sim } : {})} {...(simOptions ? { simOptions } : {})}>
+                    {/* Fix wave K (G81b-02): an answer read for one operator leaves the cache when the operator changes or signs out. */}
+                    <OperatorQueryScope />
                     <AuthProvider>{children}</AuthProvider>
                   </SimRuntimeProvider>
                 </HeartbeatProvider>

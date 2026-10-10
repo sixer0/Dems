@@ -23,7 +23,9 @@ export function CaptureCheckpoints({ facts, nowMs }: CaptureCheckpointsProps) {
   const age = checkpointAge(nowMs, facts.lastAt)
   const last = age.unit === 'lastSeconds' ? t('session.captureFacts.checkpoints.lastSeconds', { seconds: age.seconds }) : t('session.captureFacts.checkpoints.lastMinutes', { minutes: age.minutes })
   return (
-    <div className="sm-check" data-testid="sm-capture-checkpoints" role="status">
+    // G89b-11: its own layout class. `sm-check` is the three-column grid of a check row (icon, label,
+    // value): this block has no icon, so its label fell into the 18 px icon column and was drawn over the lines beside it.
+    <div className="sm-checkpoints" data-testid="sm-capture-checkpoints" role="status">
       <span className="sm-check-label">{t('session.captureFacts.checkpoints.label')}</span>
       <span className="sm-check-value" data-testid="sm-capture-checkpoints-total">
         {[t('session.captureFacts.checkpoints.fragments', { count: facts.fragments }), last, size(facts.bytes)].join(' · ')}

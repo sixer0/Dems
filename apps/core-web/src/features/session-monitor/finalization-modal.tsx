@@ -15,6 +15,7 @@ import { useSealAttention } from '@/lib/seal-attention'
 import { SealAttentionNotice } from './seal-attention'
 import { etaSeconds, useSealingProgress } from './sealing-progress'
 import { InterruptedSealNotice } from './interrupted-seal'
+import { realSealFactsOf, type RealSealFacts } from './real-seal-facts'
 import { useInterruptedSeal } from './use-interrupted-seal'
 import { UnsealableNotice } from './unsealable-notice'
 
@@ -61,8 +62,8 @@ interface SealedItem {
  * - **Forward-only progress.** The bar, the percent, each step's status and the ETA come from
  *   `useSealingProgress` (`sealing-progress.ts`): a pure function of the finalization states the
  *   Core sent. No timer of this page moves them; a step drawn DONE stays DONE and the percent never
- *   falls, also when a resumed attempt rewrites a step on the Core. Without an ETA from the Core the
- *   line says "estimating…" and gives no number.
+ *   falls, also when a resumed attempt rewrites a step on the Core. Without an ETA from the Core NO
+ *   time-left line is drawn (fix wave K, G75c-05: `etaMs: null` is the Core saying it has no measured basis).
  * - **Resumed sealing, in place (OD-08).** When a RECOVERY turns into a resumed seal (the session
  *   is FINALIZING or SEALED while this overlay is in `recovery` mode, or the page switches the mode
  *   back to `finalization`), the SAME dialog draws the finalization body: one Modal, no close and
@@ -169,6 +170,9 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
       ? { evidenceId, caseNumber, subjectName, sessionId, simulatedManifestHash }
       : null
   const pkg = useDemoPackage(item)
+  // Fix wave K (G89b-05): the sealed item as THIS Core signed it - a real item says its key and its sources, never a word about DEMO packages.
+  const sealedItem = useSim((s) => (sealed && evidenceId ? (s.evidence.find((entry) => entry.id === evidenceId) ?? null) : null))
+  const realSeal = realSealFactsOf(sealedItem)
 
   return (
     <>
@@ -191,7 +195,7 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
       </Modal.Header>
       <Modal.Body className="sm-final-body">
         <UnsealableNotice sessionId={sessionId} />
-        <InterruptedSealNotice sessionId={sessionId} />
+        <InterruptedSealNotice sessionId={sessionId} sealed={sealed} />
         {attention !== null ? (
           <SealAttentionNotice attention={attention} />
         ) : (
@@ -211,9 +215,12 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
             </ProgressBar.Track>
           </ProgressBar>
 
-          {finalizing && progress.reportsProgress ? (
-            <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta={progress.etaMs === null ? 'none' : 'core'}>
-              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
+          {/* Fix wave K (G75c-05; `contract_wave_k.md` S1 section 5): the time-left line exists ONLY when the Core states one
+              (`etaMs` of the running step, measured). `null` - always so for the transcript step - draws no line at all:
+              no "estimating", no number made here. */}
+          {finalizing && progress.etaMs !== null && progress.etaMs > 0 ? (
+            <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta="core">
+              {t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
             </p>
           ) : null}
           {progress.resumed && !sealed && (!ownCapture || sawRecovery) ? (
@@ -272,7 +279,7 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
                   </p>
                 ) : null}
               </div>
-              <PackageBlock pkg={pkg} simulatedManifestHash={simulatedManifestHash} />
+              <PackageBlock pkg={pkg} simulatedManifestHash={simulatedManifestHash} real={realSeal} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -298,12 +305,46 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
   )
 }
 
-function PackageBlock({ pkg, simulatedManifestHash }: { pkg: PackageState; simulatedManifestHash: string | null }) {
+function PackageBlock({ pkg, simulatedManifestHash, real }: { pkg: PackageState; simulatedManifestHash: string | null; real: RealSealFacts | null }) {
   const { t } = useTranslation()
   // [CS] §3.2: "a screen that shows simulator data says 'simulated'; a screen that says 'live' shows
   // server data". In Live mode the digest is the Core server's (the replica), so it is labelled LIVE
   // (plan row W65; found by the row's lane check).
   const live = useCoreMode() === CoreMode.LIVE
+  if (real !== null) {
+    // G89b-05: a real item - the manifest digest, the key it is signed with and its mark, the development sources where so. No DEMO vocabulary.
+    return (
+      <dl className="sm-final-package" data-testid="sm-final-package" data-source="core" data-kind="real">
+        <div className="sm-final-package-head">
+          <span>{t('session.finalization.manifestDigest')}</span>
+        </div>
+        {real.manifestHash ? (
+          <div>
+            <dt className="sr-only">{t('session.finalization.manifestDigest')}</dt>
+            <dd className="font-mono" title={real.manifestHash}>
+              {shortHash(real.manifestHash, 24)}…
+            </dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>{t('session.finalization.signature')}</dt>
+          <dd className="font-mono" data-testid="sm-final-real-key">
+            {t('evidence.itemFacts.signature.realShort', { algorithm: real.algorithm, key: real.keyId })}
+          </dd>
+        </div>
+        {real.developmentKey ? (
+          <p className="sm-final-package-note" data-testid="sm-final-development-key">
+            {t('evidence.itemFacts.signature.developmentKey')}
+          </p>
+        ) : null}
+        {real.developmentSources ? (
+          <p className="sm-final-package-note" data-testid="sm-final-development-sources">
+            {t('web.sealDialog.developmentSources')}
+          </p>
+        ) : null}
+      </dl>
+    )
+  }
   if (pkg.status === 'idle') return null
   if (pkg.status === 'loading') return <p className="sm-final-package-note">{t('session.finalization.loadingPackage')}</p>
   if (pkg.status === 'missing') {

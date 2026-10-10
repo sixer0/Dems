@@ -1,6 +1,7 @@
 import { Card } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { GB, selectStorage, useSim } from '@dems/shared/sim'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { GlowLayer, type GlowTone } from '@/motion'
 import { formatShortBytes, STORAGE_CHIP_TONE, type StorageLevel } from './model'
 import { useEscalationKey } from './use-storage-alerts'
@@ -24,6 +25,7 @@ export function StorageBanner() {
     }
   })
   const escalation = useEscalationKey(view.state)
+  const selfCapture = useSelfCaptureCore()
   const remaining = t('common.units.hoursMinutes', {
     hours: Math.floor(view.remainingMinutes / 60),
     minutes: view.remainingMinutes % 60,
@@ -43,7 +45,8 @@ export function StorageBanner() {
       <div className="stor-banner-text">
         <p className="stor-banner-title">{t(`storage.banner.${view.state}`)}</p>
         <p className="stor-banner-detail">
-          {t('storage.banner.detail', { free: formatShortBytes(view.freeGb * GB), remaining })}
+          {/* Fix wave K (G75c-04): "about N of recording left" is free space divided by the device model's 8.2 GB per hour. */}
+          {selfCapture ? t('web.realCore.storage.bannerFree', { free: formatShortBytes(view.freeGb * GB) }) : t('storage.banner.detail', { free: formatShortBytes(view.freeGb * GB), remaining })}
         </p>
       </div>
     </Card>

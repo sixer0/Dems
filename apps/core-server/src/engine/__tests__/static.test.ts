@@ -69,6 +69,8 @@ describe('the scan itself', () => {
         'internal-actions.ts',
         'limits.ts',
         'rehydrate.ts',
+        // Fix wave K (driver S1, G75c-01): the end of the restart fault of a Core in its own capture.
+        'restart-fault.ts',
         'ring.ts',
         'scheduler.ts',
         'seal-doors.ts',
@@ -80,7 +82,7 @@ describe('the scan itself', () => {
         'write-plan.ts',
       ].map((name) => `src/engine/${name}`),
     );
-    expect(paths).toHaveLength(24);
+    expect(paths).toHaveLength(25);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 

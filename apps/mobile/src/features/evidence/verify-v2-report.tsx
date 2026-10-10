@@ -19,7 +19,7 @@ import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuesti
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
-import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2';
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2FilePart, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2';
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer;
@@ -52,7 +52,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
 
       <View style={styles.list} accessibilityLabel={t('evidence.verifyV2.resultTitle')} testID="evidence-v2-rows">
         {rows.map((row) => (
-          <ResultRow key={row.id} row={row} />
+          <ResultRow key={row.id} row={row} checks={answer.checks} />
         ))}
       </View>
 
@@ -182,10 +182,12 @@ function SourcesLine({ sources }: { sources: V2Sources }) {
   );
 }
 
-function ResultRow({ row }: { row: V2Row }) {
+function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | null }) {
   const { t } = useTranslation();
   const Icon = row.ok ? CircleCheck : CircleX;
   const part = (ok: boolean): string => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`);
+  // Fix wave K (G89b-06): a part whose check was not run reads "Not run", not FAIL.
+  const filePart = (name: V2FilePart): string => (row.file ? t(`evidence.verifyV2.outcome.${v2FilePartOutcome(row.file, name, checks)}`) : '');
   const label = row.file ? t('evidence.verifyV2.file', { track: row.file.trackId }) : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`);
   return (
     <View style={[styles.row, row.ok ? null : styles.rowFail]} testID={`evidence-v2-row-${row.id}-${row.ok ? 'ok' : 'fail'}`}>
@@ -200,7 +202,7 @@ function ResultRow({ row }: { row: V2Row }) {
       </View>
       {row.file ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
-          {t('evidence.verifyV2.fileParts', { stored: part(row.file.storedOk), plain: part(row.file.plainOk), chain: part(row.file.chainOk) })}
+          {t('evidence.verifyV2.fileParts', { stored: filePart('stored'), plain: filePart('plain'), chain: filePart('chain') })}
           {row.file.fragmentCount !== null ? ` · ${t('evidence.verifyV2.fragments', { count: row.file.fragmentCount })}` : ''}
         </Text>
       ) : null}

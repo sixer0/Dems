@@ -54,7 +54,7 @@ import { DEMO_PACKAGE_SUFFIX_PATTERN, EVIDENCE_ID_PATTERN, EXPORT_JOB_ID_PATTERN
 import { boundedText, count, epochMs, evidenceId, nextCursor, nullableEpochMs, operatorId, pageCursor, pageLimit, sha256Hex, trimmedText } from './schema-parts';
 import { apiText } from './text';
 import { EXAMPLE_EVIDENCE_ITEM, STATE_EXAMPLE_IDS } from './state-examples';
-import { EvidenceItemSchema } from './state-slices';
+import { EvidenceItemSchema, type EvidenceTranscriptModel } from './state-slices';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Schemas
@@ -160,6 +160,12 @@ export const EvidenceDetailSchema = z
       .max(100)
       .optional()
       .describe('Core server only, and only for a caller with `access.export`: the finished exports of the item whose archive lies in the Core\'s store, newest first. Each can be downloaded again through operation 87 by its `jobId`. Archives are kept until the package is removed; none is deleted by the product.'),
+    // Fix wave K, driver S2 (re-gate 94 notes G94b-11, G94b-12): ONE default destination, the Core's, true to its mode.
+    exportDestinationDefault: trimmedText(120)
+      .optional()
+      .describe(
+        'Core server only: the destination text the Core records for an export request that names none - `Case file transfer` on a Core in its own capture, `Case file transfer (simulated)` on a Core in simulated capture. A client pre-selects the destination whose recorded text equals it, so that every client offers the same default.',
+      ),
   })
   .describe('One evidence item and the reference to its media.');
 export type EvidenceDetail = z.output<typeof EvidenceDetailSchema>;
@@ -269,6 +275,10 @@ export const EvidenceVerifyResultSchema = z
           trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]),
           storedOk: z.boolean().describe('Hash of the stored bytes matches the sealed value.'),
           plainOk: z.boolean().describe('Hash of the plaintext bytes matches the sealed value.'),
+          plainChecked: z
+            .boolean()
+            .optional()
+            .describe('Present and false when the plaintext check (V-05) did not run for this file: `plainOk: false` is then "not checked", not a failed comparison. Absent: `plainOk` is the result of the check.'),
           chainOk: z.boolean().describe('Every fragment checkpoint continues the chain (V-11 idiom; one tampered fragment answers false — OD-02 L2).'),
           fragmentCount: count().nullable(),
           ok: z.boolean(),
@@ -388,7 +398,9 @@ export const TranscriptRevisionRequestSchema = z
       .array(
         z.strictObject({
           segmentIndex: count().describe('Which segment of the machine transcript to correct.'),
-          from: apiText().describe('The text being replaced (for the record; not trusted as the current value).'),
+          from: apiText().describe(
+            'The text being replaced. It MUST be the CURRENT text of the segment: the `to` of the newest revision that changed the segment, else the sealed text. Anything else answers `422 INVALID_INPUT` with `details.reason: REVISION_FROM_NOT_CURRENT_TEXT`; nothing is signed and nothing is appended (ruling D221 (2)).',
+          ),
           to: apiText().describe('The corrected text.'),
         }),
       )
@@ -428,6 +440,9 @@ export const TranscriptRevisionSchema = z
         }),
       )
       .describe('The corrections as stored.'),
+    reason: apiText()
+      .optional()
+      .describe('Why the revision was made: the note its author gave, as stored and as signed with the revision (op 85 `note`). Absent only where the stored revision holds none. Never a default.'),
   })
   .describe('One signed transcript revision (append-only; V-11 walks the parent_sha256 chain).');
 export type TranscriptRevisionBody = z.output<typeof TranscriptRevisionSchema>;
@@ -489,6 +504,12 @@ export type EvidenceExportJobBody = z.output<typeof EvidenceExportJobSchema>;
 export const EvidenceMediaSessionRequestSchema = z
   .strictObject({
     fileId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).optional().describe('The camera file to play; absent: `VIDEO-01`.'),
+    seekIndex: z
+      .literal(true)
+      .optional()
+      .describe(
+        'Fix wave K Z1 (ruling D224 (1)): asks for the INDEXED VIEW of the file - the same decrypted bytes plus ONE segment index (`sidx`) built from the signed manifest fragment table, for a player that cannot seek a fragmented file without one. Absent: the stream as before. The answer states whether the session serves it.',
+      ),
   })
   .describe('Optional request body of `POST /api/v1/evidence/{id}/media-sessions` (op 88): the camera file of the session.');
 export type EvidenceMediaSessionRequest = z.output<typeof EvidenceMediaSessionRequestSchema>;
@@ -509,9 +530,31 @@ export const EvidenceMediaSessionSchema = z
       .describe('Signed loopback URL with the mts_ token (SEC35-13). Bearer value: never logged, never audited, never replicated (E-31).'),
     expiresAt: epochMs().describe('Core instant the URL dies; the replay window is exactly this TTL (SEC35-12).'),
     ranges: z.literal(true).describe('The route answers Range requests (NM-11 playback).'),
+    seekIndex: z
+      .literal(true)
+      .optional()
+      .describe(
+        'Fix wave K Z1 (ruling D224 (1)): present, always `true`, exactly when the URL of THIS session serves the INDEXED VIEW of the file (the request asked `seekIndex: true` and the signed fragment table yields an exact index): the same decrypted bytes plus one segment index between the init segment and the first fragment; lengths and Range offsets of the URL are those of the view. Absent: the stream as sealed - a player that needs an index cannot seek it. Nothing of the sealed package, the export or Verify differs.',
+      ),
   })
   .describe('A short-lived signed evidence-media session (op 88; live-only — Simulated mode plays the bundled demo media instead).');
 export type EvidenceMediaSessionBody = z.output<typeof EvidenceMediaSessionSchema>;
+
+/**
+ * Fix wave K Z1 (ruling D224 (1); `delegation_progress/contract_wave_k.md` "Z1"): the answer of op 88
+ * for a session of the INDEXED VIEW. A consumer test imports it and reads `seekIndex` BY NAME. The
+ * token is a PLACEHOLDER (a real signed URL is a bearer value and never an example; E-31).
+ */
+export const EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE = {
+  evidenceId: 'EV-20260930-0001',
+  fileId: 'VIDEO-01',
+  url: 'http://127.0.0.1:4420/media/mts_000000000000000000000000000000000000000000000',
+  expiresAt: 1_790_825_000_000,
+  ranges: true,
+  seekIndex: true,
+} as const satisfies EvidenceMediaSessionBody;
+/** The body that asks for it. */
+export const EVIDENCE_MEDIA_SESSION_INDEXED_REQUEST_EXAMPLE = { fileId: 'VIDEO-01', seekIndex: true } as const satisfies EvidenceMediaSessionRequest;
 
 /** The schemas operations 84-88 add (merged into `CORE_API_SCHEMAS`). */
 export const TRANSCRIPT_MEDIA_SCHEMAS = {
@@ -959,6 +1002,51 @@ const EXAMPLE_PRODUCT_SEALED_ITEM = {
   transcript: { state: 'DISABLED', sha256: null, machineTranscriptHash: null, labelsStatus: null, revision: 0 },
 } satisfies EvidenceDetail['evidence'];
 
+/**
+ * FIX WAVE K, driver S2 (re-gate 81 finding G81b-06; decision D160): the model of a sealed
+ * transcript as an ITEM carries it (`evidence.transcriptModel` of operation 40, the items of slice
+ * `evidence`) - the shape of operation 41's member. A LOCAL backend states all four members.
+ */
+export const EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE = {
+  name: 'ggml-large-v3-turbo',
+  version: 'large-v3-turbo',
+  quantisation: 'f16',
+  modelSha256: '7e'.repeat(32),
+  reportedByServer: false,
+  report: `Transcript model: ggml-large-v3-turbo, version large-v3-turbo (declared by the installation), quantisation f16, file SHA-256 ${'7e'.repeat(32)}`,
+} satisfies EvidenceTranscriptModel;
+
+/** The same member for a SERVER backend (D160): the name the server reported, and nothing the Core verified. */
+export const EVIDENCE_TRANSCRIPT_MODEL_SERVER_EXAMPLE = {
+  name: 'whisper-large-v3-turbo',
+  version: null,
+  quantisation: null,
+  modelSha256: null,
+  reportedByServer: true,
+  report: 'Transcript model: whisper-large-v3-turbo (reported by the STT server; version, quantisation and file hash are not available to the Core and were not verified)',
+} satisfies EvidenceTranscriptModel;
+
+/** Fix wave K (G94b-11 / -12): `exportDestinationDefault` of operation 40 on a Core in its own capture. */
+/**
+ * Fix wave K (G89b-06): the file rows of operation 41 for a package with one tampered fragment in
+ * `VIDEO-02`. The stored bytes of that file did not verify, so its plaintext check (V-05) did NOT
+ * run: `plainOk` is false AND `plainChecked` is false - a client draws "Not run" for the decrypted
+ * bytes of that row, never "FAIL". The first row was checked: the member is absent.
+ */
+export const VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE: NonNullable<EvidenceVerifyResultBody['files']> = [
+  { fileId: 'fragments/VIDEO-01.mp4', trackId: 'VIDEO-01', storedOk: true, plainOk: true, chainOk: true, fragmentCount: 5, ok: true },
+  { fileId: 'fragments/VIDEO-02.mp4', trackId: 'VIDEO-02', storedOk: false, plainOk: false, plainChecked: false, chainOk: false, fragmentCount: 5, ok: false },
+];
+
+/**
+ * Fix wave K (G81b-09): `reason` of a transcript revision as operations 85 and 86 answer it - the
+ * note its author gave (operation 85 `note`), as stored and as signed. The two revision examples
+ * of the registry (`createTranscriptRevision` 201, `listTranscriptRevisions` 200) carry it.
+ */
+export const TRANSCRIPT_REVISION_REASON_EXAMPLE = 'Koreksi nama jalan';
+
+export const EVIDENCE_EXPORT_DESTINATION_DEFAULT_EXAMPLE = 'Case file transfer';
+
 export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   listEvidence: {
     responses: {
@@ -993,6 +1081,8 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             media: { source: 'LIVE_STREAM', packageSuffix: null, fileIds: [TrackId.VIDEO_01, TrackId.VIDEO_02] },
             access: { play: true, readTranscript: true, export: true },
             exports: [{ exportId: 'EXP-000033', jobId: 'EXPJ-000033', kind: 'PACKAGE', completedAt: 1_791_620_071_205, exportedBy: 'OPR-002', archiveBytes: 136_096_844, archiveSha256: '7a'.repeat(32) }],
+            // Fix wave K (G94b-11 / -12): the Core's one default destination, true to its mode.
+            exportDestinationDefault: EVIDENCE_EXPORT_DESTINATION_DEFAULT_EXAMPLE,
           } satisfies EvidenceDetail,
         },
         // Reconcile pass R (decisions D205, D207): the other kinds of item a Core answers. Every evidence-item
@@ -1167,6 +1257,7 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             signature: { value: 'c'.repeat(128), keyId: 'KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false },
             createdAt: 1_790_824_500_000,
             changes: [{ segmentIndex: 1, from: 'Baik, saya Ahmad Fauzi.', to: 'Baik, saya Ahmad Fausi.' }],
+            reason: TRANSCRIPT_REVISION_REASON_EXAMPLE,
           } satisfies TranscriptRevisionBody,
         },
       },
@@ -1209,6 +1300,7 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
                 signature: { value: 'c'.repeat(128), keyId: 'KEY-EVSIGN-01', algorithm: 'Ed25519', simulated: false },
                 createdAt: 1_790_824_500_000,
                 changes: [{ segmentIndex: 1, from: 'Baik, saya Ahmad Fauzi.', to: 'Baik, saya Ahmad Fausi.' }],
+                reason: TRANSCRIPT_REVISION_REASON_EXAMPLE,
               },
             ],
             nextCursor: null,
@@ -1257,6 +1349,7 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
     pathParams: ITEM,
     request: {
       secondCamera: { summary: 'The session of the second camera file', value: { fileId: 'VIDEO-02' } satisfies EvidenceMediaSessionRequest },
+      indexedView: { summary: 'The indexed view of the first camera file (a player that needs a segment index to seek)', value: EVIDENCE_MEDIA_SESSION_INDEXED_REQUEST_EXAMPLE },
     },
     responses: {
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
@@ -1272,6 +1365,10 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             expiresAt: 1_790_825_000_000,
             ranges: true,
           } satisfies EvidenceMediaSessionBody,
+        },
+        indexedView: {
+          summary: 'The same session serving the indexed view: one segment index after the init segment (token placeholder)',
+          value: { ...EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE, evidenceId: STATE_EXAMPLE_IDS.evidenceId },
         },
       },
       401: SIGNED_OUT,

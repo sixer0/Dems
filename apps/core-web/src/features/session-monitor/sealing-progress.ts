@@ -11,7 +11,7 @@
  *     rewrite a step's `progress` on the Core (`attempt` grows), the view keeps the largest it saw;
  *   - the overall percent never decreases;
  *   - the ETA is the Core's `etaMs` of the running step as it came; without one nothing is guessed
- *     ("estimating…").
+ *     and no time-left line is drawn (fix wave K, G75c-05).
  *
  * `advanceSealing` is the whole rule: `(memory, session, steps, sealed) -> { view, memory }`. The
  * memory belongs to ONE session; another session ID starts from nothing. The same percent rule as

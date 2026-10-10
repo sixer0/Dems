@@ -35,13 +35,15 @@ import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
+import { useOperatorId } from '@/lib/operator-query-scope';
 import { useMobileLive } from '@/runtime';
-import type { ItemV2 } from './item-v2';
+import type { ItemTranscriptModel, ItemV2 } from './item-v2';
 import { formatMediaTime, permissionGate, type GateState } from './sealed-playback';
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript';
 import {
   TRANSCRIPT_REASON_SIMULATED_ITEM,
   currentRevisionNumber,
+  deniedReadKindOf,
   deriveSegments,
   isNoSpeech,
   paneStateOf,
@@ -69,6 +71,7 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
   const live = useMobileLive();
   const sim = useSimInstance();
   const queryClient = useQueryClient();
+  const operatorId = useOperatorId();
   const operatorKnown = useSim((s) => selectOperator(s) !== null);
   const canRevise = useSim((s) => selectCan(s, Permission.TRANSCRIPT_REVISE));
   const gate = permissionGate({ operatorKnown, permitted: canRevise });
@@ -92,7 +95,10 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
   const revisionList = revisions.data ?? [];
   const derivedSegments = document === null ? [] : deriveSegments(document, revisionList);
   const baseRevision = currentRevisionNumber(document, revisionList);
-  const refusal = transcript.error instanceof TranscriptReadError ? transcript.error.refusal : transcript.isError ? 'FAILED' : null;
+  // Fix wave K (G81b-07): a caller operation 40 already refused is told so ONCE - no second line from a read
+  // that should not have been made; and a refused read is worded by the refusal's own reason (the case, not the role).
+  const refusal = refusedByAccess ? null : transcript.error instanceof TranscriptReadError ? transcript.error.refusal : transcript.isError ? 'FAILED' : null;
+  const deniedKind = deniedReadKindOf(transcript.error instanceof TranscriptReadError ? transcript.error.reason : null);
   const loading = !disabled && transcript.isPending && transcript.fetchStatus !== 'idle';
   const nameOf = (operatorId: string): string => operatorNames[operatorId] ?? operatorId;
   const revisingSegment = revising === null ? null : (derivedSegments.find((entry) => entry.segment.index === revising.index) ?? null);
@@ -103,8 +109,8 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
     const now = sim.store.getState().clock.now;
     if (retry.attempts >= RETRY_MAX || now < retry.until) return;
     setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
-    void queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live) });
-    void queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live) });
+    void queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live, operatorId) });
+    void queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live, operatorId) });
   };
 
   return (
@@ -133,6 +139,9 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
           </>
         ) : null}
       </View>
+
+      {/* Fix wave K (G81b-06; ruling D160): which model made the transcript, as the item states it. Nothing when it states none. */}
+      {!refusedByAccess && item.transcriptModel != null ? <TranscriptModelLines model={item.transcriptModel} /> : null}
 
       {state === 'PARTIAL' && summary !== null ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-transcript-partial">
@@ -172,8 +181,14 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
       ) : null}
       {refusal === 'DENIED' || refusal === 'FAILED' ? (
         <View style={styles.failed} accessibilityRole="alert" testID={`evidence-transcript-failed-${refusal}`}>
-          <Text maxFontSizeMultiplier={1.2} style={[styles.body, styles.failText]}>
-            {t(refusal === 'DENIED' ? 'evidence.transcript.notPermitted' : 'evidence.transcript.failed')}
+          <Text maxFontSizeMultiplier={1.2} style={[styles.body, styles.failText]} testID={refusal === 'DENIED' ? `evidence-transcript-denied-${deniedKind}` : 'evidence-transcript-failed-text'}>
+            {refusal === 'FAILED'
+              ? t('evidence.transcript.failed')
+              : deniedKind === 'CASE_SCOPE'
+                ? t('features.evidence.waveK.transcript.deniedCaseScope')
+                : deniedKind === 'ROLE'
+                  ? t('evidence.transcript.notPermitted')
+                  : t('evidence.itemFacts.transcript.mayNotRead')}
           </Text>
           {refusal === 'FAILED' ? (
             <Button size="sm" variant="outline" onPress={reload} isDisabled={!canRetry} testID="evidence-transcript-retry">
@@ -213,6 +228,44 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
       {revising !== null && revisingSegment !== null ? (
         <TranscriptReviseSheet key={revising.key} evidenceId={evidenceId} segment={revisingSegment} baseRevision={baseRevision} isOpen onClose={() => setRevising(null)} />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * The provenance of the transcript (fix wave K, G81b-06). A local model: its name, the version the
+ * installation declared, the quantisation and the file hash. A server backend (D160): the name the
+ * server reported and the Core's own sentence that nothing of it was verified - no version, no hash.
+ */
+function TranscriptModelLines({ model }: { model: ItemTranscriptModel }) {
+  const { t } = useTranslation();
+  const notStated = t('features.evidence.waveK.transcript.model.notStated');
+  return (
+    <View style={styles.model} testID={`evidence-transcript-model-${model.reportedByServer ? 'server' : 'local'}`} accessibilityLabel={t('features.evidence.waveK.transcript.model.title')}>
+      <Text maxFontSizeMultiplier={1.2} style={styles.strong}>
+        {t('features.evidence.waveK.transcript.model.title')}
+      </Text>
+      <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-name">
+        {t('features.evidence.waveK.transcript.model.name', { name: model.name })}
+      </Text>
+      {model.reportedByServer ? (
+        // The Core's own line (D160): the model was reported by the STT server and not verified by the Core.
+        <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-report">
+          {model.report}
+        </Text>
+      ) : (
+        <>
+          <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-version">
+            {t('features.evidence.waveK.transcript.model.version', { version: model.version ?? notStated })}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID="evidence-transcript-model-quantisation">
+            {t('features.evidence.waveK.transcript.model.quantisation', { quantisation: model.quantisation ?? notStated })}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} selectable style={[styles.caption, styles.hash]} testID="evidence-transcript-model-hash">
+            {t('features.evidence.waveK.transcript.model.hash', { hash: model.modelSha256 ?? notStated })}
+          </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -289,6 +342,12 @@ function RevisionList({ revisions, failed, nameOf }: { revisions: readonly Trans
               {' · '}
               {revision.simulated ? t('evidence.transcript.revisions.simulated') : t('evidence.transcript.revisions.signed', { key: revision.signedBy })}
             </Text>
+            {/* Fix wave K (G81b-09): why the revision was made, as the Core answers it; nothing when the answer states none. */}
+            {typeof revision.reason === 'string' && revision.reason.length > 0 ? (
+              <Text maxFontSizeMultiplier={1.2} selectable style={styles.caption} testID={`evidence-transcript-revision-reason-${revision.number}`}>
+                <Text style={styles.strong}>{t('features.evidence.waveK.transcript.revisionReason')}</Text>: {revision.reason}
+              </Text>
+            ) : null}
             {revision.changes.map((change, index) => (
               <Text key={`${change.segmentIndex}-${index}`} maxFontSizeMultiplier={1.2} style={styles.caption}>
                 <Text style={styles.strong}>{t('evidence.transcript.revisions.change', { index: change.segmentIndex })}</Text>: {change.to}
@@ -303,6 +362,8 @@ function RevisionList({ revisions, failed, nameOf }: { revisions: readonly Trans
 
 const styles = StyleSheet.create({
   root: { gap: spacing[2] },
+  model: { gap: 2, padding: spacing[1] + 2, borderRadius: radius.px.lg, borderWidth: 1, borderColor: derived.separator },
+  hash: { fontFamily: fontFamily.native.mono },
   head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[1] },
   inline: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
   failed: { gap: spacing[1] },

@@ -42,7 +42,7 @@ import { canonicalJSON } from '@dems/shared/sim';
 import { z } from 'zod';
 import { TRANSCRIBER_BACKEND_IDS, TRANSCRIBER_LANGUAGE } from '../types';
 import { ChunkStatus, type Checkpoint } from './checkpoint';
-import { SPEAKER_LABELS_UNAVAILABLE_FLAG, TRANSCRIPT_DOC_VERSION } from './constants';
+import { QaFlag, SPEAKER_LABELS_UNAVAILABLE_FLAG, TRANSCRIPT_DOC_VERSION } from './constants';
 import { SpeakerState, SpeakerUnavailableReason, type SpeakerLabelling } from './diarization';
 import { AudioSourceKind } from './media-time';
 
@@ -151,7 +151,7 @@ export function failedChunkCount(checkpoint: Checkpoint): number {
  * Pure. Throws (a zod error) when the parts do not make a valid document — for instance a label
  * map of another length than the segments: such a map is never applied in part.
  */
-export function buildTranscriptDocument(input: { checkpoint: Checkpoint; labelling: SpeakerLabelling; model: TranscriptModelProvenance; intervals: readonly DocumentInterval[] }): TranscriptDocument {
+export function buildTranscriptDocument(input: { checkpoint: Checkpoint; labelling: SpeakerLabelling; model: TranscriptModelProvenance; intervals: readonly DocumentInterval[]; intervalsTruncated?: boolean }): TranscriptDocument {
   const { checkpoint, labelling } = input;
   const segments = committedSegments(checkpoint);
   if (labelling.labels.length !== segments.length) throw new RangeError('the label map does not belong to these segments');
@@ -159,6 +159,12 @@ export function buildTranscriptDocument(input: { checkpoint: Checkpoint; labelli
   const partialReason = checkpoint.audioUnavailable ? TranscriptPartialReason.TRANSCRIPT_AUDIO_UNAVAILABLE : failed > 0 ? TranscriptPartialReason.CHUNKS_FAILED : null;
   const flags = new Set(checkpoint.qaFlags);
   if (labelling.state === SpeakerState.UNAVAILABLE) flags.add(SPEAKER_LABELS_UNAVAILABLE_FLAG);
+  // Fix wave K (G81b-04; transcript spec §D.2 "durable-part case"): the caller says that the recording was INTERRUPTED
+  // (`intervalsTruncated`). An interval that still has no end is then a TRUNCATED interval map - the recording ended
+  // before the interval was closed. The document does not invent the end (the manifest states where the sealed media
+  // ends); it records `intervals_incomplete`, as the spec says. A recording that was stopped is not told so: its
+  // document is byte for byte what it was (an open last interval there means "until the end of the recording").
+  if (input.intervalsTruncated === true && input.intervals.some((interval) => interval.toMs === null)) flags.add(QaFlag.INTERVALS_INCOMPLETE);
   const engine = labelling.engine;
   return TranscriptDocumentSchema.parse({
     header: {

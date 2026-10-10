@@ -22,7 +22,7 @@
 import { MIC_INPUT_ID_PATTERN } from '@dems/shared/api';
 import { PackageFile, cameraFilePath, manifestHashMatches, parseManifestV2 } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_MANIFEST_BYTES, verifyPackageV2 } from '@dems/shared/evidence-verify';
-import type { SealedAudioInterval, SealedFileFact, SealedItemFacts } from '../engine';
+import type { SealedAudioInterval, SealedFileFact, SealedItemFacts, SealedTranscriptModel } from '../engine';
 import { corePorts } from '../evidence-verify';
 
 /** What the reader needs of an item: its three anchors. */
@@ -60,13 +60,18 @@ export async function readSealedItemFacts(packageDir: string, item: SealedFactsA
     }));
 
     let developmentKey: boolean | null = null;
+    // Fix wave K, driver S2 (G81b-06; D160): the verifier's own statement of the transcript model - it makes one only for
+    // a manifest whose signature held and that declares a document. Nothing is restated from an unsigned manifest.
+    let transcriptModel: SealedTranscriptModel | null = null;
     try {
       const report = await verifyPackageV2(ports, { scope: 'MANIFEST', expected: { evidenceId: item.id, sessionId: item.sessionId, manifestSha256: item.manifestHash } });
       developmentKey = report.signature.developmentKey;
+      transcriptModel = report.transcriptModel === null ? null : { ...report.transcriptModel };
     } catch {
       developmentKey = null;
+      transcriptModel = null;
     }
-    return { evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'PRESENT', interrupted: manifest.timeline.interrupted, audioSourceIntervals, files, developmentKey };
+    return { evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'PRESENT', interrupted: manifest.timeline.interrupted, audioSourceIntervals, files, developmentKey, transcriptModel };
   } catch {
     return notReadable;
   }

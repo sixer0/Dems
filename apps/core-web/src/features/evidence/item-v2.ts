@@ -41,6 +41,8 @@ export interface ItemAudioInterval {
   /** null: the interval runs to the end of the recording. */
   readonly toMs: number | null
   readonly reason: AudioIntervalReason | null
+  /** Wave K (G94b-07): the class of the microphone of this interval as the sealed manifest records it (field 125); absent: not stated. */
+  readonly sourceClass?: 'PRODUCTION' | 'LOCAL_DEVICE' | 'FAKE'
 }
 
 export type ItemTranscriptState = 'PENDING' | 'PARTIAL' | 'READY' | 'FAILED' | 'DISABLED'
@@ -55,6 +57,23 @@ export interface ItemTranscriptSummary {
   readonly revision: number
   readonly failedChunks: number
   readonly backendUnreachable: boolean
+}
+
+/**
+ * Fix wave K (G81b-06; decision D160): the model that made the sealed transcript, as the ITEM states
+ * it (`transcriptModel` of operation 40 and of the `evidence` slice; the shape of operation 41's
+ * member). Absent on the item = not stated: nothing is drawn, never a default.
+ */
+export interface ItemTranscriptModel {
+  readonly name: string
+  /** The version the installation DECLARED (PE-D9-01); null with a server backend. */
+  readonly version: string | null
+  readonly quantisation: string | null
+  readonly modelSha256: string | null
+  /** A server backend reported the name; the Core verified nothing of the model. */
+  readonly reportedByServer: boolean
+  /** The Core's own line about the model (D160's sentence for a server backend). */
+  readonly report: string
 }
 
 export interface ItemSignatureV2 {
@@ -77,6 +96,8 @@ export interface ItemV2 {
   /** `true` / `false` as the Core recorded it; `null`: not recorded. null is never production. */
   readonly developmentSources: boolean | null
   readonly signature: ItemSignatureV2 | null
+  /** Fix wave K (G81b-06): the transcript model the item states; null: not stated. */
+  readonly transcriptModel: ItemTranscriptModel | null
 }
 
 const SHA256 = /^[0-9a-f]{64}$/
@@ -116,7 +137,8 @@ function readInterval(value: unknown): ItemAudioInterval | null {
   const toMs = value.toMs === null || value.toMs === undefined ? null : whole(value.toMs)
   if (seq === null || inputId === null || !MIC_INPUT.test(inputId) || fromMs === null) return null
   if (value.toMs !== null && value.toMs !== undefined && (toMs === null || toMs < fromMs)) return null
-  return { seq, inputId, fromMs, toMs, reason: typeof value.reason === 'string' && REASONS.includes(value.reason) ? (value.reason as AudioIntervalReason) : null }
+  const sourceClass = value.sourceClass === 'PRODUCTION' || value.sourceClass === 'LOCAL_DEVICE' || value.sourceClass === 'FAKE' ? value.sourceClass : null
+  return { seq, inputId, fromMs, toMs, reason: typeof value.reason === 'string' && REASONS.includes(value.reason) ? (value.reason as AudioIntervalReason) : null, ...(sourceClass === null ? {} : { sourceClass }) }
 }
 
 /** The intervals, or none at all: a list with a hole would draw a band that shows the wrong microphone. */
@@ -152,6 +174,15 @@ function readSignature(value: unknown): ItemSignatureV2 | null {
   return { algorithm, keyId, simulated: value.simulated }
 }
 
+/** The member `transcriptModel`, read by name; null unless every member of the shape reads. */
+export function readTranscriptModel(value: unknown): ItemTranscriptModel | null {
+  if (!isRecord(value)) return null
+  const name = text(value.name)
+  const report = text(value.report, 1024)
+  if (name === null || report === null || typeof value.reportedByServer !== 'boolean') return null
+  return { name, version: text(value.version), quantisation: text(value.quantisation, 64), modelSha256: hash(value.modelSha256), reportedByServer: value.reportedByServer, report }
+}
+
 /** Reads the v2 members of an evidence item. Never throws; a member it cannot read is "not stated". */
 export function readItemV2(item: unknown): ItemV2 {
   const source = isRecord(item) ? item : {}
@@ -172,6 +203,7 @@ export function readItemV2(item: unknown): ItemV2 {
     manifestVersion: source.manifestVersion === 1 || source.manifestVersion === 2 ? source.manifestVersion : null,
     developmentSources: typeof source.developmentSources === 'boolean' ? source.developmentSources : null,
     signature: readSignature(source.signature),
+    transcriptModel: readTranscriptModel(source.transcriptModel),
   }
 }
 

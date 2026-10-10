@@ -8,6 +8,7 @@
  * | `segmentAt` | Which interval holds a playhead position |
  * | `needsResync` | The second camera file follows the first: beyond the tolerance it is set to the first one's time |
  * | `clampSeek` | A seek stays inside the recording |
+ * | `seekAvailabilityOf` | Whether a stream can be sought is what its PLAYER reports: a duration means it holds a seek index (wave K M1, G94b-01) |
  * | `fileIsDevelopment`, `intervalIsDevelopment` | The class of a source, from a VERIFY RESULT only (`sources` of operation 41); never from the current device list |
  * | `permissionGate` | G6 / G7: Checking, then allowed or refused |
  *
@@ -95,6 +96,24 @@ export function needsResync(leadingSeconds: number, followingSeconds: number, to
 export function clampSeek(seconds: number, totalSeconds: number): number {
   if (!Number.isFinite(seconds)) return 0;
   return Math.min(Math.max(seconds, 0), Math.max(totalSeconds, 0));
+}
+
+/**
+ * Whether the open stream can be sought (wave K M1, G94b-01).
+ *
+ *   UNKNOWN     the player has not loaded the source yet
+ *   AVAILABLE   the player reports a duration: the stream carries its index, a seek goes where it is sent
+ *   NONE        the player reports no duration: on Android a fragmented MP4 without a segment index is
+ *               played as an unseekable stream, and every seek written to it lands on 0:00
+ */
+export type SeekAvailability = 'UNKNOWN' | 'AVAILABLE' | 'NONE';
+
+/**
+ * The seek availability a player's `sourceLoad` duration (seconds) states. "No duration" comes as 0,
+ * NaN, an infinity or the platform's unset marker (Android: a large negative number) - all NONE.
+ */
+export function seekAvailabilityOf(durationSeconds: unknown): Exclude<SeekAvailability, 'UNKNOWN'> {
+  return typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0 ? 'AVAILABLE' : 'NONE';
 }
 
 /** `m:ss` or `h:mm:ss` of a media position. */

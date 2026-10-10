@@ -143,6 +143,13 @@ export const TranscriptReason = {
   REVISION_NOT_PUBLISHED: 'TRANSCRIPT_REVISION_NOT_PUBLISHED',
   /** A change names a segment the machine transcript does not have. */
   SEGMENT_UNKNOWN: 'REVISION_SEGMENT_UNKNOWN',
+  /**
+   * G81b-01 (ruling D221 (2)): a change's `from` is not the CURRENT text of its segment - the `to`
+   * of the newest stored revision that changed the segment, or the sealed machine transcript's text
+   * when none did. Nothing is signed and nothing is appended: the Core never signs a correction of
+   * words that were never there.
+   */
+  FROM_NOT_CURRENT: 'REVISION_FROM_NOT_CURRENT_TEXT',
 } as const;
 
 const TEXT = {
@@ -152,9 +159,33 @@ const TEXT = {
   CONFLICT: 'The transcript revision is based on a revision that is no longer current.',
   UNAVAILABLE: 'The transcript of this item cannot be read right now.',
   SIGNER: 'The Core cannot sign a transcript revision right now.',
+  FROM_NOT_CURRENT: 'A change does not start from the current text of its segment. Read the transcript again and repeat the correction.',
   /** The sentence of every audited refusal of the Core (the media route's and operation 88's). */
   NOT_PERMITTED: 'Your role does not allow this action. The attempt was audited.',
 } as const;
+
+/**
+ * The first segment (by the order of `changes`) whose `from` is not its current text, or `null`.
+ * Current text: the `to` of the newest stored revision that changed the segment, else the sealed
+ * text. A stored record without a body states no change. Changes of ONE request apply in order.
+ * Pure; exported for its test.
+ */
+export function staleFromOf(sealed: readonly string[], stored: readonly { readonly body?: unknown }[], changes: readonly { readonly segmentIndex: number; readonly from: string; readonly to: string }[]): number | null {
+  const current = new Map<number, string>();
+  for (const record of stored) {
+    const body = record.body as { changes?: unknown } | undefined | null;
+    if (body === undefined || body === null || !Array.isArray(body.changes)) continue;
+    for (const change of body.changes as { segmentIndex?: unknown; to?: unknown }[]) {
+      if (typeof change?.segmentIndex === 'number' && typeof change.to === 'string') current.set(change.segmentIndex, change.to);
+    }
+  }
+  for (const change of changes) {
+    const text = current.get(change.segmentIndex) ?? sealed[change.segmentIndex];
+    if (text === undefined || change.from !== text) return change.segmentIndex;
+    current.set(change.segmentIndex, change.to);
+  }
+  return null;
+}
 
 function operationOf(operationId: TranscriptOperationId): CoreApiRegistryOperation {
   const operation = findCoreApiOperation(operationId);
@@ -380,6 +411,9 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
       signature: { value: row.signatureValue, keyId: row.signatureKeyId, algorithm: row.signatureAlgorithm, simulated: row.signatureSimulated },
       createdAt: row.createdAt,
       changes,
+      // Fix wave K, reconcile pass (G81b-09): the reason the reviser gave, as the row stores it (the same text is inside the
+      // signed body and on the audit row). Absent only where a stored revision holds none.
+      ...(typeof row.reason === 'string' && row.reason !== '' ? { reason: row.reason } : {}),
     };
   }
 
@@ -472,6 +506,13 @@ export function registerTranscriptRoutes(app: FastifyInstance): void {
             if (kept === null) {
               persist(request, TranscriptReason.REVISIONS_FILE_INCONSISTENT, 'the revision list of a package does not continue the stored chain; no revision is appended', null, item.id);
               throw unavailable(TranscriptReason.REVISIONS_FILE_INCONSISTENT);
+            }
+
+            // G81b-01 (D221 (2)): AFTER the head check (a stale base stays 409) and on the list this unit settled.
+            // Stored revisions are read for their `to` only - what an earlier revision claimed as `from` is not re-judged.
+            const stale = staleFromOf(document.segments.map((segment) => segment.text), kept, changes);
+            if (stale !== null) {
+              throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, TEXT.FROM_NOT_CURRENT, { details: { in: 'body', member: 'changes', reason: TranscriptReason.FROM_NOT_CURRENT, segmentIndex: stale, currentRevision } });
             }
 
             const body: RevisionBody = revisionBodyOf({ evidenceId: item.id, baseRevision, parentSha256: head?.sha256 ?? transcript.jsonSha256, machineTranscriptSha256: transcript.jsonSha256, authorId, reason, createdAt: now, changes });

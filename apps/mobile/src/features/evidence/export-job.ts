@@ -13,6 +13,7 @@
  * LIVE only: outside Live mode the export completes inside the request that queued it.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { operatorScope, useOperatorId } from '@/lib/operator-query-scope';
 import { reportRuntimeIssue, useMobileLive } from '@/runtime';
 import { EXPORT_JOB_POLL_MS, forwardProgress, isTerminalJob, readExportJob, type ExportJob } from './export-job-model';
 
@@ -36,13 +37,15 @@ export class ExportJobReadError extends Error {
   }
 }
 
-export const exportJobQueryKey = (jobId: string) => ['core-server', 'evidence-export-job', jobId] as const;
+/** The job's key ends with the operator (fix wave K, G81b-02): operation 87 answers by the caller's role (its `download` member). */
+export const exportJobQueryKey = (jobId: string, operatorId: string | null = null) => ['core-server', 'evidence-export-job', jobId, operatorScope(operatorId)] as const;
 
 /** The job `jobId`, read again while it is not finished. `jobId: null` asks nothing. */
 export function useExportJob(jobId: string | null, pollMs: number = EXPORT_JOB_POLL_MS) {
   const live = useMobileLive();
   const queryClient = useQueryClient();
-  const queryKey = exportJobQueryKey(jobId ?? 'none');
+  const operatorId = useOperatorId();
+  const queryKey = exportJobQueryKey(jobId ?? 'none', operatorId);
   return useQuery<PolledExportJob, ExportJobReadError>({
     queryKey,
     enabled: live !== null && jobId !== null,

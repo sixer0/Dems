@@ -190,3 +190,23 @@ export async function findDetailBody(): Promise<HTMLElement> {
 }
 
 export { SUPERVISOR_SESSION }
+
+/**
+ * Fix wave K (G94b-02): the sealed player ASKS the media route about a file that stops or does not
+ * load (`probeMediaSession`, a same-origin `fetch`). The media route is registry-external, so the
+ * fake Core of the Live test bed refuses it as an unknown route. This puts the route under the
+ * global `fetch` for the life of the bed (its `dispose` puts the previous `fetch` back): by default
+ * the bytes are served (`206`), which is what a healthy Core answers. Call it AFTER the page is
+ * open. Returns the ranges that were asked for, never a path.
+ */
+export function serveMediaRoute(answer: (path: string, init: RequestInit | undefined) => Response = () => new Response(new Uint8Array(64), { status: 206, headers: { 'content-length': '64' } })): { readonly ranges: string[] } {
+  const before = globalThis.fetch
+  const ranges: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input)
+    if (!path.startsWith('/media/')) return before(input, init)
+    ranges.push(String((init?.headers as Record<string, string> | undefined)?.range ?? ''))
+    return answer(path, init)
+  }) as typeof fetch
+  return { ranges }
+}

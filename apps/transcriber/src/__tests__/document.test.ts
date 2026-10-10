@@ -369,3 +369,28 @@ describe('the model provenance of the header against its backend (ev §B.7 field
     expect(built(finished(), MODEL_PROVENANCE).header.model).toEqual({ id: 'stand-in-model', ...MODEL_PROVENANCE });
   });
 });
+
+// Fix wave K (driver S1; re-gate 81 finding G81b-04; transcript spec §D.2 "durable-part case").
+describe('G81b-04: the document of an INTERRUPTED recording records that its interval map is truncated', () => {
+  const of = (intervals: typeof INTERVALS, intervalsTruncated?: boolean): TranscriptDocument =>
+    buildTranscriptDocument({ checkpoint: finished(), labelling: LABELLED, model: MODEL_PROVENANCE, intervals, ...(intervalsTruncated === undefined ? {} : { intervalsTruncated }) });
+
+  it('CONTROL (the finding): nobody says "interrupted" - an interval without an end and no flag, the document of before', () => {
+    const doc = of(INTERVALS);
+    expect(doc.intervals.at(-1)).toEqual({ source: 'MIC-02', from_ms: 9_000, to_ms: null });
+    expect(doc.qa_flags).toEqual([]);
+    // A recording that was STOPPED is told `false`: byte for byte the same document.
+    expect(renderTranscript(of(INTERVALS, false)).sha256).toBe(renderTranscript(doc).sha256);
+  });
+
+  it('interrupted, and an interval has no end: `intervals_incomplete` is recorded; the end is NOT invented', () => {
+    const doc = of(INTERVALS, true);
+    expect(doc.qa_flags).toEqual(['intervals_incomplete']);
+    expect(doc.intervals.at(-1)).toEqual({ source: 'MIC-02', from_ms: 9_000, to_ms: null });
+    expect(TranscriptDocumentSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it('interrupted with every interval closed: nothing is truncated, no flag', () => {
+    expect(of([{ source: 'MIC-01', fromMs: 0, toMs: 9_000 }, { source: 'MIC-02', fromMs: 9_000, toMs: 12_000 as unknown as null }], true).qa_flags).toEqual([]);
+  });
+});

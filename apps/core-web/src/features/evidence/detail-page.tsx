@@ -7,7 +7,7 @@ import { Archive, Copy, Download, FileVideo, MoreHorizontal, Play, Share2 } from
 import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
-import { Permission, selectCan, useSim, type EvidenceItem } from '@dems/shared/sim'
+import { Permission, interruptedFactOf, selectCan, useSim, type EvidenceItem } from '@dems/shared/sim'
 import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
 import { deferEffectStart } from '@/lib/effect-start'
 import { useMotionPolicy } from '@/motion'
@@ -382,7 +382,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                   {key === 'media' ? (
                     <div className="evi-body" data-testid="evidence-media-panel" data-playback={sealedPlayback ? 'sealed' : row.pkg ? 'bundled' : live ? 'none' : 'bundled'}>
                       {sealedPlayback ? (
-                        <SealedPlayer evidenceId={item.id} durationMs={item.durationMs} item={v2} sources={verifiedSources} failedFragments={verification.state.v2?.failedFragments} playToken={playToken} onPlayHandled={onPlayHandled} fileIds={fileIds} mayPlay={access.play} />
+                        <SealedPlayer evidenceId={item.id} durationMs={item.durationMs} item={v2} sources={verifiedSources} failedFragments={verification.state.v2?.failedFragments} playToken={playToken} onPlayHandled={onPlayHandled} fileIds={fileIds} mayPlay={access.play} interrupted={interruptedFactOf(item).interrupted === true} />
                       ) : noMedia ? (
                         <MediaNone facts={facts} />
                       ) : (
@@ -402,7 +402,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
         </Card>
       </motion.section>
 
-      <ExportWizard key={wizard.key} rows={[row]} isOpen={wizard.open} onOpenChange={(open) => setWizard((previous) => ({ ...previous, open }))} />
+      <ExportWizard key={wizard.key} rows={[row]} destinationDefault={media.facts?.exportDestinationDefault ?? null} isOpen={wizard.open} onOpenChange={(open) => setWizard((previous) => ({ ...previous, open }))} />
     </div>
   )
 }

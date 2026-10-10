@@ -144,7 +144,9 @@ describe('the tamper demo answer (one fragment of VIDEO-02 altered)', () => {
     await waitFor(() => expect(chip()).toHaveAttribute('data-verdict', 'FAIL'), UI)
     expect(screen.getByTestId('evidence-verify-v2')).toHaveAttribute('data-verdict', 'FAIL')
     expect(drawnRows()).toEqual(['file:VIDEO-01:pass', 'file:VIDEO-02:fail', 'transcript:pass', 'manifest:pass', 'signature:pass'])
-    expect(card().querySelector('[data-check="file:VIDEO-02"]')).toHaveTextContent('Stored bytes FAIL · decrypted bytes FAIL · fragment chain FAIL')
+    // Fix wave K (G89b-06): the pin moved by delta - check V-05 of this answer is SKIPPED ("Not run: an earlier check failed"),
+    // so the decrypted bytes of the file were not checked and its row says "Not run", never "FAIL".
+    expect(card().querySelector('[data-check="file:VIDEO-02"]')).toHaveTextContent('Stored bytes FAIL · decrypted bytes Not run · fragment chain FAIL')
     expect(screen.getByTestId('evidence-v2-fragments')).toHaveTextContent(SPEC_LINE)
     expect(screen.queryByTestId('evidence-v2-fragment-not-named')).toBeNull()
     expect(drawnChecks().filter((check) => check.endsWith(':FAIL'))).toEqual(['V-04:FAIL', 'V-06:FAIL', 'V-08:FAIL'])

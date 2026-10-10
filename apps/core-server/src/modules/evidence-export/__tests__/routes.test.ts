@@ -208,7 +208,7 @@ describe('operation 42 exportEvidence with export jobs provided (the seam of row
     const response = await test.post(exportUrl(ID), { reason: 'Prosecutor request', kind: 'COMPOSITE', composite: {} });
     expect(response.statusCode).toBe(202);
     // R93-06: the job operation 87 polls is named in the answer, as the contract and the simulator have it.
-    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'QUEUED', jobId: 'EXPJ-000032' });
+    expect(response.json()).toEqual({ exportId: 'EXP-000032', evidenceId: ID, status: 'QUEUED', jobId: 'EXPJ-000032', archiveOnCore: false }); // fix wave K (G94b-06): a dataset item - no archive
     expect(validateCoreApiResponse('exportEvidence', 202, response.json())).toEqual({ ok: true });
     expect(jobs.log).toEqual([`begin ${ID}`, 'accepted EXP-000032 COMPOSITE']);
     // R93-06: the kind the body named is on the request the hosted action commits; an item without a package here is not deferred.
@@ -316,7 +316,10 @@ describe('R93-03: a request for a sealed package is committed DEFERRED; the comp
     evidenceExport(test.app).provide(jobs.runtime);
     test.actAs(operator('SUPERVISOR'));
     test.engineAnswers({ ok: true, status: 202, exportId: 'EXP-000032' });
-    expect((await test.post(exportUrl(ID), { reason: 'Prosecutor request' })).statusCode).toBe(202);
+    const accepted = await test.post(exportUrl(ID), { reason: 'Prosecutor request' });
+    expect(accepted.statusCode).toBe(202);
+    // Fix wave K (G94b-06): a JOB of this Core writes the archive into its store - the answer says so (a dataset item answers false, above).
+    expect((accepted.json() as { archiveOnCore?: boolean }).archiveOnCore).toBe(true);
     // G94-10 (wave H C1): the request of a JOB says its kind on the row also when the body left it to the default
     // (C3 §5.2 `details.kind: PACKAGE|COMPOSITE`). Until wave H this pinned a request WITHOUT `kind`: the gate's finding.
     expect(test.commands[0]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '', kind: 'PACKAGE', completion: 'DEFERRED' }]);

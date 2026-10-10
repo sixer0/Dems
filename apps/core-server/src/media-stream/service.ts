@@ -15,7 +15,7 @@
  * shared contract gains the member through pass D1b). In order:
  *
  *   401 / 403   stage 6: not signed in; a role without EVIDENCE_VIEW, with its ACCESS_DENIED row
- *   422         a body that is not exactly `{ fileId }`
+ *   422         a body with a member other than `fileId` and `seekIndex: true`, or another value of one
  *   404         no item of that ID
  *   409         MEDIA_NOT_AVAILABLE: the item has no sealed v2 package in this Core's store (every
  *               v1 demo package and simulated item: a client plays its bundled media for those). A
@@ -73,6 +73,28 @@
  * is never dropped. A stream cut because its sign-in session ended is a log line (the sign-out
  * itself is in the trail). Never the token, never the URL, never a byte of media (C3 §5.1).
  *
+ * ONE STOP, ONE ROW (fix wave K Z1; gate finding G94b-10; erratum PE-WH-04 "ONE row when serving
+ * stops"). A player that is refused a place asks for it again by itself: the Android player repeats
+ * a failed load three times before it reports an error, a browser probes, an app renews its media
+ * session once and goes back to the same position. Each of those requests is refused exactly as the
+ * first (the same cut, the same `409`), but the WARNING row is written ONCE per (operator, sign-in session,
+ * item as sealed, file, fragment, code) within one media-session lifetime
+ * (`EVIDENCE_MEDIA_SESSION_TTL_MS` from the row): the later requests are log lines. The memory of
+ * it holds IDs and a number, never a token; a Core that restarts forgets it and writes the row
+ * again - never fewer rows than stops.
+ *
+ * THE INDEXED VIEW (fix wave K Z1; gate finding G94b-01; ruling D224 (1)). A body of operation 88
+ * may ask `seekIndex: true`: the session then serves the INDEXED VIEW of the file - the same
+ * decrypted bytes plus ONE segment index (`sidx`) between the init segment and the first fragment,
+ * built from the signed manifest's fragment table (`seek-index.ts`) - and the answer states it
+ * (`seekIndex: true`). A file whose table yields no exact index gets the plain session and the
+ * answer states nothing. The view is a claim of the token (under its MAC): on such a session the
+ * length, `content-range`, the Range offsets and the `416` are those of the VIEW; behind the index
+ * every offset is the file's plus the length of the box. Fragments are opened and authenticated by
+ * the same reader, so the stop before a failed fragment and the `409` of a range that starts in
+ * one are at the same place of the recording. The audit row of a stop gives its range in FILE
+ * offsets (the sealed file's own), `bytesServed` as sent. Nothing of the package is written.
+ *
  * WHAT IS NEVER LOGGED: the token, the URL, the `Range` value. The request line of the server
  * holds the route PATTERN (`/media/:token`), never the path (`plugins/logger`); the lines of this
  * file hold codes, a file ID, an evidence ID and counts.
@@ -92,7 +114,8 @@ import { describeError, principalReference } from '../plugins/logger';
 import { EVIDENCE_MEDIA_ROUTE_URL } from '../plugins/permission-guard';
 import type { MediaItem } from './items';
 import { contentRangeOf, decideRange, unsatisfiedRangeOf } from './ranges';
-import { MediaSourceError, MediaSourceFailure, planMediaFile, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
+import { fileOffsetOfViewOffset, indexedViewSize } from './seek-index';
+import { MediaSourceError, MediaSourceFailure, planMediaFile, readIndexedView, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
 import { MEDIA_TOKEN_PATTERN, MediaTokenRefusal, issueMediaToken, readMediaToken, type MediaSessionMac } from './token';
 
 /** The registry operation this unit answers. */
@@ -115,6 +138,10 @@ export const EVIDENCE_CASE_SCOPE_REASON = 'EVIDENCE_CASE_SCOPE';
 /** `details.reason` of a media answer that is not the token's (`MediaTokenRefusal`) nor the source's (`MediaSourceFailure`). */
 export const NOT_A_SEALED_PACKAGE_REASON = 'NOT_A_SEALED_PACKAGE';
 export const RANGE_NOT_SATISFIABLE_REASON = 'RANGE_NOT_SATISFIABLE';
+/** `details.reason` of a session of the indexed view whose file has no index now (the token says a view this Core cannot build). */
+export const SEEK_INDEX_NOT_AVAILABLE_REASON = 'SEEK_INDEX_NOT_AVAILABLE';
+/** How many stops are remembered for the one-row rule (G94b-10). A stop is IDs and an instant. */
+export const MEDIA_STOP_MEMORY_ENTRIES = 256;
 
 /** `details`-free code of a stream that was cut because its sign-in session ended (R93-08). In the row's message and the log line. */
 export const MEDIA_SESSION_ENDED_REASON = 'MEDIA_SESSION_ENDED';
@@ -133,11 +160,12 @@ const STORE_NOT_READY_TEXT = 'The server cannot open a media session yet. Try ag
 const RANGE_TEXT = 'The requested range is outside the file.';
 const SOURCE = 'mediaStream';
 const STOPPED = 'Evidence media stream stopped on a fragment that did not open';
+const STOPPED_AGAIN = 'Evidence media stream stopped again on a fragment whose stop is already in the audit trail';
 const DENIED = 'Media session refused';
 const SERVED_ROW_NOT_WRITTEN = 'the audit row of a served media range could not be written';
 
 /** The body of operation 88. Strict: a member this server does not know is refused, not ignored. */
-export const MediaSessionRequestSchema = z.strictObject({ fileId: z.enum(VIDEO_TRACK_IDS) });
+export const MediaSessionRequestSchema = z.strictObject({ fileId: z.enum(VIDEO_TRACK_IDS).optional(), seekIndex: z.literal(true).optional() });
 const DEFAULT_FILE: PackageVideoTrackId = 'VIDEO-01';
 
 /** What the routes are handed (the unit's index builds it from the app; a test replaces members). */
@@ -199,14 +227,13 @@ export function holdsCase(principal: Pick<Operator, 'operatorId' | 'role'>, item
   return principal.role === OperatorRole.SUPERVISOR || (item.investigatorId !== '' && principal.operatorId === item.investigatorId);
 }
 
-/** The file a body of operation 88 asks for. */
-function fileOfBody(body: unknown): PackageVideoTrackId {
+/** The file a body of operation 88 asks for, and whether it asks for the indexed view (`seekIndex: true`). */
+function askOfBody(body: unknown): { readonly fileId: PackageVideoTrackId; readonly seekIndex: boolean } {
   // An empty body counts as `{}` on this server (`plugins/error-envelope`): both are "no file named".
-  if (body === undefined || body === null) return DEFAULT_FILE;
-  if (typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0) return DEFAULT_FILE;
+  if (body === undefined || body === null) return { fileId: DEFAULT_FILE, seekIndex: false };
   const parsed = MediaSessionRequestSchema.safeParse(body);
   if (!parsed.success) throw invalidInput('body');
-  return parsed.data.fileId;
+  return { fileId: parsed.data.fileId ?? DEFAULT_FILE, seekIndex: parsed.data.seekIndex === true };
 }
 
 /** What the module registers its two routes with. */
@@ -267,6 +294,8 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
   }
 
   const plans = new Map<string, MediaFilePlan>();
+  /** G94b-10: the stops whose row is written, each until the instant it counts as the same stop. IDs and codes only. */
+  const stops = new Map<string, number>();
   const portsOf = (dir: string): MediaSourcePorts => ({ reader: createPackageReader(dir), opener: parts().opener });
 
   /** The plan of one camera file and the ports to read it with; a `409` for a package that cannot be played. */
@@ -300,17 +329,20 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       const principal = request.principal;
       // Stage 6 has refused every other caller; a session is bound to an operator all the same.
       if (principal.kind !== 'OPERATOR') throw notSignedIn();
-      const fileId = fileOfBody(request.body);
+      const { fileId, seekIndex: asksIndex } = askOfBody(request.body);
       const item = await parts().readItem(request, evidenceId);
       if (item === null) throw evidenceNotFound();
       if (!hasSealedPackage(item)) throw mediaUnavailable(NOT_A_SEALED_PACKAGE_REASON, { fileId });
       await holdScope(request, principal, item);
       const mac = parts().mac();
       if (mac === null) throw storeNotReady();
-      await sourceOf(item, fileId);
+      const { plan } = await sourceOf(item, fileId);
+      // The indexed view only when it was asked for AND the signed table yields an exact index.
+      const indexed = asksIndex && plan.seekIndex !== null;
+      if (asksIndex && !indexed) request.log.info({ code: plan.seekIndexRefusal, source: SOURCE, evidenceId: item.evidenceId, fileId }, 'No indexed view for this file: its fragment table yields no exact index');
 
       const expiresAt = app.clock.now() + EVIDENCE_MEDIA_SESSION_TTL_MS;
-      const token = issueMediaToken({ evidenceId: item.evidenceId, fileId, expiresAt }, { operatorId: principal.operatorId, sessionId: principal.sessionId }, parts().nonce(), mac);
+      const token = issueMediaToken({ evidenceId: item.evidenceId, fileId, expiresAt, ...(indexed ? { indexed } : {}) }, { operatorId: principal.operatorId, sessionId: principal.sessionId }, parts().nonce(), mac);
       await append(MEDIA_SESSION_ISSUED_UNIT, {
         type: AuditType.EVIDENCE_MEDIA_SERVED,
         message: `Media session opened for ${fileId}`,
@@ -320,10 +352,10 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
         evidenceId: item.evidenceId,
         details: { fileId, bytesServed: 0, signed: true, expiresAt },
       });
-      request.log.info({ code: AuditType.EVIDENCE_MEDIA_SERVED, source: SOURCE, evidenceId: item.evidenceId, fileId, expiresAt }, 'Media session opened');
+      request.log.info({ code: AuditType.EVIDENCE_MEDIA_SERVED, source: SOURCE, evidenceId: item.evidenceId, fileId, expiresAt, indexedView: indexed }, 'Media session opened');
       void reply.code(201);
       // Loopback only (C3 N-4): the listen host is a constant of the configuration, never a request value.
-      return { evidenceId: item.evidenceId, fileId, url: `http://${app.config.host}:${app.config.port}${MEDIA_ROUTE_PREFIX}/${token}`, expiresAt, ranges: true };
+      return { evidenceId: item.evidenceId, fileId, url: `http://${app.config.host}:${app.config.port}${MEDIA_ROUTE_PREFIX}/${token}`, expiresAt, ranges: true, ...(indexed ? { seekIndex: true as const } : {}) };
     }
   };
 
@@ -341,6 +373,14 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       else request.log.debug({ code: AuditType.EVIDENCE_MEDIA_SERVED, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, rangeStart: range.start, rangeEnd: range.end - 1, bytesServed: served }, 'Evidence media range served');
       return;
     }
+    // G94b-10: the same stop asked for again (a player's own retries, a renewal at the same place) is a log line.
+    const stopKey = [principal.operatorId, principal.sessionId, item.evidenceId, item.manifestSha256, fileId, stopped.seq ?? '?', stopped.code].join('|');
+    const now = app.clock.now();
+    const knownUntil = stops.get(stopKey);
+    if (knownUntil !== undefined && now < knownUntil) {
+      request.log.warn({ code: stopped.code, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, seq: stopped.seq, bytesServed: served, repeated: true }, STOPPED_AGAIN);
+      return;
+    }
     try {
       await append(MEDIA_SERVED_UNIT, {
         type: AuditType.EVIDENCE_MEDIA_SERVED,
@@ -352,6 +392,13 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
         evidenceId: item.evidenceId,
         details: { fileId, bytesServed: served, rangeStart: range.start, rangeEnd: range.end - 1, signed: true },
       });
+      // Remembered only once the row is committed: a row that could not be written is tried again by the next request.
+      for (const [key, until] of stops) if (until <= now) stops.delete(key);
+      if (stops.size >= MEDIA_STOP_MEMORY_ENTRIES) {
+        const oldest = stops.keys().next().value;
+        if (oldest !== undefined) stops.delete(oldest);
+      }
+      stops.set(stopKey, now + EVIDENCE_MEDIA_SESSION_TTL_MS);
     } catch (error) {
       request.log.error({ err: error, source: `${SOURCE}.recordServed`, evidenceId: item.evidenceId, fileId }, SERVED_ROW_NOT_WRITTEN);
       app.errorLog.append({ level: 'error', source: `${SOURCE}.recordServed`, message: SERVED_ROW_NOT_WRITTEN, ...describeError(error), context: { requestId: request.id, evidenceId: item.evidenceId, fileId } });
@@ -387,15 +434,24 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       await holdScope(request, principal, item);
       const { ports, plan } = await sourceOf(item, fileId);
 
-      const decision = decideRange(request.headers.range, plan.size);
+      // Z1: the view is the token's claim. A session of the indexed view is never answered with
+      // the plain file (its offsets are others): no index now = no media for this session.
+      const index = reading.claims.indexed === true ? plan.seekIndex : null;
+      if (reading.claims.indexed === true && index === null) throw mediaUnavailable(SEEK_INDEX_NOT_AVAILABLE_REASON, { fileId });
+      const size = index === null ? plan.size : indexedViewSize(plan.size, index);
+
+      const decision = decideRange(request.headers.range, size);
       if (decision.kind === 'UNSATISFIABLE') {
-        throw new ApiFailure(416, ApiErrorCode.INVALID_INPUT, RANGE_TEXT, { details: { reason: RANGE_NOT_SATISFIABLE_REASON }, headers: { 'accept-ranges': 'bytes', 'content-range': unsatisfiedRangeOf(plan.size) } });
+        throw new ApiFailure(416, ApiErrorCode.INVALID_INPUT, RANGE_TEXT, { details: { reason: RANGE_NOT_SATISFIABLE_REASON }, headers: { 'accept-ranges': 'bytes', 'content-range': unsatisfiedRangeOf(size) } });
       }
-      const range = { start: decision.start, end: decision.end };
+      /** What is sent, in the offsets of what this session serves (the view's on an indexed session). */
+      const wire = { start: decision.start, end: decision.end };
+      /** The same stretch in the offsets of the SEALED FILE: what a log line and an audit row name. */
+      const range = index === null ? wire : { start: fileOffsetOfViewOffset(index, wire.start), end: fileOffsetOfViewOffset(index, wire.end) };
 
       // The first piece BEFORE the status line: a range whose first fragment does not authenticate
       // gets a clean refusal, with its row, and not one byte.
-      const pieces = readPlain(ports, plan, range);
+      const pieces = index === null ? readPlain(ports, plan, wire) : readIndexedView(ports, plan, index, wire);
       let first: IteratorResult<Buffer, void>;
       try {
         first = await pieces.next();
@@ -440,8 +496,8 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       void reply.headers({
         'content-type': CAMERA_FILE_MEDIA_TYPE,
         'accept-ranges': 'bytes',
-        'content-length': String(range.end - range.start),
-        ...(decision.kind === 'PARTIAL' ? { 'content-range': contentRangeOf(range, plan.size) } : {}),
+        'content-length': String(wire.end - wire.start),
+        ...(decision.kind === 'PARTIAL' ? { 'content-range': contentRangeOf(wire, size) } : {}),
       });
       return reply.send(Readable.from(body(), { objectMode: false }));
     }

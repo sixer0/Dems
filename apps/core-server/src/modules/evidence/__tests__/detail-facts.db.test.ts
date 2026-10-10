@@ -189,6 +189,12 @@ describe('G94-04 and the item members a client must not guess', () => {
     );
     // Stated before any verification run: true or false from the certificate the sealed manifest names - never absent for a readable package.
     expect(typeof evidence.signature['developmentKey']).toBe('boolean');
+    // Fix wave K, driver S2 (G81b-06; D160): the model of the sealed transcript is ON THE ITEM, from the signed manifest.
+    const model = built.manifest.transcript.model;
+    expect(evidence['transcriptModel']).toMatchObject({ name: model.name, version: model.version, quantisation: model.quantisation, modelSha256: model.modelSha256, reportedByServer: false });
+    expect((evidence['transcriptModel'] as { report: string }).report).toContain(String(model.name));
+    // CONTROL: an item of the demonstration data states no model.
+    expect((await bodyOf(cookies.SUPERVISOR, demoEvidenceId)).evidence['transcriptModel']).toBeUndefined();
   });
 
   it('REHYDRATE: an item the engine reads back gets the facts on the REPLICATED item (no column holds them), and operation 39 answers them', async () => {
@@ -203,11 +209,13 @@ describe('G94-04 and the item members a client must not guess', () => {
     const after = server.app.engine.slice('evidence').find((item) => item.id === SEALED.evidenceId) as Record<string, unknown> | undefined;
     expect((after?.['audioSourceIntervals'] as unknown[] | undefined)?.length).toBe(3);
     expect(after?.['sealedPackage']).toBe('PRESENT');
+    expect((after?.['transcriptModel'] as { name?: string } | undefined)?.name).toBe(built.manifest.transcript.model.name); // fix wave K (G81b-06): on the replicated item too
     const gone = server.app.engine.slice('evidence').find((item) => item.id === GONE.evidenceId) as Record<string, unknown> | undefined;
     expect(gone?.['sealedPackage']).toBe('NOT_READABLE');
     // Nothing stored was touched: the item's row is as it was (a sealed column cannot be written by the runtime role at all).
     const listed = (await server.app.inject({ method: 'GET', url: '/api/v1/evidence?limit=200', headers: cookies.SUPERVISOR })).json() as { items: Record<string, unknown>[] };
     expect((listed.items.find((item) => item['id'] === SEALED.evidenceId)?.['audioSourceIntervals'] as unknown[] | undefined)?.length).toBe(3);
+    expect((listed.items.find((item) => item['id'] === SEALED.evidenceId)?.['transcriptModel'] as { reportedByServer?: boolean } | undefined)?.reportedByServer).toBe(false);
     // A second publication reads only what is still unreadable, and changes nothing: the engine's revision does not move.
     const revision = server.app.engine.revision;
     expect(await evidenceFacts(server.app).publish()).toBeGreaterThanOrEqual(1);

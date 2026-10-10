@@ -5,7 +5,7 @@
  * simulator views come from `sim-adapter.ts`.
  */
 import { SessionState } from '@dems/shared/domain'
-import type { SimState } from '@dems/shared/sim'
+import { isHostClockTime, isPlatformNotReported, type SimState } from '@dems/shared/sim'
 import { bookPoe, rearPorts, type DeviceId } from './sim-adapter'
 
 export type DeviceStatusCode =
@@ -137,11 +137,25 @@ export const BANNER_TONE: Record<BannerKind, DeviceTone> = {
   CRITICAL: 'danger',
 }
 
+/**
+ * The devices the banner counts on THIS Core (fix wave K, C-2 / G75c-04): a Core on its host clock
+ * has no GNSS receiver (it would count "GNSS Receiver: NO FIX" for ever), and a Core that states
+ * `security.platformNotReported` reads no TPM (it would count an "OK" nobody read). A TPM that shows
+ * a fault stays counted. The simulated device counts all of them, as before.
+ */
+export function countedDevicesOf(state: Pick<SimState, 'time' | 'security'>): readonly CountedDeviceId[] {
+  const hostClock = isHostClockTime(state.time)
+  const tpmNotRead = isPlatformNotReported(state.security) && state.security.tpm.ok
+  if (!hostClock && !tpmNotRead) return COUNTED_DEVICES
+  return COUNTED_DEVICES.filter((id) => !(id === 'GNSS' && hostClock) && !(id === 'TPM' && tpmNotRead))
+}
+
 export function selectBanner(state: SimState): BannerModel {
   let ready = 0
   let worst: CountedDeviceId | null = null
   let worstSeverity = 0
-  for (const id of COUNTED_DEVICES) {
+  const counted = countedDevicesOf(state)
+  for (const id of counted) {
     const severity = STATUS_SEVERITY[deviceStatus(state, id)]
     if (severity === 0) ready += 1
     if (severity > worstSeverity) {
@@ -149,7 +163,7 @@ export function selectBanner(state: SimState): BannerModel {
       worst = id
     }
   }
-  const total = COUNTED_DEVICES.length
+  const total = counted.length
   const kind: BannerKind =
     worstSeverity === 2
       ? 'CRITICAL'

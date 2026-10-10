@@ -287,6 +287,8 @@ describe('the players', () => {
     expect(screen.getByTestId('evidence-band-now')).toHaveTextContent('Audio at the playhead: MIC 2');
 
     // A player error (the session ended): ONE renewal, the same position, playing again.
+    // Wave K Z1 (G94b-10): "ended" is by the Core's clock - only an error on such a session is renewed by itself.
+    await b.elapse(62_000, 1_000);
     act(() => lead.emit('statusChange', { status: 'error', error: { message: `GET ${OWN_ORIGIN}${PATH_1} 403` } }));
     await b.flush();
     expect(b.requests('createEvidenceMediaSession')).toHaveLength(4);
@@ -352,6 +354,8 @@ describe('R93-14: a player that does not start does not keep the Pause state', (
     const [lead] = players as [FakePlayer, FakePlayer];
     act(() => lead.emit('timeUpdate', { currentTime: 70 }));
     arrange(lead);
+    // Wave K Z1 (G94b-10): the renewal by itself is for a session at its end (the Core's clock).
+    await b.elapse(62_000, 1_000);
     act(() => lead.emit('statusChange', { status: 'error' }));
     await b.flush();
     // The renewal itself went through: new sessions were answered, and nothing is "stopped" or refused.

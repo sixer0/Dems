@@ -15,6 +15,7 @@ import {
   CORE_API_EXAMPLES,
   CORE_API_OPERATIONS,
   CORE_API_SCHEMAS,
+  EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE,
   SIM_ACTION_OPERATIONS,
   SimActionExecution,
   pickReplicatedState,
@@ -772,6 +773,19 @@ describe('refusals and failures through the transport (AC-C-11, CL-19, CL-21)', 
     expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000777' });
     fake.answerOnce('exportEvidence', accepted());
     expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032' });
+  });
+
+  it('fix wave K (G94b-06): `archiveOnCore` of the 202 is handed on by name when the Core states a boolean; absent or not a boolean, it is not invented', async () => {
+    const { source } = await signedIn();
+    const [evidenceId, request] = ARGS.exportEvidence;
+    const accepted = (extra: Record<string, unknown>) => ({ status: 202, body: { exportId: 'EXP-000032', evidenceId, status: 'QUEUED', ...extra } });
+    fake.answerOnce('exportEvidence', accepted({ archiveOnCore: EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE.archiveOnCore }));
+    expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032', archiveOnCore: false });
+    fake.answerOnce('exportEvidence', accepted({ archiveOnCore: true, jobId: 'EXPJ-000032' }));
+    expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000032', archiveOnCore: true });
+    // Control: a Core that does not say (an older one) - no member.
+    fake.answerOnce('exportEvidence', accepted({}));
+    expect(await source.actions.exportEvidence(evidenceId, request)).not.toHaveProperty('archiveOnCore');
   });
 
   it('a 401 on an export resolves with NOT_SIGNED_IN, and the client is signed out (CL-23)', async () => {

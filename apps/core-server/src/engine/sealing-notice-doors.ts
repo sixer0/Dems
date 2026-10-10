@@ -18,6 +18,12 @@
  *                             recovery operation: ONE audit row (`RECOVERY_STARTED`,
  *                             `details.reason: SEAL_RETRY`) with who asked, the session and the
  *                             cause being retried.
+ *   noteStreamProfileDiffers  (fix wave K, G89b-01, ruling D222 (2)) the video stream of a camera
+ *                             file is not what the selector configured; the manifest states the
+ *                             stream. ONE alert of severity WARNING naming the session, the file,
+ *                             the configured profile and the stream. A NOTICE, not a condition:
+ *                             it is written already resolved (nothing is to be done and nothing
+ *                             ends it), once per session.
  *
  * No audit type and no alert kind is added: the existing types carry a `reason` (the alert's
  * `params.reason` is the stored column `alerts.reason`). The transitions are pure and local: the
@@ -30,6 +36,8 @@ import type { EngineHost, EngineOutcome } from './types';
 /** `alerts.reason` of the two notices. */
 export const SEALED_PLAINTEXT_REASON = 'SEALED_PLAINTEXT_QUARANTINED';
 export const SEAL_BLOCKED_REASON = SHARED_SEAL_BLOCKED_REASON;
+/** `alerts.reason` of the notice that a stream is not the configured profile (fix wave K). */
+export const STREAM_PROFILE_DIFFERS_REASON = 'STREAM_PROFILE_DIFFERS';
 /** `audit.details.reason` of the on-demand retry. */
 export const SEAL_RETRY_REASON = 'SEAL_RETRY';
 
@@ -59,15 +67,23 @@ export interface SealRetryNote {
   readonly step: string | null;
 }
 
+export interface StreamProfileDiffersInput {
+  readonly sessionId: string;
+  /** One entry per camera file that differs: the file, what the selector configured, what the stream is. Profile codes only. */
+  readonly tracks: readonly { readonly trackId: string; readonly configured: string; readonly stream: string }[];
+}
+
 export interface EngineSealingNoticeDoors {
   noteSealedPlaintextKept(input: SealedPlaintextKeptInput): Promise<EngineOutcome<boolean>>;
   raiseSealBlocked(input: SealBlockedInput): Promise<EngineOutcome<boolean>>;
   resolveSealBlocked(input: { readonly sessionId: string }): Promise<EngineOutcome<boolean>>;
   noteSealRetryOnDemand(input: SealRetryNote): Promise<EngineOutcome<boolean>>;
+  /** Fix wave K (G89b-01). Optional on the type: an engine of an earlier test stub has none, and the caller then only logs. */
+  noteStreamProfileDiffers?(input: StreamProfileDiffersInput): Promise<EngineOutcome<boolean>>;
 }
 
 /** Labels of the units (a label of the host is `engine.<what it does>`). */
-export const SEALING_NOTICE_DOOR_LABEL = { plaintextKept: 'engine.noteSealedPlaintextKept', blocked: 'engine.raiseSealBlocked', unblocked: 'engine.resolveSealBlocked', retry: 'engine.noteSealRetryOnDemand' } as const;
+export const SEALING_NOTICE_DOOR_LABEL = { plaintextKept: 'engine.noteSealedPlaintextKept', blocked: 'engine.raiseSealBlocked', unblocked: 'engine.resolveSealBlocked', retry: 'engine.noteSealRetryOnDemand', streamProfile: 'engine.noteStreamProfileDiffers' } as const;
 
 const activeNotice = (state: Pick<SimState, 'alerts'>, reason: string, sessionId: string): SimAlert | undefined => state.alerts.find((alert) => alert.active && alert.kind === 'SYSTEM' && alert.params?.['reason'] === reason && (alert.target ?? null) === sessionId);
 
@@ -134,6 +150,37 @@ export function noteSealRetryOnDemandTransition(state: SimState, now: number, in
       },
     }),
   };
+}
+
+/** A profile code as the capture units write it (`H264_1080P25`, `H264_1280X960P29.97`); also the reader's stand-in for a missing line. */
+const PROFILE = /^[A-Za-z0-9_.-]{1,48}$/;
+
+/** What an operator reads when the stream of a camera file is not the configured profile. */
+export const streamProfileDiffersSentence = (tracks: StreamProfileDiffersInput['tracks']): string =>
+  `The recorded video is not the configured profile: ${tracks.map((track) => `${track.trackId} is ${track.stream} (configured ${track.configured})`).join('; ')}. The evidence manifest states the recorded stream.`;
+
+/**
+ * One WARNING alert for the session, written resolved (a notice); the SAME state when the session
+ * already has one, whatever its tracks said then: once per session.
+ */
+export function noteStreamProfileDiffersTransition(state: SimState, now: number, input: StreamProfileDiffersInput): SimState {
+  if (typeof input.sessionId !== 'string' || !SESSION_ID.test(input.sessionId)) invalid('no session ID');
+  if (!Array.isArray(input.tracks) || input.tracks.length < 1 || input.tracks.length > 2 || input.tracks.some((track) => !/^VIDEO-0[12]$/.test(track.trackId) || !PROFILE.test(track.configured) || !PROFILE.test(track.stream))) invalid('a track list that is not profile codes');
+  if (state.alerts.some((alert) => alert.kind === 'SYSTEM' && alert.params?.['reason'] === STREAM_PROFILE_DIFFERS_REASON && (alert.target ?? null) === input.sessionId)) return state;
+  const { id, meta } = nextItemId(state.meta, 'ALR');
+  const alert: SimAlert = {
+    id,
+    at: now,
+    severity: 'WARNING',
+    kind: 'SYSTEM',
+    message: streamProfileDiffersSentence(input.tracks),
+    active: false,
+    acknowledged: false,
+    resolvedAt: now,
+    target: input.sessionId,
+    params: { reason: STREAM_PROFILE_DIFFERS_REASON, sessionId: input.sessionId, tracks: input.tracks.map((track) => `${track.trackId}:${track.stream}:${track.configured}`).join(',') },
+  };
+  return { ...state, meta, alerts: pushRing(state.alerts, [alert], ALERT_RING_SIZE) };
 }
 
 /** The sealing notice doors of the engine behind the seam. Refuses an engine that has none (a test's stub). */

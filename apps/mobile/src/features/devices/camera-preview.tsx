@@ -117,7 +117,13 @@ export function NoPreviewTile({ trackId, name, style, testID = `no-preview-${tra
   const { live } = useSourceBadgeMode();
   // One flat string, so the result compares by value (F74-13).
   const line = useSim((s) => JSON.stringify(noPreviewFactsOf(s, trackId)));
-  const words = noPreviewWords(t, JSON.parse(line) as NoPreviewFacts, live);
+  const facts = JSON.parse(line) as NoPreviewFacts;
+  const stated = noPreviewWords(t, facts, live);
+  // Fix wave K (G75c-07): while the session connects its cameras (RECORDING, no durable fragment yet) the tile of
+  // a camera with no named cause says "Connecting cameras…" - not the roster's "Not reachable", which nothing
+  // has established yet. A named cause (an active notice) and "On" keep their own words.
+  const connecting = useSim((s) => s.session?.state === 'RECORDING' && (s.session as { captureDurable?: unknown }).captureDurable === false);
+  const words = connecting && facts.deviceId !== null && facts.cause === null && !facts.sourceOpen ? { device: stated.device, state: t('common.session.connectingCameras') } : stated;
   const names = [name, words.device].filter((part): part is string => part !== undefined && part !== null && part !== '');
   const title = names.join(' · ');
   return (

@@ -659,7 +659,13 @@ function MonitorBody({ arrangement, paused, feed, micCards, tiles, endSession, t
                 <RecDot paused={paused} />
                 <RecLabel style={styles.recLabel} />
               </View>
-              <RecTimer testID="monitor-timer" />
+              {/* Fix wave K (G81b-08): the clock's place is RESERVED at its full height from the first layout. The
+                  timer mounts only at the first durable fragment (D84); on the tablet the card kept the height it had
+                  while connecting and the Audio Monitor card below covered half of the digits. With the slot the
+                  column never has to move when the clock appears. */}
+              <View style={styles.timerSlot} testID="monitor-timer-slot">
+                <RecTimer testID="monitor-timer" />
+              </View>
             </View>
           </SectionCard>
           <Pane name="meters">
@@ -688,6 +694,9 @@ function MonitorBody({ arrangement, paused, feed, micCards, tiles, endSession, t
     </View>
   );
 }
+
+/** Fix wave K (G81b-08): the reserved height of the tablet's recording clock - the line height of the `display` digits it draws. */
+export const MONITOR_TIMER_SLOT_HEIGHT = typography.display.lineHeight;
 
 const styles = StyleSheet.create({
   root: { backgroundColor: palette.black },
@@ -756,6 +765,8 @@ const styles = StyleSheet.create({
   timelineScroll: { maxHeight: 360 },
   timerCard: { gap: spacing[0] },
   timerHead: { flexDirection: 'row', alignItems: 'center' },
+  // The height of the clock's digits (`RecTimer` draws the `display` size): see MONITOR_TIMER_SLOT_HEIGHT.
+  timerSlot: { height: MONITOR_TIMER_SLOT_HEIGHT, justifyContent: 'center' },
   recLabel: {
     fontFamily: fontFamily.native.semibold,
     fontSize: typography.h3.size,

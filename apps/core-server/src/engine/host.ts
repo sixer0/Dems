@@ -82,7 +82,10 @@ import { EXPORT_DOOR_LABEL, type EngineExportDoors } from './export-doors';
 // Unsealable block (fix pass F-M7b, rulings D178 (2), D183): the terminal outcome of a session that cannot be sealed.
 import { endUnsealableTransition, type EndUnsealableInput } from '@dems/shared/sim';
 import { UNSEALABLE_DOOR_LABEL, type EngineUnsealableDoors } from './unsealable-doors';
+// Restart-fault block (fix wave K, G75c-01): the fault "the Core was not running" ends with its session.
+import { endRestartFaultTransition } from './restart-fault';
 // Sealing notice block (fix pass F-M7c, ruling D186): kept plaintext of a sealed session, a blocked seal, an on-demand retry.
+import { noteStreamProfileDiffersTransition, type StreamProfileDiffersInput } from './sealing-notice-doors';
 import { SEALING_NOTICE_DOOR_LABEL, noteSealRetryOnDemandTransition, noteSealedPlaintextKeptTransition, raiseSealBlockedTransition, resolveSealBlockedTransition, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
 // Sealed-facts block (wave H C1, decision D200): what the sealed manifest of an item says and no stored column holds.
 import { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, type EngineSealedFactsDoors, type SealedItemFacts } from './sealed-facts-doors';
@@ -1042,6 +1045,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
               tabletLinkReset: effects.tabletLinkReset,
               tabletLinkCarried: effects.tabletLinkCarried,
               tabletLinkOfflineUnwritten: effects.tabletLinkOfflineUnwritten === true,
+              restartFaultEnded: effects.restartFaultEnded === true,
               auditRows: plan.auditRows.length,
             },
             'engine started',
@@ -1251,7 +1255,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
 
     completeSeal(input: CompleteSealInput, also?: (unit: UnitContext, evidenceId: string) => Promise<void>) {
       return inUnit(ENGINE_UNIT_LABEL.sealComplete, 'command', async (scope) => {
-        await applySealTransition(scope, 'completeSeal', (state, now) => completeSealTransition(state, now, input));
+        // Fix wave K (G75c-01): the restart fault of a Core in its own capture ends with the session it was raised for (`restart-fault.ts`).
+        await applySealTransition(scope, 'completeSeal', (state, now) => endRestartFaultTransition(completeSealTransition(state, now, input), now));
         const evidenceId = scope.live.sim.store.getState().session?.evidenceId ?? null;
         if (evidenceId === null) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the sealed session names no evidence item after its seal');
         // The item's row is written by now: rows that hang on it (the sealed transcript) commit in
@@ -1306,7 +1311,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     // transition of the shared session machine written whole - the session ended INCOMPLETE with its
     // one audit row and its one CRITICAL alert. A refusal of the machine is the mapped refusal.
     endSessionUnsealable(input: EndUnsealableInput) {
-      return inUnit(UNSEALABLE_DOOR_LABEL.ended, 'command', (scope) => applySealTransition(scope, 'endSessionUnsealable', (state, now) => endUnsealableTransition(state, now, input)));
+      return inUnit(UNSEALABLE_DOOR_LABEL.ended, 'command', (scope) => applySealTransition(scope, 'endSessionUnsealable', (state, now) => endRestartFaultTransition(endUnsealableTransition(state, now, input), now)));
     },
 
     // Sealing notice block (fix pass F-M7c; `sealing-notice-doors.ts`; review R88-05 (c), ruling D186):
@@ -1323,6 +1328,10 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     },
     noteSealRetryOnDemand(input: SealRetryNote) {
       return inUnit(SEALING_NOTICE_DOOR_LABEL.retry, 'command', (scope) => applySealTransition(scope, 'noteSealRetryOnDemand', (state, now) => noteSealRetryOnDemandTransition(state, now, input)));
+    },
+    // Fix wave K (G89b-01): the stream of a camera file is not the configured profile - one WARNING notice per session.
+    noteStreamProfileDiffers(input: StreamProfileDiffersInput) {
+      return inUnit(SEALING_NOTICE_DOOR_LABEL.streamProfile, 'command', (scope) => applySealTransition(scope, 'noteStreamProfileDiffers', (state, now) => noteStreamProfileDiffersTransition(state, now, input)));
     },
 
     // Sealed-facts block (wave H C1; `sealed-facts-doors.ts`; gate findings G94-01 / G94-04): one unit,

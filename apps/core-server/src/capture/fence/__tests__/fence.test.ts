@@ -10,6 +10,7 @@ import { CaptureAdapterError, CaptureOperation, createCaptureDeviceRegistry, typ
 import { inspectProgram, type HelperDoor, type ProgramFacts } from '../../adapters/local';
 import { LIVING_PROGRESS, deviceListText, exitOf, manualTimers, scriptedDoor, trustedInspector } from '../../adapters/local/__tests__/mic-support';
 import type { CaptureTimers } from '../../types';
+import { CORRECT_GENERATED_SOURCE_PROFILES } from '../fake-profile';
 import {
   BOOT_AUDIT_OPERATIONS,
   CaptureFenceError,
@@ -260,7 +261,12 @@ describe('registration of the local devices (in memory; the statements run in fe
     expect(second.outcome).toMatchObject({ inserted: [], local: { cameraId: 'CAM-03', micId: 'MIC-03' } });
     expect(tables.devices.map((row) => `${row.id}:${row.adapterKind}`).sort()).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
     expect(tables.bootAudits).toEqual(['REAL_DEVELOPMENT', 'REAL_DEVELOPMENT']);
-    expect(tables.statements.filter((text) => /\bUPDATE\b/i.test(text))).toEqual([]);
+    // No built-in is touched: NO statement updates `capture_devices`. Fix wave K, reconcile pass (G89b-01; ruling of 2026-10-11): the
+    // ONE update of a development boot is the selector line of a generated source (`fake-profile.ts`), once per boot, on `capture_config` only.
+    const updates = tables.statements.filter((text) => /\bUPDATE\b/i.test(text));
+    expect(updates).toEqual([CORRECT_GENERATED_SOURCE_PROFILES, CORRECT_GENERATED_SOURCE_PROFILES]);
+    expect(CORRECT_GENERATED_SOURCE_PROFILES).toMatch(/^UPDATE public\.capture_config c SET video_01_profile = .*, video_02_profile = .*, revision = c\.revision \+ 1, updated_at = /);
+    expect(CORRECT_GENERATED_SOURCE_PROFILES).not.toMatch(/UPDATE public\.capture_devices|SET[^;]*adapter_kind\s*=(?!\s*\$2)|DELETE|INSERT/i);
   });
 
   it('skips ids that are taken (an adopted camera holds CAM-03)', async () => {

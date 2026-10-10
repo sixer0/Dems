@@ -15,14 +15,16 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button } from 'heroui-native';
 import { RotateCcw } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { KeyValueList, StatusChip } from '@/components/kit';
+import { useOperatorId } from '@/lib/operator-query-scope';
 import { ExportJobReadError, exportJobQueryKey, useExportJob } from './export-job';
-import { COMPOSITE_NOT_SELECTED, exportJobIdOf, type ExportJobStatus as JobStatus } from './export-job-model';
+import { COMPOSITE_NOT_SELECTED, exportJobIdOf, isTerminalJob, type ExportJobStatus as JobStatus } from './export-job-model';
+import { evidenceMediaRefKey } from './use-evidence-media-ref';
 
 const STATUS_TONE = { QUEUED: 'default', RUNNING: 'info', COMPLETE: 'success', FAILED: 'danger' } as const satisfies Record<JobStatus, 'default' | 'info' | 'success' | 'danger'>;
 const RETRY_BASE_MS = 3_000;
@@ -34,13 +36,16 @@ export interface ExportJobStatusProps {
   exportId: string;
   /** The job the 202 answer named, when it named one. */
   jobId?: string | null;
+  /** `archiveOnCore` of the accepted request (operation 42); null / absent: not stated. */
+  archiveOnCore?: boolean | null;
 }
 
-export function ExportJobStatus({ exportId, jobId: answeredJobId = null }: ExportJobStatusProps) {
+export function ExportJobStatus({ exportId, jobId: answeredJobId = null, archiveOnCore = null }: ExportJobStatusProps) {
   const { t } = useTranslation();
   const sim = useSimInstance();
   const queryClient = useQueryClient();
   const jobId = exportJobIdOf(exportId, answeredJobId);
+  const operatorId = useOperatorId();
   const query = useExportJob(jobId);
   const [retry, setRetry] = useState({ attempts: 0, until: 0 });
 
@@ -53,9 +58,21 @@ export function ExportJobStatus({ exportId, jobId: answeredJobId = null }: Expor
     const now = sim.store.getState().clock.now;
     if (jobId === null || retry.attempts >= RETRY_MAX || now < retry.until) return;
     setRetry({ attempts: retry.attempts + 1, until: now + RETRY_BASE_MS * 2 ** retry.attempts });
-    void queryClient.invalidateQueries({ queryKey: exportJobQueryKey(jobId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: exportJobQueryKey(jobId, operatorId), exact: true });
   };
   const compositeUnavailable = job?.failureReason === COMPOSITE_NOT_SELECTED;
+  // Fix wave K (G94b-06): "stored on the Core" only for a finished job that STATES its archive, and never
+  // when the Core said at the request that no archive is written.
+  const storedOnCore = job?.status === 'COMPLETE' && job.archiveOnCore && archiveOnCore !== false;
+
+  // Fix wave K (G94b-05): the job's END is when the item's own answer of operation 40 changes (its
+  // `exports` list, its status). That answer is read again then - the list under the item follows the
+  // job's completion, not the next visit of the screen.
+  const finishedEvidenceId = job !== null && isTerminalJob(job) ? job.evidenceId : null;
+  useEffect(() => {
+    if (finishedEvidenceId === null) return;
+    void queryClient.invalidateQueries({ queryKey: evidenceMediaRefKey(finishedEvidenceId, operatorId), exact: true });
+  }, [finishedEvidenceId, operatorId, queryClient]);
 
   return (
     <View style={styles.root} testID={`evidence-export-job-${job?.status ?? (unknown ? 'UNKNOWN' : readFailed ? 'READ_FAILED' : 'WAITING')}`}>
@@ -99,9 +116,16 @@ export function ExportJobStatus({ exportId, jobId: answeredJobId = null }: Expor
               { id: 'signature', label: t('evidence.exportJob.signature'), value: job.signature !== null ? short(job.signature) : '—', mono: true },
             ]}
           />
-          <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-on-core">
-            {t('evidence.exportJob.onCore', { exportId })}
-          </Text>
+          {storedOnCore ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-on-core">
+              {t('evidence.exportJob.onCore', { exportId })}
+            </Text>
+          ) : (
+            // `archiveOnCore: false` is the Core's own word (a demonstration item); a job that merely states no archive is said as that.
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-no-archive">
+              {t(archiveOnCore === false ? 'features.evidence.waveK.export.noArchive' : 'features.evidence.waveK.export.archiveNotStated')}
+            </Text>
+          )}
           {/* Fix F-M8 (R93-05): the UX spec gives the download to the web console only (§6.6); this app says where it is. */}
           {job.downloadable ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-job-download-from-web">

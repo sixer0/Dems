@@ -552,7 +552,7 @@ export const EvidenceExportRequestSchema = z
       })
       .optional()
       .describe(
-        `Destination or approved media identifier (book §19.2 item 6). Empty means "Case file transfer (simulated)"; text beyond ${EXPORT_DESTINATION_MAX_LENGTH} characters is cut.`,
+        `Destination or approved media identifier (book §19.2 item 6). Empty means the Core's default - "Case file transfer" on a Core in its own capture, "Case file transfer (simulated)" in simulated capture (operation 40 states it as \`exportDestinationDefault\`); text beyond ${EXPORT_DESTINATION_MAX_LENGTH} characters is cut.`,
       ),
     // Schema v2 (C3 §3 op 42): the request names the kind; absent means PACKAGE, so every v1 caller still parses.
     kind: z.enum(EvidenceExportKind).optional().describe('PACKAGE (the default when absent) or COMPOSITE (OD-16; NM-12).'),
@@ -578,6 +578,13 @@ export const EvidenceExportAcceptedSchema = z
       .regex(EXPORT_JOB_ID_PATTERN)
       .optional()
       .describe('The job operation 87 polls: `EXPJ-` and the six digits of `exportId` (`EXP-000012` -> `EXPJ-000012`). Optional: a client that does not find it derives it by that rule.'),
+    // Fix wave K, driver S2 (re-gate 94 finding G94b-06): whether an archive will exist at all, said by the Core.
+    archiveOnCore: z
+      .boolean()
+      .optional()
+      .describe(
+        'Core server only. `true`: an export job of this Core writes the archive into the Core\'s store (operation 87 follows it). `false`: the request was recorded and NO archive is written - an item of the demonstration data. Absent: not stated; a client then claims no stored archive.',
+      ),
   })
   .describe(
     'Export accepted and queued (schema v2). The ExportEvent (book §19.2: operator, time, destination, reason) is the EVIDENCE_EXPORTED audit row it wrote; completion arrives through operation 87.',

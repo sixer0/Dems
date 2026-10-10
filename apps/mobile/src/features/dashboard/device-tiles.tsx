@@ -33,6 +33,7 @@ import { StatusChip } from '@/components/kit';
 import { MicInputSourceBadge, TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
 // Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
 import { CameraPreview } from '@/features/devices/camera-preview';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { AUDIO_FLOOR_DBFS, audioAccessibilityValue, useAudioAccessibilityValue, useAudioSharedValues, type AudioAccessibilityValue } from '@/runtime';
@@ -82,6 +83,9 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
   const line = tile.kind === 'mic' ? tile.line : null;
   const tone = line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
   const stateWord = line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
+  // Fix wave K (G75c-07; ux 8e.2, D84): RECORDING before the first durable fragment - no meter, no level and no
+  // "Active" / "Standby" is drawn on a microphone tile: real capture sends no level yet, and a bar would read as a recording.
+  const connecting = useConnectingCameras();
 
   return (
     <Animated.View entering={homeEnter(beatAt(HOME_BEATS.tiles, HOME_BEATS.tileStagger, index), settings)} style={styles.fill}>
@@ -107,7 +111,7 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
           ) : (
             <MicInputSourceBadge inputId={line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
           )}
-          {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
+          {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : connecting ? <MicConnecting tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>
       </PressableFeedback>
     </Animated.View>
@@ -162,6 +166,23 @@ function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): A
   const kind = micReadoutKind({ frameFlat, state });
   const text = kind === 'LEVEL' ? `${now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
   return { min: ticking.min, max: ticking.max, now, text };
+}
+
+/** The microphone tile while the cameras connect: the word CONNECTING in the meter's place (the Session Live card's rule). */
+function MicConnecting({ tile, name }: { tile: DeviceTileInfo; name: string }) {
+  const { t } = useTranslation();
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${t('features.dashboard.devices.meterLabel', { name })}: ${t('common.session.connectingCameras')}`}
+      style={styles.meterBody}
+      testID={`home-device-${tile.trackId}-connecting`}
+    >
+      <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
+        {t('common.session.trackConnecting')}
+      </Text>
+    </View>
+  );
 }
 
 function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {

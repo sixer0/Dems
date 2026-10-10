@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { AudioSourceBand as Band } from '@/components/composed/audio-source-band'
+import { DevelopmentSourceBadge } from '@/features/devices/source-badge'
 import { VerifiedSourceBadge } from './development-source'
 import { bandInputs, formatMediaTime, segmentAt, type BandSegment, type VerifiedSources } from './sealed-playback'
 
@@ -11,6 +12,8 @@ export interface AudioSourceBandProps {
   positionMs: number
   /** The source classes of the last verify run of this page, or null (no run yet, or none stated). */
   sources: VerifiedSources | null
+  /** Wave K (G94b-07): the item's own mark (`developmentSources === true` on Live data). */
+  developmentItem?: boolean
 }
 
 /** `MIC 1` / `MIC 2` for the pair every console knows; the Core's own id for any other input. */
@@ -30,7 +33,7 @@ function useMicName(): (inputId: string) => string {
  * playhead of the player, the legend (with the development badge of a verified source) and the
  * line that says which microphone is audible at the playhead.
  */
-export function AudioSourceBand({ segments, totalMs, positionMs, sources }: AudioSourceBandProps) {
+export function AudioSourceBand({ segments, totalMs, positionMs, sources, developmentItem = false }: AudioSourceBandProps) {
   const { t } = useTranslation()
   const micName = useMicName()
   if (segments.length === 0) {
@@ -58,6 +61,12 @@ export function AudioSourceBand({ segments, totalMs, positionMs, sources }: Audi
       <ul className="evi-band-legend" aria-label={t('evidence.playback.band.label')} data-testid="evidence-band-legend">
         {bandInputs(segments).map((input) => {
           const development = sources?.state === 'DEVELOPMENT' ? sources.audioIntervals.find((entry) => entry.sourceClass !== 'PRODUCTION' && segments.some((segment) => segment.seq === entry.seq && segment.inputId === input.inputId)) : undefined
+          // Wave K (G94b-07): without a verify result, the class the ITEM states for the intervals of this microphone
+          // (manifest field 125); an item that states none per interval but is a development item carries the plain mark.
+          const own = segments.filter((segment) => segment.inputId === input.inputId)
+          const stated = own.find((segment) => segment.sourceClass === 'LOCAL_DEVICE' || segment.sourceClass === 'FAKE')?.sourceClass
+          const notStated = own.every((segment) => segment.sourceClass === undefined)
+          const itemMark = sources !== null || !developmentItem ? null : stated !== undefined ? stated : notStated ? 'ITEM' : null
           return (
             <li key={input.inputId} data-input={input.inputId}>
               <span className={`evi-band-swatch evi-band-tone-${input.tone % 4}`} aria-hidden="true" />
@@ -68,7 +77,11 @@ export function AudioSourceBand({ segments, totalMs, positionMs, sources }: Audi
                   .map((segment) => `${formatMediaTime(segment.fromMs)}–${formatMediaTime(segment.toMs)}`)
                   .join(', ')}
               </span>
-              {development ? <VerifiedSourceBadge sourceClass={development.sourceClass} kind="MIC" testId={`evidence-band-development-${input.inputId}`} /> : null}
+              {development ? (
+                <VerifiedSourceBadge sourceClass={development.sourceClass} kind="MIC" testId={`evidence-band-development-${input.inputId}`} />
+              ) : itemMark !== null ? (
+                <DevelopmentSourceBadge adapter={itemMark === 'ITEM' ? null : itemMark} kind="MIC" testId={`evidence-band-development-${input.inputId}`} />
+              ) : null}
             </li>
           )
         })}

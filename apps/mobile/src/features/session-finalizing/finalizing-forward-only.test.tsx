@@ -99,14 +99,19 @@ describe('forward-only on the screen (M7-FF-TAB / M7-FF-PHONE, software part)', 
     expect(stepLabel(3)).toMatch(/in progress$/);
   });
 
-  it('no ETA from the Core: "estimating", and no number', async () => {
+  // Fix wave K (G75c-05; contract_wave_k.md S1 section 5): `etaMs: null` draws NO time-left line at all
+  // (it read "Estimating the time left…" before; the Core states null whenever it has no measured basis).
+  it('no ETA from the Core: no time-left line, and no "estimating"', async () => {
     const h = renderFlowApp();
     await settle();
     coreSends(h.sim, coreSteps(1, 5, { etaMs: null }));
-    const line = screen.getByTestId('finalizing-eta-none');
-    expect(line).toHaveTextContent(F.estimating);
-    expect(String(line.props.children)).not.toMatch(/\d/);
     expect(screen.queryByTestId('finalizing-eta-core')).toBeNull();
+    expect(screen.queryByTestId('finalizing-eta-none')).toBeNull();
+    expect(screen.queryByText(F.estimating)).toBeNull();
+    expect(screen.queryByText(/s left/)).toBeNull();
+    // CONTROL: the Core states one - the line is back, with the Core's number.
+    coreSends(h.sim, coreSteps(1, 30, { etaMs: 4_000 }));
+    expect(screen.getByTestId('finalizing-eta-core')).toHaveTextContent(/4 s left/);
   });
 });
 

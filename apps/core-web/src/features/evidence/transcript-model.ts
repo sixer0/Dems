@@ -49,6 +49,8 @@ export interface TranscriptRevision {
   readonly simulated: boolean
   readonly createdAt: number | null
   readonly changes: readonly TranscriptChange[]
+  /** Fix wave K (G81b-09): why the revision was made, when the revision itself carries it (`reason`); null: the answer has no such member. */
+  readonly reason: string | null
 }
 
 /** The longest corrected text and note the form accepts (the note bound is the contract's). */
@@ -120,7 +122,32 @@ export function readTranscriptRevision(value: unknown): TranscriptRevision | nul
     simulated: !(signature.simulated === false && signature.algorithm === 'Ed25519'),
     createdAt: typeof value.createdAt === 'number' && Number.isFinite(value.createdAt) ? value.createdAt : null,
     changes,
+    reason: typeof value.reason === 'string' && value.reason.trim() !== '' && value.reason.length <= REVISION_NOTE_MAX ? value.reason : null,
   }
+}
+
+/**
+ * The stated reason of each revision of an item (fix wave K, G81b-09). Operations 85 / 86 carry
+ * `reason` on every revision entry (`contract_wave_k.md` KR section 2). The revision's own member
+ * wins. Only for an entry WITHOUT the member (a Core older than the member) the audit row of the
+ * revision (`TRANSCRIPT_REVISED`: `details.revisionId`, `details.reason`) is read, in the console's
+ * audit slice for a role that reads it, for the SAME item and revision id; else null - "Reason:
+ * not reported", never a guess.
+ */
+export function revisionReasons(
+  revisions: readonly Pick<TranscriptRevision, 'revisionId' | 'reason'>[],
+  evidenceId: string,
+  auditRows: readonly { readonly type: string; readonly evidenceId?: string | null; readonly details: Readonly<Record<string, unknown>> }[],
+): ReadonlyMap<string, string> {
+  const reasons = new Map<string, string>()
+  for (const revision of revisions) if (revision.reason !== null) reasons.set(revision.revisionId, revision.reason)
+  for (const row of auditRows) {
+    if (row.type !== 'TRANSCRIPT_REVISED' || row.evidenceId !== evidenceId) continue
+    const { revisionId, reason } = row.details
+    if (typeof revisionId !== 'string' || typeof reason !== 'string' || reason.trim() === '' || reasons.has(revisionId)) continue
+    if (revisions.some((revision) => revision.revisionId === revisionId)) reasons.set(revisionId, reason)
+  }
+  return reasons
 }
 
 /** The page of operation 86, newest first, or null when any element cannot be read (a list with a hole hides a revision). */

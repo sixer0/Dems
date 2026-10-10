@@ -49,6 +49,7 @@
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { SttConnectionDetailCode } from '@dems/shared/api';
+import { interruptedSealOfSession } from '@dems/shared/sim';
 import { SerialQueue, createEngineGuard, type ChunkMirror, type DocumentInterval, type FetchLike, type SpeakerEmbeddingEngine, type TranscriberLog } from '@dems/transcriber';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
 import type { SttConnectionProbe } from '../modules/stt-config';
@@ -207,6 +208,13 @@ export interface TranscriptionHost {
   readonly capture: CaptureFacts;
   readonly db: { readonly pool: { query(text: string, values?: unknown[]): Promise<{ rows: never[]; rowCount: number | null }> } };
   readonly readiness: { addBootStep(step: { readonly id: string; run(): Promise<void> }): void };
+  /**
+   * Fix wave K (both optional: a test's app has neither, and then nothing changes).
+   * `addHook`: the server's own hook door - the unit asks to be told when the close BEGINS (G75c-08).
+   * `engine`: the committed state, read for ONE fact - whether a session's recording was interrupted (G81b-04).
+   */
+  addHook?(name: 'preClose', hook: () => Promise<void>): unknown;
+  readonly engine?: { state(): Parameters<typeof interruptedSealOfSession>[0] };
 }
 
 export interface MountTranscriptionDeps {
@@ -299,7 +307,20 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
     if (target.enabled) availability = result.reachable && result.modelAvailable;
     return result;
   };
-  const mirror: ChunkMirror = createTranscriptChunkStore({ query: (text, values) => app.db.pool.query(text, values === undefined ? [] : [...values]) });
+  // Fix wave K (G75c-08): NO STATEMENT AFTER THE SERVER BEGAN TO CLOSE. A runner that finishes a chunk while the Core
+  // shuts down used to send its mirror rows to a pool that was ended: two error-level `MIRROR_WRITE_FAILED` lines after
+  // "shutdown complete". The checkpoint FILE is the truth and the next start brings the rows in line, so from the
+  // first moment of the close the mirror sends nothing: a read answers "no rows", a write does nothing.
+  let closing = false;
+  app.addHook?.('preClose', async () => {
+    closing = true;
+  });
+  const mirrorRows = createTranscriptChunkStore({ query: (text, values) => app.db.pool.query(text, values === undefined ? [] : [...values]) });
+  const mirror: ChunkMirror = {
+    insertMissing: async (rows) => (closing ? undefined : mirrorRows.insertMissing(rows)),
+    update: async (sessionId, seq, patch) => (closing ? undefined : mirrorRows.update(sessionId, seq, patch)),
+    read: async (sessionId) => (closing ? [] : mirrorRows.read(sessionId)),
+  };
 
   let boot: TranscriberBootOutcome | null = null;
   let startedAt: number | null = null;
@@ -433,6 +454,15 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
     modelProvenance: deps.modelProvenance ?? productionProvenance,
     speakerEngine: deps.speakerEngine ?? (() => null),
     intervals: intervalsOf,
+    // Fix wave K (G81b-04): the committed state says whether the recording ended at a fault (the same reader the clients use).
+    interrupted: (sessionId) => {
+      try {
+        return app.engine !== undefined && interruptedSealOfSession(app.engine.state(), sessionId) !== null;
+      } catch {
+        // No engine behind the seam (an app a test built): nobody says "interrupted", and the document is as before.
+        return false;
+      }
+    },
     transcriberLog,
     discardScratch: (sessionId) => void removeScratch(sessionId, 'FAILED_START'),
     report(level, code, message, sessionId, more = {}, error) {

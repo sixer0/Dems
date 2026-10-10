@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { SttConfigSchema, type SttConfig } from '@dems/shared/api';
 import { selectIsSignedIn, useSim, useSimInstance, type Sim } from '@dems/shared/sim';
+import { operatorScope, useOperatorId } from '@/lib/operator-query-scope';
 import { reportRuntimeIssue, useMobileLive, type MobileLiveSim } from '@/runtime';
 import { selectSttAuditMark, sttStatusOf, type SttStatusView } from './stt-status-model';
 
@@ -46,9 +47,11 @@ export function useSttConfig(): SttConfigRead {
   const sim = useSimInstance();
   const signedIn = useSim(selectIsSignedIn);
   const auditMark = useSim(selectSttAuditMark);
+  const operatorId = useOperatorId();
 
   const query = useQuery({
-    queryKey: live ? STT_CONFIG_KEY_LIVE : STT_CONFIG_KEY_SIMULATED,
+    // The operator ends the key (fix wave K, G81b-02): the read needs a signed-in operator and its answer is that operator's.
+    queryKey: [...(live ? STT_CONFIG_KEY_LIVE : STT_CONFIG_KEY_SIMULATED), operatorScope(operatorId)] as const,
     queryFn: () => (live ? readFromCore(live) : readFromSimulator(sim)),
     enabled: signedIn,
     refetchInterval: STT_STATUS_BACKSTOP_MS,

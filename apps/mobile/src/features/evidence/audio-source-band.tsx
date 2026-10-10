@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { derived, fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { VerifiedSourceBadge } from './development-source';
+import type { ItemAudioInterval } from './item-v2';
 import { bandInputs, formatMediaTime, segmentAt, type BandSegment, type VerifiedSources } from './sealed-playback';
 
 export interface AudioSourceBandProps {
@@ -22,12 +23,32 @@ export interface AudioSourceBandProps {
   positionMs: number;
   /** The source classes of the last verify run on this screen, or null. */
   sources: VerifiedSources | null;
+  /**
+   * Fix wave K (G94b-07; ux 6.6 row PE-125-06): the item's own intervals, each with the source class
+   * the sealed manifest records for it. A development microphone carries the mark in the legend from
+   * THIS - the operator need not run Verify first. Absent / an interval without a class: as before.
+   */
+  itemIntervals?: readonly Pick<ItemAudioInterval, 'seq' | 'inputId' | 'sourceClass'>[];
+}
+
+/** The development class the legend row of `inputId` shows: the verify result's when one names it, else the item's own interval class. */
+export function legendDevelopmentClass(
+  inputId: string,
+  segments: readonly Pick<BandSegment, 'seq' | 'inputId'>[],
+  sources: VerifiedSources | null,
+  itemIntervals: AudioSourceBandProps['itemIntervals'] = [],
+): 'LOCAL_DEVICE' | 'FAKE' | null {
+  const ofInput = (seq: number): boolean => segments.some((segment) => segment.seq === seq && segment.inputId === inputId);
+  const verified = sources?.state === 'DEVELOPMENT' ? sources.audioIntervals.find((entry) => entry.sourceClass !== 'PRODUCTION' && ofInput(entry.seq)) : undefined;
+  if (verified !== undefined && (verified.sourceClass === 'LOCAL_DEVICE' || verified.sourceClass === 'FAKE')) return verified.sourceClass;
+  const stated = itemIntervals.find((entry) => entry.inputId === inputId && (entry.sourceClass === 'LOCAL_DEVICE' || entry.sourceClass === 'FAKE'));
+  return stated?.sourceClass === 'LOCAL_DEVICE' || stated?.sourceClass === 'FAKE' ? stated.sourceClass : null;
 }
 
 const TONES = [palette.gold, statusText.sealed, statusText.info, palette.gray] as const;
 const toneOf = (tone: number): string => TONES[tone % TONES.length] ?? palette.gold;
 
-export function AudioSourceBand({ segments, totalMs, positionMs, sources }: AudioSourceBandProps) {
+export function AudioSourceBand({ segments, totalMs, positionMs, sources, itemIntervals }: AudioSourceBandProps) {
   const { t } = useTranslation();
   const micName = (inputId: string): string => (inputId === 'MIC-01' ? t('common.devices.mic1') : inputId === 'MIC-02' ? t('common.devices.mic2') : inputId);
   if (segments.length === 0) {
@@ -57,7 +78,7 @@ export function AudioSourceBand({ segments, totalMs, positionMs, sources }: Audi
       </View>
       <View style={styles.legend} testID="evidence-band-legend">
         {bandInputs(segments).map((input) => {
-          const development = sources?.state === 'DEVELOPMENT' ? sources.audioIntervals.find((entry) => entry.sourceClass !== 'PRODUCTION' && segments.some((segment) => segment.seq === entry.seq && segment.inputId === input.inputId)) : undefined;
+          const development = legendDevelopmentClass(input.inputId, segments, sources, itemIntervals);
           return (
             <View key={input.inputId} style={styles.legendRow} testID={`evidence-band-legend-${input.inputId}`}>
               <View style={[styles.swatch, { backgroundColor: toneOf(input.tone) }]} />
@@ -70,7 +91,7 @@ export function AudioSourceBand({ segments, totalMs, positionMs, sources }: Audi
                   .map((segment) => `${formatMediaTime(segment.fromMs)}–${formatMediaTime(segment.toMs)}`)
                   .join(', ')}
               </Text>
-              {development ? <VerifiedSourceBadge sourceClass={development.sourceClass} testID={`evidence-band-development-${input.inputId}`} /> : null}
+              {development !== null ? <VerifiedSourceBadge sourceClass={development} testID={`evidence-band-development-${input.inputId}`} /> : null}
             </View>
           );
         })}

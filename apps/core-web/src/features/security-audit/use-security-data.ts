@@ -12,7 +12,7 @@ import {
   type AuditLogSlice,
 } from '@dems/shared/sim'
 import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
-import { usePlatformNotReported } from '@/lib/own-capture'
+import { useOwnCaptureCore, usePlatformNotReported, useReportedSigningKey } from '@/lib/own-capture'
 import {
   buildControls,
   isEscalation,
@@ -49,6 +49,12 @@ export function useControls(chain: ChainReport): ControlView[] {
   const timeSource = useSim((s) => s.time.source)
   const timeLocked = useSim((s) => s.time.locked)
   const softwareVersion = useSim((s) => s.device.softwareVersion)
+  // Fix wave K (C-2): what a Core in its own capture states - its host clock, and the key its sealed items are signed with.
+  const hostClock = useOwnCaptureCore()
+  const signingKey = useReportedSigningKey()
+  const keyId = signingKey?.keyId ?? null
+  const keyAlgorithm = signingKey?.algorithm ?? null
+  const developmentKey = signingKey?.developmentKey ?? null
   const { ok, breakSeq } = chain
   return useMemo(
     () =>
@@ -59,8 +65,10 @@ export function useControls(chain: ChainReport): ControlView[] {
         softwareVersion,
         signatureAlgorithm: DEMO_EVIDENCE_INDEX.key.algorithm,
         ready,
+        hostClock,
+        signingKey: keyId === null || keyAlgorithm === null ? null : { keyId, algorithm: keyAlgorithm, developmentKey },
       }),
-    [security, timeSource, timeLocked, ok, breakSeq, softwareVersion, ready],
+    [security, timeSource, timeLocked, ok, breakSeq, softwareVersion, ready, hostClock, keyId, keyAlgorithm, developmentKey],
   )
 }
 

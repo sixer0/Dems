@@ -9,7 +9,7 @@ import { Surface } from 'heroui-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { GB } from '@dems/shared/sim';
+import { GB, isPlatformNotReported, useSim } from '@dems/shared/sim';
 import { derived, fontFamily, palette, toneTextHex, typography } from '@dems/shared/tokens';
 import { useMotionSettings } from '@/motion';
 import { RATE_GB_PER_HOUR, hoursMinutes, megabytesPerSecond } from './storage-model';
@@ -33,16 +33,23 @@ function useKpiSpecs(withRetention: boolean): KpiSpec[] {
   const policy = useStoragePolicy();
   const rate = RATE_GB_PER_HOUR.toFixed(1);
   const remaining = hoursMinutes(k.remainingMinutes * 60_000);
+  // Fix wave K (the mirror of the web's C-2; G75c-04): the write speed and the time left are figures of the
+  // SIMULATED device (a fixed 8.2 GB/h). A Core in its own capture - it states `security.platformNotReported` -
+  // measures neither, so both read "Not reported": no rate, no "at 8.2 GB/h". The session's size is the Core's own count.
+  const ownCapture = useSim((s) => isPlatformNotReported(s.security));
+  const notReported = t('common.platformNotReported.value');
   const specs: KpiSpec[] = [
-    {
-      id: 'writeSpeed',
-      label: t('common.storage.writeSpeed'),
-      value: megabytesPerSecond(k.writeBytesPerSec),
-      unit: t('storage.units.mbPerSecond'),
-      caption: k.recording ? t('features.storage.kpi.recording', { rate }) : t('features.storage.kpi.idle'),
-      captionShort: k.recording ? t('features.storage.kpi.recordingShort') : t('features.storage.kpi.idle'),
-      live: k.recording,
-    },
+    ownCapture
+      ? { id: 'writeSpeed', label: t('common.storage.writeSpeed'), value: '—', caption: notReported }
+      : {
+          id: 'writeSpeed',
+          label: t('common.storage.writeSpeed'),
+          value: megabytesPerSecond(k.writeBytesPerSec),
+          unit: t('storage.units.mbPerSecond'),
+          caption: k.recording ? t('features.storage.kpi.recording', { rate }) : t('features.storage.kpi.idle'),
+          captionShort: k.recording ? t('features.storage.kpi.recordingShort') : t('features.storage.kpi.idle'),
+          live: k.recording,
+        },
     {
       id: 'sessionSize',
       label: t('common.storage.sessionSize'),
@@ -51,12 +58,14 @@ function useKpiSpecs(withRetention: boolean): KpiSpec[] {
       caption: k.sessionId ? (k.recording ? t('features.storage.kpi.live') : k.sessionId) : t('features.storage.kpi.noSession'),
       live: k.recording,
     },
-    {
-      id: 'estRemaining',
-      label: t('common.storage.estRemaining'),
-      value: t('features.storage.kpi.remaining', { hours: remaining.hours, minutes: remaining.minutes }),
-      caption: t('features.storage.kpi.atRate', { rate }),
-    },
+    ownCapture
+      ? { id: 'estRemaining', label: t('common.storage.estRemaining'), value: '—', caption: notReported }
+      : {
+          id: 'estRemaining',
+          label: t('common.storage.estRemaining'),
+          value: t('features.storage.kpi.remaining', { hours: remaining.hours, minutes: remaining.minutes }),
+          caption: t('features.storage.kpi.atRate', { rate }),
+        },
   ];
   if (withRetention) {
     specs.push({

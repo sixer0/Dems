@@ -40,6 +40,7 @@ import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { DeviceCommand } from '@dems/shared/sim'
+import { useRealCaptureCore } from './source-class'
 import { PageHeader } from '@/components/shell/page-header'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
@@ -95,6 +96,8 @@ function withoutDevice(set: ReadonlySet<DeviceId>, deviceId: DeviceId): Readonly
 
 export function DevicesPage() {
   const { t } = useTranslation()
+  // Fix wave K (C-2, ruling D222 (2)): the Cameras panel names no camera model of the simulator on a Core in real capture.
+  const realCaptureCore = useRealCaptureCore()
   const m = useMotionPolicy()
   const labels = useDeviceLabels()
   const actions = useCoreActions()
@@ -244,7 +247,7 @@ export function DevicesPage() {
             <CaptureNoticesStrip />
 
             <div className="dev-grid">
-              <DevicesPanel id="cameras" icon={Video} title={t('devices.cameras.title')} subtitle={t('devices.cameras.subtitle')}>
+              <DevicesPanel id="cameras" icon={Video} title={t('devices.cameras.title')} subtitle={realCaptureCore ? t('web.realCore.devices.camerasSubtitle') : t('devices.cameras.subtitle')}>
                 <motion.div className="dev-cams" variants={camerasStagger} initial="hidden" animate="visible">
                   <CameraTile cameraId="VIDEO-01" lens={1} />
                   <CameraTile cameraId="VIDEO-02" lens={2} />

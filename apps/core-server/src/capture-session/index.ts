@@ -113,7 +113,7 @@ import { describeError } from '../plugins/logger';
 import { SESSION_CAPTURE_FACTS_VERSION, sessionCaptureFactsPath, writeSessionCaptureFacts, type SessionCaptureFacts } from './facts';
 import { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
-export { SESSION_CAPTURE_FACTS_FOLDER, SESSION_CAPTURE_FACTS_VERSION, parseSessionCaptureFacts, readSessionCaptureFacts, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCaptureFactsPath, withCameraEnded, type SessionCameraEnd, type SessionCameraFacts, type SessionCaptureFacts } from './facts';
+export { SESSION_CAPTURE_FACTS_FOLDER, SESSION_CAPTURE_FACTS_VERSION, parseSessionCaptureFacts, readSessionCaptureFacts, readSessionVideoFormat, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCaptureFactsPath, withCameraEnded, type SessionCameraEnd, type SessionCameraFacts, type SessionCaptureFacts } from './facts';
 export { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
 /** `details.reason` of a start that is refused for its sources (C3 §4, erratum PE-128-34). */

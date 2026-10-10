@@ -181,7 +181,16 @@ export function interruptedCaptureTransition(state: SimState, now: EpochMs, sess
   if (session === null) return state;
   const faulted = enterFault(state, now, FaultKind.CAPTURE_FAULT);
   if (faulted.session === null) return state;
-  return { ...faulted, session: { ...faulted.session, captureDurable: true } };
+  // ONE ROW, NOT TWO (fix wave K, G75c-06 (c)). When the capture side already TOLD the timeline of this fault - the
+  // capture-wide `CAPTURE_FAULT` is active and its own row, with its cause, is in the session's timeline - the row
+  // `enterFault` adds for the move to FAULT says the same event a second time (the Monitor listed "Fault Detected"
+  // twice at one instant). It is not kept: the row with the cause stands. In the other order (the session ends first)
+  // the later raise adds no row, so there is one row either way.
+  const wide = state.faults.active.find((fault) => fault.kind === FaultKind.CAPTURE_FAULT && fault.target === null);
+  const told = wide !== undefined && session.timeline.some((item) => item.kind === 'FAULT' && item.at === wide.since && item.params?.['kind'] === FaultKind.CAPTURE_FAULT && (item.params['target'] ?? null) === null);
+  const added = faulted.session.timeline.at(-1);
+  const timeline = told && added !== undefined && added.kind === 'FAULT' && !session.timeline.includes(added) ? faulted.session.timeline.filter((item) => item !== added) : faulted.session.timeline;
+  return { ...faulted, session: { ...faulted.session, timeline, captureDurable: true } };
 }
 
 // ── An interrupted seal (wave H driver B; findings G75-03 / G75-08 / G75-10; ruling D197) ────────

@@ -1,4 +1,5 @@
 import type { ResourceTree } from '@/i18n/resources';
+import { sealedPlayerEn } from './sealed-player-i18n';
 
 /**
  * English copy of the `evidence` feature, mounted at `features.evidence.*` through
@@ -200,6 +201,8 @@ export const evidenceEn = {
     noMedia: 'No DEMO media for this item on this device.',
     error: 'Playback failed. The Core copy is unaffected.',
   },
+  /** The sealed player's own words (`sealed-player-i18n.ts`), read as `features.evidence.player.*`. */
+  player: sealedPlayerEn,
   export: {
     title: 'Export {{id}}',
     close: 'Close export',
@@ -249,6 +252,39 @@ export const evidenceEn = {
       SECURITY_FAULT: 'A security fault on the Core blocks export.',
       INVALID_REASON: 'Enter a reason of at least 5 characters.',
       UNKNOWN: 'The export could not be completed. Try again.',
+    },
+  },
+  /**
+   * Fix wave K, driver M2 (gate findings of re-gates 75 / 81 / 89 / 94). The sentences live here
+   * because `packages/shared` is closed to this driver in the wave; each states what the Core knows.
+   */
+  waveK: {
+    transcript: {
+      /** G81b-07: a refusal with `details.reason: EVIDENCE_CASE_SCOPE` is about the case, never the role. */
+      deniedCaseScope: 'You are not assigned to the case of this item, so its transcript is not shown.',
+      /** G81b-09: the label of a revision's reason in the revision list. */
+      revisionReason: 'Reason',
+      /** G81b-06: which model made the transcript (the item's `transcriptModel`). */
+      model: {
+        title: 'Transcript model',
+        name: 'Name: {{name}}',
+        version: 'Version (declared by the installation): {{version}}',
+        quantisation: 'Quantisation: {{quantisation}}',
+        hash: 'Model file SHA-256: {{hash}}',
+        notStated: 'not stated',
+      },
+    },
+    export: {
+      /** D223 (1): stated before anything is sent. */
+      requiresRole: 'Exporting evidence requires the {{role}} role.',
+      nothingSent: 'Nothing has been sent to the Core server.',
+      requestNote: 'A request sent with your role is refused by the Core server and recorded in the audit log.',
+      request: 'Request authorization',
+      /** The disabled Export control of the item (operation 40 `access.export: false`). */
+      controlRequiresRole: 'Export requires the {{role}} role.',
+      /** G94b-06: an export the Core only recorded (`archiveOnCore: false`, or a finished job that states no archive). */
+      noArchive: 'Demonstration: no archive is written.',
+      archiveNotStated: 'The Core server states no archive for this export.',
     },
   },
 } as const satisfies ResourceTree;

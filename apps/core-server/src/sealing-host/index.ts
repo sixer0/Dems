@@ -50,7 +50,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { CaptureOperation } from '../capture/adapters';
 import { captureOperationOf } from '../capture/fence';
-import { readSessionCaptureFacts, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCapture } from '../capture-session';
+import { readSessionCaptureFacts, readSessionVideoFormat, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCapture } from '../capture-session';
 import type { UnitContext } from '../core';
 import { SEAL_BLOCKED_REASON, sealDoorsOf, sealingNoticeDoorsOf, unsealableDoorsOf } from '../engine';
 import { provideCoreEvidenceExport } from '../evidence-export';
@@ -92,6 +92,7 @@ import {
   type SealingController,
   type SealingEngineHost,
   type SealingPorts,
+  type SessionFragmentSealer,
 } from '../sealing';
 import { transcriptionControl } from '../transcription';
 import { coreFragmentSealer, sessionKeyStartRefusal, type SessionKeyStartRefusal } from './session-key';
@@ -130,6 +131,27 @@ export interface SealingHostSettings {
   readonly transcriptRuns: SealTranscriptRuns;
   /** THE BOUNDS of the retries of a failed seal (fix pass F-M7b, R88-02 (a) + (c)). Default: `SEAL_RETRY_DEFAULTS`. */
   readonly sealRetry: SealRetrySettings;
+  /**
+   * DEVELOPMENT CAPTURE ONLY (fix wave K, driver S1; decision D220: a supported, reversible rig for
+   * the blocked seal). A wrapper around the fragment sealer of the composition: the lane launcher of
+   * the test support (`test/support/lane-seal-rig.ts`) puts a rig here that makes a seal of a
+   * FAKE-source session fail with a cause the product already has, so that the product's own way
+   * out runs. `replace` REFUSES it in every operation but REAL_DEVELOPMENT (`SealRigRefusedError`),
+   * and no file under `src/` sets it: the product's entry point cannot switch it on.
+   */
+  readonly developmentSealer: (base: SessionFragmentSealer) => SessionFragmentSealer;
+}
+
+/** `replace({ developmentSealer })` outside development capture: the rig is refused, nothing is replaced. */
+export const DEV_SEAL_RIG_REFUSED_CODE = 'DEV_SEAL_RIG_NOT_DEVELOPMENT';
+export class SealRigRefusedError extends Error {
+  readonly code = DEV_SEAL_RIG_REFUSED_CODE;
+  readonly operation: string;
+  constructor(operation: string) {
+    super('a development seal rig is admitted in development capture (REAL_DEVELOPMENT) only');
+    this.name = 'SealRigRefusedError';
+    this.operation = operation;
+  }
 }
 
 export interface SealingHost {
@@ -212,7 +234,7 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   let last: SealOutcome | null = null;
   // Fix wave I (G75b-02): the sessions whose seal a START of this Core or the recovery action ran again. An automatic retry is not in it.
   const resumedSeals = new Set<string>();
-  const settings: { transcriptLimits?: FinalizeTranscriptLimits; transcriptRuns?: SealTranscriptRuns; sealRetry?: SealRetrySettings } = {};
+  const settings: { transcriptLimits?: FinalizeTranscriptLimits; transcriptRuns?: SealTranscriptRuns; sealRetry?: SealRetrySettings; developmentSealer?: (base: SessionFragmentSealer) => SessionFragmentSealer } = {};
   const pending = new Set<Promise<unknown>>();
   const track = <Value>(run: Promise<Value>): Promise<Value> => {
     pending.add(run);
@@ -232,10 +254,41 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
 
   const engine = (): SealingEngineHost => sealDoorsOf(app.engine) as unknown as SealingEngineHost;
 
+  /**
+   * Fix wave K: the sealer of the composition, behind the development rig when one was put in place
+   * (REAL_DEVELOPMENT only, checked again HERE so that no later edit of `replace` can let one through).
+   * One warn line says that this Core seals behind a rig - a Core that does must never do so silently.
+   */
+  function developmentSealerOver(base: SessionFragmentSealer): SessionFragmentSealer {
+    const wrap = settings.developmentSealer;
+    if (wrap === undefined || operation !== CaptureOperation.REAL_DEVELOPMENT) return base;
+    persist('warn', 'SEALING_DEVELOPMENT_SEAL_RIG', 'this development Core seals behind a development seal rig: a seal of a generated-source session may be made to fail on purpose', null, {});
+    return wrap(base);
+  }
+
   // The signer of `<dataDir>/signer`, loaded when a seal first reads it: a Core without a usable
   // key fails the step that needs it (`SIGNER_FAILED`), it does not fail to start.
   let signing: SealingPorts['signing'] | null = null;
   const signingNow = (): SealingPorts['signing'] => (signing ??= loadSealingSigner({ dataDir: app.config.dataDir, now: now() }));
+
+  /**
+   * Fix wave K (G89b-01): the stream of a camera file is not what the selector configured. The manifest
+   * states the stream; here the difference is SAID - one warn line per session and seal run in the log and
+   * the error log, and ONE WARNING notice of the engine per session (profile codes only). Never throws:
+   * a notice that could not be written must not cost a seal.
+   */
+  const profileDiffersTold = new Set<string>();
+  async function noteProfileDiffers(sessionId: string, differences: readonly { readonly trackId: string; readonly configured: string; readonly stream: string }[]): Promise<void> {
+    if (!profileDiffersTold.has(sessionId)) {
+      profileDiffersTold.add(sessionId);
+      persist('warn', 'SEALING_STREAM_PROFILE_DIFFERS', 'the video stream of a camera file is not the configured profile: the manifest states the stream', null, { sessionId, tracks: differences.map((entry) => `${entry.trackId}:${entry.stream}:${entry.configured}`).join(',') });
+    }
+    try {
+      await sealingNoticeDoorsOf(app.engine).noteStreamProfileDiffers?.({ sessionId, tracks: differences.map((entry) => ({ ...entry })) });
+    } catch (error) {
+      persist('error', 'SEALING_STREAM_PROFILE_NOT_TOLD', 'the notice that a stream is not the configured profile could not be written', error, { sessionId });
+    }
+  }
 
   /** R80-04: set by `compose`. The transcription unit removes the folder by its own containment rule and never throws. */
   let discardTranscriberScratch: (sessionId: string, why: string) => void = () => {};
@@ -359,10 +412,12 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       fragments,
       // G89-06 (fix wave H driver A): the key of a session is bound to THAT session - the instant the engine created it -
       // so a key a cleared session of the same ID left behind is refused by name, never reused (`session-key.ts`).
-      sealer: coreFragmentSealer(app, (sessionId) => {
-        const open = app.engine.state().session;
-        return open !== null && open.id === sessionId ? `created-${String(open.createdAt)}` : null;
-      }),
+      sealer: developmentSealerOver(
+        coreFragmentSealer(app, (sessionId) => {
+          const open = app.engine.state().session;
+          return open !== null && open.id === sessionId ? `created-${String(open.createdAt)}` : null;
+        }),
+      ),
       opener: coreFragmentOpener(app),
       session: createSealSessionReader({
         state: () => app.engine.state(),
@@ -376,6 +431,9 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         captureFacts: (sessionId) => readSessionCaptureFacts(mediaStoreDir, sessionId),
         // Field 43 (pass D9): the codec is what the camera file's own init segment says, never the plan's profile.
         videoSampleEntry: (sessionId, trackId) => readSessionVideoSampleEntry(packageDir(sessionId), trackId),
+        // Field 36 (fix wave K, G89b-01; ruling D222 (2)): the stream's own picture size and measured frame rate, never the selector's profile.
+        videoFormat: (sessionId, trackId) => readSessionVideoFormat(packageDir(sessionId), trackId),
+        onProfileDiffers: (sessionId, differences) => void track(noteProfileDiffers(sessionId, differences)),
         notice: operation === CaptureOperation.REAL_DEVELOPMENT ? SEAL_NOTICE.REAL_DEVELOPMENT : SEAL_NOTICE.REAL_PRODUCTION,
         timezone: TIMEZONE,
         // Closing pass Z1 (D207): manifest fields 20 / 21 are the configured installation identity, read once at the mount.
@@ -564,6 +622,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
     },
     replace(next) {
       if (pending.size > 0 || composed !== null) throw new Error('the settings of the sealing host are replaced before its first seal only');
+      // Fix wave K: the development seal rig is for development capture ONLY. Refused by name, nothing replaced.
+      if (next.developmentSealer !== undefined && operation !== CaptureOperation.REAL_DEVELOPMENT) throw new SealRigRefusedError(operation);
       Object.assign(settings, next);
     },
     retryFailedSeal(sessionId, principal) {
@@ -667,7 +727,15 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         }
       },
       record: async (principal, verdict) => {
-        await sealDoorsOf(app.engine).recordEvidenceVerification({ ...verdict, failedTracks: [...verdict.failedTracks], actorId: principal.kind === 'OPERATOR' ? principal.operatorId : null });
+        // Fix wave K, driver S2 (G89b-04, G94b-03; D216 (2), D222 (3)): the paired device that asked and the operation, on the row.
+        await sealDoorsOf(app.engine).recordEvidenceVerification({
+          ...verdict,
+          failedTracks: [...verdict.failedTracks],
+          failedFragments: [...verdict.failedFragments],
+          actorId: principal.kind === 'OPERATOR' ? principal.operatorId : null,
+          deviceId: principal.kind === 'OPERATOR' ? principal.deviceId : null,
+          operationId: 'verifyEvidence',
+        });
       },
     }),
   );

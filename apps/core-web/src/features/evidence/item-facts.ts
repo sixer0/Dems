@@ -9,7 +9,7 @@
  *
  * | Source | Members |
  * |--------|---------|
- * | Operation 40 body | `media.source` / `packageSuffix` / `fileIds` / `reason`; `access.play` / `readTranscript` / `export`; `exports[]`; `transcript.noSpeech` / `reason` (optional, read when sent) |
+ * | Operation 40 body | `media.source` / `packageSuffix` / `fileIds` / `reason`; `access.play` / `readTranscript` / `export`; `exports[]`; `exportDestinationDefault`; `transcript.noSpeech` / `reason` (optional, read when sent) |
  * | The item (replicated slice, ops 39 / 40) | `integritySource`, `signature.simulated` / `developmentKey`, `sealedPackage`, `interrupted`, `interruptedCause` (else the custody entry), `manifestHash`, `manifestVersion`, `files`, `tracks` |
  */
 import { evidenceItemKindOf, interruptedFactOf, sealedPackageOf, type EvidenceItemKind, type SealedPackageFact } from '@dems/shared/sim'
@@ -33,6 +33,7 @@ export const MEMBER = {
   accessTranscript: 'readTranscript',
   accessExport: 'export',
   exports: 'exports',
+  exportDestinationDefault: 'exportDestinationDefault',
   exportId: 'exportId',
   exportJobId: 'jobId',
   exportKind: 'kind',
@@ -93,6 +94,11 @@ export interface DetailFacts {
   readonly access: { readonly play: boolean | null; readonly transcript: boolean | null; readonly export: boolean | null }
   /** The finished exports, newest first as sent; null: not reported. An entry that cannot be read is dropped. */
   readonly exports: readonly FinishedExport[] | null
+  /**
+   * Fix wave K (G94b-11 / -12): the destination text the Core records for an export that names none
+   * (`exportDestinationDefault`); null: not reported (an older Core, the simulator) - the wizard's first option.
+   */
+  readonly exportDestinationDefault: string | null
   readonly transcript: { readonly noSpeech: boolean | null; readonly reason: string | null }
 }
 
@@ -103,6 +109,7 @@ export const NO_DETAIL_FACTS: DetailFacts = {
   mediaReason: null,
   access: { play: null, transcript: null, export: null },
   exports: null,
+  exportDestinationDefault: null,
   transcript: { noSpeech: null, reason: null },
 }
 
@@ -142,6 +149,7 @@ export function readDetailFacts(body: unknown): DetailFacts {
           .map(readExport)
           .filter((entry): entry is FinishedExport => entry !== null)
       : null,
+    exportDestinationDefault: text(body[MEMBER.exportDestinationDefault], 120),
     transcript: { noSpeech: flag(transcript[MEMBER.transcriptNoSpeech]), reason: code(transcript[MEMBER.transcriptReason]) },
   }
 }

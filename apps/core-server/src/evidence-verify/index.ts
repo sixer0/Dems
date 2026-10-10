@@ -95,6 +95,12 @@ export interface VerdictRecord {
   readonly failedTracks: readonly string[];
   /** The custody text: null for a pass, else what did not verify, e.g. `Mismatch: VIDEO-02 fragment 3`. Names, never values. */
   readonly detail: string | null;
+  /**
+   * Fix wave K (G89b-04; ruling D222 (3)): the fragments whose stored bytes did not verify, as
+   * `<trackId>:<seq>` in report order - the places the custody text names, for the audit row.
+   * Empty for a pass and for a failure that names no fragment. Names, never values.
+   */
+  readonly failedFragments: readonly string[];
 }
 
 /**
@@ -205,6 +211,7 @@ const passed = (report: PackageVerifyResult, ...ids: readonly VerifyCheckId[]): 
  */
 export function contractBodyOf(evidenceId: string, at: number, report: PackageVerifyResult): EvidenceVerifyResultBody {
   const transcriptOk = passed(report, 'V-10', 'V-11');
+  const plainFailed = new Set((report.checks.find((check) => check.id === 'V-05')?.findings ?? []).map((finding) => finding.trackId));
   return {
     evidenceId,
     ok: report.ok,
@@ -217,6 +224,10 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
         trackId: file.trackId as 'VIDEO-01' | 'VIDEO-02',
         storedOk: file.storedOk,
         plainOk,
+        // Fix wave K (G89b-06): the plaintext check did not run for this file (`null` in the report,
+        // and V-05 holds no finding of this track - a REQUIRED key that is missing is a V-05 failure
+        // and stays one). `plainOk: false` is then "not a pass", not a failed comparison.
+        ...(file.plainOk === null && !plainFailed.has(file.trackId) ? { plainChecked: false } : {}),
         chainOk: file.chainOk,
         fragmentCount: file.fragmentCount,
         ok: file.storedOk && plainOk && file.chainOk && file.sequenceOk,
@@ -350,6 +361,7 @@ export function createRealEvidenceVerification(options: RealVerificationOptions)
         signatureOk: body.signatureOk,
         failedTracks: Object.freeze((body.files ?? []).filter((file) => !file.ok).map((file) => file.trackId)),
         detail: custodyDetailOf(report),
+        failedFragments: Object.freeze(report.ok ? [] : report.fragments.filter((fragment) => !fragment.storedOk).map((fragment) => `${fragment.trackId}:${fragment.seq}`)),
       }),
     );
     return { body, report };

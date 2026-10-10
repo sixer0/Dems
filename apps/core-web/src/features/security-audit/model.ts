@@ -334,10 +334,32 @@ export interface ControlView {
    * platform fact it does not read: the row says "Not reported" (status UNKNOWN), never "Active".
    */
   notReported?: true
+  /**
+   * Fix wave K (C-2 / G75c-04): what such a Core DOES state for a control it does not read as a
+   * status - the key its sealed items are signed with (`SIGNING_KEY`, null fields when no item names
+   * one), or its time source being the host system clock (`HOST_CLOCK`).
+   */
+  fact?: { readonly kind: 'SIGNING_KEY'; readonly key: ControlSigningKey | null } | { readonly kind: 'HOST_CLOCK' }
+}
+
+/** The signing key a Core reports through its sealed items (`reportedSigningKeyOf`, `@/lib/own-capture`). */
+export interface ControlSigningKey {
+  readonly keyId: string
+  readonly algorithm: string
+  readonly developmentKey: boolean | null
 }
 
 /** The controls a Core that states `security.platformNotReported` does not read: the TPM, Secure Boot, and the key custody that rests on the TPM. */
 export const PLATFORM_CONTROLS: readonly ControlId[] = ['TPM', 'SECURE_BOOT', 'KEY_CUSTODY']
+
+/**
+ * Fix wave K (C-2 / G75c-04, ruling D222 (1)): the controls whose "Active" on such a Core comes from
+ * the simulator's device model and not from a reading - the encryption status flag, the signing
+ * service state (with the DEMO key name), the enclosure switch, the firmware signature - and, on a
+ * Core whose time is the host system clock, the secure timestamp. The audit hash chain is NOT one of
+ * them: this page checks every kept row itself.
+ */
+export const DEVICE_MODEL_CONTROLS: readonly ControlId[] = ['ENCRYPTION', 'SIGNATURE', 'TAMPER', 'SIGNED_FIRMWARE']
 
 export interface ControlInputs {
   security: SecuritySlice
@@ -348,6 +370,10 @@ export interface ControlInputs {
   signatureAlgorithm: string
   /** False until the simulator has hydrated: every control shows UNKNOWN. */
   ready: boolean
+  /** Fix wave K: the time of this Core is the host system clock (`time.hostClock`). */
+  hostClock?: boolean
+  /** Fix wave K: the signing key this Core reports through its sealed items; null: none names one. */
+  signingKey?: ControlSigningKey | null
 }
 
 function simControlOk(security: SecuritySlice, id: string): boolean {
@@ -378,13 +404,17 @@ export function buildControls(input: ControlInputs): ControlView[] {
   }
   // A control that would read "Active" from the placeholders of a Core that reads no platform fact says so instead. A control that shows a fault keeps it.
   const notReported = ready && isPlatformNotReported(security)
-  const values = Object.fromEntries(
-    CONTROL_ORDER.map((id) => [
-      id,
-      notReported && PLATFORM_CONTROLS.includes(id) && statuses[id] === 'OK' ? { id, status: 'UNKNOWN', params, notReported: true } : { id, status: statuses[id], params },
-    ]),
-  ) as Record<ControlId, ControlView>
-  return CONTROL_ORDER.map((id) => values[id])
+  // Fix wave K: the secure timestamp of a Core on its host clock is neither "locked" nor an "RTC holdover" - no time service exists.
+  const hostClock = ready && input.hostClock === true
+  const view = (id: ControlId): ControlView => {
+    const plain: ControlView = { id, status: statuses[id], params }
+    if (id === 'SECURE_TIMESTAMP') return hostClock ? { id, status: 'UNKNOWN', params, notReported: true, fact: { kind: 'HOST_CLOCK' } } : plain
+    if (!notReported || statuses[id] !== 'OK') return plain
+    if (PLATFORM_CONTROLS.includes(id)) return { id, status: 'UNKNOWN', params, notReported: true }
+    if (!DEVICE_MODEL_CONTROLS.includes(id)) return plain
+    return id === 'SIGNATURE' ? { id, status: 'UNKNOWN', params, notReported: true, fact: { kind: 'SIGNING_KEY', key: input.signingKey ?? null } } : { id, status: 'UNKNOWN', params, notReported: true }
+  }
+  return CONTROL_ORDER.map(view)
 }
 
 export type PostureState = 'SECURE' | 'ATTENTION' | 'CRITICAL' | 'UNKNOWN'

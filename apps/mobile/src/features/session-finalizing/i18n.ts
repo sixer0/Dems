@@ -16,6 +16,10 @@ export const sessionFinalizingEn = {
   sessionCard: 'Session',
   evidencePending: 'Assigned when finalizing starts',
   recordingLength: 'Recording length',
+  /** Fix wave K (G75c-10): the interrupted recording WHILE its seal runs - nothing is sealed yet. */
+  interruptedSealing: {
+    title: 'Recording was interrupted — sealing what was recorded',
+  },
   interrupted: {
     title: 'Finalization interrupted',
     body: '{{fault}}. Recovery takes over from here: the session is analysed and marked incomplete, never sealed (SYS-008).',

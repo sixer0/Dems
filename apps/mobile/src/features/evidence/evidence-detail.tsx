@@ -39,6 +39,7 @@ import {
   EllipsisVertical,
   HardDrive,
   MapPin,
+  Pause,
   Play,
   Satellite,
   ShieldCheck,
@@ -47,7 +48,7 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -123,6 +124,13 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const [archiveId, setArchiveId] = useState<string | null>(null);
   // Row 92 (M8-W3): playback of the sealed files, the transcript pane, and what the last verify run said.
   const [sealedPlay, setSealedPlay] = useState<number | null>(null);
+  // Wave K Z1 (G94b-04, second half): the action bar reads "Pause" while the sealed player plays.
+  const [sealedPlaying, setSealedPlaying] = useState(false);
+  // Wave K M1 (G94b-04): the sealed player lives under the item's facts, below the fold of the pane.
+  // The Play action brings the tabs block (the tab row + the player) to the top of its scroll view.
+  const scrollRef = useRef<ScrollView>(null);
+  const tabsTop = useRef(0);
+  const bringPlayerIntoView = () => scrollRef.current?.scrollTo({ y: tabsTop.current, animated: false });
   const [verified, setVerified] = useState<VerifyV2Answer | null>(null);
   const v2 = useMemo(() => readItemV2(item), [item]);
   const facts = useMemo(() => readItemFacts(item), [item]);
@@ -203,6 +211,9 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const size = fileSizeParts(item.sizeBytes);
   const noMediaReason = mediaReasonLine(detail.media?.source === 'NONE' ? detail.media.reason : null);
   const exportable = isExportable(item.status);
+  // Fix wave K, M2 (ruling D223 (1), G89b-09): the Core says this caller may not export - the control is
+  // disabled and says which role is required; no press exists that would only produce a refusal.
+  const exportRefused = live && detail.access.export === false;
   const archivable = canArchive && isArchivable(item.status);
   const factRows: FactRow[] = [
     { id: 'caseNumber', icon: Briefcase, label: t('evidence.detail.fields.caseNumber'), value: item.caseNumber, mono: true },
@@ -277,7 +288,14 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   );
 
   const tabs = (
-    <Animated.View entering={enterRise(2, m)} style={styles.tabsBlock}>
+    <Animated.View
+      entering={enterRise(2, m)}
+      style={styles.tabsBlock}
+      onLayout={(event) => {
+        tabsTop.current = event.nativeEvent.layout.y;
+      }}
+      testID="evidence-detail-tabs-block"
+    >
       <Tabs
         value={tab}
         onValueChange={(value) => {
@@ -318,6 +336,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
                 sources={verified?.sources ?? null}
                 failedFragments={verified?.failedFragments}
                 playToken={sealedPlay}
+                onPlayingChange={setSealedPlaying}
               />
             ) : mediaKind === 'SEALED' ? (
               // Streamable, and this caller is refused: no player and no request (G81-07).
@@ -397,22 +416,32 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             // The sealed files play on the Media tab, through the media session of operation 88.
             setTab('media');
             setSealedPlay((previous) => (previous ?? 0) + 1);
+            bringPlayerIntoView();
           } else setPlay({ camera: 'VIDEO-01', mic: 'AUDIO-01' });
         }}
         testID="evidence-action-play"
       >
-        <Play size={18} color={playable ? palette.gold : palette.gray} fill={playable ? palette.gold : palette.gray} />
-        <Button.Label>{t('evidence.detail.actions.play')}</Button.Label>
+        {sealedPlayback && sealedPlaying ? <Pause size={18} color={palette.gold} /> : <Play size={18} color={playable ? palette.gold : palette.gray} fill={playable ? palette.gold : palette.gray} />}
+        <Button.Label testID={`evidence-action-play-label-${sealedPlayback && sealedPlaying ? 'pause' : 'play'}`}>{sealedPlayback && sealedPlaying ? t('evidence.media.pause') : t('evidence.detail.actions.play')}</Button.Label>
       </Button>
       <Button
         variant="outline"
         style={styles.action}
-        isDisabled={!exportable}
-        onPress={() => setExportOpen(true)}
+        isDisabled={!exportable || exportRefused}
+        onPress={() => {
+          if (exportRefused) return;
+          setExportOpen(true);
+        }}
         testID="evidence-action-export"
-        accessibilityHint={exportable ? undefined : t('features.evidence.actions.exportDisabled')}
+        accessibilityHint={
+          exportRefused
+            ? t('features.evidence.waveK.export.controlRequiresRole', { role: t('common.roles.SUPERVISOR') })
+            : exportable
+              ? undefined
+              : t('features.evidence.actions.exportDisabled')
+        }
       >
-        <Upload size={18} color={exportable ? palette.gold : palette.gray} />
+        <Upload size={18} color={exportable && !exportRefused ? palette.gold : palette.gray} />
         <Button.Label>{t('evidence.detail.actions.export')}</Button.Label>
       </Button>
       <Menu>
@@ -462,16 +491,21 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
           <ScrollView style={styles.splitHero} contentContainerStyle={styles.content}>
             {hero}
           </ScrollView>
-          <ScrollView style={styles.splitTabs} contentContainerStyle={styles.content}>
+          <ScrollView ref={scrollRef} style={styles.splitTabs} contentContainerStyle={styles.content} testID="evidence-detail-scroll-tabs">
             {tabs}
           </ScrollView>
         </View>
       ) : (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="evidence-detail-scroll">
+        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} testID="evidence-detail-scroll">
           {hero}
           {tabs}
         </ScrollView>
       )}
+      {exportRefused ? (
+        <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-export-requires-role">
+          {t('features.evidence.waveK.export.controlRequiresRole', { role: t('common.roles.SUPERVISOR') })}
+        </Text>
+      ) : null}
       {actionBar}
       <PlaySheet
         isOpen={play !== null && playable && !sealedPlayback}
@@ -616,4 +650,5 @@ const styles = StyleSheet.create({
     backgroundColor: palette.black,
   },
   action: { flex: 1 },
+  actionNote: { paddingHorizontal: spacing[3], paddingTop: spacing[1], textAlign: 'right', backgroundColor: palette.black },
 });

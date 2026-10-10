@@ -39,6 +39,7 @@ import type { LayoutClass } from '@/layout';
 import { useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { captureFaultLine, captureNoticeTitle } from '@/features/capture-selector/capture-notices-model';
 import { useFailedStart } from '@/features/session-live/capture-start-notice';
+import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { useCoreLinkChip } from '@/features/more/use-core-link-chip';
 import { reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { clockText, displaySecondsOfDay, failedStartAlertLabel, type HomeStatus } from './home-model';
@@ -58,6 +59,8 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
   // MD-9: in LIVE the Core link chip is in every layout class; otherwise on the expanded header only.
   const live = useCoreLink().source === 'LIVE';
 
+  const connectingCameras = useConnectingCameras();
+  const connecting = connectingCameras && status.kind === 'RECORDING';
   return (
     <Animated.View
       testID="home-header"
@@ -76,8 +79,10 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
           <StatusChip
             testID="home-header-state"
             className="self-center"
-            tone={status.tone}
-            label={t(`common.systemState.${status.kind}`)}
+            // Fix wave K (G75c-07; ux 8e.2): before the first durable fragment nothing is recorded - the chip says
+            // CONNECTING in a neutral tone, as the System Status card does, never RECORDING.
+            tone={connecting ? 'default' : status.tone}
+            label={connecting ? t('common.session.trackConnecting') : t(`common.systemState.${status.kind}`)}
             icon={null}
             size="sm"
           />

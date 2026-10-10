@@ -1,7 +1,7 @@
 import { Alert, Chip } from '@heroui/react'
 import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FragmentLine, v2Rows, type V2Check, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2'
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2Check, type V2FilePart, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2'
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer
@@ -46,7 +46,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
 
       <ol className="evi-checks evi-checks-full" data-testid="evidence-v2-rows" aria-label={t('evidence.verifyV2.resultTitle')}>
         {rows.map((row) => (
-          <ResultRow key={row.id} row={row} />
+          <ResultRow key={row.id} row={row} checks={answer.checks} />
         ))}
       </ol>
 
@@ -174,10 +174,15 @@ function SourcesLine({ sources }: { sources: V2Sources }) {
   )
 }
 
-function ResultRow({ row }: { row: V2Row }) {
+export function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | null }) {
   const { t } = useTranslation()
   const Icon = row.ok ? CircleCheck : CircleX
   const part = (ok: boolean) => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`)
+  // G89b-06: a part whose check did not run in this result reads "Not run", never "FAIL".
+  const filePart = (name: V2FilePart): string => {
+    const outcome = row.file ? v2FilePartOutcome(row.file, name, checks) : 'FAIL'
+    return outcome === 'NOT_RUN' ? t('evidence.verifyV2.outcome.SKIPPED') : t(`evidence.verifyV2.outcome.${outcome}`)
+  }
   const label = row.file
     ? t('evidence.verifyV2.file', { track: row.file.trackId })
     : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`)
@@ -192,8 +197,8 @@ function ResultRow({ row }: { row: V2Row }) {
       </span>
       {row.file ? (
         <span className="evi-check-values">
-          <span className="evi-caption" data-part="stored" data-ok={row.file.storedOk ? 'true' : 'false'}>
-            {t('evidence.verifyV2.fileParts', { stored: part(row.file.storedOk), plain: part(row.file.plainOk), chain: part(row.file.chainOk) })}
+          <span className="evi-caption" data-part="stored" data-ok={row.file.storedOk ? 'true' : 'false'} data-plain={v2FilePartOutcome(row.file, 'plain', checks)} data-chain={v2FilePartOutcome(row.file, 'chain', checks)}>
+            {t('evidence.verifyV2.fileParts', { stored: filePart('stored'), plain: filePart('plain'), chain: filePart('chain') })}
           </span>
           {row.file.fragmentCount !== null ? <span className="evi-caption">{t('evidence.verifyV2.fragments', { count: row.file.fragmentCount })}</span> : null}
         </span>

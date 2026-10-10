@@ -135,5 +135,9 @@ export function ownCoreRow(
   // Each row from its OWN member (closing pass J): the platform from `security.platformNotReported`, the time from `time.hostClock`.
   if (id === 'platform' && core.platformNotReported) return 'NOT_REPORTED'
   if (id === 'timeSource' && core.hostClock) return 'HOST_CLOCK'
+  // Fix wave K (C-2 / G75c-04): "Evidence encryption (AES-256-GCM): OK" and "Enclosure tamper seal: OK" are the device
+  // model's flags on a Core that reads no platform fact - it has no enclosure switch, and it reports no encryption status
+  // (each sealed item states its own). The audit chain, the storage and the inputs rows are read from the Core's state.
+  if ((id === 'encryption' || id === 'tamper') && core.platformNotReported) return 'NOT_REPORTED'
   return null
 }

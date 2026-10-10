@@ -60,6 +60,8 @@ export const MEMBER = {
     exportJobId: 'jobId',
     exportKind: 'kind',
     exportCompletedAt: 'completedAt',
+    /** Fix wave K (contract_wave_k.md S2 section 2): the text the Core records when an export names no destination. */
+    exportDestinationDefault: 'exportDestinationDefault',
   },
 } as const;
 
@@ -125,6 +127,8 @@ export interface DetailFacts {
   readonly access: AccessFacts;
   /** The finished exports, newest first as answered; null: not reported. */
   readonly exports: readonly FinishedExportFact[] | null;
+  /** `exportDestinationDefault` of operation 40; null: not stated (never a default of this app). */
+  readonly exportDestinationDefault: string | null;
 }
 
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
@@ -227,6 +231,7 @@ export function readDetailFacts(body: unknown): DetailFacts {
           .map(readExport)
           .filter((entry): entry is FinishedExportFact => entry !== null)
       : null,
+    exportDestinationDefault: text(source[MEMBER.detail.exportDestinationDefault], 200),
   };
 }
 

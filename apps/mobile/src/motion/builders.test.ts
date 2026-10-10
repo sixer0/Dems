@@ -118,12 +118,10 @@ describe('layout builders', () => {
     expect(b.targetValues).toEqual({ opacity: 0, translateY: -motion.distance.exitDrop });
   });
 
-  it('layout (FLIP) uses the gentle spring; reduced re-flow is instant', () => {
+  it('layout (FLIP) uses the gentle spring; reduced re-flow is NO transition (wave K M1, G81b-03: a reduced one leaves the native frame stale)', () => {
     const full = fields(layoutTransition(FULL_MOTION));
     expect([full.stiffnessV, full.dampingV, full.massV]).toEqual([170, 26, 1]);
-    const reduced = fields(layoutTransition(REDUCED_MOTION));
-    expect(reduced.getDuration()).toBe(0);
-    expect(reduced.getReduceMotion()).toBe(ReduceMotion.Always);
+    expect(layoutTransition(REDUCED_MOTION)).toBeUndefined();
   });
 
   it('list insertion and row reveal rise riseSm (6 px); reduced = instant (undefined builder)', () => {

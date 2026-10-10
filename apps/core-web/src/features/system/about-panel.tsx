@@ -2,7 +2,7 @@ import { Chip } from '@heroui/react'
 import { Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type DeviceIdentity, type SimState } from '@dems/shared/sim'
-import { usePlatformNotReported } from '@/lib/own-capture'
+import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { SystemPanel } from './panel'
 import { releaseInfo } from './sim-adapter'
 
@@ -43,6 +43,7 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
   const device = useSim(selectDevice)
   const about = useSim(selectAbout)
   const platformNotReported = usePlatformNotReported()
+  const selfCapture = useSelfCaptureCore()
   const release = releaseInfo(device.softwareVersion)
   const drift = device.identity.coreSoftwareVersion !== device.softwareVersion || about.updateVersion !== device.softwareVersion
 
@@ -91,6 +92,9 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
                 {/* Closing pass J (D217 (7)): a Core that states `security.platformNotReported` reads no TPM - the row says so, not the dataset's model. */}
                 {field === 'tpmModelFirmware' && platformNotReported ? (
                   <dd data-testid="system-about-tpm">{t('common.platformNotReported.value')}</dd>
+                ) : selfCapture && (field === 'deviceCertificateId' || field === 'cameraModelFirmware') ? (
+                  // Fix wave K (C-2): this Core reports no device certificate, and the camera record of the dataset ("Dual-lens IP camera DL-2") is not its source.
+                  <dd data-testid={`system-about-${field}`}>{t('common.platformNotReported.value')}</dd>
                 ) : (
                   <dd className="sys-mono" title={device.identity[field]}>
                     {device.identity[field]}

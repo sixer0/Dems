@@ -49,6 +49,24 @@ const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 const LIVE_FILES = ['live-integrity-tab.tsx', 'use-clock-due.ts', 'use-core-verify.ts', 'use-evidence-media-ref.ts'];
 /** The copy that only Live mode shows. */
 const LIVE_KEYS = [
+  // Fix wave K, driver M2 (re-gates 81 / 89 / 94): the sentences added after `acaff20`. Simulated mode's copy is unchanged.
+  'waveK.transcript.deniedCaseScope',
+  'waveK.transcript.revisionReason',
+  'waveK.transcript.model.title',
+  'waveK.transcript.model.name',
+  'waveK.transcript.model.version',
+  'waveK.transcript.model.quantisation',
+  'waveK.transcript.model.hash',
+  'waveK.transcript.model.notStated',
+  'waveK.export.requiresRole',
+  'waveK.export.nothingSent',
+  'waveK.export.requestNote',
+  'waveK.export.request',
+  'waveK.export.controlRequiresRole',
+  'waveK.export.noArchive',
+  'waveK.export.archiveNotStated',
+  // Fix wave K, M1 (G94b-01), moved under the evidence tree by the final small fixes: the sealed player's no-seek sentence (`sealed-player-i18n.ts`).
+  'player.noSeek',
   'media.checking',
   'media.unavailable',
   'integrity.coreLabel',
@@ -108,6 +126,8 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'metadata-tab.tsx',
       'play-sheet.tsx',
       'sealed-playback.ts',
+      // Wave K M1 (G94b-01): the one sentence of the sealed player for a stream without a seek index.
+      'sealed-player-i18n.ts',
       'sealed-player.tsx',
       // CF2-B (RF-T-1): the always-mounted selection glow of the list rows.
       'selection-glow.tsx',

@@ -31,6 +31,7 @@
 import { PackageFile, cameraFilePath, manifestHashMatches, packageFolderName, parseManifestV2, type PackageVideoTrackId } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_MANIFEST_BYTES, VERIFY_MAX_OPEN_FRAGMENT_BYTES, type FragmentOpener, type PackageReader, type SealedRangeRecord } from '@dems/shared/evidence-verify';
 import type { MediaItem } from './items';
+import { buildSeekIndex, partsOfViewRange, type SeekIndex, type SeekIndexRefusal } from './seek-index';
 import { isFragmentAuthenticationFailure, isKeyNotFound, planRangeRead } from './store-door';
 
 /** Why a file cannot be played, or why a stream stopped. Codes: names, never values. */
@@ -82,6 +83,14 @@ export interface MediaFilePlan {
   readonly size: number;
   /** The sealed ranges, ascending, without overlap. */
   readonly records: readonly SealedRangeRecord[];
+  /**
+   * Fix wave K Z1 (G94b-01, ruling D224 (1)): the segment index of the INDEXED VIEW of this file,
+   * built from the signed manifest's fragment table (`seek-index.ts`), or null when that table
+   * yields no exact index - then no session of this file states an indexed view.
+   */
+  readonly seekIndex: SeekIndex | null;
+  /** Why `seekIndex` is null: a code for the log. Null when there is an index. */
+  readonly seekIndexRefusal: SeekIndexRefusal | null;
 }
 
 export interface MediaSourcePorts {
@@ -184,7 +193,9 @@ async function planTrack(ports: MediaSourcePorts, manifest: ReturnType<typeof pa
     }
     if (!usable) throw new MediaSourceError(MediaSourceFailure.SESSION_KEY_UNAVAILABLE, { trackId });
   }
-  return { trackId, path, size: track.bytes, records };
+  // The same signed table gives the index of the indexed view: its sizes, its starts, its durations.
+  const indexed = buildSeekIndex(track.bytes, file.fragments);
+  return { trackId, path, size: track.bytes, records, seekIndex: indexed.ok ? indexed.index : null, seekIndexRefusal: indexed.ok ? null : indexed.reason };
 }
 
 async function readStored(reader: PackageReader, plan: MediaFilePlan, offset: number, length: number, seq?: number): Promise<Buffer> {
@@ -231,5 +242,22 @@ export async function* readPlain(ports: MediaSourcePorts, plan: MediaFilePlan, r
     }
     if (plain.byteLength !== record.byteLength) throw new MediaSourceError(MediaSourceFailure.FRAGMENT_NOT_OPENED, where);
     yield Buffer.from(plain.buffer, plain.byteOffset, plain.byteLength).subarray(segment.from, segment.to);
+  }
+}
+
+/**
+ * The plaintext of `[start, end)` of the INDEXED VIEW of one camera file (fix wave K Z1): the file
+ * bytes before the index box, the box, the file bytes behind it - each file stretch read by
+ * `readPlain`, so a fragment is opened and authenticated exactly as in the plain stream and the
+ * first failure throws with nothing of the failed fragment yielded. `range` is in VIEW offsets.
+ */
+export async function* readIndexedView(ports: MediaSourcePorts, plan: MediaFilePlan, index: SeekIndex, range: { readonly start: number; readonly end: number }): AsyncGenerator<Buffer, void, undefined> {
+  for (const part of partsOfViewRange(index, range)) {
+    if (part.kind === 'INDEX') {
+      // A copy: the plan (and its box) is kept for the next request.
+      yield Buffer.from(index.bytes.subarray(part.from, part.to));
+      continue;
+    }
+    yield* readPlain(ports, plan, part);
   }
 }

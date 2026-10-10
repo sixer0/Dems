@@ -11,7 +11,7 @@ import { useOwnCapture } from '@/lib/own-capture'
 import { formatBytesParts } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
-import { audioPeakLevel, autosaveSegment, bytesAt, timelineOfOwnCapture, timelineWhileConnecting } from './sim-adapter'
+import { audioPeakLevel, autosaveSegment, bytesAt, captureFaultReasonOf, timelineOfOwnCapture, timelineWhileConnecting, timelineWithoutRepeatedFaults } from './sim-adapter'
 
 const EMPTY: readonly TimelineEvent[] = []
 
@@ -35,7 +35,10 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
   const ownCapture = useOwnCapture()
   // G75b-08: no "Recording Started" while the session is still connecting its cameras.
   const connecting = useSim((s) => captureFactsOf(s.session)?.capture === 'CONNECTING')
-  const events = useMemo(() => timelineWhileConnecting(timelineOfOwnCapture(stored, ownCapture), connecting), [stored, ownCapture, connecting])
+  // G75c-06 (c): a fault the Core listed twice at one instant is one row.
+  const events = useMemo(() => timelineWithoutRepeatedFaults(timelineWhileConnecting(timelineOfOwnCapture(stored, ownCapture), connecting)), [stored, ownCapture, connecting])
+  // G75c-06 (a), (b): the reason of a capture fault whose row carries none is the one its alert states.
+  const alerts = useSim((s) => s.alerts)
   const startedAt = useSim((s) => s.session?.startedAt ?? null)
   // The simulator never schedules timeline items in the future, so "now" is the newest item's time:
   // the list re-renders on insertions only, not on every clock second (§9.3).
@@ -78,15 +81,14 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
       if (event.kind === 'FAULT') {
         const kind = event.params?.kind
         if (kind === 'CAPTURE_FAULT') {
-          const reason = event.params?.reason
-          return captureFaultSentence(typeof reason === 'string' ? reason : null, null)
+          return captureFaultSentence(captureFaultReasonOf(event, alerts), null)
         }
         if (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FaultKind, kind)) return t(faultKindLabelKey(kind as FaultKind, event.params))
       }
       if (event.detail) return event.detail
       return event.label
     },
-    [t, startedAt, micName],
+    [t, startedAt, micName, alerts],
   )
 
   return (

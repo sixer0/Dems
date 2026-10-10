@@ -13,6 +13,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { useSimInstance, type Sim } from '@dems/shared/sim';
+import { operatorScope, useOperatorId } from '@/lib/operator-query-scope';
 import { reportRuntimeIssue, useMobileLive, type MobileLiveSim } from '@/runtime';
 import {
   readRefusalOf,
@@ -114,8 +115,14 @@ export class TranscriptReadError extends Error {
 }
 
 const modeKey = (live: MobileLiveSim | null): string => (live === null ? 'sim' : 'live');
-export const transcriptQueryKey = (evidenceId: string, live: MobileLiveSim | null) => ['core-server', 'evidence-transcript', modeKey(live), evidenceId] as const;
-export const transcriptRevisionsQueryKey = (evidenceId: string, live: MobileLiveSim | null) => ['core-server', 'evidence-transcript-revisions', modeKey(live), evidenceId] as const;
+/**
+ * Both keys end with the operator (fix wave K, G81b-02): operations 84 and 86 answer by the caller's
+ * role and case scope, so a document or a refusal read for one operator is never shown to the next.
+ */
+export const transcriptQueryKey = (evidenceId: string, live: MobileLiveSim | null, operatorId: string | null = null) =>
+  ['core-server', 'evidence-transcript', modeKey(live), evidenceId, operatorScope(operatorId)] as const;
+export const transcriptRevisionsQueryKey = (evidenceId: string, live: MobileLiveSim | null, operatorId: string | null = null) =>
+  ['core-server', 'evidence-transcript-revisions', modeKey(live), evidenceId, operatorScope(operatorId)] as const;
 
 function failed(source: string, evidenceId: string, failure: TranscriptFailure): TranscriptReadError {
   const error = new TranscriptReadError(failure);
@@ -128,8 +135,9 @@ function failed(source: string, evidenceId: string, failure: TranscriptFailure):
 export function useTranscript(evidenceId: string, enabled: boolean) {
   const live = useMobileLive();
   const sim = useSimInstance();
+  const operatorId = useOperatorId();
   return useQuery<TranscriptDocument, TranscriptReadError>({
-    queryKey: transcriptQueryKey(evidenceId, live),
+    queryKey: transcriptQueryKey(evidenceId, live, operatorId),
     enabled,
     retry: false,
     queryFn: async () => {
@@ -144,8 +152,9 @@ export function useTranscript(evidenceId: string, enabled: boolean) {
 export function useTranscriptRevisions(evidenceId: string, enabled: boolean) {
   const live = useMobileLive();
   const sim = useSimInstance();
+  const operatorId = useOperatorId();
   return useQuery<TranscriptRevision[], TranscriptReadError>({
-    queryKey: transcriptRevisionsQueryKey(evidenceId, live),
+    queryKey: transcriptRevisionsQueryKey(evidenceId, live, operatorId),
     enabled,
     retry: false,
     queryFn: async () => {
@@ -170,14 +179,15 @@ export type ReviseOutcome =
 export function useTranscriptFollowsRevision(evidenceId: string, revision: number | null): void {
   const live = useMobileLive();
   const queryClient = useQueryClient();
+  const operatorId = useOperatorId();
   const seen = useRef({ evidenceId, revision });
   useEffect(() => {
     const before = seen.current;
     seen.current = { evidenceId, revision };
     if (before.evidenceId !== evidenceId || before.revision === revision) return;
-    void queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live) });
-    void queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live) });
-  }, [evidenceId, live, queryClient, revision]);
+    void queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live, operatorId) });
+    void queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live, operatorId) });
+  }, [evidenceId, live, operatorId, queryClient, revision]);
 }
 
 /** Sends one revision, then has both reads of the item fetched again (also after a conflict: the pane never hides a newer revision). */
@@ -185,19 +195,20 @@ export function useReviseTranscript(evidenceId: string): (request: RevisionReque
   const live = useMobileLive();
   const sim = useSimInstance();
   const queryClient = useQueryClient();
+  const operatorId = useOperatorId();
   return useCallback(
     async (request) => {
       const answer = await createTranscriptRevision({ live, sim }, evidenceId, request);
       const refusal = answer.ok ? null : reviseRefusalOf(answer.status, answer.code);
       if (answer.ok || refusal === 'CONFLICT') {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live) }),
-          queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live) }),
+          queryClient.invalidateQueries({ queryKey: transcriptQueryKey(evidenceId, live, operatorId) }),
+          queryClient.invalidateQueries({ queryKey: transcriptRevisionsQueryKey(evidenceId, live, operatorId) }),
         ]);
       }
       if (answer.ok) return { ok: true, revision: answer.data };
       return { ok: false, refusal: refusal ?? 'OTHER', status: answer.status, code: answer.code, failure: answer.failure };
     },
-    [evidenceId, live, queryClient, sim],
+    [evidenceId, live, operatorId, queryClient, sim],
   );
 }

@@ -618,6 +618,33 @@ npm run evidence:verify-export -- <archive.zip> [--sha256 <hex>] [--trust <certi
 
 **What the clients show in real capture.** No stock picture stands as a camera preview: tiles and session rows say "No preview". Time chips say "Host system clock". A source line says "Reachable" or "Not reachable", and "Stream live" only while a session is recording (D196, D210, D217). Not yet gate-verified.
 
+### Fix wave K: additions and corrections
+
+Added 2026-10-11 by the documentation errata pass (`docs/2026-10-07_dems_real_capture_sealing/implementation/147_docs_errata_wave_k.md`). Fix wave K is in the working tree and was not committed when this was written (D224). The numbered specification errata are `PE-WK-…` in `docs/2026-10-07_dems_real_capture_sealing/masterplan/`.
+
+**Gate state, said once: not yet gate-verified.** Every item below was proven in automated tests, or on the tablet where its note says so, and NO gate has passed on it: the targeted re-check of re-gates 70, 75, 81, 89 and 94 has not run on this tree (D224). Nothing below is a statement that a gate passed.
+
+**The seal rig of the development lane** (`scripts/lane/lane.sh:22`, `:83-108`, `:200-231`, `:334`; `apps/core-server/test/support/lane-seal-rig.ts`; API contract and capture spec erratum `PE-WK-14`). A development tool that makes the seal of ONE session fail on purpose, with a cause the product already has, so that the "sealing is blocked" screens and the quarantine outcome can be driven. It is a FOURTH command of the script, beside the three start / reset options above. Not yet gate-verified; its author did not drive it on a live lane.
+
+| Command | What it does |
+|---|---|
+| `scripts/lane/lane.sh seal-rig 2 blocked` | Set BEFORE the session is ended. The seal of the next session that ends fails with the cause `SESSION_KEY_STORE_UNAVAILABLE` (retriable): retries after 5 s, 30 s and 120 s, then a CRITICAL "sealing blocked" notice for as long as the switch is on; the session stays FINALIZING |
+| `scripts/lane/lane.sh seal-rig 2 unsealable` | Set BEFORE the session is ended. The seal fails with `SESSION_KEY_NOT_OF_SESSION` (not retriable): three attempts (at once, after 5 s, after 30 s), then the session ends UNSEALABLE: recordings MOVED to `<media root>/.quarantine/<sessionId>/`, session INCOMPLETE, one CRITICAL alert, a new session can be created at once |
+| `scripts/lane/lane.sh seal-rig 2 release` | The switch is OFF. A blocked seal then completes by the product's own retry: the next automatic retry if one is still due, else the recovery action of the session on the web or the tablet, else the next start of the lane. ALWAYS end with it |
+| `scripts/lane/lane.sh seal-rig 2 status` | What the switch file (`.locks/seal-rig.lane2.switch`, mode 0600) says: `OFF`, `BLOCKED`, `UNSEALABLE`, or either with the session it is bound to |
+
+- **FAKE sources only.** The rig binds to the first session whose seal it meets and whose start record holds only generated (`FAKE`) sources; no later session is touched until the switch is set again. A session that recorded from this computer's camera or microphone (`LOCAL_DEVICE`) or from a production device is never touched: its seal is let through and the Core logs `LANE_SEAL_RIG_NOT_A_FAKE_SESSION`.
+- **Refused outside development capture.** `lane.sh seal-rig` on a lane that is not development capture stops with exit status 64 and changes nothing (`lane.sh:212-214`); a production configuration is not started with the rig (`DEV_SEAL_RIG_IN_PRODUCTION`) and the sealing host itself refuses it outside `REAL_DEVELOPMENT` (`DEV_SEAL_RIG_NOT_DEVELOPMENT`).
+- **Off by default.** The rig exists only on a lane started with `scripts/lane/lane.sh start 2 --with-camera-stub`; the start prints "seal rig available (development tool) ... says: OFF". A lane started without the stub has no rig and `seal-rig` says so (exit status 69). The product's own entry point cannot load it. No key file is written, read or planted.
+- After `unsealable` the lane holds a quarantine folder: stop the lane, then `scripts/lane/lane.sh reset 2 --discard-unsealed-fake-recordings` (the FAKE-only rule above).
+
+**Other changes of wave K the README text above does not yet say** (each is in a numbered erratum; not yet gate-verified):
+
+- **The restart fault ends** (`PE-WK-11`). The "The Core was not running while this session was active" fault is active only while its session is open as that faulted session; when the session is sealed or closed it is cleared with one `FAULT_CLEARED` row, and a start of the Core heals a fault that an earlier build left stuck.
+- **The manifest states the recorded stream** (`PE-WK-16`). `tracks[].profile` is built from the camera file (picture size and measured frame rate), for example `H264_720P30`, not from the selector; a session whose stream is not the configured profile carries one WARNING notice `STREAM_PROFILE_DIFFERS`. At a development start the selector line of a generated source is corrected to the profile its adapter makes (`PE-WK-15`). Packages sealed earlier are unchanged and stay valid.
+- **Limits of the sealed package and the export** (`PE-WK-17`, `PE-WK-18`, `PE-WK-19`). A copy of a sealed package whose `transcript-revisions.json` lost its last revision (or all of them) verifies PASS without the Core: only the Core (against its database) and an export (`X-04 ENTRY_HASH_MISMATCH`) catch it. The receiver's command names an added file `X-04 UNEXPECTED_ENTRY` (export) or `V-14 UNEXPECTED_FILE` (package). The download link is NOT single use inside its 60 seconds, for the same sign-in session; each download is its own audit row.
+- **The tablet's player seeks on the indexed view** (`PE-WK-35`, `PE-WK-37`; supersedes `PE-WK-24` for a session whose answer states an index): the app asks operation 88 for the view with the optional `seekIndex` and the scrubber seeks; where a stream still reports no duration, the scrubber stays disabled with a sentence and Play and Pause work. It is proven on the tablet (note 145); the phone layout has not yet been driven. Not yet gate-verified.
+
 ### Known limits
 
 One list. Each item names the decision that recorded it.

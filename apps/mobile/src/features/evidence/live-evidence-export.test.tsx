@@ -77,6 +77,12 @@ describe('S5-1 and S1-5: Authorize — the hint decides the display; a denied ro
     expect(screen.getByTestId('evidence-export-authorizing')).toBeTruthy();
     expect(b.requests('exportEvidence')).toHaveLength(0);
     await b.elapse(EXPORT_AUTH_MS + 100);
+    // Fix wave K (D223 (1), G89b-09): opening the wizard sends nothing - the required role is stated first;
+    // the explicit "Request authorization" press is the attempt the Core audits.
+    expect(screen.getByTestId('evidence-export-requires-role-hint')).toBeTruthy();
+    expect(b.requests('exportEvidence')).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('evidence-export-request-authorization'));
+    await b.elapse(300);
     expect(b.requests('exportEvidence')).toHaveLength(1);
     expect(b.requests('exportEvidence')[0]!.body).toEqual({ reason: '', destination: '' });
     expect(screen.getByTestId('evidence-export-denied')).toBeTruthy();
@@ -92,6 +98,12 @@ describe('S5-1 and S1-5: Authorize — the hint decides the display; a denied ro
     const { b } = await openExport('0002', { role: 'investigator' });
     b.fake.failOnce('exportEvidence');
     await b.elapse(EXPORT_AUTH_MS + 300);
+    // Fix wave K (D223 (1), G89b-09): opening the wizard sends nothing - the required role is stated first;
+    // the explicit "Request authorization" press is the attempt the Core audits.
+    expect(screen.getByTestId('evidence-export-requires-role-hint')).toBeTruthy();
+    expect(b.requests('exportEvidence')).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('evidence-export-request-authorization'));
+    await b.elapse(300);
     expect(b.requests('exportEvidence')).toHaveLength(1);
     expect(toastShown(OFFLINE)).toBe(true);
     expect(toastShown(OFFLINE_HINT)).toBe(true);
@@ -103,6 +115,12 @@ describe('S5-1 and S1-5: Authorize — the hint decides the display; a denied ro
     const { b, id } = await openExport('0002', { role: 'investigator' });
     b.fake.answerOnceFromExample('exportEvidence', 422, 'invalidReason');
     await b.elapse(EXPORT_AUTH_MS + 300);
+    // Fix wave K (D223 (1), G89b-09): opening the wizard sends nothing - the required role is stated first;
+    // the explicit "Request authorization" press is the attempt the Core audits.
+    expect(screen.getByTestId('evidence-export-requires-role-hint')).toBeTruthy();
+    expect(b.requests('exportEvidence')).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('evidence-export-request-authorization'));
+    await b.elapse(300);
     expect(b.requests('exportEvidence')).toHaveLength(1);
     expect(screen.getByTestId('evidence-export-denied')).toBeTruthy();
     expect(screen.getByText(evidenceEn.export.deniedBodyUnrecorded)).toBeTruthy();

@@ -10466,7 +10466,8 @@
                           "archiveBytes": 136096844,
                           "archiveSha256": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
                         }
-                      ]
+                      ],
+                      "exportDestinationDefault": "Case file transfer"
                     }
                   },
                   "productSealedInterrupted": {
@@ -20749,7 +20750,8 @@
                           "from": "Baik, saya Ahmad Fauzi.",
                           "to": "Baik, saya Ahmad Fausi."
                         }
-                      ]
+                      ],
+                      "reason": "Koreksi nama jalan"
                     }
                   }
                 }
@@ -21086,7 +21088,8 @@
                               "from": "Baik, saya Ahmad Fauzi.",
                               "to": "Baik, saya Ahmad Fausi."
                             }
-                          ]
+                          ],
+                          "reason": "Koreksi nama jalan"
                         }
                       ],
                       "nextCursor": null
@@ -21588,6 +21591,17 @@
                       "expiresAt": 1790825000000,
                       "ranges": true
                     }
+                  },
+                  "indexedView": {
+                    "summary": "The same session serving the indexed view: one segment index after the init segment (token placeholder)",
+                    "value": {
+                      "evidenceId": "EV-20260930-0004",
+                      "fileId": "VIDEO-01",
+                      "url": "http://127.0.0.1:4420/media/mts_000000000000000000000000000000000000000000000",
+                      "expiresAt": 1790825000000,
+                      "ranges": true,
+                      "seekIndex": true
+                    }
                   }
                 }
               }
@@ -21839,6 +21853,13 @@
                   "summary": "The session of the second camera file",
                   "value": {
                     "fileId": "VIDEO-02"
+                  }
+                },
+                "indexedView": {
+                  "summary": "The indexed view of the first camera file (a player that needs a segment index to seek)",
+                  "value": {
+                    "fileId": "VIDEO-01",
+                    "seekIndex": true
                   }
                 }
               }
@@ -25633,7 +25654,7 @@
             "description": "Purpose of the export (book §19.2 item 8; at least 5 characters after trimming)."
           },
           "destination": {
-            "description": "Destination or approved media identifier (book §19.2 item 6). Empty means \"Case file transfer (simulated)\"; text beyond 120 characters is cut.",
+            "description": "Destination or approved media identifier (book §19.2 item 6). Empty means the Core's default - \"Case file transfer\" on a Core in its own capture, \"Case file transfer (simulated)\" in simulated capture (operation 40 states it as `exportDestinationDefault`); text beyond 120 characters is cut.",
             "type": "string"
           },
           "kind": {
@@ -25673,6 +25694,10 @@
             "description": "The job operation 87 polls: `EXPJ-` and the six digits of `exportId` (`EXP-000012` -> `EXPJ-000012`). Optional: a client that does not find it derives it by that rule.",
             "type": "string",
             "pattern": "^EXPJ-\\d{6,}$"
+          },
+          "archiveOnCore": {
+            "description": "Core server only. `true`: an export job of this Core writes the archive into the Core's store (operation 87 follows it). `false`: the request was recorded and NO archive is written - an item of the demonstration data. Absent: not stated; a client then claims no stored archive.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -30781,6 +30806,75 @@
               }
             ]
           },
+          "transcriptModel": {
+            "description": "Core server only, for an item whose sealed v2 package lies in the Core's own store and whose SIGNED manifest declares a transcript document: the model of that transcript, from the manifest (decision D160). The same shape as `transcriptModel` of operation 41. For a server backend only the name exists, as reported by the STT server; version, quantisation and file hash are null and were not verified by the Core. Absent: not stated (no document sealed, a v1 or demonstration item, a package that could not be read, a manifest whose signature did not hold) - a reader draws nothing.",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "The model name the sealed manifest records."
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The version the installation declared; null for a server backend."
+              },
+              "quantisation": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The quantisation read from the model file; null for a server backend."
+              },
+              "modelSha256": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "SHA-256 of the model file as the Core hashed it; null for a server backend."
+              },
+              "reportedByServer": {
+                "type": "boolean",
+                "description": "True when the session's STT backend was a server: the name is what the server reported, and the Core verified nothing of the model."
+              },
+              "report": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "The report line of the model, as operation 41 words it."
+              }
+            },
+            "required": [
+              "name",
+              "version",
+              "quantisation",
+              "modelSha256",
+              "reportedByServer",
+              "report"
+            ],
+            "additionalProperties": false
+          },
           "transcript": {
             "description": "Schema v2: the transcript summary inside the item; the body arrives through op 84.",
             "anyOf": [
@@ -32811,6 +32905,12 @@
               "additionalProperties": false,
               "description": "One finished export of an evidence item: the archive lies in the Core's store."
             }
+          },
+          "exportDestinationDefault": {
+            "description": "Core server only: the destination text the Core records for an export request that names none - `Case file transfer` on a Core in its own capture, `Case file transfer (simulated)` on a Core in simulated capture. A client pre-selects the destination whose recorded text equals it, so that every client offers the same default.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
           }
         },
         "required": [
@@ -32899,6 +32999,10 @@
                 "plainOk": {
                   "type": "boolean",
                   "description": "Hash of the plaintext bytes matches the sealed value."
+                },
+                "plainChecked": {
+                  "description": "Present and false when the plaintext check (V-05) did not run for this file: `plainOk: false` is then \"not checked\", not a failed comparison. Absent: `plainOk` is the result of the check.",
+                  "type": "boolean"
                 },
                 "chainOk": {
                   "type": "boolean",
@@ -34909,7 +35013,7 @@
                 },
                 "from": {
                   "type": "string",
-                  "description": "The text being replaced (for the record; not trusted as the current value)."
+                  "description": "The text being replaced. It MUST be the CURRENT text of the segment: the `to` of the newest revision that changed the segment, else the sealed text. Anything else answers `422 INVALID_INPUT` with `details.reason: REVISION_FROM_NOT_CURRENT_TEXT`; nothing is signed and nothing is appended (ruling D221 (2))."
                 },
                 "to": {
                   "type": "string",
@@ -35035,6 +35139,10 @@
               "additionalProperties": false
             },
             "description": "The corrections as stored."
+          },
+          "reason": {
+            "description": "Why the revision was made: the note its author gave, as stored and as signed with the revision (op 85 `note`). Absent only where the stored revision holds none. Never a default.",
+            "type": "string"
           }
         },
         "required": [
@@ -35223,6 +35331,11 @@
               "VIDEO-01",
               "VIDEO-02"
             ]
+          },
+          "seekIndex": {
+            "description": "Fix wave K Z1 (ruling D224 (1)): asks for the INDEXED VIEW of the file - the same decrypted bytes plus ONE segment index (`sidx`) built from the signed manifest fragment table, for a player that cannot seek a fragmented file without one. Absent: the stream as before. The answer states whether the session serves it.",
+            "type": "boolean",
+            "const": true
           }
         },
         "additionalProperties": false,
@@ -35257,6 +35370,11 @@
             "type": "boolean",
             "const": true,
             "description": "The route answers Range requests (NM-11 playback)."
+          },
+          "seekIndex": {
+            "description": "Fix wave K Z1 (ruling D224 (1)): present, always `true`, exactly when the URL of THIS session serves the INDEXED VIEW of the file (the request asked `seekIndex: true` and the signed fragment table yields an exact index): the same decrypted bytes plus one segment index between the init segment and the first fragment; lengths and Range offsets of the URL are those of the view. Absent: the stream as sealed - a player that needs an index cannot seek it. Nothing of the sealed package, the export or Verify differs.",
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [

@@ -250,7 +250,7 @@ function tracksOf(moov: Uint8Array, header: number): Track[] | null {
 const NON_SYNC = 0x0001_0000;
 
 /** The span of media time one whole `moof` covers, and whether its video starts on a sync sample. Null when it cannot be read. */
-function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[]): FragmentMedia | null {
+function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[], videoRun?: { samples: number; ticks: number; timescale: number }): FragmentMedia | null {
   const top = children(moof, header, moof.length);
   if (top === null) return null;
   let low: number | null = null;
@@ -324,6 +324,12 @@ function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[]): Fr
     if (track.video) {
       video = true;
       sync = firstFlags !== null && (firstFlags & NON_SYNC) === 0;
+      // Fix wave K (G89b-01): the video samples of this fragment and the ticks they span, for a caller that measures the frame rate.
+      if (videoRun !== undefined) {
+        videoRun.samples += samples;
+        videoRun.ticks += total;
+        videoRun.timescale = track.timescale;
+      }
     }
   }
   if (low === null) return null;
@@ -527,6 +533,90 @@ export async function videoSampleEntryOf(source: ByteSource): Promise<VideoSampl
     return { state: VideoSampleEntryState.UNKNOWN_SAMPLE_ENTRY, codec: null, sampleEntry: entry.replace(/[^A-Za-z0-9]/g, '?') };
   }
   return none(VideoSampleEntryState.NO_INIT_SEGMENT);
+}
+
+// ── What the video stream of a camera file IS (fix wave K, driver S1; re-gate 89 finding G89b-01) ──
+
+/**
+ * The picture size and the frame rate of a camera file, READ FROM THE FILE (ruling D222 (2): a
+ * manifest states what the stream is, never the profile somebody configured).
+ *   width, height   the first video sample entry of the init segment (`VisualSampleEntry`, ISO/IEC
+ *                   14496-12 §12.1.3: two 16-bit members at byte 32 and 34 of the entry box);
+ *   frameRate       MEASURED over the first whole fragments of the file: the video samples their
+ *                   `trun` boxes list, divided by the time those samples span (`mdhd` timescale).
+ *                   Frames per second, rounded to 2 decimals. Null when no fragment could be read
+ *                   in the clear - a sealed camera file (its fragments are ciphertext) - or when
+ *                   the fragments list no video sample: a rate the Core did not measure is absent.
+ */
+export interface VideoStreamFormat {
+  readonly width: number;
+  readonly height: number;
+  readonly frameRate: number | null;
+}
+
+/** How many whole fragments the frame rate is measured over, at most (about 8 s of a 1 s cadence). */
+export const VIDEO_FRAME_RATE_FRAGMENTS = 8;
+
+/** Width and height of the first video sample entry of a `moov` held in memory, or null. */
+function videoPictureSizeIn(moov: Uint8Array, header: number): { width: number; height: number } | null {
+  const child = (from: number, to: number, type: string): readonly [number, number] | null => {
+    const found = (children(moov, from, to) ?? []).find(([name]) => name === type);
+    return found === undefined ? null : [found[1], found[2]];
+  };
+  for (const [type, payload, end] of children(moov, header, moov.length) ?? []) {
+    if (type !== 'trak') continue;
+    const mdia = child(payload, end, 'mdia');
+    if (mdia === null) continue;
+    const hdlr = child(mdia[0], mdia[1], 'hdlr');
+    if (hdlr === null || hdlr[0] + 12 > hdlr[1] || typeOf(moov, hdlr[0] + 8) !== 'vide') continue;
+    const minf = child(mdia[0], mdia[1], 'minf');
+    const stbl = minf === null ? null : child(minf[0], minf[1], 'stbl');
+    const stsd = stbl === null ? null : child(stbl[0], stbl[1], 'stsd');
+    if (stsd === null) return null;
+    const first = stsd[0] + 8;
+    if (first + 36 > stsd[1] || be32(moov, stsd[0] + 4) < 1) return null;
+    const width = ((moov[first + 32] ?? 0) << 8) + (moov[first + 33] ?? 0);
+    const height = ((moov[first + 34] ?? 0) << 8) + (moov[first + 35] ?? 0);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+  return null;
+}
+
+/**
+ * The video stream format of a camera file, or null when its init segment is not whole or names no
+ * video picture size. Reads box headers, the `moov` and at most `VIDEO_FRAME_RATE_FRAGMENTS` `moof`
+ * boxes: no media byte, no key. Decides nothing.
+ */
+export async function videoStreamFormatOf(source: ByteSource, maxFragments: number = VIDEO_FRAME_RATE_FRAGMENTS): Promise<VideoStreamFormat | null> {
+  let size: { width: number; height: number } | null = null;
+  let tracks: Track[] | null = null;
+  const run = { samples: 0, ticks: 0, timescale: 0 };
+  let fragments = 0;
+  for (let at = 0; at < source.size; ) {
+    const result = await boxHead(source, at);
+    if ('reason' in result) break;
+    const { type, size: boxSize, header } = result.head;
+    if (type === 'moov' && size === null) {
+      if (boxSize > MOOF_READ_LIMIT) return null;
+      const moov = await source.read(at, boxSize);
+      if (moov.length !== boxSize) return null;
+      size = videoPictureSizeIn(moov, header);
+      tracks = tracksOf(moov, header);
+      if (size === null) return null;
+    } else if (type === 'moof') {
+      // A fragment before the init segment, or tracks that cannot be read: nothing more can be measured.
+      if (size === null || tracks === null || fragments >= maxFragments || boxSize > MOOF_READ_LIMIT) break;
+      const moof = await source.read(at, boxSize);
+      if (moof.length !== boxSize) break;
+      // A `moof` that is not one (ciphertext under the name) does not parse: the measure ends there.
+      if (mediaOf(moof, header, tracks, run) === null) break;
+      fragments += 1;
+    }
+    at += boxSize;
+  }
+  if (size === null) return null;
+  const frameRate = run.samples > 0 && run.ticks > 0 && run.timescale > 0 ? Math.round(((run.samples * run.timescale) / run.ticks) * 100) / 100 : null;
+  return { width: size.width, height: size.height, frameRate };
 }
 
 // ── Against what was recorded ──────────────────────────────────────────────────────────────────

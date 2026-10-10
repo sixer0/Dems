@@ -70,6 +70,7 @@ describe('the scan itself', () => {
       `${UNIT}index.ts`,
       `${UNIT}items.ts`,
       `${UNIT}ranges.ts`,
+      `${UNIT}seek-index.ts`,
       `${UNIT}service.ts`,
       `${UNIT}source.ts`,
       `${UNIT}store-door.ts`,
@@ -156,7 +157,7 @@ describe('rule 4 (G-R4, E-31; M8-BLK-1): the token, the URL and the range are ne
     expect(occurrences(own, RAW_URL)).toEqual([]);
     // The one place the token is put into a text is the answer of operation 88.
     expect(service.match(/\$\{token\}/g)).toHaveLength(1);
-    expect(service).toMatch(/return \{ evidenceId: item\.evidenceId, fileId, url: `http:\/\/\$\{app\.config\.host\}:\$\{app\.config\.port\}\$\{MEDIA_ROUTE_PREFIX\}\/\$\{token\}`, expiresAt, ranges: true \};/);
+    expect(service).toMatch(/return \{ evidenceId: item\.evidenceId, fileId, url: `http:\/\/\$\{app\.config\.host\}:\$\{app\.config\.port\}\$\{MEDIA_ROUTE_PREFIX\}\/\$\{token\}`, expiresAt, ranges: true, \.\.\.\(indexed \? \{ seekIndex: true as const \} : \{\}\) \};/);
   });
 });
 

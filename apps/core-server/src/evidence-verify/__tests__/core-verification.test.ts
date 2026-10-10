@@ -98,7 +98,7 @@ describe('the verdict of record of a real v2 item', () => {
       notices: [{ code: 'AUDIT_EXTRACT_NOT_SIGNED', report: 'Audit extract: present, NOT covered by the package signature.' }],
     });
     expect(run.report.checks.map((check) => check.status)).toEqual(Array.from({ length: 15 }, () => 'PASS'));
-    expect(recorded).toEqual([{ principal: OPERATOR, verdict: { evidenceId: 'EV-20261009-0001', ok: true, at: AT, manifestOk: true, signatureOk: true, failedTracks: [], detail: null } }]);
+    expect(recorded).toEqual([{ principal: OPERATOR, verdict: { evidenceId: 'EV-20261009-0001', ok: true, at: AT, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, failedFragments: [] } }]);
     expect(clockReads()).toBe(1);
     expect(Object.isFrozen(run.body)).toBe(true);
   });
@@ -119,7 +119,7 @@ describe('the verdict of record of a real v2 item', () => {
       signatureOk: true,
     });
     expect(recorded.map((entry) => entry.verdict)).toEqual([
-      { evidenceId: 'EV-20261009-0001', ok: false, at: AT, manifestOk: true, signatureOk: true, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3' },
+      { evidenceId: 'EV-20261009-0001', ok: false, at: AT, manifestOk: true, signatureOk: true, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', failedFragments: ['VIDEO-02:3'] }, // fix wave K (G89b-04): the fragment, for the audit row
     ]);
   });
 

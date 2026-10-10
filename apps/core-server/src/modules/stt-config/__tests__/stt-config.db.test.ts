@@ -185,6 +185,30 @@ describe('next session: a change stored while a session is open', () => {
     expect(((await get(sessions.INVESTIGATOR)).json() as SttConfig).pendingForNextSession).toBe(true);
     expect((await storedRow())['enabled']).toBe(false);
   });
+
+  // FIX WAVE K, driver S2 (re-gate 81 finding G81b-05). The case above is the CONTROL: the same row, a session that is open.
+  it('G81b-05 - the row of a SEALED session is not an open session: nothing is pending, and a change applies NOW; the row of the table is still there', async () => {
+    expect(((await get(sessions.INVESTIGATOR)).json() as SttConfig).pendingForNextSession).toBe(true);
+    // What the Core's table holds after a seal: the row of the last session stays, in state SEALED, until the next one is created.
+    const sealedRow = await owner.query("UPDATE public.active_session SET state = 'SEALED' RETURNING id");
+    expect(sealedRow.rowCount).toBe(1);
+    try {
+      expect((await owner.query('SELECT count(*)::int AS rows FROM public.active_session')).rows[0]).toEqual({ rows: 1 });
+      expect(((await get(sessions.INVESTIGATOR)).json() as SttConfig).pendingForNextSession).toBe(false);
+      booted.clock.advance(5_000);
+      const revision = await revisionNow();
+      const response = await post(sessions.TECHNICIAN, { revision, enabled: true });
+      const body = response.json() as SttConfigUpdateResult;
+      expect(response.statusCode).toBe(200);
+      expect([body.appliesFrom, body.pendingForNextSession, body.enabled, body.revision]).toEqual(['NOW', false, true, revision + 1]);
+      expect(((await get(sessions.SUPERVISOR)).json() as SttConfig).pendingForNextSession).toBe(false);
+    } finally {
+      // The engine of this rig still holds the session as created: the row goes back to what it wrote.
+      await owner.query("UPDATE public.active_session SET state = 'CREATE'");
+    }
+    // CONTROL after the control: the session is open again, and the change stored a moment ago waits for the next one.
+    expect(((await get(sessions.INVESTIGATOR)).json() as SttConfig).pendingForNextSession).toBe(true);
+  });
 });
 
 describe('secrecy in the stored trail: a dump of audit_log and events, searched as text', () => {

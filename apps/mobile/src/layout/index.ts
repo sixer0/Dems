@@ -22,6 +22,7 @@ export {
 export {
   PANE_GAP,
   PANE_REFLOW,
+  paneReflowFor,
   Pane,
   PaneLayout,
   usePaneStacked,

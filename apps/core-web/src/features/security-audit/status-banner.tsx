@@ -15,6 +15,8 @@ export interface SecurityBannerProps {
   breakSeq: number | null
   /** The Core states `security.platformNotReported` (closing pass J): an UNKNOWN posture is "not reported", not "being checked". */
   platformNotReported?: boolean
+  /** Fix wave K (C-2): the controls this Core does not report; counted as that in the detail line. */
+  controlsNotReported?: number
 }
 
 /**
@@ -23,7 +25,7 @@ export interface SecurityBannerProps {
  * posture title and a detail line. An escalation pulses the dot's halo once (R8, M-C-10); the
  * label cross-fades (120 ms). Announced politely.
  */
-export const SecurityBanner = memo(function SecurityBanner({ posture, controlsOk, controlsTotal, chainOk, breakSeq, platformNotReported = false }: SecurityBannerProps) {
+export const SecurityBanner = memo(function SecurityBanner({ posture, controlsOk, controlsTotal, chainOk, breakSeq, platformNotReported = false, controlsNotReported = 0 }: SecurityBannerProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const pulses = useEscalationCount(posture)
@@ -31,7 +33,7 @@ export const SecurityBanner = memo(function SecurityBanner({ posture, controlsOk
   const detail =
     posture === 'UNKNOWN' && !notReported
       ? t('securityAudit.banner.checking')
-      : `${t('securityAudit.banner.controls', { ok: controlsOk, total: controlsTotal })} • ${
+      : `${controlsNotReported > 0 ? t('web.realCore.controls.bannerSummary', { ok: controlsOk, total: controlsTotal, notReported: controlsNotReported }) : t('securityAudit.banner.controls', { ok: controlsOk, total: controlsTotal })} • ${
           chainOk ? t('securityAudit.banner.chainIntact') : t('securityAudit.banner.chainBroken', { seq: breakSeq ?? 0 })
         }`
 

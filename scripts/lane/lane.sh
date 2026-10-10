@@ -19,6 +19,11 @@
 #                                              may erase UNSEALED recording folders of sessions that
 #                                              recorded from generated (FAKE) sources only (see
 #                                              "A LANE WHOSE SEAL FAILED" below)
+#   scripts/lane/lane.sh seal-rig 2 <unsealable|blocked|release|status>
+#                                              development capture lane only, started with
+#                                              --with-camera-stub: make the NEXT seal of a session
+#                                              that recorded from generated (FAKE) sources fail on
+#                                              purpose (see "THE SEAL RIG" below)
 #
 # Run it OUTSIDE the sandbox (loopback bind, PostgreSQL), from any directory.
 #
@@ -75,6 +80,37 @@
 # destroys EVERY session key of the lane's key folder (the demo packages it seals anew keep
 # theirs): after it no key of an earlier session can meet a session number given out again.
 #
+# THE SEAL RIG (fix wave K, decision D220; re-gate 75 "blocked seal not provable live"). A
+# development tool of the lane launcher (apps/core-server/test/support/lane-seal-rig.ts): the
+# product's own entry point cannot load it, the launcher does not start a production configuration
+# with it (check sealing.sealRig, code DEV_SEAL_RIG_IN_PRODUCTION), and the sealing host refuses it
+# outside REAL_DEVELOPMENT. It is there whenever lane 2 runs with --with-camera-stub, and it is
+# OFF until its switch file ($LOCKS/seal-rig.lane2.switch) says otherwise:
+#     scripts/lane/lane.sh seal-rig 2 unsealable   the seal of the NEXT session that ends fails with
+#                                                  the product's cause SESSION_KEY_NOT_OF_SESSION
+#                                                  (not retriable): three attempts by the product's
+#                                                  own bounds (at once, +5 s, +30 s), then the
+#                                                  session ends UNSEALABLE - recordings moved to
+#                                                  .quarantine/, session INCOMPLETE, one CRITICAL
+#                                                  alert, the Core free for a new session
+#     scripts/lane/lane.sh seal-rig 2 blocked      the seal of the NEXT session that ends fails with
+#                                                  the product's cause SESSION_KEY_STORE_UNAVAILABLE
+#                                                  (retriable): retries at +5 s, +30 s, +120 s, then
+#                                                  "sealing blocked" (CRITICAL) for as long as the
+#                                                  switch is on
+#     scripts/lane/lane.sh seal-rig 2 release      the switch is OFF. A blocked seal completes by the
+#                                                  product's own retry: the next automatic retry if
+#                                                  one is still due, else the recovery action of the
+#                                                  session (web / tablet), else the next start
+#     scripts/lane/lane.sh seal-rig 2 status       what the switch file says
+# The rig binds itself to ONE session - the first whose seal it meets - and writes that session's ID
+# into the switch file; no later session is touched until the switch is set again. A session that
+# recorded from this computer's camera or microphone (LOCAL_DEVICE) or from a production source is
+# never touched: the rig lets its seal through and says so in the Core's log. No key file is
+# written, read or planted: the rig refuses before the sealer is called.
+# After "unsealable" the lane holds a quarantine folder: the next reset of lane 2 needs
+# --discard-unsealed-fake-recordings (see above). Always end with "release".
+#
 # Exit codes: 0 done; 64 usage or unknown lane; 69 the lane is in the wrong state (already
 # running, not running, a prerequisite of lane 2 is missing); 70 the Core did not become ready.
 
@@ -85,7 +121,7 @@ LOCKS="$ROOT/.locks"
 READY_SECONDS=${LANE_READY_SECONDS:-40}
 
 usage() {
-  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 reset 2 --discard-unsealed-fake-recordings   |   $0 status" >&2
+  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 reset 2 --discard-unsealed-fake-recordings   |   $0 seal-rig 2 <unsealable|blocked|release|status>   |   $0 status" >&2
   exit 64
 }
 
@@ -161,6 +197,40 @@ say_camera_stub() {
   fi
 }
 
+# What the seal rig's switch file says, in one line (see "THE SEAL RIG" above). No file: OFF.
+seal_rig_state() {
+  if [ -r "$1" ]; then state=$(head -n 1 "$1" | tr -d '\r'); echo "${state:-OFF}"; else echo "OFF"; fi
+}
+
+say_seal_rig() {
+  echo "lane.sh: seal rig available (development tool): switch $SEAL_RIG says: $(seal_rig_state "$SEAL_RIG")"
+  [ "$(seal_rig_state "$SEAL_RIG")" = OFF ] || echo "lane.sh: THE SEAL RIG IS ON: a seal on this lane is made to fail on purpose. '$0 seal-rig $1 release' switches it off."
+}
+
+cmd_seal_rig() {
+  plan "$1"
+  if [ "$MODE" != REAL_DEVELOPMENT ]; then
+    echo "lane.sh: the seal rig is for the development capture lane only; lane $1 runs $MODE. Nothing was changed." >&2; exit 64
+  fi
+  SEAL_RIG="$LOCKS/seal-rig.lane$1.switch"
+  mkdir -p "$LOCKS"
+  case "$2" in
+    status) ;;
+    unsealable) ( umask 077 && echo UNSEALABLE >"$SEAL_RIG" ) ;;
+    blocked)    ( umask 077 && echo BLOCKED >"$SEAL_RIG" ) ;;
+    release)    ( umask 077 && echo OFF >"$SEAL_RIG" ) ;;
+    *) usage ;;
+  esac
+  echo "lane.sh: seal rig of lane $1: $(seal_rig_state "$SEAL_RIG")   (switch file $SEAL_RIG)"
+  pid=$(listener "$PORT")
+  if [ -z "$pid" ]; then
+    echo "lane.sh: lane $1 is not running: the switch is read by a Core started with '$0 start $1 --with-camera-stub'."
+  elif [ ! -r "$LOCKS/camera-stub.lane$1.fixture" ]; then
+    echo "lane.sh: lane $1 runs WITHOUT the lane launcher (no --with-camera-stub): this Core has no seal rig and does not read the switch." >&2
+    exit 69
+  fi
+}
+
 cmd_start() {
   plan "$1"; check_root
   if [ "${SPEECH_MIC:-}" = --speech-mic ] && [ "$MODE" != REAL_DEVELOPMENT ]; then
@@ -169,6 +239,7 @@ cmd_start() {
   say_plan "$1"; check_real_prerequisites
   [ "${SPEECH_MIC:-}" = --speech-mic ] && echo "lane.sh: the first test microphone plays the speech fixture: synthetic speech made by 'npm run capture:dev-setup'."
   STUB_FIXTURE="$LOCKS/camera-stub.lane$1.fixture"; STUB_MODE="$LOCKS/camera-stub.lane$1.mode"
+  SEAL_RIG="$LOCKS/seal-rig.lane$1.switch"
   pid=$(listener "$PORT")
   if [ -n "$pid" ]; then echo "lane.sh: port $PORT already has a listener (PID $pid): not started" >&2; exit 69; fi
   lane_env
@@ -177,7 +248,7 @@ cmd_start() {
   if [ "$2" = --with-camera-stub ]; then
     # The lane launcher of the test support: the same Core, with the fake ONVIF camera on loopback as its camera search.
     # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
-    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:camera-stub -w @dems/core-server -- --fixture-file "$STUB_FIXTURE" --mode-file "$STUB_MODE" >"$LOG" 2>&1 & )
+    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:camera-stub -w @dems/core-server -- --fixture-file "$STUB_FIXTURE" --mode-file "$STUB_MODE" --seal-rig-file "$SEAL_RIG" >"$LOG" 2>&1 & )
   else
     # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
     ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:server >"$LOG" 2>&1 & )
@@ -187,6 +258,7 @@ cmd_start() {
     if curl -s -m 2 "http://127.0.0.1:$PORT/api/v1/health" 2>/dev/null | grep -q '"ready":{"database":true,"engine":true}'; then
       echo "lane.sh: lane $1 is ready on 127.0.0.1:$PORT (PID $(listener "$PORT")); log $LOG"
       [ "$2" = --with-camera-stub ] && say_camera_stub "$1"
+      [ "$2" = --with-camera-stub ] && [ "$MODE" = REAL_DEVELOPMENT ] && say_seal_rig "$1"
       return 0
     fi
     # The Core stops by itself on a failed boot check: no listener and a final line in the log.
@@ -259,6 +331,7 @@ case "$1" in
     done
     cmd_start "$START_LANE" "$START_STUB" ;;
   stop)   [ $# -eq 2 ] || usage; cmd_stop "$2" ;;
+  seal-rig) [ $# -eq 3 ] || usage; cmd_seal_rig "$2" "$3" ;;
   reset)
     [ $# -eq 2 ] || { [ $# -eq 3 ] && [ "$3" = "--discard-unsealed-fake-recordings" ]; } || usage
     cmd_reset "$2" "${3:-}" ;;

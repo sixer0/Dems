@@ -55,6 +55,16 @@ export interface SealedFileFact {
   readonly fragmentChainHead?: string | null;
 }
 
+/** The model of a sealed transcript as the item carries it (`EvidenceItemSchema.transcriptModel`; operation 41's shape). */
+export interface SealedTranscriptModel {
+  readonly name: string;
+  readonly version: string | null;
+  readonly quantisation: string | null;
+  readonly modelSha256: string | null;
+  readonly reportedByServer: boolean;
+  readonly report: string;
+}
+
 /** What was read of ONE item's sealed package. */
 export type SealedItemFacts =
   | {
@@ -67,6 +77,12 @@ export type SealedItemFacts =
       readonly files: readonly SealedFileFact[];
       /** true / false from the certificate the sealed manifest names; null: not established. */
       readonly developmentKey: boolean | null;
+      /**
+       * Fix wave K, driver S2 (G81b-06; D160): the model of the sealed transcript, as the ONE verifier
+       * states it for a manifest whose signature held (`report.transcriptModel`). Null / absent: not
+       * stated - no document sealed, or the signature did not hold. Never a default.
+       */
+      readonly transcriptModel?: SealedTranscriptModel | null;
     }
   | {
       readonly evidenceId: string;
@@ -81,6 +97,7 @@ export interface SealedItemMembers {
   interrupted?: boolean;
   interruptedCause?: string | null;
   audioSourceIntervals?: SealedAudioInterval[];
+  transcriptModel?: SealedTranscriptModel;
 }
 export type ItemWithSealedFacts = EvidenceItem & SealedItemMembers & { signature: EvidenceItem['signature'] & { developmentKey?: boolean | null } };
 
@@ -106,7 +123,7 @@ export function itemWithSealedFacts(item: EvidenceItem, facts: SealedItemFacts):
   if (facts.sealedPackage === 'NOT_READABLE') {
     // Nothing that was read: only the state itself. Members an earlier reading put there are not kept as if they were read now.
     if (held.sealedPackage === 'NOT_READABLE') return item;
-    const { interrupted: _interrupted, interruptedCause: _cause, audioSourceIntervals: _intervals, ...rest } = held;
+    const { interrupted: _interrupted, interruptedCause: _cause, audioSourceIntervals: _intervals, transcriptModel: _model, ...rest } = held;
     const { developmentKey: _key, ...signature } = held.signature;
     return { ...rest, signature, sealedPackage: 'NOT_READABLE' } as EvidenceItem;
   }
@@ -120,12 +137,16 @@ export function itemWithSealedFacts(item: EvidenceItem, facts: SealedItemFacts):
   };
   if (facts.interrupted) next.interruptedCause = interruptedCauseOf(item);
   else delete next.interruptedCause;
+  // The model of THIS reading or none: a reading that states no model leaves no model of an earlier one.
+  if (facts.transcriptModel !== undefined && facts.transcriptModel !== null) next.transcriptModel = { ...facts.transcriptModel };
+  else delete next.transcriptModel;
   const unchanged =
     held.sealedPackage === next.sealedPackage &&
     held.interrupted === next.interrupted &&
     (held.interruptedCause ?? null) === (next.interruptedCause ?? null) &&
     held.signature.developmentKey === next.signature.developmentKey &&
     same(held.audioSourceIntervals, next.audioSourceIntervals) &&
+    same(held.transcriptModel ?? null, next.transcriptModel ?? null) &&
     same(held.files, next.files);
   return unchanged ? item : (next as EvidenceItem);
 }

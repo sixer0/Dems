@@ -39,6 +39,13 @@ export interface GeneratedCameraOptions extends GeneratedSourceOptions {
   readonly now: () => number;
 }
 
+/**
+ * THE profile of a generated camera source: what its adapter declares and what the helper's
+ * argument table makes (`adapters/local/camera-helper-args.ts`: 1280 x 720 at 30 per second). The
+ * selector line of such a source states it (`fake-profile.ts`).
+ */
+export const GENERATED_CAMERA_PROFILE = LOCAL_CAMERA_PROFILE;
+
 export interface GeneratedCameraAdapter extends CameraAdapter {
   closeAll(): Promise<void>;
 }
@@ -52,7 +59,7 @@ export function createGeneratedCameraAdapter(options: GeneratedCameraOptions): G
     ...(options.door === undefined ? {} : { door: options.door }),
     ...(options.inspect === undefined ? {} : { inspect: options.inspect }),
   });
-  const profiles = Object.freeze([LOCAL_CAMERA_PROFILE]);
+  const profiles = Object.freeze([GENERATED_CAMERA_PROFILE]);
   const served = (deviceId: string): void => {
     if (deviceId !== options.id) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
   };

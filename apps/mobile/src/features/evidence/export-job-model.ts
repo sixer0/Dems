@@ -38,6 +38,12 @@ export interface ExportJob {
    * (`readExportDownload` reads it from a fresh answer, at the press of the control).
    */
   readonly downloadable: boolean;
+  /**
+   * Fix wave K (G94b-06): the COMPLETE job states `archive` (its length and hash) - the archive FILE
+   * lies in the Core's store. False for a job that states none: a simulated / demonstration export,
+   * for which "The export is stored on the Core" would be a claim nothing holds.
+   */
+  readonly archiveOnCore: boolean;
 }
 
 /** The download member of a COMPLETE job: a same-origin path of the Core's download route and the instant it dies. */
@@ -92,6 +98,23 @@ export function answeredJobIdOf(result: unknown): string | null {
   return exportJobIdOf('', jobId);
 }
 
+/** `archive` of operation 87 as the contract shapes it: the length and the SHA-256 of the archive file. */
+function jobStatesArchive(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { sha256 } = value as { sha256?: unknown };
+  return typeof sha256 === 'string' && /^[0-9a-f]{64}$/.test(sha256);
+}
+
+/**
+ * `archiveOnCore` of the 202 of operation 42 (contract_wave_k.md S2 section 3), as the accepted
+ * result carries it: `true` an archive will be written, `false` the request was only recorded (a
+ * demonstration item), null: not stated.
+ */
+export function answeredArchiveOnCoreOf(result: unknown): boolean | null {
+  const value = typeof result === 'object' && result !== null ? (result as { archiveOnCore?: unknown }).archiveOnCore : null;
+  return typeof value === 'boolean' ? value : null;
+}
+
 /** The answer of operation 87, or null when it cannot be read. */
 export function readExportJob(value: unknown): ExportJob | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -112,6 +135,7 @@ export function readExportJob(value: unknown): ExportJob | null {
     signature: hex(source.signature, /^(?:[0-9a-f]{64}|[0-9a-f]{128})$/),
     failureReason: status === 'FAILED' ? hex(source.failureReason, /^[A-Z][A-Z0-9_]{0,63}$/) : null,
     downloadable: readExportDownload(value) !== null,
+    archiveOnCore: status === 'COMPLETE' && jobStatesArchive(source.archive),
   };
 }
 

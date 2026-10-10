@@ -92,6 +92,16 @@ export function answeredJobIdOf(result: unknown): string | null {
   return exportJobIdOf('', jobId)
 }
 
+/**
+ * `archiveOnCore` of the 202 of operation 42 (`contract_wave_k.md` S2 section 3), read BY THAT NAME from
+ * the accepted result: `true` an export job of the Core writes an archive, `false` the request was only
+ * recorded (a demonstration item, no archive), null: the Core did not say - nothing is then derived.
+ */
+export function answeredArchiveOnCoreOf(result: unknown): boolean | null {
+  const value = typeof result === 'object' && result !== null ? (result as { archiveOnCore?: unknown }).archiveOnCore : null
+  return typeof value === 'boolean' ? value : null
+}
+
 /** The answer of operation 87, or null when it cannot be read. */
 export function readExportJob(value: unknown): ExportJob | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null

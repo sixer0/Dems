@@ -342,6 +342,17 @@ const EXPORT_REQUEST: EvidenceExportRequest = {
   destination: 'Case file transfer (simulated)',
 };
 
+/**
+ * Fix wave K, driver S2 (re-gate 94 finding G94b-06): the answer of operation 42 for an item of the
+ * demonstration data on a Core - the request is recorded, NO archive is written.
+ */
+export const EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE: EvidenceExportAccepted = {
+  exportId: 'EXP-000032',
+  evidenceId: EXAMPLE_IDS.exportedEvidenceId,
+  status: 'QUEUED',
+  archiveOnCore: false,
+};
+
 const EXPORT_ACCEPTED: EvidenceExportAccepted = {
   exportId: 'EXP-000031',
   evidenceId: EXAMPLE_IDS.exportedEvidenceId,

@@ -51,7 +51,7 @@ import {
   reasonRefused as coreRefusedReason,
   type ExportOutcome,
 } from './export-outcome'
-import { answeredJobIdOf, type ExportJobKind } from './export-job-model'
+import { answeredArchiveOnCoreOf, answeredJobIdOf, type ExportJobKind } from './export-job-model'
 import { isDemoItem } from './item-facts'
 import { ExportJobStatus } from './export-job-status'
 import { LockShackle } from './lock-shackle'
@@ -64,6 +64,12 @@ export interface ExportWizardProps {
   rows: EvidenceRow[]
   isOpen: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * `exportDestinationDefault` of operation 40 (fix wave K, G94b-11 / -12): the destination text the
+   * Core records for an export that names none. The option whose recorded text equals it is
+   * pre-selected; null / absent (a list of items, the simulator, an older Core): the first option.
+   */
+  destinationDefault?: string | null
 }
 
 type StepIndex = 0 | 1 | 2 | 3
@@ -101,7 +107,7 @@ const REASON_MAX = 500
  *   after `LIVE_PENDING_REVEAL_MS` the button shows the kit's spinner (LB-1).
  * In Simulated mode every `settle` runs before it returns, so the wizard behaves as before.
  */
-export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) {
+export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = null }: ExportWizardProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const sim = useSimInstance()
@@ -119,7 +125,8 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
   const [reasonTouched, setReasonTouched] = useState(false)
   /** Live mode: the Core answered `422 INVALID_REASON` for this reason (F59: the Core is the judge). */
   const [reasonRejected, setReasonRejected] = useState(false)
-  const [destination, setDestination] = useState<Destination>('CASE_FILE')
+  /** The operator's own choice; null until one is made - the Core's default (or the first option) stands until then. */
+  const [chosenDestination, setChosenDestination] = useState<Destination | null>(null)
   const [kind, setKind] = useState<ExportJobKind>('PACKAGE')
   const [auth, setAuth] = useState<'idle' | 'granted' | 'denied'>('idle')
   const [verification, setVerification] = useState<Record<string, VerifyState>>({})
@@ -134,6 +141,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
   // offered beside the Core's archive. A demo item (and Simulated mode) keeps what it had.
   const coreOnly = live && rows.length > 0 && rows.every((row) => !isDemoItem(row.item))
   const destinationLabel = (key: Destination): string => t(coreOnly ? `evidence.itemFacts.exportReal.destination.${key}` : `evidence.exportWizard.destinations.${key}`)
+  const destination: Destination = chosenDestination ?? (destinationDefault === null ? undefined : DESTINATIONS.find((key) => destinationLabel(key) === destinationDefault)) ?? DESTINATIONS[0]!
   const destinationText = destinationLabel(destination)
   const allVerified = rows.length > 0 && rows.every((row) => verification[row.id]?.phase === 'done')
   const failedSources = rows.filter((row) => verification[row.id]?.verdict === 'FAIL')
@@ -344,7 +352,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
       <Select
         value={destination}
         onChange={(value) => {
-          if (value && DESTINATIONS.includes(value as Destination)) setDestination(value as Destination)
+          if (value && DESTINATIONS.includes(value as Destination)) setChosenDestination(value as Destination)
         }}
         className="evi-field"
       >
@@ -516,7 +524,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange }: ExportWizardProps) 
                   {t('evidence.exportWizard.auditRecorded', { audit: outcome.auditRowId ?? '—', hash: outcome.auditHash ? shortHash(outcome.auditHash) : '—' })}
                 </p>
                 {/* Operation 42 only queued the export: operation 87 says when it is done, or that it FAILED. */}
-                {live ? <ExportJobStatus exportId={outcome.result.exportId} evidenceId={row.id} jobId={answeredJobIdOf(outcome.result)} /> : null}
+                {live ? <ExportJobStatus exportId={outcome.result.exportId} evidenceId={row.id} jobId={answeredJobIdOf(outcome.result)} archiveOnCore={answeredArchiveOnCoreOf(outcome.result)} /> : null}
                 {coreArchiveOnly ? null : (
                   <div className="evi-export-download">
                     {plan.kind === 'zip' ? <FileArchive className="size-5 text-accent" aria-hidden="true" /> : <FileJson className="size-5 text-accent" aria-hidden="true" />}

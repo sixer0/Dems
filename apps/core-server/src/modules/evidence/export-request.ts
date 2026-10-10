@@ -30,7 +30,7 @@
  * Pure: no database, no clock. Nothing of the body is put into a message or a log line.
  */
 import { EvidenceExportRequestSchema } from '@dems/shared/api';
-import type { ExportRequest } from '@dems/shared/sim';
+import { DEFAULT_EXPORT_DESTINATION, DEFAULT_EXPORT_DESTINATION_REAL, type ExportRequest } from '@dems/shared/sim';
 
 export type ExportBody =
   | { readonly kind: 'VALID'; readonly request: ExportRequest; /** True when the body names `kind` itself (R93-06): only then is it written to the request row. */ readonly named: boolean }
@@ -39,6 +39,34 @@ export type ExportBody =
 
 /** What the hosted action gets in place of a missing or too-short reason: it refuses it, always. */
 export const NO_REASON: ExportRequest = Object.freeze({ reason: '', destination: '' });
+
+/**
+ * What the Core records, as the ONE function of the capture operation answered it
+ * (`captureOperationOf`, asked by the route - static rule G-R16: nothing here reads the capture
+ * mode of the configuration): `simulated` = the operation SIMULATED, `real` = a Core in its own
+ * capture (development or production).
+ */
+export type ExportCapture = 'simulated' | 'real';
+
+/**
+ * THE ONE DEFAULT DESTINATION OF THIS CORE, true to its capture operation (fix wave K, driver S2;
+ * re-gate 94 notes G94b-11, G94b-12). A request that names no destination is recorded with it, and
+ * operation 40 states it (`exportDestinationDefault`) so that every client pre-selects the same
+ * one. A Core in its own capture simulates nothing: its text does not say "(simulated)".
+ */
+export function exportDestinationDefaultOf(capture: ExportCapture): string {
+  return capture === 'simulated' ? DEFAULT_EXPORT_DESTINATION : DEFAULT_EXPORT_DESTINATION_REAL;
+}
+
+/**
+ * The request as the hosted action takes it. A Core in its OWN capture hands its default in for an
+ * empty destination; a Core in simulated capture hands the request on as it is - the hosted action
+ * then names the simulator's default itself, which IS that Core's default (one text, one place).
+ */
+export function withDestinationDefault(request: ExportRequest, capture: ExportCapture): ExportRequest {
+  if (capture === 'simulated') return request;
+  return typeof request.destination === 'string' && request.destination.trim() !== '' ? request : { ...request, destination: exportDestinationDefaultOf(capture) };
+}
 
 const REASON = 'reason';
 

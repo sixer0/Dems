@@ -216,7 +216,10 @@ describe('1. the platform facts follow security.platformNotReported, by name', (
     expect(simulated.some((control) => control.notReported)).toBe(false)
     platformNotReported(sim)
     const stated = buildControls({ ...base, security: sim.store.getState().security })
-    expect(stated.filter((control) => control.notReported).map((control) => control.id)).toEqual(['TPM', 'SECURE_BOOT', 'KEY_CUSTODY'])
+    // Fix wave K (C-2 / G75c-04, ruling D222 (1)): the pin moved by delta - beside the three platform controls, the four whose "Active"
+    // is the device model's flag (encryption status, signing service with the DEMO key name, enclosure switch, firmware signature) read "Not reported" too.
+    expect(stated.filter((control) => control.notReported).map((control) => control.id)).toEqual(['TPM', 'SECURE_BOOT', 'KEY_CUSTODY', 'ENCRYPTION', 'SIGNATURE', 'TAMPER', 'SIGNED_FIRMWARE'])
+    expect(stated.find((control) => control.id === 'HASH_CHAIN')).toMatchObject({ status: 'OK' })
     expect(postureOf('SECURE', true, true, true)).toBe('UNKNOWN')
     expect(postureOf('SECURE', true, true, false)).toBe('SECURE')
     expect(postureOf('ATTENTION', true, true, true)).toBe('ATTENTION')

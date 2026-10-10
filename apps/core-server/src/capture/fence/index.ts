@@ -441,6 +441,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
             }),
           ),
         inspect,
+        now,
         readHead: mount.readHead ?? readFileHead,
         labels: { CAMERA: LOCAL_CAMERA_DEVICE_NAME, MIC: LOCAL_MIC_DEVICE_NAME },
         listed,
@@ -464,7 +465,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
         built = buildProductionRegistry(mount.locked);
       }
       outcome = passed;
-      if (passed.inserted.length > 0) await mount.reloadState();
+      if (passed.inserted.length > 0 || passed.generatedProfilesCorrected === true) await mount.reloadState();
       if (passed.helperProgram !== null) {
         const leftover = await leftoverHelperPids(door, mount.timers, passed.helperProgram);
         if (leftover === null || leftover.length > 0) {

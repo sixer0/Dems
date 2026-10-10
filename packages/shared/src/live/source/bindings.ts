@@ -254,7 +254,15 @@ function exportInProgress(): ExportResult {
 }
 
 /** What an accepted export of the Live source carries beyond `ExportResult`: the job operation 87 polls, when the 202 names it. */
-export type LiveExportAccepted = Extract<ExportResult, { ok: true }> & { readonly jobId?: string };
+export type LiveExportAccepted = Extract<ExportResult, { ok: true }> & {
+  readonly jobId?: string;
+  /**
+   * Fix wave K (G94b-06): the server fact of operation 42, handed on BY NAME and only when the 202
+   * states it as a boolean - `true` an export job of the Core writes an archive, `false` the
+   * request was only recorded. Absent: the Core did not say (a client treats it as `false`).
+   */
+  readonly archiveOnCore?: boolean;
+};
 
 /** CL-19: 401 → NOT_SIGNED_IN, any 403 → FORBIDDEN, 404 → NOT_FOUND, 409 → EXPORT_IN_PROGRESS, SECURITY_FAULT or NOT_SEALED, 422 → INVALID_REASON. */
 function exportRefusal(failure: CoreCallFailure): ExportResult | undefined {
@@ -302,7 +310,12 @@ const exported = (success: CoreCallSuccess): ExportResult => ({
 const evidenceExported = (success: CoreCallSuccess): ExportResult => {
   // The ONE rule (`exportJobIdOf`): with no export ID it answers the answered job ID, or null.
   const answered = exportJobIdOf('', (success.data as { jobId?: unknown }).jobId);
-  const accepted: LiveExportAccepted = { ...(exported(success) as LiveExportAccepted), ...(answered === null ? {} : { jobId: answered }) };
+  const archiveOnCore = (success.data as { archiveOnCore?: unknown }).archiveOnCore;
+  const accepted: LiveExportAccepted = {
+    ...(exported(success) as LiveExportAccepted),
+    ...(answered === null ? {} : { jobId: answered }),
+    ...(typeof archiveOnCore === 'boolean' ? { archiveOnCore } : {}),
+  };
   return accepted;
 };
 

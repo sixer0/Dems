@@ -251,6 +251,35 @@ export interface ActivityInput {
 
 export type ActivitySlices = Pick<SimState, 'audit' | 'events' | 'meta'>;
 
+/** A paired-device ID as a row may name it (the form `sendingDeviceOf` of the session machine admits). */
+const ACTING_DEVICE_ID = /^[A-Z][A-Z0-9-]{1,31}$/;
+
+/**
+ * THE SENDING DEVICE OF EVERY ROW OF AN ACTION A PAIRED DEVICE SENT (fix wave K, driver S2; re-gate
+ * findings G89b-04, G94b-03, G75c-09; ruling D216 (2) "every audit row of an action sent by a
+ * paired device carries that device's id"). Wave I put the device on six session rows one by one;
+ * the rows it did not name (verify, export, summary acknowledged, recovery started, and every other
+ * hosted action) had none. The rule is now held where every row of an action is written:
+ *
+ *   the acting identity holds a paired device (`auth.deviceId` - set by a Core for exactly ONE
+ *   hosted command of a device session, `withActorScope`; never by the in-app simulator), AND the
+ *   row's actor is that identity, AND the row names no device of its own
+ *     -> the row's `deviceId` is the paired device.
+ *
+ * Left as they are: a row with its own `deviceId` (a camera, the Core's platform device), a row
+ * without an actor or of another actor (engine-timed rows, rows about the Core), every row of a
+ * web console session and of the simulator inside an app (no device in `auth`). No `details` key is
+ * added: the row states the fact once.
+ */
+function auditWithActingDevice(state: ActivitySlices, input: AuditInput): AuditInput {
+  if (input.deviceId !== undefined && input.deviceId !== null) return input;
+  if (input.actorId === undefined || input.actorId === null) return input;
+  const auth = (state as Partial<Pick<SimState, 'auth'>>).auth;
+  const deviceId = auth?.deviceId;
+  if (typeof deviceId !== 'string' || !ACTING_DEVICE_ID.test(deviceId) || auth?.operatorId !== input.actorId) return input;
+  return { ...input, deviceId };
+}
+
 /**
  * Appends audit rows and events to the state at time `at` and advances the event counter.
  * Returns only the three changed slices, ready for `store.setState`.
@@ -265,7 +294,7 @@ export function appendActivity(
   let events = state.events;
   let nextEventSeq = state.meta.counters.event;
   for (const item of list) {
-    if (item.audit) audit = appendAudit(audit, item.audit, at).log;
+    if (item.audit) audit = appendAudit(audit, auditWithActingDevice(state, item.audit), at).log;
     if (item.event) {
       events = appendEvent(events, item.event, at, nextEventSeq).events;
       nextEventSeq += 1;

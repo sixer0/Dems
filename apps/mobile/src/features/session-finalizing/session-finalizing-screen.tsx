@@ -318,7 +318,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
             ) : null}
           </View>
 
-          <InterruptedSealNotice sessionId={session.id} testID="finalizing-interrupted" />
+          <InterruptedSealNotice sessionId={session.id} testID="finalizing-interrupted" sealing={!sealed} />
           <View style={styles.statusLine} accessibilityLiveRegion="polite" testID="finalizing-status">
             {phase === 'stopping' ? (
               <>
@@ -358,9 +358,12 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
 
           {/* Fix wave I (G75b-02): no percentage and no ETA beside a seal that is retried or blocked - the notice says what the Core knows. */}
           {attention !== null ? <SealAttentionNotice attention={attention} onHome={onHome} /> : null}
-          {phase === 'finalizing' && progress.reportsProgress && attention === null ? (
-            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`finalizing-eta-${progress.etaMs === null ? 'none' : 'core'}`}>
-              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
+          {/* Fix wave K (G75c-05; contract_wave_k.md S1 section 5): a time-left line ONLY when the Core states one. `etaMs: null`
+              (always for the transcript step, before 5 % of a step, a failed step) draws NO line - not "0 s", not a promise of an
+              estimate that will not come. */}
+          {phase === 'finalizing' && progress.etaMs !== null && attention === null ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="finalizing-eta-core">
+              {t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
             </Text>
           ) : null}
           {showResumed ? (

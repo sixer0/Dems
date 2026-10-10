@@ -72,6 +72,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Pool } from 'pg';
 import { z } from 'zod';
+import { captureOperationOf } from '../../capture/fence';
 import { MappingError } from '../../db/mapping';
 import { simCodeOf, simRefusal, type EngineOutcome } from '../../engine';
 import { EXPORT_IN_PROGRESS_TEXT, createExportService, evidenceExport, exportJobIdOf, exportKindOfBody } from '../../evidence-export';
@@ -79,7 +80,7 @@ import { evidenceFacts } from '../../evidence-facts';
 import { ApiFailure, NOT_SIGNED_IN_TEXT, invalidInput } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { decodeEvidenceCursor, encodeEvidenceCursor, type EvidenceCursor } from './cursor';
-import { NO_REASON, readExportBody } from './export-request';
+import { NO_REASON, exportDestinationDefaultOf, readExportBody, withDestinationDefault, type ExportCapture } from './export-request';
 import { mediaRefOf } from './media';
 import { readEvidenceItem, readEvidencePage } from './reads';
 import { evidenceVerification } from './real-verification';
@@ -173,6 +174,10 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
   // manifest, what this caller may do, its finished exports (`src/evidence-facts`). The module
   // hands it the request whole and the item; it reads no package and decides nothing itself.
   const facts = evidenceFacts(app);
+  // Reconcile pass of wave K (static rule G-R16): the module does not read the capture mode; it asks the one function.
+  const exportCapture: ExportCapture = captureOperationOf(app.config) === 'SIMULATED' ? 'simulated' : 'real';
+  /** The destination this Core records for a request that names none: true to its capture operation (fix wave K, G94b-11 / -12). */
+  const exportDestinationDefault = (): string => exportDestinationDefaultOf(exportCapture);
   facts.register();
 
   /**
@@ -230,7 +235,9 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const evidence = await read(request, 'getEvidence', (pool) => readEvidenceItem(pool, request.params.id));
       if (evidence === null) throw evidenceNotFound();
       // `mediaRefOf` is the join of the BUNDLED demo packages; a product-sealed item's media state is the Core's own (G94-01).
-      return facts.detail(request, evidence, mediaRefOf(evidence));
+      const detail = await facts.detail(request, evidence, mediaRefOf(evidence));
+      // Fix wave K, driver S2 (G94b-11 / -12): the ONE default destination, the Core's - every client pre-selects it.
+      return { ...detail, exportDestinationDefault: exportDestinationDefault() };
     },
   });
 
@@ -282,7 +289,16 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
         // R93-06: the kind the body named goes onto the request row; `completion` is the server's own member, never the body's.
         // G94-10 (wave H C1): a request that becomes a JOB of this Core always says its kind on the row (C3 §5.2
         // `details.kind: PACKAGE|COMPOSITE`), also when the body left it to the default.
-        const hostedRequest = body.kind === 'VALID' ? { ...body.request, ...(body.named || admitted.job ? { kind } : {}), ...(admitted.job ? { completion: 'DEFERRED' as const } : {}) } : NO_REASON;
+        // Fix wave K, driver S2 (G94b-11): a request that names no destination is recorded with THIS Core's default -
+        // a Core in its own capture simulates nothing, so its row, its custody entry and its export manifest do not say "(simulated)".
+        const hostedRequest =
+          body.kind === 'VALID'
+            ? {
+                ...withDestinationDefault(body.request, exportCapture),
+                ...(body.named || admitted.job ? { kind } : {}),
+                ...(admitted.job ? { completion: 'DEFERRED' as const } : {}),
+              }
+            : NO_REASON;
         const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, hostedRequest);
         result = outcome.value;
       } catch (error) {
@@ -300,7 +316,9 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       await ticket?.accepted({ exportId: result.exportId, kind, deferred: admitted.job });
       void reply.code(202);
       // R93-06: the job operation 87 polls, as the contract and the simulator name it.
-      return { exportId: result.exportId, evidenceId, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) };
+      // Fix wave K, driver S2 (G94b-06): whether an archive will exist - a JOB of this Core writes one; a request that
+      // is only recorded (an item of the demonstration data) writes none, and no client is left to claim one.
+      return { exportId: result.exportId, evidenceId, status: 'QUEUED', jobId: exportJobIdOf(result.exportId), archiveOnCore: admitted.job };
     },
   });
 

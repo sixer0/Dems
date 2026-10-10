@@ -34,6 +34,7 @@ import { DURABLE_SLICE_KEYS, MappingError, fromRows, type DurableSliceKey, type 
 import { activeSession, auditLog, authSessions, biometricTokens, events, hardwareSnapshot, pairedDevices, pairingCodes } from '../db/schema';
 import { readStoredRows } from '../db/store';
 import { EngineError } from './errors';
+import { endRestartFaultTransition } from './restart-fault';
 
 /** What a start read: the durable slices and the instants the restart rules need. */
 export interface StoredState {
@@ -243,6 +244,11 @@ export interface RestartEffects {
    * CONNECTED and put it OFFLINE in the state WITHOUT a row. Absent reads as false.
    */
   readonly tabletLinkOfflineUnwritten?: boolean;
+  /**
+   * Fix wave K (G75c-01): the start found a STORED restart fault ("the Core was not running") whose
+   * session had ended, and cleared it - one `FAULT_CLEARED` row, its alert resolved. Absent reads as false.
+   */
+  readonly restartFaultEnded?: boolean;
 }
 
 /** What a process start is told of the Core it runs in. */
@@ -372,19 +378,27 @@ export function applyProcessStart(sim: Sim, lastCommittedAt: number, now: number
     sim.store.setState(next);
   }
 
+  // Fix wave K (G75c-01): a stored restart fault whose session has ended is over (`restart-fault.ts`).
+  // AFTER the block above: the fault this start raised belongs to an open session and stays. A state
+  // without such a fault is not touched, so a start with no session open writes nothing.
+  const ended = endRestartFaultTransition(sim.store.getState(), now);
+  const restartFaultEnded = ended !== sim.store.getState();
+  if (restartFaultEnded) sim.store.setState(ended);
+  const healed = restartFaultEnded ? { restartFaultEnded: true } : {};
+
   const tampered = clearTamperOverlay(sim, now);
 
   if (heldLink !== null) {
-    return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: carryTabletLink(sim, heldLink) };
+    return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: carryTabletLink(sim, heldLink), ...healed };
   }
   const connected = sim.store.getState().tabletLink.state === TabletLinkState.CONNECTED;
   if (connected && ownCapture) {
     // The fact, in the state, with the instant of this start; the other devices' entries are derived from it as the hosted action derives them. No row, no event.
     sim.store.setState(deriveDeviceState({ ...sim.store.getState(), tabletLink: { state: TabletLinkState.OFFLINE, changedAt: now } }));
-    return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: false, tabletLinkOfflineUnwritten: true };
+    return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: false, tabletLinkOfflineUnwritten: true, ...healed };
   }
   const tabletLinkReset = connected;
   if (tabletLinkReset) sim.actions.setTabletLink(TabletLinkState.OFFLINE);
 
-  return { faultedFrom, tamperCleared: tampered, tabletLinkReset, tabletLinkCarried: false };
+  return { faultedFrom, tamperCleared: tampered, tabletLinkReset, tabletLinkCarried: false, ...healed };
 }

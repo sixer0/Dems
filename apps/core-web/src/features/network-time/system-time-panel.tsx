@@ -7,7 +7,7 @@ import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtim
 import { selectClockSecond, useSim } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { SlidingNumber } from '@/components/ui/sliding-number'
-import { isOwnCaptureCore } from '@/lib/own-capture'
+import { isOwnCaptureCore, useOwnCaptureCore } from '@/lib/own-capture'
 import { GlowLayer } from '@/motion'
 import { useMotionPolicy } from '@/motion'
 import { secondTicks, timeLevel, TIME_TONE } from './model'
@@ -124,6 +124,25 @@ function AvSyncStrip() {
   const { t } = useTranslation()
   const av = useSim(selectAvSync)
   const lock = av.locked ? t('networkTime.hierarchy.locked') : t('networkTime.hierarchy.unlocked')
+  // Fix wave K (C-2 / G75c-04): on a Core on its host clock the strip's values are the demo's derivation from a
+  // time source that does not exist there ("RTC UNLOCKED", "Degraded", "Derived for the demo"). Nothing is measured here.
+  const hostClock = useOwnCaptureCore()
+  if (hostClock) {
+    return (
+      <div className="nt-av" data-testid="network-time-av-sync" data-state="NOT_MEASURED">
+        <div className="nt-av-head">
+          <AudioWaveform className="nt-av-icon" aria-hidden="true" strokeWidth={1.75} />
+          <span className="nt-av-title">{t('networkTime.systemTime.avSync.title')}</span>
+          <Chip size="sm" variant="soft" color="default">
+            {t('web.ownCore.time.notMeasured')}
+          </Chip>
+        </div>
+        <p className="nt-footnote" data-testid="network-time-av-sync-note">
+          {t('web.realCore.networkTime.avSync')}
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="nt-av" data-testid="network-time-av-sync" data-state={av.state}>
       <div className="nt-av-head">

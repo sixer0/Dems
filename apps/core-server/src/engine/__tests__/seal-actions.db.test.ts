@@ -192,6 +192,28 @@ describe('engine.recordEvidenceVerification (D107 (1))', () => {
     const dataset = host.engine.slice('evidence').find((item) => item.integritySource !== 'REAL');
     await expect(sealDoorsOf(host.engine).recordEvidenceVerification({ evidenceId: dataset?.id ?? '', ok: true, at, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, actorId })).rejects.toMatchObject({ statusCode: 409 });
   });
+
+  // FIX WAVE K, driver S2 (re-gate findings G89b-04, G94b-03; rulings D216 (2), D222 (3)).
+  it('G89b-04 - a verification a PAIRED DEVICE asked for: the STORED rows name the device and the operation, and the failed row names the FRAGMENT; a web request keeps no device (control)', async () => {
+    const host = await booted('wk_s2_verdict');
+    const sessionId = await stopped(host);
+    await sealDoorsOf(host.engine).applySealingProgress({ sessionId, steps: report(5, 90) });
+    const evidenceId = (await sealDoorsOf(host.engine).completeSeal(sealInput(sessionId, host.clock.now()))).value.evidenceId;
+    const actorId = host.principal('INVESTIGATOR').operatorId;
+    const at = host.clock.now();
+    const asked = { evidenceId, manifestOk: true, signatureOk: true, actorId, operationId: 'verifyEvidence' };
+    await sealDoorsOf(host.engine).recordEvidenceVerification({ ...asked, ok: true, at, failedTracks: [], detail: null, failedFragments: [], deviceId: 'DEV-0001' });
+    await sealDoorsOf(host.engine).recordEvidenceVerification({ ...asked, ok: false, at: at + 1, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', failedFragments: ['VIDEO-02:3'], deviceId: 'DEV-0001' });
+    await sealDoorsOf(host.engine).recordEvidenceVerification({ ...asked, ok: false, at: at + 2, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', failedFragments: ['VIDEO-02:3'], deviceId: null });
+    const rows = (await readTrail(host.owner)).filter((entry) => entry.evidenceId === evidenceId && entry.type !== 'EVIDENCE_SEALED');
+    expect(rows.map((entry) => [entry.type, entry.deviceId ?? null, entry.details['operationId'], entry.details['failedFragments'] ?? null])).toEqual([
+      ['EVIDENCE_VERIFIED', 'DEV-0001', 'verifyEvidence', null],
+      ['EVIDENCE_VERIFY_FAILED', 'DEV-0001', 'verifyEvidence', 'VIDEO-02:3'],
+      ['EVIDENCE_VERIFY_FAILED', null, 'verifyEvidence', 'VIDEO-02:3'],
+    ]);
+    expect(rows[1]).toMatchObject({ actorId, details: { failedTracks: 'VIDEO-02', failedFragmentCount: 1, eventKind: 'TAMPER' } });
+    expect(verifyTrail(await readTrail(host.owner), await readHead(host.owner)).ok).toBe(true);
+  });
 });
 
 // The journal on the real `sealing_jobs` is held by row 79's `finalize-transcript.db.test.ts` (the same journal).

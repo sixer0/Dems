@@ -156,7 +156,10 @@ describe('the scan itself', () => {
 
 describe('M3: who may call is stage 6, only', () => {
   it('the folder reads no permission and no role of the caller, and names the permission of its routes nowhere', () => {
-    expect(places(CALLER_RIGHTS)).toEqual([]);
+    // Fix wave K, reconcile pass (decision D216 (2): an audit row of an action a paired device sent names that device): ONE read of the
+    // caller's device, in `deviceIdOf`, handed to the audited refusal of a reset. It decides nothing: no permission, no role, no session.
+    expect(filesOf(places(CALLER_RIGHTS))).toEqual(['src/modules/demo/index.ts']);
+    expect([...all.matchAll(CALLER_RIGHTS)].map((match) => match[0].replace(/\s+/g, ''))).toEqual(['principal.deviceId']);
   });
 
   it('DC-2: the folder does not read the demo flag and builds no DEMO_DISABLED answer: stage 6 decides both', () => {
@@ -172,8 +175,9 @@ describe('M3: who may call is stage 6, only', () => {
     expect(count(PRINCIPAL_TO_ENGINE)).toBe(2);
     expect(places(PRINCIPAL).every((place) => place.startsWith('src/modules/demo/index.ts:'))).toBe(true);
     // The one other read: `const { principal } = request;` in `operatorIdOf`, which takes the kind and the operator ID.
-    expect(count(/\{\s*principal\s*\}\s*=\s*request\b/g)).toBe(1);
-    expect([...all.matchAll(/\bprincipal\s*\.\s*([A-Za-z]+)/g)].map((match) => match[1])).toEqual(['kind', 'operatorId']);
+    // Fix wave K, reconcile pass (D216 (2)): and once in `deviceIdOf`, which takes the kind and the device the session is bound to.
+    expect(count(/\{\s*principal\s*\}\s*=\s*request\b/g)).toBe(2);
+    expect([...all.matchAll(/\bprincipal\s*\.\s*([A-Za-z]+)/g)].map((match) => match[1])).toEqual(['kind', 'operatorId', 'kind', 'deviceId']);
   });
 
   it('it writes ONE denial row - the audited refusal of a reset the guard refused (pass D11), in the host - and takes no place in the denial budget; its two refusals of its own are the 503 of a reset that did not happen and the 409 of the reset guard', () => {

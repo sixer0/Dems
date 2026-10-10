@@ -5,6 +5,7 @@ import type { CaptureAdapterKind, CaptureOperation } from '../../adapters';
 import type { CaptureFenceBootDeps, CaptureFenceSinks, CaptureFenceUnit } from '../boot';
 import type { CaptureOperationInput } from '../operation';
 import type { StoredCaptureDevice } from '../registration';
+import { CORRECT_GENERATED_SOURCE_PROFILES } from '../fake-profile';
 import { READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from '../statements';
 
 export interface Selector {
@@ -64,6 +65,8 @@ export function fakeTables(devices: readonly StoredCaptureDevice[], selector: Se
           tables.enabled.set(id, listed);
           return { rows: [{ id }] as unknown as Row[] };
         }
+        // Fix wave K (G89b-01): the double holds no profile column - nothing to correct, as on a database whose lines already state it.
+        if (text === CORRECT_GENERATED_SOURCE_PROFILES) return { rows: [] };
         throw new Error(`a statement the fence does not own: ${text.slice(0, 40)}`);
       },
       async appendBootAudit(operation) {

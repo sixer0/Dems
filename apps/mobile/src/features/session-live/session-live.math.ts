@@ -9,7 +9,7 @@
  * - End Session: the S21 reason rule, the hold timing and its haptic beats.
  */
 import type { StatusTone } from '@dems/shared/tokens';
-import { STOP_REASON_MIN_LENGTH } from '@dems/shared/sim';
+import { STOP_REASON_MIN_LENGTH, captureFaultSentence } from '@dems/shared/sim';
 
 // ---------------------------------------------------------------------------------------------
 // Layout (04 §2.4 row "Session Monitor")
@@ -188,6 +188,21 @@ export interface TimelineEventInput {
   kind: TimelineKindName;
   label: string;
   detail: string | null;
+  /** The row's own parameters as the Core wrote them (a FAULT row of a capture fault: `kind`, `reason`). */
+  params?: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * The words of a timeline row of a CAPTURE FAULT (fix wave K, G75c-06; contract_wave_k.md S1 section
+ * 6): ONE true sentence per reason - `captureFaultSentence(params.reason, null)` of the shared
+ * wording, read from the row's OWN `params.reason` ("The demo control raised a capture fault. The
+ * recording is not affected." / "The capture worker process was killed."). The sentence without a
+ * reason only when the row carries none. Null for every other row: it keeps its own text.
+ */
+export function captureFaultRowDetail(event: Pick<TimelineEventInput, 'kind' | 'params'>): string | null {
+  if (event.kind !== 'FAULT' || event.params?.kind !== 'CAPTURE_FAULT') return null;
+  const reason = event.params.reason;
+  return captureFaultSentence(typeof reason === 'string' ? reason : null, null);
 }
 
 export interface MonitorTimelineItem {
@@ -221,7 +236,7 @@ export function timelineItems(events: readonly TimelineEventInput[], limit = 50)
   const slice = events.length > limit ? events.slice(events.length - limit) : events;
   return slice.map((event) => {
     const parts = [event.label, event.detail].filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
-    const detail = parts.join(' · ');
+    const detail = captureFaultRowDetail(event) ?? parts.join(' · ');
     return {
       id: event.id,
       at: event.at,

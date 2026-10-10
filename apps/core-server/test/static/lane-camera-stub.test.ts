@@ -130,9 +130,10 @@ describe('rule 4: the lane script', () => {
     expect(lines.slice(at + otherwise).find((line) => line.includes('npm run -s'))).toContain('npm run -s start:server >"$LOG"');
     expect(lane).toContain('--with-camera-stub) [ -z "$START_STUB" ] || usage; START_STUB=$option ;;');
     expect(lane).toContain('cmd_start "$START_LANE" "$START_STUB" ;;');
-    // What the launcher is handed: two file paths under .locks/, nothing else.
-    expect(running(lane)[0]).toMatch(/-- --fixture-file "\$STUB_FIXTURE" --mode-file "\$STUB_MODE" >"\$LOG" 2>&1 & \)$/);
+    // What the launcher is handed: three file paths under .locks/, nothing else (fix wave K: the switch file of the seal rig is the third).
+    expect(running(lane)[0]).toMatch(/-- --fixture-file "\$STUB_FIXTURE" --mode-file "\$STUB_MODE" --seal-rig-file "\$SEAL_RIG" >"\$LOG" 2>&1 & \)$/);
     expect(lane).toContain('STUB_FIXTURE="$LOCKS/camera-stub.lane$1.fixture"; STUB_MODE="$LOCKS/camera-stub.lane$1.mode"');
+    expect(lane).toContain('SEAL_RIG="$LOCKS/seal-rig.lane$1.switch"');
   });
 
   it('it still sets no attendance variable and unsets the capture family before it writes the plan of the lane', () => {
@@ -151,5 +152,53 @@ describe('rule 4: the lane script', () => {
     expect(branch.indexOf('DEMS_CAPTURE_DEV_FAKE_MIC=speech')).toBeGreaterThan(0);
     expect(branch.indexOf('DEMS_CAPTURE_DEV_FAKE_MIC=speech')).toBeLessThan(branch.indexOf('\n  fi'));
     expect(lines).toContain('if [ "${SPEECH_MIC:-}" = --speech-mic ] && [ "$MODE" != REAL_DEVELOPMENT ]; then');
+  });
+});
+
+// Fix wave K (driver S1; decision D220): the development seal rig rides the same launcher and is held to the same rules.
+describe('rule 5: the seal rig stays a development tool', () => {
+  const RIG_LIBRARY = 'test/support/lane-seal-rig.ts';
+  const RIG_NAMES = new RegExp([['lane', 'seal', 'rig'].join('-'), ['prepare', 'Lane', 'Seal', 'Rig'].join(''), ['rigged', 'Sealer'].join('')].join('|'));
+  const RIG_PREPARE = new RegExp(`\\b${['prepare', 'Lane', 'Seal', 'Rig'].join('')}\\s*\\(`);
+  const SETS_SEALER = /developmentSealer\s*:/;
+
+  it('finds a production file that names the rig or sets a development sealer (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/sealing-host/x.ts', text: `import { ${['rigged', 'Sealer'].join('')} } from '../../test/support/${['lane', 'seal', 'rig'].join('-')}';` },
+      { path: 'src/modules/y.ts', text: 'host.replace({ developmentSealer: (base) => base });' },
+    ];
+    expect(naming(codeOnly(planted), RIG_NAMES)).toEqual(['src/sealing-host/x.ts']);
+    expect(naming(codeOnly(planted), SETS_SEALER)).toEqual(['src/modules/y.ts']);
+  });
+
+  it('no file under src/ names the rig or SETS a development sealer; the launcher is the only caller of its preparation, before app.ready(), and installs it before the boot', () => {
+    expect(naming(codeOnly(production), RIG_NAMES)).toEqual([]);
+    // The one member declaration (`readonly developmentSealer: (...) => ...`) is a type; no production code assigns one.
+    expect(naming(codeOnly(production), SETS_SEALER).filter((path) => path !== 'src/sealing-host/index.ts')).toEqual([]);
+    expect(text('src/sealing-host/index.ts').split('developmentSealer:').length - 1).toBe(1);
+    const callers = naming(codeOnly(tree.filter((file) => file.path.endsWith('.ts') && !file.path.endsWith('.test.ts') && file.path !== RIG_LIBRARY)), RIG_PREPARE);
+    expect(callers).toEqual([LAUNCHER]);
+    const launcher = text(LAUNCHER);
+    const prepare = launcher.indexOf('prepareLaneSealRig(app, files.sealRigFile);');
+    const install = launcher.indexOf('sealRig.install();');
+    expect(prepare).toBeGreaterThan(0);
+    expect(prepare < launcher.indexOf('await app.ready();') && launcher.indexOf('await app.ready();') < install && install < launcher.indexOf('await app.readiness.boot();')).toBe(true);
+    expect(launcher).toContain("if (error instanceof LaneSealRigError) fatal('boot', error, { check: LANE_SEAL_RIG_CHECK, code: error.code });");
+    // The library asks the fence first and refuses production before it reads its argument.
+    const library = text(RIG_LIBRARY);
+    expect(library.indexOf('if (operation === CaptureOperation.REAL_PRODUCTION) throw new LaneSealRigError();')).toBeGreaterThan(0);
+    expect(library.indexOf('if (operation === CaptureOperation.REAL_PRODUCTION) throw new LaneSealRigError();')).toBeLessThan(library.indexOf('if (switchFile === null)'));
+    expect(library).not.toMatch(/process\s*\.\s*env/);
+  });
+
+  it('the lane script: the switch is written only by the seal-rig command, refused on a lane that is not development capture, and no variable of the environment carries it', () => {
+    const lane = readFileSync(join(REPOSITORY, 'scripts/lane/lane.sh'), 'utf8');
+    const lines = lane.split('\n').filter((line) => !line.trim().startsWith('#')).join('\n');
+    expect(lines).toContain('seal-rig) [ $# -eq 3 ] || usage; cmd_seal_rig "$2" "$3" ;;');
+    expect(lines.split('>"$SEAL_RIG"').length - 1).toBe(3);
+    const command = lines.slice(lines.indexOf('cmd_seal_rig() {'), lines.indexOf('cmd_start() {'));
+    expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeGreaterThan(0);
+    expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeLessThan(command.indexOf('>"$SEAL_RIG"'));
+    expect(lines).not.toMatch(/DEMS_[A-Z_]*RIG[A-Z_]*=/);
   });
 });

@@ -255,6 +255,9 @@ describe('rule 7 (SR-66, MS-1 to MS-4): no file is read, sent or fetched', () =>
       for (const match of file.text.matchAll(/\bfrom\s+'([^']+)'/g)) if (match[1] !== undefined) imported.add(match[1]);
     }
     expect([...imported].sort()).toEqual([
+      // Fix wave K, reconcile pass: the one function of the capture operation (`captureOperationOf`), asked for the default
+      // export destination - the module does not compare the capture mode itself (capture static rule G-R16). No file is opened.
+      '../../capture/fence',
       '../../db/mapping',
       '../../db/schema',
       '../../engine',

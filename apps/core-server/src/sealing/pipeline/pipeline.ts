@@ -623,8 +623,14 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         if (answer.status === 'DONE') return answer;
         state.status = 'RUNNING';
         state.progress = Math.max(state.progress, Math.min(99, answer.progress));
-        // The step waits no longer than this before it closes the transcript out (D223, row 116).
-        state.etaMs = answer.remainingWaitMs;
+        // NO ETA FOR THIS STEP (fix wave K, driver S1; re-gate 75 finding G75c-05). The value written here was
+        // `answer.remainingWaitMs`: what is left of the BOUND of the wait (the longest the step waits before it
+        // closes the transcript out; D223, row 116) - about 28 minutes at the start of a step that takes seconds.
+        // That is a limit, not an estimate, and the Core has no sound basis for one: the number of chunks still
+        // grows while the audio is planned, and a time derived from the rate of the engine would be a speed figure
+        // of the STT (D230). A fact the Core does not have is absent: the member is null and the sentence
+        // "n of m chunks" is what the operator reads. The bound still paces the poll below.
+        state.etaMs = null;
         state.detail = `${answer.counters.chunksDone} of ${answer.counters.chunksTotal} chunks`;
         await tell();
         await new Promise<void>((resolve) => void ports.timer.after(Math.max(1, Math.min(TRANSCRIPT_POLL_MS, answer.remainingWaitMs)), resolve));

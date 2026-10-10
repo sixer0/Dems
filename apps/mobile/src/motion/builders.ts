@@ -257,10 +257,19 @@ export function exitUp(m: MotionSettings): EntryOrExitLayoutType {
 
 /**
  * Layout (FLIP) re-flow (§7.1; M-MB-03 rotation and split-screen; filter re-flow in lists):
- * `LinearTransition.springify()` with the `gentle` numbers. Reduced: instant.
+ * `LinearTransition.springify()` with the `gentle` numbers. Reduced: NO transition (`undefined`),
+ * so the platform lays the view out itself.
+ *
+ * WHY `undefined` AND NOT A ZERO-LENGTH TRANSITION (wave K M1, gate finding G81b-03; proven on the
+ * tablet, `implementation/142_fix_wave_k_m1.md` section 2). On this stack (Reanimated 4.5 on the
+ * new architecture) a layout transition that is REDUCED - `.reduceMotion(ReduceMotion.Always)`, or
+ * `ReduceMotion.System` while the app's `ReducedMotionConfig` says reduce - is skipped WITHOUT the
+ * new frame being applied: the native view keeps the size it had before its content changed. A
+ * view whose content grew then draws children outside its own box, and Android delivers no touch
+ * there. A view with no `layout` prop is laid out by the platform and has no such state.
  */
 export function layoutTransition(m: MotionSettings) {
-  if (m.policy === 'reduced') return LinearTransition.duration(0).reduceMotion(ReduceMotion.Always);
+  if (m.policy === 'reduced') return undefined;
   if (m.slow) return LinearTransition.duration(slowSpringTiming().duration ?? 0).easing(EASING.luxe);
   return LinearTransition.springify()
     .stiffness(motion.spring.gentle.stiffness)

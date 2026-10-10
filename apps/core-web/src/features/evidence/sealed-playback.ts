@@ -6,6 +6,7 @@
  * |--------|------|
  * | `bandSegments` | The audio-source band is a STATIC overlay of the item's intervals (media pts) over the recorded duration. It is never driven by a timer (flow 5 §6.7) |
  * | `segmentAt` | Which interval holds a playhead position |
+ * | `probeStartByte` | Where the media route is asked about a file that stopped (wave K) |
  * | `needsResync` | The second camera file follows the first: beyond the tolerance it is set to the first one's time |
  * | `clampSeek` | A seek stays inside the recording |
  * | `fileIsDevelopment`, `intervalIsDevelopment` | The class of a source, from a VERIFY RESULT only (`sources` of operation 41); never from the current device list |
@@ -28,6 +29,8 @@ export interface BandSegment {
   readonly startPct: number
   readonly widthPct: number
   readonly reason: ItemAudioInterval['reason']
+  /** The class of the interval's microphone as the item states it (manifest field 125); absent: not stated. */
+  readonly sourceClass?: ItemAudioInterval['sourceClass']
   /** 0 for the first microphone that appears, 1 for the second, …: the tone of the segment. */
   readonly tone: number
 }
@@ -64,18 +67,42 @@ export function bandSegments(intervals: readonly ItemAudioInterval[], durationMs
       widthPct: round(((toMs - fromMs) / total) * 100),
       reason: interval.reason,
       tone: tones.get(interval.inputId) ?? 0,
+      ...(interval.sourceClass === undefined ? {} : { sourceClass: interval.sourceClass }),
     })
   }
   return segments
 }
 
-/** The segment that holds `positionMs` (its end is exclusive, except at the very end of the recording), or null. */
+/**
+ * The segment that holds `positionMs` (its end is exclusive, except at the very end of the recording), or null.
+ *
+ * Wave K (G94b-08): the first interval of a real recording starts at the first audio sample (21 ms
+ * on the gate's item), not at 0. A playhead BEFORE the first interval that reads the same second as
+ * its start (`0:00` beside a legend `0:00-0:28`) is inside it: the band shows times by the second,
+ * and no other microphone can have fed that span. A gap between two intervals stays a gap.
+ */
 export function segmentAt(segments: readonly BandSegment[], positionMs: number): BandSegment | null {
   const last = segments[segments.length - 1]
   for (const segment of segments) {
     if (positionMs >= segment.fromMs && (positionMs < segment.toMs || (segment === last && positionMs === segment.toMs))) return segment
   }
+  const first = segments[0]
+  if (first !== undefined && positionMs >= 0 && positionMs < first.fromMs && Math.floor(positionMs / 1000) === Math.floor(first.fromMs / 1000)) return first
   return null
+}
+
+/**
+ * Where a probe of the media route starts reading (wave K, G94b-02): the byte the playhead is at by
+ * its share of the recording, moved BACK by three fragments (or a tenth of the file when the item
+ * states no fragment count), so that the fragment the player stopped before lies ahead of it. 0 for
+ * a file that never loaded, and whenever the item states no size.
+ */
+export function probeStartByte(input: { readonly sizeBytes: number; readonly fragmentCount: number; readonly positionMs: number; readonly totalMs: number }): number {
+  const { sizeBytes, fragmentCount, positionMs, totalMs } = input
+  if (!(sizeBytes > 0) || !(totalMs > 0) || !(positionMs > 0)) return 0
+  const share = Math.min(positionMs / totalMs, 1)
+  const back = fragmentCount > 0 ? Math.max(3 / fragmentCount, 0.02) : 0.1
+  return Math.floor(sizeBytes * Math.max(0, share - back))
 }
 
 /** The microphones of the band, in the order they first appear (the legend). */

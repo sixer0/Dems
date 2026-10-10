@@ -144,7 +144,10 @@ export function SecurityPanel() {
       ? t('dashboard.securityTimeNetwork.critical', { count: header.critical })
       : attention > 0
         ? t('dashboard.securityTimeNetwork.attention', { count: attention })
-        : t('dashboard.securityTimeNetwork.allSecure')
+        : // Fix wave K (C-2 / G75c-04): "All systems secure" is a posture no Core computed where the columns read "Not reported" / "Host clock".
+          v.ownCore || v.platformNotReported
+          ? t('web.realCore.dashboard.securityHeader')
+          : t('dashboard.securityTimeNetwork.allSecure')
 
   const glintMs = beatMs + HELD_BEAT_AFTER_LAND_MS
   const specs: ColumnProps[] = [
@@ -239,7 +242,7 @@ export function SecurityPanel() {
       action={
         <span className={`flex min-w-0 items-center gap-2 text-caption ${TONE_TEXT_CLASS[header.tone]}`} data-testid="stn-summary">
           <StatusDot tone={header.tone} />
-          <span className="truncate">{headerText}</span>
+          <span className="truncate" data-testid="stn-summary-text">{headerText}</span>
         </span>
       }
     >

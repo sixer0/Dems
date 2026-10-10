@@ -54,6 +54,8 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
   const routeDelay = useRouteEnterDelay()
   const ok = controls.filter((control) => control.status === 'OK').length
   const allOk = ok === controls.length
+  // Fix wave K (C-2): controls this Core does not report are counted as that, not as "not active".
+  const unreported = controls.filter((control) => control.notReported === true).length
   const start = routeDelay + PANEL_BEAT_MS.controls + CONTENT_BEAT_MS
 
   return (
@@ -63,8 +65,8 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
       title={t('securityAudit.controls.title')}
       className={className}
       action={
-        <Chip size="sm" variant="soft" {...toneChipProps(allOk ? 'success' : 'warning')}>
-          {t('securityAudit.controls.summary', { ok, total: controls.length })}
+        <Chip size="sm" variant="soft" {...toneChipProps(allOk ? 'success' : unreported > 0 && ok + unreported === controls.length ? 'default' : 'warning')} data-testid="sa-controls-summary">
+          {unreported > 0 ? t('web.realCore.controls.summary', { ok, total: controls.length, notReported: unreported }) : t('securityAudit.controls.summary', { ok, total: controls.length })}
         </Chip>
       }
     >
@@ -73,8 +75,17 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
           const tone = CONTROL_TONE[control.status]
           const label = t(`securityAudit.controls.items.${control.id}.label`)
           // Closing pass J (D217 (7)): a platform fact the Core does not read says so - no "Attestation OK" under it.
+          // Fix wave K (C-2): the Core's own fact where it states one (the key its items are signed with, its host clock); else that it does not report the control.
           const detail = control.notReported
-            ? t('common.platformNotReported.note')
+            ? control.fact?.kind === 'SIGNING_KEY'
+              ? control.fact.key === null
+                ? t('web.realCore.controls.noSigningKey')
+                : `${t('web.realCore.controls.signingKey', { algorithm: control.fact.key.algorithm, keyId: control.fact.key.keyId })}${control.fact.key.developmentKey === true ? ` ${t('web.realCore.developmentKey')}` : ''}`
+              : control.fact?.kind === 'HOST_CLOCK'
+                ? t('web.realCore.controls.hostClock')
+                : control.id === 'TPM' || control.id === 'SECURE_BOOT' || control.id === 'KEY_CUSTODY'
+                  ? t('common.platformNotReported.note')
+                  : t(`web.realCore.controls.notRead.${control.id as 'ENCRYPTION' | 'TAMPER' | 'SIGNED_FIRMWARE'}`)
             : control.status === 'OK' || control.status === 'UNKNOWN'
               ? t(`securityAudit.controls.items.${control.id}.ok`, control.params)
               : t(`securityAudit.controls.items.${control.id}.fail`, control.params)
@@ -87,6 +98,7 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
               className={cn('sa-control', toneClass(tone))}
               data-control={control.id}
               data-status={control.status}
+              data-reported={control.notReported ? 'false' : undefined}
             >
               <AnimatePresence mode="wait" initial={false}>
                 <motion.span

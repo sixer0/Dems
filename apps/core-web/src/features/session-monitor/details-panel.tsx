@@ -3,6 +3,7 @@ import { ClipboardList } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, formatDuration, formatUtcOffset } from '@dems/shared/realtime'
 import { RECORDING_PROFILES, useSim } from '@dems/shared/sim'
+import { streamProfileNoticeOf } from './sim-adapter'
 import { useSimSecond } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,8 @@ export function DetailsPanel() {
   const details = useSim(selectDetails)
   const container = useStaggerVariants(PANEL_BEAT_MS.M, 30)
   const profile = RECORDING_PROFILES.find((item) => item.id === details.profileId)
+  const profileNotice = useSim((s) => streamProfileNoticeOf(s.alerts, details.sessionId))
+  const profileDiffers = profileNotice !== null
   const dash = EMPTY_DATE_TEXT
 
   const rows: Row[] = [
@@ -59,7 +62,9 @@ export function DetailsPanel() {
     },
   ]
   const tail: Row[] = [
-    { id: 'profile', label: t('session.details.profile'), value: profile?.label ?? dash },
+    // Fix wave K (ruling D222 (2); `contract_wave_k.md` S1 section 3): where the Core's notice says the recorded video is not
+    // the configured profile, the label is what was CONFIGURED - never a fact of the recording. The manifest states the stream.
+    { id: 'profile', label: profileDiffers ? t('web.profile.configuredLabel') : t('session.details.profile'), value: profile?.label ?? dash },
   ]
   if (details.evidenceId) {
     tail.push({ id: 'evidenceId', label: t('session.details.evidenceId'), value: details.evidenceId, mono: true })
@@ -81,6 +86,11 @@ export function DetailsPanel() {
           <DetailRow key={row.id} row={row} />
         ))}
       </motion.dl>
+      {profileNotice !== null ? (
+        <p className="sm-check-value" role="status" data-testid="sm-details-stream-profile" style={{ whiteSpace: 'normal', textAlign: 'left' }}>
+          {profileNotice}
+        </p>
+      ) : null}
     </Panel>
   )
 }

@@ -25,6 +25,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import type { EvidenceMediaRef } from '@dems/shared/api';
+import { operatorScope, useOperatorId } from '@/lib/operator-query-scope';
 import { reportRuntimeIssue, useMobileLive, type MobileLiveSim } from '@/runtime';
 import { readDetailFacts, type DetailFacts } from './item-facts';
 
@@ -46,9 +47,13 @@ const NOT_LIVE: EvidenceMediaRefState = { status: 'not-live' };
 const LOADING: EvidenceMediaRefState = { status: 'loading' };
 const UNAVAILABLE: EvidenceMediaRefState = { status: 'unavailable' };
 
-/** The query key of one item's media reference on the Core server. */
-export function evidenceMediaRefKey(evidenceId: string) {
-  return ['core-server', 'evidence-media', evidenceId] as const;
+/**
+ * The query key of one item's answer of operation 40 on the Core server, FOR ONE OPERATOR (fix wave
+ * K, G81b-02): `access` and `exports` of the answer depend on who asked, so the answer of one
+ * operator is never drawn - not even while it is read again - for the next one on this device.
+ */
+export function evidenceMediaRefKey(evidenceId: string, operatorId: string | null = null) {
+  return ['core-server', 'evidence-media', evidenceId, operatorScope(operatorId)] as const;
 }
 
 async function readMediaRef(live: MobileLiveSim, evidenceId: string): Promise<EvidenceDetailRead> {
@@ -60,8 +65,9 @@ async function readMediaRef(live: MobileLiveSim, evidenceId: string): Promise<Ev
 
 export function useEvidenceMediaRef(evidenceId: string): EvidenceMediaRefState {
   const live = useMobileLive();
+  const operatorId = useOperatorId();
   const query = useQuery({
-    queryKey: evidenceMediaRefKey(evidenceId),
+    queryKey: evidenceMediaRefKey(evidenceId, operatorId),
     enabled: live !== null,
     retry: false,
     queryFn: () => {

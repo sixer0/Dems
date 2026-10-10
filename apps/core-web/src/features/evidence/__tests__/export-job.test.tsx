@@ -15,13 +15,13 @@
 import { cleanup, configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EvidenceVerifyResultBody } from '@dems/shared/api'
+import { EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE, type EvidenceVerifyResultBody } from '@dems/shared/api'
 import type { EvidenceItem } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { webErrorSink } from '@/runtime'
-import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
+import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredArchiveOnCoreOf, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
 
@@ -99,7 +99,7 @@ async function exportSealed(
       bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asV2) }
       bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
       bed.fake.answer('verifyEvidence', (call) => ({ status: 200, body: { ...RECORDED_VERIFY_V2.pass.body, evidenceId: call.params.id ?? '', at: bed.fake.clock.now() } as EvidenceVerifyResultBody }))
-      bed.fake.answer('exportEvidence', (call) => (options.accepted?.(call.params.id ?? '') ?? { status: 202, body: { exportId: 'EXP-000032', evidenceId: call.params.id ?? '', status: 'QUEUED' } }) as never)
+      bed.fake.answer('exportEvidence', (call) => (options.accepted?.(call.params.id ?? '') ?? { status: 202, body: { exportId: 'EXP-000032', evidenceId: call.params.id ?? '', status: 'QUEUED', archiveOnCore: true } }) as never)
       bed.fake.answer('getEvidenceExportJob', () => {
         const job = jobs[Math.min(polls, jobs.length - 1)]!
         polls += 1
@@ -338,5 +338,45 @@ describe('fix F-M8: named causes of a FAILED job (R93-01, R93-04)', () => {
     await exportSealed([{ ...JOB, status: 'FAILED', progressPct: 0, failureReason: 'EXPORT_INTERRUPTED' }])
     await waitFor(() => expect(job()).toHaveAttribute('data-status', 'FAILED'), POLLS)
     expect(screen.getByTestId('export-job-failed')).toHaveTextContent('The export was interrupted (the Core server stopped). Nothing was exported: export again.')
+  })
+})
+
+describe('G94b-06 (fix wave K): the "stored on the Core" sentence follows `archiveOnCore` of the 202 of operation 42', () => {
+  const COMPLETE = { ...JOB, status: 'COMPLETE', progressPct: 100, etaMs: 0, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64), completedAt: 1_790_824_600_000 }
+  const answered = (body: Record<string, unknown>) => (evidenceId: string) => ({ status: 202, body: { ...body, evidenceId } })
+  const { archiveOnCore: _stated, ...NOT_STATED } = EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE
+
+  it('the model reads the member by name: a boolean is handed on, anything else is "not stated"', () => {
+    expect(answeredArchiveOnCoreOf({ ok: true, status: 202, exportId: 'EXP-000032', archiveOnCore: false })).toBe(false)
+    expect(answeredArchiveOnCoreOf({ ok: true, status: 202, exportId: 'EXP-000032', archiveOnCore: true })).toBe(true)
+    expect(answeredArchiveOnCoreOf(NOT_STATED)).toBeNull()
+    expect(answeredArchiveOnCoreOf({ archiveOnCore: 'yes' })).toBeNull()
+    expect(answeredArchiveOnCoreOf(null)).toBeNull()
+  })
+
+  it('`archiveOnCore: false` (EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE, a simulated capture): a finished job says a demonstration writes no archive, never "stored on the Core"', async () => {
+    expect(EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE.archiveOnCore).toBe(false)
+    await exportSealed([COMPLETE], { accepted: answered(EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE) })
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    expect(screen.getByTestId('export-job-no-archive')).toHaveTextContent('Demonstration: no archive is written.')
+    expect(screen.getByTestId('export-job-no-archive')).toHaveAttribute('data-archive-on-core', 'false')
+    expect(screen.queryByTestId('export-job-on-core')).toBeNull()
+    expect(screen.queryByText(/stored on the Core/)).toBeNull()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('control: `archiveOnCore: true` (the example with the Core\'s statement turned) - the Core stores the archive and the sentence says so', async () => {
+    await exportSealed([COMPLETE], { accepted: answered({ ...EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE, archiveOnCore: true }) })
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    expect(screen.getByTestId('export-job-on-core')).toHaveTextContent('The export is stored on the Core (EXP-000032).')
+    expect(screen.queryByTestId('export-job-no-archive')).toBeNull()
+  })
+
+  it('control: the 202 states nothing (an older Core) - no archive is claimed', async () => {
+    await exportSealed([COMPLETE], { accepted: answered(NOT_STATED) })
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    expect(screen.getByTestId('export-job-no-archive')).toHaveTextContent('The Core server states no archive for this export.')
+    expect(screen.getByTestId('export-job-no-archive')).toHaveAttribute('data-archive-on-core', 'not-stated')
+    expect(screen.queryByTestId('export-job-on-core')).toBeNull()
   })
 })

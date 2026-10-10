@@ -62,11 +62,19 @@ interface SttRow extends QueryResultRow {
 const READ_COLUMNS = 's.enabled, s.backend, s.endpoint, s.model, s.language, s.diarization, s.credential_kind, s.revision, s.updated_by, s.updated_at';
 
 /**
- * Whether a session is open, as the instant it was created: `active_session` holds a row exactly
- * while one is (the same fact the capture selector locks on, OD-10). One statement with the
- * configuration, so both belong to one snapshot.
+ * Whether a session is open, as the instant it was created. One statement with the configuration,
+ * so both belong to one snapshot.
+ *
+ * FIX WAVE K, driver S2 (re-gate 81 finding G81b-05, first gate G81-09): `active_session` KEEPS the
+ * row of the last session after it was sealed (state `SEALED`) until the next one is created, so
+ * "a row exists" said "a session is open" for a Core on which none was - `pendingForNextSession`
+ * stayed true, and both clients said "A saved change is waiting" with nothing to wait for. A sealed
+ * session holds no snapshot any more: its transcript is sealed. The fact is the one the simulator
+ * states (`isSessionActive`: a session that is not SEALED), so a change saved after the seal
+ * applies NOW and nothing is pending.
  */
-const SESSION_FACT = '(SELECT a.created_at FROM public.active_session a LIMIT 1) AS session_created_at';
+export const OPEN_SESSION_STATE_RULE = "a.state <> 'SEALED'";
+const SESSION_FACT = `(SELECT a.created_at FROM public.active_session a WHERE ${OPEN_SESSION_STATE_RULE} LIMIT 1) AS session_created_at`;
 
 /** Operations 90 and 92: the configuration and the session fact. No credential column. */
 export const READ_STT_CONFIG = `SELECT ${READ_COLUMNS}, ${SESSION_FACT} FROM public.stt_config s WHERE s.singleton`;

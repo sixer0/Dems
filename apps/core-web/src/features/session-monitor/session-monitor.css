@@ -566,6 +566,22 @@
   white-space: nowrap;
 }
 
+/* Fix wave K (G89b-11): the capture checkpoints under the check rows - a label line, then one line per
+   fact, each on its own row of a one-column grid. Never the icon grid of a check row; never clipped:
+   the block keeps its height and the card body scrolls when the card is too short (1440 x 900). */
+.sm-checkpoints {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 2px;
+  flex: none;
+  padding: 2px 10px;
+}
+.sm-checkpoints .sm-check-label { white-space: normal; }
+.sm-checkpoints .sm-check-value { text-align: left; }
+/* Only where the block is drawn (a session of the Core's own capture): the simulated lane's card is untouched. */
+.sm-integrity-body:has(.sm-checkpoints) { overflow-y: auto; }
+.sm-integrity-body:has(.sm-checkpoints) .sm-integrity-rows { flex-shrink: 0; }
+
 .sm-check[data-status='fail'] .sm-check-value { color: #f87171; }
 .sm-check[data-status='warn'] .sm-check-value { color: #fbbf24; }
 

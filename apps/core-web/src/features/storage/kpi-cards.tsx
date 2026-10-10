@@ -13,7 +13,7 @@ import {
 } from '@dems/shared/sim'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { AnimatedNumber } from '@/components/ui/animated-number'
-import { isOwnCapture } from '@/lib/own-capture'
+import { isOwnCapture, useSelfCaptureCore } from '@/lib/own-capture'
 import { captureCheckpointsOf } from '@/features/session-monitor/capture-checkpoints-model'
 import { useMotionPolicy } from '@/motion'
 import { KPI_STEP_MS, PANEL_BEAT_MS, panelVariants, useDataReady } from './choreography'
@@ -50,6 +50,15 @@ export function KpiCards() {
   // rate (`storage.writeBytesPerSec`), not the simulator's nominal 8.2 GB/h. Simulated mode is unchanged.
   const liveMode = useCoreMode() === CoreMode.LIVE
   const captionRate = liveMode ? fixed((writeBps * 3_600) / GB, 1) : RATE_GB_PER_HOUR
+  // Fix wave K (G75c-04): a Core in its own capture measures no write speed - `storage.writeBytesPerSec` is the
+  // device model's nominal 8.2 GB per hour, and the remaining time is free space divided by that same figure.
+  // Neither is shown as a reading there; the session size beside it is the durable bytes (closing pass J).
+  const selfCapture = useSelfCaptureCore()
+  const notReported = (testId: string) => (
+    <span className="stor-kpi-not-reported" data-testid={testId}>
+      {t('common.platformNotReported.value')}
+    </span>
+  )
 
   // The counter spring settles on the whole-minute target; round so a settling 23384.99 reads 45 m.
   const hm = (value: number) => {
@@ -70,14 +79,16 @@ export function KpiCards() {
         id="writeSpeed"
         icon={Gauge}
         label={t('common.storage.writeSpeed')}
-        value={<AnimatedNumber value={ready ? writeBps / MB : 0} format={(v) => fixed(v, 1)} />}
-        unit={t('storage.units.mbPerSecond')}
+        value={selfCapture ? notReported('storage-write-speed-not-reported') : <AnimatedNumber value={ready ? writeBps / MB : 0} format={(v) => fixed(v, 1)} />}
+        unit={selfCapture ? undefined : t('storage.units.mbPerSecond')}
         caption={
-          recording
-            ? t('storage.kpi.writeSpeedRecording', { rate: captionRate })
-            : t('storage.kpi.writeSpeedIdle')
+          selfCapture
+            ? t('web.realCore.storage.writeSpeed')
+            : recording
+              ? t('storage.kpi.writeSpeedRecording', { rate: captionRate })
+              : t('storage.kpi.writeSpeedIdle')
         }
-        live={recording}
+        live={recording && !selfCapture}
       />
       <KpiCard
         index={1}
@@ -109,12 +120,14 @@ export function KpiCards() {
         id="estRemaining"
         icon={Hourglass}
         label={t('common.storage.estRemaining')}
-        value={<AnimatedNumber value={ready ? remainingMinutes : 0} format={hm} />}
-        caption={t('storage.kpi.estRemainingHint', { rate: `${RATE_GB_PER_HOUR} ${t('storage.units.gb')}` })}
+        value={selfCapture ? notReported('storage-est-remaining-not-reported') : <AnimatedNumber value={ready ? remainingMinutes : 0} format={hm} />}
+        caption={selfCapture ? t('web.realCore.storage.estRemaining') : t('storage.kpi.estRemainingHint', { rate: `${RATE_GB_PER_HOUR} ${t('storage.units.gb')}` })}
         secondary={
-          continuousDays < 1
-            ? t('storage.kpi.lessThanDay')
-            : t('storage.kpi.continuousDays', { count: continuousDays })
+          selfCapture
+            ? undefined
+            : continuousDays < 1
+              ? t('storage.kpi.lessThanDay')
+              : t('storage.kpi.continuousDays', { count: continuousDays })
         }
       />
       <KpiCard

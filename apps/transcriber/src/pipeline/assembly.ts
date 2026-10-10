@@ -51,6 +51,12 @@ export interface AssembleTranscriptOptions {
   readonly model: TranscriptModelProvenance;
   /** The audio-source intervals of the session (`session_audio_intervals`), media time. */
   readonly intervals: readonly DocumentInterval[];
+  /**
+   * Fix wave K (G81b-04): true when the recording of the session was INTERRUPTED (it ended at a fault, not at a stop).
+   * An interval without an end is then recorded as `intervals_incomplete` (transcript spec §D.2). Absent / false: a
+   * recording that was stopped - the document is what it always was.
+   */
+  readonly intervalsTruncated?: boolean;
   readonly log: TranscriberLog;
 }
 
@@ -95,6 +101,9 @@ function hashOfFile(path: string): string | null {
   }
 }
 
+/** `details.reason` of the refusal that is a WAIT, not a failure: work is still under way (the Core classes it `NOT_READY`). */
+export const ASSEMBLY_NOT_COMPLETE_REASON = 'TRANSCRIPT_NOT_COMPLETE';
+
 export async function assembleTranscript(options: AssembleTranscriptOptions): Promise<AssembledTranscript> {
   const { log, identity } = options;
   const correlationId = identity.sessionId;
@@ -102,7 +111,11 @@ export async function assembleTranscript(options: AssembleTranscriptOptions): Pr
   const files = { json: join(options.sessionScratchDir, TRANSCRIPT_DOCUMENT_FILE), srt: join(options.sessionScratchDir, TRANSCRIPT_SRT_FILE), vtt: join(options.sessionScratchDir, TRANSCRIPT_VTT_FILE) };
   const refuse = (reason: string, detail: Record<string, string | number | boolean | null> = {}): TranscriberError => {
     const error = new TranscriberError(TranscriberErrorCode.ASSEMBLY_REFUSED, 'the transcript cannot be assembled', { reason, ...detail });
-    log.error({ source: SOURCE, message: 'transcript assembly refused', error, context: { reason, ...detail }, correlationId });
+    // Fix wave K (G75c-08): `TRANSCRIPT_NOT_COMPLETE` is the NORMAL answer while chunks are still being decoded - the
+    // caller reads it as "not ready yet" and asks again (the seal's transcript step, once a second). It is told at
+    // `info`, without the error object: a healthy seal must not print error lines. Every other refusal is an error.
+    if (reason === ASSEMBLY_NOT_COMPLETE_REASON) log.info({ source: SOURCE, message: 'the transcript is not complete yet: assembly waits', context: { reason, ...detail }, correlationId });
+    else log.error({ source: SOURCE, message: 'transcript assembly refused', error, context: { reason, ...detail }, correlationId });
     return error;
   };
 
@@ -115,7 +128,7 @@ export async function assembleTranscript(options: AssembleTranscriptOptions): Pr
   }
   if (checkpoint === null) throw refuse('NO_CHECKPOINT');
   const unfinished = checkpoint.chunks.filter((chunk) => chunk.status === ChunkStatus.PENDING || chunk.status === ChunkStatus.RUNNING).length;
-  if (!checkpoint.audioComplete || unfinished > 0) throw refuse('TRANSCRIPT_NOT_COMPLETE', { audioComplete: checkpoint.audioComplete, unfinished });
+  if (!checkpoint.audioComplete || unfinished > 0) throw refuse(ASSEMBLY_NOT_COMPLETE_REASON, { audioComplete: checkpoint.audioComplete, unfinished });
 
   const segments = committedSegments(checkpoint);
 
@@ -140,7 +153,7 @@ export async function assembleTranscript(options: AssembleTranscriptOptions): Pr
     store.save(checkpoint);
   }
 
-  const document = buildTranscriptDocument({ checkpoint, labelling, model: options.model, intervals: options.intervals });
+  const document = buildTranscriptDocument({ checkpoint, labelling, model: options.model, intervals: options.intervals, ...(options.intervalsTruncated === true ? { intervalsTruncated: true } : {}) });
   const rendered = renderTranscript(document);
   const result = (alreadyAssembled: boolean): AssembledTranscript => ({ document, rendered, record: sealRecordOf(document, rendered), files, alreadyAssembled });
 

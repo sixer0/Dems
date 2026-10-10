@@ -25,7 +25,7 @@ import { Accordion, toast, ToastProvider } from '@heroui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AuthSessionInfo } from '@dems/shared/api'
+import { CORE_API_EXAMPLES, type AuthSessionInfo } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { HeartbeatContext } from '@dems/shared/realtime'
 import { createManualClock, createSim, SimProvider } from '@dems/shared/sim'
@@ -257,6 +257,30 @@ describe('save (operation 91)', () => {
     expect(await screen.findByTestId('stt-model-error')).toHaveTextContent(T.modelInvalid)
     await created.flush()
     expect(requests('updateSttConfig')).toHaveLength(0)
+  })
+})
+
+// Fix wave K, driver W (G81b-05; `delegation_progress/contract_wave_k.md` S2 section 4): the sentence
+// "A saved change is waiting: it applies to the next session." is drawn from the member
+// `pendingForNextSession` of operation 90, read BY NAME - and only when the Core says the fact is true
+// (it is true only while a session that is not yet ended holds an older snapshot).
+describe('G81b-05: the pending-change sentence follows `pendingForNextSession` by name', () => {
+  const examples = (CORE_API_EXAMPLES.getSttConfig ?? { responses: {} }).responses[200] as Record<string, { value: Record<string, unknown> }>
+  const seeded = examples['seeded']!.value
+  const answering = (pendingForNextSession: boolean) => (b: LiveTestBed) => b.fake.answer('getSttConfig', () => ({ status: 200, body: { ...seeded, pendingForNextSession } }) as never)
+
+  it('the Core says a change is waiting (a session is open): the sentence is shown', async () => {
+    await mountItem(SUPERVISOR_SESSION, answering(true))
+    await openItem()
+    expect(await screen.findByTestId('stt-pending-next')).toHaveTextContent(T.pendingNextSession)
+  })
+
+  it('the Core says nothing is waiting (no session is open): no sentence - the contract example itself states `false`', async () => {
+    expect(seeded.pendingForNextSession).toBe(false)
+    await mountItem(SUPERVISOR_SESSION, answering(false))
+    await openItem()
+    expect(screen.queryByTestId('stt-pending-next')).toBeNull()
+    expect(screen.getByTestId('stt-config')).not.toHaveTextContent(T.pendingNextSession)
   })
 })
 

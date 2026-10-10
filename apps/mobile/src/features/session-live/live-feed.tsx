@@ -40,6 +40,7 @@ import { withAlpha } from '@/components/media/color';
 import { GlowLayer, triggerHaptic, useMotionSettings } from '@/motion';
 import { TrackSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { busyState } from '@/runtime';
+import { useOwnCapture } from './own-capture';
 import { RecTimer, useConnectingCameras } from './rec-indicator';
 import { SHUTTER_MS, SHUTTER_PEAK, cameraIndexOf, otherCameraId } from './session-live.math';
 
@@ -80,6 +81,7 @@ export function LiveFeed({
 }: LiveFeedProps) {
   const { t } = useTranslation();
   const connecting = useConnectingCameras();
+  const ownCapture = useOwnCapture();
   const settings = useMotionSettings();
   const reduced = settings.policy === 'reduced';
   const camera = cameras.find((c) => c.id === activeCameraId) ?? cameras[0];
@@ -205,8 +207,11 @@ export function LiveFeed({
                   {t('session.feed.cameraLabel', { camera: short, room })}
                 </Chip.Label>
               </Chip>
-              {camera ? (
-                <Chip size="sm" variant="secondary" style={styles.darkChip}>
+              {/* Fix wave K (G89b-01, ruling D222 (2); contract_wave_k.md S1 section 3): "1080p • 25 fps" is the CONFIGURED
+                  profile of the simulated camera. Beside a recording of the Core's own capture it would state the picture of
+                  a stream nobody measured here (the sealed manifest states the stream): the chip is not drawn then. */}
+              {camera && !ownCapture ? (
+                <Chip size="sm" variant="secondary" style={styles.darkChip} testID="monitor-feed-format">
                   <Chip.Label style={styles.chipMono}>
                     {t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
                   </Chip.Label>

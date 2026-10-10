@@ -31,7 +31,7 @@ import { webErrorSink } from '@/runtime'
 import { MEDIA_SESSION_RENEW_MARGIN_MS, MediaSession, cameraFilesOf, mediaPathOf, mediaSessionStale } from '../media-session'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { createDatasetSim, evidenceIdOf, mountEvidence, stopSims } from './harness'
-import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, toastTexts, type LiveEvidence } from './live-evidence-bed'
+import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, toastTexts, type LiveEvidence, serveMediaRoute } from './live-evidence-bed'
 
 configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 40_000 })
@@ -105,6 +105,8 @@ async function openSealed(script: (live: LiveEvidence['bed'], calls: { count: nu
   })
   await findDetailBody()
   await screen.findByTestId('evidence-playback', {}, UI)
+  // Fix wave K (G94b-02): the player asks the media route about a file that stopped; a healthy Core serves it.
+  serveMediaRoute()
   return opened
 }
 

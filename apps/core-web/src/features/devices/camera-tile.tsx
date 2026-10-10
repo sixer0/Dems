@@ -103,7 +103,7 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           cameraId={cameraId}
           variant="tile"
           label={null}
-          formatLabel={t('common.devices.cameraFormat', { resolution, fps })}
+          formatLabel={realCapture ? '' : t('common.devices.cameraFormat', { resolution, fps })}
           recordingSince={null}
           noSignal={status === 'FAULT'}
           // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
@@ -113,10 +113,13 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
       </button>
 
       <dl className="dev-cam-meta">
-        <div>
-          <dt>{t('devices.cameras.format')}</dt>
-          <dd>{t('common.devices.cameraFormatCodec', { resolution, fps, codec: camera?.codec ?? 'H.264' })}</dd>
-        </div>
+        {/* Fix wave K (C-2, ruling D222 (2)): the format of the simulator's camera record is no fact of the source behind the track on a Core in real capture. */}
+        {realCapture ? null : (
+          <div data-testid={`camera-format-${cameraId}`}>
+            <dt>{t('devices.cameras.format')}</dt>
+            <dd>{t('common.devices.cameraFormatCodec', { resolution, fps, codec: camera?.codec ?? 'H.264' })}</dd>
+          </div>
+        )}
         {figures.poePort ? (
           <div data-testid={`camera-poe-${cameraId}`}>
             <dt>{t('devices.cameras.poePort')}</dt>

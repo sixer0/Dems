@@ -129,6 +129,12 @@ function operatorIdOf(request: FastifyRequest): string {
   return principal.operatorId;
 }
 
+/** The paired device the caller's session is bound to; null for a web console session (decision D216 (2)). */
+function deviceIdOf(request: FastifyRequest): string | null {
+  const { principal } = request;
+  return principal.kind === 'OPERATOR' ? principal.deviceId : null;
+}
+
 /**
  * The answer of a hosted command that committed: 204, no body. Its two headers of API-7 are the
  * engine unit's (`src/engine/api-headers.ts`): the position of the command's outcome.
@@ -178,7 +184,7 @@ export const demoModule: FastifyPluginAsync = async (app) => {
     ...routeOfOperation(operationOf('loadScenario')),
     schema: { body: ScenarioLoadRequestSchema, response: { 200: DemoEpochSchema } },
     handler: async (request): Promise<DemoEpoch> =>
-      resetDone(await reset.run({ operation: 'loadScenario', scenario: request.body.name, actorId: operatorIdOf(request), requestId: request.id, log: request.log })),
+      resetDone(await reset.run({ operation: 'loadScenario', scenario: request.body.name, actorId: operatorIdOf(request), deviceId: deviceIdOf(request), requestId: request.id, log: request.log })),
   });
 
   // 73 injectFault
@@ -211,6 +217,6 @@ export const demoModule: FastifyPluginAsync = async (app) => {
     ...routeOfOperation(operationOf('resetDemo')),
     schema: { response: { 200: DemoEpochSchema } },
     handler: async (request): Promise<DemoEpoch> =>
-      resetDone(await reset.run({ operation: 'resetDemo', scenario: RESET_DEMO_SCENARIO, actorId: operatorIdOf(request), requestId: request.id, log: request.log })),
+      resetDone(await reset.run({ operation: 'resetDemo', scenario: RESET_DEMO_SCENARIO, actorId: operatorIdOf(request), deviceId: deviceIdOf(request), requestId: request.id, log: request.log })),
   });
 };

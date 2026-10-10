@@ -71,7 +71,7 @@ describe('verify v2 at the Core with the product fragment cipher (rows 84 + 85)'
       { fileId: 'fragments/VIDEO-01.mp4', trackId: 'VIDEO-01', storedOk: true, plainOk: true, chainOk: true, fragmentCount: 5, ok: true },
       { fileId: 'fragments/VIDEO-02.mp4', trackId: 'VIDEO-02', storedOk: true, plainOk: true, chainOk: true, fragmentCount: 5, ok: true },
     ]);
-    expect(recorded).toEqual([{ evidenceId: sealed.built.item.evidenceId, ok: true, at: 1_791_600_000_000, manifestOk: true, signatureOk: true, failedTracks: [], detail: null }]);
+    expect(recorded).toEqual([{ evidenceId: sealed.built.item.evidenceId, ok: true, at: 1_791_600_000_000, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, failedFragments: [] }]);
 
     // Control: the DOUBLE's opener (another key) does not open what the product sealer sealed - the pass above is the product cipher's.
     const withDouble = await verification(sealed, sealed.built.opener).unit.run(OPERATOR, sealed.built.item.evidenceId);
@@ -91,7 +91,7 @@ describe('verify v2 at the Core with the product fragment cipher (rows 84 + 85)'
       ['VIDEO-01', true, true, true],
       ['VIDEO-02', false, false, false],
     ]);
-    expect(recorded[0]).toMatchObject({ ok: false, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3' });
+    expect(recorded[0]).toMatchObject({ ok: false, failedTracks: ['VIDEO-02'], detail: 'Mismatch: VIDEO-02 fragment 3', failedFragments: ['VIDEO-02:3'] });
   });
 
   it('the product opener itself refuses: the tampered range does not authenticate, its neighbours do; a relocated ciphertext does not open at its own position', async () => {

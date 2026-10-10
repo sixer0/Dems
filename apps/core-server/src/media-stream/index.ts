@@ -51,14 +51,32 @@ export {
   MEDIA_STREAM_OPERATIONS,
   MediaSessionRequestSchema,
   NOT_A_SEALED_PACKAGE_REASON,
+  MEDIA_STOP_MEMORY_ENTRIES,
   RANGE_NOT_SATISFIABLE_REASON,
+  SEEK_INDEX_NOT_AVAILABLE_REASON,
   createMediaStreamService,
   holdsCase,
   type MediaStreamOperation,
   type MediaStreamParts,
   type MediaStreamService,
 } from './service';
-export { CLEAR_CHUNK_BYTES, MediaSourceError, MediaSourceFailure, listPlayableFiles, packageFolderOf, planMediaFile, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
+export {
+  SEEK_INDEX_HEAD_BYTES,
+  SEEK_INDEX_MAX_REFERENCES,
+  SEEK_INDEX_REFERENCE_BYTES,
+  SEEK_INDEX_REFERENCE_ID,
+  SEEK_INDEX_TIMESCALE,
+  SeekIndexRefusal,
+  buildSeekIndex,
+  fileOffsetOfViewOffset,
+  indexedViewSize,
+  partsOfViewRange,
+  type SeekIndex,
+  type SeekIndexFragment,
+  type SeekIndexResult,
+  type ViewPart,
+} from './seek-index';
+export { CLEAR_CHUNK_BYTES, MediaSourceError, MediaSourceFailure, listPlayableFiles, packageFolderOf, planMediaFile, readIndexedView, readPlain, type MediaFilePlan, type MediaSourcePorts } from './source';
 export { MEDIA_SESSION_KEY_BYTES, MEDIA_SESSION_KEY_SECRET_NAME, mediaSessionMacOf } from './store-door';
 export {
   MEDIA_TOKEN_MAC_BYTES,

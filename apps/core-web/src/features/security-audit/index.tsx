@@ -67,6 +67,7 @@ export function SecurityAuditPage() {
             chainOk={chain.ok}
             breakSeq={chain.breakSeq}
             platformNotReported={platformNotReported}
+            controlsNotReported={controls.filter((control) => control.notReported === true).length}
           />
         }
       />

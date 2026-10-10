@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { ChevronRight, Lightbulb, MapPinned, Network, ShieldCheck, TabletSmartphone, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type SimState } from '@dems/shared/sim'
+import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { useDeviceActions } from './context'
 import { IdentifyRing } from './device-menu'
@@ -63,6 +64,14 @@ export function OtherDevices() {
   const { open } = useDeviceActions()
   const model = useSim(selectOther)
   const container = useStaggerVariants(PANEL_BEAT_MS.other, ROW_STAGGER_MS)
+  // Fix wave K (C-2 / G75c-04): a Core in its own capture reads no TPM (no "Attestation OK · sealing enabled")
+  // and has no GNSS receiver (no "No fix · time from RTC"). A TPM row that shows a fault keeps it.
+  const tpmNotReported = usePlatformNotReported() && model.tpm === 'OK'
+  const gnssNotConfigured = useOwnCaptureCore()
+  const notReported: Partial<Record<OtherDeviceId, string>> = {
+    ...(tpmNotReported ? { TPM: t('common.platformNotReported.note') } : {}),
+    ...(gnssNotConfigured ? { GNSS: t('web.realCore.devices.gnssNotConfigured') } : {}),
+  }
 
   const detail: Record<OtherDeviceId, string> = {
     'POE-SWITCH': t('devices.other.poeSummary', { active: model.poeActive, spare: model.poeSpare }),
@@ -100,19 +109,21 @@ export function OtherDevices() {
             const Icon = ICONS[id]
             let trailing: ReactNode
             if (id === 'REC-INDICATOR') trailing = <RecordingLamp lit={code === 'LAMP_ON'} />
+            else if (notReported[id] !== undefined)
+              trailing = <StatusChip tone="default" label={t(id === 'GNSS' ? 'web.ownCore.time.notConfigured' : 'common.platformNotReported.value')} severity={STATUS_SEVERITY.OK} testId={`other-status-${id}`} />
             else
               trailing = (
                 <StatusChip tone={STATUS_TONE[code]} label={t(`devices.status.${code}`)} severity={STATUS_SEVERITY[code]} testId={`other-status-${id}`} />
               )
             return (
-              <ListBox.Item key={id} id={id} textValue={labels.name(id)} className="dev-other-item" data-testid={`other-${id}`} data-status={code}>
+              <ListBox.Item key={id} id={id} textValue={labels.name(id)} className="dev-other-item" data-testid={`other-${id}`} data-status={code} data-reported={notReported[id] !== undefined ? 'false' : undefined}>
                 <motion.div className="dev-other-row" variants={m.variants.row}>
-                  <span className="dev-other-icon" data-tone={STATUS_TONE[code]}>
+                  <span className="dev-other-icon" data-tone={notReported[id] !== undefined ? 'default' : STATUS_TONE[code]}>
                     <Icon aria-hidden="true" size={18} strokeWidth={1.75} />
                   </span>
                   <span className="dev-other-text">
                     <span className="dev-other-name">{labels.name(id)}</span>
-                    <span className="dev-other-detail">{detail[id]}</span>
+                    <span className="dev-other-detail">{notReported[id] ?? detail[id]}</span>
                   </span>
                   <span className="dev-other-trailing">{trailing}</span>
                   <ChevronRight className="dev-other-chevron" aria-hidden="true" size={16} />

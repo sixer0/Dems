@@ -60,6 +60,12 @@ export interface V2FileRow {
   readonly plainOk: boolean
   readonly chainOk: boolean
   readonly fragmentCount: number | null
+  /**
+   * Fix wave K (G89b-06; `contract_wave_k.md` KR section 1): present and `false` when the plaintext
+   * check (V-05) did NOT run for THIS file - `plainOk: false` is then "not a pass", not a failed
+   * comparison. Absent: `plainOk` is the result of the check. The Core never writes `true`.
+   */
+  readonly plainChecked?: false
 }
 
 /** WHERE a check found something; never a value of the package. */
@@ -189,6 +195,7 @@ function readFile(value: unknown): V2FileRow | null {
     plainOk,
     chainOk,
     fragmentCount: whole(value.fragmentCount),
+    ...(value.plainChecked === false ? { plainChecked: false as const } : {}),
   }
 }
 
@@ -443,6 +450,30 @@ export interface V2Row {
   readonly ok: boolean
   /** A camera file only. */
   readonly file: V2FileRow | null
+}
+
+/** The parts of a camera-file row: stored bytes (V-04), plaintext after decryption (V-05), chain continuity (V-06). */
+export type V2FilePart = 'stored' | 'plain' | 'chain'
+
+/**
+ * What one part of a camera-file row says (fix wave K, G89b-06; `contract_wave_k.md` KR section 1
+ * and S1 section 7). The stored bytes and the chain are always checked when a file row exists:
+ * `PASS` / `FAIL` as the answer states them. The DECRYPTED bytes are `NOT_RUN` - never `FAIL` -
+ * when the plaintext check did not run for this file:
+ *
+ * 1. the file row says so itself: `plainChecked === false` (per FILE: V-05 can fail for one file
+ *    while another was not checked);
+ * 2. a Core that answers no such member (an older one): `plainOk` is not a pass AND check `V-05` of
+ *    the SAME result is `SKIPPED`.
+ *
+ * Else `plainOk` is the result of the check.
+ */
+export function v2FilePartOutcome(file: Pick<V2FileRow, 'storedOk' | 'plainOk' | 'chainOk' | 'plainChecked'>, part: V2FilePart, checks: readonly V2Check[] | null): 'PASS' | 'FAIL' | 'NOT_RUN' {
+  if (part === 'stored') return file.storedOk ? 'PASS' : 'FAIL'
+  if (part === 'chain') return file.chainOk ? 'PASS' : 'FAIL'
+  if (file.plainOk) return 'PASS'
+  if (file.plainChecked === false) return 'NOT_RUN'
+  return checks?.find((entry) => entry.id === 'V-05')?.status === 'SKIPPED' ? 'NOT_RUN' : 'FAIL'
 }
 
 /** The rows of today's contract, in a fixed order. The transcript row exists only when the answer judges one. */

@@ -41,6 +41,12 @@ export interface ItemAudioInterval {
   /** null: the interval runs to the end of the recording. */
   readonly toMs: number | null;
   readonly reason: AudioIntervalReason | null;
+  /**
+   * The source class of the microphone of this interval as the SEALED MANIFEST records it (the
+   * item's own member `audioSourceIntervals[].sourceClass`, wave H C1); null / absent: not stated.
+   * Fix wave K (G94b-07): the band legend marks a development microphone from this, without a verify run.
+   */
+  readonly sourceClass?: 'PRODUCTION' | 'LOCAL_DEVICE' | 'FAKE' | null;
 }
 
 export type ItemTranscriptState = 'PENDING' | 'PARTIAL' | 'READY' | 'FAILED' | 'DISABLED';
@@ -77,7 +83,29 @@ export interface ItemV2 {
   /** `true` / `false` as the Core recorded it; `null`: not recorded. null is never production. */
   readonly developmentSources: boolean | null;
   readonly signature: ItemSignatureV2 | null;
+  /** `transcriptModel` of the item as the Core states it (fix wave K, G81b-06); null / absent: not stated - nothing is drawn. */
+  readonly transcriptModel?: ItemTranscriptModel | null;
 }
+
+/**
+ * Which model made the transcript of an item (contract_wave_k.md, S2 section 1): the member
+ * `transcriptModel` of the item, the same name and shape as in operation 41's result.
+ *   local backend   `reportedByServer: false`; name, the version the installation DECLARED, quantisation, file hash;
+ *   server backend  `reportedByServer: true`; the name the server reported, and the Core's own sentence
+ *                   `report` (ruling D160: reported by the STT server and not verified by the Core).
+ */
+export interface ItemTranscriptModel {
+  readonly name: string;
+  readonly version: string | null;
+  readonly quantisation: string | null;
+  readonly modelSha256: string | null;
+  readonly reportedByServer: boolean;
+  /** The Core's own line about the model. */
+  readonly report: string;
+}
+
+/** The ONE name of the member. */
+export const TRANSCRIPT_MODEL_MEMBER = 'transcriptModel';
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const MIC_INPUT = /^MIC-\d{2}$/;
@@ -116,7 +144,8 @@ function readInterval(value: unknown): ItemAudioInterval | null {
   const toMs = value.toMs === null || value.toMs === undefined ? null : whole(value.toMs);
   if (seq === null || inputId === null || !MIC_INPUT.test(inputId) || fromMs === null) return null;
   if (value.toMs !== null && value.toMs !== undefined && (toMs === null || toMs < fromMs)) return null;
-  return { seq, inputId, fromMs, toMs, reason: typeof value.reason === 'string' && REASONS.includes(value.reason) ? (value.reason as AudioIntervalReason) : null };
+  const sourceClass = value.sourceClass === 'PRODUCTION' || value.sourceClass === 'LOCAL_DEVICE' || value.sourceClass === 'FAKE' ? value.sourceClass : null;
+  return { seq, inputId, fromMs, toMs, reason: typeof value.reason === 'string' && REASONS.includes(value.reason) ? (value.reason as AudioIntervalReason) : null, sourceClass };
 }
 
 /** The intervals, or none at all: a list with a hole would draw a band that shows the wrong microphone. */
@@ -153,6 +182,26 @@ function readSignature(value: unknown): ItemSignatureV2 | null {
 }
 
 /** Reads the v2 members of an evidence item. Never throws; a member it cannot read is "not stated". */
+/**
+ * Reads `transcriptModel`. Never throws; a member that is not the contract's shape is NOT STATED
+ * (null) - never a default name, never "verified".
+ */
+export function readTranscriptModel(value: unknown): ItemTranscriptModel | null {
+  if (!isRecord(value)) return null;
+  const line = (entry: unknown, max: number): string | null => (typeof entry === 'string' && entry.trim().length > 0 && entry.length <= max ? entry : null);
+  const name = line(value.name, 200);
+  const report = line(value.report, 1_000);
+  if (name === null || report === null || typeof value.reportedByServer !== 'boolean') return null;
+  return {
+    name,
+    version: line(value.version, 200),
+    quantisation: line(value.quantisation, 64),
+    modelSha256: hash(value.modelSha256),
+    reportedByServer: value.reportedByServer,
+    report,
+  };
+}
+
 export function readItemV2(item: unknown): ItemV2 {
   const source = isRecord(item) ? item : {};
   const files = Array.isArray(source.files)
@@ -172,6 +221,7 @@ export function readItemV2(item: unknown): ItemV2 {
     manifestVersion: source.manifestVersion === 1 || source.manifestVersion === 2 ? source.manifestVersion : null,
     developmentSources: typeof source.developmentSources === 'boolean' ? source.developmentSources : null,
     signature: readSignature(source.signature),
+    transcriptModel: readTranscriptModel(source[TRANSCRIPT_MODEL_MEMBER]),
   };
 }
 

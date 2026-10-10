@@ -177,6 +177,16 @@ export interface SealSessionReaderOptions {
    * stops the seal with `CAMERA_FILE_UNUSABLE`: the field is never a guess.
    */
   readonly videoSampleEntry?: (sessionId: string, trackId: (typeof TRACKS)[number]) => Promise<SealVideoSampleEntry | null>;
+  /**
+   * Manifest field 36 (fix wave K, driver S1; G89b-01, ruling D222 (2)): what the video stream of a
+   * camera file IS - picture size and measured frame rate, read from the file (`readSessionVideoFormat`).
+   * With it field 36 states the STREAM (`streamProfileOf`), never the selector's configured profile.
+   * Null (the file is not there, or its init segment names no picture size) and the option being
+   * absent: field 36 is the configured profile, as before this wave.
+   */
+  readonly videoFormat?: (sessionId: string, trackId: (typeof TRACKS)[number]) => Promise<SealVideoFormat | null>;
+  /** Told once per read and camera file whose stream is NOT what the selector configured: the manifest states the stream. */
+  readonly onProfileDiffers?: (sessionId: string, differences: readonly SealProfileDifference[]) => void;
   readonly notice: string;
   readonly timezone: string;
   /**
@@ -189,6 +199,40 @@ export interface SealSessionReaderOptions {
   readonly onNoSttSnapshot?: (sessionId: string) => void;
   /** Told once per read whose capture facts are of ANOTHER session of that ID (they are not used). */
   readonly onForeignCaptureFacts?: (sessionId: string) => void;
+}
+
+/** One camera file whose stream is not what the selector configured (field 36 states `stream`). */
+export interface SealProfileDifference {
+  readonly trackId: string;
+  readonly configured: string;
+  readonly stream: string;
+}
+
+/** What the reader uses of a camera file's video stream (`VideoStreamFormat` of the capture unit satisfies it). */
+export interface SealVideoFormat {
+  readonly width: number;
+  readonly height: number;
+  /** Frames per second as measured on the file; null when it was not measured. */
+  readonly frameRate: number | null;
+}
+
+/**
+ * FIELD 36 AS THE STREAM STATES IT (fix wave K; G89b-01): the profile vocabulary of the capture
+ * units (`H264_1080P25`, `H264_720P30`) built from what the FILE says.
+ *   `<codec>_<height>P<rate>`            a 16:9 picture (1920x1080, 1280x720, ...);
+ *   `<codec>_<width>X<height>P<rate>`    any other picture: the width is stated, never implied;
+ *   the rate is the NOMINAL whole number when the measured rate is within 1 % of it (a stream
+ *   stamped by a wall clock measures 29.9 or 30.1 for 30; 29.97 is the nominal 30), else the measured rate with 2 decimals;
+ *   NO rate (`H264_720P`) when the Core did not measure one: a fact it does not have is absent.
+ */
+export function streamProfileOf(codec: string, format: SealVideoFormat): string {
+  const picture = format.width * 9 === format.height * 16 ? `${String(format.height)}P` : `${String(format.width)}X${String(format.height)}P`;
+  let rate = '';
+  if (format.frameRate !== null && Number.isFinite(format.frameRate) && format.frameRate > 0) {
+    const nominal = Math.round(format.frameRate);
+    rate = nominal > 0 && Math.abs(format.frameRate - nominal) <= nominal * 0.01 ? String(nominal) : String(Math.round(format.frameRate * 100) / 100);
+  }
+  return `${codec}_${picture}${rate}`;
 }
 
 /** What the reader uses of a camera file's video sample entry (`VideoSampleEntryRead` of the capture unit satisfies it). */
@@ -329,6 +373,16 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         codecs.set(trackId, entry !== null && entry.state === 'KNOWN' ? entry.codec : null);
       }
 
+      // Field 36 (fix wave K, G89b-01): what each camera file's own stream is. Only for a file whose codec the
+      // init segment named: the text starts with it. No file / no picture size: null, and field 36 is the configured profile.
+      const streamProfiles = new Map<string, string | null>();
+      for (const trackId of TRACKS) {
+        const codec = codecs.get(trackId) ?? null;
+        const format = codec === null ? null : ((await options.videoFormat?.(sessionId, trackId)) ?? null);
+        streamProfiles.set(trackId, codec === null || format === null ? null : streamProfileOf(codec, format));
+      }
+
+      const profileDifferences: SealProfileDifference[] = [];
       const track = (trackId: (typeof TRACKS)[number]): SealTrackFacts => {
         // The device of a slot is the START record's; the snapshot's line is the fallback of a session that has no rows (the builder then refuses it).
         const line = session.captureConfig?.cameras.find((camera) => camera.trackId === trackId);
@@ -341,10 +395,14 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         // and no firmware to report; another camera states its registry row or says that none was reported.
         const adapterKind = sourceRows.find((row) => row.slot === trackId)?.adapterKind;
         const words = adapterKind === 'FAKE' ? SOURCE_WORDS.FAKE : adapterKind === 'LOCAL_DEVICE' ? { model: device?.model ?? SOURCE_WORDS.LOCAL_DEVICE.model, firmware: SOURCE_WORDS.LOCAL_DEVICE.firmware } : { model: device?.model ?? NOT_REPORTED, firmware: device?.firmware ?? NOT_REPORTED };
+        // Field 36: the STREAM when the file says what it is; a configured profile that differs is told, never written.
+        const configured = text(line?.profile);
+        const stream = streamProfiles.get(trackId) ?? null;
+        if (stream !== null && stream !== configured) profileDifferences.push({ trackId, configured, stream });
         return {
           trackId,
           deviceId,
-          profile: text(line?.profile),
+          profile: stream ?? configured,
           name: text(camera?.name),
           model: text(words.model),
           firmware: text(words.firmware),
@@ -355,6 +413,9 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
           firstVideoSampleTimescale: reported?.firstVideo?.timescale ?? null,
         };
       };
+
+      const tracks = [track('VIDEO-01'), track('VIDEO-02')] as const;
+      if (profileDifferences.length > 0) options.onProfileDiffers?.(sessionId, profileDifferences);
 
       const cameraEnds = TRACKS.flatMap((trackId) => {
         const deviceId = sourceRows.find((row) => row.slot === trackId)?.deviceId;
@@ -382,7 +443,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         device: { deviceId: options.identity?.deviceId ?? NOT_CONFIGURED, name: options.identity?.name ?? NOT_CONFIGURED, serialNumber: NOT_CONFIGURED, hardwareUuid: NOT_CONFIGURED, softwareVersion: CORE_SERVER_VERSION },
         operator: { investigatorId: session.input.investigatorId, displayName: text(operator?.displayName), role: oneOf(OPERATOR_ROLES, operator?.role, 'INVESTIGATOR') },
         subject: { name: session.input.subjectName, type: oneOf(SUBJECT_TYPES, session.input.subjectType, 'LAINNYA'), authorization: STAND_INS.subjectAuthorization },
-        tracks: [track('VIDEO-01'), track('VIDEO-02')],
+        tracks,
         audioCodec: STAND_INS.audioCodec,
         audioIntervals,
         sourceRows,

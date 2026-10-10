@@ -6,7 +6,7 @@
 // | The percent is the mean of the step percents, floored (the rule of operation 83) | "the rule" |
 // | A lower value from the Core never rewinds a step or the overall percent; a DONE step stays DONE | "forward-only" |
 // | NEGATIVE CONTROL: without a new Core state nothing moves, however much time passes | "no Core state, no movement" |
-// | The ETA is the Core's or none ("estimating…"); never a number made here | "the ETA" |
+// | The ETA is the Core's or none (no line at all - fix wave K, G75c-05); never a number made here | "the ETA" |
 // | A resumed seal says so, and is drawn in the SAME dialog as the recovery (no modal swap) | "resumed sealing, in place" |
 //
 // The software part of M7-FF-WEB; the browser run on a real sealing is scripted for the M7 gate.
@@ -211,14 +211,18 @@ describe('the finalization dialog (M7-FF-WEB, software part)', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('no ETA from the Core: "estimating", and no number', () => {
+  // Fix wave K (G75c-05; `contract_wave_k.md` S1 section 5): `etaMs: null` draws NO time-left line - the pin moved by delta
+  // from the line "Estimating the time left…" (the transcript step never states an ETA, so the line promised a number that never came).
+  it('no ETA from the Core: no time-left line at all - no "estimating", no number', () => {
     const { sim, sessionId } = finalizingSim()
     coreSends(sim, steps(1, 5, { etaMs: null }))
     mount(sim, sessionId)
-    const eta = within(modal()).getByTestId('sm-final-eta')
-    expect(eta).toHaveAttribute('data-eta', 'none')
-    expect(eta).toHaveTextContent(F.estimating)
-    expect(eta.textContent).not.toMatch(/\d/)
+    expect(within(modal()).queryByTestId('sm-final-eta')).toBeNull()
+    expect(modal()).not.toHaveTextContent(F.estimating)
+    expect(modal()).not.toHaveTextContent(/about \d+ s left/)
+    // CONTROL: the same step with a measured ETA from the Core draws it.
+    coreSends(sim, steps(1, 10, { etaMs: 6_000 }))
+    expect(within(modal()).getByTestId('sm-final-eta')).toHaveTextContent(en.session.sealingEta.step.replace('{{seconds}}', '6'))
   })
 
   it('a resumed attempt: the DONE steps stay DONE, the percent stays, and the note says "Resumed after restart"', () => {

@@ -27,6 +27,7 @@
  * | The token lives 60 s; an answer in flight is not cut, every NEW range request after it is refused | `mediaSessionStale`: the player renews before it seeks or starts on a stale session, and after a media error |
  * | A fragment that fails its tag is refused by the MEDIA ROUTE (`409`, read by the media element, which cannot read a body) | Operation 88 opens no fragment and never answers it (review finding R93-12): this file reads no such refusal. The player stops at the place and points to Verify |
  * | A package of ONE camera has one file | `openMediaSessions(…, fileIds)`: only the files the item names are asked for; `409 … CAMERA_FILE_NOT_IN_PACKAGE` for the other is not a failure |
+ * | Wave K (G94b-02): a file that does not load, or stops, is ASKED ABOUT | `probeMediaSession`: the one other reader of the bearer path. The media element cannot read the route's `409`; this request can, and it returns only the Core's codes (`reason`, `fileId`, `seq`) - never the path, never a byte of media |
  */
 import type { WebLive } from '@/runtime'
 import { CAMERA_FILE_IDS, type CameraFileId } from './item-v2'
@@ -171,4 +172,120 @@ export const MEDIA_SESSION_RENEW_MARGIN_MS = 5_000
 /** Whether a NEW request on this session would be refused (or is about to be): its end, less the margin, has passed on the Core's clock. */
 export function mediaSessionStale(session: Pick<MediaSession, 'expiresAt'>, coreNow: number, marginMs: number = MEDIA_SESSION_RENEW_MARGIN_MS): boolean {
   return coreNow >= session.expiresAt - marginMs
+}
+
+/** `details.reason` of the media route's `409` for a fragment whose bytes do not authenticate (`apps/core-server/src/media-stream/service.ts`). */
+export const FRAGMENT_NOT_AUTHENTIC = 'FRAGMENT_NOT_AUTHENTIC'
+
+/**
+ * What the Core's media route says about one camera file from a place on (wave K, G94b-02).
+ *
+ * | Kind | The Core's answer |
+ * |------|-------------------|
+ * | `NOT_AUTHENTIC` | `409 MEDIA_NOT_AVAILABLE`, `details.reason: FRAGMENT_NOT_AUTHENTIC`, with the file and the fragment it names. An integrity failure of the sealed package |
+ * | `REFUSED` | Any other refusal (the session ended, the package is gone, the role changed): its status and its reason code |
+ * | `SERVED` | The bytes are served from that place, as far as this probe read |
+ * | `UNKNOWN` | No answer could be read (no network, a time-out, an answer that is not the route's) |
+ */
+export type MediaProbeOutcome =
+  | { readonly kind: 'NOT_AUTHENTIC'; readonly fileId: string; readonly seq: number | null }
+  | { readonly kind: 'REFUSED'; readonly status: number; readonly reason: string | null }
+  | { readonly kind: 'SERVED' }
+  | { readonly kind: 'UNKNOWN' }
+
+export interface MediaProbeOptions {
+  /** The first byte asked for (the plaintext offset of the camera file). */
+  readonly startByte?: number
+  /** The probe stops reading after this many bytes: what it read was served. */
+  readonly maxBytes?: number
+  /** The probe gives up after this long. */
+  readonly timeoutMs?: number
+  readonly fetch?: typeof fetch
+}
+
+export const MEDIA_PROBE_MAX_BYTES = 16 * 1024 * 1024
+export const MEDIA_PROBE_TIMEOUT_MS = 10_000
+/** One streamed read, then the request from the place where it was cut; a cut answer is followed at most three times. */
+const MEDIA_PROBE_MAX_REQUESTS = 4
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Reads the refusal of the media route: the codes of the Core's envelope and nothing else. */
+async function refusalOf(response: Response, fileId: CameraFileId): Promise<MediaProbeOutcome> {
+  let details: Record<string, unknown> = {}
+  try {
+    const body: unknown = await response.json()
+    const error = isObject(body) ? body.error : null
+    if (isObject(error) && isObject(error.details)) details = error.details
+  } catch {
+    // Not the route's envelope: the status alone is kept.
+  }
+  const reason = typeof details.reason === 'string' && details.reason.length <= 64 ? details.reason : null
+  if (response.status === 409 && reason === FRAGMENT_NOT_AUTHENTIC) {
+    const named = typeof details.fileId === 'string' && /^[A-Z]+-\d{2}$/.test(details.fileId) ? details.fileId : fileId
+    const seq = typeof details.seq === 'number' && Number.isInteger(details.seq) && details.seq >= 0 ? details.seq : null
+    return { kind: 'NOT_AUTHENTIC', fileId: named, seq }
+  }
+  return { kind: 'REFUSED', status: response.status, reason }
+}
+
+/** Reads a served body and counts it. `cut`: the answer ended before the length the Core stated (the stream was stopped). */
+async function drain(response: Response, maxBytes: number): Promise<{ readonly received: number; readonly cut: boolean }> {
+  const declared = Number(response.headers.get('content-length'))
+  const reader = response.body?.getReader()
+  let received = 0
+  if (!reader) return { received, cut: false }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received >= maxBytes) {
+        void reader.cancel().catch(() => undefined)
+        return { received, cut: false }
+      }
+    }
+  } catch {
+    // A connection the Core closed before the stated length: the browser rejects the read.
+    return { received, cut: true }
+  }
+  return { received, cut: Number.isFinite(declared) && declared > 0 && received < declared }
+}
+
+/**
+ * Asks the media route about one open session from `startByte` on (wave K, G94b-02): a media
+ * element that stalls says nothing, and it cannot read the body of a refusal. The Core stops a
+ * stream BEFORE a fragment that does not authenticate and answers a range that STARTS in it with
+ * `409` naming the file and the fragment. So: read from the start; where the answer is cut, ask
+ * again from that byte. Same-origin, with the operator's session cookie, never cached.
+ *
+ * The bearer path goes from the session to the request and nowhere else; the outcome holds codes
+ * only. Never throws. Each request is one the Core records, as the media element's own are.
+ */
+export async function probeMediaSession(session: MediaSession, options: MediaProbeOptions = {}): Promise<MediaProbeOutcome> {
+  const ask = options.fetch ?? (typeof fetch === 'function' ? fetch : null)
+  const path = session.takeUrl()
+  if (ask === null || path === '') return { kind: 'UNKNOWN' }
+  const maxBytes = options.maxBytes ?? MEDIA_PROBE_MAX_BYTES
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? MEDIA_PROBE_TIMEOUT_MS)
+  let offset = Math.max(0, Math.floor(options.startByte ?? 0))
+  let read = 0
+  try {
+    for (let request = 0; request < MEDIA_PROBE_MAX_REQUESTS; request += 1) {
+      const response = await ask(path, { method: 'GET', headers: { range: `bytes=${offset}-` }, credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
+      // A range that starts at or past the end of the file: nothing is wrong at that place.
+      if (response.status === 416) return { kind: 'SERVED' }
+      if (response.status !== 200 && response.status !== 206) return await refusalOf(response, session.fileId)
+      const { received, cut } = await drain(response, maxBytes - read)
+      read += received
+      if (!cut || read >= maxBytes) return { kind: 'SERVED' }
+      offset += received
+    }
+    return { kind: 'UNKNOWN' }
+  } catch {
+    return { kind: 'UNKNOWN' }
+  } finally {
+    clearTimeout(timer)
+  }
 }

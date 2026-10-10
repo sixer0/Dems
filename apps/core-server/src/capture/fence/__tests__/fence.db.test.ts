@@ -285,3 +285,51 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     expect(await kindsOf(target.ownerPool())).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'POE-SWITCH:FAKE']);
   });
 });
+
+// Fix wave K, reconcile pass (re-gate 89 finding G89b-01, second half; ruling of 2026-10-11): the
+// selector line of a GENERATED test source states the profile its adapter makes. The seed writes
+// the simulator's `H264_1080P25` and the two capture tables are kept across a reset, so the Core
+// that registers the generated adapters corrects the line at its start (`fake-profile.ts`).
+describe('REAL_DEVELOPMENT: the selector line of a generated test source states its adapter\'s profile (G89b-01)', () => {
+  const selectorOf = async (owner: Pool): Promise<Record<string, unknown>> =>
+    (await owner.query('SELECT video_01_device_id AS v1, video_01_profile AS p1, video_02_device_id AS v2, video_02_profile AS p2, revision::int AS revision FROM public.capture_config')).rows[0] as Record<string, unknown>;
+
+  it('a kept database that says 1080p25: the development start corrects both FAKE lines once, the engine states it, a second start writes nothing', async () => {
+    const target = await clone('fence-profile');
+    const owner = target.ownerPool();
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_1080P25', v2: 'CAM-02', p2: 'H264_1080P25', revision: 1 });
+
+    const first = await boot(target, DEVELOPMENT);
+    expect(first.failure).toBeNull();
+    expect(captureFenceControl(first.app).outcome()).toMatchObject({ generatedProfilesCorrected: true });
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-01', p1: 'H264_720P30', v2: 'CAM-02', p2: 'H264_720P30', revision: 2 });
+    // The selector the clients read, and the profile the registry's adapter declares: one text.
+    expect(engineControl(first.app).state().captureConfig.cameras.map((camera) => `${camera.deviceId}:${camera.profile}`)).toEqual(['CAM-01:H264_720P30', 'CAM-02:H264_720P30']);
+    expect(captureFenceControl(first.app).registry()?.describe('CAM-01').profiles).toEqual(['H264_720P30']);
+    expect(first.log.lines().filter((line) => line['code'] === 'DEV_GENERATED_SOURCE_PROFILE_STATED')).toHaveLength(1);
+    await first.app.close();
+
+    const second = await boot(target, DEVELOPMENT);
+    expect(second.failure).toBeNull();
+    expect(captureFenceControl(second.app).outcome()).not.toHaveProperty('generatedProfilesCorrected');
+    expect(await selectorOf(owner)).toMatchObject({ p1: 'H264_720P30', p2: 'H264_720P30', revision: 2 });
+    expect(second.log.lines().filter((line) => line['code'] === 'DEV_GENERATED_SOURCE_PROFILE_STATED')).toEqual([]);
+  });
+
+  it('CONTROL: only a FAKE line is touched (the local camera on VIDEO-01 keeps its line), and a simulated Core corrects nothing', async () => {
+    const simulated = await clone('fence-profile-sim');
+    const booted = await boot(simulated, {});
+    expect(booted.failure).toBeNull();
+    expect(await selectorOf(simulated.ownerPool())).toMatchObject({ p1: 'H264_1080P25', p2: 'H264_1080P25', revision: 1 });
+    await booted.app.close();
+
+    const target = await clone('fence-profile-local');
+    const owner = target.ownerPool();
+    // What an earlier development start and an operator's choice would leave: this Mac's camera row, assigned to VIDEO-01 with a profile of its own.
+    await owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE')");
+    await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-03', video_01_profile = 'H264_1080P30'");
+    const development = await boot(target, DEVELOPMENT);
+    expect(development.failure).toBeNull();
+    expect(await selectorOf(owner)).toEqual({ v1: 'CAM-03', p1: 'H264_1080P30', v2: 'CAM-02', p2: 'H264_720P30', revision: 2 });
+  });
+});

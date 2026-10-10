@@ -21,6 +21,8 @@ export interface ExportJobStatusProps {
   evidenceId: string
   /** The job the 202 answer named, when it named one. */
   jobId?: string | null
+  /** `archiveOnCore` of the accepted request (operation 42); null / absent: the Core did not say. */
+  archiveOnCore?: boolean | null
 }
 
 /**
@@ -36,9 +38,10 @@ export interface ExportJobStatusProps {
  * A COMPLETE job the Core names a download for draws "Download export" (fix pass F-M8, R93-05; UX
  * §6.6): the press reads the job once more for a fresh signed path and hands it to the browser
  * (`startExportDownload`); nothing of that path is kept by this component. A COMPLETE job without
- * a download (a simulated export) says "The export is stored on the Core" and draws no control.
+ * a download says "The export is stored on the Core" only when the 202 stated `archiveOnCore: true`; an export the Core only recorded
+ * (`false`) says a demonstration writes no archive; no statement says no archive is stated. It draws no control.
  */
-export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = null }: ExportJobStatusProps) {
+export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = null, archiveOnCore = null }: ExportJobStatusProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const presentCoreError = useCoreErrorPresenter()
@@ -124,8 +127,10 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
         </dl>
       ) : null}
       {job?.status === 'COMPLETE' && !job.downloadable ? (
-        <span className="evi-caption" data-testid="export-job-on-core">
-          {t('evidence.exportJob.onCore', { exportId })}
+        // Fix wave K (G94b-06): the sentence follows the Core's own fact `archiveOnCore` of the 202 -
+        // stored on the Core only when the Core said an archive is written; a demonstration writes none.
+        <span className="evi-caption" data-testid={archiveOnCore === true ? 'export-job-on-core' : 'export-job-no-archive'} data-archive-on-core={archiveOnCore === null ? 'not-stated' : String(archiveOnCore)}>
+          {archiveOnCore === true ? t('evidence.exportJob.onCore', { exportId }) : t(archiveOnCore === false ? 'web.exportJob.noArchive' : 'web.exportJob.archiveNotStated')}
         </span>
       ) : null}
       {job?.status === 'COMPLETE' && job.downloadable ? (

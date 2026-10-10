@@ -131,6 +131,12 @@ export interface SessionRunDeps {
   speakerEngine(session: EnabledSessionTranscription): SpeakerEmbeddingEngine | null;
   /** The rows of `session_audio_intervals` of the session, in media time. */
   intervals(sessionId: string): Promise<readonly DocumentInterval[]>;
+  /**
+   * Fix wave K (G81b-04; transcript spec §D.2): whether the recording of the session was INTERRUPTED - it ended at a
+   * fault, not at a stop (`interruptedSealOfSession` of the committed state). Its document then records
+   * `intervals_incomplete` for an interval that has no end. Absent: nobody says so, and the document is as before.
+   */
+  interrupted?(sessionId: string): boolean;
   /** The transcriber's own log: what the assembly writes to. */
   readonly transcriberLog: TranscriberLog;
   /** The server's log and persistent error log, by code. */
@@ -340,6 +346,7 @@ export function createSessionRuns(deps: SessionRunDeps): SessionRuns {
         diarization: { enabled: session.snapshot.diarization, engine: deps.speakerEngine(session) },
         model: run.provenance,
         intervals,
+        ...(deps.interrupted?.(run.sessionId) === true ? { intervalsTruncated: true } : {}),
         log: deps.transcriberLog,
       });
       const checkpoint = createCheckpointStore(session.scratchDir).load(session.assembly.identity);

@@ -45,7 +45,7 @@ describe('the export job', () => {
     for (const answered of [undefined, null, 'EXP-000777', 'EXPJ-7', 7]) expect(exportJobIdOf('EXP-000032', answered)).toBe('EXPJ-000032');
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032', jobId: 'EXPJ-000777' })).toBe('EXPJ-000777');
     expect(answeredJobIdOf({ ok: true, status: 202, exportId: 'EXP-000032' })).toBeNull();
-    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: 'EV-20261009-0001', kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null, downloadable: false });
+    expect(readExportJob(JOB)).toEqual({ jobId: 'EXPJ-000032', evidenceId: 'EV-20261009-0001', kind: 'PACKAGE', status: 'RUNNING', progressPct: 40, derived: false, manifestHash: null, signature: null, failureReason: null, downloadable: false, archiveOnCore: false });
     for (const bad of [null, [], { ...JOB, status: 'DONE' }, { ...JOB, jobId: 'EXP-000032' }]) expect(readExportJob(bad)).toBeNull();
     expect(readExportJob({ ...JOB, kind: 'COMPOSITE', derived: false })?.derived).toBe(true);
     expect(readExportJob({ ...JOB, status: 'FAILED', failureReason: COMPOSITE_NOT_SELECTED })?.failureReason).toBe('COMPOSITE_ENCODER_NOT_SELECTED');

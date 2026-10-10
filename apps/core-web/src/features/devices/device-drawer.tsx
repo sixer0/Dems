@@ -31,6 +31,7 @@ import {
   type FaultKind,
 } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
 import { CoreReadError, pairedDevicesQueryOptions, retryCoreQuery, usePairedDevicesGate, useQueryFailure } from '@/lib/core-queries'
 import { CORE_QUERY_KEYS } from '@/runtime'
 import { HealthChart } from './health-chart'
@@ -50,6 +51,7 @@ import {
   type DeviceId,
 } from './sim-adapter'
 import { DeviceSourceMarks } from './source-badge'
+import { useRealCaptureCore } from './source-class'
 import { StatusChip, StatusDot } from './status-chip'
 
 type DrawerTab = 'overview' | 'health' | 'log'
@@ -218,18 +220,22 @@ function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
   const trackId = DEVICE_CAMERA[deviceId] ?? 'VIDEO-01'
   const camera = useSim((s) => selectCameraById(s, trackId))
   const status = useSim((s) => deviceStatus(s, deviceId))
+  // Fix wave K (C-2, ruling D222 (2)): on a Core in real capture the model ("Dual-lens IP camera DL-2"), the firmware,
+  // the format, the bitrate and the PoE port are the simulator's camera record - the source behind the track may be a generated one.
+  const realCapture = useRealCaptureCore()
+  const notReported = t('common.platformNotReported.value')
   if (!camera) return null
   return (
     <Facts
       facts={[
         [label('status'), t(`devices.status.${status}`)],
         [label('deviceId'), <Mono key="id">{camera.deviceId}</Mono>],
-        [label('model'), camera.model],
-        [label('firmware'), <Mono key="fw">{camera.firmware}</Mono>],
+        [label('model'), realCapture ? notReported : camera.model],
+        [label('firmware'), realCapture ? notReported : <Mono key="fw">{camera.firmware}</Mono>],
         [label('track'), <Mono key="track">{camera.id}</Mono>],
-        [label('format'), t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec })],
-        [label('bitrate'), t('common.units.mbps', { value: camera.bitrateMbps })],
-        [label('port'), labels.port(CAMERA_POE_PORT)],
+        [label('format'), realCapture ? notReported : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec })],
+        [label('bitrate'), realCapture ? notReported : t('common.units.mbps', { value: camera.bitrateMbps })],
+        [label('port'), realCapture ? notReported : labels.port(CAMERA_POE_PORT)],
         [label('recState'), camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT],
       ]}
     />
@@ -432,6 +438,18 @@ function GnssOverview() {
   const { t } = useTranslation()
   const label = useFieldLabel()
   const time = useSim((s) => s.time)
+  // Fix wave K (C-2 / G75c-04): a Core on its host clock has no GNSS receiver - no "No fix", no "RTC", no stratum, offset, last sync or server.
+  const hostClock = useOwnCaptureCore()
+  if (hostClock) {
+    return (
+      <Facts
+        facts={[
+          [label('status'), t('web.ownCore.time.notConfigured')],
+          [label('source'), t('web.ownCore.time.value')],
+        ]}
+      />
+    )
+  }
   return (
     <Facts
       facts={[
@@ -451,6 +469,21 @@ function TpmOverview() {
   const { t } = useTranslation()
   const label = useFieldLabel()
   const security = useSim((s) => s.security)
+  // Fix wave K (C-2): a Core that reads no TPM states no model, no attestation, no Secure Boot state. A failed TPM (a raised fault) keeps its rows.
+  const platformNotReported = usePlatformNotReported()
+  if (platformNotReported && security.tpm.ok) {
+    const notReported = t('common.platformNotReported.value')
+    return (
+      <Facts
+        facts={[
+          [label('status'), notReported],
+          [label('model'), notReported],
+          [label('attestation'), t('common.platformNotReported.note')],
+          [label('secureBoot'), notReported],
+        ]}
+      />
+    )
+  }
   return (
     <Facts
       facts={[

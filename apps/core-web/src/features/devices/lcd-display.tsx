@@ -6,6 +6,7 @@ import { formatClock, formatDuration } from '@dems/shared/realtime'
 import { DEVICE_IDENTITY, selectSystemState, storageSummary, useSim, type SimState } from '@dems/shared/sim'
 import { palette, statusText } from '@dems/shared/tokens'
 import { useSimSecond } from '@/components/media'
+import { useOwnCaptureCore, usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { useDeviceWords } from './live'
 import { formatTb, LCD_PAGES, type LcdPage } from './model'
@@ -123,6 +124,11 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
   const m = useMotionPolicy()
   const uid = useId().replace(/:/g, '')
   const second = useSimSecond()
+  // Fix wave K (C-2 / G75c-04): the lines a Core in its own capture has no reading for - the time source is its
+  // host clock (never "RTC"), a TPM / Secure Boot state is not reported, no write rate exists to estimate a remaining time from.
+  const hostClock = useOwnCaptureCore()
+  const platformNotReported = usePlatformNotReported()
+  const selfCapture = useSelfCaptureCore()
   const lcd = useSim(selectLcd)
   const now = second * 1000
   const index = LCD_PAGES.indexOf(page)
@@ -156,7 +162,7 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
             {t('devices.front.lcd.inputs', { cams: lcd.camsOk, camsTotal: lcd.camsTotal, mics: lcd.micsOk, micsTotal: lcd.micsTotal })}
           </Line>
           <Line y={358} color={DIM}>
-            {t('devices.front.lcd.time', { time: formatClock(now), source: t(`common.enums.timeSource.${lcd.timeSource}`) })}
+            {t('devices.front.lcd.time', { time: formatClock(now), source: hostClock ? t('web.ownCore.time.chip') : t(`common.enums.timeSource.${lcd.timeSource}`) })}
           </Line>
         </>
       )
@@ -196,7 +202,7 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
             })}
           </Line>
           <Line y={338}>
-            {t('devices.front.lcd.remaining', { hours: Math.floor(lcd.remainingMinutes / 60), minutes: lcd.remainingMinutes % 60 })}
+            {selfCapture ? t('web.realCore.devices.lcdRemaining') : t('devices.front.lcd.remaining', { hours: Math.floor(lcd.remainingMinutes / 60), minutes: lcd.remainingMinutes % 60 })}
           </Line>
           <Line y={386} color={DIM}>
             {t('devices.front.lcd.evidence', { state: t(`common.enums.storageState.${lcd.storageState}`) })}
@@ -214,11 +220,13 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
           <Line y={250}>{t('devices.front.lcd.deviceId', { id: lcd.deviceId, room: lcd.room })}</Line>
           <Line y={298}>{t('devices.front.lcd.firmware', { version: lcd.version })}</Line>
           <Line y={346}>{t('devices.front.lcd.serial', { serial: DEVICE_IDENTITY.serialNumber })}</Line>
-          <Line y={394} color={lcd.tpmOk && lcd.secureBoot ? statusText.success : statusText.danger}>
-            {t('devices.front.lcd.tpm', {
-              state: lcd.tpmOk ? t('devices.status.OK') : t('devices.status.FAILED'),
-              boot: lcd.secureBoot ? t('devices.front.lcd.on') : t('devices.front.lcd.off'),
-            })}
+          <Line y={394} color={platformNotReported && lcd.tpmOk && lcd.secureBoot ? DIM : lcd.tpmOk && lcd.secureBoot ? statusText.success : statusText.danger}>
+            {platformNotReported && lcd.tpmOk && lcd.secureBoot
+              ? t('web.realCore.devices.lcdPlatform')
+              : t('devices.front.lcd.tpm', {
+                  state: lcd.tpmOk ? t('devices.status.OK') : t('devices.status.FAILED'),
+                  boot: lcd.secureBoot ? t('devices.front.lcd.on') : t('devices.front.lcd.off'),
+                })}
           </Line>
         </>
       )

@@ -502,9 +502,29 @@ export function checkExportReason(raw: string): ReasonCheck {
   return { value, length: value.length, valid: value.length >= EXPORT_REASON_MIN && value.length <= EXPORT_REASON_MAX };
 }
 
-/** The two simulated destinations (the shared `evidence.exportWizard.destination*` copy). */
-export const EXPORT_DESTINATIONS = ['usb', 'network'] as const;
+/**
+ * The destinations of the export wizard (the shared `evidence.exportWizard.destinations.*` copy, and
+ * `evidence.itemFacts.exportReal.destination.*` for an export this Core really stores).
+ *
+ * Fix wave K (G94b-12; contract_wave_k.md S2 section 2): the case-file option is the FIRST one, as on
+ * the web console, and it is the text a Core records when a request names no destination
+ * (`exportDestinationDefault` of operation 40). Tablet and web therefore pre-select the same option.
+ */
+export const EXPORT_DESTINATIONS = ['caseFile', 'usb', 'network'] as const;
 export type ExportDestination = (typeof EXPORT_DESTINATIONS)[number];
+/** The key of each destination in both shared label tables. */
+export const EXPORT_DESTINATION_LABEL = { caseFile: 'CASE_FILE', usb: 'USB', network: 'NETWORK' } as const satisfies Record<ExportDestination, string>;
+
+/**
+ * The option that is selected when the wizard opens. `stated` = `exportDestinationDefault` of
+ * operation 40 (null: not stated - Simulated mode inside the app, an older Core): then the first
+ * option. When the Core states its default, ONLY the option whose recorded text equals it is
+ * pre-selected; if none does, nothing is (never another option).
+ */
+export function initialExportDestination(stated: string | null, recordedTextOf: (key: ExportDestination) => string): ExportDestination | null {
+  if (stated === null) return EXPORT_DESTINATIONS[0];
+  return EXPORT_DESTINATIONS.find((key) => recordedTextOf(key) === stated) ?? null;
+}
 
 /** The wizard's C-4 steps in order (04 §4.11 D6). */
 export const EXPORT_STEPS = ['authorize', 'verify', 'destination', 'reason', 'build', 'done'] as const;

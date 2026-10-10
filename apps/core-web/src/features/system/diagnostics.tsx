@@ -14,6 +14,7 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
+import { usePlatformNotReported } from '@/lib/own-capture'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { DIAG_BAR_FILL_MS } from './choreography'
 import { ExportLogsDialog } from './export-logs-dialog'
@@ -260,12 +261,15 @@ function CheckRow({ check }: { check: DiagnosticCheck }) {
   const resolved = check.status === 'PASS' || check.status === 'WARN' || check.status === 'FAIL'
   const fill = resolved || check.status === 'RUNNING' ? 1 : 0
   const label = t(`system.diagnostics.checks.${check.id}` as 'system.diagnostics.checks.CPU', { defaultValue: check.label })
+  // Fix wave K (C-2): "Security (TPM, Secure Boot): PASS" is the self-test of the device model on a Core that reads neither. A FAIL / WARN stays.
+  const platformNotReported = usePlatformNotReported()
+  const notReported = platformNotReported && check.id === 'SECURITY' && check.status === 'PASS'
   return (
-    <li className="sys-diag-row" data-status={check.status} data-testid={`system-diag-${check.id}`}>
+    <li className="sys-diag-row" data-status={check.status} data-testid={`system-diag-${check.id}`} data-reported={notReported ? 'false' : undefined}>
       <div className="sys-diag-head">
         <span className="sys-diag-label">{label}</span>
-        <Chip size="sm" variant="soft" color={STATUS_COLOR[check.status]} className="sys-status-chip">
-          <Chip.Label>{t(`common.diagnosticStatus.${check.status}`)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={notReported ? 'default' : STATUS_COLOR[check.status]} className="sys-status-chip">
+          <Chip.Label>{notReported ? t('common.platformNotReported.value') : t(`common.diagnosticStatus.${check.status}`)}</Chip.Label>
         </Chip>
       </div>
       <ProgressBar aria-label={label} value={resolved ? 100 : check.status === 'RUNNING' ? 50 : 0} size="sm" className="sys-bar" data-tone={STATUS_COLOR[check.status]}>

@@ -430,7 +430,10 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
       label: message,
       detail: FaultEvt[kind],
       channel: kind === FaultKind.MIC_CLIP || kind === FaultKind.MIC_NO_SIGNAL ? (key as AudioTrackId) : null,
-      params: { kind, evt: FaultEvt[kind], target: key, critical: false },
+      // Fix wave K (G75c-06): the CAUSE the fault names rides on its timeline row (`params.reason`, a code of
+      // `CAPTURE_FAULT_SENTENCES`), so that a surface words the row per fault - "The demo control raised a capture
+      // fault. The recording is not affected." - and never with the sentence of a capture that ended. Absent: no cause.
+      params: { kind, evt: FaultEvt[kind], target: key, critical: false, ...(typeof facts?.reason === 'string' && facts.reason !== '' ? { reason: facts.reason } : {}) },
     });
   }
   return next;

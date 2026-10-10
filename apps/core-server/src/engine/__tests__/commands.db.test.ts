@@ -733,12 +733,16 @@ describe('the log of the engine (SR-48)', () => {
       'level', 'time', 'pid', 'hostname', 'msg', 'unit', 'label', 'action', 'code', 'simCode', 'operatorId', 'mode', 'epoch', 'revision', 'step',
       'auditTotal', 'session', 'restartFault', 'tamperCleared', 'tabletLinkReset', 'tabletLinkCarried', 'auditRows', 'headSeq', 'engineSeq', 'ms',
       'committed', 'audit', 'events', 'seq', 'type', 'behindMs', 'tabletLinkOfflineUnwritten',
+      // Fix wave K (G75c-01, ruling D223): the start line says whether the restart fault of a closed session was ended.
+      'restartFaultEnded',
     ]);
     const engineLines = after.filter(isEngineLine);
     expect(engineLines.length).toBeGreaterThan(20);
     expect(engineLines.some((line) => line['msg'] === 'engine stopped')).toBe(true);
     expect(engineLines.some((line) => line['msg'] === 'hosted action ran')).toBe(true);
     expect([...new Set(engineLines.flatMap((line) => Object.keys(line).filter((key) => !engineKeys.has(key))))]).toEqual([]);
+    // The new member is a flag, never a text: `effects.restartFaultEnded === true` (`engine/host.ts`, the start line).
+    expect(engineLines.filter((line) => 'restartFaultEnded' in line).map((line) => typeof line['restartFaultEnded'])).toEqual(['boolean']);
 
     // (2) Every other line (readiness, the pipeline's shutdown, whatever a later unit writes when
     // the app closes): no key that names a secret, and no value in the form of one.

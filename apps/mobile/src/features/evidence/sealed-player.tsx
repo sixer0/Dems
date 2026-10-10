@@ -15,14 +15,28 @@
  *   band follow the leading player's `timeUpdate` events; no timer of this screen drives them.
  * - **The session lives 60 s.** The player renews ON DEMAND, never on a timer: before a Play or a
  *   seek on a session that is at its end (the Core's clock, 5 s margin), and once after a player
- *   error — then it goes back to the same position and plays on if it was playing. A second error
- *   at the same place is not renewed again: playback stops there with its position.
+ *   error ON SUCH A SESSION — then it goes back to the same position and plays on if it was
+ *   playing. A second error at the same place is not renewed again: playback stops there with its
+ *   position. **An error on a session that has NOT ended is not renewed at all** (wave K Z1,
+ *   G94b-10): the native player has already asked the Core for that place again by itself before it
+ *   reports an error, and a new media session cannot change what the Core answers there - a second
+ *   round only repeated the refused requests. Playback stops with its position; "Open again" is the
+ *   operator's, rate-limited.
+ * - **A renewal keeps the playhead** (wave K Z1): the position goes to the new players once when the
+ *   source is handed over and AGAIN when the leading player reports the stream loaded (a write the
+ *   player dropped while it had no index yet); until then the new stream's own "0:00" is not shown.
  * - **A failed fragment is an integrity failure, not a player error**: when operation 88 answers
  *   `FRAGMENT_NOT_AUTHENTIC`, or playback stopped and the last verify run of this screen names a
  *   failed fragment, the player says which file and fragment.
  * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal
  *   for the role says so; anything else goes to the shared presenter first and offers a
  *   rate-limited "Open again" (3 s, 6 s, 12 s; three tries, by the Core's clock).
+ * - **A seek is sent only to a stream that can be sought** (wave K M1, G94b-01). The Android player
+ *   (Media3 behind expo-video) maps EVERY seek on a fragmented file that carries no segment index
+ *   to position 0 and reports no duration for it. So the player's own report decides: a duration at
+ *   `sourceLoad` = the stream has its index, the scrubber seeks; no duration = the scrubber is
+ *   disabled and says why, the second file is not "re-aligned" (that would restart it), and Play
+ *   runs from where the player is. The session is asked WITH the index (`SEEK_INDEX_MEMBER`).
  * - Plain views and the kit; nothing here is animated (E-13).
  */
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
@@ -38,7 +52,7 @@ import { AudioSourceBand } from './audio-source-band';
 import { VerifiedSourceBadge } from './development-source';
 import { CAMERA_FILE_IDS, type CameraFileId, type ItemV2 } from './item-v2';
 import { cameraFilesOf, mediaSessionStale, mediaTransportOf, openMediaSessions, videoSourceOf, type MediaSessionRefusal, type MediaSessions } from './media-session';
-import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, type VerifiedSources } from './sealed-playback';
+import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, seekAvailabilityOf, type SeekAvailability, type VerifiedSources } from './sealed-playback';
 
 export interface SealedPlayerProps {
   evidenceId: string;
@@ -49,8 +63,13 @@ export interface SealedPlayerProps {
   sources: VerifiedSources | null;
   /** The fragments the last verify run on this screen named as failed (operation 41), if any. */
   failedFragments?: readonly { readonly trackId: string; readonly seq: number }[];
-  /** Raised by the screen's Play action; the player opens (or starts) once per value. */
+  /**
+   * Raised by the screen's Play / Pause action; once per value the player opens, starts - or, while
+   * it plays, pauses (wave K Z1, G94b-04: the action reads "Pause" then).
+   */
   playToken: number | null;
+  /** Wave K Z1 (G94b-04): told whenever the player starts or stops playing, so the screen's action can read "Pause". */
+  onPlayingChange?: (playing: boolean) => void;
   /**
    * Wave H C2: the camera files the Core says the package holds (operation 40 `media.files`, else
    * the VIDEO entries of the item's own `files` / `tracks`). null / absent: not reported - the
@@ -70,8 +89,9 @@ type Phase =
  *   SESSION  the media session was at its end by the Core's clock when the player failed again
  *            (its 60 s ran out: a stall, a throttled link), or the renewal got no session. Nothing
  *            is said about integrity: "Press Play to continue" renews and goes on;
- *   PLAYER   the player failed twice at one place on a session that had NOT ended: the stop names
- *            its position and points to Verify (an integrity answer is Verify's to give).
+ *   PLAYER   the player failed on a session that had NOT ended (wave K Z1, G94b-10: such a session is
+ *            never renewed by itself), or failed again at the place of a renewal: the stop names its
+ *            position and points to Verify (an integrity answer is Verify's to give).
  */
 type StopCause = 'SESSION' | 'PLAYER';
 
@@ -105,7 +125,7 @@ function setTime(player: VideoPlayer, seconds: number): void {
   }
 }
 
-export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, fileIds = null }: SealedPlayerProps) {
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayingChange, fileIds = null }: SealedPlayerProps) {
   const { t } = useTranslation();
   const live = useMobileLive();
   const sim = useSimInstance();
@@ -120,6 +140,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const [positionMs, setPositionMs] = useState(0);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const [retry, setRetry] = useState({ attempts: 0, until: 0 });
+  /** What the leading player said about the stream of ONE set of sessions: UNKNOWN until its `sourceLoad` (G94b-01). */
+  const [seekReport, setSeekReport] = useState<{ readonly of: MediaSessions | null; readonly value: SeekAvailability }>({ of: null, value: 'UNKNOWN' });
+  const seekRef = useRef<SeekAvailability>('UNKNOWN');
   const busy = useRef(false);
   const resume = useRef<Resume | null>(null);
   const renewedAtMs = useRef<number | null>(null);
@@ -127,6 +150,16 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const playingRef = useRef(false);
   /** A renewal got no session: the open sessions are dead whatever their clock says, so Play renews first. */
   const sessionEnded = useRef(false);
+  /** Wave K Z1: the place (seconds) a renewed session must come back to; null once the players are there. */
+  const pendingStart = useRef<number | null>(null);
+  /** Wave K Z1: true from the moment a new source goes to the players until the leading player has loaded it. */
+  const handingOver = useRef(false);
+
+  // G94b-04: the screen's action follows the player (and reads "Play" again when the player goes).
+  useEffect(() => {
+    onPlayingChange?.(playing);
+  }, [playing, onPlayingChange]);
+  useEffect(() => () => onPlayingChange?.(false), [onPlayingChange]);
 
   const segments = useMemo(() => bandSegments(item.audioIntervals, durationMs), [item.audioIntervals, durationMs]);
   const totalMs = bandDurationMs(item.audioIntervals, durationMs);
@@ -139,6 +172,17 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   /** The package is known to hold ONE camera file: said as a fact of the recording, not as a file that failed to open. */
   const oneCamera = fileIds !== null && fileIds.length === 1 ? fileIds[0] : null;
   const players = useMemo(() => [leadPlayer, followPlayer].slice(0, opened.length), [leadPlayer, followPlayer, opened.length]);
+
+  /** A report counts for the sessions it was made on: a new source is judged anew. */
+  const seek: SeekAvailability = seekReport.of === sessions ? seekReport.value : 'UNKNOWN';
+  const markSeek = (value: SeekAvailability) => {
+    seekRef.current = value;
+    setSeekReport({ of: sessions, value });
+  };
+  /** A position is written to a player only when the stream can be sought: on a stream without an index the write restarts it at 0. */
+  const align = (player: VideoPlayer, seconds: number) => {
+    if (seekRef.current !== 'NONE') setTime(player, seconds);
+  };
 
   const markPlaying = (value: boolean) => {
     playingRef.current = value;
@@ -214,7 +258,12 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     if (transport === null) return undefined;
     const target = resume.current;
     resume.current = null;
+    // Z1: a renewal comes back to its place; the time updates of the new stream before that are not the playhead.
+    pendingStart.current = target !== null && target.seconds > 0 ? target.seconds : null;
+    handingOver.current = true;
     let alive = true;
+    // A new source: what the last one could do says nothing about this one (the drawn state follows `sessions`).
+    seekRef.current = 'UNKNOWN';
     const active = [leadPlayer, followPlayer].slice(0, opened.length);
     void Promise.all(active.map((player, index) => player.replaceAsync(videoSourceOf(sessions[opened[index] as CameraFileId]!, transport))))
       .then(() => {
@@ -226,6 +275,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       .catch(() => {
         // The error itself may quote the source: only the fact is recorded.
         reportRuntimeIssue('warn', 'evidence.playback.source', 'a sealed file could not be handed to its player', { evidenceId });
+        handingOver.current = false;
         // R93-14: nothing plays - the Pause state set for this hand-over is taken back.
         if (alive && target?.play === true) {
           playingRef.current = false;
@@ -276,12 +326,14 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       void open({ seconds: position.current / 1000, play: true }, true);
       return;
     }
-    if (players.length > 1 && needsResync(leadPlayer.currentTime, followPlayer.currentTime, 0)) setTime(followPlayer, leadPlayer.currentTime);
+    if (players.length > 1 && needsResync(leadPlayer.currentTime, followPlayer.currentTime, 0)) align(followPlayer, leadPlayer.currentTime);
     for (const player of players) player.play();
     markPlaying(true);
   };
 
   const seekTo = (ms: number) => {
+    // G94b-01: this stream cannot be sought - nothing is sent to the player and the playhead stays where the player is.
+    if (seekRef.current === 'NONE') return;
     const seconds = clampSeek(ms / 1000, totalMs / 1000);
     position.current = seconds * 1000;
     setPositionMs(seconds * 1000);
@@ -299,7 +351,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     const wasPlaying = playingRef.current;
     pause();
     const samePlace = renewedAtMs.current !== null && Math.abs(at - renewedAtMs.current) <= SAME_PLACE_MS;
-    if (!samePlace && !busy.current && consumeRetry()) {
+    // G94b-10: only a session at its END is renewed by itself. On a live session the error is the
+    // Core's answer for this place (the native player has retried it already): asking again through
+    // a new session repeats the refused requests and nothing else.
+    if (stale() && !samePlace && !busy.current && consumeRetry()) {
       renewedAtMs.current = at;
       void open({ seconds: at / 1000, play: wasPlaying }, true);
       return;
@@ -314,6 +369,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     if (sessions === null) return undefined;
     const subscriptions = [
       leadPlayer.addListener('timeUpdate', ({ currentTime }) => {
+        // Z1: a renewed stream reports its own start until the position has been written to it.
+        if (pendingStart.current !== null) {
+          if (currentTime * 1000 + SAME_PLACE_MS < pendingStart.current * 1000) return;
+          pendingStart.current = null;
+        }
         const nowMs = Math.min(currentTime * 1000, totalMs);
         position.current = nowMs;
         setPositionMs(nowMs);
@@ -321,9 +381,29 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           renewedAtMs.current = null;
           setRetry({ attempts: 0, until: 0 });
         }
-        if (opened.length > 1 && needsResync(currentTime, followPlayer.currentTime)) setTime(followPlayer, currentTime);
+        if (opened.length > 1 && needsResync(currentTime, followPlayer.currentTime)) align(followPlayer, currentTime);
       }),
-      leadPlayer.addListener('playToEnd', () => pause()),
+      // Z1: taking the old source off a player makes it report its end. That is not the end of
+      // the recording: while a new source is being handed over the report is not a Pause.
+      leadPlayer.addListener('playToEnd', () => {
+        if (!handingOver.current) pause();
+      }),
+      // Wave K M1 (G94b-01): whether THIS stream can be sought is the player's own report.
+      leadPlayer.addListener('sourceLoad', ({ duration }) => {
+        const available = seekAvailabilityOf(duration);
+        handingOver.current = false;
+        // Kept for the team: the file, and whether the Core said it sent the index. Never the source.
+        if (available === 'NONE') reportRuntimeIssue('warn', 'evidence.playback.seek', 'the player reported no duration: this stream cannot be sought', { evidenceId, fileId: opened[0] ?? null, indexed: sessions[opened[0] as CameraFileId]?.indexed ?? false });
+        markSeek(available);
+        // Z1: the place of a renewal, written again now that the player knows the stream (a write
+        // before the index was read is dropped by the Android player). A stream that cannot be
+        // sought plays from its start: nothing is pending on it.
+        const pending = pendingStart.current;
+        if (pending !== null) {
+          if (available === 'NONE') pendingStart.current = null;
+          else for (const player of [leadPlayer, followPlayer].slice(0, opened.length)) if (needsResync(pending, player.currentTime)) setTime(player, pending);
+        }
+      }),
       ...[leadPlayer, followPlayer].slice(0, opened.length).map((player, index) =>
         player.addListener('statusChange', ({ status }) => {
           if (status === 'error') onPlayerError(opened[index] as CameraFileId);
@@ -343,7 +423,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     let alive = true;
     queueMicrotask(() => {
       if (!alive) return;
-      if (phase.kind === 'ready') play();
+      // G94b-04: the screen's action reads "Pause" while the player plays, and pauses it.
+      if (phase.kind === 'ready') (playingRef.current ? pause : play)();
       else if (phase.kind === 'idle') void open({ seconds: 0, play: true }, false);
     });
     return () => {
@@ -476,6 +557,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         minValue={0}
         maxValue={Math.max(1, totalMs)}
         step={1000}
+        isDisabled={seek === 'NONE'}
         onChange={(value) => setDragMs(Array.isArray(value) ? (value[0] ?? 0) : value)}
         onChangeEnd={(value) => {
           setDragMs(null);
@@ -489,6 +571,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           <Slider.Thumb />
         </Slider.Track>
       </Slider>
+      {seek === 'NONE' ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-playback-no-seek">
+          {t('features.evidence.player.noSeek')}
+        </Text>
+      ) : null}
       <View style={styles.transport}>
         <Button
           size="md"
@@ -505,7 +592,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           {formatMediaTime(shownMs)} / {formatMediaTime(totalMs)}
         </Text>
       </View>
-      <AudioSourceBand segments={segments} totalMs={totalMs} positionMs={shownMs} sources={sources} />
+      <AudioSourceBand segments={segments} totalMs={totalMs} positionMs={shownMs} sources={sources} itemIntervals={item.audioIntervals} />
     </View>
   );
 }

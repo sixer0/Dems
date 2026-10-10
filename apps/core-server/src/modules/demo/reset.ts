@@ -134,7 +134,7 @@ export interface ResetHost {
    */
   realEvidence(): Promise<RealEvidenceFacts>;
   /** The audit row of a reset the guard refused: one unit of work, the operator as actor. */
-  auditRefusal(refusal: { readonly operation: ResetOperation; readonly actorId: string; readonly reason: string }): Promise<void>;
+  auditRefusal(refusal: { readonly operation: ResetOperation; readonly actorId: string; /** The paired device that sent the request; null or absent for a web console (D216 (2)). */ readonly deviceId?: string | null; readonly reason: string }): Promise<void>;
   /** Refuses every other request until the returned function is called. */
   hold(): () => void;
   drain(): Promise<void>;
@@ -160,6 +160,13 @@ export interface ResetCall {
   readonly scenario: ScenarioName;
   /** The operator of the request: the actor of the lineage row and of the `SCENARIO_LOADED` row. */
   readonly actorId: string;
+  /**
+   * The paired device the operator's session is bound to, when a device sent the request; null or
+   * absent for a web console session (decision D216 (2): an audit row of an action a paired device
+   * sent names that device). It reaches the row of a REFUSED reset only: the lineage row has no
+   * device column (schema 6), and the rows of a reset that ran are the routine's.
+   */
+  readonly deviceId?: string | null;
   /** The request ID: the correlation ID of the log lines and of the error-log entries. */
   readonly requestId: string;
   /** The request's logger. */
@@ -322,7 +329,7 @@ export function createDemoReset(host: ResetHost): DemoReset {
       log.warn({ code: REAL_EVIDENCE_REFUSAL, ...who, ...found, epochBefore, quiesced: false }, BLOCKED);
       host.persist({ level: 'warn', source: RESET_ERROR_SOURCE, message: BLOCKED, code: REAL_EVIDENCE_REFUSAL, context: { ...context, ...found, epochBefore, quiesced: false } });
       try {
-        await host.auditRefusal({ operation: call.operation, actorId: call.actorId, reason: REAL_EVIDENCE_REFUSAL });
+        await host.auditRefusal({ operation: call.operation, actorId: call.actorId, ...(typeof call.deviceId === 'string' ? { deviceId: call.deviceId } : {}), reason: REAL_EVIDENCE_REFUSAL });
       } catch (error) {
         log.error({ err: error, code: 'DEMO_RESET_REFUSAL_NOT_AUDITED', ...who }, REFUSAL_NOT_AUDITED);
         host.persist({ level: 'error', source: RESET_ERROR_SOURCE, message: REFUSAL_NOT_AUDITED, ...describeError(error), code: 'DEMO_RESET_REFUSAL_NOT_AUDITED', context });

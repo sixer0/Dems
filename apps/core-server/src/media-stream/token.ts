@@ -7,8 +7,8 @@
  * its prefix and both client log-blanking lists blank it WHOLE by the prefix rule (a separator
  * such as `.` would leave the half behind it in a log). Decoded:
  *
- *   payload   u8 version (1) | u8 file (1 = VIDEO-01, 2 = VIDEO-02) | u48 expiresAt (ms, big endian)
- *             | 8 bytes nonce | u8 length, evidenceId (ASCII)
+ *   payload   u8 version (1) | u8 file (1 = VIDEO-01, 2 = VIDEO-02; + 0x80 = the INDEXED VIEW of
+ *             that file) | u48 expiresAt (ms, big endian) | 8 bytes nonce | u8 length, evidenceId (ASCII)
  *   mac       HMAC-SHA-256, 32 bytes, over
  *             "dems.media-session/1" 0x00 | payload | u16 length, operatorId | u16 length, sessionId
  *
@@ -20,6 +20,11 @@
  * expiry was edited does not verify either: one comparison, in constant time, and no way to learn
  * WHICH component differed. A session that ended resolves to no principal at all (stage 4), so a
  * token dies with its session at the latest.
+ *
+ * THE VIEW (fix wave K Z1, ruling D224 (1)). A session serves either the file as sealed or its
+ * INDEXED VIEW (`seek-index.ts`: the same bytes plus one segment index, so every offset behind the
+ * index differs). Which one is a claim of the token, under the same MAC: the high bit of the file
+ * byte. A token cannot be moved from one view to the other, and its length does not change.
  *
  * THE REPLAY WINDOW is exactly the lifetime: a token is not single-use (a player asks for many
  * ranges with it), so whoever holds the token AND the session credential it is bound to can ask
@@ -46,6 +51,8 @@ const MAC_LABEL = Buffer.from('dems.media-session/1\u0000', 'utf8');
 const HEAD_BYTES = 1 + 1 + 6 + MEDIA_TOKEN_NONCE_BYTES + 1;
 const PRINCIPAL_PART = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_EXPIRES_AT = 2 ** 48 - 1;
+/** The bit of the file byte that says "the indexed view". */
+const INDEXED_VIEW_BIT = 0x80;
 
 /** Computes the MAC of a message under the media-session signing key. The key never leaves its store. */
 export type MediaSessionMac = (message: Uint8Array) => Uint8Array;
@@ -63,6 +70,8 @@ export interface MediaTokenClaims {
   readonly fileId: PackageVideoTrackId;
   /** Core clock, epoch milliseconds: the last instant the token is accepted is the one before it. */
   readonly expiresAt: number;
+  /** Fix wave K Z1: true when the session serves the INDEXED VIEW of the file. Absent = the file as sealed. */
+  readonly indexed?: boolean;
 }
 
 export const MediaTokenRefusal = {
@@ -97,7 +106,7 @@ function payloadOf(claims: MediaTokenClaims, nonce: Uint8Array): Buffer {
   const evidence = Buffer.from(claims.evidenceId, 'ascii');
   const head = Buffer.alloc(HEAD_BYTES);
   head.writeUInt8(MEDIA_TOKEN_VERSION, 0);
-  head.writeUInt8(file + 1, 1);
+  head.writeUInt8((file + 1) | (claims.indexed === true ? INDEXED_VIEW_BIT : 0), 1);
   head.writeUIntBE(claims.expiresAt, 2, 6);
   Buffer.from(nonce).copy(head, 8);
   head.writeUInt8(evidence.byteLength, 8 + MEDIA_TOKEN_NONCE_BYTES);
@@ -134,13 +143,15 @@ export function readMediaToken(token: unknown, holder: MediaTokenHolder, now: nu
 
     // Authentic from here on: this server wrote these bytes for this holder.
     if (payload.readUInt8(0) !== MEDIA_TOKEN_VERSION) return INVALID;
-    const fileId = VIDEO_TRACK_IDS[payload.readUInt8(1) - 1];
+    const fileByte = payload.readUInt8(1);
+    const indexed = (fileByte & INDEXED_VIEW_BIT) !== 0;
+    const fileId = VIDEO_TRACK_IDS[(fileByte & ~INDEXED_VIEW_BIT) - 1];
     const expiresAt = payload.readUIntBE(2, 6);
     const length = payload.readUInt8(8 + MEDIA_TOKEN_NONCE_BYTES);
     const evidenceId = payload.subarray(HEAD_BYTES).toString('ascii');
     if (fileId === undefined || payload.byteLength !== HEAD_BYTES + length || !EVIDENCE_ID_PATTERN.test(evidenceId)) return INVALID;
     if (!Number.isFinite(now) || now >= expiresAt) return { ok: false, refusal: MediaTokenRefusal.EXPIRED };
-    return { ok: true, claims: { evidenceId, fileId, expiresAt } };
+    return { ok: true, claims: { evidenceId, fileId, expiresAt, ...(indexed ? { indexed } : {}) } };
   } catch {
     return INVALID;
   }

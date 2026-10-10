@@ -16,10 +16,18 @@ source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_captur
 source_functional_check: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/10_spike_stt_functional_check.md
 source_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/01_specs.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D10, D12)
-last_updated: 2026-10-09 (status sweep PE-R8-09..11: §B.7 R-8 CONFIRMED by D24, Q-STT-CFG answer (a)); 2026-10-09 (pair-review erratum PE-111-08: pointer in §A.2 to the file-time-0 rule of the capture spec, D66); 2026-10-08 (RV-SPEC: errata AU3-01/AU2-01/AU2-02 on the cpu-local path; §B.7 R-8 STT configuration added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-14/22)
+last_updated: 2026-10-11 (docs errata pass for fix wave K: PE-WK-20 (§D.2, `intervals_incomplete` on the document of an interrupted recording; `implementation/147_docs_errata_wave_k.md`; decisions D221 (3), D224); 2026-10-09 (status sweep PE-R8-09..11: §B.7 R-8 CONFIRMED by D24, Q-STT-CFG answer (a)); 2026-10-09 (pair-review erratum PE-111-08: pointer in §A.2 to the file-time-0 rule of the capture spec, D66); 2026-10-08 (RV-SPEC: errata AU3-01/AU2-01/AU2-02 on the cpu-local path; §B.7 R-8 STT configuration added as a proposal, D20; 2026-10-07 row-35 remediation SEC35-14/22)
 ---
 
 # Transcript Spec — VAD chunking, CPU STT, 2-speaker diarization, signed revisions
+
+## Errata index (fix pass of 2026-10-11)
+
+> Added on 2026-10-11 by the documentation errata pass of fix wave K (`implementation/147_docs_errata_wave_k.md`). An index only: each erratum stays where it stands. Earlier errata of this file (`PE-R8-…`, `PE-111-…`, `AU2-…`) are marked inline and are not repeated here. Decision numbers refer to `decisions/decisions.md`.
+
+| Erratum | Where | What it changes, in one line | Decision |
+|---|---|---|---|
+| PE-WK-20 | §D.2, row "Durable-part case" | The sealed document of an INTERRUPTED recording lists `intervals_incomplete` in `qa_flags` when an interval has no end; the end is not written into the document (the manifest states it); a stopped recording is byte for byte as before | D221 (3), D224 |
 
 > **Authority in force.** Blueprint row 33 (`identification/02_structured.md:213`) is the hard
 > gate: *"Functional-check criteria measurable without RTF/WER figures (D230); each stage has input,
@@ -315,6 +323,13 @@ proof is a **functional** check, never a throughput measurement.
 | Resume | RECOVERY reads the last committed chunk, re-derives VAD boundaries (deterministic on the sealed audio), and continues; the re-run must anchor on the sealed fixture/audio bytes, not regenerate audio | row12 §9.2; `coll4` F-131; register NM-07 |
 | Sealing resume cross-ref | Sealing is checkpointed per step and resumed through RECOVERY (row 32; register NM-07, `specs` §E.4/§E.5); if the transcript is already committed, sealing does not re-run STT | OD-08 (D4); `specs` §E.4; register NM-07 |
 | Durable-part case | A crash during RECORDING seals the durable part flagged `interrupted`; the transcript covers the durable timeline and records `intervals_incomplete` if the interval map is truncated | OD-08 (D4); `specs` §E.5 |
+
+**Erratum PE-WK-20 (decisions D221 (3), D224; re-gate 81 finding G81b-04; fix wave K driver S1, `implementation/139_fix_wave_k_s1.md` section 1 row 4; `delegation_progress/contract_wave_k.md` S1 section 4; `delegation_progress/file_requests.md` line 18:00:10Z; `implementation/147_docs_errata_wave_k.md`):** the "Durable-part case" row above
+was not true of what the Core sealed: the document of a session whose recording ended at a fault kept the last audio-source interval open (`to_ms: null`) and carried no flag. As built, the sealed document of an INTERRUPTED recording lists `intervals_incomplete` in `qa_flags` when an interval has no end. The caller tells the document builder that the recording was interrupted (`intervalsTruncated`;
+`apps/transcriber/src/pipeline/assembly.ts:59`, `:156`); the builder sets the flag when that is so and some interval has `to_ms: null` (`apps/transcriber/src/pipeline/document.ts:161-167`). The Core answers "interrupted" from the committed state, with the same reader the clients use (`interruptedSealOfSession`): `apps/core-server/src/transcription/index.ts:458-460`, handed to the run as the dependency `interrupted`
+(`transcription/session-run.ts:136-139`, `:349`). What it states and what it does not: the document states that the interval map is INCOMPLETE; it does NOT write an end into the interval. The end of the sealed media is the manifest's to state (the document's clock is the audio tap), so `to_ms` stays `null` in the document. A recording that was STOPPED is byte for byte as before (an open last interval there means "until the end of
+the recording"). The flag has a second, older source that is not touched: the runner sets it when the audio source of a chunk cannot be named from the interval map (none, or more than one interval covers its start; `apps/transcriber/src/pipeline/runner.ts:303-310`). Items already sealed are unchanged; a transcript that an OLD build assembled for an interrupted session and that the new build assembles again would differ by the flag (`DOCUMENT_HASH_MISMATCH`), and no such session
+existed on the development lane when this was written (`implementation/139_fix_wave_k_s1.md` decision 6). Proven by unit tests (`apps/transcriber/src/__tests__/document.test.ts`, the Core's `transcription/__tests__/session-run.test.ts`); the document of a real killed recording was NOT inspected live: not yet gate-verified.
 
 ### D.3 Interaction with sealing waiting for the transcript (D223)
 

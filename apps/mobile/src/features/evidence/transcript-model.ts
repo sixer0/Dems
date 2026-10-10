@@ -49,6 +49,8 @@ export interface TranscriptRevision {
   readonly simulated: boolean;
   readonly createdAt: number | null;
   readonly changes: readonly TranscriptChange[];
+  /** Why the revision was made, in its author's words as the Core answers them; null / absent: the answer states none (fix wave K, G81b-09). */
+  readonly reason?: string | null;
 }
 
 /** The longest corrected text and note the form accepts (the note bound is the contract's). */
@@ -95,6 +97,24 @@ function readChange(value: unknown): TranscriptChange | null {
   return { segmentIndex, from: value.from, to: value.to };
 }
 
+/**
+ * The member of a revision that holds WHY it was made (fix wave K, G81b-09 (b)). The name is the
+ * ONE constant here; the Core's record and signed body call it `reason` (request filed to the
+ * producer, `delegation_progress/file_requests.md`: operation 86 did not carry it at this wave's start).
+ */
+export const REVISION_REASON_MEMBER = 'reason';
+/** The longest reason drawn (the bound of the Core's column and of the request's `note`). */
+const REVISION_REASON_MAX_SHOWN = 500;
+
+/** The reason a revision states, trimmed; null when the answer states none (never a default, never a guess). */
+export function readRevisionReason(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const reason = value[REVISION_REASON_MEMBER];
+  if (typeof reason !== 'string') return null;
+  const trimmed = reason.trim();
+  return trimmed.length > 0 && trimmed.length <= REVISION_REASON_MAX_SHOWN ? trimmed : null;
+}
+
 /** One revision (the answer of operation 85, an element of operation 86), or null. */
 export function readTranscriptRevision(value: unknown): TranscriptRevision | null {
   if (!isRecord(value) || !Array.isArray(value.changes) || value.changes.length > MAX_CHANGES) return null;
@@ -120,6 +140,7 @@ export function readTranscriptRevision(value: unknown): TranscriptRevision | nul
     simulated: !(signature.simulated === false && signature.algorithm === 'Ed25519'),
     createdAt: typeof value.createdAt === 'number' && Number.isFinite(value.createdAt) ? value.createdAt : null,
     changes,
+    reason: readRevisionReason(value),
   };
 }
 
@@ -136,6 +157,20 @@ export function readTranscriptRevisions(value: unknown): TranscriptRevision[] | 
 }
 
 export type TranscriptPaneState = 'ASSEMBLED' | 'PARTIAL' | 'UNAVAILABLE' | 'DISABLED' | 'UNKNOWN';
+
+/** `details.reason` of the `403 NOT_PERMITTED` of operations 84 / 86 for a caller outside the case of a REAL item (SEC35-16). */
+export const TRANSCRIPT_REASON_CASE_SCOPE = 'EVIDENCE_CASE_SCOPE';
+
+/**
+ * Which sentence a refused read (403) gets (fix wave K, G81b-07): the sentence follows the refusal's
+ * OWN reason. A case-scope refusal is about the case, never about the role; only a refusal that
+ * names no reason is the role's (the permission guard); any other reason gets the neutral sentence.
+ */
+export type DeniedReadKind = 'CASE_SCOPE' | 'ROLE' | 'OTHER';
+export function deniedReadKindOf(reason: string | null): DeniedReadKind {
+  if (reason === TRANSCRIPT_REASON_CASE_SCOPE) return 'CASE_SCOPE';
+  return reason === null ? 'ROLE' : 'OTHER';
+}
 
 /** `details.reason` of operation 84's `409 TRANSCRIPT_NOT_READY` for an item the Core keeps no transcript of (G81-01). */
 export const TRANSCRIPT_REASON_SIMULATED_ITEM = 'SIMULATED_ITEM';

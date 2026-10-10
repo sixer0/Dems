@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, Chip, Spinner } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileText, Lock, PencilLine, RotateCcw } from 'lucide-react'
@@ -8,13 +8,13 @@ import { Permission, selectCan, selectOperator, useSim } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { retryCoreQuery, useQueryFailure } from '@/lib/core-queries'
 import { useWebLive } from '@/runtime'
-import type { ItemV2 } from './item-v2'
+import type { ItemTranscriptModel, ItemV2 } from './item-v2'
 import { logEvidence } from './log'
 import { formatWibDateTime, investigatorNameOf } from './model'
 import { formatMediaTime, permissionGate } from './sealed-playback'
 import { selectOperators } from './selectors'
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript'
-import { currentRevisionNumber, deriveSegments, paneStateOf, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
+import { currentRevisionNumber, deriveSegments, paneStateOf, revisionReasons, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
 import { TranscriptReviseDialog } from './transcript-revise-dialog'
 import { useRetryCooldown } from './use-retry-cooldown'
 
@@ -88,6 +88,9 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
   const document = transcript.data ?? null
   const state = paneStateOf(summary, document !== null)
   const revisionList = revisions.data ?? []
+  // G81b-09: the stated reason of each revision (the revision's own member, else the Core's audit row of it).
+  const auditRows = useSim((s) => s.audit.rows)
+  const reasons = useMemo(() => revisionReasons(revisions.data ?? [], evidenceId, auditRows), [revisions.data, evidenceId, auditRows])
   const derived = document === null ? [] : deriveSegments(document, revisionList)
   const baseRevision = currentRevisionNumber(document, revisionList)
   const refusal = transcript.error instanceof TranscriptReadError ? transcript.error.refusal : transcript.isError ? 'FAILED' : null
@@ -131,6 +134,8 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
           </>
         ) : null}
       </div>
+
+      <TranscriptModelFacts model={item.transcriptModel} />
 
       {blocked ? (
         <p className="evi-caption" role="status" data-testid="evidence-transcript-may-not-read">
@@ -202,7 +207,7 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
               ))}
             </ol>
           )}
-          <RevisionList revisions={revisionList} failed={revisions.isError} nameOf={nameOf} />
+          <RevisionList revisions={revisionList} failed={revisions.isError} nameOf={nameOf} reasons={reasons} />
         </>
       ) : null}
 
@@ -262,7 +267,51 @@ function SegmentRow({ entry, gate, authorName, onRevise }: { entry: DerivedSegme
   )
 }
 
-function RevisionList({ revisions, failed, nameOf }: { revisions: readonly TranscriptRevision[]; failed: boolean; nameOf: (operatorId: string) => string }) {
+/**
+ * Fix wave K (G81b-06; D160): which model made the sealed transcript, as the item states it. A local
+ * backend: name, the version the installation declared, quantisation, file hash. A server backend:
+ * the name and the Core's own sentence that version, quantisation and hash are not available to it
+ * and were not verified. Nothing is drawn for an item that states no model.
+ */
+export function TranscriptModelFacts({ model }: { model: ItemTranscriptModel | null }) {
+  const { t } = useTranslation()
+  if (model === null) return null
+  return (
+    <section className="flex flex-col gap-1" data-testid="evidence-transcript-model" data-reported-by-server={model.reportedByServer ? 'true' : 'false'} aria-label={t('web.transcript.model.title')}>
+      <span className="evi-strong">{t('web.transcript.model.title')}</span>
+      <dl className="evi-kv m-0">
+        <div>
+          <dt className="evi-caption">{t('web.transcript.model.name')}</dt>
+          <dd className="evi-mono" data-testid="evidence-transcript-model-name">{model.name}</dd>
+        </div>
+        {model.reportedByServer ? null : (
+          <>
+            <div>
+              <dt className="evi-caption">{t('web.transcript.model.version')}</dt>
+              <dd className="evi-mono" data-testid="evidence-transcript-model-version">{model.version ?? t('common.platformNotReported.value')}</dd>
+            </div>
+            <div>
+              <dt className="evi-caption">{t('web.transcript.model.quantisation')}</dt>
+              <dd className="evi-mono" data-testid="evidence-transcript-model-quantisation">{model.quantisation ?? t('common.platformNotReported.value')}</dd>
+            </div>
+            <div>
+              <dt className="evi-caption">{t('web.transcript.model.hash')}</dt>
+              <dd className="evi-mono break-all" data-testid="evidence-transcript-model-hash">{model.modelSha256 ?? t('common.platformNotReported.value')}</dd>
+            </div>
+          </>
+        )}
+      </dl>
+      {model.reportedByServer ? (
+        // D160: the Core's own sentence - reported by the STT server, not verified by the Core.
+        <p className="evi-caption" data-testid="evidence-transcript-model-report">
+          {model.report}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+export function RevisionList({ revisions, failed, nameOf, reasons }: { revisions: readonly TranscriptRevision[]; failed: boolean; nameOf: (operatorId: string) => string; reasons: ReadonlyMap<string, string> }) {
   const { t } = useTranslation()
   return (
     <section className="flex flex-col gap-2" data-testid="evidence-transcript-revisions" aria-label={t('evidence.transcript.revisions.title')}>
@@ -288,6 +337,9 @@ function RevisionList({ revisions, failed, nameOf }: { revisions: readonly Trans
                 {' · '}
                 {revision.simulated ? t('evidence.transcript.revisions.simulated') : t('evidence.transcript.revisions.signed', { key: revision.signedBy })}
               </span>
+              <p className="evi-caption m-0" data-testid={`evidence-transcript-revision-reason-${revision.number}`} data-reason={reasons.has(revision.revisionId) ? 'stated' : 'none'}>
+                {reasons.has(revision.revisionId) ? t('web.transcript.reason', { reason: reasons.get(revision.revisionId) ?? '' }) : t('web.transcript.reasonNotReported')}
+              </p>
               <ul className="m-0 list-none p-0">
                 {revision.changes.map((change, index) => (
                   <li key={`${change.segmentIndex}-${index}`} className="evi-caption">

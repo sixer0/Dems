@@ -55,6 +55,10 @@ describe('StrictMode: one request per effect-started call', () => {
     fireEvent.press(screen.getByTestId('evidence-action-export'));
     await b.flush();
     await b.elapse(EXPORT_AUTH_MS + 400);
+    // Fix wave K (D223 (1)): nothing is sent by opening the wizard, also under StrictMode; the explicit press sends ONE probe.
+    expect(b.requests('exportEvidence')).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('evidence-export-request-authorization'));
+    await b.elapse(400);
     expect(screen.getByTestId('evidence-export-denied')).toBeTruthy();
     expect(b.requests('exportEvidence')).toHaveLength(1);
     expect(b.engine.sim.store.getState().audit.rows.filter((row) => row.type === 'EXPORT_DENIED' && row.evidenceId === id)).toHaveLength(1);

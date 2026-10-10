@@ -11,7 +11,7 @@
 // and the item is sealed through the engine's seal door with that package's facts - no capture
 // worker and no transcriber ran. The transcript document is a hand-written `dems.transcript/1`
 // document that the Core's own strict reader accepts.
-import { EvidenceSliceSchema, TranscriptDocumentSchema, TranscriptRevisionPageSchema, TranscriptRevisionSchema } from '@dems/shared/api';
+import { CORE_API_EXAMPLES, EvidenceSliceSchema, TRANSCRIPT_REVISION_REASON_EXAMPLE, TranscriptDocumentSchema, TranscriptRevisionPageSchema, TranscriptRevisionSchema } from '@dems/shared/api';
 import { PackageFile } from '@dems/shared/evidence-package';
 import { TranscriptRevisionsFileSchema, verifyPackageV2, type PackageVerifyResult } from '@dems/shared/evidence-verify';
 import type { CompleteSealInput, SealingStepReport } from '@dems/shared/sim';
@@ -209,6 +209,8 @@ async function rig(slug: string, sealedBy: 'CORE_KEY' | 'OTHER_KEY' = 'CORE_KEY'
 }
 
 const REQUEST = { baseRevision: 0, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to: 'Terima kasih, Bu.' }], note: 'The witness addressed a woman officer.' } as const;
+/** A correction of segment 1 AFTER `REQUEST` was appended: its `from` is the text that revision gave the segment (fix wave K, G81b-01). */
+const AFTER_FIRST = { segmentIndex: 1, from: 'Terima kasih, Bu.', to: 'Terima kasih, Ibu.' } as const;
 const noticed = (result: PackageVerifyResult): string[] => result.notices.map((notice) => notice.code);
 const failing = (result: PackageVerifyResult): string[] => result.checks.filter((check) => check.status === 'FAIL').map((check) => `${check.id} ${check.findings.map((finding) => finding.code).join(',')}`);
 const codeOf = (response: { json(): unknown }): string => (response.json() as { error: { code: string } }).error.code;
@@ -445,7 +447,8 @@ describe('operation 85 createTranscriptRevision: a derived, signed record; the s
 
     // The remains of an append whose unit did not commit (one record MORE than rows) are dropped at the next append.
     writeFileSync(target, JSON.stringify({ ...list, revisions: [list.revisions[0], { ...(list.revisions[0] as object), revisionNo: 2 }] }));
-    expect((await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 1 })).statusCode).toBe(201);
+    // Fix wave K (G81b-01): the second correction of the segment starts from the text revision 1 gave it.
+    expect((await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 1, changes: [AFTER_FIRST] })).statusCode).toBe(201);
     expect(failing(await verify(2))).toEqual([]);
   });
 
@@ -462,12 +465,55 @@ describe('operation 85 createTranscriptRevision: a derived, signed record; the s
   });
 });
 
+describe('FIX WAVE K, G81b-01 (ruling D221 (2)): operation 85 signs a change only of the CURRENT text of its segment', () => {
+  it('a `from` that is not the sealed text is refused 422 REVISION_FROM_NOT_CURRENT_TEXT: no row, no audit row, the package list byte-identical; CONTROL: the true `from` is appended', async () => {
+    const { server, investigator, transcript, evidenceId, hashOf } = await rig('wk_from_a');
+    const listBefore = hashOf(PackageFile.TRANSCRIPT_REVISIONS);
+    const nothing = await server.written(async () => {
+      const response = await server.post(investigator, transcript('/revisions'), { ...REQUEST, changes: [{ segmentIndex: 1, from: 'not the sealed text', to: 'Berapa lama?' }] });
+      expect([response.statusCode, codeOf(response), detailsOf(response)]).toEqual([422, 'INVALID_INPUT', { in: 'body', member: 'changes', reason: 'REVISION_FROM_NOT_CURRENT_TEXT', segmentIndex: 1, currentRevision: 0 }]);
+      // One false change beside a true one refuses the whole request.
+      const mixed = await server.post(investigator, transcript('/revisions'), { ...REQUEST, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to: 'Terima kasih, Bu.' }, { segmentIndex: 0, from: 'Selamat pagi', to: 'Selamat siang' }] });
+      expect([mixed.statusCode, detailsOf(mixed)['reason'], detailsOf(mixed)['segmentIndex']]).toEqual([422, 'REVISION_FROM_NOT_CURRENT_TEXT', 0]);
+    });
+    expect(nothing).toEqual([]);
+    expect((await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1', [evidenceId])).rows[0]?.n).toBe(0);
+    expect(hashOf(PackageFile.TRANSCRIPT_REVISIONS)).toBe(listBefore);
+    const accepted = await server.written(async () => {
+      expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+    });
+    expect(accepted.map((row) => row.type)).toEqual(['TRANSCRIPT_REVISED']);
+  });
+
+  it('after a revision the current text is the head\'s: the sealed text is refused, the revised text is accepted; a moved head stays 409 whatever the `from`', async () => {
+    const { server, investigator, transcript, evidenceId } = await rig('wk_from_b');
+    expect((await server.post(investigator, transcript('/revisions'), REQUEST)).statusCode).toBe(201);
+    const nothing = await server.written(async () => {
+      // The head moved (base 0, head 1): 409 for a false AND for a true `from` - the conflict is judged first.
+      for (const from of ['not the sealed text', 'Terima kasih, Bu.']) {
+        const stale = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 0, changes: [{ segmentIndex: 1, from, to: 'Terima kasih, Ibu.' }] });
+        expect([stale.statusCode, codeOf(stale), detailsOf(stale)['currentRevision']], from).toEqual([409, 'TRANSCRIPT_REVISION_CONFLICT', 1]);
+      }
+      // On the right base, the SEALED text of a segment revision 1 changed is no longer its text.
+      const sealedText = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 1, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to: 'Terima kasih, Ibu.' }] });
+      expect([sealedText.statusCode, detailsOf(sealedText)['reason'], detailsOf(sealedText)['currentRevision']]).toEqual([422, 'REVISION_FROM_NOT_CURRENT_TEXT', 1]);
+    });
+    expect(nothing).toEqual([]);
+    // The head's text, and a segment no revision touched (its sealed text), in one request.
+    const next = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 1, changes: [{ segmentIndex: 1, from: 'Terima kasih, Bu.', to: 'Terima kasih, Ibu.' }, { segmentIndex: 0, from: 'Selamat pagi, silakan duduk.', to: 'Selamat pagi. Silakan duduk.' }] });
+    expect(next.statusCode).toBe(201);
+    expect((await server.owner.query('SELECT count(*)::int AS n FROM public.transcript_revisions WHERE evidence_id = $1', [evidenceId])).rows[0]?.n).toBe(2);
+  });
+});
+
 describe('operation 86 listTranscriptRevisions', () => {
   it('newest first, with the changes of each signed body; paged by the revision number; an empty page before any revision', async () => {
     const { server, investigator, transcript } = await rig('d4tr_list');
     expect(TranscriptRevisionPageSchema.parse((await server.get(investigator, transcript('/revisions'))).json())).toEqual({ items: [], nextCursor: null });
-    for (const [index, to] of ['Terima kasih, Bu.', 'Terima kasih, Ibu.', 'Terima kasih banyak, Ibu.'].entries()) {
-      const response = await server.post(investigator, transcript('/revisions'), { baseRevision: index, changes: [{ segmentIndex: 1, from: 'Terima kasih, Pak.', to }], note: `Correction number ${index + 1}.` });
+    // Fix wave K (G81b-01): each correction starts from the CURRENT text - the one before it, not the sealed text again.
+    const texts = ['Terima kasih, Pak.', 'Terima kasih, Bu.', 'Terima kasih, Ibu.', 'Terima kasih banyak, Ibu.'];
+    for (const [index, to] of texts.slice(1).entries()) {
+      const response = await server.post(investigator, transcript('/revisions'), { baseRevision: index, changes: [{ segmentIndex: 1, from: texts[index], to }], note: `Correction number ${index + 1}.` });
       expect(response.statusCode).toBe(201);
     }
     // A SUPERVISOR is inside the case scope of every REAL item (R93-02).
@@ -483,6 +529,31 @@ describe('operation 86 listTranscriptRevisions', () => {
     const rest = TranscriptRevisionPageSchema.parse((await server.get(investigator, transcript(`/revisions?limit=2&cursor=${first.nextCursor}`))).json());
     expect([rest.items.map((item) => item.number), rest.nextCursor]).toEqual([[1], null]);
     for (const query of ['cursor=TRV-000001', 'cursor=-1', 'limit=0']) expect((await server.get(investigator, transcript(`/revisions?${query}`))).statusCode, query).toBe(422);
+  });
+
+  it('fix wave K (G81b-09): every entry carries `reason` - the note its author gave, as stored - on operation 85\'s answer and on operation 86\'s list; a caller outside the case scope gets no entry at all', async () => {
+    const { server, investigator, transcript } = await rig('krtr_reason');
+    const notes = ['Corrected the form of address.', TRANSCRIPT_REVISION_REASON_EXAMPLE];
+    const texts = ['Terima kasih, Pak.', 'Terima kasih, Bu.', 'Terima kasih, Ibu.'];
+    const answered: unknown[] = [];
+    for (const [index, note] of notes.entries()) {
+      const response = await server.post(investigator, transcript('/revisions'), { baseRevision: index, changes: [{ segmentIndex: 1, from: texts[index], to: texts[index + 1] }], note });
+      expect(response.statusCode).toBe(201);
+      answered.push(TranscriptRevisionSchema.parse(response.json()).reason);
+    }
+    expect(answered).toEqual(notes);
+    const page = TranscriptRevisionPageSchema.parse((await server.get(investigator, transcript('/revisions'))).json());
+    expect(page.items.map((item) => [item.number, item.reason])).toEqual([[2, notes[1]], [1, notes[0]]]);
+    // The same access rule as the revision itself: the refusal carries no revision, so no reason.
+    const outside = await server.get(await server.signIn('TECHNICIAN'), transcript('/revisions'));
+    expect(outside.statusCode).toBe(403);
+    expect(JSON.stringify(outside.json())).not.toContain(notes[0]);
+    // The contract: optional text; the registry's example of operation 86 carries the member.
+    const example = (CORE_API_EXAMPLES.listTranscriptRevisions?.responses?.[200]?.['newest']?.value as { items: { reason?: unknown }[] } | undefined)?.items[0];
+    expect(example?.reason).toBe(TRANSCRIPT_REVISION_REASON_EXAMPLE);
+    expect(TranscriptRevisionSchema.safeParse({ ...page.items[0], reason: 7 }).success).toBe(false);
+    const { reason: _reason, ...without } = page.items[0] as Record<string, unknown>;
+    expect(TranscriptRevisionSchema.safeParse(without).success).toBe(true);
   });
 
   it('PASS D6 (F-D4-1 closed) - verify V-11 holds each record the Core WROTE to its signed body: two revisions pass; a removed body is MISSING; an altered reason, author, time or body is TAMPERED, each naming the revision. The Core answers from the table, never from those members', async () => {
@@ -701,7 +772,8 @@ describe('R80-08: the revision list of the package is replaced only AFTER the co
     expect(TranscriptRevisionPageSchema.parse(page.json()).items.map((entry) => [entry.number, entry.changes[0]?.to])).toEqual([[2, 'Selamat pagi. Silakan duduk.'], [1, 'Terima kasih, Bu.']]);
     expect(readFileSync(realOf(packageDir)).equals(one)).toBe(true);
     expect(existsSync(stagedOf(packageDir))).toBe(true);
-    const third = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 2, note: 'A third correction of the same segment.' });
+    // Fix wave K (G81b-01): the third correction starts from the text revision 1 gave the segment (read from the list the append settles).
+    const third = await server.post(investigator, transcript('/revisions'), { ...REQUEST, baseRevision: 2, changes: [AFTER_FIRST], note: 'A third correction of the same segment.' });
     expect(third.statusCode).toBe(201);
     expect(await rowsOf(server, evidenceId)).toBe(3);
     const list = TranscriptRevisionsFileSchema.parse(JSON.parse(readFileSync(realOf(packageDir), 'utf8')));

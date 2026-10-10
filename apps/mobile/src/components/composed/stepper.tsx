@@ -359,7 +359,15 @@ function StepBadge({ index, status, still, testID }: StepBadgeProps) {
       {haloRun && pulses(status) ? (
         <HaloMotion key={haloRun.id} testID={part('halo-motion')} look={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: withAlpha(toneColor, 0.45) }} />
       ) : null}
+      {/* Wave K Z1 (G94b-13), seen on the tablet: a kit Chip that was mounted as a PENDING badge and then
+          changes its variant in place stops painting what is inside it - the number of the step that became
+          current, the check of a step that is done (the view tree holds the glyph, the screen does not; the
+          first badge, current from its mount, was the only one drawn). A chip of another look is another
+          chip: React mounts it anew with its content. Nothing else of the badge is inside it (the ring and
+          the overlays are siblings). */}
       <Chip
+        key={`${chip.variant}-${chip.color}`}
+        testID={part('chip')}
         variant={chip.variant}
         color={chip.color}
         className={status === 'pending' ? 'border border-border' : undefined}

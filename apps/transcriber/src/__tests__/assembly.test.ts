@@ -238,7 +238,9 @@ describe('written once (§A.4 "Checkpoint", §D.1, §D.3 "Idempotence")', () => 
 });
 
 describe('an unfinished transcript is never assembled; a finished-but-incomplete one is PARTIAL (§A.5; D-EV-1; row 77 tap signal)', () => {
-  it('chunks still to decode: ASSEMBLY_REFUSED / TRANSCRIPT_NOT_COMPLETE, nothing written, logged', async () => {
+  // Pin moved by fix wave K (driver S1; re-gate 75 finding G75c-08): the refusal is still thrown, and it is logged at
+  // INFO, not at error - the Core classes it NOT_READY and asks again once a second while a healthy seal waits.
+  it('chunks still to decode: ASSEMBLY_REFUSED / TRANSCRIPT_NOT_COMPLETE, nothing written, logged as a WAIT (info), never as an error', async () => {
     const transcript = await transcriptOf({ finish: false });
     await transcript.runner.step({ final: false }); // plans, and the stand-in decodes what is planned…
     const stored = transcript.stored();
@@ -247,7 +249,15 @@ describe('an unfinished transcript is never assembled; a finished-but-incomplete
     expect([error.code, error.detail['reason']]).toEqual([TranscriberErrorCode.ASSEMBLY_REFUSED, 'TRANSCRIPT_NOT_COMPLETE']);
     expect(existsSync(join(transcript.dir, 'transcript.json'))).toBe(false);
     expect(transcript.stored().diarization).toBeUndefined();
-    expect(errorRecords(transcript.log).at(-1)?.context['reason']).toBe('TRANSCRIPT_NOT_COMPLETE');
+    const said = transcript.log.records().filter((record) => record.context['reason'] === 'TRANSCRIPT_NOT_COMPLETE');
+    expect(said.map((record) => [record.level, record.message])).toEqual([['info', 'the transcript is not complete yet: assembly waits']]);
+    expect(said[0]?.stackTrace ?? null).toBeNull();
+    expect(errorRecords(transcript.log).filter((record) => record.context['reason'] === 'TRANSCRIPT_NOT_COMPLETE')).toEqual([]);
+    // CONTROL - a refusal that is NOT a wait is still an error line: no checkpoint at all.
+    rmSync(join(transcript.dir, TRANSCRIPT_CHECKPOINT_FILE));
+    const other = await refusal(assembleTranscript(optionsOf(transcript, null)));
+    expect(other.detail['reason']).toBe('NO_CHECKPOINT');
+    expect(errorRecords(transcript.log).at(-1)).toMatchObject({ message: expect.stringContaining('transcript assembly refused') as string, context: { reason: 'NO_CHECKPOINT' } });
   });
 
   it('a chunk left RUNNING by a kill: refused the same way', async () => {

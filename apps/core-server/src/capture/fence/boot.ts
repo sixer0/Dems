@@ -35,6 +35,7 @@
 import { CaptureAdapterKind, CaptureOperation, CaptureSourceClass, sourceClassOf } from '../adapters/kinds';
 import { HelperProgramRefusal, helperProgramRefusal, type FileHeadReader, type ProgramInspector } from '../adapters/local';
 import { FakeMicRefusal, FakeMicSource, fakeMicDecisionOf, type FakeMicInput, type SpeechFixtureProblem } from './fake-mic';
+import { correctGeneratedSourceProfiles } from './fake-profile';
 import { CaptureFlagRefusal, captureOperationDecisionOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
 import { registerLocalDevices, type FenceExecutor, type LocalDeviceClass, type StoredCaptureDevice } from './registration';
 import { READ_ASSIGNED_SOURCES } from './statements';
@@ -174,6 +175,8 @@ export interface CaptureFenceBootDeps {
   /** Runs `work` in ONE unit of the pipeline: everything it writes commits together or not at all. */
   inUnit<Value>(work: (unit: CaptureFenceUnit) => Promise<Value>): Promise<Value>;
   readonly inspect: ProgramInspector;
+  /** The server clock, for the instant of a corrected selector line (`fake-profile.ts`). Absent: the selector keeps its instant. */
+  readonly now?: () => number;
   /**
    * Closing pass Z1: reads the first bytes of the speech fixture, so its FORMAT is held at boot
    * (`fake-mic.ts` `speechFixtureFormatProblem`). Absent = nothing can be read = a `speech` setting is
@@ -195,6 +198,8 @@ export interface CaptureFenceOutcome {
   readonly local: { readonly cameraId: string; readonly micId: string } | null;
   /** The ids this boot inserted. */
   readonly inserted: readonly string[];
+  /** True when this boot made the selector line of a generated test source state its adapter's profile (`fake-profile.ts`); absent otherwise. */
+  readonly generatedProfilesCorrected?: true;
   /** The helper program the fence vouched for, in `REAL_DEVELOPMENT`; null otherwise. */
   readonly helperProgram: string | null;
   /** What the first generated microphone plays (fix wave H): the tone, or the speech fixture the fence vouched for (`REAL_DEVELOPMENT` only). */
@@ -251,9 +256,12 @@ export async function runCaptureFenceBoot(deps: CaptureFenceBootDeps): Promise<C
     if (development && program !== null) {
       registration = await registerLocalDevices(unit, { labels: deps.labels, listed: (deviceClass) => deps.listed(deviceClass, program) });
     }
+    // Fix wave K (G89b-01): the selector line of a generated test source states what that source makes. Development capture only.
+    const corrected = development && program !== null ? await correctGeneratedSourceProfiles(unit, deps.now?.() ?? null) : false;
     if (BOOT_AUDIT_OPERATIONS.includes(operation)) await unit.appendBootAudit(operation);
     return {
       operation,
+      ...(corrected ? { generatedProfilesCorrected: true as const } : {}),
       devices: registration?.devices ?? [],
       local: registration === null ? null : { cameraId: registration.cameraId, micId: registration.micId },
       inserted: registration?.inserted ?? [],
@@ -264,6 +272,7 @@ export async function runCaptureFenceBoot(deps: CaptureFenceBootDeps): Promise<C
   if (decided instanceof CaptureFenceError) return refuse(decided);
   const outcome = decided;
   deps.sinks.info({ code: 'CAPTURE_FENCE_PASSED', operation, registered: outcome.inserted.join(','), local: outcome.local === null ? '' : `${outcome.local.cameraId},${outcome.local.micId}` }, PASSED);
+  if (outcome.generatedProfilesCorrected === true) deps.sinks.info({ code: 'DEV_GENERATED_SOURCE_PROFILE_STATED', operation }, 'the selector line of a generated test source now states the profile its adapter makes');
   // Said once per boot, and only when it is on: a session of this Core records synthetic speech on its first test microphone. No path.
   if (outcome.fakeMic.source === FakeMicSource.SPEECH) deps.sinks.info({ code: 'DEV_FAKE_MIC_SPEECH', operation }, 'the first test microphone plays the speech fixture (synthetic speech, development capture only)');
   return outcome;

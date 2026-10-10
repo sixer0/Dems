@@ -42,6 +42,20 @@
  * step is titled "Destination recorded with the export", one sentence says where the export is
  * stored, and the label SENT with the request is the plain one. A simulated / demo item keeps the
  * simulated labels, which are true of it.
+ *
+ * **Fix wave K, driver M2** (ruling D223 (1), G89b-09; G94b-05, -06, -12):
+ * - **No press that only produces a refusal.** Opening the wizard sends NOTHING. A caller the Core
+ *   refuses (`access.export: false` of operation 40) or whose role has no EVIDENCE_EXPORT is told
+ *   the required role first ("Exporting evidence requires the Supervisor role. Nothing has been
+ *   sent to the Core server."), so a mere press of Export writes no `EXPORT_DENIED` row. Where the
+ *   Core already refused this caller there is no control that would send the request at all. Where
+ *   only the role hint says so (the Core stated nothing), the explicit "Request authorization"
+ *   press sends the audited attempt, as the web wizard's own step does. `access.export: true` wins
+ *   over the hint: the Core's word decides.
+ * - **The default destination** is the one the Core states (`exportDestinationDefault`): the
+ *   case-file option, as on the web; never another option when the Core stated one.
+ * - **"The export is stored on the Core"** is said only for a job that states its archive; an
+ *   export the Core only recorded (`archiveOnCore: false`) reads "Demonstration: no archive is written."
  */
 import { Alert, Button, Description, FieldError, Label, RadioGroup, Spinner, TextArea, TextField, useToast } from 'heroui-native';
 import { Lock } from 'lucide-react-native';
@@ -59,19 +73,21 @@ import { animateSpring, triggerHaptic, useMotionSettings } from '@/motion';
 import { newCorrelationId, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import {
   EXPORT_DESTINATIONS,
+  EXPORT_DESTINATION_LABEL,
   EXPORT_REASON_MAX,
   EXPORT_REASON_MIN,
   EXPORT_STEPS,
   checkExportReason,
   coreIntegrityView,
   failedCheckNames,
+  initialExportDestination,
   integrityFor,
   packageFor,
   shortHash,
   type CoreVerdict,
   type ExportDestination,
 } from './evidence-model';
-import { EXPORT_IN_PROGRESS, answeredJobIdOf, type ExportJobKind } from './export-job-model';
+import { EXPORT_IN_PROGRESS, answeredArchiveOnCoreOf, answeredJobIdOf, type ExportJobKind } from './export-job-model';
 import { hasSealedPackageHere, isRealItem, readItemFacts } from './item-facts';
 import { ExportJobStatus } from './export-job-status';
 import { VERIFY_ASK_MS } from './integrity-tab';
@@ -79,13 +95,26 @@ import { SheetFrame } from './sheet-frame';
 import { useClockDue } from './use-clock-due';
 import { useCoreVerify } from './use-core-verify';
 import { useEvidenceItem, useSignedInOperator } from './use-evidence-data';
+import { useEvidenceMediaRef } from './use-evidence-media-ref';
 
 /** Simulated Core round trips (the role check and the package build). */
 export const EXPORT_AUTH_MS = 400;
 export const EXPORT_BUILD_MS = 900;
 
-/** `probing`: Live mode, the denied role's call is out and the Core has not answered yet. */
-type AuthState = 'checking' | 'probing' | 'authorized' | 'denied';
+/**
+ * `required`: the required role is stated and nothing was sent (fix wave K, D223 (1)).
+ * `probing`: the explicit attempt of a role the hint denies is out and the Core has not answered yet.
+ */
+type AuthState = 'checking' | 'required' | 'probing' | 'authorized' | 'denied';
+/** What operation 40 says about this caller and the export, for the wizard. */
+interface ExportFacts {
+  /** Live: operation 40 has not answered yet - the Authorize step waits for it. */
+  readonly pending: boolean;
+  /** `access.export`: true / false as the Core states it; null: not stated. */
+  readonly access: boolean | null;
+  /** `exportDestinationDefault`; null: not stated. */
+  readonly destinationDefault: string | null;
+}
 type FailureReason = Extract<ExportResult, { ok: false }>['reason'] | 'UNKNOWN' | typeof EXPORT_IN_PROGRESS;
 /** Operation 42, schema v2 (integration pass D5): what a new export job builds. PACKAGE is the default and is not named in the request. */
 const EXPORT_KINDS: readonly ExportJobKind[] = ['PACKAGE', 'COMPOSITE'];
@@ -103,6 +132,13 @@ export interface ExportSheetProps {
 export function ExportSheet({ isOpen, onClose, evidenceId }: ExportSheetProps) {
   const { t } = useTranslation();
   const live = useCoreLink().source === 'LIVE';
+  // Operation 40 for this item and THIS operator (the detail's own read; from the list it is asked here, once).
+  const ref = useEvidenceMediaRef(evidenceId);
+  const facts: ExportFacts = {
+    pending: live && ref.status === 'loading',
+    access: ref.status === 'ready' ? ref.detail.access.export : null,
+    destinationDefault: ref.status === 'ready' ? ref.detail.exportDestinationDefault : null,
+  };
   return (
     <SheetFrame
       isOpen={isOpen}
@@ -111,12 +147,12 @@ export function ExportSheet({ isOpen, onClose, evidenceId }: ExportSheetProps) {
       closeLabel={t('features.evidence.export.close')}
       testID="evidence-export-sheet"
     >
-      <ExportWizard evidenceId={evidenceId} onClose={onClose} live={live} />
+      <ExportWizard evidenceId={evidenceId} onClose={onClose} live={live} facts={facts} />
     </SheetFrame>
   );
 }
 
-function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClose: () => void; live: boolean }) {
+function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string; onClose: () => void; live: boolean; facts: ExportFacts }) {
   const { t } = useTranslation();
   const m = useMotionSettings();
   const sim = useSimInstance();
@@ -127,7 +163,11 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
   const operator = useSignedInOperator();
   const [step, setStep] = useState(0);
   const [auth, setAuth] = useState<AuthState>('checking');
-  const [destination, setDestination] = useState<ExportDestination>('usb');
+  /** null: the Core stated a default this app has no option for - nothing is pre-selected (never another option). */
+  const [chosenDestination, setDestination] = useState<ExportDestination | null>(null);
+  const [destinationTouched, setDestinationTouched] = useState(false);
+  /** `archiveOnCore` of the accepted request; null: not stated. */
+  const [archiveOnCore, setArchiveOnCore] = useState<boolean | null>(null);
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
   const [building, setBuilding] = useState(false);
@@ -161,37 +201,37 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
   /** G94-09: the export of a package this Core sealed is real - its destination is a recorded label, not a simulation. */
   const realExport = useMemo(() => live && ((facts) => hasSealedPackageHere(facts) || isRealItem(facts))(readItemFacts(item)), [live, item]);
   const destinationLabelOf = (key: ExportDestination): string =>
-    realExport
-      ? t(key === 'usb' ? 'evidence.itemFacts.exportReal.destination.USB' : 'evidence.itemFacts.exportReal.destination.NETWORK')
-      : t(key === 'usb' ? 'evidence.exportWizard.destinationUsb' : 'evidence.exportWizard.destinationNetwork');
-  const destinationText = destinationLabelOf(destination);
+    t(`${realExport ? 'evidence.itemFacts.exportReal.destination' : 'evidence.exportWizard.destinations'}.${EXPORT_DESTINATION_LABEL[key]}`);
+  // G94b-12: until the operator chooses, the selected option is the Core's stated default (else this app's first option).
+  const destination: ExportDestination | null = destinationTouched ? chosenDestination : initialExportDestination(facts.destinationDefault, destinationLabelOf);
+  const destinationText = destination === null ? '' : destinationLabelOf(destination);
+  /** The Core's word about this caller wins over the role hint; without it the hint decides what is SHOWN, never what is sent. */
+  const mayExport = facts.access ?? roleHas(operator.role, Permission.EVIDENCE_EXPORT);
 
   // Authorize: ask the Core. Without EVIDENCE_EXPORT the attempt is sent so the Core audits it.
   // Simulated: the simulator answers inside `settle`, as the direct call did before.
   useEffect(() => {
     if (live || auth !== 'checking') return undefined;
-    const timer = setTimeout(() => {
-      if (roleHas(operator.role, Permission.EVIDENCE_EXPORT)) {
-        setAuth('authorized');
-        return;
-      }
-      settle(() => actions.exportEvidence(evidenceId, { reason: '', destination: '' }), {
-        ok: (result) => logDenied(evidenceId, operator.role, result, correlationId),
-        fail: (error) => reportRuntimeIssue('error', 'evidence.export.authorize', error, { evidenceId }, correlationId),
-      });
-      triggerHaptic('signInFailure');
-      setAuth('denied');
-    }, m.policy === 'reduced' ? 0 : EXPORT_AUTH_MS);
+    // Fix wave K (D223 (1)): the role is STATED; nothing is sent by opening the wizard.
+    const timer = setTimeout(() => setAuth(mayExport ? 'authorized' : 'required'), m.policy === 'reduced' ? 0 : EXPORT_AUTH_MS);
     return () => clearTimeout(timer);
-  }, [live, auth, operator.role, actions, evidenceId, correlationId, m.policy]);
+  }, [live, auth, mayExport, m.policy]);
+
+  /** Simulated: the explicit attempt of a role the hint denies - the simulator audits it (EXPORT_DENIED, EVT-26). */
+  const requestAuthorizationSim = useCallback(() => {
+    settle(() => actions.exportEvidence(evidenceId, { reason: '', destination: '' }), {
+      ok: (result) => logDenied(evidenceId, operator.role, result, correlationId),
+      fail: (error) => reportRuntimeIssue('error', 'evidence.export.authorize', error, { evidenceId }, correlationId),
+    });
+    triggerHaptic('signInFailure');
+    setAuth('denied');
+  }, [actions, evidenceId, operator.role, correlationId]);
 
   // Live (S5-1, S1-5): after EXPORT_AUTH_MS on the store's clock the hint decides; a denied role's
   // call then spans its request (LB-2) and the denied Alert follows the Core's answer.
-  const authorizeLive = useCallback(() => {
-    if (roleHas(operator.role, Permission.EVIDENCE_EXPORT)) {
-      setAuth('authorized');
-      return;
-    }
+  const authorizeLive = useCallback(() => setAuth(mayExport ? 'authorized' : 'required'), [mayExport]);
+  /** Live: the explicit attempt of a role the hint denies (never offered when the Core already refused this caller). */
+  const requestAuthorizationLive = useCallback(() => {
     setAuth('probing');
     // The reason stays empty on purpose (F59): a role the hint has not caught up with gets the Core's
     // 422, never an export. The Core reads the role before the body and audits a denied role whatever
@@ -214,7 +254,9 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
       },
     });
   }, [operator.role, actions, evidenceId, correlationId, presentCoreError]);
-  useClockDue(live && auth === 'checking' ? openedAt : null, reduced ? 0 : EXPORT_AUTH_MS, authorizeLive);
+  // The step waits for operation 40's answer (`facts.pending`): what the Core says about this caller decides.
+  useClockDue(live && auth === 'checking' && !facts.pending ? openedAt : null, reduced ? 0 : EXPORT_AUTH_MS, authorizeLive);
+  const requestAuthorization = live ? requestAuthorizationLive : requestAuthorizationSim;
 
   // Live, step 1 (§14 point 7): the Core's verdict of the source.
   const onSourceVerdict = useCallback((verdict: CoreVerdict) => {
@@ -251,6 +293,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
       if (result?.ok) {
         setExportId(result.exportId);
         setAnsweredJobId(answeredJobIdOf(result));
+        setArchiveOnCore(answeredArchiveOnCoreOf(result));
         setStep(5);
         triggerHaptic('sealedStamp');
         // The shared success sentence says "(simulated)": Live mode has its shared twin (rule 8; closing copy round, D162 DN-5).
@@ -353,6 +396,8 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
               {t('features.evidence.export.authorizing')}
             </Text>
           </View>
+        ) : auth === 'required' ? (
+          <RequiredRole coreRefused={facts.access === false} onRequest={requestAuthorization} />
         ) : auth === 'denied' ? (
           <DeniedAlert recorded={!live || denialRecorded} />
         ) : (
@@ -393,7 +438,14 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
       {step === 2 ? (
         <View style={styles.field}>
           <Label>{t(realExport ? 'evidence.itemFacts.exportReal.destinationLabel' : 'features.evidence.export.destinationLabel')}</Label>
-          <RadioGroup value={destination} onValueChange={(value) => setDestination(value as ExportDestination)} testID="evidence-export-destination">
+          <RadioGroup
+            value={destination ?? ''}
+            onValueChange={(value) => {
+              setDestinationTouched(true);
+              setDestination(value as ExportDestination);
+            }}
+            testID="evidence-export-destination"
+          >
             {EXPORT_DESTINATIONS.map((key) => (
               <RadioGroup.Item key={key} value={key} testID={`evidence-export-destination-${key}`}>
                 {destinationLabelOf(key)}
@@ -487,7 +539,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
             ]}
           />
           {/* Row 92: operation 42 only queued the export; operation 87 says when it is done, or that it FAILED. */}
-          {live ? <ExportJobStatus exportId={exportId} jobId={answeredJobId} /> : null}
+          {live ? <ExportJobStatus exportId={exportId} jobId={answeredJobId} archiveOnCore={archiveOnCore} /> : null}
           <Text maxFontSizeMultiplier={1.2} style={styles.caption}>
             {t(live ? 'features.evidence.export.zipNoteLive' : 'features.evidence.export.zipNote')}
           </Text>
@@ -511,7 +563,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
           </Button>
         ) : null}
         {step === 1 || step === 2 ? (
-          <Button variant="primary" isDisabled={step === 1 && !sourceOk} onPress={next} testID="evidence-export-next">
+          <Button variant="primary" isDisabled={(step === 1 && !sourceOk) || (step === 2 && destination === null)} onPress={next} testID="evidence-export-next">
             <Button.Label>{t('features.evidence.export.next')}</Button.Label>
           </Button>
         ) : null}
@@ -520,7 +572,7 @@ function ExportWizard({ evidenceId, onClose, live }: { evidenceId: string; onClo
             <Button.Label>{t('features.evidence.export.submit')}</Button.Label>
           </Button>
         ) : null}
-        {step === 5 || auth === 'denied' || (step === 1 && !sourceOk && !(live && source.kind === 'asking')) || (step === 4 && failure && failure !== 'INVALID_REASON') ? (
+        {step === 5 || auth === 'denied' || auth === 'required' || (step === 1 && !sourceOk && !(live && source.kind === 'asking')) || (step === 4 && failure && failure !== 'INVALID_REASON') ? (
           <Button variant={step === 5 ? 'primary' : 'outline'} onPress={onClose} testID="evidence-export-finish">
             <Button.Label>{step === 5 ? t('features.evidence.export.finish') : t('features.evidence.export.close')}</Button.Label>
           </Button>
@@ -576,6 +628,36 @@ function LiveSourceStep({ source, failed }: { source: SourceCheck; failed: reado
         </Alert.Description>
       </Alert.Content>
     </Alert>
+  );
+}
+
+/**
+ * Fix wave K (ruling D223 (1), G89b-09): the required role, stated BEFORE anything is sent. Where
+ * the Core already refused this caller (`access.export: false`) nothing can be sent from here; where
+ * only the role hint says so, one explicit press sends the attempt the Core will audit.
+ */
+function RequiredRole({ coreRefused, onRequest }: { coreRefused: boolean; onRequest: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.field} testID={`evidence-export-requires-role-${coreRefused ? 'core' : 'hint'}`}>
+      <Alert status="warning" testID="evidence-export-requires-role">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>{t('features.evidence.waveK.export.requiresRole', { role: t('common.roles.SUPERVISOR') })}</Alert.Title>
+          <Alert.Description>{t('features.evidence.waveK.export.nothingSent')}</Alert.Description>
+        </Alert.Content>
+      </Alert>
+      {coreRefused ? null : (
+        <>
+          <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-request-note">
+            {t('features.evidence.waveK.export.requestNote')}
+          </Text>
+          <Button variant="outline" onPress={onRequest} testID="evidence-export-request-authorization">
+            <Button.Label>{t('features.evidence.waveK.export.request')}</Button.Label>
+          </Button>
+        </>
+      )}
+    </View>
   );
 }
 

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { GlowRing } from '@/components/composed'
+import { usePlatformNotReported } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
@@ -37,6 +38,7 @@ export function SystemRingPanel() {
   const [measureRef, bounds] = useMeasure({ debounce: 60 })
   const measured = Math.min(bounds.width, bounds.height)
   const size = measured > 0 ? Math.round(Math.max(RING_MIN, Math.min(RING_MAX, measured - 12))) : RING_FALLBACK
+  const platformNotReported = usePlatformNotReported()
   const gradientId = `dash-ring-arc-${useId().replace(/[^A-Za-z0-9_-]/g, '_')}`
 
   // A critical fault during a recording does not stop it (the ring then reads CRITICAL while
@@ -47,7 +49,10 @@ export function SystemRingPanel() {
   const statusLine = ring.connecting
     ? t('common.session.connectingCameras')
     : ring.state === 'READY'
-      ? t('dashboard.systemRing.flags')
+      ? // Fix wave K (C-2 / G75c-04): "SECURE" is a posture no Core computed where it states `security.platformNotReported`.
+        platformNotReported
+        ? t('web.realCore.dashboard.ringFlags')
+        : t('dashboard.systemRing.flags')
       : ring.state === 'RECORDING' || ring.state === 'UNKNOWN'
         ? t(`dashboard.systemRing.statusLine.${ring.state}`)
         : t('dashboard.systemRing.issues', { count: ring.issues })

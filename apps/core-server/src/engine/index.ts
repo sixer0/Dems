@@ -94,7 +94,7 @@ export { EXPORT_DOOR_LABEL, exportDoorsOf, type EngineExportDoors } from './expo
 // Unsealable block (fix pass F-M7b): the terminal outcome of a session that cannot be sealed, beside the seam.
 export { UNSEALABLE_DOOR_LABEL, unsealableDoorsOf, type EngineUnsealableDoors } from './unsealable-doors';
 export { SEALED_PLAINTEXT_REASON, SEALING_NOTICE_DOOR_LABEL, SEAL_BLOCKED_REASON, SEAL_RETRY_REASON, sealingNoticeDoorsOf, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
-export { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, itemWithSealedFacts, sealedFactsDoorsOf, type EngineSealedFactsDoors, type ItemWithSealedFacts, type SealedAudioInterval, type SealedFileFact, type SealedItemFacts, type SealedItemMembers } from './sealed-facts-doors';
+export { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, itemWithSealedFacts, sealedFactsDoorsOf, type EngineSealedFactsDoors, type ItemWithSealedFacts, type SealedAudioInterval, type SealedFileFact, type SealedItemFacts, type SealedItemMembers, type SealedTranscriptModel } from './sealed-facts-doors';
 // Wave H closing pass Z1: the capture-checkpoint door (what the Core holds of a running recording of its own capture).
 export { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, captureCheckpointDoorsOf, captureCheckpointsOf, type CaptureCheckpointCamera, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
 export type { EngineSealDoors } from './types';

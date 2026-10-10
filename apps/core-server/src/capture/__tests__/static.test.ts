@@ -84,7 +84,7 @@ describe('the scan itself', () => {
     expect(capture.filter((file) => file.path.startsWith(SIGNER)).map((file) => file.path).sort()).toEqual(['src/capture/signer/der.ts', 'src/capture/signer/host-key.ts', 'src/capture/signer/index.ts', 'src/capture/signer/key-record.ts', 'src/capture/signer/seal.ts', 'src/capture/signer/types.ts']);
     // The capture fence (row 136) is part of `capture` for every rule below too; its files are pinned here by name.
     const FENCE = 'src/capture/fence/';
-    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'development-discovery.ts', 'fake-mic.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`));
+    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'development-discovery.ts', 'fake-mic.ts', 'fake-profile.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`)); // fix wave K, reconcile pass: + fake-profile.ts (G89b-01, the selector line of a generated source)
     // The boot checks of real capture (row 61) are part of `capture` for every rule below as well; their files are pinned here by name.
     const BOOT = 'src/capture/boot/';
     expect(capture.filter((file) => file.path.startsWith(BOOT)).map((file) => file.path).sort()).toEqual(['checks.ts', 'evidence-volume.ts', 'index.ts', 'worker-probe.ts'].map((name) => `${BOOT}${name}`));

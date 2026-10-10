@@ -455,3 +455,79 @@ describe('R80-03 (code review row 80): after the close-out of the seal nothing o
     }
   });
 });
+
+// Fix wave K, driver S1 (appended; nothing above was changed).
+describe('G81b-04 (re-gate 81): the document of an INTERRUPTED recording records `intervals_incomplete`; a stopped one is as before', () => {
+  /** The committed state of an engine whose session ended at a fault while RECORDING and is being sealed. */
+  const interruptedState = (sessionId: string) => ({ evidence: [], session: { id: sessionId, state: 'FINALIZING', startedAt: 1, stoppedAt: 2, fault: { kind: 'CAPTURE_FAULT', at: 2, fromState: 'RECORDING' } } });
+  const stoppedState = (sessionId: string) => ({ evidence: [], session: { id: sessionId, state: 'FINALIZING', startedAt: 1, stoppedAt: 2, fault: null } });
+
+  async function assembledWith(slug: string, id: string, state: unknown) {
+    const m = mount(slug, serverRow(ENDPOINT));
+    Object.assign(m.host.app, { engine: { state: () => state } });
+    // What the Core stores for a recording that ended at a fault: the interval was never closed.
+    m.host.intervalRows = [{ mic_device_id: 'MIC-01', from_media_ms: 21, to_media_ms: null }];
+    await recording(m, id, 40);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    const answer = await m.control.runs.assemble(id);
+    if (answer.kind !== 'ASSEMBLED') throw new Error(`the seal was answered ${answer.kind}`);
+    return documentOf(answer.files.json);
+  }
+
+  it('interrupted (the session ended at a fault while RECORDING): the interval keeps `to_ms: null` and the document says `intervals_incomplete`', async () => {
+    const document = await assembledWith('wavek-s1-interrupted', 'SES-20310101-0401', interruptedState('SES-20310101-0401'));
+    expect(document.intervals).toEqual([{ source: 'MIC-01', from_ms: 21, to_ms: null }]);
+    expect(document.qa_flags).toContain('intervals_incomplete');
+  });
+
+  it('CONTROL - the same rows of a session that was STOPPED, and of an app without an engine behind the seam: no flag (the document of before)', async () => {
+    const stopped = await assembledWith('wavek-s1-stopped', 'SES-20310101-0402', stoppedState('SES-20310101-0402'));
+    expect(stopped.intervals).toEqual([{ source: 'MIC-01', from_ms: 21, to_ms: null }]);
+    expect(stopped.qa_flags).not.toContain('intervals_incomplete');
+    // The engine names ANOTHER session: nothing is said about this one.
+    const other = await assembledWith('wavek-s1-other', 'SES-20310101-0403', interruptedState('SES-20310101-0999'));
+    expect(other.qa_flags).not.toContain('intervals_incomplete');
+  });
+});
+
+describe('G75c-08 (re-gate 75): no statement of the chunk mirror after the server began to close', () => {
+  function mountWithHooks(slug: string) {
+    const dir = makeDataDir(slug);
+    dirs.push(dir.dataDir);
+    dir.writeHost(fullHost(dir));
+    const host = fakeHost(dir.dataDir, 'real');
+    const hooks: { name: string; hook: () => Promise<void> }[] = [];
+    Object.assign(host.app, { addHook: (name: string, hook: () => Promise<void>) => void hooks.push({ name, hook }) });
+    const transport = answerer();
+    const control = mountTranscription(host.app, { readConfig: async () => serverRow(ENDPOINT), snapshots: createMemorySnapshotStore(), fetchImpl: transport.fetchImpl, sessionStepIntervalMs: 5, modelProvenance: async () => PROVENANCE });
+    return { m: { host, control, transport, dir, snapshots: createMemorySnapshotStore() } as Mounted, hooks };
+  }
+  const mirrorStatements = (host: FakeHost): string[] => host.statements.filter((text) => text.includes('transcript_chunks'));
+
+  it('the unit asks for the BEGINNING of the close; after it a session that goes on writes its checkpoint and sends NO mirror statement and no error line', async () => {
+    const { m, hooks } = mountWithHooks('wavek-s1-mirror-closed');
+    expect(hooks.map((entry) => entry.name)).toEqual(['preClose']);
+    const id = 'SES-20310101-0411';
+    await recording(m, id, 40);
+    // The close begins BEFORE the runner writes anything.
+    await hooks[0]?.hook();
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    expect(checkpointOf(m, id).chunks.length).toBeGreaterThanOrEqual(1);
+    expect(mirrorStatements(m.host)).toEqual([]);
+    expect(m.host.everything()).not.toContain('MIRROR_WRITE_FAILED');
+  });
+
+  it('CONTROL - the same session on a server that is not closing sends its mirror statements', async () => {
+    const { m } = mountWithHooks('wavek-s1-mirror-open');
+    const id = 'SES-20310101-0412';
+    await recording(m, id, 40);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    expect(mirrorStatements(m.host).length).toBeGreaterThan(0);
+  });
+});

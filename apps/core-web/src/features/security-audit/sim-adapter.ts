@@ -128,7 +128,8 @@ export function exportAuditWithReason(sim: Sim, reasonText: string): AuditExport
 // ── Keys and certificates (W1, D67) ───────────────────────────────────────────────────────
 
 export type KeyEntryId = 'DEVICE_CERT' | 'EVIDENCE_SIGNING_KEY' | 'TLS_SERVER' | 'HARDWARE_ROOT'
-export type KeySource = 'DEMO_PACKAGE' | 'SIMULATED' | 'HARDWARE'
+/** `CORE`: a fact this Core reports. `NOT_REPORTED`: this Core reports none (fix wave K, C-2). */
+export type KeySource = 'DEMO_PACKAGE' | 'SIMULATED' | 'HARDWARE' | 'CORE' | 'NOT_REPORTED'
 
 export interface KeyEntry {
   id: KeyEntryId
@@ -143,6 +144,10 @@ export interface KeyEntry {
   notBefore: number | null
   expiresAt: number | null
   source: KeySource
+  /** `CORE` signing key only: the Core says it is a development key (`true`), says it is not (`false`), or does not say (`null`). */
+  developmentKey?: boolean | null
+  /** `CORE` signing key only: the newest sealed item that names the key. */
+  namedBy?: string
 }
 
 /** `CN=DEMS-IR-01 (DEMO — NOT FOR PRODUCTION), OU=…` → `DEMS-IR-01`. */
@@ -219,6 +224,24 @@ export function keyEntries(simKeys: readonly KeyRecord[], hardwareRoot: string):
   return entries
 }
 
+/**
+ * Fix wave K (C-2 / G75c-04, ruling D222 (1)): the keys panel of a Core in its OWN capture. Such a
+ * Core does not hold the DEMO packages' certificate and key, has no TPM-resident root key and
+ * reports no TLS certificate: the only key it reports is the one its sealed items are signed with
+ * (`reportedSigningKeyOf`, `@/lib/own-capture`). Every other entry reads "Not reported" - no DEMO
+ * name, no fingerprint of another certificate, no "Resident in TPM 2.0, never exported".
+ */
+export function ownCoreKeyEntries(signingKey: { readonly keyId: string; readonly algorithm: string; readonly developmentKey: boolean | null; readonly evidenceId: string } | null): KeyEntry[] {
+  const blank = (id: KeyEntryId): KeyEntry => ({ id, algorithm: '', fingerprint: null, serial: null, subject: null, keyId: null, publicKeyHex: null, notBefore: null, expiresAt: null, source: 'NOT_REPORTED' })
+  return [
+    blank('DEVICE_CERT'),
+    signingKey === null
+      ? blank('EVIDENCE_SIGNING_KEY')
+      : { ...blank('EVIDENCE_SIGNING_KEY'), algorithm: signingKey.algorithm, keyId: signingKey.keyId, source: 'CORE', developmentKey: signingKey.developmentKey, namedBy: signingKey.evidenceId },
+    blank('TLS_SERVER'),
+    blank('HARDWARE_ROOT'),
+  ]
+}
 // ── Package integrity (P13; the shared join, D84) ───────────────────────────────────────
 
 type JoinableEvidence = Pick<EvidenceItem, 'id' | 'caseNumber' | 'subjectName' | 'sessionId'>

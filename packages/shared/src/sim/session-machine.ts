@@ -1606,7 +1606,20 @@ export interface EvidenceVerdictInput {
   detail: string | null;
   /** The operator who asked for the verification. */
   actorId: string | null;
+  /**
+   * Fix wave K (G89b-04, G94b-03; rulings D216 (2), D222 (3)). The paired device the request came
+   * from (null / absent: a web console session): this action is INTERNAL - nobody is in `auth` -
+   * so the Core hands the device in. `operationId`: the operation that asked. `failedFragments`:
+   * the fragments that did not verify, `<trackId>:<seq>`; the failed row then names the fragment
+   * and not only the file.
+   */
+  deviceId?: string | null;
+  operationId?: string;
+  failedFragments?: readonly string[];
 }
+
+/** The most fragments a failed verify row names; the count says how many there were. */
+export const VERIFY_ROW_MAX_FRAGMENTS = 8;
 
 /**
  * Records a verdict the Core computed (INTERNAL action `recordEvidenceVerification`; decision
@@ -1623,6 +1636,7 @@ export function recordEvidenceVerificationTransition(state: SimState, now: Epoch
   const seedSealedDemo = item.integritySource === IntegritySource.DEMO_PACKAGE && item.manifestVersion === 2 && item.developmentSources === true && (item.signature as { simulated: boolean }).simulated === false;
   if (item.integritySource !== IntegritySource.REAL && !seedSealedDemo) throw new SimTransitionError(state.session?.state ?? null, 'recordEvidenceVerification', 'the item has no real sealed package');
   const failed = verdict.failedTracks.join(',');
+  const fragments = verdict.ok ? [] : (verdict.failedFragments ?? []).filter((fragment) => typeof fragment === 'string' && /^[A-Z0-9-]{1,16}:\d{1,9}$/.test(fragment));
   const verified: EvidenceItem = {
     ...item,
     verification: { status: verdict.ok ? 'PASS' : 'FAIL', at: verdict.at },
@@ -1635,8 +1649,16 @@ export function recordEvidenceVerificationTransition(state: SimState, now: Epoch
       message: verdict.ok ? `Evidence ${item.id} verified: every hash matches` : `Evidence ${item.id} failed verification (${failed || 'manifest or signature'})`,
       severity: verdict.ok ? 'INFO' : 'CRITICAL',
       actorId: verdict.actorId,
+      ...sentFrom(typeof verdict.deviceId === 'string' && SENDING_DEVICE_ID.test(verdict.deviceId) ? verdict.deviceId : null),
       evidenceId: item.id,
-      details: { manifestOk: verdict.manifestOk, signatureOk: verdict.signatureOk, failedTracks: failed, ...(verdict.ok ? {} : { eventKind: AuditEventKind.TAMPER }) },
+      details: {
+        manifestOk: verdict.manifestOk,
+        signatureOk: verdict.signatureOk,
+        failedTracks: failed,
+        ...(verdict.ok ? {} : { eventKind: AuditEventKind.TAMPER }),
+        ...(fragments.length === 0 ? {} : { failedFragments: fragments.slice(0, VERIFY_ROW_MAX_FRAGMENTS).join(','), failedFragmentCount: fragments.length }),
+        ...(typeof verdict.operationId === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(verdict.operationId) ? { operationId: verdict.operationId } : {}),
+      },
     },
     event: {
       type: verdict.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',

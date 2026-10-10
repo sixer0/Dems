@@ -17,12 +17,14 @@
  * | Only the PATH of the answered `url` is used (`/media/mts_…`), resolved against this app's own Core address | `mediaPathOf`, `videoSourceOf` |
  * | The media route asks for the operator: the player sends `Authorization: Bearer <session token>` | `MediaTransport.headers`, supplied by the runtime: `mediaTransportOf` reads `mediaTransport()` of the Live source (integration pass D5; `runtime/sim-adapters.ts`). It answers null while no operator session is in memory — the player then says playback cannot be opened, and asks nothing of the Core |
  * | One session per camera file: the body `{ fileId }` | `requestMediaSession`; a registry that does not know the member yet makes the typed client refuse the body, and the request is sent without one (the Core opens VIDEO-01) |
- * | The token lives 60 s; a new range request after it is refused | `mediaSessionStale`: the player renews before it starts or seeks on a stale session, and once after a player error |
+ * | The token lives 60 s; a new range request after it is refused | `mediaSessionStale`: the player renews ON DEMAND only - before a Play or a seek on a session that is at its end (5 s margin) - and after a player error ONLY on such a session; it never renews a session that has not ended (wave K Z1, G94b-10: the Core's answer for that place does not change with a new session), and after a renewal the player resumes at the playhead |
  * | A fragment that fails its tag is refused by the MEDIA ROUTE (`409`, read by the player, which hands no body on) | Operation 88 opens no fragment and never answers it (review finding R93-12): this file reads no such refusal. The player stops at the place and points to Verify |
+ * | The session is asked WITH a seek index (wave K M1, G94b-01): the Android player cannot seek a fragmented file that carries none | `SEEK_INDEX_MEMBER` in the body, only while the contract of this build holds the member (`registryKnowsSeekIndex`); a Core that refuses the member (`422`) is asked again without it, once. `MediaSession.indexed` is what the Core answered - whether a seek WORKS is the player's report, never this |
  * | A package of ONE camera has one file | `openMediaSessions(…, fileIds)`: only the files the item names are asked for; `409 … CAMERA_FILE_NOT_IN_PACKAGE` for the other is not a failure |
  *
  * LIVE only: outside Live mode the app plays the bundled demo media and opens no media session.
  */
+import { EvidenceMediaSessionRequestSchema } from '@dems/shared/api';
 import type { MobileLiveSim } from '@/runtime';
 import { CAMERA_FILE_IDS, type CameraFileId } from './item-v2';
 
@@ -39,10 +41,13 @@ export class MediaSession {
   readonly fileId: CameraFileId;
   /** The Core instant the path dies. */
   readonly expiresAt: number;
+  /** The Core said this session serves the file with its seek index (`SEEK_INDEX_MEMBER: true` in the answer). */
+  readonly indexed: boolean;
 
-  constructor(fileId: CameraFileId, path: string, expiresAt: number) {
+  constructor(fileId: CameraFileId, path: string, expiresAt: number, indexed: boolean = false) {
     this.fileId = fileId;
     this.expiresAt = expiresAt;
+    this.indexed = indexed;
     PATH_SLOT.set(this, path);
   }
 
@@ -51,8 +56,8 @@ export class MediaSession {
     return PATH_SLOT.get(this) ?? '';
   }
 
-  toJSON(): { fileId: CameraFileId; expiresAt: number } {
-    return { fileId: this.fileId, expiresAt: this.expiresAt };
+  toJSON(): { fileId: CameraFileId; expiresAt: number; indexed: boolean } {
+    return { fileId: this.fileId, expiresAt: this.expiresAt, indexed: this.indexed };
   }
 
   toString(): string {
@@ -93,31 +98,66 @@ export function cameraFilesOf(item: { readonly files: readonly { readonly trackI
 
 type SessionCall = ReturnType<MobileLiveSim['client']['call']>;
 
-/** The call with `{ fileId }`; without a body when the registry of this build does not know the member yet. */
-async function callForFile(live: MobileLiveSim, evidenceId: string, fileId: CameraFileId) {
-  const client = live.client as unknown as { call(operationId: 'createEvidenceMediaSession', input: { params: { id: string }; body?: { fileId: CameraFileId } }): SessionCall };
+/**
+ * The member of operation 88 that asks for, and answers, the INDEXED view of a camera file: the
+ * same bytes with one segment index (`sidx`) after the init segment (wave K M1, G94b-01). The name
+ * is the contract's since closing pass Z1 (ruling D224 (1); `contract_wave_k.md` "Z1"; example
+ * `EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE` of `@dems/shared/api`): `seekIndex: true` in the body asks
+ * for the view, `seekIndex: true` in the answer says THIS session serves it. Absent in the answer =
+ * the stream as sealed (not asked, or the file's signed fragment table yields no exact index).
+ */
+export const SEEK_INDEX_MEMBER = 'seekIndex';
+
+/**
+ * Whether the contract of THIS build has the member in the body of operation 88. The app sends
+ * nothing the contract does not hold: until the shared schema gains the member, the session is
+ * asked exactly as before and the player says that the stream has no seek index.
+ */
+export function registryKnowsSeekIndex(): boolean {
+  return SEEK_INDEX_MEMBER in (EvidenceMediaSessionRequestSchema as unknown as { shape: Record<string, unknown> }).shape;
+}
+
+type SessionBody = { fileId: CameraFileId; [SEEK_INDEX_MEMBER]?: true };
+/** The typed client's own refusal of a body its registry does not know (`CoreClientUsageError`), told by its name. */
+const refusedByRegistry = (error: unknown): boolean => error instanceof Error && error.name === 'CoreClientUsageError';
+
+/**
+ * The call for one file, in the order: `{ fileId, seekIndex: true }` when the contract of this build
+ * holds the index member (`askIndex`); `{ fileId }` otherwise, or when the Core answered `422` to the
+ * member (a Core older than this app: its body is exactly `{ fileId }`); no body when the registry
+ * does not know `fileId`. At most ONE request is answered with a session: a `422` opens none.
+ */
+async function callForFile(live: MobileLiveSim, evidenceId: string, fileId: CameraFileId, askIndex: boolean) {
+  const client = live.client as unknown as { call(operationId: 'createEvidenceMediaSession', input: { params: { id: string }; body?: SessionBody }): SessionCall };
+  if (askIndex) {
+    try {
+      const indexed = await client.call('createEvidenceMediaSession', { params: { id: evidenceId }, body: { fileId, [SEEK_INDEX_MEMBER]: true } });
+      if (indexed.ok || indexed.status !== 422) return indexed;
+    } catch (error) {
+      if (!refusedByRegistry(error)) throw error;
+    }
+  }
   try {
     return await client.call('createEvidenceMediaSession', { params: { id: evidenceId }, body: { fileId } });
   } catch (error) {
-    // The typed client's own refusal of a body its registry does not know (`CoreClientUsageError`), told by its name.
-    if (!(error instanceof Error && error.name === 'CoreClientUsageError')) throw error;
+    if (!refusedByRegistry(error)) throw error;
     return await live.client.call('createEvidenceMediaSession', { params: { id: evidenceId } });
   }
 }
 
 /** Operation 88 for one camera file. ONE request; nothing here repeats it. The answer says which file it opened. */
-export async function requestMediaSession(live: MobileLiveSim, evidenceId: string, fileId: CameraFileId): Promise<MediaSessionAnswer> {
-  const answer = await callForFile(live, evidenceId, fileId);
+export async function requestMediaSession(live: MobileLiveSim, evidenceId: string, fileId: CameraFileId, askIndex: boolean = registryKnowsSeekIndex()): Promise<MediaSessionAnswer> {
+  const answer = await callForFile(live, evidenceId, fileId, askIndex);
   if (!answer.ok) {
     const refusal: MediaSessionRefusal = answer.status === 409 && answer.error.code === 'MEDIA_NOT_AVAILABLE' ? 'NOT_AVAILABLE' : answer.status === 403 ? 'NOT_PERMITTED' : 'FAILED';
     return { ok: false, refusal, status: answer.status, code: answer.error.code, failure: answer };
   }
-  const data = answer.data as { fileId?: unknown; url?: unknown; expiresAt?: unknown };
+  const data = answer.data as { fileId?: unknown; url?: unknown; expiresAt?: unknown; [SEEK_INDEX_MEMBER]?: unknown };
   const path = mediaPathOf(data.url);
   if (!isCameraFile(data.fileId) || path === null || typeof data.expiresAt !== 'number') {
     return { ok: false, refusal: 'FAILED', status: answer.status, code: 'MEDIA_SESSION_UNUSABLE', failure: null };
   }
-  return { ok: true, session: new MediaSession(data.fileId, path, data.expiresAt) };
+  return { ok: true, session: new MediaSession(data.fileId, path, data.expiresAt, data[SEEK_INDEX_MEMBER] === true) };
 }
 
 export type MediaSessions = Partial<Record<CameraFileId, MediaSession>>;

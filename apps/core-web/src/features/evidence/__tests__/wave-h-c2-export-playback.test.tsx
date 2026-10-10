@@ -17,7 +17,7 @@ import { configure, fireEvent, screen, waitFor, within } from '@testing-library/
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
 import type { EvidenceItem } from '@dems/shared/sim'
-import { EV, findDetailBody, type LiveEvidence } from './live-evidence-bed'
+import { EV, findDetailBody, serveMediaRoute, type LiveEvidence } from './live-evidence-bed'
 import { asReal, openItem, setupPage, teardownPage, UI } from './wave-h-c2-bed'
 
 configure({ asyncUtilTimeout: 8_000 })
@@ -172,6 +172,8 @@ describe('G94-07 / G94-08: the end of a media session is not an integrity failur
     await screen.findByTestId('evidence-playback', {}, UI)
     fireEvent.click(screen.getByTestId('evidence-playback-open'))
     await waitFor(() => expect(screen.getByTestId('evidence-playback')).toHaveAttribute('data-phase', 'ready'), UI)
+    // Fix wave K (G94b-02): the player asks the media route about a file that stopped; a healthy Core serves it.
+    serveMediaRoute()
     return opened
   }
   const video = () => screen.getByTestId('evidence-sealed-video-VIDEO-01') as HTMLVideoElement

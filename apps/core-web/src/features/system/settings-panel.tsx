@@ -20,6 +20,7 @@ import { selectOperator, useSim, type SimActions, type SimState } from '@dems/sh
 import { usePendingControl } from '@/lib/pending-control'
 import { CAMERA_SEARCH_ANCHOR } from '@/features/devices/camera-search'
 import { CAPTURE_SELECTOR_ANCHOR } from '@/features/devices/capture-selector'
+import { useOwnCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { useSystemLiveMode } from './live'
 import { SystemPanel } from './panel'
@@ -111,6 +112,7 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
   const presentation = usePresentationModeSetting()
   const account = useSim(selectAccount)
   const device = useSim(selectDeviceSettings)
+  const hostClock = useOwnCaptureCore()
   // The simulator's settings slice (step 54, W52-2), mirrored to localStorage.
   const [prefs, updatePrefs] = useConsolePrefs()
 
@@ -269,7 +271,8 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
         </Item>
 
         <Item id="network" icon={Clock} title={t('system.settings.networkTime')}>
-          <p>{t('system.settings.timeSource', { source: t(`common.enums.timeSource.${device.timeSource}`) })}</p>
+          {/* Fix wave K (C-2 / G75c-04): "Time source: RTC" is the zeroed slice of a Core whose time is its host system clock. */}
+          <p data-testid="system-settings-time-source">{t('system.settings.timeSource', { source: hostClock ? t('web.ownCore.time.value') : t(`common.enums.timeSource.${device.timeSource}`) })}</p>
           <Link to="/network-time" className="sys-link">
             {t('system.settings.openNetwork')}
           </Link>

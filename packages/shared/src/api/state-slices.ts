@@ -705,6 +705,22 @@ export type PortsSliceBody = z.output<typeof PortsSliceSchema>;
 // evidence
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * The model of a sealed transcript as an ITEM carries it (fix wave K, G81b-06; decision D160): the
+ * members of operation 41's `transcriptModel`, one by one, so that one client type reads both.
+ */
+export const EvidenceTranscriptModelSchema = z
+  .strictObject({
+    name: apiText().min(1).max(256).describe('The model name the sealed manifest records.'),
+    version: apiText().min(1).max(256).nullable().describe('The version the installation declared; null for a server backend.'),
+    quantisation: apiText().min(1).max(256).nullable().describe('The quantisation read from the model file; null for a server backend.'),
+    modelSha256: sha256().nullable().describe('SHA-256 of the model file as the Core hashed it; null for a server backend.'),
+    reportedByServer: z.boolean().describe('True when the session\'s STT backend was a server: the name is what the server reported, and the Core verified nothing of the model.'),
+    report: apiText().min(1).max(256).describe('The report line of the model, as operation 41 words it.'),
+  })
+  .describe('The model of a sealed transcript, from the signed manifest (D160).');
+export type EvidenceTranscriptModel = z.output<typeof EvidenceTranscriptModelSchema>;
+
 export const EvidenceItemSchema = z
   .strictObject({
     id: evidenceId(),
@@ -826,6 +842,11 @@ export const EvidenceItemSchema = z
       .nullable()
       .optional()
       .describe('Core server only, with `interrupted: true`: the code the item\'s custody entry `RECORDING_INTERRUPTED` names (a fault kind), or null when it names none.'),
+    // Fix wave K, driver S2 (re-gate 81 finding G81b-06; decision D160): the model of the sealed transcript ON THE ITEM,
+    // so that a client can say which model made a transcript without running a verification. The shape of operation 41's member.
+    transcriptModel: EvidenceTranscriptModelSchema.optional().describe(
+      'Core server only, for an item whose sealed v2 package lies in the Core\'s own store and whose SIGNED manifest declares a transcript document: the model of that transcript, from the manifest (decision D160). The same shape as `transcriptModel` of operation 41. For a server backend only the name exists, as reported by the STT server; version, quantisation and file hash are null and were not verified by the Core. Absent: not stated (no document sealed, a v1 or demonstration item, a package that could not be read, a manifest whose signature did not hold) - a reader draws nothing.',
+    ),
     transcript: z
       .strictObject({
         state: z.enum(['PENDING', 'PARTIAL', 'READY', 'FAILED', 'DISABLED']).describe('DISABLED only when R-8 turns STT off (D20; lands with M6).'),

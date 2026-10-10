@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
 import { CameraPreview } from '@/features/devices/camera-preview'
+import { useRealCaptureCore } from '@/features/devices/source-class'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
@@ -23,6 +24,7 @@ const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devic
  */
 export function InputsPanel({ paused }: { paused: boolean }) {
   const { t } = useTranslation()
+  const realCapture = useRealCaptureCore()
   const m = useMotionPolicy()
   const cameraStore = useSim((s) => s.cameras)
   const micStore = useSim((s) => s.mics)
@@ -66,7 +68,8 @@ export function InputsPanel({ paused }: { paused: boolean }) {
                 <p className={cn('sm-input-state', camera.ready ? 'text-success' : 'text-danger')}>
                   {camera.online ? t(`common.enums.lensState.${camera.ready ? 'READY' : 'FAULT'}`) : t('session.inputs.offline')}
                 </p>
-                <p className="sm-input-meta">{t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}</p>
+                {/* Fix wave K (C-2, ruling D222 (2)): "1080p • 25 fps" is the dataset's camera record, not the stream of the source behind the track on a Core in real capture. */}
+                {realCapture ? null : <p className="sm-input-meta">{t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}</p>}
               </div>
             </Card>
           </motion.div>

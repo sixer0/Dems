@@ -491,7 +491,7 @@ export function buildRecordings(world: World, directory: OperatorDirectory): Rec
         severity: result.ok ? 'INFO' : 'CRITICAL',
         actorId: actor,
         evidenceId,
-        details: { manifestOk: result.manifestOk, signatureOk: result.signatureOk, failedTracks: failed.join(','), ...(result.ok ? {} : { eventKind: 'TAMPER' }) },
+        details: { manifestOk: result.manifestOk, signatureOk: result.signatureOk, failedTracks: failed.join(','), ...(result.ok ? {} : { eventKind: 'TAMPER' }), operationId: 'verifyEvidence' },
       },
       event: {
         type: result.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',

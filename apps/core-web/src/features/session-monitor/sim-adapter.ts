@@ -115,6 +115,73 @@ export function timelineWhileConnecting<Event extends { kind: string }>(events: 
   return kept.length === events.length ? events : kept
 }
 
+/** `params.reason` of the Core's notice that the recorded video is not the configured profile (`apps/core-server/src/engine/sealing-notice-doors.ts`; `contract_wave_k.md` S1 section 3). */
+export const STREAM_PROFILE_DIFFERS = 'STREAM_PROFILE_DIFFERS'
+
+/**
+ * The Core's notice for a session whose recorded stream is not the configured profile (fix wave K,
+ * ruling D222 (2)): the alert `kind: SYSTEM`, `target: <sessionId>`, `params.reason:
+ * STREAM_PROFILE_DIFFERS`. Returns the Core's own message ("The recorded video is not the configured
+ * profile: VIDEO-01 is H264_720P30 (configured H264_1080P25). ..."), or null. A selector result: a
+ * string compares by value.
+ */
+export function streamProfileNoticeOf(alerts: readonly { readonly kind: string; readonly target?: string | null; readonly message: string; readonly params?: Readonly<Record<string, unknown>> | null }[], sessionId: string | null): string | null {
+  if (sessionId === null) return null
+  return alerts.find((alert) => alert.kind === 'SYSTEM' && (alert.target ?? null) === sessionId && alert.params?.reason === STREAM_PROFILE_DIFFERS)?.message ?? null
+}
+
+/** How far the alert of a fault may lie from its timeline row and still be the same event (both are written in one step of the Core). */
+export const FAULT_ALERT_WINDOW_MS = 2_000
+
+type FaultRow = { readonly kind: string; readonly at: number; readonly params?: Readonly<Record<string, unknown>> | null }
+type FaultAlert = { readonly kind: string; readonly at: number; readonly params?: Readonly<Record<string, unknown>> | null }
+
+/**
+ * THE REASON OF A CAPTURE-FAULT ROW (fix wave K, G75c-06): the row's own `params.reason`; a row
+ * that carries none takes the reason of the CAPTURE_FAULT alert the Core raised at the same moment
+ * (`alerts[].params.reason`: `DEMO_CAPTURE_FAULT`, `WORKER_KILLED`, ...). So the timeline says the
+ * one sentence the alert says - "The demo control raised a capture fault. The recording is not
+ * affected." - and never "the recording was interrupted" beside a session that keeps recording.
+ * null: neither states a reason.
+ */
+export function captureFaultReasonOf(event: FaultRow, alerts: readonly FaultAlert[]): string | null {
+  const own = event.params?.reason
+  if (typeof own === 'string' && own !== '') return own
+  let nearest: { reason: string; distance: number } | null = null
+  for (const alert of alerts) {
+    if (alert.kind !== 'CAPTURE_FAULT') continue
+    const reason = alert.params?.reason
+    const distance = Math.abs(alert.at - event.at)
+    if (typeof reason !== 'string' || reason === '' || distance > FAULT_ALERT_WINDOW_MS) continue
+    if (nearest === null || distance < nearest.distance) nearest = { reason, distance }
+  }
+  return nearest?.reason ?? null
+}
+
+/**
+ * One row per fault (fix wave K, G75c-06 (c)): a FAULT row that repeats the row before it - the same
+ * fault kind, the same reason, the same instant - is drawn once. Nothing else is ever dropped; no
+ * repeat: the same array.
+ */
+export function timelineWithoutRepeatedFaults<Event extends FaultRow>(events: readonly Event[]): readonly Event[] {
+  const kept: Event[] = []
+  for (const event of events) {
+    const previous = kept[kept.length - 1]
+    if (
+      previous !== undefined &&
+      event.kind === 'FAULT' &&
+      previous.kind === 'FAULT' &&
+      previous.at === event.at &&
+      previous.params?.kind === event.params?.kind &&
+      (previous.params?.reason ?? null) === (event.params?.reason ?? null) &&
+      (previous.params?.target ?? null) === (event.params?.target ?? null)
+    )
+      continue
+    kept.push(event)
+  }
+  return kept.length === events.length ? events : kept
+}
+
 /** Bytes written when `event` happened: `params.bytesWritten`, else 8.2 GB/h from `startedAt`. */
 export function bytesAt(event: Pick<TimelineEvent, 'at'> & Partial<Pick<TimelineEvent, 'params'>>, startedAt: number | null): number | null {
   const value = event.params?.bytesWritten

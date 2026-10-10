@@ -156,7 +156,8 @@ describe('G94-09 - the export sheet', () => {
     await b.flush();
     await b.elapse(EXPORT_BUILD_MS + 300);
     const sent = b.requests('exportEvidence').at(-1)?.body as { destination?: string };
-    expect(sent.destination).toBe('Encrypted USB drive');
+    // Fix wave K (G94b-12): the pre-selected option is the case-file one, as on the web console (this Core stated no default).
+    expect(sent.destination).toBe('Case file transfer');
   });
 
   it('CONTROL: a simulated demo item keeps its "(simulated)" destinations and gets no "stored on the Core server" sentence', async () => {
@@ -190,7 +191,9 @@ describe('G94-07 - a stopped playback', () => {
     fireEvent.press(screen.getByTestId('evidence-sealed-toggle-paused'));
     const lead = players.at(-2) as FakePlayer;
     act(() => lead.emit('timeUpdate', { currentTime: 70 }));
-    // The first error: ONE renewal by itself, back at the same place.
+    // The first error, on a session at its END by the Core's clock (wave K Z1, G94b-10: an error on a
+    // live session is not renewed by itself): ONE renewal, back at the same place.
+    await b.elapse(TTL_MS + 2_000, 1_000);
     act(() => lead.emit('statusChange', { status: 'error' }));
     await b.flush();
     expect(b.requests('createEvidenceMediaSession')).toHaveLength(4);

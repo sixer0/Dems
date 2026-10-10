@@ -132,6 +132,12 @@ describe('Evidence detail: Export wizard', () => {
     await settle();
     expect(screen.getByTestId('evidence-export-authorizing')).toBeTruthy();
     await wait(EXPORT_AUTH_MS + 150);
+    // Fix wave K (D223 (1)): the required role is stated and NO row is written by opening the wizard;
+    // the explicit "Request authorization" press is the audited attempt.
+    expect(screen.getByTestId('evidence-export-requires-role-hint')).toBeTruthy();
+    expect(auditRowsFor(h, id, 'EXPORT_DENIED')).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('evidence-export-request-authorization'));
+    await settle();
     expect(screen.getByTestId('evidence-export-denied')).toBeTruthy();
     expect(auditRowsFor(h, id, 'EXPORT_DENIED')).toHaveLength(1);
     expect(h.sim.store.getState().evidence.find((entry) => entry.id === id)!.status).toBe(EvidenceStatus.SEALED);

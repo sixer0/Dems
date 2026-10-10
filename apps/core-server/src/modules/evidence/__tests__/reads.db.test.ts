@@ -289,7 +289,8 @@ describe('operation 40 getEvidence', () => {
     const response = await host.get(itemUrl(committed()[0]?.id ?? ''), supervisor);
     const body = response.json() as { media: Record<string, unknown> };
     // Wave H C1: beside the item and its media reference the Core states what THIS caller may do (`access`: three booleans).
-    expect(Object.keys(body).sort()).toEqual(['access', 'evidence', 'media']);
+    // Fix wave K (G94b-11 / -12): the Core's default export destination is a text beside them - no path, no URL, no file name.
+    expect(Object.keys(body).sort()).toEqual(['access', 'evidence', 'exportDestinationDefault', 'media']);
     expect((body as unknown as { access: unknown }).access).toEqual({ play: true, readTranscript: true, export: true });
     expect(Object.keys(body.media).sort()).toEqual(['packageSuffix', 'source']);
     expect(JSON.stringify(body.media)).not.toMatch(/[\\/]|\.\.|\.mp4|\.wav|https?:|file:|assets|demo-evidence/i);

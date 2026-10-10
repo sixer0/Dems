@@ -48,6 +48,12 @@ import { EvidenceStatus, Permission } from './vocabulary';
 
 /** Default export destination text when the request leaves it empty. */
 export const DEFAULT_EXPORT_DESTINATION = 'Case file transfer (simulated)';
+/**
+ * The default of a Core in its OWN capture (fix wave K, driver S2; re-gate 94 note G94b-11): the same
+ * destination without the word "simulated" - such a Core simulates nothing. The Core hands it in
+ * with the request (`modules/evidence`); the simulator's own default above is unchanged.
+ */
+export const DEFAULT_EXPORT_DESTINATION_REAL = 'Case file transfer';
 /** Default destination of an audit or log export. */
 export const DEFAULT_AUDIT_EXPORT_DESTINATION = 'Audit archive (simulated)';
 
@@ -111,6 +117,8 @@ export function verifyEvidenceTransition(
             signatureOk: result.signatureOk,
             failedTracks: failed.join(','),
             ...(result.ok ? {} : { eventKind: AuditEventKind.TAMPER }),
+            // Fix wave K (G89b-04): the operation that asked, as the Core's own verification writes it.
+            operationId: 'verifyEvidence',
           },
         },
         event: {

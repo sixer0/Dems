@@ -44,7 +44,21 @@ export function useInterruptedSeal(sessionId: string | null | undefined): Interr
 }
 
 /** The notice: the title and the cause, announced politely, with no control. Draws nothing for any other session. */
-export function InterruptedSealNotice({ sessionId, testID = 'session-interrupted' }: { readonly sessionId: string | null | undefined; readonly testID?: string }) {
+export function InterruptedSealNotice({
+  sessionId,
+  testID = 'session-interrupted',
+  sealing = false,
+}: {
+  readonly sessionId: string | null | undefined;
+  readonly testID?: string;
+  /**
+   * Fix wave K (G75c-10): the seal is still RUNNING (the Finalizing screen before the Core's SEALED).
+   * The title then says what is true - the recording was interrupted and is being sealed - and not
+   * "Sealed —" beside "0% complete". Default false: a surface that shows a finished seal.
+   */
+  readonly sealing?: boolean;
+}) {
+  const { t } = useTranslation();
   const words = useInterruptedSeal(sessionId);
   if (words === null) return null;
   return (
@@ -52,7 +66,7 @@ export function InterruptedSealNotice({ sessionId, testID = 'session-interrupted
       <Alert status="warning">
         <Alert.Indicator />
         <Alert.Content>
-          <Alert.Title>{words.title}</Alert.Title>
+          <Alert.Title>{sealing ? t('features.session-finalizing.interruptedSealing.title') : words.title}</Alert.Title>
           <Alert.Description>{words.body}</Alert.Description>
         </Alert.Content>
       </Alert>

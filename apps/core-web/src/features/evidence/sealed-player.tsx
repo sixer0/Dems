@@ -6,12 +6,13 @@ import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { deferEffectStart } from '@/lib/effect-start'
 import { useWebLive } from '@/runtime'
+import { DevelopmentSourceBadge } from '@/features/devices/source-badge'
 import { AudioSourceBand } from './audio-source-band'
 import { VerifiedSourceBadge } from './development-source'
-import { CAMERA_FILE_IDS, type CameraFileId, type ItemV2 } from './item-v2'
+import { CAMERA_FILE_IDS, cameraFileOf, itemDevelopmentBadge, type CameraFileId, type ItemV2 } from './item-v2'
 import { logEvidence, newCorrelationId } from './log'
-import { cameraFilesOf, mediaSessionStale, openMediaSessions, type MediaSession, type MediaSessionRefusal } from './media-session'
-import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, type VerifiedSources } from './sealed-playback'
+import { cameraFilesOf, mediaSessionStale, openMediaSessions, probeMediaSession, type MediaProbeOutcome, type MediaSession, type MediaSessionRefusal } from './media-session'
+import { bandDurationMs, bandSegments, clampSeek, formatMediaTime, needsResync, permissionGate, probeStartByte, type VerifiedSources } from './sealed-playback'
 import { useRetryCooldown } from './use-retry-cooldown'
 
 export interface SealedPlayerProps {
@@ -34,7 +35,23 @@ export interface SealedPlayerProps {
   fileIds?: readonly CameraFileId[] | null
   /** Wave H C2 (G81-07): `access.play` of operation 40. `false`: operation 88 is never asked; the player says "not permitted". */
   mayPlay?: boolean | null
+  /** Wave K (G94b-09): the item says its recording was interrupted (`interruptedFactOf`): the player says so where the sealed prefix ends. */
+  interrupted?: boolean
 }
+
+/** Wave K (G94b-02): a camera file the Core's media route refused by name - the fragment that does not authenticate. */
+interface IntegrityStop {
+  /** The file and the fragment as the Core named them. `seq: null`: the Core named no fragment. */
+  readonly fileId: string
+  readonly seq: number | null
+  /** The media position of the player when the Core's answer was read. */
+  readonly atMs: number
+}
+type IntegrityStops = Partial<Record<CameraFileId, IntegrityStop>>
+const NO_STOPS: IntegrityStops = {}
+
+/** A file that gave no sign of life, or waits for data, this long after it was started is asked about (wave K, G94b-02). */
+export const STALL_CHECK_MS = 4_000
 
 type Sessions = Partial<Record<CameraFileId, MediaSession>>
 type Phase =
@@ -118,12 +135,20 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
  *   failed its integrity check (Verify: <file> fragment <n>)" - what Verify found, not a claim
  *   about where playback stopped (R93-13). Without a verify run the stop names the position and
  *   points to Verify.
+ * - **Wave K (G94b-02): a file that stalls is asked about.** In a browser the media element of a
+ *   file whose stream the Core stopped reports nothing at all (no error, `readyState 0`): a black
+ *   tile. So a file that gives no sign of life, or waits for data, for `STALL_CHECK_MS` - and a file
+ *   that reports an error on a live session - is asked about through `probeMediaSession`, which CAN
+ *   read the route's `409`. `FRAGMENT_NOT_AUTHENTIC` stops THAT file with the Core's naming of the
+ *   file and the fragment ("This recording failed its integrity check at VIDEO-02 fragment 3."),
+ *   takes its path off its element and keeps it stopped through every renewal; the other file plays
+ *   on and leads (it carries the same audio track, R-4). Any other answer leaves the rules above.
  * - **One camera or two.** The files asked for are the ones the item names (`files[]` of 1 or 2).
  * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal for
  *   the role says so; anything else goes to the shared presenter first and offers a rate-limited
  *   "Open again" (3 s, 6 s, 12 s; three tries).
  */
-export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayHandled, fileIds = null, mayPlay = null }: SealedPlayerProps) {
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayHandled, fileIds = null, mayPlay = null, interrupted = false }: SealedPlayerProps) {
   const { t } = useTranslation()
   const live = useWebLive()
   const sim = useSimInstance()
@@ -143,6 +168,22 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const renewedAtMs = useRef<number | null>(null)
   /** G94-08: the path was taken off the elements after a refused request; the next start asks for a new session first. */
   const detached = useRef(false)
+  // Wave K (G94b-02): the files the Core's media route refused by name. They stay stopped through every renewal of this player.
+  const [integrityStops, setIntegrityStops] = useState<IntegrityStops>(NO_STOPS)
+  const stopsRef = useRef<IntegrityStops>(NO_STOPS)
+  /** Files that showed no sign of life although the Core serves them (or could not be asked). */
+  const [notLoaded, setNotLoaded] = useState<readonly CameraFileId[]>([])
+  /** G94b-09: the leading file reached its end. */
+  const [ended, setEnded] = useState(false)
+  /** Files that loaded metadata, can play or moved: a sign of life since their path was put on. */
+  const alive = useRef(new Set<CameraFileId>())
+  const watches = useRef(new Map<CameraFileId, ReturnType<typeof setTimeout>>())
+  const probing = useRef(new Set<CameraFileId>())
+  /** The files a STALL was already asked about on the sessions that are open: one question per file and session (each is a request the Core records). */
+  const stallAsked = useRef(new Set<CameraFileId>())
+  const sessionsRef = useRef<Sessions | null>(null)
+  const positionRef = useRef(0)
+  const mounted = useRef(true)
 
   const segments = useMemo(() => bandSegments(item.audioIntervals, durationMs), [item.audioIntervals, durationMs])
   const totalMs = bandDurationMs(item.audioIntervals, durationMs)
@@ -152,7 +193,14 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   /** The camera files this item has: one or two. */
   const expected = useMemo(() => (fileIds !== null && fileIds.length > 0 ? fileIds : cameraFilesOf(item)), [fileIds, item])
   const opened = sessions === null ? [] : CAMERA_FILE_IDS.filter((fileId) => sessions[fileId] !== undefined)
-  const leading = opened[0] ?? null
+  /** The open files that play: a file stopped at a fragment that does not authenticate is not one of them. */
+  const playable = opened.filter((fileId) => integrityStops[fileId] === undefined)
+  const leading = playable[0] ?? null
+  // What the handlers that outlive a render (the stall watch, the Core's answer) read: kept after each commit.
+  useEffect(() => {
+    sessionsRef.current = sessions
+    positionRef.current = positionMs
+  })
 
   /** Asks for the sessions of both files. `then`: where the players go once the new URLs are on them. */
   const open = useCallback(
@@ -187,6 +235,13 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       resume.current = then
       detached.current = false
       if (then === null) setPositionMs(0)
+      if (!renewal) {
+        // A fresh opening asks the Core again: nothing of the last one is carried over.
+        stopsRef.current = NO_STOPS
+        setIntegrityStops(NO_STOPS)
+        setNotLoaded([])
+      }
+      setEnded(false)
       // The players are started by the effect that puts the new paths on them.
       if (then?.play === true) setPlaying(true)
       setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, renewing: false })
@@ -199,20 +254,106 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     setPlaying(false)
   }, [])
 
+  const unwatch = (fileId: CameraFileId) => {
+    const timer = watches.current.get(fileId)
+    if (timer !== undefined) clearTimeout(timer)
+    watches.current.delete(fileId)
+  }
+
+  /** Takes one file out of playback: its path comes off its element, so no byte of it is asked again. */
+  const stopFile = (fileId: CameraFileId) => {
+    unwatch(fileId)
+    const element = videos.current[fileId]
+    if (!element) return
+    element.pause()
+    element.removeAttribute('src')
+    element.load()
+  }
+
+  /**
+   * Wave K (G94b-02): asks the Core's media route about one open file (`probeMediaSession`). A
+   * fragment that does not authenticate stops THAT file with the Core's own naming of it; the
+   * other file plays on. Returns the outcome; null when nothing was asked.
+   */
+  const askCore = async (fileId: CameraFileId): Promise<MediaProbeOutcome | null> => {
+    const session = sessionsRef.current?.[fileId]
+    if (session === undefined || probing.current.has(fileId) || stopsRef.current[fileId] !== undefined) return null
+    probing.current.add(fileId)
+    const atMs = positionRef.current
+    const file = cameraFileOf(item, fileId)
+    const startByte = alive.current.has(fileId) ? probeStartByte({ sizeBytes: file?.sizeBytes ?? 0, fragmentCount: file?.fragmentCount ?? 0, positionMs: atMs, totalMs }) : 0
+    const outcome = await probeMediaSession(session, { startByte })
+    probing.current.delete(fileId)
+    if (!mounted.current) return null
+    if (outcome.kind === 'NOT_AUTHENTIC') {
+      // The Core's codes only: the file, the fragment, the place. Never the path.
+      logEvidence('warn', 'playback.integrityStop', null, { evidenceId, fileId, namedFile: outcome.fileId, seq: outcome.seq, positionMs: Math.round(atMs) })
+      const next: IntegrityStops = { ...stopsRef.current, [fileId]: { fileId: outcome.fileId, seq: outcome.seq, atMs } }
+      stopsRef.current = next
+      stopFile(fileId)
+      setIntegrityStops(next)
+      setNotLoaded((current) => current.filter((entry) => entry !== fileId))
+      // Nothing is left to play: the toggle goes back to Play.
+      if (CAMERA_FILE_IDS.every((entry) => sessionsRef.current?.[entry] === undefined || next[entry] !== undefined)) setPlaying(false)
+    } else if (!alive.current.has(fileId)) {
+      logEvidence('warn', 'playback.notLoaded', null, { evidenceId, fileId, probe: outcome.kind, ...(outcome.kind === 'REFUSED' ? { status: outcome.status, reason: outcome.reason } : {}) })
+      setNotLoaded((current) => (current.includes(fileId) ? current : [...current, fileId]))
+    }
+    return outcome
+  }
+
+  /** Starts the watch of one file: if it still gives no sign of life (or still waits) after `STALL_CHECK_MS`, the Core is asked. */
+  const watch = (fileId: CameraFileId, waiting: boolean) => {
+    if (stopsRef.current[fileId] !== undefined) return
+    if (!waiting && alive.current.has(fileId)) return
+    unwatch(fileId)
+    watches.current.set(
+      fileId,
+      setTimeout(() => {
+        watches.current.delete(fileId)
+        if (stallAsked.current.has(fileId)) return
+        stallAsked.current.add(fileId)
+        void askCore(fileId)
+      }, STALL_CHECK_MS),
+    )
+  }
+
+  /** A sign of life of one file: loaded metadata, can play, plays, or its clock moved. */
+  const onAlive = (fileId: CameraFileId) => {
+    unwatch(fileId)
+    if (alive.current.has(fileId)) return
+    alive.current.add(fileId)
+    setNotLoaded((current) => (current.includes(fileId) ? current.filter((entry) => entry !== fileId) : current))
+  }
+
+  useEffect(() => {
+    mounted.current = true
+    const timers = watches.current
+    return () => {
+      mounted.current = false
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
+
   /** Starts the elements that are open, the followers aligned to the leading one. Sets no state. */
   const startElements = () => {
     const lead = leading === null ? null : (videos.current[leading] ?? null)
     if (lead === null) return
-    for (const fileId of opened) {
+    for (const fileId of playable) {
+      if (stopsRef.current[fileId] !== undefined) continue
       const element = videos.current[fileId] ?? null
       if (element !== null && element !== lead && needsResync(lead.currentTime, element.currentTime, 0)) setTime(element, lead.currentTime)
       // R93-14: a LEADING element that does not start takes the Pause icon back; a follower that does not start is re-aligned by the next time update.
       playSafely(element, 'playback.play', { evidenceId, fileId }, () => {
         if (element === lead) setPlaying(false)
       })
+      // Wave K: a file that was started and gives no sign of life is asked about.
+      watch(fileId, false)
     }
   }
   const startPlayers = () => {
+    setEnded(false)
     startElements()
     setPlaying(true)
   }
@@ -253,17 +394,23 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     resume.current = null
     // The nodes themselves: at unmount the refs are already empty, and the path must still come off.
     const assigned: HTMLVideoElement[] = []
+    alive.current = new Set()
+    stallAsked.current = new Set()
     for (const fileId of CAMERA_FILE_IDS) {
       const element = elements[fileId]
       const session = sessions[fileId]
-      if (!element || !session) continue
+      // Wave K: a file the Core refused by name gets no path again.
+      if (!element || !session || stopsRef.current[fileId] !== undefined) continue
       assigned.push(element)
       element.src = session.takeUrl()
       // Back to the same place on the new session (a no-op for a first open at 0).
       if (target !== null && target.seconds > 0) setTime(element, target.seconds)
+      // Wave K (G94b-02): a file that never becomes ready says nothing by itself - it is watched from the moment it has a path.
+      watch(fileId, false)
     }
     if (target?.play === true) startElements()
     return () => {
+      for (const fileId of CAMERA_FILE_IDS) unwatch(fileId)
       for (const element of assigned) {
         element.pause()
         element.removeAttribute('src')
@@ -292,6 +439,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     if (!lead) return
     const nowMs = Math.min(lead.currentTime * 1000, totalMs)
     setPositionMs(nowMs)
+    positionRef.current = nowMs
     // G94-08: renew BEFORE the end while it plays, so no range request is ever sent on a dead session
     // (the browser prints the path of a refused request itself). Driven by the media clock, once per end.
     if (playing && !busy.current && !detached.current && stale()) {
@@ -303,7 +451,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       renewedAtMs.current = null
       retry.reset()
     }
-    for (const other of opened) {
+    for (const other of playable) {
       const element = videos.current[other]
       // R93-14: a follower that is still seeking (it buffers) is not seeked again on every time update.
       if (other !== fileId && element && !element.seeking && needsResync(lead.currentTime, element.currentTime)) setTime(element, lead.currentTime)
@@ -313,35 +461,58 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const seekTo = (seconds: number) => {
     const target = clampSeek(seconds, totalSeconds)
     setPositionMs(target * 1000)
+    setEnded(false)
     if (stale() || detached.current) {
       // The seek would be a new range request on a session at its end: renew first, then go there.
       void open({ seconds: target, play: playing }, true)
       return
     }
-    for (const fileId of opened) {
+    for (const fileId of playable) {
       const element = videos.current[fileId]
       if (element) setTime(element, target)
     }
   }
 
   const onMediaError = (fileId: CameraFileId) => {
+    // A file this player stopped itself holds no path: nothing it reports is a new fact.
+    if (stopsRef.current[fileId] !== undefined) return
     const element = videos.current[fileId]
     // The numeric code of the element's error and nothing else: its message and its source are never read.
     logEvidence('warn', 'playback.mediaError', null, { evidenceId, fileId, mediaErrorCode: element?.error?.code ?? null, positionMs: Math.round(positionMs) })
     const wasPlaying = playing
     // G94-07: was the session at its end on the Core's clock when the request was refused?
     const sessionEnded = stale()
+    // The session object the refused request was made on: the Core is asked about THAT one (its path is still alive).
+    const session = sessions?.[fileId]
     pause()
     // G94-08: the dead path comes off the elements now; the renewal below (or the next press) puts a new one on.
     detach()
-    const samePlace = renewedAtMs.current !== null && Math.abs(positionMs - renewedAtMs.current) <= SAME_PLACE_MS
-    if (!samePlace && !busy.current && retry.consume()) {
-      // Once per place: a new session, the same position, and on with it.
-      renewedAtMs.current = positionMs
-      void open({ seconds: positionMs / 1000, play: wasPlaying }, true)
+    const renewOrStop = () => {
+      const samePlace = renewedAtMs.current !== null && Math.abs(positionMs - renewedAtMs.current) <= SAME_PLACE_MS
+      if (!samePlace && !busy.current && retry.consume()) {
+        // Once per place: a new session, the same position, and on with it.
+        renewedAtMs.current = positionMs
+        void open({ seconds: positionMs / 1000, play: wasPlaying }, true)
+        return
+      }
+      setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: positionMs, renewing: false, stopCause: sessionEnded ? 'SESSION_ENDED' : 'UNKNOWN' } : current))
+    }
+    // A session at its end explains the refusal by itself (G94-07): nothing is asked on it.
+    if (sessionEnded || session === undefined) {
+      renewOrStop()
       return
     }
-    setPhase((current) => (current.kind === 'ready' ? { ...current, stoppedAtMs: positionMs, renewing: false, stopCause: sessionEnded ? 'SESSION_ENDED' : 'UNKNOWN' } : current))
+    // Wave K (G94b-02): the element cannot read WHY it was refused. The Core is asked, once, before anything is renewed.
+    void askCore(fileId).then((outcome) => {
+      if (!mounted.current) return
+      if (outcome?.kind !== 'NOT_AUTHENTIC') {
+        renewOrStop()
+        return
+      }
+      // The refused file stays stopped. The other file gets a new session and goes on from the same place.
+      const left = CAMERA_FILE_IDS.some((entry) => sessionsRef.current?.[entry] !== undefined && stopsRef.current[entry] === undefined)
+      if (left && !busy.current) void open({ seconds: positionMs / 1000, play: wasPlaying }, true)
+    })
   }
 
   const reopen = () => {
@@ -403,21 +574,43 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const sessionEnded = stopped && phase.stopCause === 'SESSION_ENDED'
   // The fragment of an open file the last verify run of this page named as failed, if any.
   const verifiedFailure = stopped && !sessionEnded ? (failedFragments.find((fragment) => (opened as readonly string[]).includes(fragment.trackId)) ?? null) : null
+  // Wave K (G94b-02): the files the Core's media route refused by name, in file order.
+  const refusedFiles = opened.filter((fileId) => integrityStops[fileId] !== undefined)
+  const nothingPlays = playable.length === 0
+  // Wave K (G94b-07): the item's own mark (`developmentSources === true`, Live data only) where no verify result states a class per file.
+  const developmentItem = itemDevelopmentBadge(item, live !== null)
+  const trackName = (fileId: string): string => (fileId === 'VIDEO-01' || fileId === 'VIDEO-02' ? t(`common.tracks.${fileId}`) : fileId)
   return (
-    <div className="evi-sealed" data-testid="evidence-playback" data-phase="ready" data-playing={playing ? 'true' : 'false'} data-files={opened.join(' ')} aria-busy={phase.renewing || undefined}>
+    <div className="evi-sealed" data-testid="evidence-playback" data-phase="ready" data-playing={playing ? 'true' : 'false'} data-files={opened.join(' ')} data-leading={leading ?? undefined} aria-busy={phase.renewing || undefined}>
       <div className="evi-sealed-stages" data-files={opened.length}>
         {opened.map((fileId) => {
           const track = sources?.state === 'DEVELOPMENT' ? sources.tracks.find((entry) => entry.trackId === fileId) : undefined
+          const refused = integrityStops[fileId]
+          const waitingForFile = refused === undefined && notLoaded.includes(fileId)
           return (
-            <div key={fileId} className="evi-sealed-file">
+            <div key={fileId} className="evi-sealed-file" data-integrity={refused ? 'failed' : undefined} data-loaded={waitingForFile ? 'false' : undefined}>
               <div className="evi-player-caption">
                 <span className="evi-player-camera">
                   <Video className="size-3.5" aria-hidden="true" />
                   {t('evidence.playback.file', { track: t(`common.tracks.${fileId}`) })}
                 </span>
-                {track ? <VerifiedSourceBadge sourceClass={track.sourceClass} kind="CAMERA" testId={`evidence-playback-development-${fileId}`} /> : null}
+                {track ? (
+                  <VerifiedSourceBadge sourceClass={track.sourceClass} kind="CAMERA" testId={`evidence-playback-development-${fileId}`} />
+                ) : developmentItem && sources === null ? (
+                  // G94b-07: the item says it was recorded from development sources; no verify run of this page has stated the class of each file yet.
+                  <DevelopmentSourceBadge adapter={null} kind="CAMERA" testId={`evidence-playback-development-${fileId}`} />
+                ) : null}
               </div>
               <div className="evi-player-stage">
+                {refused ? (
+                  <p className="evi-sealed-file-note" data-testid={`evidence-sealed-integrity-${fileId}`}>
+                    {refused.seq === null ? t('web.player.fileStoppedNoPlace') : t('web.player.fileStopped', { seq: refused.seq })}
+                  </p>
+                ) : waitingForFile ? (
+                  <p className="evi-sealed-file-note" role="status" data-testid={`evidence-sealed-not-loaded-${fileId}`}>
+                    {t('web.player.notLoaded')}
+                  </p>
+                ) : null}
                 <video
                   ref={(element) => {
                     videos.current[fileId] = element
@@ -431,8 +624,23 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
                   data-sealed-file={fileId}
                   data-leading={fileId === leading ? 'true' : 'false'}
                   aria-label={t('evidence.media.videoLabel', { track: t(`common.tracks.${fileId}`) })}
-                  onTimeUpdate={() => onTimeUpdate(fileId)}
-                  onEnded={fileId === leading ? pause : undefined}
+                  onLoadedMetadata={() => onAlive(fileId)}
+                  onCanPlay={() => onAlive(fileId)}
+                  onPlaying={() => onAlive(fileId)}
+                  onWaiting={() => watch(fileId, true)}
+                  onStalled={() => watch(fileId, true)}
+                  onTimeUpdate={() => {
+                    onAlive(fileId)
+                    onTimeUpdate(fileId)
+                  }}
+                  onEnded={
+                    fileId === leading
+                      ? () => {
+                          pause()
+                          setEnded(true)
+                        }
+                      : undefined
+                  }
                   onError={() => onMediaError(fileId)}
                 />
               </div>
@@ -448,6 +656,31 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       {fileIds !== null && fileIds.length === 1 && missing === null ? (
         <p className="evi-caption" data-testid="evidence-playback-one-camera">
           {t('evidence.itemFacts.media.oneCamera', { track: fileIds[0] })}
+        </p>
+      ) : null}
+      {refusedFiles.length > 0 ? (
+        <Alert status="danger" role="alert" data-testid="evidence-playback-integrity" data-files={refusedFiles.join(' ')}>
+          <Alert.Indicator />
+          <Alert.Content>
+            {refusedFiles.map((fileId) => {
+              const refused = integrityStops[fileId] as IntegrityStop
+              return (
+                <Alert.Title key={fileId} data-testid={`evidence-playback-integrity-${fileId}`} data-seq={refused.seq ?? undefined}>
+                  {refused.seq === null ? t('evidence.playback.integrityNoPlace') : t('evidence.playback.integrity', { file: refused.fileId, seq: refused.seq })}
+                </Alert.Title>
+              )
+            })}
+            <Alert.Description>
+              {t('web.player.refusedByCore')}{' '}
+              {nothingPlays ? t('web.player.nothingPlays') : t('web.player.otherPlays', { stopped: refusedFiles.map(trackName).join(', '), playing: playable.map(trackName).join(', ') })}{' '}
+              {t('web.player.runVerify')}
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
+      {interrupted && ended ? (
+        <p className="evi-caption" role="status" data-testid="evidence-playback-interrupted-end">
+          {t('web.player.interruptedEnd', { at: formatMediaTime(positionMs) })}
         </p>
       ) : null}
       {phase.renewing ? (
@@ -476,7 +709,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           isIconOnly
           size="sm"
           variant="primary"
-          isDisabled={(stopped && !sessionEnded) || phase.renewing}
+          isDisabled={(stopped && !sessionEnded) || phase.renewing || nothingPlays}
           aria-label={playing ? t('evidence.media.pause') : t('evidence.media.play')}
           onPress={() => (playing ? pause() : play())}
           data-testid="evidence-sealed-play-toggle"
@@ -502,7 +735,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           </Slider.Track>
         </Slider>
       </div>
-      <AudioSourceBand segments={segments} totalMs={totalMs} positionMs={positionMs} sources={sources} />
+      <AudioSourceBand segments={segments} totalMs={totalMs} positionMs={positionMs} sources={sources} developmentItem={developmentItem} />
       <p className="evi-caption">{t('evidence.playback.note')}</p>
     </div>
   )

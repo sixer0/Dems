@@ -88,14 +88,15 @@ export function createResetHost(app: FastifyInstance, routine: () => ResetRoutin
     operatorRoles: () => app.db.read(OPERATOR_ROLES_SOURCE, async (pool) => (await pool.query<OperatorRoleRow>(READ_OPERATOR_ROLES)).rows),
     // The same two sides the routine asks at R-3, with the same store root: the configured media root (decision D165).
     realEvidence: () => app.db.read(REAL_EVIDENCE_SOURCE, (pool) => findRealSealedEvidence(pool, { database: host.database, storeRoot: host.mediaStoreDir })),
-    async auditRefusal({ operation, actorId, reason }) {
+    async auditRefusal({ operation, actorId, deviceId, reason }) {
       await app.pipeline.run(RESET_REFUSAL_UNIT_LABEL, (unit) =>
         unit.audit.append({
           type: AuditType.ACCESS_DENIED,
           severity: Severity.WARNING,
           message: `Demo reset refused: real sealed evidence exists (${operation})`,
           actorId,
-          deviceId: null,
+          // Decision D216 (2): the paired device that sent the request; a web console session sends none.
+          deviceId: deviceId ?? null,
           details: { operationId: operation, reason },
         }),
       );

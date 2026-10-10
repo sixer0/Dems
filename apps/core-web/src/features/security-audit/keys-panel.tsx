@@ -7,7 +7,8 @@ import { useSim } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { colonFingerprint, daysUntil, expiryTone, shortHash } from './model'
 import { Panel } from './panel'
-import { keyEntries, type KeyEntry, type KeyEntryId } from './sim-adapter'
+import { useReportedSigningKey, useSelfCaptureCore } from '@/lib/own-capture'
+import { keyEntries, ownCoreKeyEntries, type KeyEntry, type KeyEntryId } from './sim-adapter'
 import { EXPIRY_TONE } from './tones'
 import { useSimMinuteMs } from './use-security-data'
 
@@ -29,7 +30,13 @@ function KeyItem({ entry, now }: { entry: KeyEntry; now: number }) {
   const { t } = useTranslation()
   const Icon = KEY_ICON[entry.id]
   const lines: string[] = []
-  if (entry.id === 'HARDWARE_ROOT') {
+  if (entry.source === 'NOT_REPORTED') {
+    // Fix wave K (C-2): a key or certificate this Core does not report - no algorithm, no fingerprint, no residence claim.
+    lines.push(t(`web.realCore.keys.notReported.${entry.id}`))
+  } else if (entry.source === 'CORE') {
+    lines.push([entry.algorithm, entry.keyId].filter(Boolean).join(' • '))
+    lines.push(t('web.realCore.keys.signedWith', { evidenceId: entry.namedBy ?? '' }))
+  } else if (entry.id === 'HARDWARE_ROOT') {
     lines.push(entry.algorithm, t('securityAudit.keys.tpmResident'))
   } else {
     const first = [entry.algorithm]
@@ -71,6 +78,16 @@ function KeyItem({ entry, now }: { entry: KeyEntry; now: number }) {
               {t('securityAudit.keys.simulated')}
             </Chip>
           ) : null}
+          {entry.source === 'NOT_REPORTED' ? (
+            <Chip size="sm" variant="soft" color="default" data-testid={`key-not-reported-${entry.id}`}>
+              {t('common.platformNotReported.value')}
+            </Chip>
+          ) : null}
+          {entry.source === 'CORE' && entry.developmentKey === true ? (
+            <Chip size="sm" variant="soft" color="warning" data-testid="key-development">
+              {t('web.realCore.keys.developmentChip')}
+            </Chip>
+          ) : null}
           {entry.source === 'HARDWARE' ? (
             <Chip size="sm" variant="soft" {...toneChipProps('success')}>
               {t('securityAudit.keys.hardwareBound')}
@@ -107,7 +124,20 @@ export const KeysPanel = memo(function KeysPanel({ className }: KeysPanelProps) 
   const simKeys = useSim((s) => s.security.keys)
   const hardwareRoot = useSim((s) => s.device.identity.tpmModelFirmware)
   const now = useSimMinuteMs()
-  const entries = useMemo(() => keyEntries(simKeys, hardwareRoot), [simKeys, hardwareRoot])
+  // Fix wave K (C-2): a Core in its own capture reports one key - the one its sealed items are signed with.
+  const selfCapture = useSelfCaptureCore()
+  const signingKey = useReportedSigningKey()
+  const reportedId = signingKey?.keyId ?? null
+  const reportedAlgorithm = signingKey?.algorithm ?? null
+  const reportedDevelopment = signingKey?.developmentKey ?? null
+  const reportedBy = signingKey?.evidenceId ?? null
+  const entries = useMemo(
+    () =>
+      selfCapture
+        ? ownCoreKeyEntries(reportedId === null || reportedAlgorithm === null || reportedBy === null ? null : { keyId: reportedId, algorithm: reportedAlgorithm, developmentKey: reportedDevelopment, evidenceId: reportedBy })
+        : keyEntries(simKeys, hardwareRoot),
+    [selfCapture, reportedId, reportedAlgorithm, reportedDevelopment, reportedBy, simKeys, hardwareRoot],
+  )
   return (
     <Panel id="keys" icon={KeySquare} title={t('securityAudit.keys.title')} className={className}>
       <div className="sa-keys">
@@ -115,7 +145,9 @@ export const KeysPanel = memo(function KeysPanel({ className }: KeysPanelProps) 
           <KeyItem key={entry.id} entry={entry} now={now} />
         ))}
       </div>
-      <p className="sa-demo-note">{t('securityAudit.keys.demoNote')}</p>
+      <p className="sa-demo-note" data-testid="sa-keys-note">
+        {selfCapture ? t('web.realCore.keys.note') : t('securityAudit.keys.demoNote')}
+      </p>
     </Panel>
   )
 })
