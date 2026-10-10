@@ -7,7 +7,9 @@
 //   2. OPERATIONS 78 / 79 ASK THE ADAPTER REGISTRY (decision D115 (3); check M4-LOCAL-SEL-1, API
 //      half): in `REAL_DEVELOPMENT` the boot step of the capture-config module takes the registry
 //      of the capture fence, and an assignment of a production camera answers
-//      `422 INVALID_INPUT`, `details.reason: DEVELOPMENT_SOURCE_NOT_ALLOWED`; nothing is stored.
+//      `422 INVALID_INPUT`, `details.reason: PRODUCTION_SOURCE_NOT_ALLOWED` (fix wave I, finding
+//      G70b-01: the reason of THIS refusal; it read `DEVELOPMENT_SOURCE_NOT_ALLOWED` before, which
+//      is false for a production camera on a development Core); nothing is stored.
 //
 // A "restart" is what it is in production: the app is closed and a NEW app is built on the same
 // database and booted. The helper program of the development boots is `/bin/echo` (row 136's
@@ -176,7 +178,7 @@ describe('2. operations 78 and 79 ask the adapter registry of the running captur
       expect(refused.statusCode, refused.body).toBe(422);
       const error = (refused.json() as { error: { code: string; details?: Record<string, unknown> } }).error;
       expect(error.code).toBe('INVALID_INPUT');
-      expect(error.details).toMatchObject({ reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'CAM-11' });
+      expect(error.details).toMatchObject({ reason: 'PRODUCTION_SOURCE_NOT_ALLOWED', deviceId: 'CAM-11' });
     }
     await server.app.pipeline.drain();
     expect(await storedSelector(owner)).toEqual(before);

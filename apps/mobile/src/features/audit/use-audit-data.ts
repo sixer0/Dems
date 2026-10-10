@@ -13,7 +13,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { selectAuditChainBreak, useSim, type AuditRow } from '@dems/shared/sim';
+import { faultKindLabelKey, selectAuditChainBreak, useSim, type AuditRow } from '@dems/shared/sim';
 import { useCoreLink } from '@/runtime';
 import { actorKindOf, authMethodOf, faultKindOf, filterAuditRows, isTypedUsernameActor, rowRefs, type AuditQuery } from './audit-model';
 
@@ -86,7 +86,8 @@ export function useAuditText(names: Readonly<Record<string, string>>): AuditText
       const method = authMethodOf(row);
       if (method) parts.push(t(`common.authMethod.${method}`));
       const fault = faultKindOf(row);
-      if (fault) parts.push(t(`common.faultKind.${fault}`));
+      // Closing pass J (D217 (5)): a row that carries `details.coreNotRunning` is worded from it.
+      if (fault) parts.push(t(faultKindLabelKey(fault, row.details)));
       parts.push(...rowRefs(row));
       return parts.join(' · ');
     };

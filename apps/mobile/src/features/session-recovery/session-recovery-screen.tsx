@@ -56,7 +56,7 @@ import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { formatClock, formatDuration } from '@dems/shared/realtime';
-import { useSim } from '@dems/shared/sim';
+import { faultKindLabelKey, isCoreNotRunningKind, useSim } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { GlowRing } from '@/components/composed/glow-ring';
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
@@ -591,7 +591,9 @@ function FaultAlert({ inputs }: { inputs: RecoveryInputs }) {
   }, [glow, settings, inputs.id]);
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.get() }));
 
-  const fault = inputs.faultKind ? t(`common.faultKind.${inputs.faultKind}`) : t('features.session-recovery.fault.unknownFault');
+  // Closing pass J (G75b-03, D217 (5)): the restart fault of a Core in its own capture is worded from `session.fault.coreNotRunning` - never "Power failure".
+  const coreNotRunning = useSim((s) => isCoreNotRunningKind(s, inputs.faultKind));
+  const fault = inputs.faultKind ? t(faultKindLabelKey(inputs.faultKind, coreNotRunning ? { coreNotRunning: true } : null)) : t('features.session-recovery.fault.unknownFault');
   const body =
     inputs.startedAt === null
       ? t('features.session-recovery.fault.noRecording')

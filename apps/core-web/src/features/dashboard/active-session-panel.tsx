@@ -24,6 +24,7 @@ import { Permission, selectCan, selectOperatorById, useSim, type SimState } from
 import { motion as tokens, palette, toneChipProps } from '@dems/shared/tokens'
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { Ripple } from '@/components/ui/ripple'
+import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
 import { ShineBorder } from '@/components/ui/shine-border'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { useMotionPolicy } from '@/motion'
@@ -84,11 +85,12 @@ function zoned(at: number | null): string {
  * leaving and the entering view overlap without moving each other, and a `layoutId` pair (idle
  * icon → REC thumbnail) is mounted at the same time, which Motion needs for the flight.
  */
-function View({ children, testId }: { children: ReactNode; testId: string }) {
+function View({ children, testId, seal }: { children: ReactNode; testId: string; seal?: string | undefined }) {
   const m = useMotionPolicy()
   return (
     <motion.div
       data-testid={testId}
+      data-seal={seal}
       className="absolute inset-0 flex min-h-0 flex-col"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -307,17 +309,31 @@ function FinalizingView({ card }: { card: SessionCard }) {
   const navigate = useNavigate()
   const progress = useSim(selectFinalizationProgress)
   const stopping = card.state === SessionState.STOPPING
+  // Fix wave I (G75b-02): a seal that is blocked or retried is no running "Finalizing evidence, step 1 of 6".
+  const attention = useOpenSealAttention()
   return (
-    <View testId="session-finalizing">
+    <View testId="session-finalizing" seal={attention?.kind}>
       <div className="flex h-full min-h-0 flex-col justify-center gap-3">
         <div className="flex items-center gap-2.5">
-          <Spinner size="sm" color="accent" />
+          {attention !== null ? (
+            <TriangleAlert aria-hidden="true" size={18} className={attention.kind === 'BLOCKED' ? 'text-danger' : 'text-warning'} />
+          ) : (
+            <Spinner size="sm" color="accent" />
+          )}
           <h3 className="text-h3 text-foreground">
-            {stopping ? t('dashboard.activeSession.finalizing.stopping') : t('dashboard.activeSession.finalizing.title')}
+            {attention !== null
+              ? t(attention.kind === 'BLOCKED' ? 'web.sealBlocked.rowState' : 'web.sealBlocked.retryRowState')
+              : stopping
+                ? t('dashboard.activeSession.finalizing.stopping')
+                : t('dashboard.activeSession.finalizing.title')}
           </h3>
         </div>
         <p className="font-mono text-caption text-accent">{card.id}</p>
-        {progress && !stopping ? (
+        {attention !== null ? (
+          <p className="text-caption text-foreground-2" role={attention.kind === 'BLOCKED' ? 'alert' : 'status'} data-testid="session-seal-attention">
+            {sealAttentionLine(attention, t('web.sealBlocked.retryNoSentence'))}
+          </p>
+        ) : progress && !stopping ? (
           <ProgressBar value={progress.current} maxValue={progress.total} color="accent" size="sm" aria-label={t('dashboard.activeSession.finalizing.progress', progress)}>
             <Label className="text-caption text-foreground-2">
               {t('dashboard.activeSession.finalizing.progress', progress)}

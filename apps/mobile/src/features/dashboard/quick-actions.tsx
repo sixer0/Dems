@@ -29,13 +29,14 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { Permission } from '@dems/shared/sim';
+import { Permission, SEAL_RECORDING_KEPT_SENTENCE } from '@dems/shared/sim';
 import { fontFamily, palette, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { EASING, durationMs, useAmbientLoop, useHaptics, useMotionSettings } from '@/motion';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { useFailedStart } from '@/features/session-live/capture-start-notice';
+import { useSealBlocked } from '@/features/session-finalizing/seal-attention';
 import type { PrimaryAction, PrimaryActionKind } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, SHEEN_EVERY_MS, SHEEN_SWEEP_MS, homeEnter } from './home-motion';
 
@@ -69,7 +70,15 @@ export function QuickActions({ action, stacked = false }: QuickActionsProps) {
   // Integration pass D7 follow-up (D158 item 4; ux §8e.2 situation C): a session that recorded nothing has
   // nothing to recover — the way to it reads "View details" (as on the Sessions hub), not "Open recovery".
   const failedStart = useFailedStart();
-  const label = action.kind === 'recovery' && failedStart !== null ? t('common.actions.viewDetails') : t(action.labelKey);
+  // Fix wave I (re-gate 75, G75b-02): the open session's seal is BLOCKED. The way to it says so, and a line under
+  // the buttons explains why "Start Session" is not here - the Core records no new session until that one is sealed.
+  const sealBlocked = useSealBlocked();
+  const blockedView = sealBlocked !== null && action.kind === 'finalizing';
+  const label = blockedView
+    ? t('features.session-finalizing.sealAttention.action')
+    : action.kind === 'recovery' && failedStart !== null
+      ? t('common.actions.viewDetails')
+      : t(action.labelKey);
   // R2: without SESSION_START the wizard's entries are locked (the Core would refuse the session); while the
   // role is not known yet they are locked too, with the reason "Checking your permissions…" (ruling W93-11).
   const locked = startsWizard(action.kind) && !startGate.allowed;
@@ -115,6 +124,11 @@ export function QuickActions({ action, stacked = false }: QuickActionsProps) {
         {locked && startGate.hint ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="home-action-primary-locked">
             {startGate.hint}
+          </Text>
+        ) : null}
+        {blockedView ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="home-action-seal-blocked">
+            {`${t('features.session-finalizing.sealAttention.newSession', { sessionId: sealBlocked.sessionId })} ${SEAL_RECORDING_KEPT_SENTENCE}`}
           </Text>
         ) : null}
       </SectionCard>

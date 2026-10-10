@@ -382,6 +382,13 @@ export interface CaptureConnectionTestedFacts {
   host?: string | null;
   endpointRef?: string | null;
   guardTripped?: boolean;
+  /**
+   * Fix wave I (re-gate 70, finding G70b-05): why the test ended `AUTHENTICATION_FAILED` WITHOUT
+   * the camera refusing the credential - the closed code of operation 95's answer
+   * (`CaptureConnectionTestReason`). Written for a scheme refusal only, so that the audit row of
+   * "the credential was not sent" is not the row of a refused credential. Absent on every other row.
+   */
+  reason?: CaptureConnectionTestReason | null;
   permission?: string | null;
 }
 
@@ -416,9 +423,30 @@ export function captureConnectionTestedDetails(facts: CaptureConnectionTestedFac
     operationId: facts.operationId,
     ...productionIdentity(facts),
     ...(facts.guardTripped === undefined ? {} : { guardTripped: facts.guardTripped }),
+    ...(facts.reason ? { reason: facts.reason } : {}),
     ...(facts.permission ? { permission: facts.permission } : {}),
   };
 }
+
+/**
+ * Contract example of the optional detail member `reason` of CAPTURE_CONNECTION_TESTED (fix wave
+ * I, driver A2; finding G70b-05): the row of a test the camera refused for its sign-in METHOD.
+ * The credential was not sent (`guardTripped: false`: the lock-out guard counted nothing).
+ */
+export const CAPTURE_CONNECTION_TESTED_SCHEME_REFUSAL_EXAMPLE: AuditDetails = Object.freeze(
+  captureConnectionTestedDetails({
+    candidateId: 'CND-0000000000A1',
+    searchId: 'DSC-000001',
+    outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED,
+    authenticated: true,
+    adapter: 'FAKE',
+    sourceClass: CaptureSourceClass.DEVELOPMENT,
+    operationId: 'testCaptureCandidateConnection',
+    guardTripped: false,
+    reason: CaptureConnectionTestReason.SCHEME_NOT_ALLOWED,
+    permission: 'CAPTURE_CONFIG',
+  }),
+);
 
 export interface CaptureCandidateAdoptedFacts {
   deviceId: string;

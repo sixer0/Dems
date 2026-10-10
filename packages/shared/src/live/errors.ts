@@ -44,6 +44,12 @@ export interface LiveTransportDetails extends LiveErrorDetails {
   code?: string | null;
   /** `retry-after` in whole seconds, kept so that a 429 reads as a limit and not as an outage (LB-10). */
   retryAfterSeconds?: number | null;
+  /**
+   * `error.details.reason` of the answer, when it is a code (closing pass J): a `503 NOT_READY` of
+   * `startSession` names why the start was refused (`START_REFUSED_REASONS` of `@dems/shared/sim`,
+   * read by `startRefusedReasonOf`), and that is not "the Core server is starting".
+   */
+  detailReason?: string | null;
 }
 
 /** The Core server gave no usable answer; the command may not have been applied (CL-21, CL-22). */
@@ -53,6 +59,8 @@ export class LiveTransportError extends Error {
   readonly code: string | null;
   readonly retryAfterSeconds: number | null;
   readonly requestId: string | null;
+  /** `details.reason` of the answer, or null (see `LiveTransportDetails.detailReason`). */
+  readonly detailReason: string | null;
 
   constructor(reason: LiveTransportReason, details: LiveTransportDetails = {}) {
     super(
@@ -66,6 +74,7 @@ export class LiveTransportError extends Error {
     this.code = details.code ?? null;
     this.retryAfterSeconds = details.retryAfterSeconds ?? null;
     this.requestId = details.requestId ?? null;
+    this.detailReason = typeof details.detailReason === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(details.detailReason) ? details.detailReason : null;
   }
 }
 

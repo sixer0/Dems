@@ -19,6 +19,7 @@ import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
 import { captureReachabilityOf } from './capture-notices';
 import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
+import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_RESTART_SENTENCE } from './core-not-running';
 import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, isHostClockTime, isPrecheckNote } from './core-facts';
 import {
   ALERT_RING_SIZE,
@@ -341,6 +342,7 @@ export function openSession(
         type: 'SESSION_CREATED',
         message: `Session ${id} created`,
         actorId,
+        ...sentFrom(sendingDeviceOf(state, false)),
         sessionId: id,
         details: { caseNumber: input.caseNumber, subjectType: input.subjectType },
       },
@@ -576,7 +578,9 @@ function startPrecheck(state: SimState, session: ActiveSession, now: EpochMs, rn
   const next = withSession(state, {
     ...session,
     state: SessionState.PRECHECK,
-    precheck: { items, startedAt: now, completedAt: null, outcome: null, warningsAcknowledged: false },
+    // Fix wave I (G75b-04): the paired device that sent this pre-check, for the row its outcome
+    // writes later on a tick. Absent for a web console session; a retry is a new pre-check.
+    precheck: { items, startedAt: now, completedAt: null, outcome: null, warningsAcknowledged: false, ...precheckSentFrom(sendingDeviceOf(state, false)) },
   });
   return record(next, now, {
     event: { type: 'PRECHECK_STARTED', message: 'Pre-recording checks started', sessionId: session.id },
@@ -613,6 +617,9 @@ function arm(state: SimState, session: ActiveSession, at: EpochMs, warnings: num
         type: 'PRECHECK_PASSED',
         message: warnings > 0 ? `Pre-recording checks passed with ${warnings} acknowledged warning(s)` : 'Pre-recording checks passed',
         actorId: actorId ?? session.createdBy,
+        // Fix wave I (G75b-04): acknowledged by an operator = the device of THAT command; resolved
+        // by the engine = the device that sent the pre-check.
+        ...sentFrom(actorId === null ? (session.precheck.sendingDeviceId ?? null) : sendingDeviceOf(state, false)),
         sessionId: session.id,
         details: { warnings, acknowledged: warnings > 0, by: actorId === null ? 'system' : 'operator' },
       },
@@ -674,6 +681,7 @@ export function advancePrecheck(state: SimState, now: EpochMs): SimState {
       severity: 'WARNING',
       // Engine-timed (the gate resolved by itself): the creator, labelled as the system.
       actorId: session.createdBy,
+      ...sentFrom(session.precheck.sendingDeviceId ?? null),
       sessionId: session.id,
       details: {
         blocks: blocks.length,
@@ -799,6 +807,7 @@ export function startRecordingTransition(state: SimState, now: EpochMs, capture:
       type: 'RECORDING_STARTED',
       message: `Recording started (${session.id})`,
       actorId,
+      ...sentFrom(sendingDeviceOf(state, false)),
       sessionId: session.id,
       details: { timeSource: state.time.source },
     },
@@ -844,6 +853,7 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
       type: 'RECORDING_STOPPED',
       message: `Recording stopped (${session.id})`,
       actorId,
+      ...sentFrom(sendingDeviceOf(state, false)),
       sessionId: session.id,
       details: { reason: trimmed, durationMs: now - startedAt },
     },
@@ -886,6 +896,24 @@ export function sendingDeviceOf(state: Pick<SimState, 'auth'>, deviceConsole: bo
   const scoped = state.auth.deviceId;
   if (typeof scoped === 'string' && SENDING_DEVICE_ID.test(scoped)) return scoped;
   return deviceConsole ? SIM_CONSOLE_DEVICE_ID : null;
+}
+
+/**
+ * THE DEVICE OF A SESSION ROW (fix wave I, driver A2; re-gate 75 finding G75b-04; ruling D216 (2)):
+ * every audit row of a session action a PAIRED DEVICE sent names that device in the row's
+ * `deviceId` - created, pre-check passed / blocked, recording started / stopped, cancelled - as the
+ * switch row does. The device is the one of the acting identity (`sendingDeviceOf(state, false)`:
+ * what the Core's actor scope sets for the command of a device session). Null (a web console
+ * session, the simulator inside an app, a scenario): the row keeps no device, as before. No
+ * `details` key is added to these rows.
+ */
+function sentFrom(deviceId: string | null): { deviceId?: string } {
+  return deviceId === null ? {} : { deviceId };
+}
+
+/** The member a pre-check keeps of the device that sent it (`PrecheckSlice.sendingDeviceId`); nothing for a web console session. */
+function precheckSentFrom(deviceId: string | null): { sendingDeviceId?: string } {
+  return deviceId === null ? {} : { sendingDeviceId: deviceId };
 }
 
 export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId, sendingDeviceId: string | null = null): SimState {
@@ -968,6 +996,7 @@ export function cancelTransition(state: SimState, now: EpochMs): SimState {
       type: 'SESSION_CANCELLED',
       message: `Session ${session.id} cancelled`,
       actorId,
+      ...sentFrom(sendingDeviceOf(state, false)),
       sessionId: session.id,
       details: { fromState: session.state },
     },
@@ -1633,20 +1662,22 @@ export function enterFault(state: SimState, now: EpochMs, kind: FaultKind): SimS
       ? settleBytes(state, session, recordingBytes(now - session.startedAt))
       : { state, session };
   const wasRecording = session.state === SessionState.RECORDING;
+  // Closing pass J (D217 (5); `core-not-running.ts`): the restart fault of a Core in its own capture says so on the session too. Read from the active fault, by its member.
+  const notRunning = kind === FaultKind.POWER_FAIL && state.faults.active.some((fault) => fault.kind === kind && fault.coreNotRunning === true);
   let next = withSession(settled.state, {
     ...settled.session,
     state: SessionState.FAULT,
-    fault: { kind, at: now, fromState: session.state },
+    fault: { kind, at: now, fromState: session.state, ...(notRunning ? { coreNotRunning: true as const } : {}) },
     ...(wasRecording ? { stopTimeSource: state.time.source as TimeSource } : {}),
   });
   if (wasRecording) {
     next = addTimelineItem(next, {
       at: now,
       kind: 'FAULT',
-      label: `Critical fault: ${kind}`,
+      label: notRunning ? CORE_NOT_RUNNING_LABEL : `Critical fault: ${kind}`,
       detail: null,
       channel: null,
-      params: { kind, evt: FaultEvt[kind], critical: true },
+      params: { kind, evt: FaultEvt[kind], critical: true, ...(notRunning ? { coreNotRunning: true } : {}) },
     });
   }
   return next;
@@ -1657,14 +1688,17 @@ export function recoverTransition(state: SimState, now: EpochMs): SimState {
   const session = requireSession(state, 'recover', [SessionState.FAULT]);
   const items: ActivityInput[] = [];
   if (session.fault?.kind === FaultKind.POWER_FAIL) {
+    // Closing pass J (D217 (5)): a Core that was not running says that, never "after power fail".
+    const notRunning = session.fault.coreNotRunning === true;
+    const restarted = CORE_NOT_RUNNING_RESTART_SENTENCE.replaceAll('{{product}}', PRODUCT_NAME);
     items.push({
       audit: {
         type: 'SYSTEM_BOOT',
-        message: `${PRODUCT_NAME} restarted after power fail`,
+        message: notRunning ? restarted : `${PRODUCT_NAME} restarted after power fail`,
         deviceId: DEVICE_ID,
-        details: { afterFault: FaultKind.POWER_FAIL },
+        details: { afterFault: FaultKind.POWER_FAIL, ...(notRunning ? { coreNotRunning: true } : {}) },
       },
-      event: { type: 'SYSTEM_BOOT', message: 'System restarted after power fail', severity: 'WARNING', deviceId: DEVICE_ID },
+      event: { type: 'SYSTEM_BOOT', message: notRunning ? restarted : 'System restarted after power fail', severity: 'WARNING', deviceId: DEVICE_ID },
     });
   }
   items.push({

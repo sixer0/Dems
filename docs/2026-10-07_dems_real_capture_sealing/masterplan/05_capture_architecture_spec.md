@@ -28,7 +28,7 @@ inputs_read:
   - decisions/decisions.md D4 (gate answers), D7, D10, D12
   - apps/core-server/src/engine/host.ts:897-902, engine/types.ts:205-209, engine/__tests__/static.test.ts (integration precedent)
   - research/01_explore.md §2.4 (the 21 src static guards)
-last_updated: 2026-10-09 14:35 (row-128 spec-gate fix pass PE-128-46..66 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); blueprint row 123, capture architecture delta for R-9..R-11, marks PE-123-01..PE-123-15, decisions D72(k), D73-D78, D80 — sections 0, A.1, A.6, A.7, A.8, G, I, J and the self-gate; sections A.2, A.4 and B.2 unchanged; earlier the same day: pair-review errata PE-57-01..PE-57-10 and PE-111-01..PE-111-07 applied, decisions D65-D68, see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-2 errata AU2-03..AU2-08; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
+last_updated: 2026-10-10 (docs errata pass for fix wave H: PE-WH-10 (§A.7.1, the development speech microphone); `implementation/136_docs_errata_wave_h_i.md`; decisions D198, D201, D209); 2026-10-09 14:35 (row-128 spec-gate fix pass PE-128-46..66 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); blueprint row 123, capture architecture delta for R-9..R-11, marks PE-123-01..PE-123-15, decisions D72(k), D73-D78, D80 — sections 0, A.1, A.6, A.7, A.8, G, I, J and the self-gate; sections A.2, A.4 and B.2 unchanged; earlier the same day: pair-review errata PE-57-01..PE-57-10 and PE-111-01..PE-111-07 applied, decisions D65-D68, see masterplan/11_audit_errata.md §5; earlier: 2026-10-08 RV-SPEC AU-2 errata AU2-03..AU2-08; 2026-10-07 row-35 security remediation SEC35-04/08/09/10/23/25)
 ---
 
 # Capture Architecture Spec (blueprint row 31, M0)
@@ -46,6 +46,7 @@ last_updated: 2026-10-09 14:35 (row-128 spec-gate fix pass PE-128-46..66 (D89, D
 | PE-R63-13 | §C.4 | A first keyframe that arrives after T0 without a timestamp is not recorded, nor is anything up to the next keyframe; `FIRST_VIDEO_SAMPLE.skipped` and `skippedSpanMs` report it, and the span now counts the untimestamped lead | D126, D130, D179 |
 | CAP-M7-01 | after §D.4 (it corrects §D.1 to §D.3 and §H) | §D.1 to §D.3 describe the SEALED camera file: the worker writes the recording in plaintext, the Core encrypts at seal time, the session key is made at seal time, the IV is random, and the media store root and its `.quarantine` must be owner-only | D147, D148, D178 |
 | PE-R63-14 | §I P25 edits list | The record of the frozen-file waiver brought up to the code: 30 edits, all landed; the single source of the waived lines is the pin test | D179 |
+| PE-WH-10 | §A.7.1, after "Fake microphone of slot 2" | A development setting lets the FIRST generated microphone play a synthetic speech fixture in the place of its tone; the fixture is held to its format at set-up and at boot; three named refusals | D198, D201, D209 |
 
 Read with CAP-M7-01: its last bullet names `<data directory>/transcriber` as the place of a session's audio tap. Since fix pass F-M7c the tap lies under `<media store root>/.transcriber/sessions/<sessionId>/`, and the session keys are kept per media store root; both are stated in `06_evidence_package_spec.md` §H.7, erratum PE-M7-04 (D180, D189).
 
@@ -807,6 +808,29 @@ adapter, see ML-2):
 **Fake microphone of slot 2 (`FAKE`):** the same program with the input
 `-re -f lavfi -i sine=frequency=880:sample_rate=48000` and the same output line (880 Hz, the
 standby tone of the row-58 fixture, audibly different from a voice).
+
+**Erratum PE-WH-10 (decisions D198 (ruling on gate 81 condition C1), D201, D209; wave H driver E, `implementation/125_fix_wave_h_e.md`; closing pass Z1, `implementation/128_fix_wave_h_z1.md` item 8; request lines 10:04:00Z and 10:58:00Z of `delegation_progress/file_requests.md`):** what a
+generated microphone plays. The development setting `DEMS_CAPTURE_DEV_FAKE_MIC` = `tone` (the
+default) or `speech` is read once at boot by the capture fence. With `speech` the FIRST generated
+microphone (`MIC-01` of the seed) plays the speech fixture
+`<data directory>/dev-fixtures/speech-mic/dialogue.wav` through the SAME helper program and the
+same output line as the tone; every other generated microphone keeps its tone (so a switch to the
+standby is audible in a transcript as an end of speech). The path is not a setting: it is built
+from the data directory and two literals. The fixture is SYNTHETIC speech made on this machine by
+`npm run capture:dev-setup` (git-ignored, with its reference text `dialogue.reference.json` beside
+it; no network, no recording of a person, no device). It is held to its FORMAT at the set-up and
+at boot: RIFF / WAVE, integer PCM, mono, 16 bit, 48 kHz, with audio in it. Refusals, each stops
+the start: `DEV_FAKE_MIC_NEEDS_DEV_SOURCES` (`speech` outside `REAL_DEVELOPMENT`: a production or
+a simulated configuration never carries a development setting); `DEV_SPEECH_FIXTURE_UNUSABLE`
+with its reason - the path rule of the helper program (SEC35-43 (a)) or the format: `NOT_WAV`,
+`WAV_NOT_PCM`, `WAV_NOT_MONO`, `WAV_NOT_48KHZ`, `WAV_NOT_16BIT`, `WAV_NO_AUDIO`, `UNREADABLE`;
+`CAPTURE_DEV_FAKE_MIC_INVALID` (a value other than `tone` / `speech`). A refused answer plays the
+tone, never the fixture. Sources: `apps/core-server/src/capture/fence/fake-mic.ts:9-33`, `:50-73`,
+`:114-161`; `apps/core-server/src/config.ts:59`, `:287`; `scripts/capture/dev-setup.mjs:6-7`;
+`scripts/capture/speech-fixture.mjs:17-19`, `:32-34`. `scripts/lane/lane.sh start 2 --speech-mic`
+sets the key for the development-capture lane (`scripts/lane/lane.sh:11-13`, `:128`). Not changed
+by this erratum: the row "Mic 1 (primary)" of §A.1.2 above (the attended configuration with the
+local microphone).
 
 | # | Rule | Detail |
 |--:|---|---|

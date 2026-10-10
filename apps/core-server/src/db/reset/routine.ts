@@ -107,7 +107,7 @@ import { RESET_LOCK_CLASS, createStagingStatement, dropStatement, guardResetTarg
 import { assertNow, planReset, resolveRequest, scenarioLoadedActivity, type LineageRow, type ResetPlan, type ResetRequest, type SourceFacts } from './plan';
 import { READ_CLEARED_TRANSCRIBER_SESSIONS, removeTranscriberScratchOf } from './transcriber-scratch';
 import { READ_CLEARED_ARTEFACT_SESSIONS, removeSessionArtefactsOf } from './session-artefacts';
-import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage, removeClearedDevelopmentPackages, type RealEvidenceFacts } from './real-evidence';
+import { developmentPackagesMessage, findRealSealedEvidence, realEvidenceDetails, realEvidenceMessage, removeClearedDevelopmentPackages, removeUnsealedFakeRecordings, unsealedFakeMessage, type RealEvidenceFacts } from './real-evidence';
 
 /** `application_name` of every connection of the routine, unless the caller names another. */
 export const RESET_APPLICATION_NAME = 'dems-db-reset';
@@ -235,6 +235,13 @@ export interface ResetOptions {
    * `evidenceStoreDir` is not read. The server passes none: it states its configuration's root.
    */
   readonly resolveEvidenceStoreDir?: ((stored: StoredMediaStoreRoot | null) => string) | undefined;
+  /**
+   * THE EXPLICIT WORD of rule (15) of the real-evidence guard (fix wave I driver A1; G75b-01; D216):
+   * unsealed recording folders of sessions that recorded from four generated (FAKE) sources may be
+   * erased by this reset. Only the command line passes it (`--discard-unsealed-fake-recordings`);
+   * the server never does. Default false: such a folder blocks the reset.
+   */
+  readonly discardUnsealedFakeRecordings?: boolean | undefined;
   /**
    * THE v2 DEMO PACKAGES of the reseed (integration pass E3; `db/seed/demo-packages.ts`). The
    * command line hands in the port of the Core its environment describes; the server hands in
@@ -662,6 +669,7 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
         log,
         storeRoot: options.resolveEvidenceStoreDir ?? options.evidenceStoreDir ?? evidenceStoreRoot(options.dataDir),
         readStore: internals.readEvidenceStore,
+        discardUnsealedFake: options.discardUnsealedFakeRecordings === true,
       });
       carried = read.kept;
       facts = read.facts;
@@ -883,6 +891,18 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
         });
       }
     }
+    // Rules (12) to (15) of the guard (fix wave I driver A1; G75b-01): the unsealed recording folders of generated (FAKE)
+    // sources the caller asked this reset to erase - judged again now, by the containment rule. Before the session keys
+    // below: a key goes only when the folder of its session is gone. It never fails a reset that has succeeded.
+    if (evidence !== null && (evidence.unsealedFakeFolders?.length ?? 0) + (evidence.unsealedFakeQuarantined?.length ?? 0) > 0) {
+      const removal = removeUnsealedFakeRecordings(evidence, { readStore: internals.readEvidenceStore });
+      if (removal.removed.length > 0) {
+        log({ level: 'warn', code: 'RESET_UNSEALED_FAKE_RECORDINGS_REMOVED', message: `the reset of ${target.name} removed ${String(removal.removed.length)} unsealed recording folder(s) of generated sources from the evidence store: ${removal.removed.join(', ')}.`, details: { database: target.name, storeRoot: evidence.storeRoot, removed: removal.removed.length } });
+      }
+      for (const left of removal.kept) {
+        log({ level: 'error', code: 'RESET_UNSEALED_FAKE_RECORDING_LEFT', message: `the reset of ${target.name} succeeded, but the recording folder ${left.directory} was not removed (${left.reason}); it blocks the next reset until it is examined.`, details: { database: target.name, storeRoot: evidence.storeRoot, directory: left.directory, reason: left.reason } });
+      }
+    }
     // R80-04 (code review row 80): the session IDs of the erased database are given out again. The
     // transcriber scratch of the sessions it held - a raw PCM tap first of all - goes with them, by
     // the containment rule of `transcriber-scratch.ts`. It never fails a reset that has succeeded.
@@ -904,15 +924,17 @@ export async function resetDatabase(options: ResetOptions, internals: ResetInter
     // key whose package folder is still in the store stays). NOT the sessions of the demo packages
     // this reset sealed anew: their keys are the new rows'. Below the media store root the guard of
     // this reset read. It never fails a reset that has succeeded. No key byte is read or logged.
-    if (artefactSessions.length > 0 && evidence !== null) {
+    // Fix wave I (G75b-01; D216 (4)): AND every other session key of the key folder of this store root - a key an earlier reset
+    // left behind is known to no database, and the session numbers start again. So this runs whatever the database named.
+    if (evidence !== null) {
       const renewed = prepared.demo.report.status === 'SEALED' ? prepared.demo.report.items.map((item) => item.sessionId) : [];
-      const artefacts = removeSessionArtefactsOf({ dataDir: resolvePath(options.dataDir ?? DEFAULT_DATA_DIR), storeRoot: resolvePath(evidence.storeRoot), sessionIds: artefactSessions, keep: renewed });
+      const artefacts = removeSessionArtefactsOf({ dataDir: resolvePath(options.dataDir ?? DEFAULT_DATA_DIR), storeRoot: resolvePath(evidence.storeRoot), sessionIds: artefactSessions, keep: renewed, everyKey: true });
       if (artefacts.keysDestroyed.length > 0 || artefacts.factsRemoved.length > 0 || artefacts.stagingRemoved.length > 0) {
         log({
           level: 'warn',
           code: 'RESET_SESSION_KEYS_DESTROYED',
-          message: `the reset of ${target.name} destroyed the session key of ${String(artefacts.keysDestroyed.length)} cleared session(s) (${artefacts.keysDestroyed.join(', ') || 'none'}): what those keys sealed can no longer be decrypted. It removed ${String(artefacts.factsRemoved.length)} capture facts file(s) and ${String(artefacts.stagingRemoved.length)} sealing staging folder(s).`,
-          details: { database: target.name, storeRoot: evidence.storeRoot, keysDestroyed: artefacts.keysDestroyed.length, keyIds: artefacts.keysDestroyed.join(' '), factsRemoved: artefacts.factsRemoved.length, stagingRemoved: artefacts.stagingRemoved.length },
+          message: `the reset of ${target.name} destroyed the session key of ${String(artefacts.keysDestroyed.length)} cleared session(s) (${artefacts.keysDestroyed.join(', ') || 'none'}): what those keys sealed can no longer be decrypted. ${String(artefacts.keysOfUnknownSessions.length)} of them were keys of sessions this database did not name (left by an earlier reset). It removed ${String(artefacts.factsRemoved.length)} capture facts file(s) and ${String(artefacts.stagingRemoved.length)} sealing staging folder(s).`,
+          details: { database: target.name, storeRoot: evidence.storeRoot, keysDestroyed: artefacts.keysDestroyed.length, keysOfUnknownSessions: artefacts.keysOfUnknownSessions.length, keyIds: artefacts.keysDestroyed.join(' '), factsRemoved: artefacts.factsRemoved.length, stagingRemoved: artefacts.stagingRemoved.length },
         });
       }
       for (const left of artefacts.kept) {
@@ -1071,7 +1093,7 @@ async function readSource(
   pool: Pool,
   target: ResetTarget,
   assertOwnerRole: (client: Queryable) => Promise<void>,
-  guard: { log: (entry: ResetLogEntry) => void; storeRoot: string | ((stored: StoredMediaStoreRoot | null) => string); readStore: ((root: string) => EvidenceStoreScan) | undefined },
+  guard: { log: (entry: ResetLogEntry) => void; storeRoot: string | ((stored: StoredMediaStoreRoot | null) => string); readStore: ((root: string) => EvidenceStoreScan) | undefined; discardUnsealedFake?: boolean },
 ): Promise<{ kept: KeptImages; facts: SourceFacts; evidence: RealEvidenceFacts }> {
   const client = await pool.connect();
   client.on('error', noop);
@@ -1100,7 +1122,7 @@ async function readSource(
       // A caller that does not know the root by itself decides it here, from what the Core recorded
       // (erratum PE-0013-01). Its refusal leaves this pass as every other one does: nothing changed.
       const storeRoot = typeof guard.storeRoot === 'function' ? guard.storeRoot(await readMediaStoreRoot(client)) : guard.storeRoot;
-      const evidence = await findRealSealedEvidence(client, { database: target.name, storeRoot, readStore: guard.readStore });
+      const evidence = await findRealSealedEvidence(client, { database: target.name, storeRoot, readStore: guard.readStore, discardUnsealedFake: guard.discardUnsealedFake === true });
       if (evidence.blocked) {
         const refusal = realEvidenceMessage(evidence);
         guard.log({ level: 'warn', code: 'RESET_BLOCKED_REAL_EVIDENCE', message: refusal, details: realEvidenceDetails(evidence) });
@@ -1112,6 +1134,8 @@ async function readSource(
       if (evidence.developmentSessions.length > 0 || evidence.seedSealedDemoSessions.length > 0) {
         guard.log({ level: 'warn', code: 'RESET_DEVELOPMENT_PACKAGES', message: developmentPackagesMessage(evidence), details: realEvidenceDetails(evidence) });
       }
+      // Rule (15) (fix wave I, G75b-01): the unsealed recordings of generated sources this reset was ASKED to erase, counted and named before anything is built.
+      if (unsealedFakeMessage(evidence) !== '') guard.log({ level: 'warn', code: 'RESET_UNSEALED_FAKE_RECORDINGS', message: unsealedFakeMessage(evidence), details: realEvidenceDetails(evidence) });
       const kept = await readKept(client);
       const read = await client.query<{
         epoch: string | null;

@@ -29,7 +29,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
-import { mountSealingHost, sealingProgressOf } from '../../sealing-host';
+import { mountSealingHost, sealingHost, sealingProgressOf } from '../../sealing-host';
 
 /** The operations this module answers. */
 export const SEALING_MODULE_OPERATIONS = ['getSealingProgress'] as const;
@@ -57,7 +57,8 @@ export const sealingModule: FastifyPluginAsync = async (app) => {
       if (session.finalization.startedAt === null) {
         throw new ApiFailure(409, 'INVALID_STATE', `Sealing has not started for session ${session.id}.`, { details: { simCode: 'ILLEGAL_STATE', from: session.state, event: 'getSealingProgress' } });
       }
-      return sealingProgressOf(session, app.clock.now());
+      // Fix wave I (G75b-02): `resumed` is the sealing host's fact in real capture (a start of the Core or the recovery action ran the seal again), never the attempt count.
+      return sealingProgressOf(session, app.clock.now(), sealingHost(app).resumedSeal(session.id));
     },
   });
 };

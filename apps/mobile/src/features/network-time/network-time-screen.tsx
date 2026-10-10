@@ -58,7 +58,7 @@ export function NetworkTimeScreen() {
   const systemTime = (
     <Animated.View entering={enterRise(ENTER.systemTime, m)}>
       <CardBoundary name="system-time">
-        <SystemTimeCard synchronized={time.locked} variant={layoutClass === 'medium' ? 'hero' : 'card'} />
+        <SystemTimeCard synchronized={time.locked} hostClock={time.hostClock} variant={layoutClass === 'medium' ? 'hero' : 'card'} />
       </CardBoundary>
     </Animated.View>
   );
@@ -165,7 +165,7 @@ function Header({ layoutClass }: { layoutClass: LayoutClass }) {
       <View style={styles.tabletHeader} testID="network-time-header">
         <View style={styles.flex}>{title}</View>
         <View style={styles.headerChips}>
-          <StatusChip testID="network-time-header-time" size="sm" tone={TIME_TONE[level]} label={t(`networkTime.bannerState.time.${level}`)} icon="Circle" iconFilled />
+          <StatusChip testID="network-time-header-time" size="sm" tone={time.hostClock ? 'default' : TIME_TONE[level]} label={time.hostClock ? t('common.hostClockTime.value') : t(`networkTime.bannerState.time.${level}`)} icon="Circle" iconFilled />
           <StatusChip testID="network-time-header-lan" size="sm" tone={LAN_TONE[lan]} label={t(`networkTime.bannerState.network.${lan}`)} icon="Circle" iconFilled />
         </View>
       </View>

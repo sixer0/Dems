@@ -37,7 +37,7 @@ import { motion, useAnimate } from 'motion/react'
 import { CircleCheck, CircleX, FileDown, Link2, ScrollText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
-import { AuditCategory, Permission, selectCan, Severity, useSim } from '@dems/shared/sim'
+import { AuditCategory, faultKindLabelKey, Permission, selectCan, Severity, useSim } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { useRouteEnterDelay } from '@/components/shell'
 import { HIGHLIGHT_FADE_MS, HIGHLIGHT_FROM_OPACITY } from '@/components/ui/animated-list'
@@ -429,7 +429,7 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
       case 'event': {
         const sub =
           view.faultKind && (view.type === 'FAULT_RAISED' || view.type === 'FAULT_CLEARED' || view.type === 'AUDIT_CHAIN_DISCONTINUITY')
-            ? t(`common.faultKind.${view.faultKind}`)
+            ? t(faultKindLabelKey(view.faultKind, view))
             : view.method
               ? t('securityAudit.auth.via', { method: t(`common.authMethod.${view.method as 'PASSWORD'}`) })
               : view.refs.join(' • ')

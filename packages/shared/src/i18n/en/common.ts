@@ -6,6 +6,7 @@
  * 2026-10-01 02:36 WIB, so `t('common.auditType.' + row.type)` needs no lookup table.
  */
 import { CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, CAPTURE_FAULT_UNKNOWN_SENTENCES, INTERRUPTED_SEAL_SENTENCES } from '../../sim/capture-fault-wording';
+import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_SENTENCE } from '../../sim/core-not-running';
 import { SEAL_UNSEALABLE_SENTENCE } from '../../sim/seal-unsealable';
 import type { ResourceTree } from '../resource-tree';
 
@@ -773,7 +774,8 @@ export const common = {
       hide: 'Hide password',
     },
     confirmDevice: 'I have checked that {{address}} is this camera',
-    noPasswordNeeded: 'This development source needs no password.',
+    // Closing pass J (ruling of `contract_wave_i_a2.md` section 1, G70b-02): a development source MAY need no password - the Core does not know before a test. The web console's `web.connect.developmentHint` is the same sentence.
+    noPasswordNeeded: 'A development source can be tested without a password. If the test asks for one, turn on "Enter a user name and password".',
     enterPassword: 'Enter a user name and password',
     change: 'Change',
     test: 'Test connection',
@@ -1102,5 +1104,46 @@ export const common = {
   criticalWhileRecording: {
     title: 'Recording — critical fault',
     subtitle: 'Recording {{sessionId}} continues. A critical fault needs action',
+  },
+  /**
+   * Closing pass J (G75b-03, ruling D217 (5)): the restart fault of a Core in its own capture. This
+   * IS `sim/core-not-running.ts` (imported, never copied). A surface that would name the fault kind
+   * (`faultKind.POWER_FAIL`) shows `label` when the fault carries `coreNotRunning: true`
+   * (`faultKindLabelKey`).
+   */
+  coreNotRunning: {
+    label: CORE_NOT_RUNNING_LABEL,
+    sentence: CORE_NOT_RUNNING_SENTENCE,
+  },
+  /**
+   * Closing pass J (G75b-06, ruling D217 (7)): the platform facts of a Core that states
+   * `security.platformNotReported`. One wording for the web console and the mobile app.
+   */
+  platformNotReported: {
+    value: 'Not reported',
+    tpm: 'TPM: not reported',
+    secureBoot: 'Secure Boot: not reported',
+    posture: 'Posture: not reported',
+    note: 'This Core does not read a TPM or the Secure Boot state.',
+  },
+  /**
+   * Closing pass J (G75b-06, the Network & Time screens): the time of a Core whose `time` slice says
+   * `hostClock`. No GNSS, no "holdover", no stratum, no offset, no last synchronisation: nothing was
+   * ever synchronised or measured.
+   */
+  hostClockTime: {
+    label: 'Time',
+    value: 'Host system clock',
+    notice: 'This Core takes its time from the host system clock. GNSS, network time and a hardware clock are not configured, so no lock, stratum, offset or last synchronisation exists.',
+  },
+  /**
+   * Closing pass J (item 7): a start the Core refuses because of the session key
+   * (`503 NOT_READY`, `details.reason`; `contract_wave_i.md` section 5). The Core's own two sentences
+   * (`sealing-host` `SESSION_KEY_START_TEXT`), word for word.
+   */
+  startRefused: {
+    SESSION_KEY_NOT_OF_SESSION:
+      "This session cannot be started: a session key of an earlier session with this session number is in the Core's key store, so its recording could not be sealed. Nothing was recorded. Cancel this session and create a new one.",
+    SESSION_KEY_STORE_UNAVAILABLE: "This session cannot be started: the Core's key store cannot be used, so its recording could not be sealed. Nothing was recorded.",
   },
 } as const satisfies ResourceTree;

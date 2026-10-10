@@ -14,20 +14,20 @@
  * Motion (03M M-PG-NEW, §7.3): rows reveal 30 ms apart; each check resolves Spinner → chip, and a
  * WARN or BLOCK chip pulses once (R8). Reduced motion: no stagger, no pulse (colour only).
  */
-import { Alert, Button, Checkbox, Label, ListGroup, Separator, Spinner, Typography } from 'heroui-native';
-import { CircleX } from 'lucide-react-native';
+import { Alert, Button, Checkbox, Label, ListGroup, Separator, Typography } from 'heroui-native';
+import { CircleX, LoaderCircle } from 'lucide-react-native';
 import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSim, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim';
-import { spacing } from '@dems/shared/tokens';
+import { palette, spacing } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { PrecheckCaptureNotices, precheckSentence, usePrecheckSentence } from '@/features/capture-selector/capture-notices';
 import { PrecheckSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { LocalSourcesChecking, useLocalSourcesChecking, useLocalSourcesCheckingHint } from '@/features/capture-selector/local-source-notice';
 import { REDUCED_FADE_MS, SPEC_LITERALS, animatePulseOnce, rowReveal, triggerHaptic, useMotionSettings, type MotionSettings } from '@/motion';
-import { PendingSpinner, busyState } from '@/runtime';
+import { busyState } from '@/runtime';
 import { CheckIcon } from './check-icon';
 import { DevicePreviews } from './device-previews';
 import { CHECK_ORDER, checkMicBinding, itemsWith, micRoleLine, precheckNoteOf, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
@@ -187,12 +187,22 @@ export function DevicesCheckStep({
             {...sourcesCheckingHint}
             {...busyState(retryBusy, sourcesChecking)}
           >
-            {retryPending ? <PendingSpinner testID="session-new-retry-spinner" /> : null}
+            {/* Fix wave I (G75b-05): the pending sign is the still glyph - see `RunningSign` below. */}
+            {retryPending ? <RunningSign testID="session-new-retry-spinner" /> : null}
             <Button.Label>{t('features.session-new.devices.retry')}</Button.Label>
           </Button>
         ) : null}
         {phase === 'block' || (phase === 'warn' && !armed) ? <LocalSourcesChecking checking={sourcesChecking} testID="session-new-retry-sources-checking" /> : null}
       </SectionCard>
+    </View>
+  );
+}
+
+/** The still running sign: the loader glyph at the kit Spinner's `sm` size, drawn by React alone (no Reanimated node). */
+function RunningSign({ testID }: { testID: string }) {
+  return (
+    <View testID={testID}>
+      <LoaderCircle size={16} color={palette.gold} />
     </View>
   );
 }
@@ -242,7 +252,12 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
             <ResultChip status={status} settings={settings} testID={`session-new-check-${id}-status`} />
           )
         ) : status === 'RUNNING' ? (
-          <Spinner size="sm" testID={`session-new-check-${id}-spinner`} />
+          // Fix wave I (re-gate 75, G75b-05): the running sign of a check is REMOVED when the check resolves - once per
+          // check, eight times a pre-check. The kit Spinner owns a Reanimated rotation, and its removal while it
+          // turns is what the tablet logged ("Unable to find SurfaceMountingManager for tag": one new tag per
+          // resolved check, wave H's finding G89-02 on the screen before the recording). The still glyph is drawn
+          // by React alone; the row's text ("Checking…") and the counter above say that the check runs.
+          <RunningSign testID={`session-new-check-${id}-spinner`} />
         ) : (
           <Typography type="body-xs" color="muted">
             {t('common.precheckStatus.PENDING')}

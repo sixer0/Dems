@@ -36,10 +36,9 @@
  * The plugin function opens no database connection: `buildApp()` works without PostgreSQL.
  */
 import type { FastifyPluginAsync } from 'fastify';
-import type { CaptureDeviceRegistry } from '../../capture/adapters';
 import { captureFenceControl } from '../../capture/fence';
 import { CAPTURE_CONFIG_BOOT_STEP, runCaptureConfigBoot } from './boot';
-import { registerCaptureConfigRoutes } from './routes';
+import { registerCaptureConfigRoutes, type AssignmentRegistry } from './routes';
 import { createCaptureConfigStore, type CaptureConfigStore, type CaptureSnapshot } from './store';
 
 export { CAPTURE_CONFIG_BOOT_STEP, runCaptureConfigBoot, type CaptureBootSinks } from './boot';
@@ -70,10 +69,13 @@ export {
 } from './plan';
 export {
   CAPTURE_CONFIG_MODULE_OPERATIONS,
+  CaptureAssignmentRefusal,
   DEVELOPMENT_SOURCE_NOT_ALLOWED,
+  captureAssignmentRefusalOf,
   captureConfigAnswer,
   captureConfigLocked,
   captureConfigOperation,
+  type AssignmentRegistry,
   type CaptureConfigModuleOperation,
 } from './routes';
 export { createCaptureConfigStore, READ_CAPTURE_STATE, type CaptureConfigStore, type CaptureSnapshot, type CaptureStateRow, type CaptureStoreReader } from './store';
@@ -90,7 +92,7 @@ export interface CaptureConfigControl {
    * wiring that builds the registry for the running capture operation (rows 61 / 71 / 136). A
    * second call is a mistake of that wiring and throws.
    */
-  provideDeviceRegistry(registry: Pick<CaptureDeviceRegistry, 'assertAssignable'>): void;
+  provideDeviceRegistry(registry: AssignmentRegistry): void;
   /** True once a registry was provided. */
   hasDeviceRegistry(): boolean;
 }
@@ -108,7 +110,7 @@ export function captureConfigControl(app: { readonly stages: object }): CaptureC
 
 export const captureConfigModule: FastifyPluginAsync = async (app) => {
   const store = createCaptureConfigStore();
-  let deviceRegistry: Pick<CaptureDeviceRegistry, 'assertAssignable'> | null = null;
+  let deviceRegistry: AssignmentRegistry | null = null;
   controls.set(app.stages, {
     store,
     snapshot: () => store.snapshot(),

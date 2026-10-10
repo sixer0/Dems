@@ -1,6 +1,7 @@
 import { useToast } from 'heroui-native';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SEAL_RECORDING_KEPT_SENTENCE, sealBlockedNoticeOf, useSim } from '@dems/shared/sim';
 import { useActiveSession } from '@/runtime';
 import { isSessionBusy, sessionResyncHref, type SessionHref } from './session-routes';
 
@@ -21,6 +22,9 @@ export function useSessionNewRedirect(): SessionHref | '/home' | null {
   const session = useActiveSession();
   const busy = isSessionBusy(session.state);
   const shown = useRef(false);
+  // Fix wave I (re-gate 75, G75b-02): the session that keeps the Core busy is one whose seal is BLOCKED - nothing
+  // the operator can "finish or recover". The notice of the refused visit names that state and the session.
+  const blockedId = useSim((s) => (s.session === null ? null : (sealBlockedNoticeOf(s, s.session.id)?.sessionId ?? null)));
 
   // One toast per refused visit, however often the redirecting render repeats.
   useEffect(() => {
@@ -28,10 +32,13 @@ export function useSessionNewRedirect(): SessionHref | '/home' | null {
     shown.current = true;
     toast.show({
       variant: 'warning',
-      label: t('features.navigation.sessionBusy.title'),
-      description: t('features.navigation.sessionBusy.description'),
+      label: t(blockedId !== null ? 'features.navigation.sealBlocked.title' : 'features.navigation.sessionBusy.title'),
+      description:
+        blockedId !== null
+          ? `${t('features.navigation.sealBlocked.description', { sessionId: blockedId })} ${SEAL_RECORDING_KEPT_SENTENCE}`
+          : t('features.navigation.sessionBusy.description'),
     });
-  }, [busy, toast, t]);
+  }, [busy, blockedId, toast, t]);
 
   if (!busy) return null;
   return sessionResyncHref(session.state, { sessionId: session.sessionId }) ?? '/home';

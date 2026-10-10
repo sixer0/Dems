@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtime'
 import { useSim, type SimState } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
+import { isOwnCaptureCore, isPlatformNotReportedCore } from '@/lib/own-capture'
 import { DashPanel } from './dash-panel'
 import {
   chipColor,
@@ -27,6 +28,9 @@ const selectSecurityView = (s: SimState) => ({
   activeAlerts: s.alerts.filter((alert) => alert.active).length,
   timeSource: s.time.source,
   timeLocked: s.time.locked,
+  ownCore: isOwnCaptureCore(s),
+  // Closing pass J (D217 (7)): the Core's own statement, read by name - not inferred from the time slice.
+  platformNotReported: isPlatformNotReportedCore(s),
   linkUp: s.network.linkUp,
   ip: s.network.ip,
   lanName: s.network.lanName,
@@ -45,9 +49,11 @@ const selectTimeDetails = (s: SimState) => ({
   lastSyncAt: s.time.lastSyncAt,
 })
 
-function TimeTooltip() {
+function TimeTooltip({ ownCore }: { ownCore: boolean }) {
   const { t } = useTranslation()
   const time = useSim(selectTimeDetails)
+  // G75b-06: a host system clock has no stratum, no offset and no last synchronisation to quote.
+  if (ownCore) return <>{t('web.ownCore.time.tooltip')}</>
   const zone = `UTC${formatUtcOffset()}`
   return (
     <>
@@ -123,16 +129,21 @@ export function SecurityPanel() {
     timeLocked: v.timeLocked,
     linkUp: v.linkUp,
     posture: v.posture,
+    ownCore: v.ownCore,
+    platformNotReported: v.platformNotReported,
   })
+  const postureNotReported = v.platformNotReported && v.posture === 'SECURE'
   const header = securityHeader(columns)
   const zone = `UTC${formatUtcOffset()}`
   const synced = v.timeSource === 'GNSS' && v.timeLocked
 
+  // The neutral columns of a Core in its own capture are statements, not items needing attention.
+  const attention = v.ownCore || v.platformNotReported ? [columns.tpm, columns.time, columns.network, columns.posture].filter((tone) => tone === 'warning').length : header.attention
   const headerText =
     header.critical > 0
       ? t('dashboard.securityTimeNetwork.critical', { count: header.critical })
-      : header.attention > 0
-        ? t('dashboard.securityTimeNetwork.attention', { count: header.attention })
+      : attention > 0
+        ? t('dashboard.securityTimeNetwork.attention', { count: attention })
         : t('dashboard.securityTimeNetwork.allSecure')
 
   const glintMs = beatMs + HELD_BEAT_AFTER_LAND_MS
@@ -142,18 +153,27 @@ export function SecurityPanel() {
       icon: ShieldCheck,
       iconClass: TONE_TEXT_CLASS[columns.tpm],
       title: t('dashboard.securityTimeNetwork.tpm.title'),
-      chip: columns.tpm === 'success' ? t('dashboard.securityTimeNetwork.tpm.chipOk') : t('dashboard.securityTimeNetwork.tpm.chipFault'),
+      // G75b-06: "TPM 2.0 Verified" was read from the simulator's constant on a Core that reports no TPM state.
+      chip: v.platformNotReported
+        ? t('web.ownCore.platform.chip')
+        : columns.tpm === 'success'
+          ? t('dashboard.securityTimeNetwork.tpm.chipOk')
+          : t('dashboard.securityTimeNetwork.tpm.chipFault'),
       tone: columns.tpm,
-      lines: [
-        v.tpmOk ? t('dashboard.securityTimeNetwork.tpm.verified') : t('dashboard.securityTimeNetwork.tpm.failed'),
-        v.secureBoot ? t('dashboard.securityTimeNetwork.tpm.secureBoot') : t('dashboard.securityTimeNetwork.tpm.secureBootOff'),
-      ],
-      tooltip: t('dashboard.securityTimeNetwork.tpm.tooltip', {
-        model: v.tpmModel,
-        secureBoot: v.secureBoot ? t('common.status.enabled') : t('common.status.disabled'),
-        encryption: v.encryption,
-        hash: v.hashAlgorithm,
-      }),
+      lines: v.platformNotReported
+        ? [t('web.ownCore.platform.tpm'), t('web.ownCore.platform.secureBoot')]
+        : [
+            v.tpmOk ? t('dashboard.securityTimeNetwork.tpm.verified') : t('dashboard.securityTimeNetwork.tpm.failed'),
+            v.secureBoot ? t('dashboard.securityTimeNetwork.tpm.secureBoot') : t('dashboard.securityTimeNetwork.tpm.secureBootOff'),
+          ],
+      tooltip: v.platformNotReported
+        ? t('web.ownCore.platform.tooltip')
+        : t('dashboard.securityTimeNetwork.tpm.tooltip', {
+            model: v.tpmModel,
+            secureBoot: v.secureBoot ? t('common.status.enabled') : t('common.status.disabled'),
+            encryption: v.encryption,
+            hash: v.hashAlgorithm,
+          }),
       drawMs: beatMs,
       glintMs,
     },
@@ -161,11 +181,11 @@ export function SecurityPanel() {
       testId: 'stn-time',
       icon: Clock,
       iconClass: TONE_TEXT_CLASS[columns.time],
-      title: t('dashboard.securityTimeNetwork.time.title'),
-      chip: t(`dashboard.securityTimeNetwork.time.chip.${synced ? 'GNSS' : v.timeSource === 'RTC' ? 'RTC' : 'NTP'}`),
+      title: v.ownCore ? t('web.ownCore.time.label') : t('dashboard.securityTimeNetwork.time.title'),
+      chip: v.ownCore ? t('web.ownCore.time.chip') : t(`dashboard.securityTimeNetwork.time.chip.${synced ? 'GNSS' : v.timeSource === 'RTC' ? 'RTC' : 'NTP'}`),
       tone: columns.time,
       lines: [formatDate(minute * 60_000, DATE_PATTERNS.dateTimeMinutes), zone],
-      tooltip: <TimeTooltip />,
+      tooltip: <TimeTooltip ownCore={v.ownCore} />,
       drawMs: beatMs + 60,
       glintMs: glintMs + 60,
     },
@@ -191,17 +211,20 @@ export function SecurityPanel() {
       icon: Shield,
       iconClass: columns.posture === 'success' ? 'text-accent' : TONE_TEXT_CLASS[columns.posture],
       title: t('dashboard.securityTimeNetwork.posture.title'),
-      chip: t(`common.posture.${v.posture}`),
+      // Closing pass J (D217 (7)): "SECURE / All controls active" was the simulator's constant on a Core that computes no posture.
+      chip: postureNotReported ? t('web.ownCore.platform.chip') : t(`common.posture.${v.posture}`),
       tone: columns.posture,
       lines: [
-        v.controlsOpen === 0
+        postureNotReported
+          ? t('common.platformNotReported.posture')
+          : v.controlsOpen === 0
           ? t('dashboard.securityTimeNetwork.posture.allControls')
           : t('dashboard.securityTimeNetwork.posture.controlsOpen', { count: v.controlsOpen }),
         v.activeAlerts === 0
           ? t('dashboard.securityTimeNetwork.posture.noIssues')
           : t('dashboard.securityTimeNetwork.posture.alerts', { count: v.activeAlerts }),
       ],
-      tooltip: `${t(`common.posture.${v.posture}`)} · ${v.encryption} · ${v.hashAlgorithm}`,
+      tooltip: postureNotReported ? t('common.platformNotReported.note') : `${t(`common.posture.${v.posture}`)} · ${v.encryption} · ${v.hashAlgorithm}`,
       drawMs: beatMs + 180,
       glintMs: glintMs + 180,
     },

@@ -3,14 +3,15 @@ import { Button, buttonVariants, Spinner } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import { useSim } from '@dems/shared/sim'
+import { faultKindLabelKey, isCoreNotRunningKind, useSim } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { captureFailedStartText, captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
 import { useOwnCapture } from '@/lib/own-capture'
+import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
 import { useInterruptedSeal } from './use-interrupted-seal'
-import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, selectCoveredDegradedNotice, type BannerModel } from './model'
+import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, selectCoveredDegradedNotice, type BannerModel, type BannerTone } from './model'
 
 export interface StatusBannerProps {
   canStart: boolean
@@ -28,12 +29,15 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
   // `params`, with the device named by label and id, never by the alert's own text.
   const noticeAlert = useSim(selectBannerNoticeAlert)
   const notice = noticeAlert === null ? null : captureNoticeOf(noticeAlert)
-  const reason = notice !== null ? captureNoticeLine(t, notice) : banner.reasonKind ? t(`common.faultKind.${banner.reasonKind}`) : (banner.reasonText ?? '')
+  // Closing pass J (G75b-03, D217 (5)): the restart fault of a Core in its own capture is worded from its member `coreNotRunning`, never "Power failure".
+  const coreNotRunning = useSim((s) => isCoreNotRunningKind(s, banner.reasonKind))
+  const reason = notice !== null ? captureNoticeLine(t, notice) : banner.reasonKind ? t(faultKindLabelKey(banner.reasonKind, coreNotRunning ? { coreNotRunning: true } : null)) : (banner.reasonText ?? '')
   // Wave H driver B (G75-03, ruling D197): a sealed recording that was interrupted is named, never the plain sealed state.
   const interrupted = useInterruptedSeal(banner.kind === 'SEALED' ? banner.sessionId : null)
   // Wave H closing pass Z2 (driver A's line of 10:20:55Z): beside a recording of the Core's own capture no
   // integrity check runs and the media is not protected until the seal - the banner names the capture state.
   const ownCapture = useOwnCapture()
+  const sealAttention = useOpenSealAttention()
   switch (banner.kind) {
     case 'ACTIVE':
       if (ownCapture) return { title: t('session.captureFacts.banner.title'), detail: t('session.integrityFacts.capture.DURABLE') }
@@ -55,6 +59,13 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
           : t('session.banner.FAULT.detail', { reason }),
       }
     case 'FINALIZING':
+      // Fix wave I (G75b-02): a blocked or retried seal is no running "step 1 of 6".
+      if (sealAttention !== null) {
+        return {
+          title: t(sealAttention.kind === 'BLOCKED' ? 'web.sealBlocked.bannerTitle' : 'web.sealBlocked.retryBannerTitle'),
+          detail: sealAttentionLine(sealAttention, t('web.sealBlocked.retryNoSentence')),
+        }
+      }
       return {
         title: t('session.banner.FINALIZING.title'),
         detail: banner.stopping
@@ -99,7 +110,10 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
   const banner = useSim(selectBanner)
   const interruptedSeal = useInterruptedSeal(banner.kind === 'SEALED' ? banner.sessionId : null) !== null
   // An interrupted seal is not the calm sealed state: the warning tone.
-  const tone = interruptedSeal ? 'warning' : BANNER_TONE[banner.kind]
+  // Fix wave I (G75b-02): a blocked seal is the danger tone, a retried one the warning tone.
+  const sealAttention = useOpenSealAttention()
+  const sealKind = banner.kind === 'FINALIZING' ? (sealAttention?.kind ?? null) : null
+  const tone: BannerTone = sealKind === 'BLOCKED' ? 'danger' : sealKind === 'RETRYING' || interruptedSeal ? 'warning' : BANNER_TONE[banner.kind]
   const { title, detail } = useBannerText(banner)
   // Wave H driver B (G75-07 (a)): the degraded-start warning keeps a place of its own when a more severe alert has the banner.
   const coveredAlert = useSim(selectCoveredDegradedNotice)
@@ -153,6 +167,7 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
       className="sm-banner"
       data-testid="sm-status-banner"
       data-kind={banner.kind}
+      data-seal={sealKind ?? undefined}
       data-tone={tone}
       data-failed-start={banner.failedStart ?? undefined}
       data-interrupted={interruptedSeal ? 'true' : undefined}

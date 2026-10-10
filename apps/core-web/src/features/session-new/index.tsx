@@ -72,6 +72,8 @@ import {
   useSim,
   useSimInstance,
   type SimState,
+  startRefusedReasonOf,
+  startRefusedSentenceKey,
 } from '@dems/shared/sim'
 import { Stepper, type StepperStatus, type StepperStep } from '@/components/composed/stepper'
 import { PageHeader, useRouteEnterDelay } from '@/components/shell'
@@ -390,6 +392,13 @@ export function SessionNewPage() {
         fail: (error) => {
           startedHere.current = false
           logSessionNew('error', 'startRecording', error, { sessionId: id, correlationId: correlation.current })
+          // Closing pass J (item 7): a start the Core refused because of the session key (`503 NOT_READY`,
+          // `details.reason`) says its own sentence - the general presenter would say "the Core server is starting".
+          const refused = startRefusedReasonOf(error)
+          if (refused !== null) {
+            toast.danger(t('sessionNew.errors.start'), { description: t(startRefusedSentenceKey(refused)) })
+            return
+          }
           if (presentCoreError(error) !== null) return
           toast.danger(t('sessionNew.errors.start'))
         },

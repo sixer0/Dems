@@ -8,7 +8,7 @@
  * D28/Q2, H-MB-08): no `Intl`, identical on Hermes and Node.
  */
 import { DISPLAY_UTC_OFFSET_MINUTES } from '@dems/shared/realtime';
-import type { BandwidthPoint, SimState } from '@dems/shared/sim';
+import { isHostClockTime, type BandwidthPoint, type SimState } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
 
 export type TimeTier = 'GNSS' | 'NTP' | 'RTC';
@@ -149,6 +149,12 @@ export interface TimeView {
   ntpServer: string;
   ntpReachable: boolean;
   ntpStratum: number;
+  /**
+   * Closing pass J (G75b-06; ruling D203 (1)): the Core's `time` slice says the HOST SYSTEM CLOCK
+   * (`time.hostClock`, read by `isHostClockTime`). Such a Core has no time service: the screen names
+   * the clock and shows no "RTC (holdover)", no tier, no lock, no last synchronisation, no server.
+   */
+  hostClock: boolean;
 }
 
 export function selectTimeView(s: SimState): TimeView {
@@ -163,6 +169,7 @@ export function selectTimeView(s: SimState): TimeView {
     ntpServer: time.ntp.server,
     ntpReachable: time.ntp.reachable,
     ntpStratum: time.ntp.stratum,
+    hostClock: isHostClockTime(time),
   };
 }
 

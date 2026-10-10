@@ -492,8 +492,9 @@ describe('M4-CONN-ORDER-1: the flow has one order', () => {
       w.now += 60_000;
       expect((await testCandidate(w.seams, CALLER, 'CND-000000000001', typed())).failedAttemptsRemaining).toBe(2);
     }
-    // The audit row keeps its exact key list: the outcome, no reason member.
-    expect(Object.keys(w.audit.at(-1)?.details ?? {})).not.toContain('reason');
+    // Fix wave I (re-gate 70, finding G70b-05): the audit row of a scheme refusal SAYS SO, with the closed code of
+    // the answer - it was the same row as a refused credential's. (Before this wave the row carried no reason member.)
+    expect(w.audit.at(-1)?.details).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', authenticated: true, guardTripped: false, reason: 'SCHEME_NOT_ALLOWED' });
 
     const control = world();
     control.add('CND-000000000001', camera());
@@ -503,6 +504,8 @@ describe('M4-CONN-ORDER-1: the flow has one order', () => {
     expect('reason' in refused).toBe(false);
     expect(refused.failedAttemptsRemaining).toBe(1);
     expect('reason' in (control.candidates.get('CND-000000000001')?.candidate.lastTest ?? {})).toBe(false);
+    // CONTROL of the audit member (fix wave I): the row of a REFUSED credential carries no reason.
+    expect(Object.keys(control.audit.at(-1)?.details ?? {})).not.toContain('reason');
   });
 
   it('the next camera id is the highest number plus 1, two digits at least', () => {

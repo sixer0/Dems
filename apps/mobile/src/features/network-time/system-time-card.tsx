@@ -28,11 +28,13 @@ const RING = 56;
 export interface SystemTimeCardProps {
   /** A disciplined source (GNSS or NTP) holds the clock. */
   synchronized: boolean;
+  /** Closing pass J (G75b-06): the time is the host system clock - the chip names it; it is neither "Synchronized" nor "Free-running". */
+  hostClock?: boolean;
   /** `hero` (tablet): a little more air around the readout. */
   variant?: 'card' | 'hero';
 }
 
-export function SystemTimeCard({ synchronized, variant = 'card' }: SystemTimeCardProps) {
+export function SystemTimeCard({ synchronized, hostClock = false, variant = 'card' }: SystemTimeCardProps) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
   // Subscribed here, not in the screen, so only this card re-renders on the 1 Hz clock (R8).
@@ -41,7 +43,7 @@ export function SystemTimeCard({ synchronized, variant = 'card' }: SystemTimeCar
   const date = formatDate(ms, DATE_PATTERNS.weekdayDate);
   const clock = formatClock(ms);
   const zone = t('networkTime.systemTime.zone', { offset: formatUtcOffset() });
-  const chipLabel = synchronized ? t('features.network-time.systemTime.synchronized') : t('features.network-time.systemTime.freeRunning');
+  const chipLabel = hostClock ? t('common.hostClockTime.value') : synchronized ? t('features.network-time.systemTime.synchronized') : t('features.network-time.systemTime.freeRunning');
 
   return (
     <SectionCard
@@ -50,7 +52,7 @@ export function SystemTimeCard({ synchronized, variant = 'card' }: SystemTimeCar
       action={
         <StatusChip
           testID="network-time-system-chip"
-          tone={synchronized ? 'success' : 'warning'}
+          tone={hostClock ? 'default' : synchronized ? 'success' : 'warning'}
           label={chipLabel}
           icon="Circle"
           iconFilled

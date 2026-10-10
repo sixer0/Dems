@@ -9,7 +9,7 @@
 import { useToast } from 'heroui-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { selectClockSecond, useSim } from '@dems/shared/sim';
+import { isHostClockTime, selectClockSecond, useSim } from '@dems/shared/sim';
 import { useMotionState } from '@/motion';
 import { reportRuntimeIssue } from '@/runtime';
 import {
@@ -79,12 +79,14 @@ export function useNetworkTimeAlerts(): void {
   const { toast } = useToast();
   const level = useSim((s) => timeLevel(s.time.source));
   const server = useSim((s) => s.time.ntp.server);
+  // Closing pass J (G75b-06): a host system clock is no fall of a time service - no "RTC holdover" toast.
+  const hostClock = useSim((s) => isHostClockTime(s.time));
   const previous = useRef<TimeLevel>(level);
 
   useEffect(() => {
     const from = previous.current;
     previous.current = level;
-    if (from === level) return;
+    if (from === level || hostClock) return;
     try {
       if (level === 'FALLBACK' && from === 'LOCKED') {
         toast.show({ variant: 'warning', label: t('networkTime.toast.gnssLost'), description: t('networkTime.toast.gnssLostDetail', { server }) });
@@ -97,5 +99,5 @@ export function useNetworkTimeAlerts(): void {
       // The toast is feedback only; the tier row and chips already show the new level.
       reportRuntimeIssue('warn', 'network-time.alerts.toast', error, { from, to: level });
     }
-  }, [level, server, t, toast]);
+  }, [level, server, hostClock, t, toast]);
 }

@@ -19,7 +19,7 @@
  * of a revision are operation 85's, and a volume figure is a measurement, not an act of an operator.
  */
 import { storageStateFor } from './selectors';
-import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote } from './types';
+import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SecuritySlice, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote } from './types';
 
 const wholeBytes = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 
@@ -153,6 +153,46 @@ export function hostClockTimeTransition(state: SimState): SimState {
   const time = state.time;
   if (isHostClockTime(time) && time.source === 'RTC' && !time.locked && !time.gnss.locked && time.history.length === 0) return state;
   return { ...state, time: { ...HOST_CLOCK_TIME, gnss: { ...HOST_CLOCK_TIME.gnss }, ntp: { ...HOST_CLOCK_TIME.ntp }, rtc: { ...HOST_CLOCK_TIME.rtc }, history: [] } };
+}
+
+// ── The platform facts a Core in its own capture does not read (closing pass J; ruling D217 (7)) ──
+
+/**
+ * A CORE IN ITS OWN CAPTURE READS NO TPM, NO SECURE BOOT STATE AND COMPUTES NO POSTURE. The
+ * simulator's `security` slice is a demonstration of a hardened device: `tpm.ok: true`,
+ * `secureBoot: true`, `posture: SECURE`, a control list that says "Attestation OK". A Core that
+ * records with its own capture has no reader for any of them (finding G75b-06).
+ *
+ * THE STATEMENT is one optional member, `security.platformNotReported: true` - the smallest
+ * additive one: the three members are REQUIRED by the closed shape (a boolean, a boolean, one of
+ * three postures - none of which can say "unknown"), so they stay in the slice as placeholders
+ * and the member says that they are not readings. Every surface that shows the TPM, Secure Boot
+ * or the posture reads this member BY NAME first (`isPlatformNotReported`) and shows "Not
+ * reported". Absent = the simulated device: its values are what it shows (the SIMULATED lane and
+ * the in-app simulator are unchanged).
+ *
+ * What the member does NOT cover: `encryption` / `hashAlgorithm` (constants of the product),
+ * `tamper` and the key list - those have their own rules.
+ */
+export const PLATFORM_NOT_REPORTED: Pick<SecuritySlice, 'platformNotReported'> = Object.freeze({ platformNotReported: true } as const);
+
+/** The control ids the member covers (`security.controls[].id`). */
+export const PLATFORM_NOT_REPORTED_CONTROLS: readonly string[] = Object.freeze(['TPM', 'SECURE_BOOT']);
+
+/** True for the `security` slice of a Core in its own capture: TPM, Secure Boot and posture are not reported. */
+export function isPlatformNotReported(security: Pick<SecuritySlice, 'platformNotReported'> | null | undefined): boolean {
+  return security?.platformNotReported === true;
+}
+
+/** The slice says "not reported". The same state when it already does (no write, no row, no event). */
+export function platformNotReportedTransition(state: SimState): SimState {
+  if (isPlatformNotReported(state.security)) return state;
+  return { ...state, security: { ...state.security, ...PLATFORM_NOT_REPORTED } };
+}
+
+/** What a Core in its own capture states of itself outside a session: the host clock and no platform reading. One call for a host. */
+export function ownCaptureCoreFactsTransition(state: SimState): SimState {
+  return platformNotReportedTransition(hostClockTimeTransition(state));
 }
 
 /** The sentence of the pre-check TIME item of a Core in its own capture (English fallback; a client words it from the rule). */

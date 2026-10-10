@@ -90,7 +90,9 @@ export {
   type DevelopmentItem,
   type SealedSourceMarkReader,
 } from './real-evidence';
-export { PackageRemovalRefusal, REMOVABLE_PACKAGE_DIRECTORY, removePackageFolder, type PackageFolderRemover, type PackageRemoval } from './package-removal';
+export { PackageRemovalRefusal, REMOVABLE_PACKAGE_DIRECTORY, REMOVABLE_QUARANTINE_DIRECTORY, removePackageFolder, removeQuarantineFolder, type PackageFolderRemover, type PackageRemoval } from './package-removal';
+// Fix wave I driver A1 (G75b-01): rules (12) to (15) of the guard.
+export { DISCARD_UNSEALED_FAKE_OPTION, GENERATED_ADAPTER_KIND, UNSEALED_FAKE_SOURCE, removeUnsealedFakeRecordings, unsealedFakeMessage, type UnsealedFakeRemoval } from './real-evidence';
 export {
   PREVIOUS_SUFFIX,
   PROTECTED_DATABASES,

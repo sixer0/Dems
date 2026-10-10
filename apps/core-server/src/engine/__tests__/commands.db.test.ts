@@ -732,7 +732,7 @@ describe('the log of the engine (SR-48)', () => {
     const engineKeys = new Set([
       'level', 'time', 'pid', 'hostname', 'msg', 'unit', 'label', 'action', 'code', 'simCode', 'operatorId', 'mode', 'epoch', 'revision', 'step',
       'auditTotal', 'session', 'restartFault', 'tamperCleared', 'tabletLinkReset', 'tabletLinkCarried', 'auditRows', 'headSeq', 'engineSeq', 'ms',
-      'committed', 'audit', 'events', 'seq', 'type', 'behindMs',
+      'committed', 'audit', 'events', 'seq', 'type', 'behindMs', 'tabletLinkOfflineUnwritten',
     ]);
     const engineLines = after.filter(isEngineLine);
     expect(engineLines.length).toBeGreaterThan(20);

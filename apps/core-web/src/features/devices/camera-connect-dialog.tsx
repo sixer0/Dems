@@ -24,6 +24,7 @@ import {
   credentialOf,
   hasConnectErrors,
   OUTCOME_TONE,
+  connectionTestWording,
   outcomeRole,
   testCandidateConnection,
   validateConnectForm,
@@ -314,7 +315,10 @@ function ConnectBody({
   const makeModel = makeModelOf(candidate)
   /** R69-12 (decision D178): what the Core will connect to - scheme, host, port, path - as the Core sent it; the host alone where it sent none (Simulated capture). */
   const target = candidate.connectionTarget ?? null
-  const schemeNotAllowed = tested?.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED && tested.reason === CaptureConnectionTestReason.SCHEME_NOT_ALLOWED
+  // Fix wave I (G70b-02, G70b-05; contract note A2): what an AUTHENTICATION_FAILED answer is, and whether a count is said.
+  const wording = tested === null ? null : connectionTestWording(tested)
+  const schemeNotAllowed = wording?.kind === 'SCHEME_NOT_ALLOWED'
+  const noCredentialSent = wording?.kind === 'NO_CREDENTIAL_SENT'
 
   if (phase === 'ADDED' && adoption !== null) {
     return (
@@ -396,7 +400,8 @@ function ConnectBody({
         {development ? (
           <>
             <p className="dev-connect-line" data-testid="camera-connect-no-password">
-              {t('common.captureConnect.noPasswordNeeded')}
+              {/* G70b-02: "needs no password" said more than the Core knows before a test. */}
+              {t('web.connect.developmentHint')}
             </p>
             <Switch isSelected={withCredential} onChange={showCredential} isDisabled={fieldsReadOnly} data-testid="camera-connect-with-credential">
               <Switch.Content>
@@ -541,14 +546,24 @@ function ConnectBody({
             data-testid="camera-connect-outcome"
             data-outcome={tested.outcome}
             data-reason={tested.reason}
+            data-authenticated={String(tested.authenticated)}
           >
             <Alert.Indicator />
             <Alert.Content>
               {/* R69-13: nothing was sent to a camera whose sign-in method is not answered - never worded as a refused password. */}
-              <Alert.Title>{schemeNotAllowed ? t('common.captureConnectTarget.schemeNotAllowed') : t(`common.captureConnect.outcome.${tested.outcome}`)}</Alert.Title>
+              <Alert.Title>
+                {schemeNotAllowed
+                  ? t('common.captureConnectTarget.schemeNotAllowed')
+                  : noCredentialSent
+                    ? t('web.connect.noCredentialSent')
+                    : t(`common.captureConnect.outcome.${tested.outcome}`)}
+              </Alert.Title>
+              {/* G70b-02: no credential was sent - never "the camera refused this user name or password". */}
+              {noCredentialSent ? <Alert.Description data-testid="camera-connect-no-credential">{t('web.connect.noCredentialNext')}</Alert.Description> : null}
               {schemeNotAllowed ? <Alert.Description data-testid="camera-connect-scheme">{t('common.captureConnectTarget.schemeNotAllowedDetail')}</Alert.Description> : null}
               {reachable ? <Alert.Description>{t('common.captureConnect.profiles', { count: tested.usableProfileCount })}</Alert.Description> : null}
-              {tested.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED ? (
+              {/* G70b-05: the count is said only when a credential was sent and refused - nothing else is counted by the guard. */}
+              {wording?.showAttempts === true ? (
                 <Alert.Description data-testid="camera-connect-attempts">
                   {guardClosed ? t('devices.search.lockoutNoTime') : t('common.captureConnect.attemptsLeft', { count: tested.failedAttemptsRemaining })}
                 </Alert.Description>

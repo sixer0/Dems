@@ -67,6 +67,12 @@ export interface EvidencePackageEntry {
   /** The directory name, so a caller can name what it found without a path. */
   readonly directory: string;
   readonly integrity: PackageIntegrity;
+  /**
+   * Which manifest FILE the folder holds, by name only (fix wave I driver A1; G75b-01): `V2`
+   * (`session-manifest.json`), `V1` (`manifest.json`) or `NONE`. A folder with NONE is no package
+   * yet: the recording of a session that is not sealed. Absent on a scan a test built by hand.
+   */
+  readonly manifest?: 'V2' | 'V1' | 'NONE';
 }
 
 export interface EvidenceStoreScan {
@@ -187,6 +193,7 @@ export function readEvidenceStore(root: string = evidenceStoreRoot()): EvidenceS
           directory: name,
           // A v2 folder is never read from a v1 file beside its manifest (R88-11).
           integrity: present(join(root, name, PACKAGE_V2_MANIFEST_FILE)) ? 'UNKNOWN' : integrityOf(readManifest(join(root, name))),
+          manifest: present(join(root, name, PACKAGE_V2_MANIFEST_FILE)) ? 'V2' : present(join(root, name, PACKAGE_MANIFEST_FILE)) ? 'V1' : 'NONE',
         }),
     );
   return Object.freeze({ root, present: true, packages: Object.freeze(packages), unreadable, quarantined: Object.freeze(quarantined) });

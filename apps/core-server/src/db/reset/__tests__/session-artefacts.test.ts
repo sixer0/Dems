@@ -67,7 +67,7 @@ describe('G89-06 / G89-07: what a reset removes of the sessions it cleared', () 
   it('the key (and its binding), the capture facts file and the sealing staging of each cleared session; nothing of a session it was not asked for (control)', () => {
     const i = installation([A, B]);
     const removal = removeSessionArtefactsOf({ dataDir: i.dataDir, storeRoot: i.storeRoot, sessionIds: [A, A, 'SES-20261010-0099'] });
-    expect(removal).toEqual({ keysDestroyed: [`KID-${A}`], factsRemoved: [A], stagingRemoved: [A], kept: [] });
+    expect(removal).toEqual({ keysDestroyed: [`KID-${A}`], keysOfUnknownSessions: [], factsRemoved: [A], stagingRemoved: [A], kept: [] });
     // CONTROL: session B was not cleared - everything of it is there, byte for byte.
     expect(readdirSync(i.keyFolder).sort()).toEqual([`KID-${B}.blob`, `KID-${B}.key`]);
     expect(readFileSync(join(i.keyFolder, `KID-${B}.key`)).equals(KEY_BYTES)).toBe(true);
@@ -86,7 +86,7 @@ describe('G89-06 / G89-07: what a reset removes of the sessions it cleared', () 
   it('a key whose package folder is still in the store stays, and that is said: it is destroyed only when what it sealed is gone', () => {
     const i = installation([A]);
     mkdirSync(join(i.storeRoot, resetPackageFolderOf(A)));
-    expect(removeSessionArtefactsOf({ dataDir: i.dataDir, storeRoot: i.storeRoot, sessionIds: [A] })).toEqual({ keysDestroyed: [], factsRemoved: [], stagingRemoved: [], kept: [{ sessionId: A, kind: 'SESSION_KEY', reason: 'PACKAGE_STILL_THERE' }] });
+    expect(removeSessionArtefactsOf({ dataDir: i.dataDir, storeRoot: i.storeRoot, sessionIds: [A] })).toEqual({ keysDestroyed: [], keysOfUnknownSessions: [], factsRemoved: [], stagingRemoved: [], kept: [{ sessionId: A, kind: 'SESSION_KEY', reason: 'PACKAGE_STILL_THERE' }] });
     expect(readFileSync(join(i.keyFolder, `KID-${A}.key`)).equals(KEY_BYTES)).toBe(true);
   });
 
@@ -117,7 +117,7 @@ describe('G89-06 / G89-07: what a reset removes of the sessions it cleared', () 
 
   it('an installation without a credential store or hidden folders: nothing to remove, nothing kept', () => {
     const dataDir = join(base, 'never-made');
-    expect(removeSessionArtefactsOf({ dataDir, storeRoot: join(dataDir, 'store'), sessionIds: [A] })).toEqual({ keysDestroyed: [], factsRemoved: [], stagingRemoved: [], kept: [] });
+    expect(removeSessionArtefactsOf({ dataDir, storeRoot: join(dataDir, 'store'), sessionIds: [A] })).toEqual({ keysDestroyed: [], keysOfUnknownSessions: [], factsRemoved: [], stagingRemoved: [], kept: [] });
   });
 
   it('two media store roots on one data directory: the reset of one database destroys only ITS key of a session ID both have (D180)', () => {

@@ -113,7 +113,7 @@ describe('G89-06: the reset destroys the key, and the next session of the ID get
     expect(readdirSync(keyFolder).sort()).toEqual([`${KID}.blob`, `${KID}.key`]);
 
     const removal = removeSessionArtefactsOf({ dataDir: r.dataDir, storeRoot: r.mediaStoreDir, sessionIds: [SESSION] });
-    expect(removal).toEqual({ keysDestroyed: [KID], factsRemoved: [], stagingRemoved: [], kept: [] });
+    expect(removal).toEqual({ keysDestroyed: [KID], keysOfUnknownSessions: [], factsRemoved: [], stagingRemoved: [], kept: [] });
     expect(readdirSync(keyFolder)).toEqual([]);
     expect(r.store().sessionKeys.has(KID)).toBe(false);
 

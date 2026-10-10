@@ -157,9 +157,27 @@ export interface BuiltCaptureRegistry {
   openSources(): readonly string[];
   /** The adapters the reachability probe asks; null when the operation registers none. */
   probeAdapters(): CaptureProbeAdapters | null;
+  /**
+   * Fix wave I (finding G70b-01): gives a device that was REGISTERED AFTER THE BOOT (operation 96)
+   * the adapter a boot would give its stored row, so that it is assignable at once and not only
+   * after a restart. The answer says what was done; nothing is thrown for a device no adapter of
+   * this operation serves.
+   */
+  admit(device: StoredCaptureDevice): CaptureDeviceAdmission;
   /** Stops every helper and removes every pipe. */
   closeAll(): Promise<void>;
 }
+
+/**
+ * What `admit` did (fix wave I):
+ *   ADMITTED         the device has its adapter now and the registry serves it;
+ *   ALREADY_SERVED   the registry served it before the call (a repeat is not an error);
+ *   NOT_SERVED       no adapter of the running operation stands behind this kind of device: a
+ *                    production kind (class C: no opener in this phase), a second local device,
+ *                    or any device while the Core runs `SIMULATED` (no registry at all).
+ */
+export const CaptureDeviceAdmission = { ADMITTED: 'ADMITTED', ALREADY_SERVED: 'ALREADY_SERVED', NOT_SERVED: 'NOT_SERVED' } as const;
+export type CaptureDeviceAdmission = (typeof CaptureDeviceAdmission)[keyof typeof CaptureDeviceAdmission];
 
 /**
  * The registry of `REAL_DEVELOPMENT` (rule RG-1; spec §A.1.1 "Development slots"): the local
@@ -225,27 +243,35 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
   const adapters: CaptureAdapter[] = [watchedCamera, watchedMic];
   const cameraAdapters: CameraAdapter[] = [watchedCamera];
   const micAdapters: AudioInputAdapter[] = [watchedMic];
-  const fakes = input.devices.filter((device) => device.adapterKind === CaptureAdapterKind.FAKE);
-  for (const device of fakes) {
+  /** The first fake microphone of the stored registry: the one that sounds 440 Hz, or plays the speech fixture. */
+  const firstFakeMicId = input.devices.find((device) => device.adapterKind === CaptureAdapterKind.FAKE && device.kind === 'MIC')?.id ?? null;
+  /**
+   * The adapter of ONE stored `FAKE` device: the same for a row the boot read and for a camera
+   * operation 96 registered later (`admit`; fix wave I, finding G70b-01).
+   */
+  const fakeAdapterOf = (device: StoredCaptureDevice): CaptureAdapter => {
     const label = device.model ?? device.id;
     if (device.kind === 'CAMERA') {
       const generated = createGeneratedCameraAdapter({ ...shared, id: device.id, label, now: input.now });
-      adapters.push(generated);
       cameraAdapters.push(generated);
       closers.push(() => generated.closeAll());
-    } else if (device.kind === 'MIC') {
+      return generated;
+    }
+    if (device.kind === 'MIC') {
       // The first fake microphone sounds 440 Hz, every other one 880 Hz: two test tones a listener can tell apart.
-      const first = device.id === fakes.find((other) => other.kind === 'MIC')?.id;
+      const first = device.id === firstFakeMicId;
       const tone = first ? MicGeneratedTone.TONE_440 : MicGeneratedTone.TONE_880;
       // Fix wave H: with the speech setting the first one plays the speech fixture in the place of its tone; every other one keeps its tone.
       const speechFixture = first && typeof input.speechFixturePath === 'string' ? { speechFixture: input.speechFixturePath } : {};
       const generated = createGeneratedMicAdapter({ ...shared, id: device.id, label, runDir: input.runDir, tone, ...speechFixture });
-      adapters.push(generated);
       micAdapters.push(generated);
       closers.push(() => generated.closeAll());
-    } else {
-      adapters.push(createFakePoeController({ id: device.id, label, ports: [], capabilities: ['SNMP'] }));
+      return generated;
     }
+    return createFakePoeController({ id: device.id, label, ports: [], capabilities: ['SNMP'] });
+  };
+  for (const device of input.devices) {
+    if (device.adapterKind === CaptureAdapterKind.FAKE) adapters.push(fakeAdapterOf(device));
   }
   for (const adapter of adapters) registry.register(adapter);
   return {
@@ -264,6 +290,14 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
           return null;
         },
       }),
+    admit(device) {
+      if (registry.list().some((served) => served.id === device.id)) return CaptureDeviceAdmission.ALREADY_SERVED;
+      // Only what a boot would give an adapter: a stored `FAKE` row. A production kind has no opener
+      // in this phase, and the two local devices are registered by the boot alone.
+      if (device.adapterKind !== CaptureAdapterKind.FAKE) return CaptureDeviceAdmission.NOT_SERVED;
+      registry.register(fakeAdapterOf(device));
+      return CaptureDeviceAdmission.ADMITTED;
+    },
     closeAll: async () => {
       await Promise.all(closers.map((close) => close()));
     },
@@ -279,7 +313,7 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
  */
 export function buildProductionRegistry(locked?: () => boolean): BuiltCaptureRegistry {
   const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION, ...(locked === undefined ? {} : { locked }) });
-  return { registry, openSources: () => Object.freeze([]), probeAdapters: () => null, closeAll: async () => {} };
+  return { registry, openSources: () => Object.freeze([]), probeAdapters: () => null, admit: () => CaptureDeviceAdmission.NOT_SERVED, closeAll: async () => {} };
 }
 
 /** What the fence offers after the boot: for the session wiring (row 71), the boot checks (row 61), the selector and the clients' device shapes. */
@@ -306,6 +340,13 @@ export interface CaptureFenceControl {
    * the boot step passed.
    */
   probeAdapters(): CaptureProbeAdapters | null;
+  /**
+   * Fix wave I (finding G70b-01): a device was registered AFTER the boot (operation 96 committed
+   * it). The registry of the running operation gets the adapter a boot would give that stored row,
+   * so that operations 78 / 79 can assign it at once. `NOT_SERVED` in `SIMULATED`, before the boot
+   * step passed, and for a kind no adapter of the operation stands behind. Opens nothing.
+   */
+  admitDevice(device: StoredCaptureDevice): CaptureDeviceAdmission;
   /**
    * SEC35-43 (d): the helper processes of an earlier run, by the exact program path. Capture must
    * not start while the answer is not an empty list (null: the process table could not be read).
@@ -367,6 +408,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
       };
     },
     probeAdapters: () => built?.probeAdapters() ?? null,
+    admitDevice: (device) => built?.admit(device) ?? CaptureDeviceAdmission.NOT_SERVED,
     async leftoverHelpers() {
       const program = outcome?.helperProgram ?? null;
       return program === null ? Object.freeze([]) : leftoverHelperPids(door, mount.timers, program);

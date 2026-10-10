@@ -45,7 +45,7 @@ import type { SealingProgressInput } from '@dems/shared/sim';
 import { describeError, type ErrorLog } from '../../plugins/logger';
 import type { StepTimer } from '../finalize-transcript/bounds';
 import type { SealingStepJournal, SealingStepRecord, StepCheckpoint } from '../step-journal';
-import { SEALING_STEP_ORDER, SealingFailure, sealingFailureReason, type SealOutcome, type SealingDetail, type SealingStepId } from './contract';
+import { SEALING_STEP_ORDER, SealerCause, SealingFailure, sealerCauseIn, sealingCauseCodeOf, sealingFailureReason, type SealOutcome, type SealingDetail, type SealingStepId } from './contract';
 
 const SOURCE = 'sealing.wayOut';
 
@@ -73,7 +73,8 @@ type FailedOutcome = Extract<SealOutcome, { status: 'FAILED' }>;
 /** THE RULE. `retriesDone`: the retries this process already started for that session. */
 export function sealWayOutOf(outcome: FailedOutcome, retriesDone: number, settings: SealRetrySettings): SealWayOutStep {
   if (outcome.code === SealingFailure.NOTHING_SEALABLE) return { action: 'TERMINAL', cause: outcome.code };
-  if (!outcome.retriable && outcome.attempt >= Math.max(1, settings.nonRecoverableAttempts)) return { action: 'TERMINAL', cause: outcome.code };
+  // G75b-01 (fix wave I): the terminal outcome names the CAUSE when the failure carries one (`SESSION_KEY_NOT_OF_SESSION`, not `SEALER_FAILED`).
+  if (!outcome.retriable && outcome.attempt >= Math.max(1, settings.nonRecoverableAttempts)) return { action: 'TERMINAL', cause: sealingCauseCodeOf(outcome.code, outcome.detail) };
   const delayMs = settings.delaysMs[retriesDone];
   if (delayMs === undefined) return { action: 'WAIT' };
   return { action: 'RETRY', delayMs: Math.max(0, delayMs), retry: retriesDone + 1, of: settings.delaysMs.length };
@@ -88,10 +89,23 @@ export const sealWaitingNotice = (reason: string): string => `${reason} Sealing 
  * never goes away keeps its session FINALIZING and the Core blocked - the safe side for evidence
  * that is intact. It must be VISIBLE: this sentence is in the CRITICAL alert and in the log.
  */
-export function sealBlockedRestoreHint(code: string): string {
+export function sealBlockedRestoreHint(code: string, detail: SealingDetail = {}): string {
   switch (code) {
-    case SealingFailure.FRAGMENT_NOT_OPENABLE:
     case SealingFailure.SEALER_FAILED:
+      // G75b-01 (fix wave I): the hint follows the CAUSE. A key that was never made cannot be "restored".
+      switch (sealerCauseIn(code, detail)) {
+        case SealerCause.SESSION_KEY_STORE_UNAVAILABLE:
+        case SealerCause.SESSION_KEY_UNSAFE:
+        case SealerCause.SESSION_KEY_WRITE_FAILED:
+          return "Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then start recovery for the session or restart the Core.";
+        case SealerCause.SESSION_KEY_NOT_OF_SESSION:
+          return "An administrator must remove the earlier session's key from the Core's key store, then start recovery for the session or restart the Core.";
+        case SealerCause.SESSION_CIPHER_REFUSED:
+          return "Read the Core's error log for the cause, then start recovery for the session or restart the Core.";
+        default:
+          return "Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then start recovery for the session or restart the Core.";
+      }
+    case SealingFailure.FRAGMENT_NOT_OPENABLE:
       return "Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then start recovery for the session or restart the Core.";
     case SealingFailure.SIGNER_FAILED:
       return "Provide the Core's evidence signing key (the signer folder of the data directory), then start recovery for the session or restart the Core.";
@@ -108,7 +122,7 @@ export function sealBlockedRestoreHint(code: string): string {
 }
 
 /** The text of the CRITICAL alert of a blocked seal: the cause in words, what restores it, what it costs meanwhile. */
-export const sealBlockedNotice = (code: string, detail: SealingDetail = {}): string => `Sealing of this session is blocked. ${sealingFailureReason(code as SealingFailure, detail)} ${sealBlockedRestoreHint(code)} The Core records no new session until this one is sealed.`;
+export const sealBlockedNotice = (code: string, detail: SealingDetail = {}): string => `Sealing of this session is blocked. ${sealingFailureReason(code as SealingFailure, detail)} ${sealBlockedRestoreHint(code, detail)} The Core records no new session until this one is sealed.`;
 
 export interface SealWayOutPorts {
   /**
@@ -116,7 +130,7 @@ export interface SealWayOutPorts {
    * this process are used up. The engine raises ONE CRITICAL alert (once per session). Best effort:
    * a rejection is logged, the wait is the same.
    */
-  readonly blocked?: (input: { sessionId: string; cause: string; step: string; message: string }) => Promise<void>;
+  readonly blocked?: (input: { sessionId: string; cause: string; step: string; message: string; detail?: string }) => Promise<void>;
   /** F-M7c: the blocked alert of the session is resolved - its seal completed, or the session was ended. */
   readonly unblocked?: (sessionId: string) => Promise<void>;
   readonly settings: () => SealRetrySettings;
@@ -338,14 +352,16 @@ export function createSealWayOut(ports: SealWayOutPorts): SealWayOut {
         return next;
       }
       if (next.action === 'WAIT' || closed) {
-        ports.log.append({ level: 'error', source: SOURCE, message: 'the seal of a session failed and the retries of this process are used up: it is tried again at the next start of the Core or by the recovery operation', code: 'SEALING_RETRIES_EXHAUSTED', context: { sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code } });
+        ports.log.append({ level: 'error', source: SOURCE, message: 'the seal of a session failed and the retries of this process are used up: it is tried again at the next start of the Core or by the recovery operation', code: 'SEALING_RETRIES_EXHAUSTED', context: { sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, cause: sealingCauseCodeOf(outcome.code, outcome.detail) } });
         await say(outcome, sealWaitingNotice(reason));
         // F-M7c (D186 (1)): VISIBLE. Not while the Core closes - the next start has its own retries first.
         if (next.action === 'WAIT' && !closed) {
-          const restore = sealBlockedRestoreHint(outcome.code);
-          ports.log.append({ level: 'error', source: SOURCE, message: 'the seal of a session is BLOCKED: the session stays FINALIZING and the Core records no new session until it is sealed', code: 'SEALING_SESSION_BLOCKED', context: { sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, restore } });
+          const restore = sealBlockedRestoreHint(outcome.code, outcome.detail);
+          // G75b-01: the log line and the alert name the CAUSE (a closed code), not only the step that failed.
+          const cause = sealerCauseIn(outcome.code, outcome.detail);
+          ports.log.append({ level: 'error', source: SOURCE, message: 'the seal of a session is BLOCKED: the session stays FINALIZING and the Core records no new session until it is sealed', code: 'SEALING_SESSION_BLOCKED', context: { sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, cause: cause ?? outcome.code, restore } });
           try {
-            await ports.blocked?.({ sessionId: outcome.sessionId, cause: outcome.code, step: outcome.step, message: sealBlockedNotice(outcome.code, outcome.detail) });
+            await ports.blocked?.({ sessionId: outcome.sessionId, cause: outcome.code, step: outcome.step, message: sealBlockedNotice(outcome.code, outcome.detail), ...(cause === null ? {} : { detail: cause }) });
           } catch (error) {
             ports.log.append({ level: 'error', source: SOURCE, message: 'the alert of a blocked seal could not be raised', ...describeError(error), code: 'SEALING_BLOCKED_NOT_RAISED', context: { sessionId: outcome.sessionId } });
           }
@@ -365,7 +381,7 @@ export function createSealWayOut(ports: SealWayOutPorts): SealWayOut {
           });
         }),
       );
-      ports.log.append({ level: 'warn', source: SOURCE, message: 'the seal of a session failed and is retried in this process', code: 'SEALING_RETRY_SCHEDULED', context: { sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, retry: next.retry, of: next.of, delayMs: next.delayMs } });
+      ports.log.append({ level: 'warn', source: SOURCE, message: 'the seal of a session failed and is retried in this process', code: 'SEALING_RETRY_SCHEDULED', context: { sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, cause: sealingCauseCodeOf(outcome.code, outcome.detail), retry: next.retry, of: next.of, delayMs: next.delayMs } });
       await say(outcome, sealRetryingNotice(next, reason));
       return next;
     },

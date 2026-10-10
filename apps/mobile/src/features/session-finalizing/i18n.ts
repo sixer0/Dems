@@ -52,4 +52,21 @@ export const sessionFinalizingEn = {
     maxRetries: 'Still failing. Reopen the app to reload this screen.',
   },
   actionFailed: 'That did not work. Please try again.',
+  /**
+   * Fix wave I (re-gate 75, G75b-02; contract note of driver A1): a seal the Core retries or that is blocked.
+   * The cause, the retry count and "The recording is kept on the Core." are the Core's / the shared
+   * constants' words (`@dems/shared/sim` `seal-blocked.ts`); this block holds what the app itself adds.
+   * `chip` is the state word of the open session on Home and Sessions.
+   */
+  sealAttention: {
+    blockedTitle: 'Sealing is blocked',
+    retryingTitle: 'Sealing is being retried',
+    who: 'A technician or the administrator of the Core has to resolve the cause on the Core.',
+    staysOpen: 'You can leave this screen. The session stays open on the Core until it is sealed; Home and Sessions show it as "{{chip}}".',
+    retryingBody: 'The Core runs the seal again by itself. You can leave this screen; the session stays open on the Core until it is sealed.',
+    chip: 'Sealing blocked',
+    action: 'Sealing blocked: view',
+    newSession: 'A new session cannot be started: sealing of session {{sessionId}} is blocked, and the Core records no new session until it is sealed.',
+    hubBody: 'Sealing of this session is blocked.',
+  },
 } as const satisfies ResourceTree;

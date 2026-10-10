@@ -60,6 +60,7 @@ import { VIDEO_TRACK_IDS, createRecordingFragmentStore } from '../modules/record
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
 import { createTranscriptStore } from '../modules/transcripts';
 import type { Principal } from '../plugins/authenticate';
+import { ApiFailure } from '../plugins/error-envelope';
 import { describeError } from '../plugins/logger';
 import {
   SEALING_QUARANTINE_DIR,
@@ -80,6 +81,7 @@ import {
   sealInputWithTranscriptSummary,
   sealBlockedRestoreHint,
   sealOnCaptureHandOff,
+  sealingCauseCodeOf,
   sealingFailureReason,
   sweepSealedSession,
   systemStepTimer,
@@ -92,14 +94,14 @@ import {
   type SealingPorts,
 } from '../sealing';
 import { transcriptionControl } from '../transcription';
-import { coreFragmentSealer } from './session-key';
+import { coreFragmentSealer, sessionKeyStartRefusal, type SessionKeyStartRefusal } from './session-key';
 import { SEAL_NOTICE, createSealSessionReader } from './session-reader';
 // Closing pass Z1 (decision D207): the installation identity - manifest fields 20 / 21 and the boot rule.
 import { installationIdentityOf, runInstallationIdentityBoot } from './installation-identity';
 import { createSealTranscriptStep, type SealTranscriptRuns } from './transcript-step';
 
 export { isTimedSeal, sealingProgressOf } from './progress';
-export { sessionKeyIdOf } from './session-key';
+export { sessionKeyIdOf, sessionKeyStartRefusal, type SessionKeyStartRefusal } from './session-key';
 // Row 82c: the seed-time generator of the v2 demo packages (called by the seed hook, never by a session).
 export * from './demo-seed';
 export { NO_STT_SNAPSHOT_RECORDED, SEAL_NOTICE, STAND_INS, STT_SNAPSHOT_NOT_RECORDED_MODEL, isSttSnapshotNotRecorded } from './session-reader';
@@ -160,10 +162,32 @@ export interface SealingHost {
    * no member of it. `hosted` names the action the caller runs otherwise; it is not read.
    */
   failedSeal(sessionId: string): { command(principal: Principal, hosted?: string): boolean };
+  /**
+   * BEFORE THE START OF A SESSION, outside every unit (fix wave I driver A1; G75b-01; ruling D216):
+   * a session whose recording could not be sealed is refused HERE, before anything is recorded -
+   * `503 NOT_READY` with `details.reason` `SESSION_KEY_NOT_OF_SESSION` (a key an earlier session of
+   * the same number left in the key store) or `SESSION_KEY_STORE_UNAVAILABLE`. Nothing is changed:
+   * the session stays as it was and can be cancelled. Does nothing in capture mode `simulated`.
+   */
+  beforeStart(sessionId: string): void;
+  /**
+   * Whether the seal of `sessionId` was RESUMED - run again by a start of this Core, or by the
+   * recovery action - as opposed to a first run or a retry the Core made by itself (fix wave I;
+   * G75b-02: `resumed` of operation 83 said "after restart" for an automatic retry). Null in capture
+   * mode `simulated`: the simulator's own rule answers there.
+   */
+  resumedSeal(sessionId: string): boolean | null;
 }
 
+/** What a refused start says (`SessionKeyStartRefusal`): fixed text, no path and no key ID beyond the session's own number. */
+export const SESSION_KEY_START_TEXT: Readonly<Record<SessionKeyStartRefusal, string>> = Object.freeze({
+  SESSION_KEY_NOT_OF_SESSION:
+    "This session cannot be started: a session key of an earlier session with this session number is in the Core's key store, so its recording could not be sealed. Nothing was recorded. Cancel this session and create a new one.",
+  SESSION_KEY_STORE_UNAVAILABLE: "This session cannot be started: the Core's key store cannot be used, so its recording could not be sealed. Nothing was recorded.",
+});
+
 const hosts = new WeakMap<object, SealingHost>();
-const INERT: SealingHost = Object.freeze({ mounted: false, controller: () => null, lastOutcome: () => null, settled: async () => {}, replace: () => {}, retryFailedSeal: () => false, failedSeal: () => ({ command: () => false }) });
+const INERT: SealingHost = Object.freeze({ mounted: false, controller: () => null, lastOutcome: () => null, settled: async () => {}, replace: () => {}, retryFailedSeal: () => false, failedSeal: () => ({ command: () => false }), beforeStart: () => {}, resumedSeal: () => null });
 
 /** The sealing host of an app: what `mountSealingHost` built, or the inert one. */
 export function sealingHost(app: { readonly stages: object }): SealingHost {
@@ -186,6 +210,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   const packageDir = (sessionId: string): string => sessionPackageDir(mediaStoreDir, sessionId);
   const now = (): number => app.clock.now();
   let last: SealOutcome | null = null;
+  // Fix wave I (G75b-02): the sessions whose seal a START of this Core or the recovery action ran again. An automatic retry is not in it.
+  const resumedSeals = new Set<string>();
   const settings: { transcriptLimits?: FinalizeTranscriptLimits; transcriptRuns?: SealTranscriptRuns; sealRetry?: SealRetrySettings } = {};
   const pending = new Set<Promise<unknown>>();
   const track = <Value>(run: Promise<Value>): Promise<Value> => {
@@ -198,7 +224,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   };
 
   function persist(level: 'error' | 'warn', code: string, message: string, err: unknown, context: Record<string, string | number | boolean | null>): void {
-    if (level === 'error') app.log.error({ err, code, ...context }, message);
+    // Fix wave I: a line without an error carries no `err` member (a null one was printed as an empty error object).
+    if (level === 'error') app.log.error(err === null || err === undefined ? { code, ...context } : { err, code, ...context }, message);
     else app.log.warn({ code, ...context }, message);
     app.errorLog.append({ level, source: SOURCE, message, ...(err === null || err === undefined ? {} : describeError(err)), code, context });
   }
@@ -271,7 +298,9 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
     for (const alert of app.engine.state().alerts) {
       if (!alert.active || alert.kind !== 'SYSTEM' || alert.params?.['reason'] !== SEAL_BLOCKED_REASON) continue;
       const cause = typeof alert.params['cause'] === 'string' ? alert.params['cause'] : 'UNKNOWN';
-      persist('error', 'SEALING_SESSION_BLOCKED', 'the seal of a session is BLOCKED since an earlier run of the Core: it is tried again now; the Core records no new session until it is sealed', null, { sessionId: alert.target ?? null, failure: cause, restore: sealBlockedRestoreHint(cause) });
+      // Fix wave I (G75b-01): the closed cause code the alert carries, when it has one.
+      const detail = typeof alert.params['detail'] === 'string' ? alert.params['detail'] : null;
+      persist('error', 'SEALING_SESSION_BLOCKED', 'the seal of a session is BLOCKED since an earlier run of the Core: it is tried again now; the Core records no new session until it is sealed', null, { sessionId: alert.target ?? null, failure: cause, cause: detail ?? cause, restore: sealBlockedRestoreHint(cause, detail === null ? {} : { cause: detail }) });
     }
   }
 
@@ -404,7 +433,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
           );
         }
         // A FAILED run is in the error log already (the pipeline wrote it, with its step and code).
-        else if (outcome.status === 'FAILED') app.log.error({ code: outcome.code, source: SOURCE, sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, retriable: outcome.retriable }, 'the seal of a session failed');
+        // Fix wave I (G75b-01): with its CAUSE - a closed code (`sealingCauseCodeOf`) under `failureCause` (the key `cause` is an error's, static rule CPB1-2) - never key material, never a path.
+        else if (outcome.status === 'FAILED') app.log.error({ code: outcome.code, source: SOURCE, sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, retriable: outcome.retriable, failureCause: sealingCauseCodeOf(outcome.code, outcome.detail) }, 'the seal of a session failed');
         // F-M7b (R88-02 (a) + (c)): EVERY end of a run goes to the way out - a retry in this process, the wait for a start, or the terminal UNSEALABLE outcome.
         if (outcome.status !== 'NOTHING_DURABLE') void track(wayOut.after(outcome).then((next) => (next?.action === 'TERMINAL' ? app.log.error({ code: 'SEALING_SESSION_UNSEALABLE', source: SOURCE, sessionId: outcome.sessionId, failure: next.cause }, 'a session could not be sealed: it was ended as UNSEALABLE and its files are in the quarantine folder') : undefined)));
         if (outcome.status !== 'SEALED' && outcome.status !== 'FAILED') {
@@ -542,12 +572,20 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       // A run under way IS the retry: nothing is started beside it.
       if (controller.running() !== null) return true;
       compose().wayOut.reset(sessionId);
+      resumedSeals.add(sessionId);
       app.log.info({ code: 'SEALING_RETRY_ON_DEMAND', source: SOURCE, sessionId }, 'the failed seal of a session is run again on demand');
       // F-M7c (D186 (8)): AUDITED - who asked, which session, the cause being retried. Written before the run reads its rows.
       void track(noteRetryOnDemand(sessionId, principal?.kind === 'OPERATOR' ? principal.operatorId : null)).then(() => controller.resume()).catch((error: unknown) => track(rejected(sessionId, error)));
       return true;
     },
     failedSeal: (sessionId) => ({ command: (principal) => host.retryFailedSeal(sessionId, principal) }),
+    beforeStart(sessionId) {
+      const refused = sessionKeyStartRefusal(app, sessionId);
+      if (refused === null) return;
+      persist('error', 'SESSION_START_REFUSED_SESSION_KEY', 'a session start was refused: its recording could not be sealed with the session keys the key store holds', null, { sessionId, cause: refused });
+      throw new ApiFailure(503, 'NOT_READY', SESSION_KEY_START_TEXT[refused], { details: { reason: refused } });
+    },
+    resumedSeal: (sessionId) => resumedSeals.has(sessionId),
   };
   hosts.set(app.stages, host);
 
@@ -591,7 +629,12 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       void track(finishUnsealable()).then((finished) =>
         finished
           ? undefined
-          : controller.resume().then(
+          : compose()
+              .controller.decide()
+              // Fix wave I (G75b-02): the seal this START runs again is a RESUMED one - said before it runs, so operation 83 says so while it does.
+              .then((decision) => void (decision.action === 'NONE' ? undefined : resumedSeals.add(decision.sessionId)))
+              .then(() => controller.resume())
+              .then(
               (outcome) => {
                 if (outcome !== null) app.log.info({ code: 'SEALING_RESUMED', source: SOURCE, sessionId: outcome.sessionId, status: outcome.status }, 'a seal was resumed at the start of the Core');
               },

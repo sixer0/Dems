@@ -65,6 +65,8 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-finalizing/handover.ts',
       'session-finalizing/i18n.ts',
       'session-finalizing/interrupted-seal.tsx',
+      // Fix wave I (G75b-02): the notice of a seal the Core retries or that is blocked (reads the store only).
+      'session-finalizing/seal-attention.tsx',
       'session-finalizing/sealed-stamp.tsx',
       // Blueprint row 87 (E-13): sealing progress, forward-only, from the Core's states alone (no timer).
       'session-finalizing/sealing-progress.ts',
@@ -138,7 +140,8 @@ describe('what belongs to the runtime stays there (rules 3, 4 and 9)', () => {
 describe('one LIVE idiom, one pending control, one link notice (rule 5; 09b §8)', () => {
   it('the mode is read from `useCoreLink().source` only; the link notice is `useCoreLinkNotice()`; no own link rule', () => {
     expect(matching(/\b(?:useCoreMode|getCoreLinkSource|useCoreLinkSource|useCoreLinkSourceSetting|coreLinkSource)\b/)).toEqual([]);
-    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['session-summary/use-summary.ts']);
+    // Fix wave I (contract note A1 §4): the Finalizing screen reads the mode with the same idiom - "Resumed after restart" is not claimed from an attempt count on a Core server.
+    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['session-finalizing/session-finalizing-screen.tsx', 'session-summary/use-summary.ts']);
     expect(matching(/\buseCoreLinkNotice\(\)/)).toEqual(['session-summary/session-summary-screen.tsx', 'sessions/sessions-screen.tsx']);
     expect(matching(/\b(?:coreLinkViewOf|offlineNoticeAfter|initialOfflineNotice|useConnectionBanner)\b/)).toEqual([]);
     expect(matching(/'(?:CONNECTING|RESYNCING|STALE|OFFLINE)'/)).toEqual([]);

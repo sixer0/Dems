@@ -60,7 +60,7 @@ import {
 } from '@/runtime';
 import { camerasNotConnectedOf } from '@/features/capture-selector/capture-notices-model';
 import { selectConnectingCameras } from './mic-source-model';
-import { useOwnCapture } from './own-capture';
+import { useOwnCapture, ownCaptureOf } from './own-capture';
 import { statusStrip, timelineOfCaptureFacts, type StripChip } from './session-live.math';
 
 /** The recording session's identity and counters (primitives only). */
@@ -84,7 +84,9 @@ export function useMonitorSession(): MonitorSession {
     room: s.session?.input.room ?? null,
     markerCount: s.session?.markerCount ?? 0,
     snapshotCount: s.session?.snapshotCount ?? 0,
-    timelineLength: s.session?.timeline.length ?? 0,
+    // Closing pass J (note 134, open item): the History badge counts the rows the timeline DRAWS - the START row
+    // held back while the cameras connect (G75b-08) is not an unseen item, nor is a row the surface never shows.
+    timelineLength: s.session ? timelineOfCaptureFacts(s.session.timeline, ownCaptureOf(s.session), selectConnectingCameras(s)).length : 0,
   }));
 }
 
@@ -142,7 +144,9 @@ export function useMonitorTimeline(): readonly TimelineEvent[] {
   // Fix wave H driver A (G75-01): beside a recording of the Core's own capture no row the simulator's
   // generator invents is drawn ("Evidence Auto-Save", "Integrity check passed", "Device Health Normal").
   const ownCapture = useOwnCapture();
-  return useMemo(() => timelineOfCaptureFacts(timeline, ownCapture), [timeline, ownCapture]);
+  // Fix wave I (G75b-08): "Recording Started" is drawn only once the Core says it records (the first durable fragment).
+  const connecting = useSim(selectConnectingCameras);
+  return useMemo(() => timelineOfCaptureFacts(timeline, ownCapture, connecting), [timeline, ownCapture, connecting]);
 }
 
 /** S2b: VIDEO 1, VIDEO 2, STORAGE, TIME. */

@@ -11,8 +11,9 @@ import { AnimatedNumber } from '@/components/ui/animated-number'
 import { useRouteEnterDelay } from '@/components/shell'
 import { useOwnCapture } from '@/lib/own-capture'
 import { HELD_BEAT_MS, useMotionPolicy } from '@/motion'
+import { captureCheckpointsOf } from './capture-checkpoints-model'
 import { PANEL_BEAT_MS } from './choreography'
-import { selectStorage, storageTone } from './model'
+import { formatBytesParts, selectStorage, storageTone } from './model'
 import { Panel } from './panel'
 import { useWriteRateSeries, type WriteRatePoint } from './sim-adapter'
 
@@ -30,6 +31,11 @@ const CARD_SETTLE_MS = 360
  * write speed and its curve are the simulator's nominal rate (`health.ts`: 8.2 GB/h with a
  * deterministic ripple), not a measurement of the Core. Beside such a session neither is drawn. The
  * volume figures (used, free, total) and the estimate stay: the estimate is labelled as one.
+ *
+ * SESSION SIZE beside such a session (fix wave I, G75b-06: the panel read 47 MB while 18 MB were
+ * durable): `session.bytesWritten` is the simulator's formula (8.2 GB/h from the start). The size
+ * shown is the durable bytes the Core's checkpoints state (`captureCheckpointsOf`, the one reader of
+ * the console - the figure of the "Durable Fragments" line); no checkpoint stated = a dash.
  */
 export function StoragePanel() {
   const { t } = useTranslation()
@@ -38,6 +44,15 @@ export function StoragePanel() {
   const routeDelay = useRouteEnterDelay()
   const series = useWriteRateSeries()
   const ownCapture = useOwnCapture()
+  const durableBytes = useSim((s) => captureCheckpointsOf(s.session)?.bytes ?? null)
+  const durable = durableBytes === null ? null : formatBytesParts(durableBytes)
+  const sessionSize = ownCapture
+    ? durable === null
+      ? null
+      : { value: durable.value, unit: durable.unit }
+    : storage.sessionValue !== null
+      ? { value: storage.sessionValue, unit: storage.sessionUnit }
+      : null
   const [armed, setArmed] = useState(m.reduced)
   useEffect(() => {
     if (armed) return undefined
@@ -116,8 +131,8 @@ export function StoragePanel() {
         )}
         <div>
           <dt>{t('common.storage.sessionSize')}</dt>
-          <dd data-testid="sm-session-size">
-            {storage.sessionValue !== null ? t(`common.units.${storage.sessionUnit}`, { value: storage.sessionValue }) : '—'}
+          <dd data-testid="sm-session-size" data-source={ownCapture ? 'checkpoints' : 'session'}>
+            {sessionSize !== null ? t(`common.units.${sessionSize.unit}`, { value: sessionSize.value }) : '—'}
           </dd>
         </div>
         <div>

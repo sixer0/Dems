@@ -18,9 +18,13 @@ import { useSim, useSimReady } from '@dems/shared/sim'
 import { palette } from '@dems/shared/tokens'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { tween, useAmbientLoop, useMotionPolicy } from '@/motion'
+import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
 import {
   INTEGRITY_CHECK_IDS,
+  ownCoreRow,
+  pillSubtitle,
   selectIntegrityChecks,
+  selectPillCause,
   selectPillState,
   type CheckStatus,
   type PillState,
@@ -71,6 +75,12 @@ export function SecurePill() {
   const ready = useSimReady()
   const simState = useSim(selectPillState)
   const checks = useSim(selectIntegrityChecks)
+  // G75b-07: the CRITICAL line names the fault; the integrity sentence is kept for integrity flags.
+  const cause = useSim(selectPillCause)
+  // G75b-06: a Core in its own capture reports no TPM / Secure Boot state and no time service.
+  const ownCore = useOwnCaptureCore()
+  // Closing pass J (D217 (7)): the platform row reads the Core's own statement `security.platformNotReported`.
+  const platformNotReported = usePlatformNotReported()
   const state: PillState = ready ? simState : 'UNKNOWN'
   const dotRef = useRef<HTMLSpanElement>(null)
   const dotLoop = useAmbientLoop('secure-dot', {
@@ -90,7 +100,7 @@ export function SecurePill() {
   }
   const Icon = PILL_ICON[state]
   const title = t(`shell.securePill.${state}.title`)
-  const subtitle = t(`shell.securePill.${state}.subtitle`)
+  const subtitle = pillSubtitle(t, state, cause)
 
   return (
     <Popover isOpen={open} onOpenChange={setOpen}>
@@ -133,13 +143,17 @@ export function SecurePill() {
           <Popover.Heading className="dems-popover-heading">{t('shell.securePill.popoverTitle')}</Popover.Heading>
           <ul className="dems-check-list" data-testid="integrity-checklist">
             {INTEGRITY_CHECK_IDS.map((id, index) => {
-              const status: CheckStatus | 'UNKNOWN' = ready ? (checks[index] ?? 'OK') : 'UNKNOWN'
+              const stated: CheckStatus | 'UNKNOWN' = ready ? (checks[index] ?? 'OK') : 'UNKNOWN'
+              const notStated = ready ? ownCoreRow(id, stated, { hostClock: ownCore, platformNotReported }) : null
+              const status: CheckStatus | 'UNKNOWN' = notStated !== null ? 'UNKNOWN' : stated
               const CheckIcon = CHECK_ICON[status]
               return (
                 <li key={id} className="dems-check-row" data-status={status}>
                   <CheckIcon className="dems-check-icon" aria-hidden="true" size={16} />
                   <span className="dems-check-label">{t(`shell.securePill.checks.${id}`)}</span>
-                  <span className="dems-check-status">{t(`shell.securePill.checkStatus.${status}`)}</span>
+                  <span className="dems-check-status">
+                    {notStated !== null ? t(`web.securePill.checkStatus.${notStated}`) : t(`shell.securePill.checkStatus.${status}`)}
+                  </span>
                 </li>
               )
             })}

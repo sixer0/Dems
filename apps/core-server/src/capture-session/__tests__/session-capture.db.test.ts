@@ -31,6 +31,10 @@ import { FIRST_DELIVERY_MS } from '../../capture/adapters/local/camera-helper';
 import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
+/** The rigs of the running case: closed by the `afterEach` below (see `fixRig`). */
+const openRigs: Rig[] = [];
+/** The database of a rig: its pools are ended with the rig (`closeResources`); the database itself is dropped when the file ends, as before. */
+const rigDatabases = new WeakMap<Rig, { closeResources(): Promise<string[]> }>();
 const fixture = realBootFixture('row71b');
 fixture.provisionKey();
 afterAll(() => fixture.remove());
@@ -199,7 +203,7 @@ async function rig(
     }
   };
 
-  return {
+  const made: Rig = {
     app,
     owner,
     fake,
@@ -241,6 +245,10 @@ async function rig(
       return (await owner.query(text, [...values])).rows as Row[];
     },
   };
+  // Closed after the case (the `afterEach` below): the app, the supervisor and BOTH pools of this rig's database.
+  openRigs.push(made);
+  rigDatabases.set(made, target);
+  return made;
 }
 
 const sourcesOf = (of: Rig, sessionId: string) => of.rows<{ slot: string; device_id: string; adapter_kind: string }>('SELECT slot, device_id, adapter_kind FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [sessionId]);
@@ -928,20 +936,23 @@ const intervalsOf = (of: Rig, id: string) => of.rows('SELECT seq, mic_device_id,
 const switchRows = (of: Rig) => of.rows<{ actor_id: string | null; details: Record<string, unknown> }>("SELECT actor_id, details FROM public.audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED' ORDER BY seq");
 
 /**
- * The rigs of the fix-pass cases are CLOSED AFTER EACH CASE (the app, its pools, the supervisor): the
- * cases above keep theirs until the file ends, and this file would otherwise hold more connections
- * than the test server gives one run ("the database does not answer", measured on the first run).
+ * EVERY rig is CLOSED AFTER ITS CASE (the app, its pools, the supervisor). Until closing pass J of
+ * fix wave I only the fix-pass cases were: the 26 cases above kept their app - a runtime pool and an
+ * owner pool each - until the file ended, which fitted the test server's connection slots when this
+ * file ran alone and did not when a second db file ran beside it (`restart.db.test.ts`, two workers:
+ * "remaining connection slots are reserved for roles with the SUPERUSER attribute", 38 cases).
+ * `rig` registers itself in `openRigs`; `fixRig` is kept as the name the later cases use.
  */
-const fixPassRigs: Rig[] = [];
+const fixPassRigs: Rig[] = openRigs;
 async function fixRig(slug: string, options: Parameters<typeof rig>[1] = {}): Promise<Rig> {
-  const of = await rig(slug, options);
-  fixPassRigs.push(of);
-  return of;
+  return rig(slug, options);
 }
 afterEach(async () => {
   for (const of of fixPassRigs.splice(0)) {
     await of.supervisor.shutdown();
     await of.app.close();
+    // Closing pass J: the rig's owner pool too - 49 idle owner connections were the other half of the count.
+    expect(await rigDatabases.get(of)?.closeResources()).toEqual([]);
   }
 });
 

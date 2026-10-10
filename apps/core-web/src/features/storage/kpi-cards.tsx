@@ -13,6 +13,8 @@ import {
 } from '@dems/shared/sim'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { AnimatedNumber } from '@/components/ui/animated-number'
+import { isOwnCapture } from '@/lib/own-capture'
+import { captureCheckpointsOf } from '@/features/session-monitor/capture-checkpoints-model'
 import { useMotionPolicy } from '@/motion'
 import { KPI_STEP_MS, PANEL_BEAT_MS, panelVariants, useDataReady } from './choreography'
 import { fixed, MB } from './model'
@@ -31,9 +33,16 @@ export function KpiCards() {
   const { t } = useTranslation()
   const writeBps = useSim((s) => s.storage.writeBytesPerSec)
   const recording = useSim(selectIsRecording)
-  const session = useSim((s) =>
-    s.session ? { id: s.session.id, state: s.session.state, bytes: s.session.bytesWritten } : null,
-  )
+  // Closing pass J (G75b-06, the Storage page half): beside a session of the Core's own capture
+  // `session.bytesWritten` is the simulator's formula (8.2 GB/h from the start). The size is the durable
+  // bytes the Core's checkpoints state (`captureCheckpointsOf`, the one reader of the console, as the
+  // Monitor's storage panel reads it); none stated = a dash. The simulated lane keeps `bytesWritten`.
+  const session = useSim((s) => {
+    if (!s.session) return null
+    const ownCapture = isOwnCapture(s.session)
+    const bytes = ownCapture ? (captureCheckpointsOf(s.session)?.bytes ?? null) : s.session.bytesWritten
+    return { id: s.session.id, state: s.session.state, bytes, ownCapture }
+  })
   const remainingMinutes = useSim((s) => Math.floor(selectStorage(s).estimatedRemainingMs / 60_000))
   const policy = useSim(selectStoragePolicy)
   const ready = useDataReady(PANEL_BEAT_MS.kpis)
@@ -76,13 +85,13 @@ export function KpiCards() {
         icon={HardDriveDownload}
         label={t('common.storage.sessionSize')}
         value={
-          session ? (
+          session && session.bytes !== null ? (
             <AnimatedNumber value={ready ? session.bytes / GB : 0} format={(v) => fixed(v, 2)} />
           ) : (
-            <span aria-label={t('storage.kpi.noSession')}>—</span>
+            <span aria-label={session ? t('web.ownCore.sessionSizeNotStated') : t('storage.kpi.noSession')} data-testid="storage-session-size-none">—</span>
           )
         }
-        unit={session ? t('storage.units.gb') : undefined}
+        unit={session && session.bytes !== null ? t('storage.units.gb') : undefined}
         caption={
           session
             ? session.state === 'RECORDING'

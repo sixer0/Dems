@@ -272,4 +272,16 @@ export const captureSelectorEn = {
     failed: 'The microphones could not be read. Nothing was changed.',
     result: '{{input}}: {{state}}',
   },
+  /**
+   * Fix wave I (re-gates 70 / 75; contract note A2 §4, findings G70b-06, G75b-06): what a surface says of a
+   * capture source on a Core in real capture. A sentence states what the Core reported: `notChecked` when
+   * the Core says it has not read the device since it started; never "Live" outside a recording.
+   */
+  sourceState: {
+    notChecked: 'Not checked',
+    primaryNotReachable: 'Primary not reachable',
+    primaryNotChecked: 'Primary not checked',
+    /** The label of the Home time chip on a Core that states no external time reference (no "GNSS" in it). */
+    timeLabel: 'Time',
+  },
 } as const satisfies ResourceTree;

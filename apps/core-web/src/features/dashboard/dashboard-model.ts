@@ -162,12 +162,24 @@ export function securityColumns(input: {
   timeLocked: boolean
   linkUp: boolean
   posture: PostureName
+  /**
+   * A Core in its own capture (fix wave I, G75b-06): the time is the host system clock and a TPM /
+   * Secure Boot state is not reported. Both columns are neutral - a statement, not a finding.
+   */
+  ownCore?: boolean
+  /**
+   * The Core states `security.platformNotReported` (closing pass J, D217 (7)): the TPM / Secure Boot
+   * column is neutral, and so is a posture that would read SECURE (nobody computed it). A posture
+   * that names a fault keeps its tone.
+   */
+  platformNotReported?: boolean
 }): SecurityColumns {
+  const notReported = input.platformNotReported === true
   return {
-    tpm: input.tpmOk && input.secureBoot ? 'success' : 'danger',
-    time: timeTone(input.timeSource, input.timeLocked),
+    tpm: notReported ? 'default' : input.tpmOk && input.secureBoot ? 'success' : 'danger',
+    time: input.ownCore === true ? 'default' : timeTone(input.timeSource, input.timeLocked),
     network: networkTone(input.linkUp),
-    posture: POSTURE_TONE[input.posture],
+    posture: notReported && input.posture === 'SECURE' ? 'default' : POSTURE_TONE[input.posture],
   }
 }
 

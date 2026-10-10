@@ -17,6 +17,7 @@
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
 import { activeMeterChannel, captureMicLines, micInputOfChannel } from './audio';
 import { DEMO_CAPTURE_FAULT_REASON, captureFaultSentence } from './capture-fault-wording';
+import { CORE_NOT_RUNNING_CLEARED_SENTENCE, CORE_NOT_RUNNING_SENTENCE } from './core-not-running';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
 import { DEVICE_ID } from './dataset';
 import { deriveDeviceState, EVIDENCE_TAMPER_PREFIX, isFaultActive } from './derive';
@@ -269,6 +270,19 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
   return raiseFaultAtKey(state, now, kind, key, target);
 }
 
+/** What a raise may state beside its kind: the facts of a capture fault, or the one fact of the restart fault of a Core in its own capture. */
+export type FaultRaiseFacts = CaptureFaultFacts & { coreNotRunning?: true };
+
+/**
+ * THE RESTART FAULT OF A CORE IN ITS OWN CAPTURE (closing pass J; ruling D217 (5)): the same fault
+ * as `injectFaultTransition(state, now, POWER_FAIL)` - same kind, same key, same session move, same
+ * `fromState` - whose alert, `FAULT_RAISED` row and event say "the Core was not running while this
+ * session was active" and carry `coreNotRunning: true`. Idempotent like every raise.
+ */
+export function coreNotRunningFaultTransition(state: SimState, now: EpochMs): SimState {
+  return raiseFaultAtKey(state, now, FaultKind.POWER_FAIL, null, undefined, { coreNotRunning: true });
+}
+
 /**
  * Raises `kind` under the target key `key`: the body of `inject`, for a caller that already knows
  * the key. `raiseCaptureWarning` uses it for `CAPTURE_FAULT`, whose key is a capture-device ID that
@@ -284,8 +298,11 @@ export function injectFaultTransition(state: SimState, now: EpochMs, kind: Fault
  * forwarder, from the supervisor's own warning, and the failed start of the session), and it must
  * stay one alert and one FAULT_RAISED row whichever of them comes first.
  */
-export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget, facts?: CaptureFaultFacts): SimState {
+export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, key: string | null, target?: FaultTarget, facts?: FaultRaiseFacts): SimState {
   const reason = key === null ? null : (facts?.reason ?? null);
+  // Closing pass J (D217 (5)): only the restart fault carries the member; it never rides on another kind.
+  const notRunning = kind === FaultKind.POWER_FAIL && facts?.coreNotRunning === true;
+  if (facts?.coreNotRunning === true && !notRunning) throw new TypeError('coreNotRunning is a fact of the restart fault (POWER_FAIL) only.');
   if (isFaultActive(state.faults, kind, key, key === null ? undefined : reason)) return state;
 
   let next: SimState = state;
@@ -303,8 +320,11 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   if (evidenceTamper && !next.evidence.some((item) => item.id === evidenceTamper.evidenceId)) {
     throw new SimNotFoundError('evidence', evidenceTamper.evidenceId);
   }
-  const { message, deviceId } = describeFault(next, kind, key, facts?.reason ?? null);
-  next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key, ...(reason === null ? {} : { reason }) }] } };
+  const described = describeFault(next, kind, key, facts?.reason ?? null);
+  const deviceId = described.deviceId;
+  // The words of a Core that was not running: what it knows, never a power failure (`core-not-running.ts`).
+  const message = notRunning ? CORE_NOT_RUNNING_SENTENCE : described.message;
+  next = { ...next, faults: { active: [...next.faults.active, { kind, since: now, target: key, ...(reason === null ? {} : { reason }), ...(notRunning ? { coreNotRunning: true as const } : {}) }] } };
 
   // Immediate effects that are not pure derivations.
   let auditIndex: number | null = null;
@@ -396,7 +416,7 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
               severity: FAULT_SEVERITY[kind],
               sessionId,
               deviceId,
-              params: { kind, target: key },
+              params: { kind, target: key, ...(notRunning ? { coreNotRunning: true } : {}) },
             },
           },
     ),
@@ -507,16 +527,17 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
       matches.map((fault) => ({
         audit: {
           type: 'FAULT_CLEARED' as const,
-          message: `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared`,
+          // Closing pass J (D217 (5)): the restart fault of a Core in its own capture is cleared in its own words too.
+          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : `${describeFault(state, kind, fault.target, causes.get(fault) ?? null).message} — cleared`,
           sessionId,
-          details: { kind, evt: FaultEvt[kind], target: fault.target, ...((causes.get(fault) ?? null) === null ? {} : { reason: causes.get(fault) }) },
+          details: { kind, evt: FaultEvt[kind], target: fault.target, ...((causes.get(fault) ?? null) === null ? {} : { reason: causes.get(fault) }), ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },
         },
         event: {
           type: 'FAULT_CLEARED' as const,
-          message: `Fault cleared · ${kind}`,
+          message: fault.coreNotRunning === true ? CORE_NOT_RUNNING_CLEARED_SENTENCE : `Fault cleared · ${kind}`,
           severity: 'SUCCESS' as const,
           sessionId,
-          params: { kind, target: fault.target },
+          params: { kind, target: fault.target, ...(fault.coreNotRunning === true ? { coreNotRunning: true } : {}) },
         },
       })),
     ),

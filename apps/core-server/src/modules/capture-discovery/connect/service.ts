@@ -345,6 +345,8 @@ async function contact(
       endpointRef: auditEndpointRef(candidate.camera.endpointRef),
       // Marked on every refused credential: `true` on the one that closed the host (SEC35-46 (a)).
       ...(record.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED ? { guardTripped: verdict.guardTripped } : {}),
+      // Fix wave I (G70b-05): the row of a scheme refusal says so - the credential was NOT sent, so it is not the row of a refused credential.
+      ...(record.reason === undefined ? {} : { reason: record.reason }),
       permission: Permission.CAPTURE_CONFIG,
     }),
   };

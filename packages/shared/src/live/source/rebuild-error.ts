@@ -103,6 +103,8 @@ export function transportErrorOf(failure: CoreCallFailure): LiveTransportError |
     code: failure.error.code,
     retryAfterSeconds: failure.retryAfterSeconds,
     requestId: failure.requestId,
+    // Closing pass J: the Core's reason code of a 503 travels with it (a refused start is not "starting").
+    detailReason: detailText(failure, 'reason'),
   });
 }
 

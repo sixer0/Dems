@@ -37,7 +37,7 @@
 import type { FinalizationStep } from '@dems/shared/domain';
 import type { ManifestAudioIntervalInput, ManifestTrackInput, ManifestV2Input, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_OPEN_FRAGMENT_BYTES, type FragmentOpener } from '@dems/shared/evidence-verify';
-import type { CompleteSealInput, SealingProgressInput } from '@dems/shared/sim';
+import type { CompleteSealInput, SealBlockedDetail, SealingProgressInput } from '@dems/shared/sim';
 import type { Signer, SigningCertificate } from '../../capture';
 import type { RecordingFragment, VideoTrackId } from '../../modules/recording-fragments';
 import type { ErrorLog } from '../../plugins/logger';
@@ -130,6 +130,76 @@ const RETRIABLE: readonly SealingFailure[] = [SealingFailure.STORAGE_FAILED, Sea
 export type SealingDetail = Readonly<Record<string, string | number | boolean | null>>;
 
 /**
+ * WHY THE SESSION KEY COULD NOT BE USED (fix wave I driver A1; re-gate 75 finding G75b-01; ruling
+ * D216). `SEALER_FAILED` named a step, never a cause: the log line and the alert of a blocked seal
+ * said "the session key could not be used" for a store that is unreachable and for a key that is
+ * another session's alike. The cause is a CLOSED code in `detail.cause` of the failure - the
+ * values of `SEAL_BLOCKED_DETAILS` of `@dems/shared/sim` - read from the CODE of what the sealer
+ * threw (the credential store's own failure codes). Never its message, never a path, never a value.
+ * A thrown value without a known code has no cause here (the error log has its name).
+ */
+export const SealerCause = {
+  SESSION_KEY_NOT_OF_SESSION: 'SESSION_KEY_NOT_OF_SESSION',
+  SESSION_KEY_STORE_UNAVAILABLE: 'SESSION_KEY_STORE_UNAVAILABLE',
+  SESSION_KEY_UNSAFE: 'SESSION_KEY_UNSAFE',
+  SESSION_KEY_WRITE_FAILED: 'SESSION_KEY_WRITE_FAILED',
+  SESSION_KEY_NOT_FOUND: 'SESSION_KEY_NOT_FOUND',
+  SESSION_CIPHER_REFUSED: 'SESSION_CIPHER_REFUSED',
+} as const satisfies { readonly [Detail in SealBlockedDetail]: Detail };
+export type SealerCause = (typeof SealerCause)[keyof typeof SealerCause];
+
+/** The credential store's failure codes (`credential-store/errors.ts`), by the cause they are. Held equal to that file by the test of this pass. */
+const SEALER_CAUSE_OF_CODE: Readonly<Record<string, SealerCause>> = Object.freeze({
+  CREDENTIAL_SESSION_KEY_NOT_OF_SESSION: SealerCause.SESSION_KEY_NOT_OF_SESSION,
+  CREDENTIAL_STORE_UNAVAILABLE: SealerCause.SESSION_KEY_STORE_UNAVAILABLE,
+  CREDENTIAL_STORE_UNSAFE: SealerCause.SESSION_KEY_STORE_UNAVAILABLE,
+  CREDENTIAL_KEY_UNSAFE: SealerCause.SESSION_KEY_UNSAFE,
+  CREDENTIAL_KEY_WRITE_FAILED: SealerCause.SESSION_KEY_WRITE_FAILED,
+  CREDENTIAL_KEY_EXISTS: SealerCause.SESSION_KEY_WRITE_FAILED,
+  CREDENTIAL_KEY_NOT_FOUND: SealerCause.SESSION_KEY_NOT_FOUND,
+  FRAGMENT_NONCE_REUSED: SealerCause.SESSION_CIPHER_REFUSED,
+  FRAGMENT_INPUT_INVALID: SealerCause.SESSION_CIPHER_REFUSED,
+});
+
+/** The cause of what a sealer threw, or null when its code is none this file knows. Reads the `code` member only. */
+export function sealerCauseOf(error: unknown): SealerCause | null {
+  const code = (error as { readonly code?: unknown } | null)?.code;
+  return typeof code === 'string' && Object.hasOwn(SEALER_CAUSE_OF_CODE, code) ? (SEALER_CAUSE_OF_CODE[code] ?? null) : null;
+}
+
+/** The cause a failure carries (`detail.cause` of a `SEALER_FAILED`), or null. */
+export function sealerCauseIn(code: string, detail: SealingDetail = {}): SealerCause | null {
+  const cause = detail.cause;
+  return code === SealingFailure.SEALER_FAILED && typeof cause === 'string' && Object.hasOwn(SealerCause, cause) ? (cause as SealerCause) : null;
+}
+
+/**
+ * CAUSES OF A RETRIABLE CODE THAT NO RETRY GETS PAST (G75b-01). `SEALER_FAILED` is retriable
+ * because a key store that is unreachable or a key that is missing may come back - and a retriable
+ * cause is never terminal (way-out.ts). A key of ANOTHER session under this session's ID does not
+ * come back as this session's key: the Core never reuses it and never replaces it, and this session
+ * has no key of its own (it is made by the first fragment that is sealed). Left retriable, such a
+ * seal was tried for ever, the session stayed FINALIZING and the Core took no new session. It is
+ * therefore NOT retriable: the bounded attempts, then the terminal UNSEALABLE outcome - the
+ * recordings MOVED to the quarantine, the session ended, the Core free.
+ */
+const NOT_RETRIABLE_SEALER_CAUSES: readonly SealerCause[] = [SealerCause.SESSION_KEY_NOT_OF_SESSION];
+
+/** Whether a later run may get past a failure without anybody changing the evidence. */
+export function sealingFailureRetriable(code: SealingFailure, detail: SealingDetail = {}): boolean {
+  if (!RETRIABLE.includes(code)) return false;
+  const cause = sealerCauseIn(code, detail);
+  return cause === null || !NOT_RETRIABLE_SEALER_CAUSES.includes(cause);
+}
+
+/**
+ * The code that NAMES a failure to an operator and in the terminal outcome: the sealer's cause
+ * when the failure carries one (`SESSION_KEY_NOT_OF_SESSION` says more than `SEALER_FAILED`), else
+ * the failure code.
+ */
+export const sealingCauseCodeOf = (code: string, detail: SealingDetail = {}): string => sealerCauseIn(code, detail) ?? code;
+
+/**
  * CAUSES CONFINED TO ONE CAMERA FILE (R88-02 (b)): the file is not there although rows say it
  * recorded, holds no whole fragment, is not what its rows say, lost durable bytes, or holds a
  * fragment the verifier could not open. RULING D183 (fix pass F-M7b): when the fragments BEFORE the
@@ -152,7 +222,8 @@ export class SealingError extends Error {
     this.name = 'SealingError';
     this.code = code;
     this.detail = detail;
-    this.retriable = RETRIABLE.includes(code);
+    // G75b-01: a cause of a retriable code that no retry gets past is not retriable (`sealingFailureRetriable`).
+    this.retriable = sealingFailureRetriable(code, detail);
   }
 }
 
@@ -178,9 +249,26 @@ export function sealingFailureReason(code: SealingFailure, detail: SealingDetail
       return 'No camera file of this session can be sealed: the session is closed as incomplete and its recordings are kept in the quarantine folder.';
     case SealingFailure.CAMERA_FILE_CHANGED:
       return `Camera file${track} changed while it was sealed: the seal stopped.`;
+    case SealingFailure.SEALER_FAILED:
+      // G75b-01: the cause, when the sealer named one. No path, no key ID beyond the session's own number.
+      switch (sealerCauseIn(code, detail)) {
+        case SealerCause.SESSION_KEY_NOT_OF_SESSION:
+          return "A session key of an earlier session with this session number is in the Core's key store. A session key is never reused: this session cannot be sealed.";
+        case SealerCause.SESSION_KEY_STORE_UNAVAILABLE:
+          return "The Core's key store cannot be used: the seal stopped and can be tried again.";
+        case SealerCause.SESSION_KEY_UNSAFE:
+          return 'The key file of this session is not a private file of the Core: the seal stopped and can be tried again.';
+        case SealerCause.SESSION_KEY_WRITE_FAILED:
+          return "The session key could not be written to the Core's key store: the seal stopped and can be tried again.";
+        case SealerCause.SESSION_KEY_NOT_FOUND:
+          return "The key of this session is not in the Core's key store: the seal stopped and can be tried again.";
+        case SealerCause.SESSION_CIPHER_REFUSED:
+          return 'The Core could not encrypt a part of the recording: the seal stopped and can be tried again.';
+        default:
+          return 'The session key could not be used: the seal stopped and can be tried again.';
+      }
     case SealingFailure.FRAGMENT_NOT_SEALED:
     case SealingFailure.FRAGMENT_NOT_OPENABLE:
-    case SealingFailure.SEALER_FAILED:
       return 'The session key could not be used: the seal stopped and can be tried again.';
     case SealingFailure.TRANSCRIPT_STEP_FAILED:
       return 'The transcript could not be finalized: the seal stopped and can be tried again.';

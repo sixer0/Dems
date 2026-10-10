@@ -364,6 +364,13 @@ export interface PrecheckSlice {
   /** PASS, WARN or BLOCK once every item resolved; null while running. */
   outcome: 'PASS' | 'WARN' | 'BLOCK' | null;
   warningsAcknowledged: boolean;
+  /**
+   * Fix wave I (re-gate 75, finding G75b-04; ruling D216 (2)): the paired device that SENT this
+   * pre-check (`DEV-NNNN`), kept so that the row its outcome writes later - on a tick, when no
+   * command is running - names that device. Absent: a web console session sent it (or a Core
+   * before this wave): the row names no device.
+   */
+  sendingDeviceId?: string;
 }
 
 export interface FinalizationStepState {
@@ -457,6 +464,13 @@ export interface SessionFault {
   kind: FaultKind;
   at: EpochMs;
   fromState: SessionState;
+  /**
+   * Present (`true`) on the restart fault of a Core in its OWN capture (closing pass J, ruling
+   * D217 (5); `core-not-running.ts`): the Core was not running while this session was active and
+   * does not know why. The kind stays the simulator's `POWER_FAIL`; a surface words the fault from
+   * THIS member, never as a power failure. Absent: the fault is what its kind says.
+   */
+  coreNotRunning?: true;
 }
 
 export interface RecoverySlice {
@@ -967,6 +981,14 @@ export interface KeyRecord {
 }
 
 export interface SecuritySlice {
+  /**
+   * Present (`true`) on a Core in its own capture (closing pass J, ruling D217 (7);
+   * `core-facts.ts` `PLATFORM_NOT_REPORTED`): this Core reads no TPM, no Secure Boot state and
+   * computes no posture. `tpm`, `secureBoot`, `posture` and the `TPM` / `SECURE_BOOT` entries of
+   * `controls` are then NOT readings (they are the required members of the closed shape) and no
+   * surface shows them as facts. Absent: the simulated device, whose values are what it shows.
+   */
+  platformNotReported?: true;
   state: SecurityState;
   posture: SecurityPosture;
   tpm: { model: string; ok: boolean };
@@ -1360,7 +1382,8 @@ export interface SettingsSlice {
  * cause (`NO_CAMERA_CONNECTED`) is a fact of its alert and audit row, not a key.
  */
 export interface FaultsSlice {
-  active: { kind: FaultKind; since: EpochMs; target: string | null; reason?: string }[];
+  /** `coreNotRunning` (closing pass J, D217 (5)): see `SessionFault.coreNotRunning`; only on the restart fault of a Core in its own capture. */
+  active: { kind: FaultKind; since: EpochMs; target: string | null; reason?: string; coreNotRunning?: true }[];
 }
 
 /** The whole simulator state. Pure data (see the file header). */

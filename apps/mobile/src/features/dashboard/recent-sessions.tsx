@@ -21,6 +21,8 @@ import { RollingNumber } from '@/components/composed/rolling-number';
 import { SectionCard, SubjectTypeChip } from '@/components/kit';
 import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { demoMediaForEvidence } from '@/components/media/demo-media';
+// Fix wave I (re-gates 70 / 75: G70b-04, G75b-09; ruling D196): the neutral thumb of a Core in real capture.
+import { PreviewThumb, useRealCaptureView } from '@/features/devices/camera-preview';
 import { useMotionPolicy, useMotionSettings } from '@/motion';
 import { useCoreLink } from '@/runtime';
 import type { RecentRow } from './home-model';
@@ -78,6 +80,9 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
   // from a session recorded in Live mode (`NONE`). Until the slice carries it, LIVE shows no poster.
   const live = useCoreLink().source === 'LIVE';
   const poster = row.posterSuffix && !live ? demoMediaForEvidence(row.posterSuffix)?.poster['VIDEO-01'] : undefined;
+  // Fix wave I (G70b-04 / G75b-09): on a Core in REAL capture no bundled picture - not the room still either -
+  // stands where a picture of the session would be (the rule of the tiles and of the Sessions rows, D196).
+  const realCapture = useRealCaptureView();
   const chip = <SubjectTypeChip testID={`home-recent-row-${index}-subject`} type={row.subjectType} size="sm" />;
 
   return (
@@ -90,14 +95,20 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
         onPress={() => router.push(`/sessions/${row.sessionId}` as Href)}
         style={[styles.row, last ? null : styles.rowDivider]}
       >
-        <Image
-          testID={`home-recent-row-${index}-thumb`}
-          source={poster ?? HERO_STILL}
-          contentFit="cover"
-          contentPosition={poster ? 'center' : HERO_FOCUS}
-          style={styles.thumb}
-          accessible={false}
-        />
+        {realCapture ? (
+          <View style={styles.thumbNone}>
+            <PreviewThumb kind="camera" fill name={row.displayId} source={HERO_STILL} label={row.displayId} dim={false} testID={`home-recent-row-${index}-thumb`} />
+          </View>
+        ) : (
+          <Image
+            testID={`home-recent-row-${index}-thumb`}
+            source={poster ?? HERO_STILL}
+            contentFit="cover"
+            contentPosition={poster ? 'center' : HERO_FOCUS}
+            style={styles.thumb}
+            accessible={false}
+          />
+        )}
         <View style={styles.rowText}>
           <Text testID={`home-recent-row-${index}-id`} numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.id}>
             {row.displayId}
@@ -157,6 +168,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, minHeight: 56 },
   rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: derived.separator },
   thumb: { width: 64, height: 44, borderRadius: 8, backgroundColor: derived.surfaceSecondary },
+  thumbNone: { width: 64, height: 44 },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
   id: {
     fontFamily: fontFamily.native.monoMedium,

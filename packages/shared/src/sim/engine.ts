@@ -28,7 +28,7 @@ import {
 import { createActions } from './actions';
 import { handleSimApiRequest } from './api';
 import { captureConnectMsOf } from './capture-session';
-import { hostClockTimeTransition } from './core-facts';
+import { ownCaptureCoreFactsTransition } from './core-facts';
 import { OPERATORS } from './dataset';
 import { describeError } from './errors';
 import { createGeneratorSubsystem } from './generator';
@@ -229,7 +229,8 @@ export function createSim(options: CreateSimOptions = {}): Sim {
     }),
   );
   // Wave H Z1 (ruling D203 (1)): a Core in its own capture never states the dataset's GNSS time, not even in its first state.
-  const initialState = options.capture === 'external' ? hostClockTimeTransition(scenarioState) : scenarioState;
+  // Closing pass J (D217 (7)): nor a TPM / Secure Boot / posture it does not read.
+  const initialState = options.capture === 'external' ? ownCaptureCoreFactsTransition(scenarioState) : scenarioState;
 
   const rng = createRngStreams(seed, 0);
   let hydrated = false;

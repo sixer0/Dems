@@ -7,6 +7,7 @@ import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtim
 import { selectClockSecond, useSim } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { SlidingNumber } from '@/components/ui/sliding-number'
+import { isOwnCaptureCore } from '@/lib/own-capture'
 import { GlowLayer } from '@/motion'
 import { useMotionPolicy } from '@/motion'
 import { secondTicks, timeLevel, TIME_TONE } from './model'
@@ -25,7 +26,8 @@ import { useTimeEscalationKey } from './use-network-time-alerts'
  */
 export function SystemTimePanel() {
   const { t } = useTranslation()
-  const view = useSim((s) => ({ source: s.time.source, stratum: s.time.stratum }))
+  // G75b-06: `hostClock` - a Core in its own capture; its chip, source and chain name the host system clock.
+  const view = useSim((s) => ({ source: s.time.source, stratum: s.time.stratum, hostClock: isOwnCaptureCore(s) }))
   const level = timeLevel(view.source)
   const pulse = useTimeEscalationKey(level)
   return (
@@ -34,26 +36,26 @@ export function SystemTimePanel() {
       icon={Clock3}
       title={t('networkTime.systemTime.title')}
       action={
-        <Chip size="sm" variant="soft" {...toneChipProps(TIME_TONE[level])} data-testid="network-time-sync-chip">
-          {t(`networkTime.bannerState.time.${level}`)}
+        <Chip size="sm" variant="soft" {...toneChipProps(view.hostClock ? 'default' : TIME_TONE[level])} data-testid="network-time-sync-chip">
+          {view.hostClock ? t('web.ownCore.time.value') : t(`networkTime.bannerState.time.${level}`)}
         </Chip>
       }
       bodyClassName="nt-time-body"
     >
       <div className="nt-clock-stage">
-        <GlowLayer level={1} tone={level === 'LOCKED' ? 'brand' : 'warning'} pulseKey={pulse} />
+        <GlowLayer level={1} tone={level === 'LOCKED' || view.hostClock ? 'brand' : 'warning'} pulseKey={pulse} />
         <ClockFace />
       </div>
       <dl className="nt-kv nt-kv-2">
         <div className="nt-kv-item">
           <dt>{t('networkTime.systemTime.source')}</dt>
           <dd data-testid="network-time-source">
-            {t(`networkTime.systemTime.sourceValue.${view.source}`, { stratum: view.stratum })}
+            {view.hostClock ? t('web.ownCore.time.value') : t(`networkTime.systemTime.sourceValue.${view.source}`, { stratum: view.stratum })}
           </dd>
         </div>
         <div className="nt-kv-item">
           <dt>{t('networkTime.systemTime.chain')}</dt>
-          <dd>{t('networkTime.systemTime.chainValue', { source: view.source })}</dd>
+          <dd>{view.hostClock ? t('web.ownCore.time.chain') : t('networkTime.systemTime.chainValue', { source: view.source })}</dd>
         </div>
       </dl>
       <AvSyncStrip />

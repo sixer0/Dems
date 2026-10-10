@@ -11,7 +11,8 @@
 //   2. ELSEWHERE the same body answers the contract's `422 INVALID_INPUT` and nothing is stored:
 //      a registry that does not hold `MIC-03` (SIMULATED on the seed), and a microphone the
 //      registry of the running operation refuses (a production microphone in REAL_DEVELOPMENT,
-//      `details.reason: DEVELOPMENT_SOURCE_NOT_ALLOWED` - the registry check of pass C1 stays).
+//      `details.reason: PRODUCTION_SOURCE_NOT_ALLOWED` - the registry check of pass C1 stays; fix
+//      wave I, finding G70b-01: the reason is the refusal's own, not the development one).
 //   3. The form without `role` is still accepted and still cannot name a new input.
 //
 // The helper program of the development boots is `/bin/echo` (row 136's fixture): a root-owned
@@ -214,7 +215,7 @@ describe('operation 78: pair replacement of the microphone inputs', () => {
     expect(refused.statusCode, refused.body).toBe(422);
     const error = (refused.json() as ErrorBody).error;
     expect(error.code).toBe('INVALID_INPUT');
-    expect(error.details).toMatchObject({ reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-11' });
+    expect(error.details).toMatchObject({ reason: 'PRODUCTION_SOURCE_NOT_ALLOWED', deviceId: 'MIC-11' });
     await server.app.pipeline.drain();
     expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' });
     expect(await changedRows(owner)).toHaveLength(rowsBefore);

@@ -102,6 +102,19 @@ export function timelineOfOwnCapture<Event extends { kind: string; params?: Read
   return kept.length === events.length ? events : kept
 }
 
+/**
+ * "Recording Started" only once the Core says recording (fix wave I, G75b-08): the START item is
+ * written at the accepted start command, while the session is still connecting its cameras
+ * (`captureFactsOf(session).capture === 'CONNECTING'`: nothing is recorded yet). Until the first
+ * durable fragment the row is not drawn; it appears, with its own time, when the session reports
+ * `captureDurable: true`. `connecting` false: every row, the same array.
+ */
+export function timelineWhileConnecting<Event extends { kind: string }>(events: readonly Event[], connecting: boolean): readonly Event[] {
+  if (!connecting) return events
+  const kept = events.filter((event) => event.kind !== 'START')
+  return kept.length === events.length ? events : kept
+}
+
 /** Bytes written when `event` happened: `params.bytesWritten`, else 8.2 GB/h from `startedAt`. */
 export function bytesAt(event: Pick<TimelineEvent, 'at'> & Partial<Pick<TimelineEvent, 'params'>>, startedAt: number | null): number | null {
   const value = event.params?.bytesWritten

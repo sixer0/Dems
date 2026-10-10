@@ -23,7 +23,7 @@ source_database_contract: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_re
 source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/05_capture_architecture_spec.md
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D7, D8, D10, D12; rev 2.3: D66, D72, D73, D74, D78, D80)
-last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-67..71 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 124, errata PE-124-01..PE-124-15: development-source mark, fields 124-126, verify V-15, first video sample fields 127-128, media-time origin; manifest fields 128, verify checks 15); 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 extension CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.7a R-8 transcript configuration state added as a proposal, D20; erratum AU2-03 on field 51)
+last_updated: 2026-10-10 (docs errata follow-up PE-WI-25..PE-WI-32: the evidence-spec defects reported by wave H driver A (request line 10:20:55Z, `implementation/120_fix_wave_h_a.md` section 3) applied as built, each confirmed in code; `implementation/137_docs_errata_followup.md`; decisions D202, D203, D209, D218); 2026-10-10 (docs errata pass for fix wave H: PE-WH-07 (§F.2), PE-WH-08 (§B.3 fields 20 / 21), PE-WH-09 (§G.1); `implementation/136_docs_errata_wave_h_i.md`; decisions D205, D208, D209); 2026-10-09 (row-128 spec-gate fix pass PE-128-67..71 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 124, errata PE-124-01..PE-124-15: development-source mark, fields 124-126, verify V-15, first video sample fields 127-128, media-time origin; manifest fields 128, verify checks 15); 2026-10-09 (status sweep PE-R8-06..08: §B.7a and the §E.5 R-8 extension CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: §B.7a R-8 transcript configuration state added as a proposal, D20; erratum AU2-03 on field 51)
 ---
 
 # Evidence Package Spec — layout, manifest v2, signer, verify v2, sealing pipeline v2, tamper demo
@@ -42,6 +42,17 @@ last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-67..71 (D89, D91; `g
 | PE-M7-01 | §B.4 | `tracks[]` holds 1 or 2 records, not exactly 2: a one-camera session is sealable; no new manifest field | D178 |
 | PE-M7-03 | §H.6 | Limits stated by fix pass F-M7: plaintext until sealed; the audit extract is not signed (notice `AUDIT_EXTRACT_NOT_SIGNED`); the development-key mark; one-camera packages; random IVs; the manifest's inputs are frozen at the first build | D178 |
 | PE-M7-04 | §H.7 | Rules stated by fix pass F-M7c: the IV rule; session keys kept per media store root (`session-keys-<scope>`; moving a store means renaming that folder); plaintext after a SEALED outcome is removed only by proof; the staged file `transcript-revisions.json.next` and the notice `REVISION_APPEND_PENDING`; the transcriber scratch under the store root | D180, D186, D187 |
+| PE-WH-08 | §B.3, fields 20 / 21 | Source = Core configuration (installation identity: two environment keys); the value `NOT_CONFIGURED` when unset | D209 |
+| PE-WH-07 | §F.2 | The seed-sealed demonstration packages (the tamper demonstration included) are packages sealed on the Core: playable through operation 88; a range that starts in the altered fragment is refused by name | D205, D208 |
+| PE-WH-09 | §G.1 | The export archive is self-contained: its export manifest and signature are its last two entries; the manifest's `package` block carries no `bytes` / `sha256` in that form; the receiver command | D205 |
+| PE-WI-25 | §B.2, field 13 | `timeline.sealedAt` is the instant BUILD_MANIFEST froze the manifest, equal to `signature.signedAt`; not the end of `STORE_SEALED_PACKAGE` | D203, D218 |
+| PE-WI-26 | §B.2, fields 17-19 | The time source of a sealed package is the Core's host clock: `RTC`, `HOST_SYSTEM_CLOCK`, an empty order; no network-time module exists | D203 (1), D218 |
+| PE-WI-27 | §B.3, fields 22 / 23 | `device.serialNumber` and `device.hardwareUuid` are the literal `NOT_CONFIGURED` | D203, D209, D218 |
+| PE-WI-28 | §B.4, fields 38 / 39 | Camera model and firmware by the adapter kind of the slot's source: generated source, local device, other camera (registry row or `NOT_REPORTED`) | D203, D218 |
+| PE-WI-29 | §B.4, field 40 | `clockOffsetMs` is the worker's measurement, else the adapter's report, else 0; the 0 of "not measured" and a measured 0 are not told apart | D218 |
+| PE-WI-30 | §B.5, field 53 | `audio.codec` is a constant of the sealing host, not read from the file | D218 |
+| PE-WI-31 | §B.6, field 73 and §B.8 field 100 | `interrupted` is also true on every fragment of a file whose camera was given up; the CLOSE_TRACKS checkpoint names track and reason in `endedTracks` | D202, D218 |
+| PE-WI-32 | §B.8 | `sealing.steps[]` holds the three steps completed before BUILD_MANIFEST, not one entry per step of §E | D218 |
 
 > **Authority in force.** Blueprint row 32 (`identification/02_structured.md:212`) is the hard gate:
 > *"Every manifest v2 field has type plus source; every sealing step has checkpoint, resume rule,
@@ -237,22 +248,37 @@ writing component and the authority.
 | 10 | `timeline.createdAt` | bigint epoch-ms, not null | session machine start; `active_session.createdAt`; v1 `manifest.json:32` |
 | 11 | `timeline.startedAt` | bigint epoch-ms, not null | session machine `startRecordingTransition`; v1 `manifest.json:33` |
 | 12 | `timeline.stoppedAt` | bigint epoch-ms, **nullable** (null only for an interrupted seal) | session machine stop / crash instant; OD-08 |
-| 13 | `timeline.sealedAt` | bigint epoch-ms, not null | Core seal (`STORE_SEALED_PACKAGE`); `evidence_items.sealed_at`; v1 `manifest.json:35` |
+| 13 | `timeline.sealedAt` | bigint epoch-ms, not null | Core seal (`STORE_SEALED_PACKAGE`); `evidence_items.sealed_at`; v1 `manifest.json:35` **Erratum PE-WI-25** (below the table): as built the instant is that of BUILD_MANIFEST, equal to `signature.signedAt`, not that of `STORE_SEALED_PACKAGE` |
 | 14 | `timeline.recordingDurationMs` | n, not null (>= 0) | Core seal (media-based for interrupted); v1 `manifest.json:36`; OD-08 |
 | 15 | `timeline.interrupted` | boolean, not null | Core seal (durable-prefix path); **OD-08**; S1 §5.4 |
 | 16 | `timeline.durableEndMs` | bigint epoch-ms, not null | worker/writer durable boundary; S1 §5.4; `cap §C.5` |
-| 17 | `timeline.timeSource.source` | string enum `GNSS`\|`NTP`\|`RTC`, not null | network-time module; `evidence_items.start_time_source`; v1 `manifest.json:39` |
-| 18 | `timeline.timeSource.state` | string (`LOCKED`…), not null | network-time module; v1 `manifest.json:40` |
-| 19 | `timeline.timeSource.fallbackOrder` | array of string, not null | network-time module; v1 `manifest.json:42-46` |
+| 17 | `timeline.timeSource.source` | string enum `GNSS`\|`NTP`\|`RTC`, not null | network-time module; `evidence_items.start_time_source`; v1 `manifest.json:39` **Erratum PE-WI-26** (below the table): as built `RTC`, from a constant of the Core (its host clock), not from a network-time module |
+| 18 | `timeline.timeSource.state` | string (`LOCKED`…), not null | network-time module; v1 `manifest.json:40` **Erratum PE-WI-26**: as built the text `HOST_SYSTEM_CLOCK` |
+| 19 | `timeline.timeSource.fallbackOrder` | array of string, not null | network-time module; v1 `manifest.json:42-46` **Erratum PE-WI-26**: as built the empty array |
+
+**Erratum PE-WI-25 (decision D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 1 "`sealedAt`, defined" and section 3; request line 10:20:55Z of `delegation_progress/file_requests.md`; `implementation/137_docs_errata_followup.md`):** field 13.
+The source column names `STORE_SEALED_PACKAGE`. As built, `timeline.sealedAt` is **the instant BUILD_MANIFEST froze the manifest's content**: the step reads `ports.now()` once, stores `{ sealedAt, signedAt }` together
+with the step list and the whole manifest input in its running journal row BEFORE the first digest exists, and a resumed build reads the same value back
+(`apps/core-server/src/sealing/pipeline/pipeline.ts:765-766`, `:770`). `sealedAt` equals `signature.signedAt` (`:750`, `:766`) and is the value the seal completion hands on (`CompleteSealInput.sealedAt`, `:840`), which the session machine writes as the `sealedAt` of the session and of the history item (`packages/shared/src/sim/session-machine.ts:1455`, `:1479`, `:1520`).
+It cannot be the later instant at which `STORE_SEALED_PACKAGE` ends: it lies under the signature, and a store step that ends after the signature cannot be in the signed body. Reading for a client: `sealedAt` is when the
+manifest was built and signed, not when the package reached the store. Source column to read: "Core seal (BUILD_MANIFEST); equal to `signature.signedAt`; `evidence_items.sealed_at` (the same value, written from the completion input)".
+
+**Erratum PE-WI-26 (decisions D203 (1), D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 2 rows 17-19 and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** fields 17, 18, 19.
+The source column names a "network-time module"; **no such module exists** in the Core. As built the three fields are a constant of the sealing host, `CORE_TIME_SOURCE` (`apps/core-server/src/sealing-host/session-reader.ts:105`, copied into the
+facts at `:380`): `timeSource.source = "RTC"`, `timeSource.state = "HOST_SYSTEM_CLOCK"`, `timeSource.fallbackOrder = []` (the host has no fallback chain). The enumeration of field 17 is NOT widened
+(`z.enum(['GNSS','NTP','RTC'])`, `packages/shared/src/evidence-package/manifest.ts:114`): `RTC` is the one value that claims no external reference, and `state` says in words which clock it is; field 18 is a free text there
+(`text`), field 19 an array of text that may be empty (`:116`), so no schema change was needed. The reader takes NOTHING from the simulator's `time` slice or from the session's `startTimeSource` (`session-reader.ts:39-40`),
+so `evidence_items.start_time_source` is not the source of field 17. A package is read as: `RTC` + `HOST_SYSTEM_CLOCK` = the Core's own host system clock, no GNSS, no network time, nothing locked or measured (C3 erratum PE-WH-05 (2)).
+The value `SYSTEM_CLOCK` proposed in note 120 section 3 was NOT adopted. A Core that gains a time service would need these three definitions read again; none exists in this task.
 
 ### B.3 Device, operator, subject (14 fields)
 
 | # | Field | Type (nullable) | Source (component; authority) |
 |--:|---|---|---|
-| 20 | `device.deviceId` | string, not null | Core config; v1 `manifest.json:8` |
-| 21 | `device.name` | string, not null | Core config; v1 `manifest.json:9` |
-| 22 | `device.serialNumber` | string, not null | Core config; v1 `manifest.json:10` |
-| 23 | `device.hardwareUuid` | string, not null | Core config; v1 `manifest.json:11` |
+| 20 | `device.deviceId` | string, not null | Core config; v1 `manifest.json:8`. **Erratum PE-WH-08** (below the table): source = Core configuration (installation identity), `DEMS_INSTALLATION_DEVICE_ID`; `NOT_CONFIGURED` when unset |
+| 21 | `device.name` | string, not null | Core config; v1 `manifest.json:9`. **Erratum PE-WH-08** (below the table): source = Core configuration (installation identity), `DEMS_INSTALLATION_NAME`; `NOT_CONFIGURED` when unset |
+| 22 | `device.serialNumber` | string, not null | Core config; v1 `manifest.json:10` **Erratum PE-WI-27** (below §B.3): as built the literal `NOT_CONFIGURED` in every package |
+| 23 | `device.hardwareUuid` | string, not null | Core config; v1 `manifest.json:11` **Erratum PE-WI-27**: as built the literal `NOT_CONFIGURED` in every package |
 | 24 | `device.softwareVersion` | string, not null | Core build; v1 `manifest.json:12` |
 | 25 | `device.certificate.subject` | string, not null | signer/certificate store; v1 `manifest.json:14` |
 | 26 | `device.certificate.serialNumber` | string, not null | signer/certificate store; v1 `manifest.json:15` |
@@ -263,6 +289,28 @@ writing component and the authority.
 | 31 | `subject.name` | string, not null | session input; v1 `manifest.json:25` |
 | 32 | `subject.type` | string enum `TERSANGKA`\|`SAKSI`\|`LAINNYA`, not null | session input; `evidence_items.subject_type`; v1 `manifest.json:26` |
 | 33 | `subject.authorization` | string, not null | session input; v1 `manifest.json:27` |
+
+**Erratum PE-WH-08 (decision D209; gate 89 finding G89-01; closing pass Z1, `implementation/128_fix_wave_h_z1.md` item 3 and decision 6; request line 10:58:00Z of `delegation_progress/file_requests.md`):** fields 20
+and 21. Source = **Core configuration (installation identity)**: two environment keys the Core
+reads once at start, `DEMS_INSTALLATION_DEVICE_ID` (a device id: a capital letter, then capitals /
+digits / hyphens, at most 32 characters) for field 20 and `DEMS_INSTALLATION_NAME` (1..120
+printable characters, no leading or trailing space) for field 21
+(`apps/core-server/src/config.ts:60-61`, `:294`, `:301`;
+`apps/core-server/src/sealing-host/installation-identity.ts:59`). They are stated in the manifest
+of every recording sealed on that Core. Unset: the manifest says the literal `NOT_CONFIGURED` for
+the missing one - the same value fields 22 / 23 carry as built
+(`apps/core-server/src/sealing-host/session-reader.ts:107`, `:382`). The stored device record of
+the state (the seed's `DEMS-IR-01` / `Interview Room 1`) is no longer read for these fields. A Core
+in `REAL_PRODUCTION` without the two keys refuses to start (`INSTALLATION_IDENTITY_NOT_CONFIGURED`,
+boot step `sealing.installation-identity`); `REAL_DEVELOPMENT` starts with one warning of that
+code; `SIMULATED` is never asked. Fields 17-19 and the text of rows 22 / 23 are NOT changed by
+this erratum (their spec defects are the open request line 10:20:55Z, wave H driver A). **Closed since by PE-WI-26 (fields 17-19) and PE-WI-27 (fields 22 / 23).**
+
+**Erratum PE-WI-27 (decisions D209, D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 2 rows 22-23 and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** fields 22 and 23.
+The rows say "not null" with the source "Core config"; **no configuration gives a Core a serial number or a hardware UUID** (the installation identity of erratum PE-WH-08 covers fields 20 / 21 only: two keys,
+`apps/core-server/src/config.ts:60-61`). As built both fields hold the literal text `NOT_CONFIGURED` in EVERY package (`apps/core-server/src/sealing-host/session-reader.ts:107`, `:382`); the schema stays `text`, not null
+(`packages/shared/src/evidence-package/manifest.ts:124-125`) - it is not made nullable. They are neither the dataset's values the simulator holds nor an invented number. A verifier or a reader must treat
+`NOT_CONFIGURED` as "this Core states none", never as an identifier. The sentence of PE-WH-08 above that left "the text of rows 22 / 23" open is closed by this erratum.
 
 ### B.4 Track records — one per FILE in v2, `tracks[]` of exactly 2 (18 fields)
 
@@ -276,9 +324,9 @@ carry the single `AUDIO-01` session track (`evidence_tracks.contains_audio`, R-4
 | 35 | `tracks[].deviceId` | string (`CAM-01`/`CAM-02`), not null | capture config snapshot (SH-06); `capture_devices.id`; OD-05 |
 | 36 | `tracks[].profile` | string, not null | capture config snapshot; `capture_config.video_0n_profile`; OD-05 |
 | 37 | `tracks[].name` | string, not null | capture config snapshot; v1 `manifest.json:52` |
-| 38 | `tracks[].model` | string, not null | `capture_devices.model`; v1 `manifest.json:53` |
-| 39 | `tracks[].firmware` | string, not null | `capture_devices.firmware`; v1 `manifest.json:54` |
-| 40 | `tracks[].clockOffsetMs` | n, not null | network-time module /`CameraAdapter.ntpOffsetMs`; CS-11; NM-09 |
+| 38 | `tracks[].model` | string, not null | `capture_devices.model`; v1 `manifest.json:53` **Erratum PE-WI-28** (below §B.4): the words depend on the adapter kind of the slot's source; a generated source has no model |
+| 39 | `tracks[].firmware` | string, not null | `capture_devices.firmware`; v1 `manifest.json:54` **Erratum PE-WI-28**: as field 38 |
+| 40 | `tracks[].clockOffsetMs` | n, not null | network-time module /`CameraAdapter.ntpOffsetMs`; CS-11; NM-09 **Erratum PE-WI-29** (below §B.4): the worker's measurement, else the adapter's report, else 0; 0 does not say "measured" |
 | 41 | `tracks[].file` | string (`VIDEO-01.mp4`), not null | Core seal; `evidence_tracks`; v1 `manifest.json:84` |
 | 42 | `tracks[].mediaType` | string (`video/mp4`), not null | Core seal; v1 `manifest.json:85` |
 | 43 | `tracks[].codec` | string, nullable | capture worker; `evidence_tracks.codec` (`dbc-3 §B.12`); OD-06 |
@@ -334,6 +382,26 @@ recording must be sealable. The rule is now:
   are M8's (request lines filed by fix pass F-M7).
 - Database contract dbc-3 §B.12: no constraint counts the rows of `evidence_tracks`; nothing changes.
 
+**Erratum PE-WI-28 (decisions D203 (G89-01), D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 2 rows 38-39 and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** fields 38 and 39.
+The rows say "not null" with the source `capture_devices.model` / `.firmware`; a generated source and a local device have neither. As built the pair is chosen by **the adapter kind of the session-START row of that slot**
+(`sourceRows`, the device the slot recorded with), never from the simulator's cameras (`apps/core-server/src/sealing-host/session-reader.ts:340-346`, words at `:111-114`):
+
+| Adapter kind of the slot | `model` | `firmware` |
+|---|---|---|
+| `FAKE` (generated source) | `Generated test source (no camera)` | `None (generated test source)` |
+| `LOCAL_DEVICE` | the registry model of that device, else `Local development device of the Core computer` | `Not reported (local development device)` |
+| any other (a camera) | the registry row's `model`, else `NOT_REPORTED` | the registry row's `firmware`, else `NOT_REPORTED` |
+
+Both stay `text`, not null (`packages/shared/src/evidence-package/manifest.ts:146-147`), so no schema change; the "registry row" is the device entry of the Core's `captureDevices` state. `NOT_REPORTED` means the registry holds
+nothing, never a value of the camera.
+
+**Erratum PE-WI-29 (decision D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 1 row "C2 field 40" and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** field 40.
+The source column names a "network-time module" and `CameraAdapter.ntpOffsetMs`. As built the value is, in this order: the offset the capture WORKER measured when it anchored the camera (camera clock minus Core clock, whole ms;
+`measuredClockOffsetMs`), else the offset the camera adapter reported (`clockOffsetMs`), else **0** - the last for a camera whose adapter reported none and for a session with no capture facts
+(`apps/core-server/src/sealing-host/session-reader.ts:81-85`, `:118`, `:351`). The field stays an integer and NOT null (`packages/shared/src/evidence-package/manifest.ts:148`). **Consequence, stated, not fixed:**
+`0` is written both for a measured offset of 0 and for "nothing was measured"; the manifest cannot tell them apart. The proposal of note 120 section 3 (make the field nullable, `null` = not measured) was NOT adopted
+and is open: it changes the schema, the sealed manifest and verify. A reader must not treat `0` as proof that the clocks agreed.
+
 ### B.5 Session audio track and source intervals (10 fields)
 
 `AUDIO-01` is the one session audio track inside both camera files; `MIC-01`/`MIC-02` are inputs
@@ -343,7 +411,7 @@ the playback band (register SH-02/SH-06; `session_audio_intervals`).
 | # | Field | Type (nullable) | Source (component; authority) |
 |--:|---|---|---|
 | 52 | `audio.trackId` | string const `AUDIO-01`, not null | Core seal; OD-01 |
-| 53 | `audio.codec` | string (`AAC-LC mono 48 kHz`), not null | capture worker; OD-06; `evidence_tracks.codec` |
+| 53 | `audio.codec` | string (`AAC-LC mono 48 kHz`), not null | capture worker; OD-06; `evidence_tracks.codec` **Erratum PE-WI-30** (below §B.5): as built a constant of the sealing host, not read from the file or the worker |
 | 54 | `audio.containsIn` | array of `VIDEO-01`\|`VIDEO-02`, not null | Core seal; R-4; `evidence_tracks.contains_audio` |
 | 55 | `audio.sourceIntervals[].seq` | n, not null (>= 1) | capture worker; `session_audio_intervals.seq`; S2 §6 finding 3 |
 | 56 | `audio.sourceIntervals[].micDeviceId` | string (`MIC-01`/`MIC-02`), not null | capture worker; `session_audio_intervals.mic_device_id`; OD-09 |
@@ -354,6 +422,12 @@ the playback band (register SH-02/SH-06; `session_audio_intervals`).
 | 61 | `audio.sourceIntervals[].switchedBy` | string operator id, nullable | sessions module actor; `session_audio_intervals.switched_by`; OD-09 |
 
 **Erratum PE-124-03 (D73, D80 (9)).** One more field belongs to each interval record: **125 `audio.sourceIntervals[].sourceClass`** (§B.12). `AUDIO-01` is one track fed by whichever microphone is selected, so the track has no single class: the class is carried **per interval**.
+
+**Erratum PE-WI-30 (decision D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 2 row 53 and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** field 53.
+The source column names "capture worker; `evidence_tracks.codec`". As built `audio.codec` is a **constant of the sealing host**, `STAND_INS.audioCodec = 'AAC-LC mono 48 kHz'`
+(`apps/core-server/src/sealing-host/session-reader.ts:119`, `:386`), passed through the pipeline unchanged (`apps/core-server/src/sealing/pipeline/pipeline.ts:739`). It is NOT read from the audio sample entry of
+the camera file, from `evidence_tracks.codec` or from a report of the worker. It is true by the worker's design of one AAC encoder at 48 kHz mono (OD-06); a change of that design would make the sealed field false until
+the constant is changed with it. The field stays `text`, not null. A reader must take it as "by construction", not as a measurement of the file.
 
 ### B.6 Fragment records — one array per camera file (17 fields)
 
@@ -379,12 +453,21 @@ position and key, so a fragment cannot be relocated within the file (not merely 
 | 70 | `files[].fragments[].chainHash` | hex64, not null | writer; `recording_fragments.chain_hash`; S1 §3.1 |
 | 71 | `files[].fragments[].prefixSha256` | hex64, nullable | writer (running prefix); S1 §3.1/SP-3 |
 | 72 | `files[].fragments[].keyframe` | boolean, not null | writer (SP-4 keyframe-aligned cut); S1 §6.5; `cap §C.1` |
-| 73 | `files[].fragments[].interrupted` | boolean, not null | Core seal (durable-prefix drop rule); OD-08; S1 §5.5 |
+| 73 | `files[].fragments[].interrupted` | boolean, not null | Core seal (durable-prefix drop rule); OD-08; S1 §5.5 **Erratum PE-WI-31** (below the table): also true on every fragment of a file whose camera was given up during the session |
 | 74 | `files[].fragments[].truncated` | boolean, not null | Core seal (corrupt tail dropped); S1 §5.4/§5.5 |
 | 75 | `files[].fragments[].gcmIv` | hex (12 B), not null | writer; `cap §D.1`; OD-03 |
 | 76 | `files[].fragments[].gcmTag` | hex (16 B), not null | writer; `cap §D.1`; OD-03 |
 | 77 | `files[].fragments[].keyId` | string (`KID-<sessionId>`), not null | Core key manager; `cap §D.2`; OD-03 |
 | 78 | `files[].fragments[].durableAt` | bigint epoch-ms, not null | writer at fsync; `recording_fragments.durable_at`; `cap §C.2` |
+
+**Erratum PE-WI-31 (decisions D202, D203, D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 1 row "C3" and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** field 73 and field 100.
+(1) `files[].fragments[].interrupted` (field 73) is `true` on **every fragment of a camera file whose camera was given up while the session went on**, and also on every fragment when the seal itself is interrupted
+(`apps/core-server/src/sealing/pipeline/pipeline.ts:511-515`: `interrupted || endedEarly.has(trackId)`). It is decided PER TRACK. `timeline.interrupted` (field 15) is NOT set by it: that field stays the SESSION's
+(an interrupted seal, a dropped tail or an omitted file, `:511`, `:691`, `:715`). A package with field 15 `false` and field 73 `true` on one track therefore means "the session ended as it should, this camera did not
+go to the end". (2) The cause is named in the signed `CLOSE_TRACKS` record of `sealing.steps[]` (field 100, `checkpoint`): the optional key **`endedTracks`**, a text of `<trackId>:<REASON>` entries ordered by
+track id and joined by a comma, e.g. `VIDEO-02:CAMERA_CLOCK_OUT_OF_BOUND`; absent when no camera was given up (`pipeline.ts:636-642`, written into the CLOSE_TRACKS entry at `:656`; the facts come from the capture
+facts file by track and device of the START record: `apps/core-server/src/sealing-host/session-reader.ts:359-363`, `:392`). It is a key of the existing `checkpoint` object, like `absentTracks` (PE-M7-01): no new manifest
+field (119 sealed fields stay).
 
 ### B.7 Transcript record (16 fields)
 
@@ -476,6 +559,12 @@ One `sealing.steps[]` entry per step of §E; mirrors `sealing_jobs` (`dbc-3 §B.
 | 99 | `sealing.steps[].attempt` | n, not null (>= 1) | RECOVERY resume; `sealing_jobs.attempt`; OD-08 |
 | 100 | `sealing.steps[].checkpoint` | object, nullable | Core pipeline; `sealing_jobs.checkpoint`; §E resume rule |
 | 101 | `sealing.steps[].completedAt` | bigint epoch-ms, nullable | Core pipeline; `sealing_jobs.updated_at`; R-6 |
+
+**Erratum PE-WI-32 (decision D218 (5); wave H driver A, `implementation/120_fix_wave_h_a.md` section 2 rows 95-101 and section 3; request line 10:20:55Z; `implementation/137_docs_errata_followup.md`):** fields 95-101.
+The sentence "One `sealing.steps[]` entry per step of §E" is not what a sealed manifest holds. As built `sealing.steps[]` has **three entries - `CLOSE_TRACKS`, `FINALIZE_HASHES`, `FINALIZE_TRANSCRIPT` - the steps completed
+before the manifest was built**, of the six normal-path steps `SEALING_STEP_ORDER` names (`apps/core-server/src/sealing/pipeline/contract.ts:46`). `BUILD_MANIFEST`, `SIGN_MANIFEST` and `STORE_SEALED_PACKAGE` are not in the manifest they build,
+sign and store: the step list is frozen with `sealedAt` before the first digest (`pipeline.ts:645-659`, `:765-770`). Each entry reads `status: DONE`, `progress: 100`, `etaMs: 0`, `attempt` from the journal row, and
+`completedAt` = that row's `updatedAt` (`pipeline.ts:648-649`). The operator-facing list of all six steps is operation 83 (C3), not the manifest.
 
 ### B.9 Signatures and the manifest's own hash (10 fields)
 
@@ -872,6 +961,20 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | DB marker | `tampered_track_id='VIDEO-02'` (the file; the 4-value CHECK at `:338` is kept permissive, `D-DB-05`); the **fragment location lives in the manifest/verify report**, not a DB column (the v2 column list adds no fragment column, `dbc-3 §C.6`) | OD-01/D-DB-05; `dbc-3 §C.6` |
 | Demo data | `DEMO_TAMPERED_TRACK` = `VIDEO-02`; a new `DEMO_TAMPERED_FRAGMENT_SEQ` (proposal 3) locates it | `demo-alignment.ts:39-41`; OD-02 |
 
+**Erratum PE-WH-07 (decisions D205, D208; gate 94 finding G94-01; reconcile pass R, `implementation/127_fix_wave_h_r.md` section 3 and section 5; request line 10:42:50Z of `delegation_progress/file_requests.md`):** the two
+demonstration packages the seed seals on a development-capture Core - the clean one and this
+tamper demonstration - are packages SEALED ON THAT CORE (`DEMO_PACKAGE`, manifest version 2,
+development sources, a real Ed25519 signature). Operation 40 answers them `LIVE_STREAM` with
+their camera file ids, and operation 88 and the media route open them for every `EVIDENCE_VIEW`
+holder; the case scope is for `integrity_source='REAL'` only (C3 errata PE-WH-02, PE-WH-03;
+`apps/core-server/src/media-stream/items.ts:54`, `service.ts:195`). For the tamper demonstration
+the item still answers `LIVE_STREAM` (the manifest of record is intact) and the refusal is PER
+FRAGMENT: a range that starts in the altered fragment answers `409` with the reason
+`FRAGMENT_NOT_AUTHENTIC` naming `(VIDEO-02, seq 3)`; bytes of a fragment that failed are never
+sent. A v1 demonstration item has no sealed package and answers `409` (`NOT_A_SEALED_PACKAGE`).
+Not driven in a browser or on a device by pass R: what the clients' players SHOW for the tampered
+item is a re-gate check (gate 94).
+
 ### F.3 What the demo shows in the UI
 
 | Screen | v2 demo display | Source |
@@ -903,6 +1006,23 @@ integrity independent of transcript completeness; the incompleteness is explicit
 | Export manifest | the 8 export items (payload, sessionManifest, signature, export, source, destination) | v1 `demo-data/types.ts:59-66` |
 | Export signature | Ed25519 over `SHA-256(export-manifest.json)` | v1 `demo-data/types.ts:196-197` |
 | Key requirement (SEC35-09) | the decrypted export requires the **live session key**; if the key is lost the export is impossible while stored-bytes verify (V-04/V-06) still passes; no key escrow by default (`cap §D.2`) | OD-16; SEC35-09; `cap §D.2` |
+
+**Erratum PE-WH-09 (decision D205; gate 94 findings G94-03, G94-11; wave H driver C1; request line 10:20:00Z of `delegation_progress/file_requests.md`):** the download is ONE
+SELF-CONTAINED archive. The export manifest and its signature are the LAST TWO ENTRIES of the
+zip (`export/EXP-<id>.manifest.json` and `.sig`). In that form the manifest's `package` block
+carries `file`, `hashAlgorithm` and `entries` (every OTHER entry of the archive with its own
+hash) and NO `bytes` / `sha256`: an archive cannot contain its own hash. The archive's hash is
+stated outside it - by the export job (operation 87 `archive.sha256`) and by the audit row of a
+download (`details.archiveSha256`). An export written before wave H keeps both members and its
+manifest lies beside the archive; both forms verify
+(`apps/core-server/src/evidence-export/export-manifest.ts:96-109`, `:133-134`). The receiver's
+command is `npm run evidence:verify-export -- <archive.zip> [--sha256 <hex>] [--trust <certificate
+sha256>]` (`package.json:54`; `apps/core-server/package.json:23`;
+`apps/core-server/cli/verify-export.ts:5`, `:18`): it needs no Core, no database and no key, and
+it needs the system `unzip`. RETENTION, stated because this section is silent on it: the product
+deletes no finished archive; each is a DECRYPTED copy the size of the recording, kept in
+`<package>/export/` until the package is removed, and listed on the item (operation 40
+`exports`).
 
 ### G.2 What the receiver can verify without the Core's key
 

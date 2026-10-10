@@ -102,6 +102,32 @@
  *   (11) every folder in `<store root>/.quarantine/` blocks (`quarantinedSessions`): recordings the
  *        Core could not seal and moved there (`sealing`, D178) are real evidence without a package.
  *
+ * UNSEALED RECORDINGS OF GENERATED SOURCES, ON AN EXPLICIT WORD ONLY (fix wave I driver A1; re-gate
+ * 75 finding G75b-01; ruling D216). A development lane whose seal failed kept the recording folder
+ * of its session - a folder without a manifest, UNKNOWN to rule (5), blocking every reset: the lane
+ * could never be reset again by the project's own tool. The same holds for the folder the terminal
+ * UNSEALABLE outcome moves to the quarantine (rule (11)). Such a folder holds test pictures of the
+ * FAKE (generated) sources and nothing else, and there is no signed manifest that could prove it.
+ * So the proof is the DATABASE's, and the exemption is narrower than every other one:
+ *   (12) the session holds EXACTLY four `session_capture_sources` rows and EVERY one is of kind
+ *        `FAKE` - generated sources only. A `LOCAL_DEVICE` row (this computer's camera or
+ *        microphone: a recording of a person) is NOT exempt, and no production kind ever is;
+ *   (13) the session has NO sealed item (a sealed one is judged by rules (1) to (5));
+ *   (14) on disk it is the folder `SESSION-<sessionId>` that holds NO manifest file of either
+ *        version, or the folder `.quarantine/<sessionId>`. A folder with a manifest is a package
+ *        and stays under rule (5);
+ *   (15) THE CALLER ASKED FOR IT, by name (`discardUnsealedFake`: `db:reset
+ *        --discard-unsealed-fake-recordings`, `scripts/lane/lane.sh reset <lane>
+ *        --discard-unsealed-fake-recordings`). Without that word such a folder BLOCKS as before;
+ *        the refusal then names the option and how many folders it would clear. The server's own
+ *        reset (operation 75, `loadScenario`) never passes it.
+ * None of the facts of (12) and (13) is writable by the runtime role (`session_capture_sources` is
+ * INSERT-only, `adapter_kind` has no UPDATE grant). A permitted reset states the count
+ * (`unsealedFakeMessage`) and removes these folders after the database was replaced
+ * (`removeUnsealedFakeRecordings`: judged again at the moment of removal, containment rule of
+ * `package-removal.ts`). A production Core records from no FAKE source (the capture fence refuses
+ * one), so nothing of this applies to it: its unsealed recordings block by rules (10) and (11).
+ *
  * WHAT A MESSAGE MAY HOLD: the database name, the store root, counts, and at most a few session
  * identifiers. Session identifiers are what the audit chain already names; no value of a kept
  * table, no credential, and nothing from a manifest beyond its integrity state reaches a message.
@@ -109,9 +135,9 @@
 import type { QueryResultRow } from 'pg';
 import { join } from 'node:path';
 import { readSealedSourceMark, type SealedSourceMark, type SealedSourceMarkAnchors } from '../../evidence-verify';
-import { evidenceStoreRoot, readEvidenceStore, type EvidenceStoreScan } from '../commands/evidence-store';
+import { PACKAGE_DIRECTORY_PREFIX, STORE_QUARANTINE_DIRECTORY, evidenceStoreRoot, readEvidenceStore, type EvidenceStoreScan } from '../commands/evidence-store';
 import { ResetError } from './errors';
-import { removePackageFolder, type PackageFolderRemover, type PackageRemovalRefusal } from './package-removal';
+import { removePackageFolder, removeQuarantineFolder, type PackageFolderRemover, type PackageRemoval, type PackageRemovalRefusal } from './package-removal';
 
 /** What a caller may send the guard's statement with: a pool or a client checked out of one. */
 export interface RealEvidenceQueryable {
@@ -136,6 +162,10 @@ export const DEVELOPMENT_ADAPTER_KINDS = ['FAKE', 'LOCAL_DEVICE'] as const;
 const DEVELOPMENT_KIND_LIST = DEVELOPMENT_ADAPTER_KINDS.map((kind) => `'${kind}'`).join(', ');
 /** `integrity_source` of the rows of rule (10): a session that recorded from a production source and is not sealed. No item has it. */
 export const UNSEALED_RECORDING_SOURCE = 'UNSEALED_RECORDING';
+/** `integrity_source` of the rows of rules (12) + (13): a session of FOUR generated (FAKE) sources that has no sealed item. No item has it; such a row never blocks. */
+export const UNSEALED_FAKE_SOURCE = 'UNSEALED_FAKE_RECORDING';
+/** The ONE adapter kind of rule (12): generated sources. Never `LOCAL_DEVICE`. */
+export const GENERATED_ADAPTER_KIND = 'FAKE';
 export const REAL_SEALED_EVIDENCE_STATEMENT =
   "SELECT e.session_id::text AS session_id, e.id::text AS evidence_id, e.manifest_hash::text AS manifest_hash, e.integrity_source::text AS integrity_source, " +
   "(e.development_sources IS TRUE) AS development_flag, " +
@@ -156,6 +186,15 @@ export const REAL_SEALED_EVIDENCE_STATEMENT =
   "AND NOT EXISTS (SELECT 1 FROM public.session_history AS h WHERE h.id = c.session_id) " +
   "GROUP BY c.session_id " +
   `HAVING count(*) FILTER (WHERE c.adapter_kind NOT IN (${DEVELOPMENT_KIND_LIST})) > 0 ` +
+  // Rules (12) + (13) (fix wave I, G75b-01), on the same snapshot: sessions of exactly four source rows, all of them
+  // generated (FAKE), without a sealed item. They never block; they are what the explicit option may clear on disk.
+  "UNION ALL " +
+  `SELECT f.session_id::text, NULL::text, NULL::text, '${UNSEALED_FAKE_SOURCE}'::text, false, count(*)::int, ` +
+  `(count(*) FILTER (WHERE f.adapter_kind = '${GENERATED_ADAPTER_KIND}'))::int ` +
+  "FROM public.session_capture_sources AS f " +
+  "WHERE NOT EXISTS (SELECT 1 FROM public.evidence_items AS j WHERE j.session_id = f.session_id AND j.sealed_at IS NOT NULL) " +
+  "GROUP BY f.session_id " +
+  `HAVING count(*) = ${String(SOURCE_ROWS_PER_SESSION)} AND count(*) FILTER (WHERE f.adapter_kind = '${GENERATED_ADAPTER_KIND}') = ${String(SOURCE_ROWS_PER_SESSION)} ` +
   "ORDER BY session_id";
 
 /** `integrity_source` of a demo item: it never blocks on the database side. */
@@ -188,6 +227,8 @@ export interface RealSealedRows {
   readonly seedSealedDemo: readonly string[];
   /** The subset of `blocking` that recorded from a production source and is not sealed (rule (10)). */
   readonly unsealed: readonly string[];
+  /** Sessions of four generated (FAKE) sources without a sealed item (rules (12) + (13)): never blocking; absent on a split a test built by hand. */
+  readonly unsealedFake?: readonly string[];
 }
 
 /** One exempt item: its session, and what its signed manifest must say it is. */
@@ -208,7 +249,13 @@ export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): 
   const developmentItems: DevelopmentItem[] = [];
   const seedSealedDemo: string[] = [];
   const unsealed: string[] = [];
+  const unsealedFake: string[] = [];
   for (const row of rows) {
+    // Rules (12) + (13): proven again here, on the counts of the row - exactly four rows, all four generated. Never blocking.
+    if (row.integrity_source === UNSEALED_FAKE_SOURCE) {
+      if (row.source_rows === SOURCE_ROWS_PER_SESSION && row.development_rows === SOURCE_ROWS_PER_SESSION) unsealedFake.push(row.session_id);
+      continue;
+    }
     // Rule (10): an unsealed real recording blocks, whatever else the row carries. Never exempt.
     if (row.integrity_source === UNSEALED_RECORDING_SOURCE) {
       blocking.push(row.session_id);
@@ -234,7 +281,7 @@ export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): 
       if (flagged) unproven.push(row.session_id);
     }
   }
-  return Object.freeze({ blocking: Object.freeze(blocking), unproven: Object.freeze(unproven), development: Object.freeze(development), developmentItems: Object.freeze(developmentItems), seedSealedDemo: Object.freeze(seedSealedDemo), unsealed: Object.freeze(unsealed) });
+  return Object.freeze({ blocking: Object.freeze(blocking), unproven: Object.freeze(unproven), development: Object.freeze(development), developmentItems: Object.freeze(developmentItems), seedSealedDemo: Object.freeze(seedSealedDemo), unsealed: Object.freeze(unsealed), unsealedFake: Object.freeze(unsealedFake) });
 }
 
 /** Reads the signed source mark of one package folder. Default: the verify unit's reader. */
@@ -305,6 +352,15 @@ export interface RealEvidenceFacts {
   readonly missingOnDisk: readonly string[];
   /** REAL packages on disk that no REAL sealed row of the database names. */
   readonly missingInDatabase: readonly string[];
+  /**
+   * Rules (12) to (15): the unsealed recordings of generated (FAKE) sources this reset CLEARED on the
+   * caller's explicit word - package-folder names (`SESSION-<id>`) and quarantine names (`<id>`).
+   * They do not block and are in none of the lists above; the reset removes them after the swap.
+   */
+  readonly unsealedFakeFolders?: readonly string[];
+  readonly unsealedFakeQuarantined?: readonly string[];
+  /** The same folders when the caller did NOT ask (rule (15)): they BLOCK, and the refusal names the option. Count only. */
+  readonly unsealedFakeOffered?: number;
   /** True when the reset must refuse. */
   readonly blocked: boolean;
 }
@@ -320,7 +376,12 @@ export interface RealEvidenceOptions {
   readonly readStore?: ((root: string) => EvidenceStoreScan) | undefined;
   /** Another reader of a folder's signed source mark, for tests. Default: `readSealedSourceMark` of the verify unit. */
   readonly readSourceMark?: SealedSourceMarkReader | undefined;
+  /** Rule (15): the caller's explicit word that unsealed recordings of generated (FAKE) sources may be erased. Default: false - they block. */
+  readonly discardUnsealedFake?: boolean | undefined;
 }
+
+/** The option that says rule (15), as the command line and the lane tool spell it. */
+export const DISCARD_UNSEALED_FAKE_OPTION = '--discard-unsealed-fake-recordings';
 
 function symmetricDifference(left: readonly string[], right: readonly string[]): string[] {
   const known = new Set(right);
@@ -348,12 +409,22 @@ export function evaluateRealEvidence(
     readonly developmentItems?: readonly DevelopmentItem[];
     readonly seedSealedDemo?: readonly string[];
     readonly unsealed?: readonly string[];
+    /** Rules (12) + (13): the sessions the database proved. */
+    readonly unsealedFake?: readonly string[];
+    /** Rule (15). */
+    readonly discardUnsealedFake?: boolean;
   } = {},
 ): RealEvidenceFacts {
   const sorted = [...dbSessions].sort();
   // Only what `clearedDevelopmentPackages` cleared is left out; without it every package counts.
   const cleared = exemption.clearedOnDisk ?? [];
-  const counted = scan.packages.filter((entry) => !cleared.includes(entry.directory));
+  // Rules (12) to (14): a folder WITHOUT a manifest file, named after a session the database proved to be of four generated sources
+  // and which no blocking row names; a quarantine folder of such a session. Cleared only on the caller's word (rule (15)).
+  const proven = new Set((exemption.unsealedFake ?? []).filter((sessionId) => !dbSessions.includes(sessionId)));
+  const fakeFolders = scan.packages.filter((entry) => !cleared.includes(entry.directory) && entry.integrity === 'UNKNOWN' && entry.manifest === 'NONE' && entry.sessionId !== '' && entry.directory === `${PACKAGE_DIRECTORY_PREFIX}${entry.sessionId}` && proven.has(entry.sessionId)).map((entry) => entry.directory);
+  const fakeQuarantined = (scan.quarantined ?? []).filter((name) => proven.has(name));
+  const discard = exemption.discardUnsealedFake === true;
+  const counted = scan.packages.filter((entry) => !cleared.includes(entry.directory) && !(discard && fakeFolders.includes(entry.directory)));
   const real = counted.filter((entry) => entry.integrity === 'REAL').map((entry) => entry.sessionId);
   const unprovable = counted.filter((entry) => entry.integrity === 'UNKNOWN').map((entry) => entry.directory);
   const facts: RealEvidenceFacts = Object.freeze({
@@ -362,7 +433,10 @@ export function evaluateRealEvidence(
     storePresent: scan.present,
     storeUnreadable: scan.unreadable ?? null,
     unsealedSessions: Object.freeze([...(exemption.unsealed ?? [])].sort()),
-    quarantinedSessions: Object.freeze([...(scan.quarantined ?? [])]),
+    quarantinedSessions: Object.freeze((scan.quarantined ?? []).filter((name) => !(discard && fakeQuarantined.includes(name)))),
+    unsealedFakeFolders: Object.freeze(discard ? [...fakeFolders].sort() : []),
+    unsealedFakeQuarantined: Object.freeze(discard ? [...fakeQuarantined].sort() : []),
+    unsealedFakeOffered: discard ? 0 : fakeFolders.length + fakeQuarantined.length,
     dbSessions: Object.freeze(sorted),
     developmentUnproven: Object.freeze([...(exemption.unproven ?? [])].sort()),
     developmentSessions: Object.freeze([...(exemption.development ?? [])].sort()),
@@ -399,7 +473,12 @@ export function realEvidenceMessage(facts: RealEvidenceFacts): string {
   ].filter((part) => part !== '');
   return (
     `refused: real sealed evidence exists and a reset would destroy it (RESET_BLOCKED_REAL_EVIDENCE). ` +
-    `${sides.join('; ')}. ${halves.join('; ')}${halves.length > 0 ? '. ' : ''}Nothing was changed.`
+    `${sides.join('; ')}. ${halves.join('; ')}${halves.length > 0 ? '. ' : ''}` +
+    // Rule (15): the way out a development lane has, said where the refusal is read.
+    ((facts.unsealedFakeOffered ?? 0) === 0
+      ? ''
+      : `${String(facts.unsealedFakeOffered)} of the folders named above are unsealed recordings of generated (FAKE) sources only, by the source rows of their sessions: a reset erases them when it is asked to by name (${DISCARD_UNSEALED_FAKE_OPTION}). `) +
+    `Nothing was changed.`
   );
 }
 
@@ -417,6 +496,9 @@ export function realEvidenceDetails(facts: RealEvidenceFacts): Record<string, st
     developmentPackages: facts.developmentSessions.length,
     realPackages: facts.diskSessions.length,
     unreadablePackages: facts.unprovablePackages.length,
+    // Rules (12) to (15): said only when there is such a folder.
+    ...((facts.unsealedFakeFolders?.length ?? 0) + (facts.unsealedFakeQuarantined?.length ?? 0) === 0 ? {} : { unsealedFakeCleared: (facts.unsealedFakeFolders?.length ?? 0) + (facts.unsealedFakeQuarantined?.length ?? 0) }),
+    ...((facts.unsealedFakeOffered ?? 0) === 0 ? {} : { unsealedFakeOffered: facts.unsealedFakeOffered ?? 0 }),
     rowsWithoutPackage: facts.missingOnDisk.length,
     packagesWithoutRow: facts.missingInDatabase.length,
   };
@@ -433,7 +515,16 @@ export async function findRealSealedEvidence(client: RealEvidenceQueryable, opti
   const split = classifyRealSealedRows(rows);
   const scan = (options.readStore ?? readEvidenceStore)(storeRoot);
   const clearedOnDisk = await clearedDevelopmentPackages(storeRoot, scan, split, options.readSourceMark ?? readSealedSourceMark);
-  return evaluateRealEvidence(options.database, storeRoot, split.blocking, scan, { unproven: split.unproven, development: split.development, clearedOnDisk, developmentItems: split.developmentItems, seedSealedDemo: split.seedSealedDemo, unsealed: split.unsealed });
+  return evaluateRealEvidence(options.database, storeRoot, split.blocking, scan, {
+    unproven: split.unproven,
+    development: split.development,
+    clearedOnDisk,
+    developmentItems: split.developmentItems,
+    seedSealedDemo: split.seedSealedDemo,
+    unsealed: split.unsealed,
+    unsealedFake: split.unsealedFake ?? [],
+    discardUnsealedFake: options.discardUnsealedFake === true,
+  });
 }
 
 /**
@@ -512,6 +603,73 @@ export async function removeClearedDevelopmentPackages(facts: RealEvidenceFacts,
     const outcome = remove(facts.storeRoot, directory);
     if (outcome.removed) removed.push(directory);
     else kept.push(Object.freeze({ directory, reason: outcome.refusal }));
+  }
+  return Object.freeze({ removed: Object.freeze(removed), kept: Object.freeze(kept) });
+}
+
+/** The sentence a permitted reset states before it erases unsealed recordings of generated sources (rule (15)). Empty when there is none. */
+export function unsealedFakeMessage(facts: RealEvidenceFacts): string {
+  const folders = facts.unsealedFakeFolders ?? [];
+  const quarantined = facts.unsealedFakeQuarantined ?? [];
+  if (folders.length + quarantined.length === 0) return '';
+  return (
+    `this reset erases ${String(folders.length + quarantined.length)} unsealed recording folder(s) of ${facts.database} that were recorded from generated (FAKE) sources only and were never sealed` +
+    `${folders.length === 0 ? '' : ` [${named(folders)}]`}${quarantined.length === 0 ? '' : ` [quarantine: ${named(quarantined)}]`}: asked for by name (${DISCARD_UNSEALED_FAKE_OPTION}); the folders are removed once the database has been replaced.`
+  );
+}
+
+export interface UnsealedFakeRemoval {
+  /** What was removed: package-folder names and `.quarantine/<id>` names. */
+  readonly removed: readonly string[];
+  /** What was cleared at R-3 and left in place, each with its reason. It blocks the next reset. */
+  readonly kept: readonly { readonly directory: string; readonly reason: PackageKeptReason }[];
+}
+
+export interface UnsealedFakeRemovalOptions {
+  readonly readStore?: ((root: string) => EvidenceStoreScan) | undefined;
+  readonly remove?: PackageFolderRemover | undefined;
+  readonly removeQuarantined?: ((storeRoot: string, sessionId: string) => PackageRemoval) | undefined;
+}
+
+/**
+ * Removes the unsealed recording folders of generated sources a PERMITTED reset cleared (rules (12)
+ * to (15)). Called by the routine after the database was replaced. Each folder is judged AGAIN on
+ * the disk as it is now: a `SESSION-<id>` folder that holds a manifest file by then, or is gone
+ * from the listing, is left (`NOT_CLEARED_AT_REMOVAL`). Never throws.
+ */
+export function removeUnsealedFakeRecordings(facts: RealEvidenceFacts, options: UnsealedFakeRemovalOptions = {}): UnsealedFakeRemoval {
+  const folders = facts.unsealedFakeFolders ?? [];
+  const quarantined = facts.unsealedFakeQuarantined ?? [];
+  if (facts.blocked || folders.length + quarantined.length === 0) return Object.freeze({ removed: Object.freeze([]), kept: Object.freeze([]) });
+  let scan: EvidenceStoreScan | null;
+  try {
+    scan = (options.readStore ?? readEvidenceStore)(facts.storeRoot);
+  } catch {
+    scan = null;
+  }
+  const remove = options.remove ?? removePackageFolder;
+  const removeQuarantined = options.removeQuarantined ?? ((storeRoot: string, sessionId: string) => removeQuarantineFolder(storeRoot, STORE_QUARANTINE_DIRECTORY, sessionId));
+  const removed: string[] = [];
+  const kept: { directory: string; reason: PackageKeptReason }[] = [];
+  for (const directory of folders) {
+    const entry = scan?.packages.find((found) => found.directory === directory);
+    if (entry === undefined || entry.integrity !== 'UNKNOWN' || entry.manifest !== 'NONE') {
+      kept.push(Object.freeze({ directory, reason: 'NOT_CLEARED_AT_REMOVAL' as const }));
+      continue;
+    }
+    const outcome = remove(facts.storeRoot, directory);
+    if (outcome.removed) removed.push(directory);
+    else kept.push(Object.freeze({ directory, reason: outcome.refusal }));
+  }
+  for (const sessionId of quarantined) {
+    const name = `${STORE_QUARANTINE_DIRECTORY}/${sessionId}`;
+    if (scan === null || !(scan.quarantined ?? []).includes(sessionId)) {
+      kept.push(Object.freeze({ directory: name, reason: 'NOT_CLEARED_AT_REMOVAL' as const }));
+      continue;
+    }
+    const outcome = removeQuarantined(facts.storeRoot, sessionId);
+    if (outcome.removed) removed.push(name);
+    else kept.push(Object.freeze({ directory: name, reason: outcome.refusal }));
   }
   return Object.freeze({ removed: Object.freeze(removed), kept: Object.freeze(kept) });
 }

@@ -31,7 +31,13 @@
  *   sent. No timer of this screen moves them; a step drawn DONE stays DONE and the percent never
  *   falls, also when a resumed attempt rewrites a step. Without an ETA from the Core the line says
  *   "Estimating the time left…" and gives no number. A resumed seal (a step at attempt 2 or later)
- *   shows "Resumed after restart" and, like a hand-over, enters without the rise.
+ *   shows "Resumed after restart" and, like a hand-over, enters without the rise. Fix wave I (contract
+ *   note A1 §4): that line is drawn in the in-app simulator only - on a Core server the attempt grows
+ *   with every run of the seal, a restart or not, so nothing is claimed from it.
+ * - **A seal the Core retries or that is blocked (fix wave I, G75b-02).** `sealAttentionOf` is the one
+ *   reading (`seal-attention.tsx`): the card then states it in the Core's words, that the recording is
+ *   kept, who resolves it and that the session stays open on the Core - with no percentage, no "closes
+ *   by itself" - and the screen can be left (Back, "Go to Home").
  * - **B9: React draws the hand-over.** Every copy of this screen that is part of a hand-over (the
  *   in-place copy on `/session/live` AND the route's copy that follows it, `still`) draws the
  *   pipeline and the status line from React alone: no Stepper overlay, no entering fade, still
@@ -47,13 +53,13 @@ import { LoaderCircle } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { formatDuration } from '@dems/shared/sim';
+import { faultKindLabelKey, formatDuration, isCoreNotRunningKind, useSim, type SealAttention } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings } from '@/motion';
 import { sessionResyncHref } from '@/navigation';
-import { reportRuntimeIssue } from '@/runtime';
+import { reportRuntimeIssue, useCoreLink } from '@/runtime';
 import { FinalizationPipeline } from './finalization-pipeline';
 import {
   finalizingPhase,
@@ -70,6 +76,7 @@ import { SessionSummaryScreen } from '@/features/session-summary/session-summary
 import { markSummaryHandoff } from '@/features/session-summary/summary-handoff';
 import { isFinalizingHandover, markFinalizingHandover } from './handover';
 import { InterruptedSealNotice, useInterruptedSeal } from './interrupted-seal';
+import { SealAttentionNotice, useSealAttention } from './seal-attention';
 import { SealedStamp } from './sealed-stamp';
 import { UnsealableNotice } from './unsealable-notice';
 import { useFinalizationSteps, useFinalizingSession, useSealedHandOffDue, type FinalizingSession } from './use-finalizing';
@@ -108,7 +115,10 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
   useLayoutEffect(() => {
     if (phase === 'sealed') markSummaryHandoff(session.id);
   }, [phase, session.id]);
-  const busy = isFinalizingBusy(phase);
+  // Fix wave I (re-gate 75, G75b-02): a seal the Core retries or that is blocked does not hold the operator here.
+  // The session stays open on the Core; the screen says so and can be left (Back, or "Go to Home").
+  const attention = useSealAttention();
+  const busy = isFinalizingBusy(phase) && attention === null;
   const summaryHref: Href | null = session.id ? (`/session/summary/${session.id}` as Href) : null;
 
   useFinalizingBack({ busy, focused, exitHref: phase === 'sealed' && summaryHref ? summaryHref : '/home' });
@@ -157,6 +167,8 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
               phase={phase}
               steps={steps}
               onOpenSummary={summaryHref ? () => go(summaryHref, 'openSummary') : null}
+              attention={phase === 'finalizing' ? attention : null}
+              onHome={() => go('/home', 'sealAttention')}
             />
           </FlowBoundary>
         </View>
@@ -258,9 +270,12 @@ interface PipelineCardProps {
   onOpenSummary: (() => void) | null;
   /** The copy drawn in place on a hand-over: its Stepper starts no motion (W93-7). */
   handover?: boolean;
+  /** Fix wave I (G75b-02): the seal is retried by the Core or blocked (`sealAttentionOf`); null while it simply runs. */
+  attention: SealAttention | null;
+  onHome: () => void;
 }
 
-function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = false }: PipelineCardProps) {
+function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = false, attention, onHome }: PipelineCardProps) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const sealed = phase === 'sealed';
@@ -275,6 +290,18 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
   const sealedIn = sealedAfterSeconds(session.stoppedAt, session.sealedAt);
   // Wave H driver B (G75-03, ruling D197): the seal of an interrupted recording says so from its first step on.
   const interrupted = useInterruptedSeal(session.id);
+  // Fix wave I (contract note A1 §4): "Resumed after restart" is NOT derived from a step's attempt on a Core
+  // server - the attempt grows with every run of the seal, a restart or not, and this screen does not poll
+  // operation 83 (the one truthful `resumed`). The in-app simulator keeps the line: there the attempt only
+  // grows on a RECOVERY. Never beside a retry / blocked notice, which says what is happening in the Core's words.
+  const live = useCoreLink().source === 'LIVE';
+  const showResumed = progress.resumed && !sealed && attention === null && !live;
+  const title =
+    attention !== null
+      ? t(attention.kind === 'BLOCKED' ? 'features.session-finalizing.sealAttention.blockedTitle' : 'features.session-finalizing.sealAttention.retryingTitle')
+      : sealed && interrupted !== null
+        ? interrupted.title
+        : t(sealed ? 'session.finalization.sealedTitle' : 'session.finalization.title');
 
   return (
     <Animated.View entering={enter ? enterRise(0, settings) : undefined}>
@@ -282,7 +309,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
         <SectionCard testID="finalizing-card">
           <View style={styles.cardHead}>
             <Text accessibilityRole="header" maxFontSizeMultiplier={1.2} style={styles.title} testID="finalizing-title">
-              {sealed && interrupted !== null ? interrupted.title : t(sealed ? 'session.finalization.sealedTitle' : 'session.finalization.title')}
+              {title}
             </Text>
             {session.id ? (
               <Text maxFontSizeMultiplier={1.2} selectable style={styles.sessionId} testID="finalizing-session-id">
@@ -302,7 +329,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
                   {t('session.finalization.stopping')}
                 </Text>
               </>
-            ) : phase === 'finalizing' ? (
+            ) : phase === 'finalizing' && attention !== null ? null : phase === 'finalizing' ? (
               <Text maxFontSizeMultiplier={1.2} style={styles.statusText} testID="finalizing-progress">
                 {t('session.finalization.progress', { percent })}
               </Text>
@@ -329,12 +356,14 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
             ) : null}
           </View>
 
-          {phase === 'finalizing' && progress.reportsProgress ? (
+          {/* Fix wave I (G75b-02): no percentage and no ETA beside a seal that is retried or blocked - the notice says what the Core knows. */}
+          {attention !== null ? <SealAttentionNotice attention={attention} onHome={onHome} /> : null}
+          {phase === 'finalizing' && progress.reportsProgress && attention === null ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID={`finalizing-eta-${progress.etaMs === null ? 'none' : 'core'}`}>
               {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
             </Text>
           ) : null}
-          {progress.resumed && !sealed ? (
+          {showResumed ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="finalizing-resumed">
               {t('session.finalization.resumed')}
             </Text>
@@ -344,7 +373,7 @@ function PipelineCard({ enter, session, phase, steps, onOpenSummary, handover = 
             <FinalizationPipeline statuses={statuses} seconds={seconds} percents={percents} animate={!still} />
           </View>
 
-          {isFinalizingBusy(phase) ? (
+          {isFinalizingBusy(phase) && attention === null ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="finalizing-keep-open">
               {t('features.session-finalizing.keepOpen')}
             </Text>
@@ -412,7 +441,9 @@ function SessionCard({ enter, session }: { enter: boolean; session: FinalizingSe
 function InterruptedAlert({ enter, faultKind, onOpen }: { enter: boolean; faultKind: FinalizingSession['faultKind']; onOpen: () => void }) {
   const { t } = useTranslation();
   const settings = useMotionSettings();
-  const fault = faultKind ? t(`common.faultKind.${faultKind}`) : t('features.session-finalizing.interrupted.unknownFault');
+  // Closing pass J (G75b-03, D217 (5)): worded from the member `coreNotRunning` of the session's fault, never "Power failure".
+  const coreNotRunning = useSim((s) => isCoreNotRunningKind(s, faultKind));
+  const fault = faultKind ? t(faultKindLabelKey(faultKind, coreNotRunning ? { coreNotRunning: true } : null)) : t('features.session-finalizing.interrupted.unknownFault');
   return (
     <Animated.View entering={enter ? enterRise(0, settings) : undefined} style={styles.alert} testID="finalizing-interrupted">
       <Alert status="danger">

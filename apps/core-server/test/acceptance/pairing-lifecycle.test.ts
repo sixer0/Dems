@@ -986,10 +986,12 @@ describe('SC5: a tablet is paired from the portal, used, revoked, refused and pa
       expectContract('startSession', started);
       await rt.drive(2 * SECOND);
     });
+    // Sent from the tablet: the rows carry the paired device (fix G75b-04, decision D216 (2)).
+    const tablet = first.deviceId ?? '';
     expect(who(rows)).toEqual([
-      ['SESSION_CREATED', INVESTIGATOR.id, null],
-      ['PRECHECK_PASSED', INVESTIGATOR.id, null],
-      ['RECORDING_STARTED', INVESTIGATOR.id, null],
+      ['SESSION_CREATED', INVESTIGATOR.id, tablet],
+      ['PRECHECK_PASSED', INVESTIGATOR.id, tablet],
+      ['RECORDING_STARTED', INVESTIGATOR.id, tablet],
     ]);
     const recording = await currentSession(supervisor);
     expect([recording?.id, recording?.state, recording?.elapsedMs]).toEqual([recordingId, 'RECORDING', 2 * SECOND]);
@@ -1339,9 +1341,9 @@ describe('the audit trail of the whole journey', () => {
       ['TABLET_LINK_CHANGED', null, CORE_TABLET_SLOT],
       ['AUTH_SUCCESS', I, one],
       ['BIOMETRIC_ENROLLMENT_CHANGED', I, one],
-      ['SESSION_CREATED', I, null],
-      ['PRECHECK_PASSED', I, null],
-      ['RECORDING_STARTED', I, null],
+      ['SESSION_CREATED', I, one],
+      ['PRECHECK_PASSED', I, one],
+      ['RECORDING_STARTED', I, one],
       // The revoke, and the six refused calls of the tablet.
       ['DEVICE_REVOKED', S, one],
       ['TABLET_LINK_CHANGED', null, CORE_TABLET_SLOT],

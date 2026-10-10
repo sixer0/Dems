@@ -245,6 +245,26 @@ export const CaptureConfigMicSchema = z
   .describe('One microphone slot of the device selector.');
 export type CaptureConfigMicBody = z.output<typeof CaptureConfigMicSchema>;
 
+/** A paired-device id as a session row may name it (`sendingDeviceOf` of the simulator): letters, digits and dashes. */
+export const SENDING_DEVICE_ID_PATTERN = /^[A-Z][A-Z0-9-]{1,31}$/;
+
+/**
+ * Contract example of the optional member `session.precheck.sendingDeviceId` (fix wave I, driver
+ * A2; ruling D216 (2)): a pre-check a paired device sent. Spread into the `precheck` of a session.
+ */
+export const SESSION_PRECHECK_SENDING_DEVICE_EXAMPLE = Object.freeze({ sendingDeviceId: 'DEV-0001' } as const);
+
+/**
+ * Contract examples of closing pass J (rulings D217 (5), (7)); a client test IMPORTS them.
+ * `SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE`: spread into a `security` slice - the Core in its own
+ * capture states that it reads no TPM / Secure Boot / posture.
+ * `CORE_NOT_RUNNING_FAULT_EXAMPLE`: spread into `session.fault`, into an entry of `faults.active`,
+ * into the `params` of the fault's alert and the `details` of its `FAULT_RAISED` row - the restart
+ * fault of a Core in its own capture (kind `POWER_FAIL`), worded "the Core was not running".
+ */
+export const SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE = Object.freeze({ platformNotReported: true } as const);
+export const CORE_NOT_RUNNING_FAULT_EXAMPLE = Object.freeze({ coreNotRunning: true } as const);
+
 export const ActiveSessionSchema = z
   .strictObject({
     id: sessionId(),
@@ -268,6 +288,11 @@ export const ActiveSessionSchema = z
         ...stepTimes(),
         outcome: z.enum(['PASS', 'WARN', 'BLOCK']).nullable().describe('Null while checks run.'),
         warningsAcknowledged: z.boolean(),
+        sendingDeviceId: z
+          .string()
+          .regex(SENDING_DEVICE_ID_PATTERN)
+          .optional()
+          .describe('The paired device that sent this pre-check (fix wave I, D216): the audit row of its outcome names it. Absent: a web console session sent it.'),
       })
       .describe('The pre-recording checks (book §5.3).'),
     armedAt: nullableEpochMs(),
@@ -310,7 +335,15 @@ export const ActiveSessionSchema = z
     snapshotCount: count(),
     bytesWritten: count(),
     fault: z
-      .strictObject({ kind: z.enum(FaultKind), at: epochMs(), fromState: z.enum(SessionState) })
+      .strictObject({
+        kind: z.enum(FaultKind),
+        at: epochMs(),
+        fromState: z.enum(SessionState),
+        coreNotRunning: z
+          .literal(true)
+          .optional()
+          .describe('Present on the restart fault of a Core in its own capture: the Core was not running while the session was active and does not know why. The kind stays `POWER_FAIL`; the fault is worded from this member, never as a power failure (closing pass J, D217 (5)). Absent: the fault is what its kind says.'),
+      })
       .nullable()
       .describe('The critical fault that moved the session to FAULT, if any.'),
     recovery: z
@@ -581,6 +614,10 @@ export type NetworkSliceBody = z.output<typeof NetworkSliceSchema>;
 
 export const SecuritySliceSchema = z
   .strictObject({
+    platformNotReported: z
+      .literal(true)
+      .optional()
+      .describe('Present on a Core in its own capture: this Core reads no TPM, no Secure Boot state and computes no posture. `tpm`, `secureBoot`, `posture` and the `TPM` / `SECURE_BOOT` entries of `controls` are then not readings and are shown as "not reported" (closing pass J, D217 (7)). Absent on the simulated device.'),
     state: z.enum(SecurityState),
     posture: z.enum(SecurityPosture),
     tpm: z.strictObject({ model: text(), ok: z.boolean() }),
@@ -896,6 +933,10 @@ export const FaultsSliceSchema = z
           .regex(/^[A-Z][A-Z0-9_]{1,63}$/)
           .optional()
           .describe('The enumerated cause of a capture fault. The key of a fault is (kind, reason, target): two causes on one device are two entries.'),
+        coreNotRunning: z
+          .literal(true)
+          .optional()
+          .describe('Present on the restart fault (`POWER_FAIL`) of a Core in its own capture: the Core was not running while a session was active. Worded from this member, never as a power failure (closing pass J, D217 (5)).'),
       }),
     ),
   })

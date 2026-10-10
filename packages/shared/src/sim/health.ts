@@ -28,7 +28,7 @@ import { pushRing } from './events';
 import { timeNoise } from './initial-state';
 import { RngStream, type Rng } from './rng';
 import { storageStateFor } from './selectors';
-import { hostClockTimeTransition } from './core-facts';
+import { ownCaptureCoreFactsTransition } from './core-facts';
 import type { AudioFrame, CaptureLevelSource, EpochMs, HealthSlice, MicLevelPoint, SimState, SimSubsystem, StorageSlice, TimeSlice } from './types';
 
 const HOUR_MS = 3_600_000;
@@ -193,7 +193,8 @@ export function createHealthSubsystem(engine: EngineContext, capture: CaptureLev
       const dtMs = lastSecond === null ? HEALTH_TICK_MS : (second - lastSecond) * HEALTH_TICK_MS;
       lastSecond = second;
       // Wave H Z1 (D203 (1)): where the capture is the Core's own the slice says the host clock, whatever a stored state or a demo control last put there.
-      const state = capture === 'external' ? hostClockTimeTransition(engine.store.getState()) : engine.store.getState();
+      // Closing pass J (D217 (7)): and no platform reading (`security.platformNotReported`).
+      const state = capture === 'external' ? ownCaptureCoreFactsTransition(engine.store.getState()) : engine.store.getState();
       engine.store.setState(healthStep(state, at, dtMs, engine.rng.get(RngStream.HEALTH)));
     },
   };

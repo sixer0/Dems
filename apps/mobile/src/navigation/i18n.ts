@@ -20,6 +20,11 @@ export const navigationEn = {
     title: 'A session is already active',
     description: 'Finish or recover the current session before starting a new one.',
   },
+  // Fix wave I (re-gate 75, G75b-02): `/session/new` refused because the open session's seal is blocked.
+  sealBlocked: {
+    title: 'A new session is not available',
+    description: 'Sealing of session {{sessionId}} is blocked, and the Core records no new session until it is sealed.',
+  },
   // Route stubs until each screen step replaces its screen (05 M-03).
   stub: {
     label: 'Placeholder for screen-{{id}}',

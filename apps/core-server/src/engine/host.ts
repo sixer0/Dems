@@ -87,7 +87,7 @@ import { SEALING_NOTICE_DOOR_LABEL, noteSealRetryOnDemandTransition, noteSealedP
 // Sealed-facts block (wave H C1, decision D200): what the sealed manifest of an item says and no stored column holds.
 import { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, type EngineSealedFactsDoors, type SealedItemFacts } from './sealed-facts-doors';
 // Capture-checkpoint block and time block (wave H closing pass Z1): what the Core holds of a running recording; the host clock as the time of a Core in its own capture.
-import { hostClockTimeTransition } from '@dems/shared/sim';
+import { hostClockTimeTransition, platformNotReportedTransition } from '@dems/shared/sim';
 import { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -965,7 +965,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         // first state of the new epoch says what the open sockets say (finding F78, decision D119).
         const effects: RestartEffects =
           mode === 'boot'
-            ? applyProcessStart(sim, stored.lastCommittedAt, now, heldLink)
+            ? // Fix wave I (G75b-03, D216 (3)): a Core in its own capture writes no power-failure row for a session that was FINALIZING and no tablet row at a start.
+              applyProcessStart(sim, stored.lastCommittedAt, now, heldLink, { ownCapture: dependencies.captureLevels === 'external' })
             : { ...NO_EFFECTS, tamperCleared: clearTamperOverlay(sim, now), tabletLinkCarried: heldLink !== null && carryTabletLink(sim, heldLink) };
 
         // Capture block (blueprint row 71; D91 R-1 option A): no column holds `captureDurable`, so
@@ -990,6 +991,14 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         if (dependencies.captureLevels === 'external') {
           const truthful = hostClockTimeTransition(sim.store.getState());
           if (truthful !== sim.store.getState()) sim.store.setState(truthful, true);
+        }
+
+        // Platform block (closing pass J; ruling D217 (7)): a Core in its own capture reads no TPM, no
+        // Secure Boot state and computes no posture. The slice this start read holds the dataset's
+        // `tpm.ok: true` / `secureBoot: true` / `SECURE`: it says `platformNotReported` before anything reads it.
+        if (dependencies.captureLevels === 'external') {
+          const stated = platformNotReportedTransition(sim.store.getState());
+          if (stated !== sim.store.getState()) sim.store.setState(stated, true);
         }
 
         // Source-fact block (integration pass D11; `fact-doors.ts`): no row holds the class of a
@@ -1032,6 +1041,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
               tamperCleared: effects.tamperCleared,
               tabletLinkReset: effects.tabletLinkReset,
               tabletLinkCarried: effects.tabletLinkCarried,
+              tabletLinkOfflineUnwritten: effects.tabletLinkOfflineUnwritten === true,
               auditRows: plan.auditRows.length,
             },
             'engine started',

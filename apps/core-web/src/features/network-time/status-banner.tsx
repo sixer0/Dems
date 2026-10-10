@@ -2,6 +2,7 @@ import { Card } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
+import { isOwnCaptureCore } from '@/lib/own-capture'
 import { GlowLayer, type GlowTone } from '@/motion'
 import { networkLevel, NETWORK_TONE, timeLevel, TIME_TONE } from './model'
 import { useTimeEscalationKey } from './use-network-time-alerts'
@@ -27,13 +28,15 @@ export function NetworkTimeBanner() {
   const { t } = useTranslation()
   const view = useSim((s) => ({
     time: timeLevel(s.time.source),
+    // G75b-06: a Core in its own capture - the host system clock, not an "RTC holdover".
+    hostClock: isOwnCaptureCore(s),
     source: s.time.source,
     stratum: s.time.stratum,
     network: networkLevel(s.network.linkUp, s.network.poe.activePorts, s.network.poe.totalPorts),
     ip: s.network.ip,
   }))
   const pulse = useTimeEscalationKey(view.time)
-  const timeTone = TIME_TONE[view.time]
+  const timeTone: StatusTone = view.hostClock ? 'default' : TIME_TONE[view.time]
   const networkTone = NETWORK_TONE[view.network]
   const tone = RANK[networkTone] > RANK[timeTone] ? networkTone : timeTone
   return (
@@ -41,7 +44,7 @@ export function NetworkTimeBanner() {
       variant="secondary"
       className="nt-banner"
       data-tone={tone}
-      data-time={view.time}
+      data-time={view.hostClock ? 'HOST_CLOCK' : view.time}
       data-network={view.network}
       role="status"
       aria-label={t('networkTime.bannerState.label')}
@@ -52,12 +55,14 @@ export function NetworkTimeBanner() {
       <div className="nt-banner-text">
         <p className="nt-banner-title">
           {t('networkTime.banner', {
-            time: t(`networkTime.bannerState.time.${view.time}`),
+            time: view.hostClock ? t('web.ownCore.time.value') : t(`networkTime.bannerState.time.${view.time}`),
             network: t(`networkTime.bannerState.network.${view.network}`),
           })}
         </p>
         <p className="nt-banner-detail">
-          {t('networkTime.bannerState.detail', { source: view.source, stratum: view.stratum, ip: view.ip })}
+          {view.hostClock
+            ? t('web.ownCore.time.bannerDetail', { ip: view.ip })
+            : t('networkTime.bannerState.detail', { source: view.source, stratum: view.stratum, ip: view.ip })}
         </p>
       </div>
     </Card>

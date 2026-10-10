@@ -3,7 +3,7 @@ import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { captureFaultSentence, FaultKind, useSim, type TimelineEvent } from '@dems/shared/sim'
+import { captureFactsOf, captureFaultSentence, FaultKind, faultKindLabelKey, useSim, type TimelineEvent } from '@dems/shared/sim'
 import { SessionTimeline } from '@/components/composed'
 import { useMicInputName } from '@/features/devices/source-class'
 import { isMicInputId } from '@/lib/capture-notices'
@@ -11,7 +11,7 @@ import { useOwnCapture } from '@/lib/own-capture'
 import { formatBytesParts } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
-import { audioPeakLevel, autosaveSegment, bytesAt, timelineOfOwnCapture } from './sim-adapter'
+import { audioPeakLevel, autosaveSegment, bytesAt, timelineOfOwnCapture, timelineWhileConnecting } from './sim-adapter'
 
 const EMPTY: readonly TimelineEvent[] = []
 
@@ -33,7 +33,9 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
   const micName = useMicInputName()
   const stored = useSim((s) => s.session?.timeline ?? EMPTY)
   const ownCapture = useOwnCapture()
-  const events = useMemo(() => timelineOfOwnCapture(stored, ownCapture), [stored, ownCapture])
+  // G75b-08: no "Recording Started" while the session is still connecting its cameras.
+  const connecting = useSim((s) => captureFactsOf(s.session)?.capture === 'CONNECTING')
+  const events = useMemo(() => timelineWhileConnecting(timelineOfOwnCapture(stored, ownCapture), connecting), [stored, ownCapture, connecting])
   const startedAt = useSim((s) => s.session?.startedAt ?? null)
   // The simulator never schedules timeline items in the future, so "now" is the newest item's time:
   // the list re-renders on insertions only, not on every clock second (§9.3).
@@ -79,7 +81,7 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
           const reason = event.params?.reason
           return captureFaultSentence(typeof reason === 'string' ? reason : null, null)
         }
-        if (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FaultKind, kind)) return t(`common.faultKind.${kind as FaultKind}`)
+        if (typeof kind === 'string' && Object.prototype.hasOwnProperty.call(FaultKind, kind)) return t(faultKindLabelKey(kind as FaultKind, event.params))
       }
       if (event.detail) return event.detail
       return event.label

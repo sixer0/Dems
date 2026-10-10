@@ -14,6 +14,7 @@ import {
   chainHash,
   auditBody,
   GENESIS_HASH,
+  isPlatformNotReported,
   Permission,
   ROLE_PERMISSIONS,
   OperatorRole,
@@ -183,6 +184,8 @@ export interface AuditRowView {
   refs: string[]
   /** Fault kind for FAULT_* and discontinuity rows (translated by the table). */
   faultKind: FaultKind | null
+  /** The row's `details.coreNotRunning` (closing pass J, D217 (5)): the fault is worded "Core was not running", not by its kind. */
+  coreNotRunning?: true
   /** Auth method for AUTH_* rows. */
   method: string | null
   hash: string
@@ -225,6 +228,7 @@ function buildView(row: AuditRow, chain: ChainLinkStatus, actorName: string | nu
     actorName,
     refs: [...new Set(refs)].slice(0, 2),
     faultKind: (kind as FaultKind | null) ?? null,
+    ...(row.details['coreNotRunning'] === true ? { coreNotRunning: true as const } : {}),
     method: detailString(row, 'method'),
     hash: row.hash,
     prevHash: row.prevHash,
@@ -325,7 +329,15 @@ export interface ControlView {
   id: ControlId
   status: ControlStatus
   params: ControlParams
+  /**
+   * The Core states `security.platformNotReported` (closing pass J, D217 (7)) and this control is a
+   * platform fact it does not read: the row says "Not reported" (status UNKNOWN), never "Active".
+   */
+  notReported?: true
 }
+
+/** The controls a Core that states `security.platformNotReported` does not read: the TPM, Secure Boot, and the key custody that rests on the TPM. */
+export const PLATFORM_CONTROLS: readonly ControlId[] = ['TPM', 'SECURE_BOOT', 'KEY_CUSTODY']
 
 export interface ControlInputs {
   security: SecuritySlice
@@ -364,8 +376,13 @@ export function buildControls(input: ControlInputs): ControlView[] {
     TAMPER: status(simControlOk(security, 'TAMPER') && !security.tamper, 'ATTENTION'),
     SIGNED_FIRMWARE: status(simControlOk(security, 'SIGNED_FIRMWARE')),
   }
+  // A control that would read "Active" from the placeholders of a Core that reads no platform fact says so instead. A control that shows a fault keeps it.
+  const notReported = ready && isPlatformNotReported(security)
   const values = Object.fromEntries(
-    CONTROL_ORDER.map((id) => [id, { id, status: statuses[id], params }]),
+    CONTROL_ORDER.map((id) => [
+      id,
+      notReported && PLATFORM_CONTROLS.includes(id) && statuses[id] === 'OK' ? { id, status: 'UNKNOWN', params, notReported: true } : { id, status: statuses[id], params },
+    ]),
   ) as Record<ControlId, ControlView>
   return CONTROL_ORDER.map((id) => values[id])
 }
@@ -374,9 +391,11 @@ export type PostureState = 'SECURE' | 'ATTENTION' | 'CRITICAL' | 'UNKNOWN'
 const POSTURE_RANK: Record<PostureState, number> = { UNKNOWN: -1, SECURE: 0, ATTENTION: 1, CRITICAL: 2 }
 
 /** The shown posture: the simulator's, raised to CRITICAL whenever the page itself finds a chain break. */
-export function postureOf(simPosture: PostureState, chainOk: boolean, ready: boolean): PostureState {
+export function postureOf(simPosture: PostureState, chainOk: boolean, ready: boolean, platformNotReported = false): PostureState {
   if (!ready) return 'UNKNOWN'
   if (!chainOk) return 'CRITICAL'
+  // Closing pass J (D217 (7)): "SECURE" that no Core computed is not shown; a posture that names a fault is.
+  if (platformNotReported && simPosture === 'SECURE') return 'UNKNOWN'
   return simPosture
 }
 

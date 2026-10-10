@@ -6,6 +6,7 @@ import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
 import { selectClockSecond, useSim } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { OrbitingCircles } from '@/components/ui/orbiting-circles'
+import { isOwnCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { ORBIT_FADE_MS, TIME_TIER_LAYOUT_ID } from './choreography'
 import { formatOffset, secondsSince, TIERS, tierState, TIER_TONE, type TimeTier } from './model'
@@ -27,11 +28,30 @@ const OUTER_MAX = 5
  *   highlight (R5), which moves down to NTP on GNSS loss, down again to the RTC, and back up on
  *   recovery (spring `gentle`; a cross-fade under reduced motion, §8).
  * - Footer: lock, stratum, last sync, offset and server.
+ *
+ * A CORE IN ITS OWN CAPTURE (fix wave I, G75b-06) has no such hierarchy: its time is the host system
+ * clock (`time.hostClock`). The panel then states that one fact. No constellation ("NO FIX" would say
+ * a receiver lost its signal), no tiers ("RTC Active", "Signal lost"), no stratum, offset or last
+ * synchronisation (zeros of the slice, never measured) are drawn.
  */
 export function HierarchyPanel() {
   const { t } = useTranslation()
   const time = useSim((s) => s.time)
   const holdoverSince = useSim((s) => s.faults.active.find((fault) => fault.kind === 'GNSS_LOSS' && fault.target === 'RTC')?.since ?? null)
+  const hostClock = isOwnCaptureCore({ time })
+  if (hostClock) {
+    return (
+      <NetworkTimePanel id="hierarchy" icon={Timer} title={t('networkTime.hierarchy.title')} bodyClassName="nt-hier-body">
+        <div className="nt-chart-empty" data-testid="network-time-host-clock">
+          <p className="nt-tier-name">
+            <Cpu className="nt-tier-icon" aria-hidden="true" strokeWidth={1.75} />
+            <span className="nt-tier-label">{t('web.ownCore.time.value')}</span>
+          </p>
+          <p className="nt-collecting">{t('web.ownCore.time.hierarchyNotice')}</p>
+        </div>
+      </NetworkTimePanel>
+    )
+  }
   return (
     <NetworkTimePanel
       id="hierarchy"

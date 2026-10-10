@@ -25,7 +25,7 @@ source_capture_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_ca
 source_transcript_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/07_transcript_spec.md
 source_predecessor_drift: /Users/gsp-budi/Documents/DEMS/docs/2026-10-04_dems_backend_rbac_pairing/research/11_next_phase_drift_check.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4, D8, D10, D12; rev 2.3 client delta: D72(k), D73-D78, D80, D81)
-last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, gated controls G13-G18, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; §8a Flow 8 STT configuration added as a proposal, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
+last_updated: 2026-10-10 (docs errata follow-up PE-WI-33..PE-WI-38: the surfaces of closing pass J - blocked seal turns the header critical, "Core was not running", "Not reported" from the Core's own member, mobile Network & Time and web Storage session size, the refused-start sentences, the connect-dialog key; `implementation/137_docs_errata_followup.md`; decisions D217, D218); 2026-10-10 (docs errata pass for fix waves H and I: PE-WH-11..PE-WH-13, PE-WI-10..PE-WI-18, each marked in place and listed in the errata index; `implementation/136_docs_errata_wave_h_i.md`; decisions D196, D203, D205-D210, D216, D217); 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 125, PE-125-01..19: client delta for R-9..R-11 — flows 9-13, gated controls G13-G18, sections 8b-8g, 14, 15; D73-D81); 2026-10-09 (status sweep PE-R8-12..13: §8a Flow 8 CONFIRMED by D24, Q-STT-CFG answer (a); status wording only); 2026-10-08 (RV-SPEC: D19(b) recording-duration refinement; §8a Flow 8 STT configuration added as a proposal, R-8/D20; 2026-10-07 row-35 cross-refs SEC35-12/13)
 ---
 
 # Client UX Spec — web, tablet and phone (blueprint row 34, M0)
@@ -42,6 +42,24 @@ last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-72..83 (D89, D91; `g
 |---|---|---|---|
 | PE-FM4-01 | §8d.3 The password prompt, row Fields | The bound of the camera user name is 1..120, not 1..255 | D117, D178 |
 | PE-FM4-02 | §8d.3 The password prompt, row Fields | The two credential fields are plain uncontrolled inputs with the kit's field classes, not the kit `TextField` | D134, D178 |
+| PE-WI-10 | §4.5 Error / empty / loading states (flow 3) | A seal that is retried or blocked: the web seal dialog, the tablet / phone Finalizing screen, Home / Sessions "Sealing blocked"; every such surface can be left | D216, D217 |
+| PE-WI-14 | §4.5 (flow 3) | The web header's critical sentence names the kind of the critical fault; "An integrity check failed" stays for the audit chain and the security platform | D217 |
+| PE-WI-11 | §5.5 (flow 4) | "Resumed after restart" is never derived from `attempt`; it is not shown beside a session of the Core's own capture | D217 |
+| PE-WH-13 | §6.6 Per-client definition (flow 5) | The web item page lists the finished exports, each with "Download export"; the player source is decided by one rule per app | D204, D205, D208 |
+| PE-WH-11 | §8.5 (flow 7) | A Core in its own capture: the pre-check TIME item is a note with its own chip; time chips read "Host system clock" | D203 (1), D209, D210 |
+| PE-WI-16 | §8.5 (flow 7) | Host-clock and "not reported" wording on the web Dashboard, Network & Time and header checklist and on the mobile Home chip | D217 |
+| PE-WI-18 | §8.5 (flow 7) | Still loaders (no kit Spinner) on the pre-check rows, the pending Next / Start / "Run checks again" and the Stepper's running badge | D207, D217 (2) |
+| PE-WI-12 | §8d.3 row "Development source"; §14.2 key `common.captureConnect.noPasswordNeeded` | The development-source sentence of the connect dialog | D215, D217 |
+| PE-WI-13 | §8d.4 row `AUTHENTICATION_FAILED` | The result of a test sent without a credential; the remaining-attempts line only for a refused credential | D181 (3), D217 |
+| PE-WH-12 | §8f.2 | "No preview" in real capture: camera tiles and session rows show no stock picture | D196, D206, D210 |
+| PE-WI-17 | §8f.2 | "No preview" also on the tablet / phone Home "Recent Sessions" in real capture | D217 |
+| PE-WI-15 | §8f.2 | The state words of a source on a real-capture Core: "Reachable" / "Not reachable"; "Stream live" only while a session is RECORDING | D217 (6) |
+| PE-WI-33 | §4.5 (flow 3) | A blocked seal turns the web header pill and the tablet / phone Home status CRITICAL by the Core's own alert; the pill's second line reads "Sealing is blocked"; removes the limit stated in PE-WI-14 | D217, D218 |
+| PE-WI-34 | §8.5 (flow 7) | "Core was not running" and its sentence wherever the restart fault of a Core in its own capture is named, on the web and on the tablet / phone, from the member `coreNotRunning` | D217 (5), D218 |
+| PE-WI-35 | §8.5 (flow 7) | "Not reported" for TPM, Secure Boot and posture is worded from the Core's member `security.platformNotReported`, on the web Dashboard, Security & Audit, About and header, and the mobile Home chip and About; replaces the client-side rule of PE-WI-16 | D217 (7), D218 |
+| PE-WI-36 | §8.5 (flow 7) | Mobile Network & Time names a host clock as "Host system clock" (no "RTC (holdover)"); the web Storage page's session size is the durable bytes of the capture checkpoints; closes the two OPEN clauses of PE-WI-16 | D217, D218 |
+| PE-WI-37 | §8.5 (flow 7) | A start the Core refuses for the session key shows the Core's own two sentences under the start-failed title on web and mobile, not "The Core server is starting" | D217, D218 |
+| PE-WI-38 | §8d.3 row "Development source"; §14.2 key `common.captureConnect.noPasswordNeeded` | The shared key now holds the ruled sentence (equal to the web hint, `i18n-web.ts:76`); closes the open clause of PE-WI-12 | D217 (4), D218 |
 
 > **Authority in force.** Blueprint row 34 (`identification/02_structured.md:214`) is the hard gate:
 > *"Each flow defined for all 3 clients; P-01..P-16 each marked applied or not applicable with reason;
@@ -351,6 +369,49 @@ correction and the evidence record never shows more than the sealed duration. Th
 | ETA absent | Show elapsed + "estimating…" (no fabricated number) | same | same | op 83 `etaMs?` |
 | Failed step | Step marked FAILED; RECOVERY state if a fault follows | same | same | flow 4 |
 
+**Erratum PE-WI-10 (decisions D216, D217; re-gate 75 finding G75b-02; fix wave I drivers A1, B, C: `delegation_progress/contract_wave_i.md` section 3.3; `implementation/133_fix_wave_i_b.md` section 2.1; `implementation/134_fix_wave_i_c.md` section 1 rows G75b-02 and decision 3):** the row "Failed step" above does not
+cover a seal the Core retries or that is blocked. As built, every surface takes ONE reading, the
+shared `sealAttentionOf({ session, alerts })` (`packages/shared/src/sim/seal-blocked.ts:141`; C3
+erratum PE-WI-07), and Home / Dashboard surfaces `sealBlockedNoticeOf` (`seal-blocked.ts:97`):
+
+| Kind | Web | Tablet / phone |
+|---|---|---|
+| `RETRYING` (the Core runs the seal again by itself) | Seal dialog: heading "Sealing is being retried", the Core's own retry sentence (it holds "retry n of N, in s s"), "The recording is kept on the Core." and the closing note. Monitor banner "SEALING RETRIED", Dashboard panel "Sealing is being retried" (tone warning) | Finalizing: title "Sealing is being retried", the Core's retry sentence, "The Core runs the seal again by itself. You can leave this screen; the session stays open on the Core until it is sealed." Back is not held |
+| `BLOCKED` (the retries are used up; the alert `params.reason: SEAL_BLOCKED` is active) | Seal dialog: heading "Sealing is blocked", the failed step's sentence, the fixed sentence of the detail code (`SEAL_BLOCKED_DETAIL_SENTENCE`), the alert's whole message (what restores it), "The recording is kept on the Core.", "What you can do: tell the administrator of this Core. No new session can be recorded until this one is sealed." and "You can close this window. The session stays open on the Core." Monitor banner "SEALING BLOCKED" + the Core's sentence + "The recording is kept on the Core." (tone danger); Dashboard panel "Sealing blocked", no spinner, no step progress | Finalizing: title "Sealing is blocked", the alert's whole message, the fixed sentence of the detail code, "The recording is kept on the Core.", "A technician or the administrator of the Core has to resolve the cause on the Core.", that the session stays open on the Core, and "Go to Home". Home: status card "Sealing blocked" with `<session> · The recording is kept on the Core.`, quick action "Sealing blocked: view" and the line "A new session cannot be started: sealing of session {{sessionId}} is blocked, and the Core records no new session until it is sealed." Sessions: chip "Sealing blocked" (danger), "Sealing of this session is blocked. The recording is kept on the Core."; the disabled Start button and a refused `/session/new` link name the blocked seal by session |
+
+Rules for both kinds. (1) The surface MUST be leavable: the web dialog has Close, Escape and click
+outside (`apps/core-web/src/features/session-monitor/finalization-modal.tsx`); on tablet and phone
+Back is not held and "Go to Home" is offered
+(`apps/mobile/src/features/session-finalizing/session-finalizing-screen.tsx`). (2) While the seal
+needs attention NO percentage and NO ETA is drawn (the notice stands in the place of the progress
+bar; the step list stays, it shows which step failed), and no surface says "takes a few seconds"
+or that the screen closes by itself. (3) The reason, the detail sentence and "The recording is
+kept on the Core." are the Core's / the shared constants' words; only the headline, the next step
+and the closing note are the client's (`apps/core-web/src/i18n-web.ts:57-68`;
+`apps/mobile/src/features/session-finalizing/i18n.ts:61-71`). (4) The blocked Finalizing screen
+offers NO recovery action (ruling D217 (3)): the row "No write control" of §4.4 stands. (5) The
+web console has no Sessions list; its rows of the session are the Monitor banner and the Dashboard
+panel. (6) A cause no retry gets past ends the session as UNSEALABLE and the Finalizing screen
+leaves as it does for every UNSEALABLE (unchanged). Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
+
+**Erratum PE-WI-14 (decision D217; re-gate 75 finding G75b-07; fix wave I driver B, `implementation/133_fix_wave_i_b.md` section 2.4):** the web header pill no longer says "An integrity check failed" for
+every critical state. A critical flag of the audit chain or of the security platform keeps that
+sentence; ONE other critical kind reads "Critical fault: {{kind}}" (the kind in the operator's
+words, `common.faultKind.*`); several read "{{count}} critical faults"
+(`apps/core-web/src/components/shell/integrity-checks.ts:70`, `:87`;
+`apps/core-web/src/i18n-web.ts:17-20`). LIMIT, stated by the driver and not fixed: the pill's STATE
+comes from fault flags, not alerts, so a blocked seal alone (alert kind SYSTEM, no flag) does not
+turn the pill CRITICAL; the blocked seal is stated by the Monitor banner, the Dashboard panel, the
+dialog and the bell (PE-WI-10). Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
+
+**Erratum PE-WI-33 (decisions D217, D218; re-gate 75 finding G75b-02 and closing pass J item 4, `implementation/135_fix_wave_i_pass_j.md` item 4; `implementation/137_docs_errata_followup.md`) - REMOVES THE LIMIT STATED IN PE-WI-14:** a blocked seal now turns
+the Core's state critical on the clients, by the Core's own alert and with no fault flag (the shared reader `sealBlockedNoticeOf`, C3 erratum PE-WI-07). WEB: `selectPillState` is CRITICAL when a blocked seal is reported
+(`apps/core-web/src/components/shell/integrity-checks.ts:42`); the pill's cause is `SEAL_BLOCKED` when there is no critical flag (`:97-98`) and its second line reads "Sealing is blocked" (`:113-114`, `web.sealBlocked.title`,
+`apps/core-web/src/i18n-web.ts:59-60`); a critical flag keeps its own sentence of PE-WI-14 and wins over the blocked seal; the header checklist row `recording` reads CRITICAL, so the popover never reads all-OK under a CRITICAL pill
+(`selectIntegrityChecks`, `:46-56`). TABLET / PHONE: the Home status state is CRITICAL on the same reader (`apps/mobile/src/features/dashboard/use-home-data.ts:60-62`), which turns the Home status ring and card critical
+beside the card text of PE-WI-10. `SYSTEM_FLAG_IDS` of the shared selector was not touched (a pinned finite set); the blocked seal is not a fault flag. Proven in the clients' tests only: not yet gate-verified (to be driven at re-gate 75 on a lane
+with a blocked seal, if one can be produced).
+
 ### 4.6 Per-client definition
 
 | Aspect | Web | Tablet | Phone |
@@ -418,6 +479,17 @@ legitimately rewrite a step's `progress`, but the displayed overall must never r
 | Crash during recording | Durable part presented as "interrupted" | same | same | OD-08 |
 | No committed transcript | Transcript shows UNAVAILABLE/partial note; no fake text | same | same | `transcript-spec §A.5` |
 | `409 INVALID_STATE` | "Sealing has not started" | same | same | `C3 §4` |
+
+**Erratum PE-WI-11 (decision D217; re-gate 75 finding G75b-02; `delegation_progress/contract_wave_i.md` section 4; `implementation/133_fix_wave_i_b.md` decision D-2; `implementation/134_fix_wave_i_c.md` decision 2):** the note "Resumed after restart" (§5.2 step 2 and the row "Crash
+during sealing" above) is NOT derived from `attempt ≥ 2`. `attempt` grows with every run of the
+seal, the Core's automatic retries included, so at re-gate 75 the note appeared with no restart.
+The truthful fact is `resumed` of operation 83 (C3 erratum PE-WI-06). As built: from `attempt > 1`
+a surface may say only that the seal was run again; the web seal dialog and the mobile Finalizing
+screen do not poll operation 83, so beside a session of the Core's OWN capture the note is not
+shown (the web shows it only for a session of the simulator's capture or when the dialog followed
+the session through RECOVERY; mobile only in the in-app simulator, and never beside a seal
+notice of PE-WI-10). To show the truthful fact in Live mode a surface would have to read
+operation 83's `resumed`: not built. Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
 
 ### 5.6 Per-client definition
 
@@ -494,6 +566,18 @@ percentage must never decrease. All reads come from Core instants (`coreClockOf`
 | Band | Canvas/SVG band from intervals | Drawn band from intervals | Drawn band from intervals |
 | Development-source label **PE-125-06** | Badge on the item header and on each camera file recorded from a development source; band segments of a development microphone carry it in their legend. Data: the manifest mark (fields 124-126) or the verify result — never the current device list | same on the evidence sheet | same, compact |
 | Blanking | Signed-URL prefix `mts_` added to the web error sink `runtime/error-sink.ts:52` (E-31/P-07; SEC35-13; `06_evidence_package_spec.md §G.4`) | Added to `runtime/log.ts:46` blanking; both regexes become `\b(ses|dvc|bio|mts)_` (E-31/P-07; SEC35-13) | same |
+
+**Erratum PE-WH-13 (decisions D204, D205, D208; gate 94 findings G94-01, G94-02, G94-05; wave H drivers C1, C2 and reconcile pass R, `implementation/123_fix_wave_h_c2.md`, `implementation/127_fix_wave_h_r.md` sections 2-3; request line 10:20:00Z of `delegation_progress/file_requests.md`):** as built. (1) The web item page lists the finished exports the Core reports for
+the item (operation 40 `exports`, newest first), each with "Download export"
+(`apps/core-web/src/features/evidence/finished-exports.tsx:22-23`; `detail-page.tsx:358`); a
+finished export is no longer downloadable only from the dialog that requested it. Tablet and
+phone show the pointer to the web console. (2) The player source is decided by ONE rule per app
+from the contract's members (`media.source`, `media.fileIds`, `access.play`; C3 erratum PE-WH-03):
+streamable -> the sealed player; a bundled demonstration item -> bundled media WITH its demo
+label; anything else -> no player and no picture, "This recording has no playable media on this
+Core." + the reason. A real signature is never labelled simulated; an interrupted item is named in
+the list row and the header. A client that reads `access.readTranscript: false` does not ask
+operations 84 / 86. Not yet gate-verified: re-gate 94 has not run on this tree.
 
 ### 6.7 Forward-only rule
 
@@ -612,6 +696,79 @@ number is monotonic and append-only (op 86); the pane never hides a newer revisi
 | Permission refused | Disabled + role sentence | same | same | E-16 |
 | A configured camera or microphone is unreachable **PE-125-07** | The row names the device (label and id) and, for a camera, the count of the one search the pre-check ran; blocked or warning `Alert` per §8g.3; Search again (G13 / G17) and Retry | same in `DevicesCheckStep` | same | R-10 AC-2; §8e.2, §8g.3 |
 | No camera connected at session start **PE-125-07** | Fault presentation "No camera connected. Nothing was recorded." — no timer, no recording indicator, no meters | same | same | D72(k); §8e.2 situation C |
+
+**Erratum PE-WH-11 (decisions D203 (1), D209, D210; gates 75 / 89 findings G75-01, G89-01; closing passes Z1 and Z2, `implementation/128_fix_wave_h_z1.md` item 1, `implementation/129_fix_wave_h_z2.md` items 1a, 1d, 1e and "+"):** a Core in its own capture
+states the host system clock (`time.hostClock: true`; C3 erratum PE-WH-05), and the clients word
+it so. (1) The pre-check TIME item is a NOTE: its own neutral chip "NOTE" on web and mobile (not
+WARN), the text "Time source: host system clock (no GNSS)"; it is not counted as a warning, the
+outcome stays PASS and no acknowledgement is asked. (2) The mobile Session Live chip reads "TIME
+Host system clock" (tone info, never "LOCKED"); the mobile Summary Start / End chips read "Host
+system clock" in a neutral chip. (3) Beside a session of the Core's own capture the web Monitor
+banner reads "SESSION ACTIVE" + the capture state (not "SESSION ACTIVE & SECURE / All integrity
+checks passing"), and draws no write speed, write-rate curve or Auto-Save figure; the capture
+checkpoint facts (`session.captureCheckpoints`) are drawn on both apps, absent = nothing, never
+0. Simulated capture is drawn as before. Re-gate 75 has NOT passed: not yet gate-verified.
+
+**Erratum PE-WI-16 (decision D217; re-gate 75 finding G75b-06; fix wave I drivers B and C, `implementation/133_fix_wave_i_b.md` section 2.3 and decision D-1; `implementation/134_fix_wave_i_c.md` section 1 row G75b-06):** the host-clock wording outside a
+session, on the one mark `time.hostClock`. WEB: Dashboard strip "Time - Host system clock";
+Dashboard card time column "HOST CLOCK" (the tooltip quotes no stratum, offset or last sync) and
+platform column "NOT REPORTED - TPM: not reported - Secure Boot: not reported", both neutral and
+not counted as "need attention"; Network & Time: banner "Host system clock" with "no time service
+configured", the hierarchy panel states the one fact (no constellation, tiers, lock, stratum, last
+sync, offset or server), the offset panel says "Not measured", no "RTC holdover" toast; header
+checklist rows "Host system clock" and "Not reported"; the Monitor's session size is the durable
+bytes of the capture checkpoints, a dash when none is stated
+(`apps/core-web/src/i18n-web.ts:21-48`; `apps/core-web/src/lib/own-capture.ts`). MOBILE: the Home
+time chip reads "Time: Host system clock" (tone info) instead of "GNSS / Time: RTC"
+(`apps/mobile/src/features/dashboard/home-model.ts:432-433`; `use-home-data.ts:183`). "Not
+reported" is worded by the CLIENT on that mark; the Core's own statement about the TPM is ruling
+D217 (7), outside this erratum. OPEN, not built: the mobile Network & Time screen still words a
+host clock as "RTC (holdover)" (`implementation/134_fix_wave_i_c.md` section 5); the web Storage page KPI "session size"
+and the web Security Posture column were not changed (`implementation/133_fix_wave_i_b.md` decision D-1, section 7). Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
+
+**Erratum PE-WI-18 (decisions D207, D217 (ruling 2); gate 89 finding G89-02, re-gate 75 finding G75b-05; fix wave I driver C, `implementation/134_fix_wave_i_c.md` section 1 row G75b-05 and decision 1):** STILL LOADERS. On tablet and phone
+a running pre-check row, the pending sign of Next / Start Recording / "Run checks again" and the
+running badge of the wizard Stepper show a STILL loader glyph drawn by React, not the kit
+`Spinner` / `PendingSpinner` the tables of §8b, §8c and §8g name for those places; the Stepper
+replays its entering motion only on the first copy of a visit. Reason: a kit Spinner that is
+removed while its animation runs wrote the Reanimated lines the logcat criterion (B9, 0 lines)
+counts - the same cure wave H used at the Finalizing hand-over (D207). Nothing is silenced. It is
+accepted "to be confirmed by logcat = 0 at the re-gate": NOT yet gate-verified.
+
+**Erratum PE-WI-34 (decisions D217 (5), D218; re-gate 75 finding G75b-03; closing pass J item 2, `implementation/135_fix_wave_i_pass_j.md`; `implementation/137_docs_errata_followup.md`):** the restart fault of a Core in its own capture (C3 erratum PE-WI-21) is worded from
+its member `coreNotRunning`, never from its kind. **Label** "Core was not running" wherever a surface would name the fault kind (instead of "Power failure"); **sentence** "The Core was not running while this session was active. It does not know why it stopped."
+where a sentence stands (alert, event, audit row, Finalizing alert). Recovery rows read "{product} is running again. It was not running while this session was active" and "The Core is running again - the fault of the time it was not running is cleared".
+WEB: header pill "Critical fault: Core was not running" (`apps/core-web/src/components/shell/integrity-checks.ts:90-91`, `:108`, `:115`); Session Monitor banner reason (`features/session-monitor/status-banner.tsx:32-34`) and timeline
+(`timeline-panel.tsx:84`); Security & Audit log, where the row's `details.coreNotRunning` decides (`features/security-audit/model.ts:187-188`, `:231`; `audit-log-panel.tsx:432`). TABLET / PHONE: Home flag line (`apps/mobile/src/features/dashboard/use-home-data.ts:64-73`),
+Recovery screen (`features/session-recovery/session-recovery-screen.tsx:594-596`), Sessions hub active card (`features/sessions/hub-top.tsx:76`, `:132`), Finalizing interrupted alert (`features/session-finalizing/session-finalizing-screen.tsx:444-446`), Audit list
+(`features/audit/use-audit-data.ts:89-90`) and audit entry detail (`features/audit/audit-entry-detail.tsx:49`). The label and the sentence are the shared `common.coreNotRunning.label` / `.sentence` (`packages/shared/src/i18n/en/common.ts:1114-1117`).
+Absent member = the fault is what its kind says: the SIMULATED lane and the in-app simulator keep "Power failure" / "Power fail detected". LIMITS, not built (ruling 3 of D218; they go with the cause `CORE_STOPPED` of the next task): the mobile Sessions detail and the history entry of an
+INCOMPLETE session that ended this way still read "Power failure" (the history keeps `faultKind: POWER_FAIL` with no member), and an interrupted seal still names `POWER_FAIL`; the web Devices page still draws the AC input port down while a `POWER_FAIL` fault is active
+(`features/devices/sim-adapter.ts:181`). Proven in the clients' tests only: not yet gate-verified (re-drive list of note 135 section 6).
+
+**Erratum PE-WI-35 (decisions D217 (7), D218; re-gate 75 finding G75b-06; closing pass J item 1, `implementation/135_fix_wave_i_pass_j.md`; `implementation/137_docs_errata_followup.md`) - REPLACES THE CLIENT-SIDE RULE OF PE-WI-16:** PE-WI-16 said "Not reported" is worded by the client on the mark `time.hostClock` and that the Core's own statement was outside it.
+The Core now states it (C3 erratum PE-WI-20: `security.platformNotReported`), and every surface reads THAT member by name, each row from its own member (the platform from `security.platformNotReported`, the time from `time.hostClock`). Wording (shared,
+`packages/shared/src/i18n/en/common.ts:1122-1128`): value "Not reported", "TPM: not reported", "Secure Boot: not reported", "Posture: not reported", note "This Core does not read a TPM or the Secure Boot state."; neutral tone, never counted as "need attention".
+WEB: Dashboard strip Security cell (`features/dashboard/status-strip.tsx:39-40`, `:103-104`); Dashboard card platform column and **posture column** (`features/dashboard/security-panel.tsx:135-169`, `:219-227`; `dashboard-model.ts:171-177`) - the
+column PE-WI-16 left unchanged; header checklist row `platform` (`components/shell/integrity-checks.ts:125-136`); Security & Audit: posture panel and banner read "Not reported" (`features/security-audit/status-banner.tsx:16-30`, `:63`) and the TPM, Secure Boot
+and Key custody rows read "Not reported" with status UNKNOWN (`security-audit/model.ts:333-380`; `controls-panel.tsx:77-81`); System > About TPM row (`features/system/about-panel.tsx:91-92`). TABLET / PHONE: Home Security chip
+(`apps/mobile/src/features/dashboard/home-model.ts:413-436`; `use-home-data.ts:197`, `:211`) and Settings > About TPM field (`features/settings/about-section.tsx:25`, `:40-41`). A posture that names a fault keeps the fault (the statement is made when the posture reads
+`SECURE`). On such a Core no surface draws "TPM 2.0 Verified", "SECURE / All controls active" or "Attestation OK". The three required members keep their placeholder values (C3 PE-WI-20): the lists that read them directly - the web Devices "other devices"
+TPM entry and the mobile Devices list (`packages/shared/src/sim/devices.ts:93`) - still say "OK" and are OPEN (ruling 1 of D218). Simulated capture is drawn as before. Proven in the clients' tests only: not yet gate-verified.
+
+**Erratum PE-WI-36 (decisions D217, D218; re-gate 75 finding G75b-06; closing pass J item 3, `implementation/135_fix_wave_i_pass_j.md`; `implementation/137_docs_errata_followup.md`) - CLOSES THE TWO "OPEN, NOT BUILT" CLAUSES OF PE-WI-16:** (1) MOBILE Network & Time on a Core whose `time` slice says
+`hostClock` (`TimeView.hostClock`, `apps/mobile/src/features/network-time/network-time-model.ts:154-172`): the time card names the clock with one sentence, "Time" / "Host system clock" and "This Core takes its time from the host system clock. GNSS, network time and a hardware clock
+are not configured, so no lock, stratum, offset or last synchronisation exists." - no orbit, no tier row, no last sync, no server (`features/network-time/time-sync-card.tsx:49-72`; `common.hostClockTime.*`, `packages/shared/src/i18n/en/common.ts:1134-1138`); the system time chip reads
+"Host system clock" in a neutral tone, not "RTC (holdover)", "Free-running" or "Synchronized" (`system-time-card.tsx:46`, `:55`); no holdover toast (`use-network-time.ts:83-102`). (2) WEB Storage page, KPI "session size" (`apps/core-web/src/features/storage/kpi-cards.tsx:37-44`, `:88-94`):
+beside a session of the Core's own capture it is the **durable bytes of the capture checkpoints** (`captureCheckpointsOf(session).bytes`, the reader the Monitor's storage panel uses, in GB), not the simulator's formula `session.bytesWritten`; when no checkpoint states a byte count it is a dash whose accessible label reads
+"No durable recording data yet" (`web.ownCore.sessionSizeNotStated`, `i18n-web.ts:45`). The simulated lane keeps `session.bytesWritten`. The web "Security Posture column" clause of PE-WI-16 is closed by PE-WI-35. Proven in the clients' tests only: not yet gate-verified.
+
+**Erratum PE-WI-37 (decisions D217, D218; re-gate 75 finding G75b-01; closing pass J item 7, `implementation/135_fix_wave_i_pass_j.md`; `implementation/137_docs_errata_followup.md`):** a start the Core refuses before recording because of the session key (C3 erratum PE-WI-22: `503 NOT_READY`, `details.reason`
+`SESSION_KEY_NOT_OF_SESSION` or `SESSION_KEY_STORE_UNAVAILABLE`) shows the Core's own sentence as the description of the danger toast whose title is the start-failed title of that client, instead of "The Core server is starting". The sentences
+(`common.startRefused.<reason>`, `packages/shared/src/i18n/en/common.ts:1144-1148`, word for word the Core's `SESSION_KEY_START_TEXT`): `SESSION_KEY_NOT_OF_SESSION` - "This session cannot be started: a session key of an earlier session with this session number is in the Core's key store, so its recording
+could not be sealed. Nothing was recorded. Cancel this session and create a new one." `SESSION_KEY_STORE_UNAVAILABLE` - "This session cannot be started: the Core's key store cannot be used, so its recording could not be sealed. Nothing was recorded." Title: web "Recording could not start. Check the devices and try again."
+(`sessionNew.errors.start`); mobile "Recording could not start. Please try again." (`startFailed`). WEB: `features/session-new/index.tsx:397-399`; MOBILE: `features/session-new/use-session-new.ts:205-208` (the action is logged at `warn`). The pre-check is not concerned (the refusal belongs to `startSession` only); the session stays ARMED and can be cancelled. Any other
+503, and one without a reason, keeps the general "starting" wording. Not changed (open): `CAPTURE_HELPERS_LEFT` is a `503 NOT_READY` too and is still worded "starting". NOT proven by a test: the rendered toast on either client (the reader, the travel of the reason and the sentences are) - a gate check.
 
 ### 8.6 Per-client definition
 
@@ -824,7 +981,7 @@ proposal in `specs` R-9 AC-12. Precedent: the R-8 secret field of §8a is web-on
 | Where the typed values live | In the form state of the open dialog only (`react-hook-form`, local to the `Modal`). They are sent in the body of op 95 and, unchanged, in the body of op 96, through `useCoreActions` + `settle` — not through a query or mutation cache. They are never written to the URL, router state, browser storage, a toast, a log line or the error sink | `C3 §2.6` "Credential in memory"; P-07 |
 | Kept for two requests, not asked twice | After a *reachable* outcome the two fields become read-only and keep their values so that **Add as camera** sends exactly what was tested. "Change" re-enables them and removes the outcome (a new test is needed) | row 121 hand-over ("decide whether the form keeps it"); frame, alternative (2) |
 | Cleared | The password is cleared after an *authentication failed* outcome (the user name is kept). **Both fields are cleared when the dialog closes** — by Close, by Escape, by a completed adoption, by navigation, by sign-out — and the form unmounts | R-9 AC-8 |
-| Development source | For a candidate of `sourceClass: DEVELOPMENT` the dialog shows "This development source needs no password." and no field; a kit `Switch` "Enter a user name and password" reveals the two fields for a test camera that has them | op 95: `credential` optional for `DEVELOPMENT` |
+| Development source | For a candidate of `sourceClass: DEVELOPMENT` the dialog shows "This development source needs no password." and no field; a kit `Switch` "Enter a user name and password" reveals the two fields for a test camera that has them. **Erratum PE-WI-12 (decisions D215, D217; re-gate 70 finding G70b-02; ruling of fix wave I driver A2, `delegation_progress/contract_wave_i_a2.md` section 1; built by driver B, `implementation/133_fix_wave_i_b.md` section 2.2):** "This development source needs no password." states more than the Core knows before a test (a development source MAY need none; the lane's stub camera has one fixture account). The web dialog shows instead: **"A development source can be tested without a password. If the test asks for one, turn on "Enter a user name and password"."** (`apps/core-web/src/i18n-web.ts:74`). No server change. Re-gate 70 has not passed: not yet gate-verified | op 95: `credential` optional for `DEVELOPMENT` |
 | Validation | Empty field on Test -> `FieldError` "Enter the camera user name and password." before any request (and for `422 CREDENTIAL_REQUIRED`) | `C3 §4` |
 
 ### 8d.4 Per-step states and outcomes (web)
@@ -843,7 +1000,7 @@ A failed test is a **result**, not an error: it is drawn as an outcome in the di
 |---|---|---|---|---|
 | `REACHABLE` | success | "Connection works. This camera can be added." (with "{{count}} usable video profile(s)" from `usableProfileCount`) | read-only, values kept | **Add as camera**; "Change" |
 | `UNREACHABLE` | warning | "The camera did not answer. Check its power and network cable, then test again." | unchanged | **Test connection** again (a new operator action) |
-| `AUTHENTICATION_FAILED` | danger | "The camera refused this user name or password." and, from `failedAttemptsRemaining`: "{{count}} more attempt(s) before testing this camera is paused." | password cleared, focus in the password field | type again, **Test connection**; at `0` remaining the button is disabled with the lock-out sentence below |
+| `AUTHENTICATION_FAILED` | danger | "The camera refused this user name or password." and, from `failedAttemptsRemaining`: "{{count}} more attempt(s) before testing this camera is paused." | password cleared, focus in the password field | type again, **Test connection**; at `0` remaining the button is disabled with the lock-out sentence below. **Erratum PE-WI-13 (decisions D181 (3), D217; re-gate 70 findings G70b-02, G70b-05; `delegation_progress/contract_wave_i_a2.md` sections 1-2; `implementation/133_fix_wave_i_b.md` section 2.2):** three cases, told by the answer of op 95. (a) `authenticated === true && reason === undefined` (a credential was sent and refused): unchanged - this sentence and the remaining-attempts line. (b) `authenticated === false` (no credential was sent): "This camera asks for a user name and a password. None was sent." and under it "Turn on "Enter a user name and password", type them, then test again." - never "The camera refused this user name or password.", and NO remaining-attempts line. (c) `reason === "SCHEME_NOT_ALLOWED"`: no remaining-attempts line (nothing was counted: the credential was not sent). The remaining-attempts line is drawn ONLY in case (a); `failedAttemptsRemaining` is a required member the Core always sends, with the host's unchanged count in (b) and (c). The lock-out sentence is unchanged (`apps/core-web/src/features/devices/camera-connect.ts` `connectionTestWording`; `apps/core-web/src/i18n-web.ts:75-76`). Re-gate 70 has not passed: not yet gate-verified |
 | `WRONG_PROFILE` | warning | "The camera answered, but it offers no video profile this system can use. Change the video settings on the camera, then test again." | unchanged | **Test connection** again |
 | `NOT_H264` | warning | "The camera answered, but none of its video profiles is H.264. Set the camera to H.264, then test again." | unchanged | **Test connection** again |
 
@@ -1029,6 +1186,32 @@ production devices by the Core that sealed this package." (the word *declared* i
 item reads "Sources: not recorded (v1 package)". (7) The two vocabularies are not mixed: device shapes
 say `PRODUCTION` / `DEVELOPMENT` with `adapter` `LOCAL_DEVICE` / `FAKE` (`C3 §2.6`); the manifest says
 `PRODUCTION` / `LOCAL_DEVICE` / `FAKE` (`06` §B.12). Both map to the one badge: badge = not `PRODUCTION`.
+
+**Erratum PE-WH-12 (decisions D196 (ruling on G70-03), D206, D210; gate 70 finding G70-03; wave H driver D and closing pass Z2, `implementation/124_fix_wave_h_d.md`, `implementation/129_fix_wave_h_z2.md` item 6):** on a Core in REAL capture no stock
+or demo picture stands as a camera preview. The camera tiles of the web Devices page and of the
+mobile Devices / device detail show a neutral "No preview" tile with the device's name and its
+true state (`apps/core-web/src/features/devices/camera-tile.tsx:101`;
+`apps/mobile/src/features/devices/device-detail.tsx:373`; `packages/shared/src/i18n/en/devices.ts:440`),
+and the mobile session rows use the "No preview" thumb on every row, closed rows included, with
+no LIVE badge over it. The accessible label says so: "{{name}}. No preview: this build shows no
+live picture." (`apps/mobile/src/features/capture-selector/i18n.ts:252-257`). Simulated capture and
+the in-app simulator keep the demo loop. This build has no live preview of a real camera.
+Re-gate 70 has not passed: not yet gate-verified.
+
+**Erratum PE-WI-17 (decision D217; re-gate findings G70b-04 / G75b-09; fix wave I driver C, `implementation/134_fix_wave_i_c.md` section 1 row G70b-04):** the same rule now holds for the tablet / phone Home "Recent
+Sessions": in real capture the thumb is the neutral "No preview" thumb, labelled "<id>. No
+preview: this build shows no live picture." (`apps/mobile/src/features/dashboard/recent-sessions.tsx`).
+Simulated capture is unchanged. Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
+
+**Erratum PE-WI-15 (decision D217 (ruling 6); re-gate 70 finding G70b-06; `delegation_progress/contract_wave_i_a2.md` section 4 (the client rule, RULED); `implementation/133_fix_wave_i_b.md` section 2.7; `implementation/134_fix_wave_i_c.md` section 1 rows "Home microphone state" and G70b-06):** the state
+words of a source on a real-capture Core (`captureOperation` is not `SIMULATED`). `online` /
+`streamState` of slices 29 / 30 are "as registered" until the Core reads the device, so: a line
+says "Reachable" / "Not reachable" (from `online`); **"Stream live" / "Live" is drawn only while a
+session of this Core is RECORDING** (a LOST stream stays); the web camera tile draws no PoE port,
+and a bitrate only while recording; the mobile Home microphone tile says what the Core reported
+for the microphone ON its line. Simulated capture is drawn as before. NOT BUILT on the server:
+the member `captureDevices.devices[].checkedAt` ("Not checked"); both clients read it by name and
+draw as today while it is absent (C3 §6, note under PE-WI-05). Proven in the clients' tests only: re-gates 70 and 75 have NOT passed, so this is not yet gate-verified.
 
 ### 8f.3 The local-device rows
 
@@ -1415,7 +1598,7 @@ mobile and by more than one feature (Devices, Session New, Monitor, Evidence). P
 | `common.captureConnect.username` | Camera user name |
 | `common.captureConnect.password` | Camera password |
 | `common.captureConnect.required` | Enter the camera user name and password. |
-| `common.captureConnect.noPasswordNeeded` | This development source needs no password. |
+| `common.captureConnect.noPasswordNeeded` | This development source needs no password. **Erratum PE-WI-12:** the web dialog no longer draws this sentence; it draws `web.connect.developmentHint` of the web's own resources (`apps/core-web/src/i18n-web.ts:74`; ruling D217 (4): web sentences stay in the web's own i18n file). The shared key still holds the old sentence in `packages/shared/src/i18n/en/common.ts` (notice filed 13:45:00Z in `delegation_progress/file_requests.md`; open)**Erratum PE-WI-38 (decisions D217 (4), D218; closing pass J item 6, `implementation/135_fix_wave_i_pass_j.md`; `implementation/137_docs_errata_followup.md`) - CLOSES THAT OPEN CLAUSE:** the shared key now holds the ruled sentence, the same as the web hint: "A development source can be tested without a password. If the test asks for one, turn on \"Enter a user name and password\"." (`packages/shared/src/i18n/en/common.ts:778`; `apps/core-web/src/i18n-web.ts:76` - the line cited as `:74` in PE-WI-12 moved). The two are held equal by tests; no client reads the shared key directly today. The same sentence applies to the row "Development source" of §8d.3 |
 | `common.captureConnect.enterPassword` | Enter a user name and password |
 | `common.captureConnect.change` | Change |
 | `common.captureConnect.test` | Test connection |

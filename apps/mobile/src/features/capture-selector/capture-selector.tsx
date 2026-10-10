@@ -25,7 +25,8 @@ import { Camera, Mic } from 'lucide-react-native';
 import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { useSim } from '@dems/shared/sim';
+import { fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
@@ -37,6 +38,7 @@ import { cameraLineStatus, type AnswerClass, type SelectorCommand, type Selector
 import { CaptureSourceSheet, type SourceSheetRequest } from './capture-source-sheet';
 import { SourceBadge } from './development-source-badge';
 import { MicRescanControl } from './mic-rescan';
+import { cameraLineReportOf, cameraStreamWordApplies, realCaptureSources, sourceStateWord } from './source-state';
 import { useCameraSearch } from './use-camera-search';
 import { useCaptureSelector, type CaptureSelector as CaptureSelectorData, type SelectorNotice } from './use-capture-selector';
 
@@ -74,6 +76,23 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   };
 
   const gateLine = gateText(selector.gate, selector.checkingHint, t);
+  // Fix wave I (re-gate 70, G70b-06; contract note A2 §4, RULED): on a Core in REAL capture a camera line says
+  // "Live" / "Lost" only while a session of the Core is RECORDING - the recording's telemetry is the one thing
+  // that makes it true. Outside a recording the chip states what the Core reported for the device:
+  // "Reachable" / "Not reachable" / "Not checked" (flat strings, so nothing re-renders per frame).
+  const live = selector.badgeMode.live;
+  const reported = useSim((s) =>
+    cameraStreamWordApplies({ realCapture: realCaptureSources(s.captureDevices.devices, live), recording: s.session?.state === 'RECORDING' })
+      ? ([] as string[])
+      : (s.session?.captureConfig ?? s.captureConfig).cameras.map((line) => {
+          const word = sourceStateWord(cameraLineReportOf(s, line.trackId), live);
+          return `${line.trackId}|${word.key}|${word.tone}`;
+        }),
+  );
+  const reportedOf = (trackId: string): { key: string; tone: StatusTone } | null => {
+    const [, key, tone] = reported.find((entry) => entry.startsWith(`${trackId}|`))?.split('|') ?? [];
+    return key === undefined || tone === undefined ? null : { key, tone: tone as StatusTone };
+  };
 
   return (
     <SectionCard
@@ -129,6 +148,8 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
               {selector.cameras.map((row, index) => {
                 const status = cameraLineStatus(row);
                 const track = t(`features.capture-selector.selector.track.${row.trackId}`);
+                const word = reportedOf(row.trackId);
+                const streamLabel = word !== null ? t(word.key) : t(`features.capture-selector.selector.stream.${status}`);
                 return (
                   <Fragment key={row.trackId}>
                     {index > 0 ? <Separator /> : null}
@@ -140,12 +161,13 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                       chip={
                         <StatusChip
                           size="sm"
-                          tone={STREAM_TONE[status]}
-                          label={t(`features.capture-selector.selector.stream.${status}`)}
+                          tone={word !== null ? word.tone : STREAM_TONE[status]}
+                          label={streamLabel}
                           icon={null}
                           testID={`capture-selector-stream-${row.trackId}`}
                         />
                       }
+                      stateLabel={streamLabel}
                       selected={openKey === row.trackId}
                       pending={selector.pendingKey === row.trackId}
                       editable={editable}
@@ -177,6 +199,7 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                         testID={`capture-selector-role-${row.inputId}`}
                       />
                     }
+                    stateLabel={t(`features.capture-selector.selector.role.${row.role}`)}
                     selected={openRole === row.role}
                     pending={selector.pendingKey === MIC_ROW_KEY}
                     editable={editable}
@@ -303,6 +326,8 @@ interface SelectorRowProps {
   title: string;
   detail: string;
   chip: ReactNode;
+  /** The word of the chip (the stream state of a camera, the role of a microphone): the last part of the row's accessibility label. */
+  stateLabel: string;
   selected: boolean;
   pending: boolean;
   editable: boolean;
@@ -312,12 +337,23 @@ interface SelectorRowProps {
   onEdit: () => void;
 }
 
-function SelectorRow({ rowKey, icon, title, detail, chip, selected, pending, editable, gateHint, editLabel, onEdit }: SelectorRowProps) {
+function SelectorRow({ rowKey, icon, title, detail, chip, stateLabel, selected, pending, editable, gateHint, editLabel, onEdit }: SelectorRowProps) {
   const { t } = useTranslation();
   const Icon = icon === 'camera' ? Camera : Mic;
+  const shownDetail = pending ? t('features.capture-selector.selector.pending') : detail;
+  // Fix wave I (re-gate 70, G70b-03): the row states `busy`, so it must carry its OWN label. Android writes a
+  // view's content description from the label + the state words and skips the write when both are empty
+  // (`BaseViewManager.updateViewContentDescription`): without a label the row read "busy" during a save and
+  // was never rewritten afterwards. The label is what the row shows: name, detail (or "Saving…"), state.
+  const rowLabel = [title, shownDetail, stateLabel].filter((part) => part !== '').join(', ');
   return (
     <View style={styles.wrap} testID={`capture-selector-row-wrap-${rowKey}`}>
-      <ListGroup.Item testID={`capture-selector-row-${rowKey}`} accessibilityState={{ selected, busy: pending }} style={[styles.item, selected ? styles.itemSelected : null]}>
+      <ListGroup.Item
+        testID={`capture-selector-row-${rowKey}`}
+        accessibilityLabel={rowLabel}
+        accessibilityState={{ selected, busy: pending }}
+        style={[styles.item, selected ? styles.itemSelected : null]}
+      >
         <ListGroup.ItemPrefix>
           <View style={styles.iconTile}>
             <Icon size={20} color={palette.gold} />
@@ -328,7 +364,7 @@ function SelectorRow({ rowKey, icon, title, detail, chip, selected, pending, edi
             {title}
           </Text>
           <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.detail} testID={`capture-selector-detail-${rowKey}`}>
-            {pending ? t('features.capture-selector.selector.pending') : detail}
+            {shownDetail}
           </Text>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix style={styles.suffix}>

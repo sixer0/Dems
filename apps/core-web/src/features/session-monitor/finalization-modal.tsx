@@ -6,11 +6,13 @@ import { FileLock2, LifeBuoy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BootRecoveryState, SessionState } from '@dems/shared/domain'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
-import { useSim } from '@dems/shared/sim'
+import { captureFactsOf, useSim } from '@dems/shared/sim'
 import { Stepper, StepperStamp, type StepperStep } from '@/components/composed'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { shortHash } from './model'
+import { useSealAttention } from '@/lib/seal-attention'
+import { SealAttentionNotice } from './seal-attention'
 import { etaSeconds, useSealingProgress } from './sealing-progress'
 import { InterruptedSealNotice } from './interrupted-seal'
 import { useInterruptedSeal } from './use-interrupted-seal'
@@ -64,9 +66,20 @@ interface SealedItem {
  * - **Resumed sealing, in place (OD-08).** When a RECOVERY turns into a resumed seal (the session
  *   is FINALIZING or SEALED while this overlay is in `recovery` mode, or the page switches the mode
  *   back to `finalization`), the SAME dialog draws the finalization body: one Modal, no close and
- *   reopen, so nothing flickers; the note "Resumed after restart" is shown while a step is at
- *   attempt 2 or later. A recovery that ends SEALED can be closed (before, only an INCOMPLETE end
- *   could: the dialog would have stayed locked).
+ *   reopen, so nothing flickers. A recovery that ends SEALED can be closed (before, only an
+ *   INCOMPLETE end could: the dialog would have stayed locked).
+ *
+ * Fix wave I, driver B (finding G75b-02; contract note `contract_wave_i.md`):
+ * - **A seal that is blocked or retried** (`useSealAttention`, the shared `sealAttentionOf`): the
+ *   dialog states it (`SealAttentionNotice`), draws NO percentage, ETA or "Resumed" note, names the
+ *   state in its heading and CAN BE LEFT (Close, Escape, a click outside). Closing it changes
+ *   nothing on the Core: the session stays open there, and the notice says so.
+ * - **"Resumed after restart" is no reading of `attempt`.** The attempt of a step grows with every
+ *   run of the seal, the Core's own retries included (at re-gate 75 the note appeared with no
+ *   restart). The truthful fact is `resumed` of operation 83, which this dialog does not poll. So
+ *   the note is shown only where the attempt can grow by a recovery alone: beside a session of the
+ *   SIMULATOR's capture (no capture member), or when this dialog itself followed the session
+ *   through RECOVERY (`mode: 'recovery'`). Beside a session of the Core's own capture it is not.
  */
 export function FinalizationModal({ mode, isOpen, sessionId, onClose }: FinalizationModalProps) {
   const { t } = useTranslation()
@@ -76,7 +89,9 @@ export function FinalizationModal({ mode, isOpen, sessionId, onClose }: Finaliza
   const body: OverlayMode = mode === 'finalization' || resumedSeal ? 'finalization' : 'recovery'
   const sealed = body === 'finalization' && state === SessionState.SEALED
   const recoveryDone = body === 'recovery' && state === null
-  const closable = sealed || recoveryDone || (body === 'finalization' && state === null)
+  // G75b-02: a blocked or retried seal never locks the operator into this dialog.
+  const attention = useSealAttention(body === 'finalization' && !sealed ? sessionId : null)
+  const closable = sealed || recoveryDone || (body === 'finalization' && state === null) || attention !== null
 
   return (
     <Modal.Backdrop
@@ -96,9 +111,10 @@ export function FinalizationModal({ mode, isOpen, sessionId, onClose }: Finaliza
           data-mode={mode}
           data-body={body}
           data-state={state ?? 'NONE'}
+          data-seal={attention?.kind}
         >
           {body === 'finalization' ? (
-            <FinalizationBody sessionId={sessionId} state={state} onClose={onClose} />
+            <FinalizationBody sessionId={sessionId} state={state} onClose={onClose} sawRecovery={mode === 'recovery'} />
           ) : (
             <RecoveryBody sessionId={sessionId} state={state} onClose={onClose} />
           )}
@@ -108,7 +124,7 @@ export function FinalizationModal({ mode, isOpen, sessionId, onClose }: Finaliza
   )
 }
 
-function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; state: SessionState | null; onClose: () => void }) {
+function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionId: string; state: SessionState | null; onClose: () => void; sawRecovery: boolean }) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const steps = useSim((s) => (s.session?.id === sessionId ? s.session.finalization.steps : null))
@@ -119,6 +135,10 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
   const stopping = state === SessionState.STOPPING
   // Wave H driver B (G75-03, ruling D197): an interrupted seal is named in the heading, the stamp and the sealed line.
   const interrupted = useInterruptedSeal(sessionId)
+  // Fix wave I (G75b-02): the seal is blocked or retried - stated, with no invented progress.
+  const attention = useSealAttention(sealed ? null : sessionId)
+  // "Resumed after restart" is said only where `attempt` can grow by a recovery alone (see the header).
+  const ownCapture = useSim((s) => (s.session?.id === sessionId ? captureFactsOf(s.session) !== null : false))
 
   // Row 87 (E-13): forward-only, from the Core's states alone (no timer here).
   const progress = useSealingProgress(sessionId, steps, sealed)
@@ -158,7 +178,13 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
         </span>
         <span className="flex min-w-0 flex-col">
           <Modal.Heading className="sm-final-title">
-            {sealed ? (interrupted?.title ?? t('session.finalization.sealedTitle')) : t('session.finalization.title')}
+            {sealed
+              ? (interrupted?.title ?? t('session.finalization.sealedTitle'))
+              : attention?.kind === 'BLOCKED'
+                ? t('web.sealBlocked.title')
+                : attention?.kind === 'RETRYING'
+                  ? t('web.sealBlocked.retryTitle')
+                  : t('session.finalization.title')}
           </Modal.Heading>
           <span className="sm-final-subtitle font-mono">{t('session.finalization.subtitle', { sessionId })}</span>
         </span>
@@ -166,31 +192,37 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
       <Modal.Body className="sm-final-body">
         <UnsealableNotice sessionId={sessionId} />
         <InterruptedSealNotice sessionId={sessionId} />
-        <ProgressBar
-          aria-label={t('session.finalization.progress', { percent })}
-          value={percent}
-          color={sealed ? 'success' : 'accent'}
-          size="sm"
-          className="sm-final-progress"
-          style={{ '--sm-progress': String(percent / 100) } as CSSProperties}
-          data-testid="sm-final-progress"
-        >
-          <span className="sm-final-progress-label">{t('session.finalization.progress', { percent })}</span>
-          <ProgressBar.Track>
-            <ProgressBar.Fill />
-          </ProgressBar.Track>
-        </ProgressBar>
+        {attention !== null ? (
+          <SealAttentionNotice attention={attention} />
+        ) : (
+          <>
+          <ProgressBar
+            aria-label={t('session.finalization.progress', { percent })}
+            value={percent}
+            color={sealed ? 'success' : 'accent'}
+            size="sm"
+            className="sm-final-progress"
+            style={{ '--sm-progress': String(percent / 100) } as CSSProperties}
+            data-testid="sm-final-progress"
+          >
+            <span className="sm-final-progress-label">{t('session.finalization.progress', { percent })}</span>
+            <ProgressBar.Track>
+              <ProgressBar.Fill />
+            </ProgressBar.Track>
+          </ProgressBar>
 
-        {finalizing && progress.reportsProgress ? (
-          <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta={progress.etaMs === null ? 'none' : 'core'}>
-            {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
-          </p>
-        ) : null}
-        {progress.resumed && !sealed ? (
-          <p className="sm-final-package-note" role="status" data-testid="sm-final-resumed" data-attempt={progress.attempt}>
-            {t('session.finalization.resumed')}
-          </p>
-        ) : null}
+          {finalizing && progress.reportsProgress ? (
+            <p className="sm-final-package-note" role="status" data-testid="sm-final-eta" data-eta={progress.etaMs === null ? 'none' : 'core'}>
+              {progress.etaMs === null ? t('session.finalization.estimating') : t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
+            </p>
+          ) : null}
+          {progress.resumed && !sealed && (!ownCapture || sawRecovery) ? (
+            <p className="sm-final-package-note" role="status" data-testid="sm-final-resumed" data-attempt={progress.attempt}>
+              {t('session.finalization.resumed')}
+            </p>
+          ) : null}
+          </>
+        )}
 
         <AnimatePresence initial={false}>
           {stopping ? (
@@ -246,7 +278,7 @@ function FinalizationBody({ sessionId, state, onClose }: { sessionId: string; st
         </AnimatePresence>
       </Modal.Body>
       <Modal.Footer className="sm-final-footer">
-        {sealed || state === null ? (
+        {sealed || state === null || attention !== null ? (
           <Button variant="ghost" onPress={onClose} data-testid="sm-final-close">
             {t('session.finalization.close')}
           </Button>

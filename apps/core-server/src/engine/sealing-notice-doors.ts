@@ -23,13 +23,13 @@
  * `params.reason` is the stored column `alerts.reason`). The transitions are pure and local: the
  * simulator has no seal that fails, so there is nothing for it to agree with.
  */
-import { ALERT_RING_SIZE, nextItemId, pushRing, recordActivity, type SimAlert, type SimState } from '@dems/shared/sim';
+import { ALERT_RING_SIZE, SEAL_BLOCKED_DETAILS, SEAL_BLOCKED_REASON as SHARED_SEAL_BLOCKED_REASON, nextItemId, pushRing, recordActivity, type SimAlert, type SimState } from '@dems/shared/sim';
 import { EngineError } from './errors';
 import type { EngineHost, EngineOutcome } from './types';
 
 /** `alerts.reason` of the two notices. */
 export const SEALED_PLAINTEXT_REASON = 'SEALED_PLAINTEXT_QUARANTINED';
-export const SEAL_BLOCKED_REASON = 'SEAL_BLOCKED';
+export const SEAL_BLOCKED_REASON = SHARED_SEAL_BLOCKED_REASON;
 /** `audit.details.reason` of the on-demand retry. */
 export const SEAL_RETRY_REASON = 'SEAL_RETRY';
 
@@ -48,6 +48,8 @@ export interface SealBlockedInput {
   readonly step: string;
   /** What an operator reads: the cause in words and what restores it. */
   readonly message: string;
+  /** Fix wave I (G75b-01): the closed code beside the cause (`SEAL_BLOCKED_DETAILS` of `@dems/shared/sim`), when the seal named one. `params.detail` of the alert. */
+  readonly detail?: string;
 }
 export interface SealRetryNote {
   readonly sessionId: string;
@@ -101,7 +103,9 @@ export function raiseSealBlockedTransition(state: SimState, now: number, input: 
   if (typeof input.sessionId !== 'string' || !SESSION_ID.test(input.sessionId) || !CODE.test(input.cause) || !CODE.test(input.step) || typeof input.message !== 'string' || input.message.length < 1 || input.message.length > 400) invalid('a cause that is no code');
   if (state.session === null || state.session.id !== input.sessionId) return state;
   if (activeNotice(state, SEAL_BLOCKED_REASON, input.sessionId) !== undefined) return state;
-  return withAlert(state, now, input.sessionId, input.message, { reason: SEAL_BLOCKED_REASON, cause: input.cause, step: input.step, sessionId: input.sessionId });
+  // Fix wave I (G75b-01): a detail outside the closed list is not written (never free text in an alert).
+  const detail = input.detail !== undefined && (SEAL_BLOCKED_DETAILS as readonly string[]).includes(input.detail) ? input.detail : null;
+  return withAlert(state, now, input.sessionId, input.message, { reason: SEAL_BLOCKED_REASON, cause: input.cause, step: input.step, sessionId: input.sessionId, ...(detail === null ? {} : { detail }) });
 }
 
 /** The active blocked alert of the session is resolved; the same state when there is none. */

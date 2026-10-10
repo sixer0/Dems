@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
+import { isOwnCaptureCore } from '@/lib/own-capture'
 import { isTimeEscalation, timeLevel, type TimeLevel } from './model'
 
 /** A counter that increases on every escalation of `level` (a `GlowLayer` `pulseKey`, R8). */
@@ -28,6 +29,8 @@ export function useNetworkTimeAlerts(): void {
   const { t } = useTranslation()
   const view = useSim((s) => ({
     level: timeLevel(s.time.source),
+    // G75b-06: a host system clock never fell back from anything - no "RTC holdover" toast.
+    hostClock: isOwnCaptureCore(s),
     server: s.time.ntp.server,
     tablet: s.tabletLink.state,
   }))
@@ -37,7 +40,7 @@ export function useNetworkTimeAlerts(): void {
   useEffect(() => {
     const from = previousLevel.current
     previousLevel.current = view.level
-    if (from === view.level) return
+    if (from === view.level || view.hostClock) return
     if (view.level === 'FALLBACK' && from === 'LOCKED') {
       toast.warning(t('networkTime.toast.gnssLost'), {
         description: t('networkTime.toast.gnssLostDetail', { server: view.server }),
@@ -47,7 +50,7 @@ export function useNetworkTimeAlerts(): void {
     } else if (view.level === 'LOCKED') {
       toast.success(t('networkTime.toast.restored'), { description: t('networkTime.toast.restoredDetail') })
     }
-  }, [view.level, view.server, t])
+  }, [view.level, view.hostClock, view.server, t])
 
   useEffect(() => {
     const from = previousTablet.current

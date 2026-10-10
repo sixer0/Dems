@@ -244,7 +244,13 @@ export function createGeneratorSubsystem(engine: EngineContext, capture: Capture
           nextRecordingAt = Math.max(now, session.startedAt) + rng.exponential(RECORDING_EVENT_MEAN_MS);
         }
         let count = 0;
-        while (nextRecordingAt <= now) {
+        // Closing pass J (finding G75b-10): WHILE THE START IS NOT DECIDED (`captureDurable: false`,
+        // the simulator's connecting time) NO INTEGRITY ROW IS WRITTEN. The arrivals keep their
+        // schedule and their draws; they are written, each at its own scheduled time, once the
+        // start is durable - so a start that happened has the same rows as before - and never for
+        // a start that failed (the session leaves RECORDING and the schedule is dropped below).
+        const held = session.captureDurable === false;
+        while (!held && nextRecordingAt <= now) {
           if (count >= GENERATOR_CATCH_UP_MAX) {
             nextRecordingAt = now + rng.exponential(RECORDING_EVENT_MEAN_MS);
             break;

@@ -44,6 +44,8 @@ import {
   evaluatePrecheck,
   selectPrecheck,
   signedInOperatorId,
+  startRefusedReasonOf,
+  startRefusedSentenceKey,
   useSim,
   type CreateSessionResult,
   type PrecheckSlice,
@@ -198,6 +200,14 @@ export function useFlowActions(state: SessionState | null, sessionId: string | n
 
   const fail = useCallback(
     (action: string, error: unknown, message: string) => {
+      // Closing pass J (item 7): a start the Core refused because of the session key (`503 NOT_READY`,
+      // `details.reason`) says its own sentence - the presenter would word it as a Core that is starting.
+      const refused = startRefusedReasonOf(error);
+      if (refused !== null) {
+        logAction(action, error, state, sessionId, 'warn');
+        toast.show({ variant: 'danger', label: message, description: t(startRefusedSentenceKey(refused)) });
+        return;
+      }
       // Live mode: a denial, an outage or a limit is the presenter's (one wording on every screen);
       // it is an expected state of the link or the role, so it is logged as a warning.
       if (live && presentCoreError(error)) {
@@ -207,7 +217,7 @@ export function useFlowActions(state: SessionState | null, sessionId: string | n
       logAction(action, error, state, sessionId);
       toast.show({ variant: 'danger', label: message });
     },
-    [live, presentCoreError, state, sessionId, toast],
+    [live, presentCoreError, state, sessionId, toast, t],
   );
 
   // S1-4: `createSession` (and, for a changed form on a CREATE session, `cancel` then `createSession`

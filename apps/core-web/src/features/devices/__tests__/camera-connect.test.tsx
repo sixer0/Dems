@@ -18,6 +18,7 @@ import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, setSimConnectionTestOutcome, type Sim } from '@dems/shared/sim'
 import { getMissingI18nKeys } from '@/i18n'
 import { CONNECT_FIELD, connectRefusal, credentialOf, OUTCOME_TONE, outcomeRole, validateConnectForm } from '../camera-connect'
+import { enWeb } from '@/i18n-web'
 import { installDevicesBed, mountDevices, toastTexts } from './search-bed'
 
 const C = en.common.captureConnect
@@ -101,8 +102,12 @@ describe('the dialog (SEC35-31, SEC35-37; ux §8d.2, §8d.3)', { timeout: 30_000
     expect(screen.getByTestId('camera-connect-reference')).not.toBeEmptyDOMElement()
     expect(screen.getByTestId('camera-connect-unverified')).toHaveTextContent(C.unverified)
     expect(screen.getByTestId('camera-connect-target').querySelector('a')).toBeNull()
-    // A development source needs no password: no field until the operator asks for them.
-    expect(screen.getByTestId('camera-connect-no-password')).toHaveTextContent(C.noPasswordNeeded)
+    // A development source can be tested without a password: no field until the operator asks for them.
+    // Fix wave I (G70b-02, contract note A2 section 1): the sentence no longer says "needs no password".
+    expect(screen.getByTestId('camera-connect-no-password')).toHaveTextContent(enWeb.web.connect.developmentHint)
+    // Closing pass J: the shared key `captureConnect.noPasswordNeeded` now IS the ruled sentence; the refused words stay refused.
+    expect(C.noPasswordNeeded).toBe(enWeb.web.connect.developmentHint)
+    expect(screen.getByTestId('camera-connect-no-password')).not.toHaveTextContent(/needs no password/)
     expect(screen.queryByTestId('camera-connect-fields')).not.toBeInTheDocument()
     await showFields()
     expect(username().value).toBe('')

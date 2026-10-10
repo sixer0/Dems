@@ -78,3 +78,42 @@ export const removePackageFolder: PackageFolderRemover = (storeRoot, directory) 
   }
   return Object.freeze({ removed: true });
 };
+
+/** A name in the quarantine folder of a store that is one session's: `<store root>/.quarantine/<sessionId>`. */
+export const REMOVABLE_QUARANTINE_DIRECTORY = /^SES-[0-9]{8}-[0-9]{4}$/;
+
+/**
+ * Removes ONE session folder of the quarantine of a store (fix wave I driver A1; G75b-01): the
+ * containment rule of `removePackageFolder`, one level down - the quarantine folder is a real
+ * directory directly below the resolved store root, the entry a real directory directly below it
+ * under the name asked for. A link anywhere is refused; nothing outside is touched.
+ */
+export function removeQuarantineFolder(storeRoot: string, quarantineDirectory: string, sessionId: string): PackageRemoval {
+  if (!REMOVABLE_QUARANTINE_DIRECTORY.test(sessionId)) return refused(PackageRemovalRefusal.NAME_NOT_A_PACKAGE);
+  let quarantine: string;
+  try {
+    const root = realpathSync(storeRoot);
+    const found = lstatSync(join(root, quarantineDirectory));
+    if (found.isSymbolicLink() || !found.isDirectory()) return refused(PackageRemovalRefusal.NOT_A_DIRECTORY);
+    quarantine = realpathSync(join(root, quarantineDirectory));
+    if (dirname(quarantine) !== root || basename(quarantine) !== quarantineDirectory) return refused(PackageRemovalRefusal.OUTSIDE_STORE_ROOT);
+  } catch {
+    return refused(PackageRemovalRefusal.ROOT_UNRESOLVED);
+  }
+  const entry = join(quarantine, sessionId);
+  let resolved: string;
+  try {
+    const found = lstatSync(entry);
+    if (found.isSymbolicLink() || !found.isDirectory()) return refused(PackageRemovalRefusal.NOT_A_DIRECTORY);
+    resolved = realpathSync(entry);
+  } catch {
+    return refused(PackageRemovalRefusal.ENTRY_UNRESOLVED);
+  }
+  if (dirname(resolved) !== quarantine || basename(resolved) !== sessionId) return refused(PackageRemovalRefusal.OUTSIDE_STORE_ROOT);
+  try {
+    rmSync(resolved, { recursive: true, force: false });
+  } catch {
+    return refused(PackageRemovalRefusal.REMOVE_FAILED);
+  }
+  return Object.freeze({ removed: true });
+}

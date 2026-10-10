@@ -15,7 +15,14 @@
  *                 when every step is done. A timed (simulated) seal: the simulator's own figure
  *                 for the run, `SEALING_ETA_STEP_MS` per step that is left - the same number the
  *                 simulator answers in a client that runs without a Core;
- *   resumed       a step is at an attempt above the first (dbc-3 §B.4).
+ *   resumed       the seal was RESUMED: run again by a start of the Core or by the recovery
+ *                 action (contract: "a RECOVERY resume from a checkpoint", MB-06). On a Core in real
+ *                 capture that is a fact of the sealing host (`resumedSeal`), handed in as
+ *                 `resumed`: the ATTEMPT of a step grows with every run - an automatic retry of the
+ *                 same process too - so "attempt above the first" said "resumed after restart" with
+ *                 no restart (fix wave I driver A1; re-gate 75 finding G75b-02). Without that fact
+ *                 (Simulated mode: the simulator's attempt grows on a RECOVERY only) the rule of the
+ *                 attempt stays.
  *
  * Pure: no clock is read here; `now` is the Core instant of the request.
  */
@@ -32,7 +39,7 @@ export function isTimedSeal(steps: readonly Step[]): boolean {
 }
 
 /** The body of operation 83 for a session whose finalization has started. */
-export function sealingProgressOf(session: Pick<ActiveSession, 'id' | 'state' | 'finalization'>, now: number): SealingProgressBody {
+export function sealingProgressOf(session: Pick<ActiveSession, 'id' | 'state' | 'finalization'>, now: number, resumed: boolean | null = null): SealingProgressBody {
   const steps = session.finalization.steps;
   const total = Math.max(1, steps.length);
   const done = steps.reduce((sum, step) => sum + percentOf(step) / 100, 0);
@@ -51,7 +58,7 @@ export function sealingProgressOf(session: Pick<ActiveSession, 'id' | 'state' | 
     steps: steps.map((step) => ({ id: step.id, status: step.status, startedAt: step.startedAt, completedAt: step.completedAt, durationMs: step.durationMs })),
     progressPct: Math.min(100, Math.floor((done / total) * 100)),
     etaMs,
-    resumed: steps.some((step) => (step.attempt ?? SEALING_FIRST_ATTEMPT) > SEALING_FIRST_ATTEMPT),
+    resumed: resumed ?? steps.some((step) => (step.attempt ?? SEALING_FIRST_ATTEMPT) > SEALING_FIRST_ATTEMPT),
     updatedAt: now,
   };
 }

@@ -71,6 +71,8 @@ describe('the scan itself', () => {
       `${FOLDER}/limits.ts`,
       `${FOLDER}/registered.ts`,
       `${FOLDER}/routes.ts`,
+      // Fix wave I (G70b-07): the one READ of the stored chain's highest search number.
+      `${FOLDER}/search-ids.ts`,
       `${FOLDER}/search.ts`,
       `${FOLDER}/session-expiry.ts`,
       `${FOLDER}/store.ts`,

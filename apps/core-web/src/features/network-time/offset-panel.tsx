@@ -3,6 +3,7 @@ import { Skeleton } from '@heroui/react'
 import { ChartSpline } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
+import { isOwnCaptureCore } from '@/lib/own-capture'
 import { formatOffset } from './model'
 import { NetworkTimePanel } from './panel'
 
@@ -18,7 +19,8 @@ const OffsetChart = lazy(() => chartsChunk.then((m) => ({ default: m.OffsetChart
 export function OffsetPanel() {
   const { t } = useTranslation()
   const history = useSim((s) => s.time.history)
-  const now = useSim((s) => ({ offsetMs: s.time.offsetMs, source: s.time.source }))
+  // G75b-06: a Core in its own capture measures no offset (the slice's 0 is "not measured", never a figure).
+  const now = useSim((s) => ({ offsetMs: s.time.offsetMs, source: s.time.source, hostClock: isOwnCaptureCore(s) }))
   const value = formatOffset(now.offsetMs)
   return (
     <NetworkTimePanel
@@ -26,15 +28,21 @@ export function OffsetPanel() {
       icon={ChartSpline}
       title={t('networkTime.history.title')}
       action={
+        now.hostClock ? (
+          <span className="nt-headline">
+            <span className="nt-headline-muted">{t('web.ownCore.time.notMeasured')}</span>
+          </span>
+        ) : (
         <span className="nt-headline">
           <span className="nt-headline-strong" data-source={now.source}>
             {t('networkTime.history.now', { value })}
           </span>
           <span className="nt-headline-muted">{t('networkTime.history.band')}</span>
         </span>
+        )
       }
     >
-      {history.length >= 2 ? (
+      {!now.hostClock && history.length >= 2 ? (
         <Suspense fallback={<Skeleton className="nt-chart rounded-lg" />}>
           <OffsetChart
             history={history}
@@ -43,7 +51,7 @@ export function OffsetPanel() {
         </Suspense>
       ) : (
         <div className="nt-chart nt-chart-empty" data-testid="network-time-offset-empty">
-          <p className="nt-collecting">{t('networkTime.history.empty')}</p>
+          <p className="nt-collecting">{now.hostClock ? t('web.ownCore.time.offsetEmpty') : t('networkTime.history.empty')}</p>
         </div>
       )}
     </NetworkTimePanel>

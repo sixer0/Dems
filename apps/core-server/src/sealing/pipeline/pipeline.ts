@@ -77,6 +77,7 @@ import {
   type SealingPorts,
   type SealingStepId,
   sealingFailureReason,
+  sealerCauseOf,
   sealingOmittedNotice,
 } from './contract';
 import { createPackageWriter, type PackageWriter } from './package-writer';
@@ -426,7 +427,9 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
               try {
                 sealed = await ports.sealer.seal(sessionId, { trackId, seq: fragment.index, byteOffset: fragment.start }, plain);
               } catch (error) {
-                throw new SealingError(SealingFailure.SEALER_FAILED, 'a fragment could not be sealed with the session key', { trackId, seq: fragment.index }, error);
+                // G75b-01: the CAUSE goes with the failure, as a closed code read from the code of what the sealer threw.
+                const cause = sealerCauseOf(error);
+                throw new SealingError(SealingFailure.SEALER_FAILED, 'a fragment could not be sealed with the session key', { trackId, seq: fragment.index, ...(cause === null ? {} : { cause }) }, error);
               }
               if (sealed.ciphertext.byteLength !== fragment.len) throw new SealingError(SealingFailure.SEALER_FAILED, 'a sealed fragment has another length than its plaintext', { trackId, seq: fragment.index });
               const one = nodeSha256();

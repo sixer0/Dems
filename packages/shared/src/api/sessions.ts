@@ -142,6 +142,18 @@ export const SESSION_SCHEMAS = {
 export const CAPTURE_NOT_DURABLE_REASON = 'CAPTURE_NOT_DURABLE';
 export const CAPTURE_HELPERS_LEFT_REASON = 'CAPTURE_HELPERS_LEFT';
 
+/**
+ * Contract example of the `503 NOT_READY` of `startSession` that names a session-key refusal (fix
+ * wave I, driver A1; `contract_wave_i.md` section 5): status, envelope code, details. The two
+ * reason values and their reader are `START_REFUSED_REASONS` / `startRefusedReasonOf` of
+ * `@dems/shared/sim` (closing pass J, item 7); a client test imports this example.
+ */
+export const START_REFUSED_SESSION_KEY_EXAMPLE = Object.freeze({
+  status: 503,
+  code: 'NOT_READY',
+  details: Object.freeze({ reason: 'SESSION_KEY_NOT_OF_SESSION' }),
+} as const);
+
 // ── Operations 81-83: mic switch and sealing progress (task 3 M2-W7; register SH-13; C3 §2) ────
 
 /** Request body of op 81: the input to make active, with an optional operator reason. */

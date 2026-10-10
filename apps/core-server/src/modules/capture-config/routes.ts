@@ -33,7 +33,8 @@
  *        discovery candidate is never one), a profile that is no code, one microphone behind both
  *        inputs, one camera on both tracks with one profile, a replacing mic pair (lines with
  *        `role`, decision D133 (1)) that is not one PRIMARY and one STANDBY line; a device the adapter registry refuses
- *        for the running operation carries `details.reason: DEVELOPMENT_SOURCE_NOT_ALLOWED`.
+ *        for the running operation carries the reason of THAT refusal in `details.reason`
+ *        (`CaptureAssignmentRefusal`; fix wave I - it was `DEVELOPMENT_SOURCE_NOT_ALLOWED` for all of them).
  *   503  the engine is not running, or the unit did not commit.
  *
  * ERRORS. The module catches nothing it cannot answer: an unexpected failure reaches the error
@@ -56,7 +57,7 @@ import { isSessionActive, type CaptureConfigChange } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CaptureAdapterError, CaptureAdapterRefusal, type CaptureDeviceRegistry } from '../../capture/adapters';
+import { CaptureAdapterError, CaptureAdapterRefusal, sourceClassOfOperation, type CaptureDeviceRegistry, type CaptureOperation } from '../../capture/adapters';
 import type { DurableSlices } from '../../db/mapping';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
@@ -66,8 +67,54 @@ import { readMicTransports } from './store';
 export const CAPTURE_CONFIG_MODULE_OPERATIONS = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic'] as const;
 export type CaptureConfigModuleOperation = (typeof CAPTURE_CONFIG_MODULE_OPERATIONS)[number];
 
-/** `details.reason` of a device the adapter registry does not let the selector name (C3 §4). */
+/** `details.reason` of a DEVELOPMENT device named on a Core that does not run development sources (C3 §4). */
 export const DEVELOPMENT_SOURCE_NOT_ALLOWED = 'DEVELOPMENT_SOURCE_NOT_ALLOWED';
+
+/**
+ * EVERY REFUSAL OF THE ADAPTER REGISTRY UNDER ITS OWN REASON (fix wave I; re-gate 70, finding
+ * G70b-01). Until this wave every refusal was answered as `DEVELOPMENT_SOURCE_NOT_ALLOWED`, so a
+ * camera the registry simply did not serve yet read "this source can only be used in the
+ * development configuration" on a development Core. `details.reason` of the 422 is now one of:
+ *
+ *   DEVELOPMENT_SOURCE_NOT_ALLOWED   a development source, and the Core does not run development sources
+ *   PRODUCTION_SOURCE_NOT_ALLOWED    a production source, and the Core runs development sources
+ *   CAPTURE_DEVICE_NOT_SERVED        registered, but no capture adapter of the running Core serves it
+ *   CAPTURE_DEVICE_CLASS_MISMATCH    not a device of the class the line asks for
+ *
+ * and, for a refusal this table does not name, the adapter layer's own code (a fixed word, rule CR-4).
+ */
+export const CaptureAssignmentRefusal = {
+  DEVELOPMENT_SOURCE_NOT_ALLOWED,
+  PRODUCTION_SOURCE_NOT_ALLOWED: 'PRODUCTION_SOURCE_NOT_ALLOWED',
+  CAPTURE_DEVICE_NOT_SERVED: 'CAPTURE_DEVICE_NOT_SERVED',
+  CAPTURE_DEVICE_CLASS_MISMATCH: 'CAPTURE_DEVICE_CLASS_MISMATCH',
+} as const;
+
+type SourceClassName = 'PRODUCTION' | 'DEVELOPMENT';
+const SOURCE_CLASS_REASON: Readonly<Record<SourceClassName, string>> = Object.freeze({
+  DEVELOPMENT: CaptureAssignmentRefusal.DEVELOPMENT_SOURCE_NOT_ALLOWED,
+  PRODUCTION: CaptureAssignmentRefusal.PRODUCTION_SOURCE_NOT_ALLOWED,
+});
+
+/**
+ * The reason of one refusal. `stored` is the source class the registry SLICE states for the
+ * device (absent on a built-in), `operation` the capture operation the registry was built for
+ * (absent for a registry that does not say: the earlier reading stands).
+ *   - a class refusal names the class of the DEVICE: the one that is not the operation's;
+ *   - a device the registry does not know is a class refusal when its stored class is not the
+ *     operation's (a production camera on a development Core has no adapter there), and
+ *     "not served" otherwise.
+ */
+export function captureAssignmentRefusalOf(code: CaptureAdapterRefusal, stored: SourceClassName | undefined, operation: CaptureOperation | undefined): string {
+  const wanted: SourceClassName | null = operation === undefined ? null : sourceClassOfOperation(operation);
+  const other = (name: SourceClassName): SourceClassName => (name === 'PRODUCTION' ? 'DEVELOPMENT' : 'PRODUCTION');
+  if (code === CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED) return SOURCE_CLASS_REASON[stored ?? (wanted === null ? 'DEVELOPMENT' : other(wanted))];
+  if (code === CaptureAdapterRefusal.DEVICE_UNKNOWN) {
+    return wanted !== null && stored !== undefined && stored !== wanted ? SOURCE_CLASS_REASON[stored] : CaptureAssignmentRefusal.CAPTURE_DEVICE_NOT_SERVED;
+  }
+  if (code === CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH) return CaptureAssignmentRefusal.CAPTURE_DEVICE_CLASS_MISMATCH;
+  return code;
+}
 
 const LOCKED_TEXT = 'The capture configuration cannot be changed while a session is open.';
 const UNKNOWN_DEVICE_TEXT = 'The capture registry has no such device.';
@@ -79,8 +126,11 @@ const SOURCE = 'captureConfig.edit';
 /** What the routes need of the module: the adapter registry, once the wiring provides one. */
 export interface CaptureConfigRouteSeams {
   /** The device registry of the adapter layer, or null while none is provided (`SIMULATED`: no adapter is registered). */
-  deviceRegistry(): Pick<CaptureDeviceRegistry, 'assertAssignable'> | null;
+  deviceRegistry(): AssignmentRegistry | null;
 }
+
+/** What an edit asks of the adapter registry: rule RG-3, and (when the registry says it) the operation it was built for. */
+export type AssignmentRegistry = Pick<CaptureDeviceRegistry, 'assertAssignable'> & { readonly operation?: CaptureOperation };
 
 /** The registry entry of one of this module's operations. Throws at load for a name the registry does not hold. */
 export function captureConfigOperation(operationId: CaptureConfigModuleOperation): CoreApiRegistryOperation {
@@ -141,21 +191,23 @@ function assertStorable(change: CaptureConfigChange): void {
  * registry slice holds with the right class are asked: everything else is the action's own 404 or
  * 422. A role change (operation 80) assigns nothing.
  */
-function assertAssignable(registry: Pick<CaptureDeviceRegistry, 'assertAssignable'> | null, state: DurableSlices, change: CaptureConfigChange): void {
+function assertAssignable(registry: AssignmentRegistry | null, state: DurableSlices, change: CaptureConfigChange): void {
   if (registry === null || change.kind === 'PRIMARY_MIC') return;
   const assigned: readonly { readonly deviceClass: 'CAMERA' | 'MIC'; readonly deviceId: string }[] =
     change.kind === 'CAMERA_SOURCE'
       ? [{ deviceClass: 'CAMERA', deviceId: change.deviceId }]
       : [...(change.cameras ?? []).map((line) => ({ deviceClass: 'CAMERA' as const, deviceId: line.deviceId })), ...(change.mics ?? []).map((line) => ({ deviceClass: 'MIC' as const, deviceId: line.deviceId }))];
   for (const { deviceClass, deviceId } of assigned) {
-    if (!state.captureDevices.devices.some((device) => device.id === deviceId && device.kind === deviceClass)) continue;
+    const stored = state.captureDevices.devices.find((device) => device.id === deviceId && device.kind === deviceClass);
+    if (stored === undefined) continue;
     try {
       registry.assertAssignable(deviceClass, deviceId);
     } catch (cause) {
       if (!(cause instanceof CaptureAdapterError)) throw cause;
       if (cause.code === CaptureAdapterRefusal.REGISTRY_LOCKED) throw captureConfigLocked();
       // The error's own text is a fixed sentence and its device ID a registry ID (rule CR-4).
-      throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, NOT_ASSIGNABLE_TEXT, { details: { in: 'body', reason: DEVELOPMENT_SOURCE_NOT_ALLOWED, deviceId }, cause });
+      // Fix wave I: each refusal under its own reason (`captureAssignmentRefusalOf`).
+      throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, NOT_ASSIGNABLE_TEXT, { details: { in: 'body', reason: captureAssignmentRefusalOf(cause.code, stored.sourceClass, registry.operation), deviceId }, cause });
     }
   }
 }

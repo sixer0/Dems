@@ -27942,6 +27942,11 @@
       "SecuritySlice": {
         "type": "object",
         "properties": {
+          "platformNotReported": {
+            "description": "Present on a Core in its own capture: this Core reads no TPM, no Secure Boot state and computes no posture. `tpm`, `secureBoot`, `posture` and the `TPM` / `SECURE_BOOT` entries of `controls` are then not readings and are shown as \"not reported\" (closing pass J, D217 (7)). Absent on the simulated device.",
+            "type": "boolean",
+            "const": true
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -28387,6 +28392,11 @@
                   "description": "The enumerated cause of a capture fault. The key of a fault is (kind, reason, target): two causes on one device are two entries.",
                   "type": "string",
                   "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+                },
+                "coreNotRunning": {
+                  "description": "Present on the restart fault (`POWER_FAIL`) of a Core in its own capture: the Core was not running while a session was active. Worded from this member, never as a power failure (closing pass J, D217 (5)).",
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [
@@ -29289,6 +29299,11 @@
               },
               "warningsAcknowledged": {
                 "type": "boolean"
+              },
+              "sendingDeviceId": {
+                "description": "The paired device that sent this pre-check (fix wave I, D216): the audit row of its outcome names it. Absent: a web console session sent it.",
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9-]{1,31}$"
               }
             },
             "required": [
@@ -29623,6 +29638,11 @@
                       "FAULT",
                       "RECOVERY"
                     ]
+                  },
+                  "coreNotRunning": {
+                    "description": "Present on the restart fault of a Core in its own capture: the Core was not running while the session was active and does not know why. The kind stays `POWER_FAIL`; the fault is worded from this member, never as a power failure (closing pass J, D217 (5)). Absent: the fault is what its kind says.",
+                    "type": "boolean",
+                    "const": true
                   }
                 },
                 "required": [

@@ -2,7 +2,7 @@ import { Chip } from '@heroui/react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
-import { selectCameraById, useSim } from '@dems/shared/sim'
+import { selectCameraById, selectIsRecording, useSim } from '@dems/shared/sim'
 import { useMotionPolicy } from '@/motion'
 import { CameraPreview } from './camera-preview'
 import { TrackUnreachableMark } from './capture-notices'
@@ -13,6 +13,8 @@ import { useDeviceWords } from './live'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
 import { CAMERA_DEVICE, CAMERA_POE_PORT } from './sim-adapter'
 import { TrackSourceMarks } from './source-badge'
+import { useRealCaptureCore } from './source-class'
+import { measuredFiguresShown } from './source-state'
 import { StatusChip, StatusDot } from './status-chip'
 
 export interface CameraTileProps {
@@ -49,6 +51,11 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
   const resolution = camera?.resolution ?? '1080p'
   const fps = camera?.fps ?? 25
   const recState = camera?.recState ?? null
+  // Fix wave I (G70b-06; `source-state.ts`): on a Core in real capture the PoE port and the bitrate are
+  // values of the simulator's camera slice - drawn only where the Core measures them.
+  const realCapture = useRealCaptureCore()
+  const recording = useSim(selectIsRecording)
+  const figures = measuredFiguresShown({ realCapture, recording })
 
   return (
     <motion.article
@@ -110,14 +117,18 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           <dt>{t('devices.cameras.format')}</dt>
           <dd>{t('common.devices.cameraFormatCodec', { resolution, fps, codec: camera?.codec ?? 'H.264' })}</dd>
         </div>
-        <div>
-          <dt>{t('devices.cameras.poePort')}</dt>
-          <dd>{labels.port(CAMERA_POE_PORT)}</dd>
-        </div>
-        <div>
-          <dt>{t('devices.cameras.bitrate')}</dt>
-          <dd>{t('common.units.mbps', { value: camera?.bitrateMbps ?? 9 })}</dd>
-        </div>
+        {figures.poePort ? (
+          <div data-testid={`camera-poe-${cameraId}`}>
+            <dt>{t('devices.cameras.poePort')}</dt>
+            <dd>{labels.port(CAMERA_POE_PORT)}</dd>
+          </div>
+        ) : null}
+        {figures.bitrate ? (
+          <div data-testid={`camera-bitrate-${cameraId}`}>
+            <dt>{t('devices.cameras.bitrate')}</dt>
+            <dd>{t('common.units.mbps', { value: camera?.bitrateMbps ?? 9 })}</dd>
+          </div>
+        ) : null}
       </dl>
     </motion.article>
   )

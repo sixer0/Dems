@@ -324,7 +324,8 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       STT_CONFIG_CHANGED: ['changedFields', 'enabled', 'backend', 'credentialChanged', 'revision'],
       // C3 §5.2 (blueprint row 132): the key lists "12 + 11 + 10 + 6" of erratum PE-128-39.
       CAPTURE_DISCOVERY_SEARCHED: ['searchId', 'scope', 'trigger', 'outcome', 'responderCount', 'newCount', 'registeredCount', 'interfaceCount', 'failureReason', 'sessionId', 'operationId', 'permission'],
-      CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId', 'host', 'endpointRef', 'guardTripped', 'permission'],
+      // `reason`: fix wave I (G70b-05) - optional, only on the row of a scheme refusal (the credential was not sent).
+      CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId', 'host', 'endpointRef', 'guardTripped', 'reason', 'permission'],
       CAPTURE_CANDIDATE_ADOPTED: ['deviceId', 'candidateId', 'searchId', 'adapter', 'sourceClass', 'credentialSet', 'operationId', 'host', 'endpointRef', 'permission'],
       CAPTURE_DEVICE_UNREACHABLE: ['deviceId', 'deviceKind', 'phase', 'reason', 'degraded', 'sessionId'],
     });

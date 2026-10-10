@@ -51,6 +51,7 @@ import { DiscoveryNotRunError, connectionTargetOf, sourceClassOf, type OnvifDisc
 import type { AuditEntry } from '../../core';
 import { SearchBound, type SearchLimiter } from './limits';
 import { registeredIndexOf, type RegisteredCamera, type RegisteredIndex } from './registered';
+import { searchIdOf } from './search-ids';
 import type { CandidateStore, FoundCandidate } from './store';
 
 /** Why a search that was asked for did not start. `retryAfterMs` only with `RATE_LIMITED`. */
@@ -105,6 +106,14 @@ export interface SearchRunnerOptions {
   /** Persists a failure the caller is not waiting for (the window closes after the answer). */
   readonly persist: (entry: { source: string; message: string; code: string; context: Record<string, string | number> }) => void;
   readonly windowMs?: number;
+  /**
+   * Fix wave I (G70b-07): the highest camera-search number the stored audit chain holds
+   * (`search-ids.ts`). Asked ONCE per process, by the first search; the IDs go on from it, so that
+   * a restart of the Core never gives a number of the chain again. Absent: the IDs start at 1 (a
+   * runner without a database). A read that fails is logged and persisted, this search numbers
+   * from what is known, and the next search asks again.
+   */
+  readonly lastStoredSearchNumber?: () => Promise<number>;
 }
 
 export interface SearchRunner {
@@ -113,12 +122,11 @@ export interface SearchRunner {
   onClosed(listener: (closed: SearchClosed) => void | Promise<void>): void;
   /** Stops a RUNNING search (the server closes). Its socket is closed by the adapter. */
   abort(): void;
-  /** Searches started since the process began (also the number of the last search ID). */
+  /** Searches started since the process began. The number of a search ID is this count on top of the stored chain's highest (G70b-07). */
   started(): number;
 }
 
 const SOURCE = 'captureDiscovery.search';
-const searchIdOf = (sequence: number): string => `DSC-${String(sequence).padStart(6, '0')}`;
 
 /** The `connectionTarget` member of a candidate that is testable and has a target; nothing otherwise. */
 function targetMemberOf(candidate: WsDiscoveryResult['candidates'][number]): { connectionTarget?: string } {
@@ -159,6 +167,30 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
   const listeners: Array<(closed: SearchClosed) => void | Promise<void>> = [];
   let sequence = 0;
   let running: AbortController | null = null;
+  /** The highest number of the stored chain, once it was read (G70b-07); null until then. */
+  let storedBase: number | null = options.lastStoredSearchNumber === undefined ? 0 : null;
+  let baseRead: Promise<void> | null = null;
+  /** Reads the base once. Never throws: a failed read leaves `storedBase` null and is asked again by the next search. */
+  const readBase = (): Promise<void> => {
+    const read = options.lastStoredSearchNumber;
+    if (storedBase !== null || read === undefined) return Promise.resolve();
+    baseRead ??= read()
+      .then(
+        (last) => {
+          storedBase = Number.isSafeInteger(last) && last > 0 ? last : 0;
+        },
+        (error: unknown) => {
+          const message = 'the highest stored search number could not be read: this search is numbered without it';
+          const code = typeof (error as { code?: unknown } | null)?.code === 'string' ? (error as { code: string }).code : 'CAPTURE_DISCOVERY_SEARCH_NUMBER_UNREAD';
+          log.error({ code: 'CAPTURE_DISCOVERY_SEARCH_NUMBER_UNREAD', source: SOURCE, failureCode: code }, message);
+          options.persist({ source: SOURCE, message, code: 'CAPTURE_DISCOVERY_SEARCH_NUMBER_UNREAD', context: { failureCode: code } });
+        },
+      )
+      .finally(() => {
+        baseRead = null;
+      });
+    return baseRead;
+  };
 
   const refuse = (refusal: SearchRefusal): SearchStart => ({ started: false, refusal });
 
@@ -228,6 +260,8 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
   return {
     async start(request) {
       if (!options.ready()) return refuse({ kind: 'NOT_READY', reason: CaptureDiscoveryReason.DISCOVERY_NOT_READY });
+      // G70b-07: before the checks below, which run in one turn (single flight): the one read of the stored chain's highest number.
+      await readBase();
       if (!options.duringRecordingEnabled && options.openSession()?.state === SessionState.RECORDING) {
         return refuse({ kind: 'RECORDING', reason: CaptureDiscoveryReason.DISCOVERY_NOT_ALLOWED_WHILE_RECORDING });
       }
@@ -247,7 +281,7 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
 
       // From here on a search IS started: it takes its ID, its place in the bounds and its row.
       sequence += 1;
-      const searchId = searchIdOf(sequence);
+      const searchId = searchIdOf((storedBase ?? 0) + sequence);
       // The pre-check's search is outside the four bounds: it takes no place in them (SEC35-39 (3)).
       if (request.trigger === CaptureDiscoveryTrigger.MANUAL) limiter.record(request.sessionId, startedAt);
       const search = store.begin({ sessionId: request.sessionId, searchId, trigger: request.trigger, startedAt, windowMs, interfaceCount: 0 });

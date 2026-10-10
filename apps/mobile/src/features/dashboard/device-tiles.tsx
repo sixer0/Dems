@@ -76,14 +76,19 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
   const router = useRouter();
   const settings = useMotionSettings();
   const name = t(TRACK_NAME_KEY[tile.trackId] ?? tile.trackId);
-  const tone = STATE_TONE[tile.state] ?? 'default';
+  // Fix wave I (the Home microphone item of re-gate 75; contract note A2 §4): on a Core in REAL capture a MIC
+  // tile states what the Core reported for the microphone ON its line - "Reachable", "Not reachable",
+  // "Not checked", "On" - and its badge is that microphone's. The simulated track word stays elsewhere.
+  const line = tile.kind === 'mic' ? tile.line : null;
+  const tone = line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
+  const stateWord = line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
 
   return (
     <Animated.View entering={homeEnter(beatAt(HOME_BEATS.tiles, HOME_BEATS.tileStagger, index), settings)} style={styles.fill}>
       <PressableFeedback
         testID={`home-device-${tile.trackId}`}
         accessibilityRole="button"
-        accessibilityLabel={`${name}, ${t(stateKeyFor(tile))}`}
+        accessibilityLabel={`${name}, ${stateWord}`}
         accessibilityHint={t('features.dashboard.devices.openDevice', { name })}
         onPress={() => router.push(`/devices/${tile.deviceId}` as Href)}
         style={styles.fill}
@@ -94,13 +99,13 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
             <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.name}>
               {name}
             </Text>
-            <StatusChip tone={tone} label={t(stateKeyFor(tile))} icon={null} size="sm" />
+            <StatusChip tone={tone} label={stateWord} icon={null} size="sm" testID={`home-device-${tile.trackId}-state-chip`} />
           </View>
           {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
           {tile.kind === 'camera' ? (
             <TrackSourceBadge trackId={tile.trackId} testID={`home-device-${tile.trackId}-source`} />
           ) : (
-            <MicInputSourceBadge inputId={tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
+            <MicInputSourceBadge inputId={line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
           )}
           {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>

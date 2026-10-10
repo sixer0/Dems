@@ -27,6 +27,7 @@ import {
   CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH,
   CAPTURE_CREDENTIAL_USERNAME_PATTERN,
   CaptureConnectionOutcome,
+  CaptureConnectionTestReason,
   CaptureDiscoveryReason,
   type CaptureCandidateAdoption,
   type CaptureConnectionTest,
@@ -246,6 +247,31 @@ export const OUTCOME_TONE: Readonly<Record<CaptureConnectionOutcome, OutcomeTone
   AUTHENTICATION_FAILED: 'danger',
   WRONG_PROFILE: 'warning',
   NOT_H264: 'warning',
+}
+
+/**
+ * HOW THE RESULT OF A CONNECTION TEST IS WORDED (fix wave I, driver B; findings G70b-02, G70b-05;
+ * ruling of driver A2, `contract_wave_i_a2.md` sections 1 and 2). An AUTHENTICATION_FAILED answer is
+ * one of three different facts, and only one of them is a refused credential:
+ *
+ *   SCHEME_NOT_ALLOWED   `reason: SCHEME_NOT_ALLOWED` - the camera wants a sign-in method this
+ *                        system does not answer; nothing was sent (R69-13)
+ *   NO_CREDENTIAL_SENT   `authenticated: false` - the test carried no credential and the camera
+ *                        asks for one; never "refused this user name or password"
+ *   CREDENTIAL_REFUSED   a credential was sent and refused
+ *
+ * `showAttempts`: the remaining-attempts line. The Core's guard counts REJECTED CREDENTIAL-BEARING
+ * requests only (erratum PE-FM4-03), and `failedAttemptsRemaining` is a required member the Core
+ * sends with every answer, so the line is drawn for CREDENTIAL_REFUSED alone: beside the other two
+ * nothing was counted. Every other outcome is `OUTCOME` (its own message).
+ */
+export type ConnectionTestWordingKind = 'OUTCOME' | 'SCHEME_NOT_ALLOWED' | 'NO_CREDENTIAL_SENT' | 'CREDENTIAL_REFUSED'
+
+export function connectionTestWording(result: Pick<CaptureConnectionTest, 'outcome' | 'authenticated' | 'reason'>): { kind: ConnectionTestWordingKind; showAttempts: boolean } {
+  if (result.outcome !== CaptureConnectionOutcome.AUTHENTICATION_FAILED) return { kind: 'OUTCOME', showAttempts: false }
+  if (result.reason === CaptureConnectionTestReason.SCHEME_NOT_ALLOWED) return { kind: 'SCHEME_NOT_ALLOWED', showAttempts: false }
+  if (result.authenticated === false) return { kind: 'NO_CREDENTIAL_SENT', showAttempts: false }
+  return { kind: 'CREDENTIAL_REFUSED', showAttempts: result.reason === undefined }
 }
 
 /** ux §14.3: the outcome is `role="status"` when the camera can be added and `role="alert"` otherwise. */

@@ -4,6 +4,7 @@ import { Camera, Mic, Power, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { useRetryCooldown } from '@dems/shared/realtime'
+import { selectIsRecording, useSim } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import {
@@ -28,7 +29,9 @@ import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
 import { DeviceSourceBadge, LocalMicrophoneLimit } from './source-badge'
-import { isDevelopmentSource, LOCAL_DEVICE_ADAPTER, useRealCapture } from './source-class'
+import { isDevelopmentSource, LOCAL_DEVICE_ADAPTER, useRealCapture, useRealCaptureCore } from './source-class'
+import { checkedAtOf, sourceLineState } from './source-state'
+import { SourceStateChips } from './source-state-chips'
 
 /** The fixed sentence of the page's own record when a selector command fails for a reason the presenter left to the page. */
 const COMMAND_FAILED_RECORD = 'A command of the capture device selector was not carried out.'
@@ -85,20 +88,15 @@ function useFailureNotice(): (failure: SelectorFailure) => string | null {
   }
 }
 
-function StateChips({ online, streamState }: { online: boolean; streamState?: 'LIVE' | 'LOST' | null }) {
-  const { t } = useTranslation()
-  return (
-    <span className="dev-sel-chips">
-      <Chip size="sm" variant="soft" color={online ? 'success' : 'danger'}>
-        <Chip.Label>{t(online ? 'devices.selector.online' : 'devices.selector.offline')}</Chip.Label>
-      </Chip>
-      {streamState ? (
-        <Chip size="sm" variant="soft" color={streamState === 'LIVE' ? 'success' : 'danger'}>
-          <Chip.Label>{t(`devices.selector.stream.${streamState}`)}</Chip.Label>
-        </Chip>
-      ) : null}
-    </span>
-  )
+/**
+ * The state chips of a selector line. Fix wave I (G70b-06; `source-state.ts`): on a Core in real
+ * capture "Stream live" is said only while a session is recording, and a device the Core has not
+ * read since it started is "Not checked". A simulated Core is drawn as before.
+ */
+function StateChips({ online, streamState, device }: { online: boolean; streamState?: 'LIVE' | 'LOST' | null; device?: CaptureDevice | undefined }) {
+  const realCapture = useRealCaptureCore()
+  const recording = useSim(selectIsRecording)
+  return <SourceStateChips state={sourceLineState({ realCapture, recording, online, streamState, checkedAt: checkedAtOf(device) })} />
 }
 
 const deviceText = (device: Pick<CaptureDevice, 'id' | 'model'>): string => (device.model ? `${device.id} · ${device.model}` : device.id)
@@ -184,7 +182,7 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
             {trackId} · {name} · {t('devices.selector.profile', { profile: line.profile })}
           </span>
         </div>
-        <StateChips online={line.online} streamState={line.streamState} />
+        <StateChips online={line.online} streamState={line.streamState} device={current} />
         {/* Flow 12 (R-11): the one badge, from the `sourceClass` the Core sent for the device of this line. */}
         <DeviceSourceBadge device={current} testId={`selector-badge-${trackId}`} />
       </div>
@@ -362,7 +360,7 @@ function MicRow({
             <Chip.Label>{t(`devices.selector.role.${line.role}`)}</Chip.Label>
           </Chip>
         </span>
-        <StateChips online={line.online} />
+        <StateChips online={line.online} device={device} />
         <DeviceSourceBadge device={device} testId={`selector-badge-${line.inputId}`} />
       </div>
       {/* R69-07 (D161): the limit of this Mac's microphone, on the line where it is chosen. */}

@@ -115,9 +115,9 @@ describe('A. where a removal may happen: below the configured store root, one pa
     const scan = readEvidenceStore(store);
     expect(scan.packages).toEqual([
       // v1: `manifest.json` says what it is.
-      { sessionId: 'SES-20260930-0004', directory: 'SESSION-SES-20260930-0004', integrity: 'DEMO' },
+      { sessionId: 'SES-20260930-0004', directory: 'SESSION-SES-20260930-0004', integrity: 'DEMO', manifest: 'V1' },
       // v2: the scan cannot clear it (fail-safe: it blocks); rule (5) asks its signed `session-manifest.json`.
-      { sessionId: 'SES-20261009-0001', directory: 'SESSION-SES-20261009-0001', integrity: 'UNKNOWN' },
+      { sessionId: 'SES-20261009-0001', directory: 'SESSION-SES-20261009-0001', integrity: 'UNKNOWN', manifest: 'V2' },
     ]);
     expect(scan.packages.some((entry) => entry.directory === 'SES-20261009-0002' || entry.sessionId === 'SES-20261009-0002')).toBe(false);
   });

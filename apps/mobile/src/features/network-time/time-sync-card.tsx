@@ -43,8 +43,38 @@ export function TimeSyncCard({ time, escalationKey }: TimeSyncCardProps) {
   const { t } = useTranslation();
   const level = timeLevel(time.source);
   const tone = TIME_TONE[level];
-  const stateLabel = t(`networkTime.bannerState.time.${level}`);
   const zone = t('networkTime.systemTime.zone', { offset: formatUtcOffset() });
+  // Closing pass J (G75b-06): a host system clock is no lost synchronisation. One row names the clock, one
+  // sentence says what does not exist; no orbit ("no fix"), no last sync, no server, no tier row.
+  if (time.hostClock) {
+    const value = t('common.hostClockTime.value');
+    return (
+      <SectionCard testID="network-time-time" title={t('features.network-time.time.title')}>
+        <ListGroup variant="transparent" className="rounded-xl">
+          <ListGroup.Item testID="network-time-sync" accessible accessibilityLabel={`${t('common.hostClockTime.label')}, ${value}, ${zone}`} className="gap-3 py-2">
+            <ListGroup.ItemPrefix>
+              <IconTile icon={Clock} tone="default" />
+            </ListGroup.ItemPrefix>
+            <ListGroup.ItemContent>
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.rowTitle}>
+                {t('common.hostClockTime.label')}
+              </Text>
+            </ListGroup.ItemContent>
+            <ListGroup.ItemSuffix style={styles.syncSuffix}>
+              <StatusChip testID="network-time-sync-chip" tone="default" label={value} icon="Circle" iconFilled size="sm" />
+              <Text testID="network-time-zone" maxFontSizeMultiplier={1.2} style={[styles.zone, { color: toneTextHex.default }]}>
+                {zone}
+              </Text>
+            </ListGroup.ItemSuffix>
+          </ListGroup.Item>
+        </ListGroup>
+        <Text testID="network-time-host-clock" maxFontSizeMultiplier={1.2} style={styles.factLabel}>
+          {t('common.hostClockTime.notice')}
+        </Text>
+      </SectionCard>
+    );
+  }
+  const stateLabel = t(`networkTime.bannerState.time.${level}`);
   const facts: FactRow[] = [
     {
       id: 'last-sync',

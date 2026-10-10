@@ -10,7 +10,7 @@ import { Chip, LinkButton } from 'heroui-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSim, type SimState } from '@dems/shared/sim';
+import { isPlatformNotReported, useSim, type SimState } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, type KeyValueItem } from '@/components/kit';
 import { SheetFrame } from './sheet-frame';
@@ -22,6 +22,7 @@ export function AboutSection() {
   const { t } = useTranslation();
   const router = useRouter();
   const device = useSim(selectDevice);
+  const platformNotReported = useSim((state) => isPlatformNotReported(state.security));
   const [licencesOpen, setLicencesOpen] = useState(false);
   const appBuild = Constants.expoConfig?.version ?? t('common.states.notAvailable');
 
@@ -36,7 +37,8 @@ export function AboutSection() {
     { id: 'room', label: t('system.about.room'), value: device.room },
     { id: 'serial', label: t('system.about.fields.serialNumber'), value: device.identity.serialNumber, mono: true },
     { id: 'bsp', label: t('system.about.fields.bspVersion'), value: device.identity.bspVersion, mono: true },
-    { id: 'tpm', label: t('system.about.fields.tpmModelFirmware'), value: device.identity.tpmModelFirmware },
+    // Closing pass J (D217 (7)): a Core that states `security.platformNotReported` reads no TPM - the field says so, not the dataset's model.
+    { id: 'tpm', label: t('system.about.fields.tpmModelFirmware'), value: platformNotReported ? t('common.platformNotReported.value') : device.identity.tpmModelFirmware, testID: 'settings-about-tpm' },
     { id: 'provisioning', label: t('system.about.fields.provisioningRecordId'), value: device.identity.provisioningRecordId, mono: true },
   ];
   const demoChip = (

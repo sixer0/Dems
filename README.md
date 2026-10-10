@@ -394,6 +394,8 @@ Added by the third task (`docs/2026-10-07_dems_real_capture_sealing/`); this sec
 
 **Read this first.** What has been proven so far was proven on generated test sources and test doubles on this Mac. No real camera, no real microphone and no real speech engine has been through a recorded, sealed session. Everything that is not proven, and every limit an operator or an installer has to know, is listed once under **Known limits** at the end of this section.
 
+Correction (2026-10-10, fix waves H and I): what was added or changed after commit `f293221` is in **Fix waves H and I: additions and corrections** below, before the Known limits. Each sentence there that no gate has verified yet says so.
+
 ### Capture operation: what a Core records
 
 The Core reads three environment variables once, at start, and decides its capture operation from them (`apps/core-server/src/capture/fence/operation.ts`). The operation is printed in the boot log line `capture fence passed`.
@@ -547,6 +549,74 @@ A sealed package of schema version 2 is the folder `SESSION-<sessionId>/` below 
 - The command line prints the media store root it is about to judge before it reads it. It takes the root from `DEMS_MEDIA_DIR`, else from the root stored in the database; it never falls back to a default folder (D166, D169).
 - A permitted reset removes the folders of the development and demo packages it cleared and, on a development-capture Core, seals the two demo packages again.
 - `scripts/lane/lane.sh reset <instance>` runs the reset under the migrate lock with that instance's media root and refuses while its Core runs.
+
+### Fix waves H and I: additions and corrections
+
+Added 2026-10-10 by the documentation errata pass (`docs/2026-10-07_dems_real_capture_sealing/implementation/136_docs_errata_wave_h_i.md`). Fix wave H is in the tree at commit `74fd1f1`; fix wave I is in the working tree and was not committed when this was written (D213, D217). The numbered specification errata are `PE-WH-…` and `PE-WI-…` in `docs/2026-10-07_dems_real_capture_sealing/masterplan/`.
+
+**Gate state, said once.** Re-gates 70 (discovery, connect, selector) and 75 (recording, interrupted naming, blocked seal) have NOT passed; re-gates 81, 89 and 94 have not been run on this tree (D215, D216, D217). Every item below was proven in automated tests only, unless it says otherwise: **not yet gate-verified**.
+
+**Two environment keys of the Core: the installation identity.** Read once at start (`apps/core-server/src/config.ts:60-61`; `apps/core-server/src/sealing-host/installation-identity.ts`). Not yet gate-verified.
+
+| Key | Value | Used for |
+|---|---|---|
+| `DEMS_INSTALLATION_DEVICE_ID` | A device id: a capital letter, then capitals, digits or hyphens, at most 32 characters (for example `DEMS-JKT-07`) | Manifest field `device.deviceId` of every recording sealed on this Core |
+| `DEMS_INSTALLATION_NAME` | 1 to 120 printable characters, no leading or trailing space | Manifest field `device.name` |
+
+- Unset: the manifest says `NOT_CONFIGURED` for the missing one. A `REAL_PRODUCTION` Core REFUSES to start (`INSTALLATION_IDENTITY_NOT_CONFIGURED`, check `sealing.installation-identity`; the line names the missing keys). A `REAL_DEVELOPMENT` Core starts with one warning of the same code. `SIMULATED` never asks (D209).
+- A malformed value stops the start: `INSTALLATION_DEVICE_ID_INVALID`, `INSTALLATION_NAME_INVALID` (`config.ts:294`, `:301`).
+- `scripts/lane/lane.sh` sets neither key, so a recording sealed on a lane says `NOT_CONFIGURED` for both (D214). A whole Core refusing a `REAL_PRODUCTION` start for this reason was not shown by a test: only the boot function and its wiring line are tested (D209).
+- The manifest also states, since wave H: time source `RTC` / `HOST_SYSTEM_CLOCK` (a Core in its own capture has no time service and never says GNSS), the Core's own software version, and `NOT_CONFIGURED` for serial number and hardware UUID (D203, D211).
+
+**Three more refusals of a start** (they extend the table under "What refuses to start"; `apps/core-server/src/capture/fence/fake-mic.ts:50-73`, `apps/core-server/src/config.ts:287`, `apps/core-server/src/capture/fence/development-discovery.ts:39`).
+
+| Code | Refused when | Applies to |
+|---|---|---|
+| `CAPTURE_DEV_FAKE_MIC_INVALID` | `DEMS_CAPTURE_DEV_FAKE_MIC` is neither `tone` nor `speech` | every start |
+| `DEV_FAKE_MIC_NEEDS_DEV_SOURCES` | `DEMS_CAPTURE_DEV_FAKE_MIC=speech` outside development capture | `SIMULATED`, `REAL_PRODUCTION` |
+| `DEV_SPEECH_FIXTURE_UNUSABLE` | `speech` is set and the speech fixture is absent, fails the owner and write-bit rule of the helper program, or is not a 16-bit mono 48 kHz PCM WAVE file. The reason is named: `NOT_WAV`, `WAV_NOT_PCM`, `WAV_NOT_MONO`, `WAV_NOT_48KHZ`, `WAV_NOT_16BIT`, `WAV_NO_AUDIO`, `UNREADABLE`, or a reason of the path rule | `REAL_DEVELOPMENT` |
+| `DEV_CAMERA_STUB_IN_PRODUCTION` | The lane launcher of the camera stub is asked to start a production configuration (see below). The product's own entry point cannot load the stub | `REAL_PRODUCTION` |
+
+Also since wave H: the worker's version must EQUAL the version this Core drives (`CAPTURE_WORKER_VERSION_MISMATCH`), checked at start and at every session start (D202). This corrects Known limit 21.
+
+**The speech microphone of development capture.** `DEMS_CAPTURE_DEV_FAKE_MIC` = `tone` (the default) or `speech`; development capture only. With `speech` the first test microphone (`MIC-01` of the seed) plays `.data/dev-fixtures/speech-mic/dialogue.wav` in the place of its tone, in real time and looped; the second test microphone keeps its 880 Hz tone. The fixture is SYNTHETIC Indonesian speech made on this machine by `npm run capture:dev-setup` with the macOS speech synthesiser: no network, no recording of a person, git-ignored, its known text beside it in `dialogue.reference.json` (`scripts/capture/speech-fixture.mjs:9-19`). Set-up options, after `--`: `--no-speech-fixture` (skip the step) and `--renew-speech-fixture` (make it again), for example `npm run capture:dev-setup -- --renew-speech-fixture` (`scripts/capture/dev-setup.mjs:6-7`, `:85`). The local speech engine has transcribed a development session on this microphone and the session was sealed with an assembled transcript, in an automated test (D211); this corrects the sentence "no real speech engine has been through a recorded, sealed session" above and Known limit 15 for the `cpu-local` engine on SYNTHETIC speech only. No real microphone and no real voice has been through it, and re-gate 81 has not run: not yet gate-verified. No speed figure is stated (D230 of the predecessor task).
+
+**Limits of the transcript step of the seal** (named settings, set in code, no environment key; `apps/core-server/src/sealing/finalize-transcript/bounds.ts:58`, `:64-68`; D201 ruling 3). They are bounds chosen by the implementation, not measurements of an engine.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `stepLimitMs` | 1,800,000 ms (30 min) | The upper bound of the whole step, waiting plus closing out |
+| `callLimitMs` | 30,000 ms (30 s) | The upper bound of one question to the transcriber |
+| `closeOutLimitMs` | 120,000 ms (2 min) | The part of the step kept for closing the transcript out |
+| `closeOutAttempts` | 3 | Failures at the bound before the seal goes on without a transcript |
+
+**`scripts/lane/lane.sh`: three options** (`scripts/lane/lane.sh:6-21`, `:88`, `:255-263`). Not yet gate-verified.
+
+| Command | What it does |
+|---|---|
+| `scripts/lane/lane.sh start <lane> --with-camera-stub` | Starts the lane's Core through `npm run start:camera-stub -w @dems/core-server` (`apps/core-server/package.json:9`) with ONE fake ONVIF camera on 127.0.0.1 as its ONLY camera search: no multicast and no datagram to the real network. A development-capture lane gets the stub; a `SIMULATED` lane starts without it and says so; a production configuration is not started (`DEV_CAMERA_STUB_IN_PRODUCTION`). The stub's fixture account is made at each start and printed by the script; it is a fixture of the fake device, not a secret. One word in the stub's mode file switches what it answers: `NORMAL`, `AUTH_SCHEME`, `UNREACHABLE`, `NO_PROFILE`, `NOT_H264`, `EMPTY` (`lane.sh:49-60`; D196, D206) |
+| `scripts/lane/lane.sh start 2 --speech-mic` | Lane 2 only (development capture): sets `DEMS_CAPTURE_DEV_FAKE_MIC=speech`. On another lane the script stops with exit status 64. The two start options may be given together (`lane.sh:11-13`, `:128`, `:166-167`) |
+| `scripts/lane/lane.sh reset 2 --discard-unsealed-fake-recordings` | The reset of the development-capture lane, and it may ERASE unsealed recording folders. See the rule below. On a lane that is not development capture the script stops with exit status 64 and resets nothing (`lane.sh:17-21`, `:232-234`) |
+
+**The FAKE-only rule of `--discard-unsealed-fake-recordings`** (`apps/core-server/src/db/reset/real-evidence.ts:120-121`, `:384`; `lane.sh:62-76`; D216 ruling 4, D217). A reset is still refused (`RESET_BLOCKED_REAL_EVIDENCE`) while the media store holds the folder of a session whose seal did not complete (`SESSION-<id>` without a manifest) or a folder under `.quarantine/`. With the option - and only with it - the reset erases such a folder when the database being reset says its session recorded from EXACTLY FOUR generated (`FAKE`) sources and has no sealed item. A recording from this computer's camera or microphone (`LOCAL_DEVICE`) or from a production device is NEVER erased this way: it still blocks, and a person decides about it; there is no tool for it (D217 ruling 8). The refusal of a reset without the option says how many folders the option would clear. The console's reset never passes the option. Stop the lane first: `scripts/lane/lane.sh stop 2`. This corrects the row `RESET_BLOCKED_REAL_EVIDENCE` of **Reset rules** ("any quarantine folder") and Known limit 29 for FAKE-only sessions.
+
+**Session keys and a reset.** A reset destroys EVERY session key of the key folder of the store it resets; the demo packages it seals anew keep theirs. Session numbers are given out again after a reset; no key of an earlier session survives one (D217 ruling 1). A session whose number meets a key of an earlier session is refused at START, before anything is recorded: `503 NOT_READY`, reason `SESSION_KEY_NOT_OF_SESSION` (or `SESSION_KEY_STORE_UNAVAILABLE` when the key store cannot be used); cancel it and create a new one. This corrects Known limits 23 and 29 ("destroying a session key is not built", "session keys … are not destroyed"). Not yet gate-verified.
+
+**A seal that is retried or blocked.** The Core runs a failed seal again by itself (three retries, after 5 s, 30 s and 120 s). When they are used up the session stays in FINALIZING, a CRITICAL notice names the cause and what restores it, and the clients say "Sealing is blocked" and "The recording is kept on the Core." on a screen that can be left. The Core records no new session until that one is sealed. Known limit 2 stands: there is still no operator action to give up such a seal. Not yet gate-verified (re-gate 75 found this defect; the fix has not been through a gate).
+
+**Export: one self-contained archive, and the receiver's check** (this corrects the first bullet of **Export**: the export manifest and signature are INSIDE the archive, as its last two entries `export/EXP-<id>.manifest.json` and `.sig`). The receiver of a downloaded archive checks it with:
+
+```sh
+npm run evidence:verify-export -- <archive.zip> [--sha256 <hex>] [--trust <certificate sha256>]
+```
+
+- Defined in the root `package.json:54` -> `apps/core-server/package.json:23` -> `apps/core-server/cli/verify-export.ts`. It needs no Core, no database and no key. It needs the system's `unzip`. A relative path is relative to the folder the command is typed in.
+- It prints one line per check, X-01 to X-07. Exit status: 0 every check passed, 1 a check failed, 2 the command could not run (`apps/core-server/src/evidence-export/receiver-cli.ts:1-28`).
+- Two limits it prints itself. Without `--trust` the signatures are checked against the certificate inside the archive: the result then says only that the export is consistent with itself. Without `--sha256` the archive's hash is printed, not compared: the hash is stated outside the archive, by the export job in the web console and by the audit row of the download, never inside it.
+- Finished archives are DECRYPTED copies and are KEPT in the package's `export/` folder until the package is removed by a reset; the product deletes none and lists them on the item page with **Download export** (D205). One archive per export, each the size of the recording.
+- Not yet gate-verified: re-gate 94 has not run on this tree.
+
+**What the clients show in real capture.** No stock picture stands as a camera preview: tiles and session rows say "No preview". Time chips say "Host system clock". A source line says "Reachable" or "Not reachable", and "Stream live" only while a session is recording (D196, D210, D217). Not yet gate-verified.
 
 ### Known limits
 

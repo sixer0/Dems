@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { StatusChip } from '@/components/kit';
 import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { useInterruptedSeal } from '@/features/session-finalizing/interrupted-seal';
+import { useSealBlockedOf } from '@/features/session-finalizing/seal-attention';
 import { HUB_STATUS_SPEC, type HubStatus, type HubStatusIcon } from './sessions-model';
 
 const ICONS: Record<HubStatusIcon, LucideIcon> = {
@@ -33,6 +34,11 @@ export function SessionStatusChip({ status, sessionId, size = 'sm', ...chipProps
   // its first durable fragment (`captureDurable: false`) it reads "Connecting cameras…", with no filled REC dot.
   const connecting = useConnectingCameras() && status === 'RECORDING';
   const interrupted = useInterruptedSeal(status === 'SEALED' || status === 'FINALIZING' ? (sessionId ?? null) : null);
+  // Fix wave I (re-gate 75, G75b-02): the open session whose seal the Core reports BLOCKED is not "Finalizing".
+  const sealBlocked = useSealBlockedOf(status === 'FINALIZING' ? sessionId : null);
+  if (sealBlocked) {
+    return <StatusChip {...chipProps} size={size} tone="danger" icon={ICONS.octagon} label={t('features.session-finalizing.sealAttention.chip')} />;
+  }
   if (connecting) {
     return <StatusChip {...chipProps} size={size} tone="info" icon={ICONS.loader} label={t('common.session.connectingCameras')} />;
   }

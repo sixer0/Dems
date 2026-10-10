@@ -2,6 +2,7 @@ import { Chip } from '@heroui/react'
 import { Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type DeviceIdentity, type SimState } from '@dems/shared/sim'
+import { usePlatformNotReported } from '@/lib/own-capture'
 import { SystemPanel } from './panel'
 import { releaseInfo } from './sim-adapter'
 
@@ -41,6 +42,7 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
   const { t } = useTranslation()
   const device = useSim(selectDevice)
   const about = useSim(selectAbout)
+  const platformNotReported = usePlatformNotReported()
   const release = releaseInfo(device.softwareVersion)
   const drift = device.identity.coreSoftwareVersion !== device.softwareVersion || about.updateVersion !== device.softwareVersion
 
@@ -86,9 +88,14 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
             {IDENTITY_FIELDS.map((field) => (
               <div key={field} className="sys-identity-row">
                 <dt>{t(`system.about.fields.${field}`)}</dt>
-                <dd className="sys-mono" title={device.identity[field]}>
-                  {device.identity[field]}
-                </dd>
+                {/* Closing pass J (D217 (7)): a Core that states `security.platformNotReported` reads no TPM - the row says so, not the dataset's model. */}
+                {field === 'tpmModelFirmware' && platformNotReported ? (
+                  <dd data-testid="system-about-tpm">{t('common.platformNotReported.value')}</dd>
+                ) : (
+                  <dd className="sys-mono" title={device.identity[field]}>
+                    {device.identity[field]}
+                  </dd>
+                )}
               </div>
             ))}
           </dl>

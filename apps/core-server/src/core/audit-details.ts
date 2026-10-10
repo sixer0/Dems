@@ -27,6 +27,7 @@ import {
   CAPTURE_HOST_LITERAL_PATTERN,
   CAPTURE_SEARCH_ID_PATTERN,
   CaptureConnectionOutcome,
+  CaptureConnectionTestReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryTrigger,
   CaptureSourceClass,
@@ -342,6 +343,8 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     host: hostLiteral(OPTIONAL),
     endpointRef: endpointRef(OPTIONAL),
     guardTripped: flag(OPTIONAL),
+    // Fix wave I (G70b-05): present only for a test that ended AUTHENTICATION_FAILED without the credential being sent (the closed code of operation 95's `reason`).
+    reason: oneOf(Object.values(CaptureConnectionTestReason), 'SCHEME_NOT_ALLOWED')(OPTIONAL),
     permission: code(OPTIONAL),
   },
   [AuditType.CAPTURE_CANDIDATE_ADOPTED]: {

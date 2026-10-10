@@ -116,7 +116,6 @@ describe('one helper in the app (row M1 follow-up)', () => {
       'devices/device-detail.tsx',
       'devices/diagnostics-sheet.tsx',
       'session-new/devices-check-step.tsx',
-      'session-new/session-new-screen.tsx',
     ]);
     for (const name of users) {
       const text = production.find((file) => file.name === name)!.text;

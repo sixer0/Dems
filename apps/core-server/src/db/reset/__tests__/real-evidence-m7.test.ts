@@ -145,7 +145,7 @@ describe('R88-11: a v2 package folder is never cleared by a planted `manifest.js
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'session-manifest.json'), '{}');
     writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ integrity: 'DEMO_PACKAGE' }));
-    expect(readEvidenceStore(root).packages).toEqual([{ sessionId: 'SES-20261010-0011', directory: 'SESSION-SES-20261010-0011', integrity: 'UNKNOWN' }]);
+    expect(readEvidenceStore(root).packages).toEqual([{ sessionId: 'SES-20261010-0011', directory: 'SESSION-SES-20261010-0011', integrity: 'UNKNOWN', manifest: 'V2' }]);
   });
 
   it('CONTROL: a v1 demo folder (only `manifest.json`) still reads DEMO', () => {

@@ -193,10 +193,15 @@ export function useLocalSourceGate(): LocalSourceGate {
     const current = heldRef.current;
     if (current === null) return;
     hold(null);
+    // Fix wave I (G70-08, the tablet's NOT PROVEN line of re-gate 70): the notice was decided from a list that was
+    // known when it OPENED. If the list became stale or unknown while it stood (the Core link dropped, a line's
+    // device left the list), the confirmation is for a notice the client can no longer vouch for: nothing is
+    // sent and no consent is kept; the press is cancelled, said and logged (`refusedUnknown`).
+    if (refusedUnknown(current.cancelled, current.kind)) return;
     reportRuntimeIssue('info', `${SOURCE}.confirmed`, 'The operator confirmed turning on a local device', { kind: current.kind, camera: current.notice.camera, microphone: current.notice.microphone });
     if (current.grants) grant.current = current.kind;
     run('confirmed', current.send, current.notice, current.kind);
-  }, [hold]);
+  }, [hold, refusedUnknown]);
 
   const cancel = useCallback(() => {
     const current = heldRef.current;

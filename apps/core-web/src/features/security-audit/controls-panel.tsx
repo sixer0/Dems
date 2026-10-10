@@ -72,11 +72,13 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
         {controls.map((control, index) => {
           const tone = CONTROL_TONE[control.status]
           const label = t(`securityAudit.controls.items.${control.id}.label`)
-          const detail =
-            control.status === 'OK' || control.status === 'UNKNOWN'
+          // Closing pass J (D217 (7)): a platform fact the Core does not read says so - no "Attestation OK" under it.
+          const detail = control.notReported
+            ? t('common.platformNotReported.note')
+            : control.status === 'OK' || control.status === 'UNKNOWN'
               ? t(`securityAudit.controls.items.${control.id}.ok`, control.params)
               : t(`securityAudit.controls.items.${control.id}.fail`, control.params)
-          const statusText = t(`securityAudit.controls.status.${control.status}`)
+          const statusText = control.notReported ? t('common.platformNotReported.value') : t(`securityAudit.controls.status.${control.status}`)
           return (
             <ListBox.Item
               key={control.id}

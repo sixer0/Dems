@@ -1,8 +1,9 @@
 /**
  * i18next runtime for core-web (masterplan/01_specs.md §14.11; implementation/15_i18n_resources.md H-1).
  *
- * - One `translation` namespace holding `mergeResources(en, {})`, so keys read
- *   `t('shell.nav.dashboard')` or `t('dashboard.hero.paragraph')`.
+ * - One `translation` namespace holding `mergeResources(en, enWeb)`, so keys read
+ *   `t('shell.nav.dashboard')` or `t('dashboard.hero.paragraph')`. `enWeb` (`i18n-web.ts`) adds the
+ *   one top-level key `web`: sentences of this console only (fix wave I).
  * - English only (A10); Indonesian domain terms are verbatim inside the resources.
  * - Missing keys are recorded (AC-66): route tests read `getMissingI18nKeys()` and expect none.
  *   In development each missing key also prints one console warning (no client log endpoint
@@ -12,12 +13,13 @@
  */
 import i18next, { type i18n as I18nInstance } from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import { DEFAULT_LANGUAGE, en, mergeResources, type EnResources } from '@dems/shared/i18n'
+import { DEFAULT_LANGUAGE, en, mergeResources, type EnResources, type MergedResources } from '@dems/shared/i18n'
+import { enWeb } from './i18n-web'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
     defaultNS: 'translation'
-    resources: { translation: EnResources }
+    resources: { translation: MergedResources<EnResources, typeof enWeb> }
   }
 }
 
@@ -49,7 +51,7 @@ export function createI18n(): I18nInstance {
     fallbackLng: DEFAULT_LANGUAGE,
     defaultNS: 'translation',
     ns: ['translation'],
-    resources: { [DEFAULT_LANGUAGE]: { translation: mergeResources(en, {}) } },
+    resources: { [DEFAULT_LANGUAGE]: { translation: mergeResources(en, enWeb) } },
     initAsync: false,
     interpolation: { escapeValue: false },
     returnNull: false,

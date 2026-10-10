@@ -91,3 +91,35 @@ export function renewSessionKey(host: CredentialStoreHost, sessionId: string): b
   if (opened.status !== 'READY') throw new CredentialStoreError(CredentialStoreFailure.STORE_UNAVAILABLE);
   return opened.store.sessionKeys.destroy(sessionKeyIdOf(sessionId));
 }
+
+/**
+ * WHY A SESSION CANNOT BE STARTED, AS FAR AS ITS KEY GOES (fix wave I driver A1; re-gate 75 finding
+ * G75b-01; ruling D216). THE DEFECT MUST SURFACE AT THE START, NEVER AT THE SEAL: at re-gate 75 a
+ * session recorded for 71 s and only then learned that a key of its ID - left by an earlier session
+ * of the same number - was in the store, where the seal refuses it by name.
+ *
+ * A session that has not started has sealed nothing, so it has NO key of its own (the key is made
+ * by the first fragment that is sealed). A key of this Core under `KID-<sessionId>` at that instant
+ * is therefore never this session's, whatever its binding says:
+ *
+ *   SESSION_KEY_NOT_OF_SESSION     such a key is there. The session is not started; the key is not
+ *                                  touched (it is never reused and never replaced). The way on is a
+ *                                  session with another number (cancel, create), or the reset that
+ *                                  destroys the keys of the store it resets.
+ *   SESSION_KEY_STORE_UNAVAILABLE  the store exists and refuses to work (not a private folder, not
+ *                                  readable): the seal could make no key either.
+ *
+ * Null: nothing stands in the way. An app WITHOUT a data directory (`ABSENT`: an app a test built)
+ * is not refused here - it has no store to ask. Reads no key byte: file names only (`owns`).
+ */
+export type SessionKeyStartRefusal = 'SESSION_KEY_NOT_OF_SESSION' | 'SESSION_KEY_STORE_UNAVAILABLE';
+export function sessionKeyStartRefusal(host: CredentialStoreHost, sessionId: string): SessionKeyStartRefusal | null {
+  const opened = coreCredentialStore(host);
+  if (opened.status === 'ABSENT') return null;
+  if (opened.status !== 'READY') return 'SESSION_KEY_STORE_UNAVAILABLE';
+  try {
+    return opened.store.sessionKeys.owns(sessionKeyIdOf(sessionId)) ? 'SESSION_KEY_NOT_OF_SESSION' : null;
+  } catch {
+    return 'SESSION_KEY_STORE_UNAVAILABLE';
+  }
+}

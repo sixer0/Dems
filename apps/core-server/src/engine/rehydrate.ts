@@ -20,6 +20,7 @@ import {
   clearFaultTransition,
   deriveDeviceState,
   enterFault,
+  coreNotRunningFaultTransition,
   injectFaultTransition,
   isUsableSnapshot,
   toSnapshot,
@@ -237,7 +238,38 @@ export interface RestartEffects {
   readonly tabletLinkReset: boolean;
   /** The link the engine held before this start replaced the stored one, without a row (spec §12.4). */
   readonly tabletLinkCarried: boolean;
+  /**
+   * Fix wave I (G75b-03): a process start of a Core in its OWN capture found the stored link
+   * CONNECTED and put it OFFLINE in the state WITHOUT a row. Absent reads as false.
+   */
+  readonly tabletLinkOfflineUnwritten?: boolean;
 }
+
+/** What a process start is told of the Core it runs in. */
+export interface ProcessStartOptions {
+  /**
+   * True on a Core in its OWN capture (capture mode `real`; the engine's `captureLevels:
+   * 'external'`). Fix wave I, re-gate 75 finding G75b-03, ruling D216 (3): there the simulator's
+   * restart model must not put a power failure or a tablet fault into the audit chain of a Core
+   * that was simply stopped and started. Absent / false: simulated capture, unchanged.
+   */
+  readonly ownCapture?: boolean;
+}
+
+/**
+ * The session states the restart fault leaves alone on a Core in its OWN capture (fix wave I,
+ * G75b-03). FINALIZING: the recording had ended before the process stopped; nothing was being
+ * recorded, nothing is lost, and the seal goes on from its stored rows at this start
+ * (`sealing-host`, step `sealing.resume`: `decide()` reads a plain FINALIZING session). A fault
+ * there would state a power failure that nobody observed.
+ * NOT in the list, on purpose: PRECHECK, ARMED, RECORDING and STOPPING. A session in one of those
+ * cannot stay as it was - no capture worker and no pre-check gate holds it after a process start -
+ * so the restart fault still moves it. Its KIND is still the simulator's `POWER_FAIL` (ruling
+ * D217 (5): no new cause now), but since closing pass J its rows say what the Core knows - "The
+ * Core was not running while this session was active" - and carry `coreNotRunning: true`
+ * (`@dems/shared/sim` `core-not-running.ts`).
+ */
+export const OWN_CAPTURE_STATES_KEPT_AT_START: readonly string[] = Object.freeze(['FINALIZING']);
 
 /** The engine's `tabletLink` slice. */
 export type TabletLink = DurableSlices['tabletLink'];
@@ -312,16 +344,28 @@ export function clearTamperOverlay(sim: Sim, now: number): boolean {
  *                       stopped. `heldLink` given, which is a start in the mode `boot` of a
  *                       process whose engine already ran: the sockets are what they were, and
  *                       the link is the one the engine held (`carryTabletLink`).
+ *
+ * A CORE IN ITS OWN CAPTURE (`options.ownCapture`; fix wave I, finding G75b-03, ruling D216 (3)):
+ *   - a session that was FINALIZING is NOT faulted (`OWN_CAPTURE_STATES_KEPT_AT_START`): no
+ *     power-failure row, no alert; it stays FINALIZING and the seal resumes;
+ *   - a stored CONNECTED link is put OFFLINE in the STATE and no row is written: the hosted
+ *     action's sentence ("Tablet control offline - recording continues") states a tablet fault
+ *     and a recording, and a stop of the Core is neither. The row of the link coming BACK is
+ *     written by the channel when a paired device connects, as before.
  */
-export function applyProcessStart(sim: Sim, lastCommittedAt: number, now: number, heldLink: TabletLink | null = null): RestartEffects {
+export function applyProcessStart(sim: Sim, lastCommittedAt: number, now: number, heldLink: TabletLink | null = null, options: ProcessStartOptions = {}): RestartEffects {
+  const ownCapture = options.ownCapture === true;
   let faultedFrom: string | null = null;
   const session = sim.store.getState().session;
-  if (session !== null && FAULTABLE_STATES.includes(session.state)) {
+  if (session !== null && FAULTABLE_STATES.includes(session.state) && !(ownCapture && OWN_CAPTURE_STATES_KEPT_AT_START.includes(session.state))) {
     faultedFrom = session.state;
     // Never after `now`: the start raised the floor of the server clock to the newest stored
     // instant, which is at or after the last committed one, before it read `now` (decision D110).
     const at = Math.min(lastCommittedAt, now);
-    let next: SimState = injectFaultTransition(sim.store.getState(), at, FaultKind.POWER_FAIL);
+    // Closing pass J (G75b-03, ruling D217 (5)): on a Core in its own capture the fault says what the
+    // Core knows - it was not running while the session was active - and carries `coreNotRunning`.
+    // Same kind, same key, same move of the session, same `fromState`: only the words differ.
+    let next: SimState = ownCapture ? coreNotRunningFaultTransition(sim.store.getState(), at) : injectFaultTransition(sim.store.getState(), at, FaultKind.POWER_FAIL);
     // A stored state that already held the fault flag without the session in FAULT: the flag
     // makes the shared injection a repeat, so the session is moved directly.
     if (next.session !== null && FAULTABLE_STATES.includes(next.session.state)) next = enterFault(next, at, FaultKind.POWER_FAIL);
@@ -333,7 +377,13 @@ export function applyProcessStart(sim: Sim, lastCommittedAt: number, now: number
   if (heldLink !== null) {
     return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: carryTabletLink(sim, heldLink) };
   }
-  const tabletLinkReset = sim.store.getState().tabletLink.state === TabletLinkState.CONNECTED;
+  const connected = sim.store.getState().tabletLink.state === TabletLinkState.CONNECTED;
+  if (connected && ownCapture) {
+    // The fact, in the state, with the instant of this start; the other devices' entries are derived from it as the hosted action derives them. No row, no event.
+    sim.store.setState(deriveDeviceState({ ...sim.store.getState(), tabletLink: { state: TabletLinkState.OFFLINE, changedAt: now } }));
+    return { faultedFrom, tamperCleared: tampered, tabletLinkReset: false, tabletLinkCarried: false, tabletLinkOfflineUnwritten: true };
+  }
+  const tabletLinkReset = connected;
   if (tabletLinkReset) sim.actions.setTabletLink(TabletLinkState.OFFLINE);
 
   return { faultedFrom, tamperCleared: tampered, tabletLinkReset, tabletLinkCarried: false };

@@ -53,6 +53,7 @@ import { MIGRATE_LOCK_DATABASE, MIGRATE_LOCK_HINT, PROJECT_DATABASES } from '../
 import { SCENARIO } from '../schema';
 import { SEED_DEMO_NOT_ASKED, demoPackagesOfEnvironment, seedDemoLines, type SeedDemoPackages } from '../seed';
 import { ResetError } from './errors';
+import { DISCARD_UNSEALED_FAKE_OPTION } from './real-evidence';
 import { resetDatabase, type ResetInternals, type ResetLogEntry, type ResetOptions, type ResetReport } from './routine';
 
 const COMMAND = 'db:reset';
@@ -88,7 +89,7 @@ const processIo: CommandIo = {
 };
 
 export function resetUsage(): string {
-  return `usage: npm run ${COMMAND} -w @dems/core-server -- --database <${PROJECT_DATABASES.join('|')}> [--scenario <${SCENARIO.join('|')}>]`;
+  return `usage: npm run ${COMMAND} -w @dems/core-server -- --database <${PROJECT_DATABASES.join('|')}> [--scenario <${SCENARIO.join('|')}>] [${DISCARD_UNSEALED_FAKE_OPTION}]`;
 }
 
 /** A wrong call: exit code 2. */
@@ -102,6 +103,8 @@ export class ResetUsageError extends Error {
 export interface ResetArguments {
   readonly database: string;
   readonly scenario: string | undefined;
+  /** Rule (15) of the real-evidence guard: present (true) only when the option was written. */
+  readonly discardUnsealedFakeRecordings?: boolean;
 }
 
 /**
@@ -110,8 +113,15 @@ export interface ResetArguments {
  */
 export function parseResetArguments(argv: readonly string[]): ResetArguments {
   const found: { database?: string; scenario?: string } = {};
+  let discardUnsealedFakeRecordings = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] ?? '';
+    // Rule (15) of the real-evidence guard (fix wave I, G75b-01): a word without a value, at most once.
+    if (argument === DISCARD_UNSEALED_FAKE_OPTION) {
+      if (discardUnsealedFakeRecordings) throw new ResetUsageError(`${resetUsage()}\n${DISCARD_UNSEALED_FAKE_OPTION} is given once.`);
+      discardUnsealedFakeRecordings = true;
+      continue;
+    }
     let key: 'database' | 'scenario' | undefined;
     let value: string | undefined;
     for (const option of ['database', 'scenario'] as const) {
@@ -131,7 +141,7 @@ export function parseResetArguments(argv: readonly string[]): ResetArguments {
     found[key] = value;
   }
   if (found.database === undefined) throw new ResetUsageError(resetUsage());
-  return { database: found.database, scenario: found.scenario };
+  return { database: found.database, scenario: found.scenario, ...(discardUnsealedFakeRecordings ? { discardUnsealedFakeRecordings } : {}) };
 }
 
 const iso = (ms: number): string => `${new Date(ms).toISOString()} (${ms})`;
@@ -259,6 +269,8 @@ export async function runReset(argv: readonly string[], options: ResetCommandOpt
         // command, else the root the Core recorded in the database; never a default folder. The root is
         // printed before it is judged. A caller's own root (a test) is judged as stated.
         evidenceStoreDir: options.evidenceStoreDir,
+        // Rule (15) of the guard: only when the caller wrote the option.
+        discardUnsealedFakeRecordings: parsed.discardUnsealedFakeRecordings === true,
         resolveEvidenceStoreDir:
           options.evidenceStoreDir !== undefined ? undefined : (stored) => resetStoreRootOf(parsed.database, fromEnvironment, stored, (line) => io.out(`${COMMAND}: ${line}`)),
         onCheckpoint: options.onCheckpoint,

@@ -14,6 +14,11 @@
 #   scripts/lane/lane.sh stop   <main|1|2|3>   stop that Core (TERM to the listener of its port)
 #   scripts/lane/lane.sh status                what listens on 4420-4423, and the plan of each
 #   scripts/lane/lane.sh reset  <main|1|2|3>   db:reset of that database, under the migrate lock
+#   scripts/lane/lane.sh reset  2 --discard-unsealed-fake-recordings
+#                                              development capture lane only: the same reset, and it
+#                                              may erase UNSEALED recording folders of sessions that
+#                                              recorded from generated (FAKE) sources only (see
+#                                              "A LANE WHOSE SEAL FAILED" below)
 #
 # Run it OUTSIDE the sandbox (loopback bind, PostgreSQL), from any directory.
 #
@@ -54,6 +59,22 @@
 # opens nothing else. What the stub answers is switched by ONE word in its mode file (printed
 # too): NORMAL, AUTH_SCHEME, UNREACHABLE, NO_PROFILE, NOT_H264, EMPTY.
 #
+# A LANE WHOSE SEAL FAILED (fix wave I, re-gate 75 finding G75b-01, decision D216). A reset is
+# refused (RESET_BLOCKED_REAL_EVIDENCE) while the media store holds a recording that is not a
+# sealed, provable development package: the folder of a session whose seal did not complete
+# (SESSION-<id> without a manifest) and a folder the Core moved to .quarantine/. That guard is
+# right for evidence and it made a development lane unusable for ever after one failed seal.
+# The documented way out, for the development capture lane ONLY:
+#     scripts/lane/lane.sh stop 2
+#     scripts/lane/lane.sh reset 2 --discard-unsealed-fake-recordings
+# With the option the reset erases such a folder when - and only when - the database being reset
+# says its session recorded from exactly four generated (FAKE) sources and has no sealed item.
+# A recording from this computer's camera or microphone (LOCAL_DEVICE) or from a production
+# device is never erased this way: it still blocks, and a person decides about it. The refusal
+# of a reset without the option says how many folders the option would clear. The reset also
+# destroys EVERY session key of the lane's key folder (the demo packages it seals anew keep
+# theirs): after it no key of an earlier session can meet a session number given out again.
+#
 # Exit codes: 0 done; 64 usage or unknown lane; 69 the lane is in the wrong state (already
 # running, not running, a prerequisite of lane 2 is missing); 70 the Core did not become ready.
 
@@ -64,7 +85,7 @@ LOCKS="$ROOT/.locks"
 READY_SECONDS=${LANE_READY_SECONDS:-40}
 
 usage() {
-  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 status" >&2
+  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 reset 2 --discard-unsealed-fake-recordings   |   $0 status" >&2
   exit 64
 }
 
@@ -205,13 +226,20 @@ cmd_status() {
 }
 
 cmd_reset() {
-  plan "$1"; check_root; say_plan "$1"; check_real_prerequisites
+  plan "$1"
+  # The explicit word of the reset guard's rule (15): a development capture lane only (see "A LANE WHOSE SEAL FAILED").
+  DISCARD=${2:-}
+  if [ -n "$DISCARD" ] && [ "$MODE" != "REAL_DEVELOPMENT" ]; then
+    echo "lane.sh: --discard-unsealed-fake-recordings is for the development capture lane only; lane $1 runs $MODE. Nothing was reset." >&2
+    exit 64
+  fi
+  check_root; say_plan "$1"; check_real_prerequisites
   pid=$(listener "$PORT")
   if [ -n "$pid" ]; then echo "lane.sh: the Core of lane $1 is running (PID $pid on $PORT): stop it first; nothing was reset" >&2; exit 69; fi
   lane_env
   mkdir -p "$LOCKS"
   # shellcheck disable=SC2086
-  ( cd "$ROOT" && env $LANE_ENV /usr/bin/lockf -k "$LOCKS/db-migrate.lock" npm run -s db:reset -w @dems/core-server -- --database "$DATABASE" )
+  ( cd "$ROOT" && env $LANE_ENV /usr/bin/lockf -k "$LOCKS/db-migrate.lock" npm run -s db:reset -w @dems/core-server -- --database "$DATABASE" $DISCARD )
 }
 
 [ $# -ge 1 ] || usage
@@ -231,6 +259,8 @@ case "$1" in
     done
     cmd_start "$START_LANE" "$START_STUB" ;;
   stop)   [ $# -eq 2 ] || usage; cmd_stop "$2" ;;
-  reset)  [ $# -eq 2 ] || usage; cmd_reset "$2" ;;
+  reset)
+    [ $# -eq 2 ] || { [ $# -eq 3 ] && [ "$3" = "--discard-unsealed-fake-recordings" ]; } || usage
+    cmd_reset "$2" "${3:-}" ;;
   *) usage ;;
 esac

@@ -217,6 +217,8 @@ export function registerSessionRoutes(app: FastifyInstance): void {
         await beforePrecheck(request, id, 'BEGIN');
         // Row 71: helper processes of an earlier run refuse a start before any unit (503).
         await capture().beforeStart();
+        // Fix wave I driver A1 (G75b-01, D216): a session whose recording could not be sealed with the key store as it is, is refused before anything is recorded (503).
+        sealingHost(app).beforeStart(id);
         const started = { recording: false };
         const outcome = await onOpenSession('startSession', id, async (scope, session) => {
           if (session.state === SessionState.CREATE) {

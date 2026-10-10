@@ -15,7 +15,7 @@ source_structured_task: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real
 source_analysis: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/research/03_analysis.md
 source_phase_spec: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/masterplan/01_specs.md
 decisions: /Users/gsp-budi/Documents/DEMS/docs/2026-10-07_dems_real_capture_sealing/decisions/decisions.md (D4-D12)
-last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-17..39 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 121 contract delta PE-121-01..PE-121-16, `masterplan/11_audit_errata.md` §5.8: R-9..R-11 operations 93-97 in §2.6 as a TARGET for rows 132-142, new totals stated once in §10.1 — the registry as built is still 92; D73-D78, D80; earlier the same day: pair-review errata PE-113-01..PE-113-14, `masterplan/11_audit_errata.md` §5: R-8 ops 90-92 CONFIRMED by D24 and COUNTED — registry 92, 35 GET / 57 POST, audit types 63, offline 26; row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 and §2.5 added as a proposal; 2026-10-07 row-35 remediation, op 89 added)
+last_updated: 2026-10-10 (docs errata follow-up PE-WI-19..PE-WI-24: PE-FX-02 corrected by D218 (4), the members of closing pass J (`security.platformNotReported`, `coreNotRunning`, the start's 503 reason carried to the clients, the simulator's held integrity rows) and the scope of the simulator's source class; `implementation/137_docs_errata_followup.md`; decisions D217, D218; no figure of the registry moves: 97 / 36 / 61 / 67); 2026-10-10 (docs errata pass for fix waves H and I: PE-WH-02..PE-WH-06, PE-WI-01..PE-WI-09, each marked in place and listed in the errata index; `implementation/136_docs_errata_wave_h_i.md`; decisions D205-D209, D216, D217; no figure of the registry moves: 97 / 36 / 61 / 67); 2026-10-09 (row-128 spec-gate fix pass PE-128-17..39 (D89, D91; `gateway_check/27_r9_r11_spec_gate.md`); row 121 contract delta PE-121-01..PE-121-16, `masterplan/11_audit_errata.md` §5.8: R-9..R-11 operations 93-97 in §2.6 as a TARGET for rows 132-142, new totals stated once in §10.1 — the registry as built is still 92; D73-D78, D80; earlier the same day: pair-review errata PE-113-01..PE-113-14, `masterplan/11_audit_errata.md` §5: R-8 ops 90-92 CONFIRMED by D24 and COUNTED — registry 92, 35 GET / 57 POST, audit types 63, offline 26; row-113 driver choices recorded, D68; earlier: 2026-10-08 RV-SPEC errata AU2-07/AU2-08 and §2.5 added as a proposal; 2026-10-07 row-35 remediation, op 89 added)
 ---
 
 # API Contract C3 — operations 76-97, modified operations, error codes, audit types, slices and constants
@@ -35,6 +35,26 @@ last_updated: 2026-10-09 (row-128 spec-gate fix pass PE-128-17..39 (D89, D91; `g
 | PE-FM4-01 | §2.6, row of operation 95 | The bound of the camera user name is 1..120, not 1..255 (operations 89, 95, 96) | D117, D178 |
 | PE-FM4-03 | §7 Constants, `CAPTURE_CONNECTION_TEST_MAX_FAILURES` | The lock-out guard counts rejected credential-bearing requests, not outcomes: a test refused for the sign-in method, or sent without a credential, is not counted | D181 (ruling 3) |
 | PE-WH-01 | §2.6, row "Microphones" (operation 97) | `adapter` and `sourceClass` of `CaptureInputScan.inputs[]` are optional and absent in simulated capture (a SIMULATED Core and the in-app simulator); a Core in real capture states both | D196, D206 (2) |
+| PE-WH-02 | §2.4 Per-area notes | Operation 88 and `GET /media/{token}` open every item with a sealed v2 package in the Core's store: a REAL item or a demonstration item the seed sealed there; the case scope stays for REAL items only | D205, D208 |
+| PE-WH-03 | §3, row of operation 40 (paragraph below the table) | Operation 40 as built: `media.fileIds`, `media.reason`, `access { play, readTranscript, export }`, `exports[]`; a seed-sealed v2 item answers `LIVE_STREAM`, `DEMO_PACKAGE` is for v1 demonstration items; the item's optional sealed facts; operation 87 `archive`; the item's `interrupted` is the manifest's fact; five more examples | D205, D207, D208 |
+| PE-WH-04 | §5.2 `EVIDENCE_MEDIA_SERVED` | One row per media-session issue (operation 88) and one WARNING row when serving stops on the package; an answered range is a log line, not a row | D205 |
+| PE-WH-05 | §6 Realtime slices | Two optional members of existing slices: `session.captureCheckpoints` and `time.hostClock`; the pre-check TIME item of a Core in its own capture is a note | D203 (1), D209 |
+| PE-WH-06 | §2.4 Per-area notes | The installation identity (manifest fields 20 / 21) is Core configuration, two environment keys; no API member carries or sets it | D209 |
+| PE-WI-01 | §4, row `DEVELOPMENT_SOURCE_NOT_ALLOWED` | Four values of `details.reason` on the selector's `422 INVALID_INPUT` (operations 78 / 79) | D115 (3) moved, D215, D217 |
+| PE-WI-02 | §4, row `NOT_READY` (503) | Two more values of `details.reason` on `startSession`: `SESSION_KEY_NOT_OF_SESSION`, `SESSION_KEY_STORE_UNAVAILABLE` | D216 (4), D217 |
+| PE-WI-03 | §5.2 `CAPTURE_CONNECTION_TESTED` | One more optional detail key `reason` (`SCHEME_NOT_ALLOWED`), only on the row of a scheme refusal; such a refusal is not counted by the lock-out guard | D181 (3), D217 |
+| PE-WI-04 | §5.3 Changed audit rows | Six session rows carry the paired device of the sender in the row's `deviceId` | D216 (2), D217 |
+| PE-WI-05 | §6 Realtime slices | One optional member: `session.precheck.sendingDeviceId` | D216 (2), D217 |
+| PE-WI-06 | §2.4 Sealing progress (83) | `resumed` on a Core in real capture: true only for a run of the seal started by a start of the Core or by `recoverSession` | D217 |
+| PE-WI-07 | §2.4 Sealing progress (83) | How a retried or blocked seal is read: existing members and the shared reader `sealAttentionOf`; no contract member added | D216, D217 |
+| PE-WI-08 | §2.6 (before §3) and §7 `CAPTURE_SEARCH_ID_PATTERN` | A camera search id goes on across restarts of the Core within one database | D217 |
+| PE-WI-09 | §5.3 Changed audit rows | A start of a real-capture Core after a stop: no power-fail fault row for a session that was FINALIZING and no tablet-link row; the limit for the other four states | D216 (3), D217 (5) |
+| PE-WI-19 | §2.4 Per-area notes (after PE-FX-02); §5.3 row `RECOVERY_STARTED` | CORRECTS PE-FX-02: the retry of a failed seal that operation 33 starts DOES write one `RECOVERY_STARTED` row, `details.reason: SEAL_RETRY`; it still starts no recovery of the boot kind and the answer is still `202` with state `FINALIZING` | D218 (4), D186 (8) |
+| PE-WI-20 | §6 Realtime slices | One optional member of the slice `security`: `platformNotReported?: true`; the three required members keep their placeholder values and are not readings where it is present | D217 (7), D218 |
+| PE-WI-21 | §6 Realtime slices; §5.3 rows `FAULT_RAISED` / `FAULT_CLEARED` / `SYSTEM_BOOT` | One optional member `coreNotRunning?: true` on `session.fault` and on an entry of `faults.active[]`, and the same key in open maps (alert and event `params`, audit `details`, timeline `params`); kind stays `POWER_FAIL` | D217 (5), D218 |
+| PE-WI-22 | §4, row `NOT_READY` (503) | The `details.reason` of a refused `startSession` reaches the clients: a start refused for the session key is no longer shown as a Core that is starting | D217, D218 |
+| PE-WI-23 | §5.3 Changed audit rows (new row) | The in-app simulator and a Core's hosted simulator write no integrity row (`FRAME_HASH`, `WRITE_VERIFIED`, `TIMESTAMP_CONFIRMED`) while a start is not durable; they are written, at their scheduled times, once it is, and never for a start that failed | D217, D218 |
+| PE-WI-24 | §2.6 (the paragraph after the simulator table) | `adapter: FAKE`, `sourceClass: DEVELOPMENT` hold for the in-app simulator's two search candidates and its adopted device `CAM-03` only; the built-in devices carry neither member, operation 97 neither, and a SIMULATED Core states none on any operation | D196, D206 (1) (2) |
 
 > **Erratum PE-121-01 (D73, D78, D80).** The title range is 76-97 since blueprint row 121: operations
 > 93-97 (§2.6) are the contract for R-9, R-10 and R-11. They are a **target** — rows 132, 133, 136,
@@ -273,6 +293,43 @@ playback can draw the audio-source band (`register WB-04/MB-07`).
 `etaMs`. Progress is **forward-only** and derived from Core instants (`coreClockOf`), never the client
 clock (`register E-13`; OD-08), and `resumed: true` marks a RECOVERY resume (`register MB-06`).
 
+**Erratum PE-WI-06 (decision D217; re-gate 75 finding G75b-02; fix wave I driver A1, `implementation/131_fix_wave_i_a1.md` section 3.1 row "Resumed after restart" and decision 6; `delegation_progress/contract_wave_i.md` section 4):** the meaning of
+`resumed` on a Core in real capture is the sealing host's fact, not a reading of `attempt`. It is
+`true` only when THIS run of the seal was started by a start of the Core (the boot resume) or by
+the recovery action `recoverSession`; it is `false` for a first run and for every automatic retry
+inside the same process (`apps/core-server/src/modules/sealing/index.ts:61`;
+`apps/core-server/src/sealing-host/index.ts:575`, `:588`, `:635`). The body shape of operation 83
+did not change. In simulated capture `resumed` stays what the simulator answers (there `attempt`
+grows by a RECOVERY alone). `finalization.steps[].attempt` grows with EVERY run of the seal: a
+client must not derive "resumed after restart" from `attempt > 1`.
+
+**Erratum PE-WI-07 (decisions D216, D217; re-gate 75 findings G75b-01, G75b-02; fix wave I driver A1, `implementation/131_fix_wave_i_a1.md` section 3.1 rows 2c-2e; `delegation_progress/contract_wave_i.md` sections 1-3):** how a
+seal that is retried or blocked is read. **No contract member was added** (97 operations, 67 audit
+types; no OpenAPI change): everything is in members the state already carries.
+(1) RETRYING: `session.state` is `FINALIZING` and one entry of `session.finalization.steps[]` has
+`status: 'error'`, the Core's sentence in `detail` and its `attempt`; there is no alert yet. The
+Core runs the seal again by itself: three retries per process, after 5 s, 30 s and 120 s
+(`apps/core-server/src/sealing/pipeline/way-out.ts:61`).
+(2) BLOCKED: the retries are used up and the cause may heal. The state stays `FINALIZING`, the
+failed step keeps `status: 'error'`, and ONE entry of `alerts[]` is active: `severity: CRITICAL`,
+`kind: SYSTEM`, `target` = the session id, `params: { reason: 'SEAL_BLOCKED', cause, step,
+sessionId, detail? }`. `params.cause` is a sealing failure code; `params.detail` is an optional key
+of the open `params` map with one value of the closed list `SEAL_BLOCKED_DETAILS`:
+`SESSION_KEY_NOT_OF_SESSION`, `SESSION_KEY_STORE_UNAVAILABLE`, `SESSION_KEY_UNSAFE`,
+`SESSION_KEY_WRITE_FAILED`, `SESSION_KEY_NOT_FOUND`, `SESSION_CIPHER_REFUSED`
+(`packages/shared/src/sim/seal-blocked.ts:35`, `:41-53`). The alert is resolved when the seal
+completes or the session is ended. The Core records no new session until this one is sealed.
+(3) THE ONE READING for a client is the shared reader `sealAttentionOf({ session, alerts })`
+(`seal-blocked.ts:141`; `null`, or `kind: 'RETRYING' | 'BLOCKED'`), and for Home / Dashboard /
+header surfaces `sealBlockedNoticeOf(state, sessionId?)` (`seal-blocked.ts:97`); the fixed
+sentences are `SEAL_BLOCKED_DETAIL_SENTENCE` (`:60-66`) and `SEAL_RECORDING_KEPT_SENTENCE`
+(`:70`, "The recording is kept on the Core."). Both are exported by `@dems/shared/sim`.
+(4) TERMINAL: `SEALER_FAILED` with the cause `SESSION_KEY_NOT_OF_SESSION` is not retriable; its
+third attempt ends the session as UNSEALABLE (the recordings are MOVED to `.quarantine/<id>/`,
+the session ends INCOMPLETE, the alert is `params: { reason: 'UNSEALABLE', cause, sessionId }`).
+Every other sealer cause stays retriable and blocked until healed (`implementation/131_fix_wave_i_a1.md` section 7, decision 2).
+What the surfaces draw from this is `masterplan/08_client_ux_spec.md` erratum PE-WI-10.
+
 **Transcript (84-86).** 84 returns the machine transcript inside the seal. 85 appends a **signed
 revision** (`TRANSCRIPT_REVISE`, Core Ed25519 key, author recorded, no approval flow — OD-15); the
 sealed machine transcript is byte-unchanged and `baseRevision` binds the revision to it (row 33
@@ -331,6 +388,41 @@ answers `202` with state `FINALIZING`, not `RECOVERY`, when the open session is 
 FAILED sealing step on a Core in real capture operation: the operation then re-queues that seal in
 the background, starts no recovery and writes no `RECOVERY_STARTED`. In every other state it is
 unchanged (`202 RECOVERY` from FAULT, `409 INVALID_STATE` otherwise).
+
+**Erratum PE-WI-19 (decision D218 (4); decision D186 (8); tidy pass F-Y; `implementation/137_docs_errata_followup.md`) - CORRECTS PE-FX-02:** the clause of PE-FX-02 above, "starts no recovery
+and writes no `RECOVERY_STARTED`", is **SUPERSEDED** (the old sentence stays above as history; do not read it as the contract). The ruling of D218 (4) follows the code. As built, the retry
+on demand of a failed seal is AUDITED. Operation 33 hands the request's principal to the sealing host's door `failedSeal(id)`
+(`apps/core-server/src/modules/sessions/routes.ts:306-312`); `retryFailedSeal` (`apps/core-server/src/sealing-host/index.ts:569-579`; contract text `:150-158`) returns true at once while a run of the seal is under way, and otherwise resets the way-out (`:574`) and writes ONE audit row through `noteRetryOnDemand` (`:308`, called at `:578`) and the engine door `noteSealRetryOnDemand`. The row
+(`apps/core-server/src/engine/sealing-notice-doors.ts:119-137`): type `RECOVERY_STARTED`, severity `WARNING`, `actorId` = the operator who asked (null when the principal is no operator),
+`sessionId`, `evidenceId`, message "Sealing of session {id} is run again on demand ({cause})", and `details { reason: 'SEAL_RETRY', cause, step, faultKind }` where `cause` is the failure code of
+the failed step, `step` the step (both `null` when the journal cannot be read), and `faultKind` the session's fault kind or `null` when it has none (`SEAL_RETRY_REASON` is `engine/sealing-notice-doors.ts:34`).
+A request that finds a run already under way resets nothing, writes no row and answers `202` all the same (`sealing-host/index.ts:572-573`). What PE-FX-02 had right stays: the answer is `202` with
+`state: FINALIZING`; no recovery of the boot kind (the `FAULT` to `RECOVERY` path, `recoverTransition`) is started and the session stays `FINALIZING`; every other state is unchanged. The row is
+the audit note of the retry, not the start of a recovery; no new audit type (67). Pinned by `apps/core-server/src/modules/sessions/__tests__/recover-failed-seal.db.test.ts:85-89`.
+
+**Erratum PE-WH-02 (decisions D205, D208; gate 94 finding G94-01; reconcile pass R, `implementation/127_fix_wave_h_r.md` section 3 and "D205: the scope line"):** operation 88 and the
+registry-external route `GET /media/{token}` open an item that has a sealed v2 package in the
+Core's store. That is a REAL item, OR a demonstration item the seed sealed on this Core
+(`integrity_source = 'DEMO_PACKAGE'`, manifest version 2, development sources, an Ed25519 signature
+that is not simulated: `apps/core-server/src/media-stream/items.ts:54`;
+`apps/core-server/src/media-stream/service.ts:195`). The case scope of SEC35-16 / PE-FX-01 stays
+for `integrity_source='REAL'` only, as the sentence above already says (`service.ts:263`): a
+seed-sealed demonstration item plays for every `EVIDENCE_VIEW` holder. A v1 demonstration item
+and a simulated item keep `409 MEDIA_NOT_AVAILABLE` (reason `NOT_A_SEALED_PACKAGE`); a client
+plays its bundled media for those. For the tamper demonstration item a range that starts in the
+altered fragment answers `409 MEDIA_NOT_AVAILABLE` with the reason `FRAGMENT_NOT_AUTHENTIC`
+(`VIDEO-02`, seq 3). The description strings of operations 40 / 88 in
+`packages/shared/src/api/evidence.ts` still say 'REAL' / 'every dataset item': wording only, not
+changed by pass R (no rename, additive rule).
+
+**Erratum PE-WH-06 (decision D209; closing pass Z1, `implementation/128_fix_wave_h_z1.md` item 3):** the
+installation identity a sealed manifest states (`device.deviceId`, `device.name`: evidence package
+spec §B.3 fields 20 / 21, erratum PE-WH-08) is CORE CONFIGURATION, read once at start from two
+environment keys, `DEMS_INSTALLATION_DEVICE_ID` and `DEMS_INSTALLATION_NAME`
+(`apps/core-server/src/config.ts:60-61`, `:294`, `:301`;
+`apps/core-server/src/sealing-host/installation-identity.ts:59`). No operation of this contract
+reads, carries or sets it, and no slice member was added for it. The stored device record of the
+state is no longer read for the manifest.
 
 **Credential (89).** `setCaptureDeviceCredential` is the write-only credential path (SEC35-01;
 RK-12): it accepts `{ username, secret }` for the camera device in the path, stores it encrypted at
@@ -532,6 +624,27 @@ The simulator's devices carry `adapter: FAKE`, `sourceClass: DEVELOPMENT` (they 
 devices). On a tablet or phone the in-app simulator refuses 95, 96 and 89 with the same
 `403 NOT_PERMITTED` (`WEB_CONSOLE_ONLY`) as the Core server.
 
+**Erratum PE-WI-24 (decisions D196, D206 (1) (2), D218; `implementation/137_docs_errata_followup.md`):** the sentence "The simulator's devices carry `adapter: FAKE`, `sourceClass: DEVELOPMENT`" above is
+true of two things only and is not general. (1) It HOLDS for what the table names, in the IN-APP simulator: the two search candidates of operation 94 (`simCaptureCandidates()`, adapter `SIM_CAPTURE_ADAPTER = 'FAKE'`,
+`sourceClass: DEVELOPMENT`; `packages/shared/src/api/capture-discovery.ts:719-764`) and the device `CAM-03` that operation 96 registers (`sim/capture-registry.ts:72-73`, derived from the adapter;
+`sim/api.ts:1420`). (2) It does NOT hold for the other devices: the five built-in devices of the simulator's `captureDevices` (`CAM-01`, `CAM-02`, microphones, PoE) carry neither member
+(`packages/shared/src/sim/initial-state.ts:96-154`, `sim/types.ts` `CaptureDeviceStatus.adapter?` / `sourceClass?` "present on a device that operation 96 registered"), and the entries of operation 97 carry neither in
+simulated capture (erratum PE-WH-01; `sim/api.ts:1482`). (3) It does NOT describe a Core in SIMULATED capture (the server): by D206 (1) that Core states no adapter and no source class on any operation - operation 93
+answers `503` (no camera search, so no candidate exists), operation 94 holds no candidate, and the device reads, slices, alerts and audit rows say nothing of a source
+(`apps/core-server/src/modules/devices/__tests__/simulated-no-source-class.db.test.ts`). A client reads an absent `sourceClass` as "not stated", never as `PRODUCTION`. Open, not touched here: lines 586 and 698 of
+this file say that in `SIMULATED` "the seeded `FAKE` built-ins are listed as today" (erratum PE-128-25, older than D206); read with this erratum they mean the stored kinds, not a member on the wire.
+
+**Erratum PE-WI-08 (decision D217; re-gate 70 finding G70b-07; fix wave I driver A2, `implementation/132_fix_wave_i_a2.md` section 1 row G70b-07 and decision 7; `delegation_progress/contract_wave_i_a2.md` section 6):** a camera search id is
+`DSC-` and a number that GOES ON across restarts of the Core within one database: the first
+search of a process reads the highest camera-search number of the stored
+`CAPTURE_DISCOVERY_SEARCHED` rows and continues from it
+(`apps/core-server/src/modules/capture-discovery/search-ids.ts:21-22`, `:36`). The pattern is
+unchanged (`CAPTURE_SEARCH_ID_PATTERN`, §7). A client must not assume that the first search of a
+session is `DSC-000001`. Two stated limits: the thirteen-digit ids of the microphone re-read
+(operation 97) are made from the clock and are not part of the counter; a search whose window
+never closed wrote no row, so its number is given again after a restart (it is then the only one
+in the chain with it). No table, column or migration was added.
+
 ---
 
 ## 3. Modified operations (of the existing 75)
@@ -542,7 +655,7 @@ Each row: **Before** (current contract) → **After**. `file:line` is the curren
 | # | operationId | Before | After | Register row + decision |
 |--:|---|---|---|---|
 | 39 | `listEvidence` | `EvidenceItem` v1: `tracks` VIDEO-01/02 + AUDIO-01/02 each one file hash; simulated signature | `EvidenceItem` v2: `files[]` (one whole fMP4 per camera, each with stored-bytes + plaintext hashes and a fragment-chain head), `audioSourceIntervals[]`, `transcript` summary; real Ed25519 signature | SH-07, OD-02 L2. `evidence.ts:75` |
-| 40 | `getEvidence` | item + `EvidenceMediaRef { source: DEMO_PACKAGE\|NONE, packageSuffix }` | item v2 + `media` gains `source: DEMO_PACKAGE\|LIVE_STREAM\|NONE`; `LIVE_STREAM` means a signed media session (op 88) can play it | SH-07/SH-14, NM-11; OD-02/OD-16. `evidence.ts:85-101` |
+| 40 | `getEvidence` | item + `EvidenceMediaRef { source: DEMO_PACKAGE\|NONE, packageSuffix }` | item v2 + `media` gains `source: DEMO_PACKAGE\|LIVE_STREAM\|NONE`; `LIVE_STREAM` means a signed media session (op 88) can play it. **Erratum PE-WH-03** (paragraph below this table): the members as built | SH-07/SH-14, NM-11; OD-02/OD-16. `evidence.ts:85-101` |
 | 41 | `verifyEvidence` | per-track hash compare + manifest + `SIMULATED-SHA256` signature | per-**file** fragment chain verify (both hashes) + transcript hash + **real** signature; `ok:false` on one tampered fragment (OD-02 L2) | SH-07, NM-08; OD-02/OD-03/OD-04/OD-21. `evidence.ts:111-130` |
 | 42 | `exportEvidence` | body `{ reason, destination? }`; `202 EvidenceExportAccepted { exportId, evidenceId, status: 'EXPORTED' }`; synchronous; no file | body gains `{ kind: PACKAGE\|COMPOSITE, composite? }`; creates a background job; `202` `{ exportId, status: 'QUEUED' }`; completion by 87; audit adds `EVIDENCE_EXPORT_FAILED` | SH-14, NM-12; OD-16. `core-api.ts:421-451, 829-881` |
 | 44 | `getDeviceHealth` | `cameras[]` (lens/recState), `audio[]` (AUDIO-01/02 as mics) | `cameras[]` gains `streamState: LIVE\|LOST`; `audio[]` re-keyed to inputs `MIC-01`/`MIC-02` + `activeInputId` | SH-17, OD-01/OD-22. `core-api.ts:381-415` |
@@ -569,6 +682,34 @@ Each row: **Before** (current contract) → **After**. `file:line` is the curren
 contract (statuses, headers) is unchanged. `getAuthSession`/`hasPairing…` are not touched. The
 `finalization` step enum change (op 27) is the one DB-coupled contract change and is shared with
 row 30 (`dbc-3`), not owned here.
+
+**Erratum PE-WH-03 (decisions D205, D207, D208; gate 94 findings G94-01, G94-04, G94-05; wave H driver C1 and reconcile pass R, `implementation/127_fix_wave_h_r.md` sections 2 and 3):** operation 40
+`getEvidence` as built. The contract (`packages/shared/src/api/evidence.ts`) is the single source
+of these names; all members below are optional and additive.
+(1) `media`: `source`, `packageSuffix`, and with `LIVE_STREAM` the camera file ids
+**`media.fileIds`** (1 or 2; `evidence.ts:106`, `:124`), with `NONE` a code in `media.reason`.
+An item with a sealed v2 package in the Core's store answers `LIVE_STREAM` + `fileIds` (or `NONE`
++ reason) - a REAL item and a seed-sealed demonstration item alike (PE-WH-02);
+`DEMO_PACKAGE` is for v1 demonstration items only (`apps/core-server/src/modules/evidence/media.ts:31`).
+(2) `access`: `play`, **`readTranscript`** (this caller is inside the case scope operations 84 /
+86 hold for the item; `evidence.ts:153`) and `export`. A client that reads `readTranscript: false`
+does not ask operations 84 / 86, so a page view writes no `ACCESS_DENIED` row.
+(3) `exports[]`: only for a caller with `access.export`, the finished exports whose archive lies
+in the Core's store, newest first (`exportId`, `jobId`, `kind`, `completedAt`, `exportedBy`,
+`archiveBytes`, `archiveSha256?`; `evidence.ts:139-142`, `:162`). Operation 87 answers `archive`
+(length and SHA-256 of the archive file) on a COMPLETE job (`evidence.ts:457-460`).
+(4) The item: `sealedPackage` (`PRESENT` / `NOT_READABLE`, stated for a package sealed on this
+Core - the one test of "sealed here"; never `manifestVersion`), `files`, `interrupted`,
+`interruptedCause`, `signature.developmentKey` (`true` / `false` / `null`; `evidence.ts:318`),
+`audioSourceIntervals[].sourceClass`, and `transcript` on the body's item.
+(5) THE interrupted fact is the item's `interrupted`, which is the sealed manifest's
+`timeline.interrupted`. The custody entry `RECORDING_INTERRUPTED` answers only where the member
+is absent; if the two ever disagree the manifest wins (D207, D208: the pipeline feeds both from
+one value).
+(6) Five more `getEvidence` 200 examples beside `productSealed`: `productSealedInterrupted`,
+`productSealedOneCamera`, `noMedia`, `outsideCaseScope`, `seedSealedDemo` (`evidence.ts:1000-1062`).
+Not in the contract and not sent: `media.files`, `access.transcript`, and `transcript.noSpeech` /
+`reason` on operation 40.
 
 ### 3.1 Changes made by R-9..R-11 (erratum PE-121-07; D72(k), D80)
 
@@ -632,7 +773,7 @@ forward-only progress read shows its last Core-instant value, never a rewind (E-
 
 | Code | Change | Returned by | Authority |
 |---|---|---|---|
-| `NOT_READY` (503) | gains `details.reason: CAPTURE_NOT_READY` when the capture worker/binary/store is not ready (boot checks). **Erratum PE-113-11 (D68):** three more reason values on the same code, no new code — `TRANSCRIBER_NOT_READY` (op 92: no transcriber probe can run), `CREDENTIAL_STORE_NOT_READY` (op 91: a `SECRET` write while no credential sealer is provided), `STT_CONFIG_NOT_SEEDED` (ops 90-92: the singleton `stt_config` row is missing) | all capture ops + boot; 90, 91, 92 | CS-22; `specs B AC-3`; `core-api.ts:185`; `transcription.ts:78-81`; `modules/stt-config/change.ts:57-58,75-79` |
+| `NOT_READY` (503) | gains `details.reason: CAPTURE_NOT_READY` when the capture worker/binary/store is not ready (boot checks). **Erratum PE-113-11 (D68):** three more reason values on the same code, no new code — `TRANSCRIBER_NOT_READY` (op 92: no transcriber probe can run), `CREDENTIAL_STORE_NOT_READY` (op 91: a `SECRET` write while no credential sealer is provided), `STT_CONFIG_NOT_SEEDED` (ops 90-92: the singleton `stt_config` row is missing). **Erratum PE-WI-02 (decisions D216 (4), D217; re-gate 75 finding G75b-01; fix wave I driver A1, `implementation/131_fix_wave_i_a1.md` section 3.1 row 2b and decision 3; `delegation_progress/contract_wave_i.md` section 5):** two more reason values on the same code, on `startSession` of a Core in real capture, no new status or code - `SESSION_KEY_NOT_OF_SESSION` (a session key of an earlier session with this session number is in the Core's key store, so the recording could not be sealed) and `SESSION_KEY_STORE_UNAVAILABLE` (the key store cannot be used). The start is refused BEFORE any recording: nothing was recorded and nothing changed, the session stays ARMED and can be cancelled; a client shows the message as it shows the other refused starts (`apps/core-server/src/sealing-host/index.ts:183-186`, `:582-586`; `apps/core-server/src/sealing-host/session-key.ts:115-123`; `apps/core-server/src/modules/sessions/routes.ts:221`). **Erratum PE-WI-22 (decisions D217, D218; closing pass J item 7, `implementation/135_fix_wave_i_pass_j.md` section 1):** the reason of that refusal is CARRIED to the clients. A `503 NOT_READY` is classified by a client as a Core that is not ready (`packages/shared/src/client/core-client.ts:381`) and used to be worded "The Core server is starting" (web `lib/core-errors.ts:149`); a refused start is not that. The Live source now carries `details.reason` on the rebuilt error (`LiveTransportError.detailReason`, `packages/shared/src/live/errors.ts:52`, `:63`, `:77`; `live/source/rebuild-error.ts:107`), and both start handlers ask the shared reader `startRefusedReasonOf(error)` BEFORE their general presenter (`packages/shared/src/sim/start-refused.ts`: `START_REFUSED_REASONS`, `startRefusedSentenceKey`; web `features/session-new/index.tsx:397`, mobile `features/session-new/use-session-new.ts:205`). Only the two values `SESSION_KEY_NOT_OF_SESSION` and `SESSION_KEY_STORE_UNAVAILABLE` are read; any other 503, and one without a reason, is still "starting". The wording is the clients' (UX spec erratum PE-WI-37). Not changed, same defect (open): `CAPTURE_HELPERS_LEFT` is a `503 NOT_READY` too and is still worded "starting" | all capture ops + boot; 90, 91, 92 | CS-22; `specs B AC-3`; `core-api.ts:185`; `transcription.ts:78-81`; `modules/stt-config/change.ts:57-58,75-79` |
 | `RECORDING_ACTIVE` (409) | unchanged meaning; also raised when a PoE cycle is attempted during RECORDING | 48 | OD-22; `devices.ts:150` |
 | `INVALID_STATE` (409) | 81 raises it when the session is not RECORDING; 83 when sealing has not started | 81, 83 | `sessions.ts:451` idiom |
 | `NOT_FOUND` (404) | 79/80 for an unknown `{id}`; 81/82 for an ID that is not the open session (the existing rule, `sessions.ts:9`) | 79, 80, 81, 82 | existing |
@@ -654,7 +795,7 @@ forward-only progress read shows its last Core-instant value, never a rewind (E-
 | `INVALID_STATE` | 409 | `CONNECTION_TEST_IN_PROGRESS` | 95, 96 | a test of this candidate is running; no second attempt |
 | `INVALID_INPUT` | 422 | `CREDENTIAL_REQUIRED` | 95, 96 | a `PRODUCTION` candidate, or an adoption after an authenticated test, without `credential`; 0 outbound requests |
 | `INVALID_INPUT` | 422 | `CREDENTIAL_NOT_EXPECTED` | 96 | `credential` sent although the passing test was unauthenticated; nothing stored |
-| `INVALID_INPUT` | 422 | `DEVELOPMENT_SOURCE_NOT_ALLOWED` | 78, 79 | a `DEVELOPMENT` device named while the development flag is off |
+| `INVALID_INPUT` | 422 | `DEVELOPMENT_SOURCE_NOT_ALLOWED` | 78, 79 | a `DEVELOPMENT` device named while the development flag is off. **Erratum PE-WI-01 (decisions D215, D217; the pin of D115 (3) moved; re-gate 70 finding G70b-01; fix wave I driver A2, `implementation/132_fix_wave_i_a2.md` section 1 and decision 1; `delegation_progress/contract_wave_i_a2.md` section 3):** this value keeps its meaning, and the same `422 INVALID_INPUT` of operations 78 / 79 (`details: { in: "body", reason, deviceId }`) now states the TRUE reason, one of four: `DEVELOPMENT_SOURCE_NOT_ALLOWED`; `PRODUCTION_SOURCE_NOT_ALLOWED` (a production device named on a Core that runs development sources - it answered the development reason before); `CAPTURE_DEVICE_NOT_SERVED` (the device is registered, but no capture adapter of the running Core serves it); `CAPTURE_DEVICE_CLASS_MISMATCH` (the device is not of the class the line asks for). Source: `CaptureAssignmentRefusal`, `apps/core-server/src/modules/capture-config/routes.ts:79-90`. Any other adapter refusal keeps the adapter layer's own code. A camera adopted through operation 96 is assignable at once, without a restart of the Core |
 | `RATE_LIMITED` | 429 | `DISCOVERY_RATE_LIMITED`, `CONNECTION_TEST_RATE_LIMITED`, `CONNECTION_TEST_LOCKOUT_GUARD`, `INPUT_RESCAN_RATE_LIMITED` | 93; 95, 96; 95, 96; 97 | over a bound of §7; `retry-after` set; 0 outbound requests; no audit row |
 | `NOT_READY` | 503 | `DISCOVERY_NOT_READY` | 93, 95, 96 | no discovery adapter provided, or capture not ready |
 | `NOT_READY` | 503 | `CREDENTIAL_STORE_NOT_READY` (existing value, PE-113-11) | now also 89, 96 | a credential would be stored and no sealer is provided (until row 84); nothing stored |
@@ -788,6 +929,16 @@ It is a **warning**, never an auto-switch (OD-11).
 **`EVIDENCE_MEDIA_SERVED`** — category `EVIDENCE` — written by op 88 (NM-11; E-31). **Never the
 signed URL** and never a byte of media.
 
+**Erratum PE-WH-04 (decision D205; gate 94 finding G94-06; wave H driver C1; request line 10:20:00Z of `delegation_progress/file_requests.md`):** WHEN the row is written, as built. ONE row
+per media-session ISSUE - operation 88 commits it before its answer, with `fileId`,
+`bytesServed: 0`, `signed: true`, `expiresAt`, so no token exists that the trail does not know of
+(SEC35-12; `apps/core-server/src/media-stream/service.ts:314-323`) - plus ONE row of severity
+WARNING when serving STOPS on the package itself (a fragment that does not authenticate or cannot
+be opened), with `fileId`, `bytesServed`, `rangeStart`, `rangeEnd`, `signed: true`
+(`service.ts:344-353`). An answered Range request is a LOG LINE, not an audit row
+(`service.ts:341`). A reading of this type as "one row per answered range" is superseded. The key
+list below is unchanged (`apps/core-server/src/core/audit-details.ts:280-287`).
+
 | Key | Type | Example |
 |---|---|---|
 | `fileId` | string, `VIDEO-01`/`VIDEO-02` | `VIDEO-01` |
@@ -850,6 +1001,21 @@ search writes this one row and no other** (D80(8)); the alert of §5.4 is not a 
 outcome**, by op 95 and by the re-verification of op 96. An `AUTHENTICATION_FAILED` outcome is
 audited as a fact (camera-credential refusals are audited, C-N9). **Never the username, the secret or a URL.** **Erratum PE-128-28 (D86 C-3; SEC35-46):** three optional keys — `host`? and `endpointRef`? (present for `PRODUCTION` candidates only, D86 C-3) and `guardTripped`? (boolean; `true` on the failure that trips the lock-out guard). The key is named `endpointRef`, never `onvifUuid` (a denied key, `0006_stt_config.sql:33`).
 
+**Erratum PE-WI-03 (decisions D181 (3), D217; re-gate 70 finding G70b-05; fix wave I driver A2, `implementation/132_fix_wave_i_a2.md` section 1 row G70b-05 and decision 2; `delegation_progress/contract_wave_i_a2.md` section 2):** one more
+OPTIONAL key, `reason`, with the one value `SCHEME_NOT_ALLOWED` (the closed code of operation 95's
+`reason`). It is present ONLY on the row of a scheme refusal - the camera offered only a sign-in
+method the Core does not answer, and the credential was NOT sent - and absent on every other row
+(`apps/core-server/src/core/audit-details.ts:347`;
+`apps/core-server/src/modules/capture-discovery/connect/service.ts:112-119`). It is an erratum to
+the key list pass F-M4 pinned: no other member told a scheme refusal from a first refused
+credential (`outcome`, `authenticated: true`, `guardTripped: false` are the same for both). A test
+sent without a credential is told by the existing `authenticated: false`. **A scheme refusal does
+not count for the lock-out guard** (PE-FM4-03; `connect/limits.ts:185-188`): `failedAttemptsRemaining`
+is a required member of operation 95's answer and carries the host's UNCHANGED count, so a client
+draws the remaining-attempts line only for `outcome === AUTHENTICATION_FAILED && authenticated ===
+true && reason === undefined`. The audit type set stays 67. Example:
+`CAPTURE_CONNECTION_TESTED_SCHEME_REFUSAL_EXAMPLE` (`@dems/shared/api`).
+
 | Key | Type | Example |
 |---|---|---|
 | `candidateId` | string, `^CND-[0-9A-F]{12}$` | `CND-4F2A91C0D377` |
@@ -862,6 +1028,7 @@ audited as a fact (camera-credential refusals are audited, C-N9). **Never the us
 | `host`? | string, an IP literal; `PRODUCTION` candidates only (D86 C-3) | `192.0.2.10` |
 | `endpointRef`? | string 1..120; `PRODUCTION` candidates only (D86 C-3) | `urn:uuid:00000000-0000-0000-0000-000000000000` |
 | `guardTripped`? | boolean — `true` on the failure that trips the lock-out guard | `false` |
+| `reason`? (**PE-WI-03**) | string, the one value `SCHEME_NOT_ALLOWED`; only on the row of a scheme refusal | `SCHEME_NOT_ALLOWED` |
 | `permission`? | string, a SCREAMING_SNAKE code | `CAPTURE_CONFIG` |
 
 **`CAPTURE_CANDIDATE_ADOPTED`** — category `DEVICE` — written by op 96 inside the adoption
@@ -903,12 +1070,16 @@ Resolving the alert writes no row; a later occurrence is a new alert with a new 
 | `EVIDENCE_EXPORTED` | now the **request** row of op 42 (the job is queued), with `details.kind: PACKAGE\|COMPOSITE`; the file may not exist yet | OD-16; NM-12 |
 | `ACCESS_DENIED` | unchanged keys (`operationId`, `permission`, `role`, `reason?`); the new permissions and the `SESSION_HOLDER` condition feed `reason` | `audit-details.ts:91-96`; OD-09/OD-10/OD-15 |
 | `EVIDENCE_SEALED` | unchanged; the v2 seal writes it once per session with both files and the transcript | OD-02/OD-03 |
-| `RECOVERY_STARTED`/`RECOVERY_COMPLETED` | unchanged; a resumed seal sets `SealingProgress.resumed` (op 83) | OD-08; `specs E.5` |
+| `RECOVERY_STARTED`/`RECOVERY_COMPLETED` | unchanged; a resumed seal sets `SealingProgress.resumed` (op 83). **Erratum PE-WI-06** (§2.4): on a Core in real capture `resumed` is true only for a run started by a start of the Core or by `recoverSession`. **Erratum PE-WI-19** (§2.4): the retry that `recoverSession` starts for a failed seal writes one `RECOVERY_STARTED` row with `details { reason: SEAL_RETRY, cause, step, faultKind }` and the asking operator as `actorId` | OD-08; `specs E.5`; D217, D218 (4) |
 | `CAPTURE_CREDENTIAL_SET` — **erratum PE-121-09** | unchanged keys; `operationId` may now read `adoptCaptureCandidate` (the credential leg of op 96) | D80(7); §2.6 |
 | `ACCESS_DENIED` — **erratum PE-121-09** | unchanged keys; `reason` may now name the condition `WEB_CONSOLE_SESSION` (ops 89, 95, 96) | D80(3) |
 | `FAULT_RAISED` / `FAULT_CLEARED` — **erratum PE-121-09** | for the kind `CAPTURE_FAULT` raised at session start with no camera, the row carries the optional `reason: NO_CAMERA_CONNECTED` and `evidenceFiles: 0` — the one row "stating that nothing was recorded" (R-10 AC-3). **Confidence MEDIUM:** this analyst found the row's composition in the simulator (`packages/shared/src/sim/faults.ts:343,358`) but no entry for it in `SERVER_AUDIT_DETAIL_RULES`; rows 133 / 139 check where the key list lives before adding the two keys | D72(k), D72(h); R-10 AC-3 |
 | `SYSTEM_BOOT` (existing type) — **erratum PE-128-37** | gains the key `captureOperation`: `SIMULATED` \| `REAL_PRODUCTION` \| `REAL_DEVELOPMENT`; one row per boot. No new audit type: the total stays 67 | D86 (SEC35-41 (b)) |
 | `PRECHECK_BLOCKED` — **erratum PE-121-09** | unchanged type; written as today when both cameras or both microphones are unreachable (§3.1) | D80(6) |
+| `SESSION_CREATED`, `PRECHECK_PASSED`, `PRECHECK_BLOCKED`, `RECORDING_STARTED`, `RECORDING_STOPPED`, `SESSION_CANCELLED` — **erratum PE-WI-04** | unchanged keys. When a PAIRED DEVICE sent the action, the row carries that device's id in the row's own `deviceId` member (as `AUDIO_SOURCE_SWITCHED` does); no `details` key was added and `sendingDeviceId` stays a detail key of the switch row only. A row of an action sent from the web console keeps `deviceId: null`. The pre-check rows are written later, on an engine tick, and take the device from `session.precheck.sendingDeviceId` (§6, PE-WI-05). The simulator inside an app (the device console) is unchanged: its session rows name no device. Source: `packages/shared/src/sim/session-machine.ts:344`, `:621`, `:683`, `:809`, `:855`, `:909`, `:998`; `implementation/132_fix_wave_i_a2.md` section 1 row G75b-04 and decisions 3, 5 | D216 (2), D217; re-gate 75 finding G75b-04 |
+| `FAULT_RAISED`, `TABLET_LINK_CHANGED`, `RECOVERY_STARTED` at a start of the Core — **erratum PE-WI-09** | Real capture only; the SIMULATED lane is unchanged. A session that was FINALIZING when the Core stopped is NOT faulted at the next start: no `FAULT_RAISED` "Power fail detected", no `RECOVERY_STARTED { faultKind: POWER_FAIL }`, no alert; the session stays FINALIZING and its seal resumes. No `TABLET_LINK_CHANGED` "Tablet control offline - recording continues" row is written at any start of a real-capture Core: the link reads OFFLINE in the state, and "Tablet control connected" is written when a device connects (`apps/core-server/src/engine/rehydrate.ts:255`, `:269`, `:345-357`, `:375`). **LIMIT, not built:** a real-capture Core stopped while its session was PRECHECK, ARMED, RECORDING or STOPPING still gets the restart fault of kind `POWER_FAIL` at the next start. Ruling D217 (5): no new reason code now; a `CORE_STOPPED` cause is listed for the next task (`implementation/132_fix_wave_i_a2.md` section 4) | D216 (3), D217 (5); re-gate 75 finding G75b-03 |
+| `FAULT_RAISED`, `FAULT_CLEARED`, `SYSTEM_BOOT` of the restart fault — **erratum PE-WI-21** | When the fault is the restart fault of a Core in its own capture, the three rows carry the optional detail key `coreNotRunning: true` (`FAULT_RAISED` and `FAULT_CLEARED` beside `kind`, `evt`, `target`; `SYSTEM_BOOT` beside `afterFault: POWER_FAIL`), and their `message` says the Core was not running (§6). `kind` stays `POWER_FAIL`; no new reason code, no new audit type. Absent: the row is what it was | D217 (5), D218; closing pass J |
+| `FRAME_HASH`, `WRITE_VERIFIED`, `TIMESTAMP_CONFIRMED` of the SIMULATED stream — **erratum PE-WI-23** | The simulator (the in-app one and a SIMULATED Core's hosted one) runs its recording integrity stream from the accepted start. While the start is not decided (`session.captureDurable === false`, the simulator's connecting time) its arrivals are HELD: schedule and random draws are unchanged and each row is written at its own scheduled time once the start is durable; a start that fails drops them, so a failed start has none of these rows. A start that happened has the same rows as before; only a row that fell inside the connecting second can sit up to that second later in the chain. A Core in its own capture writes none of them at all (wave H, G75-01) | D217, D218; `packages/shared/src/sim/generator.ts:247-252`; closing pass J item 5 (G75b-10) |
 
 `AUDIT_TYPE_CATEGORY` gains exactly nine entries (`CAPTURE_CONFIG_CHANGED`→`DEVICE`,
 `AUDIO_SOURCE_SWITCHED`→`SESSION`, `CAMERA_POE_CYCLED`→`DEVICE`, `TRANSCRIPT_REVISED`→`EVIDENCE`,
@@ -986,6 +1157,67 @@ and `captureConfig.mics` gains `sourceClass` (§2.6 "Device shapes"). `kind` kee
 `CAMERA|MIC|POE`. (3) Op 96 publishes `captureDevices` (one more device); op 97 and the pre-check
 publish `online`. (4) The R-10 alerts travel in the existing `alerts` slice (§5.4).
 
+**Erratum PE-WH-05 (decisions D203 (1), D209; gates 75 / 89 findings G75-01, G89-01; closing pass Z1, `implementation/128_fix_wave_h_z1.md` items 1 and 4):** the slice count stays 30; two
+existing slices gain one OPTIONAL member each, both in the OpenAPI document.
+(1) `session.captureCheckpoints?: { fragments, bytes, lastAt, cameras: [{ deviceId, fragments,
+bytes }] }` - what the Core holds of a recording of its OWN capture: the fragment checkpoints the
+capture worker reported durable. Not stored; refreshed at most every 5 s of the Core clock and at
+the end of the capture; `lastAt` is the Core clock when the checkpoint was heard. ABSENT in
+simulated capture, before the first checkpoint and on a session read back after a restart: absent
+means "not stated", never 0 (`packages/shared/src/api/state-slices.ts:364-372`). The REST
+`Session` does not carry it; the slice does.
+(2) `time.hostClock?: true` - present on a Core in its own capture: the time is the host system
+clock and there is no time service; `source` is then `RTC`, nothing is locked, no offset is
+measured and the history is empty; never GNSS (`state-slices.ts:548-551`). Absent on the simulated
+time service. `RECORDING_STARTED.timeSource` follows the slice, and `systemStatus` raises no
+`TIME_FALLBACK` for the host clock.
+(3) On such a Core the pre-check TIME item is a NOTE, not a warning to acknowledge: `WARN`, value
+`HOST_SYSTEM_CLOCK`, the text "Time source: host system clock (no GNSS)", `reasonCode: null`,
+`params.rule: TIME_HOST_CLOCK`; it leaves the outcome PASS and needs no acknowledgement
+(`packages/shared/src/sim/core-facts.ts:159-163`).
+
+**Erratum PE-WI-05 (decisions D216 (2), D217; re-gate 75 finding G75b-04; fix wave I driver A2, `implementation/132_fix_wave_i_a2.md` section 1 row G75b-04 and decision 4; `delegation_progress/contract_wave_i_a2.md` section 6):** the open
+session gains one OPTIONAL member, `session.precheck.sendingDeviceId?: string` (pattern
+`^[A-Z][A-Z0-9-]{1,31}$`, `SENDING_DEVICE_ID_PATTERN`): the paired device that sent this
+pre-check; absent when a web console session sent it
+(`packages/shared/src/api/state-slices.ts:249`, `:280-284`). It is a member of the stored
+pre-check JSON (no migration; OpenAPI +5 lines) and exists so that the engine-timed pre-check row
+can name its sender (PE-WI-04). Example: `SESSION_PRECHECK_SENDING_DEVICE_EXAMPLE`
+(`state-slices.ts:255`). Contract totals unchanged: 97 operations (36 GET / 61 POST), 67 audit
+types, 30 slices.
+
+**Erratum PE-WI-20 (decisions D217 (7), D218; re-gate 75 finding G75b-06; closing pass J, `implementation/135_fix_wave_i_pass_j.md` section 0 and item 1; `implementation/137_docs_errata_followup.md`):** the slice `security`
+gains one OPTIONAL member, `security.platformNotReported?: true` (`packages/shared/src/api/state-slices.ts:617`; example `SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE`, `:265`; OpenAPI +5 lines, no migration:
+the slice is stored as JSON). Present on a Core in its own capture, it states that this Core reads no TPM, no Secure Boot state and computes no posture: `tpm`, `secureBoot`, `posture` and the `TPM` /
+`SECURE_BOOT` entries of `controls` are then NOT readings. **The three required members keep their placeholder values** (`posture: SECURE`, `tpm.ok: true`, `secureBoot: true`): the closed shape
+requires a boolean, a boolean and one of three postures, none of which can say "unknown", and a reader that does not know the member would read `false` as "failed". The member IS the statement;
+a client reads it BY NAME first (`isPlatformNotReported`, `packages/shared/src/sim/core-facts.ts:183`) and shows "Not reported" (UX spec erratum PE-WI-35). It does not cover `encryption`, `hashAlgorithm`,
+`tamper` or the key list. Absent: the simulated device, the SIMULATED Core and the in-app simulator without an external capture (their values are what they show). Who sets it: the Core's engine
+start, beside the time block (`apps/core-server/src/engine/host.ts:998-1002`, `platformNotReportedTransition`, `core-facts.ts:188`); the hosted simulator created with an external capture
+(`packages/shared/src/sim/engine.ts:233`) and each health tick (`sim/health.ts:196-197`), so every derivation of the slice keeps it. **Readers NOT changed and still fed by the placeholders
+(accepted, ruling 1 of D218):** the platform device list entry "TPM" (`packages/shared/src/sim/devices.ts:93`), the maintenance self-test line "TPM 2.0 and Secure Boot OK" (`sim/maintenance.ts:99-102`), and the field `security.tpmOk` of operation `getDeviceStatus`
+(`apps/core-server/src/modules/devices/status.ts:271`). Contract totals unchanged.
+
+**Erratum PE-WI-21 (decisions D217 (5), D218; re-gate 75 finding G75b-03; closing pass J, `implementation/135_fix_wave_i_pass_j.md` section 0 and item 2):** the restart fault of a Core in its own capture gains
+ONE name, `coreNotRunning?: true`, carried by (1) `session.fault` (`state-slices.ts:342`), (2) an entry of `faults.active[]` (`state-slices.ts:936`), and, in OPEN maps with no schema change, (3) the `params` of the
+fault's alert and of its event, (4) the `details` of its `FAULT_RAISED` row and of its `FAULT_CLEARED` row, (5) the `details` of the `SYSTEM_BOOT` row its recovery writes
+(`details { afterFault: POWER_FAIL, coreNotRunning: true }`), (6) the `params` of its timeline item (`packages/shared/src/sim/faults.ts:304-327`, `:405-419`, `:531-540`; `sim/session-machine.ts:1666-1680`,
+`:1692-1701`). Example `CORE_NOT_RUNNING_FAULT_EXAMPLE` (`state-slices.ts:266`). Meaning: the Core was not running while the session was active and does not know why. **The kind stays
+`POWER_FAIL`, `fromState` is unchanged and the fault has no `reason`** (ruling D217 (5): no new cause now); the member rides on `POWER_FAIL` only (a raise of another kind with it throws,
+`faults.ts:305`). The Core raises it at the next start when the stopped session was PRECHECK, ARMED, RECORDING or STOPPING (`apps/core-server/src/engine/rehydrate.ts:368`, `coreNotRunningFaultTransition`,
+`faults.ts:282-283`); the SIMULATED lane and the in-app simulator raise the power-fail fault as before and carry no member. The `message` of those rows is the sentence "The Core was not running while this session
+was active. It does not know why it stopped." (`CORE_NOT_RUNNING_SENTENCE`, `sim/core-not-running.ts`); the recovery's `SYSTEM_BOOT` row says "{product} is running again. It was not running while this session was
+active" and the clearing row "The Core is running again - the fault of the time it was not running is cleared". `coreNotRunning` is a MEMBER, not a cause (ruling 3 of D218): a closed session's history
+entry still carries `faultKind: POWER_FAIL` with no member (the history is column-mapped, `db/mapping/rows.ts:363`), and an interrupted seal still names `POWER_FAIL`; both go with the cause `CORE_STOPPED`
+of the next task. Readers by name: `isCoreNotRunning`, `isCoreNotRunningKind`, `coreNotRunningFaultOf`, `faultKindLabelKey` (`@dems/shared/sim`). Contract totals unchanged: 30 slices, 67 audit types.
+
+**Not built (ruling D217 (6)):** `captureDevices.devices[].checkedAt` - proposed in
+`delegation_progress/contract_wave_i_a2.md` section 4 - is NOT a member of this contract; it is
+deferred to the next task. `online` / `streamState` of slices 29 / 30 therefore still mean "as
+registered" on an idle real-capture Core until the Core reads the device (a pre-check, operation
+97, or the telemetry of a recording); the client rule is `masterplan/08_client_ux_spec.md`
+erratum PE-WI-15.
+
 **Own kind, never the paired-client registry (E-04).** `captureDevices` is its own slice with its own
 delta `slice` literal. `AdminResource` (`realtime-messages.ts:156`) stays the registry of **paired
 clients** (`USERS`/`DEVICES`/`PAIRING_CODE`) and is **not** used by capture. If a notification kind
@@ -1052,7 +1284,7 @@ The sibling `capture-spec §E.1` already names `MIC_SILENCE_DBFS`, `MIC_SILENCE_
 | `CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS` | `1_800_000` | ms | number | window of the lock-out guard (30 minutes); counted per Core by host, in memory (a Core restart clears it — accepted, D86 C-2). **Erratum PE-128-19** |
 | `CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS` | `5_000` | ms | number | between two local-input re-reads per Core |
 | `CAPTURE_CANDIDATE_ID_PATTERN` | `/^CND-[0-9A-F]{12}$/` | — | RegExp | candidate ids (48 random bits) |
-| `CAPTURE_SEARCH_ID_PATTERN` | `/^DSC-[0-9]{6,}$/` | — | RegExp | search ids |
+| `CAPTURE_SEARCH_ID_PATTERN` | `/^DSC-[0-9]{6,}$/` | — | RegExp | search ids. **Erratum PE-WI-08** (§2.6): the number goes on across restarts of the Core |
 
 **Fragment-quantum decision flagged as OPEN.** The pair `CAPTURE_GOP_FRAMES` = 50 and
 `CAPTURE_FRAGMENT_TARGET_MS`/`CAPTURE_MIN_FRAG_DURATION_MS` = 2_000 encodes the S1 finding that

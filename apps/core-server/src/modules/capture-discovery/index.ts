@@ -43,13 +43,15 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED, CaptureDiscoveryState, CaptureDiscoveryTrigger } from '@dems/shared/api';
 import type { FastifyPluginAsync } from 'fastify';
 import { createSystemTimers } from '../../capture';
-import { createOnvifConnectionTester, createOnvifDiscoveryAdapter, type OnvifDiscoveryAdapter, type RegisteredLookup } from '../../capture/adapters';
+import { createOnvifConnectionTester, createOnvifDiscoveryAdapter, type CaptureAdapterKind, type OnvifDiscoveryAdapter, type RegisteredLookup } from '../../capture/adapters';
+import { captureFenceControl } from '../../capture/fence';
 import { captureNotices, type PrecheckSearchSeam } from '../../capture-notices';
-import { registerAdoptedCamera } from './adoption';
+import { registerAdoptedCamera, type AdoptedCamera } from './adoption';
 import { candidateDirectoryOf, registerCaptureConnectRoutes } from './connect';
 import { createSearchLimiter, type SearchLimiter } from './limits';
 import { readRegisteredCameras } from './registered';
 import { registerCaptureDiscoveryRoutes } from './routes';
+import { readLastSearchNumber } from './search-ids';
 import { createSearchRunner, type SearchClosed, type SearchRunner } from './search';
 import { createSessionExpiryWatch, readEndedSessions } from './session-expiry';
 import { createCandidateStore, type CandidateStore, type HeldCandidate, type TestRecord } from './store';
@@ -58,6 +60,7 @@ export { ADOPTED_CAMERA_TRANSPORT, AdoptionRowMissing, SET_ADOPTED_CAMERA_COLUMN
 export { SearchBound, createSearchLimiter, type SearchAllowance, type SearchLimiter } from './limits';
 export { READ_REGISTERED_CAMERAS, adoptionAddressOf, readRegisteredCameras, registeredIndexOf, type RegisteredCamera, type RegisteredIndex } from './registered';
 export { CAPTURE_DISCOVERY_MODULE_OPERATIONS, captureDiscoveryOperation, searchRefused, type CaptureDiscoveryModuleOperation } from './routes';
+export { READ_LAST_SEARCH_NUMBER, readLastSearchNumber, searchIdOf, type SearchNumberReader } from './search-ids';
 export { createSearchRunner, type SearchClosed, type SearchRefusal, type SearchRequest, type SearchRunner, type SearchRunnerOptions, type SearchStart } from './search';
 export { createCandidateStore, type CandidateStore, type FoundCandidate, type HeldCandidate, type TestRecord } from './store';
 
@@ -118,6 +121,7 @@ export function captureDiscoveryControl(app: { readonly stages: object }): Captu
 const SOURCE = 'captureDiscovery';
 const AUDIT_UNIT_LABEL = 'captureDiscovery.searched';
 const SIGN_OUT_OPERATION = 'signOut';
+const ADMIT_FAILED = 'an adopted camera could not be handed to the adapter registry: it is assignable after the next start of the Core';
 const EXPIRY_CHECK_FAILED = 'the check for expired owner sessions of the candidate lists failed: a list goes at its own expiry';
 
 export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
@@ -137,6 +141,8 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
     ready: () => factory() !== null,
     adapter: (registered) => factory()?.(registered) ?? null,
     registeredCameras: () => app.db.read(`${SOURCE}.registeredCameras`, (pool) => readRegisteredCameras({ query: (text) => pool.query(text) })),
+    // Fix wave I (G70b-07): the search IDs go on from the highest number the stored audit chain holds, so a restart repeats none.
+    lastStoredSearchNumber: () => app.db.read(`${SOURCE}.lastSearchNumber`, (pool) => readLastSearchNumber({ query: (text) => pool.query(text) })),
     openSession: () => {
       if (!app.engine.running) return null;
       const session = app.engine.state().session;
@@ -240,7 +246,32 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   const connect = registerCaptureConnectRoutes(app);
   connect.provideCandidates(candidateDirectoryOf(store, now));
   connect.provideTester(createOnvifConnectionTester({ timers }));
-  connect.provideRegistrar((scope, _principal, device) => registerAdoptedCamera(scope, device));
+  // Fix wave I (re-gate 70, finding G70b-01): the adapter registry of the running operation is built
+  // at boot from the stored devices of that moment. A camera adopted afterwards is handed to it WHEN
+  // THE ADOPTION COMMITTED (never for a unit that rolled back), before the next unit starts: the
+  // selector can assign it at once. A failure here does not undo the adoption - it is logged and
+  // persisted, and the next start of the Core serves the stored row as before.
+  const admitAdopted = (device: AdoptedCamera): void => {
+    try {
+      const admission = captureFenceControl(app).admitDevice({ id: device.id, kind: 'CAMERA', adapterKind: device.adapterKind as CaptureAdapterKind, model: device.model });
+      app.log.info({ code: 'CAPTURE_DEVICE_ADMITTED', source: `${SOURCE}.admit`, deviceId: device.id, admission }, 'adopted camera handed to the adapter registry');
+    } catch (error) {
+      const code = typeof (error as { code?: unknown } | null)?.code === 'string' ? (error as { code: string }).code : 'UNKNOWN';
+      app.log.error({ source: `${SOURCE}.admit`, code, deviceId: device.id }, ADMIT_FAILED);
+      app.errorLog.append({
+        level: 'error',
+        source: `${SOURCE}.admit`,
+        message: ADMIT_FAILED,
+        ...(error instanceof Error && error.stack !== undefined ? { stackTrace: error.stack } : {}),
+        context: { code, deviceId: device.id },
+      });
+    }
+  };
+  connect.provideRegistrar(async (scope, _principal, device) => {
+    const registered = await registerAdoptedCamera(scope, device);
+    scope.unit.afterCommit(() => admitAdopted(device));
+    return registered;
+  });
 
   // SIGN-OUT (C3 §3.1 "signOut and session expiry"; R-9 AC-4): the list of the session that signed
   // out is discarded with the answer. The principal is the one stage 4 resolved for this request.

@@ -41,7 +41,7 @@
 import { useIsFocused, useNavigation, useRouter } from 'expo-router';
 import { StackActions } from 'expo-router/react-navigation';
 import { Alert, Button, useToast } from 'heroui-native';
-import { ArrowRight, Circle } from 'lucide-react-native';
+import { ArrowRight, Circle, LoaderCircle } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BackHandler, StyleSheet, View } from 'react-native';
@@ -62,7 +62,7 @@ import {
   type MotionSettings,
 } from '@/motion';
 import { BackGuardDialog, useBackGuard, type SessionStep } from '@/navigation';
-import { PendingSpinner, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
+import { reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { DevicesCheckStep } from './devices-check-step';
 import { LiveDeviceColumn } from './device-previews';
 import { DiscardDialog, useFlowBackPrompt } from './flow-guard';
@@ -394,7 +394,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
         {...controlState(createPress.busy, invalid)}
       >
         <Button.Label>{t('common.actions.next')}</Button.Label>
-        {createPress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
+        {createPress.pending ? <PendingSign color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
       </Button>
     );
   } else if (current === 2) {
@@ -402,7 +402,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
     footer = (
       <Button testID="session-new-next" variant="primary" size="lg" isDisabled={blocked} onPress={onNextGate} accessibilityLabel={t('common.actions.next')} {...controlState(gatePress.busy, blocked)}>
         <Button.Label>{t('common.actions.next')}</Button.Label>
-        {gatePress.pending ? <PendingSpinner color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
+        {gatePress.pending ? <PendingSign color={palette.black} testID="session-new-next-spinner" /> : <ArrowRight size={20} color={palette.black} />}
       </Button>
     );
   } else {
@@ -419,7 +419,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
         {...controlState(startPress.busy, startDisabled)}
       >
         {startPress.pending ? (
-          <PendingSpinner testID="session-new-start-spinner" color={palette.danger} />
+          <PendingSign testID="session-new-start-spinner" color={palette.danger} />
         ) : (
           <Circle size={14} color={palette.danger} fill={palette.danger} />
         )}
@@ -589,6 +589,15 @@ function FlowStepper({ current, phase, state, arrangement, onBackToChecks }: Flo
     error: t('features.session-new.stepper.error'),
   };
   const statuses = stepperStatuses(current, phase, state);
+  const statusKey = statuses.join('|');
+  // Fix wave I (re-gate 75, G75b-05): the remount below replaced a Stepper that had just started motion (its
+  // entering fades, the kit Spinner of a running badge) - four view tags that the tablet logged 49 times each in
+  // the commit in which the session turned PRECHECK ("Unable to find SurfaceMountingManager for tag"). Only the
+  // FIRST copy of a visit keeps the enter stagger; a copy mounted for a status change, and any copy with a
+  // running step (whose sign is removed when the step ends), starts no motion at all: React draws its final state
+  // (`animate={false}`, the hand-over rule of W93-7 and wave H's G89-02).
+  const [firstKey] = useState(statusKey);
+  const animate = statusKey === firstKey && !statuses.includes('running');
   return (
     <View accessibilityLabel={t('sessionNew.steps.label')} testID="session-new-stepper-root">
       <Stepper
@@ -599,7 +608,8 @@ function FlowStepper({ current, phase, state, arrangement, onBackToChecks }: Flo
         // land before Fabric mounts it. A badge's first mount takes its final state without that update
         // (the step-1 badges always rendered), and the remount replays the badges' enter stagger (03M
         // M-PG-NEW "badges stagger"). Reported for step 71, the component's owner (S78-7).
-        key={statuses.join('|')}
+        key={statusKey}
+        animate={animate}
         testID="session-new-stepper"
         steps={steps}
         statuses={statuses}
@@ -686,6 +696,22 @@ function handOffToMonitor(navigation: StackNavigation, fallback: () => void): vo
 }
 
 // `PendingSpinner` (LB-1) comes from `@/runtime` (row M1 follow-up, D164); `busyState` of the same module is the rule the function below replaces here.
+
+/**
+ * THE PENDING SIGN OF A FOOTER CONTROL (fix wave I, re-gate 75 finding G75b-05). It appears once a command has
+ * been out for `LIVE_PENDING_REVEAL_MS` and is REMOVED when the command settles - for Start Recording that is
+ * the hand-over to Session Live, where the tablet logged one late view tag eight times ("Unable to find
+ * SurfaceMountingManager for tag"): the kit Spinner of `PendingSpinner` owns a Reanimated rotation and was
+ * removed while it turned. Here the sign is the same glyph drawn by React alone (wave H's cure for the
+ * Finalizing hand-over, G89-02). The control stays marked busy and ignores presses exactly as before.
+ */
+function PendingSign({ color, testID }: { color: string; testID: string }) {
+  return (
+    <View testID={testID}>
+      <LoaderCircle size={16} color={color} />
+    </View>
+  );
+}
 
 /**
  * THE ACCESSIBILITY STATE OF A FOOTER CONTROL, ALWAYS STATED (wave H driver B, finding G70-04; ux §14.3).

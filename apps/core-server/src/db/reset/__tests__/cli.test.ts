@@ -16,7 +16,7 @@ function capture(): { io: CommandIo; out: string[]; err: string[] } {
 /** A data directory that does not exist: if a call got as far as the owner file, it would say so. */
 const NO_DATA_DIR = '/nonexistent/dems-w29';
 const USAGE =
-  'usage: npm run db:reset -w @dems/core-server -- --database <dems_demo|dems_lane_1|dems_lane_2|dems_lane_3> [--scenario <idle|recording|finalizing|fault-demo>]';
+  'usage: npm run db:reset -w @dems/core-server -- --database <dems_demo|dems_lane_1|dems_lane_2|dems_lane_3> [--scenario <idle|recording|finalizing|fault-demo>] [--discard-unsealed-fake-recordings]';
 
 describe('db:reset: the arguments', () => {
   it('--database is required; --scenario is optional; both forms of each are accepted', () => {

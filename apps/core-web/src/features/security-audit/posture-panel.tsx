@@ -58,6 +58,8 @@ export interface PosturePanelProps {
   /** Entries ever written (kept rows plus rotated-out rows). */
   entries: number
   className?: string
+  /** The Core states `security.platformNotReported` (closing pass J): an UNKNOWN posture reads "Not reported". */
+  platformNotReported?: boolean
 }
 
 /**
@@ -66,14 +68,15 @@ export interface PosturePanelProps {
  * (base, scale 0.9 → 1) and an escalation plays one halo pulse plus one glow bloom (R8, P7).
  * Reduced motion: opacity only, no bloom, no halo.
  */
-export const PosturePanel = memo(function PosturePanel({ posture, controlsOk, controlsTotal, chainOk, entries, className }: PosturePanelProps) {
+export const PosturePanel = memo(function PosturePanel({ posture, controlsOk, controlsTotal, chainOk, entries, className, platformNotReported = false }: PosturePanelProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const pulses = useEscalationCount(posture)
   const audit = useAuditLog()
   const lastAt = audit.rows[audit.rows.length - 1]?.at ?? null
   const Icon = POSTURE_ICON[posture]
-  const stateLabel = t(`common.posture.${posture}`)
+  const notReported = posture === 'UNKNOWN' && platformNotReported
+  const stateLabel = notReported ? t('common.platformNotReported.value') : t(`common.posture.${posture}`)
 
   return (
     <Panel id="posture" hero icon={Shield} title={t('securityAudit.posture.title')} className={className}>
@@ -128,7 +131,7 @@ export const PosturePanel = memo(function PosturePanel({ posture, controlsOk, co
           </motion.p>
         </AnimatePresence>
         <p className="sa-posture-message" aria-live="polite">
-          {t(`securityAudit.posture.${posture}`)}
+          {notReported ? t('common.platformNotReported.note') : t(`securityAudit.posture.${posture}`)}
         </p>
 
         <dl className="sa-stats">

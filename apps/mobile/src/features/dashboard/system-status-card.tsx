@@ -28,6 +28,8 @@ import { crossFadeIn, layoutTransition, useAmbientLoop, useMotionPolicy, useMoti
 import { durationText, type FlagLine, type HomeStatus } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, beatDelay, homeEnter } from './home-motion';
 import { useElapsedSeconds, useHomeSession } from './use-home-data';
+import { useSealBlocked } from '@/features/session-finalizing/seal-attention';
+import { SEAL_RECORDING_KEPT_SENTENCE } from '@dems/shared/sim';
 
 /** Share of the hero ring's width the centre text may use (inside the inner ring). */
 const HERO_TEXT_SHARE = 0.58;
@@ -171,10 +173,15 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   const extra = status.flags.length - MAX_FLAGS;
   // Wave H driver B (G75-07 (b)): CRITICAL while the open session is RECORDING - the recording continues, nothing is blocked.
   const criticalRecording = status.kind === 'CRITICAL' && session.state === 'RECORDING' && !connecting;
+  // Fix wave I (re-gate 75, G75b-02): the open session's seal is BLOCKED (the Core's alert, `sealBlockedNoticeOf`).
+  // Home names that state - nothing is "recording" and no recording is blocked; the session waits to be sealed.
+  const sealBlocked = useSealBlocked();
 
   const subtitle =
     failedWords !== null
       ? `${failedWords.title}. ${failedWords.body}`
+      : sealBlocked !== null
+        ? `${sealBlocked.sessionId} · ${SEAL_RECORDING_KEPT_SENTENCE}`
       : criticalRecording
         ? t('common.criticalWhileRecording.subtitle', { sessionId: session.sessionId ?? '' })
         : status.kind === 'ATTENTION'
@@ -192,7 +199,13 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
         maxFontSizeMultiplier={1.2}
         style={[styles.title, { color: colour }, centred ? styles.centre : null]}
       >
-        {connecting ? t('common.session.connectingCameras') : criticalRecording ? t('common.criticalWhileRecording.title') : t(`${status.copyKey}.title`)}
+        {connecting
+          ? t('common.session.connectingCameras')
+          : sealBlocked !== null
+            ? t('features.session-finalizing.sealAttention.chip')
+            : criticalRecording
+              ? t('common.criticalWhileRecording.title')
+              : t(`${status.copyKey}.title`)}
       </Text>
       <Text
         testID="home-status-subtitle"

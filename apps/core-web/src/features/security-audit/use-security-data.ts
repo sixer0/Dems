@@ -12,6 +12,7 @@ import {
   type AuditLogSlice,
 } from '@dems/shared/sim'
 import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
+import { usePlatformNotReported } from '@/lib/own-capture'
 import {
   buildControls,
   isEscalation,
@@ -37,7 +38,8 @@ export function useDeferredAudit(): { audit: AuditLogSlice; chain: ChainReport }
 export function usePosture(chainOk: boolean): PostureState {
   const ready = useSimReady()
   const simPosture = useSim((s) => s.security.posture)
-  return postureOf(simPosture, chainOk, ready)
+  const notReported = usePlatformNotReported()
+  return postureOf(simPosture, chainOk, ready, notReported)
 }
 
 /** The controls checklist (9 items). */

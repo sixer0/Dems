@@ -331,7 +331,7 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
 });
 
 describe('the seam of the adapter registry (rule RG-3): provided by the wiring, asked for every assignment', () => {
-  it('without a registry no assignment is refused by class; with one, a device the running operation does not serve is 422 DEVELOPMENT_SOURCE_NOT_ALLOWED', async () => {
+  it('without a registry no assignment is refused by class; with one, a device the running operation does not serve is 422 with the reason of THAT refusal (fix wave I, G70b-01: CAPTURE_DEVICE_NOT_SERVED, no longer DEVELOPMENT_SOURCE_NOT_ALLOWED for every refusal)', async () => {
     const built = await build();
     built.actAs(operatorOf('SUPERVISOR'));
     const control = captureConfigControl(built.app);
@@ -359,8 +359,8 @@ describe('the seam of the adapter registry (rule RG-3): provided by the wiring, 
     const commands = built.engine.commands.length;
     const refused = await post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-01' });
     expect(outcome(refused)).toEqual([422, 'INVALID_INPUT']);
-    expect(errorOf(refused).details).toMatchObject({ reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'CAM-01' });
-    expect(errorOf(await post(built, CONFIG, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02' }] })).details).toMatchObject({ reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-02' });
+    expect(errorOf(refused).details).toMatchObject({ in: 'body', reason: 'CAPTURE_DEVICE_NOT_SERVED', deviceId: 'CAM-01' });
+    expect(errorOf(await post(built, CONFIG, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02' }] })).details).toMatchObject({ in: 'body', reason: 'CAPTURE_DEVICE_NOT_SERVED', deviceId: 'MIC-02' });
     expect(built.engine.commands).toHaveLength(commands);
     expect(built.engine.state().captureConfig).toBe(before);
     // A device the registry serves is assigned; a role change assigns nothing and asks nothing.

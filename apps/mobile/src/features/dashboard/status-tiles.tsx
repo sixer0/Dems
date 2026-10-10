@@ -44,7 +44,8 @@ function StatusTile({ tile, index }: { tile: HomeTile; index: number }) {
   // C-6 `slide` with the held beat (DR-S77-1): exact digits once settled, rolling in after the card.
   const shown = useHeldValue(tile.value, valueTickDelay(beat, settings), policy === 'reduced');
   const suffix = tile.total !== null ? `/${tile.total}` : '%';
-  const state = t(`features.dashboard.tiles.state.${tile.stateKey}`, tile.count !== undefined ? { count: tile.count } : {});
+  // Fix wave I: a state that is a whole key (the real-capture microphone states) is resolved as such.
+  const state = t(tile.stateKey.startsWith('features.') ? tile.stateKey : `features.dashboard.tiles.state.${tile.stateKey}`, tile.count !== undefined ? { count: tile.count } : {});
   const label =
     tile.id === 'storage'
       ? t('features.dashboard.tiles.a11y.storage', { percent: tile.value, state })

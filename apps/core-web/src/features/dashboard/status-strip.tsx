@@ -7,6 +7,7 @@ import { selectDeviceStats, storageSummary, useSim, type SimState } from '@dems/
 import type { StatusTone } from '@dems/shared/tokens'
 import { motion as tokens } from '@dems/shared/tokens'
 import { AnimatedNumber } from '@/components/ui/animated-number'
+import { isOwnCaptureCore, isPlatformNotReportedCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import {
@@ -32,8 +33,11 @@ const selectStorageCell = (s: SimState) => {
   const summary = storageSummary(s)
   return { freeTb: toTb(summary.freeBytes), state: summary.state }
 }
-const selectTimeCell = (s: SimState) => ({ source: s.time.source, locked: s.time.locked })
+/** `hostClock`: a Core in its own capture - the host system clock, no time service (G75b-06). */
+const selectTimeCell = (s: SimState) => ({ source: s.time.source, locked: s.time.locked, hostClock: isOwnCaptureCore(s) })
 const selectPosture = (s: SimState) => s.security.posture
+/** Closing pass J (D217 (7)): the Core states that it computes no posture (`security.platformNotReported`). */
+const selectPlatformNotReported = (s: SimState) => isPlatformNotReportedCore(s)
 const selectLinkUp = (s: SimState) => s.network.linkUp
 
 interface CellSpec {
@@ -71,6 +75,7 @@ export function StatusStripPanel() {
   const storage = useSim(selectStorageCell)
   const time = useSim(selectTimeCell)
   const posture = useSim(selectPosture)
+  const platformNotReported = useSim(selectPlatformNotReported)
   const linkUp = useSim(selectLinkUp)
 
   const freeTb = storage.freeTb
@@ -87,13 +92,16 @@ export function StatusStripPanel() {
         : t('dashboard.statusStrip.value.ready')
   const storageValue =
     storage.state === 'FULL' ? t('dashboard.statusStrip.value.storageFull') : t('dashboard.statusStrip.storageFree', { free: freeText })
-  const timeValue =
-    time.source === 'GNSS' && time.locked
+  const timeValue = time.hostClock
+    ? t('web.ownCore.time.value')
+    : time.source === 'GNSS' && time.locked
       ? t('dashboard.statusStrip.value.timeGnss')
       : time.source === 'RTC'
         ? t('dashboard.statusStrip.value.timeRtc')
         : t('dashboard.statusStrip.value.timeNtp')
-  const postureValue = t(`dashboard.statusStrip.value.posture.${posture}`)
+  // A posture that names a fault keeps its words; "Secure" that nobody computed reads "Not reported".
+  const postureNotReported = platformNotReported && posture === 'SECURE'
+  const postureValue = postureNotReported ? t('common.platformNotReported.value') : t(`dashboard.statusStrip.value.posture.${posture}`)
   const networkValue = linkUp ? t('common.status.connected') : t('common.status.disconnected')
 
   const cells: CellSpec[] = [
@@ -135,10 +143,11 @@ export function StatusStripPanel() {
     {
       id: 'time',
       icon: Clock,
-      label: t('dashboard.statusStrip.time'),
+      // G75b-06: "GNSS / Time - RTC holdover" said a lost synchronisation of a Core that has no time service.
+      label: time.hostClock ? t('web.ownCore.time.label') : t('dashboard.statusStrip.time'),
       value: timeValue,
       valueText: timeValue,
-      tone: timeTone(time.source, time.locked),
+      tone: time.hostClock ? 'default' : timeTone(time.source, time.locked),
       page: t('shell.nav.networkTime'),
     },
     {
@@ -147,7 +156,7 @@ export function StatusStripPanel() {
       label: t('dashboard.statusStrip.security'),
       value: postureValue,
       valueText: postureValue,
-      tone: POSTURE_TONE[posture],
+      tone: postureNotReported ? 'default' : POSTURE_TONE[posture],
       page: t('shell.nav.securityAudit'),
     },
     {

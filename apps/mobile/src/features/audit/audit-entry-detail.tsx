@@ -11,7 +11,7 @@ import { CircleCheck, CircleX } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { DATE_PATTERNS, formatDate, formatUtcOffset } from '@dems/shared/realtime';
-import type { AuditRow } from '@dems/shared/sim';
+import { faultKindLabelKey, type AuditRow } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, StatusChip, type KeyValueItem } from '@/components/kit';
 import { authMethodOf, captureChangeOf, eventRecordJson, faultKindOf, type ChainLink } from './audit-model';
@@ -46,7 +46,7 @@ export function AuditEntryDetail({ row, chain, label, actor, variant }: AuditEnt
     { id: 'actor', label: t('features.audit.detail.actor'), value: actor, testID: 'audit-detail-actor' },
   ];
   if (method) items.push({ id: 'method', label: t('features.audit.detail.method'), value: t(`common.authMethod.${method}`), testID: 'audit-detail-method' });
-  if (fault) items.push({ id: 'fault', label: t('features.audit.detail.fault'), value: t(`common.faultKind.${fault}`) });
+  if (fault) items.push({ id: 'fault', label: t('features.audit.detail.fault'), value: t(faultKindLabelKey(fault, row.details)) });
   // Task 3 row 68 (MB-12): what a capture-configuration change moved, from the row's own detail keys.
   const change = captureChangeOf(row);
   if (change) {

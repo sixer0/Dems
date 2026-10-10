@@ -16,6 +16,7 @@ import { startTransition, useCallback, useEffect, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@/components/shell/page-header'
+import { usePlatformNotReported } from '@/lib/own-capture'
 import { AuditLogPanel, type FocusRequest } from './audit-log-panel'
 import { AuthPanel } from './auth-panel'
 import { ChainPanel } from './chain-panel'
@@ -37,6 +38,7 @@ export function SecurityAuditPage() {
   const { t } = useTranslation()
   const { audit, chain } = useDeferredAudit()
   const posture = usePosture(chain.ok)
+  const platformNotReported = usePlatformNotReported()
   const controls = useControls(chain)
   const controlsOk = controls.filter((control) => control.status === 'OK').length
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null)
@@ -64,6 +66,7 @@ export function SecurityAuditPage() {
             controlsTotal={controls.length}
             chainOk={chain.ok}
             breakSeq={chain.breakSeq}
+            platformNotReported={platformNotReported}
           />
         }
       />
@@ -75,6 +78,7 @@ export function SecurityAuditPage() {
           controlsTotal={controls.length}
           chainOk={chain.ok}
           entries={chain.total + chain.dropped}
+          platformNotReported={platformNotReported}
         />
         <ControlsPanel className="sa-span-5" controls={controls} />
         <KeysPanel className="sa-span-4" />

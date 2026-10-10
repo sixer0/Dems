@@ -247,10 +247,20 @@ export function timelineItems(events: readonly TimelineEventInput[], limit = 50)
  * recording) is a fact of the Core and stays. `ownCapture` is the rule of the state
  * (`captureFactsOf`): the session carries the member `captureDurable`. A session of the
  * simulator's own capture keeps every row.
+ *
+ * Fix wave I (re-gate 75, NOTE G75b-08): `connecting` = the session is RECORDING and the Core has not
+ * reported its first durable fragment (`selectConnectingCameras`). The Core writes the START row when
+ * the start is ACCEPTED; the surface says "Recording Started" only once the Core says it records, so
+ * the row is held back while the screen reads "Connecting cameras…". It appears, with the Core's own
+ * instant, with the first durable fragment.
  */
-export function timelineOfCaptureFacts<Event extends { kind: string; params?: Readonly<Record<string, unknown>> | null }>(events: readonly Event[], ownCapture: boolean): readonly Event[] {
-  if (!ownCapture) return events;
-  const kept = events.filter((event) => event.kind !== 'AUTOSAVE' && event.kind !== 'HEALTH' && (event.kind !== 'CHECK' || event.params?.source === 'TAIL_VALIDATION'));
+export function timelineOfCaptureFacts<Event extends { kind: string; params?: Readonly<Record<string, unknown>> | null }>(events: readonly Event[], ownCapture: boolean, connecting = false): readonly Event[] {
+  if (!ownCapture && !connecting) return events;
+  const kept = events.filter(
+    (event) =>
+      !(connecting && event.kind === 'START') &&
+      (!ownCapture || (event.kind !== 'AUTOSAVE' && event.kind !== 'HEALTH' && (event.kind !== 'CHECK' || event.params?.source === 'TAIL_VALIDATION'))),
+  );
   return kept.length === events.length ? events : kept;
 }
 

@@ -201,7 +201,7 @@ export interface HomeTile {
   /** Camera and microphone only. */
   total: number | null;
   tone: StatusTone;
-  /** `features.dashboard.tiles.state.<stateKey>` */
+  /** `features.dashboard.tiles.state.<stateKey>`; a value that starts with `features.` is a whole key (fix wave I). */
   stateKey: string;
   /** Param for the `offline` state line. */
   count?: number;
@@ -234,6 +234,29 @@ export function micTileFor(mics: readonly Pick<MicStatus, 'state' | 'clipLatched
     stateKey,
     href: '/devices',
   };
+}
+
+/**
+ * Fix wave I (the Home microphone item of re-gate 75; contract note A2 §4): the Microphone tile on a
+ * Core in REAL capture. The count is the lines whose microphone the Core reports reachable, and the
+ * state line follows the PRIMARY line: "Primary not reachable" / "Primary not checked" come first;
+ * otherwise the signal words of the track (`micTileFor`) stand. `stateKey` values that start with
+ * `features.` are whole i18n keys (the tile resolves them as such).
+ */
+export function realCaptureMicTileFor(
+  lines: readonly { readonly primary: boolean; readonly state: 'UNKNOWN' | 'ON' | 'NOT_CHECKED' | 'REACHABLE' | 'NOT_REACHABLE' }[],
+  signal: HomeTile,
+): HomeTile {
+  const reachable = lines.filter((line) => line.state === 'REACHABLE' || line.state === 'ON' || line.state === 'NOT_CHECKED').length;
+  const primary = lines.find((line) => line.primary);
+  const base = { ...signal, value: reachable, total: lines.length };
+  if (primary !== undefined && (primary.state === 'NOT_REACHABLE' || primary.state === 'UNKNOWN')) {
+    return { ...base, tone: 'danger', stateKey: 'features.capture-selector.sourceState.primaryNotReachable' };
+  }
+  if (primary !== undefined && primary.state === 'NOT_CHECKED') {
+    return { ...base, tone: signal.tone === 'success' ? 'default' : signal.tone, stateKey: 'features.capture-selector.sourceState.primaryNotChecked' };
+  }
+  return reachable < lines.length && signal.tone === 'success' ? { ...base, tone: 'warning' } : base;
 }
 
 const STORAGE_STATE: Record<StorageSummary['state'], { tone: StatusTone; stateKey: string }> = {
@@ -386,8 +409,20 @@ const TIME_TONE: Record<string, StatusTone> = { GNSS: 'success', NTP: 'info', RT
 
 export function chipRowFor(input: {
   posture: string;
+  /**
+   * Closing pass J (G75b-06 at its source, ruling D217 (7)): the Core states `security.platformNotReported` -
+   * it reads no TPM / Secure Boot and computes no posture. A posture that would read "Secure" reads "Not
+   * reported" (neutral); one that names a fault keeps its words.
+   */
+  platformNotReported?: boolean;
   timeSource: string;
   timeLocked: boolean;
+  /**
+   * Fix wave I (re-gate 75, G75b-06): the Core's `time` slice says it runs on the host's system clock
+   * (`hostClock: true`). Such a Core states no external reference, so the chip names the clock and
+   * neither "GNSS" (its label) nor "RTC" / a holdover (a synchronised clock that was lost).
+   */
+  hostClock?: boolean;
   linkUp: boolean;
   /** Present on the expanded layout, where the H3 tiles give way to the device tiles (D28/Q1). */
   storage?: Pick<StorageSummary, 'usedPercent' | 'state'>;
@@ -397,15 +432,17 @@ export function chipRowFor(input: {
     {
       id: 'security',
       labelKey: 'dashboard.statusStrip.security',
-      valueKey: `common.posture.${input.posture}`,
-      tone: POSTURE_TONE[input.posture] ?? 'default',
+      valueKey: input.platformNotReported === true && input.posture === 'SECURE' ? 'common.platformNotReported.value' : `common.posture.${input.posture}`,
+      tone: input.platformNotReported === true && input.posture === 'SECURE' ? 'default' : (POSTURE_TONE[input.posture] ?? 'default'),
     },
-    {
-      id: 'time',
-      labelKey: 'dashboard.statusStrip.time',
-      valueKey: synced ? 'common.status.synchronized' : `common.enums.timeSource.${input.timeSource}`,
-      tone: synced ? 'success' : (TIME_TONE[input.timeSource] ?? 'warning'),
-    },
+    input.hostClock === true
+      ? { id: 'time' as const, labelKey: 'features.capture-selector.sourceState.timeLabel', valueKey: 'session.captureFacts.timeSource.hostClock', tone: 'info' as const }
+      : {
+          id: 'time' as const,
+          labelKey: 'dashboard.statusStrip.time',
+          valueKey: synced ? 'common.status.synchronized' : `common.enums.timeSource.${input.timeSource}`,
+          tone: synced ? ('success' as const) : (TIME_TONE[input.timeSource] ?? 'warning'),
+        },
     {
       id: 'network',
       labelKey: 'dashboard.statusStrip.network',
