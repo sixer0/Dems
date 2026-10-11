@@ -275,6 +275,9 @@ describe('PG-16 and the server log: what a refused statement writes into the col
       .filter(({ line }) => line.includes('STATEMENT:') && line.includes(tag))
       .map(({ line, index }) => {
         const before = lines[index - 1] ?? '';
+        // Re-check finding RC-6: a line without a `[pid]` reads `undefined`, and two of them would
+        // compare equal. The line must carry one, or the same-backend check proves nothing.
+        expect(pid(line), 'the STATEMENT line carries its backend PID (log_line_prefix)').toBeDefined();
         expect(pid(before), 'ERROR and STATEMENT from one backend').toBe(pid(line));
         return before.slice(before.indexOf('ERROR:  ') + 'ERROR:  '.length);
       });
