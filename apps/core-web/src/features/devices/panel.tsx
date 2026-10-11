@@ -98,8 +98,10 @@ interface BoundaryState {
  * Catches a render failure inside one panel or the drawer: a friendly message with a
  * rate-limited retry (3 s → 6 s → 12 s, at most 3), while the rest of the page keeps working.
  * The record goes to the page's own log through `reportDevicesError` (FXR-W, W92-5: a fixed
- * sentence, the panel and the error's class; never its message or stack, which the dev console got
- * before).
+ * sentence, the panel, the error's class and React's `componentStack`, which names components and
+ * source positions and can be many lines; never the error's message or its own stack, which the dev
+ * console got before. Re-check finding RC-5: the stack of components is kept, as every other panel
+ * boundary of the console keeps it, and is said here).
  */
 export class DevicesErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { error: null, resets: 0 }
