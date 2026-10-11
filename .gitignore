@@ -80,3 +80,43 @@ docs/**/rec/*_frames/
 !docs/**/assets/*.log
 docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/31_live_testing_tests_verbose.log
 docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/12d_cpc1_red_before.log
+
+# ---------------------------------------------------------------------------
+# Real capture task 2026-10-07 (blueprint row 97): key material, model weights and recorded
+# media by EXTENSION. They are already kept out by WHERE they are written (`/.data/`, `.cache/`);
+# these patterns hold when one is written anywhere else. Each group re-includes exactly the
+# folders whose files of that kind are versioned on purpose (the synthetic demo assets, the
+# public device certificates of the version-1 demo packages, the screen recordings in the
+# predecessor task's docs). Check after a change: `git ls-files -ci --exclude-standard` prints
+# nothing (no tracked file is ignored).
+# ---------------------------------------------------------------------------
+
+# Key and certificate material (`*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore` are above).
+*.pem
+!packages/shared/assets/demo-evidence/**/device-certificate.pem
+
+# Model weights. `*.bin` only under a model folder or by the ggml file name: a fixture named
+# `*.bin` elsewhere stays visible to git.
+*.gguf
+*.onnx
+*.safetensors
+ggml-*.bin
+**/models/**/*.bin
+
+# Recorded and encoded media.
+*.mp4
+*.m4a
+*.m4s
+*.mkv
+*.mka
+*.mov
+*.webm
+*.wav
+*.flac
+*.aac
+*.mp3
+*.pcm
+!packages/shared/assets/demo-media/**
+!packages/shared/assets/demo-evidence/**/media/**
+!apps/mobile/assets/media/**
+!docs/2026-10-04_dems_backend_rbac_pairing/**/*.mp4
