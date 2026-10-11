@@ -43,7 +43,7 @@
  * `auth.status` has no value "LOCKED" (SIM-GAP-2, local adapter): a locked console is SIGNED_OUT,
  * and `lastSessionEnd.signOut` says `LOCK`. The shell reads its notice from there.
  *
- * Whenever a session or a pairing ends, the 28 replicated slices go back to the neutral value in
+ * Whenever a session or a pairing ends, the 30 replicated slices go back to the neutral value in
  * the same store update (a signed-out client holds no Core data), `lastSessionEnd` says why, and
  * the listeners of `onSessionEnd` are called. The source shows nothing, navigates nowhere and
  * deletes nothing: the app does, in those listeners and in its `secrets` port.

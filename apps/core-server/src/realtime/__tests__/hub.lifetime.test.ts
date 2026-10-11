@@ -66,7 +66,7 @@ describe('one socket: what it is sent when it opens', () => {
     expect(heartbeat.sessionState).toBeNull();
   });
 
-  it('OPERATOR: hello, ONE snapshot of the 28 slices at the engine\'s position, then the heartbeat with the real session state', async () => {
+  it('OPERATOR: hello, ONE snapshot of the 30 slices at the engine\'s position, then the heartbeat with the real session state', async () => {
     const { open, engine } = await testHub({ scenario: 'recording' });
     const { transport } = open(operatorAdmission());
     expect(transport.types()).toEqual(['hello', 'snapshot', 'heartbeat']);

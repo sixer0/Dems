@@ -95,7 +95,7 @@ const CALLERS: ReadonlyArray<readonly [label: string, principal: Principal]> = [
   ...ROLES.map((role) => [`${role} on a paired device`, operator(role, 'DEV-0001')] as const),
 ];
 
-describe('AC-B-16, unit form: all 75 operations for nine callers', () => {
+describe('AC-B-16, unit form: all 97 operations for nine callers', () => {
   it.each(CALLERS)('%s: every operation answers what its access rule and the role matrix say', (_label, principal) => {
     const wrong: string[] = [];
     for (const operation of CORE_API_OPERATIONS) {

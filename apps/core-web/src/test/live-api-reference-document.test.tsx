@@ -10,7 +10,7 @@
 // |-----------|-------------------------|
 // | AR-1, AC-C-100 Simulated: the ten operations as before; "Show Core-server endpoints" lists 75 (66 without the simulated ones), the 65 with CORE SERVER | "AR-2: the Simulated views" |
 // | AR-2, AC-C-100 Simulated: Try-it of a Core-server operation is rejected without a request, and without asking the simulator; the ten route as before | "AR-2: Try-it in Simulated mode" |
-// | AR-3, AC-C-100 Live: 75 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
+// | AR-3, AC-C-100 Live: 97 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
 // | AR-5 Live examples take the session and evidence identifiers from the replica | "AR-5" |
 // | AR-3, AC-C-100 Live Try-it: `{page origin}/api/v1/*` to the network with the cookie, never the simulator; a URL outside it rejected | "AR-3: Try-it in Live mode" |
 // | AR-3a, AC-C-103 the ten operations (six of 01_specs §7.7, ops 89, 91, 95 and 96 of task 3) rejected before a request, also when spelled otherwise | "AR-3a" |

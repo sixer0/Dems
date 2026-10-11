@@ -136,7 +136,7 @@ describe('the boot step rbac.matrix on a seeded database', () => {
   });
 });
 
-describe('AC-B-16, unit form: the decision for all 75 operations with a principal of each role, against the STORED matrix', () => {
+describe('AC-B-16, unit form: the decision for all 97 operations with a principal of each role, against the STORED matrix', () => {
   let stored: StoredMatrix;
   const ruleOf = (operationId: string): AccessRule => {
     const resolved = permissionGuard(guard.app).rules.ruleOf(operationId);
@@ -222,7 +222,7 @@ describe('AC-B-16, unit form: the decision for all 75 operations with a principa
         const decision = decideAccess(ruleOf(operation.operationId), { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: principal.operatorId });
         return !decision.allowed && decision.refusal.kind === 'NOT_PERMITTED';
       }).length;
-    // R3 (D44): AC-B-16's stated 22/3/31 counted the 75 operations of the closed contract. The
+    // R3 (D44): AC-B-16's stated 22/3/31 counted the closed contract of task 2 (75). The
     // matrix now spans the 89-op registry; the count is RECOMPUTED FROM SOURCE - the registry's
     // own access rules against the shared role table - instead of pinning a stale number. The
     // two derivations are independent: this one reads the registry marker's permission list and

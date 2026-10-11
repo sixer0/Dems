@@ -13,7 +13,7 @@
  * |--------|-------|---------|---------|
  * | `hello` | none | `connectionId`, `epoch`, `principal`, `reason?`, `topics`, `serverTime`, `heartbeatIntervalMs` | Every connection, first |
  * | `heartbeat` | heartbeat | `seq`, `serverTime` (ISO-8601), `uptimeMs`, `intervalMs`, `clients`, `sessionState` | Every connection, 1 Hz; `sessionState` is null unless the principal is OPERATOR |
- * | `snapshot` | state | `epoch`, `revision`, `serverTime`, `state` (the 28 replicated slices) | OPERATOR: after `hello`, on `resync`, on a new epoch |
+ * | `snapshot` | state | `epoch`, `revision`, `serverTime`, `state` (the 30 replicated slices) | OPERATOR: after `hello`, on `resync`, on a new epoch |
  * | `delta` | state | `epoch`, `revision`, `serverTime`, `ops` | OPERATOR |
  * | `meters` | meters | `at`, `seq`, `audio` | OPERATOR that subscribed |
  * | `session.updated` | control | `operator` (`id`, `role`), `permissions`, `reason` | Sockets of the operator's sessions |
@@ -34,7 +34,7 @@
  * pattern, so there is no member that could hold a password, a session token, a cookie value, a
  * device credential, a biometric token, a pairing code or a QR payload, and an unknown member is
  * refused. `session.updated` names the operator by ID and role only; `admin.changed` names the
- * list that changed and holds no row of it; a snapshot holds the 28 replicated slices and no
+ * list that changed and holds no row of it; a snapshot holds the 30 replicated slices and no
  * other (`state-slices.ts`). No client message has a member for a credential: authentication
  * happens at the upgrade only, from the request headers.
  */

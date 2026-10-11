@@ -602,7 +602,7 @@ export type EvidenceExportAccepted = z.output<typeof EvidenceExportAcceptedSchem
  *
  * The first 18 are the schemas of the ten existing operations, in their order; the document of
  * the `offline` scope holds exactly these. The schemas of contract A follow, by area (areas 1, 2,
- * 3 and 13); then the Core state on the wire (`state-slices.ts`: the 28 replicated slices and what
+ * 3 and 13); then the Core state on the wire (`state-slices.ts`: the 30 replicated slices and what
  * they are made of) and the messages of the Core server's socket (`realtime-messages.ts`); then
  * the schemas of contract C, by area (areas 4 to 11). The reads of those areas answer the slices
  * and their rows (API-6), so a slice has one schema for the socket and for REST.

@@ -1,7 +1,7 @@
 // Acceptance test "role-by-endpoint matrix" of the DEMS Core server (plan row W47; success
 // criterion SC4; AC-B-15, AC-B-16, AC-B-81; SR-73; spec §4.4, §6.6, §7, §12.1, §14.2).
 //
-// WHAT IS ASKED. Every one of the 75 operations of the contract registry answers each kind of
+// WHAT IS ASKED. Every one of the 97 operations of the contract registry answers each kind of
 // caller exactly as the specification says, through the real pipeline stages.
 //
 // HOW A CELL GETS ITS EXPECTATION. The test loops over the registry's 75 entries. The expected
@@ -11,7 +11,7 @@
 // against the operation tables of spec §7 (all 75 rows, read mechanically from the document), and
 // the stored matrix against spec §4.4 and the shared role table.
 //
-// THE CALLERS. Sixteen columns over the 75 operations:
+// THE CALLERS. Sixteen columns over the 97 operations:
 //   AC-B-15, five callers        an unauthenticated caller (a signed-out web console), an unpaired
 //                                device (no credential, no Origin), and the three roles signed in
 //                                on the web console;
@@ -1127,7 +1127,7 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
         return !expectation.allowed && expectation.row !== null;
       }).map((operation) => operation.operationId);
     const denied = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).length]));
-    // R3 (D44): AC-B-16's stated 22/31 covers the 75 operations of the closed base. The claim is
+    // R3 (D44): AC-B-16's stated 22/31 covers the closed base of task 2 (75). The claim is
     // checked over that base with the model; the C3 rows are then counted FROM THEIR MARKERS
     // against the composed grant table (deniedCellsFromTable over the twenty-two delta rows: the
     // fourteen of C3 §2.2, the three of C3 §2.5 and the five of C3 §2.6) and added. No literal for the grown total - it

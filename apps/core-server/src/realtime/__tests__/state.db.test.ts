@@ -73,7 +73,7 @@ function expectInSync(socket: TestSocket, label: string): void {
 }
 
 describe('RT-1: after hello, one snapshot', () => {
-  it('an OPERATOR socket is sent hello, the 28 slices at the engine\'s epoch and revision, then the heartbeat with the session state', async () => {
+  it('an OPERATOR socket is sent hello, the 30 slices at the engine\'s epoch and revision, then the heartbeat with the session state', async () => {
     const socket = await operatorSocket(rt, webHeaders(supervisor.cookie));
     expect(socket.types()).toEqual(['hello', 'snapshot', 'heartbeat']);
     const [hello, snapshot, heartbeat] = socket.messages as [{ epoch: number }, SnapshotMessage, Heartbeat];

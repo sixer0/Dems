@@ -11,7 +11,7 @@
 //
 // | Criterion | Where it is proven here |
 // |-----------|-------------------------|
-// | AC-C-100 Live: 75 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
+// | AC-C-100 Live: 97 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
 // | AC-C-103 Live: Try-it of the ten operations (six of 01_specs §7.7, ops 89, 91, 95 and 96 of task 3) sends no request (the fake transport's log); after one GET and one POST no web-storage value holds a request body or an answer; the page's log holds method, path and status only | "AC-C-103" |
 // | AC-C-107 no marker password, no pairing code, no `ses_`/`dvc_`/`bio_` value in the error sink or the page's log | "AC-C-103" (the marked bodies) |
 // | AC-C-18 with the page open, no second socket: one connection, the global `WebSocket` never constructed; the Realtime panel lists the one socket's messages by type, prints no payload and has no Connect switch | "AC-C-18" |

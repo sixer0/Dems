@@ -11,7 +11,7 @@
 // registry is narrowed to the scope by design; test/api-openapi-scope.test.ts covers the `all` scope.
 //
 // Plan row W27 (contract C; 01_specs §7.19, AC-B-11): the registry is complete, and two assertions
-// changed by design. The committed openapi.json now holds the `all` scope (92 operations, two
+// changed by design. The committed openapi.json now holds the `all` scope (97 operations, two
 // security schemes), so the drift check compares the file with that scope. And the five simulated
 // reads and `startSession` document statuses that only the Core server sends, so the comparison
 // with the simulator covers the statuses the simulator can produce. The `x-` check below still runs

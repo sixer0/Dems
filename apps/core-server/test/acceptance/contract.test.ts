@@ -2048,7 +2048,7 @@ describe('SC6: what the whole file received', () => {
     const stale = cells.filter((cell) => cell.codes !== null && cell.reason !== null).map((cell) => `${cell.operationId} ${cell.status}`);
     expect(missing).toEqual([]);
     expect(stale).toEqual([]);
-    // The primary success status of each of the 75 operations.
+    // The primary success status of each of the 97 operations.
     const withoutSuccess = OPERATIONS.filter((operation) => ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
     expect(withoutSuccess).toEqual([]);
     console.info(`[w52] duration of the file up to its last block: ${Math.round(performance.now() - FILE_STARTED)} ms`);

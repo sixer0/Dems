@@ -262,7 +262,7 @@ export interface EngineHost {
   mirrorOperators(): Promise<EngineOutcome<boolean>>;
 
   /**
-   * The COMMITTED replicated state: the 28 slices as the tables hold them and as the published
+   * The COMMITTED replicated state: the 30 slices as the tables hold them and as the published
    * changes sum up to, at `revision`. By reference; a reader must not change it. No transaction,
    * no pipeline. Throws 503 `NOT_READY` while the host is not running.
    */

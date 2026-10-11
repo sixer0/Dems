@@ -365,7 +365,7 @@ interface Source {
 }
 
 /**
- * The 28 replicated slices of a replica, against the engine's committed state as it travels over
+ * The 30 replicated slices of a replica, against the engine's committed state as it travels over
  * the wire. Returns the names that differ. The comparison is structural: the order of the members
  * of an object is not part of a slice (a client's parser writes them in the schema's order).
  */
@@ -492,7 +492,7 @@ describe('(b) the shared Live source, the typed client and the Live socket clien
     await step('acknowledgeSummary', () => mobile.actions.acknowledgeSummary(sealedId));
     expect(web.store.getState().lastSealedAcknowledged).toBe(true);
 
-    // Meter frames reached both clients while the engine ticked, and none of them is in a replica's 28 slices.
+    // Meter frames reached both clients while the engine ticked, and none of them is in a replica's 30 slices.
     expect(mobile.socketStatus().counters.meters).toBeGreaterThan(100);
     expect(web.socketStatus().counters.meters).toBeGreaterThan(100);
 

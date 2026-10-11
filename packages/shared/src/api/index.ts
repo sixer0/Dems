@@ -24,7 +24,7 @@ export * from './state-slices';
 export * from './realtime-examples';
 // Backend task (01_specs §7.8 to §7.15, §7.17; plan row W27, contract C): areas 4 to 11 (schemas,
 // operations, examples), the state values their examples show, and the map of the 42 simulator
-// actions to operations. The registry now holds all 75 operations.
+// actions to operations. The registry held 75 at that row; it holds 97 now (`core-api.ts`, pinned by test/api-registry.test.ts).
 export * from './sessions';
 export * from './evidence';
 export * from './devices';

@@ -8,7 +8,7 @@
  * | Live | `{page origin}/api/v1/*`, not one of the ten of AR-3a | To the network unchanged, with the browser's session cookie (`credentials: 'same-origin'`): the Core server answers as the signed-in operator and audits it. `sim.request` is never called |
  * | Live | One of the ten operations whose body or answer holds a secret | Nowhere: rejected before any request (`TryItRefusedError`, reason `SECRET`) |
  * | Live | Anything outside `{page origin}/api/v1` | Nowhere: `BlockedRequestError`, as in Simulated mode |
- * | Simulated, "Show Core-server endpoints" on | One of the 65 operations only the Core server answers | Nowhere: rejected before any request (`TryItRefusedError`, reason `CORE_SERVER`); the page never fabricates an answer (sim-fetch.ts) |
+ * | Simulated, "Show Core-server endpoints" on | One of the 66 operations only the Core server answers | Nowhere: rejected before any request (`TryItRefusedError`, reason `CORE_SERVER`); the page never fabricates an answer (sim-fetch.ts) |
  *
  * The deny list is matched on the request as sent and again on a normalised form of its path
  * (percent-decoded, lower case, repeated and trailing slashes folded), so a spelling the server
@@ -133,7 +133,7 @@ export function deniedTryItOperation(method: string, pathname: string): TryItDen
 }
 
 /**
- * The Core-server-only operation a request names, or null (AR-2). The ten operations of the
+ * The Core-server-only operation a request names, or null (AR-2). The 31 operations of the
  * offline scope never match: the registry's routes do not overlap, so `GET /api/v1/session/current`
  * is `getCurrentSession`, whatever template another operation has.
  */

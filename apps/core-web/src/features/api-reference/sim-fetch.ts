@@ -18,7 +18,7 @@
  * an EXPORT_DENIED audit row; SUPERVISOR 202 plus EVIDENCE_EXPORTED).
  *
  * Plan row W84 (backend task 04_client_integration_spec §11 AR-2): with `coreServerRefusal` set
- * (the page sets it while "Show Core-server endpoints" is on), a request of one of the 65
+ * (the page sets it while "Show Core-server endpoints" is on), a request of one of the 66
  * operations only the Core server answers is rejected before any request and before the simulator
  * is asked (`TryItRefusedError`, reason `CORE_SERVER`): the page never fabricates an answer for
  * them. Without it the routing is the table above, unchanged. Live mode has its own fetch

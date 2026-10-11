@@ -5,7 +5,7 @@
  * does not compile; the tests parse every message kind with the contract's schema.
  *
  * WHAT GOES IN. Only what the caller hands over, and none of it is a secret (spec §9.5):
- *   - `snapshot.state` is the engine's committed state reduced to the 28 replicated slices
+ *   - `snapshot.state` is the engine's committed state reduced to the 30 replicated slices
  *     (`pickReplicatedState`); `auth`, `authLockout`, `pairing` and `clock` are never in it;
  *   - `delta.ops` are the engine's operations, unchanged;
  *   - `session.updated` names the operator by ID and role and lists the role's permissions;
@@ -93,7 +93,7 @@ export function heartbeatText(input: HeartbeatInput): string {
 }
 
 /**
- * The engine's durable slices are the contract's 28 replicated slices: the same names, and each
+ * The engine's durable slices are the contract's 30 replicated slices: the same names, and each
  * schema's type is the simulator's (proven at compile time in the contract). The two are
  * declared apart, so the step from one type to the other is stated once, here.
  */

@@ -64,7 +64,7 @@ describe('each builder gives a message of its schema and of the union', () => {
     }
   });
 
-  it('snapshot: exactly the 28 replicated slices of a real state, and none of the five others', async () => {
+  it('snapshot: exactly the 30 replicated slices of a real state, and none of the five others', async () => {
     for (const scenario of ['idle', 'recording', 'finalizing', 'fault-demo'] as const) {
       const host = await createHost({ scenario });
       // The whole simulator state goes in: what is not replicated stays behind.

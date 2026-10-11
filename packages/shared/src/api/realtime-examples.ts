@@ -8,7 +8,7 @@
  *   the investigator OPR-001 records session SES-20261001-0024, a tablet is paired as DEV-0001.
  * - **No example holds a secret, and none could:** no message has a member for one
  *   (`realtime-messages.ts`). The connection IDs are fixed, made-up UUIDs.
- * - A `snapshot` holds the 28 replicated slices of a whole state, about 120 kB, so there is no
+ * - A `snapshot` holds the 30 replicated slices of a whole state, about 120 kB, so there is no
  *   literal for it: `realtimeSnapshotExample(state)` wraps a state the caller built. The tests
  *   build it from the real simulator, which is the only place a whole state is defined.
  */

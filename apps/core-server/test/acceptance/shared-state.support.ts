@@ -115,7 +115,7 @@ export function canonical(value: unknown): string {
   return text ?? 'undefined';
 }
 
-/** The 28 replicated slices of a state that may hold more (a Live store holds 33). */
+/** The 30 replicated slices of a state that may hold more (a Live store holds 35). */
 export function replicatedOf(state: Readonly<Record<string, unknown>>): Slices {
   const picked: Record<string, unknown> = {};
   for (const name of REPLICATED_SLICE_NAMES) picked[name] = state[name];
@@ -127,7 +127,7 @@ export function differingSlices(left: Slices, right: Slices): string[] {
   return REPLICATED_SLICE_NAMES.filter((name) => canonical(left[name]) !== canonical(right[name]));
 }
 
-/** Twelve hexadecimal digits of the SHA-256 over the 28 slices in canonical form: equal digests, equal states. */
+/** Twelve hexadecimal digits of the SHA-256 over the 30 slices in canonical form: equal digests, equal states. */
 export function digestOf(state: Slices): string {
   const hash = createHash('sha256');
   for (const name of REPLICATED_SLICE_NAMES) hash.update(`${name}\n${canonical(state[name])}\n`, 'utf8');
@@ -227,7 +227,7 @@ type StateMessage = Extract<WsServerMessage, { type: 'snapshot' | 'delta' }>;
 
 export interface Shadow {
   position(): Position | null;
-  /** The 28 slices now; null before the first snapshot. */
+  /** The 30 slices now; null before the first snapshot. */
   slices(): Slices | null;
   /** The slices when the shadow stood at that position; `undefined` when it never stood there. */
   at(position: Position): Slices | undefined;
@@ -640,7 +640,7 @@ export interface LiveClient {
   readonly links: string[];
   /** The Live socket client the source built: for an explicit `requestResync()`. */
   socketClient(): LiveSocketClient;
-  /** The 28 replicated slices of the store, as they are now. */
+  /** The 30 replicated slices of the store, as they are now. */
   replica(): Slices;
   /** The position of the last state message the socket client handed on. */
   position(): Position | null;
@@ -1087,7 +1087,7 @@ export function frameProblems(sockets: readonly Wire[], origin?: Frame['origin']
 /**
  * What a socket must NOT have been sent (spec §9.2, §9.5), read from the frames as they arrived:
  * a first frame that is no `hello`; a message its principal is never sent, or of a topic it was
- * not given; a `snapshot` whose `state` is not exactly the 28 replicated slices; a `delta` op on
+ * not given; a `snapshot` whose `state` is not exactly the 30 replicated slices; a `delta` op on
  * a slice the channel does not publish; a `heartbeat` with a member the contract does not name,
  * or with a session state for a socket that is no operator's; `meters` nobody subscribed to;
  * anything that looks like a credential. By default only the frames the server sent are looked
@@ -1124,7 +1124,7 @@ export function forbiddenContent(sockets: readonly Wire[], origin: Frame['origin
       }
       if (message.type === 'snapshot') {
         const slices = Object.keys(raw['state'] as Record<string, unknown>).sort();
-        if (canonical(slices) !== canonical([...replicated].sort())) found.push(`${where}: the state holds ${slices.length} slices, not exactly the 28 replicated ones`);
+        if (canonical(slices) !== canonical([...replicated].sort())) found.push(`${where}: the state holds ${slices.length} slices, not exactly the 30 replicated ones`);
         for (const never of NEVER_A_SLICE) if (slices.includes(never)) found.push(`${where}: the slice ${never}`);
       }
       if (message.type === 'delta') {

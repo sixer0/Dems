@@ -299,7 +299,7 @@ describe('a rehydrated engine equals the state before the stop (AC-B-04, engine 
     expect(trail.some((row) => row.at > stoppedAt && row.at <= stoppedAt + STOP_MS)).toBe(false);
     expect(verifyTrail(trail, await readHead(owner))).toMatchObject({ ok: true, checked: trail.length });
     expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(second.engine.state()));
-    console.info(`[w26] rehydration: ${trail.length} audit rows; 28 slices equal before the stop and after a new process (negative zero as zero); only core_state.epoch moved`);
+    console.info(`[w26] rehydration: ${trail.length} audit rows; 30 slices equal before the stop and after a new process (negative zero as zero); only core_state.epoch moved`);
   });
 });
 
