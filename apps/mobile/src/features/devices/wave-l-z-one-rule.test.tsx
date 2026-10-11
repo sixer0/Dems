@@ -215,6 +215,64 @@ describe.each(WINDOWS)('a Core in real capture on %s', (window) => {
   });
 });
 
+// Fix wave M (re-check 70 finding G70d-02): ONE wording rule for a capture source - the Devices LIST rows and the
+// detail chip / "Status" row read "Online" at rest beside "Not checked" for the same source, and the microphone
+// lines kept the simulator's room roles ("MIC 1 – Interviewer", "MIC 2 – Subject").
+describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected source on a Core in real capture, %s', (window) => {
+  const SOURCES = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'] as const;
+  const record = (h: Pick<DevicesHarness, 'sim'>) =>
+    act(() => h.sim.store.setState((s) => ({ session: { ...(s.session ?? ({} as NonNullable<SimState['session']>)), id: 'SES-TEST-0001', state: 'RECORDING', captureConfig: s.captureConfig } as unknown as SimState['session'] })));
+
+  it('at rest every row says "Not checked" (chip and label), never "Online"; the microphone lines are named by their role in force', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    await settle();
+    for (const id of SOURCES) {
+      expect(text(`device-status-${id}`)).toMatch(/Not checked/);
+      expect(text(`device-status-${id}`)).not.toMatch(/Online/);
+      const label = String(screen.getByTestId(`device-row-${id}`).props.accessibilityLabel);
+      expect(label).toMatch(/Not checked/);
+      expect(label).not.toMatch(/Online|Interviewer|Subject/);
+    }
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Primary/);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Standby/);
+    // The selector in force names the line: with MIC-02 made primary the names follow.
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((line) => ({ ...line, role: line.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) } as SimState['captureConfig'] })));
+    await settle();
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Standby/);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Primary/);
+  });
+
+  it('a checked fact of the Core: "Reachable"; a camera on a line while a session records: "Live"', async () => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
+    mark(h, ALL_FAKE);
+    act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => (device.id === 'CAM-01' ? { ...device, checkedAt: 1 } : device)) } as SimState['captureDevices'] })));
+    await settle();
+    expect(text('device-status-CAM-01')).toMatch(/Reachable/);
+    expect(text('device-status-CAM-02')).toMatch(/Not checked/);
+    record(h);
+    await settle();
+    expect(text('device-status-CAM-01')).toMatch(/Live/);
+    expect(text('device-status-CAM-02')).toMatch(/Live/);
+    expect(text('device-status-MIC-01')).not.toMatch(/Online|Not checked/);
+  });
+
+  it.each(['CAM-01', 'MIC-02'] as const)('the detail of %s: the chip and the "Status" row say "Not checked"; the name carries no room role', async (id) => {
+    live();
+    const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: `/devices/${id}` });
+    mark(h, ALL_FAKE);
+    await settle();
+    expect(text('device-detail-status')).toMatch(/Not checked/);
+    expect(text('device-detail-status')).not.toMatch(/Online/);
+    expect(text('device-fact-status')).toMatch(/Not checked/);
+    expect(text('device-fact-status')).not.toMatch(/Online/);
+    expect(screen.queryByText(/Interviewer|– Subject/)).toBeNull();
+    if (id === 'MIC-02') expect(screen.getAllByText('MIC 2 · Standby').length).toBeGreaterThan(0);
+  });
+});
+
 describe.each(WINDOWS)('CONTROL - the simulated lane on %s is what it was', (window) => {
   it('Simulated client mode: the model values, no chip, the transport word on the selector line - also when the state names an adapter', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
@@ -238,6 +296,10 @@ describe.each(WINDOWS)('CONTROL - the simulated lane on %s is what it was', (win
     const list = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/Channel 1/);
+    // Fix wave M (G70d-02) CONTROL: the simulated lane keeps "Online" and the room's names.
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 – Interviewer/);
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/Online/);
+    expect(text('device-status-CAM-01')).toMatch(/Online/);
     expect(text('capture-selector-row-MIC-01')).toMatch(/USB/);
     expect(chips()).toBe(0);
     list.app.unmount();

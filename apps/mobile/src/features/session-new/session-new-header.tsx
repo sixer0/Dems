@@ -23,9 +23,11 @@ export interface SessionNewHeaderProps {
   onClearForm(): void;
   /** Tablets: a 64 dp header with the larger title (§2.3). */
   large: boolean;
+  /** Fix wave M (G70d-03): a session exists (CREATE, PRECHECK, ARMED) - the header offers "Cancel session" (it asks first). */
+  onCancelSession?: (() => void) | undefined;
 }
 
-export function SessionNewHeader({ onBack, showMenu, hasLastProfile, onLastProfile, onClearForm, large }: SessionNewHeaderProps) {
+export function SessionNewHeader({ onBack, showMenu, hasLastProfile, onLastProfile, onClearForm, large, onCancelSession }: SessionNewHeaderProps) {
   const { t } = useTranslation();
   return (
     <View style={[styles.header, large ? styles.headerLarge : null]} testID="session-new-header">
@@ -42,6 +44,11 @@ export function SessionNewHeader({ onBack, showMenu, hasLastProfile, onLastProfi
       <Text accessibilityRole="header" numberOfLines={1} className={large ? 'text-h2 font-semibold text-foreground' : 'text-h3 font-semibold text-foreground'} style={styles.title}>
         {t('common.actions.startNewSession')}
       </Text>
+      {onCancelSession ? (
+        <Button testID="session-new-cancel" variant="outline" size="sm" onPress={onCancelSession} accessibilityLabel={t('features.session-new.header.cancelSession')}>
+          <Button.Label>{t('features.session-new.header.cancelSession')}</Button.Label>
+        </Button>
+      ) : null}
       {showMenu ? (
         <Menu>
           <Menu.Trigger asChild>

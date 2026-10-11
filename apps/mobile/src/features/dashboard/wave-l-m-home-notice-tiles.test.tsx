@@ -10,7 +10,7 @@
 import 'react-native-gesture-handler/jestSetup';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { cleanup, fireEvent, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react-native';
 import {
   SEAL_UNSEALABLE_EXAMPLE_ALERT,
   SEAL_UNSEALABLE_EXAMPLE_ALERT_RESOLVED,
@@ -26,6 +26,7 @@ import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
 import { resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests } from '@/runtime';
 import { DashboardScreen } from './dashboard-screen';
 import { realCaptureCameraTileFor, realCaptureMicTileFor, micTileFor } from './home-model';
+import { tileStatement } from './status-tiles';
 import { OPERATOR, createHomeBed, flush, label, layoutAncestors, stubMeasure, textOf, type HomeBed } from './testing/live-home-bed';
 
 jest.mock('@shopify/react-native-skia', () =>
@@ -38,8 +39,10 @@ jest.mock('expo-keep-awake', () => ({
 }));
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), navigate: jest.fn(), canGoBack: () => true }),
-  useIsFocused: () => true,
+  useIsFocused: () => mockFocused,
 }));
+/** Whether Home is the screen in view (fix wave M, G75e-01); `mock`-named so the factory above may read it. */
+let mockFocused = true;
 
 let bed: HomeBed | null = null;
 type Mark = Record<string, unknown>;
@@ -55,6 +58,7 @@ beforeAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
 });
 beforeEach(async () => {
+  mockFocused = true;
   await AsyncStorage.clear();
   resetCoreLinkPrefsForTests();
   resetDebugLaunchForTests();
@@ -188,5 +192,61 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
     // The track's own signal words stay.
     const noSignal = micTileFor([{ state: 'NO_SIGNAL', clipLatched: false }, { state: 'READY', clipLatched: false }]);
     expect(realCaptureMicTileFor([{ primary: true, state: 'REACHABLE' }, { primary: false, state: 'REACHABLE' }], noSignal).stateKey).toBe('noSignal');
+  });
+});
+
+// Fix wave M (re-check 75 finding G75e-01): the phone's Camera tile was an EMPTY BOX while a session recorded -
+// whenever the recording started while Home was not the tab in view. On the device the tile's views were patched
+// while their screen was detached and came back with nothing inside. The two rules of `StatusTiles`: a change is
+// applied only while the screen is in view, and a tile whose statement changed is a NEW tile.
+describe('G75e-01: the phone tiles while a session records - never an empty box', () => {
+  type Live = ReturnType<HomeBed['mount']>;
+  /** The phone's Home on a Core in real capture, with the replica's store in hand. */
+  async function phoneHome(): Promise<Live> {
+    bed = createHomeBed({ alerts: [] });
+    bed.state = marked(bed.state, REAL_CAPTURE);
+    const live = bed.mount(<DashboardScreen />, 'phonePortrait');
+    await bed.signIn();
+    return live;
+  }
+  const record = (b: Live) =>
+    act(() => b.sim.store.setState((s) => ({ session: { ...(s.session ?? {}), id: 'SES-TEST-0001', state: 'RECORDING', captureConfig: s.captureConfig, captureDurable: true } as unknown as SimState['session'] })));
+  const tileParts = () => ({ name: within(screen.getByTestId('home-tile-camera')).queryByText('Camera'), state: textOf('home-tile-camera-state'), value: screen.getByTestId('home-tile-camera-value').props.accessibilityLabel });
+
+  it('in view: the tile reads "Camera / Live / 2/2" while the session records, and it is a new tile, not the patched one', async () => {
+    const b = await phoneHome();
+    const before = screen.getByTestId('home-tile-camera');
+    expect(tileStatement({ id: 'camera', value: 2, total: 2, tone: 'default', stateKey: 'a', href: '/devices' })).not.toBe(tileStatement({ id: 'camera', value: 2, total: 2, tone: 'success', stateKey: 'b', href: '/devices' }));
+    record(b);
+    await flush();
+    const parts = tileParts();
+    expect(parts.name).not.toBeNull();
+    expect(parts.state).toBe('Live');
+    expect(parts.value).toBe('2/2');
+    expect(label('home-tile-camera')).toBe('Cameras: 2 of 2. Live');
+    expect(screen.getByTestId('home-tile-camera')).not.toBe(before);
+  });
+
+  it('NOT in view when the recording starts: the tile is not touched; back in view it is drawn whole with "Live"', async () => {
+    const b = await phoneHome();
+    mockFocused = false;
+    record(b);
+    await flush();
+    // Held: the drawn tile is still the tile of before, whole.
+    expect(textOf('home-tile-camera-state')).toBe('Not checked');
+    mockFocused = true;
+    // The focus hook re-renders the screen in the app; here another fact of the Core does (the status card names the session).
+    act(() => b.sim.store.setState((s) => ({ session: { ...(s.session ?? {}), id: 'SES-TEST-0002' } as unknown as SimState['session'] })));
+    await flush();
+    const parts = tileParts();
+    expect(parts.name).not.toBeNull();
+    expect(parts.state).toBe('Live');
+    expect(parts.value).toBe('2/2');
+    expect(textOf('home-tile-microphone-state')).toBe('Reachable');
+  });
+
+  it('CONTROL: a value that moves inside the same statement keeps its tile (the storage percentage rolls in place)', () => {
+    const tile = { id: 'storage' as const, value: 55, total: null, tone: 'success' as const, stateKey: 'healthy', href: '/storage' as const };
+    expect(tileStatement({ ...tile, value: 56 })).toBe(tileStatement(tile));
   });
 });

@@ -24,6 +24,12 @@
 #                                              --with-camera-stub: make the NEXT seal of a session
 #                                              that recorded from generated (FAKE) sources fail on
 #                                              purpose (see "THE SEAL RIG" below)
+#   scripts/lane/lane.sh source-rig 2 unreachable <CAM-NN|MIC-NN>
+#   scripts/lane/lane.sh source-rig 2 <release|status>
+#                                              development capture lane only, started with
+#                                              --with-camera-stub: make a generated (FAKE) test
+#                                              source answer as unreachable at the next pre-check
+#                                              or session start (see "THE SOURCE RIG" below)
 #
 # Run it OUTSIDE the sandbox (loopback bind, PostgreSQL), from any directory.
 #
@@ -111,6 +117,36 @@
 # After "unsealable" the lane holds a quarantine folder: the next reset of lane 2 needs
 # --discard-unsealed-fake-recordings (see above). Always end with "release".
 #
+# THE SOURCE RIG (fix wave M, decision D232; final re-check 70 finding G70d-01: "notification B not
+# provable live"). The test sources of the development lane are GENERATED on this machine: they
+# dial nothing, so a registered FAKE camera on a dead address passes every pre-check. This
+# development tool of the lane launcher (apps/core-server/test/support/lane-source-rig.ts) makes
+# a generated source answer as a source that is not there, through its adapter's own doors. The
+# product's entry point cannot load it, the launcher does not start a production configuration with
+# it (check capture.sourceRig, code DEV_SOURCE_RIG_IN_PRODUCTION), and the capture fence refuses its
+# switch outside REAL_DEVELOPMENT. It is there whenever lane 2 runs with --with-camera-stub, and it
+# is OFF until its switch file ($LOCKS/source-rig.lane2.switch) says otherwise:
+#     scripts/lane/lane.sh source-rig 2 unreachable CAM-05
+#                                                  from the NEXT pre-check run on, CAM-05 does not
+#                                                  answer: the product's own pre-check reports it
+#                                                  (the device not online, its check row WARN or
+#                                                  BLOCK by the start rule, ONE alert and ONE
+#                                                  CAPTURE_DEVICE_UNREACHABLE row per occurrence),
+#                                                  and a session start is refused that source. A
+#                                                  second call with another device ADDS it (at most
+#                                                  four: "both cameras unreachable" is two calls)
+#     scripts/lane/lane.sh source-rig 2 release    the switch is OFF: every source answers again at
+#                                                  the next pre-check run (the alert is resolved by
+#                                                  that run, not by the release itself)
+#     scripts/lane/lane.sh source-rig 2 status     what the switch file says
+# Cameras AND microphones (MIC-NN) are accepted. GENERATED (FAKE) sources only: the switch is read
+# by the generated adapters alone, so this computer's camera and microphone (LOCAL_DEVICE) and a
+# production source are never touched - a switch that names one changes nothing for it and the
+# Core says so in its log (LANE_SOURCE_RIG_NOT_A_FAKE_DEVICE). The switch takes effect on the
+# RUNNING lane (it is read at every reachability read and every open); it opens nothing, and it
+# does not end a source that is already open (a running recording goes on). Always end with
+# "release".
+#
 # Exit codes: 0 done; 64 usage or unknown lane; 69 the lane is in the wrong state (already
 # running, not running, a prerequisite of lane 2 is missing); 70 the Core did not become ready.
 
@@ -121,7 +157,7 @@ LOCKS="$ROOT/.locks"
 READY_SECONDS=${LANE_READY_SECONDS:-40}
 
 usage() {
-  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 reset 2 --discard-unsealed-fake-recordings   |   $0 seal-rig 2 <unsealable|blocked|release|status>   |   $0 status" >&2
+  echo "usage: $0 start <main|1|2|3> [--with-camera-stub] [--speech-mic]   |   $0 stop|reset <main|1|2|3>   |   $0 reset 2 --discard-unsealed-fake-recordings   |   $0 seal-rig 2 <unsealable|blocked|release|status>   |   $0 source-rig 2 unreachable <CAM-NN|MIC-NN>   |   $0 source-rig 2 <release|status>   |   $0 status" >&2
   exit 64
 }
 
@@ -197,6 +233,55 @@ say_camera_stub() {
   fi
 }
 
+# What the source rig's switch file says, in one line (see "THE SOURCE RIG" above). No file: OFF.
+source_rig_state() {
+  if [ -r "$1" ]; then state=$(head -n 1 "$1" | tr -d '\r'); echo "${state:-OFF}"; else echo "OFF"; fi
+}
+
+say_source_rig() {
+  echo "lane.sh: source rig available (development tool): switch $SOURCE_RIG says: $(source_rig_state "$SOURCE_RIG")"
+  [ "$(source_rig_state "$SOURCE_RIG")" = OFF ] || echo "lane.sh: THE SOURCE RIG IS ON: a generated test source of this lane answers as unreachable on purpose. '$0 source-rig $1 release' switches it off."
+}
+
+cmd_source_rig() {
+  plan "$1"
+  if [ "$MODE" != REAL_DEVELOPMENT ]; then
+    echo "lane.sh: the source rig is for the development capture lane only; lane $1 runs $MODE. Nothing was changed." >&2; exit 64
+  fi
+  SOURCE_RIG="$LOCKS/source-rig.lane$1.switch"
+  mkdir -p "$LOCKS"
+  case "$2" in
+    status)  [ -z "$3" ] || usage ;;
+    release) [ -z "$3" ] || usage; ( umask 077 && echo OFF >"$SOURCE_RIG" ) ;;
+    unreachable)
+      # A registry ID of a camera or a microphone, nothing else: the word goes into a file the Core reads.
+      case "$3" in
+        CAM-[0-9][0-9]|MIC-[0-9][0-9]) ;;
+        *) echo "lane.sh: source-rig unreachable needs the registry ID of a generated test source (CAM-NN or MIC-NN). Nothing was changed." >&2; exit 64 ;;
+      esac
+      now=$(source_rig_state "$SOURCE_RIG")
+      case "$now" in
+        "UNREACHABLE "*) case " ${now#UNREACHABLE } " in *" $3 "*) next=$now ;; *) next="$now $3" ;; esac ;;
+        *) next="UNREACHABLE $3" ;;
+      esac
+      # shellcheck disable=SC2086 -- the words of the switch are counted
+      if [ "$(echo $next | wc -w)" -gt 5 ]; then
+        echo "lane.sh: the source rig names four devices already ($now). '$0 source-rig $1 release' first. Nothing was changed." >&2; exit 64
+      fi
+      ( umask 077 && echo "$next" >"$SOURCE_RIG" ) ;;
+    *) usage ;;
+  esac
+  echo "lane.sh: source rig of lane $1: $(source_rig_state "$SOURCE_RIG")   (switch file $SOURCE_RIG)"
+  [ "$2" = unreachable ] && echo "lane.sh: only a GENERATED (FAKE) test source is switched; any other device is left alone and the Core's log says so (LANE_SOURCE_RIG_NOT_A_FAKE_DEVICE). It takes effect at the next pre-check run or session start."
+  pid=$(listener "$PORT")
+  if [ -z "$pid" ]; then
+    echo "lane.sh: lane $1 is not running: the switch is read by a Core started with '$0 start $1 --with-camera-stub'."
+  elif [ ! -r "$LOCKS/camera-stub.lane$1.fixture" ]; then
+    echo "lane.sh: lane $1 runs WITHOUT the lane launcher (no --with-camera-stub): this Core has no source rig and does not read the switch." >&2
+    exit 69
+  fi
+}
+
 # What the seal rig's switch file says, in one line (see "THE SEAL RIG" above). No file: OFF.
 seal_rig_state() {
   if [ -r "$1" ]; then state=$(head -n 1 "$1" | tr -d '\r'); echo "${state:-OFF}"; else echo "OFF"; fi
@@ -240,6 +325,7 @@ cmd_start() {
   [ "${SPEECH_MIC:-}" = --speech-mic ] && echo "lane.sh: the first test microphone plays the speech fixture: synthetic speech made by 'npm run capture:dev-setup'."
   STUB_FIXTURE="$LOCKS/camera-stub.lane$1.fixture"; STUB_MODE="$LOCKS/camera-stub.lane$1.mode"
   SEAL_RIG="$LOCKS/seal-rig.lane$1.switch"
+  SOURCE_RIG="$LOCKS/source-rig.lane$1.switch"
   pid=$(listener "$PORT")
   if [ -n "$pid" ]; then echo "lane.sh: port $PORT already has a listener (PID $pid): not started" >&2; exit 69; fi
   lane_env
@@ -248,7 +334,7 @@ cmd_start() {
   if [ "$2" = --with-camera-stub ]; then
     # The lane launcher of the test support: the same Core, with the fake ONVIF camera on loopback as its camera search.
     # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
-    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:camera-stub -w @dems/core-server -- --fixture-file "$STUB_FIXTURE" --mode-file "$STUB_MODE" --seal-rig-file "$SEAL_RIG" >"$LOG" 2>&1 & )
+    ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:camera-stub -w @dems/core-server -- --fixture-file "$STUB_FIXTURE" --mode-file "$STUB_MODE" --seal-rig-file "$SEAL_RIG" --source-rig-file "$SOURCE_RIG" >"$LOG" 2>&1 & )
   else
     # shellcheck disable=SC2086 -- LANE_ENV is a list of blank-free words by check_root
     ( cd "$ROOT" && nohup env $LANE_ENV "DEMS_CORE_PORT=$PORT" npm run -s start:server >"$LOG" 2>&1 & )
@@ -259,6 +345,7 @@ cmd_start() {
       echo "lane.sh: lane $1 is ready on 127.0.0.1:$PORT (PID $(listener "$PORT")); log $LOG"
       [ "$2" = --with-camera-stub ] && say_camera_stub "$1"
       [ "$2" = --with-camera-stub ] && [ "$MODE" = REAL_DEVELOPMENT ] && say_seal_rig "$1"
+      [ "$2" = --with-camera-stub ] && [ "$MODE" = REAL_DEVELOPMENT ] && say_source_rig "$1"
       return 0
     fi
     # The Core stops by itself on a failed boot check: no listener and a final line in the log.
@@ -332,6 +419,7 @@ case "$1" in
     cmd_start "$START_LANE" "$START_STUB" ;;
   stop)   [ $# -eq 2 ] || usage; cmd_stop "$2" ;;
   seal-rig) [ $# -eq 3 ] || usage; cmd_seal_rig "$2" "$3" ;;
+  source-rig) [ $# -eq 3 ] || [ $# -eq 4 ] || usage; cmd_source_rig "$2" "$3" "${4:-}" ;;
   reset)
     [ $# -eq 2 ] || { [ $# -eq 3 ] && [ "$3" = "--discard-unsealed-fake-recordings" ]; } || usage
     cmd_reset "$2" "${3:-}" ;;

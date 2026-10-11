@@ -14,6 +14,7 @@ import {
   eligibleInvestigators,
   encodeEvaluation,
   filterInvestigators,
+  formSessionGone,
   gatePhase,
   hasDeviceColumn,
   isWizardState,
@@ -184,5 +185,19 @@ describe('SIM-GAP-1: the next synthetic case number (local sim-adapter)', () => 
     });
     expect(result.ok).toBe(true);
     expect(nextCaseNumber(sim.store.getState())).toBe('LP/2026/1001-0009');
+  });
+});
+
+// Fix wave M (G70d-03): when the session a form belongs to is gone.
+describe('formSessionGone: the wizard followed a session that is no longer in setup and did not move on', () => {
+  it.each([
+    ['SES-1', null, null, true], // cancelled: no session
+    ['SES-1', 'SES-2', 'SES-2', true], // cancelled, and another client opened a new one
+    ['SES-1', null, 'SES-1', false], // CONTROL: the same session started recording
+    ['SES-1', 'SES-1', 'SES-1', false], // CONTROL: still in setup
+    [null, 'SES-1', 'SES-1', false], // CONTROL: the form just created its session
+    [null, null, null, false],
+  ] as [string | null, string | null, string | null, boolean][])('owned %s, followed %s, current %s -> %s', (owned, followed, current, gone) => {
+    expect(formSessionGone(owned, followed, current)).toBe(gone);
   });
 });

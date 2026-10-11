@@ -88,11 +88,11 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.subject}>
                 {item.subjectName}
               </Text>
-              <View style={styles.chips}>
+              <View style={styles.chips} testID={`evidence-row-chips-${item.id}`}>
                 <EvidenceSubjectChip subjectType={item.subjectType} />
                 {/* Row 92 (R-11): only for an item the Core recorded from development sources, in Live mode. */}
                 <ItemDevelopmentBadge item={item} testID={`evidence-row-development-${item.id}`} />
-                <Text maxFontSizeMultiplier={1.2} style={styles.duration}>
+                <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.duration} testID={`evidence-row-duration-${item.id}`}>
                   {duration}
                 </Text>
               </View>
@@ -183,7 +183,9 @@ const styles = StyleSheet.create({
   id: { fontFamily: fontFamily.native.monoMedium, fontSize: 13, lineHeight: 18, color: palette.foreground },
   meta: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   subject: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: derived.foreground2 },
-  chips: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], marginTop: 2 },
-  duration: { fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.foreground, fontVariant: ['tabular-nums'] },
+  // Fix wave M (G89d-03): the chips wrap. In the tablet's narrow list pane the row of chips was wider than the
+  // body and the duration ran on under the row's menu button, cut to "00:00"; it now goes to a line of its own.
+  chips: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: spacing[1], rowGap: 4, marginTop: 2 },
+  duration: { flexShrink: 0,  fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.foreground, fontVariant: ['tabular-nums'] },
   trailing: { alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: spacing[1] },
 });

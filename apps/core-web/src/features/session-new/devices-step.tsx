@@ -18,13 +18,16 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim, type PrecheckCheckId, type PrecheckItem, type SimState } from '@dems/shared/sim'
-import type { VideoTrackId } from '@dems/shared/domain'
+import { audioPairOfSelector, micInputOfChannel, selectorInForce, useSim, type PrecheckCheckId, type PrecheckItem, type SimState } from '@dems/shared/sim'
+import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
+import { isGeneratedSource } from '@/features/devices/own-core-words'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
+import { useMicInputName } from '@/features/devices/source-class'
 import { activeCaptureNotices, captureNoticeText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { tween, useMotionPolicy } from '@/motion'
 import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, precheckNoteKey, reasonKeyFor, type GateView } from './model'
 
@@ -257,10 +260,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
           </header>
           <div className="sn-meters">
             {(['AUDIO-01', 'AUDIO-02'] as const).map((channel) => (
-              <div key={channel} className="sn-meter">
-                <span className="sn-meter-label">{t(`common.tracks.${channel}`)}</span>
-                <DbfsMeter channel={channel} variant="panel" label={t(`common.tracks.${channel}`)} />
-              </div>
+              <MicMeter key={channel} channel={channel} />
             ))}
           </div>
         </Card>
@@ -287,6 +287,44 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
           </dl>
         </Card>
       </div>
+    </div>
+  )
+}
+
+/**
+ * One microphone meter of the device check, with the name of its line.
+ *
+ * Fix wave M (G75e-02): "MIC 1 - Interviewer" / "MIC 2 - Subject" are the roles of the simulator's
+ * room. On a Core in its own capture (`useSelfCaptureCore`, the rule of the Monitor's audio panel) the
+ * line is named from the SELECTOR IN FORCE: the input ("MIC 1"), the source on it ("MIC-01"), its role
+ * (primary / standby - the selector's line, else the pair the selector gives), and "Generated test
+ * source" for a generated one. The simulated lane keeps its labels.
+ */
+function MicMeter({ channel }: { channel: AudioTrackId }) {
+  const { t } = useTranslation()
+  const ownCore = useSelfCaptureCore()
+  const micName = useMicInputName()
+  // One flat string (input | device | role | generated): the selector's result compares by value.
+  const line = useSim((s) => {
+    const mics = selectorInForce(s).mics
+    const inputId = micInputOfChannel(mics, channel)
+    const stated = mics.find((mic) => mic.inputId === inputId)
+    const pair = audioPairOfSelector(mics)
+    const role = stated?.role === 'PRIMARY' || stated?.role === 'STANDBY' ? stated.role : pair.activeInputId === inputId ? 'PRIMARY' : pair.standbyInputId === inputId ? 'STANDBY' : ''
+    const deviceId = stated?.deviceId ?? ''
+    const generated = isGeneratedSource(s.captureDevices.devices.find((device) => device.id === deviceId))
+    return [inputId, deviceId, role, generated ? 'G' : ''].join('|')
+  })
+  const [inputId = '', deviceId = '', role = '', generated = ''] = line.split('|')
+  const label = ownCore
+    ? [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, role === 'PRIMARY' || role === 'STANDBY' ? t(`web.waveM.micLine.${role}`) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
+        .filter((part): part is string => part !== null && part !== '')
+        .join(' · ')
+    : t(`common.tracks.${channel}`)
+  return (
+    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore ? inputId : undefined} data-role={ownCore && role !== '' ? role : undefined}>
+      <span className="sn-meter-label">{label}</span>
+      <DbfsMeter channel={channel} variant="panel" label={label} />
     </div>
   )
 }

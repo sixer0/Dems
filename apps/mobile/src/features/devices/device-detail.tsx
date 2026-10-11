@@ -87,6 +87,7 @@ import {
   useMic,
   useMicLevelSeries,
   useTabletLink,
+  useSourceRow,
 } from './use-devices-data';
 
 type DetailTab = 'overview' | 'health' | 'log';
@@ -105,7 +106,9 @@ export function DeviceDetail({ deviceId, variant }: DeviceDetailProps) {
   const registered = useRegisteredDevice(known ? null : deviceId);
   // The same "Live" as the badge reads (one rule for the name and the badge, D83 / D131).
   const { live } = useSourceBadgeMode();
-  const name = known ? t(DEVICE_NAME_KEY[deviceId]) : registered !== null ? rosterDeviceName(t, registered, live) : deviceId;
+  // Fix wave M (G70d-02): a built-in microphone line is named from the selector in force on a Core in its own capture.
+  const builtIn = useSourceRow(known ? deviceId : 'TABLET', 'ONLINE');
+  const name = known ? builtIn.name : registered !== null ? rosterDeviceName(t, registered, live) : deviceId;
   const header =
     variant === 'screen' ? (
       <View style={styles.header}>
@@ -169,6 +172,8 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [command, setCommand] = useState<DeviceCommand | null>(null);
   const shortName = t(DEVICE_SHORT_NAME_KEY[deviceId]);
+  // Fix wave M (G70d-02): the chip and the "Status" row say the selector line's word, as the tile above them.
+  const row = useSourceRow(deviceId, status);
 
   // S2-8: a diagnostics run; `started` runs once the simulator or the Core accepted it (the sheet opens there).
   const startDiagnostics = useCallback(
@@ -221,7 +226,7 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
     <Animated.View entering={enterRise(0, m, { distance: 'riseLg' })} style={styles.block}>
       <DeviceHero deviceId={deviceId} status={status} onClipReset={resetClip} />
       <View style={styles.statusRow}>
-        <DeviceStatusChip status={status} size="md" testID="device-detail-status" />
+        <DeviceStatusChip status={status} word={row.word} size="md" testID="device-detail-status" />
         <Text maxFontSizeMultiplier={1.2} selectable style={styles.deviceId} testID="device-detail-id">
           {deviceId}
         </Text>
@@ -261,7 +266,7 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
       </Tabs>
       <Animated.View key={tab} entering={crossFadeIn(m)} style={styles.tabBody}>
         {tab === 'overview' ? (
-          <OverviewTab deviceId={deviceId} status={status} onClipReset={resetClip} />
+          <OverviewTab deviceId={deviceId} status={status} statusLabel={row.statusLabel} onClipReset={resetClip} />
         ) : tab === 'health' ? (
           <HealthTab deviceId={deviceId} live={live} />
         ) : (
@@ -427,12 +432,12 @@ function IconHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceStat
 }
 
 // ── Overview ─────────────────────────────────────────────────────────────────────────────
-function OverviewTab({ deviceId, status, onClipReset }: { deviceId: DeviceId; status: DeviceStatus; onClipReset: (channel: AudioTrackId) => void }) {
+function OverviewTab({ deviceId, status, statusLabel, onClipReset }: { deviceId: DeviceId; status: DeviceStatus; statusLabel: string; onClipReset: (channel: AudioTrackId) => void }) {
   switch (DEVICE_KIND[deviceId]) {
     case 'camera':
-      return <CameraOverview deviceId={deviceId} status={status} />;
+      return <CameraOverview deviceId={deviceId} statusLabel={statusLabel} />;
     case 'microphone':
-      return <MicOverview deviceId={deviceId} status={status} onClipReset={onClipReset} />;
+      return <MicOverview deviceId={deviceId} statusLabel={statusLabel} onClipReset={onClipReset} />;
     case 'poe':
       return <PoeOverview status={status} />;
     case 'relay':
@@ -472,7 +477,7 @@ function ModelValues({ block, marked, children }: { block: string; marked: boole
   );
 }
 
-function CameraOverview({ deviceId, status }: { deviceId: DeviceId; status: DeviceStatus }) {
+function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusLabel: string }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const camera = useCamera(deviceId);
@@ -487,7 +492,7 @@ function CameraOverview({ deviceId, status }: { deviceId: DeviceId; status: Devi
     return (
       <Facts
         items={[
-          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
           { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
           { id: 'format', label: label('format'), value: profile ?? t('common.platformNotReported.value'), mono: profile !== null, testID: 'device-fact-format' },
@@ -500,7 +505,7 @@ function CameraOverview({ deviceId, status }: { deviceId: DeviceId; status: Devi
     <ModelValues block="camera" marked={facts === 'MODEL_VALUES'}>
       <Facts
         items={[
-          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
           { id: 'model', label: label('model'), value: camera.model },
           { id: 'firmware', label: label('firmware'), value: camera.firmware, mono: true },
@@ -518,7 +523,7 @@ function CameraOverview({ deviceId, status }: { deviceId: DeviceId; status: Devi
   );
 }
 
-function MicOverview({ deviceId, status, onClipReset }: { deviceId: DeviceId; status: DeviceStatus; onClipReset: (channel: AudioTrackId) => void }) {
+function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceId; statusLabel: string; onClipReset: (channel: AudioTrackId) => void }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const mic = useMic(deviceId);
@@ -541,7 +546,7 @@ function MicOverview({ deviceId, status, onClipReset }: { deviceId: DeviceId; st
     return (
       <Facts
         items={[
-          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
           { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
           clip,
@@ -555,7 +560,7 @@ function MicOverview({ deviceId, status, onClipReset }: { deviceId: DeviceId; st
       {facts === 'MODEL_VALUES' ? <SyntheticValuesChip block="microphone" /> : null}
       <Facts
         items={[
-          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
           { id: 'channel', label: label('channel'), value: t('devices.drawer.value.channel', { channel: mic.channel }) },
           { id: 'gain', label: label('gain'), value: t('devices.audio.gainValue', { value: mic.gainDb }), testID: 'device-fact-gain' },

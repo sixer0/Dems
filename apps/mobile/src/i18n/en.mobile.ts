@@ -47,6 +47,9 @@ export const enMobile = {
       cancelSession: 'Cancel this session?',
       confirmCancel: 'Cancel session',
       keepSession: 'Keep session',
+      // Fix wave M (G70d-03): the third choice of the flow dialog, and what the choices do.
+      goHomeKeepSession: 'Go to Home, keep the session open',
+      flowChoices: 'The session stays open on the Core until it is cancelled. From Home, "Continue setup" returns to it. "Cancel session" ends it: nothing was recorded.',
       finalizing: 'Finalizing — please wait',
     },
     // §6.3: biometric sign-in.

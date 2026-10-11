@@ -130,10 +130,11 @@ describe('rule 4: the lane script', () => {
     expect(lines.slice(at + otherwise).find((line) => line.includes('npm run -s'))).toContain('npm run -s start:server >"$LOG"');
     expect(lane).toContain('--with-camera-stub) [ -z "$START_STUB" ] || usage; START_STUB=$option ;;');
     expect(lane).toContain('cmd_start "$START_LANE" "$START_STUB" ;;');
-    // What the launcher is handed: three file paths under .locks/, nothing else (fix wave K: the switch file of the seal rig is the third).
-    expect(running(lane)[0]).toMatch(/-- --fixture-file "\$STUB_FIXTURE" --mode-file "\$STUB_MODE" --seal-rig-file "\$SEAL_RIG" >"\$LOG" 2>&1 & \)$/);
+    // What the launcher is handed: four file paths under .locks/, nothing else (fix wave K: the switch file of the seal rig is the third; fix wave M: that of the source rig the fourth).
+    expect(running(lane)[0]).toMatch(/-- --fixture-file "\$STUB_FIXTURE" --mode-file "\$STUB_MODE" --seal-rig-file "\$SEAL_RIG" --source-rig-file "\$SOURCE_RIG" >"\$LOG" 2>&1 & \)$/);
     expect(lane).toContain('STUB_FIXTURE="$LOCKS/camera-stub.lane$1.fixture"; STUB_MODE="$LOCKS/camera-stub.lane$1.mode"');
     expect(lane).toContain('SEAL_RIG="$LOCKS/seal-rig.lane$1.switch"');
+    expect(lane).toContain('SOURCE_RIG="$LOCKS/source-rig.lane$1.switch"');
   });
 
   it('it still sets no attendance variable and unsets the capture family before it writes the plan of the lane', () => {
@@ -199,6 +200,77 @@ describe('rule 5: the seal rig stays a development tool', () => {
     const command = lines.slice(lines.indexOf('cmd_seal_rig() {'), lines.indexOf('cmd_start() {'));
     expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeGreaterThan(0);
     expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeLessThan(command.indexOf('>"$SEAL_RIG"'));
+    expect(lines).not.toMatch(/DEMS_[A-Z_]*RIG[A-Z_]*=/);
+  });
+});
+
+// Fix wave M (driver M-S; decision D232): the development source rig rides the same launcher and is held to the same rules.
+describe('rule 6: the source rig stays a development tool', () => {
+  const RIG_LIBRARY = 'test/support/lane-source-rig.ts';
+  const RIG_NAMES = new RegExp([['lane', 'source', 'rig'].join('-'), ['prepare', 'Lane', 'Source', 'Rig'].join(''), ['create', 'Lane', 'Source', 'Rig'].join('')].join('|'));
+  const RIG_PREPARE = new RegExp(`\\b${['prepare', 'Lane', 'Source', 'Rig'].join('')}\\s*\\(`);
+  /** A CALL of the fence's seam, or a registry built WITH a switch: neither is in production code. */
+  const INSTALLS = new RegExp(`\\.\\s*${['install', 'Development', 'Source', 'Switch'].join('')}\\s*\\(`);
+  const FENCE = 'src/capture/fence/index.ts';
+  const GENERATED = 'src/capture/fence/generated-sources.ts';
+
+  it('finds a production file that names the rig or installs a source switch (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/capture/x.ts', text: `import { ${['create', 'Lane', 'Source', 'Rig'].join('')} } from '../../test/support/${['lane', 'source', 'rig'].join('-')}';` },
+      { path: 'src/modules/y.ts', text: `captureFenceControl(app).${['install', 'Development', 'Source', 'Switch'].join('')}(() => true);` },
+    ];
+    expect(naming(codeOnly(planted), RIG_NAMES)).toEqual(['src/capture/x.ts']);
+    expect(naming(codeOnly(planted), INSTALLS)).toEqual(['src/modules/y.ts']);
+  });
+
+  it('no file under src/ names the rig or INSTALLS a source switch; the launcher is the only caller of its preparation, before app.ready(), and installs it after it and before the boot', () => {
+    expect(naming(codeOnly(production), RIG_NAMES)).toEqual([]);
+    expect(naming(codeOnly(production), INSTALLS)).toEqual([]);
+    const callers = naming(codeOnly(tree.filter((file) => file.path.endsWith('.ts') && !file.path.endsWith('.test.ts') && file.path !== RIG_LIBRARY)), RIG_PREPARE);
+    expect(callers).toEqual([LAUNCHER]);
+    const launcher = text(LAUNCHER);
+    const prepare = launcher.indexOf('prepareLaneSourceRig(app, files.sourceRigFile);');
+    const install = launcher.indexOf('sourceRig.install();');
+    expect(prepare).toBeGreaterThan(0);
+    expect(prepare < launcher.indexOf('await app.ready();') && launcher.indexOf('await app.ready();') < install && install < launcher.indexOf('await app.readiness.boot();')).toBe(true);
+    expect(launcher).toContain("if (error instanceof LaneSourceRigError) fatal('boot', error, { check: LANE_SOURCE_RIG_CHECK, code: error.code });");
+    // The library asks the fence first and refuses production before it reads its argument; it reads no variable of the environment.
+    const library = text(RIG_LIBRARY);
+    expect(library.indexOf('if (operation === CaptureOperation.REAL_PRODUCTION) throw new LaneSourceRigError();')).toBeGreaterThan(0);
+    expect(library.indexOf('if (operation === CaptureOperation.REAL_PRODUCTION) throw new LaneSourceRigError();')).toBeLessThan(library.indexOf('if (switchFile === null)'));
+    expect(library).not.toMatch(/process\s*\.\s*env/);
+  });
+
+  it('the fence refuses the switch before it keeps it, hands it to the GENERATED adapters alone, and the production registry never takes one', () => {
+    const fence = text(FENCE);
+    const seam = fence.slice(fence.indexOf('    installDevelopmentSourceSwitch(unreachable) {'));
+    expect(seam.indexOf('if (decision.operation !== CaptureOperation.REAL_DEVELOPMENT) throw new DevelopmentSourceSwitchRefusedError(decision.operation);')).toBeGreaterThan(0);
+    expect(seam.indexOf('if (decision.operation !== CaptureOperation.REAL_DEVELOPMENT) throw new DevelopmentSourceSwitchRefusedError(decision.operation);')).toBeLessThan(seam.indexOf('sourceSwitch = unreachable;'));
+    // ONE assignment of the kept switch in the whole file, and it is the one behind the refusal.
+    expect(fence.split('sourceSwitch = unreachable;').length - 1).toBe(1);
+    // The local adapters are built from `shared`; the switch is spread into the two generated adapters only.
+    expect(fence.split('...switched,').length - 1).toBe(2);
+    expect(fence).toContain('createGeneratedCameraAdapter({ ...shared, ...switched,');
+    expect(fence).toContain('createGeneratedMicAdapter({ ...shared, ...switched,');
+    expect(fence).not.toMatch(/createLocal(?:Camera|Mic)Adapter\(\{[^}]*switched/);
+    const productionRegistry = fence.slice(fence.indexOf('export function buildProductionRegistry('), fence.indexOf('/** What the fence offers after the boot'));
+    expect(productionRegistry.length).toBeGreaterThan(100);
+    expect(productionRegistry).not.toMatch(/sourceUnreachable|switched/);
+    // The generated adapters are the only readers of the option.
+    expect(naming(codeOnly(production), /options\.unreachable\b/)).toEqual([GENERATED]);
+  });
+
+  it('the lane script: the switch is written only by the source-rig command, refused on a lane that is not development capture, takes a registry ID and nothing else, and no variable of the environment carries it', () => {
+    const lane = readFileSync(join(REPOSITORY, 'scripts/lane/lane.sh'), 'utf8');
+    const lines = lane.split('\n').filter((line) => !line.trim().startsWith('#')).join('\n');
+    expect(lines).toContain('source-rig) [ $# -eq 3 ] || [ $# -eq 4 ] || usage; cmd_source_rig "$2" "$3" "${4:-}" ;;');
+    expect(lines.split('>"$SOURCE_RIG"').length - 1).toBe(2);
+    const command = lines.slice(lines.indexOf('cmd_source_rig() {'), lines.indexOf('seal_rig_state() {'));
+    expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeGreaterThan(0);
+    expect(command.indexOf('if [ "$MODE" != REAL_DEVELOPMENT ]; then')).toBeLessThan(command.indexOf('>"$SOURCE_RIG"'));
+    // The device word is held to the two ID forms BEFORE anything is written.
+    expect(command.indexOf('CAM-[0-9][0-9]|MIC-[0-9][0-9]) ;;')).toBeGreaterThan(0);
+    expect(command.indexOf('CAM-[0-9][0-9]|MIC-[0-9][0-9]) ;;')).toBeLessThan(command.indexOf('echo "$next" >"$SOURCE_RIG"'));
     expect(lines).not.toMatch(/DEMS_[A-Z_]*RIG[A-Z_]*=/);
   });
 });

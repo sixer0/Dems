@@ -51,6 +51,22 @@ function placesOf(details: Readonly<Record<string, unknown>> | null | undefined)
   return places
 }
 
+/**
+ * Fix wave M (G89d-02): how many of the items THE CORE lists have no verify row among `rows`. The tile
+ * counts verify runs ("27 PASS • 1 FAIL"); a reader may take that sum for the item count. `itemIds` is
+ * the Core's own evidence list (the replicated `evidence` slice); an id listed twice counts once.
+ */
+export function itemsWithoutVerifyRow(rows: readonly VerifyRowLike[], itemIds: readonly string[]): { readonly total: number; readonly notVerified: number } {
+  const verified = new Set<string>()
+  for (const row of rows) {
+    if ((row.type === VERIFIED || row.type === VERIFY_FAILED) && typeof row.evidenceId === 'string' && row.evidenceId !== '') verified.add(row.evidenceId)
+  }
+  const items = new Set(itemIds)
+  let notVerified = 0
+  for (const id of items) if (!verified.has(id)) notVerified += 1
+  return { total: items.size, notVerified }
+}
+
 export function coreVerifyOutcomes(rows: readonly VerifyRowLike[]): CoreVerifyOutcomes {
   const newest = new Map<string, VerifyRowLike>()
   for (const row of rows) {

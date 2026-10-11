@@ -72,7 +72,7 @@ export {
   type CaptureFenceSinks,
   type CaptureFenceUnit,
 } from './boot';
-export { createGeneratedCameraAdapter, createGeneratedMicAdapter, type GeneratedCameraAdapter, type GeneratedCameraOptions, type GeneratedMicAdapter, type GeneratedMicOptions } from './generated-sources';
+export { GENERATED_SOURCE_SWITCHED_UNREACHABLE, GeneratedSourceUnreachableError, createGeneratedCameraAdapter, createGeneratedMicAdapter, type GeneratedCameraAdapter, type GeneratedCameraOptions, type GeneratedMicAdapter, type GeneratedMicOptions } from './generated-sources';
 export { FakeMicRefusal, FakeMicSource, SPEECH_FIXTURE_FORMAT, SPEECH_FIXTURE_HEAD_BYTES, SpeechFixtureProblem, fakeMicDecisionOf, speechFixtureFormatProblem, type FakeMicDecision, type FakeMicInput } from './fake-mic';
 export { CaptureFlagRefusal, captureOperationDecisionOf, captureOperationOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
 export { DEV_CAMERA_STUB_IN_PRODUCTION, DevelopmentDiscoveryError, DevelopmentDiscoveryIgnored, developmentDiscoveryAdmissionOf, type DevelopmentDiscoveryAdmission } from './development-discovery';
@@ -129,6 +129,12 @@ export interface DevelopmentRegistryInput {
    * wave H), or null / absent for the tones. When set, the FIRST test microphone plays it.
    */
   readonly speechFixturePath?: string | null;
+  /**
+   * The development source switch (fix wave M, ruling D232; `generated-sources.ts`
+   * `GeneratedSourceOptions.unreachable`). Handed to the GENERATED adapters only: the two local
+   * devices never see it.
+   */
+  readonly sourceUnreachable?: (deviceId: string) => boolean;
 }
 
 /**
@@ -155,7 +161,11 @@ export interface BuiltCaptureRegistry {
   readonly registry: CaptureDeviceRegistry;
   /** The local devices whose source is open now (`sourceOpen`, SEC35-44 (4)): a running helper, a prepared microphone, a short pre-check open. */
   openSources(): readonly string[];
-  /** The adapters the reachability probe asks; null when the operation registers none. */
+  /**
+   * The adapters the reachability probe asks; null when the operation registers none. THE LIST OF
+   * THE MOMENT OF THE CALL: `admit` adds to it, so a caller asks at each use and keeps no answer
+   * (fix wave M, follow-up M-S2: the notices unit kept its first one).
+   */
   probeAdapters(): CaptureProbeAdapters | null;
   /**
    * Fix wave I (finding G70b-01): gives a device that was REGISTERED AFTER THE BOOT (operation 96)
@@ -249,10 +259,12 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
    * The adapter of ONE stored `FAKE` device: the same for a row the boot read and for a camera
    * operation 96 registered later (`admit`; fix wave I, finding G70b-01).
    */
+  /** Not in `shared`: that object is also what the LOCAL adapters are built from. */
+  const switched = input.sourceUnreachable === undefined ? {} : { unreachable: input.sourceUnreachable };
   const fakeAdapterOf = (device: StoredCaptureDevice): CaptureAdapter => {
     const label = device.model ?? device.id;
     if (device.kind === 'CAMERA') {
-      const generated = createGeneratedCameraAdapter({ ...shared, id: device.id, label, now: input.now });
+      const generated = createGeneratedCameraAdapter({ ...shared, ...switched, id: device.id, label, now: input.now });
       cameraAdapters.push(generated);
       closers.push(() => generated.closeAll());
       return generated;
@@ -263,7 +275,7 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
       const tone = first ? MicGeneratedTone.TONE_440 : MicGeneratedTone.TONE_880;
       // Fix wave H: with the speech setting the first one plays the speech fixture in the place of its tone; every other one keeps its tone.
       const speechFixture = first && typeof input.speechFixturePath === 'string' ? { speechFixture: input.speechFixturePath } : {};
-      const generated = createGeneratedMicAdapter({ ...shared, id: device.id, label, runDir: input.runDir, tone, ...speechFixture });
+      const generated = createGeneratedMicAdapter({ ...shared, ...switched, id: device.id, label, runDir: input.runDir, tone, ...speechFixture });
       micAdapters.push(generated);
       closers.push(() => generated.closeAll());
       return generated;
@@ -348,11 +360,36 @@ export interface CaptureFenceControl {
    */
   admitDevice(device: StoredCaptureDevice): CaptureDeviceAdmission;
   /**
+   * THE DEVELOPMENT SOURCE SWITCH (fix wave M; re-check 70 finding G70d-01, ruling D232): a
+   * development tool is handed the function that says which GENERATED test source answers as
+   * "not there" (`generated-sources.ts`). REFUSED - `DevelopmentSourceSwitchRefusedError` - in
+   * every capture operation but `REAL_DEVELOPMENT`: a production Core has no generated source and
+   * never takes a switch, and a simulated Core records from nothing. It may be installed before
+   * or after the boot step; the adapters ask it at every read and every open. No product code
+   * calls this: the caller is the lane launcher's source rig (test support), and without a call
+   * every generated source is always there. A second call replaces the first.
+   */
+  installDevelopmentSourceSwitch(unreachable: (deviceId: string) => boolean): void;
+  /**
    * SEC35-43 (d): the helper processes of an earlier run, by the exact program path. Capture must
    * not start while the answer is not an empty list (null: the process table could not be read).
    * Nothing is killed: the fence reports.
    */
   leftoverHelpers(): Promise<readonly number[] | null>;
+}
+
+/** `code` of the refusal of a development source switch outside development capture. */
+export const DEV_SOURCE_SWITCH_REFUSED = 'DEV_SOURCE_SWITCH_NEEDS_DEV_SOURCES';
+
+export class DevelopmentSourceSwitchRefusedError extends Error {
+  readonly code = DEV_SOURCE_SWITCH_REFUSED;
+  /** The operation that refused. */
+  readonly operation: CaptureOperation;
+  constructor(operation: CaptureOperation) {
+    super('a development source switch is accepted in development capture only');
+    this.name = 'DevelopmentSourceSwitchRefusedError';
+    this.operation = operation;
+  }
 }
 
 const controls = new WeakMap<object, CaptureFenceControl>();
@@ -386,6 +423,8 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
   const now = (): number => app.clock.now();
   let outcome: CaptureFenceOutcome | null = null;
   let built: BuiltCaptureRegistry | null = null;
+  /** The development source switch (fix wave M): null until a development tool installed one. */
+  let sourceSwitch: ((deviceId: string) => boolean) | null = null;
   const openListeners = new Set<() => void>();
   /** Tells every listener; one that throws is reported and never stops an open or a close of a source. */
   const openSourcesChanged = (): void =>
@@ -409,6 +448,10 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
     },
     probeAdapters: () => built?.probeAdapters() ?? null,
     admitDevice: (device) => built?.admit(device) ?? CaptureDeviceAdmission.NOT_SERVED,
+    installDevelopmentSourceSwitch(unreachable) {
+      if (decision.operation !== CaptureOperation.REAL_DEVELOPMENT) throw new DevelopmentSourceSwitchRefusedError(decision.operation);
+      sourceSwitch = unreachable;
+    },
     async leftoverHelpers() {
       const program = outcome?.helperProgram ?? null;
       return program === null ? Object.freeze([]) : leftoverHelperPids(door, mount.timers, program);
@@ -460,6 +503,8 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
           ...(mount.locked === undefined ? {} : { locked: mount.locked }),
           onOpenSourcesChanged: openSourcesChanged,
           speechFixturePath: passed.fakeMic.fixturePath,
+          // Read at every call: a switch installed after this boot step is asked as well. None installed: every source is there.
+          sourceUnreachable: (deviceId) => sourceSwitch?.(deviceId) === true,
         });
       } else if (passed.operation === CaptureOperation.REAL_PRODUCTION) {
         built = buildProductionRegistry(mount.locked);

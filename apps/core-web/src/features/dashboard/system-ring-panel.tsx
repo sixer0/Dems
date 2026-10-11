@@ -9,7 +9,7 @@ import { usePlatformNotReported } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
-import { selectRingPrimitives, selectNewestNoticeSession, selectOpenNoticeCount, selectRingBlockedSession } from './sim-adapter'
+import { selectRingPrimitives, selectNewestNoticeSession, selectOpenNoticeCount, selectRingBlockedSession, selectRingRetryingSession } from './sim-adapter'
 
 /** Ring size bounds: hero ≈ 320 at 1920 (M-C-01), smaller at 1440; never below a legible 180. */
 const RING_MIN = 180
@@ -49,12 +49,22 @@ export function SystemRingPanel() {
   const openNotices = useSim(selectOpenNoticeCount)
   const noticeSessionId = useSim(selectNewestNoticeSession)
   const blocked = blockedSessionId !== null
-  const noticeOnly = !blocked && openNotices > 0 && ring.state === 'READY' && !ring.connecting
-  const ringState = blocked ? 'CRITICAL' : noticeOnly ? 'ATTENTION' : ring.state
+  // Fix wave M (G75e-06): while the Core retries a seal by itself the ring says so (the system's own flags say nothing of it).
+  const retryingSessionId = useSim(selectRingRetryingSession)
+  const retrying = !blocked && retryingSessionId !== null && (ring.state === 'READY' || ring.state === 'RECORDING')
+  const noticeOnly = !blocked && !retrying && openNotices > 0 && ring.state === 'READY' && !ring.connecting
+  // Fix wave M (G75e-04, ruling D234 (1) after D228 (2)): the open notice is said ALSO while a session records beside
+  // it. The ring stays the recording ring (REC, the timer); its line and its caption state the notice, never "SECURE".
+  const noticeRecording = !blocked && !retrying && openNotices > 0 && ring.state === 'RECORDING'
+  const ringState = blocked ? 'CRITICAL' : retrying || noticeOnly ? 'ATTENTION' : ring.state
   // Integration pass D7 item 3 (ux §8e.2; D84, D91): before the first durable fragment the ring is not the
   // recording ring (the adapter sends the system's own state, no REC, no timer) and the line under it says so.
   const statusLine = blocked
     ? t('web.waveL.notice.blockedRingSub')
+    : retrying
+      ? t('web.waveM.ring.retrySub')
+    : noticeRecording
+      ? t('web.waveM.ring.noticeRecording')
     : noticeOnly
       ? t('web.waveL.notice.ringSub')
       : ring.connecting
@@ -64,6 +74,9 @@ export function SystemRingPanel() {
         platformNotReported
         ? t('web.realCore.dashboard.ringFlags')
         : t('dashboard.systemRing.flags')
+      : ring.state === 'RECORDING' && platformNotReported
+        ? // Fix wave M (G75e-04): "SECURE • HEALTHY" is a posture no Core computed where it states `security.platformNotReported` - also while it records.
+          t('web.waveM.ring.recordingFlags')
       : ring.state === 'RECORDING' || ring.state === 'UNKNOWN'
         ? t(`dashboard.systemRing.statusLine.${ring.state}`)
         : t('dashboard.systemRing.issues', { count: ring.issues })
@@ -76,7 +89,8 @@ export function SystemRingPanel() {
         data-ring-size={size}
         data-connecting={ring.connecting ? 'true' : undefined}
         data-seal-blocked={blocked ? 'true' : undefined}
-        data-open-notice={noticeOnly ? 'true' : undefined}
+        data-open-notice={noticeOnly || noticeRecording ? 'true' : undefined}
+        data-seal-retrying={retrying ? 'true' : undefined}
       >
         {/* The ring card's edge curving towards the hero (research/04 §3.1 A). Static. */}
         <svg className="dems-dash-ring-arc" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
@@ -89,7 +103,7 @@ export function SystemRingPanel() {
           </defs>
           <path d="M 62 1 C 96 16, 100 70, 78 99" fill="none" stroke={`url(#${gradientId})`} strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
         </svg>
-        <GlowRing state={ringState} size={size} mode="hero" recordingSince={blocked ? null : ring.since} delayMs={ringDelay}>
+        <GlowRing state={ringState} size={size} mode="hero" recordingSince={blocked || retrying ? null : ring.since} delayMs={ringDelay}>
           <motion.div
             className="dems-ring-details"
             initial={{ opacity: 0 }}
@@ -106,7 +120,9 @@ export function SystemRingPanel() {
             <span className={size < CAPTION_MIN_SIZE ? 'sr-only' : 'dems-ring-caption'}>
               {blocked
                 ? t('web.waveL.notice.blockedRingDetail', { sessionId: blockedSessionId })
-                : noticeOnly
+                : retrying
+                  ? t('web.waveM.ring.retryDetail', { sessionId: retryingSessionId })
+                : noticeOnly || noticeRecording
                   ? t('web.waveL.notice.ringDetail', { count: openNotices, sessionId: noticeSessionId ?? '' })
                   : ring.connecting
                     ? t('session.audioSource.connecting.detail')

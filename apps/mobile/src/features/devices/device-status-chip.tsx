@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { fontFamily, toneHex, typography } from '@dems/shared/tokens';
+import { fontFamily, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
 import { SPEC_LITERALS, animatePulseOnce, useMotionSettings } from '@/motion';
 import { STATUS_LABEL_KEY, STATUS_RANK, STATUS_TONE, type DeviceStatus } from './devices-model';
@@ -35,15 +35,20 @@ export interface DeviceStatusChipProps {
   status: DeviceStatus;
   size?: 'sm' | 'md';
   testID?: string;
+  /**
+   * Fix wave M (G70d-02): the word and tone of a capture source on a Core in its own capture
+   * (`useSourceRow`). Given, it is drawn in place of the track's status word; the pulse rule is unchanged.
+   */
+  word?: { readonly label: string; readonly tone: StatusTone } | null;
 }
 
 /** MB 7 Camera / Audio rows and the detail header: a kit chip with a status dot. */
-export function DeviceStatusChip({ status, size = 'sm', testID }: DeviceStatusChipProps) {
+export function DeviceStatusChip({ status, size = 'sm', testID, word = null }: DeviceStatusChipProps) {
   const { t } = useTranslation();
   const style = useEscalationPulse(STATUS_RANK[status]);
   return (
     <Animated.View style={style} testID={testID ? `${testID}-pulse` : undefined}>
-      <StatusChip tone={STATUS_TONE[status]} label={t(STATUS_LABEL_KEY[status])} icon="Circle" iconFilled size={size} testID={testID} />
+      <StatusChip tone={word?.tone ?? STATUS_TONE[status]} label={word?.label ?? t(STATUS_LABEL_KEY[status])} icon="Circle" iconFilled size={size} testID={testID} />
     </Animated.View>
   );
 }

@@ -33,6 +33,17 @@ export function isWizardState(state: SessionState | null): boolean {
 }
 
 /**
+ * Fix wave M (G70d-03): THE SESSION A FORM BELONGS TO IS GONE. `owned` is the setup session the wizard followed
+ * in the last render, `followed` the one it follows now (null when no session is in CREATE, PRECHECK or ARMED),
+ * `sessionId` the Core's current session whatever its state. Gone = the wizard followed a session and now
+ * follows none or another one, and the Core's session is not that same session moved on (ARMED to RECORDING is
+ * the start, not a cancel).
+ */
+export function formSessionGone(owned: string | null, followed: string | null, sessionId: string | null): boolean {
+  return owned !== null && followed !== owned && sessionId !== owned;
+}
+
+/**
  * The step to show. The simulator state is the source of truth (§3.7: the route follows the
  * state), the `?step=` param only chooses within what the state allows:
  *

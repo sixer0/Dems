@@ -74,6 +74,7 @@ import {
   type SimState,
   startRefusedReasonOf,
   startRefusedSentenceKey,
+  isSessionActive,
 } from '@dems/shared/sim'
 import { Stepper, type StepperStatus, type StepperStep } from '@/components/composed/stepper'
 import { PageHeader, useRouteEnterDelay } from '@/components/shell'
@@ -106,7 +107,12 @@ import './session-new.css'
 
 const route = getRouteApi('/_app/session/new')
 
-const selectSessionId = (s: SimState) => s.session?.id ?? null
+/**
+ * The id of the session this wizard works on. Fix wave M (G70d-05): the `session` slice keeps the LAST session
+ * after its seal (`isSessionActive`: not null, not SEALED) - its id is not the id of a session that is not yet
+ * created, so the header (and the summary of the last step) show no id until one exists.
+ */
+const selectSessionId = (s: SimState) => (isSessionActive(s.session) ? s.session.id : null)
 const selectPrecheck = (s: SimState) => s.session?.precheck ?? null
 const selectCanStart = (s: SimState) => selectCan(s, Permission.SESSION_START)
 const selectOperators = (s: SimState) => s.operators

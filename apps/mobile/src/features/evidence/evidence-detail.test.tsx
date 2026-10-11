@@ -107,6 +107,51 @@ describe('Evidence detail: Hash & Integrity', () => {
   });
 });
 
+// Fix wave M (re-check 89 finding G89d-03): in the tablet's pane the tab strip lay below the first screen, behind the
+// fixed Play / Export / More bar - a tap meant for "Hash & Integrity" opened the Export sheet. THE LAYOUT RULE: in
+// the pane the strip is pinned outside the scroll view (above it), so it can never share a point with the bar and
+// every tab is tappable at the first scroll position; the bar stays the last child. The phone keeps the strip in
+// its scrolled content.
+describe('Evidence detail: the tab strip and the action bar never overlap (G89d-03)', () => {
+  type Node = { readonly parent: Node | null; readonly props: { readonly testID?: string } };
+  const inside = (node: Node | null, testID: string): boolean => (node === null ? false : node.props.testID === testID ? true : inside(node.parent, testID));
+
+  it('tablet pane: the strip is pinned outside the scroll view and outside the action bar; each tab opens by a press without scrolling', async () => {
+    const h = renderEvidenceApp({ window: 'tabletLandscape' });
+    await settle();
+    fireEvent.press(screen.getByTestId(`evidence-row-${h.idOf('0002')}`));
+    await settle();
+    const pinned = screen.getByTestId('evidence-detail-tabs-pinned');
+    for (const key of ['media', 'metadata', 'integrity']) {
+      const tab = screen.getByTestId(`evidence-tab-${key}`) as unknown as Node;
+      expect(inside(tab, 'evidence-detail-tabs-pinned')).toBe(true);
+      expect(inside(tab, 'evidence-detail-scroll')).toBe(false);
+      expect(inside(tab, 'evidence-detail-actions')).toBe(false);
+    }
+    // Order inside the pane: header, the pinned strip, the scroll view, the action bar.
+    const root = screen.getByTestId('evidence-detail-pane') as unknown as { readonly children: readonly unknown[] };
+    const order = root.children.map((child) => (child as Node).props?.testID).filter((id) => id === 'evidence-detail-tabs-pinned' || id === 'evidence-detail-scroll' || id === 'evidence-detail-actions');
+    expect(order).toEqual(['evidence-detail-tabs-pinned', 'evidence-detail-scroll', 'evidence-detail-actions']);
+    expect(pinned).toBeTruthy();
+    fireEvent.press(screen.getByTestId('evidence-tab-integrity'));
+    await settle();
+    expect(screen.getByTestId('evidence-verdict-pending')).toBeTruthy();
+    expect(screen.queryByTestId('export-sheet')).toBeNull();
+    fireEvent.press(screen.getByTestId('evidence-tab-metadata'));
+    await settle();
+    expect(screen.queryByTestId('evidence-verdict-pending')).toBeNull();
+  });
+
+  it('CONTROL - phone: the strip stays in the scrolled content (no pinned strip)', async () => {
+    const h = renderEvidenceApp({ window: 'phonePortrait' });
+    await settle();
+    fireEvent.press(screen.getByTestId(`evidence-row-${h.idOf('0002')}`));
+    await settle();
+    expect(screen.queryByTestId('evidence-detail-tabs-pinned')).toBeNull();
+    expect(inside(screen.getByTestId('evidence-tab-integrity') as unknown as Node, 'evidence-detail-scroll')).toBe(true);
+  });
+});
+
 describe('Evidence detail: Metadata', () => {
   it('lists the 13 §11.3 fields and shows the byte-exact manifest.json', async () => {
     const h = renderEvidenceApp({ window: 'phonePortrait' });

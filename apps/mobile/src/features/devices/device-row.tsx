@@ -28,7 +28,7 @@ import { PreviewThumb, useRealCaptureView } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
 import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, type DeviceId, type DeviceStatus } from './devices-model';
-import { useBookPoe, useCamera, useIsRecording, useMic } from './use-devices-data';
+import { useBookPoe, useCamera, useIsRecording, useMic, useSourceRow } from './use-devices-data';
 
 export interface DeviceRowProps {
   deviceId: DeviceId;
@@ -64,7 +64,9 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const camera = useCamera(deviceId);
   // Closing pass L-Z (the ONE RULE): the room is the simulator's model; a generated source of a Core in its own capture is named as that.
   const generated = useGeneratedSource(deviceId);
-  const name = t(DEVICE_NAME_KEY[deviceId]);
+  // Fix wave M (G70d-02): the one wording rule of a capture source (never "Online" beside "Not checked").
+  const row = useSourceRow(deviceId, status);
+  const name = row.name;
   const poster = DEMO_MEDIA_LIVE.poster[DEVICE_CAMERA[deviceId] ?? 'VIDEO-01'];
   return (
     <RowFrame
@@ -73,9 +75,9 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       onPress={onPress}
       name={name}
       detail={generated ? t('common.developmentRoster.source.FAKE') : (camera?.room ?? '')}
-      statusText={t(STATUS_LABEL_KEY[status])}
+      statusText={row.statusLabel}
       prefix={<PreviewThumb kind="camera" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'FAULT'} testID={`device-thumb-${deviceId}`} />}
-      suffix={<DeviceStatusChip status={status} testID={`device-status-${deviceId}`} />}
+      suffix={<DeviceStatusChip status={status} word={row.word} testID={`device-status-${deviceId}`} />}
     />
   );
 }
@@ -87,7 +89,9 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { isMultiPane } = useLayoutClass();
   const focused = useIsFocused();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
-  const name = t(DEVICE_NAME_KEY[deviceId]);
+  // Fix wave M (G70d-02): the line's name from the selector in force ("MIC 1 · Primary"), and the one wording rule.
+  const row = useSourceRow(deviceId, status);
+  const name = row.name;
   // The mockup's mic thumbnails are room photos: MIC 1 sits on the interviewer's side (lens 1),
   // MIC 2 on the subject's side (lens 2). A mic badge marks them as inputs, not cameras.
   const poster = DEMO_MEDIA_LIVE.poster[deviceId === 'MIC-02' ? 'VIDEO-02' : 'VIDEO-01'];
@@ -98,7 +102,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       onPress={onPress}
       name={name}
       detail={generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: mic?.channel ?? 1 })}
-      statusText={t(STATUS_LABEL_KEY[status])}
+      statusText={row.statusLabel}
       prefix={
         <PreviewThumb kind="microphone" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'} testID={`device-thumb-${deviceId}`}>
           <View style={styles.micBadge} accessibilityLabel={t('features.devices.list.micBadge')}>
@@ -118,7 +122,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
           />
         ) : null
       }
-      suffix={<DeviceStatusChip status={status} testID={`device-status-${deviceId}`} />}
+      suffix={<DeviceStatusChip status={status} word={row.word} testID={`device-status-${deviceId}`} />}
     />
   );
 }
@@ -207,7 +211,8 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
       >
         <ListGroup.ItemPrefix>{prefix}</ListGroup.ItemPrefix>
         <ListGroup.ItemContent style={styles.content}>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.title}>
+          {/* Fix wave M (G70d-02): two lines, so the role in force of a microphone line ("MIC 1 · Primary") is not cut in the tablet's narrow list. */}
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.title}>
             {name}
           </Text>
           {detail ? (

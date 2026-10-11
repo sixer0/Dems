@@ -83,6 +83,77 @@ function idsOutsideLeave(): string[] {
     .sort();
 }
 
+// Fix wave M (re-check 70 finding G70d-03): the ways out of a session that exists, and a session that is gone.
+describe('a session in setup has its ways out, and a session cancelled elsewhere clears the form (G70d-03)', () => {
+  it('the confirm offers "Go to Home, keep the session open": nothing is sent, the session stays ARMED, Home is shown', async () => {
+    const b = await liveCancelConfirm();
+    expect(screen.getByTestId('back-guard-choices')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('back-guard-home'));
+    await b.flush();
+    expect(b.requests('cancelSession')).toHaveLength(0);
+    expect(b.state().session?.state).toBe('ARMED');
+    expect(b.app.getPathname()).toBe('/home');
+  });
+
+  it('the header offers "Cancel session" only while a session exists; it opens the same confirm, and the confirm cancels', async () => {
+    const b = await renderLiveSessionNew();
+    bed = b;
+    await b.openFlow();
+    expect(screen.queryByTestId('session-new-cancel')).toBeNull(); // CONTROL: no session yet
+    await fillStep1();
+    fireEvent.press(screen.getByTestId('session-new-next'));
+    await b.flush();
+    await b.elapse(200);
+    await b.runCore(PRECHECK_TOTAL_MAX_MS);
+    expect(screen.queryByTestId('back-guard-dialog')).toBeNull();
+    fireEvent.press(screen.getByTestId('session-new-cancel'));
+    await b.flush();
+    expect(screen.getByText('Cancel this session?')).toBeTruthy();
+    fireEvent.press(leave());
+    await b.flush();
+    await b.elapse(200);
+    expect(b.requests('cancelSession')).toHaveLength(1);
+    expect(b.state().session).toBeNull();
+    expect(b.app.getPathname()).toBe('/home');
+  });
+
+  it('the session is cancelled on another client: the form is cleared, the screen names the session, Next is disabled, an open confirm closes', async () => {
+    const b = await liveCancelConfirm(); // the confirm of the armed session is open
+    const sessionId = b.state().session?.id ?? '';
+    expect(sessionId).not.toBe('');
+    await b.coreDoes((engine) => engine.sim.actions.cancel());
+    await b.elapse(200);
+    expect(b.state().session).toBeNull();
+    expect(b.app.getPathname()).toBe('/session/new');
+    expect(screen.getByTestId('session-new-step-1')).toBeTruthy();
+    expect(within(screen.getByTestId('session-new-cancelled-elsewhere')).getByText(new RegExp(sessionId))).toBeTruthy();
+    expect(screen.getByTestId('session-new-subject-name').props.value).toBe('');
+    expect(screen.getByTestId('session-new-case-number').props.value).toBe('');
+    expect(screen.getByTestId('session-new-subject-TERSANGKA').props.accessibilityState).toMatchObject({ selected: false });
+    expect(screen.getByTestId('session-new-next').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.queryByText('Cancel this session?')).toBeNull();
+    expect(screen.queryByText(en.sessionNew.cancelDialog.title)).toBeNull();
+    expect(screen.queryByTestId('session-new-cancel')).toBeNull();
+    expect(b.requests('cancelSession')).toHaveLength(0);
+    // The cleared form is not "typed details": Back leaves without a question.
+    act(() => router.back());
+    await b.flush();
+    expect(b.app.getPathname()).toBe('/home');
+  });
+
+  it('CONTROL: the screen\'s own cancel is not "cancelled on another client"', async () => {
+    const b = await liveCancelConfirm();
+    b.answerDelayMs = 300;
+    fireEvent.press(leave());
+    await b.flush();
+    await b.elapse(100);
+    expect(screen.queryByTestId('session-new-cancelled-elsewhere')).toBeNull();
+    await b.elapse(400);
+    expect(screen.queryByTestId('session-new-cancelled-elsewhere')).toBeNull();
+    expect(b.app.getPathname()).toBe('/home');
+  });
+});
+
 describe('the cancel confirm is a pending control (LB-1, AC-C-57, AC-C-58; DN-9)', () => {
   it('an answer 1 s late: two presses send one cancel; no spinner at 300 ms; the Spinner inside the leave button at 500 ms; it leaves once the Core cancelled', async () => {
     const b = await liveCancelConfirm();

@@ -53,6 +53,10 @@ function useBannerText(banner: BannerModel): { title: string; detail: string } {
         const failed = captureFailedStartText(t, banner.failedStart)
         return { title: t('session.banner.FAULT.title'), detail: `${failed.title}. ${failed.body}` }
       }
+      // Fix wave M (G75e-05): the Core is sealing the interrupted recording by itself - said as that, with no recovery to start.
+      if (banner.coreSealing) {
+        return { title: t('web.waveM.coreSealing.title'), detail: reason === '' ? t('web.waveM.coreSealing.detailNoReason') : t('web.waveM.coreSealing.detail', { reason }) }
+      }
       return {
         title: t('session.banner.FAULT.title'),
         detail: banner.whileRecording
@@ -114,7 +118,7 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
   // Fix wave I (G75b-02): a blocked seal is the danger tone, a retried one the warning tone.
   const sealAttention = useOpenSealAttention()
   const sealKind = banner.kind === 'FINALIZING' ? (sealAttention?.kind ?? null) : null
-  const tone: BannerTone = sealKind === 'BLOCKED' ? 'danger' : sealKind === 'RETRYING' || interruptedSeal ? 'warning' : BANNER_TONE[banner.kind]
+  const tone: BannerTone = sealKind === 'BLOCKED' ? 'danger' : sealKind === 'RETRYING' || interruptedSeal || banner.coreSealing ? 'warning' : BANNER_TONE[banner.kind]
   const { title, detail } = useBannerText(banner)
   // Wave H driver B (G75-07 (a)): the degraded-start warning keeps a place of its own when a more severe alert has the banner.
   const coveredAlert = useSim(selectCoveredDegradedNotice)
@@ -144,7 +148,8 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
         {t('session.banner.cta.continueSetup')}
       </Link>
     )
-  } else if (banner.kind === 'FAULT' && !banner.whileRecording && !banner.failedStartClosing && canStart) {
+  } else if (banner.kind === 'FAULT' && !banner.whileRecording && !banner.failedStartClosing && !banner.coreSealing && canStart) {
+    // Wave M (G75e-05): no "Start recovery" for a fault whose payload says the Core is sealing (`banner.coreSealing`).
     cta = (
       <Button
         size="sm"
@@ -171,6 +176,7 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
       data-seal={sealKind ?? undefined}
       data-tone={tone}
       data-failed-start={banner.failedStart ?? undefined}
+      data-core-sealing={banner.coreSealing ? 'true' : undefined}
       data-interrupted={interruptedSeal ? 'true' : undefined}
       role={critical ? 'alert' : 'status'}
       aria-live={critical ? 'assertive' : 'polite'}

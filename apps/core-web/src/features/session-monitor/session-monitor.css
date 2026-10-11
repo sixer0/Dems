@@ -390,7 +390,8 @@
   padding: 18px 22px;
   border: 1px solid rgb(255 159 61 / 0.45);
   border-radius: 14px;
-  background: rgb(25 16 8 / 0.86);
+  /* Fix wave M (G89d-05): opaque - the tile under the card ("No preview / Camera 1 ...") showed through its text. */
+  background: rgb(25 16 8);
   box-shadow: var(--shadow-glow-2);
 }
 
@@ -601,6 +602,10 @@
   border-top: 1px solid var(--sm-hairline);
   pointer-events: none;
 }
+
+/* Fix wave M (G89d-06): the evidence item named by the closing sentence of a sealed session's card. */
+.sm-check-link { font-family: var(--font-mono); color: var(--link); text-underline-offset: 3px; }
+.sm-check-link:hover { text-decoration: underline; }
 
 .sm-check[data-status='fail'] .sm-check-value { color: #f87171; }
 .sm-check[data-status='warn'] .sm-check-value { color: #fbbf24; }
@@ -993,10 +998,21 @@
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  /*
+   * Fix wave M (G89d-05): a row is never lower than a tile's content. With `minmax(0, 1fr)` the two rows
+   * of a 95 px body (1440 x 900) were 42 px for tiles of 60 px, and the microphone tiles were drawn over
+   * the lower border of the camera tiles. Where both rows do not fit, the card body scrolls (below).
+   */
+  grid-auto-rows: minmax(68px, 1fr);
   gap: 10px;
   min-height: 0;
 }
+
+/* The body of card R scrolls where its two rows do not fit; the cue of wave L says there is more below. */
+.sm-inputs-body { overflow-y: auto; }
+/* Never lower than its two rows (2 x 68 px + the row gap); it fills a taller body as before. The row gap is the
+   height of the cue, so the next row starts under the cue and no half line of it stands above the cue's edge. */
+.sm-inputs-body .sm-inputs-grid { flex: 1 0 152px; row-gap: 16px; }
 
 .sm-input-tile {
   display: flex;
@@ -1393,20 +1409,30 @@
   .sm-storage-free-total { font-size: 12px; }
   .sm-storage-body { gap: 10px; }
   .sm-storage-kv { font-size: 11.5px; }
-  /* Audio halves are ~130 px wide here: the meter alone, names at 12 px. */
-  .sm-mic-ring { display: none; }
-  .sm-audio-half { padding: 5px 6px; }
-  .sm-audio-name { gap: 5px; font-size: 11.5px; }
-  .sm-audio-name .sm-dot { width: 6px; height: 6px; }
-  .sm-audio-body { gap: 8px; }
   /*
-   * F45-05 (step 45b): the meter area is ~76 px tall here, but the panel meter (64 px track +
-   * 8 px gap + 24 px readout = 96 px) overflowed it by ~10 px at both ends, so the peak-hold line
-   * crossed "MIC 1 – Interviewer". A 48 px track, 4 px gap and 20 px readout line (72 px) fit.
+   * Fix wave M (G89d-05 / G70d-05 (b)): since the audio-source footer (task 3 M5) the two halves have
+   * ~48 px of height here, not the ~76 px the 72 px meter of F45-05 was fitted to: the meter was drawn
+   * over the name above it and over "Audio source" below it, and the role chip pushed "MIC 1" out of
+   * its row. At this density each microphone is ONE ROW: its name (never the part that is cut), the
+   * role, the development mark as its icon (its words stay for a screen reader; the feed header and
+   * the Devices page say them in full), then a 16 px meter with its readout beside it.
    */
-  .sm-audio-meter [data-testid='dbfs-meter'] > div { gap: 4px; }
-  .sm-audio-meter [data-testid='dbfs-meter'] [role='meter'] { height: 48px; }
-  .sm-audio-meter [data-testid='dbfs-meter'] .text-h3 { line-height: 20px; }
+  .sm-mic-ring { display: none; }
+  .sm-audio-body { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 4px; }
+  .sm-audio-half { flex-direction: row; align-items: center; gap: 6px; padding: 1px 6px; overflow: hidden; }
+  .sm-audio-name { flex: 1 1 auto; min-width: 0; gap: 5px; font-size: 11.5px; }
+  .sm-audio-name-text { flex: none; overflow: visible; }
+  .sm-audio-role { margin-left: 0; }
+  .sm-audio-name .dev-source-badge { flex: none; }
+  .sm-audio-name .dev-source-badge .chip__label,
+  .sm-audio-name .dev-source-kind { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sm-audio-name .sm-dot { width: 6px; height: 6px; }
+  .sm-audio-meter { flex: none; gap: 4px; }
+  .sm-audio-meter [data-testid='dbfs-meter'],
+  .sm-audio-meter [data-testid='dbfs-meter'] > div { flex-direction: row; align-items: center; gap: 4px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] [role='meter'] { height: 16px; gap: 2px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] [data-meter-segment] { width: 3px; }
+  .sm-audio-meter [data-testid='dbfs-meter'] .text-h3 { font-size: 11.5px; line-height: 16px; white-space: nowrap; }
   /* Details: a narrower label column, smaller values. */
   .sm-kv-row { grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: 8px; }
   .sm-kv-value { font-size: 12.5px; }

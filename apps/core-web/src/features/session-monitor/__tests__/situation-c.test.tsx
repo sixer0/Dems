@@ -16,11 +16,13 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
 import type { SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type ScenarioName, type Sim, type SimAlert } from '@dems/shared/sim'
+import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api'
+import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, type ScenarioName, type Sim, type SimAlert } from '@dems/shared/sim'
+import { enWeb } from '@/i18n-web'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { camerasNotConnectedOf, captureFailedStartOf } from '@/lib/capture-notices'
 import { createAppRouter } from '@/router'
-import { selectBanner, selectFeed } from '../model'
+import { coreSealsInterruptedPrefix, selectBanner, selectFeed } from '../model'
 
 vi.setConfig({ testTimeout: 30_000 })
 
@@ -251,6 +253,49 @@ describe('a failed start: no camera connected (situation C, CRITICAL)', () => {
     expect(screen.getByTestId('sm-invitation')).toHaveTextContent(en.session.idle.faultTitle)
     expect(screen.queryByTestId('sm-failed-start-devices')).not.toBeInTheDocument()
     expect(selectBanner(sim.store.getState()).failedStart).toBeNull()
+    // The simulator's session may carry the member too: its recovery stays (the rule below needs a Core in its own capture).
+    expect(selectBanner(sim.store.getState()).coreSealing).toBe(false)
+  })
+
+  // Fix wave M (G75e-05, final re-check 75): after a worker kill the Monitor of a Core in its own capture read
+  // "Capture fault / Start recovery" for 0.1 - 0.3 s while the Core was already sealing the recorded prefix.
+  it('G75e-05: a fault FROM RECORDING with durable media on a Core in its own capture offers NO "Start recovery" - the Core is sealing what was recorded', async () => {
+    const sim = mount(OPERATOR_IDS.BUDI, (created) => {
+      failStart(created, 'WORKER_KILLED')
+      const state = created.store.getState()
+      created.store.setState({
+        session: { ...state.session!, captureDurable: true, startedAt: state.clock.now - 18_000 },
+        security: { ...state.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE },
+        time: { ...HOST_CLOCK_TIME },
+      })
+    })
+    const shown = await banner()
+    expect(shown).toHaveAttribute('data-kind', 'FAULT')
+    expect(shown).toHaveAttribute('data-core-sealing', 'true')
+    expect(shown).toHaveAttribute('data-tone', 'warning')
+    expect(shown).toHaveTextContent(enWeb.web.waveM.coreSealing.title)
+    expect(within(shown).getByTestId('sm-banner-detail')).toHaveTextContent('The Core is sealing the recording up to the interruption. Nothing has to be started here.')
+    expect(within(shown).queryByTestId('sm-banner-cta')).not.toBeInTheDocument()
+    expect(shown).not.toHaveTextContent(en.session.banner.cta.recover)
+    const invitation = screen.getByTestId('sm-invitation')
+    expect(invitation).toHaveAttribute('data-core-sealing', 'true')
+    expect(invitation).not.toHaveTextContent(en.session.banner.cta.recover)
+    expect(invitation).not.toHaveTextContent(en.session.idle.faultBody)
+    expect(within(invitation).queryByRole('button')).not.toBeInTheDocument()
+    expect(selectBanner(sim.store.getState()).coreSealing).toBe(true)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('G75e-05, the rule: only FAULT from RECORDING, started, with `captureDurable: true`', () => {
+    const sealing = { state: 'FAULT', startedAt: 1, fault: { fromState: 'RECORDING' }, captureDurable: true }
+    expect(coreSealsInterruptedPrefix(sealing)).toBe(true)
+    // A failed start (nothing recorded), a fault before the recording, a session without the member, another state: the recovery prompt stays.
+    expect(coreSealsInterruptedPrefix({ ...sealing, captureDurable: false })).toBe(false)
+    expect(coreSealsInterruptedPrefix({ ...sealing, captureDurable: undefined })).toBe(false)
+    expect(coreSealsInterruptedPrefix({ ...sealing, startedAt: null })).toBe(false)
+    expect(coreSealsInterruptedPrefix({ ...sealing, fault: { fromState: 'ARMED' } })).toBe(false)
+    expect(coreSealsInterruptedPrefix({ ...sealing, state: 'RECOVERY' })).toBe(false)
+    expect(coreSealsInterruptedPrefix(null)).toBe(false)
   })
 })
 

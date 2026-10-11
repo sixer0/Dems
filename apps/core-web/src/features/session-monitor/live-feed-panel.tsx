@@ -18,7 +18,7 @@ import { TrackSourceMarks } from '@/features/devices/source-badge'
 import { useInterruptedSeal } from './use-interrupted-seal'
 import { logSessionMonitorError } from './log'
 import { captureFailedStartText, type CaptureFailedStart } from '@/lib/capture-notices'
-import { selectFeed, type SessionPhase } from './model'
+import { selectCoreSealsInterrupted, selectFeed, type SessionPhase } from './model'
 import { Panel } from './panel'
 
 const CAMERA_IDS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02']
@@ -284,6 +284,8 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
   const interrupted = useInterruptedSeal(phase === 'SEALED' ? openSessionId : null)
   // D158: the failed start keeps its words while the Core closes it (the store passes through RECOVERY).
   const failed = (phase === 'FAULT' || phase === 'RECOVERY') && failedStart !== null ? captureFailedStartText(t, failedStart) : null
+  // Fix wave M (G75e-05): the Core is sealing the interrupted recording by itself - nothing is offered to start.
+  const coreSealing = useSim(selectCoreSealsInterrupted) && phase === 'FAULT'
   // Row 139 (ux §8e.2): "Connecting cameras…" and the failed start come first; neither words a recording or evidence.
   const situationC = connecting
     ? { title: t('common.session.connectingCameras'), body: t('session.audioSource.connecting.detail') }
@@ -298,6 +300,8 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
         ? interrupted !== null
           ? { title: interrupted.title, body: `${evidenceId ?? '—'} · ${interrupted.cause} ${interrupted.kept}` }
           : { title: t('session.idle.sealedTitle'), body: t('session.idle.sealedBody', { evidenceId: evidenceId ?? '—' }) }
+        : coreSealing
+          ? { title: t('web.waveM.coreSealing.title'), body: t('web.waveM.coreSealing.detailNoReason') }
         : phase === 'FAULT' || phase === 'RECOVERY'
           ? { title: t('session.idle.faultTitle'), body: t('session.idle.faultBody') }
           : { title: t('session.idle.title'), body: t('session.idle.body') })
@@ -308,6 +312,7 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
       data-testid="sm-invitation"
       data-phase={phase}
       data-connecting={connecting ? 'true' : undefined}
+      data-core-sealing={coreSealing ? 'true' : undefined}
       data-failed-start={failed !== null ? failedStart ?? undefined : undefined}
     >
       <GlowRing state={systemState} size={112} mode="mini" className="sm-invitation-ring" />
@@ -316,7 +321,7 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
         <p className="sm-invitation-body">{copy.body}</p>
       </div>
       <div className="sm-invitation-actions" aria-busy={recoverBusy || undefined}>
-        {connecting ? null : !canStart && (phase === 'SETUP' || phase === 'FAULT') ? null : phase === 'SETUP' ? (
+        {connecting || coreSealing ? null : !canStart && (phase === 'SETUP' || phase === 'FAULT') ? null : phase === 'SETUP' ? (
           <Link to="/session/new" className={buttonVariants({ variant: 'primary', size: 'md' })}>
             {t('session.banner.cta.continueSetup')}
           </Link>

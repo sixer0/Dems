@@ -14,6 +14,7 @@
 // | G94b-07 | The development mark on the camera tiles and the band legend of a development item | "G94b-07" |
 // | G94b-08 | 0:00 before a first interval that starts in the same second is inside it; a gap stays a gap | "G94b-08" |
 // | G94b-09 | An interrupted recording says so where its sealed prefix ends | "G94b-09" |
+// | G94d-01 (wave M) | The stall watch rests on data received, never on the clock; a file that delivered nothing, or still waits, when the other file ENDS is asked about at once | "G94d-01 (wave M)" |
 //
 // The refusal is the media route's own (`apps/core-server/src/media-stream/service.ts` `mediaUnavailable`):
 // the contract names the reason in the description of operation 88 and has no exported example of
@@ -29,6 +30,7 @@ import { webErrorSink } from '@/runtime'
 import { readItemV2 } from '../item-v2'
 import { FRAGMENT_NOT_AUTHENTIC, MEDIA_PROBE_CHUNK_BYTES, MediaSession, probeMediaSession } from '../media-session'
 import { bandSegments, probeStartByte, segmentAt } from '../sealed-playback'
+import { STALL_CHECK_MS } from '../sealed-player'
 import { EV, findDetailBody, serveMediaRoute, type LiveEvidence } from './live-evidence-bed'
 import { asReal, openItem, setupPage, teardownPage, UI } from './wave-h-c2-bed'
 
@@ -522,19 +524,140 @@ describe('G94c-01 (wave L): a cut stream that stays OPEN - the player still read
     expect(JSON.stringify(webErrorSink.records())).not.toContain('mts_')
   })
 
-  it('the player: a file that never loaded keeps its sentence when it is paused at the end of the other file (its `timeupdate` is no sign of life)', async () => {
-    await openPlayer()
-    // The Core serves both files; VIDEO-02 simply shows no life.
-    routeMedia({})
-    fireEvent.loadedMetadata(video('VIDEO-01'))
-    await screen.findByTestId('evidence-sealed-not-loaded-VIDEO-02')
-    expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
-    // Paused at the end of Camera 1: the element that holds nothing (currentTime 0, readyState 0) fires `timeupdate`.
-    fireEvent.timeUpdate(video('VIDEO-02'))
-    fireEvent.ended(video('VIDEO-01'))
-    expect(screen.getByTestId('evidence-sealed-not-loaded-VIDEO-02')).toHaveTextContent(W.notLoaded)
-    // A real sign of life takes it away.
-    fireEvent.loadedMetadata(video('VIDEO-02'))
-    await waitFor(() => expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull(), UI)
+  // ── Fix wave M, driver M-W (final re-check 94, finding G94d-01) ────────────────────────────────────
+  //
+  // Measured in the browser: open, scrubber at 80 %, Play at once. The seek sets the CLOCK of the file
+  // that never loaded; the other file ends inside the 4 s of the stall watch; the pause at the end fires
+  // `timeupdate` on VIDEO-02 with `currentTime 7.8, readyState 0`. The player read the clock as a sign of
+  // life, cancelled the watch, and the altered file stayed a black tile with no word. These cases
+  // replace the wave L case "a `timeupdate` at clock 0 is no sign of life" (the same rule, now resting
+  // on data received and not on the clock).
+  describe('G94d-01 (wave M): the stall watch rests on data received, never on the clock', () => {
+    const holds = (fileId: string, readyState: number) => Object.defineProperty(video(fileId), 'readyState', { configurable: true, get: () => readyState })
+    const past = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+    it('scrubber to 80 % and Play at once: the leading file ends inside the watch - the file that delivered no data is asked about AT ONCE, and the sentence comes', async () => {
+      await openPlayer()
+      const probes = routeMedia({ 'VIDEO-02': hangingRoute() })
+      const openedAt = Date.now()
+      fireEvent.loadedMetadata(video('VIDEO-01'))
+      // The seek: both clocks go to 6.0 s - also the clock of the file that holds nothing.
+      for (const fileId of ['VIDEO-01', 'VIDEO-02']) video(fileId).currentTime = 6
+      fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+      // The events of VIDEO-02 as measured: play, waiting, stalled - all with readyState 0.
+      fireEvent.play(video('VIDEO-02'))
+      fireEvent.waiting(video('VIDEO-02'))
+      fireEvent.stalled(video('VIDEO-02'))
+      video('VIDEO-01').currentTime = 7.8
+      fireEvent.timeUpdate(video('VIDEO-01'))
+      // The end of Camera 1: `timeupdate` on VIDEO-02 with its clock at 7.8 and readyState 0, then the pause.
+      expect(video('VIDEO-02').readyState).toBe(0)
+      video('VIDEO-02').currentTime = 7.8
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      expect(probes.calls).toHaveLength(0)
+      fireEvent.ended(video('VIDEO-01'))
+      fireEvent.pause(video('VIDEO-02'))
+      // Asked at the end, not after the watch: the first request is out at once, from the START of the file (it holds nothing).
+      await waitFor(() => expect(probes.calls.length).toBeGreaterThan(0), { timeout: 500 })
+      expect(Date.now() - openedAt).toBeLessThan(STALL_CHECK_MS)
+      expect(fromOf(probes.calls[0]?.range)).toBe('bytes=0-')
+      await screen.findByTestId('evidence-playback-integrity')
+      expectIntegrityOfCamera2()
+      expect(player()).toHaveAttribute('data-playing', 'false')
+      // One question: the watch that was running asks nothing more.
+      await past(STALL_CHECK_MS)
+      expect(probes.calls.map((call) => fromOf(call.range))).toEqual(['bytes=0-', `bytes=${CUT_AT}-`])
+      expectIntegrityOfCamera2()
+    })
+
+    it('mid-play, no end: a `timeupdate` of a file that holds nothing does not cancel its watch, wherever a seek put its clock - "has not loaded" stays', async () => {
+      await openPlayer()
+      const probes = routeMedia({})
+      fireEvent.loadedMetadata(video('VIDEO-01'))
+      video('VIDEO-02').currentTime = 7.8
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      // The watch ran out and asked: the Core serves the file, so it is no integrity failure - it has not loaded.
+      await screen.findByTestId('evidence-sealed-not-loaded-VIDEO-02')
+      expect(probes.calls.map((call) => fromOf(call.range))).toEqual(['bytes=0-'])
+      expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
+      // Still no data: the note stays through another `timeupdate` and the end of the other file.
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      fireEvent.ended(video('VIDEO-01'))
+      expect(screen.getByTestId('evidence-sealed-not-loaded-VIDEO-02')).toHaveTextContent(W.notLoaded)
+      // Data received - by the element's ready state alone, no event of its own - takes the note away.
+      holds('VIDEO-02', 1)
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      await waitFor(() => expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull(), UI)
+    })
+
+    it('a late fragment: a file that DID load and waits at an altered fragment in its last seconds keeps its watch when the other file ends first, and is asked at the end', async () => {
+      await openPlayer()
+      const probes = routeMedia({ 'VIDEO-02': tamperedRoute() })
+      for (const fileId of ['VIDEO-01', 'VIDEO-02']) {
+        fireEvent.loadedMetadata(video(fileId))
+        holds(fileId, 4)
+      }
+      fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+      for (const fileId of ['VIDEO-01', 'VIDEO-02']) {
+        fireEvent.playing(video(fileId))
+        video(fileId).currentTime = 6
+        fireEvent.timeUpdate(video(fileId))
+      }
+      // Camera 2 reaches the altered fragment 1.5 s before the end: it holds metadata and waits.
+      holds('VIDEO-02', 1)
+      fireEvent.waiting(video('VIDEO-02'))
+      const waitingAt = Date.now()
+      // The other file ends first; the pause fires `timeupdate` on the file that loaded (readyState 1).
+      video('VIDEO-01').currentTime = 7.9
+      fireEvent.timeUpdate(video('VIDEO-01'))
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      expect(probes.calls).toHaveLength(0)
+      fireEvent.ended(video('VIDEO-01'))
+      fireEvent.pause(video('VIDEO-02'))
+      await waitFor(() => expect(probes.calls.length).toBeGreaterThan(0), { timeout: 500 })
+      await screen.findByTestId('evidence-playback-integrity')
+      expect(Date.now() - waitingAt).toBeLessThan(STALL_CHECK_MS)
+      expectIntegrityOfCamera2()
+    })
+
+    it('a late fragment, the watch alone (no end yet): a `timeupdate` of the waiting file with no data beyond its playhead does not end its watch', async () => {
+      await openPlayer()
+      const probes = routeMedia({ 'VIDEO-02': tamperedRoute() })
+      for (const fileId of ['VIDEO-01', 'VIDEO-02']) fireEvent.loadedMetadata(video(fileId))
+      fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+      holds('VIDEO-02', 2)
+      fireEvent.waiting(video('VIDEO-02'))
+      // The player re-aligns the waiting file: its clock moves, it holds the current frame only.
+      video('VIDEO-02').currentTime = 6.5
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      await screen.findByTestId('evidence-playback-integrity')
+      expectIntegrityOfCamera2()
+      expect(probes.calls.length).toBeGreaterThan(0)
+    })
+
+    it('controls: a file that waits and then can play again, and a file that holds data beyond its playhead, are never asked about - not by the watch, not at the end', async () => {
+      await openPlayer()
+      const probes = routeMedia({ 'VIDEO-02': tamperedRoute() })
+      for (const fileId of ['VIDEO-01', 'VIDEO-02']) fireEvent.loadedMetadata(video(fileId))
+      fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+      // It buffers, then the element says it can play.
+      fireEvent.waiting(video('VIDEO-02'))
+      fireEvent.canPlay(video('VIDEO-02'))
+      // It buffers again; the next `timeupdate` finds data beyond the playhead (HAVE_FUTURE_DATA).
+      fireEvent.stalled(video('VIDEO-02'))
+      holds('VIDEO-02', 3)
+      video('VIDEO-02').currentTime = 3
+      fireEvent.timeUpdate(video('VIDEO-02'))
+      await past(STALL_CHECK_MS + 300)
+      expect(probes.calls).toHaveLength(0)
+      video('VIDEO-01').currentTime = 8
+      fireEvent.timeUpdate(video('VIDEO-01'))
+      fireEvent.ended(video('VIDEO-01'))
+      await past(300)
+      expect(probes.calls).toHaveLength(0)
+      expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
+      expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull()
+      expect(player()).toHaveAttribute('data-playing', 'false')
+    })
   })
 })

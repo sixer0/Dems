@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Card } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { ArrowRight, Cctv, Mic } from 'lucide-react'
+import { ArrowRight, Cctv, ChevronDown, Mic } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
 import { cameraTiles, micTiles, micTone } from './model'
 import { Panel } from './panel'
+import { useScrollEdges } from './scroll-edges'
 
 const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2' } as const
 
@@ -34,6 +35,11 @@ export function InputsPanel({ paused }: { paused: boolean }) {
   // Wave H driver B (G75-04; ux §8e.2 "no meters"; D84): no live level before the first durable fragment, and none
   // for a session that recorded nothing. The state stands in the meter's place.
   const noLevels = useSim((s) => noLiveLevelsOf(s.session))
+  // Fix wave M (G89d-05): where the two rows do not fit (1440 x 900) the card body scrolls instead of drawing the
+  // microphone tiles over the camera tiles; the cue of wave L (G89c-07) says there is more below.
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const edges = useScrollEdges(bodyRef)
+  const moreBelow = edges === 'bottom' || edges === 'both'
 
   return (
     <Panel
@@ -41,6 +47,8 @@ export function InputsPanel({ paused }: { paused: boolean }) {
       icon={Cctv}
       title={t('session.inputs.title')}
       className="sm-area-inputs"
+      bodyClassName="sm-inputs-body"
+      bodyRef={bodyRef}
       action={
         <Link to="/devices" className="sm-card-link">
           {t('session.inputs.viewAll')}
@@ -103,6 +111,12 @@ export function InputsPanel({ paused }: { paused: boolean }) {
           )
         })}
       </motion.div>
+      {moreBelow ? (
+        <div className="sm-scroll-cue" data-testid="sm-inputs-more-below" aria-hidden="true">
+          <ChevronDown className="size-3" strokeWidth={2} />
+          {t('web.waveL.integrity.moreBelow')}
+        </div>
+      ) : null}
     </Panel>
   )
 }

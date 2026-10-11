@@ -40,10 +40,10 @@
  * shuts it down before the app closes; the close hook below does the same for an app that is
  * closed without the entry point (every test).
  */
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { captureDoorsOf } from '../engine';
 import { describeError } from '../plugins/logger';
-import { CaptureRecordKind, CaptureSyncLevel } from '@dems/capture-protocol';
+import { CaptureRecordKind, CaptureSyncLevel, CaptureWarningState } from '@dems/capture-protocol';
 import { CaptureOperation } from './adapters';
 import { mountCaptureBootChecks } from './boot';
 import { captureOperationOf, mountCaptureFence } from './fence';
@@ -98,6 +98,7 @@ export {
 
 const WORKER_DOWN = 'the capture worker went down';
 const FAULT = 'capture fault: the capture worker cannot be kept running';
+const FAULT_OVER = 'the capture fault the supervisor held for an earlier session is over: a session records';
 const FAILED = 'the capture supervisor could not finish a step';
 const BOOTED = 'capture supervisor booted';
 const STOPPED = 'capture supervisor stopped';
@@ -110,6 +111,36 @@ const STALE_NOTICES_CLEARED = 'capture notices of an earlier run resolved at boo
 const STALE_NOTICES_NOT_CLEARED = 'a capture notice of an earlier run could not be resolved at boot';
 const SYNC_LEVEL = 'the first fragment of a camera file is durable: the sync level the worker achieved';
 const SYNC_LEVEL_NOT_FULL = 'a camera file is NOT synced through the drive cache: the evidence volume does not take the full sync';
+
+/**
+ * THE LINES OF THE SUPERVISOR'S OWN `CAPTURE_FAULT` (wave H driver F; fix wave M, re-check 75
+ * finding G75e-03). The supervisor says its fault twice in the life of a failed session: ACTIVE
+ * when the worker is down for good, and CLEARED when a LATER session reaches RECORDING (D84 R-3:
+ * "a session records again: the fault of an earlier one is over"). Only the first is a fault.
+ *
+ *   ACTIVE    one error line and one entry of the persistent error log, with WHY (one code of the
+ *             closed enumeration);
+ *   CLEARED   one info line that names the earlier session as `faultOfSessionId` - never an error,
+ *             never an entry of the error log, and no `sessionId` member: nothing failed, and the
+ *             line is not a line of the session that records now.
+ *
+ * Before fix wave M the listener did not read `state`: the CLEARED event of a sealed, worker-killed
+ * session was written as an error-level "capture fault" with `reason: null` a moment after the
+ * healthy start of the next session. Exported for the test of this file (`module.test.ts`).
+ */
+export function writeSupervisorFaults(app: Pick<FastifyInstance, 'log' | 'errorLog'>, supervisor: Pick<CaptureSupervisor, 'on'>): () => void {
+  return supervisor.on('warning', (event) => {
+    if (event.source !== 'supervisor') return;
+    if (event.state === CaptureWarningState.CLEARED) {
+      app.log.info({ code: 'CAPTURE_SUPERVISOR_FAULT_OVER', faultOfSessionId: event.sessionId, faultOfCorrelationId: event.correlationId }, FAULT_OVER);
+      return;
+    }
+    // WHY the worker is down for good, in the error log as well (wave H driver F): one code of the closed enumeration.
+    const context = { sessionId: event.sessionId, correlationId: event.correlationId, reason: event.cause ?? null };
+    app.log.error({ code: event.code, ...context }, FAULT);
+    app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: FAULT, code: event.code, context });
+  });
+}
 
 export const captureModule: FastifyPluginAsync = async (app) => {
   const { captureMode, captureWorkerPath, dataDir } = app.config;
@@ -195,13 +226,7 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     app.errorLog.append({ level: 'warn', source: 'capture.supervisor', message: SYNC_LEVEL_NOT_FULL, code: 'CAPTURE_SYNC_LEVEL_NOT_FULL', context });
   });
 
-  supervisor.on('warning', (event) => {
-    if (event.source !== 'supervisor') return;
-    // WHY the worker is down for good, in the error log as well (wave H driver F): one code of the closed enumeration.
-    const context = { sessionId: event.sessionId, correlationId: event.correlationId, reason: event.cause ?? null };
-    app.log.error({ code: event.code, ...context }, FAULT);
-    app.errorLog.append({ level: 'error', source: 'capture.supervisor', message: FAULT, code: event.code, context });
-  });
+  writeSupervisorFaults(app, supervisor);
 
   // The seam is the supervisor with its two lifecycle calls written to the log: the lines by which
   // an operator sees that the entry point booted it after the boot steps and stopped it at shutdown.

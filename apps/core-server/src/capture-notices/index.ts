@@ -97,8 +97,9 @@ export interface CaptureNotices {
   provideProbe(probe: CaptureReachabilityProbe): void;
   /**
    * Where the probe comes from when nobody PROVIDES one (integration pass D9, item 5): asked at
-   * each use until it answers a probe - the adapters of the running operation exist only after
-   * the boot step of the capture fence - and the answer is then kept. A provided probe wins.
+   * EACH use - the adapters of the running operation exist only after the boot step of the capture
+   * fence, and their set GROWS during a run (a camera adopted through operation 96 gets its adapter
+   * at the commit). No answer is kept (fix wave M, follow-up M-S2). A provided probe wins.
    */
   provideProbeSource(source: () => CaptureReachabilityProbe | null): void;
   /** Called once by the discovery module. A second call throws. */
@@ -151,19 +152,24 @@ export function captureNotices(app: CaptureNoticesApp): CaptureNotices {
   let probe: CaptureReachabilityProbe | null = null;
   /** Where the probe of the running operation comes from while none was provided (`provideProbeSource`). */
   let probeSource: (() => CaptureReachabilityProbe | null) | null = null;
-  /** The probe the source answered: asked until it answers one, then kept (one adapter set per boot). */
-  let adopted: CaptureReachabilityProbe | null = null;
+  /**
+   * The probe of THIS use. The source is asked every time and its answer is never kept (fix wave M,
+   * follow-up M-S2): the first answer used to be held for the whole run, and it is a list of the
+   * adapters of the moment it was made - so a camera adopted later (operation 96) was served by the
+   * registry and unknown to the held probe, and its pre-check read `UNREACHABLE` until a restart.
+   * WHICH DEVICES EXIST AND WHICH ADAPTER SERVES THEM is the capture fence's registry alone; a
+   * probe is a view of it for one pre-check run or one input re-read (it holds no state of its own).
+   */
   const probeNow = (): CaptureReachabilityProbe | null => {
     if (probe !== null) return probe;
-    if (adopted === null && probeSource !== null) {
-      try {
-        adopted = probeSource();
-      } catch (err) {
-        // A source that fails is no probe: the pre-check asks nothing and operation 97 answers 503 by name.
-        report({ source: 'captureNotices.probe', code: 'CAPTURE_PROBE_SOURCE_FAILED', deviceId: null, sessionId: null, searchId: null, err });
-      }
+    if (probeSource === null) return null;
+    try {
+      return probeSource();
+    } catch (err) {
+      // A source that fails is no probe: the pre-check asks nothing and operation 97 answers 503 by name.
+      report({ source: 'captureNotices.probe', code: 'CAPTURE_PROBE_SOURCE_FAILED', deviceId: null, sessionId: null, searchId: null, err });
+      return null;
     }
-    return adopted;
   };
   let discovery: PrecheckSearchSeam | null = null;
   const report = (failure: NoticeReport): void => {
@@ -269,8 +275,9 @@ export function registerCaptureNotices(app: Pick<FastifyInstance, 'addHook'> & C
   });
   // THE ONE CALL THAT WIRES THE REACHABILITY PROBE (integration pass D9, item 5; row 140's finding
   // F-3): the adapters of the running capture operation, as the capture fence offers them after
-  // its boot step (`probeAdapters()`: null in SIMULATED and before that step - asked again at the
-  // next use). The fence cannot import this unit (a cycle); this unit reads the fence. Nothing is
+  // its boot step (`probeAdapters()`: null in SIMULATED and before that step). Asked at EVERY use:
+  // the fence answers the adapters of that moment, an adopted camera's included (follow-up M-S2).
+  // The fence cannot import this unit (a cycle); this unit reads the fence. Nothing is
   // opened or listed here: a microphone is read by `enumerate()` only when operation 97 or a
   // pre-check asks, and a camera by its adapter's read (the LOCAL camera: its short open).
   captureNotices(app).provideProbeSource(() => {

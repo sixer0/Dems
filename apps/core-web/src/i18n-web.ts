@@ -287,5 +287,42 @@ export const enWeb = {
         unassigned: 'On no track',
       },
     },
+    /** Fix wave M, driver M-W (final re-checks 70, 75, 89; rulings D234, D235). */
+    waveM: {
+      /** G75e-04 / G75e-06: the Dashboard ring while a session records beside an open notice, and while a seal is retried. */
+      ring: {
+        noticeRecording: 'OPEN NOTICE • RECORDING',
+        recordingFlags: 'RECORDING • NO FAULT REPORTED',
+        retrySub: 'SEALING IS BEING RETRIED',
+        retryDetail: 'The seal of session {{sessionId}} did not complete. The Core runs it again by itself. The recording is kept on the Core.',
+      },
+      /** G75e-06: the header pill while the Core retries a seal by itself. */
+      pill: {
+        retryLabel: 'SEALING RETRIED',
+        retrySub: 'The Core is running the seal again',
+      },
+      /** G75e-05: a recording of the Core's own capture was interrupted and the Core is sealing what was recorded. */
+      coreSealing: {
+        title: 'Recording interrupted',
+        detail: '{{reason}}. The Core is sealing the recording up to the interruption. Nothing has to be started here.',
+        detailNoReason: 'The Core is sealing the recording up to the interruption. Nothing has to be started here.',
+      },
+      /** G75e-02: the microphone meters of the device check on a Core in its own capture. */
+      micLine: {
+        PRIMARY: 'Primary microphone',
+        STANDBY: 'Standby microphone',
+      },
+      /** G89d-02: the items of this Core no verify row names. */
+      tamper: {
+        notVerified_one: '{{count}} of the {{total}} items of this Core has no verify run in these rows.',
+        notVerified_other: '{{count}} of the {{total}} items of this Core have no verify run in these rows.',
+        allVerified: 'Every one of the {{total}} items of this Core has a verify run in these rows.',
+      },
+      /** G89d-06: the closing sentence of the integrity card of a session that IS sealed. */
+      integrity: {
+        sealedNote: 'Fragment hashes and the signature are stated on the evidence item:',
+        sealedNoteNoItem: 'Fragment hashes and the signature are stated on the evidence item of this session.',
+      },
+    },
   },
 } as const satisfies ResourceTree

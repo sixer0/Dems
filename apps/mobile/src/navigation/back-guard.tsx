@@ -121,10 +121,16 @@ export interface BackGuardDialogProps {
    * follows `busy` (the first form of this prop, row M1), so such a caller keeps its behaviour.
    */
   pending?: boolean;
+  /**
+   * `flow` variant, fix wave M (G70d-03): a third choice, "Go to Home, keep the session open". The session
+   * stays open on the Core (nothing is sent) and Home offers "Continue setup". With it the dialog also says
+   * what each choice does. Omitted: the dialog is as before.
+   */
+  onGoHome?: () => void;
 }
 
 /** The §3.6 back-guard Dialog (HeroUI Native `Dialog`), with the copy of `mobile.backGuard.*`. */
-export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pending = busy }: BackGuardDialogProps) {
+export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pending = busy, onGoHome }: BackGuardDialogProps) {
   const { t } = useTranslation();
   const monitor = variant === 'monitor';
   return (
@@ -133,10 +139,16 @@ export function BackGuardDialog({ guard, variant, onConfirm, busy = false, pendi
         <Dialog.Overlay />
         <Dialog.Content testID="back-guard-dialog">
           <Dialog.Title>{t(monitor ? 'mobile.backGuard.leaveMonitor' : 'mobile.backGuard.cancelSession')}</Dialog.Title>
+          {!monitor && onGoHome ? <Dialog.Description testID="back-guard-choices">{t('mobile.backGuard.flowChoices')}</Dialog.Description> : null}
           <View style={styles.actions}>
             <Button testID="back-guard-stay" variant="primary" onPress={guard.stay} {...(busy ? { isDisabled: true } : {})}>
               <Button.Label>{t(monitor ? 'mobile.backGuard.stayOnMonitor' : 'mobile.backGuard.keepSession')}</Button.Label>
             </Button>
+            {!monitor && onGoHome ? (
+              <Button testID="back-guard-home" variant="outline" onPress={() => (busy ? undefined : onGoHome())} {...(busy ? { isDisabled: true } : {})}>
+                <Button.Label>{t('mobile.backGuard.goHomeKeepSession')}</Button.Label>
+              </Button>
+            ) : null}
             <Button
               testID="back-guard-leave"
               variant={monitor ? 'outline' : 'danger'}

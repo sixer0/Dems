@@ -381,6 +381,17 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
       request.log.warn({ code: stopped.code, source: `${SOURCE}.serve`, evidenceId: item.evidenceId, fileId, seq: stopped.seq, bytesServed: served, repeated: true }, STOPPED_AGAIN);
       return;
     }
+    // ONE STOP = ONE ROW, ALSO FOR REQUESTS THAT ARE CUT AT THE SAME MOMENT (fix wave M, re-check 94 finding G94d-02). A media
+    // element asks for two ranges of one file at once; both are cut on the same fragment a few milliseconds apart. The stop is
+    // therefore remembered HERE, before the write is awaited - in the same turn as the test above, so that no other request can
+    // pass that test in between - and forgotten again when its row could not be written (the next request then tries again).
+    for (const [key, until] of stops) if (until <= now) stops.delete(key);
+    if (stops.size >= MEDIA_STOP_MEMORY_ENTRIES) {
+      const oldest = stops.keys().next().value;
+      if (oldest !== undefined) stops.delete(oldest);
+    }
+    const until = now + EVIDENCE_MEDIA_SESSION_TTL_MS;
+    stops.set(stopKey, until);
     try {
       await append(MEDIA_SERVED_UNIT, {
         type: AuditType.EVIDENCE_MEDIA_SERVED,
@@ -392,14 +403,9 @@ export function createMediaStreamService(app: FastifyInstance, parts: () => Medi
         evidenceId: item.evidenceId,
         details: { fileId, bytesServed: served, rangeStart: range.start, rangeEnd: range.end - 1, signed: true },
       });
-      // Remembered only once the row is committed: a row that could not be written is tried again by the next request.
-      for (const [key, until] of stops) if (until <= now) stops.delete(key);
-      if (stops.size >= MEDIA_STOP_MEMORY_ENTRIES) {
-        const oldest = stops.keys().next().value;
-        if (oldest !== undefined) stops.delete(oldest);
-      }
-      stops.set(stopKey, now + EVIDENCE_MEDIA_SESSION_TTL_MS);
     } catch (error) {
+      // Not in the trail: the stop is not known after all (only this request's own mark is taken back).
+      if (stops.get(stopKey) === until) stops.delete(stopKey);
       request.log.error({ err: error, source: `${SOURCE}.recordServed`, evidenceId: item.evidenceId, fileId }, SERVED_ROW_NOT_WRITTEN);
       app.errorLog.append({ level: 'error', source: `${SOURCE}.recordServed`, message: SERVED_ROW_NOT_WRITTEN, ...describeError(error), context: { requestId: request.id, evidenceId: item.evidenceId, fileId } });
     }

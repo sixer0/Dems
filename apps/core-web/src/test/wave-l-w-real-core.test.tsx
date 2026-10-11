@@ -26,6 +26,11 @@
 // | G75d-01 / -03 | the open notice on pill and bell, its acknowledgement; no alert of another session as a FAULT | "G75d-01" |
 // | G75d-02 | the retry of a blocked seal for the role operation 33 allows | "G75d-02" |
 // | G75d-04 | one terminal sentence at the unsealable end | "G75d-04" |
+// Fix wave M (driver M-W; final re-checks 75 and 89) added its cases to the describes of the same components:
+// | G75e-04 | the ring states the open notice also while a session records | in "G75d-01 / G75d-03" |
+// | G75e-06 | pill and ring while a seal is retried (the single cause of the blocked dialog: `features/session-monitor/__tests__/wave-i-b-seal-blocked.test.tsx`) | in "G75d-01 / G75d-03" |
+// | G89d-02 | the items of the Core without a verify run, in one sentence | in "G89c-02" |
+// | G89d-06 | the closing sentence of a sealed session's integrity card | in "G89c-03" |
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -65,7 +70,8 @@ import { registeredRoster, rosterStateNotChecked } from '@/features/devices/regi
 import { sourceLineState } from '@/features/devices/source-state'
 import { readDetailFacts } from '@/features/evidence/item-facts'
 import { buildControls } from '@/features/security-audit/model'
-import { coreVerifyOutcomes } from '@/features/security-audit/core-verify-rows'
+import { coreVerifyOutcomes, itemsWithoutVerifyRow } from '@/features/security-audit/core-verify-rows'
+import { sealRetryingSessionOf } from '@/lib/seal-attention'
 import { worstAlertOfSession } from '@/features/session-monitor/model'
 import { configuredProfileLinesOf } from '@/features/session-monitor/sim-adapter'
 import { selectUnsealableCause } from '@/features/session-monitor/unsealable-cause'
@@ -78,6 +84,7 @@ import { createAppRouter } from '@/router'
 vi.setConfig({ testTimeout: 45_000 })
 
 const L = enWeb.web.waveL
+const M = enWeb.web.waveM
 const FIND = { timeout: 15_000 }
 const DEMO_NOW = Date.parse('2026-10-01T10:00:00+07:00')
 /** The two words `sourceDeviceText` asks for: a stand-in translator that answers the web resource. */
@@ -220,6 +227,26 @@ describe('G89c-02: Security & Audit, Tamper & Integrity on a Core in its own cap
     expect(tile).not.toHaveAttribute('data-source')
     expect(tile).toHaveTextContent(en.securityAudit.tamper.packages)
     expect(screen.getByTestId('panel-tamper')).toHaveTextContent('DEMO - precomputed')
+    // Wave M (G89d-02): the sentence of the Core's own items is not drawn on the simulated lane.
+    expect(screen.queryByTestId('tamper-not-verified')).toBeNull()
+  })
+  // Fix wave M (G89d-02): "27 PASS • 1 FAIL" counts verify RUNS; 12 of the lane's 40 items had none and nothing said so.
+  it('G89d-02: the items of the Core that no verify row names are counted - from the Core\'s own item list', () => {
+    const ids = ['EV-20261009-0005', 'EV-20261011-0030', 'EV-20261011-0032', 'EV-20261011-0040', 'EV-20261011-0041', 'EV-20261011-0041']
+    expect(itemsWithoutVerifyRow(rows, ids)).toEqual({ total: 5, notVerified: 2 })
+    expect(itemsWithoutVerifyRow([], ids)).toEqual({ total: 5, notVerified: 5 })
+    expect(itemsWithoutVerifyRow(rows, [])).toEqual({ total: 0, notVerified: 0 })
+  })
+  it('G89d-02: the panel says in one sentence how many of the Core\'s items have no verify run', async () => {
+    const sim = mount('/security-audit', 'idle', realCore)
+    const total = new Set(sim.store.getState().evidence.map((item) => item.id)).size
+    expect(total).toBeGreaterThan(1)
+    const line = await page('tamper-not-verified')
+    // The idle Core holds no verify row: every item is unverified, and the sentence says so with the Core's own count.
+    expect(line).toHaveAttribute('data-total', String(total))
+    expect(line).toHaveAttribute('data-not-verified', String(total))
+    expect(line).toHaveTextContent(`${total} of the ${total} items of this Core have no verify run in these rows.`)
+    expect(getMissingI18nKeys()).toEqual([])
   })
 })
 
@@ -244,6 +271,31 @@ describe('G89c-03: the Monitor\'s integrity card of a sealed real session', () =
     const checks = await page('sm-integrity-checks')
     expect(checks).not.toHaveAttribute('data-own-core')
     expect(screen.getByTestId('panel-N')).toHaveTextContent(en.session.integrity.encryption.label)
+  })
+  // Fix wave M (G89d-06): the card of an already SEALED session closed with "... once the session is sealed."
+  it('G89d-06: the closing sentence of a sealed session names its evidence item with a link - no "once the session is sealed"', async () => {
+    mount('/session', 'finalizing', (sim) => {
+      realCore(sim)
+      const session = sim.store.getState().session!
+      sim.store.setState({ session: { ...session, state: 'SEALED', evidenceId: 'EV-20261011-0043', captureDurable: true } as typeof session })
+    })
+    const note = await page('sm-integrity-facts-note')
+    expect(note).toHaveAttribute('data-sealed', 'true')
+    expect(note).toHaveTextContent(`${M.integrity.sealedNote} EV-20261011-0043`)
+    expect(note).not.toHaveTextContent('once the session is sealed')
+    expect(within(note).getByTestId('sm-integrity-facts-item')).toHaveAttribute('href', '/evidence/EV-20261011-0043')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+  it('G89d-06, control: while the session is not sealed the sentence stays in the future', async () => {
+    mount('/session', 'recording', (sim) => {
+      realCore(sim)
+      const session = sim.store.getState().session!
+      sim.store.setState({ session: { ...session, captureDurable: true } as typeof session })
+    })
+    const note = await page('sm-integrity-facts-note')
+    expect(note).not.toHaveAttribute('data-sealed')
+    expect(note).toHaveTextContent(en.session.integrityFacts.note)
+    expect(within(note).queryByTestId('sm-integrity-facts-item')).toBeNull()
   })
 })
 
@@ -474,7 +526,82 @@ describe('G75d-01 / G75d-03: the open notice of a recording that could not be se
     expect(blockedLine.closest('[data-seal-blocked]')).not.toBeNull()
     expect(blockedLine.closest('.dems-dash-ring-cell')).not.toHaveTextContent(en.dashboard.systemRing.caption.READY)
   })
+  // Fix wave M (G75e-04, ruling D234 (1)): beside an open notice the ring of a RECORDING session read "SECURE • HEALTHY • RECORDING".
+  it('G75e-04: the ring states the open notice ALSO while a session records beside it - never "SECURE • HEALTHY • RECORDING"', async () => {
+    mount('/dashboard', 'recording', (sim) => {
+      realCore(sim)
+      sim.store.setState({ alerts: [SEAL_UNSEALABLE_EXAMPLE_ALERT] })
+    })
+    const line = await page('ring-status-line')
+    await waitFor(() => expect(line).toHaveTextContent(M.ring.noticeRecording), FIND)
+    const cell = line.closest('.dems-dash-ring-cell')!
+    expect(cell).toHaveAttribute('data-open-notice', 'true')
+    expect(cell).not.toHaveTextContent('SECURE')
+    expect(cell).not.toHaveTextContent('HEALTHY')
+    // The sentence of the notice, with its session, beside the recording.
+    expect(cell).toHaveTextContent(L.notice.ringDetail_one.replace('{{sessionId}}', SEAL_UNSEALABLE_EXAMPLE_SESSION_ID))
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+  it('G75e-04, controls: a recording with no notice - a Core that reports no posture claims none; the simulated lane keeps its line', async () => {
+    mount('/dashboard', 'recording', realCore)
+    const line = await page('ring-status-line')
+    await waitFor(() => expect(line).toHaveTextContent(M.ring.recordingFlags), FIND)
+    expect(line).not.toHaveTextContent('SECURE')
+    expect(line.closest('[data-open-notice]')).toBeNull()
+    cleanup()
+    mount('/dashboard', 'recording')
+    const simulated = await page('ring-status-line')
+    await waitFor(() => expect(simulated).toHaveTextContent(en.dashboard.systemRing.statusLine.RECORDING), FIND)
+  })
+  // Fix wave M (G75e-06 (a), ruling D234 (3)): during the automatic seal retries (up to 155 s) the pill read "SECURE / All systems operational".
+  it('G75e-06: while the Core retries a seal by itself the header pill and the Dashboard ring say so', async () => {
+    mount('/dashboard', 'finalizing', retrying)
+    const pill = await page('secure-pill')
+    await waitFor(() => expect(pill).toHaveAttribute('data-seal-retrying', 'true'), FIND)
+    expect(pill).toHaveAttribute('data-state', 'ATTENTION')
+    expect(pill).toHaveTextContent(M.pill.retryLabel)
+    expect(pill).toHaveTextContent(M.pill.retrySub)
+    expect(pill).not.toHaveTextContent(en.shell.securePill.SECURE.subtitle)
+    expect(pill).not.toHaveAttribute('data-open-notice')
+    const line = await page('ring-status-line')
+    await waitFor(() => expect(line).toHaveTextContent(M.ring.retrySub), FIND)
+    const cell = line.closest('.dems-dash-ring-cell')!
+    expect(cell).toHaveAttribute('data-seal-retrying', 'true')
+    expect(cell).toHaveTextContent(M.ring.retryDetail.replace('{{sessionId}}', SEAL_BLOCKED_EXAMPLE_SESSION_ID))
+    expect(cell).not.toHaveTextContent(en.dashboard.systemRing.caption.READY)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+  it('G75e-06: the retry RUN itself (the failed step reads `active` again, at attempt 2) is the same state - seen live as "SECURE" for the length of each run', () => {
+    const base = newSim('finalizing').store.getState()
+    const session = base.session!
+    const running = (attempt: number, own: boolean) => ({ ...base, alerts: [], session: { ...session, state: 'FINALIZING', finalization: { ...session.finalization, steps: session.finalization.steps.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'pending', attempt })) }, ...(own ? { captureDurable: true } : {}) } }) as SimState
+    expect(sealRetryingSessionOf(running(2, true))).toBe(session.id)
+    // The first run; the simulator's own session (there the attempt grows on a recovery alone); a blocked seal (CRITICAL by its alert).
+    expect(sealRetryingSessionOf(running(1, true))).toBeNull()
+    expect(sealRetryingSessionOf(running(2, false))).toBeNull()
+    const blockedState = newSim('finalizing')
+    blocked(blockedState)
+    expect(sealRetryingSessionOf(blockedState.store.getState())).toBeNull()
+    expect(sealRetryingSessionOf({ ...base, session: null })).toBeNull()
+  })
+  it('G75e-06, control: a seal that simply runs leaves the pill the system\'s own state', async () => {
+    mount('/dashboard', 'finalizing')
+    const pill = await page('secure-pill')
+    await waitFor(() => expect(pill).toHaveAttribute('data-state', 'SECURE'), FIND)
+    expect(pill).not.toHaveAttribute('data-seal-retrying')
+    expect((await page('ring-status-line')).closest('[data-seal-retrying]')).toBeNull()
+  })
 })
+
+/** A seal whose first step failed once and is run again by the Core: no blocked notice yet (the shape of `sealAttentionOf`: RETRYING). */
+function retrying(sim: Sim): void {
+  const session = sim.store.getState().session!
+  const steps = SEAL_BLOCKED_EXAMPLE_FINALIZATION.steps.map((step, index) => (index === 0 ? { ...step, attempt: 2, detail: "Sealing is being retried (retry 1 of 3, in 5 s). The Core's key store cannot be used: the seal stopped and can be tried again." } : { ...step, attempt: 2 }))
+  sim.store.setState({
+    session: { ...session, id: SEAL_BLOCKED_EXAMPLE_SESSION_ID, state: 'FINALIZING', finalization: { ...SEAL_BLOCKED_EXAMPLE_FINALIZATION, steps }, captureDurable: true } as typeof session,
+    alerts: [],
+  })
+}
 
 function blocked(sim: Sim): void {
   const session = sim.store.getState().session!

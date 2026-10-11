@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Chip, Spinner, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, CircleCheck, CircleDashed, CircleX, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
+import { SessionState } from '@dems/shared/domain'
 import { captureFactsOf, useSim, type ChainVerifyResult } from '@dems/shared/sim'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
@@ -109,6 +111,8 @@ export function IntegrityPanel() {
   const sessionState = useSim((s) => s.session?.state ?? null)
   const captureDurable = useSim((s) => s.session?.captureDurable)
   const facts = sessionState === null ? null : captureFactsOf({ state: sessionState, captureDurable })
+  // Fix wave M (G89d-06): on a session that IS sealed the closing sentence is not "once the session is sealed" - it names the item.
+  const sealedEvidenceId = useSim((s) => (s.session?.state === SessionState.SEALED ? (s.session.evidenceId ?? '') : null))
 
   const offset = formatUtcOffset()
   const factChecks: { id: string; status: CheckStatus; label: string; value: string }[] =
@@ -243,8 +247,19 @@ export function IntegrityPanel() {
       {facts !== null ? <SessionCaptureCheckpoints /> : null}
 
       {facts !== null ? (
-        <p className="sm-check-value" data-testid="sm-integrity-facts-note">
-          {t('session.integrityFacts.note')}
+        <p className="sm-check-value" data-testid="sm-integrity-facts-note" data-sealed={sealedEvidenceId !== null ? 'true' : undefined}>
+          {sealedEvidenceId === null ? (
+            t('session.integrityFacts.note')
+          ) : sealedEvidenceId === '' ? (
+            t('web.waveM.integrity.sealedNoteNoItem')
+          ) : (
+            <>
+              {t('web.waveM.integrity.sealedNote')}{' '}
+              <Link to="/evidence/$evidenceId" params={{ evidenceId: sealedEvidenceId }} className="sm-check-link" data-testid="sm-integrity-facts-item">
+                {sealedEvidenceId}
+              </Link>
+            </>
+          )}
         </p>
       ) : null}
 

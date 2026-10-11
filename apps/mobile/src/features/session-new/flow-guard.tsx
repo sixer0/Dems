@@ -25,6 +25,8 @@ export interface FlowBackPrompt {
   readonly guard: BackGuard;
   /** The header arrow: pop (guarded), or ask first when there is nothing to pop. */
   requestBack(): void;
+  /** Fix wave M (G70d-03): the screen's own "Cancel session" control opens the same prompt without a back attempt. */
+  ask(): void;
 }
 
 export function useFlowBackPrompt(guard: BackGuard, active: boolean): FlowBackPrompt {
@@ -71,6 +73,9 @@ export function useFlowBackPrompt(guard: BackGuard, active: boolean): FlowBackPr
       if (router.canGoBack()) router.back();
       else if (active) setRootPrompt(true);
       else router.replace('/home');
+    },
+    ask: () => {
+      if (active) setRootPrompt(true);
     },
   };
 }

@@ -32,6 +32,49 @@ interface GeneratedSourceOptions {
   readonly door?: HelperDoor;
   readonly inspect?: ProgramInspector;
   readonly onSourceLost?: (deviceId: string, error: LocalSourceError) => void;
+  /**
+   * THE DEVELOPMENT SOURCE SWITCH (fix wave M; re-check 70 finding G70d-01, ruling D232). A
+   * generated source dials nothing: its picture and its tone are made on this machine, so the
+   * address a stored `FAKE` row carries is never asked and such a source could not be "not there".
+   * While this function answers true for the device, the source answers as a source that is not
+   * there, through its OWN two doors: its reachability read (`profiles()` of a camera,
+   * `enumerate()` of a microphone) and its open (`openSource()` / `open()`) - see
+   * `GeneratedSourceUnreachableError`. Nothing is opened, listed or started for it, and a source
+   * that is open already is not ended. Absent: always there (the product without the switch).
+   * Asked at every read and every open, so that a change takes effect without a restart. The
+   * fence hands it to the GENERATED adapters only - never to a local device's adapter - and
+   * accepts one in `REAL_DEVELOPMENT` alone (`installDevelopmentSourceSwitch`).
+   */
+  readonly unreachable?: (deviceId: string) => boolean;
+}
+
+/** `code` of the error below. Not one of the five local-source codes: the reachability probe reads the cause `UNREACHABLE`. */
+export const GENERATED_SOURCE_SWITCHED_UNREACHABLE = 'DEV_SOURCE_SWITCHED_UNREACHABLE';
+
+/**
+ * What a generated source answers while the development source switch names it. A fixed sentence,
+ * a code and the registry ID: safe in every log and error-log path. It says what it is - a test
+ * source switched off on purpose - so that the error log of a development lane never reads as a
+ * failure of the helper program.
+ */
+export class GeneratedSourceUnreachableError extends Error {
+  readonly code = GENERATED_SOURCE_SWITCHED_UNREACHABLE;
+  readonly deviceId: string;
+  constructor(deviceId: string) {
+    super('the generated test source is switched unreachable by the development source switch');
+    this.name = 'GeneratedSourceUnreachableError';
+    this.deviceId = deviceId;
+  }
+}
+
+/** True while the switch names the device. A switch that throws switches nothing. */
+function switchedUnreachable(options: GeneratedSourceOptions, deviceId: string): boolean {
+  if (options.unreachable === undefined) return false;
+  try {
+    return options.unreachable(deviceId) === true;
+  } catch {
+    return false;
+  }
 }
 
 export interface GeneratedCameraOptions extends GeneratedSourceOptions {
@@ -80,12 +123,16 @@ export function createGeneratedCameraAdapter(options: GeneratedCameraOptions): G
     async openSource(deviceId: string, target: CameraSourceTarget, signal: AbortSignal): Promise<SourceHandle> {
       served(deviceId);
       if (signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, deviceId);
+      // Before the helper: nothing is started for a source that is switched unreachable.
+      if (switchedUnreachable(options, deviceId)) throw new GeneratedSourceUnreachableError(deviceId);
       const helper = await helpers.open(deviceId, target.ingestUrl, signal);
       helper.onExit((error) => options.onSourceLost?.(deviceId, error));
       return Object.freeze({ deviceId, close: () => helper.close() });
     },
+    /** The reachability read of a test source (the probe of the pre-check asks it; nothing else does). */
     async profiles(deviceId: string): Promise<MediaProfile[]> {
       served(deviceId);
+      if (switchedUnreachable(options, deviceId)) throw new GeneratedSourceUnreachableError(deviceId);
       return profiles.map((code) => ({ code, codec: 'H264' as const }));
     },
     pullUrl(deviceId: string): string {
@@ -139,13 +186,16 @@ export function createGeneratedMicAdapter(options: GeneratedMicOptions): Generat
     kind: CaptureAdapterKind.FAKE,
     devices: Object.freeze([entry]),
     hasOpener: true,
-    /** A generated source is always there: nothing is listed. */
+    /** A generated source is always there - nothing is listed - unless the development source switch names it: then it is absent, with the cause of an input that is not in the list. */
     async enumerate(): Promise<AudioInputDescriptor[]> {
+      if (switchedUnreachable(options, options.id)) return [{ inputId: options.id, present: false, errorCode: 'DEVICE_NOT_FOUND' }];
       return [{ inputId: options.id, present: true, errorCode: null }];
     },
     async open(inputId: string, target: AudioOpenTarget): Promise<LocalMicStream> {
       served(inputId);
       if (target.signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, inputId);
+      // Before the pipe: nothing is prepared for a source that is switched unreachable.
+      if (switchedUnreachable(options, inputId)) throw new GeneratedSourceUnreachableError(inputId);
       const stream = await helper.prepare({ deviceId: inputId, sessionId: target.sessionId, source, signal: target.signal });
       stream.onLost((error) => options.onSourceLost?.(inputId, error));
       return stream;

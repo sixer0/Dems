@@ -47,6 +47,7 @@ import { useTranslation } from 'react-i18next';
 import { BackHandler, StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeInLeft, FadeInRight, ReduceMotion, type EntryOrExitLayoutType } from 'react-native-reanimated';
+import type { SessionCreateFormValues } from '@dems/shared/api';
 import { useCorePermission } from '@dems/shared/live';
 import { Permission, useSimInstance } from '@dems/shared/sim';
 import { motion as motionTokens, palette, spacing } from '@dems/shared/tokens';
@@ -77,6 +78,7 @@ import {
   canLeaveGate,
   defaultInvestigatorId,
   effectiveStep,
+  formSessionGone,
   eligibleInvestigators,
   gatePhase,
   hasDeviceColumn,
@@ -192,6 +194,38 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   const backGuard = useBackGuard({ enabled: guardEnabled });
   const back = useFlowBackPrompt(backGuard, guardEnabled && focused);
 
+  // ── Fix wave M (G70d-03): the session this form belongs to ───────────────────────────────────
+  // The wizard follows ONE session (the one its Next created, or the one it was opened on). When that
+  // session is gone and this screen did not cancel it (cancelled on another client), the form is cleared and
+  // the screen says so - it used to keep the case number and the subject with Next enabled. Adjusted during
+  // render (React's "state from a changed input"); the form itself is reset in the effect below.
+  const followedSession = flowActive ? data.sessionId : null;
+  const [ownedSession, setOwnedSession] = useState<string | null>(followedSession);
+  const [cancellingHere, setCancellingHere] = useState(false);
+  const [cancelledElsewhere, setCancelledElsewhere] = useState<string | null>(null);
+  if (ownedSession !== followedSession) {
+    setOwnedSession(followedSession);
+    if (formSessionGone(ownedSession, followedSession, data.sessionId) && !cancellingHere && !launching) {
+      setCancelledElsewhere(ownedSession);
+      setCreateError(null);
+      setAcknowledged(false);
+    }
+  }
+  const clearGoneSession = useEffectEvent(() => {
+    // A reset to `undefined` leaves the chosen subject type in its mounted field (react-hook-form gives a field
+    // whose new value is undefined its own last value back), and the form would still count as typed. `null` is
+    // "no type chosen" too (the schema asks for a type; no chip is selected) and does clear the field.
+    form.reset({
+      ...blankFormValues(defaultInvestigatorId(data.operators, data.signedInId)),
+      subjectType: null as unknown as SessionCreateFormValues['subjectType'],
+    });
+    back.guard.stay(); // a prompt about the session that is gone closes
+    reportRuntimeIssue('warn', 'features.sessionNew.cancelledElsewhere', 'The session of this form was cancelled on another client: the form was cleared', { sessionId: cancelledElsewhere });
+  });
+  useEffect(() => {
+    if (cancelledElsewhere !== null) clearGoneSession();
+  }, [cancelledElsewhere]);
+
   // A back attempt, or the state leaving ARMED (a fault), stops a running countdown; in Live mode so
   // does a Core link that went down (a recording starts only over a connected link).
   // Wave H closing pass Z2 (D206, the mobile half): so does knowledge of the capture sources that is lost
@@ -301,6 +335,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   const onClearForm = () => {
     form.reset(blankFormValues(defaultInvestigatorId(data.operators, data.signedInId)));
     setCreateError(null);
+    setCancelledElsewhere(null);
   };
 
   const onNextInfo = form.handleSubmit((values) => {
@@ -314,6 +349,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
           return;
         }
         setCreateError(null);
+        setCancelledElsewhere(null);
         setAcknowledged(false);
         showStep(2);
       });
@@ -358,8 +394,10 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
 
   const cancelAndLeave = () => {
     cancelPress.run((release) => {
+      setCancellingHere(true); // this screen's own cancel is not "cancelled on another client"
       actions.cancelSession((ok) => {
         release();
+        if (!ok) setCancellingHere(false);
         // Simulated mode leaves whatever the answer, as before. Live mode leaves once the Core
         // cancelled; on a refusal the dialog stays open (the presenter said why).
         if (ok || !live) back.guard.leave();
@@ -370,6 +408,12 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
   const onBack = () => {
     if (sending) return; // a command is out: the answer decides (see the hardware Back above)
     back.requestBack();
+  };
+
+  // Fix wave M (G70d-03): the header's own "Cancel session" (a session exists) opens the same confirm.
+  const onCancelSession = () => {
+    if (sending) return;
+    back.ask();
   };
 
   // ── Footer (the MB 3 gold button, pinned on phones) ──────────────────────────────────────────
@@ -496,6 +540,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       onLastProfile={onLastProfile}
       onClearForm={onClearForm}
       large={arrangement === 'tablet-portrait' || arrangement === 'tablet-landscape'}
+      onCancelSession={flowActive && !launching ? onCancelSession : undefined}
     />
   );
 
@@ -508,6 +553,15 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       contentContainerStyle={[styles.scrollContent, arrangement === 'phone' ? null : styles.scrollContentWide]}
     >
       {linkNotice}
+      {cancelledElsewhere !== null && current === 1 ? (
+        <Alert status="warning" testID="session-new-cancelled-elsewhere">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('features.session-new.cancelledElsewhere.title')}</Alert.Title>
+            <Alert.Description>{t('features.session-new.cancelledElsewhere.body', { sessionId: cancelledElsewhere })}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       {/* Fix F-M4 (R69-01): a session left in CREATE is not checked by itself when the check turns on a local device. */}
       <LocalSourceNotStarted visible={current === 1 && data.state === 'CREATE' && !createPress.busy} onRun={() => void onNextInfo()} />
       {stepBody}
@@ -555,7 +609,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
       {remaining !== null ? <CountdownOverlay seconds={remaining} onCancel={() => setRemaining(null)} /> : null}
       <LocalSourceNoticeDialog gate={actions.localSourceGate} />
       {flowActive ? (
-        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.busy} pending={cancelPress.pending} />
+        <BackGuardDialog guard={back.guard} variant="flow" onConfirm={cancelAndLeave} busy={cancelPress.busy} pending={cancelPress.pending} onGoHome={() => back.guard.leaveTo('/home')} />
       ) : (
         <DiscardDialog guard={back.guard} />
       )}

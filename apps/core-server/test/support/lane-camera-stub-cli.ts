@@ -2,7 +2,7 @@
  * The lane launcher of the development camera stub (fix wave H, driver D; gate 70 finding B-1;
  * decision D196; test strategy CR-5). A command-line program of the test support; not a test file.
  *
- *   tsx test/support/lane-camera-stub-cli.ts [--fixture-file <path>] [--mode-file <path>] [--seal-rig-file <path>]
+ *   tsx test/support/lane-camera-stub-cli.ts [--fixture-file <path>] [--mode-file <path>] [--seal-rig-file <path>] [--source-rig-file <path>]
  *
  * Started by `scripts/lane/lane.sh start <lane> --with-camera-stub`, through the npm script
  * `start:camera-stub` of this workspace, in the place of `src/index.ts`. It starts the SAME Core -
@@ -25,6 +25,11 @@
  * file says otherwise; a production configuration is not started (check `sealing.sealRig`, code
  * `DEV_SEAL_RIG_IN_PRODUCTION`); a SIMULATED lane starts without it and one line says so.
  *
+ * THE SOURCE RIG (fix wave M, decision D232). With `--source-rig-file` the same launcher also hands
+ * the capture fence the development source switch (`lane-source-rig.ts`): OFF until its switch file
+ * names a generated test source; a production configuration is not started (check
+ * `capture.sourceRig`, code `DEV_SOURCE_RIG_IN_PRODUCTION`); a SIMULATED lane starts without it.
+ *
  * It reads `process.env` exactly as the entry point does (through the configuration loader) and
  * three paths from its arguments. It takes no address, no port and no credential from anywhere: the
  * stub binds 127.0.0.1 on ephemeral ports and makes its own fixture account.
@@ -38,9 +43,10 @@ import { DEFAULT_ERROR_LOG_FILE, createErrorLog, describeError } from '../../src
 import { BootError } from '../../src/plugins/readiness';
 import { LANE_CAMERA_STUB_CHECK, prepareLaneCameraStub } from './lane-camera-stub';
 import { LANE_SEAL_RIG_CHECK, LaneSealRigError, prepareLaneSealRig } from './lane-seal-rig';
+import { LANE_SOURCE_RIG_CHECK, LaneSourceRigError, prepareLaneSourceRig } from './lane-source-rig';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
-const USAGE = 'usage: lane-camera-stub-cli.ts [--fixture-file <path>] [--mode-file <path>] [--seal-rig-file <path>]';
+const USAGE = 'usage: lane-camera-stub-cli.ts [--fixture-file <path>] [--mode-file <path>] [--seal-rig-file <path>] [--source-rig-file <path>]';
 
 const errorLog = createErrorLog(DEFAULT_ERROR_LOG_FILE);
 
@@ -52,9 +58,16 @@ function refuseToStart(source: string, code: string, message: string, error: unk
   process.exit(1);
 }
 
-/** The three paths of the command line. Anything else is a usage error: the program starts nothing. */
-function argumentsOf(argv: readonly string[]): { fixtureFile: string | null; modeFile: string | null; sealRigFile: string | null } {
-  const found: { fixtureFile: string | null; modeFile: string | null; sealRigFile: string | null } = { fixtureFile: null, modeFile: null, sealRigFile: null };
+interface LauncherFiles {
+  fixtureFile: string | null;
+  modeFile: string | null;
+  sealRigFile: string | null;
+  sourceRigFile: string | null;
+}
+
+/** The four paths of the command line. Anything else is a usage error: the program starts nothing. */
+function argumentsOf(argv: readonly string[]): LauncherFiles {
+  const found: LauncherFiles = { fixtureFile: null, modeFile: null, sealRigFile: null, sourceRigFile: null };
   for (let index = 0; index < argv.length; index += 2) {
     const name = argv[index];
     const value = argv[index + 1];
@@ -62,12 +75,13 @@ function argumentsOf(argv: readonly string[]): { fixtureFile: string | null; mod
     if (name === '--fixture-file') found.fixtureFile = value;
     else if (name === '--mode-file') found.modeFile = value;
     else if (name === '--seal-rig-file') found.sealRigFile = value;
+    else if (name === '--source-rig-file') found.sourceRigFile = value;
     else throw new Error(USAGE);
   }
   return found;
 }
 
-let files: { fixtureFile: string | null; modeFile: string | null; sealRigFile: string | null };
+let files: LauncherFiles;
 try {
   files = argumentsOf(process.argv.slice(2));
 } catch (error) {
@@ -132,11 +146,15 @@ try {
   // THE FENCE, FIRST: a production configuration stops here, before the stub binds and before the app is ready.
   // The seal rig asks the same fence, before anything is started or bound (fix wave K).
   const sealRig = prepareLaneSealRig(app, files.sealRigFile);
+  // The source rig asks the same fence, here, for the same reason (fix wave M).
+  const sourceRig = prepareLaneSourceRig(app, files.sourceRigFile);
   const cameraStub = await prepareLaneCameraStub(app, files);
   await app.ready();
   cameraStub.announce();
   // Before the boot: the sealing host takes settings before its first seal only.
   sealRig.install();
+  // The fence is mounted now; its generated sources ask the switch at every read and every open.
+  sourceRig.install();
   if (ignoredVariables.length > 0) {
     app.log.warn({ names: ignoredVariables }, 'ignored driver variables of the environment');
   }
@@ -147,6 +165,7 @@ try {
 } catch (error) {
   if (error instanceof DevelopmentDiscoveryError) fatal('boot', error, { check: LANE_CAMERA_STUB_CHECK, code: error.code });
   if (error instanceof LaneSealRigError) fatal('boot', error, { check: LANE_SEAL_RIG_CHECK, code: error.code });
+  if (error instanceof LaneSourceRigError) fatal('boot', error, { check: LANE_SOURCE_RIG_CHECK, code: error.code });
   if (error instanceof BootError) fatal('boot', error.cause, { check: error.stepId });
   fatal('start', error);
 }

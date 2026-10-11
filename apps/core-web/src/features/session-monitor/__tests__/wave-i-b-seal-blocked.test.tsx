@@ -37,6 +37,7 @@ import {
   type Sim,
   type SimAlert,
 } from '@dems/shared/sim'
+import { saidAlready } from '@/lib/seal-attention'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { enWeb } from '@/i18n-web'
@@ -155,11 +156,24 @@ describe('G75b-02 dialog: blocked', () => {
     expect(notice).toHaveAttribute('data-kind', 'BLOCKED')
     expect(notice).toHaveAttribute('role', 'alert')
     expect(within(modal).getByRole('heading', { name: W.title })).toBeInTheDocument()
-    // The Core's own words: the sentence of the failed step, the detail code's sentence, the alert's message.
+    // The Core's own words. Fix wave M (G75e-06 (b), final re-check 75): the dialog stated the cause FOUR times - the
+    // sentence of the failed step, the detail code's sentence and the alert's message all begin with it. The alert's
+    // message is the whole statement (the cause, what restores the seal, what it costs); the other two are drawn only
+    // where they add to it. (This replaces the pin "all three sentences are drawn".)
     const failedStep = SEAL_BLOCKED_EXAMPLE_FINALIZATION.steps.find((step) => step.status === 'error')!
-    expect(notice).toHaveTextContent(failedStep.detail!)
-    expect(notice).toHaveTextContent(SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_STORE_UNAVAILABLE)
-    expect(notice).toHaveTextContent(SEAL_BLOCKED_EXAMPLE_ALERT.message)
+    expect(within(notice).getByTestId('sm-seal-attention-message')).toHaveTextContent(SEAL_BLOCKED_EXAMPLE_ALERT.message)
+    const text = notice.textContent ?? ''
+    const cause = SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_STORE_UNAVAILABLE.replace(/\.$/, '')
+    expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain(cause)
+    expect(failedStep.detail).toContain(cause)
+    expect(text.split(cause)).toHaveLength(2)
+    expect(notice).not.toHaveTextContent(failedStep.detail!)
+    // "after 3 automatic retries" is the retry control's sentence, once.
+    expect(text.split('3 automatic retries')).toHaveLength(2)
+    // The rule: a sentence whose leading clause the message holds is not drawn again; one that adds to it is.
+    expect(saidAlready(SEAL_BLOCKED_EXAMPLE_ALERT.message, SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_STORE_UNAVAILABLE)).toBe(true)
+    expect(saidAlready(SEAL_BLOCKED_EXAMPLE_ALERT.message, failedStep.detail!)).toBe(true)
+    expect(saidAlready(SEAL_BLOCKED_EXAMPLE_ALERT.message, SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_UNSAFE)).toBe(false)
     expect(notice).toHaveTextContent(SEAL_RECORDING_KEPT_SENTENCE)
     expect(notice).toHaveTextContent(W.action)
     expect(notice).toHaveTextContent(W.closeNote)

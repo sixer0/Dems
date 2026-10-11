@@ -138,6 +138,8 @@ export interface LiveSessionNewBed {
   sendHeldDeltas(): void;
   /** Runs the engine (the Core's own clock) for `ms` and pushes what changed as one unsolicited delta. */
   runCore(ms: number): Promise<void>;
+  /** Something done on the Core by ANOTHER client (the engine runs it) and pushed as one unsolicited delta. */
+  coreDoes(run: (engine: TestSim) => void): Promise<void>;
   /**
    * The Core stops answering (requests fail, the socket drops, reconnects are refused), or answers
    * again. `'hanging'`: requests fail and a reconnect attempt is left CONNECTING (no answer at all).
@@ -235,6 +237,13 @@ export async function renderLiveSessionNew({ window = 'phonePortrait', setup, an
     async runCore(ms) {
       const before = engine.sim.store.getState();
       engine.advance(ms);
+      const ops = changedSlices(before, engine.sim.store.getState());
+      if (ops.length > 0) act(() => void bed.connection().delta(ops));
+      await flushJobs();
+    },
+    async coreDoes(run) {
+      const before = engine.sim.store.getState();
+      run(engine);
       const ops = changedSlices(before, engine.sim.store.getState());
       if (ops.length > 0) act(() => void bed.connection().delta(ops));
       await flushJobs();

@@ -12,14 +12,17 @@
 // `dems_app`, booted in REAL_DEVELOPMENT (row 61's boot fixture; `/bin/echo` as the helper
 // program - no camera and no microphone is listed, opened or asked for), with the lane's camera
 // stub on loopback. NO SOCKET OUTSIDE LOOPBACK: the loopback guard is on for the whole file.
-// No pre-check and no session start is made: nothing is opened, the selector only stores.
+// No session start is made and nothing is opened: the selector only stores, and the ONE pre-check
+// of this file (fix wave M, follow-up M-S2) runs on the two GENERATED cameras and the two generated
+// microphones of the seed's selector - their reachability read opens nothing. No local device is
+// on a track at any moment.
 import type { LightMyRequestResponse } from 'fastify';
 import { CAPTURE_CONNECTION_TESTED_SCHEME_REFUSAL_EXAMPLE, type CaptureDiscoveryStateBody } from '@dems/shared/api';
 import { createManualClock, type AuditRow } from '@dems/shared/sim';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
-import { FIXED_NOW, manualTimer } from '../../../../test/support/engine';
+import { FIXED_NOW, TICK_MS, manualTimer } from '../../../../test/support/engine';
 import { WEB_ORIGIN, signInOnWeb, type IdentityApp } from '../../../../test/support/identity';
 import { LaneCameraStubPreset, prepareLaneCameraStub, type LaneCameraStub } from '../../../../test/support/lane-camera-stub';
 import { buildApp } from '../../../app';
@@ -43,6 +46,9 @@ let stub: LaneCameraStub;
 let guard: LoopbackGuard;
 let clock: ReturnType<typeof createManualClock>;
 let cookie: Record<string, string>;
+let timer: ReturnType<typeof manualTimer>;
+/** The camera the first G70b-01 case adopted: the M-S2 case pre-checks it. */
+let adoptedId: string | null = null;
 
 const get = (url: string): Promise<LightMyRequestResponse> => app.inject({ method: 'GET', url, headers: cookie });
 const post = (url: string, payload?: Record<string, unknown>): Promise<LightMyRequestResponse> => app.inject({ method: 'POST', url, headers: { ...cookie, origin: WEB_ORIGIN }, ...(payload === undefined ? {} : { payload }) });
@@ -70,7 +76,8 @@ beforeAll(async () => {
   clock = createManualClock(FIXED_NOW);
   app.seams.replace('clock', clock);
   app.seams.replace('publish', () => {});
-  engineControl(app).useTimer(manualTimer().timer);
+  timer = manualTimer();
+  engineControl(app).useTimer(timer.timer);
   await app.readiness.boot();
   await app.pipeline.drain();
   cookie = (await signInOnWeb({ app, cookieName: app.config.sessionCookieName } as unknown as IdentityApp, 'rina.wijaya')).cookie;
@@ -147,6 +154,11 @@ describe('G70b-01: a camera adopted on a BOOTED development Core', () => {
     const registry = captureFenceControl(app).registry();
     if (registry === null) throw new Error('the booted development Core has no adapter registry');
 
+    // M-S2: BEFORE the adoption the Core is asked for its inputs once (operation 97, what opening the
+    // Devices screen does). From here on the notices unit has read the probe of the running operation.
+    const rescanned = await post('/api/v1/capture/inputs/rescan');
+    expect(rescanned.statusCode, rescanned.body).toBe(200);
+
     // SEARCH, TEST, ADD AS CAMERA - the gate's steps.
     await stub.apply(LaneCameraStubPreset.NORMAL);
     const candidate = await searched();
@@ -158,6 +170,7 @@ describe('G70b-01: a camera adopted on a BOOTED development Core', () => {
     expect(adopted.statusCode, adopted.body).toBe(201);
     const { deviceId } = adopted.json<{ deviceId: string }>();
     expect(deviceId).toMatch(/^CAM-\d\d$/);
+    adoptedId = deviceId;
     const before = await selector();
 
     // THE FINDING. Before the fix: 422 `DEVELOPMENT_SOURCE_NOT_ALLOWED` until the Core restarts.
@@ -184,6 +197,62 @@ describe('G70b-01: a camera adopted on a BOOTED development Core', () => {
     expect(log.text()).not.toContain(account.username);
     expect(guard.connections().filter((host) => host !== '127.0.0.1')).toEqual([]);
     expect(guard.refused()).toEqual([]);
+  });
+
+  // FIX WAVE M, FOLLOW-UP M-S2 (the hypothesis of `implementation/158_fix_wave_m_s.md` section 10).
+  // The notices unit had kept the FIRST probe the fence answered - a copy of the camera adapters of
+  // that moment. A camera adopted afterwards was in the registry (assignable, case above) and not in
+  // that copy: its pre-check read `UNREACHABLE` ("no adapter serves it") until the Core restarted -
+  // a false notification B. The case above read the probe (operation 97) BEFORE it adopted.
+  it('M-S2: the adopted camera, assigned to a video track, PASSES the next pre-check of the same run - no restart, no CAPTURE_DEVICE_UNREACHABLE alert or row; CONTROL: the stored test camera on the other track passes by the same read', async () => {
+    const deviceId = adoptedId;
+    if (deviceId === null) throw new Error('the case above adopted no camera');
+    const assigned = await post(`/api/v1/capture/cameras/${deviceId}/source`, { trackId: 'VIDEO-02' });
+    expect(assigned.statusCode, assigned.body).toBe(200);
+    const tracks = await selector();
+    expect(tracks[1]).toEqual(['VIDEO-02', deviceId]);
+    // Nothing of this Mac is on a track: the read of a generated source opens nothing.
+    const kinds = new Map(captureFenceControl(app).registry()?.list().map((device) => [device.id, device.adapterKind]));
+    expect(tracks.map(([, id]) => kinds.get(id ?? ''))).toEqual(['FAKE', 'FAKE']);
+
+    const investigator = app.engine.slice('operators').find((operator) => operator.role === 'INVESTIGATOR');
+    if (investigator === undefined) throw new Error('the seed has no investigator');
+    const asInvestigator = (await signInOnWeb({ app, cookieName: app.config.sessionCookieName } as unknown as IdentityApp, 'budi.santoso')).cookie;
+    const send = (url: string, payload?: Record<string, unknown>): Promise<LightMyRequestResponse> => app.inject({ method: 'POST', url, headers: { ...asInvestigator, origin: WEB_ORIGIN }, ...(payload === undefined ? {} : { payload }) });
+    const created = await send('/api/v1/session', { caseNumber: 'LP/2026/1011-0161', subjectType: 'SAKSI', subjectName: 'Test Subject', investigatorId: investigator.id, room: 'Interview Room 1', profileId: 'STANDARD_1080P25' });
+    expect(created.statusCode, created.body).toBe(201);
+    const { sessionId } = created.json<{ sessionId: string }>();
+    try {
+      const begun = await send(`/api/v1/session/${sessionId}/precheck`);
+      expect(begun.statusCode, begun.body).toBe(202);
+      // The checks resolve on the engine's ticks; the gate's one search (none is needed here) and its alerts follow.
+      for (let elapsed = 0; elapsed < 5_000; elapsed += TICK_MS) {
+        clock.advance(TICK_MS);
+        timer.fire();
+        await engineControl(app).idle();
+      }
+      for (let round = 0; round < 5; round += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+        await engineControl(app).idle();
+        await app.pipeline.drain();
+      }
+
+      const items = app.engine.slice('session')?.precheck?.items ?? [];
+      const row = (id: string): unknown => items.find((item) => item.id === id);
+      // CONTROL: the camera that existed at the boot.
+      expect(row('LENS_1')).toMatchObject({ status: 'PASS' });
+      // THE FINDING. Before the fix: `status: WARN, value: UNREACHABLE, params.rule: oneCamera`.
+      expect(row('LENS_2')).toMatchObject({ status: 'PASS' });
+      expect(app.engine.slice('captureDevices').devices.find((device) => device.id === deviceId)).toMatchObject({ online: true });
+      expect(app.engine.slice('alerts').filter((alert) => alert.params?.['reason'] === 'CAPTURE_DEVICE_UNREACHABLE')).toEqual([]);
+      expect(app.engine.slice('audit').rows.filter((entry) => entry.type === 'CAPTURE_DEVICE_UNREACHABLE')).toEqual([]);
+    } finally {
+      // The session is left by its own operation and the selector goes back, so the control below reads what it read before.
+      await send(`/api/v1/session/${sessionId}/cancel`);
+      await app.pipeline.drain();
+      await post('/api/v1/capture/cameras/CAM-02/source', { trackId: 'VIDEO-02' });
+    }
+    expect(guard.connections().filter((host) => host !== '127.0.0.1')).toEqual([]);
   });
 
   it('NEGATIVE CONTROL: a refusal names its own reason - a production camera on this development Core is PRODUCTION_SOURCE_NOT_ALLOWED, never DEVELOPMENT_SOURCE_NOT_ALLOWED; nothing is stored', async () => {

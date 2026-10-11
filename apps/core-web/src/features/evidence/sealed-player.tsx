@@ -50,8 +50,12 @@ interface IntegrityStop {
 type IntegrityStops = Partial<Record<CameraFileId, IntegrityStop>>
 const NO_STOPS: IntegrityStops = {}
 
-/** A file that gave no sign of life, or waits for data, this long after it was started is asked about (wave K, G94b-02). */
+/** A file that received no data, or waits for data, this long after it was started is asked about (wave K, G94b-02). */
 export const STALL_CHECK_MS = 4_000
+
+/** `HTMLMediaElement.HAVE_METADATA` / `HAVE_FUTURE_DATA`: the element holds metadata / data beyond its playhead. */
+const HAVE_METADATA = 1
+const HAVE_FUTURE_DATA = 3
 
 type Sessions = Partial<Record<CameraFileId, MediaSession>>
 type Phase =
@@ -90,6 +94,15 @@ function bufferedEndMs(element: HTMLMediaElement | null): number {
   } catch {
     return 0
   }
+}
+
+/**
+ * Wave M (G94d-01): what an element HOLDS - metadata or media data it RECEIVED. Never its clock: a seek
+ * (and the re-alignment to the leading file) moves the clock of a file that never loaded.
+ */
+function holdsData(element: HTMLMediaElement | null): boolean {
+  if (!element) return false
+  return element.readyState >= HAVE_METADATA || bufferedEndMs(element) > 0
 }
 
 function setTime(element: HTMLMediaElement, seconds: number): void {
@@ -158,6 +171,10 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
  *   Wave L (G94c-01): the question does not wait for a connection to close (the console's own origin
  *   keeps a stopped stream open): it is a few small bounded range requests from what the element
  *   holds, and the sentence and the "Stopped" tile stay through the end of the other file.
+ *   Wave M (G94d-01): the watch rests on DATA RECEIVED (the element's ready state and buffered ranges,
+ *   its `loadedmetadata` / `canplay` / `playing`), never on its clock; a file that waits for data stays
+ *   watched until it can play again; and when the leading file ENDS, a file that has delivered no data,
+ *   or still waits, is asked about at once - the end does not wait for the watch.
  * - **One camera or two.** The files asked for are the ones the item names (`files[]` of 1 or 2).
  * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal for
  *   the role says so; anything else goes to the shared presenter first and offers a rate-limited
@@ -190,8 +207,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const [notLoaded, setNotLoaded] = useState<readonly CameraFileId[]>([])
   /** G94b-09: the leading file reached its end. */
   const [ended, setEnded] = useState(false)
-  /** Files that loaded metadata, can play or moved: a sign of life since their path was put on. */
+  /** Files that RECEIVED data (metadata or media) since their path was put on. Never set from a clock. */
   const alive = useRef(new Set<CameraFileId>())
+  /** Wave M (G94d-01): files whose element said it waits for data (`waiting` / `stalled`) and has not said since that it can play. */
+  const waitingFor = useRef(new Set<CameraFileId>())
   const watches = useRef(new Map<CameraFileId, ReturnType<typeof setTimeout>>())
   const probing = useRef(new Set<CameraFileId>())
   /** The files a STALL was already asked about on the sessions that are open: one question per file and session (each is a request the Core records). */
@@ -320,10 +339,46 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     return outcome
   }
 
-  /** Starts the watch of one file: if it still gives no sign of life (or still waits) after `STALL_CHECK_MS`, the Core is asked. */
-  const watch = (fileId: CameraFileId, waiting: boolean) => {
+  /** A file is settled when it received data and does not wait for more: only then its watch goes. */
+  const settled = (fileId: CameraFileId): boolean => alive.current.has(fileId) && !waitingFor.current.has(fileId)
+
+  const markAlive = (fileId: CameraFileId) => {
+    if (alive.current.has(fileId)) return
+    alive.current.add(fileId)
+    setNotLoaded((current) => (current.includes(fileId) ? current.filter((entry) => entry !== fileId) : current))
+  }
+
+  /**
+   * Wave M (G94d-01): reads what the element of one file HOLDS now. Data it received makes it alive;
+   * data beyond its playhead ends its wait. Its clock is never read: a `timeupdate` of a file that
+   * holds nothing (fired by the pause at the end of the other file, with the clock a seek put there)
+   * changes nothing, and a `timeupdate` of a file that still waits does not end its watch.
+   */
+  const refresh = (fileId: CameraFileId) => {
+    const element = videos.current[fileId] ?? null
+    if (holdsData(element)) markAlive(fileId)
+    if (element !== null && element.readyState >= HAVE_FUTURE_DATA) waitingFor.current.delete(fileId)
+    if (settled(fileId)) unwatch(fileId)
+  }
+
+  /** The element's own word that data arrived: `loadedmetadata` (it may still wait for media data), `canplay` / `playing` (it does not wait). */
+  const onReceived = (fileId: CameraFileId, canPlay: boolean) => {
+    markAlive(fileId)
+    if (canPlay) waitingFor.current.delete(fileId)
+    if (settled(fileId)) unwatch(fileId)
+  }
+
+  /** One question per file and session (each is a request the Core records). */
+  const askOnce = (fileId: CameraFileId) => {
+    if (stallAsked.current.has(fileId)) return
+    stallAsked.current.add(fileId)
+    void askCore(fileId)
+  }
+
+  /** Starts the watch of one file: if it has still received nothing (or still waits) after `STALL_CHECK_MS`, the Core is asked. */
+  const watch = (fileId: CameraFileId) => {
     if (stopsRef.current[fileId] !== undefined) return
-    if (!waiting && alive.current.has(fileId)) return
+    if (settled(fileId)) return
     // Wave L (G94c-01): a watch that runs keeps its time. A Play or a seek soon after the opening must not
     // push the question back - on a short recording the other file ended before it was ever asked.
     if (watches.current.has(fileId)) return
@@ -331,23 +386,31 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       fileId,
       setTimeout(() => {
         watches.current.delete(fileId)
-        if (stallAsked.current.has(fileId)) return
-        stallAsked.current.add(fileId)
-        void askCore(fileId)
+        refresh(fileId)
+        if (!settled(fileId)) askOnce(fileId)
       }, STALL_CHECK_MS),
     )
   }
 
+  /** The element of one file says it waits for data: it is watched until it says it can play again. */
+  const onWaitingFor = (fileId: CameraFileId) => {
+    waitingFor.current.add(fileId)
+    watch(fileId)
+  }
+
   /**
-   * A sign of life of one file: loaded metadata, can play, plays, or its clock moved FORWARD.
-   * Wave L (G94c-01): a `timeupdate` alone is none - a file that never loaded still fires one when it
-   * is paused at the end of the other file (that erased its sentence), see `onTimeUpdate` of the element.
+   * Wave M (G94d-01): the leading file ENDED. A file that has delivered no data by now, or still waits
+   * for data, is asked about at once: on a short recording (or after a seek close to the end) the
+   * end comes before the watch runs out, and the pause that follows says nothing about that file.
    */
-  const onAlive = (fileId: CameraFileId) => {
-    unwatch(fileId)
-    if (alive.current.has(fileId)) return
-    alive.current.add(fileId)
-    setNotLoaded((current) => (current.includes(fileId) ? current.filter((entry) => entry !== fileId) : current))
+  const askUnsettledAtEnd = (endedFile: CameraFileId) => {
+    for (const fileId of playable) {
+      if (fileId === endedFile || stopsRef.current[fileId] !== undefined) continue
+      refresh(fileId)
+      if (settled(fileId)) continue
+      unwatch(fileId)
+      askOnce(fileId)
+    }
   }
 
   useEffect(() => {
@@ -372,8 +435,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       playSafely(element, 'playback.play', { evidenceId, fileId }, () => {
         if (element === lead) setPlaying(false)
       })
-      // Wave K: a file that was started and gives no sign of life is asked about.
-      watch(fileId, false)
+      // Wave K: a file that was started and receives nothing is asked about.
+      watch(fileId)
     }
   }
   const startPlayers = () => {
@@ -419,6 +482,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     // The nodes themselves: at unmount the refs are already empty, and the path must still come off.
     const assigned: HTMLVideoElement[] = []
     alive.current = new Set()
+    waitingFor.current = new Set()
     stallAsked.current = new Set()
     for (const fileId of CAMERA_FILE_IDS) {
       const element = elements[fileId]
@@ -430,7 +494,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       // Back to the same place on the new session (a no-op for a first open at 0).
       if (target !== null && target.seconds > 0) setTime(element, target.seconds)
       // Wave K (G94b-02): a file that never becomes ready says nothing by itself - it is watched from the moment it has a path.
-      watch(fileId, false)
+      watch(fileId)
     }
     if (target?.play === true) startElements()
     return () => {
@@ -648,19 +712,22 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
                   data-sealed-file={fileId}
                   data-leading={fileId === leading ? 'true' : 'false'}
                   aria-label={t('evidence.media.videoLabel', { track: t(`common.tracks.${fileId}`) })}
-                  onLoadedMetadata={() => onAlive(fileId)}
-                  onCanPlay={() => onAlive(fileId)}
-                  onPlaying={() => onAlive(fileId)}
-                  onWaiting={() => watch(fileId, true)}
-                  onStalled={() => watch(fileId, true)}
-                  onTimeUpdate={(event) => {
-                    // Wave L (G94c-01): the clock of a file that holds nothing does not move; its `timeupdate` (fired by a pause) is no sign of life.
-                    if (event.currentTarget.currentTime > 0 || event.currentTarget.readyState >= 1) onAlive(fileId)
+                  onLoadedMetadata={() => onReceived(fileId, false)}
+                  onCanPlay={() => onReceived(fileId, true)}
+                  onPlaying={() => onReceived(fileId, true)}
+                  onWaiting={() => onWaitingFor(fileId)}
+                  onStalled={() => onWaitingFor(fileId)}
+                  onProgress={() => refresh(fileId)}
+                  onTimeUpdate={() => {
+                    // Wave M (G94d-01): a `timeupdate` is read for what the element HOLDS, never for its clock (a seek moves the clock of a file that never loaded).
+                    refresh(fileId)
                     onTimeUpdate(fileId)
                   }}
                   onEnded={
                     fileId === leading
                       ? () => {
+                          // Before the pause: the files that delivered nothing, or still wait, are asked about now.
+                          askUnsettledAtEnd(fileId)
                           pause()
                           setEnded(true)
                         }

@@ -8,7 +8,11 @@
 import { CAPTURE_DISCOVERY_ALERT_TARGET, CAPTURE_DISCOVERY_EMPTY_REASON, captureDeviceUnreachableDetails } from '@dems/shared/api';
 import { CAPTURE_NOTICE_DISCOVERY_TARGET, CaptureNoticeReason, createManualClock, createSim, type SessionCreateInput, type Sim, type SimState } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
+import { createLaneSourceRig } from '../../../test/support/lane-source-rig';
 import { AudioInputErrorCode, createFakeRegistry, type AudioInputAdapter, type CameraAdapter, type FakeRegistry } from '../../capture/adapters';
+import { LIVING_PROGRESS, deviceListText, scriptedDoor, trustedInspector } from '../../capture/adapters/local/__tests__/mic-support';
+import { buildDevelopmentRegistry } from '../../capture/fence';
+import { HELPER, LOCAL, SEEDED } from '../../capture/fence/__tests__/support';
 import {
   NoticeReportCode,
   PrecheckReportCode,
@@ -67,13 +71,40 @@ function searchService(answer: (owner: PrecheckSearchOwner) => ClosedSearch | nu
   return { seam, calls };
 }
 
-function harness(options: { discovery?: PrecheckSearchSeam | null } = {}) {
+/**
+ * Fix wave M (ruling D232): the adapters a DEVELOPMENT Core really has - the fence's registry with
+ * its GENERATED test sources - behind the lane's source rig, whose switch is the text `set` writes
+ * (what `lane.sh source-rig` writes into the switch file). The helper program is a scripted door:
+ * nothing is listed, opened or started.
+ */
+function riggedDevelopmentSources() {
+  let text: string | null = null;
+  const scripted = scriptedDoor(deviceListText(['MacBook Air Microphone'], ['MacBook Air Camera']), () => ({ lives: true, reports: LIVING_PROGRESS }));
+  const said: string[] = [];
+  const rig = createLaneSourceRig({ read: () => text, generated: () => ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'], report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`) });
+  const built = buildDevelopmentRegistry({
+    devices: [...SEEDED, ...LOCAL],
+    local: { cameraId: 'CAM-03', micId: 'MIC-03' },
+    program: HELPER,
+    runDir: '/nonexistent/wave-m/run',
+    now: () => START,
+    timers: { after: () => () => {} },
+    door: scripted.door,
+    inspect: trustedInspector(),
+    sourceUnreachable: (deviceId) => rig.unreachable(deviceId),
+  });
+  const adapters = built.probeAdapters();
+  if (adapters === null) throw new Error('the development registry offers no adapters');
+  return { probe: probeOfAdapters(adapters), set: (next: string | null) => void (text = next), said, scripted };
+}
+
+function harness(options: { discovery?: PrecheckSearchSeam | null; probe?: CaptureReachabilityProbe } = {}) {
   const clock = createManualClock(START);
   const sim = createSim({ clock, storage: null, authStorage: null });
   sim.actions.signIn('budi.santoso', 'demo-2026');
   const fakes = createFakeRegistry({ runDir: '/nonexistent/row133' });
   const cameras = stoppable(fakes);
-  const probe: CaptureReachabilityProbe = probeOfAdapters({ cameras: cameras.cameras, microphones: fakes.mics });
+  const probe: CaptureReachabilityProbe = options.probe ?? probeOfAdapters({ cameras: cameras.cameras, microphones: fakes.mics });
   const reports: NoticeReport[] = [];
   const report = (entry: NoticeReport): void => void reports.push(entry);
   const notifier = createNoDeviceNotifier({ engine: () => simulatorEngine(sim), report });
@@ -371,6 +402,98 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     expect(item('MIC_PRIMARY')).toMatchObject({ status: 'PASS' });
     expect(h.state().session?.precheck.outcome).toBe('WARN');
     expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE').map((row) => [row.details['deviceId'], row.details['reason'], row.details['degraded']])).toEqual([['MIC-02', 'PERMISSION_DENIED', true]]);
+  });
+
+  // Fix wave M (final re-check 70 finding G70d-01, ruling D232). The generated test sources of a development Core dial
+  // nothing, so on a lane no pre-check could ever meet situation B. The lane's source rig makes ONE of them answer as not
+  // there through its adapter's own read; everything after that read is the product's own pre-check, unchanged.
+  it('THE SOURCE RIG on the generated sources of a development Core: OFF, the pre-check passes (the finding); a switched camera is notification B in full; released and run again, 0 notices; a second occurrence is a NEW alert and row', async () => {
+    const service = searchService(() => closed(1, { searchId: 'DSC-000009', trigger: 'PRECHECK' }));
+    const lane = riggedDevelopmentSources();
+    const h = harness({ discovery: service.seam, probe: lane.probe });
+
+    // CONTROL (the finding G70d-01): nothing is switched - every generated source reads READY / PASS, nothing is written.
+    const healthy = await h.precheck();
+    await healthy.outcome.settled;
+    expect(healthy.outcome).toMatchObject({ asked: true, unreachable: [], search: 'NOT_NEEDED' });
+    expect([healthy.item('LENS_1')?.status, healthy.item('LENS_2')?.status, h.state().session?.precheck.outcome]).toEqual(['PASS', 'PASS', 'PASS']);
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(0);
+    expect(service.calls).toEqual([]);
+    h.sim.actions.cancel();
+
+    // `lane.sh source-rig 2 unreachable CAM-02`
+    lane.set('UNREACHABLE CAM-02\n');
+    const { outcome, sessionId, item } = await h.precheck();
+    await outcome.settled;
+    expect(outcome).toMatchObject({ asked: true, unreachable: ['CAM-02'], search: 'STARTED' });
+    // The device, the check row and the outcome a client reads.
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-02')).toMatchObject({ online: false });
+    expect(item('LENS_1')).toMatchObject({ status: 'PASS' });
+    expect(item('LENS_2')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', params: { deviceId: 'CAM-02', rule: 'oneCamera' } });
+    expect(h.state().session?.precheck.outcome).toBe('WARN');
+    // Notification B: ONE alert naming the device, with the count of the ONE pre-check search, and ONE audit row.
+    expect(service.calls).toEqual([{ owner: SUPERVISOR, sessionId }]);
+    const alerts = h.notices('CAPTURE_DEVICE_UNREACHABLE');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ kind: 'SYSTEM', target: 'CAM-02', severity: 'WARNING', active: true, message: 'CAM-02 is not reachable' });
+    expect(alerts[0]?.params).toEqual({ reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', cause: 'UNREACHABLE', searchResponderCount: 1 });
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE').map((row) => row.details)).toEqual([{ deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', reason: 'UNREACHABLE', degraded: true, sessionId }]);
+    expect(h.reports).toEqual([]);
+    // Nothing was opened or started for it (the only calls of the scripted door are the product's own LISTING of the local
+    // microphone, which every input re-read makes), and the rig said once what it does.
+    expect(lane.scripted.pushes()).toEqual([]);
+    expect(lane.scripted.calls.every((call) => call.args.includes('-list_devices'))).toBe(true);
+    expect(lane.said).toEqual(['LANE_SOURCE_RIG_ON CAM-02']);
+
+    // `lane.sh source-rig 2 release`: nothing changes by itself ...
+    lane.set('OFF\n');
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true)).toHaveLength(1);
+    // ... the next run of the pre-check resolves it: 0 active notices, no row for the resolve, the check passes, the device is online.
+    const again = await h.precheck(SUPERVISOR, true);
+    await again.outcome.settled;
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE').map((alert) => [alert.active, alert.resolvedAt !== null])).toEqual([[false, true]]);
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(1);
+    expect(again.item('LENS_2')).toMatchObject({ status: 'PASS' });
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-02')).toMatchObject({ online: true });
+    expect(h.state().session?.state).toBe('ARMED');
+
+    // A second occurrence: a NEW alert and a second row.
+    h.sim.actions.cancel();
+    lane.set('UNREACHABLE CAM-02\n');
+    const second = await h.precheck();
+    await second.outcome.settled;
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE').map((alert) => alert.active)).toEqual([false, true]);
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(2);
+  });
+
+  it('THE SOURCE RIG, the other cases of the start rule: BOTH generated cameras switched block the start; a switched STANDBY microphone warns with DEVICE_NOT_FOUND and no search; the ACTIVE one blocks', async () => {
+    const service = searchService(() => closed(1, { trigger: 'PRECHECK' }));
+    const lane = riggedDevelopmentSources();
+    const h = harness({ discovery: service.seam, probe: lane.probe });
+
+    lane.set('UNREACHABLE CAM-01 CAM-02\n');
+    const both = await h.precheck();
+    await both.outcome.settled;
+    expect([both.item('LENS_1')?.status, both.item('LENS_2')?.status, h.state().session?.precheck.outcome]).toEqual(['BLOCK', 'BLOCK', 'BLOCK']);
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['CAM-01', 'CAM-02']);
+    expect(service.calls).toHaveLength(1);
+    expect(() => h.sim.actions.startRecording()).toThrow();
+
+    lane.set('UNREACHABLE MIC-02\n');
+    const standby = await h.precheck(SUPERVISOR, true);
+    await standby.outcome.settled;
+    expect(standby.outcome).toMatchObject({ unreachable: ['MIC-02'], search: 'NOT_NEEDED' });
+    expect(standby.item('MIC_STANDBY')).toMatchObject({ status: 'WARN', params: { deviceId: 'MIC-02', rule: 'noStandby' } });
+    expect(h.state().session?.precheck.outcome).toBe('WARN');
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.params)).toEqual([{ reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'MIC-02', deviceKind: 'MIC', phase: 'PRECHECK', cause: 'DEVICE_NOT_FOUND' }]);
+    expect(service.calls).toHaveLength(1);
+
+    lane.set('UNREACHABLE MIC-01\n');
+    const active = await h.precheck(SUPERVISOR, true);
+    await active.outcome.settled;
+    expect(active.item('MIC_PRIMARY')).toMatchObject({ status: 'BLOCK', value: 'UNREACHABLE', params: { deviceId: 'MIC-01', rule: 'activeMicrophone' } });
+    expect(active.item('MIC_STANDBY')).toMatchObject({ status: 'PASS' });
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['MIC-01']);
   });
 
   it('an operator WITHOUT CAPTURE_CONFIG: the search still runs once, for that operator session, and they get the notification only', async () => {

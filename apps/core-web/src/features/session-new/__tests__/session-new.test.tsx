@@ -328,6 +328,36 @@ describe('Start New Session: happy path to RECORDING (AC-62 unit form, fake time
 })
 
 describe('Start New Session: guards', () => {
+  // Fix wave M (G70d-05): the `session` slice keeps the last SEALED session; its id stood in the header of a session not yet created.
+  it('shows no session id in the header until a session exists - not the id of the last sealed session', async () => {
+    const m = mount()
+    await findPage()
+    expect(screen.queryByTestId('sn-header-session')).not.toBeInTheDocument()
+    // The last session of the Core, sealed: still in the slice.
+    const sealed = createSim({ scenario: 'finalizing', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined, clock: createManualClock(AS_OF) })
+    sims.push(sealed)
+    const last = sealed.store.getState().session!
+    await act(async () => {
+      m.sim.store.setState({ session: { ...last, id: 'SES-20261011-0048', state: 'SEALED', evidenceId: 'EV-20261011-0037' } })
+    })
+    expect(m.sim.store.getState().session?.id).toBe('SES-20261011-0048')
+    expect(screen.getByTestId('page-session-new')).toHaveAttribute('data-step', '1')
+    expect(screen.queryByTestId('sn-header-session')).not.toBeInTheDocument()
+    expect(screen.getByTestId('page-session-new')).not.toHaveTextContent('SES-20261011-0048')
+    // Control: the id appears once this wizard's own session is created.
+    await act(async () => {
+      m.sim.store.setState({ session: null })
+    })
+    fillForm({ caseNumber: 'LP/2026/1001-0105' })
+    m.startEngine()
+    await m.flush(50)
+    fireEvent.click(nextButton())
+    await m.flush(400)
+    const created = m.sim.store.getState().session?.id ?? ''
+    expect(created).not.toBe('')
+    expect(screen.getByTestId('sn-header-session')).toHaveTextContent(created)
+  })
+
   it('sends the operator to the Session Monitor when a session is already recording (R4 n5)', async () => {
     const m = mount({ scenario: 'recording' })
     expect(await screen.findByTestId('page-session-monitor', {}, { timeout: 20_000 })).toHaveAttribute('data-phase', 'RECORDING')

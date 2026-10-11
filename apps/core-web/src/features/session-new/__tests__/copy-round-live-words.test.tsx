@@ -15,7 +15,9 @@ import { useForm } from 'react-hook-form'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionCreateFormValues } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
-import type { Sim } from '@dems/shared/sim'
+import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api'
+import { HOST_CLOCK_TIME, type Sim } from '@dems/shared/sim'
+import { enWeb } from '@/i18n-web'
 import { createTestSim, withProviders } from '@/components/composed/__tests__/test-utils'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { DevicesStep } from '../devices-step'
@@ -106,6 +108,57 @@ describe('Simulated mode keeps its words (the steps without `live`, as the page 
     expect(screen.getByText(SIMULATED_HINT)).toBeInTheDocument()
     expect(screen.queryByText(LIVE_HINT)).not.toBeInTheDocument()
     expect(getMissingI18nKeys()).toEqual([])
+  })
+})
+
+// Fix wave M (G75e-02, final re-check 75): on a Core in its own capture the meters of step 2 read "MIC 1 - Interviewer" /
+// "MIC 2 - Subject" - the roles of the simulator's room - and named no primary.
+describe('G75e-02: the microphone meters of step 2 are named from the selector in force', () => {
+  const step = (sim: Sim) => render(withProviders(<DevicesStep gate={gateView(null, null, false)} acknowledged={false} onAcknowledgedChange={() => undefined} onRetry={() => undefined} live />, { sim }))
+  /** A Core in its own capture whose two microphone lines are generated sources; `primary` names the PRIMARY line. */
+  function ownCore(primary: 'MIC-01' | 'MIC-02'): Sim {
+    const sim = createTestSim()
+    sims.push(sim)
+    const state = sim.store.getState()
+    sim.store.setState({
+      security: { ...state.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE },
+      time: { ...HOST_CLOCK_TIME },
+      captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => ({ ...mic, role: mic.inputId === primary ? 'PRIMARY' : 'STANDBY' })) },
+      captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.kind === 'MIC' ? { ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } : device)) },
+    } as Partial<ReturnType<typeof sim.store.getState>>)
+    return sim
+  }
+  const W = enWeb.web
+
+  it('a Core in its own capture: the input, the source on it, its role and "Generated test source" - no dataset role', () => {
+    step(ownCore('MIC-01'))
+    const first = screen.getByTestId('sn-meter-AUDIO-01')
+    const second = screen.getByTestId('sn-meter-AUDIO-02')
+    expect(first).toHaveTextContent(`MIC 1 · MIC-01 · ${W.waveM.micLine.PRIMARY} · ${W.waveL.source.generatedMic}`)
+    expect(second).toHaveTextContent(`MIC 2 · MIC-02 · ${W.waveM.micLine.STANDBY} · ${W.waveL.source.generatedMic}`)
+    expect(first).toHaveAttribute('data-role', 'PRIMARY')
+    for (const meter of [first, second]) {
+      expect(meter).not.toHaveTextContent('Interviewer')
+      expect(meter).not.toHaveTextContent('Subject')
+    }
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('with MIC-02 made primary the two labels say which line is primary', () => {
+    step(ownCore('MIC-02'))
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(`MIC 1 · MIC-01 · ${W.waveM.micLine.STANDBY}`)
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(`MIC 2 · MIC-02 · ${W.waveM.micLine.PRIMARY}`)
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-role', 'PRIMARY')
+  })
+
+  it('CONTROL - the simulated lane keeps its track labels', () => {
+    const sim = createTestSim()
+    sims.push(sim)
+    step(sim)
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(en.common.tracks['AUDIO-01'])
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(en.common.tracks['AUDIO-02'])
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).not.toHaveAttribute('data-role')
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).not.toHaveTextContent(W.waveL.source.generatedMic)
   })
 })
 

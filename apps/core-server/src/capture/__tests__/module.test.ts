@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, SEAM_PROVIDERS } from '../../app';
-import { capturePlan, fakeLauncher, manualCaptureTimers } from '../../../test/support/capture';
+import { capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
-import { CapturePhase, CaptureRefusal, WorkerDownCode, createCaptureSupervisor } from '../index';
+import { CapturePhase, CaptureRefusal, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, writeSupervisorFaults } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const scratch: string[] = [];
@@ -103,5 +103,73 @@ describe('the capture seam', () => {
     await app.ready();
     await app.close();
     expect(log.lines().filter((line) => String(line['code']).startsWith('CAPTURE_SUPERVISOR'))).toEqual([]);
+  });
+
+  // Fix wave M (re-check 75 finding G75e-03): the lines of the supervisor's own fault, the REAL listener of this unit
+  // (`writeSupervisorFaults`) on a supervisor with a fake worker, beside the real forwarder with an engine that records its calls.
+  it('G75e-03: a worker-killed session writes ONE error line with its reason; the healthy start of the NEXT session writes no error line, names no fault of the earlier one and sends the engine nothing but the one clear of a new recording', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dems-wave-m-'));
+    scratch.push(directory);
+    const errorLogFile = join(directory, 'errors.log');
+    const log = captureLog();
+    const app = buildApp({ config: unitTestConfig({ logLevel: 'info' }), logStream: log.stream, errorLogFile });
+    await app.ready();
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher();
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
+    const states: string[] = [];
+    supervisor.on('warning', (event) => void (event.source === 'supervisor' ? states.push(`${event.state} ${event.sessionId}`) : undefined));
+    const calls: string[] = [];
+    forwardCaptureEvents({
+      capture: supervisor,
+      engine: () => ({
+        applyCaptureTelemetry: async () => {},
+        raiseCaptureWarning: async (warning) => void calls.push(`raise ${warning.code}:${String(warning.subject)}`),
+        clearCaptureWarning: async (warning) => void calls.push(`clear ${warning.code}:${String(warning.subject)}`),
+        clearCaptureFaults: async () => void calls.push('clear every capture fault'),
+      }),
+      report: () => {},
+      now: clock.now,
+    });
+    const stopWriting = writeSupervisorFaults(app, supervisor);
+    await supervisor.boot();
+
+    // The first session records, holds a durable fragment, and its worker is killed: down for good (option C, D67).
+    const FIRST = 'S-TEST-0001';
+    const SECOND = 'S-TEST-0002';
+    await supervisor.start(FIRST, capturePlan(FIRST));
+    fake.last().firstDurableFragment('CAM-01');
+    await flush();
+    fake.last().exit(null, 'SIGKILL');
+    await flush();
+    expect(supervisor.status().phase).toBe(CapturePhase.FAULTED);
+    const faultLines = (): Record<string, unknown>[] => log.lines().filter((line) => line['msg'] === 'capture fault: the capture worker cannot be kept running');
+    expect(faultLines().map((line) => [line['level'], line['code'], line['sessionId'], line['reason']])).toEqual([[50, 'CAPTURE_FAULT', FIRST, 'WORKER_KILLED']]);
+    // The session is stopped (its durable prefix is sealed as interrupted): the supervisor is free.
+    await supervisor.stop(FIRST, 'STOPPED');
+    await flush();
+    const linesBefore = log.lines().length;
+    const persistedBefore = readFileSync(errorLogFile, 'utf8');
+    calls.length = 0;
+
+    // The next session starts and records. CONTROL (the finding): the supervisor DOES say its CLEARED for the earlier session here.
+    await supervisor.start(SECOND, capturePlan(SECOND));
+    await flush();
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, sessionId: SECOND });
+    expect(states).toEqual([`ACTIVE ${FIRST}`, `CLEARED ${FIRST}`]);
+    const after = log.lines().slice(linesBefore);
+    // No error-level line at all at a healthy start, and no line that carries the earlier session as `sessionId`.
+    expect(after.filter((line) => Number(line['level']) >= 40)).toEqual([]);
+    expect(after.filter((line) => line['sessionId'] === FIRST)).toEqual([]);
+    expect(faultLines()).toHaveLength(1);
+    expect(after.filter((line) => line['code'] === 'CAPTURE_SUPERVISOR_FAULT_OVER').map((line) => [line['level'], line['faultOfSessionId'], line['reason']])).toEqual([[30, FIRST, undefined]]);
+    // The persistent error log got nothing: nothing failed.
+    expect(readFileSync(errorLogFile, 'utf8')).toBe(persistedBefore);
+    // The engine: the ONE clear a new recording always makes (D84 R-4) - the late event raises and clears nothing of its own.
+    expect(calls).toEqual(['clear every capture fault']);
+
+    stopWriting();
+    await supervisor.shutdown();
+    await app.close();
   });
 });

@@ -6,10 +6,14 @@
 // door of the microphone tests. That door starts a real process for ONE command only, `mkfifo` (the
 // pipe of a microphone must exist); the helper program is played from a script and its path
 // (`/opt/dems/helpers/ffmpeg`) is never started.
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { createLaneSourceRig } from '../../../../test/support/lane-source-rig';
+import { probeOfAdapters } from '../../../capture-notices/probe';
 import type { CaptureTimers } from '../../types';
 import { LIVING_PROGRESS, deviceListText, exitOf, scriptedDoor, temporaryRoot, trustedInspector, type ScriptedDoor } from '../../adapters/local/__tests__/mic-support';
-import { buildDevelopmentRegistry, buildProductionRegistry } from '../index';
+import { GENERATED_SOURCE_SWITCHED_UNREACHABLE, GeneratedSourceUnreachableError, buildDevelopmentRegistry, buildProductionRegistry } from '../index';
 import { HELPER, LOCAL, SEEDED } from './support';
 
 /**
@@ -136,5 +140,126 @@ describe('what the reachability probe is handed (`probeAdapters`)', () => {
 
   it('REAL_PRODUCTION of this phase registers no adapter: there is nothing to ask', () => {
     expect(buildProductionRegistry().probeAdapters()).toBeNull();
+  });
+});
+
+// Fix wave M (final re-check 70 finding G70d-01, ruling D232): a generated source dials nothing, so nothing could make it
+// "not there". The development source switch does, through the adapter's OWN read and open - driven here by the REAL lane rig
+// (`test/support/lane-source-rig.ts`) on a REAL switch file, as `lane.sh source-rig` writes it.
+describe('the development source switch: a GENERATED source answers as unreachable through its own doors', () => {
+  const switchFile = join(root.root, 'source-rig.switch');
+  const setSwitch = (text: string): void => writeFileSync(switchFile, text, { mode: 0o600 });
+  /** The registry with the lane rig as its switch; `asked` holds every device the switch was asked for. */
+  function rigged(scripted: ScriptedDoor) {
+    const asked: string[] = [];
+    const said: string[] = [];
+    let serves: readonly string[] | null = null;
+    const rig = createLaneSourceRig({
+      read: () => (existsSync(switchFile) ? readFileSync(switchFile, 'utf8') : null),
+      generated: () => serves,
+      report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`),
+    });
+    const built = buildDevelopmentRegistry({
+      devices: [...SEEDED, ...LOCAL],
+      local: { cameraId: 'CAM-03', micId: 'MIC-03' },
+      program: HELPER,
+      runDir: root.runDir,
+      now: () => 1_760_000_000_000,
+      timers: soon,
+      door: scripted.door,
+      inspect: trustedInspector(),
+      sourceUnreachable: (deviceId) => {
+        asked.push(deviceId);
+        return rig.unreachable(deviceId);
+      },
+    });
+    serves = built.registry.list().filter((device) => device.adapterKind === 'FAKE' && device.deviceClass !== 'POE').map((device) => device.id);
+    return { built, asked, said, probe: probeOfAdapters(built.probeAdapters()!) };
+  }
+  const signal = (): AbortSignal => new AbortController().signal;
+
+  it('CONTROL (the finding): with the switch OFF every generated source answers - also after the file was written and released', async () => {
+    const scripted = scriptedDoor(LIST, () => LIVING);
+    const { probe, said } = rigged(scripted);
+    setSwitch('OFF\n');
+    expect(await probe.camera('CAM-02', signal())).toEqual({ reachable: true });
+    expect((await probe.microphones()).microphones.filter((entry) => entry.adapterKind === 'FAKE').map((entry) => [entry.deviceId, entry.present])).toEqual([['MIC-01', true], ['MIC-02', true]]);
+    expect(said).toEqual([]);
+  });
+
+  it('a switched CAMERA: the product\'s probe reads it unreachable with the cause UNREACHABLE; the other camera answers; 0 processes; released, it answers again - no restart', async () => {
+    const scripted = scriptedDoor(LIST, () => LIVING);
+    const { built, probe, said } = rigged(scripted);
+    setSwitch('UNREACHABLE CAM-02\n');
+    expect(await probe.camera('CAM-02', signal())).toEqual({ reachable: false, cause: 'UNREACHABLE' });
+    expect(await probe.camera('CAM-01', signal())).toEqual({ reachable: true });
+    // The adapter's own read is what failed, by name.
+    const fake = built.probeAdapters()!.cameras.find((adapter) => adapter.devices[0]?.id === 'CAM-02')!;
+    await expect(fake.profiles('CAM-02')).rejects.toBeInstanceOf(GeneratedSourceUnreachableError);
+    await expect(fake.profiles('CAM-02')).rejects.toMatchObject({ code: GENERATED_SOURCE_SWITCHED_UNREACHABLE, deviceId: 'CAM-02' });
+    expect(scripted.calls).toEqual([]);
+    expect(said).toEqual(['LANE_SOURCE_RIG_ON CAM-02']);
+    setSwitch('OFF\n');
+    expect(await probe.camera('CAM-02', signal())).toEqual({ reachable: true });
+  });
+
+  it('a switched camera is refused at its OPEN as well: no helper is started for it, the other camera opens; a source that is OPEN ALREADY is not ended by the switch', async () => {
+    const scripted = scriptedDoor(LIST, () => LIVING);
+    const { built } = rigged(scripted);
+    setSwitch('OFF\n');
+    const running = await built.registry.resolve('CAMERA', 'CAM-01').openSource('CAM-01', to(8555), signal());
+    setSwitch('UNREACHABLE CAM-01 CAM-02\n');
+    await expect(built.registry.resolve('CAMERA', 'CAM-02').openSource('CAM-02', to(8557), signal())).rejects.toBeInstanceOf(GeneratedSourceUnreachableError);
+    // ONE push: the one that was started before the switch; it still runs.
+    expect(scripted.pushes()).toHaveLength(1);
+    await running.close();
+    setSwitch('OFF\n');
+  });
+
+  it('a switched MICROPHONE: absent in the input list with DEVICE_NOT_FOUND and refused at its open (no pipe, no helper); the other microphone is present', async () => {
+    const scripted = scriptedDoor(LIST, () => LIVING);
+    const { built, probe } = rigged(scripted);
+    setSwitch('UNREACHABLE MIC-02\n');
+    const fakes = (await probe.microphones()).microphones.filter((entry) => entry.adapterKind === 'FAKE');
+    expect(fakes.map((entry) => [entry.deviceId, entry.present, entry.errorCode])).toEqual([['MIC-01', true, null], ['MIC-02', false, 'DEVICE_NOT_FOUND']]);
+    const before = scripted.calls.length;
+    await expect(built.registry.resolve('MIC', 'MIC-02').open('MIC-02', { sessionId: 'SES-20261011-0001', signal: signal() })).rejects.toBeInstanceOf(GeneratedSourceUnreachableError);
+    expect(scripted.calls.length).toBe(before);
+    setSwitch('OFF\n');
+    expect((await probe.microphones()).microphones.find((entry) => entry.deviceId === 'MIC-02')).toMatchObject({ present: true, errorCode: null });
+  });
+
+  it('NEVER A LOCAL DEVICE: a switch that names this computer\'s camera and microphone is never even ASKED for them - their adapters answer as without the switch, and the rig says it touches neither', async () => {
+    // The short open of the local camera ends at once with status 0, and the list names both local devices.
+    const scripted = scriptedDoor(LIST, () => ({ ends: exitOf({ exitCode: 0 }) }));
+    const { built, asked, said } = rigged(scripted);
+    setSwitch('UNREACHABLE CAM-03 MIC-03 CAM-02\n');
+    const input = built.probeAdapters()!;
+    await expect(input.readCamera(input.cameras[0]!, 'CAM-03', signal())).resolves.toBeNull();
+    const probe = probeOfAdapters(input);
+    expect((await probe.microphones()).microphones.find((entry) => entry.deviceId === 'MIC-03')).toMatchObject({ present: true, adapterKind: 'LOCAL_DEVICE' });
+    expect(await probe.camera('CAM-02', signal())).toEqual({ reachable: false, cause: 'UNREACHABLE' });
+    expect(asked.filter((deviceId) => deviceId === 'CAM-03' || deviceId === 'MIC-03')).toEqual([]);
+    expect([...new Set(asked)].sort()).toEqual(['CAM-02', 'MIC-01', 'MIC-02']);
+    expect(said).toContain('LANE_SOURCE_RIG_NOT_A_FAKE_DEVICE CAM-03');
+    expect(said).toContain('LANE_SOURCE_RIG_NOT_A_FAKE_DEVICE MIC-03');
+    setSwitch('OFF\n');
+  });
+
+  it('a switch that throws switches nothing: the source answers', async () => {
+    const built = buildDevelopmentRegistry({
+      devices: [...SEEDED, ...LOCAL],
+      local: { cameraId: 'CAM-03', micId: 'MIC-03' },
+      program: HELPER,
+      runDir: root.runDir,
+      now: () => 1_760_000_000_000,
+      timers: soon,
+      door: scriptedDoor(LIST, () => LIVING).door,
+      inspect: trustedInspector(),
+      sourceUnreachable: () => {
+        throw new Error('the switch failed');
+      },
+    });
+    expect(await probeOfAdapters(built.probeAdapters()!).camera('CAM-02', signal())).toEqual({ reachable: true });
   });
 });

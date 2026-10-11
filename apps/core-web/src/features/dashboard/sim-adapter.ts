@@ -17,6 +17,7 @@
 import { SessionState } from '@dems/shared/domain'
 import { CoreMode } from '@dems/shared/live'
 import { openUnsealableNoticesOf, sealAttentionOf, sealedPackageOf, selectSystemState, useSim, type SimState } from '@dems/shared/sim'
+import { sealRetryingSessionOf } from '@/lib/seal-attention'
 
 export { selectSystemStateValue } from '@dems/shared/sim'
 
@@ -71,6 +72,8 @@ export const selectRingBlockedSession = (s: SimState): string | null => {
   const attention = sealAttentionOf(s)
   return attention !== null && attention.kind === 'BLOCKED' ? attention.sessionId : null
 }
+/** Fix wave M (G75e-06): the Core is running the seal of the open session again by itself (`sealRetryingSessionOf`). */
+export const selectRingRetryingSession = (s: SimState): string | null => sealRetryingSessionOf(s)
 export const selectOpenNoticeCount = (s: SimState): number => openUnsealableNoticesOf(s).length
 export const selectNewestNoticeSession = (s: SimState): string | null => openUnsealableNoticesOf(s)[0]?.sessionId ?? null
 

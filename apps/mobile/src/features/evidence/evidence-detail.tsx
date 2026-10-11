@@ -307,6 +307,34 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     </Animated.View>
   );
 
+  // Fix wave M (re-check 89 finding G89d-03): in the tablet's detail PANE the tab strip is NOT part of the scrolled
+  // content. The pane's facts fill the first screen, so the strip lay below the fold, behind the fixed Play /
+  // Export / More bar: nothing showed that the page has tabs, and the view tree placed the strip's hit area on
+  // the bar (a tap meant for "Hash & Integrity" opened Export). Pinned under the pane's header it is whole and
+  // tappable at every scroll position and can never share a point with the bar; choosing a tab brings the tab's
+  // body to the top of the scroll view. The phone screen keeps the strip in its content (it shows at the fold).
+  const pinnedTabs = variant === 'pane';
+  const tabStrip = (
+    <Tabs
+      value={tab}
+      onValueChange={(value) => {
+        triggerHaptic('tabSelect');
+        setTab(value as DetailTab);
+        if (pinnedTabs) scrollRef.current?.scrollTo({ y: tabsTop.current, animated: false });
+      }}
+      variant="primary"
+    >
+      <Tabs.List>
+        <Tabs.Indicator />
+        {TABS.map((key) => (
+          <Tabs.Trigger key={key} value={key} testID={`evidence-tab-${key}`}>
+            <Tabs.Label>{t(TAB_LABEL_KEYS[key])}</Tabs.Label>
+          </Tabs.Trigger>
+        ))}
+      </Tabs.List>
+    </Tabs>
+  );
+
   const tabs = (
     <Animated.View
       entering={enterRise(2, m)}
@@ -317,23 +345,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
       }}
       testID="evidence-detail-tabs-block"
     >
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          triggerHaptic('tabSelect');
-          setTab(value as DetailTab);
-        }}
-        variant="primary"
-      >
-        <Tabs.List>
-          <Tabs.Indicator />
-          {TABS.map((key) => (
-            <Tabs.Trigger key={key} value={key} testID={`evidence-tab-${key}`}>
-              <Tabs.Label>{t(TAB_LABEL_KEYS[key])}</Tabs.Label>
-            </Tabs.Trigger>
-          ))}
-        </Tabs.List>
-      </Tabs>
+      {pinnedTabs ? null : tabStrip}
       <Animated.View key={tab} entering={crossFadeIn(m)} style={styles.tabBody}>
         {tab === 'media' && live && mediaRef.status === 'loading' ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="evidence-media-checking">
@@ -519,10 +531,17 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
           </ScrollView>
         </View>
       ) : (
+        <>
+        {pinnedTabs ? (
+          <View style={styles.pinnedTabs} testID="evidence-detail-tabs-pinned">
+            {tabStrip}
+          </View>
+        ) : null}
         <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} testID="evidence-detail-scroll" onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)} onContentSizeChange={followPlayerLayout} onScrollBeginDrag={releasePlayerView}>
           {hero}
           {tabs}
         </ScrollView>
+        </>
       )}
       {exportRefused ? (
         <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-export-requires-role">
@@ -661,6 +680,7 @@ const styles = StyleSheet.create({
   mono: { fontFamily: fontFamily.native.mono },
   subjectValue: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flexShrink: 1 },
   tabsBlock: { gap: spacing[2] },
+  pinnedTabs: { paddingHorizontal: spacing[3], paddingBottom: spacing[1] },
   tabBody: { minHeight: 120 },
   actions: {
     flexDirection: 'row',

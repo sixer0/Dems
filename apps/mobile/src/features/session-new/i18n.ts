@@ -20,6 +20,8 @@ export const sessionNewEn = {
     clearForm: 'Clear form',
     profileLoaded: 'Loaded the profile of {{sessionId}}',
     noLastProfile: 'There is no earlier session to copy yet.',
+    // Fix wave M (G70d-03): the visible way out of a session that exists (CREATE, PRECHECK, ARMED).
+    cancelSession: 'Cancel session',
   },
   info: {
     scanned: 'Case number filled by the simulated scan',
@@ -81,6 +83,11 @@ export const sessionNewEn = {
     maxRetries: 'Still failing. Go back and reopen Start Session.',
   },
   actionFailed: 'That action could not be completed. Please try again.',
+  // Fix wave M (G70d-03): the session this form belonged to was cancelled on another client.
+  cancelledElsewhere: {
+    title: 'The session was cancelled',
+    body: '{{sessionId}} was cancelled on another client. Nothing was recorded. This form was cleared: enter the details again to start a new session.',
+  },
   // Backend task, plan row W67: Live mode only (the Core server is the source of the session).
   live: {
     linkDownTitle: 'Core server unreachable',

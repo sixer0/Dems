@@ -3,7 +3,7 @@
  * detail pane in a mocked expanded window (tablet landscape), plus the single-pane push on a phone.
  * Real route files, real simulator (13 dataset items, D61), real providers.
  */
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
@@ -103,6 +103,23 @@ describe('T-M15 Evidence list', () => {
     expect(screen.getByTestId('screen-evidence')).toBeTruthy();
     expect(screen.queryByTestId('screen-evidence-detail')).toBeNull();
     expect(screen.getByTestId(`evidence-row-glow-${id}`, { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  // Fix wave M (G89d-03): in the narrow list pane the duration ran on under the row's menu button ("00:00").
+  it('the row\'s chips wrap and the duration is one unshrinkable line of its own text, so it is never cut under the menu button', async () => {
+    const { StyleSheet } = jest.requireActual<typeof import('react-native')>('react-native');
+    const h = renderEvidenceApp({ window: 'tabletLandscape' });
+    await settle();
+    const id = h.idOf('0004');
+    const duration = screen.getByTestId(`evidence-row-duration-${id}`);
+    expect(String(duration.props.children)).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    expect(duration.props.numberOfLines).toBe(1);
+    expect(StyleSheet.flatten(duration.props.style)).toMatchObject({ flexShrink: 0 });
+    const chips = screen.getByTestId(`evidence-row-chips-${id}`);
+    expect(StyleSheet.flatten(chips.props.style)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
+    expect(within(chips).getByTestId(`evidence-row-duration-${id}`)).toBeTruthy();
+    // The menu button is not in the chips row: it belongs to the trailing column.
+    expect(within(chips).queryByTestId(`evidence-row-menu-${id}`)).toBeNull();
   });
 
   it('tablet landscape: a filter keeps the selection in the detail pane', async () => {

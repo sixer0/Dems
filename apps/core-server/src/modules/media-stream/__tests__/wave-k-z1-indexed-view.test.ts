@@ -276,6 +276,52 @@ describe('G94b-10: ONE stop writes ONE row, whatever the player asks again', () 
     expect(stopRows(media)).toHaveLength(1);
   });
 
+  // Fix wave M (re-check 94 finding G94d-02): a media element asks for two ranges of one file at once, and the row of a stop
+  // takes a moment to commit. The unit of the stop row is held open here, so that both requests are inside `recordServed` together.
+  it('G94d-02: two range requests that are cut at the same moment, while the first row is still being written, write ONE row; a row that could NOT be written is not remembered', async () => {
+    const media = await build();
+    media.actAs(INVESTIGATOR);
+    const session = await sessionOf(media, { fileId: 'VIDEO-01' });
+    tamper(media);
+    const pipeline = media.app.seams.get('pipeline');
+    let entered = 0;
+    let fail = false;
+    let release: () => void = () => {};
+    let held = new Promise<void>((resolve) => (release = resolve));
+    media.app.seams.replace('pipeline', {
+      ...pipeline,
+      run: async (label: string, work: never) => {
+        if (label !== 'mediaStream.served') return pipeline.run(label, work);
+        entered += 1;
+        await held;
+        if (fail) throw new Error('the unit of the stop row failed');
+        return pipeline.run(label, work);
+      },
+    } as typeof pipeline);
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 40));
+
+    // The element's own two requests (the positions of the finding: one at the fragment, one further on in it).
+    const both = Promise.all([media.fetch(session.url, `bytes=${THIRD}-`), media.fetch(session.url, `bytes=${THIRD + 100}-`)]);
+    await settle();
+    // Both were cut and neither is answered yet: the second met a stop that is already being written.
+    expect(entered).toBe(1);
+    release();
+    expect((await both).map((response) => response.statusCode)).toEqual([409, 409]);
+    expect(stopRows(media)).toHaveLength(1);
+    expect(media.log.lines().filter((line) => line['repeated'] === true && line['code'] === 'FRAGMENT_NOT_AUTHENTIC')).toHaveLength(1);
+
+    // A row that could not be written is NOT remembered: never fewer rows than stops. Another fragment, so that it is a new stop.
+    flipByte(media.built.path(cameraFilePath('VIDEO-01')), media.built.fragment('VIDEO-01', 5).byteOffset + 5);
+    fail = true;
+    held = Promise.resolve();
+    expect((await media.fetch(session.url, `bytes=${THIRD + 2 * FRAGMENT}-`)).statusCode).toBe(409);
+    expect(stopRows(media)).toHaveLength(1);
+    expect(media.errors.filter((entry) => entry['source'] === 'mediaStream.recordServed')).toHaveLength(1);
+    fail = false;
+    expect((await media.fetch(session.url, `bytes=${THIRD + 2 * FRAGMENT}-`)).statusCode).toBe(409);
+    expect(stopRows(media).map((row) => row.message)).toEqual(['Media stream stopped: VIDEO-01 fragment 3 (FRAGMENT_NOT_AUTHENTIC)', 'Media stream stopped: VIDEO-01 fragment 5 (FRAGMENT_NOT_AUTHENTIC)']);
+  });
+
   it('CONTROLS: another fragment, the other file, another sign-in session and a later playback are each their OWN row', async () => {
     const media = await build();
     media.actAs(INVESTIGATOR);

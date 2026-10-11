@@ -1,5 +1,6 @@
 import { Alert } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
+import { saidAlready } from '@/lib/seal-attention'
 import { SealRetryControl } from './seal-retry'
 import { SEAL_BLOCKED_DETAIL_SENTENCE, SEAL_RECORDING_KEPT_SENTENCE, type SealAttention } from '@dems/shared/sim'
 
@@ -47,11 +48,11 @@ export function SealAttentionNotice({ attention }: { attention: SealAttention })
       <Alert.Indicator />
       <Alert.Content>
         <Alert.Title>{t('web.sealBlocked.title')}</Alert.Title>
-        {/* The reason: the sentence the Core wrote on the failed step, then what it knows of the cause. */}
-        {attention.sentence !== attention.message ? <Alert.Description>{attention.sentence}</Alert.Description> : null}
-        {detail !== null ? <Alert.Description>{detail}</Alert.Description> : null}
-        {/* The alert's whole message: with what restores the seal and what it costs meanwhile. */}
-        <Alert.Description>{attention.message}</Alert.Description>
+        {/* The alert's whole message: the cause, what restores the seal and what it costs meanwhile. */}
+        <Alert.Description data-testid="sm-seal-attention-message">{attention.message}</Alert.Description>
+        {/* The sentence of the failed step and of the detail code, only where they add to it (wave M: the cause is said once). */}
+        {attention.sentence !== attention.message && !saidAlready(attention.message, attention.sentence) ? <Alert.Description>{attention.sentence}</Alert.Description> : null}
+        {detail !== null && !saidAlready(attention.message, detail) ? <Alert.Description>{detail}</Alert.Description> : null}
         <Alert.Description>{SEAL_RECORDING_KEPT_SENTENCE}</Alert.Description>
         <Alert.Description>{t('web.sealBlocked.action')}</Alert.Description>
         {/* Fix wave L (G75d-02): the retry the sentences name - operation 33 for the role that may send it; the others read who can. */}

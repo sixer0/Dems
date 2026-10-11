@@ -105,9 +105,28 @@ describe('pass D9, item 5: the notices unit reads the probe from the capture fen
     expect(local).toMatchObject({ present: false, adapterKind: 'LOCAL_DEVICE' });
     expect(local?.errorCode).not.toBeNull();
     expect(scripted.pushes()).toEqual([]);
-    // The probe is kept once it was read: the fence is not asked for a second adapter set.
+  });
+
+  // Fix wave M, follow-up M-S2. This file used to pin "the probe is kept once it was read: the fence
+  // is not asked for a second adapter set" - the very snapshot that made a camera adopted during a
+  // run read UNREACHABLE at its pre-check until the Core restarted. The booted path of the finding:
+  // `modules/capture-discovery/__tests__/wave-i-a2-adopt-assign.db.test.ts` (case "M-S2").
+  it('M-S2: the fence is asked at EVERY use and no answer is kept - a camera the registry admits AFTER the first read (operation 96) is read through its own adapter at the next one; CONTROL: before its admission no adapter serves it', async () => {
+    const { built, scripted, registry, offered } = await build(['MacBook Air Microphone']);
+    offered.mockImplementation(() => registry.probeAdapters());
+    const notices = captureNotices(built.app);
+    const signal = new AbortController().signal;
+    // The first use of the run. CONTROL: `CAM-04` is no device yet - nothing stands in for it.
+    expect(await notices.probe()?.camera('CAM-02', signal)).toEqual({ reachable: true });
+    expect(await notices.probe()?.camera('CAM-04', signal)).toEqual({ reachable: false, cause: 'UNREACHABLE' });
     const asked = offered.mock.calls.length;
-    await captureNotices(built.app).probe()?.microphones();
-    expect(offered.mock.calls.length).toBe(asked);
+
+    expect(registry.admit({ id: 'CAM-04', kind: 'CAMERA', adapterKind: 'FAKE', model: 'adopted test camera' })).toBe('ADMITTED');
+    expect(await notices.probe()?.camera('CAM-04', signal)).toEqual({ reachable: true });
+    expect(offered.mock.calls.length).toBe(asked + 1);
+    // The cameras that were there before read as before; nothing was opened and no helper started for any of it.
+    expect(await notices.probe()?.camera('CAM-02', signal)).toEqual({ reachable: true });
+    expect(scripted.pushes()).toEqual([]);
+    expect(registry.openSources()).toEqual([]);
   });
 });

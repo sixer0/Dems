@@ -19,6 +19,7 @@ import { palette } from '@dems/shared/tokens'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { tween, useAmbientLoop, useMotionPolicy } from '@/motion'
 import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
+import { sealRetryingSessionOf } from '@/lib/seal-attention'
 import {
   INTEGRITY_CHECK_IDS,
   ownCoreRow,
@@ -102,18 +103,25 @@ export function SecurePill() {
   // fact is `openUnsealableNoticesOf`) the pill never reads "SECURE / All systems operational" without it. The notice
   // blocks no recording, so it is an open notice, not a critical state; a real fault keeps its own words.
   const openNotices = useSim((s) => openUnsealableNoticesOf(s).length)
-  const openNotice = state === 'SECURE' && openNotices > 0
-  const Icon = openNotice ? ShieldAlert : PILL_ICON[state]
-  const title = openNotice ? t('web.waveL.notice.pillLabel') : t(`shell.securePill.${state}.title`)
-  const subtitle = openNotice ? t('web.waveL.notice.pillSub', { count: openNotices }) : pillSubtitle(t, state, cause)
+  // Fix wave M (G75e-06, ruling D234 (3)): while the Core retries a seal by itself (up to 155 s: `sealRetryingSessionOf`
+  // - a step failed and is waited for, or the retry run itself) the pill says so, never "SECURE / All systems
+  // operational". It is the state of the open session, so it comes before the open notice; a real fault keeps its words.
+  const sealRetried = useSim((s) => sealRetryingSessionOf(s) !== null)
+  const retrying = state === 'SECURE' && sealRetried
+  const openNotice = state === 'SECURE' && !retrying && openNotices > 0
+  const raised = retrying || openNotice
+  const Icon = raised ? ShieldAlert : PILL_ICON[state]
+  const title = retrying ? t('web.waveM.pill.retryLabel') : openNotice ? t('web.waveL.notice.pillLabel') : t(`shell.securePill.${state}.title`)
+  const subtitle = retrying ? t('web.waveM.pill.retrySub') : openNotice ? t('web.waveL.notice.pillSub', { count: openNotices }) : pillSubtitle(t, state, cause)
 
   return (
     <Popover isOpen={open} onOpenChange={setOpen}>
       <Button
         variant="outline"
         className="dems-secure-pill"
-        data-state={openNotice ? 'ATTENTION' : state}
+        data-state={raised ? 'ATTENTION' : state}
         data-open-notice={openNotice ? 'true' : undefined}
+        data-seal-retrying={retrying ? 'true' : undefined}
         data-testid="secure-pill"
         aria-label={`${title}. ${subtitle}`}
       >

@@ -17,6 +17,7 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { camerasNotConnectedOf, captureFailedStartOf, captureNoticeOf, type CaptureFailedStart } from '@/lib/capture-notices'
+import { isSelfCaptureCore } from '@/lib/own-capture'
 
 // ── Session phase ────────────────────────────────────────────────────────────────────────
 export type SessionPhase =
@@ -160,7 +161,32 @@ export interface BannerModel {
   failedStart: CaptureFailedStart | null
   /** D158: the Core is closing that failed start (the store passes through RECOVERY): the same words, no control. */
   failedStartClosing: boolean
+  /** Wave M (G75e-05): FAULT of an interrupted recording the Core is sealing by itself - no "Start recovery" is offered. */
+  coreSealing: boolean
 }
+
+/**
+ * Fix wave M (G75e-05; the rule the mobile driver built for G75d-08, note 155): THE CORE IS SEALING THE
+ * INTERRUPTED PREFIX BY ITSELF - known from the session payload alone.
+ *
+ * | Member of the session | What it says |
+ * |---|---|
+ * | `state: 'FAULT'`, `fault.fromState: 'RECORDING'`, `startedAt` set | a recording was interrupted |
+ * | `captureDurable: true` | the Core ran its own capture for this session and holds durable media of it (`false`: a failed start, nothing was recorded) |
+ *
+ * A Core in its own capture hands every interrupted recording with durable media to its seal: the
+ * session goes FAULT -> FINALIZING -> SEALED without an operator. For the 0.1 - 0.3 s the payload still
+ * says FAULT, "Start recovery" (which closes a session as incomplete and never seals it) would be a
+ * false offer. False for every other session: the simulator's fault, a failed start, a fault before
+ * the recording started.
+ */
+export function coreSealsInterruptedPrefix(session: { readonly state?: string | null; readonly startedAt?: number | null; readonly fault?: { readonly fromState?: string | null } | null; readonly captureDurable?: unknown } | null | undefined): boolean {
+  if (session === null || session === undefined) return false
+  return session.state === SessionState.FAULT && session.fault?.fromState === SessionState.RECORDING && session.startedAt !== null && session.startedAt !== undefined && session.captureDurable === true
+}
+
+/** The rule above on a Core in its own capture (`isSelfCaptureCore`): the simulator's session may carry the member too. */
+export const selectCoreSealsInterrupted = (s: SimState): boolean => isSelfCaptureCore(s) && coreSealsInterruptedPrefix(s.session)
 
 /**
  * Row 139 (ux §8e.2 "C, degraded"): the alert the banner escalated on, when it is a no-device notice.
@@ -218,6 +244,7 @@ export function selectBanner(s: SimState): BannerModel {
     recoveryStage: null,
     failedStart: null,
     failedStartClosing: false,
+    coreSealing: false,
   }
   switch (phase) {
     case 'IDLE':
@@ -239,7 +266,7 @@ export function selectBanner(s: SimState): BannerModel {
       }
     }
     case 'FAULT':
-      return { ...base, kind: 'FAULT', reasonKind: session?.fault?.kind ?? null, failedStart: selectFailedStart(s) }
+      return { ...base, kind: 'FAULT', reasonKind: session?.fault?.kind ?? null, failedStart: selectFailedStart(s), coreSealing: selectCoreSealsInterrupted(s) }
     case 'RECOVERY': {
       // D158: the close of a failed start is no recovery of evidence — the fault banner keeps its words.
       const closing = selectFailedStartClosing(s)

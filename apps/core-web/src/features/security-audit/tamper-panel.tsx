@@ -10,7 +10,7 @@ import { useAuditLog } from './audit-context'
 import { Feed, type FeedItem } from './feed'
 import { isTamperRow, newestMatching } from './model'
 import { Panel } from './panel'
-import { coreVerifyOutcomes } from './core-verify-rows'
+import { coreVerifyOutcomes, itemsWithoutVerifyRow } from './core-verify-rows'
 import { packageIntegrity } from './sim-adapter'
 import { SEVERITY_TONE, toneClass } from './tones'
 import { useNewestArrival, useStableRows } from './use-newest'
@@ -40,6 +40,8 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
   const verified = useMemo(() => (selfCapture ? coreVerifyOutcomes(rows) : null), [rows, selfCapture])
   const evidence = useSim((s) => s.evidence)
   const integrity = useMemo(() => packageIntegrity(evidence), [evidence])
+  // Fix wave M (G89d-02): the tile counts verify RUNS; one sentence says how many of the Core's items have none.
+  const coverage = useMemo(() => (selfCapture ? itemsWithoutVerifyRow(rows, evidence.map((item) => item.id)) : null), [rows, evidence, selfCapture])
   const recent = useStableRows(useMemo(() => newestMatching(rows, isTamperRow, FEED_SIZE), [rows]))
   const highlight = useNewestArrival(recent[0]?.id ?? null)
 
@@ -105,6 +107,11 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
           <Chip size="sm" variant="soft" color="default">
             {verified.pass + verified.fail > 0 ? t('web.waveL.tamper.fromRows') : t('web.waveL.tamper.noVerifyRowsHint')}
           </Chip>
+          {coverage !== null && coverage.total > 0 ? (
+            <p className="w-full text-caption text-foreground-2" data-testid="tamper-not-verified" data-total={coverage.total} data-not-verified={coverage.notVerified}>
+              {coverage.notVerified > 0 ? t('web.waveM.tamper.notVerified', { count: coverage.notVerified, total: coverage.total }) : t('web.waveM.tamper.allVerified', { total: coverage.total })}
+            </p>
+          ) : null}
         </div>
       ) : integrity.failures.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
