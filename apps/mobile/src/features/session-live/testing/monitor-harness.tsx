@@ -13,6 +13,7 @@
  * Import `@/navigation/testing/router-harness` FIRST in a test file (its first import prepares the
  * module mocks Expo Router and Skia need), then this module.
  */
+import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
 import { Stack, router } from 'expo-router';
 import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from 'react';
@@ -29,11 +30,34 @@ import { SHEET_EXIT_MS } from '../use-sheet-presence';
 /** Lets the providers' one async start-up update (the Core-link preference read) settle. */
 export const settle = flushAsync;
 
-/** Waits out a closing sheet's exit window (`useSheetPresence`), after which it unmounts. */
+/**
+ * Puts the runner's fake clock in place for a closing sheet (row-25 review finding F3, blueprint row
+ * 97). Call it BEFORE the press or the delta that closes the sheet: the exit timer of
+ * `useSheetPresence` is then armed on the fake clock and `waitForSheetExit` plays it without a real
+ * wait. `nextTick`, `queueMicrotask` and `setImmediate` stay real (the pattern of
+ * live-session-live-link.test.tsx): promise jobs and `act` hand-overs must not wait on an advance.
+ *
+ * First one hand-over on a real 0 ms timer: the worklets mock runs a frame-callback registration of
+ * the open sheet on such a timer, and timers of one delay fire in the order they were set, so every
+ * registration made so far has run before the clock changes. Without it the sheet's unregistration
+ * (fake clock) could run before its registration (real queue). A hand-over, not a duration.
+ */
+export async function holdSheetExitClock(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+}
+
+/**
+ * Plays a closing sheet's exit window (`useSheetPresence`) on the clock `holdSheetExitClock` put in
+ * place, after which the sheet unmounts, and gives the real timers back. No real time passes.
+ */
 export async function waitForSheetExit(): Promise<void> {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, SHEET_EXIT_MS + 50));
+    jest.advanceTimersByTime(SHEET_EXIT_MS + 50);
   });
+  jest.useRealTimers();
 }
 
 export interface MonitorHarnessOptions {

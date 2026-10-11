@@ -10,12 +10,12 @@
 import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { rateLimited, refusal } from '@dems/shared/live/testing';
 import { timelineTime } from '@/components/composed/session-timeline.math';
 import { LiveFeed } from './live-feed';
-import { waitForSheetExit } from './testing/monitor-harness';
+import { holdSheetExitClock, waitForSheetExit } from './testing/monitor-harness';
 import { renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed, type LiveMonitorBedOptions } from './testing/live-monitor-bed';
 
 let bed: LiveMonitorBed | null = null;
@@ -27,6 +27,8 @@ beforeEach(async () => {
 afterEach(() => {
   bed?.stop();
   bed = null;
+  // A test that failed between `holdSheetExitClock` and `waitForSheetExit` must not leave its clock behind.
+  jest.useRealTimers();
 });
 
 const DENIED = 'Not permitted';
@@ -168,6 +170,7 @@ describe('S2-1 Marker (operation 34) and S4-2 (the timeline tail read in `ok`)',
     expect(screen.getByTestId('monitor-marker-input').props.value).toBe(LABEL);
     expect(isBusy('monitor-marker-submit')).toBe(true);
 
+    await holdSheetExitClock();
     b.sendHeldDeltas();
     await b.flush();
     const node = b.state().session!.timeline.at(-1)!;

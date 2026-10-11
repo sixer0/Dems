@@ -4,15 +4,17 @@
 import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { liveLoopFor } from '@/components/media';
 import { motionStore, resetMotionStateForTests } from '@/motion';
 import { TIMELINE_SHEET_ROWS } from './monitor-sheets';
-import { renderMonitorApp, settle, waitForSheetExit } from './testing/monitor-harness';
+import { holdSheetExitClock, renderMonitorApp, settle, waitForSheetExit } from './testing/monitor-harness';
 
 afterEach(() => {
+  // A test that failed between `holdSheetExitClock` and `waitForSheetExit` must not leave its clock behind.
+  jest.useRealTimers();
   resetMotionStateForTests();
 });
 
@@ -98,6 +100,7 @@ describe('phone portrait (MB 4, compact)', () => {
     const before = h.sim.store.getState().session!.markerCount;
     fireEvent.press(screen.getByTestId('monitor-action-bookmark'));
     expect(screen.getByTestId('monitor-marker-popover')).toBeTruthy();
+    await holdSheetExitClock();
     fireEvent.press(screen.getByTestId('monitor-marker-submit'));
     const session = h.sim.store.getState().session!;
     expect(session.markerCount).toBe(before + 1);
@@ -119,6 +122,7 @@ describe('phone portrait (MB 4, compact)', () => {
     expect(within(sheet).getByText('Marker Added')).toBeTruthy();
     expect(within(sheet).getByText('Suspect names the vehicle')).toBeTruthy();
     expect(screen.queryByTestId('monitor-history-badge')).toBeNull();
+    await holdSheetExitClock();
     fireEvent.press(screen.getByTestId('monitor-timeline-sheet-close'));
     await waitForSheetExit();
     expect(screen.queryByTestId('monitor-timeline-sheet-list')).toBeNull();
