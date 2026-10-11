@@ -157,7 +157,7 @@ describe('the STT credential forms (task 3 row 113)', () => {
   // must lose the marker; none may throw.
   const N1_KEY = ['NAV', 'MARKER', '7f3a', 'Zq9Lm2Xw8Rt5'].join('-');
   const N1_REF = ['navstore', 'MARKER/zz9.key'].join(':');
-  const N1_FORMS: ReadonlyArray<readonly [string, string]> = [
+  const N1_FORMS: readonly (readonly [string, string])[] = [
     ['members in the other order (SECRET)', `{"revision":1,"credential":{"value":"${N1_KEY}","kind":"SECRET"}}`],
     ['members in the other order (REFERENCE)', `{"revision":1,"credential":{"ref":"${N1_REF}","kind":"REFERENCE"}}`],
     ['bare object in the other order', `sent {"value":"${N1_KEY}","kind":"SECRET"} to the Core`],
