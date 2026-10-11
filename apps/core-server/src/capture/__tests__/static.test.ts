@@ -884,7 +884,7 @@ describe('SEC35-41 (c): every INSERT into capture_devices names adapter_kind', (
     expect(columnLists(planted).filter((found) => !/\badapter_kind\b/.test(found.columns)).map((found) => found.path)).toEqual(['src/modules/x/statements.ts']);
   });
 
-  it('the statements of the server name it, and the two builders of a typed row carry it', () => {
+  it('the statements of the server name it, and the one builder of a typed row carries it', () => {
     const statements = columnLists(production);
     expect(statements.map((found) => found.path)).toEqual(['src/capture/fence/statements.ts']);
     expect(statements.filter((found) => !/\badapter_kind\b/.test(found.columns))).toEqual([]);
@@ -892,9 +892,20 @@ describe('SEC35-41 (c): every INSERT into capture_devices names adapter_kind', (
     const fence = production.find((file) => file.path === 'src/capture/fence/statements.ts')?.text ?? '';
     expect(fence).toMatch(/\$5::boolean, 'LOCAL_DEVICE' /);
     expect(fence).not.toMatch(/UPDATE|DELETE/i);
-    // The typed writers (drizzle): the mapping of the engine's rows and the seed each name the member.
-    expect(production.find((file) => file.path === 'src/db/mapping/rows.ts')?.text ?? '').toContain('adapterKind: adapterKindOf(device),');
-    expect(production.find((file) => file.path === 'src/db/seed/seed.ts')?.text ?? '').toMatch(/adapterKind: 'FAKE',/);
+    // The typed writer (drizzle) is ONE: the mapping of the engine's rows. It names the member on every
+    // registry row, and the kind it writes for a device whose slice names none (the five built-ins of a
+    // seed among them) is stated there as a literal: the development kind, never the column default.
+    const mapping = production.find((file) => file.path === 'src/db/mapping/rows.ts')?.text ?? '';
+    expect(mapping).toContain('adapterKind: adapterKindOf(device),');
+    expect(mapping).toContain("export const DEFAULT_CAPTURE_ADAPTER_KIND: CaptureAdapterKindValue = 'FAKE';");
+    expect(mapping).toContain('if (named === undefined || named === null) return DEFAULT_CAPTURE_ADAPTER_KIND;');
+    // The seed builds NO registry row of its own. Its rows are the mapping's (`toRows`), so there is no
+    // second builder in which the member could be forgotten or given another kind. (This line read a
+    // builder of the seed that nothing called: a guard on dead code guarded nothing. That the seeded
+    // built-ins are FAKE on a database is M4-MT-15 of `db/seed/__tests__/seed.db.test.ts`.)
+    const seed = production.find((file) => file.path === 'src/db/seed/seed.ts')?.text ?? '';
+    expect(seed).toContain('rows = toRows(state, ');
+    expect(seed).not.toMatch(/\badapterKind\b|\badapter_kind\b|\bCaptureDeviceRow\b/);
   });
 });
 

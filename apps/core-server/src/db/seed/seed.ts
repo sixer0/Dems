@@ -61,7 +61,7 @@ import {
 } from '../mapping';
 import * as schema from '../schema';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../schema';
-import { REGISTRY_COUNTER, type CaptureConfigRow, type CaptureDeviceRow, type NewOperatorCredentialRow, type NewSessionCaptureSourceRow, type NewSttConfigRow, type RegistryCounterRow } from '../schema';
+import { REGISTRY_COUNTER, type NewOperatorCredentialRow, type NewSessionCaptureSourceRow, type NewSttConfigRow, type RegistryCounterRow } from '../schema';
 import { DatasetOptionError, buildSeedState, resolveDatasetOptions, type DatasetOptions, type ResolvedDatasetOptions } from './dataset';
 import {
   SEED_DEMO_NOT_ASKED,
@@ -133,71 +133,6 @@ export const STT_CONFIG_SEED_DEFAULT = Object.freeze({
 /** The one `stt_config` row of a seed: the confirmed default with `updated_at` of the seed instant. */
 export function sttConfigSeedRow(at: number): NewSttConfigRow {
   return { ...STT_CONFIG_SEED_DEFAULT, updatedAt: at };
-}
-
-/**
- * The five built-in `capture_devices` rows (CS-21; dbc-3 §B.2, §E.3). The IDs, kinds, models,
- * firmware, loopback hosts and PoE port match the simulator's built-in registry; the transports
- * are the CODE values of the built-in topology (RTSP cameras, USB mics, an SNMP switch), and no
- * credential joins a seed statement (RK-12, SD-8: `capture_device_credentials` stays empty).
- * Exported so the reset routine and the tests name ONE source for the built-ins.
- */
-export function captureBuiltInDevices(): CaptureDeviceRow[] {
-  const device = (
-    id: string,
-    kind: 'CAMERA' | 'MIC' | 'POE',
-    transport: string,
-    model: string,
-    firmware: string,
-    address: string | null,
-    poePort: string | null,
-  ): CaptureDeviceRow => ({
-    id,
-    kind,
-    transport,
-    model,
-    firmware,
-    address,
-    mac: null,
-    onvifUuid: null,
-    profiles: [],
-    poePort,
-    enabled: true,
-    lastSeenAt: null,
-    // dbc-4 §N.10: the five built-ins are development sources. The seed NAMES the value; it does
-    // not lean on the column default (SEC35-41 (c): every INSERT into capture_devices names it).
-    adapterKind: 'FAKE',
-  });
-  return [
-    device('CAM-01', 'CAMERA', 'RTSP', 'Dual-lens IP camera DL-2', '3.8.14', '127.0.0.1:8554', 'POE_CAM_1'),
-    device('CAM-02', 'CAMERA', 'RTSP', 'Dual-lens IP camera DL-2', '3.8.14', '127.0.0.1:8555', 'POE_CAM_1'),
-    device('MIC-01', 'MIC', 'USB', 'USB condenser microphone UM-1', '1.04', null, null),
-    device('MIC-02', 'MIC', 'USB', 'USB condenser microphone UM-1', '1.04', null, null),
-    device('POE-SWITCH', 'POE', 'SNMP', 'PoE+ switch PS-8', '2.4.1', '127.0.0.1', null),
-  ];
-}
-
-/** The media profile the seeded selector names: the underscore form of the sim's code (see prepareSeed). */
-export const CAPTURE_SEED_PROFILE = 'H264_1080P25';
-
-/**
- * The one `capture_config` row of a seed: the built-in dual-lens selector (OD-05), MIC-01 primary
- * and MIC-02 standby (OD-09), revision 1, no editor yet (op 77 sets both), `updated_at` the seed
- * instant.
- */
-export function captureBuiltInConfig(at: number): CaptureConfigRow {
-  return {
-    singleton: true,
-    video01DeviceId: 'CAM-01',
-    video01Profile: CAPTURE_SEED_PROFILE,
-    video02DeviceId: 'CAM-02',
-    video02Profile: CAPTURE_SEED_PROFILE,
-    micPrimaryId: 'MIC-01',
-    micStandbyId: 'MIC-02',
-    revision: 1,
-    updatedBy: null,
-    updatedAt: at,
-  };
 }
 
 /**
