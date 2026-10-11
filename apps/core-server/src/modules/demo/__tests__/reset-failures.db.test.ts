@@ -483,16 +483,14 @@ describe('finding F-5: an AUDIT_TAMPER fault across a reload of the engine that 
     expect(typeof after.listed).toBe('boolean');
   });
 
-  // PENDING, for the owner of `src/engine` (finding F-5 of this row; controller decision D101).
-  // It fails today. Reproduction, exactly: boot the server on a seeded clone; run the hosted
-  // action `inject('AUDIT_TAMPER')`; `await engine.stop(); await engine.start('resync')`. Then
-  // `engine.slice('faults').active` still lists AUDIT_TAMPER and its alert is still active,
-  // while `verifyAuditChain(engine.slice('audit'))` passes: the ring was rebuilt from the stored,
-  // intact chain. `applyProcessStart` (`src/engine/rehydrate.ts`) clears the overlay's fault,
-  // and `host.ts` calls it for the mode `boot` only (`mode === 'boot' ? applyProcessStart(...) :
-  // NO_EFFECTS`). Remove `.skip` when the engine clears the fault (or puts the overlay back) in
-  // every start that rebuilds the ring.
-  it('PENDING (engine): after a start in the mode resync, the fault list and the audit view agree about AUDIT_TAMPER', async () => {
+  // Finding F-5 of this row (controller decision D101), closed by the engine (finding F73, decision
+  // D106): this test was written as PENDING and skipped, because after `inject('AUDIT_TAMPER')`,
+  // `engine.stop()` and `engine.start('resync')` the fault list and its alert still named
+  // AUDIT_TAMPER while `verifyAuditChain(engine.slice('audit'))` passed (the ring had been rebuilt
+  // from the stored, intact chain; only the mode `boot` cleared the overlay's fault). Every start
+  // that rebuilds the ring now clears it (`clearTamperOverlay` in `src/engine/host.ts`, the
+  // non-boot branch beside `applyProcessStart`), so the test runs and holds the two in agreement.
+  it('the engine alone: after a start in the mode resync, the fault list and the audit view agree about AUDIT_TAMPER (F-5, closed by F73)', async () => {
     const { after } = await engineAlone('w43xp');
     expect(consistent(after), show(after)).toBe(true);
   });
