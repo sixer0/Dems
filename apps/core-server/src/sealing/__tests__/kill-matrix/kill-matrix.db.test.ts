@@ -255,7 +255,7 @@ async function runCell(cell: MatrixCell, fixture: Fixture): Promise<Report> {
   return report;
 }
 
-describe.skipIf(ASKED.length === 0)('M7 kill matrix (row 86): each named check once', () => {
+describe.skipIf(ASKED.length === 0)('M7 kill matrix (row 86): each named check once (skipped unless DEMS_KILL_MATRIX names cells)', () => {
   const fixtures: Fixture[] = [];
   afterEach(() => killLeftCores());
   afterAll(() => {

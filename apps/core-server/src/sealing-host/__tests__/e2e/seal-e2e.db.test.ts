@@ -235,7 +235,7 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   expect(c.app.engine.state().evidence.find((entry) => entry.id === evidenceId)?.verification.status).toBe('PASS');
 }
 
-describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, sealed by the composition, verified by operation 41', () => {
+describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, sealed by the composition, verified by operation 41 (skipped unless DEMS_SEAL_E2E=1: it needs the built worker and the heavy-host lock)', () => {
   const fixtures: Fixture[] = [];
   afterAll(() => {
     for (const fixture of fixtures) fixture.remove();

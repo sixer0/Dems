@@ -416,7 +416,7 @@ async function developmentSession(mode: Mode): Promise<void> {
   }
 }
 
-describe.skipIf(!ASKED)('row 140 end to end with the BUILT worker and GENERATED sources (no device)', () => {
+describe.skipIf(!ASKED)('row 140 end to end with the BUILT worker and GENERATED sources (no device; skipped unless DEMS_DEV_SESSION_E2E=1: it needs the built worker and the heavy-host lock)', () => {
   it('a development session starts, reaches durable, stops and is sealed; four FAKE source rows; no local source is ever on; the item and its verification say DEVELOPMENT', () => developmentSession('GENERATED'), 300_000);
 
   // Found by this row, fixed by row 71c (request of 16:28:30Z): before its line no production code started
@@ -430,11 +430,11 @@ describe.skipIf(!ASKED)('row 140 end to end with the BUILT worker and GENERATED 
 });
 
 // THE SPEECH RUN (fix wave H; gate 81 condition C1). Skipped unless asked for AND the fixture and the engine files are there.
-describe.skipIf(!SPEECH_ASKED || !existsSync(`${SPEECH_FIXTURE_DIR}/dialogue.wav`) || !existsSync(STT_ENGINE.binaryPath))('wave H: a development session on the SPEECH microphone with STT enabled on cpu-local (no device)', () => {
+describe.skipIf(!SPEECH_ASKED || !existsSync(`${SPEECH_FIXTURE_DIR}/dialogue.wav`) || !existsSync(STT_ENGINE.binaryPath))('wave H: a development session on the SPEECH microphone with STT enabled on cpu-local (no device; skipped unless DEMS_DEV_SPEECH_SESSION_E2E=1 with the speech fixture and the cpu-local engine on this host)', () => {
   it('seals ASSEMBLED with segments > 0, chunks > 0 that each name the primary test microphone, and complete model provenance; verify PASS', () => developmentSession('SPEECH'), 1_800_000);
 });
 
 // THE USER'S ATTENDED RUN (M5-LOCAL-E2E-1 with the real devices). NOT RUN BY ANY AGENT: it opens this Mac's camera.
-describe.skipIf(!ATTENDED)('row 140 ATTENDED: this Mac\'s camera and microphone in slot 1, the test sources in slot 2 (the user runs this, present at the Mac)', () => {
+describe.skipIf(!ATTENDED)('row 140 ATTENDED: this Mac\'s camera and microphone in slot 1, the test sources in slot 2 (the user runs this, present at the Mac; skipped unless DEMS_LOCAL_SESSION_ATTENDED=1, which no agent sets: D163)', () => {
   it('a development session on the local devices starts, reaches durable, records 10 s, stops and is sealed with the LOCAL_DEVICE class on its camera file - or ends as "blocked: user action"', () => developmentSession('LOCAL'), 300_000);
 });
