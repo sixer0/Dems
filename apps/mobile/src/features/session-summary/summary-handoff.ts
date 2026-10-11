@@ -9,17 +9,21 @@
  * (or its own 1.2 s hand-off) replaces it; the Summary reads the mark at mount and draws its cards in
  * place, without the rise. The SEALED stamp (M-C-09) still plays: it is the Summary's own moment, not an
  * entrance. A deep link, a relaunch or the Sessions hub opens a Summary with its entrance as before.
+ *
+ * The slot itself is the shared rule `createHandoffMark` (`@/lib/handoff-mark`, review finding W93-18).
  */
-let handedOff: string | null = null;
+import { createHandoffMark } from '@/lib/handoff-mark';
+
+const handoff = createHandoffMark();
 
 export function markSummaryHandoff(sessionId: string | null | undefined): void {
-  if (sessionId) handedOff = sessionId;
+  handoff.mark(sessionId);
 }
 
 export function isSummaryHandoff(sessionId: string | null | undefined): boolean {
-  return Boolean(sessionId) && handedOff === sessionId;
+  return handoff.is(sessionId);
 }
 
 export function resetSummaryHandoffForTests(): void {
-  handedOff = null;
+  handoff.resetForTests();
 }

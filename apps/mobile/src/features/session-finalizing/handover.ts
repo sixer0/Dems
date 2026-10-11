@@ -13,17 +13,21 @@
  * motion as well, so the swap of two identical screens shows no dip either. A mark only ever matches
  * the one session that was handed over; a deep link or a relaunch into `/session/finalizing` enters
  * as before. One slot, no timer: a session goes through Finalizing once.
+ *
+ * The slot itself is the shared rule `createHandoffMark` (`@/lib/handoff-mark`, review finding W93-18).
  */
-let handedOver: string | null = null;
+import { createHandoffMark } from '@/lib/handoff-mark';
+
+const handover = createHandoffMark();
 
 export function markFinalizingHandover(sessionId: string | null): void {
-  if (sessionId !== null) handedOver = sessionId;
+  handover.mark(sessionId);
 }
 
 export function isFinalizingHandover(sessionId: string | null): boolean {
-  return sessionId !== null && handedOver === sessionId;
+  return handover.is(sessionId);
 }
 
 export function resetFinalizingHandoverForTests(): void {
-  handedOver = null;
+  handover.resetForTests();
 }

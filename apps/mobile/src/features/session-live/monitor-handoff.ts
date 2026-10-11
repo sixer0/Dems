@@ -13,17 +13,21 @@
  * the replace; the monitor reads the mark at mount and draws its regions in place, without the rise.
  * A mark only ever matches the one session that was handed off: a Home banner, a deep link or a
  * relaunch into `/session/live` enters as before. One slot, no timer: a session starts once.
+ *
+ * The slot itself is the shared rule `createHandoffMark` (`@/lib/handoff-mark`, review finding W93-18).
  */
-let handedOff: string | null = null;
+import { createHandoffMark } from '@/lib/handoff-mark';
+
+const handoff = createHandoffMark();
 
 export function markMonitorHandoff(sessionId: string | null | undefined): void {
-  if (sessionId) handedOff = sessionId;
+  handoff.mark(sessionId);
 }
 
 export function isMonitorHandoff(sessionId: string | null | undefined): boolean {
-  return Boolean(sessionId) && handedOff === sessionId;
+  return handoff.is(sessionId);
 }
 
 export function resetMonitorHandoffForTests(): void {
-  handedOff = null;
+  handoff.resetForTests();
 }
