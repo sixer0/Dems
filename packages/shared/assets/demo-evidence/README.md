@@ -72,9 +72,9 @@ node --import tsx scripts/gen-demo-evidence.ts --as-of 2026-10-01T10:00
 - Use the same `--as-of` as the step-92 media, and regenerate after any step-92 regeneration.
 - The output is deterministic: the same `--as-of` gives the same bytes.
 
-## Note on packages of schema version 2 (added by hand on 2026-10-10, task 3 row 96, register DOC-04)
+## Note on packages of schema version 2 (task 3 row 96, register DOC-04)
 
-This section is NOT written by `gen-demo-evidence.ts`: a regeneration replaces this file and removes it, until the generator's README text carries it. Everything above is unchanged and still describes this folder exactly.
+This section is written by `gen-demo-evidence.ts` (the text is in `packages/shared/scripts/demo-readme-notes.ts`, task 3 row 97, finding R96-1): a regeneration keeps it. Everything above is unchanged and still describes this folder exactly.
 
 - **This folder holds version-1 packages only**: the 14 packages listed above, with `manifest.json`, whole-file hashes of four track files and the published DEMO key. They are the evidence of Simulated mode and of the 0.1.0 packages in `release/`. The real-capture task did not change them.
 - **Version-2 demo packages are never stored here or anywhere in git.** A Core server in development capture seals two of them at seed time (`db:seed`, `db:reset`) from generated sources, with the development signing key, into its own media store (`<media store>/SESSION-<sessionId>/`). One verifies with all 15 checks passing; the other has one fragment altered after the seal and verify names exactly that fragment (`VIDEO-02`, fragment 3). Without the helper program the seed writes the dataset without them and says `NOT generated (HELPER_ABSENT)`.

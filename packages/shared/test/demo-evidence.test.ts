@@ -38,6 +38,7 @@ import { DEFAULT_SEED } from '../src/sim/constants';
 import { IDLE_COUNTERS, RECORDING_SCENARIO } from '../src/sim/dataset';
 import { DEFAULT_TAMPER_TRACK } from '../src/sim/evidence';
 import { createIdleState } from '../src/sim/initial-state';
+import { DEMO_EVIDENCE_README_NOTE, DEMO_MEDIA_README_NOTE } from '../scripts/demo-readme-notes';
 
 const PKG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = join(PKG_DIR, 'assets');
@@ -509,5 +510,31 @@ describe('demo API example payloads (for step 53)', () => {
     expect(EvidenceExportRequestSchema.safeParse(evidenceExport.request).success).toBe(true);
     expect(EvidenceExportAcceptedSchema.safeParse(evidenceExport.response).success).toBe(true);
     expect(getDemoEvidencePackage(evidenceExport.evidenceId)?.export?.exportId).toBe(evidenceExport.response.exportId);
+  });
+});
+
+// Finding R96-1 (task 3 rows 96 and 97): the two asset READMEs are generator outputs, and the notes
+// on version-2 packages were appended to them by hand. The notes are now the generators' own text
+// (`scripts/demo-readme-notes.ts`), so a regeneration keeps them. The generators need FFmpeg and
+// write the assets, so they are not run here: each committed README is held to the note, and each
+// generator's source to the line that appends it after its last own line.
+describe('the asset READMEs end with the notes their generators append (R96-1)', () => {
+  it.each([
+    ['demo-evidence', 'gen-demo-evidence.ts', 'DEMO_EVIDENCE_README_NOTE', DEMO_EVIDENCE_README_NOTE, '- The output is deterministic: the same `--as-of` gives the same bytes.\n'],
+    ['demo-media', 'gen-demo-media.ts', 'DEMO_MEDIA_README_NOTE', DEMO_MEDIA_README_NOTE, ' MiB.\n'],
+  ] as const)('%s: README = the generator\'s text up to its last line + the note; %s appends the note there', (folder, generator, name, note, lastOwnLine) => {
+    const readme = readFileSync(join(ASSETS, folder, 'README.md'), 'utf8');
+    expect(note.startsWith('\n## Note on ')).toBe(true);
+    expect(note).not.toMatch(/by hand|NOT written/);
+    expect(readme.endsWith(note)).toBe(true);
+    expect(readme.slice(0, -note.length).endsWith(lastOwnLine)).toBe(true);
+    // One heading of the note in the file: it is not there twice (once typed, once appended).
+    expect(readme.split('\n## Note on ')).toHaveLength(2);
+    const source = readFileSync(join(PKG_DIR, 'scripts', generator), 'utf8');
+    expect(source).toContain(`import { ${name} } from './demo-readme-notes';`);
+    const appended = source.split('${' + name + '}`;\n}');
+    expect(appended).toHaveLength(2);
+    // What stands before the appended note in `readmeText` is the README's last own line.
+    expect((appended[0] ?? '').replaceAll('\\`', '`').endsWith(lastOwnLine.startsWith(' MiB') ? '.toFixed(2)} MiB.\n' : lastOwnLine)).toBe(true);
   });
 });

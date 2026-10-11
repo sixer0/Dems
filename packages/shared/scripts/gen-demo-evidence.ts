@@ -112,6 +112,7 @@ import {
   type PackageItemKey,
 } from '../src/demo-data/types';
 import { buildReport, checkOrder, DEMO_PRECOMPUTED_LABEL, verifyDemoPackage } from '../src/demo-data/verify';
+import { DEMO_EVIDENCE_README_NOTE } from './demo-readme-notes';
 
 // ── Paths and constants ─────────────────────────────────────────────────────────────────────────
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -1296,7 +1297,7 @@ node --import tsx scripts/gen-demo-evidence.ts --as-of ${index.asOf}
 - \`--as-of\` (WIB; a date alone means 10:00) re-dates IDs, times, audit rows and signatures; media hashes stay the same.
 - Use the same \`--as-of\` as the step-92 media, and regenerate after any step-92 regeneration.
 - The output is deterministic: the same \`--as-of\` gives the same bytes.
-`;
+${DEMO_EVIDENCE_README_NOTE}`;
 }
 
 // ── Publishing ──────────────────────────────────────────────────────────────────────────────────

@@ -71,6 +71,7 @@ import {
   RECORDING_SCENARIO,
   sessionIdFor,
 } from '../src/sim/dataset';
+import { DEMO_MEDIA_README_NOTE } from './demo-readme-notes';
 
 // ── Paths and constants ─────────────────────────────────────────────────────────────────────────
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -1294,7 +1295,7 @@ ${rows}
 - Encoded with ffmpeg ${meta.ffmpeg} (libx264, native AAC).
 
 Media size (without this README and the index): ${(meta.totalBytes / 1_048_576).toFixed(2)} MiB.
-`;
+${DEMO_MEDIA_README_NOTE}`;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────────────────────
