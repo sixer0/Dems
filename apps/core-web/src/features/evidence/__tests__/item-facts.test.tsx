@@ -12,7 +12,7 @@ import { isCoreSealedItem, isDemoItem, mediaKindOf, mediaReasonOf, playableFiles
 import { buildEvidenceRow } from '../model'
 import { createDatasetSim, stopSims, diskAssets, findPage, installBrowserStubs, mountEvidence } from './harness'
 import { EV, evidenceWith, findDetailBody, type LiveEvidence, clearToasts, demoPackage, installJsdomStubs, openLiveEvidence } from './live-evidence-bed'
-import { asReal, contractDetail, contractDetailNames, openItem, pictures, setupPage, teardownPage, UI, type ContractItemName, H } from './wave-h-c2-bed'
+import { asReal, contractDetail, contractDetailNames, openItem, pictures, setupPage, teardownPage, UI, type ContractItemName, H } from './real-item-bed'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { createTestSim } from '@/components/composed/__tests__/test-utils'

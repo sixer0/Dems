@@ -17,9 +17,9 @@
 // | G94d-01 (wave M) | The stall watch rests on data received, never on the clock; a file that delivered nothing, or still waits, when the other file ENDS is asked about at once | "G94d-01 (wave M)" |
 //
 // The refusal is the media route's own (`apps/core-server/src/media-stream/service.ts` `mediaUnavailable`):
-// the contract names the reason in the description of operation 88 and has no exported example of
-// the route's body (a request line asks for one); `ROUTE_REFUSAL` below is that body, and the first
-// test holds the reason to the registry's text.
+// the contract names the reason in the description of operation 88 and exports the route's body as
+// `MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE` (`@dems/shared/api`); `ROUTE_REFUSAL` below is that body,
+// and the first test holds the reason to the registry's text.
 import { configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CORE_API_OPERATIONS, MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE, MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON } from '@dems/shared/api'
@@ -32,7 +32,7 @@ import { FRAGMENT_NOT_AUTHENTIC, MEDIA_PROBE_CHUNK_BYTES, MediaSession, probeMed
 import { bandSegments, probeStartByte, segmentAt } from '../sealed-playback'
 import { STALL_CHECK_MS } from '../sealed-player'
 import { EV, findDetailBody, serveMediaRoute, type LiveEvidence } from './live-evidence-bed'
-import { asReal, openItem, setupPage, teardownPage, UI } from './wave-h-c2-bed'
+import { asReal, openItem, setupPage, teardownPage, UI } from './real-item-bed'
 
 configure({ asyncUtilTimeout: 9_000 })
 vi.setConfig({ testTimeout: 60_000 })
@@ -43,13 +43,8 @@ const BOTH = { source: 'LIVE_STREAM', packageSuffix: null, fileIds: ['VIDEO-01',
 const TOKENS = { 'VIDEO-01': ['mts_WAVEKw1aaaa', 'mts_WAVEKw1bbbb'], 'VIDEO-02': ['mts_WAVEKw2aaaa', 'mts_WAVEKw2bbbb'] } as const
 /** The plaintext byte where fragment 3 of the tampered file starts (the gate's item: 2 257 425). */
 const CUT_AT = 2_048
-const ROUTE_REFUSAL = {
-  error: {
-    code: 'MEDIA_NOT_AVAILABLE',
-    message: 'A fragment of this recording failed its integrity check.',
-    details: { simCode: 'MEDIA_NOT_AVAILABLE', reason: FRAGMENT_NOT_AUTHENTIC, fileId: 'VIDEO-02', seq: 3 },
-  },
-}
+/** The route's 409 body: the contract's exported example, not a copy typed here (D225 (4)). */
+const ROUTE_REFUSAL = MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE.body
 
 type Fetch = typeof fetch
 const rangeOf = (init: RequestInit | undefined): string => String((init?.headers as Record<string, string> | undefined)?.range ?? '')

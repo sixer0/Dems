@@ -10,7 +10,7 @@ import { configure, fireEvent, screen, waitFor, within, cleanup } from '@testing
 import { en } from '@dems/shared/i18n'
 import { type EvidenceItem } from '@dems/shared/sim'
 import { EV, findDetailBody, serveMediaRoute, type LiveEvidence } from './live-evidence-bed'
-import { asReal, openItem, setupPage, teardownPage, UI, contractDetail } from './wave-h-c2-bed'
+import { asReal, openItem, setupPage, teardownPage, UI, contractDetail } from './real-item-bed'
 import { EVIDENCE_EXPORT_DESTINATION_DEFAULT_EXAMPLE } from '@dems/shared/api'
 import { readDetailFacts } from '../item-facts'
 

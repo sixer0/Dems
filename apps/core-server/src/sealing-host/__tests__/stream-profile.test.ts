@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { videoSampleEntryOf, videoStreamFormatOf, type ByteSource, walkCameraFile } from '../../capture';
 import { GENERATED_CAMERA_PROFILE } from '../../capture/fence/generated-sources';
 import { STREAM_PROFILE_DIFFERS_REASON, noteStreamProfileDiffersTransition, streamProfileDiffersSentence } from '../../engine/sealing-notice-doors';
-import { avcCBox, spsNal, INTERRUPTED, REAL_INIT_SEGMENT, SEALED_AS_MEASURED, SEED_INIT_SEGMENT, type RealTrackTable, type SpsInput } from './fix-151-init-segments';
+import { avcCBox, spsNal, INTERRUPTED, REAL_INIT_SEGMENT, SEALED_AS_MEASURED, SEED_INIT_SEGMENT, type RealTrackTable, type SpsInput } from './real-init-segments';
 import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, createSealSessionReader, streamProfileOf, type SealProfileDifference, type SealStateView, type SealVideoFormat, streamProfileDiffers } from '../session-reader';
 import { createHash } from 'node:crypto';
 

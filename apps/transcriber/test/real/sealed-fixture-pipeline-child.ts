@@ -1,5 +1,5 @@
 // The pipeline of row 77 on the REAL `cpu-local` engine, as its OWN PROCESS (not a test file), so
-// that a check can kill it: `node --import tsx row77-pipeline-child.ts <scratch> <report name>`.
+// that a check can kill it: `node --import tsx sealed-fixture-pipeline-child.ts <scratch> <report name>`.
 // It chunks the sealed two-voice fixture (a decoded file: file time, no origin) with the real
 // Silero VAD, decodes every chunk with `whisper-cli -ng` through the adapter, and keeps a journal
 // of what it started. The journal carries commands, hashes and niceness values, never a time.
@@ -18,7 +18,7 @@ import { createSileroVad, resolveSileroVadConfig } from '../../src/pipeline/sile
 import { CPU_MODEL_ID, FIXTURE_RATE, MODEL_DIR, SEALED_FIXTURE, VAD_BINARY, VAD_MODEL_ID, WHISPER_CLI } from './real-support';
 
 const [scratch, reportName] = process.argv.slice(2);
-if (scratch === undefined || reportName === undefined) throw new Error('usage: row77-pipeline-child <scratch> <report name>');
+if (scratch === undefined || reportName === undefined) throw new Error('usage: sealed-fixture-pipeline-child <scratch> <report name>');
 
 const SESSION = 'SES-20261009-0077';
 const THREADS = 8; // the rows 109/110 command on this 10-core host

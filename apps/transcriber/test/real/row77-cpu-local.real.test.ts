@@ -26,7 +26,7 @@ import { QaFlag, TRANSCRIPT_CHECKPOINT_FILE, VAD_MAX_CHUNK_MS } from '../../src/
 import { FIXTURE_END_MS, MODEL_DIR, SCRIPTED_SENTENCES, SEALED_FIXTURE, VAD_BINARY, VAD_MODEL_ID, VAD_MODEL_SHA256, WHISPER_CLI, ROW77_RUNS_DIR, createRunDir, writeEvidence } from './real-support';
 
 const WORKSPACE = resolve(import.meta.dirname, '..', '..');
-const CHILD = join(import.meta.dirname, 'row77-pipeline-child.ts');
+const CHILD = join(import.meta.dirname, 'sealed-fixture-pipeline-child.ts');
 const EVIDENCE_DIR = createRunDir('row77-cpu-local', ROW77_RUNS_DIR);
 const PARENT_NICE = getPriority();
 

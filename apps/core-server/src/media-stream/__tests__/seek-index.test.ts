@@ -1,5 +1,5 @@
 // Fix wave K Z1 (G94b-01, ruling D224 (1)): the segment index of the INDEXED VIEW, built from the
-// signed manifest's fragment table. Pure. The tables are REAL ones (`wave-k-z1-real-tables.ts`: a
+// signed manifest's fragment table. Pure. The tables are REAL ones (`real-fragment-tables.ts`: a
 // clean and an interrupted recording the product sealed); the package of ONE camera is sealed here
 // by the product pipeline. The box is read back by a reader of this file (ISO/IEC 14496-12 §8.16.3),
 // written again so that the test does not prove the builder with the builder.
@@ -12,7 +12,7 @@ import { harnessOf, recordSession, removeRecordings } from '../../sealing/__test
 import { SEEK_INDEX_MAX_REFERENCES, SeekIndexRefusal, buildSeekIndex, fileOffsetOfViewOffset, indexedViewSize, partsOfViewRange, type SeekIndexFragment } from '../seek-index';
 import { planMediaFile, readIndexedView, readPlain } from '../source';
 import { MediaTokenRefusal, issueMediaToken, readMediaToken, type MediaSessionMac } from '../token';
-import { CLEAN_TABLES, INTERRUPTED_TABLES, rowsToFragments, type RealTable } from './wave-k-z1-real-tables';
+import { CLEAN_TABLES, INTERRUPTED_TABLES, rowsToFragments, type RealTable } from './real-fragment-tables';
 
 afterAll(() => {
   removeRecordings();

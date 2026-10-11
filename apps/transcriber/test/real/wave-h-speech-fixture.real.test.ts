@@ -25,7 +25,7 @@ import { QaFlag, TRANSCRIPT_CHECKPOINT_FILE } from '../../src/pipeline/constants
 import { MODEL_DIR, SPEECH_MIC_FIXTURE, SPEECH_MIC_REFERENCE, VAD_BINARY, WAVE_H_RUNS_DIR, WHISPER_CLI, createRunDir, writeEvidence } from './real-support';
 
 const WORKSPACE = resolve(import.meta.dirname, '..', '..');
-const CHILD = join(import.meta.dirname, 'wave-h-speech-pipeline-child.ts');
+const CHILD = join(import.meta.dirname, 'speech-fixture-pipeline-child.ts');
 const PRESENT = existsSync(SPEECH_MIC_FIXTURE) && existsSync(SPEECH_MIC_REFERENCE);
 
 interface Reference {

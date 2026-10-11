@@ -36,7 +36,7 @@ import {
   REVISION_TEXT_MAX,
 } from '../transcript-model'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, toastWith, type LiveEvidence } from './live-evidence-bed'
-import { asReal, H, openItem, setupPage, teardownPage, UI } from './wave-h-c2-bed'
+import { asReal, H, openItem, setupPage, teardownPage, UI } from './real-item-bed'
 
 describe("the transcript of an item: the document, its revisions, the pane (row 92, M8-W3)", () => {
   configure({ asyncUtilTimeout: 8_000 })

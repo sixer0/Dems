@@ -29,7 +29,7 @@ import { judgeFragments, readFragmentsOf, withFragmentTwice, withoutFragment } f
 import { REPO, ROW77_RUNS_DIR, createRunDir, writeEvidence } from './real-support';
 
 const WORKSPACE = resolve(import.meta.dirname, '..', '..');
-const CHILD = join(import.meta.dirname, 'row77-pipeline-child.ts');
+const CHILD = join(import.meta.dirname, 'sealed-fixture-pipeline-child.ts');
 const HARNESS = join(REPO, 'apps/capture-worker/test/m3worker.py');
 const WORKER_BUILD = join(REPO, 'apps/capture-worker/build');
 const EVIDENCE_DIR = createRunDir('row77-df1', ROW77_RUNS_DIR);

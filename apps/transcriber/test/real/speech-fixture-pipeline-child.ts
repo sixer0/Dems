@@ -1,6 +1,6 @@
 // The transcript pipeline on the REAL `cpu-local` engine over the SPEECH FIXTURE of the development
 // speech microphone (fix wave H, driver E; ruling D198), as its own process:
-//   node --import tsx wave-h-speech-pipeline-child.ts <scratch> <report name>
+//   node --import tsx speech-fixture-pipeline-child.ts <scratch> <report name>
 // The row-77 child with another audio file: real Silero VAD chunking, `whisper-cli -ng` per chunk
 // through the adapter, checkpoints. The journal carries commands, hashes and niceness values,
 // never a time (D230). The audio is synthetic speech made on this machine; it is read, never played.
@@ -18,7 +18,7 @@ import { createSileroVad, resolveSileroVadConfig } from '../../src/pipeline/sile
 import { CPU_MODEL_ID, MODEL_DIR, SPEECH_MIC_FIXTURE, SPEECH_MIC_RATE, VAD_BINARY, VAD_MODEL_ID, WHISPER_CLI } from './real-support';
 
 const [scratch, reportName] = process.argv.slice(2);
-if (scratch === undefined || reportName === undefined) throw new Error('usage: wave-h-speech-pipeline-child <scratch> <report name>');
+if (scratch === undefined || reportName === undefined) throw new Error('usage: speech-fixture-pipeline-child <scratch> <report name>');
 
 const SESSION = 'SES-20261010-0125';
 const THREADS = 8; // the rows 109/110 command on this 10-core host

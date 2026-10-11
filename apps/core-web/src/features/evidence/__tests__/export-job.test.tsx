@@ -26,7 +26,7 @@ import { exportJobQueryKey } from '../export-job'
 import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredArchiveOnCoreOf, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
-import { scriptDetail, type Op40Extra } from './wave-h-c2-bed'
+import { scriptDetail, type Op40Extra } from './real-item-bed'
 
 configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 60_000 })
