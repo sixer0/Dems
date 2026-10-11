@@ -26,8 +26,6 @@ export const REFUSED_SUPERUSER_ROLE = 'dems_admin';
 
 /** Where `CREATE DATABASE`, `DROP DATABASE` and the advisory locks are issued (TI-7, DA-12). */
 export const MAINTENANCE_DATABASE = 'postgres';
-/** The empty template of PostgreSQL that `tpl_schema` is created from (§10.1). */
-export const EMPTY_TEMPLATE = 'template0';
 
 /** Every test database starts with this (TI-2), and the helper touches nothing else (TI-3). */
 export const TEST_DATABASE_PREFIX = 'dems_test_';
