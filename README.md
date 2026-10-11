@@ -778,6 +778,7 @@ cp packages/shared/assets/demo-media/mobile/* apps/mobile/assets/media/
 | Live console: "Core server unreachable" | The Core server is not running, or Vite was started without `DEMS_CORE_PROXY_PORT=4420` |
 | Vite stops with `DEMS_CORE_PROXY_PORT must be one of 4420, 4421, 4422, 4423` | Fix the value, or unset it for Simulated mode |
 | Live app: "Core server unreachable" | The emulator has no `tcp:4420` reverse rule: `ANDROID_SERIAL=<serial> npm run mobile:reverse` |
+| Live app: Start Session stays on "Checking your permissions…" | The app has not received its first state from the Core, so the operator's role is not known yet (the link is down or still connecting). The screen has no button and no time limit by design: it continues by itself once the role is known. To leave before that, use the system back button or the back gesture, then check the Core link (the row above) |
 | Live: the pre-check is blocked on the Core link | No paired device is connected: open the app on a paired device in Live mode (Live mode, known limits) |
 | Live: "Demo controls are disabled on this Core server." | Restart the server with `DEMS_DEMO_CONTROLS=1 npm run start:server`, or use `scripts/lane/lane.sh start main` (demo controls on, own media root). Demo controls do not exist on a Core in real capture |
 | Live: `db:seed` exits 1, "already seeded" | Use `db:reset` |
