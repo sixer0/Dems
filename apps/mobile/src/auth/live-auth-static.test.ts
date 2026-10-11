@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { buildEnResources, getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { authEn } from './i18n';
 import { AUTH_I18N_PREFIX, registerAuthResources } from './i18n-bundle';
+import { expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const production = readdirSync(FOLDER)
@@ -20,21 +21,8 @@ const TOKEN_STORE = 'live-biometric.ts';
 
 describe('the production files of the auth layer', () => {
   it('are the ones this test reads', () => {
-    expect(production).toEqual([
-      'auth-dialogs.tsx',
-      'auth-notice.tsx',
-      'auth-prefs.ts',
-      'auth-provider.tsx',
-      'auth-session.tsx',
-      'biometric.ts',
-      'i18n-bundle.ts',
-      'i18n.ts',
-      'index.ts',
-      'live-auth-model.ts',
-      'live-auth-provider.tsx',
-      'live-biometric.ts',
-      'operators.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production, FOLDER);
   });
 
   it('take the Core`s actions from `useCoreActions()`: no `useSimActions`, no `.actions` read on a source (AC-C-53)', () => {

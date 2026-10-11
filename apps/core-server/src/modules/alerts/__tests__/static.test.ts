@@ -16,6 +16,8 @@
 //
 // The patterns and their positive controls are in `../../system/__tests__/static-rules.ts`.
 import { describe, expect, it } from 'vitest';
+import { MODULE_RULES, itHoldsNone } from '../../../../test/static/module-rules';
+import { SCAN_COVERS, scanCoverage } from '../../../../test/static/scan';
 import * as rules from '../../system/__tests__/static-rules';
 
 const FOLDER = 'src/modules/alerts/';
@@ -25,7 +27,7 @@ const acknowledgement = rules.codeOf(code, 'acknowledge.ts');
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual(['src/modules/alerts/acknowledge.ts', 'src/modules/alerts/index.ts']);
+    expect(scanCoverage(all, [FOLDER])).toEqual(SCAN_COVERS);
     expect(code.every((file) => file.text.length > 100)).toBe(true);
   });
 
@@ -35,18 +37,9 @@ describe('the scan itself', () => {
 });
 
 describe('rule 1: no clock, no timer, nothing of the host', () => {
-  it('no file reads the system time, sets a timer or reads a clock at all', () => {
-    expect(rules.places(code, rules.SYSTEM_TIME)).toEqual([]);
-    expect(rules.places(code, rules.TIMER)).toEqual([]);
-    expect(rules.places(code, rules.ANY_CLOCK)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noTimeAtAll, rules, code);
 
-  it('no file imports a module of the runtime, names the process or the network, uses the console or a random source', () => {
-    expect(rules.places(code, rules.HOST_MODULE)).toEqual([]);
-    expect(rules.places(code, rules.HOST_STATE)).toEqual([]);
-    expect(rules.places(code, rules.CONSOLE)).toEqual([]);
-    expect(rules.places(code, rules.RANDOM)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noHostConsoleRandom, rules, code);
 
   it('the imports of the folder are the contract, a type of the shared simulator, Fastify\'s types, zod, the guard\'s route helper, the type of a principal and its own file', () => {
     expect(rules.importSources(code)).toEqual(['../../plugins/authenticate', '../../plugins/permission-guard', './acknowledge', '@dems/shared/api', '@dems/shared/sim', 'fastify', 'fastify-type-provider-zod', 'zod']);
@@ -58,9 +51,7 @@ describe('rule 1: no clock, no timer, nothing of the host', () => {
 });
 
 describe('rule 2 (M3): who may call is stage 6, only', () => {
-  it('no file reads a role, a permission, a session or a device, or names a caller that is no operator', () => {
-    expect(rules.places(code, rules.ACCESS_CHECK)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noAccessCheck, rules, code);
 
   it('no file writes a denial row, builds a refusal, takes a place in the denial budget, adds a hook or catches an error', () => {
     expect(rules.places(code, rules.DENIAL)).toEqual([]);
@@ -120,10 +111,7 @@ describe('rule 3 (M4, M5): one state, through the seam', () => {
     expect(index).not.toMatch(/_HEADER_NAME\b|\.header\s*\(/);
   });
 
-  it('no slot of the scaffold is provided or replaced, and no test file is imported', () => {
-    expect(rules.places(code, rules.SLOT_REPLACED)).toEqual([]);
-    expect(rules.places(code, rules.TEST_IMPORT)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noSlotReplaced, rules, code);
 });
 
 describe('rule 4 (SR-82, M14): the one log line', () => {
@@ -147,9 +135,7 @@ describe('rule 4 (SR-82, M14): the one log line', () => {
     expect(rules.captures([{ path: 'acknowledge.ts', text: acknowledgement }], /\balert\s*\.\s*([a-zA-Z]+)/g)).toEqual(['id', 'acknowledged']);
   });
 
-  it('no object of the folder holds a member under which an error would be logged (M14)', () => {
-    expect(rules.places(code, rules.ERROR_MEMBER)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noErrorMember, rules, code);
 });
 
 describe('rule 5 (M2): routes come from the registry', () => {

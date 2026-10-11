@@ -1,6 +1,8 @@
 // Pure parts of the navigation shell (step 70): deep-link parsing (zod), the pending href, the
 // §3.7 resync table, the §3.3 post-sign-in order, the destination rules and the i18n registry.
 import { beforeEach, describe, expect, it } from '@jest/globals';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { SessionState } from '@dems/shared/domain';
 import { FEATURE_RESOURCES } from '@/i18n/features';
 import {
@@ -194,9 +196,20 @@ describe('destinations (04 §2.3)', () => {
 });
 
 describe('registries', () => {
+  // A RULE read from the folders, not a list of names (test-suite consolidation, D233 / D238: the three
+  // extras named here turned red in the pre-commit run of wave K when a folder gained a tree). A folder
+  // registers a tree exactly when it holds an `i18n.ts`; `navigation` is the shell's own copy.
   it('registers one i18n tree per feature folder with a screen, plus the shell copy', () => {
+    const FEATURES = join(__dirname, '..', '..', 'features');
+    const withTree = readdirSync(FEATURES, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(join(FEATURES, entry.name, 'i18n.ts')))
+      .map((entry) => entry.name);
+    expect(existsSync(join(__dirname, '..', 'i18n.ts'))).toBe(true);
+    expect(Object.keys(FEATURE_RESOURCES).sort()).toEqual([...withTree, 'navigation'].sort());
+    // Every feature folder with a screen is among them (`home` is the stack proof of step 70: no copy of its own).
     const folders = [...new Set(ROUTE_SCREENS.map((r) => r.folder).filter((f) => f !== 'home'))].sort();
-    expect(Object.keys(FEATURE_RESOURCES).sort()).toEqual([...folders, 'capture-selector', 'navigation', 'transcription'].sort());
+    expect(folders.length).toBeGreaterThan(0);
+    expect(folders.filter((folder) => !(folder in FEATURE_RESOURCES))).toEqual([]);
   });
 
   it('reads only its own field from the shared prefs key', () => {

@@ -46,7 +46,7 @@
 // package and no concern of this test.
 import { describe, expect, it } from 'vitest';
 import { deepImports, isListed, relativeImports, testCodeImports, topFoldersOf, unitCycles, unitEdges, unitOf, valueImports } from './imports';
-import { WORKSPACE, codeOnly, isProductionSource, isTestFile, readTree, type SourceFile } from './scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, isTestFile, readTree, scanCoverage, type SourceFile } from './scan';
 
 /**
  * The units that are imported only through their index. An entry that ends with `/` closes every
@@ -249,6 +249,8 @@ describe('the scan itself', () => {
       expect(paths.some((path) => path.startsWith(folder)), folder).toBe(true);
     }
     expect(paths.some((path) => isTestFile(path))).toBe(false);
+    // Rule R1: the scan equals an independent walk of `src/` and is not empty.
+    expect(scanCoverage(paths, ['src/'])).toEqual(SCAN_COVERS);
     expect(imports.length).toBeGreaterThan(300);
     for (const folder of folders) expect(topFolders.has(folder), folder).toBe(true);
   });

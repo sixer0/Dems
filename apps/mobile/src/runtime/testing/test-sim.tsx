@@ -10,8 +10,9 @@
  * heartbeat socket and fixed safe-area metrics. With an injected, already-hydrated simulator the
  * runtime's hydration gate is open from the first render.
  */
+import { QueryClient } from '@tanstack/react-query';
 import { act, render, type RenderOptions } from '@testing-library/react-native';
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import type { Metrics } from 'react-native-safe-area-context';
 import type { SocketLike } from '@dems/shared/realtime';
 import {
@@ -21,6 +22,7 @@ import {
   type CreateSimOptions,
   type Sim,
   type SimScheduler,
+  type TimerAdapter,
   type VisibilityAdapter,
 } from '@dems/shared/sim';
 import { AppProviders } from '@/providers';
@@ -32,6 +34,19 @@ export const TEST_METRICS: Metrics = {
   frame: { x: 0, y: 0, width: 411, height: 923 },
   insets: { top: 24, right: 0, bottom: 16, left: 0 },
 };
+
+/**
+ * The query client of a test tree that brings none of its own.
+ *
+ * The app's client (`createAppQueryClient`) keeps an unobserved query for five minutes and removes
+ * it on a timer (`gcTime`, TanStack Query's default). In a test that timer outlives the tree: Jest
+ * reported it as an open handle (six from one file in `test/12_precommit_wave_m.md`) and the worker
+ * "failed to exit gracefully". No test asserts a removal by that timer, so a test client never sets
+ * one. Nothing else differs from the app's client: retries and stale times are the defaults.
+ */
+export function createTestQueryClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY }, mutations: { gcTime: Number.POSITIVE_INFINITY } } });
+}
 
 /** A scheduler that hands the tick to the test instead of `setInterval`. */
 export function createManualScheduler() {
@@ -63,6 +78,7 @@ export function createTestSim(options: Omit<CreateSimOptions, 'clock' | 'schedul
     storage: null,
     authStorage: null,
     visibility: ALWAYS_VISIBLE_FOR_TESTS,
+    timers: TEST_SIM_TIMERS,
     ...rest,
     clock,
     scheduler: scheduler.scheduler,
@@ -80,6 +96,24 @@ export function createTestSim(options: Omit<CreateSimOptions, 'clock' | 'schedul
 }
 
 const ALWAYS_VISIBLE_FOR_TESTS: VisibilityAdapter = { isHidden: () => false, subscribe: () => () => undefined };
+
+/**
+ * The simulator's one-shot timers (the store's snapshot write, throttled to 1 s) for a test simulator:
+ * the global timers, looked up at call time as the default ones are (so Jest's fake timers apply), but
+ * a pending one does not keep the process alive. With the default timers every test simulator that
+ * changed its store left a referenced 1 s timer behind; a Jest worker whose last file was one of the
+ * 54 such files did not exit within Jest's half second and was "force exited" - the line every whole
+ * run of the mobile suite printed (measured in `test/14_consolidation_mobile.md`). The timer still
+ * fires while the process lives, so nothing a test can observe changes.
+ */
+const TEST_SIM_TIMERS: TimerAdapter = {
+  setTimeout: (callback, ms) => {
+    const handle = globalThis.setTimeout(callback, ms);
+    (handle as { unref?: () => void }).unref?.();
+    return handle;
+  },
+  clearTimeout: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
+};
 
 /** A heartbeat socket the test drives (`open`, `beat`, `drop`). */
 export class FakeHeartbeatSocket implements SocketLike {
@@ -120,9 +154,12 @@ export interface RenderWithRuntimeOptions extends Omit<RenderOptions, 'wrapper'>
 }
 
 export function RuntimeTestProviders({ sim, sockets, onHeartbeatResync, children }: { sim: Sim; sockets?: FakeHeartbeatSocket[]; onHeartbeatResync?: () => void; children: ReactNode }) {
+  // One client per mounted tree (as `AppProviders` keeps its own), without the removal timer.
+  const [queryClient] = useState(createTestQueryClient);
   return (
     <AppProviders
       sim={sim}
+      queryClient={queryClient}
       safeAreaMetrics={TEST_METRICS}
       heartbeatSocketFactory={() => {
         const socket = new FakeHeartbeatSocket();

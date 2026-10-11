@@ -21,7 +21,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 
 const FOLDER = 'src/modules/sessions/';
 
@@ -55,17 +55,8 @@ const LOG_CALL = /\blog\s*\.\s*(?:trace|debug|info|warn|error|fatal)\s*\(\s*(\{[
 const IMPORT_FROM = /from\s+'([^']+)'/g;
 
 describe('the scan itself', () => {
-  it('reads the eight production sources of the module', () => {
-    expect(own.map((file) => file.path)).toEqual([
-      'src/modules/sessions/audio-intervals.ts',
-      'src/modules/sessions/current.ts',
-      'src/modules/sessions/history.ts',
-      'src/modules/sessions/index.ts',
-      'src/modules/sessions/operations.ts',
-      'src/modules/sessions/refusals.ts',
-      'src/modules/sessions/routes.ts',
-      'src/modules/sessions/text-body.ts',
-    ]);
+  it('reads the production sources of the module', () => {
+    expect(scanCoverage(own, [FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CPU_LOCAL, KEY_LOADER, MEDIA_TIME, OMLX_HTTP, PHYSICAL_CORES, REQUIRED_IDS, RULE_IDS, isTestFile, scanSources, type SourceFile } from './static-rules';
+import { CONFIG, CPU_LOCAL, KEY_LOADER, LOG, MEDIA_TIME, OMLX_HTTP, PHYSICAL_CORES, REQUIRED_IDS, RULE_IDS, RUNNER, isTestFile, scanSources, type SourceFile } from './static-rules';
 
 const WORKSPACE = resolve(import.meta.dirname, '..', '..');
 
@@ -57,35 +57,17 @@ describe('static rule: the real tree', () => {
   const tree = readTree();
   const production = tree.filter((file) => !isTestFile(file.path)).map((file) => file.path);
 
-  it('scans the production files of the workspace: the list is pinned, so an empty scan cannot pass', () => {
-    expect(production).toEqual([
-      'src/adapter.ts',
-      'src/backends/cpu-local.ts',
-      'src/backends/omlx-http.ts',
-      'src/backends/omlx-server.ts',
-      'src/config.ts',
-      'src/cpu-priority.ts',
-      'src/fixtures/tts-fixture-provider.ts',
-      'src/host/physical-cores.ts',
-      'src/index.ts',
-      'src/key-loader.ts',
-      'src/log.ts',
-      'src/pipeline/assembly.ts',
-      'src/pipeline/audio-source.ts',
-      'src/pipeline/checkpoint.ts',
-      'src/pipeline/chunker.ts',
-      'src/pipeline/clamp.ts',
-      'src/pipeline/constants.ts',
-      'src/pipeline/diarization.ts',
-      'src/pipeline/document.ts',
-      'src/pipeline/media-time.ts',
-      'src/pipeline/mirror.ts',
-      'src/pipeline/runner.ts',
-      'src/pipeline/silero-vad.ts',
-      'src/probe.ts',
-      'src/types.ts',
-      'src/wav.ts',
-    ]);
+  it('scans every production file of the workspace: an independent listing of src finds no file the scan missed, and the files the path rules name are among them (rule R1)', () => {
+    // Independent of `walk` and of `isTestFile`: the recursive listing of the platform and its own two tests of a name.
+    const listed = readdirSync(join(WORKSPACE, 'src'), { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts'))
+      .map((entry) => relative(WORKSPACE, join(entry.parentPath, entry.name)).split(sep).join('/'))
+      .filter((path) => !path.split('/').includes('__tests__'))
+      .sort();
+    expect(listed.length).toBeGreaterThan(0);
+    expect([...production].sort()).toEqual(listed);
+    // A rule bound to a path proves nothing once that file is gone or renamed: each one is in the scan.
+    for (const path of [CONFIG, CPU_LOCAL, KEY_LOADER, LOG, MEDIA_TIME, OMLX_HTTP, PHYSICAL_CORES, RUNNER]) expect(production, path).toContain(path);
     expect(tree.filter((file) => isTestFile(file.path)).length).toBeGreaterThanOrEqual(12);
   });
 

@@ -19,6 +19,9 @@ import {
   type CaptureDiscoverySearch,
   type CaptureDiscoveryStateBody,
   type CaptureInputScan,
+  CAPTURE_ENDPOINT_REF_PATTERN,
+  captureCandidateAdoptedDetails,
+  captureConnectionTestedDetails,
 } from '../src/api';
 import { DEMO_OPERATOR_PASSWORD, createManualClock, createSim, nextCaptureCameraId, setSimConnectionTestOutcome, type AuditRow } from '../src/sim';
 
@@ -420,5 +423,39 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       expect(() => h.sim.actions.registerCaptureDevice(device), JSON.stringify(device)).toThrow(/Illegal session transition/);
     }
     expect(h.state()).toBe(before);
+  });
+});
+
+// Integration pass D1b (decision D133), seam 8: the audit `endpointRef` of a connection test and an
+// adoption is `urn:uuid:<UUID>` or absent (D134).
+describe('an audit row carries an endpoint reference only in the form urn:uuid:<UUID> (pass D1b, seam 8)', () => {
+  const URN = 'urn:uuid:4f1c2b7a-9d3e-4a56-8b0c-1e2f3a4b5c6d';
+  const tested = (endpointRef: string | null, sourceClass: 'PRODUCTION' | 'DEVELOPMENT' = 'PRODUCTION') =>
+    captureConnectionTestedDetails({ candidateId: 'CND-000001', searchId: 'SRCH-000001', outcome: 'REACHABLE', authenticated: true, adapter: 'ONVIF_RTSP', sourceClass, operationId: 'testCaptureCandidateConnection', host: '192.0.2.7', endpointRef });
+  const adopted = (endpointRef: string | null) =>
+    captureCandidateAdoptedDetails({ deviceId: 'CAM-03', candidateId: 'CND-000001', searchId: 'SRCH-000001', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', credentialSet: true, host: '192.0.2.7', endpointRef });
+
+  it('a valid URN stays, in both rows and in either letter case', () => {
+    expect(tested(URN)).toMatchObject({ host: '192.0.2.7', endpointRef: URN });
+    expect(adopted(URN)).toMatchObject({ host: '192.0.2.7', endpointRef: URN });
+    expect(tested(URN.toUpperCase().replace('URN:UUID:', 'urn:uuid:'))['endpointRef']).toBe(URN.toUpperCase().replace('URN:UUID:', 'urn:uuid:'));
+    expect(CAPTURE_ENDPOINT_REF_PATTERN.test(URN)).toBe(true);
+  });
+
+  it('free text, a uuid: without urn:, a bare UUID and a padded URN are left out; the host stays', () => {
+    const refused = ['front door camera', 'uuid:4f1c2b7a-9d3e-4a56-8b0c-1e2f3a4b5c6d', '4f1c2b7a-9d3e-4a56-8b0c-1e2f3a4b5c6d', `${URN} `, `${URN}\n`, `${URN}/admin:secret`, 'urn:uuid:not-a-uuid', 'http://192.0.2.7/onvif/device_service', ''];
+    for (const value of refused) {
+      for (const details of [tested(value), adopted(value)]) {
+        expect('endpointRef' in details, JSON.stringify(value)).toBe(false);
+        expect(details['host'], JSON.stringify(value)).toBe('192.0.2.7');
+        expect(JSON.stringify(details)).not.toContain('secret');
+      }
+    }
+    expect('endpointRef' in tested(null)).toBe(false);
+  });
+
+  it('CONTROL: a candidate that is not PRODUCTION carries neither member, valid URN or not (D86 C-3)', () => {
+    const details = tested(URN, 'DEVELOPMENT');
+    expect('endpointRef' in details || 'host' in details).toBe(false);
   });
 });

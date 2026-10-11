@@ -20,6 +20,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { CORE_API_EXAMPLES, type RoleMatrix } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, OPERATORS, type Sim } from '@dems/shared/sim'
@@ -275,10 +276,8 @@ describe('static rules of the folder (CLG (c); rules 1 to 4 and 9 of 08 §8; 08a
   const file = (name: string) => code(production.find((entry) => entry.name === name)?.text ?? '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((entry) => entry.name)).toEqual(
-      expect.arrayContaining(['chain-panel.tsx', 'chain-core-lines.tsx', 'export-audit-dialog.tsx', 'export-file.ts', 'rbac-panel.tsx', 'sim-adapter.ts', 'log.ts']),
-    )
-    expect(production.length).toBeGreaterThanOrEqual(24)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((entry) => entry.name), listed: import.meta.glob('../features/security-audit/**/*.{ts,tsx}'), root: '../features/security-audit' })
   })
 
   it('AC-C-53: no file imports `useSimActions` or reads `.actions` of a `Sim`; no `SimContext`, no `live.source`', () => {

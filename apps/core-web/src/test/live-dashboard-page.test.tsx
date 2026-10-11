@@ -18,6 +18,7 @@ import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { en } from '@dems/shared/i18n'
 import { CoreMode } from '@dems/shared/live'
 import type { FakeCommandOptions } from '@dems/shared/live/testing'
@@ -197,9 +198,8 @@ describe('static rules of the folder (CLG (c); AC-C-53; MD-6)', () => {
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(expect.arrayContaining(['devices-panel.tsx', 'index.tsx', 'sim-adapter.ts', 'report.ts', 'active-session-panel.tsx']))
-    expect(production.length).toBeGreaterThanOrEqual(19)
-    expect(production.map((file) => file.name)).toContain('panel-boundary.tsx')
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/dashboard/**/*.{ts,tsx}'), root: '../features/dashboard' })
   })
 
   it('AC-C-53: no file imports `useSimActions` or reads `.actions` of a `Sim`; the device command comes from `useCoreActions()` and runs inside `settle`', () => {

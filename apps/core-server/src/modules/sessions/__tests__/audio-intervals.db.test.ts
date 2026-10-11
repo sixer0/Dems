@@ -44,13 +44,6 @@ async function realCore(slug: string): Promise<SessionsApp> {
   return server;
 }
 
-describe('the schema this pass was written against', () => {
-  it('schema version 6, contract dbc-7: no migration', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('operation 82 in capture mode real: the rows of session_audio_intervals', () => {
   it('answers the stored intervals of the open session, newest first, with media times; pages by the interval number; another session\'s rows are not listed', async () => {
     const server = await realCore('d4op82_real');

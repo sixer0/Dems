@@ -41,7 +41,7 @@ const textOf = (testID: string): string => {
 };
 
 function renderWithSource(source: CoreLinkSource) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } } });
   return render(
     <HeroUINativeProvider>
       <QueryClientProvider client={queryClient}>

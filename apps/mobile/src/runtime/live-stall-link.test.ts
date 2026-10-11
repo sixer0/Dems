@@ -6,7 +6,7 @@
 // fell due during a 3.5 s stall runs AFTER the heartbeats that arrived meanwhile only if the app wrapped
 // its timers (`stall-tolerant-timers.ts`). Without the wrapper the link reads STALE, then ONLINE again,
 // which is the device's "Core link lost", "Resynced" (4 of 4 injected stalls on dems2_phone).
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { REALTIME_SERVER_EXAMPLES } from '@dems/shared/api';
 import { resetCoreLinkPrefsForTests } from './core-link';
@@ -15,7 +15,24 @@ import { FakeSocket, JsThread } from './testing/js-thread';
 
 let mobile: MobileLive | null = null;
 
+// The typed client bounds every call with a budget timer on the global `setTimeout` (8 s), and the
+// calls of this file are never answered (`silentFetch`), so each left a referenced 8 s timer behind
+// the file: a Jest worker that ended on it was "force exited" (test/14_consolidation_mobile.md). The
+// Live source's own timers are the JS-thread model's; the global ones here are only those budgets.
+// They still run - they just do not keep the process alive.
+let budgetTimers: { mockRestore(): void } | null = null;
+beforeEach(() => {
+  const realSetTimeout = globalThis.setTimeout;
+  budgetTimers = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((...args: Parameters<typeof setTimeout>) => {
+    const handle = realSetTimeout(...args);
+    handle.unref();
+    return handle;
+  }) as typeof setTimeout);
+});
+
 afterEach(async () => {
+  budgetTimers?.mockRestore();
+  budgetTimers = null;
   mobile?.stop();
   mobile = null;
   resetCoreLinkPrefsForTests();

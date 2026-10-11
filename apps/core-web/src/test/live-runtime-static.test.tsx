@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { expectScanCovers } from './static-scan'
 
 // `import.meta.dirname` (Node, through Vitest): jsdom replaces the global `URL`, so no file URL is built here.
 const SRC = resolve(import.meta.dirname, '..')
@@ -67,8 +68,8 @@ const usesOf = (specifier: string | RegExp, kinds: readonly ImportUse['kind'][])
 
 describe('the scan itself', () => {
   it('reads the console\'s sources and tells production files from tests', () => {
-    expect(PRODUCTION.length).toBeGreaterThan(150)
-    expect(PRODUCTION.map(({ file }) => file)).toEqual(expect.arrayContaining(['main.tsx', 'router.tsx', 'routes/__root.tsx', 'runtime/boot.ts', 'runtime/live-start.ts', 'lib/core-errors.ts']))
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: PRODUCTION.map(({ file }) => file), listed: import.meta.glob('../**/*.{ts,tsx}'), root: '..', production: (name) => !name.endsWith('.d.ts') && !isTestFile(name) })
     expect(PRODUCTION.filter(({ file }) => file.startsWith('runtime/testing/') || file.includes('.test.'))).toEqual([])
     expect(importsOf("import type { A } from 'x'\nimport { type B, c } from 'y'\nconst z = await import('./z')\ntype T = typeof import('./t')\n// import 'commented'")).toEqual([
       { specifier: 'x', kind: 'type' },

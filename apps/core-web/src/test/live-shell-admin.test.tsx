@@ -23,6 +23,7 @@ import { toast } from '@heroui/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { pickReplicatedState, type AuthSessionInfo, type HealthResponse, type ReplicatedState } from '@dems/shared/api'
 import { en, SHARED_NAMESPACES } from '@dems/shared/i18n'
 import { CoreMode } from '@dems/shared/live'
@@ -655,7 +656,9 @@ describe('the shell\'s call sites (CLG (c); AC-C-53; brief list row 18)', () => 
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
   it('reads the shell\'s production files', () => {
-    expect(production.map(({ name }) => name)).toEqual(expect.arrayContaining(['app-shell.tsx', 'user-menu.tsx', 'live-notices.tsx', 'mode-indicator.tsx', 'sidebar.tsx']))
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    // The shell folder is flat: the block reads its own files, no sub-folder.
+    expectScanCovers({ scanned: production.map(({ name }) => name), listed: import.meta.glob('../components/shell/*.{ts,tsx}'), root: '../components/shell' })
   })
 
   it('no file takes the actions from `useSimActions` or reads `.actions` from a `Sim`', () => {

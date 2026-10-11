@@ -12,7 +12,7 @@
 // | The v1 view is unchanged | "IntegrityTab › a v1 run" |
 //
 // The answers are RECORDED from the real verifier of row 85 (`fixtures/verify-v2-recorded.ts`).
-// The Live path (operation 41 through the Live source) is `src/test/live-row87-verify-v2.test.tsx`.
+// The Live path (operation 41 through the Live source) is `src/test/live-evidence-verify.test.tsx` (the block of row 87).
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EvidenceVerifyResultSchema, VERIFY_REPORT_SKIP_REASONS, VERIFY_REPORT_SOURCE_CLASSES } from '@dems/shared/api'

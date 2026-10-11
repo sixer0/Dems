@@ -108,19 +108,27 @@ describe('one helper in the app (row M1 follow-up)', () => {
     for (const [what, pattern] of Object.entries(copies)) expect([what, matching(pattern)]).toEqual([what, []]);
   });
 
+  // A RULE over the directory walk, not a list of the callers (test-suite consolidation, D233 / D238: the
+  // list of five files turned red in the pre-commit run of wave I when a sixth screen took the helper,
+  // with nothing wrong). Every production file under `features/` whose CODE names a helper is a caller,
+  // whichever folder it is in, and each takes it from the barrel.
   it('every caller takes the helpers from the barrel', () => {
-    const users = matching(/\b(?:busyState|PendingSpinner)\b/);
-    expect(users).toEqual([
-      'devices/busy-state.ts',
-      'devices/device-command-dialog.tsx',
-      'devices/device-detail.tsx',
-      'devices/diagnostics-sheet.tsx',
-      'session-new/devices-check-step.tsx',
-    ]);
-    for (const name of users) {
-      const text = production.find((file) => file.name === name)!.text;
-      expect([name, /import \{[^}]*\b(?:busyState|PendingSpinner)\b[^}]*\} from '@\/runtime';|export \{ busyState \} from '@\/runtime';/.test(text)]).toEqual([name, true]);
-    }
+    const everyFeature = sourceFiles(FEATURES)
+      .map((path) => ({ name: relative(FEATURES, path).split(sep).join('/'), source: readFileSync(path, 'utf8') }))
+      .filter((file) => !isTest(file.name))
+      .map((file) => ({ name: file.name, text: code(file.source) }));
+    /** `helper` taken from the barrel: in the import of `@/runtime`, or handed on by the one-line re-export. */
+    const fromTheBarrel = (helper: string, text: string): boolean =>
+      new RegExp(`import \\{[^}]*\\b${helper}\\b[^}]*\\} from '@\\/runtime';|export \\{[^}]*\\b${helper}\\b[^}]*\\} from '@\\/runtime';`).test(text);
+    // The control: the matcher takes the barrel's import and refuses the helper's own file, helper by helper.
+    expect(fromTheBarrel('PendingSpinner', "import { PendingSpinner, busyState, usePendingPress } from '@/runtime';")).toBe(true);
+    expect(fromTheBarrel('PendingSpinner', "import { busyState } from '@/runtime';\nimport { PendingSpinner } from '@/runtime/pending-control';")).toBe(false);
+    expect(fromTheBarrel('busyState', "export { busyState } from '@/runtime';")).toBe(true);
+    const HELPERS = ['busyState', 'PendingSpinner'] as const;
+    const uses = everyFeature.flatMap((file) => HELPERS.filter((helper) => new RegExp(`\\b${helper}\\b`).test(file.text)).map((helper) => ({ name: file.name, helper, text: file.text })));
+    // The walk reads something: both caller folders of row M1 are among the users.
+    for (const folder of CALLER_FOLDERS) expect([folder, uses.some((use) => use.name.startsWith(`${folder}/`))]).toEqual([folder, true]);
+    expect(uses.filter((use) => !fromTheBarrel(use.helper, use.text)).map((use) => `${use.name}: ${use.helper}`)).toEqual([]);
   });
 });
 

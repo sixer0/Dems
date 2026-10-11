@@ -21,7 +21,7 @@
 // renamed to `hold` (decision D96, ruling 2). Rename a key rather than list it.
 import { describe, expect, it } from 'vitest';
 import { childLoggerCalls, isFixedValue, logCalls, loggedKeys } from './log-calls';
-import { WORKSPACE, codeOnly, isProductionSource, readTree, stripComments } from './scan';
+import { WORKSPACE, codeOnly, isProductionSource, readTree, scanCoverage, stripComments } from './scan';
 
 const ERROR_NAMES: ReadonlySet<string> = new Set(['error', 'cause', 'e', 'reason']);
 
@@ -138,6 +138,8 @@ describe('the scan itself', () => {
     for (const folder of ['src/core/', 'src/engine/', 'src/plugins/', 'src/modules/', 'src/db/']) {
       expect(paths.some((path) => path.startsWith(folder)), folder).toBe(true);
     }
+    // Rule R1: no production TypeScript file of `src/` is missing from the scan.
+    expect(scanCoverage(paths, ['src/'])).toMatchObject({ missing: [], empty: false });
     // The scan sees real calls: the server does log.
     const calls = production.flatMap((file) => logCalls(file.text));
     expect(calls.length).toBeGreaterThan(50);

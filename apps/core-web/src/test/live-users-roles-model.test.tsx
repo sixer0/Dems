@@ -16,6 +16,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { CORE_API_EXAMPLES, type AdminUser, type RoleMatrix } from '@dems/shared/api'
 import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim'
 import { applyUserToCache, reasonBody } from '@/features/users-roles/commands'
@@ -137,9 +138,8 @@ describe('the folder\'s production files (CLG (c); rules 1, 3; 08a §15)', () =>
   })
 
   it('reads the folder', () => {
-    expect(files.map(({ name }) => name).sort()).toEqual(
-      expect.arrayContaining(['commands.ts', 'index.tsx', 'matrix-panel.tsx', 'model.ts', 'queries.ts', 'report.ts', 'role-dialog.tsx', 'status-dialogs.tsx', 'users-panel.tsx']),
-    )
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: files.map(({ name }) => name), listed: import.meta.glob('../features/users-roles/**/*.{ts,tsx}'), root: '../features/users-roles' })
   })
 
   it('CLG (c): no `useSimActions`, no `.actions` read on a `Sim`, no `SimContext`, no `useSimInstance`', () => {

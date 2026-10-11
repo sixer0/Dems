@@ -12,6 +12,8 @@
 //
 // The patterns and their positive controls are in `static-rules.ts`.
 import { describe, expect, it } from 'vitest';
+import { MODULE_RULES, itHoldsNone } from '../../../../test/static/module-rules';
+import { SCAN_COVERS, scanCoverage } from '../../../../test/static/scan';
 import * as rules from './static-rules';
 
 const FOLDER = 'src/modules/storage/';
@@ -19,7 +21,7 @@ const { all, code } = rules.moduleSources(FOLDER);
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual(['src/modules/storage/index.ts', 'src/modules/storage/policy.ts', 'src/modules/storage/status.ts']);
+    expect(scanCoverage(all, [FOLDER])).toEqual(SCAN_COVERS);
     expect(code.every((file) => file.text.length > 100)).toBe(true);
   });
 
@@ -30,19 +32,11 @@ describe('the scan itself', () => {
 });
 
 describe('rule 1: no clock, no timer, nothing of the host', () => {
-  it('no file reads the system time or sets a timer', () => {
-    expect(rules.places(code, rules.SYSTEM_TIME)).toEqual([]);
-    expect(rules.places(code, rules.TIMER)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noSystemTimeNoTimer, rules, code);
 
-  it('no file reads a clock at all: the engine stamps what is stamped', () => {
-    expect(rules.places(code, rules.ANY_CLOCK)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noClockAtAll, rules, code);
 
-  it('no file imports a module of the runtime or names the host\'s network state', () => {
-    expect(rules.places(code, rules.HOST_MODULE)).toEqual([]);
-    expect(rules.places(code, rules.HOST_STATE)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noHost, rules, code);
 
   it('the imports of the folder are the contract, the shared simulator\'s selector and types, Fastify\'s types, the guard\'s route helper and its own files', () => {
     expect(rules.importSources(code)).toEqual([
@@ -59,17 +53,11 @@ describe('rule 1: no clock, no timer, nothing of the host', () => {
     expect(fromSim).toEqual(['type StoragePolicy', 'storageSummary, type SimState']);
   });
 
-  it('no console, no environment, no random source, no log line of its own', () => {
-    expect(rules.places(code, rules.CONSOLE)).toEqual([]);
-    expect(rules.places(code, rules.RANDOM)).toEqual([]);
-    expect(rules.places(code, rules.LOG_CALL)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noConsoleRandomLog, rules, code, 'no console, no environment, no random source, no log line of its own');
 });
 
 describe('rule 2 (M3): who may call is stage 6, only', () => {
-  it('no file reads a role, a permission, a session, a device or the kind of the caller', () => {
-    expect(rules.places(code, rules.ACCESS_CHECK)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noAccessCheck, rules, code, 'no file reads a role, a permission, a session, a device or the kind of the caller');
 
   it('no file writes a denial row, builds a refusal, takes a place in the denial budget or adds a hook', () => {
     expect(rules.places(code, rules.DENIAL)).toEqual([]);
@@ -89,9 +77,7 @@ describe('rule 2 (M3): who may call is stage 6, only', () => {
 });
 
 describe('rule 3 (M4, M5): one state, through the seam', () => {
-  it('no unit of work, no table, no statement, no audit writer, no publication', () => {
-    expect(rules.places(code, rules.OWN_STORAGE)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noOwnStorage, rules, code);
 
   it('of the engine it uses `state()` for the reads, and `command` then `slice` for the command: nothing else', () => {
     const used = code.flatMap((file) => [...file.text.matchAll(rules.ENGINE_USE)].map((match) => match[1]));
@@ -110,10 +96,7 @@ describe('rule 3 (M4, M5): one state, through the seam', () => {
     expect(index).toMatch(/export const STORAGE_POLICY_ACTION = 'setStoragePolicy';/);
   });
 
-  it('no slot of the scaffold is provided or replaced, and no test file is imported', () => {
-    expect(rules.places(code, rules.SLOT_REPLACED)).toEqual([]);
-    expect(rules.places(code, rules.TEST_IMPORT)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noSlotReplaced, rules, code);
 });
 
 describe('rule 4 (M2): routes come from the registry', () => {

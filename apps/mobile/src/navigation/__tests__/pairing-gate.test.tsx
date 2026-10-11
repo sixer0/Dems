@@ -17,6 +17,7 @@ import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { peekPendingHref } from '@/navigation/pending-href';
 import { PAIRING_CHECKING, type PairingInfo } from '@/runtime';
+import { haptics } from '@/motion';
 
 jest.mock('@/features/home/pulse-ring', () => ({ PulseRing: () => null }));
 
@@ -29,6 +30,8 @@ beforeEach(() => {
 
 afterEach(() => {
   global.fetch = originalFetch;
+  // The sign-in's haptic may still wait in the app-wide service (a real timer of the coalescing window).
+  haptics.reset();
 });
 
 // ---------------------------------------------------------------------------------------------

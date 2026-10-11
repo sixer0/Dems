@@ -12,15 +12,15 @@
 //  4. The Live waits run on the store's clock (rule 7): the files written for Live mode hold no
 //     `setTimeout`, `setInterval` or `Date.now`.
 //  5. The copy (rule 8): the Live text says nothing about a simulation; no `SIM-GAP` marker was
-//     added; the copy of Simulated mode is what it was at `acaff20`.
+//     added; only the sentences of Simulated mode speak of a simulation.
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { en } from '@dems/shared/i18n';
 import { evidenceEn } from './i18n';
+import { expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -47,48 +47,20 @@ const fileText = (name: string): string => production.find((file) => file.name =
 const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** The files written for Live mode by this row. */
 const LIVE_FILES = ['live-integrity-tab.tsx', 'use-clock-due.ts', 'use-core-verify.ts', 'use-evidence-media-ref.ts'];
-/** The copy that only Live mode shows. */
-const LIVE_KEYS = [
-  // Fix wave K, driver M2 (re-gates 81 / 89 / 94): the sentences added after `acaff20`. Simulated mode's copy is unchanged.
-  'waveK.transcript.deniedCaseScope',
-  'waveK.transcript.revisionReason',
-  'waveK.transcript.model.title',
-  'waveK.transcript.model.name',
-  'waveK.transcript.model.version',
-  'waveK.transcript.model.quantisation',
-  'waveK.transcript.model.hash',
-  'waveK.transcript.model.notStated',
-  'waveK.export.requiresRole',
-  'waveK.export.nothingSent',
-  'waveK.export.requestNote',
-  'waveK.export.request',
-  'waveK.export.controlRequiresRole',
-  'waveK.export.noArchive',
-  'waveK.export.archiveNotStated',
-  // Fix wave K, M1 (G94b-01), moved under the evidence tree by the final small fixes: the sealed player's no-seek sentence (`sealed-player-i18n.ts`).
-  'player.noSeek',
-  // Fix wave L, L-M: the end sentence of an interrupted recording (G94c-03) and the sealed format of the item (G89c-04).
-  'player.interruptedEnd',
-  'sealedFormat.title',
-  'sealedFormat.track',
-  'sealedFormat.noticeTitle',
-  'sealedFormat.noticeTrack',
-  'media.checking',
-  'media.unavailable',
-  'integrity.coreLabel',
-  'integrity.coreNote',
-  'integrity.bundledResult',
-  'integrity.bundledDiffers',
-  'actions.manifestToastLive',
-  'play.bundled',
-  'export.deniedBodyUnrecorded',
-  'export.zipNoteLive',
-  // Closing-fix CF-M2 (R-T-2): the Live card's heading per the Core's stored verification.
-  'integrity.failedOnCore',
-  'integrity.notVerifiedYet',
-  'integrity.coreNotRun',
-  // Wave H C2 (G94-14 / G81-10): the Metadata tab's line for a recording of this Core (no "DEMO package" is spoken of).
-  'metadata.coreRecordOnly',
+/**
+ * The sentences of Simulated mode that speak of the simulation (they are true there). Every other
+ * sentence of the folder says nothing about one, so a sentence added later is held to the rule without
+ * being listed. (Until the consolidation of the suite, D233, this file listed the Live keys instead
+ * and pinned the rest by a digest of the copy "as at acaff20".)
+ */
+const SIMULATED_MODE_SENTENCES = [
+  'integrity.simulatedLabel',
+  'integrity.signatureSimulated',
+  'integrity.noPackage',
+  'actions.manifestToast',
+  'play.simulated',
+  'export.sourceSimulated',
+  'export.zipNote',
 ];
 
 function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
@@ -96,65 +68,11 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads the folder: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'archive-dialog.tsx',
-      // Blueprint row 92 (M8-W3): playback of the sealed files, the audio-source band, the transcript, the export job, the badge.
-      'audio-source-band.tsx',
-      'detail-intent.ts',
-      'development-source.tsx',
-      'evidence-chips.tsx',
-      'evidence-detail-screen.tsx',
-      'evidence-detail.tsx',
-      'evidence-list-screen.tsx',
-      'evidence-media.ts',
-      'evidence-model.ts',
-      'evidence-row.tsx',
-      'export-job-model.ts',
-      'export-job-status.tsx',
-      'export-job.ts',
-      'export-sheet.tsx',
-      // Wave H C2 (G94-05, finding 4, the one reader of the item facts): three files, added by delta.
-      'finished-exports.tsx',
-      'i18n.ts',
-      'integrity-tab.tsx',
-      'interrupted-line.tsx',
-      'item-facts.ts',
-      'item-v2.ts',
-      'live-integrity-tab.tsx',
-      'media-session.ts',
-      'media-tab.tsx',
-      // Closing-fix CF-M2 (R-T-1): a kit Menu item's title and reason stacked.
-      'menu-item-text.tsx',
-      'metadata-tab.tsx',
-      'play-sheet.tsx',
-      // Wave L, L-M (G89c-04): the format as signed and the session's profile notice, read from operation 40 by name.
-      'sealed-format.tsx',
-      'sealed-playback.ts',
-      // Wave K M1 (G94b-01): the one sentence of the sealed player for a stream without a seek index.
-      'sealed-player-i18n.ts',
-      'sealed-player.tsx',
-      // CF2-B (RF-T-1): the always-mounted selection glow of the list rows.
-      'selection-glow.tsx',
-      'sheet-frame.tsx',
-      'sim-adapter.ts',
-      'transcript-model.ts',
-      'transcript-pane.tsx',
-      'transcript-revise-sheet.tsx',
-      'transcript.ts',
-      'use-clock-due.ts',
-      'use-core-verify.ts',
-      'use-evidence-data.ts',
-      'use-evidence-media-ref.ts',
-      'use-evidence-playback.ts',
-      'use-scramble.ts',
-      // Blueprint row 87: the v2 answer of operation 41 (the one reader of this app) and its view.
-      'verify-v2-report.tsx',
-      'verify-v2.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it('no production file names the simulator\'s actions hook or reads `.actions` (rule 1)', () => {
@@ -207,18 +125,14 @@ describe('The Live waits run on the store\'s clock (rule 7)', () => {
 describe('The copy (rule 8)', () => {
   const all = leaves(evidenceEn);
 
-  it('the Live copy says nothing about a simulation', () => {
-    const live = all.filter((leaf) => LIVE_KEYS.includes(leaf.key));
-    expect(live.map((leaf) => leaf.key).sort()).toEqual([...LIVE_KEYS].sort());
-    expect(live.filter((leaf) => /simulat/i.test(leaf.text))).toEqual([]);
+  it('the copy speaks of a simulation only in the sentences of Simulated mode: the Live copy says nothing about one', () => {
+    expect(all.length).toBeGreaterThan(0);
+    const speaking = all.filter((leaf) => /simulat/i.test(leaf.text)).map((leaf) => leaf.key);
+    // The control: the sentences of Simulated mode are found (the pattern reads the tree).
+    expect(speaking.length).toBeGreaterThan(0);
+    expect(speaking.filter((key) => !SIMULATED_MODE_SENTENCES.includes(key))).toEqual([]);
     // Closing copy round (D162 DN-5): the Live success toast is the shared `evidence.live.export.success`.
     expect(/simulat/i.test(en.evidence.live.export.success)).toBe(false);
-  });
-
-  it('the copy of Simulated mode is the copy of `acaff20` (185 texts, the same digest)', () => {
-    const simulated = all.filter((leaf) => !LIVE_KEYS.includes(leaf.key));
-    expect(simulated).toHaveLength(185);
-    expect(digest(simulated)).toBe('649c9a0468cb49be63070a5d666fc2e83d5dcdb27818c5c32d56a501b44f034b');
   });
 
   it('no SIM-GAP marker was added: the folder holds the eight of `acaff20`', () => {

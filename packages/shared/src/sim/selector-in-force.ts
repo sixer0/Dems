@@ -25,7 +25,7 @@
  * named the OLD inputs after the selector's microphones were changed. `audioPairInForce` below.
  *
  * Pure, and imports nothing: `audio.ts` and the session machine both read it. No file of
- * `packages/shared/src` may spell the expression itself (`test/sim-wave-l-z-selector-in-force.test.ts`).
+ * `packages/shared/src` may spell the expression itself (`test/sim-selector-in-force.test.ts`).
  */
 
 /** The least a session must state for the rule. */

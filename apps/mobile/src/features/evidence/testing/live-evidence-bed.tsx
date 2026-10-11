@@ -160,9 +160,26 @@ export interface LiveEvidenceBed {
   detailExtras: (evidenceId: string) => Readonly<Record<string, unknown>>;
   /** The Core stops answering (requests fail, the socket drops, reconnects are refused), or answers again. */
   setReachable(reachable: boolean): void;
-  /** Moves the fake clock in steps, with the promise jobs in between. */
+  /**
+   * Moves the fake clock in steps, with the promise jobs in between, and ends once the screen has
+   * been told what the query client holds (`observersTold`, without its error).
+   */
   elapse(ms: number, step?: number): Promise<void>;
   flush(turns?: number): Promise<void>;
+  /**
+   * The screen has been told every answer the query client holds (implementation/150).
+   *
+   * The bed's clock is a fake one and its answers arrive in promise jobs, but query-core tells a query's
+   * observers on the SYSTEM's `setTimeout(callback, 0)` (`notifyManager`'s default scheduler,
+   * `systemSetTimeoutZero` of `@tanstack/query-core` 5.104.0) - a timer no `elapse` moves and no
+   * `flush` runs. So an answer can be in the cache while the screen still draws "waiting".
+   * This waits for that timer by its own rule, not by a length of time: a zero timer set AFTER the
+   * notification's runs after it (timers of one delay run in the order they were set). It is repeated
+   * until one whole turn changed nothing in the cache and nothing is being read, because a notification
+   * can start the next read (the job's end reads operation 40 again, G94b-05). It throws when the
+   * client does not come to rest in 20 turns.
+   */
+  observersTold(): Promise<void>;
   navigate(href: string): Promise<void>;
   /** The evidence ID with a given number suffix (`'0005'` → `EV-…-0005`). */
   idOf(suffix: string): string;
@@ -178,6 +195,33 @@ async function flushJobs(turns = 40): Promise<void> {
   await act(async () => {
     for (let turn = 0; turn < turns; turn += 1) await Promise.resolve();
   });
+}
+
+/**
+ * One wait for every Live evidence test (implementation/150; before the consolidation of the suite,
+ * D233, one test file held this as its own helper). `strict`: a client that is still reading after
+ * 20 turns is an error; `elapse` calls it without (a read held open by a test stays open).
+ */
+async function queryClientAtRest(queryClient: QueryClient, strict: boolean): Promise<void> {
+  // Under Jest's fake timers the notification's timer is the test's to move; a real wait would never end.
+  if ('clock' in setTimeout) return;
+  let events = 0;
+  const stop = queryClient.getQueryCache().subscribe(() => {
+    events += 1;
+  });
+  try {
+    for (let turn = 0; turn < 20; turn += 1) {
+      const before = events;
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+      await flushJobs();
+      if (events === before && (!strict || queryClient.isFetching() === 0)) return;
+    }
+    if (strict) throw new Error('the query client did not come to rest in 20 turns');
+  } finally {
+    stop();
+  }
 }
 
 /** Resets what the runtime keeps between tests. Call it in `beforeEach`, before `renderLiveEvidence`. */
@@ -286,8 +330,10 @@ export async function renderLiveEvidence({
         });
         await flushJobs(20);
       }
+      await queryClientAtRest(bed.queryClient, false);
     },
     flush: flushJobs,
+    observersTold: () => queryClientAtRest(bed.queryClient, true),
     async navigate(href) {
       act(() => router.push(href as Href));
       await flushJobs();

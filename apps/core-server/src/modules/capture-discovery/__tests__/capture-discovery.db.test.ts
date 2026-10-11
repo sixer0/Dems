@@ -15,6 +15,13 @@
 //     the clock that decides the bounds is the manual one), and
 //   - the REAL adapter of row 131 on the loopback fixture: the fake ONVIF stub of row 60 on
 //     127.0.0.1, behind the loopback guard, which refuses any other destination.
+//
+// THE THREE SECONDS OF A SEARCH ON THE REAL ADAPTER (test-suite consolidation, D233; audit SV-D2).
+// The adapter takes its timers from its caller. ONE case gives it the system timers and waits the
+// whole window on the wall clock ("run 1" of M4-DISC-STUB-1). Every other search of this file
+// gives it a manual timer set (`windowClock`): the datagrams still travel through the real sockets
+// of the loopback, and the file moves the repeat (250 ms) and the end of the window (3,000 ms)
+// itself, once the stub has received the probes (`stubWindow`). Nothing of the adapter is replaced.
 import { randomUUID } from 'node:crypto';
 import { get as httpGet } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -24,24 +31,29 @@ import {
   validateCoreApiResponse,
   type CaptureDiscoverySearch,
   type CaptureDiscoveryStateBody,
+  CAPTURE_SEARCH_ID_PATTERN,
 } from '@dems/shared/api';
 import type { AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { useTestDatabase } from '../../../../test/helpers/db';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { useFurtherDatabase, useTestDatabase } from '../../../../test/helpers/db';
 import { capturePlan, fakeLauncher, manualCaptureTimers } from '../../../../test/support/capture';
 import { linkProblems, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
 import { createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifDiscoveryMode, type FakeOnvifStub } from '../../../../test/support/fake-onvif-stub';
-import { SIGN_OUT, TOUCH, WEB_ORIGIN, signInOnWeb } from '../../../../test/support/identity';
+import { SIGN_OUT, TOUCH, WEB_ORIGIN, signInOnWeb, type IdentityApp } from '../../../../test/support/identity';
 import { createCaptureSupervisor, createSystemTimers } from '../../../capture';
 import { CaptureAdapterKind, DiscoveryNotRunError, createOnvifDiscoveryAdapter, type OnvifCandidate, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../../capture/adapters';
+import { WS_DISCOVERY_REPEAT_MS } from '../../../capture/adapters/camera/ws-discovery';
 import { delay, installLoopbackGuard, startFakeOnvif, until, type LoopbackGuard } from '../../../capture/adapters/camera/__tests__/support';
 import { noticesApp, type NoticesApp } from '../../capture-inputs/__tests__/support';
 import { errorOf, outcome } from '../../devices/__tests__/support';
 import { CURRENT, SESSION, on, sessionInput } from '../../sessions/__tests__/support';
-import { captureDiscoveryControl } from '../index';
+import { captureDiscoveryControl, readLastSearchNumber } from '../index';
+import { FIXED_NOW, engineApp, type EngineApp } from '../../../../test/support/engine';
 
 const db = useTestDatabase({ template: 'seed' });
+/** This file's database under a second name: a describe that keeps a further clone of its own calls that one `db`. */
+const home = db;
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
 const DISCOVERY = '/api/v1/capture/discovery';
@@ -57,6 +69,11 @@ const pending: PendingSearch[] = [];
 /** Calls of `discover` on the scripted adapter since the file began: "0 datagrams" is "this number did not move". */
 let scriptedCalls = 0;
 let stub: FakeOnvifStub | null = null;
+/** The timers of the real adapter in every search but the one that waits on the wall clock. */
+const windowClock = manualCaptureTimers();
+/** True for the ONE case that runs the real adapter on the system timers. */
+let systemWindow = false;
+const WINDOW_MS = 3_000;
 
 const scripted = (lookup: RegisteredLookup): OnvifDiscoveryAdapter =>
   ({
@@ -107,7 +124,7 @@ beforeAll(async () => {
   // A process start leaves the tablet link OFFLINE, which blocks the CORE check of every pre-check.
   await server.engine.setTabletLink('CONNECTED');
   captureDiscoveryControl(server.app).provideAdapter((lookup) =>
-    stub === null ? scripted(lookup) : createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, registered: lookup, loopbackFixture: stub.addresses().discovery }),
+    stub === null ? scripted(lookup) : createOnvifDiscoveryAdapter({ timers: systemWindow ? createSystemTimers() : windowClock.timers, newMessageId: randomUUID, registered: lookup, loopbackFixture: stub.addresses().discovery }),
   );
 });
 afterAll(async () => {
@@ -142,6 +159,42 @@ async function farLater(): Promise<void> {
   for (const role of ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const) expect((await server.post(role, TOUCH)).statusCode, `touch ${role}`).toBeLessThan(300);
 }
 
+/**
+ * The window of a search that the REAL adapter runs on the stub, from the first probe to one
+ * millisecond before its end. On the system timers that is the wall clock. On the manual timers
+ * the file waits for what really happens (the first round reaches the stub, the timers of the
+ * repeat and of the window are armed), moves the 250 ms of the repeat, waits for the second round
+ * and for the answers of the stub to cross the loopback, then moves the clock to 2,999 ms.
+ * A search the adapter itself ended early (an answer over a cap) has no timer left: nothing to move.
+ */
+async function openStubWindow(): Promise<void> {
+  if (systemWindow) return;
+  const current = stub;
+  if (current === null) throw new Error('the stub of this search is not started');
+  const probes = (): number => current.requestLog().filter((entry) => entry.channel === 'discovery').length;
+  const ended = (): boolean => windowClock.armed().length === 0;
+  await until(() => probes() >= 2 && windowClock.armed().length !== 1, 5_000);
+  if (!ended()) {
+    expect(windowClock.armed()).toEqual([WS_DISCOVERY_REPEAT_MS, WINDOW_MS]);
+    windowClock.advance(WS_DISCOVERY_REPEAT_MS);
+    await until(() => probes() >= 4 || ended(), 5_000);
+  }
+  // The answers of the stub are datagrams of this process on the loopback: they are read before this timer fires.
+  await delay(150);
+  if (!ended()) windowClock.advance(WINDOW_MS - WS_DISCOVERY_REPEAT_MS - 1);
+}
+/** The end of that window: the last millisecond on the manual timers, the whole window on the system timers. */
+async function closeStubWindow(): Promise<void> {
+  if (systemWindow) await delay(3_400);
+  else {
+    // CONTROL of the clock: one millisecond before its end the window is still armed, with exactly that millisecond left.
+    if (windowClock.armed().length > 0) expect(windowClock.armed()).toEqual([1]);
+    windowClock.advance(1);
+    expect(windowClock.armed()).toEqual([]);
+  }
+  await settled();
+}
+
 /** One whole search on the scripted adapter: start, the window, its end. */
 async function search(role: Role, result: WsDiscoveryResult | Error): Promise<{ response: LightMyRequestResponse; body: CaptureDiscoverySearch }> {
   const before = scriptedCalls;
@@ -162,13 +215,6 @@ async function registryDigest(): Promise<unknown> {
   );
   return rows[0];
 }
-
-describe('the database of this file', () => {
-  it("is at the schema version of the code: [6, 'dbc-7']", async () => {
-    const { rows } = await server.owner.query<{ schema_version: number | string; contract_revision: string }>('SELECT schema_version, contract_revision FROM schema_meta');
-    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
 
 describe('M4-DISC-TRIG-1: no search at boot, on a timer or on a read; one after operation 93', () => {
   it('a booted Core has started 0 searches; ten minutes of the clock, the engine\'s ticks and the reads 76, 77 and 94 start none', async () => {
@@ -432,7 +478,10 @@ describe('the second trigger: the pre-check\'s one search (R-9 AC-1 (b); D80(2);
 });
 
 describe('M4-DISC-STUB-1 (run 1 and run 2), M4-SEC-DISC-2 shape: the real adapter on the fake ONVIF stub, through operation 93', () => {
-  /** One whole search through the route with the REAL adapter and the system timers: about three seconds. */
+  /**
+   * One whole search through the route with the REAL adapter. On the system timers (`systemWindow`,
+   * run 1) about three seconds; on the manual timers the same search with its window moved by this file.
+   */
   async function stubSearch(role: Role, devices: number, mode?: FakeOnvifDiscoveryMode): Promise<{ state: CaptureDiscoveryStateBody; requests: string[]; registryBefore: unknown; endpointRefs: string[] }> {
     await farLater();
     stub = await startFakeOnvif(devices);
@@ -442,8 +491,10 @@ describe('M4-DISC-STUB-1 (run 1 and run 2), M4-SEC-DISC-2 shape: the real adapte
       const response = await start(role);
       expect(response.statusCode, response.body).toBe(202);
       await until(() => captureDiscoveryControl(server.app).heldLists() > 0 && stub !== null, 1_000);
-      await delay(3_400);
-      await settled();
+      await openStubWindow();
+      // While the window is open the search is RUNNING and lists nothing (on the manual timers: until this file ends it).
+      if (!systemWindow) expect(await read(role)).toMatchObject({ search: { state: 'RUNNING' }, candidates: [] });
+      await closeStubWindow();
       const answered = await server.get(role, DISCOVERY);
       return {
         state: answered.json<CaptureDiscoveryStateBody>(),
@@ -457,7 +508,10 @@ describe('M4-DISC-STUB-1 (run 1 and run 2), M4-SEC-DISC-2 shape: the real adapte
     }
   }
 
-  it.each([1, 2])('run %i: N = 0, 1 and 3 stub devices give N candidates built from the probe answer alone; the stub saw probes and nothing else; the registry is unchanged', async () => {
+  it.each([1, 2])('run %i: N = 0, 1 and 3 stub devices give N candidates built from the probe answer alone; the stub saw probes and nothing else; the registry is unchanged', async (run) => {
+    // Run 1 is the ONE case of this file on the system timers: three whole windows on the wall clock.
+    systemWindow = run === 1;
+    onTestFinished(() => void (systemWindow = false));
     const trail = await server.trailLength();
     const sent = guard.datagrams().length;
 
@@ -515,8 +569,8 @@ describe('M4-DISC-STUB-1 (run 1 and run 2), M4-SEC-DISC-2 shape: the real adapte
     try {
       const registry = await registryDigest();
       expect((await start('SUPERVISOR')).statusCode).toBe(202);
-      await delay(3_400);
-      await settled();
+      await openStubWindow();
+      await closeStubWindow();
       const state = await read('SUPERVISOR');
       expect(state.search).toMatchObject({ responderCount: 1, newCount: 0, registeredCount: 1 });
       expect(state.candidates.map((candidate) => [candidate.status, candidate.deviceId, candidate.endpointRef])).toEqual([['REGISTERED', 'CAM-02', reference]]);
@@ -541,8 +595,8 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
     try {
       // SEARCH (93, 94).
       expect((await start('TECHNICIAN')).statusCode).toBe(202);
-      await delay(3_400);
-      await settled();
+      await openStubWindow();
+      await closeStubWindow();
       const state = await read('TECHNICIAN');
       expect(state.candidates.map((candidate) => [candidate.status, candidate.testable, candidate.adapter, candidate.sourceClass, candidate.adoptable])).toEqual([['NEW', true, 'FAKE', 'DEVELOPMENT', false]]);
       const candidate = state.candidates[0];
@@ -628,6 +682,7 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
 });
 
 describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during RECORDING, hostile answers included, leave the capture path alone', () => {
+  const RECORDING_WINDOW_WALL_MS = 800;
   const HOSTILE: readonly FakeOnvifDiscoveryMode[] = ['WRONG_RELATES_TO', 'FOREIGN_XADDR', 'NO_XADDRS', 'TWO_MATCHES_IN_ONE', 'EMPTY_MATCHES', 'OVERSIZED_BODY', 'ENTITY_EXPANSION', 'NOT_XML', 'FLOOD_300'];
 
   it.each([1, 2])('run %i: with a session in RECORDING and a capture supervisor writing fragment checkpoints, operation 93 answers 202 for every hostile mode; the fragments stay contiguous and keep arriving, no CAPTURE_FAULT, the same process, a clean stop', async () => {
@@ -645,7 +700,11 @@ describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during
     expect((await server.get('INVESTIGATOR', CURRENT)).json<{ session: { state: string } }>().session.state).toBe('RECORDING');
 
     // The capture path of this process: the production supervisor on the fake worker of the test support, which
-    // says one heartbeat and one fragment checkpoint every 5 ms for as long as the test lets it.
+    // says one heartbeat and one fragment checkpoint every millisecond for as long as the test lets it. (Every 5 ms
+    // while each window was three seconds of the wall clock. A window is now open for RECORDING_WINDOW_WALL_MS of
+    // the wall clock, counted from the start of its search whatever the search does with the event loop, so the
+    // writer runs five times as fast and "more than 100 checkpoints while this search was open" asks about the
+    // same share of the writer's pace as before.)
     const clock = manualCaptureTimers();
     const fake = fakeLauncher();
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
@@ -665,7 +724,7 @@ describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during
       clock.advance(100);
       worker.heartbeat();
       worker.record({ kind: 'FRAGMENT_CHECKPOINT', deviceId: 'CAM-01', index, start: index * 1_000, len: 1_000 } as never);
-    }, 5);
+    }, 1);
     const pid = process.pid;
     const uncaught: unknown[] = [];
     const onUncaught = (error: unknown): void => void uncaught.push(error);
@@ -678,16 +737,22 @@ describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during
         stub = await startFakeOnvif(2);
         stub.setDiscoveryMode(mode);
         const before = fragments.length;
+        // The count at a FIXED time of the wall clock after the start of the search, taken by a timer set now: a
+        // search that kept the event loop to itself has used that time up, and this count says so.
+        const atWindowEnd = new Promise<number>((resolve) => setTimeout(() => resolve(fragments.length - before), RECORDING_WINDOW_WALL_MS));
         const response = await start('TECHNICIAN');
         // The lift of D86 C-4 is on: a search during RECORDING is accepted (before the lift this was 409).
         expect(response.statusCode, `${mode}: ${response.body}`).toBe(202);
-        await delay(3_300);
-        await settled();
+        await openStubWindow();
+        // The window stays open until that time.
+        const whileOpen = await atWindowEnd;
+        await closeStubWindow();
         const state = await read('TECHNICIAN');
         expect(state.search?.state, mode).toBe('COMPLETE');
         expect(validateCoreApiResponse('getCaptureDiscovery', 200, state), mode).toEqual({ ok: true });
         // Checkpoints kept arriving while this search was open.
         expect(fragments.length - before, mode).toBeGreaterThan(100);
+        expect(whileOpen, `${mode}: checkpoints inside the fixed wall-clock window`).toBeGreaterThan(100);
         await stub.stop();
         stub = null;
       }
@@ -742,5 +807,94 @@ describe('the answer on a real listener (an ephemeral port on loopback)', () => 
     expect(answered.status).toBe(200);
     expect(answered.requestId).toEqual(expect.any(String));
     expect(CaptureDiscoveryStateSchema.safeParse(JSON.parse(answered.body)).success).toBe(true);
+  });
+});
+
+// ═══ Moved here from `wave-i-a2-search-ids.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
+// FIX WAVE I, DRIVER A2 - finding G70b-07 of re-gate 70, against PostgreSQL: the statement that
+// reads the highest stored search number runs as `dems_app`, and a Core that is STARTED AGAIN on
+// the same database gives no search ID of its audit chain a second time.
+//
+// Two processes, one after the other, on one clone of the seed (the real app factory, simulated capture, the scripted
+// discovery adapter of `capture-discovery.db.test.ts`: no datagram is sent). The rows are read
+// from the table as `dems_owner`.
+describe('G70b-07: search IDs over two processes on one database', () => {
+  const db = useFurtherDatabase(home, { template: 'seed' });
+  const DISCOVERY = '/api/v1/capture/discovery';
+  const RESCAN = '/api/v1/capture/inputs/rescan';
+  const EMPTY: WsDiscoveryResult = {
+    candidates: [],
+    responderCount: 0,
+    interfaceCount: 1,
+    truncated: false,
+    counts: { datagramsReceived: 0, datagramsAccepted: 0, dropped: {}, repeats: 0, matchesSkipped: 0, respondersOverCap: 0, lookupErrors: 0, datagramsSent: 4, sendErrors: 0, handlerErrors: 0 },
+  };
+  type Target = typeof db;
+  const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+  interface Process {
+    readonly server: EngineApp;
+    search(): Promise<string>;
+    post(url: string): Promise<LightMyRequestResponse>;
+  }
+
+  /** One PROCESS on `target`, started at `startAt`: booted, signed in, with a scripted adapter whose every search finds nothing. */
+  async function processOn(target: Target, startAt: number): Promise<Process> {
+    const server = await engineApp(target, db.run.dataDir, { startAt, logLevel: 'info' });
+    await server.app.readiness.boot();
+    await server.app.pipeline.drain();
+    captureDiscoveryControl(server.app).provideAdapter(() => ({ discover: async () => EMPTY }) as unknown as OnvifDiscoveryAdapter);
+    const { cookie } = await signInOnWeb({ app: server.app, cookieName: server.app.config.sessionCookieName } as unknown as IdentityApp, 'rina.wijaya');
+    const post = (url: string): Promise<LightMyRequestResponse> => server.app.inject({ method: 'POST', url, headers: { ...cookie, origin: WEB_ORIGIN } });
+    const search = async (): Promise<string> => {
+      // Clear of every bound of a search.
+      server.clock.advance(130_000);
+      const started = await post(DISCOVERY);
+      expect(started.statusCode, started.body).toBe(202);
+      for (let turn = 0; turn < 20; turn += 1) {
+        await delay(10);
+        await server.app.pipeline.drain();
+      }
+      const state = (await server.app.inject({ method: 'GET', url: DISCOVERY, headers: cookie })).json<CaptureDiscoveryStateBody>();
+      expect(state.search?.state).toBe('COMPLETE');
+      return state.search?.searchId ?? '';
+    };
+    return { server, search, post };
+  }
+  const storedIds = async (target: Target): Promise<string[]> =>
+    (await readTrail(target.ownerPool())).filter((row) => row.type === 'CAPTURE_DISCOVERY_SEARCHED').map((row) => String((row.details as Record<string, unknown>)['searchId']));
+
+  describe('G70b-07: search IDs across a restart of the Core on one database', () => {
+    it('the second process goes on from the highest stored number; a microphone re-read between them does not move it; no ID is stored twice and the chain verifies', async () => {
+      const target = db;
+      const first = await processOn(target, FIXED_NOW);
+      expect(captureDiscoveryControl(first.server.app).searchesStarted()).toBe(0);
+      const firstIds = [await first.search(), await first.search()];
+      expect(firstIds).toEqual(['DSC-000001', 'DSC-000002']);
+      // Operation 97 writes the same audit type with a clock ID of thirteen digits: no counter.
+      first.server.clock.advance(130_000);
+      expect((await first.post(RESCAN)).statusCode).toBe(200);
+      await first.server.app.pipeline.drain();
+      // The statement itself, as the runtime role.
+      expect(await first.server.app.db.read('test.lastSearchNumber', (pool) => readLastSearchNumber({ query: (text) => pool.query(text) }))).toBe(2);
+      const closedAt = first.server.clock.now();
+      await first.server.app.close();
+
+      // THE RESTART: a new process, its counter at 0. Before the fix its first search was DSC-000001 again.
+      const second = await processOn(target, closedAt + 60_000);
+      expect(captureDiscoveryControl(second.server.app).searchesStarted()).toBe(0);
+      expect([await second.search(), await second.search()]).toEqual(['DSC-000003', 'DSC-000004']);
+      expect(captureDiscoveryControl(second.server.app).searchesStarted()).toBe(2);
+
+      const ids = await storedIds(target);
+      const camera = ids.filter((id) => /^DSC-[0-9]{6,9}$/.test(id));
+      expect(camera).toEqual(['DSC-000001', 'DSC-000002', 'DSC-000003', 'DSC-000004']);
+      expect(ids.filter((id) => /^DSC-[0-9]{13}$/.test(id))).toHaveLength(1);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const id of ids) expect(id).toMatch(CAPTURE_SEARCH_ID_PATTERN);
+      const trail = await readTrail(target.ownerPool());
+      expect(linkProblems(trail)).toEqual([]);
+      expect(verifyTrail(trail, await readHead(target.ownerPool())).ok).toBe(true);
+    });
   });
 });

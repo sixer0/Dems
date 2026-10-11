@@ -3,6 +3,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 /** Code without its comments and without the text inside quotes. */
@@ -16,7 +17,8 @@ const matching = (pattern: RegExp): string[] => production.filter((file) => patt
 
 describe('the transcription status is read-only on the tablet and the phone', () => {
   it('reads the folder: the production files of the block', () => {
-    expect(production.map((file) => file.name)).toEqual(['i18n.ts', 'stt-status-model.ts', 'stt-status-section.tsx', 'use-stt-config.ts']);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it('the only Core operation it names is getSttConfig (op 90); never 91 or 92', () => {

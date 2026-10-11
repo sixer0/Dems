@@ -137,7 +137,7 @@ export function sourceStateWord(report: SourceReport, live: boolean, recording =
 /**
  * Whether the data is a Core server's and that Core is in REAL capture: it sent a `sourceClass` on a
  * capture device, or its device list is not there. THE SAME RULE as `realCaptureView` of
- * `@/features/devices/camera-preview` (held equal on vectors by `wave-i-c-source-state.test.ts`); it
+ * `@/features/devices/camera-preview` (held equal on vectors by `source-state.test.ts`); it
  * stands here too because that module also loads the Skia feed, which the selector card must not.
  */
 export function realCaptureSources(devices: readonly { readonly sourceClass?: string | null | undefined }[], live: boolean): boolean {

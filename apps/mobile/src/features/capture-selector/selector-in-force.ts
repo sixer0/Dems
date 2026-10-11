@@ -20,7 +20,7 @@
  * otherwise the pair the current selector gives. No reader spells `session?.audioSource` itself.
  *
  * No reader in `apps/mobile` may spell the expression itself: the static case of
- * `wave-l-m-selector-in-force.test.ts` fails on a second one.
+ * `selector-in-force.test.ts` fails on a second one.
  */
 
 export { audioPairInForce, audioPairOfSelector, openSessionAudioSource, cameraLinesInForce, micLinesInForce, openSessionSnapshot, selectorInForce, selectorOfSession, sessionIsOpen, type SelectorState, type SnapshotSession } from '@dems/shared/sim';

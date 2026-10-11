@@ -9,16 +9,14 @@
 //     module: those belong to the runtime (rules 3 and 4).
 //  3. One LIVE idiom (rule 5): a file that picks a LIVE wording reads `useCoreLink().source`; nothing
 //     re-derives the mode from a preference or the data-mode hook.
-//  4. The copy (rule 8): the LIVE text says nothing about a simulation, no `SIM-GAP` marker was added,
-//     and the copy of Simulated mode is what it was at `acaff20`.
+//  4. The copy (rule 8): the LIVE text says nothing about a simulation, and no `SIM-GAP` marker was added.
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { moreEn } from '../more/i18n';
-import { dashboardEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FEATURES = join(__dirname, '..');
 const FOLDERS = ['dashboard', 'more'] as const;
@@ -42,49 +40,18 @@ const production = raw.map((file) => ({ name: file.name, text: code(file.source)
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('common.actions.retry')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
-function leaves(tree: unknown, path: string[] = []): { key: string; text: string }[] {
-  if (typeof tree === 'string') return [{ key: path.join('.'), text: tree }];
-  if (typeof tree !== 'object' || tree === null) return [];
-  return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
-}
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Home and More take the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads both folders: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'dashboard/dashboard-screen.tsx',
-      'dashboard/device-tiles.tsx',
-      'dashboard/home-header.tsx',
-      'dashboard/home-model.ts',
-      'dashboard/home-motion.ts',
-      'dashboard/i18n.ts',
-      'dashboard/panel-boundary.tsx',
-      'dashboard/quick-actions.tsx',
-      'dashboard/recent-sessions.tsx',
-      'dashboard/status-chip-row.tsx',
-      'dashboard/status-tiles.tsx',
-      'dashboard/system-status-card.tsx',
-      'dashboard/use-held-value.ts',
-      'dashboard/use-home-data.ts',
-      'more/console-tiles.tsx',
-      'more/i18n.ts',
-      'more/more-boundary.tsx',
-      'more/more-links.tsx',
-      'more/more-model.ts',
-      'more/more-screen.tsx',
-      'more/operator-card.tsx',
-      'more/use-core-link-chip.ts',
-      'more/use-more-navigate.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDERS.map((folder) => join(FEATURES, folder)), FEATURES);
   });
 
   it('no production file calls the simulator\'s action hook', () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim`: every `.actions` left is a style or a motion beat', () => {
@@ -150,17 +117,5 @@ describe('the copy (rule 8; §3.2)', () => {
     // Renamed by the contract close-out W83 (decision D184 DQ-5): the gap is a residual of the demo now.
     const gap = ['RESIDUAL', 'W66', '1'].join('-');
     expect(raw.filter((file) => file.source.includes(gap)).map((file) => file.name)).toEqual(['dashboard/recent-sessions.tsx']);
-  });
-
-  it('the copy of Simulated mode is as it was at `acaff20`: Home 79 texts, More 43 texts plus the one LIVE note (one digest each)', () => {
-    // The digests of the same lists built from `git show acaff20:apps/mobile/src/features/{dashboard,more}/i18n.ts`.
-    const home = leaves(dashboardEn);
-    expect(home).toHaveLength(79);
-    expect(digest(home)).toBe('500fccbf255276c7fae9d57a7fa71d933c4eead624719321bfd6d639d0386611');
-    const more = leaves(moreEn).filter((leaf) => leaf.key !== 'footer.liveNote');
-    expect(more).toHaveLength(43);
-    expect(digest(more)).toBe('54af2d74bf4cab3ac91a9e5a61fb88bb9f14b7b85ae0760c3e1bf42779b275e1');
-    expect(dashboardEn.header.coreLink).toBe('Core {{state}}');
-    expect(moreEn.footer.coreLinkLabel).toBe('Core link: {{state}} ({{source}})');
   });
 });

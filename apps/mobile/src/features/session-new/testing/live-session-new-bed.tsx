@@ -55,7 +55,7 @@ import {
 import type { SocketLike } from '@dems/shared/realtime';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, type SessionCreateInput, type SimState } from '@dems/shared/sim';
 import SessionNewRoute from '@/app/(app)/session/new';
-import { resetMotionStateForTests } from '@/motion';
+import { haptics, resetMotionStateForTests } from '@/motion';
 import { useSessionLiveRedirect } from '@/navigation';
 import { TEST_INSETS, WINDOWS, renderRoutes, resetShellState, setWindow, type WindowName } from '@/navigation/testing/router-harness';
 import { AppProviders } from '@/providers';
@@ -271,6 +271,9 @@ export async function renderLiveSessionNew({ window = 'phonePortrait', setup, an
     state: () => bed.mobile.sim.store.getState(),
     stop() {
       bed.mobile.stop();
+      // The app-wide haptics service keeps a pending coalesced haptic on a real timer; a test that moved
+      // Jest's fake clock leaves its window in the future, and the next press queued one for seconds.
+      haptics.reset();
       fake.assertNoViolations();
     },
   };

@@ -20,7 +20,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from './scan';
+import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from './scan';
 
 const TEMP_WORD = new RegExp(`\\b${'TEM'}${'P'}(?:${'ORARY'})?\\b`, 'gi');
 const TEMP_SCHEMA = new RegExp(`\\b${'pg'}_${'temp'}(?:_\\d+)?\\b`, 'gi');
@@ -82,6 +82,8 @@ describe('the scan itself', () => {
     for (const folder of ['src/core/', 'src/engine/', 'src/plugins/', 'src/modules/', 'src/db/commands/', 'src/db/reset/', 'src/db/seed/', 'src/db/migrations/']) {
       expect(paths.some((path) => path.startsWith(folder)), folder).toBe(true);
     }
+    // Rule R1: no production TypeScript or SQL file of `src/` is missing from the scan.
+    expect(scanCoverage(paths, [{ folder: 'src/', extensions: ['.ts', '.sql'] }])).toMatchObject({ missing: [], empty: false });
     expect(paths.filter((path) => path.endsWith('.sql')).length).toBeGreaterThanOrEqual(4);
     expect(paths.some((path) => path.includes('__tests__/') || path.endsWith('.test.ts'))).toBe(false);
   });

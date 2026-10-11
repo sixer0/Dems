@@ -20,7 +20,7 @@ import { DEVICE_COMMAND_OPERATIONS } from '@dems/shared/api';
 import { DeviceCommand } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { relativeImports } from '../../../../test/static/imports';
-import { REPOSITORY, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { REPOSITORY, SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import { DEVICE_COMMAND_OF_OPERATION } from '../../../modules/devices';
 import { CAPTURE_DEVICE_COMMANDS, SEAM_OF_DEVICE_COMMAND, operationOfDeviceCommand } from '../commands';
 import { MIC_CLOCK_COMPENSATION_PPM, MIC_LATENESS_TARGET_MS, MIC_TRANSPORTS, MIC_WORKER_BUFFER_CAP_MS, micPipePath, withinMicClockRange } from '../mic-transport';
@@ -50,12 +50,8 @@ const CREDENTIAL_MEMBER = /\.\s*(?:secret|username)\b/g;
 const USER_PART_COMPOSED = /\/\/\$\{[^}]*\}(?::\$\{[^}]*\})?@|['"`]@['"`]\s*\+|\+\s*['"`]@/g;
 
 describe('the scan itself', () => {
-  it('reads the adapter layer: exactly these production files', () => {
-    expect(adapters.map((file) => file.path)).toEqual(
-      ['audio/usb-audio.ts', 'camera/connection-target.ts', 'camera/discovery-collector.ts', 'camera/onvif-cam.d.ts', 'camera/onvif-discovery.ts', 'camera/onvif-rtsp.ts', 'camera/onvif-session.ts', 'camera/probe-answer.ts', 'camera/ws-discovery.ts', 'camera/xml2js.d.ts', 'commands.ts', 'credential.ts', 'errors.ts', 'fake/audio.ts', 'fake/camera.ts', 'fake/index.ts', 'fake/poe.ts', 'index.ts', 'kinds.ts', 'local/camera-adapter.ts', 'local/camera-helper-args.ts', 'local/camera-helper.ts', 'local/device-list.ts', 'local/errors.ts', 'local/helper-program.ts', 'local/index.ts', 'local/leftover.ts', 'local/mic-adapter.ts', 'local/mic-helper-args.ts', 'local/mic-helper.ts', 'local/mic-pipe.ts', 'local/pipe-files.ts', 'local/process-door.ts', 'mic-transport.ts', 'poe/snmp-poe.ts', 'real.ts', 'registry.ts', 'types.ts'].map(
-        (name) => `${ADAPTERS}${name}`,
-      ),
-    );
+  it('reads the adapter layer: every production file of the folder, the class-C adapters among them', () => {
+    expect(scanCoverage(adapters, [ADAPTERS])).toEqual(SCAN_COVERS);
     for (const path of CLASS_C) expect(adapters.some((file) => file.path === `${path}.ts`), path).toBe(true);
   });
 });

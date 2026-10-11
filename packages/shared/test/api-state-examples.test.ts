@@ -196,6 +196,7 @@ describe('the examples of the hosted actions are the simulator\'s answers at the
 describe('the examples of all 97 operations', () => {
   it('every operation has an example for every status with a body, and for no status it does not document', () => {
     let pairs = 0;
+    let requests = 0;
     for (const operation of CORE_API_OPERATIONS) {
       const examples = CORE_API_EXAMPLES[operation.operationId];
       expect(examples, operation.operationId).toBeDefined();
@@ -211,9 +212,20 @@ describe('the examples of all 97 operations', () => {
       }
       for (const status of Object.keys(examples?.responses ?? {})) expect(operation.responses[Number(status)], `${operation.operationId} ${status}`).toBeDefined();
       expect(Object.keys(examples?.request ?? {}).length > 0, `${operation.operationId} request`).toBe(operation.requestBody !== undefined);
+      // EVERY named request example is a body of the operation (suite consolidation 14: the typed-client
+      // loops send only the first one, so the others - and with them the request halves of the exported
+      // area maps `IDENTITY_EXAMPLES` .. `STT_CONFIG_EXAMPLES` - were parsed by no test).
+      for (const [name, item] of Object.entries(examples?.request ?? {})) {
+        const body = operation.requestBody;
+        expect(body !== undefined && CORE_API_SCHEMAS[body.schema].safeParse(item.value).success, `${operation.operationId} request ${name}`).toBe(true);
+        requests += 1;
+      }
       expect(examples?.pathParams !== undefined, `${operation.operationId} path`).toBe(operation.pathParam !== undefined);
       if (operation.pathParam) expect(examples?.pathParams?.id, operation.operationId).toMatch(operation.pathParam.pattern);
     }
+    // No example set stands outside the registry: a key that names no operation would be validated by no loop.
+    expect(Object.keys(CORE_API_EXAMPLES).sort()).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort());
+    expect(requests).toBeGreaterThanOrEqual(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).length);
     // One example set for every (operation, status with a schema) pair of the registry.
     expect(pairs).toBe(CORE_API_OPERATIONS.reduce((sum, operation) => sum + Object.values(operation.responses).filter((spec) => spec.schema).length, 0));
     expect(pairs).toBeGreaterThan(300);

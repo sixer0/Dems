@@ -19,6 +19,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
+import { SCAN_COVERS, scanCoverage } from '../../../../test/static/scan';
 
 const SERVER_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../../../../../', import.meta.url));
@@ -61,22 +62,10 @@ const serverSources = sourcesUnder('src');
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder, the connect flow among them', () => {
-    expect(moduleSources.map((source) => source.path)).toEqual([
-      `${FOLDER}/adoption.ts`,
-      `${FOLDER}/connect/index.ts`,
-      `${FOLDER}/connect/limits.ts`,
-      `${FOLDER}/connect/service.ts`,
-      `${FOLDER}/connect/statements.ts`,
-      `${FOLDER}/index.ts`,
-      `${FOLDER}/limits.ts`,
-      `${FOLDER}/registered.ts`,
-      `${FOLDER}/routes.ts`,
-      // Fix wave I (G70b-07): the one READ of the stored chain's highest search number.
-      `${FOLDER}/search-ids.ts`,
-      `${FOLDER}/search.ts`,
-      `${FOLDER}/session-expiry.ts`,
-      `${FOLDER}/store.ts`,
-    ]);
+    // Rule R1 (test/static/scan.ts): the scan equals an independent walk of the folder and is not empty.
+    const paths = moduleSources.map((source) => source.path);
+    expect(scanCoverage(paths, [FOLDER])).toEqual(SCAN_COVERS);
+    expect(paths.some((path) => path.startsWith(`${FOLDER}/connect/`))).toBe(true);
     expect(moduleSources.every((source) => source.text.length > 200)).toBe(true);
     expect(serverSources.length).toBeGreaterThan(200);
   });

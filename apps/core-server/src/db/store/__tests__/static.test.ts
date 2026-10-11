@@ -16,7 +16,7 @@
 import { DEMO_OPERATOR_PASSWORD, DEMO_PAIRING_CODE, EVIDENCE_HISTORY, OPERATORS, RECORDING_SCENARIO, TODAY_HISTORY } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { relativeImports } from '../../../../test/static/imports';
-import { WORKSPACE, codeOnly, isProductionSource, isTestFile, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, isTestFile, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 
 const tree = readTree(WORKSPACE);
 const folder = tree.filter((file) => file.path.startsWith('src/db/store/'));
@@ -32,11 +32,10 @@ function importsOf(files: readonly SourceFile[]): string[] {
 
 describe('the scan itself', () => {
   it('reads the production sources and the tests of the folder', () => {
-    expect(own.map((file) => file.path)).toEqual(['src/db/store/index.ts', 'src/db/store/store.ts']);
-    expect(folder.filter((file) => isTestFile(file.path)).map((file) => file.path)).toEqual([
-      'src/db/store/__tests__/static.test.ts',
-      'src/db/store/__tests__/write-through.db.test.ts',
-    ]);
+    // Rule R1 (test/static/scan.ts): the scan equals an independent walk of the folder and is not empty.
+    expect(scanCoverage(own, ['src/db/store/'])).toEqual(SCAN_COVERS);
+    // The tests of the folder are read too (the rule about the two demo values below holds for them): this file is one of them.
+    expect(folder.filter((file) => isTestFile(file.path)).map((file) => file.path)).toContain('src/db/store/__tests__/static.test.ts');
   });
 
   it('finds an import of a caller and a statement when they are there (positive control)', () => {

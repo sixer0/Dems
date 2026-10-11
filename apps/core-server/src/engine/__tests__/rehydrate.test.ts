@@ -10,7 +10,7 @@ import {
   verifyAuditChain,
   type ScenarioName,
   type SimErrorReport,
-  type SimState,
+  type SimState, CORE_NOT_RUNNING_SENTENCE, isPlatformNotReported, platformNotReportedTransition, STOPPING_MS, CORE_NOT_RUNNING_CLEARED_SENTENCE, applySealingProgressTransition, completeSealTransition, endUnsealableTransition, type CompleteSealInput, type SealingStepReport,
 } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { DURABLE_SLICE_KEYS, pickDurable, toRows, type StoredRows } from '../../db/mapping';
@@ -29,6 +29,9 @@ import {
   storedStateOf,
   type StoredState,
 } from '../rehydrate';
+import { CORE_NOT_RUNNING_FAULT_EXAMPLE } from '@dems/shared/api';
+import { SEALING_STEP_ORDER } from '../../sealing';
+import { RESTART_FAULT_OPEN_STATES, endRestartFaultTransition, hasRestartFault, restartFaultSessionOpen } from '../restart-fault';
 
 /** The rows a database holds for `state`, written at `at` (the JSON round trip and a scrambled order included). */
 function rowsOf(state: SimState, at: number): StoredRows {
@@ -233,8 +236,9 @@ describe('adoptStoredState', () => {
   });
 });
 
+const STOP_MS = 90_000;
+
 describe('applyProcessStart: what a process start does to the state it rehydrated', () => {
-  const STOP_MS = 90_000;
 
   /** A recording that ran for a minute, was stored, and is rehydrated `STOP_MS` after the last write. */
   async function restarted(prepare: (host: Host) => void = () => undefined) {
@@ -495,5 +499,337 @@ describe('applyProcessStart: what a process start does to the state it rehydrate
     expect(errors).toEqual([]);
     // The durable state after the journey still maps to rows and back.
     expect(storedStateOf(rowsOf(state, clock.now())).slices).toStrictEqual(withoutNegativeZeros(pickDurable(state)));
+  });
+});
+
+const newRows = (state: SimState, before: SimState) => state.audit.rows.filter((row) => row.seq > before.audit.total);
+
+describe('G75b-03: the restart fault says what the Core knows (pass J)', () => {
+  const rowsOf = (state: SimState, at: number): StoredRows => asStored(toRows(state, { at, seededAt: FIXED_NOW, lastResetAt: null }));
+
+  async function simOf(state: SimState, at: number, epoch: number) {
+    const stored = storedStateOf(rowsOf(state, at));
+    const now = at + STOP_MS;
+    const errors: SimErrorReport[] = [];
+    const sim = await createHeadlessSim({ seed: DEFAULT_SEED, clock: engineClock(serverClockOn(createManualClock(now), stored.lastCommittedAt)), onError: (report) => errors.push(report), capture: 'external' });
+    adoptStoredState(sim, stored, epoch);
+    return { stored, now, sim, errors };
+  }
+
+  /** A recording that ran for a minute, was brought to `prepare`'s state, stored, and rehydrated `STOP_MS` later by a NEW process. */
+  async function restarted(prepare: (host: Host) => void) {
+    const host = await createHost({ scenario: 'recording' });
+    host.drive(60_000);
+    prepare(host);
+    const stoppedAt = host.now();
+    const before = host.state();
+    return { before, stoppedAt, ...(await simOf(before, stoppedAt, before.meta.epoch + 1)) };
+  }
+
+  const stopping = (host: Host): void => {
+    host.runAs(host.operator('INVESTIGATOR'), () => host.sim.actions.stopRecording('Interview finished'));
+    expect(host.state().session?.state).toBe('STOPPING');
+  };
+
+  describe('G75b-03 (pass J): the restart fault of a real-capture Core says what the Core knows', () => {
+    for (const [from, prepare] of [['RECORDING', () => undefined], ['STOPPING', stopping]] as const) {
+      it(`a session that was ${from}: FAULT with the same kind and fromState, the row says "the Core was not running", nothing says "power fail"`, async () => {
+        const { before, stored, stoppedAt, now, sim, errors } = await restarted(prepare);
+        const effects = applyProcessStart(sim, stored.lastCommittedAt, now, null, { ownCapture: true });
+        const state = sim.store.getState();
+
+        // What an interrupted seal reads did not move.
+        expect(effects.faultedFrom).toBe(from);
+        expect(state.session?.fault).toEqual({ kind: 'POWER_FAIL', at: stoppedAt, fromState: from, ...CORE_NOT_RUNNING_FAULT_EXAMPLE });
+        expect(state.faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toEqual([{ kind: 'POWER_FAIL', since: stoppedAt, target: null, ...CORE_NOT_RUNNING_FAULT_EXAMPLE }]);
+
+        const rows = newRows(state, before);
+        const raised = rows.filter((row) => row.type === 'FAULT_RAISED');
+        expect(raised.map((row) => row.message)).toEqual([CORE_NOT_RUNNING_SENTENCE]);
+        expect(raised[0]?.details).toMatchObject({ kind: 'POWER_FAIL', fromState: from, coreNotRunning: true });
+        expect(raised[0]?.details).not.toHaveProperty('reason');
+        expect(rows.filter((row) => /power\s*fail/i.test(row.message))).toEqual([]);
+
+        const alert = state.alerts.findLast((candidate) => candidate.kind === 'POWER_FAIL' && candidate.active);
+        expect(alert).toMatchObject({ message: CORE_NOT_RUNNING_SENTENCE, params: { kind: 'POWER_FAIL', coreNotRunning: true } });
+        expect(state.events.filter((event) => event.at >= stoppedAt && /power\s*fail/i.test(event.message))).toEqual([]);
+        expect(verifyAuditChain(state.audit)).toMatchObject({ ok: true });
+        expect(errors).toEqual([]);
+      });
+    }
+
+    it('the member is stored and read back: a second start of the Core still words the fault from it', async () => {
+      const { before, stored, now, sim } = await restarted(() => undefined);
+      applyProcessStart(sim, stored.lastCommittedAt, now, null, { ownCapture: true });
+      const faulted = platformNotReportedTransition(sim.store.getState());
+      const again = await simOf(faulted, now, before.meta.epoch + 2);
+      const state = again.sim.store.getState();
+      expect(state.session?.fault).toMatchObject({ kind: 'POWER_FAIL', fromState: 'RECORDING', coreNotRunning: true });
+      expect(state.faults.active.find((fault) => fault.kind === 'POWER_FAIL')).toMatchObject({ coreNotRunning: true });
+      expect(state.alerts.findLast((alert) => alert.kind === 'POWER_FAIL')?.params).toMatchObject({ coreNotRunning: true });
+      expect(state.audit.rows.findLast((row) => row.type === 'FAULT_RAISED')?.details).toMatchObject({ coreNotRunning: true });
+      // And the platform statement of D217 (7) is a stored member of the `security` slice.
+      expect(isPlatformNotReported(state.security)).toBe(true);
+      expect(again.errors).toEqual([]);
+    });
+
+    it('CONTROL - SIMULATED capture is unchanged: the same stored state gets "Power fail detected" and no member', async () => {
+      const { before, stored, stoppedAt, now, sim } = await restarted(() => undefined);
+      applyProcessStart(sim, stored.lastCommittedAt, now);
+      const state = sim.store.getState();
+      expect(state.session?.fault).toEqual({ kind: 'POWER_FAIL', at: stoppedAt, fromState: 'RECORDING' });
+      const raised = newRows(state, before).filter((row) => row.type === 'FAULT_RAISED');
+      expect(raised.map((row) => row.message)).toEqual(['Power fail detected — recovery marker written']);
+      expect(raised[0]?.details).not.toHaveProperty('coreNotRunning');
+      expect(state.faults.active.find((fault) => fault.kind === 'POWER_FAIL')).not.toHaveProperty('coreNotRunning');
+    });
+  });
+});
+
+describe('G75b-03: the graceful restart of a FINALIZING session (wave I, driver A2)', () => {
+  const rowsOf = (state: SimState, at: number): StoredRows => asStored(toRows(state, { at, seededAt: FIXED_NOW, lastResetAt: null }));
+
+  /** A recording that ran for a minute, was brought to `prepare`'s state, stored, and rehydrated `STOP_MS` later by a NEW process. */
+  async function restarted(prepare: (host: Host) => void) {
+    const host = await createHost({ scenario: 'recording' });
+    host.drive(60_000);
+    prepare(host);
+    const stoppedAt = host.now();
+    const before = host.state();
+    const stored = storedStateOf(rowsOf(before, stoppedAt));
+    const now = stoppedAt + STOP_MS;
+    const errors: SimErrorReport[] = [];
+    const sim = await createHeadlessSim({ seed: DEFAULT_SEED, clock: engineClock(serverClockOn(createManualClock(now), stored.lastCommittedAt)), onError: (report) => errors.push(report), capture: 'external' });
+    adoptStoredState(sim, stored, before.meta.epoch + 1);
+    return { before, stored, stoppedAt, now, sim, errors };
+  }
+
+  /** The recording is stopped by its operator and has reached FINALIZING. */
+  const toFinalizing = (host: Host): void => {
+    host.runAs(host.operator('INVESTIGATOR'), () => host.sim.actions.stopRecording('Interview finished'));
+    host.drive(STOPPING_MS + 200);
+    expect(host.state().session?.state).toBe('FINALIZING');
+  };
+
+  describe('G75b-03: a start of a real-capture Core with a session that was FINALIZING at the stop', () => {
+    it('writes NO power-failure row and raises no fault and no alert: the session stays FINALIZING for the seal to go on', async () => {
+      const { before, stored, now, sim, errors } = await restarted(toFinalizing);
+      const effects = applyProcessStart(sim, stored.lastCommittedAt, now, null, { ownCapture: true });
+      const state = sim.store.getState();
+
+      expect(effects.faultedFrom).toBeNull();
+      expect(state.session).toMatchObject({ id: before.session?.id, state: 'FINALIZING', fault: null, stoppedAt: before.session?.stoppedAt });
+      expect(state.faults.active.map((fault) => fault.kind)).not.toContain('POWER_FAIL');
+      expect(state.alerts.filter((alert) => alert.active).length).toBe(before.alerts.filter((alert) => alert.active).length);
+      const rows = newRows(state, before);
+      expect(rows.filter((row) => row.type === 'FAULT_RAISED')).toEqual([]);
+      expect(rows.filter((row) => /power fail/i.test(row.message))).toEqual([]);
+      expect(verifyAuditChain(state.audit)).toMatchObject({ ok: true });
+      expect(errors).toEqual([]);
+    });
+
+    it('writes NO tablet row: the link reads OFFLINE in the state (no socket is open after a process start) and no row says "recording continues"', async () => {
+      const { before, stored, now, sim } = await restarted(toFinalizing);
+      expect(before.tabletLink.state).toBe('CONNECTED');
+      const effects = applyProcessStart(sim, stored.lastCommittedAt, now, null, { ownCapture: true });
+      const state = sim.store.getState();
+
+      expect(state.tabletLink).toEqual({ state: 'OFFLINE', changedAt: now });
+      expect(effects.tabletLinkReset).toBe(false);
+      expect(effects.tabletLinkOfflineUnwritten).toBe(true);
+      const rows = newRows(state, before);
+      expect(rows.filter((row) => row.type === 'TABLET_LINK_CHANGED')).toEqual([]);
+      expect(rows).toEqual([]);
+      // The device list follows the link, as the hosted action would have made it.
+      expect(JSON.stringify(state.otherDevices)).not.toBe(JSON.stringify(before.otherDevices));
+      // When the tablet connects again the truthful row of THAT change is written.
+      sim.actions.setTabletLink('CONNECTED');
+      expect(newRows(sim.store.getState(), before).map((row) => [row.type, row.message])).toEqual([['TABLET_LINK_CHANGED', 'Tablet control connected']]);
+    });
+
+    it('CONTROL - SIMULATED capture is unchanged: the same stored state gets the restart fault from FINALIZING and the tablet row', async () => {
+      const { before, stored, stoppedAt, now, sim } = await restarted(toFinalizing);
+      const effects = applyProcessStart(sim, stored.lastCommittedAt, now);
+      const state = sim.store.getState();
+      expect(effects).toMatchObject({ faultedFrom: 'FINALIZING', tabletLinkReset: true });
+      expect(effects.tabletLinkOfflineUnwritten ?? false).toBe(false);
+      expect(state.session).toMatchObject({ state: 'FAULT', fault: { kind: 'POWER_FAIL', fromState: 'FINALIZING', at: stoppedAt } });
+      expect(newRows(state, before).map((row) => row.type)).toEqual(['FAULT_RAISED', 'TABLET_LINK_CHANGED']);
+    });
+
+    it('CONTROL - a session that was RECORDING at the stop of a real-capture Core still leaves RECORDING (no worker holds it): the restart fault stands there (open item of note 132)', async () => {
+      const { before, stored, now, sim } = await restarted(() => undefined);
+      const effects = applyProcessStart(sim, stored.lastCommittedAt, now, null, { ownCapture: true });
+      const state = sim.store.getState();
+      expect(effects.faultedFrom).toBe('RECORDING');
+      expect(state.session).toMatchObject({ state: 'FAULT', fault: { fromState: 'RECORDING' } });
+      // The tablet row is not written here either.
+      expect(newRows(state, before).filter((row) => row.type === 'TABLET_LINK_CHANGED')).toEqual([]);
+    });
+  });
+});
+
+describe('G75c-01: the end of the restart fault (wave K, driver S1)', () => {
+  const rowsOf = (state: SimState, at: number): StoredRows => asStored(toRows(state, { at, seededAt: FIXED_NOW, lastResetAt: null }));
+  const hex = (seed: string, length = 64): string => seed.repeat(length).slice(0, length);
+
+  /** A NEW process on the stored form of `state`, `STOP_MS` after `at`. */
+  async function processOn(state: SimState, at: number) {
+    const stored = storedStateOf(rowsOf(state, at));
+    const now = at + STOP_MS;
+    const errors: SimErrorReport[] = [];
+    const sim = await createHeadlessSim({ seed: DEFAULT_SEED, clock: engineClock(serverClockOn(createManualClock(now), stored.lastCommittedAt)), onError: (report) => errors.push(report), capture: 'external' });
+    adoptStoredState(sim, stored, state.meta.epoch + 1);
+    return { stored, now, sim, errors };
+  }
+
+  /** A recording of a minute, the Core stopped, and its next start: the session is FAULT with the restart fault. */
+  async function faultedByRestart() {
+    const host = await createHost({ scenario: 'recording' });
+    host.drive(60_000);
+    const stoppedAt = host.now();
+    const first = await processOn(host.state(), stoppedAt);
+    const effects = applyProcessStart(first.sim, first.stored.lastCommittedAt, first.now, null, { ownCapture: true });
+    expect(effects.faultedFrom).toBe('RECORDING');
+    expect(effects.restartFaultEnded).toBeUndefined();
+    const state = first.sim.store.getState();
+    expect(hasRestartFault(state)).toBe(true);
+    expect(restartFaultSessionOpen(state)).toBe(true);
+    return { state, at: first.now, sessionId: state.session?.id ?? '' };
+  }
+
+  const steps = (running: number): SealingStepReport[] =>
+    SEALING_STEP_ORDER.map((id, index) => ({ id, status: index < running ? 'DONE' : index === running ? 'RUNNING' : 'PENDING', progress: index < running ? 100 : 0, etaMs: null, attempt: 1 }));
+
+  const sealInput = (sessionId: string, at: number): CompleteSealInput => ({
+    sessionId,
+    sealedAt: at,
+    manifestSha256: hex('ab'),
+    signature: { value: hex('cd', 128), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' },
+    tracks: [
+      { trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: hex('01') },
+      { trackId: 'VIDEO-02', sizeBytes: 5_000, sha256: hex('02') },
+    ],
+    interrupted: true,
+    durableEndAt: at - 1_000,
+    transcriptSha256: null,
+    labelsStatus: null,
+    developmentSources: true,
+  });
+
+  /** The interrupted seal of the faulted session, by the shared transitions only (the tree before the fix). */
+  function sealedBySharedTransitions(state: SimState, sessionId: string, at: number): SimState {
+    const finalizing = applySealingProgressTransition(state, at, { sessionId, steps: steps(5) });
+    expect(finalizing.session?.state).toBe('FINALIZING');
+    return completeSealTransition(finalizing, at + 1_000, sealInput(sessionId, at + 1_000));
+  }
+
+  const restartAlerts = (state: SimState) => state.alerts.filter((alert) => alert.kind === 'POWER_FAIL' && alert.params?.['coreNotRunning'] === true);
+  const clearedRows = (state: SimState) => state.audit.rows.filter((row) => row.type === 'FAULT_CLEARED' && row.details['coreNotRunning'] === true);
+
+  describe('G75c-01: the restart fault of a real-capture Core ends with the session it was raised for', () => {
+    it('CONTROL (the finding): the shared transitions alone seal the session and leave the fault and its alert ACTIVE, with no FAULT_CLEARED row', async () => {
+      const { state, at, sessionId } = await faultedByRestart();
+      const sealed = sealedBySharedTransitions(state, sessionId, at);
+      expect(sealed.session).toMatchObject({ id: sessionId, state: 'SEALED' });
+      expect(hasRestartFault(sealed)).toBe(true);
+      expect(restartAlerts(sealed).map((alert) => alert.active)).toEqual([true]);
+      expect(clearedRows(sealed)).toEqual([]);
+    });
+
+    it('while the faulted session is open (FAULT, FINALIZING) the fault STAYS: the rule clears nothing', async () => {
+      const { state, at, sessionId } = await faultedByRestart();
+      expect(RESTART_FAULT_OPEN_STATES).toEqual(['FAULT', 'RECOVERY', 'FINALIZING']);
+      expect(endRestartFaultTransition(state, at)).toBe(state);
+      const finalizing = applySealingProgressTransition(state, at, { sessionId, steps: steps(2) });
+      expect(finalizing.session?.state).toBe('FINALIZING');
+      expect(endRestartFaultTransition(finalizing, at)).toBe(finalizing);
+    });
+
+    it('SEALED: one FAULT_CLEARED row in the fault\'s own words, the alert resolved, no critical fault left; a second call writes nothing', async () => {
+      const { state, at, sessionId } = await faultedByRestart();
+      const sealed = sealedBySharedTransitions(state, sessionId, at);
+      const ended = endRestartFaultTransition(sealed, at + 1_000);
+
+      expect(hasRestartFault(ended)).toBe(false);
+      expect(ended.faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toEqual([]);
+      const rows = clearedRows(ended);
+      expect(rows.map((row) => row.message)).toEqual([CORE_NOT_RUNNING_CLEARED_SENTENCE]);
+      expect(rows[0]).toMatchObject({ sessionId, details: { kind: 'POWER_FAIL', target: null, coreNotRunning: true } });
+      expect(restartAlerts(ended)).toHaveLength(1);
+      expect(restartAlerts(ended)[0]).toMatchObject({ active: false, resolvedAt: at + 1_000 });
+      expect(ended.alerts.filter((alert) => alert.active && alert.severity === 'CRITICAL')).toEqual([]);
+      // What the interrupted item reads did not move: the sealed session still names its fault.
+      expect(ended.session).toMatchObject({ id: sessionId, state: 'SEALED', fault: { kind: 'POWER_FAIL', fromState: 'RECORDING', coreNotRunning: true } });
+      expect(verifyAuditChain(ended.audit)).toMatchObject({ ok: true });
+
+      expect(endRestartFaultTransition(ended, at + 2_000)).toBe(ended);
+    });
+
+    it('ENDED UNSEALABLE (the session is closed, no item): the fault is cleared the same way', async () => {
+      const { state, at, sessionId } = await faultedByRestart();
+      const closed = endUnsealableTransition(state, at, { sessionId, cause: 'SESSION_KEY_NOT_OF_SESSION' });
+      expect(closed.session).toBeNull();
+      expect(hasRestartFault(closed)).toBe(true); // the control of this case: the shared transition leaves it
+      const ended = endRestartFaultTransition(closed, at);
+      expect(hasRestartFault(ended)).toBe(false);
+      expect(clearedRows(ended)).toHaveLength(1);
+      expect(restartAlerts(ended).map((alert) => alert.active)).toEqual([false]);
+    });
+
+    it('THE STUCK LANE HEALS AT ITS NEXT START: a stored state with the fault active and its session sealed (and acknowledged) gets one FAULT_CLEARED row, and the start after that writes nothing', async () => {
+      const { state, at, sessionId } = await faultedByRestart();
+      // The stored state of lane 2: the session sealed by the build before the fix, the alert acknowledged.
+      const stuck = sealedBySharedTransitions(state, sessionId, at);
+      const acknowledged: SimState = { ...stuck, alerts: stuck.alerts.map((alert) => (alert.kind === 'POWER_FAIL' ? { ...alert, acknowledged: true } : alert)) };
+      expect(restartAlerts(acknowledged).map((alert) => [alert.active, alert.acknowledged])).toEqual([[true, true]]);
+
+      const second = await processOn(acknowledged, at + 2_000);
+      const total = second.sim.store.getState().audit.total;
+      const effects = applyProcessStart(second.sim, second.stored.lastCommittedAt, second.now, null, { ownCapture: true });
+      const healed = second.sim.store.getState();
+      expect(effects).toMatchObject({ faultedFrom: null, restartFaultEnded: true });
+      expect(hasRestartFault(healed)).toBe(false);
+      expect(restartAlerts(healed).map((alert) => alert.active)).toEqual([false]);
+      const written = healed.audit.rows.filter((row) => row.seq > total);
+      expect(written.map((row) => row.type)).toEqual(['FAULT_CLEARED']);
+      expect(written[0]).toMatchObject({ message: CORE_NOT_RUNNING_CLEARED_SENTENCE, at: second.now });
+      expect(healed.audit.rows.filter((row) => row.seq > total && row.type === 'FAULT_RAISED')).toEqual([]);
+      expect(verifyAuditChain(healed.audit)).toMatchObject({ ok: true });
+      expect(second.errors).toEqual([]);
+
+      // A restart with NO session active: nothing is raised, nothing is cleared, no row.
+      const third = await processOn(healed, second.now);
+      const before = third.sim.store.getState().audit.total;
+      const again = applyProcessStart(third.sim, third.stored.lastCommittedAt, third.now, null, { ownCapture: true });
+      expect(again.faultedFrom).toBeNull();
+      expect(again.restartFaultEnded).toBeUndefined();
+      expect(third.sim.store.getState().audit.total).toBe(before);
+      expect(third.sim.store.getState().faults.active).toEqual([]);
+      expect(third.errors).toEqual([]);
+    });
+
+    it('a second start while the faulted session is still OPEN keeps the fault and raises no second one', async () => {
+      const { state, at } = await faultedByRestart();
+      const second = await processOn(state, at);
+      const total = second.sim.store.getState().audit.total;
+      const effects = applyProcessStart(second.sim, second.stored.lastCommittedAt, second.now, null, { ownCapture: true });
+      expect(effects.faultedFrom).toBeNull();
+      expect(effects.restartFaultEnded).toBeUndefined();
+      const after = second.sim.store.getState();
+      expect(after.faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toHaveLength(1);
+      expect(after.audit.total).toBe(total);
+    });
+
+    it('CONTROL - a simulated Core\'s own POWER_FAIL (no `coreNotRunning`) is not this fault and is never cleared by the rule', async () => {
+      const host = await createHost({ scenario: 'recording' });
+      host.drive(60_000);
+      const first = await processOn(host.state(), host.now());
+      applyProcessStart(first.sim, first.stored.lastCommittedAt, first.now);
+      const state = first.sim.store.getState();
+      expect(state.faults.active.some((fault) => fault.kind === 'POWER_FAIL')).toBe(true);
+      expect(hasRestartFault(state)).toBe(false);
+      expect(endRestartFaultTransition({ ...state, session: null }, first.now).faults.active.some((fault) => fault.kind === 'POWER_FAIL')).toBe(true);
+    });
   });
 });

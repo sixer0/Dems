@@ -9,7 +9,7 @@
 //      running is reaped when the session is opened again.
 //
 // The oMLX server is a loopback fake (never the real one, D7(d)); no engine is started.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
@@ -24,10 +24,17 @@ const SECRET_CANARY = ['stt', 'ENCRYPTED', 'CANARY', 'passA', 'Hx7Pd2Lm9Qc4Wz'].
 
 const dirs: string[] = [];
 const fakes: FakeOmlx[] = [];
-const children: ChildProcess[] = [];
+/** PIDs of the stand-in processes this file started and that are no child of it: killed here if a case left one. */
+const orphans: number[] = [];
 afterEach(async () => {
   await Promise.all(fakes.splice(0).map((entry) => entry.close()));
-  for (const child of children.splice(0)) child.kill('SIGKILL');
+  for (const pid of orphans.splice(0)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already gone: the guard reaped it.
+    }
+  }
 });
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
@@ -190,10 +197,33 @@ describe('the engine guard of the pipeline is in the production composition (rev
       return false;
     }
   };
-  const gone = async (child: ChildProcess): Promise<void> => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    await new Promise<void>((done) => child.once('exit', () => done()));
-  };
+  /**
+   * The stand-in of an engine a killed Core left behind: a process that does nothing, that ignores
+   * SIGTERM (so only a SIGKILL ends it) and that is NOT a child of this process. A shell starts it
+   * in the background, prints its PID and ends: the stand-in then belongs to no living parent, as
+   * a real orphan does.
+   *
+   * Why not a child (test-suite consolidation, test/14): the guard's reap is synchronous. A killed
+   * CHILD of this process stays a zombie until the event loop collects it, which cannot happen
+   * while the reap holds the loop, so the guard polled its whole bound (200 polls of 50 ms) for a
+   * process that was already dead. That was 12 s of real waiting in this one case, measured in
+   * every unit run (test/13 section 5.1), and it showed nothing about the product: no engine of a
+   * killed Core is the new Core's child.
+   */
+  const orphanedStandIn = (): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const shell = spawn('/bin/sh', ['-c', "trap '' TERM; /bin/sleep 120 >/dev/null 2>&1 & echo $!"], { stdio: ['ignore', 'pipe', 'ignore'] });
+      let printed = '';
+      shell.stdout.on('data', (chunk: Buffer) => {
+        printed += chunk.toString('utf8');
+      });
+      shell.once('error', reject);
+      shell.once('close', () => {
+        const pid = Number(printed.trim());
+        if (Number.isInteger(pid) && pid > 1) resolve(pid);
+        else reject(new Error('the stand-in process did not start'));
+      });
+    });
 
   it('an engine a killed Core left running is reaped when the session is opened again, and its record is removed', async () => {
     const SESSION = 'SES-20310101-0903';
@@ -204,11 +234,13 @@ describe('the engine guard of the pipeline is in the production composition (rev
     const scratch = sessionScratchDir(mediaOf(m.dataDir), SESSION);
     mkdirSync(scratch, { recursive: true });
 
-    // The stand-in of an orphaned engine: a process that does nothing, recorded as the pipeline records an engine.
-    const orphan = spawn('/bin/sleep', ['120'], { stdio: 'ignore' });
-    children.push(orphan);
-    const pid = orphan.pid;
-    if (pid === undefined) throw new Error('the stand-in process did not start');
+    // The stand-in of an orphaned engine, recorded as the pipeline records an engine.
+    const pid = await orphanedStandIn();
+    orphans.push(pid);
+    // CONTROL: the signal a process may refuse does not end it. What ends it below is the guard's SIGKILL.
+    process.kill(pid, 'SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(alive(pid)).toBe(true);
     createEngineGuard(scratch).record({ pid });
     const record = join(scratch, 'work', ENGINE_RECORD_FILE);
     expect(existsSync(record)).toBe(true);
@@ -216,10 +248,10 @@ describe('the engine guard of the pipeline is in the production composition (rev
 
     const open = await m.control.openSession(SESSION);
     expect(open.state).toBe('ENABLED');
-    await gone(orphan);
-    expect(orphan.signalCode).toBe('SIGKILL');
+    // The reap is done when `openSession` answers: the process that refused SIGTERM is gone, so it was killed.
+    expect(alive(pid)).toBe(false);
     expect(existsSync(record)).toBe(false);
     if (open.state === 'ENABLED') open.close();
-    console.info(`[passA] engine guard in the mount | orphan pid recorded -> reaped at openSession (signal=${orphan.signalCode}), record removed`);
+    console.info('[passA] engine guard in the mount | orphan pid recorded -> reaped at openSession (SIGTERM refused before, gone after), record removed');
   }, 20_000);
 });

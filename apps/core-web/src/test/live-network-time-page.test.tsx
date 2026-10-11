@@ -21,6 +21,7 @@ import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { en } from '@dems/shared/i18n'
 import type { FakeCommandOptions } from '@dems/shared/live/testing'
 import type { SimState } from '@dems/shared/sim'
@@ -224,8 +225,8 @@ describe('static rules of the folder (CLG (c); AC-C-53; MD-6)', () => {
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(expect.arrayContaining(['index.tsx', 'sim-adapter.ts', 'model.ts', 'panel.tsx', 'use-network-time-alerts.ts']))
-    expect(production.length).toBeGreaterThanOrEqual(15)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/network-time/**/*.{ts,tsx}'), root: '../features/network-time' })
   })
 
   it('AC-C-53: no file imports `useSimActions`, reads `.actions` of a `Sim`, or calls any action: the page only reads the replica', () => {

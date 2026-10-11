@@ -48,7 +48,7 @@ describe('HomeScreen', () => {
   });
 
   it('shows the title, then goes from Connecting to Live with the health version', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } } });
     render(
       <HeroUINativeProvider>
         <QueryClientProvider client={queryClient}>

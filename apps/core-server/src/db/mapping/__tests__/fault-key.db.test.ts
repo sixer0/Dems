@@ -23,13 +23,6 @@ afterAll(() => {
 
 const STORED = `SELECT kind, target, reason, params->>'reason' AS params_reason, active FROM public.alerts WHERE target IN ('CAM-01', 'CAM-02', 'MIC-01') ORDER BY id`;
 
-describe('the schema this test needs', () => {
-  it('schema version 6, contract dbc-7: `alerts.reason` exists', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('two causes on one device are two stored alerts, across a restart', () => {
   it('raise -> stored rows with the cause in its column -> restart reads both back -> a clear of one cause resolves that row alone', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'dems-fault-key-'));

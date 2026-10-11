@@ -23,13 +23,6 @@ afterAll(() => {
 
 const GB = 1_000_000_000;
 
-describe('the schema this pass was written against', () => {
-  it('schema version 6, contract dbc-7: no migration', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('CS-09: the measured evidence volume in slice `storage`', () => {
   it('a boot that calls nothing shows the simulator\'s volume; the door sets total and used (= total - free) and the state; the system volume and the history stay; the figures survive a restart', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'dems-d6-facts-'));

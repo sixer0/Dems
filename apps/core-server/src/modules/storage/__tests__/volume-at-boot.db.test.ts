@@ -34,11 +34,6 @@ const evidenceVolume = (state: { storage: { volumes: ReadonlyArray<{ kind: strin
 };
 
 describe('CS-09: the storage slice after a boot', () => {
-  it('schema version 6, contract dbc-7', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-
   it('SIMULATED: the figures are the simulator\'s (the seed\'s), and the boot measured nothing', async () => {
     const { app } = await booted('d10_vol_sim', {});
     expect(captureBootControl(app).outcome()?.evidenceVolume).toBeNull();

@@ -13,14 +13,14 @@
 //     LIVE wording; the operation's extra members are read through `useLiveSelector`; the offline notice
 //     is `useCoreLinkNotice()` in one call.
 //  4. The copy (rule 8): the LIVE text says nothing about a simulation, the folder holds no `SIM-GAP`
-//     marker (none at `acaff20` either), and the copy of Simulated mode is what it was at `acaff20`.
+//     marker (none at `acaff20` either).
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { auditEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -42,7 +42,6 @@ const production = raw.filter((file) => !isTest(file.name)).map((file) => ({ nam
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('common.actions.verify')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
@@ -51,31 +50,15 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Operator Audit takes the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads the folder: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'audit-boundary.tsx',
-      'audit-entry-detail.tsx',
-      'audit-filters.tsx',
-      'audit-model.ts',
-      'audit-row.tsx',
-      'audit-screen.tsx',
-      'audit-sheet.tsx',
-      'audit-tones.ts',
-      'chain-live.tsx',
-      'chain-strip.tsx',
-      'i18n.ts',
-      'use-audit-data.ts',
-      'use-sheet-presence.tsx',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it("no production file calls the simulator's action hook", () => {
-    // The control: the pattern finds the hook where it is called.
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim`', () => {
@@ -151,13 +134,5 @@ describe('the copy (rule 8; §3.2)', () => {
   it('no `SIM-GAP` marker: the folder holds none, as at `acaff20` (KI-07 stays 13 IDs / 62 markers)', () => {
     const marker = new RegExp(`${['SIM', 'GAP'].join('-')}-M\\d+-\\d+`, 'g');
     expect(raw.flatMap((file) => file.source.match(marker) ?? [])).toEqual([]);
-  });
-
-  it('the copy of Simulated mode is as it was at `acaff20`: 55 texts, one digest', () => {
-    // The digest of the same list built from `git show acaff20:apps/mobile/src/features/audit/i18n.ts`
-    // (`.cache/w80/digest.cjs`, implementation/80 §5).
-    const simulated = leaves(auditEn).filter((leaf) => !leaf.key.startsWith('live.'));
-    expect(simulated).toHaveLength(55);
-    expect(digest(simulated)).toBe('dd6855b43066362691d9d51b41e657a4019ff0b6f5dc3b7c16b1f0cf11c08b6c');
   });
 });

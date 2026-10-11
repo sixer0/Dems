@@ -42,6 +42,7 @@ import {
   type MountedSessionNew,
 } from '@/features/session-new/__tests__/live-session-new-bed'
 import { CREATE_BEAT_MS } from '@/features/session-new/model'
+import { pageTimersFake, pageTimersReal, pass, until } from '@/runtime/testing/fake-time'
 
 configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 30_000 })
@@ -95,6 +96,7 @@ beforeEach(async () => {
   await clearToasts()
 })
 afterEach(async () => {
+  pageTimersReal()
   cleanup()
   await clearToasts()
   live?.bed.dispose()
@@ -346,16 +348,21 @@ describe('D181 Start Recording with a local device in the selector', () => {
   it('(a) with the 3-2-1 countdown on: the notice comes before the countdown; no countdown and no start without Confirm', async () => {
     await armed('LOCAL_DEVICE')
     expect(countdownSwitch()).toBeChecked()
+    // The page's timers are fake BEFORE the press (audit 13, W1): a countdown the press armed would
+    // be a fake timer too, so the span below runs it through if it exists.
+    pageTimersFake()
     fireEvent.click(screen.getByTestId('sn-start'))
-    const dialog = await screen.findByTestId('local-source-notice')
+    const dialog = await until(() => screen.getByTestId('local-source-notice'))
     expect(dialog).toHaveAttribute('data-kind', 'START')
     // Longer than the whole countdown would take.
-    await new Promise((resolve) => setTimeout(resolve, 3_600))
+    await pass(3_600)
     await settleAll(live!.bed)
     expect(requests('startSession')).toBe(0)
     fireEvent.click(screen.getByTestId('local-source-notice-cancel'))
-    await waitFor(() => expect(notice()).toBeNull())
-    await quiet()
+    await until(() => expect(notice()).toBeNull(), { stepMs: 50 })
+    // `quiet()` on the fake clock: longer than the page's own beat, every promise job and fake answer run.
+    await pass(CREATE_BEAT_MS + 100)
+    await settleAll(live!.bed)
     expect(requests('startSession')).toBe(0)
   })
 
@@ -396,6 +403,8 @@ describe('D181 Start Recording with a local device in the selector', () => {
 
   it('(c) a reload on the ready step (StrictMode): no start is sent by itself, and no notice opens by itself', async () => {
     await armed('LOCAL_DEVICE', '/session/new?step=3')
+    // On the SYSTEM clock on purpose: what a mount starts by itself is armed during the mount, which
+    // needs the real timers (the route's chunk, `findBy…`). A fake clock from here on would not hold it.
     await new Promise((resolve) => setTimeout(resolve, 3_600))
     await settleAll(live!.bed)
     expect(requests('startSession')).toBe(0)

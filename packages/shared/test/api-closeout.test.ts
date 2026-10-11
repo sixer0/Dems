@@ -45,6 +45,11 @@ import {
   validateCoreApiResponse,
   WsServerMessageSchema,
 } from '../src/api';
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { WEB_SESSION_REFUSED } from '../src/api/operation-parts';
+import { en } from '../src/i18n';
+import { VERIFY_NOTICE } from '../src/evidence-verify/types';
 
 function operation(operationId: string) {
   const found = findCoreApiOperation(operationId);
@@ -321,5 +326,61 @@ describe('W83 ledger row 71: the answers of contract A are strict (finding W52-F
     for (const name of ['HealthResponse', 'SessionCommandResponse', 'CurrentSessionResponse', 'DeviceHealthResponse', 'AudioStatusResponse', 'VideoStatusResponse', 'StorageStatusResponse', 'EvidenceExportAccepted', 'ApiError', 'Heartbeat']) {
       expect(strict(name), name).toBe(false);
     }
+  });
+});
+
+// FXR-W, Nits W92-20 and W92-24 of `verification/11_code_review_shared_web.md` (decision D242).
+//
+// | Nit | Held here |
+// |-----|-----------|
+// | W92-20: the unused key `apiReference.realtime.live.everySlice` is gone | "W92-20" |
+// | W92-24: `WEB_SESSION_REFUSED` has one definition (`operation-parts.ts`), and the identity and pairing operations still carry its text | "W92-24" |
+describe('W92-20: no dead key in the API Reference words', () => {
+  it('`apiReference.realtime.live` has no `everySlice`', () => {
+    expect(Object.keys(en.apiReference.realtime.live)).not.toContain('everySlice')
+  })
+})
+
+describe('W92-24: one copy of the web-session refusal text', () => {
+  it('defined once under src/api', () => {
+    const dir = resolve(import.meta.dirname, '../src/api')
+    const definers = readdirSync(dir)
+      .filter((name) => name.endsWith('.ts'))
+      .filter((name) => /const WEB_SESSION_REFUSED\s*=/.test(readFileSync(resolve(dir, name), 'utf8')))
+    expect(definers).toEqual(['operation-parts.ts'])
+  })
+
+  it('the device-only operations of identity and pairing still name it in their 403', () => {
+    const carrying = CORE_API_OPERATIONS.filter((operation) => JSON.stringify(operation).includes(WEB_SESSION_REFUSED)).map((operation) => operation.operationId)
+    expect(carrying.length).toBeGreaterThanOrEqual(5)
+  })
+})
+
+// Closing pass F-X, item 1: what the contract text says after the fix wave. Written RED.
+//   op 41   the notice description names BOTH notices of a v2 result and the nullable key mark
+//   op 33   `202` with state FINALIZING when the operation re-queues a failed seal (decision D186 (4))
+//   ops 84 / 85 / 86 / 42 / 87   the case scope of REAL evidence, as op 88 states it (R93-02)
+describe('the contract text after the fix wave', () => {
+  const openapi = readFileSync(join(__dirname, '..', 'openapi', 'openapi.json'), 'utf8');
+
+  describe('contract text of the closing pass', () => {
+    it('operation 41: every notice code of the verifier is described, and `signature.developmentKey` is stated as nullable', () => {
+      const schema = JSON.parse(openapi).components.schemas.EvidenceVerifyResult as { properties: { notices: { items: { properties: { code: { description: string } } } }; signature: { description: string } } };
+      for (const code of Object.values(VERIFY_NOTICE)) expect(schema.properties.notices.items.properties.code.description, code).toContain(`\`${code}\``);
+      expect(schema.properties.signature.description).toMatch(/`developmentKey` is nullable/);
+    });
+
+    it('operation 33: the description and the 202 name the FINALIZING answer of a re-queued seal', () => {
+      const operation = findCoreApiOperation('recoverSession');
+      expect(operation?.description).toContain('**FINALIZING**');
+      expect(operation?.responses[202]?.description).toContain('FINALIZING');
+    });
+
+    it('the case scope of REAL evidence is stated on operations 84, 85, 86, 42 and 87 as on 88', () => {
+      for (const id of ['getTranscript', 'createTranscriptRevision', 'listTranscriptRevisions', 'exportEvidence', 'getEvidenceExportJob', 'createEvidenceMediaSession']) {
+        const operation = findCoreApiOperation(id);
+        expect(`${operation?.description ?? ''}\n${operation?.coreServerDescription ?? ''}`, id).toContain('`details.reason: EVIDENCE_CASE_SCOPE`');
+      }
+    });
   });
 });

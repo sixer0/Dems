@@ -11,7 +11,14 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { haptics, resetMotionStateForTests } from '@/motion';
 import { renderFlowApp, settle } from '@/features/session-finalizing/testing/flow-harness';
 import { resetStampedForTests } from './stamp-once';
-import { shortHash } from './summary.model';
+import { shortHash, summaryTimeSource } from './summary.model';
+import type { EvidenceItem, Sim } from '@dems/shared/sim';
+import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
+import { PANE_REFLOW } from '@/layout';
+
+// The cases this file held before the consolidation of the suite (D233), under their own hooks.
+describe('session summary screen', () => {
+unmountBeforeTheHooksOfThisGroup();
 
 beforeEach(() => {
   resetMissingKeys();
@@ -174,4 +181,217 @@ describe('Session Summary (04 §4.7)', () => {
     expect(within(screen.getByTestId('pane-finalization')).getByTestId('summary-pipeline')).toBeTruthy();
     expect(within(screen.getByTestId('pane-summary')).getByTestId('summary-hashes')).toBeTruthy();
   });
+});
+});
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// Moved here from `wave-h-c2-signature.test.tsx` (test-suite consolidation, D233): every case as it was.
+// Wave H, driver C2 (mobile) - finding 3 of the common brief on the Session Summary (G81-02 /
+// G89-03, MAJOR): the chip "SIMULATED" beside Signature is drawn only for a SIMULATED signature. A
+// REAL Ed25519 signature (`signature.simulated === false`) names its algorithm and Core key; the
+// only qualifier is the development-key line, from the item's `signature.developmentKey`.
+describe('the signature row', () => {
+unmountBeforeTheHooksOfThisGroup();
+const CORE_KEY = 'CORE-KEY-EVSIGN-01';
+
+beforeEach(() => {
+  resetMissingKeys();
+  resetStampedForTests();
+});
+afterEach(() => {
+  resetMotionStateForTests();
+  jest.restoreAllMocks();
+  expect(getMissingKeys()).toEqual([]);
+});
+
+/** The Summary of the session just sealed, with the signature of its item as a Core states it. */
+async function summaryWith(window: 'phonePortrait' | 'tabletLandscape', signature: Record<string, unknown> | null) {
+  const h = renderFlowApp({ scenario: 'sealed', window });
+  await settle();
+  if (signature !== null) {
+    act(() => {
+      const state = h.sim.store.getState();
+      h.sim.store.setState({ evidence: state.evidence.map((item) => (item.sessionId === h.sessionId ? ({ ...item, integritySource: 'REAL', signature }) as unknown as EvidenceItem : item)) });
+    });
+    await settle();
+  }
+  return h;
+}
+const real = (more: Record<string, unknown> = {}) => ({ value: 'c'.repeat(128), keyId: CORE_KEY, algorithm: 'Ed25519', simulated: false, ...more });
+
+describe('G81-02 / G89-03 - the signature row of the Session Summary', () => {
+  it.each(['tabletLandscape', 'phonePortrait'] as const)('%s: a REAL signature has NO "SIMULATED" chip; the row names "Ed25519, Core key ..." and the development-key line', async (window) => {
+    await summaryWith(window, real({ developmentKey: true }));
+    const row = screen.getByTestId('summary-hash-signature');
+    expect(screen.queryByTestId('summary-signature-simulated')).toBeNull();
+    expect(within(row).queryByText('SIMULATED')).toBeNull();
+    expect(String(row.props.accessibilityLabel)).not.toMatch(/simulated/i);
+    expect(screen.getByTestId('summary-signature-real')).toHaveTextContent(`Ed25519, Core key ${CORE_KEY}`);
+    expect(screen.getByTestId('summary-signature-key-class-DEVELOPMENT')).toHaveTextContent('Signed with a DEVELOPMENT key — not a production signature');
+    // The full value: no "simulated signature" note under it.
+    fireEvent.press(row);
+    await settle();
+    expect(screen.queryByText(/A simulated signature for this demo/)).toBeNull();
+  });
+
+  it('a REAL signature whose key class the item does not report: "Signing key class: not reported"', async () => {
+    await summaryWith('phonePortrait', real());
+    expect(screen.queryByTestId('summary-signature-simulated')).toBeNull();
+    expect(screen.getByTestId('summary-signature-key-class-UNKNOWN')).toHaveTextContent('Signing key class: not reported');
+  });
+
+  it('CONTROL: a simulated signature keeps its "SIMULATED" chip and its note', async () => {
+    await summaryWith('phonePortrait', null);
+    expect(within(screen.getByTestId('summary-signature-simulated')).getByText('SIMULATED')).toBeTruthy();
+    expect(screen.queryByTestId('summary-signature-real')).toBeNull();
+    expect(screen.queryByTestId(/^summary-signature-key-class-/)).toBeNull();
+    fireEvent.press(screen.getByTestId('summary-hash-signature'));
+    await settle();
+    expect(screen.getByText(/A simulated signature for this demo/)).toBeTruthy();
+  });
+});
+});
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// Moved here from `wave-h-z2-time-source.test.tsx` (test-suite consolidation, D233): every case as it was.
+// Fix wave H, closing pass Z2 (driver A's request line of 10:20:55Z, item 3: "the Summary Start / End
+// chips say GNSS from the simulator's `time` slice"; ruling D203 (1); closing pass Z1's line of
+// 10:30:00Z). The two time-source chips of the Session Summary repeat the time source of the session.
+//
+// | Rule | Case |
+// |------|------|
+// | The chip reads THE SESSION'S OWN MEMBER (`startTimeSource` / `endTimeSource` of its history entry) when the Core states it; the ring of the live `time` slice is only the fallback of an entry without the members | "the member wins" |
+// | On a Core whose time is the host system clock (`time.hostClock`) an `RTC` member reads "Host system clock", in a neutral chip - never "GNSS", never a success mark | "host clock" |
+// | CONTROL: the simulator's sealed session keeps its GNSS chips | both |
+//
+// Import order matters: the gorhom mock, then the router harness.
+describe('the time-source chips', () => {
+unmountBeforeTheHooksOfThisGroup();
+beforeEach(() => {
+  resetMissingKeys();
+  resetStampedForTests();
+});
+afterEach(() => {
+  resetMotionStateForTests();
+  expect(getMissingKeys()).toEqual([]);
+});
+
+const HOST_CLOCK = { hostClock: true, source: 'RTC', locked: false, stratum: 0, offsetMs: 0, lastSyncAt: 0, gnss: { locked: false, satellites: 0 }, ntp: { server: '', reachable: false, stratum: 0 }, rtc: { driftPpm: 0 }, history: [] };
+const setEntry = (sim: Sim, sessionId: string, patch: Record<string, unknown>) =>
+  act(() => sim.store.setState((s) => ({ sessionHistory: s.sessionHistory.map((entry) => (entry.id === sessionId ? { ...entry, ...patch } : entry)) })));
+const chipsOf = (testID: 'summary-start' | 'summary-end') => within(screen.getByTestId(testID));
+
+describe('the time-source chips of the Session Summary', () => {
+  it('the member wins: an entry that says RTC reads RTC although the live slice\'s ring says GNSS', async () => {
+    const h = renderFlowApp({ scenario: 'sealed' });
+    await settle();
+    // CONTROL: the simulator's sealed session.
+    expect(chipsOf('summary-start').getByText('GNSS')).toBeTruthy();
+    expect(chipsOf('summary-end').getByText('GNSS')).toBeTruthy();
+
+    setEntry(h.sim, h.sessionId!, { startTimeSource: 'RTC', endTimeSource: 'RTC' });
+    await settle();
+    for (const id of ['summary-start', 'summary-end'] as const) {
+      expect(chipsOf(id).queryByText('GNSS')).toBeNull();
+      expect(chipsOf(id).getByText('RTC')).toBeTruthy();
+    }
+  });
+
+  it('host clock: a Core in its own capture reads "Host system clock" on both chips - no GNSS, no RTC code', async () => {
+    const h = renderFlowApp({ scenario: 'sealed' });
+    await settle();
+    setEntry(h.sim, h.sessionId!, { startTimeSource: 'RTC', endTimeSource: 'RTC' });
+    act(() => h.sim.store.setState({ time: HOST_CLOCK as never }));
+    await settle();
+    for (const id of ['summary-start', 'summary-end'] as const) {
+      expect(chipsOf(id).getByText('Host system clock')).toBeTruthy();
+      expect(chipsOf(id).queryByText('GNSS')).toBeNull();
+      expect(chipsOf(id).queryByText('RTC')).toBeNull();
+      expect(chipsOf(id).getByLabelText('Time source Host system clock')).toBeTruthy();
+    }
+  });
+
+  it('the rule (pure)', () => {
+    // The member, else the ring; null when neither knows.
+    expect(summaryTimeSource({ member: 'RTC', ring: 'GNSS', hostClock: false })).toEqual({ source: 'RTC', host: false });
+    expect(summaryTimeSource({ member: null, ring: 'GNSS', hostClock: false })).toEqual({ source: 'GNSS', host: false });
+    expect(summaryTimeSource({ member: undefined, ring: null, hostClock: false })).toBeNull();
+    // The host clock names an RTC member; a member that says otherwise is repeated as stated.
+    expect(summaryTimeSource({ member: 'RTC', ring: null, hostClock: true })).toEqual({ source: 'RTC', host: true });
+    expect(summaryTimeSource({ member: 'GNSS', ring: null, hostClock: true })).toEqual({ source: 'GNSS', host: false });
+    // The host clock keeps no ring: nothing is read from it there.
+    expect(summaryTimeSource({ member: null, ring: 'GNSS', hostClock: true })).toBeNull();
+  });
+});
+});
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// Moved here from `wave-k-m1-tablet-taps.test.tsx` (test-suite consolidation, D233): every case as it was.
+// Wave K, driver M1 - gate finding G81b-03 (MAJOR) on the Session Summary itself.
+//
+// On the tablet the right pane holds the session details, the hashes, the "Sealed files" block
+// (which arrives from the Core AFTER the pane mounted) and the two closing buttons. Under reduced
+// motion the pane's layout transition left its native box at the height it had before that block
+// arrived; everything below lay outside the box and took no touch (the view tree of the gate:
+// pane [176..580], buttons at 1376). The cause and the device proof: implementation/142 section 2;
+// the shared rule: `src/layout/layout.test.tsx` ("a pane under reduced motion").
+//
+// Held here, on the screen: with reduced motion neither pane of the tablet Summary (nor the one pane
+// of the phone) carries a layout transition, the closing controls are INSIDE the summary pane, and
+// they answer a press.
+describe('the panes under reduced motion', () => {
+unmountBeforeTheHooksOfThisGroup();
+beforeEach(() => {
+  resetMissingKeys();
+  resetStampedForTests();
+});
+afterEach(() => {
+  resetMotionStateForTests();
+  jest.restoreAllMocks();
+  expect(getMissingKeys()).toEqual([]);
+});
+
+const layoutOf = (testID: string): unknown => (screen.getByTestId(testID).props as { layout?: unknown }).layout;
+
+describe('G81b-03 - the panes of the Session Summary under reduced motion', () => {
+  it('tablet: `pane-summary` and `pane-finalization` carry no layout transition; "Done", "View in Evidence" and the hash rows are inside the summary pane and answer a press', async () => {
+    resetMotionStateForTests({ linkMotion: 'off' });
+    renderFlowApp({ scenario: 'sealed', window: 'tabletLandscape' });
+    await settle();
+    expect(layoutOf('pane-summary')).toBeUndefined();
+    expect(layoutOf('pane-finalization')).toBeUndefined();
+    const pane = within(screen.getByTestId('pane-summary'));
+    // No closing control is drawn outside the pane that owns it (the tablet has no pinned bar).
+    expect(pane.getByTestId('summary-done')).toBeTruthy();
+    expect(pane.getByTestId('summary-view-evidence')).toBeTruthy();
+    fireEvent.press(pane.getByTestId('summary-hash-manifest'));
+    await settle();
+    expect(screen.getByTestId('summary-hash-sheet')).toBeTruthy();
+  });
+
+  it('tablet: "Done" answers (the summary is acknowledged and left)', async () => {
+    resetMotionStateForTests({ linkMotion: 'off' });
+    const h = renderFlowApp({ scenario: 'sealed', window: 'tabletLandscape' });
+    await settle();
+    expect(h.sim.store.getState().lastSealedAcknowledged).toBe(false);
+    fireEvent.press(within(screen.getByTestId('pane-summary')).getByTestId('summary-done'));
+    await settle();
+    expect(h.sim.store.getState().lastSealedAcknowledged).toBe(true);
+    expect(h.app.getPathname()).toBe('/home');
+  });
+
+  it('phone: the one pane carries no layout transition either (its "Sealed files" rows are inside it)', async () => {
+    resetMotionStateForTests({ linkMotion: 'off' });
+    renderFlowApp({ scenario: 'sealed', window: 'phonePortrait' });
+    await settle();
+    expect(layoutOf('pane-summary')).toBeUndefined();
+  });
+
+  it('CONTROL: under full motion the panes keep their re-flow spring', async () => {
+    resetMotionStateForTests();
+    renderFlowApp({ scenario: 'sealed', window: 'tabletLandscape' });
+    await settle();
+    expect(layoutOf('pane-summary')).toBe(PANE_REFLOW);
+  });
+});
 });

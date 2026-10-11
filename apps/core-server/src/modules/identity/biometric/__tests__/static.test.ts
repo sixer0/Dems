@@ -21,7 +21,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../../test/static/scan';
 import * as store from '../store';
 
 const OWN_FOLDER = 'src/modules/identity/biometric/';
@@ -63,16 +63,7 @@ const OWN_POOL = new RegExp(`\\bdb\\s*\\.\\s*${'pool'}\\b|\\bnew\\s+${'Pool'}\\b
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual([
-      'src/modules/identity/biometric/activity.ts',
-      'src/modules/identity/biometric/enrolment.ts',
-      'src/modules/identity/biometric/failure.ts',
-      'src/modules/identity/biometric/index.ts',
-      'src/modules/identity/biometric/routes.ts',
-      'src/modules/identity/biometric/sign-in.ts',
-      'src/modules/identity/biometric/store.ts',
-      'src/modules/identity/biometric/tokens.ts',
-    ]);
+    expect(scanCoverage(all, [OWN_FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

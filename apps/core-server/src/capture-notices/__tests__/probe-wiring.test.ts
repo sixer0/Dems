@@ -110,7 +110,7 @@ describe('pass D9, item 5: the notices unit reads the probe from the capture fen
   // Fix wave M, follow-up M-S2. This file used to pin "the probe is kept once it was read: the fence
   // is not asked for a second adapter set" - the very snapshot that made a camera adopted during a
   // run read UNREACHABLE at its pre-check until the Core restarted. The booted path of the finding:
-  // `modules/capture-discovery/__tests__/wave-i-a2-adopt-assign.db.test.ts` (case "M-S2").
+  // `modules/capture-discovery/__tests__/capture-discovery.booted.db.test.ts` (case "M-S2").
   it('M-S2: the fence is asked at EVERY use and no answer is kept - a camera the registry admits AFTER the first read (operation 96) is read through its own adapter at the next one; CONTROL: before its admission no adapter serves it', async () => {
     const { built, scripted, registry, offered } = await build(['MacBook Air Microphone']);
     offered.mockImplementation(() => registry.probeAdapters());

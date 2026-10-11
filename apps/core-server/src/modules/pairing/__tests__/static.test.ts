@@ -16,7 +16,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import * as store from '../store';
 
 const OWN_FOLDER = 'src/modules/pairing/';
@@ -57,21 +57,7 @@ const STAGE_OR_SEAM_REPLACED = new RegExp(`\\b(?:stages|seams)\\s*\\.\\s*${'repl
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual([
-      'src/modules/pairing/activity.ts',
-      'src/modules/pairing/codes.ts',
-      'src/modules/pairing/database.ts',
-      'src/modules/pairing/devices.ts',
-      'src/modules/pairing/index.ts',
-      'src/modules/pairing/limits.ts',
-      'src/modules/pairing/presence.ts',
-      'src/modules/pairing/redeem-lock.ts',
-      'src/modules/pairing/redeem.ts',
-      'src/modules/pairing/resolver.ts',
-      'src/modules/pairing/routes.ts',
-      'src/modules/pairing/secrets.ts',
-      'src/modules/pairing/store.ts',
-    ]);
+    expect(scanCoverage(all, [OWN_FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

@@ -19,7 +19,7 @@
 //   5. THE AUDIT ENTRY HAS ONE BUILDER, AND IT TAKES NO CREDENTIAL.
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../../test/static/log-calls';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import { LOCK_STT_CONFIG, READ_STT_CONFIG, UPDATE_STT_CONFIG, UPDATE_STT_CONFIG_WITH_CREDENTIAL } from '../statements';
 
 const FOLDER = 'src/modules/stt-config/';
@@ -46,7 +46,7 @@ const places = (files: readonly SourceFile[], pattern: RegExp): string[] => occu
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder, and the migration that defines the function', () => {
-    expect(moduleSources.map((file) => file.path).sort()).toEqual([`${FOLDER}change.ts`, `${FOLDER}index.ts`, `${FOLDER}seams.ts`, `${FOLDER}statements.ts`]);
+    expect(scanCoverage(moduleSources, [FOLDER])).toEqual(SCAN_COVERS);
     expect(moduleCode.every((file) => file.text.length > 100)).toBe(true);
     const defining = production.filter((file) => file.text.includes(REVEAL_FUNCTION)).map((file) => file.path);
     expect(defining).toContain('src/db/migrations/0007_stt_config_privileges.sql');
@@ -165,7 +165,9 @@ describe('rule 4: a log line of the module names fields, never values', () => {
     const calls = moduleCode.flatMap((file) => logCalls(file.text).map((call) => ({ path: file.path, call })));
     expect(calls.length).toBeGreaterThanOrEqual(3);
     const keys = calls.flatMap(({ call }) => call.members.map((member) => member.key));
-    expect(keys.filter((key) => !ALLOWED_KEYS.has(key))).toEqual([]);
+    // The list above is a SECURITY boundary and stays a list (test/14): a new key is a decision. The message names the key and the rule.
+    const outside = calls.flatMap(({ path, call }) => call.members.filter((member) => !ALLOWED_KEYS.has(member.key)).map((member) => `${path}: ${member.key}`));
+    expect(outside, 'a log call of the module holds a key outside the closed list. The rule: a log line names fields - a code, a count, a boolean, the name of a changed field - never a value of the configuration and never a text of the request. Add the key to ALLOWED_KEYS only if it is one of those').toEqual([]);
     expect(new Set(keys).has('changedFields')).toBe(true);
   });
 

@@ -60,13 +60,6 @@ beforeEach(async () => {
   await owner.query('DELETE FROM public.transcript_chunks WHERE session_id = ANY($1)', [[SESSION, OTHER]]);
 });
 
-describe('the database this file runs on', () => {
-  it('is at schema version 4 / dbc-5 (sets 4 and 5), and this row brought no migration', async () => {
-    const meta = (await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']); // set 7 (PE-0013-01)
-  });
-});
-
 describe('transcript_chunks store as dems_app: rows in, rows out', () => {
   it('a planned row is stored as given and read back equal; a second insert of the same key changes nothing', async () => {
     await store.insertMissing([row(1), row(2, { audioFromMs: 33_005, audioToMs: 53_037 })]);

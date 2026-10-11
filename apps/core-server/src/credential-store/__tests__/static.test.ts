@@ -15,7 +15,7 @@
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../test/static/scan';
 
 const FOLDER = 'src/credential-store/';
 /**
@@ -58,7 +58,7 @@ const IMPORT_OF_FOLDER = /from\s+['"](?:\.\.?\/)+(?:[\w-]+\/)*credential-store(?
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(folder.map((file) => file.path).sort()).toEqual(['envelope.ts', 'errors.ts', 'fragment-cipher.ts', 'index.ts', 'key-material.ts', 'key-store.ts'].map((name) => `${FOLDER}${name}`));
+    expect(scanCoverage(folder, [FOLDER])).toEqual(SCAN_COVERS);
     expect(folder.every((file) => file.text.length > 300)).toBe(true);
   });
 

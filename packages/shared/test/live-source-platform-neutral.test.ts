@@ -8,25 +8,10 @@ import { describe, expect, it } from 'vitest';
 import * as viaSubpath from '@dems/shared/live/source';
 import { API_ERROR_CODES } from '../src/api';
 import * as viaFile from '../src/live/source';
+import { AC_C_02_NAMED, ERASABLE_SYNTAX_RULES, expectScanCovers } from './support/platform-rules';
 
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url));
 const SOURCE_DIR = `${SRC_DIR}live/source/`;
-const FILES = [
-  'bindings.ts',
-  'clock.ts',
-  'command-gate.ts',
-  'constants.ts',
-  'index.ts',
-  'live-result.ts',
-  'live-sim.ts',
-  'neutral-state.ts',
-  'rebuild-error.ts',
-  'replica.ts',
-  'structural-sharing.ts',
-  'touch-throttle.ts',
-  'types.ts',
-];
-
 /** Every source file of the folder, at any depth. */
 function walk(dir: string, prefix = ''): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -74,12 +59,12 @@ function loadedAtRunTime(): string[] {
 }
 
 describe('static scan of the Live source (src/live/source)', () => {
-  it('scans the thirteen files of the folder', () => {
-    expect(files).toEqual(FILES);
+  it('scans every source file of the folder: an independent listing finds no file the scan missed (rule R1)', () => {
+    expectScanCovers(SOURCE_DIR, files);
   });
 
   it('AC-C-02: no file names node:, react-native, expo, window or document (comments included)', () => {
-    expect(offenders(/node:|react-native|\bexpo\b|\bwindow\b|\bdocument\b/, raw)).toEqual([]);
+    expect(offenders(AC_C_02_NAMED, raw)).toEqual([]);
     // Positive control: the pattern does find the word where it is used.
     expect(/\bdocument\b/.test(readFileSync(`${SRC_DIR}sim/platform.ts`, 'utf8'))).toBe(true);
   });
@@ -176,9 +161,7 @@ describe('static scan of the Live source (src/live/source)', () => {
   });
 
   it('uses erasable syntax only: no enum, no namespace, no parameter property', () => {
-    expect(offenders(/^\s*(export\s+)?(declare\s+)?(const\s+)?enum\s/m)).toEqual([]);
-    expect(offenders(/^\s*(export\s+)?namespace\s/m)).toEqual([]);
-    expect(offenders(/constructor\s*\([^)]*\b(public|private|protected|readonly)\b/)).toEqual([]);
+    for (const [construct, pattern] of ERASABLE_SYNTAX_RULES) expect(offenders(pattern), construct).toEqual([]);
   });
 
   it('has exactly one lint directive, and it carries its reason: the Live result is a thenable on purpose', () => {

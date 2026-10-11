@@ -47,7 +47,7 @@ function Root() {
   return (
     <AppProviders
       safeAreaMetrics={{ frame: { x: 0, y: 0, width: 411, height: 923 }, insets: { top: 0, right: 0, bottom: 0, left: 0 } }}
-      queryClient={new QueryClient()}
+      queryClient={new QueryClient({ defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY } } })}
       heartbeatSocketFactory={() => new IdleSocket()}
     >
       <Stack screenOptions={{ headerShown: false }} />

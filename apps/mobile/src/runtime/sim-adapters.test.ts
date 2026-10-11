@@ -1,7 +1,7 @@
 // T-M07 (04_mobile_specs §10.1; MA-08): the mobile simulator adapters — AsyncStorage round trip,
 // no tick before hydration, AppState pause and resume. Uses the AsyncStorage 2.2.0 jest mock
 // (jest.setup.ts) and the shared engine through `createMobileSim`, with a manual clock and scheduler.
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   AUTH_STORAGE_KEY,
@@ -55,8 +55,20 @@ function mobileSim(options: { appState?: AppStateLike; storage?: ReturnType<type
     visibility: createAppStateVisibility(options.appState ?? fakeAppState()),
     ...(options.storage ? { storage: options.storage } : {}),
   });
+  built.push(sim);
   return { sim, clock, scheduler };
 }
+
+/**
+ * Every simulator this file builds is stopped when its case ends. These are the app's own simulators
+ * (`createMobileSim`, the global timers): one that changed its store and was not stopped left the
+ * store's 1 s snapshot timer pending behind the file, and a Jest worker that ended on it was "force
+ * exited" (test/14_consolidation_mobile.md). `stop()` writes the pending snapshot and clears the timer.
+ */
+const built: Sim[] = [];
+afterEach(() => {
+  for (const sim of built.splice(0)) sim.stop();
+});
 
 const sessionOf = (sim: Sim) => sim.store.getState().session;
 
@@ -238,11 +250,13 @@ describe('device console: operations 89, 95 and 96 are web-console-only', () => 
 
   it('no caller can turn it off; and the web default does not refuse (negative control)', () => {
     const forced = createMobileSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, deviceConsole: false });
+    built.push(forced);
     signInSupervisor(forced);
     forced.request({ method: 'POST', path: '/api/v1/capture/discovery' });
     expect(forced.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(403);
 
     const web = createSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, authStorage: null });
+    built.push(web);
     signInSupervisor(web);
     web.request({ method: 'POST', path: '/api/v1/capture/discovery' });
     expect(web.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(200);

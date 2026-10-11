@@ -499,18 +499,18 @@ describe('app-level entrances and exit (M-APP-01..03, H-M1 fallback)', () => {
 
 describe('shell.css motion literals mirror the motion tokens', () => {
   // Read from disk: Vitest does not process CSS, so a `?raw` import would come back empty. The
-  // test runs with the core-web package as its working directory (`npm test -w @dems/core-web`).
+  // path is taken from THIS file's own location (`src/test/`), not from the working directory: the
+  // test passes from the package (`npm test -w @dems/core-web`) and from the repo root
+  // (`npx vitest run --root apps/core-web …`) alike.
   const nodeProcess = (
     globalThis as unknown as {
       process: {
-        cwd(): string
         getBuiltinModule(name: 'node:fs'): { readFileSync(path: string, encoding: 'utf8'): string }
       }
     }
   ).process
-  const shellCss = nodeProcess
-    .getBuiltinModule('node:fs')
-    .readFileSync(`${nodeProcess.cwd()}/src/components/shell/shell.css`, 'utf8')
+  const sourceRoot = decodeURIComponent(new URL(import.meta.url).pathname).replace(/\/test\/[^/]+$/, '')
+  const shellCss = nodeProcess.getBuiltinModule('node:fs').readFileSync(`${sourceRoot}/components/shell/shell.css`, 'utf8')
   const cssVar = (name: string) => new RegExp(`${name}:\\s*([^;]+);`).exec(shellCss)?.[1]?.trim()
   const bezier = (points: readonly number[]) => `cubic-bezier(${points.join(', ')})`
   it.each([

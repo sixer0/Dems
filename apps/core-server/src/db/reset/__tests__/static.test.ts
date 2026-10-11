@@ -14,7 +14,7 @@
 //   - a `ResetError` carries no `cause` (a wrapped error could quote a carried row).
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isTestFile, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isTestFile, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 
 const FOLDER = 'src/db/reset/';
 const all = readTree(WORKSPACE).filter((file) => file.path.startsWith(FOLDER));
@@ -40,19 +40,7 @@ const UPDATED_TABLE = /\bUPDATE\s+public\.([a-z_]+|\$\{[^}]+\})/g;
 
 describe('the scan itself', () => {
   it('reads the files of the routine and of its tests', () => {
-    expect(production.map((file) => file.path)).toEqual([
-      'src/db/reset/cli.ts',
-      'src/db/reset/errors.ts',
-      'src/db/reset/index.ts',
-      'src/db/reset/kept-tables.ts',
-      'src/db/reset/names.ts',
-      'src/db/reset/package-removal.ts',
-      'src/db/reset/plan.ts',
-      'src/db/reset/real-evidence.ts',
-      'src/db/reset/routine.ts',
-      'src/db/reset/session-artefacts.ts',
-      'src/db/reset/transcriber-scratch.ts',
-    ]);
+    expect(scanCoverage(production, [FOLDER])).toEqual(SCAN_COVERS);
     expect(all.filter((file) => isTestFile(file.path)).length).toBeGreaterThan(5);
   });
 

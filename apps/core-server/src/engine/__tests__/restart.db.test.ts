@@ -4,11 +4,11 @@
 //
 // A "restart" here is what it is in production: the app is closed (or abandoned), and a NEW app
 // is built on the same database and booted with `app.readiness.boot()`.
-import { recordingBytes, verifyAuditChain, type ScenarioName } from '@dems/shared/sim';
+import { recordingBytes, verifyAuditChain, type ScenarioName, CORE_NOT_RUNNING_SENTENCE, createManualClock, type AuditRow, STOPPING_MS, CORE_NOT_RUNNING_CLEARED_SENTENCE, type CompleteSealInput, type SealingStepReport } from '@dems/shared/sim';
 import type { Pool } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useTestDatabase, type TestDatabase } from '../../../test/helpers/db';
-import { BOOT_CHECKS, passedAmong, readHead, readTrail, sleep, verifyTrail } from '../../../test/support/core';
+import { BOOT_CHECKS, passedAmong, readHead, readTrail, sleep, verifyTrail, linkProblems } from '../../../test/support/core';
 import { createSystemClock } from '../../core';
 import { SNAPSHOT_SLICE_KEYS, pickDurable, type DurableSlices } from '../../db/mapping';
 import { resetDatabase } from '../../db/reset';
@@ -17,7 +17,16 @@ import { tableChecksums, withoutNegativeZeros } from '../../../test/support/seed
 import { BootError } from '../../plugins/readiness';
 import { changedSlices } from '../delta';
 import { EngineError } from '../errors';
-import { FIXED_NOW, engineApp, seedScenario, stateChanges, storedSlices, tableCounts, type EngineApp } from './support';
+import { FIXED_NOW, engineApp, seedScenario, stateChanges, storedSlices, tableCounts, type EngineApp, manualTimer } from './support';
+import { SecuritySliceSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
+import { captureLog, unitTestConfig } from '../../../test/support/config';
+import { buildApp } from '../../app';
+import { realBootFixture } from '../../capture/boot/__tests__/support';
+import { captureFenceControl } from '../../capture/fence';
+import { engineControl } from '../index';
+import { SEALING_STEP_ORDER } from '../../sealing';
+import { sealDoorsOf } from '../seal-doors';
+import { STREAM_PROFILE_DIFFERS_REASON, sealingNoticeDoorsOf } from '../sealing-notice-doors';
 
 const db = useTestDatabase({ template: 'seed' });
 
@@ -917,5 +926,372 @@ describe('shutdown (spec §8.6 "Stop")', () => {
     host.engine.fire();
     await host.engine.stop();
     expect(host.database.statements).toHaveLength(sent);
+  });
+});
+
+// ═══ Moved here from `pass-j-restart-recording.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
+// CLOSING PASS J of fix wave I, on a BOOTED Core and the STORED audit chain (rulings D217 (5), (7)).
+//
+//   G75b-03, the states driver A2 left: a Core stopped while its session was RECORDING and started
+//   again in capture mode `real` still moves that session to FAULT (kind `POWER_FAIL`, `fromState`
+//   RECORDING - what an interrupted seal reads is unchanged), but the STORED row says "The Core was
+//   not running while this session was active" and carries `coreNotRunning: true`. Nothing stored
+//   says "power fail".
+//   G75b-06 at its source: the state such a Core serves says `security.platformNotReported: true`
+//   (and `time.hostClock`), and the slice still passes the contract.
+//   The same stop and start of a SIMULATED Core keeps the simulator's words and its slice (control).
+//
+// The stored state is made by a first process in simulated capture (no worker, no media), closed
+// while RECORDING. The second process is the real app factory in REAL_DEVELOPMENT on the same
+// database (row 61's boot fixture: a stand-in worker script, a test signing key, `/bin/echo` as the
+// helper program - no camera and no microphone is listed, opened or asked for).
+describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real capture and in simulated capture', () => {
+  const fixture = realBootFixture('passj_restart');
+  fixture.provisionKey();
+  vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+
+  const SESSION_INPUT = { caseNumber: 'LP/2026/1010-0301', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
+  type Target = Awaited<ReturnType<typeof db.another>>;
+
+  /** A first process in simulated capture, closed while its session is RECORDING. */
+  async function closedWhileRecording(target: Target): Promise<{ sessionId: string; closedAt: number; rows: number }> {
+    await target.ownerPool().query('UPDATE public.stt_config SET enabled = false');
+    const first = await engineApp(target, db.run.dataDir);
+    await first.app.readiness.boot();
+    const investigator = first.principal('INVESTIGATOR');
+    await first.engine.setTabletLink('CONNECTED');
+    await first.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
+    await first.engine.command(investigator, 'beginPrecheck');
+    await first.drive(5_000);
+    if (first.engine.slice('session')?.state === 'PRECHECK') await first.engine.command(investigator, 'acknowledgePrecheckWarnings');
+    await first.engine.command(investigator, 'startRecording');
+    await first.drive(3_000);
+    expect(first.engine.slice('session')?.state).toBe('RECORDING');
+    const sessionId = first.engine.slice('session')?.id ?? '';
+    await first.app.pipeline.drain();
+    const closedAt = first.clock.now();
+    await first.app.close();
+    return { sessionId, closedAt, rows: (await readTrail(target.ownerPool())).length };
+  }
+
+  const since = async (target: Target, from: number): Promise<AuditRow[]> => (await readTrail(target.ownerPool())).slice(from) as unknown as AuditRow[];
+
+  describe('a start of the Core with a session that was RECORDING when it stopped', () => {
+    it('REAL capture: the stored fault row says the Core was not running (kind and fromState unchanged), and the served state says the platform is not reported', async () => {
+      const target = await db.another({ template: 'seed', slug: 'passj_restart_real' });
+      const { sessionId, closedAt, rows } = await closedWhileRecording(target);
+
+      const log = captureLog();
+      const app = buildApp({
+        config: unitTestConfig({ database: target.runtime, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, logLevel: 'info', captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: '/bin/echo', captureWorkerPath: fixture.worker('worker-passj-restart', 'capture-worker/0.4.0') }),
+        logStream: log.stream,
+      });
+      target.onCleanup(() => app.close());
+      await app.ready();
+      app.seams.replace('clock', createManualClock(closedAt + 60_000));
+      app.seams.replace('publish', () => {});
+      engineControl(app).useTimer(manualTimer().timer);
+      await app.readiness.boot();
+      await app.pipeline.drain();
+      expect(captureFenceControl(app).operation).toBe('REAL_DEVELOPMENT');
+
+      // G75b-03: the stored rows.
+      const written = await since(target, rows);
+      const raised = written.filter((row) => row.type === 'FAULT_RAISED' && row.details['kind'] === 'POWER_FAIL');
+      expect(raised.map((row) => row.message)).toEqual([CORE_NOT_RUNNING_SENTENCE]);
+      expect(raised[0]).toMatchObject({ sessionId, details: { kind: 'POWER_FAIL', fromState: 'RECORDING', ...CORE_NOT_RUNNING_FAULT_EXAMPLE } });
+      expect(written.filter((row) => /power\s*fail/i.test(row.message))).toEqual([]);
+
+      // What an interrupted seal reads did not move; the member is on every record of the fault.
+      const state = app.engine.state();
+      const fault = state.session?.id === sessionId ? state.session.fault : null;
+      if (fault !== null && fault !== undefined) expect(fault).toMatchObject({ kind: 'POWER_FAIL', fromState: 'RECORDING', coreNotRunning: true });
+      const alert = state.alerts.findLast((candidate) => candidate.kind === 'POWER_FAIL');
+      expect(alert).toMatchObject({ message: CORE_NOT_RUNNING_SENTENCE, params: { kind: 'POWER_FAIL', coreNotRunning: true } });
+      expect(state.alerts.filter((candidate) => /power\s*fail/i.test(candidate.message) && candidate.at >= closedAt)).toEqual([]);
+
+      // G75b-06 at its source: the Core's own statement, in the served slice, within the contract.
+      expect(state.security).toMatchObject(SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE);
+      expect(SecuritySliceSchema.safeParse(state.security).success).toBe(true);
+      expect(state.time.hostClock).toBe(true);
+
+      const trail = await readTrail(target.ownerPool());
+      expect(linkProblems(trail)).toEqual([]);
+      expect(verifyTrail(trail, await readHead(target.ownerPool())).ok).toBe(true);
+    });
+
+    it('CONTROL - SIMULATED capture keeps the simulator\'s words and its security slice', async () => {
+      const target = await db.another({ template: 'seed', slug: 'passj_restart_sim' });
+      const { sessionId, closedAt, rows } = await closedWhileRecording(target);
+      const second = await engineApp(target, db.run.dataDir, { startAt: closedAt + 60_000 });
+      await second.app.readiness.boot();
+      await second.app.pipeline.drain();
+      expect(second.engine.slice('session')).toMatchObject({ id: sessionId, state: 'FAULT', fault: { kind: 'POWER_FAIL', fromState: 'RECORDING' } });
+      expect(second.engine.slice('session')?.fault).not.toHaveProperty('coreNotRunning');
+      const raised = (await since(target, rows)).filter((row) => row.type === 'FAULT_RAISED');
+      expect(raised.map((row) => row.message)).toEqual(['Power fail detected — recovery marker written']);
+      expect(raised[0]?.details).not.toHaveProperty('coreNotRunning');
+      expect(second.engine.slice('security')).not.toHaveProperty('platformNotReported');
+      expect(second.engine.slice('security')).toMatchObject({ posture: 'SECURE', tpm: { ok: true }, secureBoot: true });
+    });
+  });
+});
+
+// ═══ Moved here from `wave-i-a2-graceful-restart.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
+// FIX WAVE I, DRIVER A2 - finding G75b-03 of re-gate 75, ruling D216 (3), on a BOOTED Core and the
+// STORED audit chain: a Core that is stopped with `app.close()` (what SIGTERM of `lane.sh stop`
+// runs) while a session is FINALIZING, and started again in capture mode `real`, writes no
+// power-failure row and no tablet row. The same stop and start of a SIMULATED Core keeps the
+// simulator's restart model (control).
+//
+// The stored state is made by a first process in simulated capture (no worker, no media: the
+// session is stopped by its operator and the process is closed while it is FINALIZING, with the
+// tablet link CONNECTED). The second process is the real app factory in REAL_DEVELOPMENT on the
+// same database (row 61's boot fixture: a stand-in worker script, a test signing key, `/bin/echo`
+// as the helper program - no camera and no microphone is listed, opened or asked for).
+describe('G75b-03: a graceful restart while FINALIZING, on a booted Core in real capture and in simulated capture', () => {
+  const fixture = realBootFixture('waveia2_restart');
+  fixture.provisionKey();
+  vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
+
+  const SESSION_INPUT = { caseNumber: 'LP/2026/1010-0201', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
+  type Target = Awaited<ReturnType<typeof db.another>>;
+
+  /** A first process in simulated capture, closed while its session is FINALIZING and the tablet link is CONNECTED. */
+  async function closedWhileFinalizing(target: Target): Promise<{ sessionId: string; closedAt: number; rows: number }> {
+    await target.ownerPool().query('UPDATE public.stt_config SET enabled = false');
+    const first = await engineApp(target, db.run.dataDir);
+    await first.app.readiness.boot();
+    const investigator = first.principal('INVESTIGATOR');
+    await first.engine.setTabletLink('CONNECTED');
+    await first.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
+    await first.engine.command(investigator, 'beginPrecheck');
+    await first.drive(5_000);
+    if (first.engine.slice('session')?.state === 'PRECHECK') await first.engine.command(investigator, 'acknowledgePrecheckWarnings');
+    await first.engine.command(investigator, 'startRecording');
+    await first.drive(3_000);
+    await first.engine.command(investigator, 'stopRecording', 'Interview complete');
+    await first.drive(STOPPING_MS + 100, 100);
+    expect(first.engine.slice('session')?.state).toBe('FINALIZING');
+    expect(first.engine.slice('tabletLink').state).toBe('CONNECTED');
+    const sessionId = first.engine.slice('session')?.id ?? '';
+    await first.app.pipeline.drain();
+    const closedAt = first.clock.now();
+    // THE GRACEFUL STOP: the hooks SIGTERM runs.
+    await first.app.close();
+    return { sessionId, closedAt, rows: (await readTrail(target.ownerPool())).length };
+  }
+
+  const since = async (target: Target, from: number): Promise<AuditRow[]> => (await readTrail(target.ownerPool())).slice(from) as unknown as AuditRow[];
+
+  describe('G75b-03: a graceful stop and a start of the Core with a session that is FINALIZING', () => {
+    it('REAL capture: the start writes no FAULT_RAISED "Power fail", no TABLET_LINK_CHANGED and raises no alert; the session is still FINALIZING and the chain verifies', async () => {
+      const target = await db.another({ template: 'seed', slug: 'waveia2_restart_real' });
+      const { sessionId, closedAt, rows } = await closedWhileFinalizing(target);
+
+      const log = captureLog();
+      const app = buildApp({
+        config: unitTestConfig({ database: target.runtime, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, logLevel: 'info', captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: '/bin/echo', captureWorkerPath: fixture.worker('worker-waveia2-restart', 'capture-worker/0.4.0') }),
+        logStream: log.stream,
+      });
+      target.onCleanup(() => app.close());
+      await app.ready();
+      app.seams.replace('clock', createManualClock(closedAt + 60_000));
+      app.seams.replace('publish', () => {});
+      engineControl(app).useTimer(manualTimer().timer);
+      await app.readiness.boot();
+      await app.pipeline.drain();
+      expect(captureFenceControl(app).operation).toBe('REAL_DEVELOPMENT');
+
+      const written = await since(target, rows);
+      expect(written.filter((row) => row.type === 'FAULT_RAISED')).toEqual([]);
+      expect(written.filter((row) => row.type === 'TABLET_LINK_CHANGED')).toEqual([]);
+      expect(written.filter((row) => /power fail|tablet control offline/i.test(row.message))).toEqual([]);
+      // What a real boot does write is said by name: the one boot row of the capture fence.
+      expect(written.filter((row) => row.type === 'SYSTEM_BOOT').map((row) => row.details['captureOperation'])).toEqual(['REAL_DEVELOPMENT']);
+      const state = app.engine.state();
+      expect(state.faults.active.map((fault) => fault.kind)).not.toContain('POWER_FAIL');
+      expect(state.alerts.filter((alert) => alert.active && /power fail/i.test(alert.message))).toEqual([]);
+      expect(state.tabletLink.state).toBe('OFFLINE');
+      // The session was not faulted by the start: it is the session the seal resumes, or - here, where the first
+      // process recorded no media - the one the sealing unit ends by its own rule. Never FAULT from a power failure.
+      expect(state.session?.fault?.kind ?? null).not.toBe('POWER_FAIL');
+      if (state.session !== null) expect([state.session.id, state.session.state]).toEqual([sessionId, 'FINALIZING']);
+      expect(log.lines().some((line) => line['msg'] === 'engine started' && line['restartFault'] === null && line['tabletLinkOfflineUnwritten'] === true)).toBe(true);
+      const trail = await readTrail(target.ownerPool());
+      expect(linkProblems(trail)).toEqual([]);
+      expect(verifyTrail(trail, await readHead(target.ownerPool())).ok).toBe(true);
+    });
+
+    it('CONTROL - SIMULATED capture keeps its restart model: the same stop and start write the restart fault from FINALIZING and the tablet row', async () => {
+      const target = await db.another({ template: 'seed', slug: 'waveia2_restart_sim' });
+      const { sessionId, closedAt, rows } = await closedWhileFinalizing(target);
+      const second = await engineApp(target, db.run.dataDir, { startAt: closedAt + 60_000 });
+      await second.app.readiness.boot();
+      await second.app.pipeline.drain();
+      expect(second.engine.slice('session')).toMatchObject({ id: sessionId, state: 'FAULT', fault: { kind: 'POWER_FAIL', fromState: 'FINALIZING' } });
+      const written = await since(target, rows);
+      expect(written.map((row) => row.type)).toEqual(['FAULT_RAISED', 'TABLET_LINK_CHANGED']);
+      expect(written[0]).toMatchObject({ sessionId, details: { kind: 'POWER_FAIL', fromState: 'FINALIZING' } });
+    });
+  });
+});
+
+// ═══ Moved here from `wave-k-s1-restart-fault.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
+// FIX WAVE K, driver S1 - re-gate 75 finding G75c-01 (MAJOR), on BOOTED Cores and the STORED chain.
+//
+// One database, four processes:
+//   1  simulated capture, closed while its session is RECORDING (the stored state of a stopped Core);
+//   2  REAL_DEVELOPMENT: the start raises the restart fault ("The Core was not running ..."); the
+//      session is then sealed through the engine's own door (`completeSeal`, what the sealing
+//      pipeline calls) - ONE `FAULT_CLEARED` row commits with the seal and the alert is resolved;
+//   3  REAL_DEVELOPMENT, no session open: the start raises nothing and clears nothing;
+//   4  the same again (the "second clean restart" of the gate): still nothing.
+// The pure rule, its control (the tree before the fix leaves the fault) and the heal of a stored
+// stuck fault are in the G75c-01 cases of `rehydrate.test.ts`.
+//
+// The real processes use row 61's boot fixture: a stand-in worker script, a test signing key,
+// `/bin/echo` as the helper program - no camera and no microphone is listed, opened or asked for.
+describe('G75c-01: the life of the restart fault over four processes on one database', () => {
+  const fixture = realBootFixture('wavek_s1_restart');
+  fixture.provisionKey();
+  vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
+
+  const SESSION_INPUT = { caseNumber: 'LP/2026/1011-0401', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
+  type Target = Awaited<ReturnType<typeof db.another>>;
+  const hex = (seed: string, length = 64): string => seed.repeat(length).slice(0, length);
+
+  /** A first process in simulated capture, closed while its session is RECORDING. */
+  async function closedWhileRecording(target: Target): Promise<{ sessionId: string; closedAt: number; rows: number }> {
+    await target.ownerPool().query('UPDATE public.stt_config SET enabled = false');
+    const first = await engineApp(target, db.run.dataDir);
+    await first.app.readiness.boot();
+    const investigator = first.principal('INVESTIGATOR');
+    await first.engine.setTabletLink('CONNECTED');
+    await first.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
+    await first.engine.command(investigator, 'beginPrecheck');
+    await first.drive(5_000);
+    if (first.engine.slice('session')?.state === 'PRECHECK') await first.engine.command(investigator, 'acknowledgePrecheckWarnings');
+    await first.engine.command(investigator, 'startRecording');
+    await first.drive(3_000);
+    expect(first.engine.slice('session')?.state).toBe('RECORDING');
+    const sessionId = first.engine.slice('session')?.id ?? '';
+    await first.app.pipeline.drain();
+    const closedAt = first.clock.now();
+    await first.app.close();
+    return { sessionId, closedAt, rows: (await readTrail(target.ownerPool())).length };
+  }
+
+  /** A REAL_DEVELOPMENT process on the same database, booted at `at`. */
+  async function realCore(target: Target, at: number, name: string) {
+    const log = captureLog();
+    const app = buildApp({
+      config: unitTestConfig({ database: target.runtime, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, logLevel: 'info', captureMode: 'real', demoControls: false, captureDevSources: true, captureHelperFfmpegPath: '/bin/echo', captureWorkerPath: fixture.worker(name, 'capture-worker/0.4.0') }),
+      logStream: log.stream,
+    });
+    let closed = false;
+    const close = async (): Promise<void> => {
+      if (closed) return;
+      closed = true;
+      await app.close();
+    };
+    target.onCleanup(close);
+    await app.ready();
+    const clock = createManualClock(at);
+    app.seams.replace('clock', clock);
+    app.seams.replace('publish', () => {});
+    engineControl(app).useTimer(manualTimer().timer);
+    await app.readiness.boot();
+    await app.pipeline.drain();
+    expect(captureFenceControl(app).operation).toBe('REAL_DEVELOPMENT');
+    return { app, clock, log, close };
+  }
+
+  const steps = (running: number): SealingStepReport[] =>
+    SEALING_STEP_ORDER.map((id, index) => ({ id, status: index < running ? 'DONE' : index === running ? 'RUNNING' : 'PENDING', progress: index < running ? 100 : 0, etaMs: null, attempt: 1 }));
+
+  const sealInput = (sessionId: string, at: number): CompleteSealInput => ({
+    sessionId,
+    sealedAt: at,
+    manifestSha256: hex('ab'),
+    signature: { value: hex('cd', 128), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' },
+    tracks: [
+      { trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: hex('01') },
+      { trackId: 'VIDEO-02', sizeBytes: 5_000, sha256: hex('02') },
+    ],
+    interrupted: true,
+    durableEndAt: at - 1_000,
+    transcriptSha256: null,
+    labelsStatus: null,
+    developmentSources: true,
+  });
+
+  const trail = async (target: Target): Promise<AuditRow[]> => (await readTrail(target.ownerPool())) as unknown as AuditRow[];
+  const ofRestart = (rows: readonly AuditRow[], type: string) => rows.filter((row) => row.type === type && row.details['kind'] === 'POWER_FAIL');
+
+  describe('G75c-01: the restart fault over two restarts of a real-capture Core', () => {
+    it('raised at the start, cleared ONCE with the seal of its session, alert resolved; the next two starts (no session open) raise nothing and clear nothing', async () => {
+      const target = await db.another({ template: 'seed', slug: 'wavek_s1_restart' });
+      const { sessionId, closedAt, rows } = await closedWhileRecording(target);
+
+      // Process 2: the restart fault is raised and stays while its session is open.
+      const second = await realCore(target, closedAt + 60_000, 'worker-wavek-restart-2');
+      const raised = ofRestart((await trail(target)).slice(rows), 'FAULT_RAISED');
+      expect(raised.map((row) => row.message)).toEqual([CORE_NOT_RUNNING_SENTENCE]);
+      const open = second.app.engine.state();
+      expect(open.session).toMatchObject({ id: sessionId, state: 'FAULT', fault: { kind: 'POWER_FAIL', coreNotRunning: true } });
+      expect(open.faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toHaveLength(1);
+      const alertId = open.alerts.findLast((alert) => alert.kind === 'POWER_FAIL' && alert.active)?.id ?? '';
+      expect(alertId).not.toBe('');
+      expect(ofRestart((await trail(target)).slice(rows), 'FAULT_CLEARED')).toEqual([]);
+
+      // The interrupted seal, through the engine's doors (what the sealing pipeline calls).
+      await sealDoorsOf(second.app.engine).applySealingProgress({ sessionId, steps: steps(5) });
+      expect(second.app.engine.state().faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toHaveLength(1);
+      await sealDoorsOf(second.app.engine).completeSeal(sealInput(sessionId, second.clock.now()));
+      await second.app.pipeline.drain();
+
+      const sealed = second.app.engine.state();
+      expect(sealed.session).toMatchObject({ id: sessionId, state: 'SEALED' });
+      expect(sealed.faults.active.filter((fault) => fault.kind === 'POWER_FAIL')).toEqual([]);
+      expect(sealed.alerts.find((alert) => alert.id === alertId)).toMatchObject({ active: false });
+      expect(sealed.alerts.filter((alert) => alert.active && alert.severity === 'CRITICAL')).toEqual([]);
+      const afterSeal = await trail(target);
+      const cleared = ofRestart(afterSeal.slice(rows), 'FAULT_CLEARED');
+      expect(cleared.map((row) => row.message)).toEqual([CORE_NOT_RUNNING_CLEARED_SENTENCE]);
+      expect(cleared[0]).toMatchObject({ sessionId, details: { kind: 'POWER_FAIL', coreNotRunning: true } });
+      // In the unit of the seal: after EVIDENCE_SEALED, nothing of another unit between them.
+      const types = afterSeal.slice(rows).map((row) => row.type);
+      expect(types.indexOf('FAULT_CLEARED')).toBeGreaterThan(types.indexOf('EVIDENCE_SEALED'));
+      // G89b-01 (the same wave): the WARNING notice "the stream is not the configured profile" is written through its
+      // door, stored, and read back by the next start (a start refuses a stored state it cannot map).
+      const noticed = await sealingNoticeDoorsOf(second.app.engine).noteStreamProfileDiffers?.({ sessionId, tracks: [{ trackId: 'VIDEO-01', configured: 'H264_1080P25', stream: 'H264_720P30' }] });
+      expect(noticed?.value).toBe(true);
+      await second.app.pipeline.drain();
+      expect(second.app.engine.state().alerts.findLast((alert) => alert.params?.['reason'] === STREAM_PROFILE_DIFFERS_REASON)).toMatchObject({ severity: 'WARNING', active: false, target: sessionId });
+      const sealedAt = second.clock.now();
+      await second.close();
+
+      // Processes 3 and 4: no session open. Nothing raised, nothing cleared, the alert stays resolved.
+      let from = (await trail(target)).length;
+      for (const [index, name] of ['worker-wavek-restart-3', 'worker-wavek-restart-4'].entries()) {
+        const next = await realCore(target, sealedAt + (index + 1) * 60_000, name);
+        const written = (await trail(target)).slice(from);
+        expect(written.filter((row) => row.type === 'FAULT_RAISED' || row.type === 'FAULT_CLEARED')).toEqual([]);
+        const state = next.app.engine.state();
+        expect(state.faults.active).toEqual([]);
+        expect(state.alerts.findLast((alert) => alert.params?.['reason'] === STREAM_PROFILE_DIFFERS_REASON)).toMatchObject({ severity: 'WARNING', active: false, target: sessionId, params: { tracks: 'VIDEO-01:H264_720P30:H264_1080P25' } });
+        expect(state.alerts.find((alert) => alert.id === alertId)).toMatchObject({ active: false });
+        expect(state.alerts.filter((alert) => alert.active && alert.severity === 'CRITICAL')).toEqual([]);
+        expect(next.log.text()).not.toContain('"restartFaultEnded":true');
+        from = (await trail(target)).length;
+        await next.close();
+      }
+
+      const whole = await readTrail(target.ownerPool());
+      expect(ofRestart(whole as unknown as AuditRow[], 'FAULT_CLEARED')).toHaveLength(1);
+      expect(linkProblems(whole)).toEqual([]);
+      expect(verifyTrail(whole, await readHead(target.ownerPool())).ok).toBe(true);
+    });
   });
 });

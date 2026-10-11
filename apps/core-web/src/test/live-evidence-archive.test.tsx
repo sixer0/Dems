@@ -19,6 +19,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { en } from '@dems/shared/i18n'
 import { rateLimited, type FakeCommandOptions } from '@dems/shared/live/testing'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
@@ -217,10 +218,8 @@ describe('static rules of the folder (AC-C-53, MD-6, TS-15; rules 1 and 2 of the
   const fileCode = (name: string) => code(production.find((file) => file.name === name)?.text ?? '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(
-      expect.arrayContaining(['export-wizard.tsx', 'use-verification.ts', 'use-archive.ts', 'sim-adapter.ts', 'detail-page.tsx', 'list-page.tsx', 'use-evidence-media.ts']),
-    )
-    expect(production.length).toBeGreaterThanOrEqual(30)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/evidence/**/*.{ts,tsx}'), root: '../features/evidence' })
   })
 
   it('AC-C-53: no file imports `useSimActions` or reads `.actions` of a `Sim`, `SimContext` or `live.source`', () => {

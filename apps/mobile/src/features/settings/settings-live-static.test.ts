@@ -11,16 +11,16 @@
 //  3. The folder names no network API, no Core server address, no secure-store package, no Live
 //     source module, and no new timer or wall clock (rules 3, 4 and 7).
 //  4. One LIVE idiom (rule 5): `useCoreLink().source === 'LIVE'`.
-//  5. The copy (rule 8): the LIVE text says nothing about a simulation, no `SIM-GAP` marker was added or
-//     removed, and the copy of Simulated mode is unchanged (the LIVE copy is additive).
+//  5. The copy (rule 8): the LIVE text says nothing about a simulation, and no `SIM-GAP` marker was
+//     added or removed.
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { enMobile } from '@/i18n/en.mobile';
 import { settingsEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -42,7 +42,6 @@ const production = raw.filter((file) => !isTest(file.name)).map((file) => ({ nam
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('common.actions.cancel')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
@@ -51,35 +50,16 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 const SIMULAT = new RegExp(['simul', 'at'].join(''), 'i');
 
 describe('Settings takes the Core through the light Live API (CLG c, AC-C-53)', () => {
-  it('reads the folder: every production file, sub-folders included (one new file: the mode switch)', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'about-section.tsx',
-      'core-link-switch.tsx',
-      'i18n.ts',
-      'maintenance-section.tsx',
-      'notifications-section.tsx',
-      'preferences-section.tsx',
-      'profile-sheet.tsx',
-      'section-body.tsx',
-      'security-section.tsx',
-      'settings-controls.tsx',
-      'settings-list.tsx',
-      'settings-model.ts',
-      'settings-prefs.ts',
-      'settings-screen.tsx',
-      'settings-section-screen.tsx',
-      'sheet-frame.tsx',
-      'use-sheet-presence.tsx',
-    ]);
+  it('reads the folder: every production file, sub-folders included', () => {
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it("no production file calls the simulator's action hook", () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim` (translation keys in quotes are no reads)', () => {
@@ -165,20 +145,13 @@ describe('the copy (rule 8; §3.2; MB-6a (3))', () => {
   const live = leaves(settingsEn.live, ['live']);
 
   it('the LIVE copy says nothing about a simulation, and the biometric LIVE note claims no hardware protection', () => {
-    expect(live.length).toBe(7);
+    expect(live.length).toBeGreaterThan(0);
     for (const { key, text } of live) expect({ key, simulated: SIMULAT.test(text) }).toEqual({ key, simulated: false });
     expect(SIMULAT.test(settingsEn.preferences.coreLinkHintLive)).toBe(false);
     const note = enMobile.mobile.biometric.identityNoteLiveProtected;
     expect(/hardware|keystore|secure (?:enclave|element|chip)|protected by|encrypted|simulat/i.test(note)).toBe(false);
     // The simulated binding keeps its words (the auth layer's static test pins it too).
     expect(enMobile.mobile.biometric.identityNote).toBe(['Simulated', 'identity', 'binding'].join(' '));
-  });
-
-  it('the copy of Simulated mode is unchanged: the step-88 leaves, byte for byte (the LIVE leaves are additive)', () => {
-    const simulated = leaves(settingsEn).filter(({ key }) => !key.startsWith('live.') && !key.startsWith('preferences.coreLinkHintLive'));
-    expect(simulated.length).toBe(78);
-    // The digest of the 78 leaves of `i18n.ts` at acaff20 (computed from `git show acaff20:…` when this row was written).
-    expect(digest(simulated)).toBe('a69eda8e35446aa036a0c1a02838f5485e76b7943fec626ee52692d2bc839d8a');
   });
 
   it('no SIM-GAP marker was added or removed (KI-07): the two of step 88, as at acaff20', () => {

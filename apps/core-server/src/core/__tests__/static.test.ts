@@ -14,7 +14,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../test/static/scan';
 
 const production = codeOnly(readTree(WORKSPACE).filter((file) => isProductionSource(file.path)));
 const core = production.filter((file) => file.path.startsWith('src/core/'));
@@ -38,23 +38,7 @@ const found = (files: readonly SourceFile[], patterns: readonly RegExp[]): strin
 
 describe('the scan itself', () => {
   it('reads the production sources of the core folder', () => {
-    expect(core.map((file) => file.path).sort()).toEqual([
-      'src/core/audit-details.ts',
-      'src/core/audit-writer.ts',
-      'src/core/boot-checks.ts',
-      'src/core/clock.ts',
-      'src/core/errors.ts',
-      'src/core/event-writer.ts',
-      'src/core/index.ts',
-      'src/core/limits.ts',
-      'src/core/payload-rules.ts',
-      'src/core/pipeline.ts',
-      'src/core/sweeper.ts',
-      'src/core/types.ts',
-      'src/core/unit-of-work.ts',
-      'src/core/unit-statement.ts',
-      'src/core/windows.ts',
-    ]);
+    expect(scanCoverage(core, ['src/core/'])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

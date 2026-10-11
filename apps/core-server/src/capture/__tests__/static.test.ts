@@ -22,7 +22,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, under, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, under, type SourceFile } from '../../../test/static/scan';
 import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';
 
 const tree = readTree(WORKSPACE);
@@ -77,19 +77,14 @@ const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...
 
 describe('the scan itself', () => {
   it('reads the production sources of the capture folder', () => {
-    // The adapter layer (row 65) is part of `capture` for every rule below; its own file list is pinned in `adapters/__tests__/static.test.ts`.
-    const ADAPTERS = 'src/capture/adapters/';
-    // The evidence signer (row 83) is part of `capture` for every rule below as well; its files are pinned here by name.
-    const SIGNER = 'src/capture/signer/';
-    expect(capture.filter((file) => file.path.startsWith(SIGNER)).map((file) => file.path).sort()).toEqual(['src/capture/signer/der.ts', 'src/capture/signer/host-key.ts', 'src/capture/signer/index.ts', 'src/capture/signer/key-record.ts', 'src/capture/signer/seal.ts', 'src/capture/signer/types.ts']);
-    // The capture fence (row 136) is part of `capture` for every rule below too; its files are pinned here by name.
-    const FENCE = 'src/capture/fence/';
-    expect(capture.filter((file) => file.path.startsWith(FENCE)).map((file) => file.path).sort()).toEqual(['boot.ts', 'development-discovery.ts', 'fake-mic.ts', 'fake-profile.ts', 'generated-sources.ts', 'index.ts', 'operation.ts', 'registration.ts', 'sources.ts', 'statements.ts'].map((name) => `${FENCE}${name}`)); // fix wave K, reconcile pass: + fake-profile.ts (G89b-01, the selector line of a generated source)
-    // The boot checks of real capture (row 61) are part of `capture` for every rule below as well; their files are pinned here by name.
-    const BOOT = 'src/capture/boot/';
-    expect(capture.filter((file) => file.path.startsWith(BOOT)).map((file) => file.path).sort()).toEqual(['checks.ts', 'evidence-volume.ts', 'index.ts', 'worker-probe.ts'].map((name) => `${BOOT}${name}`));
-    expect(capture.filter((file) => !file.path.startsWith(ADAPTERS) && !file.path.startsWith(SIGNER) && !file.path.startsWith(FENCE) && !file.path.startsWith(BOOT)).map((file) => file.path)).toEqual(['src/capture/forwarder.ts', 'src/capture/fragments.ts', 'src/capture/index.ts', 'src/capture/ipc.ts', 'src/capture/stale-notices.ts', 'src/capture/supervisor.ts', 'src/capture/timers.ts', 'src/capture/types.ts', 'src/capture/worker-arguments.ts']); // pin by delta (wave H driver F): + stale-notices.ts (the boot clear of capture notices), + worker-arguments.ts (one argument list for a session start and the boot probe)
-    expect(capture.filter((file) => file.path.startsWith(ADAPTERS)).length).toBeGreaterThanOrEqual(16);
+    // Rule R1 (test/static/scan.ts): the scan equals an independent walk of the folder and is not empty.
+    // The adapter layer (row 65), the evidence signer (row 83), the capture fence (row 136) and the boot
+    // checks of real capture (row 61) are part of `capture` for every rule below: each is read.
+    expect(scanCoverage(capture, ['src/capture/'])).toEqual(SCAN_COVERS);
+    for (const part of ['src/capture/adapters/', 'src/capture/signer/', 'src/capture/fence/', 'src/capture/boot/']) {
+      expect(capture.some((file) => file.path.startsWith(part)), part).toBe(true);
+    }
+    expect(capture.some((file) => !file.path.slice('src/capture/'.length).includes('/')), 'the files of the folder itself').toBe(true);
     expect(hosts.length).toBeGreaterThan(100);
   });
 

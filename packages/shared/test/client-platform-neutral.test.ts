@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { AC_C_02_NAMED } from './support/platform-rules';
 
 const CLIENT_DIR = fileURLToPath(new URL('../src/client/', import.meta.url));
 
@@ -45,8 +46,7 @@ describe('static scan of src/client', () => {
   });
 
   it('AC-C-02: no file names node:, react-native, expo, window or document (comments included)', () => {
-    const named = /node:|react-native|\bexpo\b|\bwindow\b|\bdocument\b/;
-    expect(files.filter((file) => named.test(raw(file))).map(short)).toEqual([]);
+    expect(files.filter((file) => AC_C_02_NAMED.test(raw(file))).map(short)).toEqual([]);
   });
 
   it('uses no Node global: no Buffer, process, require, __dirname or module object', () => {

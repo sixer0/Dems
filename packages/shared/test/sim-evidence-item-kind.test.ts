@@ -7,8 +7,9 @@
 // | The contract's own `getEvidence` examples classify as their names say | "the contract's examples" |
 // | The Core's `interrupted` (sealed manifest) answers when stated; else the custody entry; the manifest wins a disagreement | "the mapping table", "interruptedSealOfItem agrees" |
 import { describe, expect, it } from 'vitest';
-import { CORE_API_EXAMPLES, EvidenceDetailSchema } from '../src/api';
+import { CORE_API_EXAMPLES, EvidenceDetailSchema, EXAMPLE_EVIDENCE_ITEM, EvidenceItemSchema } from '../src/api';
 import { EVIDENCE_ITEM_KIND_VECTORS, evidenceItemKindOf, interruptedFactOf, interruptedSealOfItem, isBundledDemoItem, isSealedOnThisCore, sealedPackageOf } from '../src/sim';
+import * as micPairBed from './support/mic-pair-bed';
 
 describe('the kind of an evidence item, by the Core\'s own members', () => {
   it.each(EVIDENCE_ITEM_KIND_VECTORS.map((vector) => [vector.name, vector] as const))('the mapping table: %s', (_name, vector) => {
@@ -58,5 +59,60 @@ describe('the kind of an evidence item, by the Core\'s own members', () => {
       expect([vector.name, interruptedSealOfItem(item as never) !== null]).toEqual([vector.name, vector.interrupted === true]);
     }
     expect([interruptedSealOfItem(null), interruptedSealOfItem(undefined)]).toEqual([null, null]);
+  });
+});
+
+// Integration pass C1 (decision D120), seam 3: `manifestVersion` / `labelsStatus` on the evidence
+// item (row 129b; dbc-3 §B.11). Every acceptance has its refusal beside it.
+describe('the sealed columns of a v2 evidence item (pass C1, seam 3)', () => {
+  it('the strict item schema takes manifestVersion and labelsStatus as optional members, value by value', () => {
+    expect(EvidenceItemSchema.safeParse(EXAMPLE_EVIDENCE_ITEM).success).toBe(true);
+    const accepted: readonly object[] = [
+      { manifestVersion: 2, labelsStatus: 'LABELLED' },
+      { manifestVersion: 2, labelsStatus: 'UNAVAILABLE' },
+      // A v2 seal with STT disabled: no transcript hash, no labels (ev §B.7a) - the row (2, NULL, NULL).
+      { manifestVersion: 2, transcriptSha256: null, labelsStatus: null },
+      { manifestVersion: 1 },
+      { labelsStatus: null },
+    ];
+    for (const members of accepted) expect(EvidenceItemSchema.safeParse({ ...EXAMPLE_EVIDENCE_ITEM, ...members }).success, JSON.stringify(members)).toBe(true);
+    const refused: readonly object[] = [{ manifestVersion: 3 }, { manifestVersion: 0 }, { manifestVersion: '2' }, { manifestVersion: null }, { labelsStatus: 'PENDING' }, { labelsStatus: '' }, { labelStatus: 'LABELLED' }];
+    for (const members of refused) expect(EvidenceItemSchema.safeParse({ ...EXAMPLE_EVIDENCE_ITEM, ...members }).success, JSON.stringify(members)).toBe(false);
+    // The members come back out as they went in (nothing is stripped or defaulted).
+    const parsed = EvidenceItemSchema.parse({ ...EXAMPLE_EVIDENCE_ITEM, manifestVersion: 2, labelsStatus: 'LABELLED' });
+    expect([parsed.manifestVersion, parsed.labelsStatus]).toEqual([2, 'LABELLED']);
+    expect('manifestVersion' in EvidenceItemSchema.parse(EXAMPLE_EVIDENCE_ITEM)).toBe(false);
+  });
+});
+
+// Integration pass D1b (decision D133), seam 3: `developmentSources` on the evidence item
+// (operations 39 / 40; row 141's request).
+describe('developmentSources', () => {
+  const { harness } = micPairBed;
+
+  describe('developmentSources on the evidence item (pass D1b, seam 3)', () => {
+    it('an optional boolean or null; absent and null are "not recorded", and nothing else is taken', () => {
+      expect(EvidenceItemSchema.safeParse(EXAMPLE_EVIDENCE_ITEM).success).toBe(true);
+      expect('developmentSources' in EXAMPLE_EVIDENCE_ITEM).toBe(false);
+      for (const value of [true, false, null]) {
+        const parsed = EvidenceItemSchema.safeParse({ ...EXAMPLE_EVIDENCE_ITEM, developmentSources: value });
+        expect(parsed.success, String(value)).toBe(true);
+        // The value is carried as it is: null is never turned into false (never read as production).
+        if (parsed.success) expect(parsed.data.developmentSources).toBe(value);
+      }
+      for (const bad of ['true', 'DEVELOPMENT', 0, 1, {}]) expect(EvidenceItemSchema.safeParse({ ...EXAMPLE_EVIDENCE_ITEM, developmentSources: bad }).success, String(bad)).toBe(false);
+      // CONTROL: the item is strict - a neighbouring unknown member is still refused.
+      expect(EvidenceItemSchema.safeParse({ ...EXAMPLE_EVIDENCE_ITEM, developmentSource: true }).success).toBe(false);
+    });
+
+    it('an item of the simulator state carries the member through the slice schema', () => {
+      const h = harness();
+      const item = h.state().evidence[0];
+      if (item === undefined) throw new Error('the dataset holds no evidence item');
+      // The dataset items are v1: the member is absent (not recorded).
+      expect('developmentSources' in item).toBe(false);
+      const marked: typeof item = { ...item, developmentSources: true };
+      expect(EvidenceItemSchema.safeParse(marked).success).toBe(true);
+    });
   });
 });

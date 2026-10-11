@@ -19,7 +19,7 @@
 // Every rule holds a planted-violation control. Forbidden texts are built from fragments.
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../test/static/scan';
 
 const UNIT = 'src/media-stream/';
 const MODULE = 'src/modules/media-stream/';
@@ -66,17 +66,7 @@ function auditEntries(text: string): string[] {
 
 describe('the scan itself', () => {
   it('reads the files of the unit and of the module', () => {
-    expect(own.map((file) => file.path).sort()).toEqual([
-      `${UNIT}index.ts`,
-      `${UNIT}items.ts`,
-      `${UNIT}ranges.ts`,
-      `${UNIT}seek-index.ts`,
-      `${UNIT}service.ts`,
-      `${UNIT}source.ts`,
-      `${UNIT}store-door.ts`,
-      `${UNIT}token.ts`,
-      `${MODULE}index.ts`,
-    ]);
+    expect(scanCoverage(own, [UNIT, MODULE])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is planted (positive controls)', () => {

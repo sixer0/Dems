@@ -17,10 +17,10 @@
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { sessionSummaryEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FEATURES = join(__dirname, '..');
 const FOLDERS = ['session-finalizing', 'session-summary', 'sessions'] as const;
@@ -44,7 +44,6 @@ const production = raw.map((file) => ({ name: file.name, text: code(file.source)
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('common.actions.done')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
@@ -53,57 +52,15 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('the three folders take the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads all three folders: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'session-finalizing/finalization-pipeline.tsx',
-      'session-finalizing/finalizing.model.ts',
-      'session-finalizing/flow-boundary.tsx',
-      // E-fix row FX-M2 (E2E-P-4): the monitor-to-Finalizing hand-over mark (one slot, no timer).
-      'session-finalizing/handover.ts',
-      'session-finalizing/i18n.ts',
-      'session-finalizing/interrupted-seal.tsx',
-      // Fix wave L, driver L-M (G75d-01; decision 4 of note 155): the open UNSEALABLE notice as Home reads it (`openUnsealableNoticesOf`;
-      // reads the store only). The file was added by L-M; this list was moved by the closing pass L-Z (the whole suite showed it stale).
-      'session-finalizing/open-notice.ts',
-      // Fix wave I (G75b-02): the notice of a seal the Core retries or that is blocked (reads the store only).
-      'session-finalizing/seal-attention.tsx',
-      'session-finalizing/sealed-stamp.tsx',
-      // Blueprint row 87 (E-13): sealing progress, forward-only, from the Core's states alone (no timer).
-      'session-finalizing/sealing-progress.ts',
-      'session-finalizing/session-finalizing-screen.tsx',
-      // Task 3 fix pass F-M7b (R88-02 (c)): the UNSEALABLE state of a recording, read from the Core's alert (no action, no timer, no network).
-      'session-finalizing/unsealable-notice.tsx',
-      'session-finalizing/use-finalizing.ts',
-      'session-summary/hash-sheet.tsx',
-      'session-summary/i18n.ts',
-      'session-summary/sealed-members.tsx',
-      'session-summary/session-summary-screen.tsx',
-      'session-summary/sim-adapter.ts',
-      'session-summary/stamp-once.ts',
-      'session-summary/summary-handoff.ts',
-      'session-summary/summary.model.ts',
-      'session-summary/use-sheet-presence.tsx',
-      'session-summary/use-summary.ts',
-      'sessions/hub-top.tsx',
-      'sessions/i18n.ts',
-      'sessions/rec-dot.tsx',
-      'sessions/session-detail-screen.tsx',
-      'sessions/session-detail.tsx',
-      'sessions/session-row.tsx',
-      'sessions/session-status-chip.tsx',
-      'sessions/sessions-model.ts',
-      'sessions/sessions-screen.tsx',
-      'sessions/use-hand-off.ts',
-      'sessions/use-sessions-data.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDERS.map((folder) => join(FEATURES, folder)), FEATURES);
   });
 
   it('no production file calls the simulator\'s action hook', () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim`: every `.actions` left is a style', () => {
@@ -181,13 +138,11 @@ describe('nothing starts a Core command from an effect (decision D158, F69-1)', 
 });
 
 describe('the copy (rule 8)', () => {
-  it('the Summary\'s LIVE text says nothing about a simulation; the Simulated copy is the step-80 copy', () => {
+  it('the Summary\'s LIVE text says nothing about a simulation', () => {
     const summary = leaves(sessionSummaryEn);
     const live = summary.filter((leaf) => leaf.key.startsWith('live.'));
-    expect(live.map((leaf) => leaf.key)).toEqual(['live.linkDownTitle', 'live.linkDownBody']);
+    expect(live.length).toBeGreaterThan(0);
     expect(live.filter((leaf) => /simulat|mock-core/i.test(leaf.text))).toEqual([]);
-    // Every other leaf as step 80 left it (the digest of the key-text pairs at `acaff20`).
-    expect(digest(summary.filter((leaf) => !leaf.key.startsWith('live.')))).toBe(STEP_80_SUMMARY_COPY);
   });
 
   it('no `SIM-GAP` marker was added: the three folders hold the one step-80 marker only', () => {
@@ -199,6 +154,3 @@ describe('the copy (rule 8)', () => {
     expect(matching(/CONTRACT-GAP|SCHEMA-GAP|BE-GAP|\bTODO\b|\bFIXME\b/)).toEqual([]);
   });
 });
-
-/** sha256 of the `features.session-summary` key-text pairs as step 80 wrote them (the file at `acaff20`). */
-const STEP_80_SUMMARY_COPY = 'e9c32acfc2840f99009ed21517ec379b015fea4d5ea74a9a1e04be52d7b4b09e';

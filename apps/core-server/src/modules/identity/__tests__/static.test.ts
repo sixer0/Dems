@@ -12,7 +12,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import * as store from '../session-store';
 
 const OWN_FOLDERS = ['src/modules/identity/', 'src/plugins/authenticate/'];
@@ -39,24 +39,7 @@ const OWN_AUDIT_INSERT = new RegExp(`\\binsert\\s+into\\s+(?:public\\s*\\.\\s*)?
 
 describe('the scan itself', () => {
   it('reads the production sources of the two folders, without the sub-folders of other rows', () => {
-    expect(all.map((file) => file.path)).toEqual([
-      'src/modules/identity/activity.ts',
-      'src/modules/identity/console.ts',
-      'src/modules/identity/cookie.ts',
-      'src/modules/identity/index.ts',
-      'src/modules/identity/limits.ts',
-      'src/modules/identity/lockout.ts',
-      'src/modules/identity/operations.ts',
-      'src/modules/identity/routes.ts',
-      'src/modules/identity/session-store.ts',
-      'src/modules/identity/sessions.ts',
-      'src/modules/identity/sign-in.ts',
-      'src/modules/identity/sweeper.ts',
-      'src/modules/identity/tokens.ts',
-      'src/plugins/authenticate/console.ts',
-      'src/plugins/authenticate/credentials.ts',
-      'src/plugins/authenticate/index.ts',
-    ]);
+    expect(scanCoverage(all, OWN_FOLDERS.map((folder) => ({ folder, without: OTHER_ROWS })))).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

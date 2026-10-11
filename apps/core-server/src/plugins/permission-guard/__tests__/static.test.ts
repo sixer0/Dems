@@ -15,7 +15,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 
 const OWN_FOLDERS = ['src/plugins/permission-guard/', 'src/modules/rbac/'];
 
@@ -49,17 +49,7 @@ const PERMISSION_NAME = new RegExp(`\\bPermission\\s*\\.\\s*[A-Z_]+\\b|\\b${'per
 
 describe('the scan itself', () => {
   it('reads the production sources of the two folders', () => {
-    expect(own.map((file) => file.path)).toEqual([
-      'src/modules/rbac/index.ts',
-      'src/plugins/permission-guard/access-rules.ts',
-      'src/plugins/permission-guard/decision.ts',
-      'src/plugins/permission-guard/denial.ts',
-      'src/plugins/permission-guard/index.ts',
-      'src/plugins/permission-guard/matrix.ts',
-      'src/plugins/permission-guard/router-table.ts',
-      // SEC35-18 (row 48; ruling D44 R2): the holder reader of the guard - one parameterless read.
-      'src/plugins/permission-guard/session-holder.ts',
-    ]);
+    expect(scanCoverage(own, OWN_FOLDERS)).toEqual(SCAN_COVERS);
     expect(production.length).toBeGreaterThan(100);
   });
 

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { AC_C_02_NAMED, ERASABLE_SYNTAX_RULES } from './support/platform-rules';
 
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url));
 const REALTIME_DIR = `${SRC_DIR}realtime/`;
@@ -79,7 +80,7 @@ describe('static scan of src/realtime/live-socket-client.ts', () => {
   });
 
   it('AC-C-02: the file names no node:, react-native, expo, window or document (comments included)', () => {
-    const named = /node:|react-native|\bexpo\b|\bwindow\b|\bdocument\b/;
+    const named = AC_C_02_NAMED;
     expect(raw.split('\n').filter((line) => named.test(line))).toEqual([]);
     // Positive control: the pattern does find such a name.
     expect(named.test("import { Platform } from 'react-native';")).toBe(true);
@@ -139,9 +140,7 @@ describe('static scan of src/realtime/live-socket-client.ts', () => {
   });
 
   it('uses erasable syntax only: no enum, no namespace, no parameter property', () => {
-    expect(code).not.toMatch(/^\s*(export\s+)?(declare\s+)?(const\s+)?enum\s/m);
-    expect(code).not.toMatch(/^\s*(export\s+)?namespace\s/m);
-    expect(code).not.toMatch(/constructor\s*\([^)]*\b(public|private|protected|readonly)\b/);
+    for (const [construct, pattern] of ERASABLE_SYNTAX_RULES) expect(pattern.test(code), construct).toBe(false);
   });
 
   it('the heartbeat client itself is untouched by this row: it still has no send and knows nothing of the Live client', () => {

@@ -26,7 +26,15 @@ import {
   type SessionCreateInput,
   type SimAlert,
   type SimState,
+  CAPTURE_CONNECT_MS_MAX,
+  captureConnectMsOf,
+  captureDurableTransition,
 } from '../src/sim';
+import * as sessionFaultBed from './support/session-fault-bed';
+import { en } from '../src/i18n';
+import * as ownCaptureBed from './support/own-capture-bed';
+import { SessionResourceSchema } from '../src/api';
+import * as micIdBed from './support/mic-id-bed';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0);
 const INPUT: SessionCreateInput = { caseNumber: 'LP/2026/1001-0008', subjectType: 'SAKSI', subjectName: 'Test Saksi', investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' };
@@ -291,5 +299,259 @@ describe('the pure decision and the helper', () => {
       () => calls.push('tick'),
     );
     expect(calls).toEqual([`advance:${CAPTURE_CONNECT_MS}`, 'tick']);
+  });
+});
+
+// Fix wave H, closing pass Z1, item 9 (driver B decision 6): a TEST / DEVELOPMENT control that holds
+// the connecting part of a start in the simulator's own capture, so a gate can look at the
+// connecting state for longer than a second. `CreateSimOptions.captureConnectMs`; the default is
+// unchanged (`CAPTURE_CONNECT_MS`, 1,000 ms). It is an option of the host that creates the
+// simulator, not an action and not a demo control: no operator surface can set it.
+describe('the option that holds the connecting part', () => {
+  const INPUT: SessionCreateInput = { caseNumber: 'LP/2026/1001-0011', subjectType: 'SAKSI', subjectName: 'Test Saksi', investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' };
+  function started(options: { captureConnectMs?: number; capture?: 'simulated' | 'external' } = {}) {
+    const clock = createManualClock(START);
+    const sim = createSim({ clock, storage: null, authStorage: null, ...options });
+    sim.actions.signIn('budi.santoso', 'demo-2026');
+    const run = (ms: number, step = 50): void => {
+      for (let elapsed = 0; elapsed < ms; elapsed += step) {
+        clock.advance(step);
+        sim.tick();
+      }
+    };
+    sim.actions.createSession(INPUT);
+    sim.actions.beginPrecheck();
+    run(6_000);
+    sim.actions.startRecording();
+    return { sim, run, session: () => sim.store.getState().session };
+  }
+
+  describe('CreateSimOptions.captureConnectMs holds the connecting part of a start', () => {
+    it('30,000 ms: the session says connecting for thirty seconds and is durable right after', () => {
+      const h = started({ captureConnectMs: 30_000 });
+      expect(h.session()).toMatchObject({ state: 'RECORDING', captureDurable: false });
+      h.run(29_900);
+      expect(h.session()).toMatchObject({ state: 'RECORDING', captureDurable: false });
+      h.run(200);
+      expect(h.session()?.state).toBe('RECORDING');
+      expect(h.session()).not.toHaveProperty('captureDurable');
+    });
+
+    it('CONTROL - the default is unchanged: connecting ends 1,000 ms after the start', () => {
+      expect(CAPTURE_CONNECT_MS).toBe(1_000);
+      const h = started();
+      h.run(900);
+      expect(h.session()).toMatchObject({ captureDurable: false });
+      h.run(200);
+      expect(h.session()).not.toHaveProperty('captureDurable');
+    });
+
+    it('a value that is no whole number of milliseconds in range is not taken: the default stands', () => {
+      for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, CAPTURE_CONNECT_MS_MAX + 1]) expect(captureConnectMsOf(bad), String(bad)).toBe(CAPTURE_CONNECT_MS);
+      expect(captureConnectMsOf(undefined)).toBe(CAPTURE_CONNECT_MS);
+      expect(captureConnectMsOf(0)).toBe(0);
+      expect(captureConnectMsOf(CAPTURE_CONNECT_MS_MAX)).toBe(CAPTURE_CONNECT_MS_MAX);
+      const h = started({ captureConnectMs: -5 });
+      h.run(1_100);
+      expect(h.session()).not.toHaveProperty('captureDurable');
+    });
+
+    it('the Core\'s own capture is not timed at all: the option changes nothing there', () => {
+      const h = started({ capture: 'external', captureConnectMs: 2_000 });
+      // No member is written by the simulator (the Core's capture session writes it), and none appears later.
+      expect(h.session()).not.toHaveProperty('captureDurable');
+      h.run(5_000);
+      expect(h.session()).not.toHaveProperty('captureDurable');
+    });
+  });
+});
+
+// Wave H, driver B (decision D200; gate 75), each written RED against f293221.
+//   G75-11           a failed start leaves no "Recording started" node in the session's timeline
+//   G75-07 (c), (d)  the warning of a degraded start ends with its session; the next pre-check passes
+describe('a failed and a degraded start on the session records', () => {
+  const { harness } = sessionFaultBed;
+
+  describe('G75-11: a failed start is not a recording that started', () => {
+    it('the timeline of the failed start has no START node; the audit row of the accepted start is followed by the failure with its reason', () => {
+      const h = harness();
+      const sessionId = h.failedStart();
+      const timeline = h.state().session?.timeline ?? [];
+      expect(timeline.some((item) => item.kind === 'START')).toBe(false);
+      expect(timeline.at(-1)).toMatchObject({ kind: 'FAULT', params: { durable: false, reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 } });
+      const ofSession = h.state().audit.rows.filter((row) => row.sessionId === sessionId);
+      const started = ofSession.findIndex((row) => row.type === 'RECORDING_STARTED');
+      expect(started).toBeGreaterThanOrEqual(0);
+      expect(ofSession.slice(started + 1).find((row) => row.type === 'FAULT_RAISED')?.details).toMatchObject({ kind: 'CAPTURE_FAULT', reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 });
+    });
+
+    it('CONTROL - a start that connects keeps its START node', () => {
+      const h = harness();
+      h.toRecording();
+      expect(h.state().session?.timeline.some((item) => item.kind === 'START')).toBe(true);
+    });
+  });
+
+  describe('G75-07 (c), (d): the warning of a degraded start ends with its session', () => {
+    const degraded = (h: ReturnType<typeof harness>) => h.state().alerts.filter((alert) => alert.kind === 'SYSTEM' && alert.params?.['reason'] === 'CAPTURE_DEVICE_UNREACHABLE' && alert.params['phase'] === 'SESSION_START');
+
+    it('the warning is active while the session records one camera, and resolved once that session no longer records', () => {
+      const h = harness();
+      h.toArmed();
+      h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+      h.sim.actions.startRecording();
+      h.run(CAPTURE_CONNECT_MS + 2_000);
+      expect(h.state().session?.state).toBe('RECORDING');
+      expect(degraded(h).filter((alert) => alert.active)).toHaveLength(1);
+      h.sim.actions.clearFault('CAMERA_LOSS');
+      h.run(1_000);
+      // Still recording: the session did start without that camera.
+      expect(degraded(h).filter((alert) => alert.active)).toHaveLength(1);
+      h.sim.actions.stopRecording('Interview finished');
+      h.run(15_000);
+      expect(h.state().session?.state).toBe('SEALED');
+      expect(degraded(h).filter((alert) => alert.active)).toHaveLength(0);
+      expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-02')?.online).toBe(true);
+
+      // (d) the next pre-check, the camera being back: no "CAM-02 is not reachable" warning.
+      h.sim.actions.acknowledgeSummary(h.state().lastSealedSessionId ?? '');
+      h.run(100);
+      h.toArmed();
+      const session = h.state().session;
+      expect(session?.state).toBe('ARMED');
+      expect(session?.precheck.outcome).toBe('PASS');
+      expect(session?.precheck.items.filter((item) => item.value === 'UNREACHABLE')).toHaveLength(0);
+    });
+  });
+});
+
+// Closing pass J of fix wave I (decision D216; request G75b-10): the generator's hold - no integrity
+// row for a start that is not decided, none for a start that failed, the same rows for a start that
+// happened; and the reason a refused start carries to the client.
+describe('a start that is not decided, and a start that is refused', () => {
+  const { bed } = ownCaptureBed;
+
+  describe('the generator holds its integrity rows while a start is not decided (G75b-10)', () => {
+    it('a FAILED start of the simulated lane has no FRAME_HASH / WRITE_VERIFIED / TIMESTAMP_CONFIRMED row at all', () => {
+      const h = bed({ captureConnectMs: 30_000 });
+      h.armed();
+      h.sim.actions.startRecording();
+      h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
+      h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+      h.run(29_000);
+      expect(h.state().session).toMatchObject({ state: 'RECORDING', captureDurable: false });
+      expect(h.integrityRows()).toEqual([]);
+      h.run(10_000);
+      expect(h.state().session).toMatchObject({ state: 'FAULT', captureDurable: false, startedAt: null });
+      expect(h.integrityRows()).toEqual([]);
+    });
+
+    it('CONTROL - a start that happened has the same rows, each at its own time, whatever the connecting time was', () => {
+      const rowsAfter = (captureConnectMs: number): string[] => {
+        const h = bed({ captureConnectMs });
+        h.armed();
+        h.sim.actions.startRecording();
+        h.run(60_000);
+        expect(h.state().session?.state).toBe('RECORDING');
+        expect(h.state().session).not.toHaveProperty('captureDurable');
+        return h.integrityRows();
+      };
+      const immediate = rowsAfter(0);
+      expect(immediate.length).toBeGreaterThan(2);
+      expect(rowsAfter(30_000)).toEqual(immediate);
+      expect(rowsAfter(1_000)).toEqual(immediate);
+    });
+  });
+
+  describe('a refused start carries its reason to the client (`503 NOT_READY`, `details.reason`)', () => {
+    it('the rebuilt error holds the Core\'s reason code; the reader names the two session-key refusals and nothing else', async () => {
+      const { START_REFUSED_SESSION_KEY_EXAMPLE } = await import('../src/api');
+      const { START_REFUSED_REASONS, startRefusedReasonOf } = await import('../src/sim');
+      const { LiveTransportError } = await import('../src/live');
+      const { rebuildRefusal } = await import('../src/live/source/rebuild-error');
+      const failure = (details: Record<string, unknown> | undefined) =>
+        ({
+          ok: false,
+          status: START_REFUSED_SESSION_KEY_EXAMPLE.status,
+          kind: 'NOT_READY',
+          transport: 'CORE_OFFLINE',
+          retryAfterSeconds: null,
+          requestId: 'req-1',
+          error: { code: START_REFUSED_SESSION_KEY_EXAMPLE.code, message: 'refused', ...(details === undefined ? {} : { details }) },
+        }) as unknown as Parameters<typeof rebuildRefusal>[0];
+      const context = { action: 'startRecording', operationId: 'startSession', entity: null, sessionState: 'ARMED' };
+
+      for (const reason of START_REFUSED_REASONS) {
+        const error = rebuildRefusal(failure({ reason }), context);
+        expect(error).toBeInstanceOf(LiveTransportError);
+        expect((error as InstanceType<typeof LiveTransportError>).detailReason).toBe(reason);
+        expect(startRefusedReasonOf(error)).toBe(reason);
+        expect(en.common.startRefused[reason]).toMatch(/^This session cannot be started: .*Nothing was recorded\./);
+      }
+      expect(startRefusedReasonOf(rebuildRefusal(failure(START_REFUSED_SESSION_KEY_EXAMPLE.details), context))).toBe('SESSION_KEY_NOT_OF_SESSION');
+      // NEGATIVE CONTROLS: a Core that is starting, another reason, a value that is no code.
+      expect(startRefusedReasonOf(rebuildRefusal(failure(undefined), context))).toBeNull();
+      expect(startRefusedReasonOf(rebuildRefusal(failure({ reason: 'CAPTURE_HELPERS_LEFT' }), context))).toBeNull();
+      expect((rebuildRefusal(failure({ reason: 'not a code; DROP' }), context) as InstanceType<typeof LiveTransportError>).detailReason).toBeNull();
+    });
+
+    it('6. the shared development-source sentence is the ruled wording', () => {
+      expect(en.common.captureConnect.noPasswordNeeded).toBe('A development source can be tested without a password. If the test asks for one, turn on "Enter a user name and password".');
+    });
+  });
+});
+
+// Integration pass C1 (decision D120), seam 2: `captureDurable` on the session payload (decisions
+// D84, D91 R-1 option A). Every acceptance has its refusal beside it.
+describe('the contract member of the connecting part', () => {
+  const { harness } = micIdBed;
+
+  describe('captureDurable on the session payload (pass C1, seam 2)', () => {
+    it('both session schemas take the optional boolean and nothing else under that name', () => {
+      const h = harness('recording');
+      const session = h.state().session;
+      if (session === null) throw new Error('the recording scenario holds no session');
+      // A durable simulated recording carries no member (pass D10: `false` only while its cameras connect), and absent reads as durable.
+      expect('captureDurable' in session).toBe(false);
+      expect(captureDurableOf(session)).toBe(true);
+      expect(ActiveSessionSchema.safeParse(session).success).toBe(true);
+      for (const durable of [true, false]) expect(ActiveSessionSchema.safeParse({ ...session, captureDurable: durable }).success, String(durable)).toBe(true);
+      for (const bad of ['true', 1, null]) expect(ActiveSessionSchema.safeParse({ ...session, captureDurable: bad }).success, String(bad)).toBe(false);
+      // CONTROL: the slice is strict - a neighbouring unknown member is still refused.
+      expect(ActiveSessionSchema.safeParse({ ...session, captureDurableX: true }).success).toBe(false);
+
+      const answer = h.sim.request({ method: 'GET', path: '/api/v1/session/current' });
+      expect(answer.status).toBe(200);
+      const resource = (answer.body as { session: object }).session;
+      expect(SessionResourceSchema.safeParse(resource).success).toBe(true);
+      expect('captureDurable' in resource).toBe(false);
+      for (const durable of [true, false]) expect(SessionResourceSchema.safeParse({ ...resource, captureDurable: durable }).success).toBe(true);
+      for (const bad of ['no', 1, null]) expect(SessionResourceSchema.safeParse({ ...resource, captureDurable: bad }).success, String(bad)).toBe(false);
+    });
+
+    it('the seam: the supervisor\'s report becomes the member; a repeated report and a report outside RECORDING change nothing', () => {
+      const h = harness('recording');
+      const recording = h.state();
+      const connecting = captureDurableTransition(recording, false);
+      expect(connecting.session?.captureDurable).toBe(false);
+      expect(connecting.session?.state).toBe('RECORDING');
+      expect(captureDurableOf(connecting.session)).toBe(false);
+      expect(captureDurableTransition(connecting, false)).toBe(connecting);
+      const durable = captureDurableTransition(connecting, true);
+      expect(durable.session?.captureDurable).toBe(true);
+      expect(captureDurableOf(durable.session)).toBe(true);
+      expect(captureDurableTransition(durable, true)).toBe(durable);
+      // Nothing but the one member moved: no audit row, no event, no other slice.
+      const { session: _before, ...restBefore } = recording;
+      const { session: after, ...restAfter } = durable;
+      expect(restAfter).toEqual(restBefore);
+      expect({ ...after, captureDurable: undefined }).toEqual({ ...recording.session, captureDurable: undefined });
+      expect(ActiveSessionSchema.safeParse(after).success).toBe(true);
+      // No session, or a session that does not record: the same state.
+      const idle = harness('idle').state();
+      expect(captureDurableTransition(idle, false)).toBe(idle);
+      expect(captureDurableOf(null)).toBe(true);
+      expect(captureDurableOf(undefined)).toBe(true);
+    });
   });
 });

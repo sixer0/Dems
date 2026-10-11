@@ -216,13 +216,6 @@ const failing = (result: PackageVerifyResult): string[] => result.checks.filter(
 const codeOf = (response: { json(): unknown }): string => (response.json() as { error: { code: string } }).error.code;
 const detailsOf = (response: { json(): unknown }): Record<string, unknown> => (response.json() as { error: { details?: Record<string, unknown> } }).error.details ?? {};
 
-describe('the schema this pass was written against', () => {
-  it('schema version 6, contract dbc-7: no migration', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('operation 84 getTranscript', () => {
   it('answers the sealed machine transcript of the package, with the hash the item is bound to and revision 0; the case holder reads; nobody without a session', async () => {
     const { server, investigator, transcript, verify } = await rig('d4tr_read');

@@ -90,7 +90,7 @@ const allLeaves = leaves(en);
 const allText = allLeaves.map(([, value]) => value);
 
 describe('shared i18n resources: structure', () => {
-  it('has exactly 15 namespace files and one en key per file', () => {
+  it('every namespace file is registered and holds one en key (`NAMESPACE_FILES` is the list)', () => {
     const files = readdirSync(EN_DIR).filter((name) => name.endsWith('.ts')).sort();
     expect(files).toEqual(Object.keys(NAMESPACE_FILES).sort());
     expect(Object.keys(en).sort()).toEqual(Object.values(NAMESPACE_FILES).sort());

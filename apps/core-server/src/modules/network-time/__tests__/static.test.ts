@@ -15,6 +15,8 @@
 // The patterns and their positive controls are this row's, in the storage folder's
 // `static-rules.ts`.
 import { describe, expect, it } from 'vitest';
+import { MODULE_RULES, itHoldsNone } from '../../../../test/static/module-rules';
+import { SCAN_COVERS, scanCoverage } from '../../../../test/static/scan';
 import * as rules from '../../storage/__tests__/static-rules';
 
 const FOLDER = 'src/modules/network-time/';
@@ -22,8 +24,8 @@ const { all, code } = rules.moduleSources(FOLDER);
 const index = code.find((file) => file.path.endsWith('/index.ts'))?.text ?? '';
 
 describe('the scan itself', () => {
-  it('reads the production sources of the folder: one file', () => {
-    expect(all.map((file) => file.path)).toEqual(['src/modules/network-time/index.ts']);
+  it('reads the production sources of the folder, its index among them', () => {
+    expect(scanCoverage(all, [FOLDER])).toEqual(SCAN_COVERS);
     expect(index.length).toBeGreaterThan(500);
   });
 
@@ -33,14 +35,9 @@ describe('the scan itself', () => {
 });
 
 describe('rule 1 (Q15, ENG-13): no clock, no timer', () => {
-  it('the folder does not read the system time and sets no timer', () => {
-    expect(rules.places(code, rules.SYSTEM_TIME)).toEqual([]);
-    expect(rules.places(code, rules.TIMER)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noSystemTimeNoTimer, rules, code, 'the folder does not read the system time and sets no timer');
 
-  it('the folder reads no clock at all, not even the server clock: the engine stamps what is stamped', () => {
-    expect(rules.places(code, rules.ANY_CLOCK)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noClockAtAll, rules, code, 'the folder reads no clock at all, not even the server clock: the engine stamps what is stamped');
 });
 
 describe('rule 2: nothing of the host', () => {
@@ -53,11 +50,7 @@ describe('rule 2: nothing of the host', () => {
     expect(rules.places(code, rules.HOST_STATE)).toEqual([]);
   });
 
-  it('no console, no random source, no log line of its own', () => {
-    expect(rules.places(code, rules.CONSOLE)).toEqual([]);
-    expect(rules.places(code, rules.RANDOM)).toEqual([]);
-    expect(rules.places(code, rules.LOG_CALL)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noConsoleRandomLog, rules, code);
 });
 
 describe('rule 3 (M3): who may call is stage 6, only', () => {
@@ -82,9 +75,7 @@ describe('rule 4 (M4, M5): the committed state, read only', () => {
     expect(index).not.toMatch(/\bcommand\b|\bsetTabletLink\b|\bawait\b/);
   });
 
-  it('no unit of work, no table, no statement, no audit writer, no publication', () => {
-    expect(rules.places(code, rules.OWN_STORAGE)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noOwnStorage, rules, code);
 
   it('nothing is assigned into a slice: the answers hold the engine\'s own objects under their slice names', () => {
     expect(index).toMatch(/const \{ network, tabletLink \} = app\.engine\.state\(\);\s*return \{ network, tabletLink \};/);
@@ -92,10 +83,7 @@ describe('rule 4 (M4, M5): the committed state, read only', () => {
     expect(index).not.toMatch(/\.\s*(?:push|splice|sort|reverse|fill|shift|unshift|pop)\s*\(|\bObject\s*\.\s*assign\b|\bdelete\s/);
   });
 
-  it('no slot of the scaffold is provided or replaced, and no test file is imported', () => {
-    expect(rules.places(code, rules.SLOT_REPLACED)).toEqual([]);
-    expect(rules.places(code, rules.TEST_IMPORT)).toEqual([]);
-  });
+  itHoldsNone(MODULE_RULES.noSlotReplaced, rules, code);
 });
 
 describe('rule 5 (M2): routes come from the registry', () => {

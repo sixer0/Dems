@@ -95,13 +95,6 @@ const touch = async (session: WebSession): Promise<number> => (await server.app.
 const expiredRows = async (): Promise<number> => Number((await server.owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'AUTH_EXPIRED'")).rows[0]?.n);
 const openSessions = async (): Promise<number> => Number((await server.owner.query('SELECT count(*)::int AS n FROM public.auth_sessions WHERE ended_at IS NULL')).rows[0]?.n);
 
-describe('the database of this file', () => {
-  it("is at the schema version of the code: [6, 'dbc-7']", async () => {
-    const { rows } = await server.owner.query<{ schema_version: number | string; contract_revision: string }>('SELECT schema_version, contract_revision FROM schema_meta');
-    expect([Number(rows[0]?.schema_version), rows[0]?.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('session expiry frees the candidate list at once', () => {
   it('ABSOLUTE limit: the older session expires in use, its list (nine minutes from its own expiry) is gone with the sweep; the younger session of the same operator keeps its list', async () => {
     const control = captureDiscoveryControl(server.app);

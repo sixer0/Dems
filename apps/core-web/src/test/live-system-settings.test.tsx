@@ -24,6 +24,7 @@ import { toast } from '@heroui/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { en } from '@dems/shared/i18n'
 import { type FakeCommandOptions } from '@dems/shared/live/testing'
 import type { SocketLike } from '@dems/shared/realtime'
@@ -269,10 +270,8 @@ describe('static rules of the folder (CLG (c); AC-C-53; MD-6; TS-15)', () => {
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(
-      expect.arrayContaining(['demo-panel.tsx', 'diagnostics.tsx', 'export-logs-dialog.tsx', 'live-log-export.ts', 'live.ts', 'settings-panel.tsx', 'sim-adapter.ts', 'update-panel.tsx', 'use-sim-command.ts']),
-    )
-    expect(production.length).toBeGreaterThanOrEqual(19)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/system/**/*.{ts,tsx}'), root: '../features/system' })
   })
 
   it('AC-C-53: no file imports `useSimActions` or reads `.actions` of a `Sim`; actions come from `useCoreActions()`', () => {

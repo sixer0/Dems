@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { ApiErrorCode } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { CoreRefusalError, LiveTransportError, LiveTransportReason } from '@dems/shared/live'
@@ -229,8 +230,9 @@ describe('static rules of the folder', () => {
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(expect.arrayContaining(['auth-card.tsx', 'index.tsx', 'use-login-controller.ts', 'login-live-model.ts', 'live-adapter.ts']))
-    expect(production.length).toBeGreaterThanOrEqual(16)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    // The login folder is flat apart from its tests: the block reads the files of the folder itself.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/login/*.{ts,tsx}'), root: '../features/login' })
   })
 
   it('AC-C-53, CLG (c): no file imports `useSimActions` or reads `.actions` of a `Sim`; the actions come from `useCoreActions()` and are consumed through `settle`', () => {

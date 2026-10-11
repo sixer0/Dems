@@ -740,7 +740,11 @@ describe('the log of the engine (SR-48)', () => {
     expect(engineLines.length).toBeGreaterThan(20);
     expect(engineLines.some((line) => line['msg'] === 'engine stopped')).toBe(true);
     expect(engineLines.some((line) => line['msg'] === 'hosted action ran')).toBe(true);
-    expect([...new Set(engineLines.flatMap((line) => Object.keys(line).filter((key) => !engineKeys.has(key))))]).toEqual([]);
+    const keysOutsideTheList = [...new Set(engineLines.flatMap((line) => Object.keys(line).filter((key) => !engineKeys.has(key))))];
+    expect(
+      keysOutsideTheList,
+      `the engine log line holds the key(s) [${keysOutsideTheList.join(', ')}], which are not in engineKeys. The rule: a log key must carry a count or a boolean, never text - add it to the list only after checking its value`,
+    ).toEqual([]);
     // The new member is a flag, never a text: `effects.restartFaultEnded === true` (`engine/host.ts`, the start line).
     expect(engineLines.filter((line) => 'restartFaultEnded' in line).map((line) => typeof line['restartFaultEnded'])).toEqual(['boolean']);
 

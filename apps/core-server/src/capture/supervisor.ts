@@ -61,7 +61,7 @@
  * `CaptureDownReason` (`types.ts`). It is `WorkerDown.reason` (so: `workerDown`, `status().lastCrash`,
  * the outcome of a stop) and the `cause` of the supervisor's own `CAPTURE_FAULT`. What the supervisor
  * itself refuses of a worker's words is named ONLY through `SupervisorRefusal`: this file writes no
- * other literal for it (`wave-h-f.test.ts` reads the source), so a new refusal is a new member, and
+ * other literal for it (`capture/__tests__/fault-lifecycle.test.ts` reads the source), so a new refusal is a new member, and
  * a member without a sentence for the operator fails `fault-wording.test.ts`.
  *
  * A CAMERA THE WORKER GAVE UP WHILE THE SESSION GOES ON IS KEPT PER CAMERA (wave H driver F; gate 89

@@ -19,7 +19,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import { hostedActionsOfOperation } from '../../../engine';
 import { SECURITY_AUDIT_MODULE_OPERATIONS } from '../index';
 
@@ -97,13 +97,7 @@ const ERROR_KEYS = new RegExp(`\\b(?:${['err', 'error', 'cause', 'reason', 'e', 
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual([
-      'src/modules/security-audit/cursor.ts',
-      'src/modules/security-audit/export-request.ts',
-      'src/modules/security-audit/index.ts',
-      'src/modules/security-audit/reads.ts',
-      'src/modules/security-audit/stored-chain.ts',
-    ]);
+    expect(scanCoverage(all, [FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

@@ -24,7 +24,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 
 const FOLDER = 'src/modules/devices/';
 
@@ -77,8 +77,8 @@ const COOKIE_OR_HOST = new RegExp(`\\bset${'Cookie'}\\b|set-${'cookie'}|\\buser-
 const IMPORT_SOURCE = /from\s+'([^']+)'/g;
 
 describe('the scan itself', () => {
-  it('reads the four production files of the folder', () => {
-    expect(own.map((file) => file.path)).toEqual(['src/modules/devices/index.ts', 'src/modules/devices/operations.ts', FEED, 'src/modules/devices/status.ts']);
+  it('reads the production files of the folder, the feed of the source facts among them', () => {
+    expect(scanCoverage(own, [FOLDER])).toEqual(SCAN_COVERS);
     expect(feedCode).toHaveLength(1);
     expect(all.length).toBeGreaterThan(2_000);
   });

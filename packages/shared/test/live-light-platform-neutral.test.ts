@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as viaSubpath from '@dems/shared/live';
 import * as viaFile from '../src/live';
+import { AC_C_02_NAMED, ERASABLE_SYNTAX_RULES } from './support/platform-rules';
 
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url));
 const LIVE_DIR = `${SRC_DIR}live/`;
@@ -110,7 +111,7 @@ describe('static scan of the light Live API (src/live, top level)', () => {
   });
 
   it('AC-C-02: no file names node:, react-native, expo, window or document (comments included)', () => {
-    expect(offenders(/node:|react-native|\bexpo\b|\bwindow\b|\bdocument\b/, raw)).toEqual([]);
+    expect(offenders(AC_C_02_NAMED, raw)).toEqual([]);
   });
 
   it('only hooks.ts imports React; the other files have no runtime import beyond the simulator error classes', () => {
@@ -139,9 +140,7 @@ describe('static scan of the light Live API (src/live, top level)', () => {
   });
 
   it('uses erasable syntax only: no enum, no namespace, no parameter property', () => {
-    expect(offenders(/^\s*(export\s+)?(declare\s+)?(const\s+)?enum\s/m)).toEqual([]);
-    expect(offenders(/^\s*(export\s+)?namespace\s/m)).toEqual([]);
-    expect(offenders(/constructor\s*\([^)]*\b(public|private|protected|readonly)\b/)).toEqual([]);
+    for (const [construct, pattern] of ERASABLE_SYNTAX_RULES) expect(offenders(pattern), construct).toEqual([]);
   });
 });
 

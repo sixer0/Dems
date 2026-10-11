@@ -20,7 +20,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../test/static/scan';
 
 const OWN_FOLDER = 'src/realtime/';
 
@@ -65,17 +65,7 @@ const FRAME_IN_LOG = new RegExp(`\\blog\\s*\\.\\s*(?:fatal|error|warn|info|debug
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(all.map((file) => file.path)).toEqual([
-      'src/realtime/admission.ts',
-      'src/realtime/handshake.ts',
-      'src/realtime/hub-types.ts',
-      'src/realtime/hub.ts',
-      'src/realtime/index.ts',
-      'src/realtime/limits.ts',
-      'src/realtime/messages.ts',
-      'src/realtime/publication.ts',
-      'src/realtime/tablet-link.ts',
-    ]);
+    expect(scanCoverage(all, [OWN_FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

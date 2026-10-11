@@ -262,7 +262,7 @@ export const RELEASE_WORKER_VERSION = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4
 /**
  * THE VERSION OF THE CAPTURE WORKER THIS CORE WAS BUILT TO DRIVE (wave H driver F; gate 64 condition
  * C7, ruling D194): the word `apps/capture-worker/src/worker.h` defines as `WORKER_VERSION` -
- * `protocol-pins.test.ts` and `wave-h-f.test.ts` hold the two EQUAL, so a worker release without
+ * `protocol-pins.test.ts` and `fault-lifecycle.test.ts` hold the two EQUAL, so a worker release without
  * this constant fails a test. The allowlist is this ONE word: the protocol number does not move for
  * an additive member, so a worker of an earlier tree (no fragment size bound, no stated sync level)
  * speaks the same protocol and has the release FORM - only its version tells it apart.

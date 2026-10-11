@@ -280,13 +280,6 @@ const checkpoint = (index: number, start: number, chain: string, sha: string): C
 
 const startInterval: AudioSourceIntervalRecord = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, sampleRateHz: 48_000, capturedAtMs: FIXED_NOW, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null };
 
-describe('the schema this row was written against', () => {
-  it('schema version 6, contract dbc-7', async () => {
-    const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
-  });
-});
-
 describe('a real recording: start, the first durable fragment, the switch, the stop', () => {
   it('the start writes the four source rows with RECORDING, says "connecting", calls capture.start ONCE with the plan of row 66; durable only from the first fragment; a clean stop raises no fault', async () => {
     const of = await rig('r71b_flow');

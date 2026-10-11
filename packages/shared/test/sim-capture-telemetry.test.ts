@@ -18,7 +18,20 @@ import {
   type CaptureTelemetryInput,
   type ScenarioName,
   type SimState,
+  CaptureAdvisoryReason,
+  activeCaptureNotice,
+  DEMO_OPERATOR_PASSWORD,
+  OPERATORS,
+  CAPTURE_ADVISORY_DEVICE_KIND,
+  CAPTURE_ADVISORY_REASONS,
+  CAPTURE_REASON_SEVERITY,
+  CaptureNoticeReason,
+  cameraClockOffsetSentence,
+  captureFaultSentence,
+  isCaptureFaultReason,
 } from '../src/sim';
+import { CAPTURE_HELPERS_LEFT_REASON, CAPTURE_NOT_DURABLE_REASON, REPLICATED_SLICE_SCHEMAS, findCoreApiOperation } from '../src/api';
+import * as micPairBed from './support/mic-pair-bed';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0);
 
@@ -414,5 +427,171 @@ describe('external levels (capture mode real; decision D72, A-4): nothing is gen
     clock.advance(50);
     sim.tick();
     expect(sim.store.getState().audio.inputs['MIC-01']!.noSignal).toBe(false);
+  });
+});
+
+// Integration pass D1b (decision D133), seam 13: the advisory notices of `raiseCaptureWarning` and
+// the two documented refusal reasons (ruling D144).
+describe('the advisory notices', () => {
+  const { harness } = micPairBed;
+
+  describe('advisory notices and two documented reasons (ruling D144; pass D1b, seam 13)', () => {
+    it('the two reasons are documented on the answers they belong to', () => {
+      expect([CAPTURE_NOT_DURABLE_REASON, CAPTURE_HELPERS_LEFT_REASON]).toEqual(['CAPTURE_NOT_DURABLE', 'CAPTURE_HELPERS_LEFT']);
+      expect(findCoreApiOperation('stopSession')?.coreServerDescription).toContain('`409 INVALID_STATE` with `details.reason: CAPTURE_NOT_DURABLE`');
+      expect(findCoreApiOperation('startSession')?.coreServerDescription).toContain('`503 NOT_READY` with `details.reason: CAPTURE_HELPERS_LEFT`');
+    });
+
+    it('each advisory notice is one SYSTEM alert of severity INFO on its own device: no fault, no audit row, no device state', () => {
+      const h = harness('recording');
+      const before = h.state();
+      const cases = [
+        ['KEYFRAME_INTERVAL_ABOVE_BOUND', 'CAM-02', 'CAMERA'],
+        ['AV_OFFSET_NEAR_BOUND', 'CAM-02', 'CAMERA'],
+        ['MIC_RATE_AT_LIMIT', 'MIC-01', 'MIC'],
+        // Closing pass F-X (ruling D179 (a)): the fourth advisory notice.
+        ['FRAGMENT_SIZE_BOUND_REACHED', 'CAM-01', 'CAMERA'],
+        // Tidy pass F-Y (ruling D179): the fifth. Raised here WITHOUT its number: the alert then holds none (the CAMERA_CLOCK_OFFSET block below has the number).
+        ['CAMERA_CLOCK_OFFSET', 'CAM-01', 'CAMERA'],
+      ] as const;
+      expect(cases.map(([code]) => code).sort()).toEqual(Object.values(CaptureAdvisoryReason).sort());
+      for (const [code, subject] of cases) h.sim.actions.raiseCaptureWarning({ code, subject });
+      const raised = h.state();
+      const alerts = raised.alerts.filter((alert) => alert.active && alert.kind === 'SYSTEM' && !before.alerts.includes(alert));
+      expect(alerts.map((alert) => [alert.severity, alert.target, alert.params])).toEqual(
+        cases.map(([code, subject, deviceKind]) => ['INFO', subject, { reason: code, deviceId: subject, deviceKind, sessionId: before.session?.id }]),
+      );
+      expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
+      // Advice only: nothing else of the state moved.
+      expect(raised.faults).toBe(before.faults);
+      expect(raised.audit.rows).toHaveLength(before.audit.rows.length);
+      expect(raised.captureDevices).toBe(before.captureDevices);
+      expect(raised.session?.state).toBe('RECORDING');
+      // A second raise while it is active writes nothing.
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_RATE_AT_LIMIT', subject: 'MIC-01' });
+      expect(h.state().alerts).toBe(raised.alerts);
+
+      // THREE conditions of ONE microphone are three alerts: the rate notice, the silence fault, a capture fault.
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENT', subject: 'MIC-01' });
+      h.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_FAULT', subject: 'MIC-01' });
+      const three = h.state().alerts.filter((alert) => alert.active && !before.alerts.includes(alert) && (alert.target === 'MIC-01' || alert.target === 'AUDIO-01'));
+      expect(three).toHaveLength(3);
+      expect(new Set(three.map((alert) => alert.id)).size).toBe(3);
+
+      // A clear resolves exactly its own alert; the two faults of the microphone stay.
+      h.sim.actions.clearCaptureWarning({ code: 'MIC_RATE_AT_LIMIT', subject: 'MIC-01' });
+      expect(activeCaptureNotice(h.state(), 'MIC_RATE_AT_LIMIT', 'MIC-01')).toBeUndefined();
+      expect(activeCaptureNotice(h.state(), 'AV_OFFSET_NEAR_BOUND', 'CAM-02')).toBeDefined();
+      expect(h.state().faults.active.map((fault) => fault.kind).sort()).toEqual(['CAPTURE_FAULT', 'MIC_SILENT']);
+    });
+
+    it('a notice about a device of the other class, or about no device of the registry, is refused and writes nothing', () => {
+      const h = harness('recording');
+      const before = h.state().alerts;
+      expect(() => h.sim.actions.raiseCaptureWarning({ code: 'MIC_RATE_AT_LIMIT', subject: 'CAM-01' })).toThrow();
+      expect(() => h.sim.actions.raiseCaptureWarning({ code: 'KEYFRAME_INTERVAL_ABOVE_BOUND', subject: 'MIC-01' })).toThrow();
+      expect(() => h.sim.actions.raiseCaptureWarning({ code: 'AV_OFFSET_NEAR_BOUND', subject: 'CAM-77' })).toThrow();
+      expect(h.state().alerts).toBe(before);
+    });
+  });
+});
+
+// Tidy pass F-Y, item 4 (fix pass F-M3 decision 3; ruling D179 "a camera clock up to 2 s off is
+// accepted and RECORDED, not corrected"): the fifth advisory notice, `CAMERA_CLOCK_OFFSET`. The
+// capture side raises it when the offset the worker measured for a camera is above its threshold;
+// the alert says the number and that the recording keeps the camera's own timeline.
+describe('the advisory notices that carry a number or a state', () => {
+  const START = 1_760_000_000_000;
+  function recording() {
+    const sim = createSim({ clock: createManualClock(START), storage: null, authStorage: null, scenario: 'recording' });
+    const operator = OPERATORS.find((candidate) => candidate.role === 'TECHNICIAN');
+    if (operator === undefined) throw new Error('no seeded TECHNICIAN');
+    expect(sim.actions.signIn(operator.username, DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+    return { sim, state: () => sim.store.getState() };
+  }
+
+  describe('the advisory notice CAMERA_CLOCK_OFFSET', () => {
+    it('is an advisory reason of a camera, INFO, with its own sentence', () => {
+      expect(CaptureAdvisoryReason.CAMERA_CLOCK_OFFSET).toBe('CAMERA_CLOCK_OFFSET');
+      expect(CAPTURE_ADVISORY_DEVICE_KIND.CAMERA_CLOCK_OFFSET).toBe('CAMERA');
+      expect(isCaptureFaultReason('CAMERA_CLOCK_OFFSET')).toBe(true);
+      expect(CAPTURE_ADVISORY_REASONS).toContain('CAMERA_CLOCK_OFFSET');
+      expect(CAPTURE_REASON_SEVERITY.CAMERA_CLOCK_OFFSET).toBe('INFO');
+    });
+
+    it('the sentence says the number of ms (its size, whatever the sign) and what the recording does with it', () => {
+      expect(cameraClockOffsetSentence(-1_500)).toBe("Camera clock differs from the Core by 1500 ms; the recording keeps the camera's own timeline and records the offset.");
+      expect(cameraClockOffsetSentence(732)).toContain('by 732 ms;');
+      // No number: the sentence of the table, which a client fills (`{{offsetMs}}`), is never shown raw.
+      expect(cameraClockOffsetSentence(null)).not.toMatch(/\{\{|NaN|null/);
+      expect(captureFaultSentence('CAMERA_CLOCK_OFFSET', 'CAM-01')).not.toMatch(/\{\{/);
+    });
+
+    it('a raise with the measured offset: ONE SYSTEM alert (INFO) on the camera with the number in its text and params; no fault, no audit row; a second raise writes nothing; the clear resolves it', () => {
+      const h = recording();
+      const before = h.state();
+      h.sim.actions.raiseCaptureWarning({ code: 'CAMERA_CLOCK_OFFSET', subject: 'CAM-02', offsetMs: -1_500 });
+      const raised = h.state();
+      const alerts = raised.alerts.filter((alert) => alert.active && alert.kind === 'SYSTEM' && !before.alerts.includes(alert));
+      expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params])).toEqual([
+        ['INFO', 'CAM-02', "Camera clock differs from the Core by 1500 ms; the recording keeps the camera's own timeline and records the offset.", { reason: 'CAMERA_CLOCK_OFFSET', deviceId: 'CAM-02', deviceKind: 'CAMERA', sessionId: before.session?.id, offsetMs: -1_500 }],
+      ]);
+      expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
+      expect(raised.faults).toBe(before.faults);
+      expect(raised.audit.rows).toHaveLength(before.audit.rows.length);
+      expect(raised.session?.state).toBe('RECORDING');
+      h.sim.actions.raiseCaptureWarning({ code: 'CAMERA_CLOCK_OFFSET', subject: 'CAM-02', offsetMs: -1_900 });
+      expect(h.state().alerts).toBe(raised.alerts);
+      h.sim.actions.clearCaptureWarning({ code: 'CAMERA_CLOCK_OFFSET', subject: 'CAM-02' });
+      expect(h.state().alerts.filter((alert) => alert.active && alert.params?.['reason'] === 'CAMERA_CLOCK_OFFSET')).toEqual([]);
+    });
+
+    it('CONTROL: the number belongs to this notice alone - another advisory notice given one neither shows nor stores it; a number that is no whole ms is not stored', () => {
+      const h = recording();
+      h.sim.actions.raiseCaptureWarning({ code: 'AV_OFFSET_NEAR_BOUND', subject: 'CAM-01', offsetMs: 900 });
+      const near = h.state().alerts.find((alert) => alert.active && alert.params?.['reason'] === 'AV_OFFSET_NEAR_BOUND');
+      expect(near?.params).not.toHaveProperty('offsetMs');
+      expect(near?.message).not.toMatch(/900/);
+      h.sim.actions.raiseCaptureWarning({ code: 'CAMERA_CLOCK_OFFSET', subject: 'CAM-01', offsetMs: Number.NaN });
+      const offset = h.state().alerts.find((alert) => alert.active && alert.params?.['reason'] === 'CAMERA_CLOCK_OFFSET');
+      expect(offset?.params).not.toHaveProperty('offsetMs');
+      expect(offset?.message).not.toMatch(/NaN|\{\{/);
+      // A microphone is no camera: refused, as for every camera notice.
+      expect(() => h.sim.actions.raiseCaptureWarning({ code: 'CAMERA_CLOCK_OFFSET', subject: 'MIC-01', offsetMs: 900 })).toThrow();
+    });
+  });
+
+  // Controller decision D189 (fix F-M7c could not build a boot probe of the sync level: the worker's
+  // `FIRST_DURABLE_FRAGMENT.syncLevel` is the only truthful source). A session whose first durable
+  // fragment was NOT synced through the drive cache is told: ONE alert on the session, CRITICAL where
+  // the sources are production's, advice (INFO) in the development operation. The session records on.
+  describe('the notice EVIDENCE_VOLUME_SYNC_NOT_FULL', () => {
+    const SENTENCE = 'The evidence volume does not confirm full durability; recordings may not survive a power loss.';
+
+    it('has its sentence in the wording source, about the capture as a whole', () => {
+      expect(CaptureNoticeReason.EVIDENCE_VOLUME_SYNC_NOT_FULL).toBe('EVIDENCE_VOLUME_SYNC_NOT_FULL');
+      expect(captureFaultSentence('EVIDENCE_VOLUME_SYNC_NOT_FULL', null)).toBe(SENTENCE);
+      expect(CAPTURE_REASON_SEVERITY.EVIDENCE_VOLUME_SYNC_NOT_FULL).toBe('CRITICAL');
+    });
+
+    it.each([
+      ['critical: true (production sources)', true, 'CRITICAL'],
+      ['critical: false (the development operation)', false, 'INFO'],
+    ] as const)('%s: ONE SYSTEM alert on the session with that severity; a second camera file of the same session writes nothing; no fault, no audit row, the session keeps recording; the clear resolves it', (_name, critical, severity) => {
+      const h = recording();
+      const before = h.state();
+      h.sim.actions.raiseCaptureWarning({ code: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', subject: null, critical, syncLevel: 'FSYNC' });
+      const raised = h.state();
+      h.sim.actions.raiseCaptureWarning({ code: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', subject: null, critical, syncLevel: 'FSYNC' });
+      expect(h.state().alerts).toBe(raised.alerts);
+      const alerts = raised.alerts.filter((alert) => alert.active && alert.kind === 'SYSTEM' && !before.alerts.includes(alert));
+      expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params])).toEqual([[severity, 'EVIDENCE_VOLUME', SENTENCE, { reason: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', sessionId: before.session?.id, syncLevel: 'FSYNC' }]]);
+      expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
+      expect(raised.faults).toBe(before.faults);
+      expect(raised.audit.rows).toHaveLength(before.audit.rows.length);
+      expect(raised.session?.state).toBe('RECORDING');
+      h.sim.actions.clearCaptureWarning({ code: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', subject: null });
+      expect(h.state().alerts.filter((alert) => alert.active && alert.params?.['reason'] === 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
+    });
   });
 });

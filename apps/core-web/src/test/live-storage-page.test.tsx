@@ -20,6 +20,7 @@ import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectScanCovers } from './static-scan'
 import { en } from '@dems/shared/i18n'
 import type { FakeCommandOptions } from '@dems/shared/live/testing'
 import type { SimState } from '@dems/shared/sim'
@@ -234,8 +235,8 @@ describe('static rules of the folder (CLG (c); AC-C-53; MD-6)', () => {
   const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
 
   it('reads the files it means to read', () => {
-    expect(production.map((file) => file.name)).toEqual(expect.arrayContaining(['manage-drawer.tsx', 'index.tsx', 'sim-adapter.ts', 'log.ts', 'panel.tsx', 'volumes-panel.tsx']))
-    expect(production.length).toBeGreaterThanOrEqual(21)
+    // Rule R1 (`static-scan.ts`): the scan equals an independent listing of the folder and is not empty.
+    expectScanCovers({ scanned: production.map((file) => file.name), listed: import.meta.glob('../features/storage/**/*.{ts,tsx}'), root: '../features/storage' })
   })
 
   it('AC-C-53: no file imports `useSimActions` or reads `.actions` of a `Sim`; the policy change comes from `useCoreActions()` and runs inside `settle`', () => {

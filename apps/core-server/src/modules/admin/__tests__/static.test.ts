@@ -16,7 +16,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
 import * as statements from '../statements';
 
 const FOLDER = 'src/modules/admin/';
@@ -50,7 +50,7 @@ const SQL = /['"`](?:SELECT|INSERT|UPDATE|DELETE)\s/g;
 
 describe('the scan itself', () => {
   it('reads the production sources of the folder', () => {
-    expect(own.map((file) => file.path)).toEqual([`${FOLDER}changes.ts`, `${FOLDER}index.ts`, `${FOLDER}rule.ts`, `${FOLDER}statements.ts`]);
+    expect(scanCoverage(own, [FOLDER])).toEqual(SCAN_COVERS);
   });
 
   it('finds each forbidden text when it is present (positive control)', () => {

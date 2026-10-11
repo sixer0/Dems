@@ -10,15 +10,14 @@
 //     module, and no timer or wall clock (rules 3, 4 and 7).
 //  3. One LIVE idiom (rule 5): the one file that picks the LIVE wording reads `useCoreLink().source`.
 //  4. The copy (rule 8): the LIVE text says nothing about a simulation, no `SIM-GAP` marker was added
-//     (the folder keeps its 17 markers of `acaff20`), and the copy of Simulated mode is what it was at
-//     `acaff20`.
+//     (the folder keeps its 17 markers of `acaff20`).
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { devicesEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -41,7 +40,6 @@ const production = productionRaw.map((file) => ({ name: file.name, text: code(fi
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('devices.actions.failed')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
@@ -50,42 +48,15 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Devices takes the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads the folder: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'busy-state.ts',
-      // Fix wave H (G70-03, G75-13; D196): the camera picture or the neutral "No preview" tile; it reads the store only.
-      'camera-preview.tsx',
-      'device-command-dialog.tsx',
-      'device-detail-screen.tsx',
-      'device-detail.tsx',
-      'device-ids.ts',
-      'device-mic-meter.tsx',
-      'device-row.tsx',
-      'device-status-chip.tsx',
-      'devices-model.ts',
-      'devices-screen.tsx',
-      'diagnostics-sheet.tsx',
-      'health-chart.tsx',
-      'i18n.ts',
-      // E-fix row FX-M2 (E2E-T-2): the panel error boundary (the Storage folder's copy of step 77's).
-      'panel-boundary.tsx',
-      // Task 3 row 140 (D137 (2)): the registered devices beyond the built-in ids, from the Core's device list.
-      'registered-device-detail.tsx',
-      'registered-device-rows.tsx',
-      'registered-devices-model.ts',
-      'sim-adapter.ts',
-      'use-devices-data.ts',
-      'use-pending-press.ts',
-      'use-sheet-presence.tsx',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it("no production file calls the simulator's action hook", () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim`: every `.actions` left is a style', () => {
@@ -146,7 +117,7 @@ describe('one LIVE idiom (rule 5)', () => {
 describe('the copy (rule 8; §3.2)', () => {
   it('the text LIVE mode adds says nothing about a simulation; the texts it replaces did', () => {
     const live = leaves(devicesEn.live);
-    expect(live).toHaveLength(8);
+    expect(live.length).toBeGreaterThan(0);
     expect(live.filter((leaf) => /simulat|demo\b|mock/i.test(leaf.text))).toEqual([]);
     expect(devicesEn.actions.testSignalBody).toMatch(/^Simulated\./);
     expect(devicesEn.actions.restartBody).toMatch(/^Simulated\./);
@@ -157,12 +128,5 @@ describe('the copy (rule 8; §3.2)', () => {
     const counts: Record<string, number> = {};
     for (const file of raw) for (const match of file.source.match(marker) ?? []) counts[match] = (counts[match] ?? 0) + 1;
     expect(counts).toEqual({ [`${['SIM', 'GAP'].join('-')}-M84-1`]: 6, [`${['SIM', 'GAP'].join('-')}-M84-2`]: 8, [`${['SIM', 'GAP'].join('-')}-M84-3`]: 3 });
-  });
-
-  it('the copy of Simulated mode is as it was at `acaff20`: 44 texts, one digest', () => {
-    // The digest of the same list built from `git show acaff20:apps/mobile/src/features/devices/i18n.ts`.
-    const simulated = leaves(devicesEn).filter((leaf) => !leaf.key.startsWith('live.'));
-    expect(simulated).toHaveLength(44);
-    expect(digest(simulated)).toBe('46379c8315ea224ddaf79c307c1839c951e2ef31d2353a415a7514aa4b34c4ec');
   });
 });

@@ -80,6 +80,14 @@ import {
   type StoragePolicyRequest,
   type SystemStatus,
   type TimeStatus,
+  EvidenceExportAcceptedSchema,
+  EvidenceExportJobSchema,
+  EvidenceMediaSessionRequestSchema,
+  CORE_API_EXAMPLES,
+  EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE,
+  EVIDENCE_MEDIA_SESSION_INDEXED_REQUEST_EXAMPLE,
+  EvidenceMediaSessionSchema,
+  validateCoreApiResponse,
 } from '../src/api';
 import { EXAMPLE_INSTANT_MS, EXAMPLE_PLACEHOLDERS } from '../src/api/example-parts';
 import { codeUnitBoundMessage } from '../src/api/schema-parts';
@@ -105,7 +113,10 @@ import {
   type SimEvent,
   type SimState,
   type StoragePolicy,
+  OPERATORS,
+  AuditType,
 } from '../src/sim';
+import * as micPairBed from './support/mic-pair-bed';
 
 // ── Compile-time proofs: a body is what the hosted action takes, an answer is what it returns ────
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -718,5 +729,116 @@ describe('the 49 simulator actions and the operations they reach (01_specs §7.1
     expect(refused(INVESTIGATOR, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(true);
     expect(refused(SUPERVISOR, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(false);
     expect(refused(TECHNICIAN, (actions) => actions.setStoragePolicy({ autoArchive: false }))).toBe(false);
+  });
+});
+
+// Integration pass D1b (decision D133), seam 12: ops 42 / 87 / 88, additive (ruling D140): the
+// optional `fileId` body of op 88, `jobId` on the 202 of op 42, `kind` on the export request row,
+// the documented refusals.
+describe('the export job and the camera file of the media session', () => {
+  const { START, harness } = micPairBed;
+
+  describe('operations 42, 87 and 88: additive and optional (ruling D140; pass D1b, seam 12)', () => {
+    it('op 88 takes an optional body that names the camera file, and nothing else', () => {
+      for (const body of [{}, { fileId: 'VIDEO-01' }, { fileId: 'VIDEO-02' }]) expect(EvidenceMediaSessionRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(true);
+      for (const body of [{ fileId: 'AUDIO-01' }, { fileId: 'VIDEO-03' }, { fileId: 1 }, { fileId: 'VIDEO-01', token: 'x' }, { file: 'VIDEO-01' }, 'VIDEO-01', null]) {
+        expect(EvidenceMediaSessionRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(false);
+      }
+      const operation = findCoreApiOperation('createEvidenceMediaSession');
+      expect(operation?.requestBody).toEqual({ schema: 'EvidenceMediaSessionRequest', required: false });
+      expect(Object.keys(operation?.responses ?? {}).map(Number).sort((a, b) => a - b)).toEqual([201, 400, 401, 403, 404, 409, 422]);
+      for (const code of ['EVIDENCE_CASE_SCOPE', 'MEDIA_NOT_AVAILABLE', 'PACKAGE_MISSING', 'SESSION_KEY_UNAVAILABLE', 'MEDIA_SESSION_INVALID', 'MEDIA_SESSION_EXPIRED', 'CREDENTIAL_STORE_NOT_READY']) {
+        expect(operation?.description, code).toContain(code);
+      }
+    });
+
+    it('op 42: the 202 may carry the job id in the EXPJ- form; the request names its kind; 409 documents EXPORT_IN_PROGRESS', () => {
+      const accepted = { exportId: 'EXP-000012', evidenceId: 'EV-20260930-0004', status: 'QUEUED' };
+      expect(EvidenceExportAcceptedSchema.safeParse(accepted).success).toBe(true);
+      expect(EvidenceExportAcceptedSchema.safeParse({ ...accepted, jobId: 'EXPJ-000012' }).success).toBe(true);
+      for (const bad of ['EXP-000012', 'EXPJ-12', 'expj-000012', '']) expect(EvidenceExportAcceptedSchema.safeParse({ ...accepted, jobId: bad }).success, bad).toBe(false);
+      const request = { reason: 'Case file handover for prosecutor review' };
+      for (const kind of ['PACKAGE', 'COMPOSITE']) expect(EvidenceExportRequestSchema.safeParse({ ...request, kind }).success, kind).toBe(true);
+      expect(EvidenceExportRequestSchema.safeParse({ ...request, kind: 'ARCHIVE' }).success).toBe(false);
+      expect(findCoreApiOperation('exportEvidence')?.responses[409]?.description).toContain('EXPORT_IN_PROGRESS');
+      const job = { jobId: 'EXPJ-000012', evidenceId: 'EV-20260930-0004', kind: 'COMPOSITE', status: 'FAILED', progressPct: 0, etaMs: null, derived: true, createdAt: START };
+      for (const failureReason of ['COMPOSITE_ENCODER_NOT_SELECTED', 'EXPORT_INTERRUPTED']) expect(EvidenceExportJobSchema.safeParse({ ...job, failureReason }).success, failureReason).toBe(true);
+      expect(EvidenceExportJobSchema.safeParse({ ...job, failureReason: 'not a code' }).success).toBe(false);
+      for (const code of ['COMPOSITE_ENCODER_NOT_SELECTED', 'EXPORT_INTERRUPTED']) expect(EvidenceExportJobSchema.shape.failureReason.description, code).toContain(code);
+    });
+
+    it('the simulator: the 202 names the job, the request row carries the kind that was named, and op 87 answers that job', () => {
+      const h = harness('idle', 'INVESTIGATOR');
+      h.sim.actions.signOut();
+      const supervisor = OPERATORS.find((candidate) => candidate.role === 'SUPERVISOR');
+      if (supervisor === undefined) throw new Error('no seeded supervisor');
+      expect(h.sim.actions.signIn(supervisor.username, DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+      const sealed = h.state().evidence.find((item) => item.status === 'SEALED');
+      if (sealed === undefined) throw new Error('the dataset holds no sealed item');
+      const path = `/api/v1/evidence/${sealed.id}/export`;
+      const reason = 'Case file handover for prosecutor review';
+
+      const composite = h.sim.request({ method: 'POST', path, body: { reason, kind: 'COMPOSITE' } });
+      expect(composite.status).toBe(202);
+      const receipt = composite.body as { exportId: string; jobId: string };
+      expect(EvidenceExportAcceptedSchema.safeParse(receipt).success).toBe(true);
+      expect(receipt.jobId).toBe(`EXPJ-${receipt.exportId.slice('EXP-'.length)}`);
+      expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', details: { exportId: receipt.exportId, kind: 'COMPOSITE' } });
+      const job = h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${receipt.jobId}` });
+      expect(job.status).toBe(200);
+      expect(EvidenceExportJobSchema.safeParse(job.body).success).toBe(true);
+      expect(job.body).toMatchObject({ jobId: receipt.jobId, evidenceId: sealed.id, kind: 'COMPOSITE', derived: true, status: 'COMPLETE' });
+
+      // A request that names no kind writes none (the row is what it was before; absent reads as PACKAGE).
+      const plain = h.sim.request({ method: 'POST', path, body: { reason } });
+      expect(plain.status).toBe(202);
+      expect('kind' in (h.state().audit.rows.at(-1)?.details ?? {})).toBe(false);
+      expect(h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${(plain.body as { jobId: string }).jobId}` }).body).toMatchObject({ kind: 'PACKAGE', derived: false });
+      // A kind outside the two is not written either.
+      h.sim.request({ method: 'POST', path, body: { reason, kind: 'ARCHIVE' } });
+      expect('kind' in (h.state().audit.rows.at(-1)?.details ?? {})).toBe(false);
+    });
+  });
+});
+
+// Fix wave K Z1 (gate finding G94b-01, ruling D224 (1); `contract_wave_k.md` "Z1"): operation 88
+// states the INDEXED VIEW of a sealed camera file additively - ONE optional member name, `seekIndex`,
+// on the request body and on the answer - and the contract totals do not move.
+describe('the indexed view of the media session', () => {
+  const MEMBER = 'seekIndex';
+
+  describe('operation 88: the indexed view is an additive optional member', () => {
+    it('the exported example states it by name, and it is a valid answer of the operation', () => {
+      expect(EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE[MEMBER]).toBe(true);
+      expect(EvidenceMediaSessionSchema.safeParse(EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE).success).toBe(true);
+      expect(validateCoreApiResponse('createEvidenceMediaSession', 201, EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE).ok).toBe(true);
+    });
+
+    it('OPTIONAL on the answer: without it the answer is the one of before; `false` and other values are no value of it', () => {
+      const { [MEMBER]: _stated, ...plain } = EVIDENCE_MEDIA_SESSION_INDEXED_EXAMPLE;
+      expect(EvidenceMediaSessionSchema.safeParse(plain).success).toBe(true);
+      for (const value of [false, 'true', 1, null]) expect(EvidenceMediaSessionSchema.safeParse({ ...plain, [MEMBER]: value }).success).toBe(false);
+    });
+
+    it('OPTIONAL on the request: `{}`, `{ fileId }`, `{ seekIndex: true }` and both are bodies; `seekIndex: false` and an unknown member are not', () => {
+      for (const body of [{}, { fileId: 'VIDEO-02' }, { [MEMBER]: true }, EVIDENCE_MEDIA_SESSION_INDEXED_REQUEST_EXAMPLE]) expect(EvidenceMediaSessionRequestSchema.safeParse(body).success).toBe(true);
+      for (const body of [{ [MEMBER]: false }, { fileId: 'VIDEO-01', [MEMBER]: 'yes' }, { fileId: 'VIDEO-01', view: 'INDEXED' }]) expect(EvidenceMediaSessionRequestSchema.safeParse(body).success).toBe(false);
+    });
+
+    it('the operation shows both in its examples (request and 201)', () => {
+      const examples = CORE_API_EXAMPLES.createEvidenceMediaSession;
+      expect(examples?.request?.['indexedView']?.value).toEqual(EVIDENCE_MEDIA_SESSION_INDEXED_REQUEST_EXAMPLE);
+      const answers = (examples?.responses[201] ?? {}) as Record<string, { value: unknown } | undefined>;
+      const valueOf = (name: string): Record<string, unknown> => (answers[name]?.value ?? {}) as Record<string, unknown>;
+      expect(valueOf('indexedView')[MEMBER]).toBe(true);
+      // The first example is the stream of before: no member.
+      expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
+    });
+
+    it('the totals do not move: 97 operations (36 GET / 61 POST), 67 audit types', () => {
+      const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
+      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([97, 36, 61]);
+      expect(Object.keys(AuditType)).toHaveLength(67);
+    });
   });
 });

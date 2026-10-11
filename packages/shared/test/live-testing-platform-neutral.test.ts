@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as viaSubpath from '@dems/shared/live/testing';
 import * as viaFile from '../src/live/testing';
+import { AC_C_02_NAMED, expectScanCovers } from './support/platform-rules';
 
 const REPO_DIR = fileURLToPath(new URL('../../../', import.meta.url));
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url));
@@ -32,8 +33,8 @@ const specifiersOf = (text: string) =>
 const offenders = (pattern: RegExp, text: (file: string) => string = code) => files.filter((file) => pattern.test(text(file))).map(short);
 
 describe('static scan of src/live/testing', () => {
-  it('scans the eight files of the fake transport', () => {
-    expect(files.map(short)).toEqual(['clock.ts', 'contract.ts', 'errors.ts', 'fake-transport.ts', 'http.ts', 'index.ts', 'install.ts', 'log.ts', 'socket.ts'].sort());
+  it('scans every source file of the fake transport: an independent listing finds no file the scan missed (rule R1)', () => {
+    expectScanCovers(TESTING_DIR, files.map(short));
   });
 
   it('imports only its own files, the contract folder, and the two clients it stands in for', () => {
@@ -82,7 +83,7 @@ describe('static scan of src/live/testing', () => {
   });
 
   it('AC-C-02: no file names node:, react-native, expo, window or document (comments included)', () => {
-    expect(offenders(/node:|react-native|\bexpo\b|\bwindow\b|\bdocument\b/, raw)).toEqual([]);
+    expect(offenders(AC_C_02_NAMED, raw)).toEqual([]);
   });
 
   it('starts no timer and reads no real time: delays and instants come from the injected clock', () => {

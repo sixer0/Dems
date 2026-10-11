@@ -473,6 +473,58 @@ export function useTestDatabase(options: TestDatabaseOptions): TestDatabaseHandl
 }
 
 /**
+ * A further clone for ONE `describe` block of a file that already has its database: call it at the
+ * top of that block with the file's own handle (test-suite consolidation, decision D233). The cases
+ * of a file that was merged into another keep the database they had to themselves - its template,
+ * its slug, its lifetime - and the file still calls `useTestDatabase` once (TI-8).
+ *
+ * The clone is created by `home.another` before the first test of the block and dropped after its
+ * last one, pass or fail, with everything registered on it. `run` and `another` are the file's.
+ */
+export function useFurtherDatabase(home: TestDatabaseHandle, options: Partial<TestDatabaseOptions> = {}): TestDatabaseHandle {
+  const hookTimeoutMs = helperHookTimeout(normalizeNeeds(options.needs));
+  let database: TestDatabase | undefined;
+  const ready = (): TestDatabase => {
+    if (database === undefined) {
+      throw new DbTestHelperError('DATABASE_NOT_READY', 'The further database exists from the first test of its block on: use it inside a test or a hook of that block.');
+    }
+    return database;
+  };
+
+  beforeAll(async () => {
+    database = await home.another(options);
+  }, hookTimeoutMs);
+
+  afterAll(async () => {
+    const target = database;
+    database = undefined;
+    await target?.drop();
+  }, hookTimeoutMs);
+
+  return {
+    get name() {
+      return ready().name;
+    },
+    get runtime() {
+      return ready().runtime;
+    },
+    get timings() {
+      return ready().timings;
+    },
+    get database() {
+      return ready();
+    },
+    get run() {
+      return home.run;
+    },
+    appPool: () => ready().appPool(),
+    ownerPool: () => ready().ownerPool(),
+    onCleanup: (close) => ready().onCleanup(close),
+    another: (more = {}) => home.another({ ...(options.template === undefined ? {} : { template: options.template }), ...more }),
+  };
+}
+
+/**
  * A clone for the duration of `body`: created before it, dropped after it, also when it throws.
  * For a single test that needs an untouched database of its own. A stated `needs` applies to this
  * clone (its connect wait, its request for a quiet cluster) and, from here on, to the runner

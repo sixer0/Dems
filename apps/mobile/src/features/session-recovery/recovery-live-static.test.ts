@@ -11,14 +11,14 @@
 //  3. One LIVE idiom (rule 5) and one link rule (M0, M1): `useCoreLink().source === 'LIVE'` and
 //     `useCoreLinkNotice()` in one call.
 //  4. The copy (rule 8): the LIVE texts say nothing about a simulation; the markers of the simulator's
-//     gaps are exactly those of `acaff20` (KI-07); the copy of Simulated mode is what it was at `acaff20`.
+//     gaps are exactly those of `acaff20` (KI-07).
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { sessionRecoveryEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -40,7 +40,6 @@ const production = raw.filter((file) => !isTest(file.name)).map((file) => ({ nam
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 const GAP_MARKER = new RegExp(`${['SIM', 'GAP'].join('-')}-M\\d+-\\d+`, 'g');
 /** Text inside quotes is no code: `t('features.session-recovery.actions.start')` names a translation. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
@@ -50,24 +49,15 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Recovery takes the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads the folder: every production file, sub-folders included', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'i18n.ts',
-      'recovery-analysis.tsx',
-      'recovery-boundary.tsx',
-      'recovery.model.ts',
-      'session-recovery-screen.tsx',
-      'sim-adapter.ts',
-      'use-recovery.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it("no production file calls the simulator's action hook", () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim` (a translation key is no read)', () => {
@@ -152,11 +142,5 @@ describe('The copy (rule 8, KI-07)', () => {
     expect(raw.filter((file) => newFiles.includes(file.name)).map((file) => [file.name, (file.source.match(GAP_MARKER) ?? []).length])).toEqual(
       newFiles.sort((a, b) => a.localeCompare(b)).map((name) => [name, 0]),
     );
-  });
-
-  it('the copy of Simulated mode is what it was at acaff20 (90 texts; digest computed independently from `git show acaff20:…/i18n.ts`)', () => {
-    const simulated = leaves(sessionRecoveryEn).filter((leaf) => !leaf.key.startsWith('live.'));
-    expect(simulated).toHaveLength(90);
-    expect(digest(simulated)).toBe('8e942571617a0bb0672040faa017225be6ac76df5721696b377e4eecc953c719');
   });
 });

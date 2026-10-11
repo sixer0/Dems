@@ -9,15 +9,15 @@
 //  3. The copy of LIVE mode never says "simulated" (the rule of §3.2: a screen that says
 //     "simulated" shows simulator data). The one exception is the control that switches to the
 //     simulator, which has to name it.
-//  4. The copy of Simulated mode is what it was: the keys this row found are all still there, with
-//     their texts.
+//  (A fourth group pinned the copy of Simulated mode by a digest "as at `acaff20`"; it was removed
+//  with the consolidation of the suite, decision D238.)
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pairingEn } from './i18n';
+import { expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (name: string): boolean => /\.test\.tsx?$/.test(name);
@@ -40,17 +40,8 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
 
 describe('the pairing folder takes the Core through the light Live API (CLG c, AC-C-53)', () => {
   it('reads the whole folder', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'i18n.ts',
-      'pairing-code-panel.tsx',
-      'pairing-connection.tsx',
-      'pairing-live-model.ts',
-      'pairing-model.ts',
-      'pairing-screen.tsx',
-      'unpair-dialog.tsx',
-      'use-dialog-presence.ts',
-      'use-pairing-flow.ts',
-    ]);
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it('the matchers find what they look for, and nothing else', () => {
@@ -99,7 +90,6 @@ describe('what belongs to the runtime stays there', () => {
 
 describe('the copy (§3.2, decision D124)', () => {
   const live = leaves(pairingEn.live, ['live']);
-  const simulated = leaves(pairingEn).filter((leaf) => !leaf.key.startsWith('live.'));
 
   it('LIVE mode never says "simulated", "demo" or "mock"; the one control that names the simulator is the switch to it', () => {
     expect(live.length).toBeGreaterThan(40);
@@ -117,16 +107,5 @@ describe('the copy (§3.2, decision D124)', () => {
   it('a refused code is never explained (SR-29): no text of LIVE mode says expired, used, cancelled or closed', () => {
     const explaining = live.filter((leaf) => /expired|already used|cancell?ed|closed|wrong code|invalid code/i.test(leaf.text)).map((leaf) => leaf.key);
     expect(explaining).toEqual([]);
-  });
-
-  it('the copy of Simulated mode is as it was at `acaff20`: 51 texts, every key and every text (one digest)', () => {
-    expect(simulated).toHaveLength(51);
-    // The digest of the same list built from `git show acaff20:apps/mobile/src/features/pairing/i18n.ts`.
-    expect(createHash('sha256').update(JSON.stringify(simulated)).digest('hex')).toBe('08f1738549caecf950c67c42a8ad1088ffc050e4ce65dd9e8a72ecbdd6a84546');
-    expect(pairingEn.header.subtitle).toBe('Certificate-bound control link to the Core (book §20.1), simulated in this demo.');
-    expect(pairingEn.connection.status.idle).toBe('Ready to pair with {{device}}.');
-    expect(pairingEn.connection.status.paired).toBe('Paired with {{device}}. The control link is certificate-bound (simulated).');
-    expect(pairingEn.code.description).toBe('Enter the 6-digit pairing code issued by the Core.');
-    expect(pairingEn.unpair.body).toBe('The tablet will no longer be bound to {{device}}. You can pair it again with a new code. The action is written to the audit log.');
   });
 });

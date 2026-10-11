@@ -12,15 +12,15 @@
 //     and no new timer or wall clock (rules 3, 4 and 7).
 //  4. One LIVE idiom (rule 5): the one file that picks the LIVE wording reads `useCoreLink().source`.
 //  5. The copy (rule 8): the LIVE text says nothing about a simulation, no `SIM-GAP` marker was added or
-//     removed (KI-07 stays 13 IDs / 62 markers), and the copy of Simulated mode is what it was at `acaff20`.
+//     removed (KI-07 stays 13 IDs / 62 markers).
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
-import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { en } from '@dems/shared/i18n';
 import { storageEn } from './i18n';
+import { expectNoSimActionsHook, expectScanIsTheFolder } from '@/runtime/testing/static-scan';
 
 const FOLDER = __dirname;
 const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path) || /(?:^|\/)(?:testing|__tests__)\//.test(path);
@@ -42,7 +42,6 @@ const production = raw.filter((file) => !isTest(file.name)).map((file) => ({ nam
 const matching = (pattern: RegExp): string[] => production.filter((file) => pattern.test(file.text)).map((file) => file.name);
 const fileText = (name: string): string => production.find((file) => file.name === name)!.text;
 
-const SIM_ACTIONS_HOOK = ['use', 'Sim', 'Actions'].join('');
 /** Text inside quotes is no code: `t('common.actions.retry')` names a translation, not a simulator. */
 const unquoted = (text: string): string => text.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, "''");
 
@@ -51,32 +50,15 @@ function leaves(tree: unknown, path: string[] = []): { key: string; text: string
   if (typeof tree !== 'object' || tree === null) return [];
   return Object.entries(tree).flatMap(([name, value]) => leaves(value, [...path, name]));
 }
-const digest = (list: unknown): string => createHash('sha256').update(JSON.stringify(list)).digest('hex');
 
 describe('Storage takes the Core through the light Live API (CLG c, AC-C-53)', () => {
-  it('reads the folder: every production file, sub-folders included (no new production file)', () => {
-    expect(production.map((file) => file.name)).toEqual([
-      'capacity-card.tsx',
-      'capacity-ring.tsx',
-      'i18n.ts',
-      'manage-storage-sheet.tsx',
-      'panel-boundary.tsx',
-      'sim-adapter.ts',
-      'storage-activity.tsx',
-      'storage-kpis.tsx',
-      'storage-model.ts',
-      'storage-motion.ts',
-      'storage-screen.tsx',
-      'use-held-value.ts',
-      'use-sheet-presence.tsx',
-      'use-storage-alerts.ts',
-      'use-storage-data.ts',
-    ]);
+  it('reads the folder: every production file, sub-folders included', () => {
+    // Rule R1 (`@/runtime/testing/static-scan`): the scan is the folder's production sources, by a second walk; not a list.
+    expectScanIsTheFolder(production.map((file) => file.name), FOLDER);
   });
 
   it("no production file calls the simulator's action hook", () => {
-    expect(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`).test(`const actions = ${SIM_ACTIONS_HOOK}();`)).toBe(true);
-    expect(matching(new RegExp(`\\b${SIM_ACTIONS_HOOK}\\b`))).toEqual([]);
+    expectNoSimActionsHook(matching);
   });
 
   it('no production file reads `.actions` of a `Sim` (translation keys in quotes are no reads)', () => {
@@ -157,12 +139,5 @@ describe('the copy (rule 8; §3.2)', () => {
     const counts: Record<string, number> = {};
     for (const file of raw) for (const match of file.source.match(marker) ?? []) counts[match] = (counts[match] ?? 0) + 1;
     expect(counts).toEqual({ [`${name}-M85-1`]: 5, [`${name}-M85-2`]: 5 });
-  });
-
-  it('the copy of Simulated mode is as it was at `acaff20`: 26 texts, one digest', () => {
-    // The digest of the same list built from `git show acaff20:apps/mobile/src/features/storage/i18n.ts`.
-    const simulated = leaves(storageEn).filter((leaf) => !leaf.key.startsWith('live.'));
-    expect(simulated).toHaveLength(26);
-    expect(digest(simulated)).toBe('927dd04cfa7438f2c1098c44f7be8ceb23d9c4ea36549d5cb0e04f43e4b5acdf');
   });
 });

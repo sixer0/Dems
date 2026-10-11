@@ -9,11 +9,11 @@ import { CAPTURE_CONFIG_CHANGE_OPERATIONS, CAPTURE_CONFIG_OPERATIONS, CoreApiAcc
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WEB_ORIGIN } from '../../../../test/support/identity';
-import { CaptureOperation, createFakeRegistry, type CaptureDeviceRegistry } from '../../../capture/adapters';
+import { CaptureOperation, createFakeRegistry, type CaptureDeviceRegistry, CaptureAdapterRefusal } from '../../../capture/adapters';
 import { hostedActionsOfOperation } from '../../../engine/hosted-actions';
 import { permissionGuard, routePatternOf } from '../../../plugins/permission-guard';
 import { bodyOf, errorOf, operatorOf, outcome, signature } from '../../devices/__tests__/support';
-import { CAPTURE_CONFIG_MODULE_OPERATIONS, captureConfigControl, captureConfigOperation } from '../index';
+import { CAPTURE_CONFIG_MODULE_OPERATIONS, captureConfigControl, captureConfigOperation, CaptureAssignmentRefusal, DEVELOPMENT_SOURCE_NOT_ALLOWED, captureAssignmentRefusalOf } from '../index';
 import { CONFIG, CREDENTIAL, DEVICES, cameraSource, primaryMic, selectorUnitApp, type SelectorUnitApp } from './support';
 
 const apps: FastifyInstance[] = [];
@@ -371,5 +371,45 @@ describe('the seam of the adapter registry (rule RG-3): provided by the wiring, 
     // An unknown path ID never reaches the registry: it is the 404 of the operation.
     expect(outcome(await post(built, cameraSource('CAM-99'), { trackId: 'VIDEO-01' }))).toEqual([404, 'NOT_FOUND']);
     expect(asked).not.toContain('CAMERA CAM-99');
+  });
+});
+
+describe('G70b-01: the reason of a refused assignment (wave I, driver A2)', () => {
+  // FIX WAVE I, DRIVER A2 - finding G70b-01, second half (re-gate 70): every refusal of the adapter
+  // registry is answered under ITS OWN reason. Before the fix `routes.ts` answered every one of them
+  // as `DEVELOPMENT_SOURCE_NOT_ALLOWED`, so a camera the registry did not serve yet read "this source
+  // can only be used in the development configuration" on a Core in that very configuration.
+
+  describe('G70b-01: the reason of a refused assignment (operations 78 / 79)', () => {
+    it('a device the registry does not serve is CAPTURE_DEVICE_NOT_SERVED - on a development Core never the development reason', () => {
+      // The gate's case: an adopted FAKE camera (stored class DEVELOPMENT) on REAL_DEVELOPMENT, unknown to the registry.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'DEVELOPMENT', CaptureOperation.REAL_DEVELOPMENT)).toBe('CAPTURE_DEVICE_NOT_SERVED');
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'DEVELOPMENT', CaptureOperation.REAL_DEVELOPMENT)).not.toBe(DEVELOPMENT_SOURCE_NOT_ALLOWED);
+      // A production camera on a production Core of this phase: no adapter (class C), not a class refusal.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'PRODUCTION', CaptureOperation.REAL_PRODUCTION)).toBe('CAPTURE_DEVICE_NOT_SERVED');
+      // A built-in carries no stored class in the slice; a registry that does not say its operation.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, undefined, CaptureOperation.REAL_DEVELOPMENT)).toBe('CAPTURE_DEVICE_NOT_SERVED');
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'DEVELOPMENT', undefined)).toBe('CAPTURE_DEVICE_NOT_SERVED');
+    });
+
+    it('a class refusal names the class of the DEVICE, in both directions', () => {
+      // C3 §4: a DEVELOPMENT device named while the Core does not run development sources.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, 'DEVELOPMENT', CaptureOperation.REAL_PRODUCTION)).toBe(DEVELOPMENT_SOURCE_NOT_ALLOWED);
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'DEVELOPMENT', CaptureOperation.REAL_PRODUCTION)).toBe(DEVELOPMENT_SOURCE_NOT_ALLOWED);
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, undefined, CaptureOperation.REAL_PRODUCTION)).toBe(DEVELOPMENT_SOURCE_NOT_ALLOWED);
+      // The other direction: a production device on a development Core.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, 'PRODUCTION', CaptureOperation.REAL_DEVELOPMENT)).toBe('PRODUCTION_SOURCE_NOT_ALLOWED');
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'PRODUCTION', CaptureOperation.REAL_DEVELOPMENT)).toBe('PRODUCTION_SOURCE_NOT_ALLOWED');
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, undefined, CaptureOperation.REAL_DEVELOPMENT)).toBe('PRODUCTION_SOURCE_NOT_ALLOWED');
+      // A registry that states no operation and a device with no stored class: the earlier reading stands.
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, undefined, undefined)).toBe(DEVELOPMENT_SOURCE_NOT_ALLOWED);
+    });
+
+    it('a class mismatch and every other refusal keep their own word; the four reasons are four different codes', () => {
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH, 'DEVELOPMENT', CaptureOperation.REAL_DEVELOPMENT)).toBe('CAPTURE_DEVICE_CLASS_MISMATCH');
+      expect(captureAssignmentRefusalOf(CaptureAdapterRefusal.SOURCE_KIND_NOT_RECORDABLE, 'DEVELOPMENT', CaptureOperation.REAL_DEVELOPMENT)).toBe('SOURCE_KIND_NOT_RECORDABLE');
+      expect(new Set(Object.values(CaptureAssignmentRefusal)).size).toBe(4);
+      for (const reason of Object.values(CaptureAssignmentRefusal)) expect(reason).toMatch(/^[A-Z][A-Z0-9_]*$/);
+    });
   });
 });

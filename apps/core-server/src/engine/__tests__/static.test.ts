@@ -14,7 +14,7 @@
 //
 // Every forbidden text is built from fragments, so that this file does not contain it.
 import { describe, expect, it } from 'vitest';
-import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, type SourceFile } from '../../../test/static/scan';
+import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../test/static/scan';
 
 const all = readTree(WORKSPACE).filter((file) => file.path.startsWith('src/engine/'));
 const production = codeOnly(all.filter((file) => isProductionSource(file.path)));
@@ -36,53 +36,11 @@ const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...
 
 describe('the scan itself', () => {
   it('reads the production sources of the engine folder', () => {
+    // Rule R1 (test/static/scan.ts): the scan equals an independent walk of the folder and is not empty.
+    // The list of names this test held until the suite consolidation (25 files, moved by nine rows)
+    // said the same and nothing more: a file that joins the folder is read from the moment it exists.
     const paths = production.map((file) => file.path);
-    for (const expected of ['index.ts', 'host.ts', 'types.ts', 'limits.ts', 'timer.ts', 'scheduler.ts', 'headless-sim.ts', 'actor-scope.ts', 'hosted-actions.ts', 'write-plan.ts', 'delta.ts', 'ring.ts', 'rehydrate.ts', 'errors.ts', 'api-headers.ts', 'internal-actions.ts']) {
-      expect(paths, expected).toContain(`src/engine/${expected}`);
-    }
-    // 15 until task 3 row 132 added `internal-actions.ts` (the in-unit door of `registerCaptureDevice`).
-    // +1 by task 3 row 71: `capture-session.ts` (the pure transitions of the capture of a real recording).
-    // +1 by task 3 row 82: `seal-doors.ts` (the three INTERNAL sealing actions, beside the seam).
-    // +1 by integration pass D6: `fact-doors.ts` (the measured evidence volume, the head of a transcript's revisions).
-    // +1 by fix pass F-M8: `export-doors.ts` (the completion of a background export, the record of a download).
-    // +1 by fix pass F-M7b: `unsealable-doors.ts` (the terminal outcome of a session that cannot be sealed).
-    // +1 by fix pass F-M7c: `sealing-notice-doors.ts` (kept plaintext of a sealed session, a blocked seal, an on-demand retry).
-    // +1 by wave H driver C1: `sealed-facts-doors.ts` (what the sealed manifest of an item says and no column holds).
-    // +1 by wave H closing pass Z1: `capture-checkpoint-doors.ts` (what the Core holds of a running recording of its own capture).
-    for (const door of ['export-doors.ts', 'unsealable-doors.ts', 'sealing-notice-doors.ts', 'sealed-facts-doors.ts', 'capture-checkpoint-doors.ts']) expect(paths, door).toContain(`src/engine/${door}`);
-    // THE TRUE COUNT, EVERY NAME LISTED (closing pass Z1, item 10: the drivers of wave H disagreed on a bare
-    // number - 22 or 23). A file that joins or leaves the folder moves this list, by name.
-    expect([...paths].sort()).toEqual(
-      [
-        'actor-scope.ts',
-        'api-headers.ts',
-        'capture-checkpoint-doors.ts',
-        'capture-session.ts',
-        'delta.ts',
-        'errors.ts',
-        'export-doors.ts',
-        'fact-doors.ts',
-        'headless-sim.ts',
-        'host.ts',
-        'hosted-actions.ts',
-        'index.ts',
-        'internal-actions.ts',
-        'limits.ts',
-        'rehydrate.ts',
-        // Fix wave K (driver S1, G75c-01): the end of the restart fault of a Core in its own capture.
-        'restart-fault.ts',
-        'ring.ts',
-        'scheduler.ts',
-        'seal-doors.ts',
-        'sealed-facts-doors.ts',
-        'sealing-notice-doors.ts',
-        'timer.ts',
-        'types.ts',
-        'unsealable-doors.ts',
-        'write-plan.ts',
-      ].map((name) => `src/engine/${name}`),
-    );
-    expect(paths).toHaveLength(25);
+    expect(scanCoverage(paths, ['src/engine/'])).toEqual(SCAN_COVERS);
     expect(paths.some((path) => path.includes('__tests__'))).toBe(false);
   });
 
