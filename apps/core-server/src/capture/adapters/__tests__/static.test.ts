@@ -12,6 +12,8 @@
 //   A-4  the device commands are the contract's, and the operation map is the contract's inverted;
 //   A-5  the layer is reached by the units that wire it (a pinned list), and from outside the
 //        capture unit through its index only (row 61 closed the earlier "wired into nothing yet").
+//   A-7  the adapter kinds of this layer are the value set of `capture_devices.adapter_kind` in
+//        the typed schema, compared with each other directly (row 97; A-6 is the codec word).
 //
 // Each rule has a control on a planted source that must be found.
 import { existsSync, readFileSync } from 'node:fs';
@@ -21,8 +23,10 @@ import { DeviceCommand } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { relativeImports } from '../../../../test/static/imports';
 import { REPOSITORY, SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, type SourceFile } from '../../../../test/static/scan';
+import { CAPTURE_ADAPTER_KIND } from '../../../db/schema/value-sets';
 import { DEVICE_COMMAND_OF_OPERATION } from '../../../modules/devices';
 import { CAPTURE_DEVICE_COMMANDS, SEAM_OF_DEVICE_COMMAND, operationOfDeviceCommand } from '../commands';
+import { CAPTURE_ADAPTER_KINDS, CaptureAdapterKind } from '../kinds';
 import { MIC_CLOCK_COMPENSATION_PPM, MIC_LATENESS_TARGET_MS, MIC_TRANSPORTS, MIC_WORKER_BUFFER_CAP_MS, micPipePath, withinMicClockRange } from '../mic-transport';
 
 const ADAPTERS = 'src/capture/adapters/';
@@ -267,5 +271,21 @@ describe('A-6: one word for the second video codec', () => {
     expect(sources.filter((file) => /\bH\.?265\b/.test(file.text)).map((file) => file.path)).toEqual([]);
     const types = sources.find((file) => file.path.endsWith('adapters/types.ts'));
     expect(types?.text).toMatch(/readonly codec: 'H264' \| 'HEVC' \| 'OTHER';/);
+  });
+});
+
+// Row 97 (hygiene, note 162 item 9). The two lists were each pinned to the same five literal names
+// (`registry.test.ts` for this layer, `test/db/set4-rules.test.ts` for the schema) and met only
+// through those two literals: a kind added to both pins and to one list would have passed both.
+describe('A-7: the adapter kinds of the layer are the value set of the schema', () => {
+  it('the same names in the same order, list against list; a list that differs is seen (control)', () => {
+    expect([...CAPTURE_ADAPTER_KINDS]).toEqual([...CAPTURE_ADAPTER_KIND]);
+    // The object's keys are its values: a member renamed on one side only would be seen here.
+    expect(Object.keys(CaptureAdapterKind)).toEqual([...CAPTURE_ADAPTER_KIND]);
+    // Control: one more kind, one fewer, and another order each differ.
+    const schema: readonly string[] = [...CAPTURE_ADAPTER_KIND];
+    expect([...CAPTURE_ADAPTER_KINDS, 'NEW_KIND']).not.toEqual(schema);
+    expect(CAPTURE_ADAPTER_KINDS.slice(1)).not.toEqual(schema);
+    expect([...CAPTURE_ADAPTER_KINDS].reverse()).not.toEqual(schema);
   });
 });

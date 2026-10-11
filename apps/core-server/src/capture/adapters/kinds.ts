@@ -9,12 +9,13 @@
  *   - the SOURCE CLASS: derived from the adapter kind by ONE function (`sourceClassOf`), never
  *     stored twice.
  *
- * TODO(row 129): the five adapter kinds are the value set of `capture_devices.adapter_kind`
- * (`dbc-4` §N.2, D83). That column is not in the typed schema until row 129 lands; when it is, the
- * schema's check and this object are held to each other by a test, and this stays the one value
- * set of the Core process.
- * TODO(row 61): `CaptureOperation` is the result of the ONE function that defines the capture
- * operation (`captureOperationOf(config)`, spec §A.1.2). Row 61 builds the function; the adapter
+ * The five adapter kinds are the value set of `capture_devices.adapter_kind` (`dbc-4` §N.2, D83;
+ * `CAPTURE_ADAPTER_KIND` in `db/schema/value-sets.ts`, row 129). The two lists are held to each
+ * other, list against list, by rule A-7 of `__tests__/static.test.ts`; each is also pinned to the
+ * five names: this object by `__tests__/registry.test.ts`, the schema's by
+ * `test/db/set4-rules.test.ts`.
+ * `CaptureOperation` is the result of the ONE function that defines the capture operation
+ * (`captureOperationOf(config)`, `capture/fence/operation.ts`, spec §A.1.2; row 61). The adapter
  * layer only takes its result as an argument and reads no flag itself (static rule G-R15).
  */
 import type { CaptureDeviceStatus } from '@dems/shared/sim';
