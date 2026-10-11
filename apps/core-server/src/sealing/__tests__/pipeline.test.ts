@@ -199,6 +199,11 @@ describe('a stopped run resumes from its checkpoints (smoke for the kill matrix 
     expect(resumed.manifestSha256).not.toBe(clean.manifestSha256);
   });
 
+  // LOAD-SENSITIVE (test/14 consolidation, core-server unit, open items; row 97): no wait and no
+  // process - this case is computation and file work (one stopped run and one resumed seal per
+  // hook point, each verified) under the runner's default limit of 5 s. On a starved host (a
+  // 1-minute load of about 100 was measured) the work itself can pass the limit; at a load below 8
+  // it does not. The limit is not raised: a red here is read against the load of the run first.
   it('every hook point once: stop there, start again, and the package is sealed, verifies, and has the reference media hashes', async () => {
     const original = recordSession({ fragments: 3 });
     const signer = throwAwaySigner();

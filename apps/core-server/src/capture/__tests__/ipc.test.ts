@@ -12,6 +12,12 @@
 //
 // These tests wait in real time (system timers, the system clock), with short limits and long
 // allowances; the rules themselves are tested without waiting in `supervisor.test.ts`.
+//
+// LOAD-SENSITIVE BY DESIGN (test/14 consolidation, core-server unit, open items; row 97): the waits
+// are on real processes and on the 600 ms heartbeat of a real child, so on a starved host (a
+// 1-minute load of about 100 was measured) a stand-in worker can miss its heartbeat and a case
+// fails; at a load below 8 the file passes. That is the host, not the supervisor: the allowances
+// are not raised, and a red of this file is read against the load of the run first.
 import { spawn } from 'node:child_process';
 import { CaptureWarningCode, type CaptureIpcLimits, type WorkerMessage } from '@dems/capture-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
