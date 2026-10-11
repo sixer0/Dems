@@ -206,6 +206,11 @@ export interface HomeTile {
   /** Param for the `offline` state line. */
   count?: number;
   href: '/devices' | '/storage';
+  /**
+   * Fix wave L (G70c-02): the count is what the Core REPORTED for the sources on the selector's lines
+   * (a Core in real capture), so the spoken label says "reachable", never "online" / "ready".
+   */
+  reported?: boolean;
 }
 
 export function cameraTileFor(stats: Pick<DeviceStats, 'camerasOnline' | 'camerasTotal'>): HomeTile {
@@ -254,9 +259,35 @@ export function realCaptureMicTileFor(
     return { ...base, tone: 'danger', stateKey: 'features.capture-selector.sourceState.primaryNotReachable' };
   }
   if (primary !== undefined && primary.state === 'NOT_CHECKED') {
-    return { ...base, tone: signal.tone === 'success' ? 'default' : signal.tone, stateKey: 'features.capture-selector.sourceState.primaryNotChecked' };
+    return { ...base, reported: true, tone: signal.tone === 'success' ? 'default' : signal.tone, stateKey: 'features.capture-selector.sourceState.primaryNotChecked' };
   }
-  return reachable < lines.length && signal.tone === 'success' ? { ...base, tone: 'warning' } : base;
+  // Fix wave L (G70c-02): "Online" is no statement of a Core in real capture. With no signal word to say
+  // (the track's own NO SIGNAL / CLIPPING stay), the tile says what the Core reported: "Reachable".
+  const stated = signal.stateKey === 'online' ? { ...base, stateKey: REPORTED_REACHABLE_KEY } : base;
+  return { ...(reachable < lines.length && signal.tone === 'success' ? { ...stated, tone: 'warning' as StatusTone } : stated), reported: true };
+}
+
+const REPORTED_REACHABLE_KEY = 'features.capture-selector.sourceState.reachable';
+
+/**
+ * Fix wave L (G70c-02; contract note A2 section 4, the selector lines' rule on Home): the Camera tile on a
+ * Core in REAL capture. The count is the cameras ON the selector's lines that the Core reports reachable.
+ * The state line: "n not reachable" first, then "Not checked" (the Core says it has not read a camera
+ * since it started), else "Reachable" - and "Live" ONLY while a session records (the recording's
+ * telemetry is the one thing that makes it true). Never "Online".
+ */
+export function realCaptureCameraTileFor(
+  lines: readonly { readonly state: 'UNKNOWN' | 'ON' | 'NOT_CHECKED' | 'REACHABLE' | 'NOT_REACHABLE' }[],
+  recording: boolean,
+): HomeTile {
+  const notReachable = lines.filter((line) => line.state === 'NOT_REACHABLE' || line.state === 'UNKNOWN').length;
+  const notChecked = lines.filter((line) => line.state === 'NOT_CHECKED').length;
+  const base = { id: 'camera' as const, value: lines.length - notReachable, total: lines.length, href: '/devices' as const, reported: true };
+  if (notReachable > 0) return { ...base, tone: 'danger', stateKey: 'features.capture-selector.sourceState.notReachableCount', count: notReachable };
+  if (recording) return { ...base, tone: 'success', stateKey: 'features.capture-selector.selector.stream.LIVE' };
+  // Controller ruling: at rest a camera the Core has not checked is "Not checked" (web and mobile alike).
+  if (notChecked > 0) return { ...base, tone: 'default', stateKey: 'features.capture-selector.sourceState.notChecked' };
+  return { ...base, tone: 'success', stateKey: REPORTED_REACHABLE_KEY };
 }
 
 const STORAGE_STATE: Record<StorageSummary['state'], { tone: StatusTone; stateKey: string }> = {

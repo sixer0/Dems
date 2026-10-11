@@ -115,6 +115,7 @@ export const enWeb = {
       dashboard: {
         securityHeader: 'Platform security: not reported',
         ringFlags: 'OPERATIONAL • NO FAULT REPORTED',
+        notReportedChip: 'NOT REPORTED',
       },
       storage: {
         bannerFree: '{{free}} free',
@@ -180,6 +181,111 @@ export const enWeb = {
       runVerify: 'Run Verify for the full result.',
       notLoaded: 'This file has not loaded.',
       interruptedEnd: 'End of the sealed recording at {{at}}: the recording was interrupted, so it ends here.',
+    },
+    /** Fix wave L, driver L-W (G89c-01): the Dashboard's sealed item whose package the Core cannot read. */
+    dashboard: {
+      packageNotReadable: 'PACKAGE NOT READABLE',
+    },
+    /**
+     * Fix wave L, driver L-W. ONE RULE of a Core in its own capture: a screen states the Core's own
+     * fact, or "Not reported", or nothing - never a constant of the simulator, of a bundled
+     * demonstration index or of an adapter default. A block that still shows model values carries
+     * the chip `syntheticChip`.
+     */
+    waveL: {
+      syntheticChip: 'Synthetic demo values',
+      syntheticHint: 'This block shows values of the appliance model. This Core does not report them.',
+      notReported: 'Not reported',
+      /** G89c-02: Security & Audit, Tamper & Integrity - the Core's own verify rows instead of the bundled index. */
+      tamper: {
+        verifyLabel: 'Last verify run per item',
+        noVerifyRows: 'Not reported',
+        failedAt: '{{id}}: {{place}} failed verification',
+        failedNoPlace: '{{id}}: failed verification',
+        place: '{{track}} fragment {{seq}}',
+        fromRows: 'From the verify rows of this Core in the audit view',
+        noVerifyRowsHint: 'No verify run of this Core is in the audit view.',
+      },
+      /** G89c-03: the Monitor's integrity card beside a session of the Core's own capture that is not recording. */
+      integrity: {
+        sealedState: 'Sealed',
+        sealedDetail: 'Evidence {{evidenceId}} is sealed. Verify it on its Evidence page.',
+        sealedNoItem: 'This session is sealed.',
+        idleDetail: 'No recording is running.',
+        protectionSealed: 'Each sealed item states how it is encrypted.',
+        moreBelow: 'More below - scroll',
+      },
+      /** G75d-05 / G89c-04: the format of a track is what the selector line or the signed manifest says. */
+      profile: {
+        configuredLabel: 'Configured profile',
+        configuredValue: '{{track}}: {{profile}}',
+        notStated: 'Not reported',
+        sealedLabel: 'Sealed format (signed manifest)',
+        notice: 'The Core noted for this session that the recorded stream differs from the configured profile: {{parts}}.',
+        noticePart: '{{track}} recorded {{stream}}, configured {{configured}}',
+      },
+      /** G75d-06: a generated source is named as generated, never by a product name of the dataset. */
+      source: {
+        generatedCamera: 'Generated test source',
+        generatedMic: 'Generated test source',
+        localCamera: 'Camera of this computer',
+        localMic: 'Microphone of this computer',
+        cameraOf: '{{name}} · {{id}}',
+      },
+      /** G70c-02: states of a source nobody opened are not checked facts. */
+      state: {
+        notChecked: 'Not checked',
+        assigned: 'Assigned',
+        registered: 'Registered',
+        notCheckedHint: 'The Core has not opened this source: it states no reachability for it.',
+      },
+      /** G75d-02: the retry of a blocked seal (operation 33). */
+      sealRetry: {
+        stopped: 'Sealing stopped after {{count}} automatic retries.',
+        whoCan: 'An investigator or a supervisor can retry.',
+        youCan: 'When the cause is resolved, retry the seal here.',
+        action: 'Retry sealing',
+        pending: 'Retrying…',
+        sent: 'Sealing is run again.',
+        refused: 'The retry was not accepted. The seal is still blocked.',
+      },
+      /** G75d-01 / -03: an open notice that does not block recording, and a blocked seal on the status surfaces. */
+      notice: {
+        pillLabel: 'OPEN NOTICE',
+        pillSub_one: '{{count}} recording could not be sealed',
+        pillSub_other: '{{count}} recordings could not be sealed',
+        ringSub: 'OPEN NOTICE • RECORDING NOT BLOCKED',
+        ringDetail_one: 'A recording could not be sealed ({{sessionId}}). Its files were kept in quarantine on the Core. Recording is not blocked.',
+        ringDetail_other: '{{count}} recordings could not be sealed. Their files were kept in quarantine on the Core. Recording is not blocked.',
+        plain: 'This recording could not be sealed. Its files were kept in quarantine on the Core.',
+        ofSession: 'Session {{sessionId}}',
+        cause: 'Cause code: {{cause}}',
+        closeBySupervisor: 'A supervisor acknowledges this notice to close it.',
+        closeByYou: 'Acknowledge this notice to close it.',
+        acknowledge: 'Acknowledge and close',
+        blockedRing: 'SEALING BLOCKED',
+        blockedRingSub: 'NO NEW SESSION UNTIL IT IS SEALED',
+        blockedRingDetail: 'Sealing of session {{sessionId}} is blocked. The Core records no new session until it is sealed. The recording is kept on the Core.',
+      },
+      /** G75d-04: the terminal sentence of a session that ended unsealable. */
+      unsealableEnd: {
+        title: 'Recording not sealed',
+        retrying: 'Sealing failed and is tried again',
+      },
+      /** G75d-06 / -07: the Devices summary and audio block of a Core in its own capture. */
+      summary: {
+        cameras: 'The sources on the two video tracks',
+        microphones: 'The sources on the two microphone lines',
+        other: 'PoE · relay · tablet link',
+        audioSubtitle: 'The microphone sources of the primary and the standby line',
+      },
+      dashboardNetwork: 'This Core reports no network status here.',
+      networkBannerDetail: 'Host system clock · no time service configured',
+      ringReadyCaption: 'No fault is reported. A new session can be started.',
+      /** G70c-08: a registered camera that is on no track. */
+      roster: {
+        unassigned: 'On no track',
+      },
     },
   },
 } as const satisfies ResourceTree

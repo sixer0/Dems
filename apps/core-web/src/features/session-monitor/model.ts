@@ -10,6 +10,7 @@ import {
   Permission,
   recordingEndOf,
   selectCan,
+  alertBlocksRecording,
   selectWorstAlert,
   storageSummary,
   type FaultKind,
@@ -249,7 +250,10 @@ export function selectBanner(s: SimState): BannerModel {
       // D84: nothing claims to record before the first durable fragment, an alert's
       // "Recording continues" included.
       if (!captureDurableOf(session)) return { ...base, kind: 'CONNECTING' }
-      const worst = selectWorstAlert(s)
+      // Fix wave L (G75d-01; `contract_wave_l.md` section 1): the worst ACTIVE alert of the whole Core is not a fault of
+      // the session that records. The unsealable notice of session X was drawn as "FAULT / Recording continues" over a
+      // healthy session Y. An alert is a condition of the open session only when it does not say otherwise.
+      const worst = worstAlertOfSession(s, session?.id ?? null)
       if (!worst) return { ...base, kind: 'ACTIVE' }
       const reasonKind = worst.kind === 'SYSTEM' ? null : worst.kind
       if (worst.severity === 'CRITICAL') {
@@ -505,4 +509,24 @@ export function hoursMinutes(ms: number): { hours: number; minutes: number } {
 /** First `length` hex characters of a hash, for compact display. */
 export function shortHash(hash: string, length = 8): string {
   return hash.replace(/^sha256:/i, '').slice(0, length)
+}
+
+/**
+ * Fix wave L (G75d-01): THE WORST ALERT THAT IS A CONDITION OF THE OPEN SESSION. The exact test of
+ * `contract_wave_l.md` section 1, before an alert is drawn as a state of a session:
+ *   `alertBlocksRecording(alert) === false`  -> never (it is the open notice of another recording);
+ *   the alert names a session (`params.sessionId` is a string) -> only when it is the open session.
+ * Every other active alert is read as before (`selectWorstAlert`'s order: the first of the highest severity).
+ */
+export function worstAlertOfSession(s: SimState, sessionId: string | null): SimState['alerts'][number] | null {
+  const rank = { CRITICAL: 2, WARNING: 1 } as Record<string, number>
+  let worst: SimState['alerts'][number] | null = null
+  for (const alert of s.alerts) {
+    if (!alert.active) continue
+    if (alertBlocksRecording(alert) === false) continue
+    const named = alert.params?.['sessionId']
+    if (typeof named === 'string' && named !== sessionId) continue
+    if (worst === null || (rank[alert.severity] ?? 0) > (rank[worst.severity] ?? 0)) worst = alert
+  }
+  return worst
 }

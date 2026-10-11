@@ -64,7 +64,22 @@ export function DeviceStatusDot({ status, label, testID }: { status: DeviceStatu
   );
 }
 
+/**
+ * The "Synthetic demo values" chip (fix wave L, closing pass L-Z; the ONE RULE): the mark of a block that
+ * still shows values of the simulator's model on a Core in its own capture. The kit's `StatusChip` and the
+ * shared sentence of Settings > About (`system.about.synthetic`) - no new component, no new word.
+ */
+export function SyntheticValuesChip({ block }: { block: string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.syntheticRow}>
+      <StatusChip tone="warning" size="sm" icon={null} label={t('system.about.synthetic')} testID={`synthetic-values-${block}`} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  syntheticRow: { flexDirection: 'row' },
   dotRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   dotText: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight },

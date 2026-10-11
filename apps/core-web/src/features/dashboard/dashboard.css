@@ -456,6 +456,19 @@
     font-weight: 600;
     white-space: nowrap;
   }
+  /* Fix wave L (G89c-08): at 1440 x 900 "Host system clock" ran under the Security icon. A long value takes two lines in its own cell. */
+  .dems-strip-value[data-long='true'] {
+    align-items: flex-start;
+    white-space: normal;
+    line-height: 1.15;
+  }
+  .dems-strip-value[data-long='true'] .dems-dot {
+    margin-top: 0.3em;
+  }
+  .dems-strip-value[data-long='true'] .dems-strip-value-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   .dems-strip-sep {
     flex: none;
     align-self: stretch;
@@ -529,6 +542,41 @@
     min-height: 0;
     padding: 8px;
     border-radius: 10px;
+  }
+  /*
+   * Fix wave L (G89c-08): with the "Development source" badge a tile of a Core in real capture is taller than its row at
+   * 1440 x 900 - the preview was cut at "No preview" and the microphone row ran over the card edge. In a Dashboard tile
+   * the badge is one line (the chip and its kind beside each other, both readable), the microphone row wraps, and
+   * nothing of a tile is drawn outside it.
+   */
+  .dems-tile {
+    overflow: hidden;
+  }
+  .dems-tile .dev-source-badge {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: none;
+  }
+  .dems-tile .dev-source-badge > :first-child {
+    flex: none;
+    white-space: nowrap;
+  }
+  .dems-tile .dev-source-kind {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dems-tile .dems-mic-body {
+    gap: 6px;
+    overflow: hidden;
+  }
+  /* The ring is decoration (`aria-hidden`); beside a badge the role chip and the meter need its place. */
+  .dems-tile:has(.dev-source-badge) .dems-mic-ring {
+    display: none;
   }
   .dems-tile-head {
     display: flex;

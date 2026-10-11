@@ -4,6 +4,8 @@ import { Cable, Camera, Cpu, Mic, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
 import { AnimatedNumber } from '@/components/ui/animated-number'
+import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { selectSummary, type DeviceTone } from './model'
 import { PANEL_BEAT_MS, ROW_STAGGER_MS, useStaggerVariants } from './motion'
@@ -30,6 +32,9 @@ export function SummaryCards() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const summary = useSim(selectSummary)
+  // Fix wave L (G75d-06, -07): on a Core in its own capture the detail lines of the dataset ("Dual-lens DL-2 on PoE CAM 1",
+  // "Balanced XLR · 48 V phantom") are not said; the two cards of the appliance model carry the "Synthetic demo values" chip.
+  const ownCore = useSelfCaptureCore()
   const container = useStaggerVariants(PANEL_BEAT_MS.summary, ROW_STAGGER_MS)
   const state = (ok: number, total: number, word: 'ready' | 'online' | 'linked') =>
     ok === total ? t(`devices.summary.state.${word}`) : t('devices.summary.state.issue', { count: total - ok })
@@ -43,7 +48,7 @@ export function SummaryCards() {
       total: summary.camsTotal,
       tone: summary.camsTone,
       state: state(summary.camsOk, summary.camsTotal, 'ready'),
-      detail: t('devices.summary.detail.cameras'),
+      detail: ownCore ? t('web.waveL.summary.cameras') : t('devices.summary.detail.cameras'),
     },
     {
       key: 'microphones',
@@ -53,7 +58,7 @@ export function SummaryCards() {
       total: summary.micsTotal,
       tone: summary.micsTone,
       state: state(summary.micsOk, summary.micsTotal, 'ready'),
-      detail: t('devices.summary.detail.microphones'),
+      detail: ownCore ? t('web.waveL.summary.microphones') : t('devices.summary.detail.microphones'),
     },
     {
       key: 'other',
@@ -63,7 +68,7 @@ export function SummaryCards() {
       total: summary.otherTotal,
       tone: summary.otherTone,
       state: state(summary.otherOk, summary.otherTotal, 'online'),
-      detail: t('devices.summary.detail.other'),
+      detail: ownCore ? t('web.waveL.summary.other') : t('devices.summary.detail.other'),
     },
     {
       key: 'ports',
@@ -105,6 +110,7 @@ export function SummaryCards() {
               <span>{word}</span>
             </span>
             <span className="dev-metric-detail">{detail}</span>
+            {key === 'other' || key === 'ports' ? <SyntheticValuesChip block={`summary-${key}`} /> : null}
           </Card>
         </motion.div>
       ))}

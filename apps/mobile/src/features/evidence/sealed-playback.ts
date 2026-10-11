@@ -70,12 +70,22 @@ export function bandSegments(intervals: readonly ItemAudioInterval[], durationMs
   return segments;
 }
 
-/** The segment that holds `positionMs` (its end is exclusive, except at the very end of the recording), or null. */
+/**
+ * The segment that holds `positionMs` (its end is exclusive, except at the very end of the recording), or null.
+ *
+ * Fix wave L (G94c-04; THE SAME RULE as the web's `segmentAt`, wave K G94b-08): the first interval of
+ * a real recording starts at the first audio sample (some milliseconds in), not at 0. A playhead
+ * BEFORE the first interval that reads the same second as its start (`0:00` beside a legend
+ * `0:00-0:28`) is inside it: the band shows times by the second, and no other microphone can have
+ * fed that span. A gap between two intervals stays a gap.
+ */
 export function segmentAt(segments: readonly BandSegment[], positionMs: number): BandSegment | null {
   const last = segments[segments.length - 1];
   for (const segment of segments) {
     if (positionMs >= segment.fromMs && (positionMs < segment.toMs || (segment === last && positionMs === segment.toMs))) return segment;
   }
+  const first = segments[0];
+  if (first !== undefined && positionMs >= 0 && positionMs < first.fromMs && Math.floor(positionMs / 1000) === Math.floor(first.fromMs / 1000)) return first;
   return null;
 }
 

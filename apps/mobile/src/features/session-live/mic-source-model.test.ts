@@ -161,8 +161,11 @@ describe('a microphone beyond the built-in pair (MIC-03)', () => {
   it('no pair on the session: the standby is the other line of the selector the session records under, then of the stored selector', () => {
     const snapshot = state({ session: { state: 'RECORDING', audioSource: null, captureConfig: { cameras: [], mics: lines } }, audio: { activeInputId: 'MIC-03' } });
     expect(selectStandbyInputId(snapshot)).toBe('MIC-01');
+    // Moved by fix 157 (was `'MIC-03'`, "the other line than the meters' MIC-01"): with no open session the pair is the
+    // stored selector's own - MIC-03 is its PRIMARY (active), MIC-01 its STANDBY.
     const stored = state({ audio: { activeInputId: 'MIC-01' }, captureConfig: { cameras: [], mics: lines } });
-    expect(selectStandbyInputId(stored)).toBe('MIC-03');
+    expect(selectActiveInputId(stored)).toBe('MIC-03');
+    expect(selectStandbyInputId(stored)).toBe('MIC-01');
   });
 
   it('a silence warning that names MIC-03 is about MIC-03', () => {

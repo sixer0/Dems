@@ -45,6 +45,8 @@ export interface RegisteredDevice {
   readonly streamState: string | null;
   /** True only when the Core sent `sourceOpen: true`. */
   readonly sourceOpen: boolean;
+  /** Fix wave L (G70c-02 ruling): the Core STATES when it last checked the device (`checkedAt`, a finite number). Absent / null: no checked fact. */
+  readonly checked?: boolean;
   readonly slot: RosterSlot | null;
   /** The named cause of the device's active "not reachable" notice, or null. */
   readonly cause: string | null;
@@ -70,6 +72,7 @@ export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
       model: device.model,
       host: device.host,
       adapter: device.adapter ?? null,
+      checked: sourceChecked({ checkedAt: (device as { readonly checkedAt?: unknown }).checkedAt }),
       sourceClass: device.sourceClass ?? null,
       online: device.online,
       streamState: device.streamState,
@@ -111,6 +114,31 @@ export function rosterDeviceName(t: MicNameTranslate, device: Pick<RegisteredDev
 /** The state of a roster device: a named cause wins over `online` (§8f.3). */
 export function rosterDeviceState(device: Pick<RegisteredDevice, 'online' | 'cause'>): LocalDeviceState {
   return localDeviceStateOf(device.online && device.cause === null, device.cause === 'UNREACHABLE' ? null : device.cause);
+}
+
+/**
+ * FIX WAVE L, controller ruling on G70c-02 (the same rule as the web's `sourceLineState` /
+ * `restingSourceChecked`): whether the Core holds a CHECKED fact of a source. At rest `online: true`
+ * only says "the registry row is enabled" - a camera on a dead address read "Reachable". A source is
+ * checked when the Core opened it (`sourceOpen`), when it states when it last checked it (`checkedAt`,
+ * a finite number), or - for a source ON a line - while a session RECORDS (the recording's telemetry
+ * makes it true; the caller says so with `recording`).
+ */
+export function sourceChecked(input: { readonly sourceOpen?: unknown; readonly checkedAt?: unknown; readonly checked?: boolean | null | undefined; readonly recording?: boolean }): boolean {
+  if (input.recording === true || input.sourceOpen === true || input.checked === true) return true;
+  return typeof input.checkedAt === 'number' && Number.isFinite(input.checkedAt);
+}
+
+/** The i18n key of "Not checked": a source the registry lists and the Core has no checked fact of. */
+export const NOT_CHECKED_KEY = 'features.capture-selector.sourceState.notChecked';
+
+/**
+ * THE ONE WORD of a capture source's state on a Core in real capture (wave L ruling): a negative fact
+ * is never hidden ("Not reachable", the local device's named cause); a source that reads READY
+ * WITHOUT a checked fact is "Not checked" - never "Reachable" / "Ready"; with one, the roster's words.
+ */
+export function sourceStateLabelKey(state: LocalDeviceState, local: boolean, checked: boolean): string {
+  return state === 'READY' && !checked ? NOT_CHECKED_KEY : rosterStateLabelKey(state, local);
 }
 
 /** The chip words of a state: the local-device words for the Core's local device, "Reachable" / "Not reachable" for any other. */

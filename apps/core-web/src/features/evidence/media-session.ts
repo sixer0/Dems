@@ -198,15 +198,27 @@ export interface MediaProbeOptions {
   readonly startByte?: number
   /** The probe stops reading after this many bytes: what it read was served. */
   readonly maxBytes?: number
-  /** The probe gives up after this long. */
+  /** The probe gives up after this long, whatever it is doing. */
   readonly timeoutMs?: number
+  /** The size of one bounded range request. */
+  readonly chunkBytes?: number
+  /** A served answer that sends no byte for this long, short of its stated length, is taken as stopped at the byte it reached. */
+  readonly idleMs?: number
+  /** One request whose headers do not arrive within this time is given up. */
+  readonly requestTimeoutMs?: number
   readonly fetch?: typeof fetch
 }
 
 export const MEDIA_PROBE_MAX_BYTES = 16 * 1024 * 1024
-export const MEDIA_PROBE_TIMEOUT_MS = 10_000
-/** One streamed read, then the request from the place where it was cut; a cut answer is followed at most three times. */
-const MEDIA_PROBE_MAX_REQUESTS = 4
+export const MEDIA_PROBE_TIMEOUT_MS = 15_000
+/** Wave L (G94c-01): one bounded range request of the probe asks for this many bytes at most. */
+export const MEDIA_PROBE_CHUNK_BYTES = 2 * 1024 * 1024
+/** Wave L (G94c-01): the read of one answer waits this long for the next byte before it is taken as stopped. */
+export const MEDIA_PROBE_IDLE_MS = 1_500
+/** Wave L (G94c-01): the headers of one request are waited for this long. */
+export const MEDIA_PROBE_REQUEST_TIMEOUT_MS = 4_000
+/** 16 MiB in chunks of 2 MiB is eight requests; each place where an answer stopped costs one more. */
+const MEDIA_PROBE_MAX_REQUESTS = 12
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -229,17 +241,43 @@ async function refusalOf(response: Response, fileId: CameraFileId): Promise<Medi
   return { kind: 'REFUSED', status: response.status, reason }
 }
 
-/** Reads a served body and counts it. `cut`: the answer ended before the length the Core stated (the stream was stopped). */
-async function drain(response: Response, maxBytes: number): Promise<{ readonly received: number; readonly cut: boolean }> {
+const IDLE = Symbol('idle')
+
+/**
+ * Reads a served body and counts it. `cut`: the answer stopped before the length the Core stated.
+ * Three ways an answer stops, all the same fact for the probe (wave L, G94c-01):
+ * the read rejects (the connection was closed), the body ends short, or NO byte arrives for `idleMs`
+ * - through the web console's own origin a stream the Core stopped stays an OPEN connection, so
+ * neither of the first two ever happens there. An idle read is given up through `giveUp`.
+ */
+async function drain(response: Response, maxBytes: number, idleMs: number, giveUp: () => void): Promise<{ readonly received: number; readonly cut: boolean }> {
   const declared = Number(response.headers.get('content-length'))
+  const stated = Number.isFinite(declared) && declared > 0
   const reader = response.body?.getReader()
   let received = 0
   if (!reader) return { received, cut: false }
   try {
     for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      received += value.byteLength
+      // Every stated byte arrived: the answer is complete, whether or not the connection says so.
+      if (stated && received >= declared) {
+        void reader.cancel().catch(() => undefined)
+        return { received, cut: false }
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const idle = new Promise<typeof IDLE>((resolve) => {
+        timer = setTimeout(() => resolve(IDLE), idleMs)
+      })
+      const next = reader.read()
+      const step = await Promise.race([next, idle])
+      clearTimeout(timer)
+      if (step === IDLE) {
+        // The read that is still pending is abandoned with its request.
+        void next.catch(() => undefined)
+        giveUp()
+        return { received, cut: true }
+      }
+      if (step.done) break
+      received += step.value.byteLength
       if (received >= maxBytes) {
         void reader.cancel().catch(() => undefined)
         return { received, cut: false }
@@ -249,43 +287,74 @@ async function drain(response: Response, maxBytes: number): Promise<{ readonly r
     // A connection the Core closed before the stated length: the browser rejects the read.
     return { received, cut: true }
   }
-  return { received, cut: Number.isFinite(declared) && declared > 0 && received < declared }
+  return { received, cut: stated && received < declared }
+}
+
+/** The size of the whole file as a `206` states it (`content-range: bytes a-b/total`), or null. */
+function totalOf(response: Response): number | null {
+  const match = /\/(\d+)\s*$/.exec(response.headers.get('content-range') ?? '')
+  return match ? Number(match[1]) : null
 }
 
 /**
- * Asks the media route about one open session from `startByte` on (wave K, G94b-02): a media
- * element that stalls says nothing, and it cannot read the body of a refusal. The Core stops a
- * stream BEFORE a fragment that does not authenticate and answers a range that STARTS in it with
- * `409` naming the file and the fragment. So: read from the start; where the answer is cut, ask
- * again from that byte. Same-origin, with the operator's session cookie, never cached.
+ * Asks the media route about one open session from `startByte` on (wave K, G94b-02; wave L,
+ * G94c-01): a media element that stalls says nothing, and it cannot read the body of a refusal. The
+ * Core stops a stream BEFORE a fragment that does not authenticate and answers a range that STARTS
+ * in it with `409` naming the file and the fragment.
  *
- * The bearer path goes from the session to the request and nowhere else; the outcome holds codes
- * only. Never throws. Each request is one the Core records, as the media element's own are.
+ * So the probe walks the file in SMALL BOUNDED ranges (`chunkBytes`), each with a short time limit:
+ * a range the Core serves whole is followed by the next one; where an answer stops short of its
+ * stated length - the connection closed, the body ended, or it simply went silent for `idleMs` -
+ * the next range starts AT THE BYTE IT REACHED, which is the first byte of the fragment the Core
+ * would not send, and the `409` is read. The probe does not depend on a connection being closed:
+ * the web console's dev origin keeps a stopped stream open (measured at re-check 94).
+ *
+ * Same-origin, with the operator's session cookie, never cached. The bearer path goes from the
+ * session to the request and nowhere else; the outcome holds codes only. Never throws.
  */
 export async function probeMediaSession(session: MediaSession, options: MediaProbeOptions = {}): Promise<MediaProbeOutcome> {
   const ask = options.fetch ?? (typeof fetch === 'function' ? fetch : null)
   const path = session.takeUrl()
   if (ask === null || path === '') return { kind: 'UNKNOWN' }
   const maxBytes = options.maxBytes ?? MEDIA_PROBE_MAX_BYTES
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? MEDIA_PROBE_TIMEOUT_MS)
+  const chunkBytes = Math.max(1, Math.floor(options.chunkBytes ?? MEDIA_PROBE_CHUNK_BYTES))
+  const idleMs = options.idleMs ?? MEDIA_PROBE_IDLE_MS
+  const requestTimeoutMs = options.requestTimeoutMs ?? MEDIA_PROBE_REQUEST_TIMEOUT_MS
+  const deadline = Date.now() + (options.timeoutMs ?? MEDIA_PROBE_TIMEOUT_MS)
   let offset = Math.max(0, Math.floor(options.startByte ?? 0))
   let read = 0
-  try {
-    for (let request = 0; request < MEDIA_PROBE_MAX_REQUESTS; request += 1) {
-      const response = await ask(path, { method: 'GET', headers: { range: `bytes=${offset}-` }, credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
+  /** The place of the last answer that stopped without sending a byte: a second one there says nothing new. */
+  let silentAt: number | null = null
+  for (let request = 0; request < MEDIA_PROBE_MAX_REQUESTS && Date.now() < deadline; request += 1) {
+    const controller = new AbortController()
+    const giveUp = () => controller.abort()
+    const headersTimer = setTimeout(giveUp, Math.max(1, Math.min(requestTimeoutMs, deadline - Date.now())))
+    try {
+      const response = await ask(path, { method: 'GET', headers: { range: `bytes=${offset}-${offset + chunkBytes - 1}` }, credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
+      clearTimeout(headersTimer)
       // A range that starts at or past the end of the file: nothing is wrong at that place.
       if (response.status === 416) return { kind: 'SERVED' }
       if (response.status !== 200 && response.status !== 206) return await refusalOf(response, session.fileId)
-      const { received, cut } = await drain(response, maxBytes - read)
+      const total = totalOf(response)
+      const { received, cut } = await drain(response, maxBytes - read, idleMs, giveUp)
       read += received
-      if (!cut || read >= maxBytes) return { kind: 'SERVED' }
       offset += received
+      if (read >= maxBytes) return { kind: 'SERVED' }
+      if (cut) {
+        if (received === 0) {
+          if (silentAt === offset) return { kind: 'UNKNOWN' }
+          silentAt = offset
+        }
+        continue
+      }
+      // The range was served whole. The end of the file, or an answer that states no size: served as far as asked.
+      if (received === 0 || total === null || offset >= total) return { kind: 'SERVED' }
+    } catch {
+      // No answer to this request (no network, or its headers did not arrive in time).
+      return { kind: 'UNKNOWN' }
+    } finally {
+      clearTimeout(headersTimer)
     }
-    return { kind: 'UNKNOWN' }
-  } catch {
-    return { kind: 'UNKNOWN' }
-  } finally {
-    clearTimeout(timer)
   }
+  return { kind: 'UNKNOWN' }
 }

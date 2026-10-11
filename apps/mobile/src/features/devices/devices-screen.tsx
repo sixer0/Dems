@@ -41,7 +41,9 @@ import { CameraSearchProvider } from '@/features/capture-selector/use-camera-sea
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
 import { enterRise, rowReveal, useMotionSettings } from '@/motion';
 import { useRuntimeStatus } from '@/runtime';
+import { useRealCaptureView } from './camera-preview';
 import { DeviceDetail } from './device-detail';
+import { SyntheticValuesChip } from './device-status-chip';
 import { DeviceRow } from './device-row';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
@@ -110,12 +112,14 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
   const attention = attentionDevices(statuses);
   // Row 140 (D137 (2)): the devices the Core registered beyond the built-in ids, from its own list.
   const registered = useRegisteredDevices();
+  const realCapture = useRealCaptureView();
 
   const section = (id: DeviceSection, index: number) => {
     const spec = SECTIONS.find((entry) => entry.id === id)!;
     return (
       <Animated.View key={id} entering={enterRise(index + 1, m)}>
-        <SectionCard title={t(spec.titleKey)} testID={`devices-section-${id}`}>
+        {/* Closing pass L-Z (the ONE RULE): the PoE switch, the indicator and the tablet row are values of the simulator's model - marked as that on a Core in its own capture. */}
+        <SectionCard title={t(spec.titleKey)} testID={`devices-section-${id}`} {...(id === 'other' && realCapture ? { action: <SyntheticValuesChip block="other" /> } : {})}>
           <ListGroup variant="transparent">
             {spec.devices.map((deviceId, row) => (
               <Fragment key={deviceId}>

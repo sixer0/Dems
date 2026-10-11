@@ -16,7 +16,7 @@
  */
 import { SessionState } from '@dems/shared/domain'
 import { CoreMode } from '@dems/shared/live'
-import { selectSystemState, useSim, type SimState } from '@dems/shared/sim'
+import { openUnsealableNoticesOf, sealAttentionOf, sealedPackageOf, selectSystemState, useSim, type SimState } from '@dems/shared/sim'
 
 export { selectSystemStateValue } from '@dems/shared/sim'
 
@@ -53,7 +53,28 @@ export const selectRingPrimitives = (s: SimState): RingPrimitives => {
   }
 }
 
-export type ManifestDigestSource = 'package' | 'simulated' | 'pending'
+/**
+ * `package`: the digest is the manifest's own - a bundled DEMO package, or (wave L, G89c-01) a package
+ * THIS CORE holds and read under that digest (`sealedPackage: PRESENT`, the item's own word).
+ * `unreadable`: the Core says the sealed package of the item cannot be read (`NOT_READABLE`).
+ * `simulated`: neither - the item has no media package.
+ */
+/**
+ * Fix wave L (G75d-01, G75d-03; rulings D228 (2), (3)): what the ring must say beyond the system's
+ * flags - primitives, so `useSim` never loops.
+ * `blockedSessionId`: sealing of the open session is BLOCKED (`sealAttentionOf`): no session can be
+ * started, so the ring never reads "READY ... ready for recording".
+ * `openNotices` / `noticeSessionId`: ACTIVE unsealable alerts (`openUnsealableNoticesOf`, the one
+ * fact): a recording sits in quarantine; recording is not blocked.
+ */
+export const selectRingBlockedSession = (s: SimState): string | null => {
+  const attention = sealAttentionOf(s)
+  return attention !== null && attention.kind === 'BLOCKED' ? attention.sessionId : null
+}
+export const selectOpenNoticeCount = (s: SimState): number => openUnsealableNoticesOf(s).length
+export const selectNewestNoticeSession = (s: SimState): string | null => openUnsealableNoticesOf(s)[0]?.sessionId ?? null
+
+export type ManifestDigestSource = 'package' | 'simulated' | 'pending' | 'unreadable'
 
 export interface ManifestDigest {
   /** Lowercase hex SHA-256, or null when the item is unknown. */
@@ -61,12 +82,21 @@ export interface ManifestDigest {
   source: ManifestDigestSource
 }
 
+/** Where the digest of one sealed item comes from, by the item's own members. Pure. */
+export function manifestDigestSourceOf(item: { readonly integritySource?: unknown; readonly sealedPackage?: unknown }): Exclude<ManifestDigestSource, 'pending'> {
+  // Wave L (G89c-01): what THE CORE says of the item's package comes first. A real sealed item is not "no media package".
+  const stated = sealedPackageOf(item)
+  if (stated === 'PRESENT') return 'package'
+  if (stated === 'NOT_READABLE') return 'unreadable'
+  return item.integritySource === 'DEMO_PACKAGE' ? 'package' : 'simulated'
+}
+
 const selectDigest =
   (evidenceId: string | null) =>
   (s: SimState): ManifestDigest => {
     const item = evidenceId ? s.evidence.find((entry) => entry.id === evidenceId) : undefined
     if (!item) return { digest: null, source: 'pending' }
-    return { digest: item.manifestHash, source: item.integritySource === 'DEMO_PACKAGE' ? 'package' : 'simulated' }
+    return { digest: item.manifestHash, source: manifestDigestSourceOf(item) }
   }
 
 /** The manifest digest to show for a sealed evidence item (a flat object of primitives). */
@@ -79,9 +109,10 @@ export function useSealedManifestDigest(evidenceId: string | null): ManifestDige
  * in either mode; a hash that is not the package's says "SIMULATED" in Simulated mode (as before)
  * and "NO MEDIA PACKAGE" in Live mode. Pure.
  */
-export type ManifestSuffixKey = 'common.simulated.chip' | 'dashboard.activeSession.sealed.noPackage'
+export type ManifestSuffixKey = 'common.simulated.chip' | 'dashboard.activeSession.sealed.noPackage' | 'web.dashboard.packageNotReadable'
 
 export function manifestSuffixKey(source: ManifestDigestSource, mode: CoreMode): ManifestSuffixKey | null {
+  if (source === 'unreadable') return 'web.dashboard.packageNotReadable'
   if (source !== 'simulated') return null
   return mode === CoreMode.LIVE ? 'dashboard.activeSession.sealed.noPackage' : 'common.simulated.chip'
 }

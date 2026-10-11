@@ -65,6 +65,7 @@ import {
 } from '../api/transcription';
 import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, type MicInputId, type VideoTrackId } from '../domain';
 import { captureMicLines, micInputOfChannel } from './audio';
+import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
 import { findOperatorById, roleHas } from './auth';
@@ -1644,7 +1645,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
       if (body.reason !== undefined && !isCode(body.reason, 500)) return fail(422, 'INVALID_INPUT', 'reason: At most 500 characters.');
       // D133 (1): any `MIC-NN` is a well-formed input; only one of the two inputs of this session's
       // selector can become the active source (C3 §4 `AUDIO_SOURCE_CONFLICT`).
-      const selectorInputs = session.captureConfig?.mics ?? state.captureConfig.mics;
+      const selectorInputs = selectorOfSession(session, state.captureConfig).mics;
       if (!selectorInputs.some((mic) => mic.inputId === inputId)) {
         return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
       }

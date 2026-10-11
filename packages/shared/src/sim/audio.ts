@@ -18,6 +18,7 @@
  * reload restarts the conversation, which only changes what the meters show.
  */
 import { SessionState, type AudioTrackId, type MicInputId } from '../domain';
+import { micLinesInForce } from './selector-in-force';
 import {
   AUDIO_CLIP_BURST_DBFS,
   AUDIO_CLIP_DBFS,
@@ -58,11 +59,12 @@ export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInpu
 type MicLine = Pick<CaptureConfigMic, 'inputId'>;
 
 /**
- * The microphone lines the meters and the session read: the snapshot of the open session when it
+ * The microphone lines the meters and the session read: the snapshot of the OPEN session when it
  * has one (OD-10: the capture was started with it), else the selector. In input order (D106 (1)).
+ * A SEALED session is closed: its snapshot names nothing any more (`selector-in-force.ts`, G70c-01).
  */
 export function captureMicLines(state: Pick<SimState, 'session' | 'captureConfig'>): readonly CaptureConfigMic[] {
-  return state.session?.captureConfig?.mics ?? state.captureConfig.mics;
+  return micLinesInForce(state);
 }
 
 /**

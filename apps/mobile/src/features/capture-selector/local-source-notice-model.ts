@@ -14,6 +14,7 @@
  *
  * This is a client rule only: the Core does not require the confirmation.
  */
+import { selectorInForce } from '@/features/capture-selector/selector-in-force';
 import { developmentSourceOf } from './capture-notices-model';
 
 /** The device ids the notice names; at least one is not null. */
@@ -100,15 +101,15 @@ export function localSourcesKnown({ devices, selectors, live, link }: LocalSourc
 export interface LocalSourceNoticeState {
   readonly captureDevices: { readonly devices: readonly NoticeDevice[] };
   readonly captureConfig: NoticeSelector;
-  readonly session?: { readonly captureConfig?: NoticeSelector | null } | null;
+  readonly session?: { readonly state?: string | null; readonly captureConfig?: NoticeSelector | null } | null;
 }
 
 export function localSourceNoticeOfState(state: LocalSourceNoticeState, live: boolean): LocalSourceNotice | null {
-  return localSourceNoticeOf({ devices: state.captureDevices.devices, selectors: [state.session?.captureConfig, state.captureConfig], live });
+  return localSourceNoticeOf({ devices: state.captureDevices.devices, selectors: [selectorInForce(state)], live });
 }
 
 export function localSourcesKnownOfState(state: LocalSourceNoticeState, live: boolean, link: string | null): boolean {
-  return localSourcesKnown({ devices: state.captureDevices.devices, selectors: [state.session?.captureConfig, state.captureConfig], live, link });
+  return localSourcesKnown({ devices: state.captureDevices.devices, selectors: [selectorInForce(state)], live, link });
 }
 
 /** The decision as one comparable string for a `useSim` selector (F74-13); `''` = no notice. */

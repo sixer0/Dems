@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Mic, Volume2 } from 'lucide-react'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
 import { captureMicLines, micInputOfChannel, noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
@@ -38,6 +39,7 @@ export function AudioPanel({ paused }: { paused: boolean }) {
   const source = useAudioSource()
   const control = useAudioSourceSwitch(source)
   const intervals = useAudioSourceIntervals(source)
+  const ownCore = useSelfCaptureCore()
   return (
     <Panel
       id="O"
@@ -51,7 +53,8 @@ export function AudioPanel({ paused }: { paused: boolean }) {
       <AudioSilentWarning view={source} control={control} />
       <div className="sm-audio-body" data-active-input={source.activeInputId}>
       {mics.map((mic) => {
-        const name = mic.name
+        // Fix wave L (G75d-06): "Interviewer" / "Subject" are roles of the dataset's microphones; a Core in its own capture names the line only.
+        const name = ownCore ? t(mic.id === 'AUDIO-01' ? 'common.devices.mic1' : 'common.devices.mic2') : mic.name
         return (
           <div
             key={mic.id}

@@ -7,7 +7,7 @@ import '@/navigation/testing/router-harness';
 import { afterEach, describe, expect, it } from '@jest/globals';
 import { render, screen } from '@testing-library/react-native';
 import { en } from '@dems/shared/i18n';
-import { unsealableSentence, type SimAlert } from '@dems/shared/sim';
+import { SEAL_UNSEALABLE_PLAIN_SENTENCE, unsealableSentence, type SimAlert } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { RuntimeTestProviders, createTestSim } from '@/runtime/testing/test-sim';
 import { UnsealableNotice } from './unsealable-notice';
@@ -28,33 +28,45 @@ function mount(alerts: SimAlert[], sessionId: string | null = null) {
 }
 
 describe('the UNSEALABLE state on the Finalizing and the Recovery screen', () => {
+  // Fix wave L (G75d-01, G75d-04; contract_wave_l.md sections 1 and 3) changed two things this file pinned:
+  // the notice is drawn for the session the screen FOLLOWS only (no id = nothing; before: the newest notice of
+  // ANY session), and the sentence is the shared one WITHOUT the code - the code is a detail line of its own.
   it('says that the recording could not be sealed and that its files are in quarantine on the Core, with the cause - politely, with no control', () => {
-    mount([unsealable('NOTHING_SEALABLE')]);
+    mount([unsealable('NOTHING_SEALABLE')], SESSION);
     const notice = screen.getByTestId('session-unsealable');
-    expect(screen.getByText('This recording could not be sealed. Its files were kept in quarantine on the Core. (NOTHING_SEALABLE)')).toBeTruthy();
+    expect(screen.getByText(SEAL_UNSEALABLE_PLAIN_SENTENCE)).toBeTruthy();
+    expect(SEAL_UNSEALABLE_PLAIN_SENTENCE).toBe('This recording could not be sealed. Its files were kept in quarantine on the Core.');
+    expect(screen.getByTestId('session-unsealable-cause')).toHaveTextContent('Cause code: NOTHING_SEALABLE');
+    expect(screen.getByText(`Session ${SESSION}`)).toBeTruthy();
+    // No code as a sentence (G75d-04).
+    expect(screen.queryByText(unsealableSentence('NOTHING_SEALABLE'))).toBeNull();
     expect(en.common.sealUnsealable.notice.replace('{{cause}}', 'NOTHING_SEALABLE')).toBe(unsealableSentence('NOTHING_SEALABLE'));
+    // It does not block recording, and it says who closes it (the seed operator signed in here is no supervisor).
+    expect(screen.getByTestId('session-unsealable-not-blocking')).toHaveTextContent('Recording is not blocked: a new session can be started.');
+    expect(screen.getByTestId('session-unsealable-close')).toHaveTextContent('A supervisor acknowledges this notice to close it.');
     // A state, not an operator error: announced politely, nothing to press.
     expect(notice.props.accessibilityLiveRegion).toBe('polite');
     expect(screen.queryAllByRole('button')).toEqual([]);
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('for a named session it shows that session only; without one, the most recent', () => {
+  it('for a named session it shows that session only; WITHOUT one it shows nothing (never the newest notice of another session)', () => {
     mount([unsealable('NOTHING_SEALABLE', 'SES-20261010-0001', 1), unsealable('MANIFEST_INVALID', SESSION, 2)], 'SES-20261010-0001');
-    expect(screen.getByText(unsealableSentence('NOTHING_SEALABLE'))).toBeTruthy();
+    expect(screen.getByTestId('session-unsealable-cause')).toHaveTextContent('Cause code: NOTHING_SEALABLE');
+    expect(screen.getByText('Session SES-20261010-0001')).toBeTruthy();
     screen.unmount();
     mount([unsealable('NOTHING_SEALABLE', 'SES-20261010-0001', 1), unsealable('MANIFEST_INVALID', SESSION, 2)]);
-    expect(screen.getByText(unsealableSentence('MANIFEST_INVALID'))).toBeTruthy();
+    expect(screen.queryByTestId('session-unsealable')).toBeNull();
   });
 
   it('CONTROL: nothing is drawn without that state - no alert, a resolved alert, another reason, another session', () => {
-    mount([]);
+    mount([], SESSION);
     expect(screen.queryByTestId('session-unsealable')).toBeNull();
     screen.unmount();
-    mount([{ ...unsealable('NOTHING_SEALABLE'), active: false, resolvedAt: 2 }]);
+    mount([{ ...unsealable('NOTHING_SEALABLE'), active: false, resolvedAt: 2 }], SESSION);
     expect(screen.queryByTestId('session-unsealable')).toBeNull();
     screen.unmount();
-    mount([{ ...unsealable('NOTHING_SEALABLE'), params: { reason: 'CAPTURE_DISCOVERY_EMPTY' } }]);
+    mount([{ ...unsealable('NOTHING_SEALABLE'), params: { reason: 'CAPTURE_DISCOVERY_EMPTY' } }], SESSION);
     expect(screen.queryByTestId('session-unsealable')).toBeNull();
     screen.unmount();
     mount([unsealable('NOTHING_SEALABLE')], 'SES-20261010-0001');

@@ -48,6 +48,7 @@ import { CaptureNoticeReason, CaptureUnreachableCause, CaptureUnreachablePhase, 
 import { raiseCaptureWarningTransition } from './capture-telemetry';
 import { isFaultActive } from './derive';
 import { interruptedFactOf } from './evidence';
+import { selectorOfSession } from './selector-in-force';
 import { clearFaultAtKey } from './faults';
 import { addTimelineItem, enterFault } from './session-machine';
 import type { ActiveSession, CaptureConfigCamera, CaptureWarningInput, EpochMs, EvidenceItem, SimState } from './types';
@@ -265,9 +266,9 @@ export function clearCaptureFaultsTransition(state: SimState, now: EpochMs): Sim
 
 // ── The simulator's own capture ────────────────────────────────────────────────────────────────
 
-/** The cameras a session records: its selector snapshot, or the selector when it has none. */
+/** The cameras a session records: its selector snapshot while it is open, or the selector (`selector-in-force.ts`). */
 function sessionCameras(state: SimState, session: ActiveSession): readonly CaptureConfigCamera[] {
-  return session.captureConfig?.cameras ?? state.captureConfig.cameras;
+  return selectorOfSession(session, state.captureConfig).cameras;
 }
 
 /** The cameras of the open session that would not connect now: those with an active `CAMERA_LOSS`. */

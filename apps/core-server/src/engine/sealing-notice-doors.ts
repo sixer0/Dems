@@ -114,9 +114,17 @@ export function noteSealedPlaintextKeptTransition(state: SimState, now: number, 
   };
 }
 
+/**
+ * The longest message the alert of a blocked seal may carry. Closing pass L-Z (G75d-02): 400 before; the message
+ * now names the retry by its screen name, who presses it and where ("... presses "Retry sealing" on the Session
+ * Monitor of the web console, or the Core is restarted."), which the longest cause sentences do not fit under
+ * 400. Still a bound: the message is one of the Core's fixed sentences, never free text (the column is `text`).
+ */
+export const SEAL_BLOCKED_MESSAGE_MAX = 600;
+
 /** One CRITICAL alert for the OPEN session; the same state when it is not the open session or the alert is active. */
 export function raiseSealBlockedTransition(state: SimState, now: number, input: SealBlockedInput): SimState {
-  if (typeof input.sessionId !== 'string' || !SESSION_ID.test(input.sessionId) || !CODE.test(input.cause) || !CODE.test(input.step) || typeof input.message !== 'string' || input.message.length < 1 || input.message.length > 400) invalid('a cause that is no code');
+  if (typeof input.sessionId !== 'string' || !SESSION_ID.test(input.sessionId) || !CODE.test(input.cause) || !CODE.test(input.step) || typeof input.message !== 'string' || input.message.length < 1 || input.message.length > SEAL_BLOCKED_MESSAGE_MAX) invalid('a cause that is no code');
   if (state.session === null || state.session.id !== input.sessionId) return state;
   if (activeNotice(state, SEAL_BLOCKED_REASON, input.sessionId) !== undefined) return state;
   // Fix wave I (G75b-01): a detail outside the closed list is not written (never free text in an alert).

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import type { LucideIcon } from 'lucide-react'
@@ -8,6 +9,13 @@ import { GlowLayer } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, usePanelVariants, type DevicesPanelId } from './motion'
 import { reportDevicesError } from './report'
+
+/**
+ * Fix wave L (G75d-07): the blocks of this page whose values a Core in its own capture replicates from the
+ * appliance model and does not report (PoE switch, relay lamp, tablet link; the front panel; the port map).
+ * Each carries the "Synthetic demo values" chip on such a Core; the simulated lane draws none.
+ */
+const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['other', 'front', 'ports'])
 
 export interface DevicesPanelProps {
   id: DevicesPanelId
@@ -62,6 +70,7 @@ export function DevicesPanel({
             <h2 className="dev-card-title">{title}</h2>
             {subtitle ? <p className="dev-card-subtitle">{subtitle}</p> : null}
           </div>
+          {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
           {action ? <div className="dev-card-action">{action}</div> : null}
         </header>
         <div className={cn('dev-card-body', bodyClassName)}>

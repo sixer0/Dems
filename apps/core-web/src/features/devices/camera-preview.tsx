@@ -1,7 +1,9 @@
 import { useImperativeHandle } from 'react'
 import { VideoOff } from 'lucide-react'
+import { sourceDeviceText } from './own-core-words'
+import { checkedAtOf, sourceLineState } from './source-state'
 import { useTranslation } from 'react-i18next'
-import { useSim } from '@dems/shared/sim'
+import { selectIsRecording, useSim, cameraLinesInForce } from '@dems/shared/sim'
 import { CameraFeed, RecIndicator, type CameraFeedProps } from '@/components/media'
 import { cn } from '@/lib/utils'
 import { useRealCaptureCore, useTrackDevice } from './source-class'
@@ -31,20 +33,28 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
   const { t } = useTranslation()
   // No frame exists, so no snapshot does: the caller's "no image" path, never a made-up picture.
   useImperativeHandle(ref, () => ({ snapshot: () => null }), [])
-  // The selector the open session was created under, else the stored one (the rule of `usePrecheckDevice`).
-  const line = useSim((state) => (state.session?.captureConfig ?? state.captureConfig).cameras.find((camera) => camera.trackId === cameraId))
+  // The selector the OPEN session was created under, else the stored one (`selector-in-force.ts` of the shared package: a sealed session's snapshot names nothing).
+  const line = useSim((state) => cameraLinesInForce(state).find((camera) => camera.trackId === cameraId))
   const device = useTrackDevice(cameraId)
   const track = t(`common.tracks.${cameraId}`)
-  const source = device === undefined ? (line?.deviceId ?? null) : device.model ? `${device.id} · ${device.model}` : device.id
+  // Fix wave L (G75d-06): a generated source is named as generated, never by the dataset's product name.
+  const source = device === undefined ? (line?.deviceId ?? null) : sourceDeviceText(t, device, true)
+  const recording = useSim(selectIsRecording)
   const name = source === null ? track : `${track} · ${source}`
+  // Fix wave L (G70c-02): the word under "No preview" follows the rule of a source line - "Online" was said of sources nobody opened.
+  const reach = line === undefined ? null : sourceLineState({ realCapture: true, recording, online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device) })
   const state =
-    line === undefined
+    line === undefined || reach === null
       ? t('devices.selector.notAssigned')
-      : !line.online
-        ? t('devices.selector.offline')
-        : line.streamState === 'LOST'
-          ? t('devices.selector.stream.LOST')
-          : t('devices.selector.online')
+      : reach.stream === 'LOST'
+        ? t('devices.selector.stream.LOST')
+        : reach.reach === 'NOT_REACHABLE'
+          ? t('common.developmentRoster.notReachable')
+          : reach.reach === 'NOT_CHECKED'
+            ? t('web.source.notChecked')
+            : reach.stream === 'LIVE'
+              ? t('devices.selector.stream.LIVE')
+              : t('common.developmentRoster.reachable')
   const small = variant === 'thumb'
   return (
     <div
@@ -59,10 +69,11 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
         data-testid="camera-no-preview"
         data-camera={cameraId}
         data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : 'ONLINE'}
-        className="absolute inset-0 flex flex-col items-center justify-center gap-1 overflow-hidden rounded-[inherit] px-2 text-center"
+        // Fix wave L (G89c-08): in a Dashboard tile (variant `tile`) the four lines fit the short stage at 1440 x 900 - a small icon and tight lines.
+        className={cn('absolute inset-0 flex flex-col items-center justify-center overflow-hidden rounded-[inherit] px-2 text-center', variant === 'tile' ? 'gap-0' : 'gap-1')}
       >
-        <VideoOff aria-hidden="true" size={small ? 16 : 24} strokeWidth={1.75} />
-        <span className={cn('font-semibold', small ? 'text-[11px] leading-4' : 'text-sm')}>{t('devices.noPreview.title')}</span>
+        <VideoOff aria-hidden="true" size={small || variant === 'tile' ? 14 : 24} strokeWidth={1.75} />
+        <span className={cn('font-semibold', small ? 'text-[11px] leading-4' : variant === 'tile' ? 'text-xs leading-4' : 'text-sm')}>{t('devices.noPreview.title')}</span>
         <span data-part="name" className={cn('max-w-full truncate text-[11px] leading-4', small && 'sr-only')}>
           {name}
         </span>

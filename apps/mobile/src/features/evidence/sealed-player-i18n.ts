@@ -11,4 +11,9 @@ import type { ResourceTree } from '@/i18n/resources';
 
 export const sealedPlayerEn = {
   noSeek: 'A position cannot be chosen: the Core server sent this recording without a seek index. Play and Pause work.',
+  /**
+   * Fix wave L (G94c-03; the web's `web.player.interruptedEnd`, the same meaning): said where the
+   * sealed prefix of an INTERRUPTED recording ends, so an early end is not read as a player fault.
+   */
+  interruptedEnd: 'End of the sealed recording at {{at}}: the recording was interrupted, so it ends here.',
 } as const satisfies ResourceTree;

@@ -39,6 +39,7 @@ import type { MicRole } from '../domain';
 import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
+import { selectorInForce } from './selector-in-force';
 import { cameraClockOffsetSentence, captureFaultSentence } from './capture-fault-wording';
 import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, EpochMs, SimAlert, SimState } from './types';
 import { AuditType, CaptureStreamState } from './vocabulary';
@@ -379,9 +380,9 @@ export interface CaptureSourceReachability {
   otherDeviceId: string | null;
 }
 
-/** The selector the open session was created under, else the stored one (the two are equal while a session is open, OD-10). */
+/** The selector the OPEN session was created under, else the stored one (the two are equal while a session is open, OD-10; a SEALED session's snapshot is not read: `selector-in-force.ts`). */
 function selectorOf(state: SimState): { cameras: readonly Pick<CaptureConfigCamera, 'trackId' | 'deviceId'>[]; mics: readonly Pick<CaptureConfigMic, 'deviceId' | 'role' | 'inputId'>[] } {
-  return { cameras: state.session?.captureConfig?.cameras ?? state.captureConfig.cameras, mics: state.session?.captureConfig?.mics ?? state.captureConfig.mics };
+  return selectorInForce(state);
 }
 
 /**

@@ -189,7 +189,8 @@ export function createActions(context: ActionContext): SimActions {
     inject: (kind, target) => commit((state, now) => injectFaultTransition(state, now, kind, target)),
     clearFault: (kind, target) => commit((state, now) => clearFaultTransition(state, now, kind, target)),
     resetClip: (channel) => commit((state) => resetClipTransition(state, channel)),
-    acknowledgeAlert: (alertId) => commit((state) => acknowledgeAlertTransition(state, alertId)),
+    // Fix wave L (G75d-01): the acknowledgement of the open notice of an unsealable session by a role that may close it resolves it, with its audit row.
+    acknowledgeAlert: (alertId) => commit((state, now) => acknowledgeAlertTransition(state, alertId, now)),
     loadScenario: (name) => commit((state, now) => loadScenarioState(state, name, now)),
     resetDemo: () => commit((state, now) => loadScenarioState(state, 'idle', now, { reset: true })),
 

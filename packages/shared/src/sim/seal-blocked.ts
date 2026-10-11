@@ -27,9 +27,51 @@
  * again", never "the Core was restarted". The fact "resumed at a start of the Core or by the
  * recovery action" is `resumed` of operation 83 `getSealingProgress`, and only that.
  *
- * This file imports types only.
+ * WHO ENDS A BLOCKED SEAL (fix wave L, driver L-S; re-check 75 finding G75d-02; ruling D228 (1)).
+ * The Core runs a failed seal again by itself `SEAL_AUTOMATIC_RETRIES` times in the process that
+ * failed (5 s, 30 s and 120 s after the failure before). After that the seal is BLOCKED and the
+ * Core runs it again ONLY at a start of the Core or when operation 33 `recoverSession` is sent - it
+ * does not watch the cause and does not retry when it heals. Every BLOCKED seal can be retried that
+ * way (a cause no retry gets past is ended UNSEALABLE instead). Operation 33 is for a role that
+ * holds `SEAL_RETRY_PERMISSION`. No contract member was added for this: the two names below state
+ * an existing rule so that a surface can offer the retry to who may send it and say who can.
  */
+import { roleHas } from './auth';
 import type { ActiveSession, EpochMs, SimAlert } from './types';
+import { Permission, type OperatorRole } from './vocabulary';
+
+/** The automatic retries of ONE process after the first failed run of a seal (the Core's `SEAL_RETRY_DEFAULTS.delaysMs.length`; a test of the Core holds the two equal). */
+export const SEAL_AUTOMATIC_RETRIES = 3;
+
+/** The permission of operation 33 `recoverSession`: the on-demand retry of a blocked seal. */
+export const SEAL_RETRY_PERMISSION = Permission.SESSION_START;
+
+/** True when this role may send the retry of a blocked seal (operation 33). */
+export function canRetryBlockedSeal(role: OperatorRole | null | undefined): boolean {
+  return roleHas(role, SEAL_RETRY_PERMISSION);
+}
+
+/**
+ * THE WORDS OF THE RETRY (closing pass L-Z; re-check 75 finding G75d-02, decision 3 of note 155). The
+ * Core's own sentences said "then start recovery for the session" - an action no screen offers under
+ * that name. The control that sends operation 33 for a blocked seal is called "Retry sealing" on the
+ * web console's Session Monitor, and a role with `SEAL_RETRY_PERMISSION` presses it. The Core's alert
+ * and step sentences (`apps/core-server/src/sealing/pipeline/way-out.ts`) and the surfaces print from
+ * these constants, so the Core never names a control by another name than the screen that draws it.
+ */
+export const SEAL_RETRY_CONTROL_NAME = 'Retry sealing';
+
+/** Where the retry is offered and who may press it: the tail of every "what restores the seal" sentence of the Core. */
+export const SEAL_RETRY_HOW_SENTENCE = `an investigator or a supervisor presses "${SEAL_RETRY_CONTROL_NAME}" on the Session Monitor of the web console, or the Core is restarted.`;
+
+/**
+ * What the Core did by itself before it stopped, and that it WAITS now: the end of the failed step's
+ * sentence of a blocked seal (the Core's `sealWaitingNotice`), and the line a device prints under the
+ * Core's alert. `retries`: the automatic retries of the settings in force.
+ */
+export function sealStoppedSentence(retries: number = SEAL_AUTOMATIC_RETRIES): string {
+  return `Sealing stopped after ${retries} automatic ${retries === 1 ? 'retry' : 'retries'}: the Core now waits and does not run it again by itself.`;
+}
 
 /** `params.reason` of the alert of a blocked seal (the Core's `alerts.reason`). */
 export const SEAL_BLOCKED_REASON = 'SEAL_BLOCKED';
@@ -160,7 +202,7 @@ const pendingStep = (id: ActiveSession['finalization']['steps'][number]['id']): 
 /** `session.finalization` of a seal whose first step failed four times: the last sentence the Core wrote on it. */
 export const SEAL_BLOCKED_EXAMPLE_FINALIZATION: ActiveSession['finalization'] = Object.freeze({
   steps: [
-    { id: 'CLOSE_TRACKS', status: 'error', startedAt: EXAMPLE_AT - 155_000, completedAt: null, durationMs: null, progress: 0, etaMs: null, detail: "The Core's key store cannot be used: the seal stopped and can be tried again. Sealing will be tried again when the Core starts, or by the recovery action.", attempt: 4 },
+    { id: 'CLOSE_TRACKS', status: 'error', startedAt: EXAMPLE_AT - 155_000, completedAt: null, durationMs: null, progress: 0, etaMs: null, detail: "The Core's key store cannot be used: the seal stopped and can be tried again. Sealing stopped after 3 automatic retries: the Core now waits and does not run it again by itself.", attempt: 4 },
     pendingStep('FINALIZE_HASHES'),
     pendingStep('FINALIZE_TRANSCRIPT'),
     pendingStep('BUILD_MANIFEST'),
@@ -178,7 +220,7 @@ export const SEAL_BLOCKED_EXAMPLE_ALERT: SimAlert = Object.freeze({
   severity: 'CRITICAL',
   kind: 'SYSTEM',
   message:
-    "Sealing of this session is blocked. The Core's key store cannot be used: the seal stopped and can be tried again. Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then start recovery for the session or restart the Core. The Core records no new session until this one is sealed.",
+    "Sealing of this session is blocked. The Core's key store cannot be used: the seal stopped and can be tried again. Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then retry the seal: an investigator or a supervisor presses \"Retry sealing\" on the Session Monitor of the web console, or the Core is restarted. The Core records no new session until this one is sealed.",
   active: true,
   acknowledged: false,
   resolvedAt: null,

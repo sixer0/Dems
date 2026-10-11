@@ -1,3 +1,4 @@
+import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { useState } from 'react'
 import { Card } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +58,8 @@ export function SystemBanner() {
         <p className="sys-banner-title">
           {view.attention === 0 ? t('system.banner.ok') : t('system.banner.attention', { count: view.attention })}
         </p>
+        {/* Fix wave L (G75d-07): the services list is the appliance model on a Core in its own capture - the banner that counts it says so. */}
+        <SyntheticValuesChip block="system-banner" />
         <p className="sys-banner-detail">
           {t('system.banner.detail', { running: view.running, total: view.total, version: view.version, slot: view.slot })}
         </p>

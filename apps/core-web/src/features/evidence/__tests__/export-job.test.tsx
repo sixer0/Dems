@@ -24,6 +24,7 @@ import { webErrorSink } from '@/runtime'
 import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredArchiveOnCoreOf, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
+import { scriptDetail, type Op40Extra } from './wave-h-c2-bed'
 
 configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 60_000 })
@@ -91,12 +92,15 @@ const asV2 = (item: EvidenceItem): EvidenceItem => ({
 /** The SUPERVISOR exports a Core-sealed item: Reason, Authorise, the Core's verification, Export. `jobs` are the answers of operation 87, in order (the last one repeats). */
 async function exportSealed(
   jobs: readonly (Record<string, unknown> | 404)[],
-  options: { composite?: boolean; accepted?: (evidenceId: string) => { status: number; body: unknown }; job?: boolean } = {},
+  options: { composite?: boolean; accepted?: (evidenceId: string) => { status: number; body: unknown }; job?: boolean; strict?: boolean; detail?: Op40Extra } = {},
 ): Promise<LiveEvidence> {
   let polls = 0
   opened = await openLiveEvidence(`/evidence/${EV.sealed}`, {
+    ...(options.strict === true ? { strict: true } : {}),
     before: (bed) => {
       bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asV2) }
+      // What else the Core states in operation 40 (`access`, `exports`): read at answering time, so a test can change it between two reads.
+      if (options.detail !== undefined) scriptDetail(bed, EV.sealed, { source: 'NONE', packageSuffix: null }, options.detail)
       bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
       bed.fake.answer('verifyEvidence', (call) => ({ status: 200, body: { ...RECORDED_VERIFY_V2.pass.body, evidenceId: call.params.id ?? '', at: bed.fake.clock.now() } as EvidenceVerifyResultBody }))
       bed.fake.answer('exportEvidence', (call) => (options.accepted?.(call.params.id ?? '') ?? { status: 202, body: { exportId: 'EXP-000032', evidenceId: call.params.id ?? '', status: 'QUEUED', archiveOnCore: true } }) as never)
@@ -378,5 +382,75 @@ describe('G94b-06 (fix wave K): the "stored on the Core" sentence follows `archi
     expect(screen.getByTestId('export-job-no-archive')).toHaveTextContent('The Core server states no archive for this export.')
     expect(screen.getByTestId('export-job-no-archive')).toHaveAttribute('data-archive-on-core', 'not-stated')
     expect(screen.queryByTestId('export-job-on-core')).toBeNull()
+  })
+})
+
+// Fix wave L, driver L-W (re-check 94, finding G94c-02): after an export the item read "Status Exported" beside
+// "No finished export of this item." until the page was loaded again - the finished-exports list is part of the ONE
+// answer of operation 40, which the page had read when it opened.
+describe('G94c-02 (wave L): the item is asked again when its export job ends, so the finished-exports list needs no reload', () => {
+  const itemReads = () => opened!.bed.fake.log.requestsOf('getEvidence').length
+
+  it('a job that reaches COMPLETE: operation 40 is read once more, by itself', async () => {
+    await exportSealed([JOB, { ...JOB, status: 'COMPLETE', progressPct: 100, etaMs: 0, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64), completedAt: 1_790_824_600_000 }])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'RUNNING'), POLLS)
+    const whileRunning = itemReads()
+    expect(whileRunning).toBeGreaterThanOrEqual(1)
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    await waitFor(() => expect(itemReads()).toBe(whileRunning + 1), POLLS)
+    // Once per job and end state: no further read follows.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(itemReads()).toBe(whileRunning + 1)
+  })
+
+  it('control: while the job only runs, the item is not asked again', async () => {
+    await exportSealed([JOB])
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'RUNNING'), POLLS)
+    const reads = itemReads()
+    await waitFor(() => expect(jobReads().length).toBeGreaterThanOrEqual(2), POLLS)
+    expect(itemReads()).toBe(reads)
+  })
+})
+
+// Fix wave L, closing pass L-Z (item 4): L-W drove G94c-02 live BEFORE the invalidation was moved under the shared
+// effect helper (`deferEffectStart`, the StrictMode rule of `features/`); after the move it rested on the two cases
+// above, which mount WITHOUT StrictMode. The product renders under StrictMode (`main.tsx`): the effect is set up,
+// cleaned up and set up again, and the helper's clean-up cancels the first start. Held here as the product runs:
+// the refetch still happens (not zero - a cancelled start that is never scheduled again), and once (not twice).
+describe('G94c-02 after the move under `deferEffectStart` (closing pass L-Z): under StrictMode, as `main.tsx` renders', () => {
+  const itemReads = () => opened!.bed.fake.log.requestsOf('getEvidence').length
+  const COMPLETE = { ...JOB, status: 'COMPLETE', progressPct: 100, etaMs: 0, manifestHash: 'ab'.repeat(32), signature: 'cd'.repeat(64), completedAt: 1_790_824_600_000 }
+  const FINISHED = { exportId: 'EXP-000032', jobId: String(JOB.jobId), kind: 'PACKAGE', completedAt: 1_790_824_600_000, exportedBy: 'OPR-002', archiveBytes: 136_096_844 }
+  const ACCESS = { play: true, readTranscript: true, export: true }
+
+  it('a job that reaches COMPLETE: operation 40 is read EXACTLY once more, and the page lists the finished export with no reload', async () => {
+    const detail: Op40Extra = { access: ACCESS, exports: [] }
+    await exportSealed([JOB, COMPLETE], { strict: true, detail })
+    // What the page read when it opened: the Core listed no finished export, so the page draws no entry.
+    expect(screen.queryByTestId(`evidence-export-entry-${FINISHED.jobId}`)).toBeNull()
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'RUNNING'), POLLS)
+    const whileRunning = itemReads()
+    // The Core's next answer of operation 40 lists the export the job finished.
+    detail.exports = [FINISHED]
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'COMPLETE'), POLLS)
+    await waitFor(() => expect(itemReads()).toBe(whileRunning + 1), POLLS)
+    const entry = await screen.findByTestId(`evidence-export-entry-${FINISHED.jobId}`, {}, UI)
+    expect(entry).toHaveAttribute('data-export-id', 'EXP-000032')
+    expect(screen.getByTestId('evidence-exports')).toHaveAttribute('data-count', '1')
+    // ONCE: StrictMode's second set-up of the effect does not ask a second time.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(itemReads()).toBe(whileRunning + 1)
+  })
+
+  it('a job that ends FAILED asks once too; CONTROL - while the job only runs nothing is asked', async () => {
+    await exportSealed([JOB, JOB, { ...JOB, status: 'FAILED', progressPct: 40, etaMs: null, failureReason: 'EXPORT_INTERRUPTED' }], { strict: true })
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'RUNNING'), POLLS)
+    const whileRunning = itemReads()
+    await waitFor(() => expect(jobReads().length).toBeGreaterThanOrEqual(2), POLLS)
+    expect(itemReads()).toBe(whileRunning)
+    await waitFor(() => expect(job()).toHaveAttribute('data-status', 'FAILED'), POLLS)
+    await waitFor(() => expect(itemReads()).toBe(whileRunning + 1), POLLS)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(itemReads()).toBe(whileRunning + 1)
   })
 })

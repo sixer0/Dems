@@ -25,6 +25,9 @@ import { VERIFY_MAX_MANIFEST_BYTES, verifyPackageV2 } from '@dems/shared/evidenc
 import type { SealedAudioInterval, SealedFileFact, SealedItemFacts, SealedTranscriptModel } from '../engine';
 import { corePorts } from '../evidence-verify';
 
+/** A track profile as the item's contract admits it (`EvidenceItemSchema.files[].profile`). */
+const SEALED_PROFILE = /^[A-Za-z0-9_.-]{1,48}$/;
+
 /** What the reader needs of an item: its three anchors. */
 export interface SealedFactsAnchors {
   readonly id: string;
@@ -57,6 +60,8 @@ export async function readSealedItemFacts(packageDir: string, item: SealedFactsA
       fragmentCount: track.fragmentCount ?? manifest.files.find((file) => file.trackId === track.trackId)?.fragments.length ?? 0,
       ...(track.sha256Plain === null ? {} : { sha256Plain: track.sha256Plain }),
       fragmentChainHead: track.fragmentChainHead,
+      // Fix wave L (G89c-04; D229 (3)): the format as the manifest of record states it (field 36). A value outside the item's own pattern is not restated.
+      ...(SEALED_PROFILE.test(track.profile) ? { profile: track.profile } : {}),
     }));
 
     let developmentKey: boolean | null = null;

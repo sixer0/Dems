@@ -29,7 +29,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { formatDate, formatUtcOffset } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { selectClockSecond, useSim, type SimAlert } from '@dems/shared/sim';
+import { SEAL_UNSEALABLE_PLAIN_SENTENCE, isUnsealableAlert, selectClockSecond, useSim, type SimAlert } from '@dems/shared/sim';
 import { fontFamily, palette, toneTextHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { useAuthSession } from '@/auth';
 import { RollingNumber } from '@/components/composed/rolling-number';
@@ -44,6 +44,7 @@ import { useCoreLinkChip } from '@/features/more/use-core-link-chip';
 import { reportRuntimeIssue, useAuth, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { clockText, displaySecondsOfDay, failedStartAlertLabel, type HomeStatus } from './home-model';
 import { HOME_BEATS, homeEnter } from './home-motion';
+import { useCanCloseNotice, useOpenNotices } from '@/features/session-finalizing/open-notice';
 import { useAlertSummary } from './use-home-data';
 
 export interface HomeHeaderProps {
@@ -61,6 +62,8 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
 
   const connectingCameras = useConnectingCameras();
   const connecting = connectingCameras && status.kind === 'RECORDING';
+  // Fix wave L (G75d-01): READY with an open unsealable notice is "OPEN NOTICE" (amber), never plain "READY".
+  const noticed = useOpenNotices().length > 0 && status.kind === 'READY';
   return (
     <Animated.View
       testID="home-header"
@@ -81,8 +84,8 @@ export function HomeHeader({ layoutClass, status }: HomeHeaderProps) {
             className="self-center"
             // Fix wave K (G75c-07; ux 8e.2): before the first durable fragment nothing is recorded - the chip says
             // CONNECTING in a neutral tone, as the System Status card does, never RECORDING.
-            tone={connecting ? 'default' : status.tone}
-            label={connecting ? t('common.session.trackConnecting') : t(`common.systemState.${status.kind}`)}
+            tone={connecting ? 'default' : noticed ? 'warning' : status.tone}
+            label={connecting ? t('common.session.trackConnecting') : noticed ? t('features.session-finalizing.openNotice.chip') : t(`common.systemState.${status.kind}`)}
             icon={null}
             size="sm"
           />
@@ -189,6 +192,12 @@ function AlertsBell() {
   // Pass D7 item 3: the failed start of the open session (the generic sentence needs it; "no camera" is read from the alert).
   const failedStart = useFailedStart();
   const [open, setOpen] = useState(false);
+  // Fix wave L (G75d-01): an open unsealable notice is closed HERE, by the role whose acknowledgement closes it
+  // (operation 70; also when somebody already acknowledged it and it stayed open).
+  const canCloseNotice = useCanCloseNotice();
+  // An open notice somebody acknowledged without closing it still counts on the bell: it is open.
+  const openAcknowledged = useOpenNotices().filter((notice) => notice.acknowledged).length;
+  const shownCount = count + openAcknowledged;
 
   // Fire-and-forget (§7.4; CL-24): nothing reads the result. A refusal or an outage of the Core
   // server is worded by the presenter (AC-C-48: a denial names the role when the operation has one);
@@ -211,17 +220,17 @@ function AlertsBell() {
           size="lg"
           variant="ghost"
           accessibilityLabel={
-            count > 0
-              ? `${t('shell.notifications.button')}, ${t('shell.notifications.count', { count })}`
+            shownCount > 0
+              ? `${t('shell.notifications.button')}, ${t('shell.notifications.count', { count: shownCount })}`
               : t('shell.notifications.button')
           }
           accessibilityHint={t('features.dashboard.header.notificationsHint')}
         >
-          <Bell size={24} color={palette.gold} fill={count > 0 ? palette.gold : 'none'} />
-          {count > 0 ? (
+          <Bell size={24} color={palette.gold} fill={shownCount > 0 ? palette.gold : 'none'} />
+          {shownCount > 0 ? (
             <View pointerEvents="none" style={styles.badge}>
               <Chip testID="home-bell-count" size="sm" color="danger" variant="primary">
-                <Chip.Label>{count > 9 ? '9+' : String(count)}</Chip.Label>
+                <Chip.Label>{shownCount > 9 ? '9+' : String(shownCount)}</Chip.Label>
               </Chip>
             </View>
           ) : null}
@@ -235,23 +244,53 @@ function AlertsBell() {
             {alerts.length === 0 ? (
               <Popover.Description>{t('shell.notifications.empty')}</Popover.Description>
             ) : (
-              alerts.map((alert) => (
-                <View key={alert.id} testID={`home-alert-${alert.id}`} style={styles.alertRow}>
-                  <View style={[styles.alertDot, { backgroundColor: toneTextHex[SEVERITY_TONE[alert.severity]] }]} />
-                  <Text style={styles.alertText} numberOfLines={2}>
-                    {t('features.dashboard.alerts.line', {
-                      // Task 3 row 138 (ux §8e.1): a no-device notice is worded from `params.reason`, with the device's label.
-                      label: failedStartAlertLabel(t, alert, failedStart) ?? captureFaultLine(t, alert) ?? captureNoticeTitle(t, alert) ?? (alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message })),
-                      time: formatDate(alert.at, 'HH:mm:ss'),
-                    })}
-                  </Text>
-                  {!alert.acknowledged ? (
-                    <Button size="sm" variant="ghost" onPress={() => acknowledge(alert.id)}>
-                      <Button.Label>{t('common.actions.acknowledge')}</Button.Label>
-                    </Button>
-                  ) : null}
-                </View>
-              ))
+              alerts.map((alert) => {
+                const unsealable = isUnsealableAlert(alert);
+                const sessionId = alert.params?.['sessionId'];
+                const cause = alert.params?.['cause'];
+                // G75d-01: the open notice of ITS session, without the code as a sentence; the code is a detail.
+                const noticeLabel = unsealable ? t('features.session-finalizing.openNotice.alertLine', { sessionId: typeof sessionId === 'string' ? sessionId : (alert.target ?? ''), sentence: SEAL_UNSEALABLE_PLAIN_SENTENCE }) : null;
+                // The supervisor's acknowledgement closes it - offered while it is open, acknowledged before or not.
+                const closes = unsealable && canCloseNotice;
+                return (
+                  <View key={alert.id} testID={`home-alert-${alert.id}`} style={unsealable ? styles.alertNotice : styles.alertRow}>
+                    <View style={styles.alertRow}>
+                      <View style={[styles.alertDot, { backgroundColor: toneTextHex[unsealable ? 'warning' : SEVERITY_TONE[alert.severity]] }]} />
+                      <Text style={styles.alertText} numberOfLines={unsealable ? 5 : 2}>
+                        {t('features.dashboard.alerts.line', {
+                          // Task 3 row 138 (ux §8e.1): a no-device notice is worded from `params.reason`, with the device's label.
+                          label:
+                            noticeLabel ??
+                            failedStartAlertLabel(t, alert, failedStart) ??
+                            captureFaultLine(t, alert) ??
+                            captureNoticeTitle(t, alert) ??
+                            (alert.kind === 'SYSTEM' ? alert.message : t(`common.faultKind.${alert.kind}`, { defaultValue: alert.message })),
+                          time: formatDate(alert.at, 'HH:mm:ss'),
+                        })}
+                      </Text>
+                      {/* Any other alert: its button beside the line, as before. */}
+                      {!unsealable && !alert.acknowledged ? (
+                        <Button size="sm" variant="ghost" onPress={() => acknowledge(alert.id)} testID={`home-alert-${alert.id}-acknowledge`}>
+                          <Button.Label>{t('common.actions.acknowledge')}</Button.Label>
+                        </Button>
+                      ) : null}
+                    </View>
+                    {unsealable ? (
+                      <Text style={styles.alertDetail} testID={`home-alert-${alert.id}-notice`}>
+                        {[typeof cause === 'string' ? t('features.session-finalizing.openNotice.cause', { cause }) : null, closes ? null : t('features.session-finalizing.openNotice.closeBySupervisor')].filter((part): part is string => part !== null).join(' ')}
+                      </Text>
+                    ) : null}
+                    {/* The notice keeps the whole width for its sentence; its button stands under it. */}
+                    {unsealable && (closes || !alert.acknowledged) ? (
+                      <View style={styles.alertNoticeAction}>
+                        <Button size="sm" variant={closes ? 'outline' : 'ghost'} onPress={() => acknowledge(alert.id)} testID={`home-alert-${alert.id}-acknowledge`}>
+                          <Button.Label>{closes ? t('features.session-finalizing.openNotice.acknowledge') : t('common.actions.acknowledge')}</Button.Label>
+                        </Button>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
             )}
           </View>
           <LinkButton
@@ -353,6 +392,15 @@ const styles = StyleSheet.create({
   badge: { position: 'absolute', top: 2, right: 0 },
   alertList: { gap: 8 },
   alertRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  alertNotice: { gap: 4 },
+  alertNoticeAction: { flexDirection: 'row', justifyContent: 'flex-end' },
+  alertDetail: {
+    paddingLeft: 16,
+    fontFamily: fontFamily.native.normal,
+    fontSize: typography.caption.size,
+    lineHeight: typography.caption.lineHeight,
+    color: palette.gray,
+  },
   alertDot: { width: 8, height: 8, borderRadius: 4 },
   alertText: {
     flex: 1,

@@ -250,7 +250,7 @@ function tracksOf(moov: Uint8Array, header: number): Track[] | null {
 const NON_SYNC = 0x0001_0000;
 
 /** The span of media time one whole `moof` covers, and whether its video starts on a sync sample. Null when it cannot be read. */
-function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[], videoRun?: { samples: number; ticks: number; timescale: number }): FragmentMedia | null {
+function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[]): FragmentMedia | null {
   const top = children(moof, header, moof.length);
   if (top === null) return null;
   let low: number | null = null;
@@ -324,12 +324,6 @@ function mediaOf(moof: Uint8Array, header: number, tracks: readonly Track[], vid
     if (track.video) {
       video = true;
       sync = firstFlags !== null && (firstFlags & NON_SYNC) === 0;
-      // Fix wave K (G89b-01): the video samples of this fragment and the ticks they span, for a caller that measures the frame rate.
-      if (videoRun !== undefined) {
-        videoRun.samples += samples;
-        videoRun.ticks += total;
-        videoRun.timescale = track.timescale;
-      }
     }
   }
   if (low === null) return null;
@@ -535,30 +529,150 @@ export async function videoSampleEntryOf(source: ByteSource): Promise<VideoSampl
   return none(VideoSampleEntryState.NO_INIT_SEGMENT);
 }
 
-// ── What the video stream of a camera file IS (fix wave K, driver S1; re-gate 89 finding G89b-01) ──
+// ── What the video stream of a camera file DECLARES (fix wave K, driver S1; fix 151) ──────────────
 
 /**
- * The picture size and the frame rate of a camera file, READ FROM THE FILE (ruling D222 (2): a
- * manifest states what the stream is, never the profile somebody configured).
+ * The picture size and the frame rate a camera file DECLARES ABOUT ITSELF, read from its init
+ * segment (ruling D222 (2): a manifest states what the stream is, never the profile somebody
+ * configured; controller ruling of 2026-10-11, fix 151: a FORMAT statement is what the stream
+ * declares, never a measured average).
  *   width, height   the first video sample entry of the init segment (`VisualSampleEntry`, ISO/IEC
  *                   14496-12 §12.1.3: two 16-bit members at byte 32 and 34 of the entry box);
- *   frameRate       MEASURED over the first whole fragments of the file: the video samples their
- *                   `trun` boxes list, divided by the time those samples span (`mdhd` timescale).
- *                   Frames per second, rounded to 2 decimals. Null when no fragment could be read
- *                   in the clear - a sealed camera file (its fragments are ciphertext) - or when
- *                   the fragments list no video sample: a rate the Core did not measure is absent.
+ *   frameRate       the NOMINAL rate the video's own parameter set states: for H.264 the timing
+ *                   information of the sequence parameter set held in the `avcC` box of the sample
+ *                   entry (ITU-T H.264 E.1.1 / E.2.1: `time_scale / (2 * num_units_in_tick)`
+ *                   frames per second). Null when the stream states none: no `avcC`, no parameter
+ *                   set in it (`avc3`), a parameter set without timing information, or a codec
+ *                   whose parameter sets this Core does not read (HEVC: open item of fix 151).
+ *
+ * WHY NOT A MEASURE (fix 151). Wave K measured samples / the time they span over the first
+ * fragments. The first video sample of a camera file is HELD from file time 0 to the first keyframe
+ * the worker could place (capture spec §C.4; the muxer writes it with its own duration plus the
+ * hold), so that quotient was always below the rate of the stream: `EV-20261011-0025` was sealed
+ * as `H264_720P27.67` / `H264_720P26` from two 30-per-second streams held 1.572 s and 3.121 s. And
+ * a rate delivered under load is a fact about the delivery, not the format. Nothing here reads a
+ * fragment any more: the answer is the same for a recording file and for a sealed one.
  */
 export interface VideoStreamFormat {
   readonly width: number;
   readonly height: number;
+  /** Frames per second as the stream's parameter set states them (may be a fraction: 30000 / 1001); null when it states none. */
   readonly frameRate: number | null;
 }
 
-/** How many whole fragments the frame rate is measured over, at most (about 8 s of a 1 s cadence). */
-export const VIDEO_FRAME_RATE_FRAGMENTS = 8;
+/** A parameter set longer than this is not read (a real one is some tens of bytes). */
+const PARAMETER_SET_READ_LIMIT = 4096;
 
-/** Width and height of the first video sample entry of a `moov` held in memory, or null. */
-function videoPictureSizeIn(moov: Uint8Array, header: number): { width: number; height: number } | null {
+/**
+ * The frame rate an H.264 sequence parameter set states (`vui_parameters`, `timing_info_present_flag`),
+ * or null when it states none or cannot be read to that point. `nal` is the NAL unit as `avcC`
+ * holds it (header byte first, emulation prevention bytes still in).
+ */
+function avcDeclaredFrameRate(nal: Uint8Array): number | null {
+  if (nal.length < 4 || nal.length > PARAMETER_SET_READ_LIMIT || ((nal[0] ?? 0) & 0x1f) !== 7) return null;
+  // The payload without the emulation prevention bytes (00 00 03 -> 00 00).
+  const rbsp: number[] = [];
+  for (let index = 1; index < nal.length; index += 1) {
+    if (index + 2 < nal.length && nal[index] === 0 && nal[index + 1] === 0 && nal[index + 2] === 3) {
+      rbsp.push(0, 0);
+      index += 2;
+    } else rbsp.push(nal[index] ?? 0);
+  }
+  const bits = rbsp.length * 8;
+  let at = 0;
+  let overrun = false;
+  const u = (count: number): number => {
+    let value = 0;
+    for (let bit = 0; bit < count; bit += 1) {
+      if (at >= bits) {
+        overrun = true;
+        return 0;
+      }
+      value = value * 2 + (((rbsp[at >> 3] ?? 0) >> (7 - (at & 7))) & 1);
+      at += 1;
+    }
+    return value;
+  };
+  const ue = (): number => {
+    let zeros = 0;
+    while (u(1) === 0) {
+      if (overrun || zeros >= 31) {
+        overrun = true;
+        return 0;
+      }
+      zeros += 1;
+    }
+    return 2 ** zeros - 1 + u(zeros);
+  };
+  const se = (): number => {
+    const code = ue();
+    return code % 2 === 1 ? (code + 1) / 2 : -(code / 2);
+  };
+  const profile = u(8);
+  u(16); // constraint flags, level
+  ue(); // seq_parameter_set_id
+  if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(profile)) {
+    const chroma = ue();
+    if (chroma === 3) u(1);
+    ue();
+    ue();
+    u(1);
+    if (u(1) === 1) {
+      // seq_scaling_matrix_present_flag: the lists are walked, not kept.
+      for (let list = 0; list < (chroma === 3 ? 12 : 8); list += 1) {
+        if (u(1) === 0) continue;
+        let last = 8;
+        let next = 8;
+        for (let entry = 0; entry < (list < 6 ? 16 : 64) && !overrun; entry += 1) {
+          if (next !== 0) next = (last + se() + 256) % 256;
+          last = next === 0 ? last : next;
+        }
+      }
+    }
+  }
+  ue(); // log2_max_frame_num_minus4
+  const order = ue();
+  if (order === 0) ue();
+  else if (order === 1) {
+    u(1);
+    se();
+    se();
+    const cycle = ue();
+    if (cycle > 255) return null;
+    for (let entry = 0; entry < cycle && !overrun; entry += 1) se();
+  }
+  ue(); // max_num_ref_frames
+  u(1);
+  ue(); // pic_width_in_mbs_minus1
+  ue(); // pic_height_in_map_units_minus1
+  if (u(1) === 0) u(1); // frame_mbs_only_flag, mb_adaptive_frame_field_flag
+  u(1);
+  if (u(1) === 1) {
+    ue();
+    ue();
+    ue();
+    ue();
+  }
+  if (u(1) === 0 || overrun) return null; // vui_parameters_present_flag
+  if (u(1) === 1 && u(8) === 255) u(32); // aspect ratio
+  if (u(1) === 1) u(1); // overscan
+  if (u(1) === 1) {
+    u(4);
+    if (u(1) === 1) u(24);
+  }
+  if (u(1) === 1) {
+    ue();
+    ue();
+  }
+  if (u(1) === 0 || overrun) return null; // timing_info_present_flag
+  const unitsInTick = u(32);
+  const timeScale = u(32);
+  if (overrun || unitsInTick === 0 || timeScale === 0) return null;
+  return timeScale / (2 * unitsInTick);
+}
+
+/** Width, height and declared frame rate of the first video sample entry of a `moov` held in memory, or null. */
+function videoFormatIn(moov: Uint8Array, header: number): VideoStreamFormat | null {
   const child = (from: number, to: number, type: string): readonly [number, number] | null => {
     const found = (children(moov, from, to) ?? []).find(([name]) => name === type);
     return found === undefined ? null : [found[1], found[2]];
@@ -577,46 +691,44 @@ function videoPictureSizeIn(moov: Uint8Array, header: number): { width: number; 
     if (first + 36 > stsd[1] || be32(moov, stsd[0] + 4) < 1) return null;
     const width = ((moov[first + 32] ?? 0) << 8) + (moov[first + 33] ?? 0);
     const height = ((moov[first + 34] ?? 0) << 8) + (moov[first + 35] ?? 0);
-    return width > 0 && height > 0 ? { width, height } : null;
+    if (width <= 0 || height <= 0) return null;
+    // The boxes of the entry follow its 78 fixed bytes (`VisualSampleEntry`). `avcC`: version, profile,
+    // compatibility, level, NAL length size, then the count of sequence parameter sets (5 bits) and
+    // each as a 16-bit length and the NAL unit. The FIRST one is read.
+    let frameRate: number | null = null;
+    const entrySize = be32(moov, first);
+    const entryEnd = first + entrySize;
+    if (entrySize >= HEADER + 78 && entryEnd <= stsd[1]) {
+      const avcC = child(first + HEADER + 78, entryEnd, 'avcC');
+      if (avcC !== null && avcC[0] + 8 <= avcC[1] && ((moov[avcC[0] + 5] ?? 0) & 0x1f) >= 1) {
+        const length = ((moov[avcC[0] + 6] ?? 0) << 8) + (moov[avcC[0] + 7] ?? 0);
+        if (avcC[0] + 8 + length <= avcC[1]) frameRate = avcDeclaredFrameRate(moov.subarray(avcC[0] + 8, avcC[0] + 8 + length));
+      }
+    }
+    return { width, height, frameRate };
   }
   return null;
 }
 
 /**
- * The video stream format of a camera file, or null when its init segment is not whole or names no
- * video picture size. Reads box headers, the `moov` and at most `VIDEO_FRAME_RATE_FRAGMENTS` `moof`
- * boxes: no media byte, no key. Decides nothing.
+ * The video stream format a camera file declares, or null when its init segment is not whole or
+ * names no video picture size. Reads the top-level box headers up to the `moov` and the `moov`
+ * itself: no fragment, no media byte, no key. Decides nothing.
  */
-export async function videoStreamFormatOf(source: ByteSource, maxFragments: number = VIDEO_FRAME_RATE_FRAGMENTS): Promise<VideoStreamFormat | null> {
-  let size: { width: number; height: number } | null = null;
-  let tracks: Track[] | null = null;
-  const run = { samples: 0, ticks: 0, timescale: 0 };
-  let fragments = 0;
+export async function videoStreamFormatOf(source: ByteSource): Promise<VideoStreamFormat | null> {
   for (let at = 0; at < source.size; ) {
     const result = await boxHead(source, at);
-    if ('reason' in result) break;
-    const { type, size: boxSize, header } = result.head;
-    if (type === 'moov' && size === null) {
-      if (boxSize > MOOF_READ_LIMIT) return null;
-      const moov = await source.read(at, boxSize);
-      if (moov.length !== boxSize) return null;
-      size = videoPictureSizeIn(moov, header);
-      tracks = tracksOf(moov, header);
-      if (size === null) return null;
-    } else if (type === 'moof') {
-      // A fragment before the init segment, or tracks that cannot be read: nothing more can be measured.
-      if (size === null || tracks === null || fragments >= maxFragments || boxSize > MOOF_READ_LIMIT) break;
-      const moof = await source.read(at, boxSize);
-      if (moof.length !== boxSize) break;
-      // A `moof` that is not one (ciphertext under the name) does not parse: the measure ends there.
-      if (mediaOf(moof, header, tracks, run) === null) break;
-      fragments += 1;
+    if ('reason' in result || result.head.type === 'moof' || result.head.type === 'mdat') return null;
+    if (result.head.type !== 'moov') {
+      at += result.head.size;
+      continue;
     }
-    at += boxSize;
+    if (result.head.size > MOOF_READ_LIMIT) return null;
+    const moov = await source.read(at, result.head.size);
+    if (moov.length !== result.head.size) return null;
+    return videoFormatIn(moov, result.head.header);
   }
-  if (size === null) return null;
-  const frameRate = run.samples > 0 && run.ticks > 0 && run.timescale > 0 ? Math.round(((run.samples * run.timescale) / run.ticks) * 100) / 100 : null;
-  return { width: size.width, height: size.height, frameRate };
+  return null;
 }
 
 // ── Against what was recorded ──────────────────────────────────────────────────────────────────

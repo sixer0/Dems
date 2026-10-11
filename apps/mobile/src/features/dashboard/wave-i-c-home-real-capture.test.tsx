@@ -131,7 +131,8 @@ describe('Home microphone state in REAL capture: what the Core reported for the 
     bed.mount(<DashboardScreen />, 'tabletLandscape');
     await bed.signIn();
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, Not reachable');
-    expect(label('home-device-AUDIO-02')).toBe('MIC 2, Reachable');
+    // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
+    expect(label('home-device-AUDIO-02')).toBe('MIC 2, Not checked');
     expect(label('home-device-AUDIO-01-state-chip')).toBe('Not reachable');
   });
 
@@ -152,7 +153,7 @@ describe('Home microphone state in REAL capture: what the Core reported for the 
     // MIC-01 (reachable) is on no line any more: the tile of line 1 says what the Core reported for MIC-03.
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, Not found');
     expect(textOf('home-device-AUDIO-01-source-kind')).toBe("Core Mac's microphone");
-    expect(label('home-device-AUDIO-02')).toBe('MIC 2, Reachable');
+    expect(label('home-device-AUDIO-02')).toBe('MIC 2, Not checked');
     // The Core says the microphone is there and open: "On" (the badge beside it carries the fixed sentence).
     await bed.pushState(marked(bed.state, { 'MIC-03': { online: true, sourceOpen: true } }));
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, On');

@@ -94,7 +94,8 @@ describe('Devices & Inputs lists the devices of the Core\'s list beyond the buil
     expect(screen.getByTestId('registered-device-source-MIC-03-kind')).toHaveTextContent(SOURCE.microphone);
     expect(screen.getByTestId('registered-device-name-CAM-04')).toHaveTextContent('Camera CAM-04');
     expect(screen.queryByTestId('registered-device-source-CAM-04')).toBeNull();
-    expect(screen.getByTestId('registered-device-state-CAM-03')).toHaveTextContent('Ready');
+    // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
+    expect(screen.getByTestId('registered-device-state-CAM-03')).toHaveTextContent('Not checked');
     // The shared slice carries no `sourceOpen` yet: nothing is drawn. Then the Core says the microphone is open.
     expect(screen.queryByTestId('registered-device-on-MIC-03')).toBeNull();
     patchDevice(engine, 'MIC-03', { sourceOpen: true });
@@ -132,7 +133,7 @@ describe('"View device" of a registered device (the detail pane / screen)', () =
     expect(screen.queryByTestId('device-detail-missing')).toBeNull();
     expect(screen.getAllByText(SOURCE.microphone).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId('registered-detail-source-chip')).toHaveTextContent(SOURCE.badge);
-    expect(screen.getByTestId('registered-detail-state')).toHaveTextContent('Ready');
+    expect(screen.getByTestId('registered-detail-state')).toHaveTextContent('Not checked');
     expect(screen.getByTestId('registered-detail-rate')).toHaveTextContent(R.rateAtLimit.title, { exact: false });
     expect(screen.getByTestId('registered-detail-limits')).toHaveTextContent(R.limits.localMicrophone, { exact: false });
     expect(screen.getByText(R.source.LOCAL_DEVICE)).toBeTruthy();

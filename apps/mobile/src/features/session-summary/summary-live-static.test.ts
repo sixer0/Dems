@@ -65,6 +65,9 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
       'session-finalizing/handover.ts',
       'session-finalizing/i18n.ts',
       'session-finalizing/interrupted-seal.tsx',
+      // Fix wave L, driver L-M (G75d-01; decision 4 of note 155): the open UNSEALABLE notice as Home reads it (`openUnsealableNoticesOf`;
+      // reads the store only). The file was added by L-M; this list was moved by the closing pass L-Z (the whole suite showed it stale).
+      'session-finalizing/open-notice.ts',
       // Fix wave I (G75b-02): the notice of a seal the Core retries or that is blocked (reads the store only).
       'session-finalizing/seal-attention.tsx',
       'session-finalizing/sealed-stamp.tsx',

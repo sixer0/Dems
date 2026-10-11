@@ -57,7 +57,7 @@ export const sealingModule: FastifyPluginAsync = async (app) => {
       if (session.finalization.startedAt === null) {
         throw new ApiFailure(409, 'INVALID_STATE', `Sealing has not started for session ${session.id}.`, { details: { simCode: 'ILLEGAL_STATE', from: session.state, event: 'getSealingProgress' } });
       }
-      // Fix wave I (G75b-02): `resumed` is the sealing host's fact in real capture (a start of the Core or the recovery action ran the seal again), never the attempt count.
+      // Fix wave I (G75b-02), fix wave L (G75d-09 (a)): `resumed` is the sealing host's fact in real capture (a START of the Core ran the seal again), never the attempt count and never the retry on demand.
       return sealingProgressOf(session, app.clock.now(), sealingHost(app).resumedSeal(session.id));
     },
   });

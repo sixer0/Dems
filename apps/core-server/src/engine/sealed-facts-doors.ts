@@ -53,6 +53,8 @@ export interface SealedFileFact {
   readonly fragmentCount: number;
   readonly sha256Plain?: string;
   readonly fragmentChainHead?: string | null;
+  /** Fix wave L (G89c-04): the SIGNED manifest's `tracks[].profile` of the file (field 36). */
+  readonly profile?: string;
 }
 
 /** The model of a sealed transcript as the item carries it (`EvidenceItemSchema.transcriptModel`; operation 41's shape). */

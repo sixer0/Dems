@@ -24,6 +24,7 @@
  * on", which is therefore not written a second time), else the roster's words (`rosterDeviceState`: Ready / Reachable / Not reachable
  * / a named cause). Nothing here says LIVE, DEMO or simulated.
  */
+import { selectorInForce } from '@/features/capture-selector/selector-in-force';
 import { Image } from 'expo-image';
 import { ImageOff, Mic } from 'lucide-react-native';
 import type { ReactNode } from 'react';
@@ -34,7 +35,7 @@ import { derived, fontFamily, palette, radius, spacing, typography } from '@dems
 import { CameraFeed, type CameraFeedProps } from '@/components/media';
 import { captureNoticesOf, developmentSourceOf } from '@/features/capture-selector/capture-notices-model';
 import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
-import { rosterDeviceName, rosterDeviceState, rosterStateLabelKey, sourceOnKeyOf } from './registered-devices-model';
+import { rosterDeviceName, rosterDeviceState, sourceChecked, sourceOnKeyOf, sourceStateLabelKey } from './registered-devices-model';
 
 type PreviewDevices = readonly { readonly sourceClass?: string | null | undefined }[];
 
@@ -70,15 +71,17 @@ export interface NoPreviewFacts {
   readonly adapter: string | null;
   readonly online: boolean;
   readonly sourceOpen: boolean;
+  /** Wave L ruling (G70c-02): the Core holds a checked fact of the camera (`checkedAt` stated, or a session records on its line). */
+  readonly checked: boolean;
   /** The named cause of the device's active "not reachable" notice, or null. */
   readonly cause: string | null;
 }
 
 export function noPreviewFactsOf(state: PreviewState, trackId: PreviewTrackId): NoPreviewFacts {
-  const selector = state.session?.captureConfig ?? state.captureConfig;
+  const selector = selectorInForce(state);
   const deviceId = selector.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null;
   const device = deviceId === null ? undefined : state.captureDevices.devices.find((candidate) => candidate.id === deviceId);
-  if (device === undefined) return { deviceId: null, sourceClass: null, adapter: null, online: false, sourceOpen: false, cause: null };
+  if (device === undefined) return { deviceId: null, sourceClass: null, adapter: null, online: false, sourceOpen: false, checked: false, cause: null };
   const notice = captureNoticesOf(state.alerts).find((entry) => entry.kind === 'unreachable' && entry.deviceId === device.id);
   return {
     deviceId: device.id,
@@ -86,6 +89,8 @@ export function noPreviewFactsOf(state: PreviewState, trackId: PreviewTrackId): 
     adapter: device.adapter ?? null,
     online: device.online,
     sourceOpen: device.sourceOpen === true,
+    // The tile is of a camera ON a line: while a session records, the recording's telemetry is the checked fact.
+    checked: sourceChecked({ checkedAt: (device as { readonly checkedAt?: unknown }).checkedAt, sourceOpen: device.sourceOpen, recording: state.session?.state === 'RECORDING' }),
     cause: notice !== undefined && notice.kind === 'unreachable' ? notice.cause : null,
   };
 }
@@ -98,7 +103,7 @@ export function noPreviewWords(t: Translate, facts: NoPreviewFacts, live: boolea
   const source = developmentSourceOf({ sourceClass: facts.sourceClass ?? undefined, adapter: facts.adapter ?? undefined, deviceKind: 'CAMERA', live });
   const device = rosterDeviceName(t, { id: facts.deviceId, kind: 'CAMERA', sourceClass: facts.sourceClass, adapter: facts.adapter }, live);
   const onKey = sourceOnKeyOf({ sourceClass: facts.sourceClass, adapter: facts.adapter, deviceKind: 'CAMERA', sourceOpen: facts.sourceOpen }, live);
-  const state = onKey !== null ? t('features.capture-selector.preview.on') : t(rosterStateLabelKey(rosterDeviceState(facts), source === 'localCamera'));
+  const state = onKey !== null ? t('features.capture-selector.preview.on') : t(sourceStateLabelKey(rosterDeviceState(facts), source === 'localCamera', facts.checked));
   return { device, state };
 }
 

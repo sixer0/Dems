@@ -800,6 +800,12 @@ export const EvidenceItemSchema = z
           // producer that still writes the SH-07 preview shape keeps parsing.
           sha256Plain: sha256().optional().describe('SHA-256 of the plaintext bytes (stored-bytes vs plaintext: both hashes verify).'),
           fragmentChainHead: sha256().nullable().optional().describe('Head of this file\'s per-fragment hash chain (`dbc-3 §B.12`).'),
+          // Fix wave L, driver L-S (re-check 89 finding G89c-04; ruling D229 (3)): the format of the track AS SIGNED.
+          profile: z
+            .string()
+            .regex(/^[A-Za-z0-9_.-]{1,48}$/)
+            .optional()
+            .describe('Core server only, with `sealedPackage: PRESENT`: the SIGNED manifest\'s `tracks[].profile` of this file (manifest field 36), e.g. `H264_720P30` - the format the recorded stream declares, not the session\'s `profileId`. Absent: not stated (no sealed manifest was read).'),
         }),
       )
       .optional()
@@ -842,6 +848,22 @@ export const EvidenceItemSchema = z
       .nullable()
       .optional()
       .describe('Core server only, with `interrupted: true`: the code the item\'s custody entry `RECORDING_INTERRUPTED` names (a fault kind), or null when it names none.'),
+    // Fix wave L, driver L-S (re-check 89 finding G89c-04; ruling D229 (3)): the notice of a session whose recorded stream was not the configured profile, on the item of operation 40.
+    streamProfileNotice: z
+      .strictObject({
+        tracks: z
+          .array(
+            z.strictObject({
+              trackId: z.enum(['VIDEO-01', 'VIDEO-02']),
+              stream: z.string().regex(/^[A-Za-z0-9_.-]{1,48}$/).describe('What the recorded stream declared: the value the manifest states.'),
+              configured: z.string().regex(/^[A-Za-z0-9_.-]{1,48}$/).describe('What the selector had configured for the track.'),
+            }),
+          )
+          .min(1)
+          .max(2),
+      })
+      .optional()
+      .describe('Core server only, operation 40: the session of this item carries the notice `STREAM_PROFILE_DIFFERS` (an alert of kind SYSTEM with that `params.reason`) - the recorded stream of the named tracks was not the configured profile, and the manifest states the stream. Present while the Core\'s alert list holds that notice. ABSENT: the Core holds no such notice for the session - never to be read as "compared and equal" for an item older than the alert list.'),
     // Fix wave K, driver S2 (re-gate 81 finding G81b-06; decision D160): the model of the sealed transcript ON THE ITEM,
     // so that a client can say which model made a transcript without running a verification. The shape of operation 41's member.
     transcriptModel: EvidenceTranscriptModelSchema.optional().describe(

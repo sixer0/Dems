@@ -581,6 +581,26 @@
 /* Only where the block is drawn (a session of the Core's own capture): the simulated lane's card is untouched. */
 .sm-integrity-body:has(.sm-checkpoints) { overflow-y: auto; }
 .sm-integrity-body:has(.sm-checkpoints) .sm-integrity-rows { flex-shrink: 0; }
+/* Fix wave L (G89c-07): the cue of a card body that holds more than it shows. It stays at the lower edge while the body scrolls. */
+.sm-scroll-cue {
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 16px;
+  margin: 0 -2px -2px;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  /* An opaque strip of the card's own colour: the cue is never drawn over a row's text. */
+  background: #17100a;
+  border-top: 1px solid var(--sm-hairline);
+  pointer-events: none;
+}
 
 .sm-check[data-status='fail'] .sm-check-value { color: #f87171; }
 .sm-check[data-status='warn'] .sm-check-value { color: #fbbf24; }
@@ -1407,4 +1427,26 @@
 :root[data-motion='reduced'] .sm-ring .progress-circle__fill-circle,
 :root[data-motion='reduced'] .sm-final-progress .progress-bar__fill {
   transition: none;
+}
+
+/* Fix wave L (G75d-02): the retry of a blocked seal - on the banner (one line and the button) and in the seal dialog. */
+.sm-seal-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.sm-seal-retry-text {
+  font-size: 12px;
+  line-height: 1.3;
+  max-width: 34ch;
+  text-align: right;
+}
+.sm-seal-retry-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
 }

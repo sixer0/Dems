@@ -61,7 +61,8 @@ export function NetworkTimeBanner() {
         </p>
         <p className="nt-banner-detail">
           {view.hostClock
-            ? t('web.ownCore.time.bannerDetail', { ip: view.ip })
+            ? // Fix wave L (G75d-07): the address is the appliance model's; the banner of a Core on its host clock does not print it.
+              t('web.waveL.networkBannerDetail')
             : t('networkTime.bannerState.detail', { source: view.source, stratum: view.stratum, ip: view.ip })}
         </p>
       </div>

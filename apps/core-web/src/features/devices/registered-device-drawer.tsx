@@ -1,11 +1,12 @@
 import { Chip, Drawer } from '@heroui/react'
 import { Camera, Mic } from 'lucide-react'
+import { isGeneratedSource } from './own-core-words'
 import { useTranslation } from 'react-i18next'
 import { LOCAL_STATE_VIEW, localStateSentenceKey } from './capture-inputs'
 import { RateAtLimitWarning } from './registered-devices'
-import { ROSTER_SLOT_KEY, rosterCardName, rosterLimitKey, rosterSourceKey, useRosterCard, type RosterCard } from './registered-devices-model'
+import { ROSTER_SLOT_KEY, rosterCardName, rosterLimitKey, rosterSourceKey, rosterStateNotChecked, useRosterCard, type RosterCard } from './registered-devices-model'
 import { DeviceSourceBadge, LocalSourceOn } from './source-badge'
-import { useRealCapture } from './source-class'
+import { useRealCapture, useRealCaptureCore } from './source-class'
 
 export interface RegisteredDeviceDrawerProps {
   /** The registered device to show, or null: closed. An id the Core's list does not hold shows nothing. */
@@ -48,6 +49,9 @@ export function RegisteredDeviceDrawer({ deviceId, onClose }: RegisteredDeviceDr
 function Content({ card, name, realCapture }: { card: RosterCard; name: string; realCapture: boolean }) {
   const { t } = useTranslation()
   const view = LOCAL_STATE_VIEW[card.state]
+  // Fix wave L (G70c-02, G75d-06): the state only when checked; the model of a generated source is the dataset's, not a fact.
+  const realCaptureCore = useRealCaptureCore()
+  const notChecked = rosterStateNotChecked(card, realCaptureCore)
   const sentenceKey = card.local ? localStateSentenceKey(card.state, card.kind) : null
   const limitKey = rosterLimitKey(card, realCapture)
   const Icon = card.kind === 'CAMERA' ? Camera : Mic
@@ -66,8 +70,8 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
           <DeviceSourceBadge device={device} testId="source-badge-registered-drawer" />
           <LocalSourceOn device={device} place="registered-drawer" />
         </div>
-        <Chip size="sm" variant="soft" color={view.tone} data-testid="registered-drawer-state">
-          <Chip.Label>{t(view.chip)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={notChecked ? 'default' : view.tone} data-testid="registered-drawer-state" data-checked={notChecked ? 'false' : undefined}>
+          <Chip.Label title={notChecked ? t('web.waveL.state.notCheckedHint') : undefined}>{notChecked ? t('web.waveL.state.notChecked') : t(view.chip)}</Chip.Label>
         </Chip>
         <Drawer.CloseTrigger aria-label={t('common.actions.close')} />
       </Drawer.Header>
@@ -83,11 +87,15 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
           <Fact label={t('common.developmentRoster.field.kind')} value={t(card.kind === 'CAMERA' ? 'common.developmentRoster.kind.CAMERA' : 'common.developmentRoster.kind.MIC')} />
           <Fact label={t('common.developmentRoster.field.source')} value={t(rosterSourceKey(device.adapter))} />
           {/* The model is what the device announced: shown as text in one line, never as the name. */}
-          <Fact label={t('common.developmentRoster.field.model')} value={device.model ?? t('common.developmentRoster.modelUnknown')} untrusted />
+          {realCaptureCore && isGeneratedSource(device) ? (
+            <Fact label={t('common.developmentRoster.field.model')} value={t('web.waveL.source.generatedCamera')} />
+          ) : (
+            <Fact label={t('common.developmentRoster.field.model')} value={device.model ?? t('common.developmentRoster.modelUnknown')} untrusted />
+          )}
           {/* A local device has no address; a network camera's is the host the Core sent. */}
           {card.local || device.host === null ? null : <Fact label={t('common.developmentRoster.field.address')} value={device.host} untrusted />}
           <Fact label={t('common.developmentRoster.field.usedAs')} value={card.slot === null ? t('common.developmentRoster.usedAs.NONE') : t(ROSTER_SLOT_KEY[card.slot])} />
-          {device.streamState === null ? null : <Fact label={t('common.developmentRoster.field.stream')} value={device.streamState} />}
+          {device.streamState === null || notChecked ? null : <Fact label={t('common.developmentRoster.field.stream')} value={device.streamState} />}
         </dl>
         {limitKey === null ? null : (
           <section className="dev-roster-limits" data-testid="registered-drawer-limits" aria-label={t('common.developmentRoster.limits.title')}>

@@ -10,6 +10,7 @@ import { useAuditLog } from './audit-context'
 import { Feed, type FeedItem } from './feed'
 import { isTamperRow, newestMatching } from './model'
 import { Panel } from './panel'
+import { coreVerifyOutcomes } from './core-verify-rows'
 import { packageIntegrity } from './sim-adapter'
 import { SEVERITY_TONE, toneClass } from './tones'
 import { useNewestArrival, useStableRows } from './use-newest'
@@ -33,7 +34,10 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
   const { rows } = useAuditLog()
   const enclosureOpen = useSim((s) => s.security.tamper)
   // Fix wave K (C-2 / G75c-04): a Core in its own capture has no enclosure switch to read; "Closed" is the device model's constant. A raised tamper fault is a fact of the state and stays.
-  const enclosureNotReported = useSelfCaptureCore() && !enclosureOpen
+  const selfCapture = useSelfCaptureCore()
+  const enclosureNotReported = selfCapture && !enclosureOpen
+  // Fix wave L (G89c-02): on a Core in its own capture the third tile is the Core's OWN verify rows, never the bundled demonstration index.
+  const verified = useMemo(() => (selfCapture ? coreVerifyOutcomes(rows) : null), [rows, selfCapture])
   const evidence = useSim((s) => s.evidence)
   const integrity = useMemo(() => packageIntegrity(evidence), [evidence])
   const recent = useStableRows(useMemo(() => newestMatching(rows, isTamperRow, FEED_SIZE), [rows]))
@@ -65,14 +69,44 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
             {chainOk ? t('securityAudit.tamper.intact') : t('securityAudit.tamper.broken')}
           </span>
         </div>
-        <div className={cn('sa-kpi', integrity.fail > 0 ? 'sa-tone-danger' : 'sa-tone-success')} data-testid="tamper-packages">
-          <span className="sa-stat-label">{t('securityAudit.tamper.packages')}</span>
-          <span className="sa-kpi-value" data-tone>
-            {t('securityAudit.tamper.packagesSummary', { pass: integrity.pass, fail: integrity.fail })}
-          </span>
-        </div>
+        {verified !== null ? (
+          <div
+            className={cn('sa-kpi', verified.fail > 0 ? 'sa-tone-danger' : verified.pass > 0 ? 'sa-tone-success' : 'sa-tone-default')}
+            data-testid="tamper-packages"
+            data-source="core-verify-rows"
+            data-reported={verified.pass + verified.fail > 0 ? 'true' : 'false'}
+          >
+            <span className="sa-stat-label">{t('web.waveL.tamper.verifyLabel')}</span>
+            <span className="sa-kpi-value" data-tone>
+              {verified.pass + verified.fail > 0 ? t('securityAudit.tamper.packagesSummary', { pass: verified.pass, fail: verified.fail }) : t('web.waveL.tamper.noVerifyRows')}
+            </span>
+          </div>
+        ) : (
+          <div className={cn('sa-kpi', integrity.fail > 0 ? 'sa-tone-danger' : 'sa-tone-success')} data-testid="tamper-packages">
+            <span className="sa-stat-label">{t('securityAudit.tamper.packages')}</span>
+            <span className="sa-kpi-value" data-tone>
+              {t('securityAudit.tamper.packagesSummary', { pass: integrity.pass, fail: integrity.fail })}
+            </span>
+          </div>
+        )}
       </div>
-      {integrity.failures.length > 0 ? (
+      {verified !== null ? (
+        <div className="flex flex-wrap items-center gap-2" data-testid="tamper-core-verify">
+          {verified.failures.map((failure) => (
+            <Chip key={failure.evidenceId} size="sm" variant="soft" {...toneChipProps('danger')} data-testid={`tamper-core-verify-${failure.evidenceId}`}>
+              {failure.places.length > 0
+                ? t('web.waveL.tamper.failedAt', {
+                    id: failure.evidenceId,
+                    place: failure.places.map((place) => (place.seq === null ? place.trackId : t('web.waveL.tamper.place', { track: place.trackId, seq: place.seq }))).join(', '),
+                  })
+                : t('web.waveL.tamper.failedNoPlace', { id: failure.evidenceId })}
+            </Chip>
+          ))}
+          <Chip size="sm" variant="soft" color="default">
+            {verified.pass + verified.fail > 0 ? t('web.waveL.tamper.fromRows') : t('web.waveL.tamper.noVerifyRowsHint')}
+          </Chip>
+        </div>
+      ) : integrity.failures.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           {integrity.failures.map((failure) => (
             <Chip key={failure.evidenceSuffix} size="sm" variant="soft" {...toneChipProps('danger')}>

@@ -3,6 +3,7 @@
  * research 01 §5.3; 01_specs §14.5.11). No React, no simulator instance: every function takes
  * plain values, so the precheck test (T-M10) and the screen share one set of rules.
  */
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import type { SessionState } from '@dems/shared/domain';
 import {
   HOST_CLOCK_PRECHECK_VALUE,
@@ -183,6 +184,18 @@ export function precheckTone(status: PrecheckItem['status'], note = false): Stat
 }
 
 /**
+ * Fix wave L (G70c-06): what a row of "Live device status" says WHILE THE CORE LINK IS DOWN. The
+ * card's values are the Core's last report; with the link down nothing confirms them, and the screen
+ * already says "Core server unreachable". So the Core row says the one fact (OFFLINE) and every
+ * other row says "Not known" in a neutral tone - never "ONLINE" / "READY" beside the banner.
+ * `null`: the link is up (or this is no Live screen) - the row says its evaluated value.
+ */
+export function liveCheckWhileLinkDown(id: PrecheckCheckId, linkDown: boolean): { readonly key: string; readonly tone: StatusTone } | null {
+  if (!linkDown) return null;
+  return id === 'CORE' ? { key: 'common.enums.coreLinkState.OFFLINE', tone: 'danger' } : { key: 'features.session-new.devices.liveNotKnown', tone: 'default' };
+}
+
+/**
  * The i18n key of a check's live value (`common.enums.*`), keyed by the simulator value. Unknown
  * values fall back to the raw value through `defaultValue` at the call site.
  */
@@ -224,8 +237,8 @@ const CHECK_MIC_ROLE: Readonly<Partial<Record<PrecheckCheckId, 'PRIMARY' | 'STAN
  * The lines are the open session's own snapshot when it holds one (the selector may not change under
  * a session, OD-10), else the Core's current selector.
  */
-export function micRoleLine(state: { session: { captureConfig?: { mics: readonly { inputId: string; role: string }[] } | null } | null; captureConfig: { mics: readonly { inputId: string; role: string }[] } }): string {
-  const mics = state.session?.captureConfig?.mics ?? state.captureConfig.mics;
+export function micRoleLine(state: { session: { state?: string | null; captureConfig?: { mics: readonly { inputId: string; role: string }[] } | null } | null; captureConfig: { mics: readonly { inputId: string; role: string }[] } }): string {
+  const mics = micLinesInForce(state);
   return mics.map((mic) => `${mic.inputId}:${mic.role}`).join('|');
 }
 

@@ -13,6 +13,16 @@
  * Never said while either holds: a percentage, "takes a few seconds", "this screen closes by itself",
  * "Resumed after restart" (`attempt` grows with every run of the seal, a restart or not: note §4).
  *
+ * Fix wave L (G75d-02; ruling D228 (1); contract_wave_l.md section 2), closing pass L-Z: a BLOCKED seal
+ * names no action that no screen offers. The CORE's alert sentence itself now says that an investigator
+ * or a supervisor presses "Retry sealing" on the Session Monitor of the web console (`sealBlockedNotice`
+ * of the Core, from `SEAL_RETRY_HOW_SENTENCE` of the shared package). The device draws that sentence as
+ * the Core wrote it; under it: the sentence the Core writes on the failed step - sealing stopped after
+ * `SEAL_AUTOMATIC_RETRIES` automatic retries and the Core waits (`sealStoppedSentence`, the SAME shared
+ * function, so the device and the Core cannot differ) - who resolves the cause, and that THIS device has
+ * no retry control. (L-M's mapping of "start recovery" to the web control is gone: the Core no longer
+ * says "start recovery".)
+ *
  * The same reading gives Home, the Sessions hub and the refused New Session their words
  * (`useSealBlocked`): the open session is shown as "Sealing blocked", and a new session is explained
  * as unavailable instead of failing.
@@ -21,10 +31,12 @@ import { Alert, Button } from 'heroui-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import {
+  SEAL_AUTOMATIC_RETRIES,
   SEAL_BLOCKED_DETAIL_SENTENCE,
   SEAL_RECORDING_KEPT_SENTENCE,
   sealAttentionOf,
   sealBlockedNoticeOf,
+  sealStoppedSentence,
   useSim,
   type SealAttention,
 } from '@dems/shared/sim';
@@ -80,9 +92,17 @@ export function SealAttentionNotice({ attention, onHome }: SealAttentionNoticePr
         </Alert.Content>
       </Alert>
       {blocked ? (
-        <Text maxFontSizeMultiplier={1.2} className="text-body text-foreground" testID="finalizing-seal-who">
-          {t('features.session-finalizing.sealAttention.who')}
-        </Text>
+        <>
+          <Text maxFontSizeMultiplier={1.2} className="text-body text-foreground" testID="finalizing-seal-stopped">
+            {sealStoppedSentence(SEAL_AUTOMATIC_RETRIES)}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} className="text-body text-foreground" testID="finalizing-seal-who">
+            {t('features.session-finalizing.sealAttention.who')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} className="text-body text-foreground" testID="finalizing-seal-retry-where">
+            {t('features.session-finalizing.sealAttention.retryWhere')}
+          </Text>
+        </>
       ) : null}
       <Text maxFontSizeMultiplier={1.2} className="text-body text-muted" testID="finalizing-seal-stays-open">
         {blocked

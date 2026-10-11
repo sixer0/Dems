@@ -89,8 +89,10 @@ describe('endUnsealableTransition - the terminal outcome of a session that canno
     expect(added[0]?.message).toBe(unsealableSentence('MANIFEST_INVALID'));
     expect(unsealableSentence('MANIFEST_INVALID')).toBe('This recording could not be sealed. Its files were kept in quarantine on the Core. (MANIFEST_INVALID)');
     // The clients read the state from the alert, never from an error.
-    expect(unsealableNoticeOf(next, sessionId)).toEqual({ sessionId, cause: 'MANIFEST_INVALID', at: clock.now() });
-    expect(unsealableNoticeOf(next)).toEqual({ sessionId, cause: 'MANIFEST_INVALID', at: clock.now() });
+    // Fix wave L, driver L-S (G75d-01; pins moved by delta): the notice also names its alert (what operation 70 is sent with) and whether it was acknowledged.
+    const alertId = next.alerts[next.alerts.length - 1]?.id;
+    expect(unsealableNoticeOf(next, sessionId)).toEqual({ sessionId, cause: 'MANIFEST_INVALID', at: clock.now(), alertId, acknowledged: false });
+    expect(unsealableNoticeOf(next)).toEqual({ sessionId, cause: 'MANIFEST_INVALID', at: clock.now(), alertId, acknowledged: false });
   });
 
   it('a new session can be created afterwards (the Core is free)', () => {

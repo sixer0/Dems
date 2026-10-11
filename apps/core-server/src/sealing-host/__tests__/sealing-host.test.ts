@@ -302,8 +302,13 @@ describe('the mount in a real capture mode (no database, nothing recorded)', () 
     engine(sessionOf('FINALIZING', ['done', 'error', 'pending']));
     expect(host.retryFailedSeal('SES-20261010-0001')).toBe(false);
     // THE CASE: the seal is started again in the background (here it cannot reach a database: the run rejects and is logged, the answer stands).
+    expect(host.resumedSeal('SES-20261010-0007')).toBe(false);
     expect(host.retryFailedSeal('SES-20261010-0007')).toBe(true);
+    // Fix wave L (re-check 75 findings G75d-04, G75d-09 (a)): the retry ON DEMAND is no resume - `resumed` of operation 83 says
+    // "a START of the Core ran the seal again" and a client words it "Resumed after restart". Before the fix this read true with no restart.
+    expect(host.resumedSeal('SES-20261010-0007')).toBe(false);
     await host.settled();
+    expect(host.resumedSeal('SES-20261010-0007')).toBe(false);
     // In Simulated mode there is no host: the recovery operation does what it always did.
     expect(sealingHost({ stages: {} }).retryFailedSeal('SES-20261010-0007')).toBe(false);
   });

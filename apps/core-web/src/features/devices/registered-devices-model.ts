@@ -29,6 +29,7 @@ import { useSim, type SimAlert } from '@dems/shared/sim'
 import { activeCaptureNotices, micInputName } from '@/lib/capture-notices'
 import { localDeviceState, type LocalDeviceState } from './capture-inputs'
 import type { CaptureConfig, CaptureDevice } from './capture-selector'
+import { restingSourceChecked } from './own-core-words'
 import { LOCAL_DEVICE_ADAPTER, TEST_SOURCE_ADAPTER, isDevelopmentSource, isLocalSourceOn, type SourceDeviceKind } from './source-class'
 
 /** The four ids the page's own tiles and audio cards already draw. Every other camera or microphone of the Core's list is a roster card. */
@@ -82,7 +83,9 @@ export function registeredRoster(
 ): RosterCard[] {
   const unreachable = activeCaptureNotices(input.alerts)
   return input.devices
-    .filter((device) => device.kind === kind && !BUILT_IN_SOURCE_IDS.includes(device.id))
+    // Fix wave L (G70c-08): a built-in source that left its line is a registered source on no track - it gets its card
+    // (while `CAM-05` fed Camera 2, the unassigned `CAM-02` was on no tile and on no card).
+    .filter((device) => device.kind === kind && (!BUILT_IN_SOURCE_IDS.includes(device.id) || rosterSlotOf(input.config, device) === null))
     .map((device): RosterCard => {
       const notice = unreachable.find((entry) => entry.kind === 'UNREACHABLE' && entry.deviceId === device.id)
       const cause = notice !== undefined && notice.kind === 'UNREACHABLE' ? notice.cause : null
@@ -168,3 +171,14 @@ export const ROSTER_SLOT_KEY = {
   PRIMARY: 'common.developmentRoster.usedAs.PRIMARY',
   STANDBY: 'common.developmentRoster.usedAs.STANDBY',
 } as const satisfies Record<RosterSlot, string>
+
+/**
+ * Fix wave L (G70c-02): THE STATE CHIP OF A REGISTERED SOURCE. On a Core in real capture "Ready" was
+ * said of every enabled registry row - `CAM-03` nobody opened, `CAM-04` on an address where nothing
+ * listens. `online: true` there only means "the row is enabled" (`contract_wave_l.md` section 5),
+ * so a source the Core neither opened nor checked reads "Not checked". A named cause, an open local
+ * source, a stated `checkedAt` and the simulated lane keep the state as it was.
+ */
+export function rosterStateNotChecked(card: Pick<RosterCard, 'state' | 'device'>, realCapture: boolean): boolean {
+  return realCapture && card.state === 'READY' && !restingSourceChecked(card.device as { sourceOpen?: unknown; checkedAt?: unknown })
+}

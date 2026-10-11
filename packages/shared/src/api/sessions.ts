@@ -230,7 +230,7 @@ export const SealingProgressSchema = z
     steps: z.array(SealingProgressStepSchema),
     progressPct: z.int().min(0).max(100).describe('Whole-percent progress over the v2 steps, forward-only (E-13).'),
     etaMs: nullableEpochMs().describe('Estimated milliseconds left; null before the estimate holds.'),
-    resumed: z.boolean().describe('True when this seal is a RECOVERY resume from a checkpoint (MB-06; OD-08).'),
+    resumed: z.boolean().describe('True when this seal is a RECOVERY resume from a checkpoint (MB-06; OD-08). On a Core in real capture: a START of the Core ran the seal again - never an automatic retry of the same process, never the on-demand retry of operation 33.'),
     updatedAt: epochMs().describe('Core instant of the last recompute.'),
   })
   .describe('Sealing progress v2 (`C3 §2.3` op 83); mirrors the session `finalization` slice with the v2 steps.');

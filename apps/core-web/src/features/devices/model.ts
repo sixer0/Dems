@@ -218,6 +218,8 @@ export function selectSummary(state: SimState): SummaryModel {
   const portsUp = monitored.filter((port) => port.link === 'up').length
   const cams = ['CAM-01', 'CAM-02'] as const
   const mics = ['MIC-01', 'MIC-02'] as const
+  const counted: readonly string[] = countedDevicesOf(state)
+  const otherCounted = OTHER_DEVICES.filter((id) => counted.includes(id))
   return {
     camsOk: cams.filter(ok).length,
     camsTotal: cams.length,
@@ -225,9 +227,11 @@ export function selectSummary(state: SimState): SummaryModel {
     micsOk: mics.filter(ok).length,
     micsTotal: mics.length,
     micsTone: worstTone(state, mics),
-    otherOk: OTHER_DEVICES.filter(ok).length,
-    otherTotal: OTHER_DEVICES.length,
-    otherTone: worstTone(state, OTHER_DEVICES),
+    // Fix wave L (G75d-07): the card counts what the banner counts - "4/5 - 1 issue" stood beside "ALL DEVICES READY 7/7"
+    // on a Core that has no GNSS receiver and reads no TPM (`countedDevicesOf`). The simulated device counts all five.
+    otherOk: otherCounted.filter(ok).length,
+    otherTotal: otherCounted.length,
+    otherTone: worstTone(state, otherCounted),
     portsUp,
     portsTotal: monitored.length,
     portsTone: portsUp === monitored.length ? 'success' : 'warning',

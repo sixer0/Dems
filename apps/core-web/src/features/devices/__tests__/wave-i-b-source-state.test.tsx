@@ -27,8 +27,11 @@ const R = en.common.developmentRoster
 describe('the rule', () => {
   const real = { realCapture: true, recording: false, online: true, streamState: 'LIVE' as const, checkedAt: undefined }
 
-  it('G70b-06 - real capture, idle: "Reachable", and NO "Stream live" (nobody opened the source)', () => {
-    expect(sourceLineState(real)).toEqual({ reach: 'REACHABLE', stream: null })
+  // Fix wave L (G70c-02), pin moved by delta: at rest `online: true` only says "the registry row is enabled" - a camera on a
+  // dead address read "Reachable". Idle is NOT_CHECKED; REACHABLE needs a stated `checkedAt` or a recording.
+  it('G70b-06 / G70c-02 - real capture, idle: "Not checked", and NO "Stream live" (nobody opened the source)', () => {
+    expect(sourceLineState(real)).toEqual({ reach: 'NOT_CHECKED', stream: null })
+    expect(sourceLineState({ ...real, checkedAt: 1_791_000_000_000 })).toEqual({ reach: 'REACHABLE', stream: null })
     expect(sourceLineState({ ...real, online: false, streamState: null })).toEqual({ reach: 'NOT_REACHABLE', stream: null })
   })
 
@@ -37,7 +40,7 @@ describe('the rule', () => {
   })
 
   it('real capture: a LOST stream stays, recording or not', () => {
-    expect(sourceLineState({ ...real, streamState: 'LOST' })).toEqual({ reach: 'REACHABLE', stream: 'LOST' })
+    expect(sourceLineState({ ...real, streamState: 'LOST' })).toEqual({ reach: 'NOT_CHECKED', stream: 'LOST' })
   })
 
   it('real capture, `checkedAt: null`: "Not checked" and no stream line, also while recording', () => {

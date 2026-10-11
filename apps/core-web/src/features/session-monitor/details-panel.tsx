@@ -3,7 +3,8 @@ import { ClipboardList } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, EMPTY_DATE_TEXT, formatDate, formatDuration, formatUtcOffset } from '@dems/shared/realtime'
 import { RECORDING_PROFILES, useSim } from '@dems/shared/sim'
-import { streamProfileNoticeOf } from './sim-adapter'
+import { useSelfCaptureCore } from '@/lib/own-capture'
+import { configuredProfileLinesOf, streamProfileNoticeOf } from './sim-adapter'
 import { useSimSecond } from '@/components/media'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
@@ -34,6 +35,9 @@ export function DetailsPanel() {
   const profile = RECORDING_PROFILES.find((item) => item.id === details.profileId)
   const profileNotice = useSim((s) => streamProfileNoticeOf(s.alerts, details.sessionId))
   const profileDiffers = profileNotice !== null
+  // Fix wave L (G75d-05): on a Core in its own capture the row is the selector's configured profile, per track.
+  const selfCapture = useSelfCaptureCore()
+  const configuredLines = useSim(configuredProfileLinesOf)
   const dash = EMPTY_DATE_TEXT
 
   const rows: Row[] = [
@@ -64,7 +68,9 @@ export function DetailsPanel() {
   const tail: Row[] = [
     // Fix wave K (ruling D222 (2); `contract_wave_k.md` S1 section 3): where the Core's notice says the recorded video is not
     // the configured profile, the label is what was CONFIGURED - never a fact of the recording. The manifest states the stream.
-    { id: 'profile', label: profileDiffers ? t('web.profile.configuredLabel') : t('session.details.profile'), value: profile?.label ?? dash },
+    selfCapture
+      ? { id: 'profile', label: t('web.waveL.profile.configuredLabel'), value: configuredLines === '' ? t('web.waveL.profile.notStated') : configuredLines, mono: true }
+      : { id: 'profile', label: profileDiffers ? t('web.profile.configuredLabel') : t('session.details.profile'), value: profile?.label ?? dash },
   ]
   if (details.evidenceId) {
     tail.push({ id: 'evidenceId', label: t('session.details.evidenceId'), value: details.evidenceId, mono: true })

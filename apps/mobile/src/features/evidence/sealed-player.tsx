@@ -37,6 +37,16 @@
  *   `sourceLoad` = the stream has its index, the scrubber seeks; no duration = the scrubber is
  *   disabled and says why, the second file is not "re-aligned" (that would restart it), and Play
  *   runs from where the player is. The session is asked WITH the index (`SEEK_INDEX_MEMBER`).
+ * - **An interrupted recording says where it ends** (wave L, G94c-03; the web's sentence, the same
+ *   meaning): when the item states the interruption and the leading player reports its end, the
+ *   player says that the sealed recording ends here because it was interrupted.
+ * - **The controls follow the player across background / foreground** (wave L, G94c-05): the platform
+ *   pauses a player when the app leaves the foreground. The app pauses its own state with it, and on
+ *   the way back reads the leading player's own `playing` report - "Pause" is never drawn over a
+ *   player that stands still.
+ * - **The player asks to be seen** (wave L, G94c-06): `onAttention` is raised when the player is
+ *   drawn, when playback stops with a sentence and at the interrupted end, so the screen can bring
+ *   the player AND its message into view.
  * - Plain views and the kit; nothing here is animated (E-13).
  */
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
@@ -44,7 +54,7 @@ import { Alert, Button, Slider, Spinner } from 'heroui-native';
 import { Pause, Play, RotateCcw } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { newCorrelationId, reportRuntimeIssue, useCoreErrorPresenter, useMobileLive } from '@/runtime';
@@ -76,6 +86,13 @@ export interface SealedPlayerProps {
    * player then asks as before and shows what operation 88 opens.
    */
   fileIds?: readonly CameraFileId[] | null;
+  /** Wave L (G94c-03): the item says its recording was interrupted (`interruptedFactOf`): the player says so where the sealed prefix ends. */
+  interrupted?: boolean;
+  /**
+   * Wave L (G94c-06): raised when the player is drawn, when playback stops with a sentence, and at the
+   * interrupted end - the screen brings the player and its message into view. Must be stable.
+   */
+  onAttention?: () => void;
 }
 
 type Phase =
@@ -125,7 +142,7 @@ function setTime(player: VideoPlayer, seconds: number): void {
   }
 }
 
-export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayingChange, fileIds = null }: SealedPlayerProps) {
+export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFragments = [], playToken, onPlayingChange, fileIds = null, interrupted = false, onAttention }: SealedPlayerProps) {
   const { t } = useTranslation();
   const live = useMobileLive();
   const sim = useSimInstance();
@@ -137,6 +154,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const followPlayer = useVideoPlayer(null, setupPlayer(true));
   const [phase, setPhase] = useState<Phase>(IDLE);
   const [playing, setPlaying] = useState(false);
+  /** Wave L (G94c-03): the leading player reported the end of its file (not the end of a source hand-over). */
+  const [fileEnded, setFileEnded] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const [retry, setRetry] = useState({ attempts: 0, until: 0 });
@@ -246,6 +265,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         setPlaying(true);
       }
       sessionEnded.current = false;
+      setFileEnded(false);
       setPhase({ kind: 'ready', sessions: result.sessions, stoppedAtMs: null, stopCause: null, renewing: false });
     },
     [evidenceId, expected, live, presentCoreError],
@@ -322,6 +342,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const play = () => {
     // After a renewal that got no session, asking again is rate-limited like "Open again" (3 s, 6 s, 12 s; three tries).
     if (sessionEnded.current && !consumeRetry()) return;
+    setFileEnded(false);
     if (stale()) {
       void open({ seconds: position.current / 1000, play: true }, true);
       return;
@@ -335,6 +356,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     // G94b-01: this stream cannot be sought - nothing is sent to the player and the playhead stays where the player is.
     if (seekRef.current === 'NONE') return;
     const seconds = clampSeek(ms / 1000, totalMs / 1000);
+    setFileEnded(false);
     position.current = seconds * 1000;
     setPositionMs(seconds * 1000);
     if (stale()) {
@@ -386,7 +408,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       // Z1: taking the old source off a player makes it report its end. That is not the end of
       // the recording: while a new source is being handed over the report is not a Pause.
       leadPlayer.addListener('playToEnd', () => {
-        if (!handingOver.current) pause();
+        if (handingOver.current) return;
+        pause();
+        // G94c-03: the end of the FILE - on an interrupted recording that is where the sealed prefix ends.
+        setFileEnded(true);
       }),
       // Wave K M1 (G94b-01): whether THIS stream can be sought is the player's own report.
       leadPlayer.addListener('sourceLoad', ({ duration }) => {
@@ -415,6 +440,36 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     };
     // The handlers read refs and the players; they are bound once per set of sessions.
   }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Wave L (G94c-05): background / foreground. The platform pauses a player whose app leaves the
+  // foreground and does not start it again; this player's own state must say the same. Leaving the
+  // foreground pauses (players and state together); coming back reads the leading player's own
+  // report once more, so "Pause" is never drawn over a player that stands still.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'background') {
+        if (playingRef.current && !handingOver.current && !busy.current) pause();
+        return;
+      }
+      if (next !== 'active' || !playingRef.current || handingOver.current || busy.current) return;
+      let standing = false;
+      try {
+        standing = (leadPlayer as unknown as { readonly playing?: unknown }).playing === false;
+      } catch {
+        // Released with the screen.
+      }
+      if (standing) pause();
+    });
+    return () => subscription.remove();
+  }, [pause, leadPlayer]);
+
+  // Wave L (G94c-06): the player is drawn, stopped with a sentence, or at its interrupted end - ask to be seen.
+  const drawn = phase.kind === 'ready';
+  const stoppedNow = phase.kind === 'ready' && phase.stoppedAtMs !== null;
+  const endSaid = interrupted && fileEnded;
+  useEffect(() => {
+    if (drawn) onAttention?.();
+  }, [drawn, stoppedNow, endSaid, onAttention]);
 
   // The screen's Play action: open the sessions first, or start the players that are open.
   // The start waits one microtask, so a StrictMode remount cancels the first start instead of asking twice.
@@ -550,6 +605,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
           </Alert>
           {verifiedFailure ? null : reopenButton}
         </View>
+      ) : null}
+      {endSaid && !stopped ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityLiveRegion="polite" testID="evidence-playback-interrupted-end">
+          {t('features.evidence.player.interruptedEnd', { at: formatMediaTime(positionMs) })}
+        </Text>
       ) : null}
 
       <Slider

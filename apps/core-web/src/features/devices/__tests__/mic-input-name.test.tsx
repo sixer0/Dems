@@ -55,7 +55,10 @@ describe('the pair of the session, by the ids the Core sends', () => {
 
   it('no pair on the session: the standby is the other line of the session`s selector snapshot, then of the stored selector, then of the built-in pair', () => {
     expect(selectStandbyInputId(state({ session: { state: 'RECORDING', audioSource: null, captureConfig: { cameras: [], mics: lines } }, audio: { activeInputId: 'MIC-03' } }))).toBe('MIC-01')
-    expect(selectStandbyInputId(state({ captureConfig: { cameras: [], mics: lines } }))).toBe('MIC-03')
+    // Moved by fix 157 (was `'MIC-03'`, "the other line than the meters' MIC-01"): with no open session the pair is the
+    // stored selector's own - MIC-03 is its PRIMARY (active), MIC-01 its STANDBY.
+    expect(selectActiveInputId(state({ captureConfig: { cameras: [], mics: lines } }))).toBe('MIC-03')
+    expect(selectStandbyInputId(state({ captureConfig: { cameras: [], mics: lines } }))).toBe('MIC-01')
     expect(selectStandbyInputId(state({ audio: { activeInputId: 'MIC-02' } }))).toBe('MIC-01')
     expect(otherMicInput([{ inputId: 'MIC-03' }], 'MIC-03')).toBeNull()
   })

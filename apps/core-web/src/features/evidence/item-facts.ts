@@ -100,6 +100,58 @@ export interface DetailFacts {
    */
   readonly exportDestinationDefault: string | null
   readonly transcript: { readonly noSpeech: boolean | null; readonly reason: string | null }
+  /**
+   * Fix wave L (G89c-04; `contract_wave_l.md` section 4): the per-track `profile` of the SIGNED manifest
+   * (field 36), as `evidence.files[].profile` states it - present exactly for an item whose sealed package
+   * the Core holds. null: no file states one (an older Core, a demonstration item) - nothing is drawn.
+   */
+  readonly sealedProfiles: readonly SealedTrackProfile[] | null
+  /**
+   * `evidence.streamProfileNotice`: the Core still holds the notice that the recorded stream of the item's
+   * session was not the configured profile. null: the Core holds no such notice - NEVER read as "was
+   * checked and equal".
+   */
+  readonly streamProfileNotice: readonly StreamProfileDifference[] | null
+}
+
+export interface SealedTrackProfile {
+  readonly trackId: string
+  readonly profile: string
+}
+
+export interface StreamProfileDifference {
+  readonly trackId: string
+  readonly stream: string
+  readonly configured: string
+}
+
+const TRACK_ID = /^[A-Z]+-\d{2}$/
+const PROFILE = /^[A-Za-z0-9_.]{1,40}$/
+
+function readSealedProfiles(evidence: unknown): readonly SealedTrackProfile[] | null {
+  const files = isRecord(evidence) ? evidence['files'] : null
+  if (!Array.isArray(files)) return null
+  const stated: SealedTrackProfile[] = []
+  for (const file of files.slice(0, 8)) {
+    if (!isRecord(file)) continue
+    const trackId = file['trackId']
+    const profile = file['profile']
+    if (typeof trackId === 'string' && TRACK_ID.test(trackId) && typeof profile === 'string' && PROFILE.test(profile)) stated.push({ trackId, profile })
+  }
+  return stated.length > 0 ? stated : null
+}
+
+function readStreamProfileNotice(evidence: unknown): readonly StreamProfileDifference[] | null {
+  const notice = isRecord(evidence) ? evidence['streamProfileNotice'] : null
+  const tracks = isRecord(notice) ? notice['tracks'] : null
+  if (!Array.isArray(tracks)) return null
+  const stated: StreamProfileDifference[] = []
+  for (const track of tracks.slice(0, 8)) {
+    if (!isRecord(track)) continue
+    const { trackId, stream, configured } = track as { trackId?: unknown; stream?: unknown; configured?: unknown }
+    if (typeof trackId === 'string' && TRACK_ID.test(trackId) && typeof stream === 'string' && PROFILE.test(stream) && typeof configured === 'string' && PROFILE.test(configured)) stated.push({ trackId, stream, configured })
+  }
+  return stated.length > 0 ? stated : null
 }
 
 export const NO_DETAIL_FACTS: DetailFacts = {
@@ -111,6 +163,8 @@ export const NO_DETAIL_FACTS: DetailFacts = {
   exports: null,
   exportDestinationDefault: null,
   transcript: { noSpeech: null, reason: null },
+  sealedProfiles: null,
+  streamProfileNotice: null,
 }
 
 function readCameraFiles(value: unknown): readonly CameraFileId[] | null {
@@ -151,6 +205,8 @@ export function readDetailFacts(body: unknown): DetailFacts {
       : null,
     exportDestinationDefault: text(body[MEMBER.exportDestinationDefault], 120),
     transcript: { noSpeech: flag(transcript[MEMBER.transcriptNoSpeech]), reason: code(transcript[MEMBER.transcriptReason]) },
+    sealedProfiles: readSealedProfiles(body['evidence']),
+    streamProfileNotice: readStreamProfileNotice(body['evidence']),
   }
 }
 

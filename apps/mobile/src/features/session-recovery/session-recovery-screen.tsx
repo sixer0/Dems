@@ -56,7 +56,7 @@ import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { formatClock, formatDuration } from '@dems/shared/realtime';
-import { faultKindLabelKey, isCoreNotRunningKind, useSim } from '@dems/shared/sim';
+import { faultKindLabelKey, interruptedSealCauseSentence, isCoreNotRunningKind, useSim } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, statusText, typography } from '@dems/shared/tokens';
 import { GlowRing } from '@/components/composed/glow-ring';
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
@@ -66,10 +66,12 @@ import { sessionResyncHref } from '@/navigation';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress } from '@/runtime';
 import { failedStartWords, type FailedStart } from '@/features/capture-selector/capture-notices-model';
 import { FailedStartNotice, useFailedStart, useFailedStartClosing } from '@/features/session-live/capture-start-notice';
+import { realCaptureSources } from '@/features/capture-selector/source-state';
 import { UnsealableNotice } from '@/features/session-finalizing/unsealable-notice';
 import { RecoveryPipeline, TrackRows } from './recovery-analysis';
 import { RecoveryBoundary } from './recovery-boundary';
 import {
+  coreSealsInterruptedPrefix,
   isRecoveryBusy,
   outcomeKind,
   recoveryPhase,
@@ -124,6 +126,10 @@ export function SessionRecoveryScreen() {
   const settings = useMotionSettings();
   const followed = useFollowedRecovery();
   const liveState = useSim((s) => s.session?.state ?? null);
+  // Fix wave L (G75d-08): the session payload says the Core is sealing the interrupted prefix by itself.
+  // Only for a Core server in its OWN capture (the simulator's fault waits for "Start recovery", whatever its session says).
+  const liveSource = useCoreLink().source === 'LIVE';
+  const coreSealing = useSim((s) => realCaptureSources(s.captureDevices.devices, liveSource) && coreSealsInterruptedPrefix(s.session));
   const outcomeData = useRecoveryOutcome(followed?.id ?? null);
   const outcome = outcomeKind(outcomeData.outcome);
   const phase = recoveryPhase(liveState, followed?.id ?? null, outcome !== null);
@@ -240,6 +246,7 @@ export function SessionRecoveryScreen() {
               roleLabel={role ? t(`common.roles.${role}`) : '—'}
               live={live}
               linkDown={linkDown}
+              coreSealing={coreSealing}
               onStart={actions.start}
               onHome={() => go('/home', 'home')}
             />
@@ -358,6 +365,8 @@ interface StatusCardProps {
   live: boolean;
   /** LIVE only: the runtime's "Core server unreachable" notice is up. */
   linkDown: boolean;
+  /** Fix wave L (G75d-08): FAULT, and the Core is sealing the interrupted prefix by itself - no recovery prompt. */
+  coreSealing: boolean;
   onStart: RecoveryActions['start'];
   onHome: () => void;
 }
@@ -374,10 +383,16 @@ function StatusCard({
   roleLabel,
   live,
   linkDown,
+  coreSealing,
   onStart,
   onHome,
 }: StatusCardProps) {
   const { t } = useTranslation();
+  // G75d-08: in FAULT with the Core sealing by itself, nothing of the recovery flow is offered or drawn.
+  const sealingByCore = phase === 'fault' && coreSealing;
+  // The restart fault of a Core in its own capture is worded from `session.fault.coreNotRunning` - never by its kind's code.
+  const sealingCoreNotRunning = useSim((s) => isCoreNotRunningKind(s, inputs.faultKind));
+  const sealingCause = sealingCoreNotRunning && inputs.faultKind ? `${t(faultKindLabelKey(inputs.faultKind, { coreNotRunning: true }))}.` : interruptedSealCauseSentence(inputs.faultKind);
   const settings = useMotionSettings();
   // S2-3 (LB-1): busy from the press until the Core answered, the spinner only after the reveal delay
   // on the store's clock. Simulated mode settles before `run` returns: nothing changes on screen.
@@ -408,7 +423,11 @@ function StatusCard({
               <Text maxFontSizeMultiplier={1.2} selectable style={styles.sessionId} testID="recovery-session-id">
                 {inputs.id}
               </Text>
-              <StateChip phase={phase} outcome={outcome} />
+              {sealingByCore ? (
+                <StatusChip testID="recovery-state-chip" size="sm" tone="warning" icon={null} label={t('features.session-finalizing.interruptedSealing.coreChip')} />
+              ) : (
+                <StateChip phase={phase} outcome={outcome} />
+              )}
             </View>
           </View>
 
@@ -424,7 +443,20 @@ function StatusCard({
             </View>
           ) : null}
 
-          {phase === 'fault' ? <FaultAlert inputs={inputs} /> : null}
+          {sealingByCore ? (
+            <View style={styles.alert} testID="recovery-core-sealing" accessibilityLiveRegion="polite">
+              <Alert status="warning">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>{t('features.session-finalizing.interruptedSealing.title')}</Alert.Title>
+                  <Alert.Description>{sealingCause}</Alert.Description>
+                  <Alert.Description>{t('features.session-finalizing.interruptedSealing.coreBody')}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </View>
+          ) : phase === 'fault' ? (
+            <FaultAlert inputs={inputs} />
+          ) : null}
           {phase === 'analysing' ? (
             <View style={styles.alert} testID="recovery-analysing">
               <Alert status="warning">
@@ -447,16 +479,24 @@ function StatusCard({
             </Text>
           ) : null}
 
-          <View accessibilityLabel={t('session.recovery.stagesLabel')}>
-            <RecoveryPipeline phase={phase} milestone={milestone} analysis={analysis} />
-          </View>
-          {live ? (
+          {sealingByCore ? null : (
+            <View accessibilityLabel={t('session.recovery.stagesLabel')}>
+              <RecoveryPipeline phase={phase} milestone={milestone} analysis={analysis} />
+            </View>
+          )}
+          {live && !sealingByCore ? (
             <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="recovery-live-derived">
               {t('features.session-recovery.live.derived')}
             </Text>
           ) : null}
 
-          {phase === 'fault' ? (
+ {sealingByCore ? (
+            <View style={styles.actions}>
+              <Button testID="recovery-home" variant="outline" size="lg" onPress={onHome}>
+                <Button.Label>{t('features.session-recovery.actions.goHome')}</Button.Label>
+              </Button>
+            </View>
+          ) : phase === 'fault' ? (
             <View style={styles.actions}>
               <Button testID="recovery-start" variant="primary" size="lg" onPress={onStartPress} accessibilityLabel={t('features.session-recovery.actions.start')} {...busyState(press.busy)}>
                 {press.pending ? <PendingSpinner color={palette.black} testID="recovery-start-spinner" /> : null}

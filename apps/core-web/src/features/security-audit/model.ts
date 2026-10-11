@@ -412,6 +412,10 @@ export function buildControls(input: ControlInputs): ControlView[] {
     if (!notReported || statuses[id] !== 'OK') return plain
     if (PLATFORM_CONTROLS.includes(id)) return { id, status: 'UNKNOWN', params, notReported: true }
     if (!DEVICE_MODEL_CONTROLS.includes(id)) return plain
+    // Fix wave L (G89c-05): where a sealed item of this Core names its signing key, the control STATES it - the chip beside
+    // "Ed25519, Core key ..." read "Not reported" and the header counted it among the controls not reported. The sealed
+    // items of this Core are signed with that key (their own member), so the control is active; no item yet: not reported.
+    if (id === 'SIGNATURE' && (input.signingKey ?? null) !== null) return { id, status: 'OK', params, fact: { kind: 'SIGNING_KEY', key: input.signingKey ?? null } }
     return id === 'SIGNATURE' ? { id, status: 'UNKNOWN', params, notReported: true, fact: { kind: 'SIGNING_KEY', key: input.signingKey ?? null } } : { id, status: 'UNKNOWN', params, notReported: true }
   }
   return CONTROL_ORDER.map(view)

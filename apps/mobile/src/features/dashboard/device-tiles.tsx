@@ -18,6 +18,7 @@
  *   for the whole recording (D249 O-3). The flag is a boolean selector: one render per flip, none per frame;
  * - while a session records, the tile says "Active" or "Standby" (the session's pair, read from the store).
  */
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useIsFocused, useRouter, type Href } from 'expo-router';
 import { PressableFeedback, Surface } from 'heroui-native';
 import { Mic } from 'lucide-react-native';
@@ -26,7 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { captureMicLines, micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
+import { micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
@@ -80,7 +81,8 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
   // Fix wave I (the Home microphone item of re-gate 75; contract note A2 §4): on a Core in REAL capture a MIC
   // tile states what the Core reported for the microphone ON its line - "Reachable", "Not reachable",
   // "Not checked", "On" - and its badge is that microphone's. The simulated track word stays elsewhere.
-  const line = tile.kind === 'mic' ? tile.line : null;
+  // Fix wave L (G70c-02): a CAMERA tile too, while nothing records (`useDeviceTiles` gives it a line only then).
+  const line = tile.line;
   const tone = line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
   const stateWord = line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
   // Fix wave K (G75c-07; ux 8e.2, D84): RECORDING before the first durable fragment - no meter, no level and no
@@ -100,7 +102,7 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
         <Surface variant="secondary" style={styles.tile}>
           <View style={styles.head}>
             <View style={[styles.dot, { backgroundColor: toneHex[tone] }]} />
-            <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.name}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.2} style={styles.name}>
               {name}
             </Text>
             <StatusChip tone={tone} label={stateWord} icon={null} size="sm" testID={`home-device-${tile.trackId}-state-chip`} />
@@ -109,7 +111,7 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
           {tile.kind === 'camera' ? (
             <TrackSourceBadge trackId={tile.trackId} testID={`home-device-${tile.trackId}-source`} />
           ) : (
-            <MicInputSourceBadge inputId={line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
+            <MicInputSourceBadge inputId={tile.line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
           )}
           {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : connecting ? <MicConnecting tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>
@@ -152,7 +154,7 @@ function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): A
   const { t } = useTranslation();
   const sim = useSimInstance();
   // Ruling D137: the input is the microphone line at the channel's position (a primitive selector).
-  const input = useSim((s) => micInputOfChannel(captureMicLines(s), channel));
+  const input = useSim((s) => micInputOfChannel(micLinesInForce(s), channel));
   // Change-only: a boolean selector re-renders the tile when the flag flips, never per frame.
   const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
   const ticking = useAudioAccessibilityValue(channel, frozen ? { intervalMs: TEST_SWITCH_READOUT_MS } : {});

@@ -14,10 +14,11 @@
  * Accessibility (01_specs §14.6): `useAudioAccessibilityValue` updates `{ min: -60, max: 0, now,
  * text }` at most once per second from JS, never per frame.
  */
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { captureMicLines, micInputOfChannel, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
+import { micInputOfChannel, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
 import { reportMeterFrame } from '@/motion/debug-metrics';
 
 /** Level of a silent or absent channel (the simulator's floor, SCR-01). */
@@ -94,7 +95,7 @@ export function useAudioAccessibilityValue(
     // The meters slice is keyed by mic input since schema v2 (SH-17); the channel maps to the microphone
     // line at its position in the capture configuration (ruling D137), the input `useAudioChannel` reads.
     const state = sim.store.getState();
-    const frame = state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)];
+    const frame = state.audio.inputs[micInputOfChannel(micLinesInForce(state), channel)];
     return audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS, noSignalText, frame?.noSignal ?? false);
   }, [sim, channel, noSignalText]);
   const [value, setValue] = useState(read);

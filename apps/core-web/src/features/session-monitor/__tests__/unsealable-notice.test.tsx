@@ -4,7 +4,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { en } from '@dems/shared/i18n'
-import { ALWAYS_VISIBLE, createSim, SimProvider, unsealableSentence, type Sim, type SimAlert } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createSim, SEAL_UNSEALABLE_PLAIN_SENTENCE, SimProvider, unsealableSentence, type Sim, type SimAlert } from '@dems/shared/sim'
 import '@/i18n'
 import { UnsealableNotice } from '../unsealable-notice'
 
@@ -31,8 +31,12 @@ describe('the UNSEALABLE state on the Session Monitor overlay', () => {
   it('says, as a status, that the recording could not be sealed and that its files are in quarantine on the Core, with the cause', () => {
     mount([unsealable('NOTHING_SEALABLE')])
     const notice = screen.getByTestId('sm-unsealable')
-    expect(notice.textContent).toBe('This recording could not be sealed. Its files were kept in quarantine on the Core. (NOTHING_SEALABLE)')
-    expect(notice.textContent).toBe(en.common.sealUnsealable.notice.replace('{{cause}}', 'NOTHING_SEALABLE'))
+    // Fix wave L (G75d-04), pins moved by delta: ONE sentence without a code in brackets; the code of the cause is a detail of its own.
+    expect(screen.getByTestId('sm-unsealable-sentence').textContent).toBe('This recording could not be sealed. Its files were kept in quarantine on the Core.')
+    expect(screen.getByTestId('sm-unsealable-sentence').textContent).toBe(SEAL_UNSEALABLE_PLAIN_SENTENCE)
+    expect(notice.textContent).not.toContain('(NOTHING_SEALABLE)')
+    expect(screen.getByTestId('sm-unsealable-cause').textContent).toBe('Cause code: NOTHING_SEALABLE')
+    expect(en.common.sealUnsealable.notice).toContain('{{cause}}')
     // A state, not an operator error: a status region, no alert role, no control to press.
     expect(notice.getAttribute('role')).toBe('status')
     expect(screen.queryByRole('alert')).toBeNull()
@@ -44,7 +48,9 @@ describe('the UNSEALABLE state on the Session Monitor overlay', () => {
     cleanup()
     expect(mount([unsealable('NOTHING_SEALABLE', 'SES-20261010-0001')]).container.textContent).toBe('')
     cleanup()
-    expect(mount([{ ...unsealable('NOTHING_SEALABLE'), active: false, resolvedAt: 2 }]).container.textContent).toBe('')
+    // Fix wave L (G75d-04), by delta: the alert of THIS session that was acknowledged and resolved still states how the
+    // session ended - the dialog of an ended session must never fall back to "Finalizing evidence / 0% complete".
+    expect(mount([{ ...unsealable('NOTHING_SEALABLE'), active: false, resolvedAt: 2 }]).container.textContent).toContain(SEAL_UNSEALABLE_PLAIN_SENTENCE)
     cleanup()
     expect(mount([{ ...unsealable('NOTHING_SEALABLE'), params: { reason: 'CAPTURE_DISCOVERY_EMPTY' } }]).container.textContent).toBe('')
   })

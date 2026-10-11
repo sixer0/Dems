@@ -15,14 +15,19 @@
  *                 when every step is done. A timed (simulated) seal: the simulator's own figure
  *                 for the run, `SEALING_ETA_STEP_MS` per step that is left - the same number the
  *                 simulator answers in a client that runs without a Core;
- *   resumed       the seal was RESUMED: run again by a start of the Core or by the recovery
- *                 action (contract: "a RECOVERY resume from a checkpoint", MB-06). On a Core in real
- *                 capture that is a fact of the sealing host (`resumedSeal`), handed in as
- *                 `resumed`: the ATTEMPT of a step grows with every run - an automatic retry of the
- *                 same process too - so "attempt above the first" said "resumed after restart" with
- *                 no restart (fix wave I driver A1; re-gate 75 finding G75b-02). Without that fact
- *                 (Simulated mode: the simulator's attempt grows on a RECOVERY only) the rule of the
- *                 attempt stays.
+ *   resumed       the seal was RESUMED: run again by a START of the Core (contract: "a RECOVERY
+ *                 resume from a checkpoint", MB-06). On a Core in real capture that is a fact of the
+ *                 sealing host (`resumedSeal`), handed in as `resumed`: the ATTEMPT of a step grows
+ *                 with every run - an automatic retry of the same process and the retry on demand of
+ *                 operation 33 too - so "attempt above the first" said "resumed after restart" with
+ *                 no restart (fix wave I driver A1, re-gate 75 finding G75b-02; fix wave L, G75d-09
+ *                 (a): the retry on demand is no resume either). Without that fact (Simulated mode:
+ *                 the simulator's attempt grows on a RECOVERY only) the rule of the attempt stays.
+ *
+ * AN ENDED SESSION HAS NO PROGRESS (fix wave L; G75d-04). A session the Core ended UNSEALABLE is not
+ * the open session any more: operation 83 answers 404 for it, and what says how it ended is the
+ * notice (`unsealableNoticeOf`) and its `sessionHistory` entry (`outcome: INCOMPLETE`). A client
+ * that still holds the last body of this answer must drop it then.
  *
  * Pure: no clock is read here; `now` is the Core instant of the request.
  */

@@ -39,7 +39,8 @@ export interface MicSelectorRow {
   readonly deviceId: string;
   readonly model: string | null;
   readonly role: MicRole;
-  readonly transport: string;
+  /** The line's transport word; null for a GENERATED source (`statedTransportOf`). */
+  readonly transport: string | null;
   readonly online: boolean;
   /** `sourceClass` as the Core sent it on the device (flow 12); null when the device carries none. */
   readonly sourceClass: string | null;
@@ -47,8 +48,31 @@ export interface MicSelectorRow {
   readonly adapter: string | null;
 }
 
+/**
+ * Fix wave L (the ONE RULE; contract_wave_l.md section 5, G75d-06): `model` of a device whose
+ * `adapter` is `FAKE` is a MODEL VALUE of the seed dataset ("Dual-lens IP camera DL-2", "USB condenser
+ * microphone UM-1") or what a fake device announced - not a fact of a generated test source. It is
+ * not drawn: the line names the device by its id and the "Development source / Test source" badge
+ * says what it is. Every other device keeps the model the registry names.
+ */
+export function statedModelOf(device: Pick<CaptureDeviceStatus, 'model'> & { readonly adapter?: string | null | undefined }): string | null {
+  return device.adapter === 'FAKE' ? null : (device.model ?? null);
+}
+
+/**
+ * Closing pass L-Z (the ONE RULE; decision 5 of note 155): the `transport` of a microphone line ("USB") is
+ * the seed dataset's word for the built-in microphones. A source the Core names `adapter: 'FAKE'` is a
+ * generated tone - it has no USB input, so the word is not drawn. Every other line keeps what the
+ * selector states (a Core in simulated capture and Simulated mode name no adapter: unchanged).
+ */
+export function statedTransportOf(transport: string | null | undefined, adapter: string | null | undefined): string | null {
+  if (adapter === 'FAKE') return null;
+  return typeof transport === 'string' && transport !== '' ? transport : null;
+}
+
 function modelOf(devices: readonly CaptureDeviceStatus[], deviceId: string): string | null {
-  return devices.find((device) => device.id === deviceId)?.model ?? null;
+  const device = devices.find((candidate) => candidate.id === deviceId);
+  return device === undefined ? null : statedModelOf(device);
 }
 
 /**
@@ -86,7 +110,7 @@ export function micRows(config: Pick<CaptureConfigSlice, 'mics'>, registry: Capt
       deviceId: line.deviceId,
       model: modelOf(registry.devices, line.deviceId),
       role: line.role,
-      transport: line.transport,
+      transport: statedTransportOf(line.transport, sourceOf(registry.devices, line.deviceId).adapter),
       online: line.online,
       ...sourceOf(registry.devices, line.deviceId),
     }));
@@ -115,7 +139,7 @@ export function cameraOptions(config: Pick<CaptureConfigSlice, 'cameras'>, regis
     .filter((device) => device.kind === CaptureDeviceKind.CAMERA)
     .map((device) => ({
       deviceId: device.id,
-      model: device.model,
+      model: statedModelOf(device),
       online: device.online,
       streamState: device.streamState,
       assignedTo: config.cameras.find((line) => line.deviceId === device.id)?.trackId ?? null,
@@ -152,7 +176,7 @@ export function micOptions(config: Pick<CaptureConfigSlice, 'mics'>, registry: C
     .filter((device) => device.kind === CaptureDeviceKind.MIC)
     .map((device) => ({
       deviceId: device.id,
-      model: device.model,
+      model: statedModelOf(device),
       online: device.online,
       role: config.mics.find((line) => line.deviceId === device.id)?.role ?? null,
       sourceClass: device.sourceClass ?? null,

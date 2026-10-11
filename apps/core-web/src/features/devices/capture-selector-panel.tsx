@@ -29,6 +29,7 @@ import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
 import { DeviceSourceBadge, LocalMicrophoneLimit } from './source-badge'
+import { micTransportShown, sourceDeviceText } from './own-core-words'
 import { isDevelopmentSource, LOCAL_DEVICE_ADAPTER, useRealCapture, useRealCaptureCore } from './source-class'
 import { checkedAtOf, sourceLineState } from './source-state'
 import { SourceStateChips } from './source-state-chips'
@@ -99,7 +100,12 @@ function StateChips({ online, streamState, device }: { online: boolean; streamSt
   return <SourceStateChips state={sourceLineState({ realCapture, recording, online, streamState, checkedAt: checkedAtOf(device) })} />
 }
 
-const deviceText = (device: Pick<CaptureDevice, 'id' | 'model'>): string => (device.model ? `${device.id} · ${device.model}` : device.id)
+/** Fix wave L (G75d-06): the id and what may be said after it - on a Core in real capture a generated source is named as generated (`own-core-words.ts`). */
+function useDeviceText(): (device: Pick<CaptureDevice, 'id' | 'model'> & { readonly adapter?: string | null | undefined }) => string {
+  const { t } = useTranslation()
+  const realCaptureCore = useRealCaptureCore()
+  return (device) => sourceDeviceText(t, device, realCaptureCore)
+}
 
 interface RowShared {
   block: SelectorEditBlock | null
@@ -123,6 +129,7 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
   const track = t(`common.tracks.${trackId}`)
   const selected = choice ?? line.deviceId
   const realCapture = useRealCapture()
+  const deviceText = useDeviceText()
   // An option of a development source says so in its own text (ux §8f.2 "each option of the source selects").
   const optionText = (device: CaptureDevice): string =>
     realCapture && isDevelopmentSource(device) ? `${deviceText(device)} · ${t('common.sourceClass.badge')}` : deviceText(device)
@@ -304,6 +311,8 @@ function MicRow({
   const selected = choice ?? line.deviceId
   const pair = choice === null ? null : micPairFor(lines, line.role, choice)
   const lineLabel = t(`devices.micLines.label.${line.role}`)
+  const deviceText = useDeviceText()
+  const transportShown = micTransportShown(useRealCaptureCore(), device)
   // An option says what the Core says of the microphone (the development class, this Mac's microphone) and where it already is.
   const optionText = (entry: CaptureDevice): string => {
     const parts = [deviceText(entry)]
@@ -352,7 +361,10 @@ function MicRow({
         <div className="dev-sel-titles">
           <span className="dev-tile-name">{line.inputId}</span>
           <span className="dev-tile-sub">
-            {deviceText(device ?? { id: line.deviceId, model: null })} · {t('devices.selector.transport', { transport: line.transport })}
+            {deviceText(device ?? { id: line.deviceId, model: null })}
+            {/* Closing pass L-Z (the ONE RULE; remainder R-4 of note 154): "USB input" is the dataset's word for the built-in
+                microphones - a GENERATED source of a Core in real capture has no USB input, so the word is not drawn (as on the devices). */}
+            {transportShown ? ` · ${t('devices.selector.transport', { transport: line.transport })}` : null}
           </span>
         </div>
         <span className="dev-sel-chips">

@@ -278,12 +278,11 @@ export async function readSessionVideoSampleEntry(packageDir: string, trackId: P
 }
 
 /**
- * WHAT THE VIDEO STREAM OF A SESSION'S CAMERA FILE IS (fix wave K, driver S1; G89b-01, ruling D222
- * (2); manifest field 36): picture size and measured frame rate, read from the file itself
- * (`videoStreamFormatOf`). Asked like the sample entry: the RECORDING file first - its fragments are
- * in the clear, so the frame rate is measured - then the SEALED camera file, whose init segment is
- * the same bytes in the clear (its frame rate reads null: the fragments are ciphertext; a resumed
- * build takes the manifest input the first build froze, never this second answer).
+ * WHAT THE VIDEO STREAM OF A SESSION'S CAMERA FILE DECLARES (fix wave K, driver S1; G89b-01, ruling
+ * D222 (2); fix 151; manifest field 36): picture size and nominal frame rate, read from the init
+ * segment of the file itself (`videoStreamFormatOf`). Asked like the sample entry: the RECORDING
+ * file first, then the SEALED camera file - its init segment is the same bytes in the clear, so
+ * both give the same answer (no fragment is read).
  * Null when neither file is there or the init segment names no picture size. No media byte, no key.
  */
 export async function readSessionVideoFormat(packageDir: string, trackId: PackageVideoTrackId): Promise<VideoStreamFormat | null> {

@@ -21,7 +21,7 @@ import { CaptureSourceClass } from '@dems/shared/api'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
-import { useSim } from '@dems/shared/sim'
+import { useSim, selectorInForce } from '@dems/shared/sim'
 import { micInputName } from '@/lib/capture-notices'
 import { useWebLive } from '@/runtime'
 import type { CaptureDevice } from './capture-selector'
@@ -87,21 +87,25 @@ export function useCaptureDevice(deviceId: string | null): CaptureDevice | undef
   return useSim((state) => (deviceId === null ? undefined : state.captureDevices.devices.find((device) => device.id === deviceId)))
 }
 
-/** The device that feeds a video track now (the selector's line), or undefined. */
+/**
+ * The device that feeds a video track now, or undefined: the line of the selector IN FORCE (the open
+ * session's snapshot, else the stored selector - `selectorInForce`), so that a tile's device and the
+ * line it is drawn beside are read by ONE rule (closing pass L-Z).
+ */
 export function useTrackDevice(trackId: VideoTrackId): CaptureDevice | undefined {
   return useSim((state) => {
-    const line = state.captureConfig.cameras.find((camera) => camera.trackId === trackId)
+    const line = selectorInForce(state).cameras.find((camera) => camera.trackId === trackId)
     return line === undefined ? undefined : state.captureDevices.devices.find((device) => device.id === line.deviceId)
   })
 }
 
 /**
- * The device behind a microphone input now (the selector's line), or undefined. The id is the text
- * the Core sent (`MIC-NN`, any number; integration pass D2).
+ * The device behind a microphone input now (the line of the selector in force, as `useTrackDevice`), or
+ * undefined. The id is the text the Core sent (`MIC-NN`, any number; integration pass D2).
  */
 export function useMicInputDevice(inputId: string): CaptureDevice | undefined {
   return useSim((state) => {
-    const line = state.captureConfig.mics.find((mic) => mic.inputId === inputId)
+    const line = selectorInForce(state).mics.find((mic) => mic.inputId === inputId)
     return line === undefined ? undefined : state.captureDevices.devices.find((device) => device.id === line.deviceId)
   })
 }
@@ -134,11 +138,12 @@ export function isSourcePrecheckId(id: string): id is SourcePrecheckId {
 /**
  * The device a pre-check row stands for: the selector the open session was created under (the
  * session's `captureConfig` snapshot of operation 27), else the stored one — the two are equal while
- * a session is open (OD-10).
+ * a session is open (OD-10). A SEALED session is closed: its snapshot is not read (`selectorInForce`
+ * of `@dems/shared/sim`; G70c-01, closing pass L-Z).
  */
 export function usePrecheckDevice(checkId: string): CaptureDevice | undefined {
   return useSim((state) => {
-    const config = state.session?.captureConfig ?? state.captureConfig
+    const config = selectorInForce(state)
     let deviceId: string | undefined
     switch (checkId) {
       case 'LENS_1':

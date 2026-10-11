@@ -86,6 +86,7 @@ export const ALERT_OPERATIONS = [
     description: [
       'Marks an alert as acknowledged for every console of this Core. The fault behind it is not cleared.',
       'Every signed-in role may call it: the bell is on every page. Writes no audit row. An unknown alert, or one that is already acknowledged, changes nothing and still answers `204`, as the simulator does.',
+      'One alert is ENDED by its acknowledgement (ruling D228 (2)): the open notice of a session that could not be sealed (`kind: SYSTEM`, `params.reason: UNSEALABLE`). It stays `active` - through later sessions and restarts - until an operator whose role holds EVIDENCE_REVIEW acknowledges it; that call sets `acknowledged: true`, `active: false` and `resolvedAt`, also when another role had acknowledged it before, and writes ONE audit row FAULT_CLEARED that names the session of the notice, the operator and the sending device (`details.reason: UNSEALABLE`, `details.alertId`, `details.operationId: acknowledgeAlert`). The acknowledgement of another role leaves it active and writes no row. The answer is `204` in every case.',
       hostedNote('acknowledgeAlert'),
     ].join('\n\n'),
     source: backendSource(SECTION, 70),
@@ -97,7 +98,7 @@ export const ALERT_OPERATIONS = [
       422: INVALID_PATH_PARAMETER,
     },
     access: AUTHENTICATED_ACCESS,
-    audit: { success: CoreApiAuditNone.PARITY, ...DENIED },
+    audit: { success: CoreApiAuditNone.PARITY, ...DENIED, also: [AuditType.FAULT_CLEARED] },
     services: CORE_SERVER_ONLY,
   },
 ] as const satisfies readonly CoreApiRegistryOperation[];

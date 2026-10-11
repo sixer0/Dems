@@ -150,7 +150,8 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     fireEvent.press(screen.getByTestId('capture-source-option-CAM-03'));
     fireEvent.press(screen.getByTestId('capture-source-save'));
     await settle();
-    expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-03 · Test source');
+    // Fix wave L (contract_wave_l.md section 5): `model` of a device with `adapter: 'FAKE'` is a model value and is not drawn.
+    expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-03');
     expect(configAudit(h)).toHaveLength(1);
     expect(h.sim.store.getState().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId).toBe('CAM-03');
     expect(screen.queryByTestId(/^capture-selector-notice-/)).toBeNull();

@@ -175,7 +175,9 @@ describe('(a) a RETRIABLE failure is retried in the running process, with a boun
       ['FAILED', 3],
       ['FAILED', 4],
     ]);
-    expect(rig.told()).toBe(`${sealingFailureReason('FRAGMENT_NOT_OPENABLE')} Sealing will be tried again when the Core starts, or by the recovery action.`);
+    // Closing pass L-Z (G75d-02; decision 3 of note 155), pin moved by delta: the sentence said "tried again when the Core starts, or by the
+    // recovery action" - a name no screen has. It states what the Core did and that it WAITS; the alert names the retry.
+    expect(rig.told()).toBe(`${sealingFailureReason('FRAGMENT_NOT_OPENABLE')} Sealing stopped after 3 automatic retries: the Core now waits and does not run it again by itself.`);
     expect(rig.wayOut.pending()).toBeNull();
     // BOUNDED: no fifth run however long the Core stays up.
     await rig.advance(3_600_000);

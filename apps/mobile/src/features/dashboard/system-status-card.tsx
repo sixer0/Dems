@@ -29,6 +29,7 @@ import { durationText, type FlagLine, type HomeStatus } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, beatDelay, homeEnter } from './home-motion';
 import { useElapsedSeconds, useHomeSession } from './use-home-data';
 import { useSealBlocked } from '@/features/session-finalizing/seal-attention';
+import { openNoticeCloseKey, openNoticeDetail, useCanCloseNotice, useOpenNotices } from '@/features/session-finalizing/open-notice';
 import { SEAL_RECORDING_KEPT_SENTENCE } from '@dems/shared/sim';
 
 /** Share of the hero ring's width the centre text may use (inside the inner ring). */
@@ -60,6 +61,17 @@ export interface SystemStatusCardProps {
 function useConnectingStatus(status: HomeStatus): boolean {
   const connecting = useConnectingCameras();
   return connecting && status.kind === 'RECORDING';
+}
+
+/**
+ * Fix wave L (G75d-01): READY while an unsealable notice is open is never drawn as plain "READY /
+ * All systems operational". The notice does not block recording, so the state stays READY - with the
+ * notice stated on the ring, the title and the lines under it. Any other state keeps its own words
+ * (a fault, a recording, a blocked seal say more than the notice does; the bell still lists it).
+ */
+function useReadyWithNotice(status: HomeStatus) {
+  const notices = useOpenNotices();
+  return status.kind === 'READY' && notices.length > 0 ? notices : null;
 }
 
 export function SystemStatusCard({ status, variant, heroSize = 280 }: SystemStatusCardProps) {
@@ -110,11 +122,14 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
   const breathing = useAmbientLoop(HOME_LOOPS.ringBreath, { paused: !focused });
   useAmbientLoop(HOME_LOOPS.ringRotate, { active: mode === 'hero', paused: !focused });
   useAmbientLoop(HOME_LOOPS.ringRec, { active: status.ring === 'recording' && !connecting, paused: !focused });
-  const Icon = connecting ? SHIELD.UNKNOWN : SHIELD[status.kind];
-  const tone = connecting ? palette.gray : toneHex[status.tone];
+  const noticed = useReadyWithNotice(status) !== null;
+  const Icon = connecting ? SHIELD.UNKNOWN : noticed ? SHIELD.ATTENTION : SHIELD[status.kind];
+  const tone = connecting ? palette.gray : noticed ? toneHex.warning : toneHex[status.tone];
   // The neutral ring while the cameras connect: not the red recording ring, not a fault colour.
-  const ringState = connecting ? 'offline' : status.ring;
+  // G75d-01: READY with an open notice is the amber ring - not the plain green one.
+  const ringState = connecting ? 'offline' : noticed ? 'attention' : status.ring;
   const stateWord = connecting ? t('common.session.trackConnecting') : t(`common.systemState.${status.kind}`);
+  const spokenState = noticed ? t('features.session-finalizing.openNotice.ringState') : stateWord;
 
   return (
     <GlowRing
@@ -125,13 +140,13 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
       motion={policy}
       paused={!breathing}
       sweepDelayMs={beatDelay(HOME_BEATS.ringSweep, settings)}
-      accessibilityLabel={t('features.dashboard.status.ringLabel', { state: stateWord })}
+      accessibilityLabel={t('features.dashboard.status.ringLabel', { state: spokenState })}
     >
       {mode === 'mini' ? (
         status.kind === 'RECORDING' && !connecting ? (
           <Icon size={22} color={tone} fill={tone} />
         ) : (
-          <Icon size={34} color={palette.black} fill={status.kind === 'READY' ? palette.gold : tone} strokeWidth={1.75} />
+          <Icon size={34} color={palette.black} fill={status.kind === 'READY' && !noticed ? palette.gold : tone} strokeWidth={1.75} />
         )
       ) : (
         <View style={[styles.heroCentre, { maxWidth: size * HERO_TEXT_SHARE }]}>
@@ -144,13 +159,13 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
             adjustsFontSizeToFit
             minimumFontScale={0.5}
             maxFontSizeMultiplier={1.2}
-            style={[styles.stateWord, { color: connecting ? palette.gray : status.kind === 'READY' ? palette.gold : toneTextHex[status.tone] }]}
+            style={[styles.stateWord, { color: connecting ? palette.gray : noticed ? toneTextHex.warning : status.kind === 'READY' ? palette.gold : toneTextHex[status.tone] }]}
           >
             {stateWord}
           </Text>
           {status.kind === 'READY' ? (
-            <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.ringFlags}>
-              {t('dashboard.systemRing.flags')}
+            <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={[styles.ringFlags, noticed ? { color: toneTextHex.warning } : null]} testID="home-status-ring-sub">
+              {noticed ? t('features.session-finalizing.openNotice.ringSub') : t('dashboard.systemRing.flags')}
             </Text>
           ) : null}
         </View>
@@ -168,7 +183,7 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   // Pass D7 item 3 (ux §8e.2 situation C): a session that recorded nothing says so, in full.
   const failedStart = useFailedStart();
   const failedWords = failedStart === null ? null : failedStartWords(t, failedStart);
-  const colour = status.kind === 'RECORDING' || status.kind === 'UNKNOWN' ? palette.foreground : toneTextHex[status.tone];
+  const baseColour = status.kind === 'RECORDING' || status.kind === 'UNKNOWN' ? palette.foreground : toneTextHex[status.tone];
   const centred = align === 'center';
   const extra = status.flags.length - MAX_FLAGS;
   // Wave H driver B (G75-07 (b)): CRITICAL while the open session is RECORDING - the recording continues, nothing is blocked.
@@ -176,12 +191,20 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   // Fix wave I (re-gate 75, G75b-02): the open session's seal is BLOCKED (the Core's alert, `sealBlockedNoticeOf`).
   // Home names that state - nothing is "recording" and no recording is blocked; the session waits to be sealed.
   const sealBlocked = useSealBlocked();
+  // Fix wave L (G75d-01): READY with an open unsealable notice - stated, with who closes it.
+  const notices = useReadyWithNotice(status);
+  const canClose = useCanCloseNotice();
+  const noticed = notices !== null && failedWords === null && sealBlocked === null && !connecting;
+
+  const colour = noticed ? toneTextHex.warning : baseColour;
 
   const subtitle =
     failedWords !== null
       ? `${failedWords.title}. ${failedWords.body}`
       : sealBlocked !== null
         ? `${sealBlocked.sessionId} · ${SEAL_RECORDING_KEPT_SENTENCE}`
+      : noticed
+        ? openNoticeDetail(t, notices)
       : criticalRecording
         ? t('common.criticalWhileRecording.subtitle', { sessionId: session.sessionId ?? '' })
         : status.kind === 'ATTENTION'
@@ -205,15 +228,22 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
             ? t('features.session-finalizing.sealAttention.chip')
             : criticalRecording
               ? t('common.criticalWhileRecording.title')
-              : t(`${status.copyKey}.title`)}
+              : noticed
+                ? t('features.session-finalizing.openNotice.title')
+                : t(`${status.copyKey}.title`)}
       </Text>
       <Text
         testID="home-status-subtitle"
         maxFontSizeMultiplier={1.2}
-        style={[styles.subtitle, { color: status.kind === 'READY' ? toneTextHex.success : palette.gray }, centred ? styles.centre : null]}
+        style={[styles.subtitle, { color: noticed ? toneTextHex.warning : status.kind === 'READY' ? toneTextHex.success : palette.gray }, centred ? styles.centre : null]}
       >
         {subtitle}
       </Text>
+      {noticed ? (
+        <Text testID="home-status-notice-close" maxFontSizeMultiplier={1.2} style={[styles.flag, centred ? styles.centre : null]}>
+          {t(openNoticeCloseKey(canClose))}
+        </Text>
+      ) : null}
       {status.kind === 'RECORDING' && !connecting ? <RecRow centred={centred} /> : null}
       {status.kind === 'ATTENTION' || status.kind === 'CRITICAL' ? (
         <View testID="home-status-flags" style={[styles.flags, centred ? styles.textCentre : null]}>

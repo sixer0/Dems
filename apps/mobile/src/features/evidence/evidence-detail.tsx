@@ -48,7 +48,7 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -67,7 +67,7 @@ import { consumeDetailIntent, useDetailIntent, type DetailTab } from './detail-i
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { FinishedExports } from './finished-exports';
 import { InterruptedLine } from './interrupted-line';
-import { NO_DETAIL_FACTS, cameraFilesFor, isDemoItem, mediaKindOf, mediaReasonLine, readItemFacts, type MediaKind } from './item-facts';
+import { NO_DETAIL_FACTS, cameraFilesFor, isDemoItem, mediaKindOf, mediaReasonLine, readItemFacts, readSealedProfiles, type MediaKind } from './item-facts';
 import { clipMsFor, mediaForEvidence, posterOf } from './evidence-media';
 import { fileSizeParts, integrityFor, isArchivable, isExportable, packageFor, packageTimeSource } from './evidence-model';
 import { ExportSheet } from './export-sheet';
@@ -78,6 +78,7 @@ import { MediaTab } from './media-tab';
 import { MenuItemText } from './menu-item-text';
 import { MetadataTab } from './metadata-tab';
 import { PlaySheet } from './play-sheet';
+import { SealedFormat } from './sealed-format';
 import { SealedPlayer } from './sealed-player';
 import { TranscriptPane } from './transcript-pane';
 import { useCanArchive, useEvidenceItem, useOperatorNames } from './use-evidence-data';
@@ -128,9 +129,26 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const [sealedPlaying, setSealedPlaying] = useState(false);
   // Wave K M1 (G94b-04): the sealed player lives under the item's facts, below the fold of the pane.
   // The Play action brings the tabs block (the tab row + the player) to the top of its scroll view.
+  // Wave L (G94c-06): on a SHORT item the pane's content ends before the tabs block can reach the top,
+  // so Play left the player half under the action bar and its stop sentence out of view. While the
+  // sealed player has been asked for, the tabs block is at least as tall as the scroll view (the
+  // block can then always be brought to the top), and it is brought there again whenever the player
+  // asks to be seen or the layout under it changes - until the operator scrolls by hand.
   const scrollRef = useRef<ScrollView>(null);
   const tabsTop = useRef(0);
-  const bringPlayerIntoView = () => scrollRef.current?.scrollTo({ y: tabsTop.current, animated: false });
+  const keepPlayerInView = useRef(false);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const scrollToPlayer = useCallback(() => scrollRef.current?.scrollTo({ y: tabsTop.current, animated: false }), []);
+  const bringPlayerIntoView = useCallback(() => {
+    keepPlayerInView.current = true;
+    scrollToPlayer();
+  }, [scrollToPlayer]);
+  const followPlayerLayout = () => {
+    if (keepPlayerInView.current) scrollToPlayer();
+  };
+  const releasePlayerView = () => {
+    keepPlayerInView.current = false;
+  };
   const [verified, setVerified] = useState<VerifyV2Answer | null>(null);
   const v2 = useMemo(() => readItemV2(item), [item]);
   const facts = useMemo(() => readItemFacts(item), [item]);
@@ -283,6 +301,8 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
       <Animated.View entering={enterRise(1, m)}>
         <FactList rows={factRows} />
       </Animated.View>
+      {/* Fix wave L (G89c-04): the format as SIGNED and the session's profile notice - what the Core states, or nothing. */}
+      {live ? <SealedFormat profiles={detail.sealedProfiles ?? readSealedProfiles(item)} notice={detail.streamProfileNotice} /> : null}
       {live && mediaRef.status === 'ready' ? <FinishedExports exports={detail.exports} exported={item.status === 'EXPORTED'} /> : null}
     </Animated.View>
   );
@@ -290,9 +310,10 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
   const tabs = (
     <Animated.View
       entering={enterRise(2, m)}
-      style={styles.tabsBlock}
+      style={[styles.tabsBlock, sealedPlay !== null && viewportHeight > 0 ? { minHeight: viewportHeight } : null]}
       onLayout={(event) => {
         tabsTop.current = event.nativeEvent.layout.y;
+        followPlayerLayout();
       }}
       testID="evidence-detail-tabs-block"
     >
@@ -337,6 +358,8 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
                 failedFragments={verified?.failedFragments}
                 playToken={sealedPlay}
                 onPlayingChange={setSealedPlaying}
+                interrupted={facts.interrupted === true}
+                onAttention={bringPlayerIntoView}
               />
             ) : mediaKind === 'SEALED' ? (
               // Streamable, and this caller is refused: no player and no request (G81-07).
@@ -491,12 +514,12 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
           <ScrollView style={styles.splitHero} contentContainerStyle={styles.content}>
             {hero}
           </ScrollView>
-          <ScrollView ref={scrollRef} style={styles.splitTabs} contentContainerStyle={styles.content} testID="evidence-detail-scroll-tabs">
+          <ScrollView ref={scrollRef} style={styles.splitTabs} contentContainerStyle={styles.content} testID="evidence-detail-scroll-tabs" onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)} onContentSizeChange={followPlayerLayout} onScrollBeginDrag={releasePlayerView}>
             {tabs}
           </ScrollView>
         </View>
       ) : (
-        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} testID="evidence-detail-scroll">
+        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} testID="evidence-detail-scroll" onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)} onContentSizeChange={followPlayerLayout} onScrollBeginDrag={releasePlayerView}>
           {hero}
           {tabs}
         </ScrollView>

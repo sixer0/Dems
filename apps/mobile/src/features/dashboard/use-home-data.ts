@@ -6,10 +6,10 @@
  *
  * Every function that calls a hook is named `use…` (D66: the device build runs the React Compiler).
  */
+import { audioPairInForce, cameraLinesInForce, micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useMemo } from 'react';
 import {
   CORE_NOT_RUNNING_LABEL,
-  captureMicLines,
   isCoreNotRunningKind,
   isHostClockTime,
   isPlatformNotReported,
@@ -33,7 +33,7 @@ import {
 import { useRecordingTickerSeconds } from '@/runtime';
 import { useRealCaptureView } from '@/features/devices/camera-preview';
 import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
-import { micLineDeviceIdOf, micLineReportOf, sourceStateWord, type SourceStateKind } from '@/features/capture-selector/source-state';
+import { cameraLineReportOf, micLineDeviceIdOf, micLineReportOf, sourceStateWord, type SourceStateKind } from '@/features/capture-selector/source-state';
 import type { SessionState } from '@dems/shared/domain';
 import {
   cameraTileFor,
@@ -41,6 +41,7 @@ import {
   homeStatusFor,
   micTileFor,
   micTileSourceRole,
+  realCaptureCameraTileFor,
   realCaptureMicTileFor,
   primaryActionFor,
   recentRowsFor,
@@ -140,13 +141,16 @@ export function useHomeTiles(): readonly HomeTile[] {
   const { live } = useSourceBadgeMode();
   const micLines = useSim((s) => {
     if (!realCapture) return [] as string[];
-    const lines = captureMicLines(s);
+    const lines = micLinesInForce(s);
     return s.mics.map((m) => {
       const inputId = micInputOfChannel(lines, m.id);
       const primary = lines.find((line) => line.inputId === inputId)?.role === 'PRIMARY';
-      return `${sourceStateWord(micLineReportOf(s, m.id), live).kind}|${primary ? 'P' : ''}`;
+      return `${sourceStateWord(micLineReportOf(s, m.id), live, s.session?.state === 'RECORDING').kind}|${primary ? 'P' : ''}`;
     });
   });
+  // Fix wave L (G70c-02): the Camera tile of a Core in real capture - the cameras ON the lines in force, as reported.
+  const cameraLines = useSim((s) => (realCapture ? cameraLinesInForce(s).map((line) => sourceStateWord(cameraLineReportOf(s, line.trackId), live, s.session?.state === 'RECORDING').kind) : ([] as string[])));
+  const recording = useSim((s) => s.session?.state === 'RECORDING');
   return useMemo(() => {
     const signal = micTileFor(
       micStates.map((entry) => ({
@@ -163,8 +167,9 @@ export function useHomeTiles(): readonly HomeTile[] {
           signal,
         )
       : signal;
-    return [cameraTileFor(cams), microphone, storageTileFor(storage)];
-  }, [cams, micStates, storage, realCapture, micLines]);
+    const camera = realCapture ? realCaptureCameraTileFor(cameraLines.map((state) => ({ state: state as SourceStateKind })), recording) : cameraTileFor(cams);
+    return [camera, microphone, storageTileFor(storage)];
+  }, [cams, micStates, storage, realCapture, micLines, cameraLines, recording]);
 }
 
 /** H5: the three most recent sessions ("Today 09:35" is decided per WIB day, not per second). */
@@ -231,6 +236,7 @@ export interface DeviceTileInfo {
   /**
    * Fix wave I - MIC tiles on a Core in REAL capture: the registered microphone ON this tile's line (the
    * selector's, not the track's built-in one) and the word of what the Core reported for it; null elsewhere.
+   * Fix wave L (G70c-02): CAMERA tiles too, while nothing records.
    */
   line: { readonly deviceId: string | null; readonly stateKey: string; readonly tone: string } | null;
 }
@@ -239,16 +245,26 @@ export interface DeviceTileInfo {
 export function useDeviceTiles(): DeviceTileInfo[] {
   const realCapture = useRealCaptureView();
   const { live } = useSourceBadgeMode();
-  const cams = useSim((s) => s.cameras.map((c) => `${c.id}|${c.deviceId}|${c.online ? c.lens : 'OFFLINE'}`));
-  // The pair is the session's (`audioSource`), with the meters' member behind it; primitives only, so
+  // Fix wave L (G70c-02): a CAMERA tile on a Core in real capture, while nothing records, states what the Core
+  // reported for the camera ON its line ("Reachable" / "Not reachable" / "Not checked") - not the track's
+  // model word "READY". While a session records the track's own word stands (the capture drives it).
+  const cams = useSim((s) => {
+    const reported = realCapture && s.session?.state !== 'RECORDING';
+    return s.cameras.map((c) => {
+      const word = reported ? sourceStateWord(cameraLineReportOf(s, c.id), live) : null;
+      const line = word === null ? '' : `${cameraLinesInForce(s).find((entry) => entry.trackId === c.id)?.deviceId ?? ''}~${word.key}~${word.tone}`;
+      return `${c.id}|${c.deviceId}|${c.online ? c.lens : 'OFFLINE'}||${line}`;
+    });
+  });
+  // The pair is the one IN FORCE (`audioPairInForce`: the open session's, else the selector's), with the meters' member behind it; primitives only, so
   // the 20 Hz `audio` slice never re-renders the tiles.
   const mics = useSim((s) => {
     const recording = s.session?.state === 'RECORDING';
-    const activeInputId = s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
-    const lines = captureMicLines(s);
+    const activeInputId = audioPairInForce(s).activeInputId ?? s.audio.activeInputId;
+    const lines = micLinesInForce(s);
     return s.mics.map((m) => {
       const role = micTileSourceRole({ recording, inputId: micInputOfChannel(lines, m.id), activeInputId });
-      const word = realCapture ? sourceStateWord(micLineReportOf(s, m.id), live) : null;
+      const word = realCapture ? sourceStateWord(micLineReportOf(s, m.id), live, recording) : null;
       const line = word === null ? '' : `${micLineDeviceIdOf(s, m.id) ?? ''}~${word.key}~${word.tone}`;
       return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}|${line}`;
     });

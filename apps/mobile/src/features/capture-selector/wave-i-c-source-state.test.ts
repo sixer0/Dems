@@ -38,9 +38,11 @@ describe('sourceStateWord: what the Core reported for the microphone on a line',
     expect(word(state, 'AUDIO-02')).toMatchObject({ kind: 'REACHABLE', key: 'common.developmentRoster.reachable', tone: 'success' });
   });
 
-  it('`checkedAt` absent (a Core that does not state it): as before - the roster words from `online`', () => {
+  // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
+  it('`checkedAt` absent (a Core that does not state it): "Not checked" at rest, "Reachable" while a session records on the line; a negative fact is never hidden', () => {
     const state = marked(idle(), { 'MIC-01': FAKE, 'MIC-02': { ...FAKE, online: false } });
-    expect(word(state, 'AUDIO-01').kind).toBe('REACHABLE');
+    expect(word(state, 'AUDIO-01').kind).toBe('NOT_CHECKED');
+    expect(sourceStateWord(micLineReportOf(state, 'AUDIO-01'), true, true).kind).toBe('REACHABLE');
     expect(word(state, 'AUDIO-02')).toMatchObject({ kind: 'NOT_REACHABLE', key: 'common.developmentRoster.notReachable', tone: 'danger' });
   });
 

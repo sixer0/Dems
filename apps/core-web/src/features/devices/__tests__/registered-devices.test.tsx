@@ -49,10 +49,19 @@ describe('the roster (D137 (2)): built from the Core\'s device list, never from 
 
   it('the cards are the cameras / microphones of the list minus the four built-in ids; the PoE switch is no card', () => {
     expect(BUILT_IN_SOURCE_IDS).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'])
-    expect(registeredRoster(input, 'CAMERA').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['CAM-03', true, 'VIDEO-01', 'READY'], ['CAM-04', false, null, 'READY']])
-    expect(registeredRoster(input, 'MIC').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['MIC-03', true, 'PRIMARY', 'READY']])
-    expect(registeredRoster({ ...input, devices: BUILT_INS }, 'CAMERA')).toEqual([])
-    expect(registeredRoster({ ...input, devices: BUILT_INS }, 'MIC')).toEqual([])
+    // Fix wave L (G70c-08), pins moved by delta: a built-in source that is on NO line of the selector is a registered source
+    // without a tile, so it has its card; a built-in source on a line stays a tile and has none.
+    const beyond = (kind: 'CAMERA' | 'MIC', devices = input.devices) => registeredRoster({ ...input, devices }, kind).filter((card) => !BUILT_IN_SOURCE_IDS.includes(card.id))
+    const unassignedBuiltIns = (kind: 'CAMERA' | 'MIC', devices = input.devices) => registeredRoster({ ...input, devices }, kind).filter((card) => BUILT_IN_SOURCE_IDS.includes(card.id))
+    expect(beyond('CAMERA').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['CAM-03', true, 'VIDEO-01', 'READY'], ['CAM-04', false, null, 'READY']])
+    expect(beyond('MIC').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['MIC-03', true, 'PRIMARY', 'READY']])
+    expect(beyond('CAMERA', BUILT_INS)).toEqual([])
+    expect(beyond('MIC', BUILT_INS)).toEqual([])
+    for (const kind of ['CAMERA', 'MIC'] as const) {
+      const lines = kind === 'CAMERA' ? input.config.cameras.map((line) => line.deviceId) : input.config.mics.map((line) => line.deviceId)
+      expect(unassignedBuiltIns(kind).every((card) => card.slot === null && !lines.includes(card.id)), kind).toBe(true)
+      expect(unassignedBuiltIns(kind).map((card) => card.id), kind).toEqual(BUILT_INS.filter((device) => device.kind === kind && !lines.includes(device.id)).map((device) => device.id))
+    }
   })
 
   it('a device the Core calls local only by its id is NOT local: the class and the adapter decide, not the id', () => {
@@ -68,7 +77,7 @@ describe('the roster (D137 (2)): built from the Core\'s device list, never from 
     // A resolved notice says nothing any more.
     expect(registeredRoster({ ...input, devices: [LOCAL_CAMERA], alerts: [{ ...denied, active: false }] }, 'CAMERA')[0]?.state).toBe('READY')
     const busy = alert('ALR-2', 'MIC-03', { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'MIC-03', deviceKind: 'MIC', phase: 'PRECHECK', cause: 'DEVICE_BUSY' })
-    expect(registeredRoster({ ...input, alerts: [busy] }, 'MIC')[0]?.state).toBe('DEVICE_BUSY')
+    expect(registeredRoster({ ...input, alerts: [busy] }, 'MIC').find((card) => card.id === 'MIC-03')?.state).toBe('DEVICE_BUSY')
   })
 
   it('"is on" only from `sourceOpen: true` of a LOCAL device; an absent member, false, or a test source is not on', () => {

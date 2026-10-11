@@ -20,6 +20,7 @@
  * the Core's state does. A `MIC_SILENT` warning only names an input; no rule in this file sends a
  * command (OD-11).
  */
+import { audioPairInForce, selectorInForce } from '@/features/capture-selector/selector-in-force';
 import { ApiErrorCode } from '@dems/shared/api';
 import { SessionState, type AudioTrackId, type MicInputId } from '@dems/shared/domain';
 import {
@@ -142,19 +143,24 @@ export type MicLine = { readonly inputId: string };
  */
 export const inputOfChannel = (channel: AudioTrackId, mics: readonly MicLine[] = []): string => micInputOfChannel(mics, channel);
 
-/** The input the Core says is inside `AUDIO-01` now: the session's pair, else the meters' member. */
-export const selectActiveInputId = (s: SimState): string => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId;
+/**
+ * The input inside `AUDIO-01` now: the pair of the OPEN session; with no open session the PRIMARY line of
+ * the current selector (`audioPairInForce`, fix 157: a SEALED session's pair names nothing any more); the
+ * meters' member behind both.
+ */
+export const selectActiveInputId = (s: SimState): string => audioPairInForce(s).activeInputId ?? s.audio.activeInputId;
 
 /**
- * The hot standby: the session's pair; else the other microphone line of the selector the session
+ * The hot standby: the pair in force (the OPEN session's; with no open session the current selector's
+ * STANDBY line); else the other microphone line of the selector the session
  * records under (its snapshot, else the stored one), whatever its number; else the other input of
  * the built-in pair.
  */
 export const selectStandbyInputId = (s: SimState): string => {
-  const named = s.session?.audioSource?.standbyInputId;
-  if (named !== undefined) return named;
+  const named = audioPairInForce(s).standbyInputId;
+  if (named !== null) return named;
   const active = selectActiveInputId(s);
-  const lines: readonly { readonly inputId: string }[] = (s.session?.captureConfig ?? s.captureConfig)?.mics ?? [];
+  const lines: readonly { readonly inputId: string }[] = (selectorInForce(s) as { readonly mics?: readonly { readonly inputId: string }[] } | undefined)?.mics ?? [];
   return otherMicInput(lines, active) ?? BUILT_IN_OTHER[active] ?? active;
 };
 

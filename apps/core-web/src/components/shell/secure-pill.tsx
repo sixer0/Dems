@@ -14,7 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim, useSimReady } from '@dems/shared/sim'
+import { openUnsealableNoticesOf, useSim, useSimReady } from '@dems/shared/sim'
 import { palette } from '@dems/shared/tokens'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { tween, useAmbientLoop, useMotionPolicy } from '@/motion'
@@ -98,16 +98,22 @@ export function SecurePill() {
     pulses = escalated ? seen.pulses + 1 : seen.pulses
     setSeen({ state, pulses })
   }
-  const Icon = PILL_ICON[state]
-  const title = t(`shell.securePill.${state}.title`)
-  const subtitle = pillSubtitle(t, state, cause)
+  // Fix wave L (G75d-01, ruling D228 (2)): while a recording sits in quarantine (an ACTIVE unsealable alert - the one
+  // fact is `openUnsealableNoticesOf`) the pill never reads "SECURE / All systems operational" without it. The notice
+  // blocks no recording, so it is an open notice, not a critical state; a real fault keeps its own words.
+  const openNotices = useSim((s) => openUnsealableNoticesOf(s).length)
+  const openNotice = state === 'SECURE' && openNotices > 0
+  const Icon = openNotice ? ShieldAlert : PILL_ICON[state]
+  const title = openNotice ? t('web.waveL.notice.pillLabel') : t(`shell.securePill.${state}.title`)
+  const subtitle = openNotice ? t('web.waveL.notice.pillSub', { count: openNotices }) : pillSubtitle(t, state, cause)
 
   return (
     <Popover isOpen={open} onOpenChange={setOpen}>
       <Button
         variant="outline"
         className="dems-secure-pill"
-        data-state={state}
+        data-state={openNotice ? 'ATTENTION' : state}
+        data-open-notice={openNotice ? 'true' : undefined}
         data-testid="secure-pill"
         aria-label={`${title}. ${subtitle}`}
       >
@@ -141,6 +147,11 @@ export function SecurePill() {
       <Popover.Content placement="bottom end" offset={8} className="w-[340px] max-w-[calc(100vw-24px)]">
         <Popover.Dialog aria-label={t('shell.securePill.popoverTitle')}>
           <Popover.Heading className="dems-popover-heading">{t('shell.securePill.popoverTitle')}</Popover.Heading>
+          {openNotices > 0 ? (
+            <p className="dems-popover-empty" role="status" data-testid="secure-pill-open-notice">
+              {t('web.waveL.notice.pillSub', { count: openNotices })}. {t('web.waveL.notice.ringSub')}
+            </p>
+          ) : null}
           <ul className="dems-check-list" data-testid="integrity-checklist">
             {INTEGRITY_CHECK_IDS.map((id, index) => {
               const stated: CheckStatus | 'UNKNOWN' = ready ? (checks[index] ?? 'OK') : 'UNKNOWN'

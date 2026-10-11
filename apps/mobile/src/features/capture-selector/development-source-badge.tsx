@@ -23,6 +23,7 @@
  * `DevelopmentSourceBadge` alone (the Devices rows and details) draws neither: those screens draw
  * their own "is on" line and the full limit text.
  */
+import { cameraLinesInForce, micLinesInForce, selectorInForce } from '@/features/capture-selector/selector-in-force';
 import { FlaskConical, Radio, TriangleAlert } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
@@ -166,7 +167,7 @@ export function DevelopmentSourceBadge({ deviceId, testID, onLine = false, limit
  * of the Core's current selector. Nothing is drawn unless the Core sent the development class.
  */
 export function TrackSourceBadge({ trackId, testID }: { trackId: string; testID?: string }) {
-  const deviceId = useSim((s) => (s.session?.captureConfig ?? s.captureConfig).cameras.find((line) => line.trackId === trackId)?.deviceId ?? null);
+  const deviceId = useSim((s) => cameraLinesInForce(s).find((line) => line.trackId === trackId)?.deviceId ?? null);
   return <DevelopmentSourceBadge deviceId={deviceId} testID={testID ?? `development-source-${trackId}`} onLine />;
 }
 
@@ -176,7 +177,7 @@ export function TrackSourceBadge({ trackId, testID }: { trackId: string; testID?
  * line's device id IS its input id).
  */
 export function MicInputSourceBadge({ inputId, testID }: { inputId: string; testID?: string }) {
-  const deviceId = useSim((s) => (s.session?.captureConfig ?? s.captureConfig).mics.find((line) => line.inputId === inputId)?.deviceId ?? inputId);
+  const deviceId = useSim((s) => micLinesInForce(s).find((line) => line.inputId === inputId)?.deviceId ?? inputId);
   return <DevelopmentSourceBadge deviceId={deviceId} testID={testID ?? `development-source-${inputId}`} onLine />;
 }
 
@@ -210,7 +211,7 @@ export function precheckDeviceOf(
 
 /** The badge of a pre-check row (Session New, MB-02); nothing for a check that is about no capture device. */
 export function PrecheckSourceBadge({ checkId }: { checkId: string }) {
-  const deviceId = useSim((s) => precheckDeviceOf(checkId, s.session?.captureConfig ?? s.captureConfig));
+  const deviceId = useSim((s) => precheckDeviceOf(checkId, selectorInForce(s)));
   return <DevelopmentSourceBadge deviceId={deviceId} testID={`session-new-check-${checkId}-source`} onLine limitLine />;
 }
 

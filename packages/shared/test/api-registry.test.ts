@@ -592,9 +592,13 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     expect(also('verifyEvidence')).toEqual(['EVIDENCE_VERIFY_FAILED']);
     // Task 3 M2-W7 (`C3 §5.3`; E-12; OD-22): a camera PoE cycle writes DEVICE_COMMAND plus CAMERA_POE_CYCLED.
     expect(also('restartDevice')).toEqual(['CAMERA_POE_CYCLED']);
+    // Fix wave L, driver L-S (G75d-01; ruling D228 (2); pin moved by delta): the acknowledgement that CLOSES the open notice of an
+    // unsealable session writes FAULT_CLEARED; every other acknowledgement writes no row (parity), so `success` stays "none".
+    expect(also('acknowledgeAlert')).toEqual(['FAULT_CLEARED']);
+    expect(findCoreApiOperation('acknowledgeAlert')?.audit.success).toBe(CoreApiAuditNone.PARITY);
     // No other operation of contract C names a second row type.
     const withAlso = CONTRACT_C_OPERATIONS.map(([, id]) => id).filter((id) => also(id).length > 0);
-    expect(withAlso).toEqual(['recoverSession', 'verifyEvidence', 'restartDevice']);
+    expect(withAlso).toEqual(['recoverSession', 'verifyEvidence', 'restartDevice', 'acknowledgeAlert']);
   });
 
   it('NONE-P marks the nine commands whose simulator action writes no audit row: touchSession, seven of areas 4 to 11 and testSttConnection', () => {

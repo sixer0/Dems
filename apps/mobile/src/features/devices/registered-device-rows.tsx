@@ -28,7 +28,8 @@ import {
   rosterLine,
   rosterOnKey,
   rosterSourceKind,
-  rosterStateLabelKey,
+  sourceChecked,
+  sourceStateLabelKey,
   type RegisteredDevice,
   type RosterKind,
 } from './registered-devices-model';
@@ -72,7 +73,8 @@ function RegisteredDeviceRow({ device, selected, onPress }: { device: Registered
   const name = rosterDeviceName(t, device, live);
   const state = rosterDeviceState(device);
   const local = device.adapter === 'LOCAL_DEVICE' && rosterSourceKind(device, live) !== null;
-  const stateText = t(rosterStateLabelKey(state, local));
+  // Wave L ruling (G70c-02): READY without a checked fact of the Core is "Not checked".
+  const stateText = t(sourceStateLabelKey(state, local, sourceChecked(device)));
   const usedAs = t(`common.developmentRoster.usedAs.${device.slot ?? 'NONE'}`);
   const onKey = rosterOnKey(device, live);
   const Icon = device.kind === 'CAMERA' ? Camera : Mic;

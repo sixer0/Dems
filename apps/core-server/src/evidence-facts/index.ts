@@ -44,7 +44,7 @@
 import { EvidenceMediaSource, type EvidenceDetail, type EvidenceMediaRef } from '@dems/shared/api';
 import { AuditType, Permission, type EvidenceItem } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { itemWithSealedFacts, sealedFactsDoorsOf, type ItemWithSealedFacts, type SealedItemFacts } from '../engine';
+import { STREAM_PROFILE_DIFFERS_REASON, itemWithSealedFacts, sealedFactsDoorsOf, type ItemWithSealedFacts, type SealedItemFacts } from '../engine';
 import { createExportService } from '../evidence-export';
 import { hasSealedPackageHere, sessionPackageDir } from '../evidence-verify';
 import { holdsCase, mediaStream } from '../media-stream';
@@ -96,6 +96,34 @@ export interface EvidenceFactsControl {
 }
 
 const controls = new WeakMap<object, EvidenceFactsControl>();
+
+/** One track of the notice `STREAM_PROFILE_DIFFERS` as the item of operation 40 carries it. */
+export interface StreamProfileNoticeTrack {
+  readonly trackId: 'VIDEO-01' | 'VIDEO-02';
+  readonly stream: string;
+  readonly configured: string;
+}
+
+const NOTICE_TRACK = /^(VIDEO-0[12]):([A-Za-z0-9_.-]{1,48}):([A-Za-z0-9_.-]{1,48})$/;
+
+/**
+ * The notice `STREAM_PROFILE_DIFFERS` of a session, read from the alert the seal wrote
+ * (`engine/sealing-notice-doors.ts`: `params.tracks` = `trackId:stream:configured`, comma separated),
+ * or null when the alert list holds none for that session or its tracks do not read as written.
+ * Fix wave L, driver L-S (re-check 89 finding G89c-04).
+ */
+export function streamProfileNoticeOf(alerts: readonly { readonly kind: string; readonly target?: string | null; readonly params?: Record<string, unknown> }[], sessionId: string): { tracks: StreamProfileNoticeTrack[] } | null {
+  const alert = alerts.find((candidate) => candidate.kind === 'SYSTEM' && candidate.params?.['reason'] === STREAM_PROFILE_DIFFERS_REASON && (candidate.target ?? null) === sessionId);
+  const written = alert?.params?.['tracks'];
+  if (typeof written !== 'string') return null;
+  const tracks: StreamProfileNoticeTrack[] = [];
+  for (const part of written.split(',')) {
+    const match = NOTICE_TRACK.exec(part);
+    if (match === null) return null;
+    tracks.push({ trackId: match[1] as StreamProfileNoticeTrack['trackId'], stream: match[2] as string, configured: match[3] as string });
+  }
+  return tracks.length >= 1 && tracks.length <= 2 ? { tracks } : null;
+}
 
 /** The members of a replicated item that no row holds and that the answers of operations 39 / 40 take from it. */
 function replicatedMembers(row: EvidenceItem, replicated: EvidenceItem | undefined): EvidenceItem {
@@ -185,6 +213,10 @@ export function evidenceFacts(app: FastifyInstance): EvidenceFactsControl {
         evidence = itemWithSealedFacts(evidence, facts);
         if (replicated !== undefined && replicated.manifestHash === item.manifestHash && (replicated as ItemWithSealedFacts).sealedPackage !== facts.sealedPackage) void apply([facts]);
       }
+
+      // Fix wave L (G89c-04; ruling D229 (3)): the notice of a session whose recorded stream was not the configured profile, on its item.
+      const profileNotice = streamProfileNoticeOf(app.engine.slice('alerts'), item.sessionId);
+      if (profileNotice !== null && (evidence as ItemWithSealedFacts).sealedPackage === 'PRESENT') evidence = { ...evidence, streamProfileNotice: profileNotice } as EvidenceItem;
 
       const real = item.integritySource === 'REAL';
       let media: EvidenceMediaRef;

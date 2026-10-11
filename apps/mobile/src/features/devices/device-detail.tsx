@@ -33,6 +33,7 @@
  * take `features.devices.live.*`; the diagnostics subtitle is the shared `system.live.diagnosticsSubtitle`,
  * the words of the web console and of Settings (closing copy round, D177 DN-5).
  */
+import { cameraLinesInForce, micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useIsFocused, useRouter } from 'expo-router';
 import { Alert, Button, Tabs, useToast } from 'heroui-native';
 import { Activity, ArrowLeft, EthernetPort, RotateCcw, Siren, Stethoscope, Tablet, type LucideIcon } from 'lucide-react-native';
@@ -43,10 +44,10 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { captureMicLines, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
+import { selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
-import { CameraPreview } from './camera-preview';
+import { CameraPreview, useRealCaptureView } from './camera-preview';
 import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
@@ -54,7 +55,7 @@ import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, u
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
-import { DeviceStatusChip } from './device-status-chip';
+import { DeviceStatusChip, SyntheticValuesChip } from './device-status-chip';
 import {
   DEVICE_CAMERA,
   DEVICE_KIND,
@@ -62,7 +63,9 @@ import {
   DEVICE_SHORT_NAME_KEY,
   STATUS_LABEL_KEY,
   STATUS_TONE,
+  detailFactsOf,
   isDeviceId,
+  type DetailFacts,
   type DeviceId,
   type DeviceStatus,
 } from './devices-model';
@@ -448,28 +451,70 @@ function Facts({ items }: { items: readonly KeyValueItem[] }) {
   return <KeyValueList items={items} testID="device-overview" />;
 }
 
+/**
+ * Fix wave L, closing pass L-Z (the ONE RULE; decision 5 of note 155): what this device's blocks may draw
+ * (`detailFactsOf`). The adapter is the Core's own fact on the registry entry of the same id.
+ */
+function useDetailFacts(deviceId: DeviceId): DetailFacts {
+  const realCapture = useRealCaptureView();
+  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  return detailFactsOf(realCapture, adapter);
+}
+
+/** A block of model values on a Core in its own capture: the chip above it; in every other case the block alone, as before. */
+function ModelValues({ block, marked, children }: { block: string; marked: boolean; children: ReactNode }) {
+  if (!marked) return <>{children}</>;
+  return (
+    <View style={styles.block}>
+      <SyntheticValuesChip block={block} />
+      {children}
+    </View>
+  );
+}
+
 function CameraOverview({ deviceId, status }: { deviceId: DeviceId; status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const camera = useCamera(deviceId);
+  const facts = useDetailFacts(deviceId);
+  // The format of a track on a Core in its own capture is its selector line's profile, never the model's resolution / fps.
+  const profile = useSim((s) => {
+    const stated = (cameraLinesInForce(s).find((line) => line.deviceId === deviceId) as { readonly profile?: unknown } | undefined)?.profile;
+    return typeof stated === 'string' && stated !== '' ? stated : null;
+  });
   if (!camera) return null;
+  if (facts === 'GENERATED') {
+    return (
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
+          { id: 'format', label: label('format'), value: profile ?? t('common.platformNotReported.value'), mono: profile !== null, testID: 'device-fact-format' },
+          { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
+        ]}
+      />
+    );
+  }
   return (
-    <Facts
-      items={[
-        { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
-        { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
-        { id: 'model', label: label('model'), value: camera.model },
-        { id: 'firmware', label: label('firmware'), value: camera.firmware, mono: true },
-        { id: 'port', label: label('port'), value: t(CAMERA_POE_PORT_KEY), testID: 'device-fact-port' },
-        {
-          id: 'format',
-          label: label('format'),
-          value: t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
-        },
-        { id: 'bitrate', label: label('bitrate'), value: t('features.devices.detail.mbps', { value: camera.bitrateMbps }) },
-        { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
-      ]}
-    />
+    <ModelValues block="camera" marked={facts === 'MODEL_VALUES'}>
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          { id: 'model', label: label('model'), value: camera.model },
+          { id: 'firmware', label: label('firmware'), value: camera.firmware, mono: true },
+          { id: 'port', label: label('port'), value: t(CAMERA_POE_PORT_KEY), testID: 'device-fact-port' },
+          {
+            id: 'format',
+            label: label('format'),
+            value: t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
+          },
+          { id: 'bitrate', label: label('bitrate'), value: t('features.devices.detail.mbps', { value: camera.bitrateMbps }) },
+          { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
+        ]}
+      />
+    </ModelValues>
   );
 }
 
@@ -477,9 +522,37 @@ function MicOverview({ deviceId, status, onClipReset }: { deviceId: DeviceId; st
   const { t } = useTranslation();
   const label = useFieldLabel();
   const mic = useMic(deviceId);
+  const facts = useDetailFacts(deviceId);
   if (!mic) return null;
+  const clip: KeyValueItem = {
+    id: 'clip',
+    label: t('devices.audio.clip'),
+    testID: 'device-fact-clip',
+    value: mic.clipLatched ? (
+      <Button size="sm" variant="danger-soft" onPress={() => onClipReset(mic.id)} testID="device-clip-reset">
+        <Button.Label>{t('devices.audio.resetClip')}</Button.Label>
+      </Button>
+    ) : (
+      t('devices.audio.clipClear')
+    ),
+  };
+  if (facts === 'GENERATED') {
+    // No channel, gain, phantom power or converter: those are the simulator's model, and a generated tone has none.
+    return (
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          { id: 'source', label: t('common.developmentRoster.field.source'), value: t('common.developmentRoster.source.FAKE'), testID: 'device-fact-source' },
+          clip,
+          { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
+        ]}
+      />
+    );
+  }
   return (
     <View style={styles.block}>
+      {facts === 'MODEL_VALUES' ? <SyntheticValuesChip block="microphone" /> : null}
       <Facts
         items={[
           { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
@@ -487,18 +560,7 @@ function MicOverview({ deviceId, status, onClipReset }: { deviceId: DeviceId; st
           { id: 'channel', label: label('channel'), value: t('devices.drawer.value.channel', { channel: mic.channel }) },
           { id: 'gain', label: label('gain'), value: t('devices.audio.gainValue', { value: mic.gainDb }), testID: 'device-fact-gain' },
           { id: 'phantom', label: label('phantom'), value: mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff'), testID: 'device-fact-phantom' },
-          {
-            id: 'clip',
-            label: t('devices.audio.clip'),
-            testID: 'device-fact-clip',
-            value: mic.clipLatched ? (
-              <Button size="sm" variant="danger-soft" onPress={() => onClipReset(mic.id)} testID="device-clip-reset">
-                <Button.Label>{t('devices.audio.resetClip')}</Button.Label>
-              </Button>
-            ) : (
-              t('devices.audio.clipClear')
-            ),
-          },
+          clip,
           { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
           { id: 'adc', label: label('adc'), value: t('devices.drawer.value.adc') },
         ]}
@@ -514,17 +576,20 @@ function PoeOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const poe = useBookPoe();
+  const realCapture = useRealCaptureView();
   return (
-    <Facts
-      items={[
-        { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
-        { id: 'ports', label: label('ports'), value: t('devices.other.poeSummary', { active: poe.active, spare: poe.spare }), testID: 'device-fact-ports' },
-        { id: 'cam1', label: t('devices.ports.poeCam1'), value: poe.cam1Link ? t('devices.ports.linkUp') : t('devices.ports.linkDown') },
-        { id: 'cam2', label: t('devices.ports.poeCam2'), value: t('devices.ports.spare') },
-        { id: 'power', label: label('power'), value: t('features.devices.detail.watts', { value: poe.drawW.toFixed(1) }) },
-        { id: 'budget', label: label('budget'), value: t('features.devices.detail.watts', { value: poe.budgetW }) },
-      ]}
-    />
+    <ModelValues block="poe" marked={realCapture}>
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'ports', label: label('ports'), value: t('devices.other.poeSummary', { active: poe.active, spare: poe.spare }), testID: 'device-fact-ports' },
+          { id: 'cam1', label: t('devices.ports.poeCam1'), value: poe.cam1Link ? t('devices.ports.linkUp') : t('devices.ports.linkDown') },
+          { id: 'cam2', label: t('devices.ports.poeCam2'), value: t('devices.ports.spare') },
+          { id: 'power', label: label('power'), value: t('features.devices.detail.watts', { value: poe.drawW.toFixed(1) }) },
+          { id: 'budget', label: label('budget'), value: t('features.devices.detail.watts', { value: poe.budgetW }) },
+        ]}
+      />
+    </ModelValues>
   );
 }
 
@@ -532,25 +597,28 @@ function RelayOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const recording = useIsRecording();
+  const realCapture = useRealCaptureView();
   return (
-    <Facts
-      items={[
-        { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
-        {
-          id: 'lamp',
-          label: label('lamp'),
-          testID: 'device-fact-lamp',
-          value: recording ? (
-            <Text maxFontSizeMultiplier={1.2} style={styles.lampOn}>
-              {t('devices.other.recordingLamp')}
-            </Text>
-          ) : (
-            t('features.devices.detail.lampOff')
-          ),
-        },
-        { id: 'link', label: label('link'), value: t('devices.other.relay') },
-      ]}
-    />
+    <ModelValues block="relay" marked={realCapture}>
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          {
+            id: 'lamp',
+            label: label('lamp'),
+            testID: 'device-fact-lamp',
+            value: recording ? (
+              <Text maxFontSizeMultiplier={1.2} style={styles.lampOn}>
+                {t('devices.other.recordingLamp')}
+              </Text>
+            ) : (
+              t('features.devices.detail.lampOff')
+            ),
+          },
+          { id: 'link', label: label('link'), value: t('devices.other.relay') },
+        ]}
+      />
+    </ModelValues>
   );
 }
 
@@ -558,28 +626,37 @@ function TabletOverview({ status }: { status: DeviceStatus }) {
   const { t } = useTranslation();
   const label = useFieldLabel();
   const link = useTabletLink();
+  const realCapture = useRealCaptureView();
   return (
-    <Facts
-      items={[
-        { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
-        { id: 'link', label: label('link'), value: t('devices.other.tabletLink') },
-        { id: 'since', label: label('since'), value: t('features.devices.detail.sinceValue', { time: formatClock(link.changedAt) }), mono: true },
-        { id: 'self', label: label('pairing'), value: t('features.devices.detail.tabletSelf') },
-      ]}
-    />
+    <ModelValues block="tablet" marked={realCapture}>
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'link', label: label('link'), value: t('devices.other.tabletLink') },
+          { id: 'since', label: label('since'), value: t('features.devices.detail.sinceValue', { time: formatClock(link.changedAt) }), mono: true },
+          { id: 'self', label: label('pairing'), value: t('features.devices.detail.tabletSelf') },
+        ]}
+      />
+    </ModelValues>
   );
 }
 
 // ── Health ───────────────────────────────────────────────────────────────────────────────
 function HealthTab({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   // Ruling D137: the meter channel of a microphone is the position of its line in the capture configuration.
-  const channel = useSim((s) => channelOf(deviceId, captureMicLines(s)));
+  const channel = useSim((s) => channelOf(deviceId, micLinesInForce(s)));
   return channel ? <MicHealth channel={channel} live={live} /> : <DeviceHealth deviceId={deviceId} live={live} />;
 }
 
 function DeviceHealth({ deviceId, live }: { deviceId: DeviceId; live: boolean }) {
   const series = useHealthSeries(deviceId);
-  return <HealthChart series={series} testID="device-health" live={live} />;
+  // The series is derived from the simulator's model (see the file header, Health): on a Core in its own capture it is marked as that.
+  const realCapture = useRealCaptureView();
+  return (
+    <ModelValues block="health" marked={realCapture}>
+      <HealthChart series={series} testID="device-health" live={live} />
+    </ModelValues>
+  );
 }
 
 function MicHealth({ channel, live }: { channel: AudioTrackId; live: boolean }) {

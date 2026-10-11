@@ -133,6 +133,8 @@ export function SecurityPanel() {
     platformNotReported: v.platformNotReported,
   })
   const postureNotReported = v.platformNotReported && v.posture === 'SECURE'
+  // Fix wave L (G75d-07): the network column of a Core in its own capture that shows no fault.
+  const ownNetwork = (v.ownCore || v.platformNotReported) && v.linkUp
   const header = securityHeader(columns)
   const zone = `UTC${formatUtcOffset()}`
   const synced = v.timeSource === 'GNSS' && v.timeLocked
@@ -197,15 +199,19 @@ export function SecurityPanel() {
       icon: Network,
       iconClass: columns.network === 'success' ? 'text-accent' : TONE_TEXT_CLASS[columns.network],
       title: t('dashboard.securityTimeNetwork.network.title'),
-      chip: v.linkUp ? t('dashboard.securityTimeNetwork.network.chipUp') : t('dashboard.securityTimeNetwork.network.chipDown'),
-      tone: columns.network,
-      lines: [v.ip, v.lanName],
-      tooltip: t('dashboard.securityTimeNetwork.network.tooltip', {
-        gateway: v.gateway,
-        speed: v.linkSpeedMbps,
-        active: v.poeActive,
-        total: v.poeTotal,
-      }),
+      // Fix wave L (G75d-07, the one rule): the address, the LAN name, the gateway and the PoE ports are the appliance
+      // model's network - a Core in its own capture reports none of them here. A link that is DOWN in the state stays said.
+      chip: ownNetwork ? t('web.realCore.dashboard.notReportedChip') : v.linkUp ? t('dashboard.securityTimeNetwork.network.chipUp') : t('dashboard.securityTimeNetwork.network.chipDown'),
+      tone: ownNetwork ? 'default' : columns.network,
+      lines: ownNetwork ? [t('web.waveL.dashboardNetwork'), ''] : [v.ip, v.lanName],
+      tooltip: ownNetwork
+        ? t('web.waveL.dashboardNetwork')
+        : t('dashboard.securityTimeNetwork.network.tooltip', {
+            gateway: v.gateway,
+            speed: v.linkSpeedMbps,
+            active: v.poeActive,
+            total: v.poeTotal,
+          }),
       drawMs: beatMs + 120,
       glintMs: glintMs + 120,
     },

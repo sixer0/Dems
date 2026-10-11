@@ -193,10 +193,11 @@ export interface SealingHost {
    */
   beforeStart(sessionId: string): void;
   /**
-   * Whether the seal of `sessionId` was RESUMED - run again by a start of this Core, or by the
-   * recovery action - as opposed to a first run or a retry the Core made by itself (fix wave I;
-   * G75b-02: `resumed` of operation 83 said "after restart" for an automatic retry). Null in capture
-   * mode `simulated`: the simulator's own rule answers there.
+   * Whether the seal of `sessionId` was RESUMED - run again by a START of this Core - as opposed to
+   * a first run, a retry the Core made by itself (fix wave I; G75b-02: `resumed` of operation 83 said
+   * "after restart" for an automatic retry) or the retry on demand of operation 33 (fix wave L;
+   * G75d-09 (a): it said so with no restart). Null in capture mode `simulated`: the simulator's own
+   * rule answers there.
    */
   resumedSeal(sessionId: string): boolean | null;
 }
@@ -632,7 +633,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       // A run under way IS the retry: nothing is started beside it.
       if (controller.running() !== null) return true;
       compose().wayOut.reset(sessionId);
-      resumedSeals.add(sessionId);
+      // Fix wave L (G75d-04, G75d-09 (a)): a retry ON DEMAND is not a resume. `resumed` of operation 83 states that a START of
+      // the Core ran the seal again (a client words it "Resumed after restart"); this retry runs in the process that failed.
       app.log.info({ code: 'SEALING_RETRY_ON_DEMAND', source: SOURCE, sessionId }, 'the failed seal of a session is run again on demand');
       // F-M7c (D186 (8)): AUDITED - who asked, which session, the cause being retried. Written before the run reads its rows.
       void track(noteRetryOnDemand(sessionId, principal?.kind === 'OPERATOR' ? principal.operatorId : null)).then(() => controller.resume()).catch((error: unknown) => track(rejected(sessionId, error)));

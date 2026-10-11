@@ -111,6 +111,10 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
     if (handover) markFinalizingHandover(session.id);
   }, [handover, session.id]);
   const phase = finalizingPhase(session.state);
+  // Fix wave L (G75d-01): the session this screen FOLLOWED, kept after the Core ended it - the unsealable
+  // notice shown here is that session's own, never the newest notice of another session.
+  const [followedId, setFollowedId] = useState<string | null>(session.id ?? null);
+  if (session.id !== null && session.id !== undefined && session.id !== '' && session.id !== followedId) setFollowedId(session.id);
   // CF2-A (RF-PH-3): the Summary that replaces this screen draws in place (`summary-handoff.ts`).
   useLayoutEffect(() => {
     if (phase === 'sealed') markSummaryHandoff(session.id);
@@ -186,7 +190,7 @@ export function SessionFinalizingScreen({ handover = false }: SessionFinalizingS
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={[styles.centre, maxWidth !== undefined ? { maxWidth: sideBySide ? maxWidth + SIDE_WIDTH + spacing[4] : maxWidth } : null]}>
           {/* Fix pass F-M7b (R88-02 (c)): the Core ended the session as UNSEALABLE - a state of the recording, not an error of this screen. */}
-          {phase === 'idle' ? <UnsealableNotice /> : null}
+          {phase === 'idle' ? <UnsealableNotice sessionId={followedId} /> : null}
           {body}
         </View>
       </ScrollView>

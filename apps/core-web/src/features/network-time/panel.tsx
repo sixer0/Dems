@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import type { LucideIcon } from 'lucide-react'
@@ -20,6 +21,13 @@ export interface NetworkTimePanelProps {
 }
 
 /**
+ * Fix wave L (G75d-07): the blocks of this page whose values a Core in its own capture replicates from the
+ * appliance model and does not report. Each carries the "Synthetic demo values" chip on such a Core; the
+ * simulated lane draws none (`SyntheticValuesChip`).
+ */
+const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['network', 'domains'])
+
+/**
  * One Network & Time panel: a kit `Card` (the bronze-edged L2 surface) with the mockup's panel
  * header (gold icon, tracked uppercase title, optional right-side action), entering on its M-PG-NET
  * beat (R1). Every panel has its own error boundary, so one failing panel never blanks the page.
@@ -39,6 +47,7 @@ export function NetworkTimePanel({ id, icon: Icon, title, action, className, bod
         <div className="nt-card-header">
           <Icon className="nt-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="nt-card-title">{title}</h2>
+          {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
           {action ? <div className="nt-card-action">{action}</div> : null}
         </div>
         <div className={cn('nt-card-body', bodyClassName)}>

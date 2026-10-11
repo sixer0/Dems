@@ -3,7 +3,7 @@ import { Button, Chip, Tooltip } from '@heroui/react'
 import { motion } from 'motion/react'
 import { Cable, Mic, Plug, RadioTower, SatelliteDish, ToggleRight, Usb, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSim, type SimState } from '@dems/shared/sim'
+import { isHostClockTime, useSim, type SimState } from '@dems/shared/sim'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { useDeviceActions } from './context'
 import { useDeviceLabels } from './labels'
@@ -44,6 +44,7 @@ export function PortMap() {
   const labels = useDeviceLabels()
   const { open } = useDeviceActions()
   const codes = useSim(selectPortCodes)
+  const hostClock = useSim((s) => isHostClockTime(s.time))
   const poeDraw = useSim((s) => bookPoe(s).cam1DrawW)
   const speed = useSim((s) => s.network.linkSpeedMbps)
   const container = useStaggerVariants(PANEL_BEAT_MS.ports, LED_STAGGER_MS, REAR_PORT_ORDER.length)
@@ -87,7 +88,8 @@ export function PortMap() {
         const [link, activity] = codes[id].split(':') as [PortLink, RearPort['activity']]
         const Icon = ICONS[id]
         const name = labels.port(id)
-        const state = linkWord(link)
+        // Fix wave L (G75d-07): "GNSS SMA - Link up" stood beside "No GNSS receiver is configured" on a Core on its host clock.
+        const state = id === 'GNSS_SMA' && hostClock ? t('web.ownCore.time.notConfigured') : linkWord(link)
         const deviceId = REAR_PORT_DEVICE[id]
         const content = (
           <>

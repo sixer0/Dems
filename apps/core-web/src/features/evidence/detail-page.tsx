@@ -19,6 +19,7 @@ import { ItemDevelopmentBadge } from './development-source'
 import { saveBytes } from './export-download'
 import { ExportWizard } from './export-wizard'
 import { FinishedExports } from './finished-exports'
+import { SealedFormat } from './sealed-format'
 import { IntegrityTab } from './integrity-tab'
 import { isDemoItem, mediaKindOf, playableFilesOf } from './item-facts'
 import { InterruptedMark, MediaNone } from './item-marks'
@@ -357,6 +358,9 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
 
       {/* Wave H C2 (G94-05): the finished exports the Core reports for this item, each with its download. */}
       {live && facts !== null && (item.status === 'EXPORTED' || (facts.exports?.length ?? 0) > 0) ? <FinishedExports evidenceId={item.id} facts={facts} /> : null}
+
+      {/* Fix wave L (G89c-04): the format the signed manifest states per track, and the Core's notice of a stream that differed. */}
+      {live ? <SealedFormat facts={facts} /> : null}
 
       <motion.section variants={tabsVariants} initial="hidden" animate="visible">
         <Card className="evi-tabs-card">

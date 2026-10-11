@@ -17,6 +17,7 @@ import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, type FinalizationS
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
+import { selectorOfSession } from './selector-in-force';
 import { captureReachabilityOf } from './capture-notices';
 import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
 import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_RESTART_SENTENCE } from './core-not-running';
@@ -508,7 +509,7 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       // An unreachable PRIMARY blocks, an unreachable STANDBY warns (D83: no switch at pre-check).
       const unreachable = unreachableSource(state, role);
       if (unreachable !== null) return unreachable;
-      const input = (state.session?.captureConfig?.mics ?? state.captureConfig.mics).find((line) => line.role === role)?.inputId ?? null;
+      const input = captureMicLines(state).find((line) => line.role === role)?.inputId ?? null;
       const track = input === null ? null : channelOfMicLine(captureMicLines(state), input);
       const mic = track === null ? undefined : state.mics.find((m) => m.id === track);
       if (!mic || track === null || mic.state === 'NO_SIGNAL') {
@@ -920,7 +921,7 @@ export function switchAudioSourceTransition(state: SimState, now: EpochMs, input
   const actorId = requireSessionOperator(state, 'switchAudioSource');
   const session = requireSession(state, 'switchAudioSource', [SessionState.RECORDING]);
   // The inputs of a session are those of its selector snapshot (OD-10); the selector when it has none.
-  const mic = (session.captureConfig?.mics ?? state.captureConfig.mics).find((entry) => entry.inputId === inputId);
+  const mic = selectorOfSession(session, state.captureConfig).mics.find((entry) => entry.inputId === inputId);
   if (!mic) throw new SimNotFoundError('captureMic', inputId);
   // Media-pts start of the interval this switch opens (never the operator wall clock, S2 §6).
   const applied = applyAudioSourceSwitch(state, now, session, inputId, Math.max(0, now - (session.startedAt ?? now)));
@@ -968,7 +969,7 @@ export function applyAudioSourceSwitch(state: SimState, now: EpochMs, session: A
   if (fromInputId === toInputId) return { state, switched: null };
   const fromMs = source?.intervalFromMs ?? 0;
   const toMs = Math.max(fromMs, Math.round(atMediaMs));
-  const lines = session.captureConfig?.mics ?? state.captureConfig.mics;
+  const lines = selectorOfSession(session, state.captureConfig).mics;
   const switched: ActiveSession = {
     ...session,
     audioSource: { sessionId: session.id, activeInputId: toInputId, standbyInputId: fromInputId, switchedAt: now, intervalFromMs: toMs },

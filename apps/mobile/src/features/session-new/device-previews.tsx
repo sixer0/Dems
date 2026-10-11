@@ -28,8 +28,8 @@ import { DEMO_MEDIA_LIVE } from '@/components/media';
 // Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
 import { CameraPreview } from '@/features/devices/camera-preview';
 import { triggerHaptic, useMotionPolicy, useMotionState } from '@/motion';
-import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues, useCoreErrorPresenter, useCoreLink } from '@/runtime';
-import { CHECK_ORDER, decodeEvaluation, hostClockValue, precheckTone, valueKey } from './session-new-model';
+import { reportRuntimeIssue, useAudioAccessibilityValue, useAudioSharedValues, useCoreErrorPresenter, useCoreLink, useCoreLinkNotice } from '@/runtime';
+import { CHECK_ORDER, decodeEvaluation, hostClockValue, liveCheckWhileLinkDown, precheckTone, valueKey } from './session-new-model';
 import { CheckIcon } from './check-icon';
 import { useLiveEvaluations, useMicSignals } from './use-session-new';
 
@@ -191,6 +191,9 @@ export interface LiveDeviceColumnProps {
  */
 export function LiveDeviceColumn({ showChecks, paused }: LiveDeviceColumnProps) {
   const { t } = useTranslation();
+  // Fix wave L (G70c-06): ONE statement of the link per screen. While the Core link is down this card
+  // holds the Core's LAST report, which nothing confirms any more: it says so instead of "ONLINE / READY".
+  const { offline: linkDown } = useCoreLinkNotice();
   return (
     <View style={styles.columnStack}>
       <SectionCard title={t('features.session-new.devices.previewTitle')} testID="session-new-device-previews">
@@ -199,17 +202,17 @@ export function LiveDeviceColumn({ showChecks, paused }: LiveDeviceColumnProps) 
       {showChecks ? (
         <SectionCard
           title={t('features.session-new.devices.liveTitle')}
-          description={t('features.session-new.devices.liveHint')}
+          description={t(linkDown ? 'features.session-new.devices.liveHintLinkDown' : 'features.session-new.devices.liveHint')}
           testID="session-new-live-checks"
         >
-          <LiveChecks />
+          <LiveChecks linkDown={linkDown} />
         </SectionCard>
       ) : null}
     </View>
   );
 }
 
-function LiveChecks() {
+function LiveChecks({ linkDown }: { linkDown: boolean }) {
   const { t } = useTranslation();
   const evaluations = useLiveEvaluations();
   return (
@@ -217,7 +220,8 @@ function LiveChecks() {
       {CHECK_ORDER.map((id, index) => {
         const { status, value } = decodeEvaluation(evaluations[index] ?? 'PASS|');
         // Wave H closing pass Z2: the live TIME row of a Core in its own capture is the host clock - a note, not a warning.
-        const tone = precheckTone(status, hostClockValue(id, value));
+        const stated = liveCheckWhileLinkDown(id, linkDown);
+        const tone = stated !== null ? stated.tone : precheckTone(status, hostClockValue(id, value));
         return (
           <Fragment key={id}>
             {index > 0 ? <Separator /> : null}
@@ -232,8 +236,9 @@ function LiveChecks() {
                 <StatusChip
                   size="sm"
                   tone={tone}
-                  label={t(valueKey(id, value), { defaultValue: value })}
+                  label={stated !== null ? t(stated.key) : t(valueKey(id, value), { defaultValue: value })}
                   icon={null}
+                  testID={`session-new-live-${id}-value`}
                 />
               </ListGroup.ItemSuffix>
             </ListGroup.Item>

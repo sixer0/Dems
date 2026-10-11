@@ -11,7 +11,7 @@
  * | Core | Condition | The line says |
  * |---|---|---|
  * | real capture | `checkedAt === null` | NOT_CHECKED, no stream line |
- * | real capture | no session is RECORDING | REACHABLE / NOT_REACHABLE (from `online`); a LIVE stream is not said |
+ * | real capture | no session is RECORDING | wave L: NOT_CHECKED (`online: true` = the row is enabled, no read), REACHABLE only with a stated `checkedAt`; NOT_REACHABLE from `online: false`; a LIVE stream is not said |
  * | real capture | a session is RECORDING | the stream state (the recording's telemetry makes it true) |
  * | real capture | `streamState: LOST` | stays: a negative fact of a read is never hidden |
  * | simulated | any | ONLINE / OFFLINE and the stream state, as before |
@@ -43,7 +43,14 @@ export function sourceLineState(input: SourceLineInput): SourceLineState {
   const stream = input.streamState ?? null
   if (!input.realCapture) return { reach: input.online ? 'ONLINE' : 'OFFLINE', stream }
   if (input.checkedAt === null) return { reach: 'NOT_CHECKED', stream: null }
-  return { reach: input.online ? 'REACHABLE' : 'NOT_REACHABLE', stream: stream === 'LIVE' && !input.recording ? null : stream }
+  // A negative fact of a read is never hidden.
+  if (!input.online) return { reach: 'NOT_REACHABLE', stream: stream === 'LIVE' ? null : stream }
+  // Fix wave L (G70c-02; `contract_wave_l.md` section 5): at rest `online: true` only says "the registry row is
+  // enabled" - a camera on a dead address read "Reachable". Reachable is said while a recording runs on the line
+  // (its telemetry makes it true) or when the Core states when it checked (`checkedAt`).
+  const checked = input.recording || (typeof input.checkedAt === 'number' && Number.isFinite(input.checkedAt))
+  if (!checked) return { reach: 'NOT_CHECKED', stream: stream === 'LOST' ? stream : null }
+  return { reach: 'REACHABLE', stream: stream === 'LIVE' && !input.recording ? null : stream }
 }
 
 /** The planned member `checkedAt` of a capture device, read by name: a finite number, null, or undefined (absent / malformed). */

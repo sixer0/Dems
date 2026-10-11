@@ -21,6 +21,7 @@ import { cleanup, configure, render, screen, waitFor, within } from '@testing-li
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enWeb } from '@/i18n-web'
 import { en } from '@dems/shared/i18n'
 import type { SocketLike } from '@dems/shared/realtime'
 import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim, type SimState } from '@dems/shared/sim'
@@ -124,8 +125,10 @@ describe('G70-03 Devices & Inputs', () => {
     expect(first).toHaveAttribute('role', 'img')
     expect(first).toHaveTextContent(en.common.tracks['VIDEO-01'])
     expect(first).toHaveTextContent('CAM-01')
-    expect(first).toHaveTextContent(en.devices.selector.online)
-    expect(first).toHaveAttribute('aria-label', P.aria.replace('{{name}}', first!.querySelector('[data-part="name"]')!.textContent!).replace('{{state}}', en.devices.selector.online))
+    // Fix wave L (G70c-02), pins moved by delta: "Online" was said of a source nobody opened; at rest the tile reads "Not checked".
+    expect(first).not.toHaveTextContent(en.devices.selector.online)
+    expect(first).toHaveTextContent(enWeb.web.source.notChecked)
+    expect(first).toHaveAttribute('aria-label', P.aria.replace('{{name}}', first!.querySelector('[data-part="name"]')!.textContent!).replace('{{state}}', enWeb.web.source.notChecked))
     expect(tiles(within(page).getByTestId('camera-tile-VIDEO-02'))).toHaveLength(1)
   })
 
@@ -141,7 +144,7 @@ describe('G70-03 Devices & Inputs', () => {
       }
     })
     await waitFor(() => expect(tiles(page).length).toBeGreaterThanOrEqual(2))
-    expect(tiles(within(page).getByTestId('camera-tile-VIDEO-01'))[0]).toHaveTextContent(en.devices.selector.offline)
+    expect(tiles(within(page).getByTestId('camera-tile-VIDEO-01'))[0]).toHaveTextContent(en.common.developmentRoster.notReachable)
     expect(tiles(within(page).getByTestId('camera-tile-VIDEO-02'))[0]).toHaveTextContent(en.devices.selector.stream.LOST)
   })
 

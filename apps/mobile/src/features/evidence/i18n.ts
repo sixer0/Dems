@@ -203,6 +203,16 @@ export const evidenceEn = {
   },
   /** The sealed player's own words (`sealed-player-i18n.ts`), read as `features.evidence.player.*`. */
   player: sealedPlayerEn,
+  /**
+   * Fix wave L (G89c-04; ruling D229 (3)): the format the SIGNED manifest states per camera file, and the
+   * session's notice when the recorded stream was not the configured profile. The codes are the manifest's.
+   */
+  sealedFormat: {
+    title: 'Sealed format (signed manifest)',
+    track: '{{track}}: {{profile}}',
+    noticeTitle: 'The recorded stream was not the configured profile',
+    noticeTrack: '{{track}}: recorded {{stream}}, configured {{configured}}',
+  },
   export: {
     title: 'Export {{id}}',
     close: 'Close export',

@@ -67,6 +67,12 @@ const LIVE_KEYS = [
   'waveK.export.archiveNotStated',
   // Fix wave K, M1 (G94b-01), moved under the evidence tree by the final small fixes: the sealed player's no-seek sentence (`sealed-player-i18n.ts`).
   'player.noSeek',
+  // Fix wave L, L-M: the end sentence of an interrupted recording (G94c-03) and the sealed format of the item (G89c-04).
+  'player.interruptedEnd',
+  'sealedFormat.title',
+  'sealedFormat.track',
+  'sealedFormat.noticeTitle',
+  'sealedFormat.noticeTrack',
   'media.checking',
   'media.unavailable',
   'integrity.coreLabel',
@@ -125,6 +131,8 @@ describe('Evidence takes the Core through the light Live API (CLG c, AC-C-53)', 
       'menu-item-text.tsx',
       'metadata-tab.tsx',
       'play-sheet.tsx',
+      // Wave L, L-M (G89c-04): the format as signed and the session's profile notice, read from operation 40 by name.
+      'sealed-format.tsx',
       'sealed-playback.ts',
       // Wave K M1 (G94b-01): the one sentence of the sealed player for a stream without a seek index.
       'sealed-player-i18n.ts',

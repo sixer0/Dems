@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { Button, Chip, Spinner, Tooltip, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Lock, RotateCcw } from 'lucide-react'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions } from '@dems/shared/live'
@@ -67,9 +68,13 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const { busy: resetBusy, pending: showResetPending, run: runReset } = usePendingControl()
   const mic = useSim((s) => selectMicById(s, channel))
   const status = useSim((s) => deviceStatus(s, deviceId))
-  const fullName = labels.fullName(deviceId)
+  // Fix wave L (G75d-06): on a Core in its own capture the roles of the dataset ("Interviewer (Ch 1)"), the rear port
+  // ("MIC IN 1"), the gain and the phantom power are values of the appliance model: the card names the input by its
+  // line ("MIC 1") and the selector's device, and draws no gain and no phantom row.
+  const ownCore = useSelfCaptureCore()
   const name = labels.name(deviceId)
-  const port = labels.port(MIC_PORT[channel])
+  const fullName = ownCore ? name : labels.fullName(deviceId)
+  const port = ownCore ? inputId : labels.port(MIC_PORT[channel])
   const tone = STATUS_TONE[status]
   const latched = mic?.clipLatched ?? false
   const noSignal = status === 'NO_SIGNAL'
@@ -147,6 +152,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
               <PeakReadout channel={channel} />
             </dd>
           </div>
+          {ownCore ? null : (<>
           <div className="dev-fact" data-fact="gain">
             <dt>{t('devices.audio.gain')}</dt>
             <dd>
@@ -169,6 +175,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
               </Chip>
             </dd>
           </div>
+          </>)}
           <div className="dev-fact" data-fact="clip" aria-busy={resetBusy || undefined}>
             <dt>{t('devices.audio.clip')}</dt>
             <dd>

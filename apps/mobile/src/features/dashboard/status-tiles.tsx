@@ -50,8 +50,8 @@ function StatusTile({ tile, index }: { tile: HomeTile; index: number }) {
     tile.id === 'storage'
       ? t('features.dashboard.tiles.a11y.storage', { percent: tile.value, state })
       : tile.id === 'camera'
-        ? t('features.dashboard.tiles.a11y.camera', { online: tile.value, total: tile.total ?? 0, state })
-        : t('features.dashboard.tiles.a11y.microphone', { ready: tile.value, total: tile.total ?? 0, state });
+        ? t(tile.reported === true ? 'features.capture-selector.sourceState.homeCamerasLabel' : 'features.dashboard.tiles.a11y.camera', { online: tile.value, total: tile.total ?? 0, state })
+        : t(tile.reported === true ? 'features.capture-selector.sourceState.homeMicrophonesLabel' : 'features.dashboard.tiles.a11y.microphone', { ready: tile.value, total: tile.total ?? 0, state });
 
   return (
     <Animated.View entering={homeEnter(beat, settings)} style={styles.cell}>

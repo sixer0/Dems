@@ -14,7 +14,7 @@ describe('microphone checks and the selector (MB-02)', () => {
   it('the encoded line is the Core\'s current selector while idle, and the session\'s own snapshot once it holds one', () => {
     expect(micRoleLine(idle)).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
     // The selector may not change under a session (OD-10); if the store's did, the session's snapshot wins.
-    expect(micRoleLine({ session: { captureConfig: { mics: DEFAULT_CAPTURE_CONFIG.mics } }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
+    expect(micRoleLine({ session: { state: 'ARMED', captureConfig: { mics: DEFAULT_CAPTURE_CONFIG.mics } }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
     expect(micRoleLine({ session: { captureConfig: null }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:STANDBY|MIC-02:PRIMARY');
   });
 

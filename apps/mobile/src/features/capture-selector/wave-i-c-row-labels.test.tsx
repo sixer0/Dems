@@ -131,9 +131,10 @@ describe('G70b-06 (contract note A2 §4): a camera line of a Core in REAL captur
     mockLive = { client: { call: jest.fn<Call>(async () => NOT_READY) } };
     markRealCapture(h, { 'CAM-02': { online: false } });
     await settle();
-    expect(chip('VIDEO-01')).toBe('Reachable');
+    // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
+    expect(chip('VIDEO-01')).toBe('Not checked');
     expect(chip('VIDEO-02')).toBe('Not reachable');
-    expect(label('VIDEO-01')).toMatch(/^Video track 1, CAM-01.*, Reachable$/);
+    expect(label('VIDEO-01')).toMatch(/^Video track 1, CAM-01.*, Not checked$/);
     expect(screen.queryByText('Live')).toBeNull();
     // The Core says it has not read the device since it started (the planned `checkedAt` member).
     markRealCapture(h, { 'CAM-01': { checkedAt: null } });

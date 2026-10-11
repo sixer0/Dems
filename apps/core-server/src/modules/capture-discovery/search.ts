@@ -65,6 +65,18 @@ export type SearchStart =
   | { readonly started: true; readonly created: boolean; readonly search: CaptureDiscoverySearch; /** Settles with the closed search when the window has closed and the row is written (null: not this call's search). Never rejects. */ readonly closed: Promise<CaptureDiscoverySearch | null> }
   | { readonly started: false; readonly refusal: SearchRefusal };
 
+/**
+ * THE OPEN SESSION OF A SEARCH - ONE RULE (fix wave L, driver L-S; re-check 70 note G70c-05). The
+ * engine's state keeps the last session after its seal, until the next one is created. Such a
+ * session is not open: the selector's lock, operation 76 and the boot line of the capture
+ * configuration call a session open while it is NOT SEALED (`isSessionActive` of the session
+ * machine), and so does the row of a search - which named a sealed, acknowledged session as "the
+ * session this search ran in" while none was open. Null: no session is open.
+ */
+export function openSessionOf(session: { readonly id: string; readonly state: string } | null): { readonly id: string; readonly state: string } | null {
+  return session === null || session.state === SessionState.SEALED ? null : { id: session.id, state: session.state };
+}
+
 export interface SearchRequest {
   /** The auth session that owns the search (the caller's, or the operator's who started the pre-check). */
   readonly sessionId: string;

@@ -17004,7 +17004,7 @@
           "Alerts"
         ],
         "summary": "Acknowledge an alert",
-        "description": "Marks an alert as acknowledged for every console of this Core. The fault behind it is not cleared.\n\nEvery signed-in role may call it: the bell is on every page. Writes no audit row. An unknown alert, or one that is already acknowledged, changes nothing and still answers `204`, as the simulator does.\n\nCore server only: the server runs the shared simulator action `acknowledgeAlert` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Marks an alert as acknowledged for every console of this Core. The fault behind it is not cleared.\n\nEvery signed-in role may call it: the bell is on every page. Writes no audit row. An unknown alert, or one that is already acknowledged, changes nothing and still answers `204`, as the simulator does.\n\nOne alert is ENDED by its acknowledgement (ruling D228 (2)): the open notice of a session that could not be sealed (`kind: SYSTEM`, `params.reason: UNSEALABLE`). It stays `active` - through later sessions and restarts - until an operator whose role holds EVIDENCE_REVIEW acknowledges it; that call sets `acknowledged: true`, `active: false` and `resolvedAt`, also when another role had acknowledged it before, and writes ONE audit row FAULT_CLEARED that names the session of the notice, the operator and the sending device (`details.reason: UNSEALABLE`, `details.alertId`, `details.operationId: acknowledgeAlert`). The acknowledgement of another role leaves it active and writes no row. The answer is `204` in every case.\n\nCore server only: the server runs the shared simulator action `acknowledgeAlert` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "204": {
             "description": "The alert is acknowledged, or nothing changed.",
@@ -17156,7 +17156,9 @@
         "x-dems-audit": {
           "success": "NONE-P",
           "denial": "ACCESS_DENIED",
-          "also": []
+          "also": [
+            "FAULT_CLEARED"
+          ]
         },
         "x-dems-services": [
           "dems-core-server"
@@ -30644,6 +30646,11 @@
                       "type": "null"
                     }
                   ]
+                },
+                "profile": {
+                  "description": "Core server only, with `sealedPackage: PRESENT`: the SIGNED manifest's `tracks[].profile` of this file (manifest field 36), e.g. `H264_720P30` - the format the recorded stream declares, not the session's `profileId`. Absent: not stated (no sealed manifest was read).",
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_.-]{1,48}$"
                 }
               },
               "required": [
@@ -30805,6 +30812,49 @@
                 "type": "null"
               }
             ]
+          },
+          "streamProfileNotice": {
+            "description": "Core server only, operation 40: the session of this item carries the notice `STREAM_PROFILE_DIFFERS` (an alert of kind SYSTEM with that `params.reason`) - the recorded stream of the named tracks was not the configured profile, and the manifest states the stream. Present while the Core's alert list holds that notice. ABSENT: the Core holds no such notice for the session - never to be read as \"compared and equal\" for an item older than the alert list.",
+            "type": "object",
+            "properties": {
+              "tracks": {
+                "minItems": 1,
+                "maxItems": 2,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "trackId": {
+                      "type": "string",
+                      "enum": [
+                        "VIDEO-01",
+                        "VIDEO-02"
+                      ]
+                    },
+                    "stream": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_.-]{1,48}$",
+                      "description": "What the recorded stream declared: the value the manifest states."
+                    },
+                    "configured": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_.-]{1,48}$",
+                      "description": "What the selector had configured for the track."
+                    }
+                  },
+                  "required": [
+                    "trackId",
+                    "stream",
+                    "configured"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "tracks"
+            ],
+            "additionalProperties": false
           },
           "transcriptModel": {
             "description": "Core server only, for an item whose sealed v2 package lies in the Core's own store and whose SIGNED manifest declares a transcript document: the model of that transcript, from the manifest (decision D160). The same shape as `transcriptModel` of operation 41. For a server backend only the name exists, as reported by the STT server; version, quantisation and file hash are null and were not verified by the Core. Absent: not stated (no document sealed, a v1 or demonstration item, a package that could not be read, a manifest whose signature did not hold) - a reader draws nothing.",
@@ -34867,7 +34917,7 @@
           },
           "resumed": {
             "type": "boolean",
-            "description": "True when this seal is a RECOVERY resume from a checkpoint (MB-06; OD-08)."
+            "description": "True when this seal is a RECOVERY resume from a checkpoint (MB-06; OD-08). On a Core in real capture: a START of the Core ran the seal again - never an automatic retry of the same process, never the on-demand retry of operation 33."
           },
           "updatedAt": {
             "type": "integer",

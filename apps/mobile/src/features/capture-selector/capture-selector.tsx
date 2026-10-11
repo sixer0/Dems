@@ -20,6 +20,7 @@
  * - flow 12: the "Development source" badge on every camera and microphone line (`SourceBadge`, decided by `developmentSourceOf` from the device's own `sourceClass`; nothing is drawn when the Core sent none);
  * - flow 13 (G17): "Search again" for microphones under the microphone rows (`MicRescanControl`).
  */
+import { cameraLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { Alert, Button, ListGroup, Separator, SkeletonGroup } from 'heroui-native';
 import { Camera, Mic } from 'lucide-react-native';
 import { Fragment, useState, type ReactNode } from 'react';
@@ -38,7 +39,7 @@ import { cameraLineStatus, type AnswerClass, type SelectorCommand, type Selector
 import { CaptureSourceSheet, type SourceSheetRequest } from './capture-source-sheet';
 import { SourceBadge } from './development-source-badge';
 import { MicRescanControl } from './mic-rescan';
-import { cameraLineReportOf, cameraStreamWordApplies, realCaptureSources, sourceStateWord } from './source-state';
+import { cameraLineReportOf, cameraStreamWordApplies, deviceReportOf, realCaptureSources, sourceStateWord } from './source-state';
 import { useCameraSearch } from './use-camera-search';
 import { useCaptureSelector, type CaptureSelector as CaptureSelectorData, type SelectorNotice } from './use-capture-selector';
 
@@ -84,11 +85,36 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   const reported = useSim((s) =>
     cameraStreamWordApplies({ realCapture: realCaptureSources(s.captureDevices.devices, live), recording: s.session?.state === 'RECORDING' })
       ? ([] as string[])
-      : (s.session?.captureConfig ?? s.captureConfig).cameras.map((line) => {
+      : cameraLinesInForce(s).map((line) => {
           const word = sourceStateWord(cameraLineReportOf(s, line.trackId), live);
           return `${line.trackId}|${word.key}|${word.tone}`;
         }),
   );
+  // Fix wave L (G70c-02): the same rule for every OPTION of the camera sheet - on a Core in real capture an
+  // option says what the Core reported for that camera; "Live" only for a camera on a track while recording.
+  const optionIds = selector.options.map((option) => option.deviceId).join('|');
+  const optionWords = useSim((s) =>
+    !realCaptureSources(s.captureDevices.devices, live)
+      ? null
+      : optionIds
+          .split('|')
+          .filter((deviceId) => deviceId !== '')
+          .map((deviceId) => {
+            const word = sourceStateWord(deviceReportOf(s, deviceId, 'CAMERA'), live);
+            return `${deviceId}~${word.key}~${word.tone}`;
+          })
+          .join('|'),
+  );
+  const recordingNow = useSim((s) => s.session?.state === 'RECORDING');
+  const reportedOptions = (): Readonly<Record<string, { key: string; tone: StatusTone }>> | undefined => {
+    if (optionWords === null) return undefined;
+    const record: Record<string, { key: string; tone: StatusTone }> = {};
+    for (const entry of optionWords.split('|')) {
+      const [deviceId = '', key = '', tone = 'default'] = entry.split('~');
+      if (deviceId !== '') record[deviceId] = { key, tone: tone as StatusTone };
+    }
+    return record;
+  };
   const reportedOf = (trackId: string): { key: string; tone: StatusTone } | null => {
     const [, key, tone] = reported.find((entry) => entry.startsWith(`${trackId}|`))?.split('|') ?? [];
     return key === undefined || tone === undefined ? null : { key, tone: tone as StatusTone };
@@ -173,7 +199,10 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                       editable={editable}
                       gateHint={gateLine}
                       editLabel={t('features.capture-selector.selector.changeCameraLabel', { track })}
-                      onEdit={() => setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: row.deviceId, options: selector.options, badgeMode: selector.badgeMode })}
+                      onEdit={() => {
+                        const reported = reportedOptions();
+                        setRequest({ kind: 'camera', trackId: row.trackId, currentDeviceId: row.deviceId, options: selector.options, badgeMode: selector.badgeMode, recording: recordingNow, ...(reported === undefined ? {} : { reported }) });
+                      }}
                     />
                     {/* Row 138 (flow 12): the one badge of this line; nothing when the Core sent no development class. */}
                     <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="CAMERA" mode={selector.badgeMode} testID={`capture-selector-source-${row.trackId}`} />

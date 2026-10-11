@@ -9,7 +9,7 @@ import { usePlatformNotReported } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
-import { selectRingPrimitives } from './sim-adapter'
+import { selectRingPrimitives, selectNewestNoticeSession, selectOpenNoticeCount, selectRingBlockedSession } from './sim-adapter'
 
 /** Ring size bounds: hero ≈ 320 at 1920 (M-C-01), smaller at 1440; never below a legible 180. */
 const RING_MIN = 180
@@ -44,9 +44,20 @@ export function SystemRingPanel() {
   // A critical fault during a recording does not stop it (the ring then reads CRITICAL while
   // `since` still carries the recording start): say so instead of "blocks recording" (F45-06).
   const captionKey = ring.state === 'CRITICAL' && ring.since !== null ? 'CRITICAL_RECORDING' : ring.state
+  // Fix wave L (G75d-03, G75d-01): a blocked seal and an open unsealable notice are said ON the ring.
+  const blockedSessionId = useSim(selectRingBlockedSession)
+  const openNotices = useSim(selectOpenNoticeCount)
+  const noticeSessionId = useSim(selectNewestNoticeSession)
+  const blocked = blockedSessionId !== null
+  const noticeOnly = !blocked && openNotices > 0 && ring.state === 'READY' && !ring.connecting
+  const ringState = blocked ? 'CRITICAL' : noticeOnly ? 'ATTENTION' : ring.state
   // Integration pass D7 item 3 (ux §8e.2; D84, D91): before the first durable fragment the ring is not the
   // recording ring (the adapter sends the system's own state, no REC, no timer) and the line under it says so.
-  const statusLine = ring.connecting
+  const statusLine = blocked
+    ? t('web.waveL.notice.blockedRingSub')
+    : noticeOnly
+      ? t('web.waveL.notice.ringSub')
+      : ring.connecting
     ? t('common.session.connectingCameras')
     : ring.state === 'READY'
       ? // Fix wave K (C-2 / G75c-04): "SECURE" is a posture no Core computed where it states `security.platformNotReported`.
@@ -58,8 +69,15 @@ export function SystemRingPanel() {
         : t('dashboard.systemRing.issues', { count: ring.issues })
 
   return (
-    <DashPanel id="a" beatMs={DASH_BEATS.hero} surface="bare" ariaLabel={t(`dashboard.systemRing.ariaLabel.${ring.state}`)}>
-      <div ref={measureRef} className="dems-dash-ring-cell" data-ring-size={size} data-connecting={ring.connecting ? 'true' : undefined}>
+    <DashPanel id="a" beatMs={DASH_BEATS.hero} surface="bare" ariaLabel={t(`dashboard.systemRing.ariaLabel.${ringState}`)}>
+      <div
+        ref={measureRef}
+        className="dems-dash-ring-cell"
+        data-ring-size={size}
+        data-connecting={ring.connecting ? 'true' : undefined}
+        data-seal-blocked={blocked ? 'true' : undefined}
+        data-open-notice={noticeOnly ? 'true' : undefined}
+      >
         {/* The ring card's edge curving towards the hero (research/04 §3.1 A). Static. */}
         <svg className="dems-dash-ring-arc" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -71,7 +89,7 @@ export function SystemRingPanel() {
           </defs>
           <path d="M 62 1 C 96 16, 100 70, 78 99" fill="none" stroke={`url(#${gradientId})`} strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
         </svg>
-        <GlowRing state={ring.state} size={size} mode="hero" recordingSince={ring.since} delayMs={ringDelay}>
+        <GlowRing state={ringState} size={size} mode="hero" recordingSince={blocked ? null : ring.since} delayMs={ringDelay}>
           <motion.div
             className="dems-ring-details"
             initial={{ opacity: 0 }}
@@ -86,7 +104,16 @@ export function SystemRingPanel() {
               {statusLine}
             </span>
             <span className={size < CAPTION_MIN_SIZE ? 'sr-only' : 'dems-ring-caption'}>
-              {ring.connecting ? t('session.audioSource.connecting.detail') : t(`dashboard.systemRing.caption.${captionKey}`)}
+              {blocked
+                ? t('web.waveL.notice.blockedRingDetail', { sessionId: blockedSessionId })
+                : noticeOnly
+                  ? t('web.waveL.notice.ringDetail', { count: openNotices, sessionId: noticeSessionId ?? '' })
+                  : ring.connecting
+                    ? t('session.audioSource.connecting.detail')
+                    : // Fix wave L (G75d-07): "All core services are running" counts the appliance model's services.
+                      platformNotReported && captionKey === 'READY'
+                      ? t('web.waveL.ringReadyCaption')
+                      : t(`dashboard.systemRing.caption.${captionKey}`)}
             </span>
           </motion.div>
         </GlowRing>

@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { WEB_ORIGIN, signInOnWeb, type Headers } from '../../../../test/support/identity';
 import { coreCredentialStore, createFragmentSealer } from '../../../credential-store';
+import { sealingNoticeDoorsOf } from '../../../engine';
 import { evidenceFacts } from '../../../evidence-facts';
 import { coreFragmentOpener } from '../../../evidence-verify';
 import { buildPackage, removeScratch, type BuiltPackage } from '../../../evidence-verify/__tests__/support';
@@ -185,8 +186,10 @@ describe('G94-04 and the item members a client must not guess', () => {
     expect(evidence['interrupted']).toBe(built.manifest.timeline.interrupted);
     // The camera files of the SEALED manifest: never a v1 row (no AUDIO-01 / AUDIO-02 file), the sealed hashes.
     expect(evidence['files']).toEqual(
-      built.manifest.tracks.map((track) => ({ trackId: track.trackId, fileName: `fragments/${track.trackId}.mp4`, sizeBytes: track.bytes, sha256: track.sha256, fragmentCount: track.fragmentCount, sha256Plain: track.sha256Plain, fragmentChainHead: track.fragmentChainHead })),
+      // Fix wave L, driver L-S (G89c-04; pin moved by delta): each file also carries the format of its track AS SIGNED (manifest field 36).
+      built.manifest.tracks.map((track) => ({ trackId: track.trackId, fileName: `fragments/${track.trackId}.mp4`, sizeBytes: track.bytes, sha256: track.sha256, fragmentCount: track.fragmentCount, sha256Plain: track.sha256Plain, fragmentChainHead: track.fragmentChainHead, profile: track.profile })),
     );
+    expect((evidence['files'] as { profile?: string }[]).every((file) => typeof file.profile === 'string' && file.profile.length > 0)).toBe(true);
     // Stated before any verification run: true or false from the certificate the sealed manifest names - never absent for a readable package.
     expect(typeof evidence.signature['developmentKey']).toBe('boolean');
     // Fix wave K, driver S2 (G81b-06; D160): the model of the sealed transcript is ON THE ITEM, from the signed manifest.
@@ -195,6 +198,25 @@ describe('G94-04 and the item members a client must not guess', () => {
     expect((evidence['transcriptModel'] as { report: string }).report).toContain(String(model.name));
     // CONTROL: an item of the demonstration data states no model.
     expect((await bodyOf(cookies.SUPERVISOR, demoEvidenceId)).evidence['transcriptModel']).toBeUndefined();
+  });
+
+  // Fix wave L, driver L-S (re-check 89 finding G89c-04; ruling D229 (3)).
+  it('G89c-04: the notice of a session whose recorded stream was not the configured profile is ON ITS ITEM (operation 40) - absent before, absent on another item, and `profileId` is what it was', async () => {
+    const before = await bodyOf(cookies.INVESTIGATOR, SEALED.evidenceId);
+    // CONTROL: no notice held for the session - the member is absent.
+    expect('streamProfileNotice' in before.evidence).toBe(false);
+    const tracks = [{ trackId: 'VIDEO-02', configured: 'H264_1080P25', stream: 'H264_720P30' }];
+    const noticed = await sealingNoticeDoorsOf(server.app.engine).noteStreamProfileDiffers?.({ sessionId: SEALED.sessionId, tracks });
+    expect(noticed?.value).toBe(true);
+    const response = await detail(cookies.INVESTIGATOR, SEALED.evidenceId);
+    expect(response.statusCode).toBe(200);
+    const after = response.json<Detail>();
+    expect(validateCoreApiResponse('getEvidence', 200, after)).toEqual({ ok: true });
+    expect(after.evidence['streamProfileNotice']).toEqual({ tracks: [{ trackId: 'VIDEO-02', stream: 'H264_720P30', configured: 'H264_1080P25' }] });
+    expect(after.evidence['profileId']).toBe(before.evidence['profileId']);
+    expect(after.evidence['files']).toEqual(before.evidence['files']);
+    // The notice is the session's: the demonstration item states none.
+    expect('streamProfileNotice' in (await bodyOf(cookies.SUPERVISOR, demoEvidenceId)).evidence).toBe(false);
   });
 
   it('REHYDRATE: an item the engine reads back gets the facts on the REPLICATED item (no column holds them), and operation 39 answers them', async () => {

@@ -49,6 +49,7 @@ export * from './maintenance';
 export * from './evidence-actions';
 export * from './seal-unsealable';
 export * from './seal-blocked';
+export * from './selector-in-force';
 export * from './pairing';
 export * from './scenarios';
 export * from './api';

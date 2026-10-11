@@ -55,7 +55,10 @@ export const READ_CAPTURE_STATE =
   "'id', d.id, 'kind', d.kind, 'transport', d.transport, 'model', d.model, 'firmware', d.firmware, " +
   "'address', d.address, 'poePort', d.poe_port, 'enabled', d.enabled) ORDER BY d.id), '[]'::json) " +
   'FROM public.capture_devices d) AS devices, ' +
-  'EXISTS (SELECT 1 FROM public.active_session) AS session_open';
+  // Fix wave L (re-check 70 note G70c-04): ONE rule for "a session is open" - `isSessionActive` of the session machine, which
+  // operation 76 answers `locked` with: a session that is not SEALED. The row of the last session stays in the table after its
+  // seal; "a row exists" made the boot line say `locked: true` on an idle Core whose selector accepted every edit.
+  "EXISTS (SELECT 1 FROM public.active_session s WHERE s.state <> 'SEALED') AS session_open";
 
 /** What one load read, kept as the store's current snapshot. */
 export interface CaptureSnapshot {

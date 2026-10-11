@@ -264,7 +264,7 @@ export function DevicesPage() {
                 id="audio"
                 icon={AudioLines}
                 title={t('devices.audio.title')}
-                subtitle={t('devices.audio.subtitle')}
+                subtitle={realCaptureCore ? t('web.waveL.summary.audioSubtitle') : t('devices.audio.subtitle')}
                 glowPulseKey={bloom}
               >
                 <motion.div className="dev-audios" variants={audioStagger} initial="hidden" animate="visible">

@@ -79,14 +79,16 @@ describe('the words of the tile: the device and its TRUE state, as the Core sent
     return { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: cameraOfTrack1 } : line)) } };
   };
   it('the Core Mac\'s camera, not open: named so, "Ready" - never "on"', () => {
-    expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': LOCAL }), 'VIDEO-01'), true)).toEqual({ device: "Core Mac's camera", state: 'Ready' });
+    expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': LOCAL }), 'VIDEO-01'), true)).toEqual({ device: "Core Mac's camera", state: 'Not checked' });
   });
   it('the Core Mac\'s camera with `sourceOpen: true`: "On"; a test source that is open is not "on" (the rule of the badge)', () => {
     expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': { ...LOCAL, sourceOpen: true } }), 'VIDEO-01'), true).state).toBe('On');
     expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': { ...FAKE, sourceOpen: true } }), 'VIDEO-01'), true).state).toBe('Reachable');
   });
   it('a test source and a production camera: "Camera CAM-01", "Reachable" / "Not reachable"', () => {
-    expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': FAKE }), 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Reachable' });
+    expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': FAKE }), 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Not checked' });
+    // With a checked fact of the Core (`checkedAt` stated) the roster's word stands.
+    expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': { ...FAKE, checkedAt: 1_791_636_968_000 } as Mark }), 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Reachable' });
     expect(noPreviewWords(t, noPreviewFactsOf(stateWith({ 'CAM-01': { ...PRODUCTION, online: false } }), 'VIDEO-01'), true)).toEqual({ device: 'Camera CAM-01', state: 'Not reachable' });
   });
   it('a track whose device the list does not hold: no device name, "State not known"', () => {
@@ -115,10 +117,10 @@ describe.each(WINDOWS)('Devices & Inputs on %s', (window) => {
     const tile = screen.getByTestId('device-detail-feed');
     expect(screen.getByTestId('device-detail-feed-none')).toHaveTextContent('No preview');
     expect(screen.getByTestId('device-detail-feed-name')).toHaveTextContent(/Core Mac's camera/);
-    expect(screen.getByTestId('device-detail-feed-state')).toHaveTextContent('Ready');
+    expect(screen.getByTestId('device-detail-feed-state')).toHaveTextContent('Not checked');
     expect(tile.props.accessibilityRole).toBe('text');
     expect(tile.props.accessibilityLabel).toMatch(NO_PREVIEW_LABEL);
-    expect(tile.props.accessibilityLabel).toMatch(/Core Mac's camera, Ready\./);
+    expect(tile.props.accessibilityLabel).toMatch(/Core Mac's camera, Not checked\./);
     expect(screen.queryByTestId('device-detail-feed-video')).toBeNull();
     expect(captions()).toBe(0);
 

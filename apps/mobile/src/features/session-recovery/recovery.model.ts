@@ -34,6 +34,28 @@ export function recoveryPhase(liveState: SessionState | null, followedId: string
   return followedId !== null && outcomeKnown ? 'complete' : 'idle';
 }
 
+/**
+ * Fix wave L (G75d-08): THE CORE IS SEALING THE INTERRUPTED PREFIX BY ITSELF - known from the session
+ * payload alone, so the screen says that instead of offering "Start recovery".
+ *
+ * | Member of the session | What it says |
+ * |---|---|
+ * | `state: 'FAULT'`, `fault.fromState: 'RECORDING'`, `startedAt` set | a recording was interrupted |
+ * | `captureDurable: true` | the Core ran ITS OWN capture for this session and holds durable media of it. The member exists only on a Core in its own capture (the simulator's session has none); `false` is a failed start (nothing was recorded) |
+ *
+ * A Core in its own capture hands EVERY interrupted recording with durable media to its seal
+ * (capture architecture: "durable media is always handed over"): the session goes FAULT ->
+ * FINALIZING -> SEALED without an operator. So with all of the above the true statement is "the Core
+ * is sealing the recording up to the interruption", and the recovery prompt ("Recovery closes the
+ * session as incomplete. It never seals it.") would be false. False for every other session: the
+ * simulator's fault, a failed start, a fault before the recording started.
+ */
+/* The caller adds "this is a Core server in its own capture" (`realCaptureSources`): the simulator's session may carry the member too. */
+export function coreSealsInterruptedPrefix(session: { readonly state?: string | null; readonly startedAt?: number | null; readonly fault?: { readonly fromState?: string | null } | null; readonly captureDurable?: unknown } | null | undefined): boolean {
+  if (session === null || session === undefined) return false;
+  return session.state === 'FAULT' && session.fault?.fromState === 'RECORDING' && session.startedAt !== null && session.startedAt !== undefined && session.captureDurable === true;
+}
+
 /** Back is consumed with a toast while the analysis runs (like Finalization, 04 §3.6). */
 export function isRecoveryBusy(phase: RecoveryPhase): boolean {
   return phase === 'analysing';

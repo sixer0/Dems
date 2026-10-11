@@ -11,6 +11,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { SEAL_BLOCKED_DETAILS } from '@dems/shared/sim';
+import { SEAL_BLOCKED_MESSAGE_MAX } from '../../engine/sealing-notice-doors';
 import { SEALING_QUARANTINE_DIR, SEALING_UNSEALABLE_CODE, SEAL_RETRY_DEFAULTS, SealerCause, SealingError, createSealWayOut, sealBlockedNotice, sealBlockedRestoreHint, sealWayOutOf, sealingCauseCodeOf, sealingFailureReason, type SealOutcome, type SealWayOut } from '../index';
 import { removePackages } from './package-support';
 import { harnessOf, recordSession, removeRecordings, type Harness, type Recording } from './pipeline-support';
@@ -110,14 +111,17 @@ describe('G75b-01: the rule', () => {
     expect(sealWayOutOf(failed({ cause: 'SESSION_KEY_STORE_UNAVAILABLE' }, 40, true), 3, SEAL_RETRY_DEFAULTS)).toEqual({ action: 'WAIT' });
   });
 
-  it('what an operator reads: a sentence and a restore hint per cause; the blocked notice of every cause fits the alert (400 characters) and names no path and no key file', () => {
+  it('what an operator reads: a sentence and a restore hint per cause; the blocked notice of every cause fits the alert (the bound of the engine door) and names no path and no key file', () => {
     expect(Object.values(SealerCause).sort()).toEqual([...SEAL_BLOCKED_DETAILS].sort());
     const sentences = new Set<string>();
     for (const cause of [...Object.values(SealerCause), undefined]) {
       const detail: Record<string, string> = cause === undefined ? {} : { cause };
       const notice = sealBlockedNotice('SEALER_FAILED', detail);
       sentences.add(sealingFailureReason('SEALER_FAILED', detail));
-      expect(notice.length).toBeLessThanOrEqual(400);
+      // Closing pass L-Z (G75d-02), bound moved by delta with the engine door's (`SEAL_BLOCKED_MESSAGE_MAX`): the notice names the retry by
+      // its screen name, who presses it and where - the longest cause sentences no longer fit 400.
+      expect(notice.length).toBeLessThanOrEqual(SEAL_BLOCKED_MESSAGE_MAX);
+      expect(SEAL_BLOCKED_MESSAGE_MAX).toBe(600);
       expect(notice).toMatch(/^Sealing of this session is blocked\. /);
       expect(notice).not.toMatch(/\/|\\|KID-|\.key\b|\.blob\b/);
       expect(sealingCauseCodeOf('SEALER_FAILED', detail)).toBe(cause ?? 'SEALER_FAILED');
@@ -141,7 +145,14 @@ describe('G75b-01: the outcome, on the real pipeline', () => {
     sealerThatThrows(rig.h, 'CREDENTIAL_SESSION_KEY_NOT_OF_SESSION');
     await rig.first();
     expect(rig.outcomes[0]).toMatchObject({ status: 'FAILED', step: 'CLOSE_TRACKS', code: 'SEALER_FAILED', retriable: false, attempt: 1, detail: { cause: 'SESSION_KEY_NOT_OF_SESSION' } });
-    expect(rig.told()).toBe(`Sealing is being retried (retry 1 of 3, in 5 s). ${sealingFailureReason('SEALER_FAILED', { cause: 'SESSION_KEY_NOT_OF_SESSION' })}`);
+    // Fix wave L (re-check 75 finding G75d-04; pin moved by delta): while the bounded attempts still run the step says the CAUSE and
+    // that it is retried - not, in the same sentence, that "this session cannot be sealed" (true at the terminal end only).
+    // CONTROL (the finding): the reason of this cause ends with that conclusion, and the sentence before the fix was the two glued together.
+    const reason = sealingFailureReason('SEALER_FAILED', { cause: 'SESSION_KEY_NOT_OF_SESSION' });
+    expect(reason).toMatch(/: this session cannot be sealed\.$/);
+    expect(rig.told()).not.toBe(`Sealing is being retried (retry 1 of 3, in 5 s). ${reason}`);
+    expect(rig.told()).toBe("Sealing is being retried (retry 1 of 3, in 5 s). A session key of an earlier session with this session number is in the Core's key store. A session key is never reused.");
+    expect(rig.told()).not.toMatch(/cannot be sealed/i);
     // The error log names the cause as a code beside the step.
     expect(rig.h.log.entries.find((entry) => entry.message === 'a sealing step failed')).toMatchObject({ code: 'SEALER_FAILED', context: { step: 'CLOSE_TRACKS', cause: 'SESSION_KEY_NOT_OF_SESSION' } });
     await rig.advance(5_000);

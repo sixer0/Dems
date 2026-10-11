@@ -170,9 +170,12 @@ describe('C-2: Security & Audit of a Core in its own capture', () => {
     const base = { time: { source: state.time.source, locked: state.time.locked }, chain: { ok: chain.ok, breakSeq: chain.breakSeq }, softwareVersion: '2.4.1', signatureAlgorithm: 'Ed25519', ready: true }
     const real = buildControls({ ...base, security: { ...state.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE }, time: { source: HOST_CLOCK_TIME.source, locked: HOST_CLOCK_TIME.locked }, hostClock: true, signingKey: { keyId: CORE_KEY, algorithm: 'Ed25519', developmentKey: true } })
     const by = Object.fromEntries(real.map((control) => [control.id, control]))
-    for (const id of ['TPM', 'SECURE_BOOT', 'KEY_CUSTODY', 'ENCRYPTION', 'SIGNATURE', 'SECURE_TIMESTAMP', 'TAMPER', 'SIGNED_FIRMWARE']) {
+    for (const id of ['TPM', 'SECURE_BOOT', 'KEY_CUSTODY', 'ENCRYPTION', 'SECURE_TIMESTAMP', 'TAMPER', 'SIGNED_FIRMWARE']) {
       expect(by[id], id).toMatchObject({ status: 'UNKNOWN', notReported: true })
     }
+    // Fix wave L (G89c-05), pin moved by delta: a signing key the Core's items name is a STATED control, not "Not reported".
+    expect(by.SIGNATURE).toMatchObject({ status: 'OK' })
+    expect(by.SIGNATURE?.notReported).toBeUndefined()
     expect(by.SIGNATURE?.fact).toEqual({ kind: 'SIGNING_KEY', key: { keyId: CORE_KEY, algorithm: 'Ed25519', developmentKey: true } })
     expect(by.SECURE_TIMESTAMP?.fact).toEqual({ kind: 'HOST_CLOCK' })
     expect(by.HASH_CHAIN).toMatchObject({ status: 'OK' })
@@ -216,7 +219,7 @@ describe('C-2: Security & Audit of a Core in its own capture', () => {
     expect(controls.querySelector('[data-control="SIGNATURE"]')).toHaveTextContent(R.developmentKey)
     expect(controls.querySelector('[data-control="SECURE_TIMESTAMP"]')).toHaveTextContent(R.controls.hostClock)
     expect(controls.querySelector('[data-control="HASH_CHAIN"]')).toHaveAttribute('data-status', 'OK')
-    expect(within(controls).getByTestId('sa-controls-summary')).toHaveTextContent('1 of 9 active · 8 not reported')
+    expect(within(controls).getByTestId('sa-controls-summary')).toHaveTextContent('2 of 9 active · 7 not reported') // fix wave L (G89c-05), by delta: the stated signing key counts as active
     expect(await within(root).findByTestId('tamper-enclosure', {}, FIND)).toHaveTextContent(NR.value)
     for (const never of ['DEMO-KEY', 'DEMO device key', 'DEMO certificate', 'Resident in TPM', 'never exported', 'Hardware-bound', 'TPM 2.0 (fw', 'RTC holdover', 'Attestation OK', 'signature verified', 'CN=DEMS']) {
       expect(root, never).not.toHaveTextContent(never)

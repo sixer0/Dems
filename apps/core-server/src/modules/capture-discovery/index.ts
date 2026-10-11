@@ -52,7 +52,7 @@ import { createSearchLimiter, type SearchLimiter } from './limits';
 import { readRegisteredCameras } from './registered';
 import { registerCaptureDiscoveryRoutes } from './routes';
 import { readLastSearchNumber } from './search-ids';
-import { createSearchRunner, type SearchClosed, type SearchRunner } from './search';
+import { createSearchRunner, openSessionOf, type SearchClosed, type SearchRunner } from './search';
 import { createSessionExpiryWatch, readEndedSessions } from './session-expiry';
 import { createCandidateStore, type CandidateStore, type HeldCandidate, type TestRecord } from './store';
 
@@ -145,8 +145,8 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
     lastStoredSearchNumber: () => app.db.read(`${SOURCE}.lastSearchNumber`, (pool) => readLastSearchNumber({ query: (text) => pool.query(text) })),
     openSession: () => {
       if (!app.engine.running) return null;
-      const session = app.engine.state().session;
-      return session === null ? null : { id: session.id, state: session.state };
+      // Fix wave L (re-check 70 note G70c-05): a SEALED session is not open - `openSessionOf`, the ONE rule.
+      return openSessionOf(app.engine.state().session);
     },
     // The lift of D86 C-4 is the ONE pinned constant of the contract: nothing here can switch it.
     duringRecordingEnabled: CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,

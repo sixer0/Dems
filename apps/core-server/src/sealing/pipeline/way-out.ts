@@ -41,7 +41,7 @@
 import { constants as FS } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { SealingProgressInput } from '@dems/shared/sim';
+import { SEAL_RETRY_HOW_SENTENCE, sealStoppedSentence, type SealingProgressInput } from '@dems/shared/sim';
 import { describeError, type ErrorLog } from '../../plugins/logger';
 import type { StepTimer } from '../finalize-transcript/bounds';
 import type { SealingStepJournal, SealingStepRecord, StepCheckpoint } from '../step-journal';
@@ -82,10 +82,31 @@ export function sealWayOutOf(outcome: FailedOutcome, retriesDone: number, settin
 
 /** What the operator reads on the failed step while the seal is retried, and while it waits for a start. */
 export const sealRetryingNotice = (step: Extract<SealWayOutStep, { action: 'RETRY' }>, reason: string): string => `Sealing is being retried (retry ${step.retry} of ${step.of}, in ${Math.ceil(step.delayMs / 1_000)} s). ${reason}`;
-export const sealWaitingNotice = (reason: string): string => `${reason} Sealing will be tried again when the Core starts, or by the recovery action.`;
+/**
+ * THE CAUSE WITHOUT ITS CONCLUSION (fix wave L, driver L-S; re-check 75 finding G75d-04). The reason
+ * of a cause no retry gets past ends "... this session cannot be sealed." That conclusion is true at
+ * the TERMINAL end only - where the notice of the unsealable session says it. While the bounded
+ * attempts still run, the failed step read "Sealing is being retried (...)" and "this session
+ * cannot be sealed" in one sentence. The retry sentence states the cause and stops there.
+ */
+export function sealCauseWithoutConclusion(reason: string): string {
+  return reason.replace(/: this session cannot be sealed\.$/i, '.').replace(/\s+This session cannot be sealed\.$/i, '');
+}
+/**
+ * The failed step's sentence once the automatic retries are used up (closing pass L-Z, G75d-02): the cause, and
+ * what the Core did by itself and does now - it WAITS. It said "tried again ... by the recovery action", a name no
+ * screen has; who retries, where, and under which name is in the alert (`sealBlockedNotice`), which every surface
+ * draws beside this sentence. `retries`: the automatic retries of the settings in force.
+ */
+export const sealWaitingNotice = (reason: string, retries: number = SEAL_RETRY_DEFAULTS.delaysMs.length): string => `${reason} ${sealStoppedSentence(retries)}`;
+/** The failed step's sentence when the Core CLOSES before its retries are used up: the next start has its own retries. */
+export const sealClosingNotice = (reason: string): string => `${reason} Sealing will be tried again when the Core starts.`;
 
 /**
- * WHAT RESTORES A SEAL THAT IS BLOCKED (fix pass F-M7c; ruling D186 (1)). A retriable cause that
+ * WHAT RESTORES A SEAL THAT IS BLOCKED (fix pass F-M7c; ruling D186 (1)). Closing pass L-Z (G75d-02): every hint ends with the
+ * retry BY THE NAME ITS SCREEN GIVES IT and who presses it (`SEAL_RETRY_HOW_SENTENCE` of the shared package) - it said
+ * "start recovery for the session", which no screen offers.
+ * A retriable cause that
  * never goes away keeps its session FINALIZING and the Core blocked - the safe side for evidence
  * that is intact. It must be VISIBLE: this sentence is in the CRITICAL alert and in the log.
  */
@@ -97,31 +118,31 @@ export function sealBlockedRestoreHint(code: string, detail: SealingDetail = {})
         case SealerCause.SESSION_KEY_STORE_UNAVAILABLE:
         case SealerCause.SESSION_KEY_UNSAFE:
         case SealerCause.SESSION_KEY_WRITE_FAILED:
-          return "Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then start recovery for the session or restart the Core.";
+          return `Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
         case SealerCause.SESSION_KEY_NOT_OF_SESSION:
-          return "An administrator must remove the earlier session's key from the Core's key store, then start recovery for the session or restart the Core.";
+          return `An administrator must remove the earlier session's key from the Core's key store, then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
         case SealerCause.SESSION_CIPHER_REFUSED:
-          return "Read the Core's error log for the cause, then start recovery for the session or restart the Core.";
+          return `Read the Core's error log for the cause, then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
         default:
-          return "Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then start recovery for the session or restart the Core.";
+          return `Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
       }
     case SealingFailure.FRAGMENT_NOT_OPENABLE:
-      return "Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then start recovery for the session or restart the Core.";
+      return `Restore the session key of this session to the Core's key store (from the copy of the data directory it was in), then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
     case SealingFailure.SIGNER_FAILED:
-      return "Provide the Core's evidence signing key (the signer folder of the data directory), then start recovery for the session or restart the Core.";
+      return `Provide the Core's evidence signing key (the signer folder of the data directory), then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
     case SealingFailure.STORAGE_FAILED:
-      return 'Check the evidence store (free space, permissions, the volume is mounted), then start recovery for the session or restart the Core.';
+      return `Check the evidence store (free space, permissions, the volume is mounted), then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
     case SealingFailure.JOURNAL_FAILED:
     case SealingFailure.ENGINE_REFUSED:
-      return "Check the Core's database, then start recovery for the session or restart the Core.";
+      return `Check the Core's database, then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
     case SealingFailure.TRANSCRIPT_STEP_FAILED:
-      return 'Check the transcription service and its working folder, then start recovery for the session or restart the Core.';
+      return `Check the transcription service and its working folder, then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
     default:
-      return "Read the Core's error log for the cause, then start recovery for the session or restart the Core.";
+      return `Read the Core's error log for the cause, then retry the seal: ${SEAL_RETRY_HOW_SENTENCE}`;
   }
 }
 
-/** The text of the CRITICAL alert of a blocked seal: the cause in words, what restores it, what it costs meanwhile. */
+/** The text of the CRITICAL alert of a blocked seal: the cause in words, what restores it (the retry by its screen name, and who presses it), what it costs meanwhile. */
 export const sealBlockedNotice = (code: string, detail: SealingDetail = {}): string => `Sealing of this session is blocked. ${sealingFailureReason(code as SealingFailure, detail)} ${sealBlockedRestoreHint(code, detail)} The Core records no new session until this one is sealed.`;
 
 export interface SealWayOutPorts {
@@ -353,7 +374,8 @@ export function createSealWayOut(ports: SealWayOutPorts): SealWayOut {
       }
       if (next.action === 'WAIT' || closed) {
         ports.log.append({ level: 'error', source: SOURCE, message: 'the seal of a session failed and the retries of this process are used up: it is tried again at the next start of the Core or by the recovery operation', code: 'SEALING_RETRIES_EXHAUSTED', context: { sessionId: outcome.sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, cause: sealingCauseCodeOf(outcome.code, outcome.detail) } });
-        await say(outcome, sealWaitingNotice(reason));
+        const automatic = ports.settings().delaysMs.length;
+        await say(outcome, next.action === 'WAIT' ? sealWaitingNotice(reason, automatic) : sealClosingNotice(reason));
         // F-M7c (D186 (1)): VISIBLE. Not while the Core closes - the next start has its own retries first.
         if (next.action === 'WAIT' && !closed) {
           const restore = sealBlockedRestoreHint(outcome.code, outcome.detail);
@@ -382,7 +404,8 @@ export function createSealWayOut(ports: SealWayOutPorts): SealWayOut {
         }),
       );
       ports.log.append({ level: 'warn', source: SOURCE, message: 'the seal of a session failed and is retried in this process', code: 'SEALING_RETRY_SCHEDULED', context: { sessionId, step: outcome.step, attempt: outcome.attempt, failure: outcome.code, cause: sealingCauseCodeOf(outcome.code, outcome.detail), retry: next.retry, of: next.of, delayMs: next.delayMs } });
-      await say(outcome, sealRetryingNotice(next, reason));
+      // G75d-04: no "cannot be sealed" beside "is being retried" - the conclusion belongs to the terminal end.
+      await say(outcome, sealRetryingNotice(next, sealCauseWithoutConclusion(reason)));
       return next;
     },
 

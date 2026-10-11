@@ -178,14 +178,15 @@ export interface SealSessionReaderOptions {
    */
   readonly videoSampleEntry?: (sessionId: string, trackId: (typeof TRACKS)[number]) => Promise<SealVideoSampleEntry | null>;
   /**
-   * Manifest field 36 (fix wave K, driver S1; G89b-01, ruling D222 (2)): what the video stream of a
-   * camera file IS - picture size and measured frame rate, read from the file (`readSessionVideoFormat`).
-   * With it field 36 states the STREAM (`streamProfileOf`), never the selector's configured profile.
+   * Manifest field 36 (fix wave K, driver S1; G89b-01, ruling D222 (2); fix 151): what the video stream
+   * of a camera file DECLARES - picture size and nominal frame rate, read from its init segment
+   * (`readSessionVideoFormat`). With it field 36 states the STREAM (`streamProfileOf`), never the
+   * selector's configured profile and never a measured rate.
    * Null (the file is not there, or its init segment names no picture size) and the option being
    * absent: field 36 is the configured profile, as before this wave.
    */
   readonly videoFormat?: (sessionId: string, trackId: (typeof TRACKS)[number]) => Promise<SealVideoFormat | null>;
-  /** Told once per read and camera file whose stream is NOT what the selector configured: the manifest states the stream. */
+  /** Told once per read and camera file whose DECLARED stream format is NOT what the selector configured (`streamProfileDiffers`): the manifest states the stream. */
   readonly onProfileDiffers?: (sessionId: string, differences: readonly SealProfileDifference[]) => void;
   readonly notice: string;
   readonly timezone: string;
@@ -212,27 +213,56 @@ export interface SealProfileDifference {
 export interface SealVideoFormat {
   readonly width: number;
   readonly height: number;
-  /** Frames per second as measured on the file; null when it was not measured. */
+  /** Frames per second as the stream's own parameter set DECLARES them; null when it declares none. Never a measured rate. */
   readonly frameRate: number | null;
 }
 
 /**
- * FIELD 36 AS THE STREAM STATES IT (fix wave K; G89b-01): the profile vocabulary of the capture
- * units (`H264_1080P25`, `H264_720P30`) built from what the FILE says.
+ * The whole-number NOMINAL rate of a declared frame rate, or null when there is none: the rate
+ * itself when it is a whole number, and N for the N * 1000 / 1001 family (29.97 is the nominal 30,
+ * 23.976 the nominal 24). Any other declared rate has no whole-number name.
+ */
+function nominalRateOf(declared: number | null): number | null {
+  if (declared === null || !Number.isFinite(declared) || declared <= 0) return null;
+  const nominal = Math.round(declared);
+  if (nominal < 1) return null;
+  const exact = Math.abs(declared - nominal) <= 1e-6;
+  const drop = Math.abs(declared - (nominal * 1000) / 1001) <= 1e-3;
+  return exact || drop ? nominal : null;
+}
+
+/**
+ * FIELD 36 AS THE STREAM DECLARES IT (fix wave K, G89b-01; fix 151, controller ruling of
+ * 2026-10-11): a FORMAT statement in the profile vocabulary of the capture units (`H264_1080P25`,
+ * `H264_720P30`; a CODE, `^[A-Z][A-Z0-9_]{0,63}$`), built from what the stream says about itself -
+ * the picture size of the init segment's sample entry and the nominal frame rate of its parameter
+ * set. NEVER a measured average and never a fraction: how many frames were delivered is another fact.
  *   `<codec>_<height>P<rate>`            a 16:9 picture (1920x1080, 1280x720, ...);
  *   `<codec>_<width>X<height>P<rate>`    any other picture: the width is stated, never implied;
- *   the rate is the NOMINAL whole number when the measured rate is within 1 % of it (a stream
- *   stamped by a wall clock measures 29.9 or 30.1 for 30; 29.97 is the nominal 30), else the measured rate with 2 decimals;
- *   NO rate (`H264_720P`) when the Core did not measure one: a fact it does not have is absent.
+ *   the rate is the whole-number nominal rate the stream declares (`nominalRateOf`);
+ *   NO rate (`H264_720P`) when the stream declares none, or one that has no whole-number name: a
+ *   fact the Core does not have is absent (evidence package spec §B.4, erratum PE-WK-16).
  */
 export function streamProfileOf(codec: string, format: SealVideoFormat): string {
   const picture = format.width * 9 === format.height * 16 ? `${String(format.height)}P` : `${String(format.width)}X${String(format.height)}P`;
-  let rate = '';
-  if (format.frameRate !== null && Number.isFinite(format.frameRate) && format.frameRate > 0) {
-    const nominal = Math.round(format.frameRate);
-    rate = nominal > 0 && Math.abs(format.frameRate - nominal) <= nominal * 0.01 ? String(nominal) : String(Math.round(format.frameRate * 100) / 100);
-  }
-  return `${codec}_${picture}${rate}`;
+  const nominal = nominalRateOf(format.frameRate);
+  return `${codec}_${picture}${nominal === null ? '' : String(nominal)}`;
+}
+
+/**
+ * WHEN THE NOTICE `STREAM_PROFILE_DIFFERS` IS DUE (fix 151): only when what the stream DECLARES is
+ * not the configured profile.
+ *   - the stream declares a whole-number rate: its text is not the configured one;
+ *   - the stream declares NO rate: codec and picture differ. A configured `H264_720P30` over a
+ *     stream that says `H264_720P` is not contradicted by anything the stream declares;
+ *   - the stream declares a rate that has no whole-number name: it differs from every profile code.
+ * A delivered frame rate below the nominal one is never a difference of the format.
+ */
+export function streamProfileDiffers(configured: string, codec: string, format: SealVideoFormat): boolean {
+  const stream = streamProfileOf(codec, format);
+  if (nominalRateOf(format.frameRate) !== null) return stream !== configured;
+  if (format.frameRate !== null) return true;
+  return !(configured.startsWith(stream) && /^[0-9]*$/.test(configured.slice(stream.length)));
 }
 
 /** What the reader uses of a camera file's video sample entry (`VideoSampleEntryRead` of the capture unit satisfies it). */
@@ -373,13 +403,13 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         codecs.set(trackId, entry !== null && entry.state === 'KNOWN' ? entry.codec : null);
       }
 
-      // Field 36 (fix wave K, G89b-01): what each camera file's own stream is. Only for a file whose codec the
+      // Field 36 (fix wave K, G89b-01; fix 151): what each camera file's own stream DECLARES. Only for a file whose codec the
       // init segment named: the text starts with it. No file / no picture size: null, and field 36 is the configured profile.
-      const streamProfiles = new Map<string, string | null>();
+      const streamProfiles = new Map<string, { readonly text: string; readonly codec: string; readonly format: SealVideoFormat } | null>();
       for (const trackId of TRACKS) {
         const codec = codecs.get(trackId) ?? null;
         const format = codec === null ? null : ((await options.videoFormat?.(sessionId, trackId)) ?? null);
-        streamProfiles.set(trackId, codec === null || format === null ? null : streamProfileOf(codec, format));
+        streamProfiles.set(trackId, codec === null || format === null ? null : { text: streamProfileOf(codec, format), codec, format });
       }
 
       const profileDifferences: SealProfileDifference[] = [];
@@ -395,10 +425,11 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         // and no firmware to report; another camera states its registry row or says that none was reported.
         const adapterKind = sourceRows.find((row) => row.slot === trackId)?.adapterKind;
         const words = adapterKind === 'FAKE' ? SOURCE_WORDS.FAKE : adapterKind === 'LOCAL_DEVICE' ? { model: device?.model ?? SOURCE_WORDS.LOCAL_DEVICE.model, firmware: SOURCE_WORDS.LOCAL_DEVICE.firmware } : { model: device?.model ?? NOT_REPORTED, firmware: device?.firmware ?? NOT_REPORTED };
-        // Field 36: the STREAM when the file says what it is; a configured profile that differs is told, never written.
+        // Field 36: the STREAM when the file says what it is; a configured profile its DECLARED format differs from is told, never written.
         const configured = text(line?.profile);
-        const stream = streamProfiles.get(trackId) ?? null;
-        if (stream !== null && stream !== configured) profileDifferences.push({ trackId, configured, stream });
+        const declared = streamProfiles.get(trackId) ?? null;
+        const stream = declared?.text ?? null;
+        if (declared !== null && streamProfileDiffers(configured, declared.codec, declared.format)) profileDifferences.push({ trackId, configured, stream: declared.text });
         return {
           trackId,
           deviceId,

@@ -44,6 +44,8 @@ export const MEMBER = {
     files: 'files',
     tracks: 'tracks',
     trackId: 'trackId',
+    /** Fix wave L (contract_wave_l.md section 4, G89c-04): the SIGNED manifest's per-track format on a file entry. */
+    fileProfile: 'profile',
   },
   detail: {
     media: 'media',
@@ -62,6 +64,12 @@ export const MEMBER = {
     exportCompletedAt: 'completedAt',
     /** Fix wave K (contract_wave_k.md S2 section 2): the text the Core records when an export names no destination. */
     exportDestinationDefault: 'exportDestinationDefault',
+    /** Fix wave L (contract_wave_l.md section 4, G89c-04): the item as operation 40 answers it, and its notice. */
+    evidence: 'evidence',
+    streamProfileNotice: 'streamProfileNotice',
+    noticeTracks: 'tracks',
+    noticeStream: 'stream',
+    noticeConfigured: 'configured',
   },
 } as const;
 
@@ -129,9 +137,35 @@ export interface DetailFacts {
   readonly exports: readonly FinishedExportFact[] | null;
   /** `exportDestinationDefault` of operation 40; null: not stated (never a default of this app). */
   readonly exportDestinationDefault: string | null;
+  /**
+   * Fix wave L (G89c-04): the format of each camera file AS SIGNED (manifest field 36, `evidence.files[].profile`
+   * of operation 40), in file order; null: the Core stated none (no sealed manifest was read). Never `profileId`.
+   */
+  readonly sealedProfiles: readonly SealedProfileFact[] | null;
+  /**
+   * Fix wave L (G89c-04): the session's `STREAM_PROFILE_DIFFERS` notice as the item carries it; null: the Core
+   * holds no such notice for the item's session (never read as "was checked and equal").
+   */
+  readonly streamProfileNotice: readonly StreamProfileNoticeFact[] | null;
+}
+
+export interface SealedProfileFact {
+  readonly trackId: CameraFileId;
+  readonly profile: string;
+}
+
+export interface StreamProfileNoticeFact {
+  readonly trackId: CameraFileId;
+  /** What the recorded stream declared: the value the manifest states. */
+  readonly stream: string;
+  /** What the selector had configured for the track. */
+  readonly configured: string;
 }
 
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+/** A profile code as the contract's schema accepts it (`H264_720P30`, `H264_720P27.67`). */
+const PROFILE = /^[A-Za-z0-9_.-]{1,48}$/;
+const profileCode = (value: unknown): string | null => (typeof value === 'string' && PROFILE.test(value) ? value : null);
 const EXPORT_ID = /^EXP-\d{6,}$/;
 const JOB_ID = /^EXPJ-\d{6,}$/;
 const SUFFIX = /^\d{4}$/;
@@ -213,6 +247,35 @@ function readExport(value: unknown): FinishedExportFact | null {
   };
 }
 
+/** The per-file format the SIGNED manifest states, from an item's `files` (file order); null when no entry states one. */
+export function readSealedProfiles(item: unknown): readonly SealedProfileFact[] | null {
+  const files = isRecord(item) ? item[MEMBER.item.files] : null;
+  if (!Array.isArray(files)) return null;
+  const stated: SealedProfileFact[] = [];
+  for (const entry of files) {
+    if (!isRecord(entry)) continue;
+    const trackId = entry[MEMBER.item.trackId];
+    const profile = profileCode(entry[MEMBER.item.fileProfile]);
+    if (isCameraFile(trackId) && profile !== null && !stated.some((fact) => fact.trackId === trackId)) stated.push({ trackId, profile });
+  }
+  return stated.length === 0 ? null : stated;
+}
+
+function readStreamProfileNotice(item: unknown): readonly StreamProfileNoticeFact[] | null {
+  const notice = isRecord(item) ? item[MEMBER.detail.streamProfileNotice] : null;
+  const tracks = isRecord(notice) ? notice[MEMBER.detail.noticeTracks] : null;
+  if (!Array.isArray(tracks)) return null;
+  const stated: StreamProfileNoticeFact[] = [];
+  for (const entry of tracks) {
+    if (!isRecord(entry)) continue;
+    const trackId = entry[MEMBER.item.trackId];
+    const stream = profileCode(entry[MEMBER.detail.noticeStream]);
+    const configured = profileCode(entry[MEMBER.detail.noticeConfigured]);
+    if (isCameraFile(trackId) && stream !== null && configured !== null) stated.push({ trackId, stream, configured });
+  }
+  return stated.length === 0 ? null : stated;
+}
+
 /** Reads operation 40's body. Never throws. An entry of `exports` that cannot be read is dropped (never invented). */
 export function readDetailFacts(body: unknown): DetailFacts {
   const source = isRecord(body) ? body : {};
@@ -232,6 +295,8 @@ export function readDetailFacts(body: unknown): DetailFacts {
           .filter((entry): entry is FinishedExportFact => entry !== null)
       : null,
     exportDestinationDefault: text(source[MEMBER.detail.exportDestinationDefault], 200),
+    sealedProfiles: readSealedProfiles(source[MEMBER.detail.evidence]),
+    streamProfileNotice: readStreamProfileNotice(source[MEMBER.detail.evidence]),
   };
 }
 

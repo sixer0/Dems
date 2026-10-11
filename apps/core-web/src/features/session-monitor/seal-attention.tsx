@@ -1,5 +1,6 @@
 import { Alert } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
+import { SealRetryControl } from './seal-retry'
 import { SEAL_BLOCKED_DETAIL_SENTENCE, SEAL_RECORDING_KEPT_SENTENCE, type SealAttention } from '@dems/shared/sim'
 
 /**
@@ -53,6 +54,10 @@ export function SealAttentionNotice({ attention }: { attention: SealAttention })
         <Alert.Description>{attention.message}</Alert.Description>
         <Alert.Description>{SEAL_RECORDING_KEPT_SENTENCE}</Alert.Description>
         <Alert.Description>{t('web.sealBlocked.action')}</Alert.Description>
+        {/* Fix wave L (G75d-02): the retry the sentences name - operation 33 for the role that may send it; the others read who can. */}
+        <Alert.Description>
+          <SealRetryControl place="dialog" />
+        </Alert.Description>
         <Alert.Description>{t('web.sealBlocked.closeNote')}</Alert.Description>
       </Alert.Content>
     </Alert>

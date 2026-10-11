@@ -1,4 +1,4 @@
-import { Component, Fragment, type ErrorInfo, type ReactNode } from 'react'
+import { Component, Fragment, type ErrorInfo, type ReactNode, type RefObject } from 'react'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import type { LucideIcon } from 'lucide-react'
@@ -18,6 +18,8 @@ export interface PanelProps {
   actionBusy?: boolean
   /** Body class (the body is a flex column that fills the card). */
   bodyClassName?: string
+  /** Fix wave L (G89c-07): the body element, for a panel that shows a cue when its body scrolls. */
+  bodyRef?: RefObject<HTMLDivElement | null>
   className?: string
   children: ReactNode
 }
@@ -27,7 +29,7 @@ export interface PanelProps {
  * title, optional link), entering on its M-PG-SM beat. The page wraps each panel component in a
  * `PanelErrorBoundary`, so a failing panel never blanks the page (frontend error rules, layer 3).
  */
-export function Panel({ id, icon: Icon, title, action, actionBusy = false, bodyClassName, className, children }: PanelProps) {
+export function Panel({ id, icon: Icon, title, action, actionBusy = false, bodyClassName, bodyRef, className, children }: PanelProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS[id])
   return (
     <motion.section
@@ -49,7 +51,9 @@ export function Panel({ id, icon: Icon, title, action, actionBusy = false, bodyC
             </div>
           ) : null}
         </header>
-        <div className={cn('sm-card-body', bodyClassName)}>{children}</div>
+        <div ref={bodyRef} className={cn('sm-card-body', bodyClassName)}>
+          {children}
+        </div>
       </Card>
     </motion.section>
   )

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Chip, Spinner, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { CircleCheck, CircleDashed, CircleX, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { ChevronDown, CircleCheck, CircleDashed, CircleX, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { captureFactsOf, useSim, type ChainVerifyResult } from '@dems/shared/sim'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { SessionCaptureCheckpoints } from './capture-checkpoints'
@@ -15,6 +16,7 @@ import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
 import { logSessionMonitorError } from './log'
 import { selectIntegrity, shortHash, type CheckStatus } from './model'
 import { Panel } from './panel'
+import { useScrollEdges } from './scroll-edges'
 
 /** M-C-21: the Spinner holds this long before the recomputed value resolves (literal). */
 const VERIFY_SPIN_MS = 700
@@ -165,15 +167,52 @@ export function IntegrityPanel() {
     },
   ]
 
-  const checks = facts === null ? demoChecks : factChecks
+  // Fix wave L (G89c-03, ruling D229 (1)): a Core in its own capture never falls back to the demonstration's rows.
+  // Its session lost the capture member (it is sealed and the Core was started again, or no session is open):
+  // the card says the state the Core holds, the audit chain (a real chain) and the clock it reads - nothing else.
+  const selfCapture = useSelfCaptureCore()
+  const sessionEvidenceId = useSim((s) => s.session?.evidenceId ?? null)
+  const sealedHere = sessionState === 'SEALED'
+  const ownCoreChecks: { id: string; status: CheckStatus; label: string; value: string }[] = [
+    {
+      id: 'capture',
+      status: 'idle',
+      label: t('session.integrityFacts.capture.label'),
+      value: sealedHere
+        ? sessionEvidenceId !== null
+          ? t('web.waveL.integrity.sealedDetail', { evidenceId: sessionEvidenceId })
+          : t('web.waveL.integrity.sealedNoItem')
+        : t('web.waveL.integrity.idleDetail'),
+    },
+    {
+      id: 'hashChain',
+      status: integrity.hashChain,
+      label: t('session.integrityFacts.auditChain.label'),
+      value: integrity.hashChain === 'fail' ? t('session.integrity.hashChainBroken') : t('session.integrity.hashChain.value'),
+    },
+    {
+      id: 'time',
+      status: 'idle',
+      label: t('session.integrityFacts.time.label'),
+      value: t('session.integrityFacts.time.value', { offset }),
+    },
+  ]
+  const ownCoreOnly = facts === null && selfCapture
+
+  const checks = facts !== null ? factChecks : ownCoreOnly ? ownCoreChecks : demoChecks
+
+  // Fix wave L (G89c-07): the card body scrolls where the fragment lines are drawn; a cue says there is more below.
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const edges = useScrollEdges(bodyRef, facts !== null)
+  const moreBelow = edges === 'bottom' || edges === 'both'
 
   const head = shortHash(integrity.chainHead, 12)
   const result = verify.phase === 'done' ? verify.result : null
 
   return (
-    <Panel id="N" icon={ShieldCheck} title={t('session.integrity.title')} className="sm-area-integrity" bodyClassName="sm-integrity-body">
+    <Panel id="N" icon={ShieldCheck} title={t('session.integrity.title')} className="sm-area-integrity" bodyClassName="sm-integrity-body" bodyRef={bodyRef}>
       <div className="sm-integrity-rows">
-        <motion.ul className="sm-checks" variants={container} data-testid="sm-integrity-checks" data-capture-facts={facts === null ? undefined : 'true'}>
+        <motion.ul className="sm-checks" variants={container} data-testid="sm-integrity-checks" data-capture-facts={facts === null ? undefined : 'true'} data-own-core={ownCoreOnly ? 'true' : undefined}>
           {checks.map((check) => {
             const Icon = STATUS_ICON[check.status]
             return (
@@ -257,6 +296,12 @@ export function IntegrityPanel() {
           {verify.phase === 'running' ? t('session.integrity.verifying') : t('session.integrity.reverify')}
         </Button>
       </div>
+      {moreBelow ? (
+        <div className="sm-scroll-cue" data-testid="sm-integrity-more-below" aria-hidden="true">
+          <ChevronDown className="size-3" strokeWidth={2} />
+          {t('web.waveL.integrity.moreBelow')}
+        </div>
+      ) : null}
     </Panel>
   )
 }

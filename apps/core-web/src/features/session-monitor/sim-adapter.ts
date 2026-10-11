@@ -189,3 +189,27 @@ export function bytesAt(event: Pick<TimelineEvent, 'at'> & Partial<Pick<Timeline
   if (startedAt === null || event.at < startedAt) return null
   return recordingBytes(event.at - startedAt)
 }
+
+/**
+ * Fix wave L (G75d-05, ruling D228 (3)): THE CONFIGURED PROFILE OF A SESSION on a Core in its own
+ * capture is what its selector lines say - the snapshot the session took at its start
+ * (`session.captureConfig`), else the selector in force (`captureConfig`). Never the label of
+ * `session.input.profileId` ("Standard (1080p / 25 fps)"): that is the form's choice of the
+ * simulator's model and stood beside recordings whose manifest states H264_720P30.
+ * One line per track, "VIDEO-01: H264_720P30"; a primitive (a string) so the selector never loops.
+ * '' = no line states a profile ("Not reported").
+ */
+export function configuredProfileLinesOf(state: {
+  readonly session?: { readonly captureConfig?: { readonly cameras?: readonly { readonly trackId: string; readonly profile?: unknown }[] } | null } | null
+  readonly captureConfig?: { readonly cameras?: readonly { readonly trackId: string; readonly profile?: unknown }[] } | null
+}): string {
+  // A fact OF the session this panel describes (its id, its start, its evidence stand in the same card): the session's OWN
+  // snapshot is read whatever its state, also SEALED - not the rule of `selectorInForce` (closing pass L-Z, decision 1).
+  const own = state.session?.captureConfig?.cameras
+  const lines = own !== undefined ? own : (state.captureConfig?.cameras ?? [])
+  return [...lines]
+    .filter((line) => typeof line.profile === 'string' && line.profile !== '' && line.profile.length <= 40)
+    .sort((a, b) => a.trackId.localeCompare(b.trackId))
+    .map((line) => `${line.trackId}: ${line.profile as string}`)
+    .join(' · ')
+}

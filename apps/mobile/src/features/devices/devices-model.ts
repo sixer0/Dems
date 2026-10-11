@@ -127,3 +127,21 @@ export function attentionDevices(statuses: Readonly<Record<DeviceId, DeviceStatu
 export function isRecording(state: Pick<SimState, 'session'>): boolean {
   return state.session?.state === SessionState.RECORDING;
 }
+
+// ── What a detail block may draw (fix wave L, closing pass L-Z; THE ONE RULE of a Core in its own capture) ──
+/**
+ * | The Core this app shows | The device | A detail block draws |
+ * |---|---|---|
+ * | Simulated client mode, or a Core in simulated capture | any | `SIMULATED`: the simulator's values, exactly as before |
+ * | a Core in real capture | a capture source with `adapter: 'FAKE'` | `GENERATED`: it is named a generated test source; no model, firmware, port, format, bitrate, channel, gain, phantom power or converter of the simulator's model is drawn |
+ * | a Core in real capture | anything else (another adapter, the PoE switch, the indicator, the tablet row) | `MODEL_VALUES`: the block still shows the simulator's model values, so it carries the "Synthetic demo values" chip |
+ *
+ * `realCapture` is `realCaptureView` of `camera-preview.tsx` (Live mode AND a Core that states a source
+ * class). Pure.
+ */
+export type DetailFacts = 'SIMULATED' | 'GENERATED' | 'MODEL_VALUES';
+
+export function detailFactsOf(realCapture: boolean, adapter: string | null | undefined): DetailFacts {
+  if (!realCapture) return 'SIMULATED';
+  return adapter === 'FAKE' ? 'GENERATED' : 'MODEL_VALUES';
+}

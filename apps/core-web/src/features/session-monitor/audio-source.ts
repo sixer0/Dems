@@ -40,6 +40,9 @@ import {
   useSim,
   useSimInstance,
   type SimState,
+  audioPairInForce,
+  openSessionAudioSource,
+  selectorInForce,
 } from '@dems/shared/sim'
 import { useMicInputName } from '@/features/devices/source-class'
 import { isMicInputId, otherMicInput } from '@/lib/capture-notices'
@@ -133,19 +136,24 @@ export function switchFailureFacts(error: unknown): Record<string, unknown> {
  */
 const BUILT_IN_OTHER: Readonly<Record<string, string>> = { 'MIC-01': 'MIC-02', 'MIC-02': 'MIC-01' }
 
-/** The input the Core says is inside `AUDIO-01` now: the session's pair, else the meters' member. */
-export const selectActiveInputId = (s: SimState): string => s.session?.audioSource?.activeInputId ?? s.audio.activeInputId
+/**
+ * The input inside `AUDIO-01` now: the pair of the OPEN session; with no open session the PRIMARY line of
+ * the current selector (`audioPairInForce`, fix 157: a SEALED session's pair names nothing any more); the
+ * meters' member behind both.
+ */
+export const selectActiveInputId = (s: SimState): string => audioPairInForce(s).activeInputId ?? s.audio.activeInputId
 
 /**
- * The hot standby: the session's pair; else the other microphone line of the selector the session
- * records under (its snapshot, else the stored one), whatever its number; else the other input of
+ * The hot standby: the pair in force (the OPEN session's; with no open session the current selector's STANDBY
+ * line); else the other microphone line of the selector the session
+ * records under (its snapshot WHILE IT IS OPEN, else the stored one: `selectorInForce`), whatever its number; else the other input of
  * the built-in pair.
  */
 export const selectStandbyInputId = (s: SimState): string => {
-  const named = s.session?.audioSource?.standbyInputId
-  if (named !== undefined) return named
+  const named = audioPairInForce(s).standbyInputId
+  if (named !== null) return named
   const active = selectActiveInputId(s)
-  const lines: readonly { readonly inputId: string }[] = (s.session?.captureConfig ?? s.captureConfig)?.mics ?? []
+  const lines: readonly { readonly inputId: string }[] = selectorInForce(s)?.mics ?? []
   return otherMicInput(lines, active) ?? BUILT_IN_OTHER[active] ?? active
 }
 
@@ -187,7 +195,7 @@ export function useAudioSource(): AudioSourceView {
   const createdBy = useSim((s) => s.session?.createdBy ?? null)
   const activeInputId = useSim(selectActiveInputId)
   const standbyInputId = useSim(selectStandbyInputId)
-  const switchedAt = useSim((s) => s.session?.audioSource?.switchedAt ?? null)
+  const switchedAt = useSim((s) => openSessionAudioSource(s.session)?.switchedAt ?? null)
   const operatorId = useSim((s) => selectOperator(s)?.id ?? null)
   const role = useSim(selectRole)
   const corePermission = useCorePermission(Permission.SESSION_START)

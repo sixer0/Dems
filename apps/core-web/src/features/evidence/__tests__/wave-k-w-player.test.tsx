@@ -21,13 +21,13 @@
 // test holds the reason to the registry's text.
 import { configure, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CORE_API_OPERATIONS } from '@dems/shared/api'
+import { CORE_API_OPERATIONS, MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE, MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import type { EvidenceItem } from '@dems/shared/sim'
 import { enWeb } from '@/i18n-web'
 import { webErrorSink } from '@/runtime'
 import { readItemV2 } from '../item-v2'
-import { FRAGMENT_NOT_AUTHENTIC, MediaSession, probeMediaSession } from '../media-session'
+import { FRAGMENT_NOT_AUTHENTIC, MEDIA_PROBE_CHUNK_BYTES, MediaSession, probeMediaSession } from '../media-session'
 import { bandSegments, probeStartByte, segmentAt } from '../sealed-playback'
 import { EV, findDetailBody, serveMediaRoute, type LiveEvidence } from './live-evidence-bed'
 import { asReal, openItem, setupPage, teardownPage, UI } from './wave-h-c2-bed'
@@ -51,7 +51,9 @@ const ROUTE_REFUSAL = {
 
 type Fetch = typeof fetch
 const rangeOf = (init: RequestInit | undefined): string => String((init?.headers as Record<string, string> | undefined)?.range ?? '')
-const startOf = (init: RequestInit | undefined): number => Number(/^bytes=(\d+)-$/.exec(rangeOf(init))?.[1] ?? Number.NaN)
+/** Wave L (G94c-01): the probe asks BOUNDED ranges (`bytes=a-b`); these pins hold where each one STARTS. */
+const fromOf = (range: string | undefined): string => String(range).replace(/-\d+$/, '-')
+const startOf = (init: RequestInit | undefined): number => Number(/^bytes=(\d+)-\d*$/.exec(rangeOf(init))?.[1] ?? Number.NaN)
 
 /** The media route for one tampered file: a stream that the Core stops before the failed fragment, and the clean 409 from there. */
 function tamperedRoute(refusal: unknown = ROUTE_REFUSAL): (init: RequestInit | undefined) => Response {
@@ -160,7 +162,7 @@ describe('G94b-02: a camera file the Core refuses for its integrity says so in t
     expect(screen.getByTestId('evidence-sealed-play-toggle')).toBeEnabled()
     expect(screen.queryByTestId('evidence-playback-stopped')).toBeNull()
     // The Core was asked from the start, then from the byte where its answer was cut. Nothing was renewed.
-    expect(probes.calls.map((call) => call.range)).toEqual(['bytes=0-', `bytes=${CUT_AT}-`])
+    expect(probes.calls.map((call) => fromOf(call.range))).toEqual(['bytes=0-', `bytes=${CUT_AT}-`])
     expect(probes.calls.every((call) => call.path === `/media/${TOKENS['VIDEO-02'][0]}`)).toBe(true)
     expect(sessions()).toHaveLength(2)
     // The record holds the Core's codes and never the bearer path.
@@ -193,7 +195,7 @@ describe('G94b-02: a camera file the Core refuses for its integrity says so in t
     expectIntegrityOfCamera2()
     expect(player()).toHaveAttribute('data-playing', 'true')
     expect(video('VIDEO-01').getAttribute('src')).toBe(`/media/${TOKENS['VIDEO-01'][0]}`)
-    expect(probes.calls.at(-1)?.range).toBe(`bytes=${CUT_AT}-`)
+    expect(fromOf(probes.calls.at(-1)?.range)).toBe(`bytes=${CUT_AT}-`)
   })
 
   it('media error on a live session: the Core is asked BEFORE anything is renewed; the refused file gets no path again, the other goes on at the same place', async () => {
@@ -246,7 +248,7 @@ describe('G94b-02: a camera file the Core refuses for its integrity says so in t
     expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
     expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-01')).toBeNull()
     expect(video('VIDEO-02').getAttribute('src')).toBe(`/media/${TOKENS['VIDEO-02'][0]}`)
-    expect(probes.calls.map((call) => call.range)).toEqual(['bytes=0-'])
+    expect(probes.calls.map((call) => fromOf(call.range))).toEqual(['bytes=0-'])
     // The file loads after all: the note goes.
     fireEvent.loadedMetadata(video('VIDEO-02'))
     await waitFor(() => expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull())
@@ -264,14 +266,14 @@ describe('G94b-02: the probe of the media route', () => {
   it('a range that starts in the failed fragment: the file and the fragment the Core names', async () => {
     const seen: string[] = []
     expect(await probeMediaSession(session(), { startByte: CUT_AT + 10, fetch: asFetch(tamperedRoute(), seen) })).toEqual({ kind: 'NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 3 })
-    expect(seen).toEqual([`bytes=${CUT_AT + 10}-`])
+    expect(seen.map(fromOf)).toEqual([`bytes=${CUT_AT + 10}-`])
   })
   it('an answer cut before the failed fragment is followed from the byte where it was cut - also when the body ends short without an error', async () => {
     const short = (init: RequestInit | undefined): Response =>
       startOf(init) >= CUT_AT ? new Response(JSON.stringify(ROUTE_REFUSAL), { status: 409 }) : new Response(new Uint8Array(CUT_AT - startOf(init)), { status: 206, headers: { 'content-length': '8192' } })
     const seen: string[] = []
     expect(await probeMediaSession(session(), { startByte: 100, fetch: asFetch(short, seen) })).toEqual({ kind: 'NOT_AUTHENTIC', fileId: 'VIDEO-02', seq: 3 })
-    expect(seen).toEqual(['bytes=100-', `bytes=${CUT_AT}-`])
+    expect(seen.map(fromOf)).toEqual(['bytes=100-', `bytes=${CUT_AT}-`])
   })
   it('controls: a served file, a file read up to the limit, another refusal, an expired session, no network - none is an integrity failure', async () => {
     expect(await probeMediaSession(session(), { fetch: asFetch(servedRoute) })).toEqual({ kind: 'SERVED' })
@@ -382,5 +384,157 @@ describe('G94b-09: an interrupted recording ends early and says so', () => {
     end(31)
     await waitFor(() => expect(player()).toHaveAttribute('data-playing', 'false'))
     expect(screen.queryByTestId('evidence-playback-interrupted-end')).toBeNull()
+  })
+})
+
+// ── Fix wave L, driver L-W (re-check 94, finding G94c-01 MAJOR) ──────────────────────────────────────
+//
+// Measured in a real browser at the re-check: through the web console's own origin (the dev server's
+// proxy) a stream the Core STOPPED stays an OPEN connection - the read neither rejects nor ends. The
+// probe of wave K waited for one of the two, was aborted by its own 10 s limit and answered UNKNOWN,
+// so the player said "This file has not loaded." and nothing about integrity. The route below is that
+// origin: it sends the bytes before the failed fragment and then NOTHING, for ever. The refusal at the
+// byte of the cut is the body the Core sends, the contract's exported example
+// (`MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE`, `contract_wave_l.md` section 7).
+describe('G94c-01 (wave L): a cut stream that stays OPEN - the player still reads the 409 at the failed fragment', () => {
+  const EXAMPLE = MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE
+  const endOf = (range: string): number => Number(/^bytes=\d+-(\d+)$/.exec(range)?.[1] ?? Number.NaN)
+
+  /** The media route behind an origin that does not pass the Core's cut on: 206, the bytes before the fragment, then silence. */
+  function hangingRoute(log: { hung: number } = { hung: 0 }): (init: RequestInit | undefined) => Response {
+    return (init) => {
+      const start = startOf(init)
+      if (start >= CUT_AT) return new Response(JSON.stringify(EXAMPLE.body), { status: EXAMPLE.status, headers: { 'content-type': 'application/json' } })
+      const end = Math.min(endOf(rangeOf(init)), 8_191)
+      let sent = false
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent) {
+            // The connection stays open: no byte, no end, no error.
+            log.hung += 1
+            return new Promise<void>(() => undefined)
+          }
+          sent = true
+          controller.enqueue(new Uint8Array(Math.min(end + 1, CUT_AT) - start))
+          return undefined
+        },
+      })
+      return new Response(body, { status: 206, headers: { 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/8192` } })
+    }
+  }
+  const session = () => new MediaSession('VIDEO-02', `/media/${TOKENS['VIDEO-02'][0]}`, 1_790_825_000_000)
+  const asFetch = (route: (init: RequestInit | undefined) => Response | Promise<Response>, seen: string[] = []): Fetch =>
+    (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(rangeOf(init))
+      return route(init)
+    }) as Fetch
+
+  it('the contract example is the refusal this player reads (the reason by its exported name)', () => {
+    expect(EXAMPLE.status).toBe(409)
+    expect(EXAMPLE.body.error.details.reason).toBe(MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON)
+    expect(MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON).toBe(FRAGMENT_NOT_AUTHENTIC)
+    expect(EXAMPLE.body.error.details).toMatchObject({ fileId: 'VIDEO-02', seq: 3 })
+  })
+
+  it('the probe: an answer that goes silent short of its length is taken as stopped at the byte it reached, and the 409 there is read', async () => {
+    const seen: string[] = []
+    const hang = { hung: 0 }
+    const started = Date.now()
+    const outcome = await probeMediaSession(session(), { fetch: asFetch(hangingRoute(hang), seen), idleMs: 60, chunkBytes: 4_096 })
+    expect(outcome).toEqual({ kind: 'NOT_AUTHENTIC', fileId: EXAMPLE.body.error.details.fileId, seq: EXAMPLE.body.error.details.seq })
+    // Two requests: the bounded range that went silent, then the one that STARTS at the byte of the cut.
+    expect(seen.map(fromOf)).toEqual(['bytes=0-', `bytes=${CUT_AT}-`])
+    // Every request is a bounded range (`bytes=a-b`), never an open-ended one.
+    expect(seen.every((range) => /^bytes=\d+-\d+$/.test(range))).toBe(true)
+    expect(endOf(seen[0] as string)).toBe(4_095)
+    expect(hang.hung).toBe(1)
+    // It did not wait for the connection: far below the 10 s the old probe gave up after.
+    expect(Date.now() - started).toBeLessThan(2_000)
+  })
+
+  it('the probe: the default range is small and bounded', async () => {
+    const seen: string[] = []
+    await probeMediaSession(session(), { fetch: asFetch(() => new Response(JSON.stringify(EXAMPLE.body), { status: 409 }), seen) })
+    expect(seen).toEqual([`bytes=0-${MEDIA_PROBE_CHUNK_BYTES - 1}`])
+    expect(MEDIA_PROBE_CHUNK_BYTES).toBeLessThanOrEqual(4 * 1024 * 1024)
+  })
+
+  it('controls: silence is never an integrity failure by itself - a slow answer that goes on, an answer that never sends a byte, headers that never arrive', async () => {
+    // A slow origin: the range goes silent once; asked again from that byte, the Core serves the rest.
+    let slowCalls = 0
+    const slow = (init: RequestInit | undefined): Response => {
+      slowCalls += 1
+      const start = startOf(init)
+      if (slowCalls > 1) return new Response(new Uint8Array(64 - start), { status: 206, headers: { 'content-length': String(64 - start), 'content-range': `bytes ${start}-63/64` } })
+      let sent = false
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent) return new Promise<void>(() => undefined)
+          sent = true
+          controller.enqueue(new Uint8Array(16))
+          return undefined
+        },
+      })
+      return new Response(body, { status: 206, headers: { 'content-length': '64', 'content-range': 'bytes 0-63/64' } })
+    }
+    const slowSeen: string[] = []
+    expect(await probeMediaSession(session(), { fetch: asFetch(slow, slowSeen), idleMs: 40 })).toEqual({ kind: 'SERVED' })
+    expect(slowSeen.map(fromOf)).toEqual(['bytes=0-', 'bytes=16-'])
+    // An answer that states a length and never sends a byte, twice at the same place: nothing can be said.
+    const mute = (): Response => new Response(new ReadableStream<Uint8Array>({ pull: () => new Promise<void>(() => undefined) }), { status: 206, headers: { 'content-length': '64', 'content-range': 'bytes 0-63/64' } })
+    const muteSeen: string[] = []
+    expect(await probeMediaSession(session(), { fetch: asFetch(mute, muteSeen), idleMs: 40 })).toEqual({ kind: 'UNKNOWN' })
+    expect(muteSeen).toHaveLength(2)
+    // Headers that never arrive: given up after the short per-request limit, not after the whole budget.
+    const started = Date.now()
+    const never: Fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      })) as Fetch
+    expect(await probeMediaSession(session(), { fetch: never, requestTimeoutMs: 80 })).toEqual({ kind: 'UNKNOWN' })
+    expect(Date.now() - started).toBeLessThan(1_500)
+  })
+
+  it('the player: VIDEO-02 never becomes ready on an origin that keeps the cut stream open - the integrity sentence, the "Stopped" tile, Camera 1 plays; and all of it stays after the end', async () => {
+    await openPlayer()
+    const probes = routeMedia({ 'VIDEO-02': hangingRoute() })
+    fireEvent.loadedMetadata(video('VIDEO-01'))
+    fireEvent.click(screen.getByTestId('evidence-sealed-play-toggle'))
+    video('VIDEO-01').currentTime = 2
+    fireEvent.timeUpdate(video('VIDEO-01'))
+    expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
+    // The stall watch (4 s), the silent range (1.5 s), the 409 at the byte of the cut.
+    await screen.findByTestId('evidence-playback-integrity')
+    expectIntegrityOfCamera2()
+    expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull()
+    // Few requests, all bounded, all on the session of the stalled file: the range that went silent and the one at the cut.
+    expect(probes.calls.map((call) => fromOf(call.range))).toEqual(['bytes=0-', `bytes=${CUT_AT}-`])
+    expect(probes.calls.every((call) => /^bytes=\d+-\d+$/.test(call.range) && call.path === `/media/${TOKENS['VIDEO-02'][0]}`)).toBe(true)
+    expect(sessions()).toHaveLength(2)
+    // The end of the other file: the stopped file is paused with it (a file that holds nothing fires `timeupdate` then).
+    fireEvent.timeUpdate(video('VIDEO-02'))
+    fireEvent.pause(video('VIDEO-02'))
+    video('VIDEO-01').currentTime = 8
+    fireEvent.timeUpdate(video('VIDEO-01'))
+    fireEvent.ended(video('VIDEO-01'))
+    await waitFor(() => expect(player()).toHaveAttribute('data-playing', 'false'), UI)
+    expectIntegrityOfCamera2()
+    expect(JSON.stringify(webErrorSink.records())).not.toContain('mts_')
+  })
+
+  it('the player: a file that never loaded keeps its sentence when it is paused at the end of the other file (its `timeupdate` is no sign of life)', async () => {
+    await openPlayer()
+    // The Core serves both files; VIDEO-02 simply shows no life.
+    routeMedia({})
+    fireEvent.loadedMetadata(video('VIDEO-01'))
+    await screen.findByTestId('evidence-sealed-not-loaded-VIDEO-02')
+    expect(screen.queryByTestId('evidence-playback-integrity')).toBeNull()
+    // Paused at the end of Camera 1: the element that holds nothing (currentTime 0, readyState 0) fires `timeupdate`.
+    fireEvent.timeUpdate(video('VIDEO-02'))
+    fireEvent.ended(video('VIDEO-01'))
+    expect(screen.getByTestId('evidence-sealed-not-loaded-VIDEO-02')).toHaveTextContent(W.notLoaded)
+    // A real sign of life takes it away.
+    fireEvent.loadedMetadata(video('VIDEO-02'))
+    await waitFor(() => expect(screen.queryByTestId('evidence-sealed-not-loaded-VIDEO-02')).toBeNull(), UI)
   })
 })

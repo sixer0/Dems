@@ -249,6 +249,10 @@ function MicOverview({ deviceId }: { deviceId: 'MIC-01' | 'MIC-02' }) {
   const channel = DEVICE_MIC[deviceId] ?? 'AUDIO-01'
   const mic = useSim((s) => selectMicById(s, channel))
   const status = useSim((s) => deviceStatus(s, deviceId))
+  // Fix wave L (G75d-06): the channel, the rear port, the gain, the phantom power and the converter are the simulator's
+  // microphone record - on a Core in real capture the source behind the line may be a generated one.
+  const realCapture = useRealCaptureCore()
+  const notReported = t('common.platformNotReported.value')
   if (!mic) return null
   return (
     <Facts
@@ -256,11 +260,11 @@ function MicOverview({ deviceId }: { deviceId: 'MIC-01' | 'MIC-02' }) {
         [label('status'), t(`devices.status.${status}`)],
         [label('deviceId'), <Mono key="id">{mic.deviceId}</Mono>],
         [label('track'), <Mono key="track">{mic.id}</Mono>],
-        [label('channel'), t('devices.drawer.value.channel', { channel: mic.channel })],
-        [label('port'), labels.port(channel === 'AUDIO-01' ? 'MIC_IN_1' : 'MIC_IN_2')],
-        [label('gain'), t('devices.audio.gainValue', { value: mic.gainDb })],
-        [label('phantom'), mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff')],
-        [label('adc'), t('devices.drawer.value.adc')],
+        [label('channel'), realCapture ? notReported : t('devices.drawer.value.channel', { channel: mic.channel })],
+        [label('port'), realCapture ? notReported : labels.port(channel === 'AUDIO-01' ? 'MIC_IN_1' : 'MIC_IN_2')],
+        [label('gain'), realCapture ? notReported : t('devices.audio.gainValue', { value: mic.gainDb })],
+        [label('phantom'), realCapture ? notReported : mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff')],
+        [label('adc'), realCapture ? notReported : t('devices.drawer.value.adc')],
         [label('recState'), mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT],
       ]}
     />

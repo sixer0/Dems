@@ -1,16 +1,18 @@
 import { Alert, Button, Chip, ProgressBar } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Download, RotateCcw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { retryCoreQuery, useQueryFailure } from '@/lib/core-queries'
+import { deferEffectStart } from '@/lib/effect-start'
 import { useWebLive } from '@/runtime'
 import { ExportJobReadError, exportJobQueryKey, startExportDownload, useExportJob, type ExportDownloadStart } from './export-job'
 import { COMPOSITE_NOT_SELECTED, EXPORT_INTERRUPTED, EXPORT_JOBS_NOT_AVAILABLE, exportJobIdOf, type ExportJobStatus as JobStatus } from './export-job-model'
 import { logEvidence } from './log'
 import { shortHash } from './model'
+import { evidenceMediaQueryKey } from './use-evidence-media'
 import { useRetryCooldown } from './use-retry-cooldown'
 
 const STATUS_COLOR = { QUEUED: 'default', RUNNING: 'accent', COMPLETE: 'success', FAILED: 'danger' } as const satisfies Record<JobStatus, 'default' | 'accent' | 'success' | 'danger'>
@@ -75,6 +77,17 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
   })
 
   const job = query.data ?? null
+  // Fix wave L (G94c-02): the finished-exports list of the item's page is part of the ONE answer of operation 40, read
+  // when the page opened. When this job reaches its end the item is asked again, once per job and end state, so the
+  // page lists the export without a reload ("Status Exported" stood beside "No finished export of this item.").
+  const endState = job !== null && (job.status === 'COMPLETE' || job.status === 'FAILED') ? job.status : null
+  useEffect(() => {
+    if (endState === null) return undefined
+    // The start waits one task (the shared helper): StrictMode's simulated unmount cancels the first start.
+    return deferEffectStart(() => {
+      void queryClient.invalidateQueries({ queryKey: evidenceMediaQueryKey(evidenceId) })
+    })
+  }, [endState, evidenceId, queryClient])
   const unknown = jobId === null || (query.error instanceof ExportJobReadError && query.error.unknownJob)
   const readFailed = query.isError && !unknown
 

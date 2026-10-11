@@ -55,7 +55,8 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('Session New previe
       const tile = screen.getByTestId(testID);
       expect(screen.getByTestId(`${testID}-none`)).toHaveTextContent('No preview');
       expect(screen.getByTestId(`${testID}-name`)).toHaveTextContent(new RegExp(device));
-      expect(screen.getByTestId(`${testID}-state`)).toHaveTextContent('Reachable');
+      // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
+      expect(screen.getByTestId(`${testID}-state`)).toHaveTextContent('Not checked');
       expect(tile.props.accessibilityRole).toBe('text');
       expect(tile.props.accessibilityLabel).toMatch(NO_PREVIEW_LABEL);
       expect(screen.queryByTestId(`${testID}-video`)).toBeNull();

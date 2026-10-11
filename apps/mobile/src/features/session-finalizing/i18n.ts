@@ -19,6 +19,28 @@ export const sessionFinalizingEn = {
   /** Fix wave K (G75c-10): the interrupted recording WHILE its seal runs - nothing is sealed yet. */
   interruptedSealing: {
     title: 'Recording was interrupted — sealing what was recorded',
+    /** Fix wave L (G75d-08): the same state seen from the Recovery screen while the session is still in FAULT. */
+    coreBody: 'The Core is sealing the recording up to the interruption. Nothing has to be started here: this screen moves on by itself.',
+    coreChip: 'Sealing',
+  },
+  /**
+   * Fix wave L (G75d-01; ruling D228 (2)): an OPEN NOTICE that does not block recording - a recording
+   * could not be sealed and sits in quarantine on the Core - as Home and its header state it. The
+   * meaning is the web console's (`web.realCore.notice`); the sentence of the alert row is the shared
+   * constant without the code. (Here, not in the dashboard tree: that tree's Simulated copy is pinned.)
+   */
+  openNotice: {
+    chip: 'OPEN NOTICE',
+    ringSub: 'OPEN NOTICE • RECORDING NOT BLOCKED',
+    title: 'Ready for Recording · open notice',
+    ringState: 'Ready, with an open notice',
+    detailOne: 'A recording could not be sealed ({{sessionId}}). Its files were kept in quarantine on the Core. Recording is not blocked.',
+    detailMany: '{{count}} recordings could not be sealed. Their files were kept in quarantine on the Core. Recording is not blocked.',
+    closeBySupervisor: 'A supervisor acknowledges this notice to close it.',
+    closeByYou: 'Acknowledge this notice to close it: open the alerts (the bell).',
+    alertLine: 'Session {{sessionId}}: {{sentence}}',
+    cause: 'Cause code: {{cause}}',
+    acknowledge: 'Acknowledge and close',
   },
   interrupted: {
     title: 'Finalization interrupted',
@@ -66,11 +88,27 @@ export const sessionFinalizingEn = {
     blockedTitle: 'Sealing is blocked',
     retryingTitle: 'Sealing is being retried',
     who: 'A technician or the administrator of the Core has to resolve the cause on the Core.',
+    // Fix wave L (G75d-02), closing pass L-Z: the CORE's own alert sentence now says who retries where ("Retry sealing" on
+    // the web console's Session Monitor), and "stopped after 3 automatic retries, the Core waits" is the shared sentence
+    // of the Core's failed step (`sealStoppedSentence`) - the device no longer maps "start recovery" to the web control.
+    // What only the device can say stays here: it offers no retry itself.
+    retryWhere: 'This device has no retry control: the retry is pressed on the web console.',
     staysOpen: 'You can leave this screen. The session stays open on the Core until it is sealed; Home and Sessions show it as "{{chip}}".',
     retryingBody: 'The Core runs the seal again by itself. You can leave this screen; the session stays open on the Core until it is sealed.',
     chip: 'Sealing blocked',
     action: 'Sealing blocked: view',
     newSession: 'A new session cannot be started: sealing of session {{sessionId}} is blocked, and the Core records no new session until it is sealed.',
     hubBody: 'Sealing of this session is blocked.',
+  },
+  /**
+   * Fix wave L (G75d-01 / G75d-04): the notice of a session that ended UNSEALABLE, as the device words
+   * it - the shared sentence WITHOUT the code, the code as a detail, and who closes the notice.
+   */
+  unsealable: {
+    ofSession: 'Session {{sessionId}}',
+    cause: 'Cause code: {{cause}}',
+    notBlocking: 'Recording is not blocked: a new session can be started.',
+    closeBySupervisor: 'A supervisor acknowledges this notice to close it.',
+    closeByYou: 'Acknowledge this notice to close it: open the alerts (the bell) on Home.',
   },
 } as const satisfies ResourceTree;

@@ -1003,6 +1003,51 @@ const EXAMPLE_PRODUCT_SEALED_ITEM = {
 } satisfies EvidenceDetail['evidence'];
 
 /**
+ * FIX WAVE L, driver L-S (re-check 89 finding G89c-04; ruling D229 (3)): the format of each camera
+ * file AS SIGNED, on the item (`evidence.files[].profile` - the manifest's `tracks[].profile`, field
+ * 36). Spread into an item with `sealedPackage: 'PRESENT'`: it restates the `files` of the product-sealed
+ * example with the member. It is NOT `profileId` (the session's input, untouched).
+ */
+export const EVIDENCE_SEALED_PROFILE_EXAMPLE = {
+  files: EXAMPLE_PRODUCT_SEALED_ITEM.files.map((file) => ({ ...file, profile: 'H264_720P30' })),
+} satisfies Pick<EvidenceDetail['evidence'], 'files'>;
+
+/**
+ * FIX WAVE L, driver L-S (G89c-04): the notice of a session whose recorded stream was not the
+ * configured profile, as the item of operation 40 carries it (`evidence.streamProfileNotice`).
+ * Absent on an item whose session has no such notice in the Core's alert list.
+ */
+export const EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE = {
+  streamProfileNotice: {
+    tracks: [
+      { trackId: 'VIDEO-01', stream: 'H264_720P30', configured: 'H264_1080P25' },
+      { trackId: 'VIDEO-02', stream: 'H264_720P30', configured: 'H264_1080P25' },
+    ],
+  },
+} satisfies Pick<EvidenceDetail['evidence'], 'streamProfileNotice'>;
+
+/**
+ * FIX WAVE L, driver L-S (re-check 94 finding G94c-01): the refusal of the media route
+ * (`GET /media/{token}`) for a range that begins in a fragment that does not authenticate - the
+ * `409` a player reads when it asks from the byte at which a stream was cut. The body the Core
+ * sends, member for member (`apps/core-server/src/media-stream/service.ts`); `fileId` and `seq`
+ * name the camera file and the fragment. The media route is no registry operation, so this example
+ * hangs on no operation: the clients' player tests import it.
+ */
+export const MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON = 'FRAGMENT_NOT_AUTHENTIC';
+export const MEDIA_FRAGMENT_NOT_AUTHENTIC_EXAMPLE = {
+  status: 409,
+  body: {
+    error: {
+      code: 'MEDIA_NOT_AVAILABLE',
+      message: 'This recording did not pass its integrity check and cannot be played. Verify the evidence item.',
+      details: { simCode: 'MEDIA_NOT_AVAILABLE', reason: MEDIA_FRAGMENT_NOT_AUTHENTIC_REASON, fileId: 'VIDEO-02', seq: 3 },
+      requestId: 'req-000001',
+    },
+  },
+} as const;
+
+/**
  * FIX WAVE K, driver S2 (re-gate 81 finding G81b-06; decision D160): the model of a sealed
  * transcript as an ITEM carries it (`evidence.transcriptModel` of operation 40, the items of slice
  * `evidence`) - the shape of operation 41's member. A LOCAL backend states all four members.

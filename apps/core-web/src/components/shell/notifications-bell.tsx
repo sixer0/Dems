@@ -5,7 +5,11 @@ import { motion, useAnimate } from 'motion/react'
 import { Bell, CircleAlert, Info, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
-import { selectActiveAlerts, selectUnacknowledgedAlertCount, useSim, type SimState } from '@dems/shared/sim'
+import { settle, useCoreActions } from '@dems/shared/live'
+import { SEAL_UNSEALABLE_PLAIN_SENTENCE, canResolveUnsealable, isUnsealableAlert, selectActiveAlerts, selectOperator, selectUnacknowledgedAlertCount, useSim, type SimAlert, type SimState } from '@dems/shared/sim'
+import { useCoreErrorPresenter } from '@/lib/core-errors'
+import { usePendingControl } from '@/lib/pending-control'
+import { reportShellError } from './shell-report'
 import { motion as tokens } from '@dems/shared/tokens'
 import { captureFailedStartOf, captureNoticeLine, captureNoticeOf, type CaptureFailedStart } from '@/lib/capture-notices'
 import { failedStartAlertLine } from './failed-start-alert'
@@ -82,6 +86,9 @@ export function NotificationsBell() {
                 const notice = captureNoticeOf(alert)
                 // Pass D7 item 3: the critical alert of a session start that recorded nothing says so, from its reason.
                 const failedLine = failedStartAlertLine(t, alert, failedStart)
+                // Fix wave L (G75d-01, ruling D228 (2)): the open notice of a recording that could not be sealed -
+                // its plain sentence, its session, its cause as a detail, and the acknowledgement that closes it.
+                if (isUnsealableAlert(alert)) return <UnsealableNoticeRow key={alert.id} alert={alert} />
                 return (
                   <li key={alert.id} className="dems-alert-row" data-severity={alert.severity}>
                     <Icon className="dems-alert-icon" aria-hidden="true" size={16} />
@@ -102,6 +109,61 @@ export function NotificationsBell() {
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
+  )
+}
+
+/**
+ * Fix wave L (G75d-01; `contract_wave_l.md` section 1): THE OPEN NOTICE "this recording could not be
+ * sealed" in the alerts list. It states a condition of ITS session (named in the row), blocks no
+ * recording, and ends in one way: operation 70 `acknowledgeAlert` sent by a role that holds the
+ * permission (`canResolveUnsealable`, a supervisor today). That role gets the control; every other
+ * role reads who can. The code of the cause is a detail, never part of the sentence (G75d-04).
+ * The control works on an alert that is already `acknowledged` and still active.
+ */
+function UnsealableNoticeRow({ alert }: { alert: SimAlert }) {
+  const { t } = useTranslation()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const { busy, pending, run } = usePendingControl()
+  const role = useSim((s) => selectOperator(s)?.role ?? null)
+  const mayClose = canResolveUnsealable(role)
+  const sessionId = typeof alert.params?.['sessionId'] === 'string' ? alert.params['sessionId'] : (alert.target ?? null)
+  const cause = typeof alert.params?.['cause'] === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(alert.params['cause']) ? alert.params['cause'] : null
+  const acknowledge = () =>
+    run((release) => {
+      settle(() => actions.acknowledgeAlert(alert.id), {
+        ok: () => undefined,
+        fail: (error) => {
+          if (presentCoreError(error) !== null) return
+          reportShellError('NotificationsBell.acknowledgeUnsealable', error, 'The acknowledgement of an unsealable notice was not accepted', { alertId: alert.id })
+        },
+        done: release,
+      })
+    })
+  return (
+    <li className="dems-alert-row dems-alert-row-notice" data-severity={alert.severity} data-notice="UNSEALABLE" data-testid={`alert-unsealable-${alert.id}`} aria-busy={busy || undefined}>
+      <CircleAlert className="dems-alert-icon" aria-hidden="true" size={16} />
+      <span className="dems-alert-message">
+        <span data-testid={`alert-unsealable-sentence-${alert.id}`}>{SEAL_UNSEALABLE_PLAIN_SENTENCE}</span>
+        <span className="dems-alert-detail">
+          {sessionId !== null ? t('web.waveL.notice.ofSession', { sessionId }) : null}
+          {sessionId !== null && cause !== null ? ' · ' : null}
+          {cause !== null ? t('web.waveL.notice.cause', { cause }) : null}
+        </span>
+        {mayClose ? (
+          <Button size="sm" variant="outline" onPress={acknowledge} isDisabled={busy} isPending={pending} data-testid={`alert-unsealable-acknowledge-${alert.id}`}>
+            {t('web.waveL.notice.acknowledge')}
+          </Button>
+        ) : (
+          <span className="dems-alert-detail" data-testid={`alert-unsealable-who-${alert.id}`}>
+            {t('web.waveL.notice.closeBySupervisor')}
+          </span>
+        )}
+      </span>
+      <time className="dems-alert-time" dateTime={new Date(alert.at).toISOString()}>
+        {formatDate(alert.at, DATE_PATTERNS.time)}
+      </time>
+    </li>
   )
 }
 

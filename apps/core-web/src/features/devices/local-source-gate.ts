@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSim } from '@dems/shared/sim'
+import { useSim, openSessionSnapshot, selectorInForce } from '@dems/shared/sim'
 import {
   captureConfigQueryOptions,
   captureDevicesQueryOptions,
@@ -191,7 +191,7 @@ export function useCaptureSourcesRead(): CaptureSourcesReadState {
     ],
   })
   // The selector the open session was created under, else the Core's answer (the rule of `useLocalSources`).
-  const sessionConfig = useSim((state) => state.session?.captureConfig ?? null)
+  const sessionConfig = useSim((state) => openSessionSnapshot(state.session))
   const answered = gate.live !== null && knowledge === 'KNOWN' ? flatOf(localSourcesOf(sessionConfig ?? config.data, devices.data)) : null
   const sources = useMemo(() => sourcesOfFlat(answered), [answered])
   const retry = useCallback(() => {
@@ -202,13 +202,22 @@ export function useCaptureSourcesRead(): CaptureSourcesReadState {
 }
 
 /**
+ * The local devices the selector IN FORCE names (closing pass L-Z, G70c-01's rule): the snapshot of the
+ * session while it is OPEN, else the stored selector. A SEALED session's snapshot is never read - what it
+ * named says nothing about the devices the NEXT pre-check opens. Pure.
+ */
+export function localSourcesInForce(state: { readonly session?: { readonly state?: string | null; readonly captureConfig?: SelectorLines | null } | null; readonly captureConfig: SelectorLines; readonly captureDevices: RegisteredDevices }): LocalSources | null {
+  return localSourcesOf(selectorInForce(state), state.captureDevices)
+}
+
+/**
  * The local devices the next pre-check opens, or `null`: the selector the open session was created
- * under (its `captureConfig` snapshot), else the stored one — the rule of `usePrecheckDevice`.
+ * under (its `captureConfig` snapshot WHILE IT IS OPEN), else the stored one — the rule of `usePrecheckDevice`.
  * Always `null` outside real capture. Read as one flat string, so the result compares by value.
  */
 export function useLocalSources(): LocalSources | null {
   const realCapture = useRealCapture()
-  const flat = useSim((state) => flatOf(localSourcesOf(state.session?.captureConfig ?? state.captureConfig, state.captureDevices)))
+  const flat = useSim((state) => flatOf(localSourcesInForce(state)))
   return useMemo(() => (realCapture ? sourcesOfFlat(flat) : null), [realCapture, flat])
 }
 

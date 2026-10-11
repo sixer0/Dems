@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { captureFailedStartText, captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
 import { useOwnCapture } from '@/lib/own-capture'
 import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
+import { SealRetryControl } from './seal-retry'
 import { useInterruptedSeal } from './use-interrupted-seal'
 import { BANNER_RANK, BANNER_TONE, selectBanner, selectBannerNoticeAlert, selectCoveredDegradedNotice, type BannerModel, type BannerTone } from './model'
 
@@ -219,6 +220,8 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
           {cta}
         </span>
       ) : null}
+      {/* Fix wave L (G75d-02): a blocked seal names a retry - here it is, for the role operation 33 allows. */}
+      {sealKind === 'BLOCKED' ? <SealRetryControl place="banner" /> : null}
     </div>
   )
 }

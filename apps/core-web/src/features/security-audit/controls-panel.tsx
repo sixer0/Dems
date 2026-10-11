@@ -76,7 +76,7 @@ export const ControlsPanel = memo(function ControlsPanel({ controls, className }
           const label = t(`securityAudit.controls.items.${control.id}.label`)
           // Closing pass J (D217 (7)): a platform fact the Core does not read says so - no "Attestation OK" under it.
           // Fix wave K (C-2): the Core's own fact where it states one (the key its items are signed with, its host clock); else that it does not report the control.
-          const detail = control.notReported
+          const detail = control.notReported || (control.fact?.kind === 'SIGNING_KEY' && control.fact.key !== null)
             ? control.fact?.kind === 'SIGNING_KEY'
               ? control.fact.key === null
                 ? t('web.realCore.controls.noSigningKey')

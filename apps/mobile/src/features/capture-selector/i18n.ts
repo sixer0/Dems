@@ -279,6 +279,11 @@ export const captureSelectorEn = {
    */
   sourceState: {
     notChecked: 'Not checked',
+    /** Fix wave L (G70c-02): the Home tiles of a Core in real capture say what the Core reported, never "Online". */
+    reachable: 'Reachable',
+    notReachableCount: '{{count}} not reachable',
+    homeCamerasLabel: 'Cameras: {{online}} of {{total}}. {{state}}',
+    homeMicrophonesLabel: 'Microphones: {{ready}} of {{total}}. {{state}}',
     primaryNotReachable: 'Primary not reachable',
     primaryNotChecked: 'Primary not checked',
     /** The label of the Home time chip on a Core that states no external time reference (no "GNSS" in it). */

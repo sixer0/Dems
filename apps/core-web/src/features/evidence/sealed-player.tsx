@@ -80,6 +80,18 @@ const SAME_PLACE_MS = 1_500
 
 const IDLE: Phase = { kind: 'idle' }
 
+/** The end of what a media element has buffered, in ms; 0 when it holds nothing. Never throws. */
+function bufferedEndMs(element: HTMLMediaElement | null): number {
+  try {
+    const ranges = element?.buffered
+    if (!ranges || ranges.length === 0) return 0
+    const end = ranges.end(ranges.length - 1)
+    return Number.isFinite(end) && end > 0 ? end * 1000 : 0
+  } catch {
+    return 0
+  }
+}
+
 function setTime(element: HTMLMediaElement, seconds: number): void {
   try {
     element.currentTime = seconds
@@ -143,6 +155,9 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
  *   file and the fragment ("This recording failed its integrity check at VIDEO-02 fragment 3."),
  *   takes its path off its element and keeps it stopped through every renewal; the other file plays
  *   on and leads (it carries the same audio track, R-4). Any other answer leaves the rules above.
+ *   Wave L (G94c-01): the question does not wait for a connection to close (the console's own origin
+ *   keeps a stopped stream open): it is a few small bounded range requests from what the element
+ *   holds, and the sentence and the "Stopped" tile stay through the end of the other file.
  * - **One camera or two.** The files asked for are the ones the item names (`files[]` of 1 or 2).
  * - **States** (UX §6.5): `409 MEDIA_NOT_AVAILABLE` is a fixed message with no player; a refusal for
  *   the role says so; anything else goes to the shared presenter first and offers a rate-limited
@@ -281,7 +296,10 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     probing.current.add(fileId)
     const atMs = positionRef.current
     const file = cameraFileOf(item, fileId)
-    const startByte = alive.current.has(fileId) ? probeStartByte({ sizeBytes: file?.sizeBytes ?? 0, fragmentCount: file?.fragmentCount ?? 0, positionMs: atMs, totalMs }) : 0
+    // Wave L (G94c-01): the question starts from what the media element HOLDS - the end of what it buffered,
+    // or the playhead when that is further - moved back three fragments; a file that never loaded is asked from its start.
+    const heldMs = Math.max(atMs, bufferedEndMs(videos.current[fileId] ?? null))
+    const startByte = alive.current.has(fileId) ? probeStartByte({ sizeBytes: file?.sizeBytes ?? 0, fragmentCount: file?.fragmentCount ?? 0, positionMs: heldMs, totalMs }) : 0
     const outcome = await probeMediaSession(session, { startByte })
     probing.current.delete(fileId)
     if (!mounted.current) return null
@@ -306,7 +324,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const watch = (fileId: CameraFileId, waiting: boolean) => {
     if (stopsRef.current[fileId] !== undefined) return
     if (!waiting && alive.current.has(fileId)) return
-    unwatch(fileId)
+    // Wave L (G94c-01): a watch that runs keeps its time. A Play or a seek soon after the opening must not
+    // push the question back - on a short recording the other file ended before it was ever asked.
+    if (watches.current.has(fileId)) return
     watches.current.set(
       fileId,
       setTimeout(() => {
@@ -318,7 +338,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     )
   }
 
-  /** A sign of life of one file: loaded metadata, can play, plays, or its clock moved. */
+  /**
+   * A sign of life of one file: loaded metadata, can play, plays, or its clock moved FORWARD.
+   * Wave L (G94c-01): a `timeupdate` alone is none - a file that never loaded still fires one when it
+   * is paused at the end of the other file (that erased its sentence), see `onTimeUpdate` of the element.
+   */
   const onAlive = (fileId: CameraFileId) => {
     unwatch(fileId)
     if (alive.current.has(fileId)) return
@@ -629,8 +653,9 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
                   onPlaying={() => onAlive(fileId)}
                   onWaiting={() => watch(fileId, true)}
                   onStalled={() => watch(fileId, true)}
-                  onTimeUpdate={() => {
-                    onAlive(fileId)
+                  onTimeUpdate={(event) => {
+                    // Wave L (G94c-01): the clock of a file that holds nothing does not move; its `timeupdate` (fired by a pause) is no sign of life.
+                    if (event.currentTarget.currentTime > 0 || event.currentTarget.readyState >= 1) onAlive(fileId)
                     onTimeUpdate(fileId)
                   }}
                   onEnded={

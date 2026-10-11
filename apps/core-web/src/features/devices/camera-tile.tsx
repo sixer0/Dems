@@ -69,7 +69,8 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
         <div className="dev-tile-titles">
           <span className="dev-tile-name">{name}</span>
           <span className="dev-tile-sub">
-            {t('devices.cameras.lens', { number: lens })} · {cameraId}
+            {/* Fix wave L (G75d-06): "Lens 1" is the dataset's dual-lens camera; a Core in real capture names the track only. */}
+            {realCapture ? cameraId : `${t('devices.cameras.lens', { number: lens })} · ${cameraId}`}
           </span>
         </div>
         <div className="dev-tile-chips">

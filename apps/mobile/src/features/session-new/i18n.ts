@@ -48,6 +48,9 @@ export const sessionNewEn = {
     previewTitle: 'Camera and audio preview',
     liveTitle: 'Live device status',
     liveHint: 'The same eight checks run when you continue.',
+    // Fix wave L (G70c-06): the card while the Core link is down - one statement of the link per screen.
+    liveHintLinkDown: 'Not connected to the Core server. The device status is not known until the connection is back.',
+    liveNotKnown: 'Not known',
     makeLive: 'Show {{camera}} live',
   },
   ready: {

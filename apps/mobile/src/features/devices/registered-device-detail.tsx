@@ -16,7 +16,7 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, StatusChip, type KeyValueItem } from '@/components/kit';
 import { LOCAL_STATE_TONE, localDeviceSentenceKey } from '@/features/capture-selector/capture-notices-model';
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
-import { rosterDeviceState, rosterLimitKey, rosterOnKey, rosterSourceKey, rosterSourceKind, rosterStateLabelKey, type RegisteredDevice } from './registered-devices-model';
+import { rosterDeviceState, rosterLimitKey, rosterOnKey, rosterSourceKey, rosterSourceKind, sourceChecked, sourceStateLabelKey, type RegisteredDevice } from './registered-devices-model';
 
 export function RegisteredDeviceDetail({ device, header }: { device: RegisteredDevice; header: ReactNode }) {
   const { t } = useTranslation();
@@ -30,8 +30,10 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
     { id: 'id', label: t('common.developmentRoster.field.id'), value: device.id, mono: true },
     { id: 'kind', label: t('common.developmentRoster.field.kind'), value: t(`common.developmentRoster.kind.${device.kind}`) },
     { id: 'source', label: t('common.developmentRoster.field.source'), value: t(rosterSourceKey(device.adapter)) },
-    // What the device announced: shown as a value, never as the name.
-    { id: 'model', label: t('common.developmentRoster.field.model'), value: device.model ?? t('common.developmentRoster.modelUnknown') },
+    // What the device announced: shown as a value, never as the name. Closing pass L-Z (the ONE RULE, contract_wave_l.md section 5):
+    // `model` of a GENERATED source (`adapter: FAKE`) is a value of the seed dataset or what a fake device announced - the
+    // "Source: Generated test source" row above says what it is, and no model row is drawn.
+    ...(device.adapter === 'FAKE' ? [] : [{ id: 'model', label: t('common.developmentRoster.field.model'), value: device.model ?? t('common.developmentRoster.modelUnknown') }]),
     // The Core's local device has no address; a network camera's is the host the Core sent.
     ...(local || device.host === null ? [] : [{ id: 'address', label: t('common.developmentRoster.field.address'), value: device.host, mono: true }]),
     { id: 'usedAs', label: t('common.developmentRoster.field.usedAs'), value: t(`common.developmentRoster.usedAs.${device.slot ?? 'NONE'}`) },
@@ -42,7 +44,7 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
       {header}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.statusRow}>
-          <StatusChip tone={LOCAL_STATE_TONE[state]} label={t(rosterStateLabelKey(state, local))} testID="registered-detail-state" />
+          <StatusChip tone={state === 'READY' && !sourceChecked(device) ? 'default' : LOCAL_STATE_TONE[state]} label={t(sourceStateLabelKey(state, local, sourceChecked(device)))} testID="registered-detail-state" />
           <Text maxFontSizeMultiplier={1.2} style={styles.deviceId}>
             {device.id}
           </Text>

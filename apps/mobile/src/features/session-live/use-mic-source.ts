@@ -28,12 +28,13 @@
  *
  * Every function that calls a hook is named `use*` (D66: the device build runs the React Compiler).
  */
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useToast } from 'heroui-native';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { captureMicLines, Permission, selectOperator, selectRole, useSim, useSimInstance, type OperatorRole } from '@dems/shared/sim';
+import { Permission, selectOperator, selectRole, useSim, useSimInstance, type OperatorRole } from '@dems/shared/sim';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { triggerHaptic } from '@/motion';
 import { reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, useCoreLinkReadOnly, usePendingPress } from '@/runtime';
@@ -87,7 +88,7 @@ export function useMicSource(): MicSourceView {
     canStart: gate.allowed,
     holder: isSessionHolder({ operatorId, role, createdBy }),
   });
-  const micLines = useSim(captureMicLines);
+  const micLines = useSim((s) => micLinesInForce(s));
   const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines]);
 
   return { sessionId, recording, activeInputId, standbyInputId, block, silentInputId };
@@ -98,7 +99,7 @@ export function useMicSource(): MicSourceView {
  * otherwise. A primitive selector, so a card renders again only when its own word changes.
  */
 export function useMicSourceRole(channel: AudioTrackId): MicSourceRole | null {
-  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel, captureMicLines(s)), selectActiveInputId(s)) : null));
+  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel, micLinesInForce(s)), selectActiveInputId(s)) : null));
 }
 
 export interface MicSwitchControl {

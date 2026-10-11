@@ -6,7 +6,7 @@ import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-rea
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
-import { DeviceCommand, noLiveLevelsOf, useSim, type SimState } from '@dems/shared/sim'
+import { audioPairInForce, DeviceCommand, noLiveLevelsOf, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
 import { CameraPreview } from '@/features/devices/camera-preview'
@@ -45,7 +45,7 @@ const selectMic = (id: AudioTrackId) => (s: SimState) => {
   const role = s.captureConfig.mics.find((entry) => entry.inputId === mic.deviceId)?.role ?? null
   // Task 3 M5 (blueprint row 72; WB-02; ux §3.6): while a session records, the tile says which input
   // is inside the session audio track now (operation 81 moves it) — the Core's pair, never a guess.
-  const activeInputId = s.session?.state === 'RECORDING' ? (s.session.audioSource?.activeInputId ?? s.audio.activeInputId) : null
+  const activeInputId = s.session?.state === 'RECORDING' ? (audioPairInForce(s).activeInputId ?? s.audio.activeInputId) : null
   const source = activeInputId === null ? null : activeInputId === mic.deviceId ? ('ACTIVE' as const) : ('STANDBY' as const)
   return { deviceId: mic.deviceId, state: mic.state, clipLatched: mic.clipLatched, role, source }
 }

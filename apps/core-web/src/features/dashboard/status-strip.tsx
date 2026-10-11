@@ -102,7 +102,8 @@ export function StatusStripPanel() {
   // A posture that names a fault keeps its words; "Secure" that nobody computed reads "Not reported".
   const postureNotReported = platformNotReported && posture === 'SECURE'
   const postureValue = postureNotReported ? t('common.platformNotReported.value') : t(`dashboard.statusStrip.value.posture.${posture}`)
-  const networkValue = linkUp ? t('common.status.connected') : t('common.status.disconnected')
+  // Fix wave L (G75d-07): "Connected" is the appliance model's LAN link; a Core in its own capture reports no network status (a link that is down in the state stays said).
+  const networkValue = platformNotReported && linkUp ? t('common.platformNotReported.value') : linkUp ? t('common.status.connected') : t('common.status.disconnected')
 
   const cells: CellSpec[] = [
     {
@@ -165,7 +166,7 @@ export function StatusStripPanel() {
       label: t('dashboard.statusStrip.network'),
       value: networkValue,
       valueText: networkValue,
-      tone: networkTone(linkUp),
+      tone: platformNotReported && linkUp ? 'default' : networkTone(linkUp),
       page: t('shell.nav.networkTime'),
     },
   ]
@@ -200,6 +201,8 @@ export function StatusStripPanel() {
                     <span className="dems-strip-label">{cell.label}</span>
                     <motion.span
                       className={`dems-strip-value ${TONE_TEXT_CLASS[cell.tone]}`}
+                      // Fix wave L (G89c-08): a long value ("Host system clock") wraps inside its cell instead of running under the next icon.
+                      data-long={cell.valueText.length > 12 ? 'true' : undefined}
                       initial={false}
                       animate={{ opacity: ready ? 1 : 0 }}
                       transition={m.transitions.crossFade}

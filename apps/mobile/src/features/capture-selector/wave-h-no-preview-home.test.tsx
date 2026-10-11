@@ -63,12 +63,13 @@ afterEach(() => {
 // Only the tablet in landscape draws the Home camera tiles (zone 2): the phone and the tablet in portrait draw none,
 // so there is no picture there to replace (checked: `home-device-VIDEO-01-feed` does not exist in those windows).
 describe.each(['tabletLandscape'] as const)('Home tiles on %s', (window) => {
+  // Fix wave L (controller ruling on G70c-02): a source at rest of which the Core states no checked fact reads "Not checked" - never "Reachable" / "Ready".
   it('REAL capture: each camera tile is the "No preview" tile with the device name and its true state; no picture, no LIVE / DEMO text', async () => {
     bed = createHomeBed();
     bed.state = marked(bed.state, { 'CAM-01': LOCAL, 'CAM-02': FAKE, 'MIC-01': FAKE, 'MIC-02': FAKE });
     bed.mount(<DashboardScreen />, window);
     await bed.signIn();
-    for (const [track, device, state] of [['VIDEO-01', "Core Mac's camera", 'Ready'], ['VIDEO-02', 'Camera CAM-02', 'Reachable']] as const) {
+    for (const [track, device, state] of [['VIDEO-01', "Core Mac's camera", 'Not checked'], ['VIDEO-02', 'Camera CAM-02', 'Not checked']] as const) {
       const tile = screen.getByTestId(`home-device-${track}-feed`);
       expect(screen.getByTestId(`home-device-${track}-feed-none`)).toHaveTextContent('No preview');
       expect(screen.getByTestId(`home-device-${track}-feed-name`)).toHaveTextContent(new RegExp(device));

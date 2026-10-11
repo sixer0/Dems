@@ -17,6 +17,7 @@ import { etaSeconds, useSealingProgress } from './sealing-progress'
 import { InterruptedSealNotice } from './interrupted-seal'
 import { realSealFactsOf, type RealSealFacts } from './real-seal-facts'
 import { useInterruptedSeal } from './use-interrupted-seal'
+import { selectUnsealableCause } from './unsealable-cause'
 import { UnsealableNotice } from './unsealable-notice'
 
 export type OverlayMode = 'finalization' | 'recovery'
@@ -160,6 +161,11 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
   })
   const percent = progress.percent
   const finalizing = state === SessionState.FINALIZING
+  // Fix wave L (G75d-04; `contract_wave_l.md` section 3): a session that ENDED unsealable has no progress - the Core
+  // answers 404 for it. The dialog then holds one terminal sentence: no "Finalizing", no percentage, no steps, no
+  // "Resumed after restart" (nothing was restarted; the web's own `attempt > 1` grows with every automatic retry).
+  const endedUnsealable = useSim(selectUnsealableCause(sessionId)) !== null
+  const sessionOpen = useSim((s) => s.session?.id === sessionId)
   const caseNumber = useSim((s) => (s.session?.id === sessionId ? s.session.input.caseNumber : null))
   const subjectName = useSim((s) => (s.session?.id === sessionId ? s.session.input.subjectName : null))
   const simulatedManifestHash = useSim((s) =>
@@ -184,6 +190,8 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
           <Modal.Heading className="sm-final-title">
             {sealed
               ? (interrupted?.title ?? t('session.finalization.sealedTitle'))
+              : endedUnsealable
+                ? t('web.waveL.unsealableEnd.title')
               : attention?.kind === 'BLOCKED'
                 ? t('web.sealBlocked.title')
                 : attention?.kind === 'RETRYING'
@@ -196,7 +204,7 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
       <Modal.Body className="sm-final-body">
         <UnsealableNotice sessionId={sessionId} />
         <InterruptedSealNotice sessionId={sessionId} sealed={sealed} />
-        {attention !== null ? (
+        {endedUnsealable ? null : attention !== null ? (
           <SealAttentionNotice attention={attention} />
         ) : (
           <>
@@ -223,7 +231,7 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
               {t('session.sealingEta.step', { seconds: etaSeconds(progress.etaMs) })}
             </p>
           ) : null}
-          {progress.resumed && !sealed && (!ownCapture || sawRecovery) ? (
+          {progress.resumed && !sealed && sessionOpen && (!ownCapture || sawRecovery) ? (
             <p className="sm-final-package-note" role="status" data-testid="sm-final-resumed" data-attempt={progress.attempt}>
               {t('session.finalization.resumed')}
             </p>
@@ -247,13 +255,15 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
           ) : null}
         </AnimatePresence>
 
-        <Stepper
-          ariaLabel={t('session.finalization.title')}
-          orientation="vertical"
-          variant="pipeline"
-          steps={stepperSteps}
-          className="sm-final-stepper"
-        />
+        {endedUnsealable ? null : (
+          <Stepper
+            ariaLabel={t('session.finalization.title')}
+            orientation="vertical"
+            variant="pipeline"
+            steps={stepperSteps}
+            className="sm-final-stepper"
+          />
+        )}
 
         <AnimatePresence>
           {sealed ? (

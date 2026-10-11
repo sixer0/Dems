@@ -15,6 +15,15 @@
  * E-15: every option row keeps a 1 dp border in both selection states (`ROW_CARD_BORDER`) and the
  * always-mounted, React-drawn `SelectionGlow`; choosing an option mounts nothing and changes colours
  * only. OD-12: an option is text and a status word, never a frame.
+ *
+ * Fix wave L:
+ * - G70c-02: on a Core in REAL capture the status word of a camera option is what the Core REPORTED
+ *   for that device (`reported`: "Reachable" / "Not reachable" / "Not checked" / "On"), handed in by
+ *   the caller. "Live" / "Lost" stand only for a camera that feeds a track while a session RECORDS
+ *   (`streamApplies`): a camera nobody opened is never "Live". The simulated Core keeps its words.
+ * - G70c-03: THE WHOLE ROW is the target. The badge chip and the status chip are kit chips, which are
+ *   pressables of their own: inside an option they take no touch (`pointerEvents="none"`), so a tap
+ *   anywhere on the row selects it.
  */
 import { BottomSheet, Button, ListGroup } from 'heroui-native';
 import { Camera, Mic } from 'lucide-react-native';
@@ -23,7 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { ReduceMotion } from 'react-native-reanimated';
 import type { MicRole, VideoTrackId } from '@dems/shared/domain';
-import { fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
+import { fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
@@ -39,8 +48,27 @@ export interface SourceBadgeMode {
   readonly live: boolean;
 }
 
+/** What the Core reported for one registered camera, as the selector words it (`sourceStateWord`): an i18n key and a tone. */
+export interface ReportedOptionState {
+  readonly key: string;
+  readonly tone: StatusTone;
+}
+
 export type SourceSheetRequest =
-  | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly currentDeviceId: string; readonly options: readonly CameraOption[]; readonly badgeMode?: SourceBadgeMode }
+  | {
+      readonly kind: 'camera';
+      readonly trackId: VideoTrackId;
+      readonly currentDeviceId: string;
+      readonly options: readonly CameraOption[];
+      readonly badgeMode?: SourceBadgeMode;
+      /**
+       * Wave L (G70c-02): present on a Core in REAL capture - the reported state of every registered camera,
+       * by device id. Absent (simulated Core): the options keep the stream words.
+       */
+      readonly reported?: Readonly<Record<string, ReportedOptionState>>;
+      /** Wave L (G70c-02): a session of the Core is RECORDING, so "Live" / "Lost" are true of the cameras ON a track. */
+      readonly recording?: boolean;
+    }
   | { readonly kind: 'mic'; readonly role: MicRole; readonly currentInputId: string | null; readonly options: readonly MicOption[]; readonly badgeMode?: SourceBadgeMode };
 
 const NO_BADGE: SourceBadgeMode = { live: false };
@@ -135,6 +163,7 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
         {request.kind === 'camera'
           ? request.options.map((option) => {
               const status = cameraLineStatus({ online: option.online, streamState: option.streamState ?? 'LIVE' });
+              const word = cameraOptionWord({ reported: request.reported?.[option.deviceId] ?? null, realCapture: request.reported !== undefined, recording: request.recording === true, onTrack: option.assignedTo !== null });
               return (
                 <OptionRow
                   key={option.deviceId}
@@ -147,7 +176,13 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
                   ]
                     .filter((part): part is string => part !== null && part !== '')
                     .join(' · ')}
-                  chip={<StatusChip size="sm" tone={STREAM_TONE[status]} label={t(`features.capture-selector.selector.stream.${status}`)} icon={null} />}
+                  chip={
+                    word === 'STREAM' ? (
+                      <StatusChip size="sm" tone={STREAM_TONE[status]} label={t(`features.capture-selector.selector.stream.${status}`)} icon={null} testID={`capture-source-state-${option.deviceId}`} />
+                    ) : word === null ? null : (
+                      <StatusChip size="sm" tone={word.tone} label={t(word.key)} icon={null} testID={`capture-source-state-${option.deviceId}`} />
+                    )
+                  }
                   source={developmentSourceOf({ sourceClass: option.sourceClass ?? undefined, adapter: option.adapter ?? undefined, deviceKind: 'CAMERA', ...(request.badgeMode ?? NO_BADGE) })}
                   selected={draft === option.deviceId}
                   disabled={busy}
@@ -194,6 +229,18 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
   );
 }
 
+/**
+ * The status word of a camera option (wave L, G70c-02). `'STREAM'`: the stream words apply (a
+ * simulated Core; or a camera ON a track while a session records). Otherwise the Core's reported
+ * state of the device, or `null` when the Core in real capture reported nothing for it (no chip:
+ * nothing is said rather than a constant).
+ */
+export function cameraOptionWord(input: { readonly reported: ReportedOptionState | null; readonly realCapture: boolean; readonly recording: boolean; readonly onTrack: boolean }): 'STREAM' | ReportedOptionState | null {
+  if (!input.realCapture) return 'STREAM';
+  if (input.recording && input.onTrack) return 'STREAM';
+  return input.reported;
+}
+
 interface OptionRowProps {
   id: string;
   icon: 'camera' | 'mic';
@@ -235,8 +282,13 @@ function OptionRow({ id, icon, title, detail, chip, source = null, refusal = nul
               {detail}
             </Text>
           )}
-          {/* Flow 12: the one badge, on each option; nothing when the Core sent no development class. */}
-          {source === null ? null : <SourceBadge kind={source} testID={`capture-source-badge-${id}`} />}
+          {/* Flow 12: the one badge, on each option; nothing when the Core sent no development class.
+              G70c-03: the badge's chip is a pressable of the kit - inside the row it takes no touch. */}
+          {source === null ? null : (
+            <View pointerEvents="none" testID={`capture-source-badge-wrap-${id}`}>
+              <SourceBadge kind={source} testID={`capture-source-badge-${id}`} />
+            </View>
+          )}
           {/* Fix F-M4 (R69-07): the short limit of the Core Mac's microphone, where it is chosen; real capture only (`source` is null in Simulated mode). */}
           {source === 'localMicrophone' ? <MicrophoneLimitLine testID={`capture-source-limit-${id}`} /> : null}
           {/* Fix wave H (G70-02): the reason a disabled option cannot be chosen, in visible text. */}
@@ -246,7 +298,8 @@ function OptionRow({ id, icon, title, detail, chip, source = null, refusal = nul
             </Text>
           )}
         </ListGroup.ItemContent>
-        <ListGroup.ItemSuffix>{chip}</ListGroup.ItemSuffix>
+        {/* G70c-03: the status chip takes no touch either - the row is the one target. */}
+        <ListGroup.ItemSuffix pointerEvents="none">{chip}</ListGroup.ItemSuffix>
       </ListGroup.Item>
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
       <SelectionGlow selected={selected} radius={radius.px.lg} testID={`capture-source-glow-${id}`} />

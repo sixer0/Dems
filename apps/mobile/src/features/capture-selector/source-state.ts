@@ -21,10 +21,11 @@
  * shared types yet), so it is read defensively: absent = the Core does not state it = as before.
  * Pure: no React, no store.
  */
+import { micLinesInForce, selectorInForce } from '@/features/capture-selector/selector-in-force';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { captureMicLines, micInputOfChannel, type SimState } from '@dems/shared/sim';
+import { micInputOfChannel, type SimState } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
-import { rosterDeviceState, rosterStateLabelKey, sourceOnKeyOf } from '@/features/devices/registered-devices-model';
+import { NOT_CHECKED_KEY, rosterDeviceState, rosterStateLabelKey, sourceChecked, sourceOnKeyOf } from '@/features/devices/registered-devices-model';
 import { captureNoticesOf, developmentSourceOf } from './capture-notices-model';
 
 /** `true`: the Core read the device; `false`: it says it has not (`checkedAt: null`); `null`: it does not state it. */
@@ -69,9 +70,14 @@ function reportOfDevice(state: ReportState, deviceId: string | null, kind: Sourc
   };
 }
 
+/** The facts of ONE registered capture device, whether a line names it or not (wave L, G70c-02: the options of the source sheet). */
+export function deviceReportOf(state: Pick<ReportState, 'captureDevices' | 'alerts'>, deviceId: string, kind: SourceReport['kind']): SourceReport {
+  return reportOfDevice(state as ReportState, deviceId, kind);
+}
+
 /** The microphone ON the line of a meter channel (the open session's selector snapshot, else the current selector). */
 export function micLineReportOf(state: ReportState, channel: AudioTrackId): SourceReport {
-  const lines = captureMicLines(state);
+  const lines = micLinesInForce(state);
   const inputId = micInputOfChannel(lines, channel);
   const line = lines.find((candidate) => candidate.inputId === inputId);
   return reportOfDevice(state, line?.deviceId ?? null, 'MIC');
@@ -79,19 +85,19 @@ export function micLineReportOf(state: ReportState, channel: AudioTrackId): Sour
 
 /** The camera behind a video track (the open session's selector snapshot, else the current selector). */
 export function cameraLineReportOf(state: ReportState, trackId: string): SourceReport {
-  const selector = state.session?.captureConfig ?? state.captureConfig;
+  const selector = selectorInForce(state);
   return reportOfDevice(state, selector.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null, 'CAMERA');
 }
 
 /** The microphone on the PRIMARY line. */
 export function primaryMicReportOf(state: ReportState): SourceReport {
-  const line = captureMicLines(state).find((candidate) => candidate.role === 'PRIMARY');
+  const line = micLinesInForce(state).find((candidate) => candidate.role === 'PRIMARY');
   return reportOfDevice(state, line?.deviceId ?? null, 'MIC');
 }
 
 /** The registered device id of the microphone on a meter channel's line, or null. */
 export function micLineDeviceIdOf(state: Pick<SimState, 'captureConfig' | 'session'>, channel: AudioTrackId): string | null {
-  const lines = captureMicLines(state);
+  const lines = micLinesInForce(state);
   const inputId = micInputOfChannel(lines, channel);
   return lines.find((candidate) => candidate.inputId === inputId)?.deviceId ?? null;
 }
@@ -105,8 +111,15 @@ export interface SourceStateWord {
   readonly tone: StatusTone;
 }
 
-/** The one word a surface shows for a source of a Core in real capture, and its tone. */
-export function sourceStateWord(report: SourceReport, live: boolean): SourceStateWord {
+/**
+ * The one word a surface shows for a source of a Core in real capture, and its tone.
+ *
+ * Fix wave L, controller ruling on G70c-02: a source AT REST of which the Core holds no checked fact
+ * is "Not checked" - on the web and here. "Reachable" only with a checked fact (`checkedAt` stated,
+ * the source open, or `recording`: a session records on the line). `recording` is the caller's:
+ * true only for a source ON a line while a session of the Core records.
+ */
+export function sourceStateWord(report: SourceReport, live: boolean, recording = false): SourceStateWord {
   if (report.deviceId === null) return { kind: 'UNKNOWN', key: 'features.capture-selector.preview.stateUnknown', tone: 'default' };
   if (sourceOnKeyOf({ sourceClass: report.sourceClass, adapter: report.adapter, deviceKind: report.kind, sourceOpen: report.sourceOpen }, live) !== null) {
     return { kind: 'ON', key: 'features.capture-selector.preview.on', tone: 'warning' };
@@ -115,8 +128,9 @@ export function sourceStateWord(report: SourceReport, live: boolean): SourceStat
   const source = developmentSourceOf({ sourceClass: report.sourceClass ?? undefined, adapter: report.adapter ?? undefined, deviceKind: report.kind, live });
   const local = source === 'localCamera' || source === 'localMicrophone';
   if (state !== 'READY') return { kind: 'NOT_REACHABLE', key: rosterStateLabelKey(state, local), tone: 'danger' };
-  // Reachable by its registration only: the Core says it has not read the device since it started.
-  if (report.checked === false) return { kind: 'NOT_CHECKED', key: 'features.capture-selector.sourceState.notChecked', tone: 'default' };
+  // Reachable by its registration only: the Core states no checked fact of the device (it says it has not read
+  // it since it started, or it says nothing) and nothing records on the line.
+  if (!sourceChecked({ checked: report.checked, sourceOpen: report.sourceOpen, recording })) return { kind: 'NOT_CHECKED', key: NOT_CHECKED_KEY, tone: 'default' };
   return { kind: 'REACHABLE', key: rosterStateLabelKey(state, local), tone: 'success' };
 }
 

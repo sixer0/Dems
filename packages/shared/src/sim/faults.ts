@@ -25,7 +25,8 @@ import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity, tamperAuditRow } from './events';
 import { DEFAULT_TAMPER_TRACK, restoreEvidenceItem, tamperEvidenceItem } from './evidence';
 import { noSignalFrame } from './initial-state';
-import { addTimelineItem, enterFault, isCriticalFault } from './session-machine';
+import { SEAL_UNSEALABLE_REASON, UNSEALABLE_ACKNOWLEDGE_OPERATION, canResolveUnsealable, isUnsealableAlert, unsealableAcknowledgedSentence } from './seal-unsealable';
+import { addTimelineItem, enterFault, isCriticalFault, signedInOperatorId } from './session-machine';
 import type { AuditLogSlice, AudioFrame, CaptureFaultFacts, EpochMs, FaultTarget, SimAlert, SimState } from './types';
 import { FaultEvt, FaultKind, type Severity } from './vocabulary';
 
@@ -558,9 +559,44 @@ export function resetClipTransition(state: SimState, channel: AudioTrackId): Sim
   return setAudioFrame(next, channel, { clip: false });
 }
 
-export function acknowledgeAlertTransition(state: SimState, alertId: string): SimState {
+/**
+ * Operation 70. An alert is marked acknowledged; the fault behind it is not cleared.
+ *
+ * ONE ALERT IS ENDED BY ITS ACKNOWLEDGEMENT (fix wave L, driver L-S; re-check 75 finding G75d-01;
+ * ruling D228 (2)): the open notice of a session that could not be sealed (`seal-unsealable.ts`).
+ * Nothing else ever ended it. When the signed-in operator's role holds
+ * `UNSEALABLE_ACKNOWLEDGE_PERMISSION` and `now` is given, the acknowledgement RESOLVES the notice -
+ * also one that somebody without the permission acknowledged before - and writes ONE audit row
+ * `FAULT_CLEARED` that names the session of the NOTICE (never the session that is open now), the
+ * operator and, by the rule of `events.ts`, the paired device that sent it. No timeline event: the
+ * session it is about is over, and a later session's timeline must not draw it. Another role's
+ * acknowledgement is what it always was: `acknowledged`, still active, no row.
+ */
+export function acknowledgeAlertTransition(state: SimState, alertId: string, now?: EpochMs): SimState {
   const alert = state.alerts.find((a) => a.id === alertId);
-  if (!alert || alert.acknowledged) return state;
+  if (!alert) return state;
+  // Who acknowledges is read for the ONE alert whose acknowledgement means more than the mark; every other alert asks nobody.
+  const closable = now !== undefined && alert.active && isUnsealableAlert(alert);
+  const operatorId = closable ? signedInOperatorId(state) : null;
+  const role = operatorId === null ? null : (state.operators.find((operator) => operator.id === operatorId)?.role ?? null);
+  if (now !== undefined && closable && canResolveUnsealable(role)) {
+    const sessionId = typeof alert.params?.['sessionId'] === 'string' ? alert.params['sessionId'] : (alert.target ?? null);
+    const cause = typeof alert.params?.['cause'] === 'string' ? alert.params['cause'] : null;
+    const next: SimState = { ...state, alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledged: true, active: false, resolvedAt: now } : a)) };
+    return {
+      ...next,
+      ...recordActivity(next, now, {
+        audit: {
+          type: 'FAULT_CLEARED',
+          message: unsealableAcknowledgedSentence(sessionId ?? '-'),
+          actorId: operatorId,
+          sessionId,
+          details: { reason: SEAL_UNSEALABLE_REASON, ...(cause === null ? {} : { cause }), alertId, operationId: UNSEALABLE_ACKNOWLEDGE_OPERATION },
+        },
+      }),
+    };
+  }
+  if (alert.acknowledged) return state;
   return { ...state, alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)) };
 }
 

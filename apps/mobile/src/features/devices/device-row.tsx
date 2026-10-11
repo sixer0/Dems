@@ -23,10 +23,11 @@ import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
 import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { useLayoutClass } from '@/layout';
 import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
-import { PreviewThumb } from './camera-preview';
+import { useSim } from '@dems/shared/sim';
+import { PreviewThumb, useRealCaptureView } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
-import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, type DeviceId, type DeviceStatus } from './devices-model';
+import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, type DeviceId, type DeviceStatus } from './devices-model';
 import { useBookPoe, useCamera, useIsRecording, useMic } from './use-devices-data';
 
 export interface DeviceRowProps {
@@ -51,9 +52,18 @@ export function DeviceRow(props: DeviceRowProps) {
   }
 }
 
+/** True for a capture source the Core names `adapter: FAKE` on a Core in real capture (`detailFactsOf`). */
+function useGeneratedSource(deviceId: DeviceId): boolean {
+  const realCapture = useRealCaptureView();
+  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  return detailFactsOf(realCapture, adapter) === 'GENERATED';
+}
+
 function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { t } = useTranslation();
   const camera = useCamera(deviceId);
+  // Closing pass L-Z (the ONE RULE): the room is the simulator's model; a generated source of a Core in its own capture is named as that.
+  const generated = useGeneratedSource(deviceId);
   const name = t(DEVICE_NAME_KEY[deviceId]);
   const poster = DEMO_MEDIA_LIVE.poster[DEVICE_CAMERA[deviceId] ?? 'VIDEO-01'];
   return (
@@ -62,7 +72,7 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       selected={selected}
       onPress={onPress}
       name={name}
-      detail={camera?.room ?? ''}
+      detail={generated ? t('common.developmentRoster.source.FAKE') : (camera?.room ?? '')}
       statusText={t(STATUS_LABEL_KEY[status])}
       prefix={<PreviewThumb kind="camera" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'FAULT'} testID={`device-thumb-${deviceId}`} />}
       suffix={<DeviceStatusChip status={status} testID={`device-status-${deviceId}`} />}
@@ -73,6 +83,7 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
 function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { t } = useTranslation();
   const mic = useMic(deviceId);
+  const generated = useGeneratedSource(deviceId);
   const { isMultiPane } = useLayoutClass();
   const focused = useIsFocused();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
@@ -86,7 +97,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       selected={selected}
       onPress={onPress}
       name={name}
-      detail={t('devices.drawer.value.channel', { channel: mic?.channel ?? 1 })}
+      detail={generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: mic?.channel ?? 1 })}
       statusText={t(STATUS_LABEL_KEY[status])}
       prefix={
         <PreviewThumb kind="microphone" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'} testID={`device-thumb-${deviceId}`}>

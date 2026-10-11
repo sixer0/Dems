@@ -16,6 +16,7 @@
  * One flat string is read from the store, so a 20 Hz meter frame renders nothing (F74-13). Nothing is
  * drawn — no wrapper — when there is no such device. No control: the line cannot be dismissed.
  */
+import { selectorInForce } from '@/features/capture-selector/selector-in-force';
 import { Radio } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
@@ -28,7 +29,7 @@ export function OpenLocalSourcesOffScreen({ testID = 'monitor-open-local-sources
   const { t } = useTranslation();
   const { live } = useSourceBadgeMode();
   const line = useSim((s) => {
-    const selector = s.session?.captureConfig ?? s.captureConfig;
+    const selector = selectorInForce(s);
     const onScreen = selector.cameras.find((camera) => camera.trackId === s.activeCameraId)?.deviceId;
     const cards = s.mics.map((mic) => selector.mics.find((entry) => entry.inputId === mic.deviceId)?.deviceId ?? mic.deviceId);
     return openLocalSourcesOf(s.captureDevices.devices, live, onScreen === undefined ? cards : [onScreen, ...cards])
