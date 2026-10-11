@@ -28,8 +28,9 @@ import {
   isCoreNotRunningKind,
   isPlatformNotReported,
   platformNotReportedTransition,
+  type SessionCaptureCheckpoints,
 } from '../src/sim';
-import { ActiveSessionSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, FaultsSliceSchema, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SecuritySliceSchema } from '../src/api';
+import { ActiveSessionSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, FaultsSliceSchema, PrecheckItemSchema, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, SecuritySliceSchema } from '../src/api';
 import { en } from '../src/i18n';
 import * as ownCaptureBed from './support/own-capture-bed';
 
@@ -343,6 +344,40 @@ describe('the host-clock time slice and the derivations', () => {
 //                                   Secure Boot or posture; the simulated device is unchanged;
 //   `coreNotRunning`                the restart fault of a Core in its own capture says "the Core
 //                                   was not running", on every record, with the kind unchanged.
+// Batch N (verification row 98; ruling D241).
+//   V98-09: `session.captureCheckpoints` has an exported contract example; the client tests import it.
+//   V98-08: `reasonCode` and `params` of a pre-check item are members of the STATE SLICE `session`
+//           (topic `state`); operation 27's `PrecheckItem` is the design-book shape and keeps its four
+//           members (API-1). A read of operation 27 that shows no `params` is the contract, not a gap.
+describe('batch N: the checkpoint example, and where a pre-check item carries `params`', () => {
+  it('V98-09: SESSION_CAPTURE_CHECKPOINTS_EXAMPLE is the member of the contract - it parses as `session.captureCheckpoints`, its cameras add up to its totals, and a member more or less does not parse', () => {
+    const member = ActiveSessionSchema.shape.captureCheckpoints;
+    expect(member.safeParse(SESSION_CAPTURE_CHECKPOINTS_EXAMPLE).success).toBe(true);
+    expect(member.safeParse(undefined).success).toBe(true);
+    const { cameras, fragments, bytes } = SESSION_CAPTURE_CHECKPOINTS_EXAMPLE;
+    expect(cameras.reduce((sum, camera) => sum + camera.fragments, 0)).toBe(fragments);
+    expect(cameras.reduce((sum, camera) => sum + camera.bytes, 0)).toBe(bytes);
+    expect(cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    // CONTROL: the schema is strict - the example is not accepted by accident.
+    expect(member.safeParse({ ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, bytesWritten: 1 }).success).toBe(false);
+    const { lastAt: _lastAt, ...withoutInstant } = SESSION_CAPTURE_CHECKPOINTS_EXAMPLE;
+    expect(member.safeParse(withoutInstant).success).toBe(false);
+    // The simulator's type of the member takes it as it is (a client spreads it into a session).
+    const typed: SessionCaptureCheckpoints = { ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, cameras: [...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE.cameras] };
+    expect(typed.fragments).toBe(24);
+  });
+
+  it('V98-08: a pre-check item of the SLICE carries `reasonCode` and `params` (`{ deviceId, rule }`); the item of operation 27 has exactly id, status, value, reason and drops anything else', () => {
+    const sliceItem = { id: 'LENS_2', status: 'WARN', value: 'UNREACHABLE', reason: 'CAM-05 is not reachable', reasonCode: null, params: { deviceId: 'CAM-05', rule: 'oneCamera' }, resolvesAt: null };
+    const items = ActiveSessionSchema.shape.precheck.shape.items;
+    expect(items.safeParse([sliceItem]).success).toBe(true);
+    expect(items.safeParse([{ ...sliceItem, params: undefined }]).success).toBe(true);
+    // Operation 27 (API-1: the design-book operations keep their response schema): four members, nothing more on the wire.
+    expect(Object.keys(PrecheckItemSchema.shape).sort()).toEqual(['id', 'reason', 'status', 'value']);
+    expect(PrecheckItemSchema.parse(sliceItem)).toEqual({ id: 'LENS_2', status: 'WARN', value: 'UNREACHABLE', reason: 'CAM-05 is not reachable' });
+  });
+});
+
 describe('platform security not reported, and the restart fault', () => {
   const { bed } = ownCaptureBed;
 

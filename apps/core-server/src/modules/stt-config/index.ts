@@ -16,6 +16,16 @@
  * `CAPTURE_CONFIG` (SUPERVISOR and TECHNICIAN) is needed for 91 and 92, and a caller without it
  * is refused there with one `ACCESS_DENIED` row. This folder reads no role and no permission.
  *
+ * A BODY OF OPERATION 91 THAT CARRIES `credential` IS WEB-CONSOLE ONLY (batch N; security review
+ * S99-09, ruling D241): the operation takes a typed secret, as operations 89 / 95 / 96 do, and those
+ * carry the condition `WEB_CONSOLE_SESSION`. Stage 6 runs before the body is parsed, so the rule
+ * cannot stand in the registry's access member without closing the operation to the tablet, whose
+ * technician saves a change WITHOUT a credential. The handler therefore asks the guard itself
+ * (`permissionGuard(app).requireWebConsoleSession`) as its FIRST statement when the body has the
+ * member - any kind of it (SECRET, REFERENCE, CLEAR: each changes the credential): a session bound
+ * to a paired device gets the condition's own answer, row and log line, and nothing of the body is
+ * read, sealed, stored or logged. This folder still reads no role and no permission.
+ *
  * THE CONFIGURATION IS A STORED ROW, NOT A SLICE. C3 §2.5 keeps the replicated state at 30
  * slices: clients re-read operation 90 on screen entry and after 91. So the two reads answer from
  * the table through the pool (`app.db.read`: a failure is the database's and answers 503), and
@@ -65,7 +75,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { notSignedIn } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { describeError } from '../../plugins/logger';
-import { routeOfOperation } from '../../plugins/permission-guard';
+import { permissionGuard, routeOfOperation } from '../../plugins/permission-guard';
 import { changeSttConfig, sttConfigNotSeeded, sttConfigOf, type Actor } from './change';
 import { coreCredentialStore } from '../../credential-store';
 import { mountTranscription } from '../../transcription';
@@ -295,6 +305,8 @@ export const sttConfigModule: FastifyPluginAsync = async (app) => {
     ...routeOfOperation(registryEntry('updateSttConfig')),
     schema: { body: SttConfigUpdateRequestSchema, response: { 200: SttConfigUpdateResultSchema } },
     handler: async (request): Promise<SttConfigUpdateResult> => {
+      // S99-09: a credential in the body is web-console only (see the file header). Before anything of the body is used.
+      if (request.body.credential !== undefined) await permissionGuard(app).requireWebConsoleSession(request);
       const outcome = await changeSttConfig(app, actorOf(request), request.body, {
         sealer: control.sealer ?? control.storeSealer,
         lastTest: control.last,

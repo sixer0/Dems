@@ -171,12 +171,18 @@ describe('rule 4: a log line of the module names fields, never values', () => {
     expect(new Set(keys).has('changedFields')).toBe(true);
   });
 
-  it('the request body is read in one place and handed to the unit: never to a log call, an error or the error log', () => {
+  it('the request body is read in two statements of one handler - is a credential there (S99-09), then the hand-over to the unit: never a log call, an error or the error log', () => {
     const reads = places(moduleCode, /\brequest\s*\.\s*body\b/g);
-    expect(reads).toHaveLength(1);
-    expect(reads[0]).toMatch(new RegExp(`^${FOLDER}index\\.ts:\\d+$`));
+    expect(reads).toHaveLength(2);
+    for (const read of reads) expect(read).toMatch(new RegExp(`^${FOLDER}index\\.ts:\\d+$`));
     const index = moduleCode.find((file) => file.path === `${FOLDER}index.ts`)?.text ?? '';
     expect(index).toMatch(/changeSttConfig\(app, actorOf\(request\), request\.body, \{/);
+    // S99-09 (batch N): the ONE question asked of the body before the unit is whether it carries a credential at all - no value
+    // of it is read - and the answer goes to the guard, BEFORE the hand-over. The guard is handed the request, never the body.
+    const asked = 'if (request.body.credential !== undefined) await permissionGuard(app).requireWebConsoleSession(request);';
+    expect(index.split(asked)).toHaveLength(2);
+    expect(index.indexOf(asked)).toBeLessThan(index.indexOf('changeSttConfig(app, actorOf(request), request.body, {'));
+    expect(index.indexOf(asked)).toBeGreaterThan(index.indexOf("...routeOfOperation(registryEntry('updateSttConfig')),"));
     // No refusal text is built from a value: every `new ApiFailure(` of the module has a fixed message.
     for (const file of moduleCode) {
       for (const match of file.text.matchAll(/new ApiFailure\(\s*\d+,\s*[A-Za-z.]+,\s*([^,]+),/g)) expect(match[1]?.trim(), file.path).toMatch(/^'[^'$]*'$/);

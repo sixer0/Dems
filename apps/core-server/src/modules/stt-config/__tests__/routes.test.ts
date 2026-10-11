@@ -22,6 +22,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  CORE_API_EXAMPLES,
   CORE_API_OPERATIONS,
   CoreApiAccessKind,
   CoreApiAuditNone,
@@ -211,6 +212,84 @@ describe('who may call: read for every role, CAPTURE_CONFIG for the write and th
     expect((await stt.post(STT_TEST_PATH)).statusCode).toBe(200);
     expect(stt.db.row()?.enabled).toBe(false);
     expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([]);
+  });
+});
+
+// Batch N (security review row 99, finding S99-09; ruling D241): operation 91 takes a typed secret, as
+// operations 89 / 95 / 96 do. A body that CARRIES `credential` is web-console only, with the answer and
+// the row of the condition WEB_CONSOLE_SESSION; a body without it stays open to a tablet (gate 81).
+describe('S99-09: a credential in the body of operation 91 is web-console only', () => {
+  const ON_TABLET = operator(OperatorRole.TECHNICIAN, 'OPR-003', 'TAB-01');
+  const SUPERVISOR_ON_PHONE = operator(OperatorRole.SUPERVISOR, 'OPR-002', 'PHN-01');
+
+  it.each([
+    ['SECRET', { kind: 'SECRET', value: SECRET }],
+    ['REFERENCE', { kind: 'REFERENCE', ref: REFERENCE }],
+    ['CLEAR', { kind: 'CLEAR' }],
+  ] as const)('a session bound to a paired device sending a %s credential: 403 NOT_PERMITTED (WEB_CONSOLE_ONLY), ONE ACCESS_DENIED row, nothing sealed, nothing stored, nothing of the body anywhere', async (_kind, credential) => {
+    const stt = await build();
+    const sealer = testSealer();
+    stt.control.provideCredentialSealer(sealer);
+    for (const principal of [ON_TABLET, SUPERVISOR_ON_PHONE]) {
+      stt.actAs(principal);
+      const refused = await stt.post(STT_PATH, { revision: 1, enabled: false, credential });
+      expect(outcome(refused)).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
+      expect(validateCoreApiResponse('updateSttConfig', 403, refused.json())).toEqual({ ok: true });
+      expect(refused.json().error.details).toEqual({ operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: principal.kind === 'OPERATOR' ? principal.role : '', reason: 'WEB_CONSOLE_ONLY' });
+    }
+    // The same answer and row as the condition on operations 89 / 95 / 96 (the guard's own builders).
+    expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([
+      { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' },
+      { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'SUPERVISOR', reason: 'WEB_CONSOLE_ONLY' },
+    ]);
+    expect(auditRowsOf(stt, 'STT_CONFIG_CHANGED')).toEqual([]);
+    expect(stt.db.updates).toEqual([]);
+    expect(stt.db.row()).toEqual(SEEDED_ROW);
+    expect(sealer.sealed).toEqual([]);
+    const haystacks = haystacksOf(stt);
+    expect(hitsOf(haystacks, SECRET)).toEqual({ responses: 0, logs: 0, errorLog: 0, auditRows: 0, events: 0 });
+    expect(hitsOf(haystacks, REFERENCE)).toEqual({ responses: 0, logs: 0, errorLog: 0, auditRows: 0, events: 0 });
+  });
+
+  it('CONTROL (gate 81): the same tablet session saves a change WITHOUT a credential, and reads and tests; the web console session stores the SECRET', async () => {
+    const stt = await build();
+    const sealer = testSealer();
+    stt.control.provideCredentialSealer(sealer);
+    stt.control.provideProbe(async () => ({ reachable: true, modelAvailable: true, detailCode: 'OK' }));
+    stt.actAs(ON_TABLET);
+    const saved = await stt.post(STT_PATH, { revision: 1, enabled: false, diarization: false });
+    expect(saved.statusCode).toBe(200);
+    expect(stt.db.row()?.enabled).toBe(false);
+    expect((await stt.get()).statusCode).toBe(200);
+    expect((await stt.post(STT_TEST_PATH)).statusCode).toBe(200);
+    expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([]);
+    // The web console (a session bound to no device) with the same permission stores the secret.
+    stt.actAs(TECHNICIAN);
+    const stored = await stt.post(STT_PATH, { revision: (saved.json() as SttConfigUpdateResult).revision, credential: { kind: 'SECRET', value: SECRET } });
+    expect(stored.statusCode).toBe(200);
+    expect(sealer.sealed).toHaveLength(1);
+    expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([]);
+  });
+
+  it('a device session WITHOUT the permission is refused for the permission, as before (the role, not the console)', async () => {
+    const stt = await build();
+    stt.actAs(operator(OperatorRole.INVESTIGATOR, 'OPR-001', 'TAB-01'));
+    const refused = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
+    expect(outcome(refused)).toEqual([403, 'NOT_PERMITTED', null]);
+    expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([{ operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'INVESTIGATOR' }]);
+  });
+
+  it('the contract says it: the description of operation 91 names the rule, its 403 names the reason, and an example shows the answer', () => {
+    const operation = CORE_API_OPERATIONS.find((entry) => entry.operationId === 'updateSttConfig');
+    expect(operation?.description).toContain('WEB_CONSOLE_ONLY');
+    expect(operation?.description).toMatch(/web console/i);
+    expect(JSON.stringify(operation?.responses[403])).toContain('WEB_CONSOLE_ONLY');
+    const examples = (CORE_API_EXAMPLES['updateSttConfig']?.responses[403] ?? {}) as Record<string, { value: unknown } | undefined>;
+    const example = examples['webConsoleOnly'];
+    expect(validateCoreApiResponse('updateSttConfig', 403, example?.value)).toEqual({ ok: true });
+    expect(example?.value).toMatchObject({ error: { code: 'NOT_PERMITTED', details: { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', reason: 'WEB_CONSOLE_ONLY' } } });
+    // The access rule of the registry is unchanged (the condition is on the BODY, which stage 6 never reads): CAPTURE_CONFIG, no condition.
+    expect(operation?.access).toEqual({ kind: 'PERMISSION', permission: 'CAPTURE_CONFIG' });
   });
 });
 

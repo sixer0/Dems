@@ -18,19 +18,22 @@ import { render, screen } from '@testing-library/react-native';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { I18nextProvider } from 'react-i18next';
-import { EvidenceVerifyResultSchema, VERIFY_REPORT_SKIP_REASONS, VERIFY_REPORT_SOURCE_CLASSES } from '@dems/shared/api';
+import { EvidenceVerifyResultSchema, VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE, VERIFY_REPORT_SKIP_REASONS, VERIFY_REPORT_SOURCE_CLASSES } from '@dems/shared/api';
+import * as sharedRules from '@dems/shared/evidence-rules';
 import { SOURCES_STATE_REPORT, TRANSCRIPT_STATE_REPORT, VERIFY_V2_CHECKS } from '@dems/shared/evidence-verify';
 import { en } from '@dems/shared/i18n';
 import { DEMO_TAMPERED_EVIDENCE_SEQ, DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK, DEMO_TAMPERED_TRACK } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { RECORDED_VERIFY_V2, type RecordedVerifyName } from './testing/verify-v2-recorded';
 import {
+  V2_FILE_PART_CHECK,
   V2_KNOWN_CHECK_IDS,
   V2_SOURCES_LINE,
   V2_TRANSCRIPT_STATES,
   readVerifyV2,
   v2CheckName,
   v2FailedNames,
+  v2FilePartOutcome,
   v2FragmentLine,
   v2Rows,
   verdictOfAnswer,
@@ -314,6 +317,36 @@ describe('the report (M7-VV-PHONE, software part)', () => {
     for (const id of ['V-04', 'V-06', 'V-08']) expect(screen.getByTestId(`evidence-v2-check-${id}-FAIL`)).toBeTruthy();
     expect(screen.getByTestId('evidence-v2-check-V-05-SKIPPED')).toHaveTextContent(new RegExp(V2.skipped.BLOCKED));
     for (const id of ['V-09', 'V-10', 'V-11', 'V-13']) expect(screen.getByTestId(`evidence-v2-check-${id}-PASS`)).toBeTruthy();
+  });
+
+  // Batch N (final code review R101-03; ruling D241): the outcome of a part of a file row is the SHARED rule's
+  // (`@dems/shared/evidence-rules`, vectors in packages/shared/test/evidence-verify.test.ts). This view words it.
+  it('R101-03: the file rows draw the SHARED outcome of every part - the function is the shared one, and each drawn word follows it (contract example; every part\'s check skipped; no report)', () => {
+    expect(v2FilePartOutcome).toBe(sharedRules.v2FilePartOutcome);
+    expect(V2_FILE_PART_CHECK).toBe(sharedRules.V2_FILE_PART_CHECK);
+    const word = { PASS: V2.outcome.PASS, FAIL: V2.outcome.FAIL, NOT_RUN: V2.outcome.SKIPPED } as const;
+    expect(word.NOT_RUN).toBe('Not run');
+    const check = (id: string, status: 'PASS' | 'FAIL' | 'SKIPPED') => ({ id, name: id, status, failureClass: status === 'FAIL' ? 'TAMPERED' : null, skipped: status === 'SKIPPED' ? 'BLOCKED' : null, findings: [] });
+    const reports = [
+      undefined,
+      [check('V-04', 'FAIL'), check('V-05', 'SKIPPED'), check('V-06', 'FAIL')],
+      [check('V-04', 'FAIL'), check('V-05', 'SKIPPED'), check('V-06', 'SKIPPED')],
+      [check('V-04', 'SKIPPED'), check('V-05', 'SKIPPED'), check('V-06', 'SKIPPED')],
+    ];
+    for (const checks of reports) {
+      const answer = read({ ok: false, at: 1_790_824_000_000, files: VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE, manifestOk: true, signatureOk: true, ...(checks === undefined ? {} : { checks }) });
+      const drawn = draw(answer);
+      for (const file of answer.files) {
+        const expected = (['stored', 'plain', 'chain'] as const).map((part) => sharedRules.v2FilePartOutcome(file, part, answer.checks));
+        const line = `Stored bytes ${word[expected[0] ?? 'FAIL']} · decrypted bytes ${word[expected[1] ?? 'FAIL']} · fragment chain ${word[expected[2] ?? 'FAIL']}`;
+        expect(screen.getByTestId(`evidence-v2-row-file:${file.trackId}-${file.ok ? 'ok' : 'fail'}`)).toHaveTextContent(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      }
+      drawn.unmount();
+    }
+    // The case the two clients disagreed on, by its words: V-06 skipped reads "fragment chain Not run", never "FAIL".
+    draw(read({ ok: false, at: 1_790_824_000_000, files: VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE, manifestOk: true, signatureOk: true, checks: reports[2] }));
+    expect(screen.getByTestId('evidence-v2-row-file:VIDEO-02-fail')).toHaveTextContent(/Stored bytes FAIL · decrypted bytes Not run · fragment chain Not run/);
+    expect(screen.getByTestId('evidence-v2-row-file:VIDEO-01-ok')).toHaveTextContent(/Stored bytes PASS · decrypted bytes PASS · fragment chain PASS/);
   });
 
   it('an answer without the report members: the file fails, the report says the answer names no fragment, and draws no check list and no source line', () => {

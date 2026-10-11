@@ -265,6 +265,21 @@ export const SESSION_PRECHECK_SENDING_DEVICE_EXAMPLE = Object.freeze({ sendingDe
 export const SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE = Object.freeze({ platformNotReported: true } as const);
 export const CORE_NOT_RUNNING_FAULT_EXAMPLE = Object.freeze({ coreNotRunning: true } as const);
 
+/**
+ * Contract example of the optional member `session.captureCheckpoints` (batch N; verification
+ * finding V98-09, ruling D241; the rule of D208: "the consumer's tests import the contract's
+ * examples"): what a Core holds of a recording of its OWN capture - 24 durable fragment checkpoints
+ * over two camera files, 34 MB stored. Set as `captureCheckpoints` of a session; a client test
+ * IMPORTS it and moves `lastAt` to the instant it needs (`{ ...EXAMPLE, lastAt }`). The sum of the
+ * cameras is the total, as the Core writes it.
+ */
+export const SESSION_CAPTURE_CHECKPOINTS_EXAMPLE = Object.freeze({
+  fragments: 24,
+  bytes: 34_000_000,
+  lastAt: 1_790_824_000_000,
+  cameras: Object.freeze([Object.freeze({ deviceId: 'CAM-01', fragments: 12, bytes: 20_000_000 }), Object.freeze({ deviceId: 'CAM-02', fragments: 12, bytes: 14_000_000 })]),
+} as const);
+
 export const ActiveSessionSchema = z
   .strictObject({
     id: sessionId(),

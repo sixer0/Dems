@@ -10,6 +10,7 @@
  * | A revision is built on the CURRENT revision number (`baseRevision`); a mismatch is the Core's 409 | `revisionRequestOf`, `reviseRefusalOf` |
  * | An answer is read defensively: a document or a revision that cannot be read whole is not drawn in part | `readTranscriptDocument`, `readTranscriptRevisions` |
  */
+import { readRevisionReason } from '@dems/shared/evidence-rules'
 import type { ItemTranscriptSummary } from './item-v2'
 
 export type SpeakerState = 'LABELLED' | 'UNAVAILABLE'
@@ -122,7 +123,8 @@ export function readTranscriptRevision(value: unknown): TranscriptRevision | nul
     simulated: !(signature.simulated === false && signature.algorithm === 'Ed25519'),
     createdAt: typeof value.createdAt === 'number' && Number.isFinite(value.createdAt) ? value.createdAt : null,
     changes,
-    reason: typeof value.reason === 'string' && value.reason.trim() !== '' && value.reason.length <= REVISION_NOTE_MAX ? value.reason : null,
+    // THE SHARED READING (batch N; R101-03, ruling D241): trimmed, 1 to 500 characters after trimming - the same on the mobile apps.
+    reason: readRevisionReason(value),
   }
 }
 

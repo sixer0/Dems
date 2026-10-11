@@ -15,6 +15,7 @@
  * | `transcript` | The summary inside the item; the body travels through operation 84 |
  * | `developmentSources` | `true` / `false` exactly as sent; anything else, also absent, is `null` = NOT RECORDED, which is never read as production (R-11) |
  */
+import { TRANSCRIPT_MODEL_MEMBER, readTranscriptModel, type ItemTranscriptModel } from '@dems/shared/evidence-rules';
 
 export const CAMERA_FILE_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
 export type CameraFileId = (typeof CAMERA_FILE_IDS)[number];
@@ -94,18 +95,10 @@ export interface ItemV2 {
  *   server backend  `reportedByServer: true`; the name the server reported, and the Core's own sentence
  *                   `report` (ruling D160: reported by the STT server and not verified by the Core).
  */
-export interface ItemTranscriptModel {
-  readonly name: string;
-  readonly version: string | null;
-  readonly quantisation: string | null;
-  readonly modelSha256: string | null;
-  readonly reportedByServer: boolean;
-  /** The Core's own line about the model. */
-  readonly report: string;
-}
+export type { ItemTranscriptModel };
 
-/** The ONE name of the member. */
-export const TRANSCRIPT_MODEL_MEMBER = 'transcriptModel';
+/** The ONE name of the member (the shared module's). */
+export { TRANSCRIPT_MODEL_MEMBER };
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const MIC_INPUT = /^MIC-\d{2}$/;
@@ -184,23 +177,10 @@ function readSignature(value: unknown): ItemSignatureV2 | null {
 /** Reads the v2 members of an evidence item. Never throws; a member it cannot read is "not stated". */
 /**
  * Reads `transcriptModel`. Never throws; a member that is not the contract's shape is NOT STATED
- * (null) - never a default name, never "verified".
+ * (null) - never a default name, never "verified". THE SHARED READER (batch N; R101-03, ruling
+ * D241): one set of bounds - the contract's - for these apps and the web console.
  */
-export function readTranscriptModel(value: unknown): ItemTranscriptModel | null {
-  if (!isRecord(value)) return null;
-  const line = (entry: unknown, max: number): string | null => (typeof entry === 'string' && entry.trim().length > 0 && entry.length <= max ? entry : null);
-  const name = line(value.name, 200);
-  const report = line(value.report, 1_000);
-  if (name === null || report === null || typeof value.reportedByServer !== 'boolean') return null;
-  return {
-    name,
-    version: line(value.version, 200),
-    quantisation: line(value.quantisation, 64),
-    modelSha256: hash(value.modelSha256),
-    reportedByServer: value.reportedByServer,
-    report,
-  };
-}
+export { readTranscriptModel };
 
 export function readItemV2(item: unknown): ItemV2 {
   const source = isRecord(item) ? item : {};

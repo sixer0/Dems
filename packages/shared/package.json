@@ -20,6 +20,7 @@
     "./redaction": "./src/api/redaction.ts",
     "./evidence-package": "./src/evidence-package/index.ts",
     "./evidence-verify": "./src/evidence-verify/index.ts",
+    "./evidence-rules": "./src/evidence-rules/index.ts",
     "./assets/*": "./assets/*",
     "./theme/heroui-web.css": "./theme/heroui-web.css",
     "./theme/heroui-native.css": "./theme/heroui-native.css",

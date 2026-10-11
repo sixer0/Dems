@@ -16,10 +16,12 @@ import { HELPER, LOCAL, SEEDED } from '../../capture/fence/__tests__/support';
 import {
   NoticeReportCode,
   PrecheckReportCode,
+  captureNotices,
   causeOfProbeError,
   createNoDeviceNotifier,
   createPrecheckGate,
   probeOfAdapters,
+  type CaptureNoticesApp,
   type CaptureReachabilityProbe,
   type ClosedSearch,
   type NoticeEngine,
@@ -34,6 +36,7 @@ const SUPERVISOR: PrecheckSearchOwner = { operatorId: 'OPR-002', authSessionId: 
 /** An operator with SESSION_START and without CAPTURE_CONFIG, on a paired tablet. */
 const INVESTIGATOR: PrecheckSearchOwner = { operatorId: 'OPR-001', authSessionId: 'AS-2', deviceId: 'TAB-01' };
 
+const simulatorEngineOf = (sim: Sim): NoticeEngine => simulatorEngine(sim);
 function simulatorEngine(sim: Sim): NoticeEngine {
   return {
     async raiseCaptureWarning(warning) {
@@ -300,6 +303,87 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     expect(h.cameras.reads).toEqual([]);
     // Control: the same run with the probe asks the stopped camera.
     expect(await h.gate.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'BEGIN' })).toMatchObject({ asked: true, unreachable: ['CAM-01'] });
+  });
+
+  // Batch N (verification row 98, finding V98-13; ruling D241): FAIL CLOSED. A probe SOURCE that throws used to become
+  // "no probe" - the gate then asked nothing and that pre-check judged no reachability at all.
+  it('V98-13: a probe SOURCE that throws is not "no probe" - every configured source reads NOT REACHABLE (cameras UNREACHABLE, microphones OPEN_FAILED), the failure is reported by code, and the pre-check does NOT pass', async () => {
+    const h = harness();
+    const reports: NoticeReport[] = [];
+    const canary = ['rtsp', '://', 'admin', ':', 'V9813-MARKER', '@', '10.0.0.5/s'].join('');
+    const gate = createPrecheckGate({
+      state: () => h.state(),
+      notifier: h.notifier,
+      probe: () => {
+        throw new Error(`the registry could not be read (${canary})`);
+      },
+      discovery: () => null,
+      report: (entry) => void reports.push(entry),
+    });
+    h.sim.actions.createSession(INPUT);
+    const sessionId = h.state().session?.id ?? '';
+    const outcome = await gate.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'BEGIN' });
+    const selector = h.state().session?.captureConfig ?? h.state().captureConfig;
+    const configured = [...new Set([...selector.cameras.map((camera) => camera.deviceId), ...selector.mics.map((mic) => mic.deviceId)])];
+    expect(configured.length).toBeGreaterThanOrEqual(3);
+    expect(outcome.asked).toBe(true);
+    expect([...outcome.unreachable].sort()).toEqual([...configured].sort());
+    // Said once for the source, by its own code, with the cause; then once per source that could not be asked. No adapter was read.
+    expect(reports.map((entry) => entry.code).filter((code) => code === PrecheckReportCode.PROBE_SOURCE_FAILED)).toHaveLength(1);
+    expect(reports.find((entry) => entry.code === PrecheckReportCode.PROBE_SOURCE_FAILED)).toMatchObject({ source: 'captureNotices.precheck', deviceId: null, sessionId });
+    expect(reports.filter((entry) => entry.code === PrecheckReportCode.PROBE_FAILED).map((entry) => entry.deviceId).filter((id) => id !== null).sort()).toEqual(selector.cameras.map((camera) => camera.deviceId).sort());
+    // The per-source lines carry a FIXED error (a code, no text of the cause): the cause is in the one source line only.
+    for (const entry of reports.filter((candidate) => candidate.code === PrecheckReportCode.PROBE_FAILED)) expect(String((entry.err as Error).message)).not.toContain('V9813-MARKER');
+    expect(h.cameras.reads).toEqual([]);
+    // The stored facts and the alerts say so, with the vocabulary a failed read already has; the checks read them and BLOCK.
+    await outcome.settled;
+    for (const deviceId of configured) expect(h.state().captureDevices.devices.find((device) => device.id === deviceId)?.online, deviceId).toBe(false);
+    const alerts = h.notices(CaptureNoticeReason.CAPTURE_DEVICE_UNREACHABLE, true);
+    expect(alerts.map((alert) => alert.target).sort()).toEqual([...configured].sort());
+    for (const alert of alerts) expect(alert.params?.['cause'], String(alert.target)).toBe(selector.cameras.some((camera) => camera.deviceId === alert.target) ? 'UNREACHABLE' : 'OPEN_FAILED');
+    expect(JSON.stringify(h.state().alerts) + JSON.stringify(h.state().audit.rows)).not.toContain('V9813-MARKER');
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    expect(h.state().session?.state).not.toBe('ARMED');
+    expect(h.state().session?.precheck.outcome).toBe('BLOCK');
+    // CONTROL 1: the same session and the same moment through a source that ANSWERS - the gate of the harness - reads every source reachable again.
+    const again = await h.gate.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'RETRY' });
+    expect(again).toMatchObject({ asked: true, unreachable: [] });
+    // CONTROL 2: a source that answers "no adapters" (null) is still "nothing to ask" - the case above this one.
+  });
+
+  it('V98-13, the mounted unit: `provideProbeSource` with a source that throws - the pre-check is JUDGED (asked, every source unreachable), while operation 97\'s `probe()` keeps answering null (its 503 by name); the error log names the code and not the cause', async () => {
+    const h = harness();
+    const said: unknown[] = [];
+    const stub = {
+      stages: {},
+      seams: { has: (name: string) => name === 'engine' },
+      log: { error: (...entry: unknown[]) => void said.push(entry) },
+      errorLog: { append: (entry: unknown) => void said.push(entry) },
+      engine: { ...simulatorEngineOf(h.sim), state: () => h.state() },
+    } as unknown as CaptureNoticesApp;
+    const mounted = captureNotices(stub);
+    let fail = true;
+    mounted.provideProbeSource(() => {
+      if (fail) throw new Error('the fence registry threw');
+      return h.probe;
+    });
+    h.sim.actions.createSession(INPUT);
+    const sessionId = h.state().session?.id ?? '';
+    const outcome = await mounted.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'BEGIN' });
+    expect(outcome.asked).toBe(true);
+    expect(outcome.unreachable.length).toBeGreaterThanOrEqual(3);
+    expect(JSON.stringify(said.map((entry) => (Array.isArray(entry) ? (entry[0] as { code?: string }).code : (entry as { code?: string }).code)))).toContain('CAPTURE_PRECHECK_PROBE_SOURCE_FAILED');
+    // Operation 97 reads the same failing source as "no probe" (503 CAPTURE_NOT_READY by name) and says why.
+    expect(mounted.probe()).toBeNull();
+    expect(JSON.stringify(said.map((entry) => (Array.isArray(entry) ? (entry[0] as { code?: string }).code : (entry as { code?: string }).code)))).toContain('CAPTURE_PROBE_SOURCE_FAILED');
+    // CONTROL: the source answers again - asked at every use, nothing kept: the retry reads every source reachable.
+    fail = false;
+    await outcome.settled;
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    expect(h.state().session?.precheck.outcome).toBe('BLOCK');
+    expect(await mounted.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'RETRY' })).toMatchObject({ asked: true, unreachable: [] });
   });
 
   it('a request the action will refuse probes and searches nothing: another session id, a retry from CREATE, a begin from PRECHECK, checks still running', async () => {

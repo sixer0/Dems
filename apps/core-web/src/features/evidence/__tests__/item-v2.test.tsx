@@ -20,6 +20,7 @@ import { readTranscriptRevision, readTranscriptRevisions, revisionReasons } from
 import { RevisionList, TranscriptModelFacts } from '../transcript-pane'
 import { readVerifyV2, v2FilePartOutcome, type V2Check, type V2Row } from '../verify-v2'
 import { ResultRow } from '../verify-v2-report'
+import * as sharedRules from '@dems/shared/evidence-rules'
 
 const H = (char: string) => char.repeat(64)
 const V2_MEMBERS = {
@@ -141,9 +142,10 @@ describe("members of the item a later contract added: the transcript model, the 
       expect(item.transcriptModel).toEqual(EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE)
       expect(readItemV2({ files: [], transcriptModel: EVIDENCE_TRANSCRIPT_MODEL_SERVER_EXAMPLE }).transcriptModel).toEqual(EVIDENCE_TRANSCRIPT_MODEL_SERVER_EXAMPLE)
       expect(readItemV2({ files: [] }).transcriptModel).toBeNull()
-      // A member that is not the contract's shape is "not stated" - never a default model.
-      expect(readTranscriptModel({ name: 'x' })).toBeNull()
-      expect(readTranscriptModel({ ...EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE, reportedByServer: 'no' })).toBeNull()
+      // R101-03 (ruling D241): the reader IS the shared one (its bounds and its "not stated" cases are held in
+      // packages/shared/test/evidence-verify.test.ts, once for both clients); a member that does not read states no model here.
+      expect(readTranscriptModel).toBe(sharedRules.readTranscriptModel)
+      expect(readItemV2({ files: [], transcriptModel: { name: 'x' } }).transcriptModel).toBeNull()
     })
 
     it('a local backend: name, the DECLARED version, quantisation and the model file hash', () => {
@@ -219,6 +221,11 @@ describe("members of the item a later contract added: the transcript model, the 
       const plain = readTranscriptRevision(wire(1))!
       expect(own.reason).toBe('Misheard name corrected')
       expect(plain.reason).toBeNull()
+      // R101-03 (ruling D241): the reason is the SHARED reading (trimmed; bounded after trimming) - what the mobile apps read too.
+      for (const reason of ['  Padded by the wire \n', ` ${'r'.repeat(500)} `, 'r'.repeat(501), '   ', 7]) {
+        expect(readTranscriptRevision(wire(3, { reason }))!.reason, JSON.stringify(reason)).toBe(sharedRules.readRevisionReason({ reason }))
+      }
+      expect(readTranscriptRevision(wire(3, { reason: '  Padded by the wire \n' }))!.reason).toBe('Padded by the wire')
       const reasons = revisionReasons([own, plain], 'EV-1', [audit('TRV-000001', 'Speaker spelled the street name'), audit('TRV-000002', 'another text'), audit('TRV-000001', 'of another item', 'EV-9')])
       expect(reasons.get('TRV-000002')).toBe('Misheard name corrected')
       expect(reasons.get('TRV-000001')).toBe('Speaker spelled the street name')
@@ -244,27 +251,47 @@ describe("members of the item a later contract added: the transcript model, the 
     /** The tamper demonstration (gate 89): V-04 and V-06 FAIL on (VIDEO-02, 3); V-05 "Not run: an earlier check failed". */
     const TAMPER = [check('V-04', 'FAIL'), check('V-05', 'SKIPPED'), check('V-06', 'FAIL')]
 
-    it('the contract member `files[].plainChecked` (VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE), read by name: `false` = the decrypted bytes of THAT file were not checked', () => {
+    it('the contract member `files[].plainChecked` (VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE) is read by name: present and `false` on the row whose decrypted bytes were not checked, absent on the other', () => {
       const answer = readVerifyV2({ ok: false, at: 1_790_824_000_000, files: VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE })
       const rows = answer!.files
       expect(rows).toHaveLength(2)
-      const notChecked = rows.find((row) => row.plainChecked === false)!
-      const checked = rows.find((row) => row.plainChecked === undefined)!
-      expect(notChecked.plainOk).toBe(false)
-      // Per FILE, whatever check V-05 says for the result as a whole (it can FAIL for the other file).
-      expect(v2FilePartOutcome(notChecked, 'plain', [check('V-05', 'FAIL')])).toBe('NOT_RUN')
-      expect(v2FilePartOutcome(notChecked, 'plain', null)).toBe('NOT_RUN')
-      expect(v2FilePartOutcome(checked, 'plain', null)).toBe(checked.plainOk ? 'PASS' : 'FAIL')
+      expect(rows.map((row) => [row.trackId, row.plainChecked, row.plainOk])).toEqual([
+        ['VIDEO-01', undefined, true],
+        ['VIDEO-02', false, false],
+      ])
     })
 
-    it('a Core that answers no such member: NOT_RUN only when check V-05 of the same result is skipped; stored bytes and chain are always the answer\'s own flags', () => {
-      expect(v2FilePartOutcome(file, 'stored', TAMPER)).toBe('FAIL')
-      expect(v2FilePartOutcome(file, 'plain', TAMPER)).toBe('NOT_RUN')
-      expect(v2FilePartOutcome(file, 'chain', TAMPER)).toBe('FAIL')
-      expect(v2FilePartOutcome(file, 'chain', [check('V-06', 'SKIPPED')])).toBe('FAIL')
-      expect(v2FilePartOutcome(file, 'plain', null)).toBe('FAIL')
-      expect(v2FilePartOutcome(file, 'plain', [check('V-05', 'FAIL')])).toBe('FAIL')
-      expect(v2FilePartOutcome({ ...file, plainOk: true }, 'plain', TAMPER)).toBe('PASS')
+    // R101-03 (ruling D241): the outcome of a part is the SHARED rule's. This view words it and does not decide it:
+    // the rule's own vectors are in packages/shared/test/evidence-verify.test.ts.
+    it('R101-03: the view draws the SHARED outcome of every part - the function is the shared one, and each drawn word follows it', () => {
+      expect(v2FilePartOutcome).toBe(sharedRules.v2FilePartOutcome)
+      const word = { PASS: en.evidence.verifyV2.outcome.PASS, FAIL: en.evidence.verifyV2.outcome.FAIL, NOT_RUN: en.evidence.verifyV2.outcome.SKIPPED } as const
+      const notChecked = readVerifyV2({ ok: false, at: 1_790_824_000_000, files: VERIFY_FILE_PLAIN_NOT_CHECKED_EXAMPLE })!.files[1]!
+      const cases: ReadonlyArray<readonly [typeof file | typeof notChecked, readonly V2Check[] | null]> = [
+        [file, TAMPER],
+        [file, null],
+        [file, [check('V-04', 'SKIPPED'), check('V-05', 'SKIPPED'), check('V-06', 'SKIPPED')]],
+        [file, [check('V-04', 'FAIL'), check('V-05', 'SKIPPED'), check('V-06', 'SKIPPED')]],
+        [{ ...file, storedOk: true, plainOk: true, chainOk: true }, TAMPER],
+        [notChecked, [check('V-05', 'FAIL')]],
+      ]
+      for (const [facts, checks] of cases) {
+        const { unmount } = show(<ol><ResultRow row={{ id: 'file:VIDEO-02', ok: false, file: facts } as unknown as V2Row} checks={checks} /></ol>)
+        const parts = document.querySelector('[data-part="stored"]')!
+        const expected = (['stored', 'plain', 'chain'] as const).map((part) => sharedRules.v2FilePartOutcome(facts, part, checks))
+        expect([parts.getAttribute('data-stored'), parts.getAttribute('data-plain'), parts.getAttribute('data-chain')]).toEqual(expected)
+        expect(parts).toHaveTextContent(`Stored bytes ${word[expected[0]!]} · decrypted bytes ${word[expected[1]!]} · fragment chain ${word[expected[2]!]}`)
+        unmount()
+      }
+    })
+
+    it('R101-03, the case the two clients disagreed on: the chain check (V-06) SKIPPED in the result reads "fragment chain Not run" here too - never "FAIL"', () => {
+      const row = { id: 'file:VIDEO-02', ok: false, file } as unknown as V2Row
+      show(<ol><ResultRow row={row} checks={[check('V-04', 'FAIL'), check('V-05', 'SKIPPED'), check('V-06', 'SKIPPED')]} /></ol>)
+      const parts = document.querySelector('[data-part="stored"]')!
+      expect(parts).toHaveTextContent(`Stored bytes ${en.evidence.verifyV2.outcome.FAIL} · decrypted bytes ${en.evidence.verifyV2.outcome.SKIPPED} · fragment chain ${en.evidence.verifyV2.outcome.SKIPPED}`)
+      expect(parts).toHaveAttribute('data-chain', 'NOT_RUN')
+      expect(parts).not.toHaveTextContent('fragment chain FAIL')
     })
 
     it('the row of the tampered file reads "Stored bytes FAIL · decrypted bytes Not run · fragment chain FAIL"', () => {

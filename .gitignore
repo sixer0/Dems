@@ -94,6 +94,14 @@ docs/2026-10-04_dems_backend_rbac_pairing/implementation/assets/12d_cpc1_red_bef
 # Key and certificate material (`*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore` are above).
 *.pem
 !packages/shared/assets/demo-evidence/**/device-certificate.pem
+# The forms the evidence signer and the credential store write (security review S99-07, batch N):
+# a private key (`*.p8`), a wrapped key (`*.wrap`) and a sealed blob (`*.blob`). They are written
+# under `/.data/`, which is ignored as a place; this ignores them by FORM too, so that a key
+# directory chosen inside the repository (`evidence:dev-key --data-dir <dir>`) is not one
+# `git add -A` from a commit. No tracked file has one of these extensions.
+*.p8
+*.wrap
+*.blob
 
 # Model weights. `*.bin` only under a model folder or by the ggml file name: a fixture named
 # `*.bin` elsewhere stays visible to git.

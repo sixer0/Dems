@@ -243,6 +243,39 @@ describe('M4-CONN-WEBONLY-1: a session of a tablet is refused on 89, 95 and 96 b
     expect(web.statusCode).toBe(200);
     expect(stub.requestLog().length).toBeGreaterThan(0);
   });
+
+  // Batch N (security review S99-09; ruling D241): operation 91 takes a typed secret too. Its rule depends on the BODY, so
+  // the handler asks the guard: the SAME tablet session, the same answer and row - and the same session's save WITHOUT a
+  // credential is stored (gate 81 drove it from the tablet).
+  it('S99-09: the same tablet session on operation 91 - a body with `credential` is refused WEB_CONSOLE_ONLY with one ACCESS_DENIED row and nothing stored; without it the change is stored', async () => {
+    const STT = '/api/v1/transcription/config';
+    const sttRow = async (): Promise<Record<string, unknown>> =>
+      (await owner.query('SELECT enabled, diarization, credential_kind, credential_ref, secret_ciphertext, revision::int AS revision FROM public.stt_config')).rows[0] as Record<string, unknown>;
+    const before = await sttRow();
+    const revision = before['revision'] as number;
+    const planted = ['stt', 'S9909', 'k3y', 'Tn4Wq8Zc2Lm6'].join('-');
+    for (const credential of [{ kind: 'SECRET', value: planted }, { kind: 'REFERENCE', ref: 'omlx-settings:auth.s9909_ref' }, { kind: 'CLEAR' }]) {
+      const from = (await trail()).length;
+      const response = await post(technicianOnTablet, STT, { revision, diarization: !(before['diarization'] as boolean), credential });
+      expect(reasonOf(response), credential.kind).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
+      expect(response.body).not.toContain(planted);
+      const rows = await since(from);
+      expect(rows.map((row) => row.type), credential.kind).toEqual(['ACCESS_DENIED']);
+      expect(rows[0]).toMatchObject({ actorId: TECHNICIAN.id, deviceId: TABLET, details: { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' } });
+      expect(JSON.stringify(rows)).not.toContain(planted);
+    }
+    expect(await sttRow()).toEqual(before);
+    // CONTROL: the tablet's save without a credential is stored, with its STT_CONFIG_CHANGED row and no denial.
+    const from = (await trail()).length;
+    const saved = await post(technicianOnTablet, STT, { revision, diarization: !(before['diarization'] as boolean) });
+    expect(saved.statusCode).toBe(200);
+    expect((await since(from)).map((row) => row.type)).toEqual(['STT_CONFIG_CHANGED']);
+    expect(await sttRow()).toMatchObject({ diarization: !(before['diarization'] as boolean), revision: revision + 1, credential_kind: before['credential_kind'] });
+    // CONTROL: the web console session of the same operator passes the rule with a credential (a pointer: no store is needed).
+    const web = await post(technician, STT, { revision: revision + 1, credential: { kind: 'REFERENCE', ref: 'omlx-settings:auth.s9909_ref' } });
+    expect(web.statusCode).toBe(200);
+    expect((await sttRow())['credential_kind']).toBe('REFERENCE');
+  });
 });
 
 describe('M4-CONN-OUT-1: the five outcomes through operation 95, on the stub', () => {

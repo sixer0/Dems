@@ -179,8 +179,11 @@ export function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Chec
   const Icon = row.ok ? CircleCheck : CircleX
   const part = (ok: boolean) => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`)
   // G89b-06: a part whose check did not run in this result reads "Not run", never "FAIL".
+  // R101-03 (ruling D241): the outcome is the SHARED rule's (`@dems/shared/evidence-rules`); this view only words it.
+  // A row without a file has no parts: nothing is drawn for it, and nothing is guessed.
   const filePart = (name: V2FilePart): string => {
-    const outcome = row.file ? v2FilePartOutcome(row.file, name, checks) : 'FAIL'
+    if (!row.file) return ''
+    const outcome = v2FilePartOutcome(row.file, name, checks)
     return outcome === 'NOT_RUN' ? t('evidence.verifyV2.outcome.SKIPPED') : t(`evidence.verifyV2.outcome.${outcome}`)
   }
   const label = row.file
@@ -197,7 +200,7 @@ export function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Chec
       </span>
       {row.file ? (
         <span className="evi-check-values">
-          <span className="evi-caption" data-part="stored" data-ok={row.file.storedOk ? 'true' : 'false'} data-plain={v2FilePartOutcome(row.file, 'plain', checks)} data-chain={v2FilePartOutcome(row.file, 'chain', checks)}>
+          <span className="evi-caption" data-part="stored" data-ok={row.file.storedOk ? 'true' : 'false'} data-stored={v2FilePartOutcome(row.file, 'stored', checks)} data-plain={v2FilePartOutcome(row.file, 'plain', checks)} data-chain={v2FilePartOutcome(row.file, 'chain', checks)}>
             {t('evidence.verifyV2.fileParts', { stored: filePart('stored'), plain: filePart('plain'), chain: filePart('chain') })}
           </span>
           {row.file.fragmentCount !== null ? <span className="evi-caption">{t('evidence.verifyV2.fragments', { count: row.file.fragmentCount })}</span> : null}

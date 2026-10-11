@@ -10,6 +10,7 @@
 // the fake adapters of the adapter layer in a registry of the same operation. No process records,
 // no port is bound, no device is opened.
 import { CAPTURE_PROTOCOL_VERSION, type AudioSourceIntervalRecord, type CaptureRecord } from '@dems/capture-protocol';
+import { mkdirSync, readdirSync } from 'node:fs';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
@@ -415,6 +416,65 @@ describe('M5-SRC-REC-1: a start whose sources are not the running operation\'s i
     expect(of.fake.calls()).toBe(0);
     expect(of.order).toEqual([]);
     expect(of.events).toEqual([]);
+  });
+});
+
+// Batch N (final test report T100-02; ruling D241): `M5-SEC-SRC-1` was NOT PROVEN since the first M5 gate and no test
+// cited it. THE PART A SUITE CAN HOLD is here: a registry of the PRODUCTION class whose four assigned devices are of the
+// production kinds (ONVIF_RTSP, USB_AUDIO: no opener, D86 C-5) - the start is refused with the typed code BEFORE anything
+// is opened. "No listener" is held as its cause: the only listener of a recording is the capture worker's (the Core's
+// capture folder opens no socket: static rule G-R of `capture/__tests__/static.test.ts`), and NO worker was started and
+// NO source was asked to open. WHAT STAYS LIVE-ONLY (not provable here, because this file's worker is a stand-in that
+// binds no port, so a port check could not fail): the socket snapshot "0 listeners in 8554-8564" and the local push that
+// finds the port closed, on a STARTED `REAL_PRODUCTION` Core with the BUILT worker - which cannot boot at HEAD (no command
+// provisions a production signing key, S99-13; since batch N it also refuses the seed's operators, S99-01). Its negative
+// control - the same push IS accepted in `REAL_DEVELOPMENT` - is the development-session e2e (`npm run test:dev-session-e2e`).
+describe('M5-SEC-SRC-1 (the suite part): production-kind sources have no opener - the start is refused before a worker or a source exists', () => {
+  it('four assigned devices of the kinds ONVIF_RTSP / USB_AUDIO in a registry of the production class: 409 SOURCE_KIND_NOT_RECORDABLE; 0 workers started, 0 sources asked to open, 0 source rows, 0 files added to the evidence volume; CONTROL: the same rig with the development registry records', async () => {
+    const asked: string[] = [];
+    const productionRegistry = (): CaptureDeviceRegistry => {
+      const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+      for (const id of ['CAM-01', 'CAM-02']) {
+        production.register({ ...createFakeCameraAdapter({ id }), kind: 'ONVIF_RTSP', hasOpener: false, openSource: async (deviceId) => (asked.push(`open ${deviceId}`), Promise.reject(new Error('a production kind was asked to open'))) });
+      }
+      for (const id of ['MIC-01', 'MIC-02']) {
+        production.register({ ...createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run-m5-sec-src` }), kind: 'USB_AUDIO', hasOpener: false, open: async (inputId) => (asked.push(`open ${inputId}`), Promise.reject(new Error('a production kind was asked to open'))) });
+      }
+      // Nothing is recordable in a registry of this class today (erratum PE-128-48): the registry says so itself.
+      expect(production.openerKinds()).toEqual([]);
+      expect(production.list().map((device) => [device.id, device.adapterKind, device.hasOpener])).toEqual([['CAM-01', 'ONVIF_RTSP', false], ['CAM-02', 'ONVIF_RTSP', false], ['MIC-01', 'USB_AUDIO', false], ['MIC-02', 'USB_AUDIO', false]]);
+      return production;
+    };
+    const of = await rig('r71b_m5secsrc_prod', { registry: productionRegistry });
+    mkdirSync(fixture.mediaStoreDir, { recursive: true });
+    // The fixture's evidence volume is shared by the cases of this file (each on a clone of the seed, so session ids
+    // repeat): what counts is that THIS start adds nothing to it - the listing after is the listing before.
+    const filesBefore = readdirSync(fixture.mediaStoreDir, { recursive: true }).map(String).sort();
+    const id = await of.arm();
+    const refused = await of.start(id).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ApiFailure);
+    expect(refused).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: SOURCE_KIND_NOT_RECORDABLE } });
+    // No worker process: the only thing that would listen on an ingest port was never started. No source was asked to open.
+    expect(of.fake.calls()).toBe(0);
+    expect(asked).toEqual([]);
+    expect(of.order).toEqual([]);
+    expect(of.handles).toEqual([]);
+    expect(of.events).toEqual([]);
+    // Nothing of the start is stored, and no file of the session exists on the evidence volume.
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'ARMED' });
+    expect(await sourcesOf(of, id)).toEqual([]);
+    expect(await of.rows("SELECT 1 FROM public.audit_log WHERE type = 'RECORDING_STARTED' AND session_id = $1", [id])).toEqual([]);
+    expect(readdirSync(fixture.mediaStoreDir, { recursive: true }).map(String).sort()).toEqual(filesBefore);
+
+    // CONTROL (the check can fail): the same rig with the registry of the running operation starts ONE worker and opens sources.
+    const development = await rig('r71b_m5secsrc_dev');
+    await development.start(await development.arm());
+    await development.settled();
+    expect(development.fake.calls()).toBe(1);
+    expect(development.order.filter((entry) => entry.startsWith('open ')).length).toBeGreaterThan(0);
   });
 });
 

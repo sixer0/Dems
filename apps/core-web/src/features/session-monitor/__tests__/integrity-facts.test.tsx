@@ -11,6 +11,7 @@ import { act, cleanup, render, screen, waitFor, within, configure } from '@testi
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SESSION_CAPTURE_CHECKPOINTS_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import type { SocketLike } from '@dems/shared/realtime'
 import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim, CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, type TimelineEvent } from '@dems/shared/sim'
@@ -313,14 +314,8 @@ describe("the Monitor of a Core in its own capture states only facts: banner, st
   })
 
   describe('checkpoints: what the Core states of its durable fragments', () => {
-    const CHECKPOINTS = {
-      fragments: 24,
-      bytes: 34_000_000,
-      cameras: [
-        { deviceId: 'CAM-01', fragments: 12, bytes: 20_000_000 },
-        { deviceId: 'CAM-02', fragments: 12, bytes: 14_000_000 },
-      ],
-    }
+    // V98-09 (batch N): the payload is the CONTRACT'S example, not an object built here (rule of D208).
+    const CHECKPOINTS = { ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, cameras: [...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE.cameras] }
 
     it('drawn on the integrity panel from the session member; one line per camera; "last N s ago" by the console clock', async () => {
       const sim = mount((s) => setSession(s, { captureDurable: true }))

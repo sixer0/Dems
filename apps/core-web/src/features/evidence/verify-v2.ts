@@ -452,29 +452,16 @@ export interface V2Row {
   readonly file: V2FileRow | null
 }
 
-/** The parts of a camera-file row: stored bytes (V-04), plaintext after decryption (V-05), chain continuity (V-06). */
-export type V2FilePart = 'stored' | 'plain' | 'chain'
-
 /**
- * What one part of a camera-file row says (fix wave K, G89b-06; `contract_wave_k.md` KR section 1
- * and S1 section 7). The stored bytes and the chain are always checked when a file row exists:
- * `PASS` / `FAIL` as the answer states them. The DECRYPTED bytes are `NOT_RUN` - never `FAIL` -
- * when the plaintext check did not run for this file:
- *
- * 1. the file row says so itself: `plainChecked === false` (per FILE: V-05 can fail for one file
- *    while another was not checked);
- * 2. a Core that answers no such member (an older one): `plainOk` is not a pass AND check `V-05` of
- *    the SAME result is `SKIPPED`.
- *
- * Else `plainOk` is the result of the check.
+ * THE PART-OUTCOME RULE IS THE SHARED ONE (batch N; final code review R101-03, ruling D241): what one
+ * part of a camera-file row says - stored bytes (V-04), plaintext after decryption (V-05), chain
+ * continuity (V-06) - is decided in `@dems/shared/evidence-rules`, once for this console and the
+ * mobile apps. `PASS` when the answer states it; `NOT_RUN` - never `FAIL` - when the answer states
+ * the check did not run for the part (`plainChecked === false` of the file row, read by name, or the
+ * part's check `SKIPPED` in the same result); else `FAIL`. This file re-exports it under the names
+ * its callers use; the rule's vectors are in `packages/shared/test/evidence-verify.test.ts`.
  */
-export function v2FilePartOutcome(file: Pick<V2FileRow, 'storedOk' | 'plainOk' | 'chainOk' | 'plainChecked'>, part: V2FilePart, checks: readonly V2Check[] | null): 'PASS' | 'FAIL' | 'NOT_RUN' {
-  if (part === 'stored') return file.storedOk ? 'PASS' : 'FAIL'
-  if (part === 'chain') return file.chainOk ? 'PASS' : 'FAIL'
-  if (file.plainOk) return 'PASS'
-  if (file.plainChecked === false) return 'NOT_RUN'
-  return checks?.find((entry) => entry.id === 'V-05')?.status === 'SKIPPED' ? 'NOT_RUN' : 'FAIL'
-}
+export { V2_FILE_PART_CHECK, v2FilePartOutcome, type V2FilePart, type V2PartOutcome } from '@dems/shared/evidence-rules'
 
 /** The rows of today's contract, in a fixed order. The transcript row exists only when the answer judges one. */
 export function v2Rows(answer: VerifyV2Answer): V2Row[] {

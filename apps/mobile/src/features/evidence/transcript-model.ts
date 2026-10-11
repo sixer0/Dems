@@ -10,6 +10,7 @@
  * | A revision is built on the CURRENT revision number (`baseRevision`); a mismatch is the Core's 409 | `revisionRequestOf`, `reviseRefusalOf` |
  * | An answer is read defensively: a document or a revision that cannot be read whole is not drawn in part | `readTranscriptDocument`, `readTranscriptRevisions` |
  */
+import { REVISION_REASON_MEMBER, readRevisionReason } from '@dems/shared/evidence-rules';
 import type { ItemTranscriptSummary } from './item-v2';
 
 export type SpeakerState = 'LABELLED' | 'UNAVAILABLE';
@@ -98,22 +99,11 @@ function readChange(value: unknown): TranscriptChange | null {
 }
 
 /**
- * The member of a revision that holds WHY it was made (fix wave K, G81b-09 (b)). The name is the
- * ONE constant here; the Core's record and signed body call it `reason` (request filed to the
- * producer, `delegation_progress/file_requests.md`: operation 86 did not carry it at this wave's start).
+ * The member of a revision that holds WHY it was made (fix wave K, G81b-09 (b)), and its reading:
+ * THE SHARED ONES (batch N; R101-03, ruling D241) - trimmed, 1 to 500 characters after trimming,
+ * else null (never a default, never a guess); the same on the web console.
  */
-export const REVISION_REASON_MEMBER = 'reason';
-/** The longest reason drawn (the bound of the Core's column and of the request's `note`). */
-const REVISION_REASON_MAX_SHOWN = 500;
-
-/** The reason a revision states, trimmed; null when the answer states none (never a default, never a guess). */
-export function readRevisionReason(value: unknown): string | null {
-  if (!isRecord(value)) return null;
-  const reason = value[REVISION_REASON_MEMBER];
-  if (typeof reason !== 'string') return null;
-  const trimmed = reason.trim();
-  return trimmed.length > 0 && trimmed.length <= REVISION_REASON_MAX_SHOWN ? trimmed : null;
-}
+export { REVISION_REASON_MEMBER, readRevisionReason };
 
 /** One revision (the answer of operation 85, an element of operation 86), or null. */
 export function readTranscriptRevision(value: unknown): TranscriptRevision | null {

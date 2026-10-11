@@ -98,10 +98,35 @@ export interface PrecheckGate {
 
 export const PrecheckReportCode = {
   PROBE_FAILED: 'CAPTURE_PRECHECK_PROBE_FAILED',
+  /** The SOURCE of the probe threw (verification finding V98-13): the run is judged with every configured source not reachable. */
+  PROBE_SOURCE_FAILED: 'CAPTURE_PRECHECK_PROBE_SOURCE_FAILED',
   SEARCH_FAILED: 'CAPTURE_PRECHECK_SEARCH_FAILED',
 } as const;
 
 const SOURCE = 'captureNotices.precheck';
+
+/** What a read through a probe whose source failed rejects with: a code and a fixed text, never the cause (that is in the one line of the source). */
+class ProbeSourceFailedError extends Error {
+  readonly code = PrecheckReportCode.PROBE_SOURCE_FAILED;
+  constructor() {
+    super('the capture reachability probe could not be made: this source was not checked');
+    this.name = 'ProbeSourceFailedError';
+  }
+}
+
+/**
+ * FAIL CLOSED (batch N; verification row 98, finding V98-13; ruling D241). A probe SOURCE that
+ * throws is not "no adapter is registered": something should have been asked and could not be. The
+ * gate then runs with THIS probe, whose every read rejects - so each configured source takes the
+ * path a failed read of that source already has (a camera `UNREACHABLE`, a microphone
+ * `OPEN_FAILED`: the vocabulary of §8f; no new cause and no new sentence), is stored as not online,
+ * gets its notification, and the checks of the action block or warn by the start rule. A pre-check
+ * can no longer pass because its probe could not be made.
+ */
+const UNCHECKED_PROBE: CaptureReachabilityProbe = Object.freeze({
+  camera: () => Promise.reject(new ProbeSourceFailedError()),
+  microphones: () => Promise.reject(new ProbeSourceFailedError()),
+});
 const NOT_ASKED: PrecheckGateOutcome = Object.freeze({ asked: false, unreachable: Object.freeze([]), search: 'NOT_NEEDED', settled: Promise.resolve() });
 
 export function createPrecheckGate(options: PrecheckGateOptions): PrecheckGate {
@@ -120,7 +145,15 @@ export function createPrecheckGate(options: PrecheckGateOptions): PrecheckGate {
 
   return {
     async beforePrecheck(run) {
-      const probe = options.probe();
+      let probe: CaptureReachabilityProbe | null;
+      let sourceFailure: { readonly err: unknown } | null = null;
+      try {
+        probe = options.probe();
+      } catch (err) {
+        // V98-13: fail closed. Said below, once the run is known to be one the action will take.
+        sourceFailure = { err };
+        probe = UNCHECKED_PROBE;
+      }
       // No adapter is registered: the state is not even read.
       if (probe === null) return NOT_ASKED;
       const before = options.state();
@@ -131,6 +164,7 @@ export function createPrecheckGate(options: PrecheckGateOptions): PrecheckGate {
       runs += 1;
       const mine = runs;
       const ids = { sessionId: run.sessionId, searchId: null } as const;
+      if (sourceFailure !== null) report({ source: SOURCE, code: PrecheckReportCode.PROBE_SOURCE_FAILED, deviceId: null, ...ids, err: sourceFailure.err });
 
       // 1. Ask every configured source once (a camera on both tracks is one device). The selector
       // is the one the session was created under (it is locked while the session is open, OD-10).

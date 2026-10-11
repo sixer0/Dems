@@ -16,6 +16,7 @@ import '@/navigation/testing/router-harness';
 
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { SESSION_CAPTURE_CHECKPOINTS_EXAMPLE } from '@dems/shared/api';
 import { captureFaultSentence, type SimAlert, type SimState } from '@dems/shared/sim';
 import { camerasNotConnectedOf, captureFaultLine, deviceLabel, failedStartClosingOf, failedStartOf } from '@/features/capture-selector/capture-notices-model';
 import { getMissingKeys, resetMissingKeys, i18n } from '@/i18n';
@@ -330,14 +331,8 @@ describe('TIME chip: the time source as the Core states it', () => {
 });
 
 describe('checkpoints: what the Core states of its durable fragments', () => {
-  const CHECKPOINTS = {
-    fragments: 24,
-    bytes: 34_000_000,
-    cameras: [
-      { deviceId: 'CAM-01', fragments: 12, bytes: 20_000_000 },
-      { deviceId: 'CAM-02', fragments: 12, bytes: 14_000_000 },
-    ],
-  };
+  // V98-09 (batch N): the payload is the CONTRACT'S example, not an object built here (rule of D208).
+  const CHECKPOINTS = { ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, cameras: [...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE.cameras] };
 
   it('Session Live: drawn from the session member in real capture; absent = nothing drawn; never beside the simulator\'s own recording', async () => {
     const h = renderMonitorApp({ window: 'tabletLandscape' });

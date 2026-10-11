@@ -60,6 +60,51 @@ describe('redactCredentialText', () => {
   });
 });
 
+// Batch N (security review row 99, finding S99-04; SEC35-04): the camera-credential URL form. The
+// userinfo of a URL (`scheme://user:password@host`) is blanked whole, whatever the scheme; the URLs
+// are built from parts so that this file holds no credential-shaped text.
+describe('S99-04: a URL that carries a credential in its userinfo', () => {
+  const PASS = ['Pw', 'MARKER', '9x!Q'].join('-');
+  const url = (scheme: string, userinfo: string, rest: string): string => `${scheme}://${userinfo}@${rest}`;
+
+  it.each([
+    ['rtsp, the camera form', `open ${url('rtsp', `admin:${PASS}`, '10.0.0.5:554/stream1')} failed`, `open ${url('rtsp', '***', '10.0.0.5:554/stream1')} failed`],
+    ['rtsps', url('rtsps', `admin:${PASS}`, 'cam.local/live'), url('rtsps', '***', 'cam.local/live')],
+    ['http', `GET ${url('http', `svc:${PASS}`, '127.0.0.1:8080/onvif/device_service')}`, `GET ${url('http', '***', '127.0.0.1:8080/onvif/device_service')}`],
+    ['https, as a JSON member', `{"note":"${url('https', `svc:${PASS}`, 'example.test/x')}","n":1}`, `{"note":"${url('https', '***', 'example.test/x')}","n":1}`],
+    ['an empty user name', url('rtsp', `:${PASS}`, 'h/s'), url('rtsp', '***', 'h/s')],
+    ['a password that holds @ and :', url('rtsp', `admin:a@b:${PASS}`, 'h:554/s'), url('rtsp', '***', 'h:554/s')],
+    ['a percent-encoded password', url('rtsp', `admin:p%40ss${PASS}`, 'h/s'), url('rtsp', '***', 'h/s')],
+    ['twice in one text', `${url('rtsp', `a:${PASS}`, 'h1/s')} then ${url('http', `b:${PASS}`, 'h2/')}`, `${url('rtsp', '***', 'h1/s')} then ${url('http', '***', 'h2/')}`],
+    ['beside a media token (the token rule is unchanged)', `${url('rtsp', `a:${PASS}`, 'h/s')} mts_abcDEF123456 exs_abcDEF123456`, `${url('rtsp', '***', 'h/s')} mts_*** exs_***`],
+  ])('%s', (_name, text, expected) => {
+    const blanked = redactCredentialText(text);
+    expect(blanked).toBe(expected);
+    expect(blanked).not.toContain('MARKER');
+    // Idempotent: a blanked URL is not blanked again into something else.
+    expect(redactCredentialText(blanked)).toBe(expected);
+  });
+
+  it('in an object, at any depth, under a member name that says nothing', () => {
+    const blanked = JSON.stringify(redactCredentialValue({ note: url('rtsp', `user:${PASS}`, '10.0.0.5/stream'), deep: { list: [{ target: url('https', `u:${PASS}`, 'h/p') }] } }));
+    expect(blanked).not.toContain('MARKER');
+    expect(blanked).toBe(JSON.stringify({ note: url('rtsp', '***', '10.0.0.5/stream'), deep: { list: [{ target: url('https', '***', 'h/p') }] } }));
+  });
+
+  it('CONTROL: a URL without a password, a port, a mail address and a time are no userinfo and stay byte for byte', () => {
+    for (const text of [
+      'rtsp://10.0.0.5:554/stream1',
+      'http://127.0.0.1:4420/media/x?at=12:30',
+      'https://example.test/path?mail=someone@example.test',
+      url('rtsp', 'viewer', '10.0.0.5/stream'),
+      'mailto:someone@example.test at 12:30:01',
+      'the ratio a:b @ 3 dB',
+    ]) {
+      expect(redactCredentialText(text), text).toBe(text);
+    }
+  });
+});
+
 describe('redactCredentialValue', () => {
   it('blanks by member name at any depth, value and ref beside a credential kind, and whole what is deeper than the walk', () => {
     let abyss: Record<string, unknown> = { plain: KEY };

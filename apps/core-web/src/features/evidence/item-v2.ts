@@ -15,6 +15,7 @@
  * | `transcript` | The summary inside the item; the body travels through operation 84 |
  * | `developmentSources` | `true` / `false` exactly as sent; anything else, also absent, is `null` = NOT RECORDED, which is never read as production (R-11) |
  */
+import { readTranscriptModel, type ItemTranscriptModel } from '@dems/shared/evidence-rules'
 
 export const CAMERA_FILE_IDS = ['VIDEO-01', 'VIDEO-02'] as const
 export type CameraFileId = (typeof CAMERA_FILE_IDS)[number]
@@ -64,17 +65,7 @@ export interface ItemTranscriptSummary {
  * it (`transcriptModel` of operation 40 and of the `evidence` slice; the shape of operation 41's
  * member). Absent on the item = not stated: nothing is drawn, never a default.
  */
-export interface ItemTranscriptModel {
-  readonly name: string
-  /** The version the installation DECLARED (PE-D9-01); null with a server backend. */
-  readonly version: string | null
-  readonly quantisation: string | null
-  readonly modelSha256: string | null
-  /** A server backend reported the name; the Core verified nothing of the model. */
-  readonly reportedByServer: boolean
-  /** The Core's own line about the model (D160's sentence for a server backend). */
-  readonly report: string
-}
+export type { ItemTranscriptModel }
 
 export interface ItemSignatureV2 {
   readonly algorithm: string
@@ -174,14 +165,12 @@ function readSignature(value: unknown): ItemSignatureV2 | null {
   return { algorithm, keyId, simulated: value.simulated }
 }
 
-/** The member `transcriptModel`, read by name; null unless every member of the shape reads. */
-export function readTranscriptModel(value: unknown): ItemTranscriptModel | null {
-  if (!isRecord(value)) return null
-  const name = text(value.name)
-  const report = text(value.report, 1024)
-  if (name === null || report === null || typeof value.reportedByServer !== 'boolean') return null
-  return { name, version: text(value.version), quantisation: text(value.quantisation, 64), modelSha256: hash(value.modelSha256), reportedByServer: value.reportedByServer, report }
-}
+/**
+ * The member `transcriptModel`, read by name; null unless every member of the shape reads. THE SHARED
+ * READER (batch N; R101-03, ruling D241): one set of bounds - the contract's - for this console and
+ * the mobile apps (`@dems/shared/evidence-rules`).
+ */
+export { readTranscriptModel }
 
 /** Reads the v2 members of an evidence item. Never throws; a member it cannot read is "not stated". */
 export function readItemV2(item: unknown): ItemV2 {

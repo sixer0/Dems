@@ -67,7 +67,7 @@
  * CONTRACT with the scaffold (P25: `app.ts` is frozen): `permissionGuardPlugin` keeps its name;
  * the stage handler is provided with `app.stages.provide('accessRule', handler)`.
  */
-import { CoreApiAccessCondition, type CoreApiOperation } from '@dems/shared/api';
+import { CoreApiAccessCondition, WEB_CONSOLE_ONLY_REASON, type CoreApiOperation } from '@dems/shared/api';
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { consoleIdentityOf } from '../authenticate';
 import { describeError, principalReference, routeOf } from '../logger';
@@ -153,6 +153,17 @@ export interface LoadedMatrix extends StoredMatrix {
 export interface PermissionGuardControl {
   /** The rules of the contract registry, by route and by operation ID. */
   readonly rules: RuleBook;
+  /**
+   * THE CONDITION `WEB_CONSOLE_SESSION` FOR A BODY THAT CARRIES A CREDENTIAL (batch N; security review
+   * S99-09, ruling D241). Stage 6 decides before the body is parsed, so it cannot hold a rule that
+   * depends on the body: operation 91 (`updateSttConfig`) is open to a tablet for a change WITHOUT a
+   * credential and web-console only WITH one. Its handler calls this once it knows the body carries
+   * `credential`, before anything of the body is used. A session bound to a paired device is refused
+   * exactly as the condition refuses on operations 89 / 95 / 96 - the same place in the denial
+   * budget, the same `ACCESS_DENIED` row and log line, `403 NOT_PERMITTED` with `details.reason:
+   * WEB_CONSOLE_ONLY` (one implementation, `refuseRequest`). A web console session returns.
+   */
+  requireWebConsoleSession(request: FastifyRequest): Promise<void>;
   /** The rules of the routes that are registered in this app, in the order they were registered. */
   registeredRules(): readonly AccessRule[];
   /** What the boot check found wrong with the registered routes; empty for an app that started. */
@@ -306,12 +317,8 @@ export const permissionGuardPlugin: FastifyPluginAsync = async (app) => {
     );
   }
 
-  const handler = async (request: FastifyRequest): Promise<void> => {
-    const rule = ruleOf(request);
-    const decision = decideAccess(rule, await callerOf(rule, request));
-    if (decision.allowed) return;
-
-    const { refusal } = decision;
+  /** What every refusal does, whoever decided it: the place in the denial budget, the row, the log line, the answer. */
+  const refuseRequest = async (request: FastifyRequest, rule: AccessRule, refusal: AccessRefusal): Promise<never> => {
     const answer = refusalAnswer(rule, refusal);
     const record = denialRecordOf(rule, refusal, pathIdOf(rule, request));
     if (record !== null) {
@@ -326,6 +333,13 @@ export const permissionGuardPlugin: FastifyPluginAsync = async (app) => {
     // A 401 is on the request line with its code; a 403 gets one line that says which rule refused.
     if (refusal.kind !== AccessRefusalKind.NOT_SIGNED_IN) logRefusal(request, rule, refusal, answer.code, record !== null);
     throw answer;
+  };
+
+  const handler = async (request: FastifyRequest): Promise<void> => {
+    const rule = ruleOf(request);
+    const decision = decideAccess(rule, await callerOf(rule, request));
+    if (decision.allowed) return;
+    await refuseRequest(request, rule, decision.refusal);
   };
   app.stages.provide('accessRule', handler);
 
@@ -342,6 +356,21 @@ export const permissionGuardPlugin: FastifyPluginAsync = async (app) => {
 
   const control: PermissionGuardControl = {
     rules,
+    async requireWebConsoleSession(request) {
+      const { principal } = request;
+      // Stage 6 let the request through, so it is an operator who holds the permission of the rule; anyone else is not this method's to judge.
+      if (principal.kind !== 'OPERATOR' || principal.deviceId === null) return;
+      const rule = ruleOf(request);
+      if (rule.denial === null) throw new Error(`the access rule of ${rule.operationId} has no permission to name in a WEB_CONSOLE_ONLY refusal`);
+      await refuseRequest(request, rule, {
+        kind: AccessRefusalKind.NOT_PERMITTED,
+        operatorId: principal.operatorId,
+        role: principal.role,
+        deviceId: principal.deviceId,
+        denial: rule.denial,
+        reason: WEB_CONSOLE_ONLY_REASON,
+      });
+    },
     registeredRules: () => [...registered.values()],
     routeProblems: () => [...problems],
     checkRouter() {

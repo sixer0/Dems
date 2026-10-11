@@ -160,13 +160,13 @@ export function captureNotices(app: CaptureNoticesApp): CaptureNotices {
    * WHICH DEVICES EXIST AND WHICH ADAPTER SERVES THEM is the capture fence's registry alone; a
    * probe is a view of it for one pre-check run or one input re-read (it holds no state of its own).
    */
+  /** The probe of this use, or what its source threw: the PRE-CHECK GATE reads this one and fails closed on a throw (V98-13). */
+  const probeOrThrow = (): CaptureReachabilityProbe | null => probe ?? (probeSource === null ? null : probeSource());
+  /** The same for operation 97 (`probe()`): a source that fails is no probe there, and the operation answers 503 by name. */
   const probeNow = (): CaptureReachabilityProbe | null => {
-    if (probe !== null) return probe;
-    if (probeSource === null) return null;
     try {
-      return probeSource();
+      return probeOrThrow();
     } catch (err) {
-      // A source that fails is no probe: the pre-check asks nothing and operation 97 answers 503 by name.
       report({ source: 'captureNotices.probe', code: 'CAPTURE_PROBE_SOURCE_FAILED', deviceId: null, sessionId: null, searchId: null, err });
       return null;
     }
@@ -189,7 +189,9 @@ export function captureNotices(app: CaptureNoticesApp): CaptureNotices {
       }
     },
     notifier,
-    probe: probeNow,
+    // NOT `probeNow`: a source that throws must reach the gate as a throw, so that the run is judged with every source
+    // not reachable instead of not at all (V98-13). The gate reports it (`CAPTURE_PRECHECK_PROBE_SOURCE_FAILED`).
+    probe: probeOrThrow,
     discovery: () => discovery,
     report,
   });

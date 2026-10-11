@@ -24,9 +24,13 @@ import { describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
+import { CAPTURE_BOOT_STEP, CaptureBootError } from '../../../capture/boot';
 import { realBootFixture } from '../../../capture/boot/__tests__/support';
 import { captureFenceControl } from '../../../capture/fence';
 import type { ConfigInput } from '../../../config';
+import { hashPassword } from '../../identity/password-hash';
+import { BootError } from '../../../plugins/readiness';
 import { SOURCE_FACTS_BOOT_STEP, audioStatusOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
@@ -62,6 +66,20 @@ const localRows = (owner: Pool): Promise<unknown> =>
 async function productionRows(owner: Pool): Promise<void> {
   await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP'), ('MIC-11', 'MIC', 'USB', true, 'USB_AUDIO'), ('MIC-12', 'MIC', 'USB', true, 'USB_AUDIO')");
   await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_02_device_id = 'CAM-12', mic_primary_id = 'MIC-11', mic_standby_id = 'MIC-12'");
+}
+
+/**
+ * S99-01 (batch N; ruling D241): a `REAL_PRODUCTION` Core does not start while an operator still has the
+ * published demo password of the seed. What a provisioned installation has instead: every stored hash set
+ * replaced by one of a password of the operator's own, derived by the product's hasher. The password here
+ * is built at run time and kept nowhere.
+ */
+async function ownCredentials(owner: Pool): Promise<void> {
+  const operators = (await owner.query<{ operator_id: string }>('SELECT operator_id FROM public.operator_credentials ORDER BY operator_id')).rows;
+  for (const { operator_id } of operators) {
+    const record = await hashPassword(['own', operator_id, String(operators.length), 'x7Kq'].join('-'));
+    await owner.query('UPDATE public.operator_credentials SET algorithm = $2, memory_kib = $3, passes = $4, parallelism = $5, salt = $6, hash = $7 WHERE operator_id = $1', [operator_id, record.algorithm, record.memoryKib, record.passes, record.parallelism, record.salt, record.hash]);
+  }
 }
 
 /** The marks of the built-in devices of a development Core; null until that case ran. */
@@ -130,7 +148,10 @@ describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; no
   // Until fix F-M4 (finding R69-03) this case pinned the four FAKE built-ins as listed with no class.
   // They are development devices: a production Core lists none of them (decision D178). The switch stays.
   it('four assigned production devices: each listed with its adapter and class PRODUCTION; of the built-ins only the switch is listed, with no class; 0 development marks', async () => {
-    const core = await booted('d131_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-d131-prod', 'capture-worker/0.4.0') }, productionRows);
+    const core = await booted('d131_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-d131-prod', 'capture-worker/0.4.0') }, async (owner) => {
+      await productionRows(owner);
+      await ownCredentials(owner);
+    });
     expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
     expect(core.marks.filter((mark) => /-1[12] /.test(mark))).toEqual(['CAM-11 ONVIF_RTSP PRODUCTION', 'CAM-12 ONVIF_RTSP PRODUCTION', 'MIC-11 USB_AUDIO PRODUCTION', 'MIC-12 USB_AUDIO PRODUCTION']);
     expect(core.marks.filter((mark) => BUILT_INS.includes(mark.split(' ')[0] ?? ''))).toEqual(['POE-SWITCH - -']);
@@ -147,6 +168,7 @@ describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; no
     const core = await booted('r6903_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-r6903-prod', 'capture-worker/0.4.0') }, async (owner) => {
       await localRows(owner);
       await productionRows(owner);
+      await ownCredentials(owner);
     });
     expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
     // The device list (operation 77 answers the slice; the roster of both clients is drawn from it).
@@ -163,6 +185,27 @@ describe('REAL_PRODUCTION: a production device carries PRODUCTION or nothing; no
     await core.app.engine.stop();
     await core.app.engine.reload();
     expect(core.app.engine.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-11', 'CAM-12', 'MIC-11', 'MIC-12', 'POE-SWITCH']);
+  });
+
+  // Batch N (security review row 99, finding S99-01 HIGH; ruling D241), ON THE BOOTED PATH: the real app factory, the
+  // real boot steps in their order, PostgreSQL as `dems_app`, the DEFAULT counter (the stored hash sets, verified by the
+  // product's verifier). The two cases above are its CONTROL: the same Core on the same rows boots once every operator
+  // has a credential of their own.
+  it('S99-01: the same production Core on the SEED\'s operators does NOT boot - `capture.boot` refuses CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION with the count; the error log holds the code and no credential', async () => {
+    const seeded = (await db.ownerPool().query<{ operators: number }>('SELECT count(*)::int AS operators FROM public.operator_credentials')).rows[0]?.operators ?? 0;
+    expect(seeded).toBeGreaterThan(0);
+    const failure = await booted('s9901_prod', { ...REAL, captureWorkerPath: fixture.worker('worker-s9901-prod', 'capture-worker/0.4.0') }, productionRows).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(BootError);
+    expect((failure as BootError).stepId).toBe(CAPTURE_BOOT_STEP);
+    const cause = (failure as BootError).cause;
+    expect(cause).toBeInstanceOf(CaptureBootError);
+    expect([(cause as CaptureBootError).code, (cause as CaptureBootError).reason]).toEqual(['CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', `operators=${seeded}`]);
+    const published: string = DEMO_OPERATOR_PASSWORD;
+    expect((cause as CaptureBootError).message).not.toContain(published);
+    // CONTROL of "REAL_PRODUCTION only": the same seed's operators under REAL_DEVELOPMENT boot (the development case above does).
   });
 
   it('R69-03 CONTROL - SIMULATED on the same rows lists every stored device, inert (D83 O-2)', async () => {

@@ -20,6 +20,7 @@
 // §I): edits 1 to 6, 11 and 12 (row 57), 13 and 14 (row 113, decision D68), and 7 to 10, the
 // capture keys of config.ts (row 58).
 import { createHash } from 'node:crypto';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
 import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, under, type SourceFile } from '../../../test/static/scan';
@@ -967,11 +968,31 @@ describe('G-R16: the capture mode and the demo flag are related in one function;
     expect([...mount.matchAll(/\bcaptureOperationDecisionOf\s*\(/g)]).toHaveLength(1);
     const refusal = checks.indexOf('if (decision.refusal !== null) return refuse(CaptureBootRefusal.OPERATION_REFUSED, decision.refusal);');
     expect(refusal).toBeGreaterThan(0);
-    for (const call of ['workerProgramProblemOf(deps.workerProgram', 'deps.probeEvidenceVolume()', 'deps.signingKeyProblem()', 'await deps.handshake()']) {
+    for (const call of ['workerProgramProblemOf(deps.workerProgram', 'deps.probeEvidenceVolume()', 'deps.signingKeyProblem()', 'deps.signingKeyIsDevelopment()', 'await deps.demoPasswordOperators()', 'await deps.handshake()']) {
       expect(checks.indexOf(call, refusal), call).toBeGreaterThan(refusal);
     }
     // The worker is started LAST: after the path rule, the store and the key.
     expect(checks.lastIndexOf('await deps.handshake()')).toBeGreaterThan(checks.lastIndexOf('deps.signingKeyProblem()'));
+    // THE PRODUCTION REFUSALS (R88-08 (3); S99-01, ruling D241): the development signing key and the published demo
+    // password are each asked in REAL_PRODUCTION only, each refused by its own code, each BEFORE the worker is started.
+    expect(checks).toContain('if (operation === CaptureOperation.REAL_PRODUCTION && deps.signingKeyIsDevelopment()) return refuse(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY, null);');
+    const operators = checks.indexOf('const operators = await deps.demoPasswordOperators().catch(() => null);');
+    expect(checks.lastIndexOf('if (operation === CaptureOperation.REAL_PRODUCTION) {', operators)).toBeGreaterThan(checks.lastIndexOf('deps.signingKeyProblem()'));
+    expect(checks.slice(checks.lastIndexOf('if (operation === CaptureOperation.REAL_PRODUCTION) {', operators), operators)).not.toContain('}');
+    expect([...checks.matchAll(/\bdeps\.demoPasswordOperators\s*\(/g)]).toHaveLength(1);
+    expect(checks).toContain('return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, OPERATORS_UNREADABLE);');
+    expect(checks).toContain('if (operators > 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, `operators=${operators}`, { operators });');
+    expect(checks.lastIndexOf('await deps.handshake()')).toBeGreaterThan(operators);
+    // The published password is NAMED by one file of the capture folder, which hands it to the verifier and to nothing else;
+    // its value is in no file of the folder; the pure checks never see it.
+    const naming = capture.filter((file) => new RegExp(`\\b${join('DEMO_OPERATOR', '_PASSWORD')}\\b`).test(file.text)).map((file) => file.path);
+    expect(naming).toEqual([`${BOOT}index.ts`]);
+    expect([...mount.matchAll(new RegExp(`.*\\b${join('DEMO_OPERATOR', '_PASSWORD')}\\b.*`, 'g'))].map((match) => match[0].trim())).toEqual([
+      `import { ${join('DEMO_OPERATOR', '_PASSWORD')} } from '@dems/shared/sim';`,
+      `if (await verify(${join('DEMO_OPERATOR', '_PASSWORD')}, { algorithm: row.algorithm, memoryKib: row.memory_kib, passes: row.passes, parallelism: row.parallelism, salt: row.salt, hash: row.hash })) count += 1;`,
+    ]);
+    const published: string = DEMO_OPERATOR_PASSWORD;
+    expect(tree.filter((file) => file.path.startsWith('src/capture/') && file.text.includes(published)).map((file) => file.path)).toEqual([]);
     // The boot folder starts no process and names no timer itself: the channel and the timers are handed in (G-R8).
     expect(places(capture.filter((file) => file.path.startsWith(BOOT)), PROCESS_START)).toEqual([]);
     expect(places(capture.filter((file) => file.path.startsWith(BOOT)), GLOBAL_TIMER)).toEqual([]);

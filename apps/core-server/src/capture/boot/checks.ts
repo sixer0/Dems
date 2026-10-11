@@ -27,6 +27,11 @@
  *                          worker reaches the final name of a camera file by `link()`, D72(b),
  *                          D85 R-5: on a volume without hard links every session would end fatal)
  *                       4. the evidence signing key loads (fails closed, SEC35-07)
+ *                       4c. REAL_PRODUCTION only: NO operator's stored credential verifies against
+ *                          the PUBLISHED demo password of the seed (batch N; security review S99-01,
+ *                          ruling D241). The count of such operators is said; operators that cannot
+ *                          be read are a refusal too (fail closed). Provisioning operators is a task
+ *                          of its own: until it exists, a seeded database is not a production one
  *                       5. the worker - started with the SAME arguments a session start passes -
  *                          answers `HELLO` with this protocol, NO proof-build mark (F-10) and THE
  *                          version this Core was built to drive (`CAPTURE_WORKER_VERSION`; gate 64
@@ -61,6 +66,11 @@ export const CaptureBootRefusal = {
   SIGNING_KEY_UNUSABLE: 'CAPTURE_SIGNING_KEY_UNUSABLE',
   /** The signing key of the store is a DEVELOPMENT key and the Core is REAL_PRODUCTION (fix pass F-M7, R88-08 (3); D178). */
   DEVELOPMENT_SIGNING_KEY: 'CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION',
+  /**
+   * At least one operator of a REAL_PRODUCTION Core still signs in with the published demo password of the seed, or the
+   * operators could not be read (batch N; S99-01, D241). The reason is `operators=<count>` or `OPERATORS_UNREADABLE`.
+   */
+  DEMO_PASSWORD_IN_PRODUCTION: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION',
   WORKER_NO_HANDSHAKE: 'CAPTURE_WORKER_NO_HANDSHAKE',
   /** The worker answered that its media library is not the verified one (decision D188 (a)). */
   WORKER_MEDIA_LIBRARY_MISMATCH: 'CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH',
@@ -81,6 +91,8 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
     'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, owner-only (no permission for group or others: chmod 700), on a volume that supports exclusive create, sync and hard links. Recordings lie in this directory in PLAINTEXT from the start of a session until its seal completes (they are encrypted at seal time), recordings the Core could not seal stay in its .quarantine folder, a recording that is being sealed is staged in its .sealing folder and the audio tap of a running session lies in its .transcriber folder: nobody but the server may read the store or these folders, and none of them may be a link (chmod 700 each).',
   CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION:
     'The evidence signing key in <data directory>/signer is a DEVELOPMENT key (its certificate says "DEVELOPMENT KEY - NOT FOR PRODUCTION"): a production Core does not start with it, because every package it sealed would carry a development signature. Provision the production signing key, or run the Core in development capture mode.',
+  CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION:
+    'An operator of this Core can still sign in with the published demonstration password of the seed (it is printed in the repository and on the sign-in cards of a demonstration): a production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) does not start while that is so, or while its operators cannot be read. Give every operator a credential of their own, or run the Core in development capture mode.',
   CAPTURE_SIGNING_KEY_UNUSABLE: 'The evidence signing key cannot be loaded from <data directory>/signer: real capture does not start without the key that seals its packages. Provision the key once, then start again.',
   CAPTURE_WORKER_NO_HANDSHAKE: 'The program in DEMS_CAPTURE_WORKER did not answer as a capture worker: no HELLO frame within the limit.',
   CAPTURE_WORKER_MEDIA_LIBRARY_MISMATCH:
@@ -92,13 +104,16 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
     'The program in DEMS_CAPTURE_WORKER is a capture worker of another version than the one this server was built to drive: the two are released together and neither is used with another. Build the worker of this repository state (make -C apps/capture-worker) and set the key to it.',
 });
 
+/** The reason of `DEMO_PASSWORD_IN_PRODUCTION` when the operators could not be read at all: the check fails closed. */
+export const OPERATORS_UNREADABLE = 'OPERATORS_UNREADABLE';
+
 /** A real start the boot checks refuse. `code` and `reason` are machine codes; the message names keys and the remedy. */
 export class CaptureBootError extends Error {
   readonly code: CaptureBootRefusal;
   /** Which rule failed (a code of the path rule, of the volume probe, of the signer, of the handshake), or null. */
   readonly reason: string | null;
-  constructor(code: CaptureBootRefusal, reason: string | null = null) {
-    super(`${TEXT[code]}${reason === null ? '' : ` Reason: ${reason}.`}`);
+  constructor(code: CaptureBootRefusal, reason: string | null = null, detail: string | null = null) {
+    super(`${TEXT[code]}${reason === null ? '' : ` Reason: ${reason}.`}${detail === null ? '' : ` ${detail}`}`);
     this.name = 'CaptureBootError';
     this.code = code;
     this.reason = reason;
@@ -317,6 +332,13 @@ export interface CaptureBootDeps {
    * only after the key loaded, in REAL_PRODUCTION only: that operation refuses such a key (R88-08 (3)).
    */
   signingKeyIsDevelopment(): boolean;
+  /**
+   * HOW MANY operators have a stored credential that verifies against the published demo password of
+   * the seed (S99-01), or null when the operators could not be read. Called in REAL_PRODUCTION only,
+   * after the key checks and before any process is started. It returns a COUNT and nothing else: no
+   * operator, no hash and no password crosses this line.
+   */
+  demoPasswordOperators(): Promise<number | null>;
   /** Starts the worker once and reads its first frame. Called in a real operation only, after every file check passed. */
   handshake(): Promise<WorkerHandshake>;
   readonly sinks: CaptureBootSinks;
@@ -347,9 +369,9 @@ const WORKER_IGNORED = 'a capture worker program is configured and capture mode 
 export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<CaptureBootOutcome> {
   const { decision, sinks } = deps;
   const { operation } = decision;
-  const refuse = (code: CaptureBootRefusal, reason: string | null): never => {
-    const failure = new CaptureBootError(code, reason);
-    const context = { code, operation, ...(reason === null ? {} : { reason }) };
+  const refuse = (code: CaptureBootRefusal, reason: string | null, counted: { readonly operators: number } | null = null): never => {
+    const failure = new CaptureBootError(code, reason, counted === null ? null : `${counted.operators} operator(s) of this Core have it.`);
+    const context = { code, operation, ...(reason === null ? {} : { reason }), ...(counted === null ? {} : { operators: counted.operators }) };
     sinks.error(context, REFUSED);
     sinks.persist({ level: 'error', source: SOURCE, message: REFUSED, code, context });
     throw failure;
@@ -384,6 +406,14 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
   if (signing !== null) return refuse(CaptureBootRefusal.SIGNING_KEY_UNUSABLE, signing);
   // 4b: a development key never signs for a production Core (R88-08 (3)). REAL_DEVELOPMENT accepts it.
   if (operation === CaptureOperation.REAL_PRODUCTION && deps.signingKeyIsDevelopment()) return refuse(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY, null);
+
+  // 4c: the published demo password is no credential of a production Core (S99-01, D241). REAL_DEVELOPMENT and SIMULATED never ask.
+  if (operation === CaptureOperation.REAL_PRODUCTION) {
+    // A reader that throws is a reader that could not read: fail closed, and nothing of its error is passed on.
+    const operators = await deps.demoPasswordOperators().catch(() => null);
+    if (operators === null || !Number.isSafeInteger(operators) || operators < 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, OPERATORS_UNREADABLE);
+    if (operators > 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, `operators=${operators}`, { operators });
+  }
 
   // 5: the worker itself, started once. Only now: nothing is started from a path that failed a rule above.
   const hello = await deps.handshake();

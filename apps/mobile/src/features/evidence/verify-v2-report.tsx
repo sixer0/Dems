@@ -186,8 +186,13 @@ function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | n
   const { t } = useTranslation();
   const Icon = row.ok ? CircleCheck : CircleX;
   const part = (ok: boolean): string => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`);
-  // Fix wave K (G89b-06): a part whose check was not run reads "Not run", not FAIL.
-  const filePart = (name: V2FilePart): string => (row.file ? t(`evidence.verifyV2.outcome.${v2FilePartOutcome(row.file, name, checks)}`) : '');
+  // Fix wave K (G89b-06): a part whose check was not run reads "Not run", not FAIL. R101-03 (ruling D241): the outcome
+  // is the SHARED rule's (`@dems/shared/evidence-rules`); this view only words it - `NOT_RUN` with the "Not run" text.
+  const filePart = (name: V2FilePart): string => {
+    if (!row.file) return '';
+    const outcome = v2FilePartOutcome(row.file, name, checks);
+    return t(`evidence.verifyV2.outcome.${outcome === 'NOT_RUN' ? 'SKIPPED' : outcome}`);
+  };
   const label = row.file ? t('evidence.verifyV2.file', { track: row.file.trackId }) : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`);
   return (
     <View style={[styles.row, row.ok ? null : styles.rowFail]} testID={`evidence-v2-row-${row.id}-${row.ok ? 'ok' : 'fail'}`}>

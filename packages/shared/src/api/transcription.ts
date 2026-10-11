@@ -6,7 +6,7 @@
  * | # | operationId | Access | Audit on success |
  * |--:|-------------|--------|------------------|
  * | 90 | `getSttConfig` | AUTHENTICATED (every role) | NONE-R |
- * | 91 | `updateSttConfig` | CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) | STT_CONFIG_CHANGED; none when nothing changed |
+ * | 91 | `updateSttConfig` | CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN); a body with `credential`: a web console session only (S99-09) | STT_CONFIG_CHANGED; none when nothing changed |
  * | 92 | `testSttConnection` | CAPTURE_CONFIG | none (no state change) |
  *
  * THE CREDENTIAL IS WRITE-ONLY (E-30/E-31; SEC35-14; the RK-12 pattern of op 89). A request may
@@ -34,6 +34,7 @@ import {
   CoreApiAuditNone,
   CoreApiMode,
   CoreApiTag,
+  WEB_CONSOLE_ONLY_REASON,
   permissionAccess,
   type CoreApiRegistryOperation,
 } from './contract-model';
@@ -444,6 +445,15 @@ const CAPTURE_CONFIG = permissionAccess(Permission.CAPTURE_CONFIG);
 const DENIED = { denial: AuditType.ACCESS_DENIED } as const;
 const NEVER_RETURNED =
   '**The credential is write-only** (E-30/E-31; SEC35-14): no answer, slice, log line or audit row carries the credential, its reference target, a ciphertext or a nonce. An answer says only whether one is set (`credentialSet`) and how it is held (`credentialKind`).';
+/**
+ * Operation 91 with a credential in its body (security review S99-09; ruling D241): the rule of the
+ * condition `WEB_CONSOLE_SESSION` (operations 89, 95, 96), applied by the handler because it depends
+ * on the BODY, which the access rule never reads. The access member of the operation is unchanged.
+ */
+export const STT_CREDENTIAL_WEB_CONSOLE_ONLY =
+  `**A body that carries \`credential\` is web console only** (S99-09; the rule of \`WEB_CONSOLE_SESSION\` on operations 89, 95 and 96): a session of a tablet or a phone that sends the member - \`SECRET\`, \`REFERENCE\` or \`CLEAR\` - is refused \`403 NOT_PERMITTED\` with \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\` and one ACCESS_DENIED row, before the credential is read, sealed or stored. The same session may send every other member: a change without \`credential\` is not refused for the console.`;
+/** The 403 part of that rule: an \`extra\` of \`notPermitted\`. */
+export const STT_CREDENTIAL_WEB_CONSOLE_ONLY_REFUSED = `the body carries \`credential\` and the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\`; one ACCESS_DENIED audit row; refused before the credential is used)`;
 
 export const STT_CONFIG_OPERATIONS = [
   {
@@ -483,6 +493,7 @@ export const STT_CONFIG_OPERATIONS = [
       'Stores a change of the STT configuration. Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (the permission of the device selector). The body names `revision` (the optimistic lock) and the members to change.',
       '**Accepted while a session is open, applied to the next one.** The open session keeps the snapshot taken at its start; the answer carries `appliesFrom: NEXT_SESSION` (and `pendingForNextSession: true`). When idle the answer carries `appliesFrom: NOW`.',
       NEVER_RETURNED,
+      STT_CREDENTIAL_WEB_CONSOLE_ONLY,
       'On success writes one STT_CONFIG_CHANGED row whose details are exactly `changedFields` (the changed field NAMES, comma-joined; never a value), `enabled`, `backend`, `credentialChanged` and `revision`. An update that changes nothing writes no row and keeps the revision. No row on a refusal.',
       'Refusals: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; a value outside the contract answers `422 INVALID_INPUT` with `details.reason` `ENDPOINT_NOT_LOOPBACK` (OD-13: loopback only), `LANGUAGE_NOT_SUPPORTED` or `BACKEND_UNKNOWN`. On the Core server a `SECRET` credential answers `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) while the Core credential store is not mounted. The in-app simulator has no credential store to wait for: it accepts a `SECRET` opaquely, keeps nothing of it and answers `credentialKind: ENCRYPTED` (as it does for the camera credential of operation 89).',
       'A change of the backend, the endpoint, the model or the credential forgets `lastTest`: the last test tested another configuration.',
@@ -494,7 +505,7 @@ export const STT_CONFIG_OPERATIONS = [
       200: { description: 'The stored configuration and when it applies. Never the credential.', schema: 'SttConfigUpdateResult' },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
-      403: notPermitted(Permission.CAPTURE_CONFIG),
+      403: notPermitted(Permission.CAPTURE_CONFIG, STT_CREDENTIAL_WEB_CONSOLE_ONLY_REFUSED),
       409: {
         description: 'The `revision` of the body is not the stored one: re-read operation 90 (INVALID_STATE, `details.reason: REVISION_CONFLICT`). Nothing is stored and no audit row is written.',
         schema: 'ApiError',
@@ -581,6 +592,17 @@ const EXAMPLE_EDITED_CONFIG = {
 } as const satisfies SttConfig;
 
 const SIGNED_OUT = { notSignedIn: ERROR_EXAMPLES.notSignedIn } as const;
+/** The 403 of operation 91 for a body with `credential` from a tablet or phone session (S99-09): the Core server's own text and details. */
+export const STT_WEB_CONSOLE_ONLY_EXAMPLE = {
+  summary: 'A tablet or phone session sends a credential',
+  description: 'The caller holds CAPTURE_CONFIG, but the session is bound to a paired device and the body carries `credential`. One ACCESS_DENIED row is written; the credential is not used. The same body without `credential` is stored.',
+  value: apiErrorExample('NOT_PERMITTED', 'This action is available on the web console only. The attempt was audited.', {
+    operationId: 'updateSttConfig',
+    permission: Permission.CAPTURE_CONFIG,
+    role: 'TECHNICIAN',
+    reason: WEB_CONSOLE_ONLY_REASON,
+  }),
+} as const;
 
 export const STT_CONFIG_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getSttConfig: {
@@ -617,7 +639,7 @@ export const STT_CONFIG_EXAMPLES: Readonly<Record<string, OperationExamples>> = 
       },
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: SIGNED_OUT,
-      403: deniedExamples('updateSttConfig', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+      403: { ...deniedExamples('updateSttConfig', 'CAPTURE_CONFIG', 'INVESTIGATOR'), webConsoleOnly: STT_WEB_CONSOLE_ONLY_EXAMPLE },
       409: {
         revisionConflict: {
           summary: 'The revision of the body is stale',

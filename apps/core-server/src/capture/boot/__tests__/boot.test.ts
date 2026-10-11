@@ -2,7 +2,9 @@
 // the control, and the DEFAULT wiring - the real path inspector, the real probe of the media root,
 // the real key store and the real process channel - on a fixture below `.data/`. The worker is a
 // stand-in shell script that says one HELLO (no capture worker is started here: that is
-// `worker-probe.real.ts`, a check for the test runner). No database: the step needs none.
+// `worker-probe.real.ts`, a check for the test runner). No database: the ONE fact the step reads from
+// one - how many operators still have the published demo password, asked in REAL_PRODUCTION only
+// (S99-01) - is answered "none" by `NO_DEMO_PASSWORD` in every mount below but the cases of S99-01.
 import { chmodSync, readdirSync, statSync, writeFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -11,7 +13,9 @@ import type { ConfigInput } from '../../../config';
 import { BootError, createReadiness } from '../../../plugins/readiness';
 import { CaptureOperation } from '../../adapters/kinds';
 import { createSystemTimers } from '../../timers';
-import { CAPTURE_BOOT_STEP, CAPTURE_WORKER_VERSION, CaptureBootError, CaptureBootRefusal, SIMULATED_WITHOUT_DEMO_CONTROLS, captureBootControl, mountCaptureBootChecks, type CaptureBootControl } from '../index';
+import { hashPassword, type PasswordHashRecord } from '../../../modules/identity/password-hash';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
+import { CAPTURE_BOOT_STEP, CAPTURE_WORKER_VERSION, CaptureBootError, CaptureBootRefusal, OPERATORS_UNREADABLE, SELECT_STORED_HASH_SETS, SIMULATED_WITHOUT_DEMO_CONTROLS, captureBootControl, mountCaptureBootChecks, storedDemoPasswordOperators, type CaptureBootControl } from '../index';
 import { FIXTURE_NOW, realBootFixture, recordedSinks } from './support';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +25,8 @@ import { EVIDENCE_STORE_PRIVATE_FOLDERS, evidenceStoreProblemOf, runCaptureBootC
 import { probeEvidenceVolume } from '../evidence-volume';
 
 const fixture = realBootFixture('boot');
+/** The operators of these database-free apps: none has the published demo password. The S99-01 cases replace or drop it. */
+const NO_DEMO_PASSWORD = { demoPasswordOperators: async (): Promise<number | null> => 0 };
 afterAll(() => fixture.remove());
 
 interface Mounted {
@@ -29,11 +35,11 @@ interface Mounted {
   boot(): Promise<void>;
   refusal(): Promise<CaptureBootError>;
 }
-function mounted(overrides: Partial<ConfigInput>): Mounted {
+function mounted(overrides: Partial<ConfigInput>, operators: { readonly demoPasswordOperators?: () => Promise<number | null> } = NO_DEMO_PASSWORD): Mounted {
   const recorded = recordedSinks();
   const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
   const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-  const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000 });
+  const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...operators });
   expect(captureBootControl(app)).toBe(control);
   const boot = (): Promise<void> => app.readiness.boot();
   return {
@@ -108,6 +114,80 @@ describe('the boot step, with nothing replaced', () => {
   });
 });
 
+// Batch N (security review row 99, finding S99-01 HIGH; ruling D241): the mounted step and its DEFAULT
+// counter. The stored hash sets are real ones, derived here by the product's own hasher.
+describe('S99-01: REAL_PRODUCTION does not start while an operator still has the published demo password', () => {
+  const keyThere = (): void => {
+    try {
+      fixture.provisionKey();
+    } catch {
+      // KEY_EXISTS: it is there.
+    }
+  };
+  const columns = (record: PasswordHashRecord) => ({ algorithm: record.algorithm, memory_kib: record.memoryKib, passes: record.passes, parallelism: record.parallelism, salt: record.salt, hash: record.hash });
+  /** A database stand-in with ONE door, the read on the pool; it records the source and the statement it was asked. */
+  const database = (rows: readonly object[] | Error) => {
+    const asked: string[] = [];
+    const db = {
+      read: async (source: string, work: (pool: { query(text: string): Promise<{ rows: readonly object[] }> }) => Promise<unknown>) =>
+        work({
+          query: async (text) => {
+            asked.push(`${source}: ${text}`);
+            if (rows instanceof Error) throw rows;
+            return { rows };
+          },
+        }),
+    };
+    return { asked, app: { db } as unknown as Parameters<typeof storedDemoPasswordOperators>[0] };
+  };
+
+  it('the default counter verifies each STORED hash set with the product verifier: 2 of 3 operators have the demo password; it returns the count only', async () => {
+    const demo: string = DEMO_OPERATOR_PASSWORD;
+    const stored = [await hashPassword(demo), await hashPassword(`${demo}-of-their-own`), await hashPassword(demo)];
+    // Salted: the two demo sets differ as bytes, so a textual comparison of hashes would count nothing.
+    expect(stored[0]?.hash.equals(stored[2]?.hash ?? Buffer.alloc(0))).toBe(false);
+    const seeded = database(stored.map(columns));
+    expect(await storedDemoPasswordOperators(seeded.app)).toBe(2);
+    expect(seeded.asked).toEqual([`capture.boot.operators: ${SELECT_STORED_HASH_SETS}`]);
+    expect(SELECT_STORED_HASH_SETS).toMatch(/^SELECT algorithm, memory_kib, passes, parallelism, salt, hash FROM public\.operator_credentials$/);
+    // CONTROL: nobody has it; and no operator at all.
+    expect(await storedDemoPasswordOperators(database([columns(stored[1] as PasswordHashRecord)]).app)).toBe(0);
+    expect(await storedDemoPasswordOperators(database([]).app)).toBe(0);
+  });
+
+  it('FAIL CLOSED: a read that fails, a set that cannot be verified, or no database at all is null (never 0)', async () => {
+    expect(await storedDemoPasswordOperators(database(new Error('connection refused')).app)).toBeNull();
+    expect(await storedDemoPasswordOperators(database([{ algorithm: 'argon2id', memory_kib: 19_456, passes: 2, parallelism: 1, salt: Buffer.alloc(16), hash: Buffer.alloc(32) }]).app, async () => Promise.reject(new Error('derive failed')))).toBeNull();
+    expect(await storedDemoPasswordOperators({} as never)).toBeNull();
+  });
+
+  it('the mounted step: REAL_PRODUCTION is refused by name with the count, and the stand-in worker was never started; REAL_DEVELOPMENT with the same operators boots', async () => {
+    keyThere();
+    const marker = `${fixture.dataDir}/worker-s99-started`;
+    const worker = fixture.worker('worker-s99');
+    writeFileSync(worker, `#!/bin/sh\n: > '${marker}'\n${readFileSync(worker, 'utf8').split('\n').slice(1).join('\n')}`, { mode: 0o700 });
+    const twelve = { demoPasswordOperators: async (): Promise<number | null> => 12 };
+    const production = mounted({ captureMode: 'real', captureWorkerPath: worker }, twelve);
+    const failure = await production.refusal();
+    expect([failure.code, failure.reason]).toEqual([CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, 'operators=12']);
+    expect(production.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION' }]);
+    expect(production.recorded.lines.at(-1)?.fields).toEqual({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', operation: CaptureOperation.REAL_PRODUCTION, reason: 'operators=12', operators: 12 });
+    expect(production.control.outcome()).toBeNull();
+    expect(() => statSync(marker)).toThrow();
+    // CONTROL: the same operators under REAL_DEVELOPMENT - the step never asks, and this time the worker WAS started (the marker can appear).
+    const development = mounted({ captureMode: 'real', captureDevSources: true, captureWorkerPath: worker }, twelve);
+    await development.boot();
+    expect(development.control.outcome()?.operation).toBe(CaptureOperation.REAL_DEVELOPMENT);
+    expect(statSync(marker).isFile()).toBe(true);
+  });
+
+  it('the mounted step with NOTHING replaced and no database: REAL_PRODUCTION is refused OPERATORS_UNREADABLE (it does not pass on an app whose operators it cannot read)', async () => {
+    keyThere();
+    const failure = await mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-s99-nodb') }, {}).refusal();
+    expect([failure.code, failure.reason]).toEqual([CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, OPERATORS_UNREADABLE]);
+  });
+});
+
 // Integration pass D10, item 3 (pass D6 item 7; register CS-09, second half): the figures the probe
 // measured are handed to the engine's `applyStorageVolume` door by ONE statement of the boot step.
 describe('CS-09: the measured evidence volume is handed over after the checks passed', () => {
@@ -124,7 +204,7 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
     const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, applyStorageVolume: door });
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, applyStorageVolume: door, ...NO_DEMO_PASSWORD });
     return { control, recorded, boot: (): Promise<void> => app.readiness.boot() };
   }
 
@@ -183,7 +263,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
     const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000 });
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...NO_DEMO_PASSWORD });
     return {
       control,
       recorded,
@@ -239,6 +319,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
           probeEvidenceVolume: () => probeEvidenceVolume(join(scratch, 'order')),
           signingKeyProblem: () => null,
           signingKeyIsDevelopment: () => false,
+          demoPasswordOperators: async () => 0,
           handshake: async () => hello,
           sinks,
         }).then(

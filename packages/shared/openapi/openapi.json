@@ -22410,7 +22410,7 @@
           "Device"
         ],
         "summary": "Change the STT configuration",
-        "description": "Stores a change of the STT configuration. Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (the permission of the device selector). The body names `revision` (the optimistic lock) and the members to change.\n\n**Accepted while a session is open, applied to the next one.** The open session keeps the snapshot taken at its start; the answer carries `appliesFrom: NEXT_SESSION` (and `pendingForNextSession: true`). When idle the answer carries `appliesFrom: NOW`.\n\n**The credential is write-only** (E-30/E-31; SEC35-14): no answer, slice, log line or audit row carries the credential, its reference target, a ciphertext or a nonce. An answer says only whether one is set (`credentialSet`) and how it is held (`credentialKind`).\n\nOn success writes one STT_CONFIG_CHANGED row whose details are exactly `changedFields` (the changed field NAMES, comma-joined; never a value), `enabled`, `backend`, `credentialChanged` and `revision`. An update that changes nothing writes no row and keeps the revision. No row on a refusal.\n\nRefusals: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; a value outside the contract answers `422 INVALID_INPUT` with `details.reason` `ENDPOINT_NOT_LOOPBACK` (OD-13: loopback only), `LANGUAGE_NOT_SUPPORTED` or `BACKEND_UNKNOWN`. On the Core server a `SECRET` credential answers `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) while the Core credential store is not mounted. The in-app simulator has no credential store to wait for: it accepts a `SECRET` opaquely, keeps nothing of it and answers `credentialKind: ENCRYPTED` (as it does for the camera credential of operation 89).\n\nA change of the backend, the endpoint, the model or the credential forgets `lastTest`: the last test tested another configuration.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Stores a change of the STT configuration. Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (the permission of the device selector). The body names `revision` (the optimistic lock) and the members to change.\n\n**Accepted while a session is open, applied to the next one.** The open session keeps the snapshot taken at its start; the answer carries `appliesFrom: NEXT_SESSION` (and `pendingForNextSession: true`). When idle the answer carries `appliesFrom: NOW`.\n\n**The credential is write-only** (E-30/E-31; SEC35-14): no answer, slice, log line or audit row carries the credential, its reference target, a ciphertext or a nonce. An answer says only whether one is set (`credentialSet`) and how it is held (`credentialKind`).\n\n**A body that carries `credential` is web console only** (S99-09; the rule of `WEB_CONSOLE_SESSION` on operations 89, 95 and 96): a session of a tablet or a phone that sends the member - `SECRET`, `REFERENCE` or `CLEAR` - is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the credential is read, sealed or stored. The same session may send every other member: a change without `credential` is not refused for the console.\n\nOn success writes one STT_CONFIG_CHANGED row whose details are exactly `changedFields` (the changed field NAMES, comma-joined; never a value), `enabled`, `backend`, `credentialChanged` and `revision`. An update that changes nothing writes no row and keeps the revision. No row on a refusal.\n\nRefusals: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; a value outside the contract answers `422 INVALID_INPUT` with `details.reason` `ENDPOINT_NOT_LOOPBACK` (OD-13: loopback only), `LANGUAGE_NOT_SUPPORTED` or `BACKEND_UNKNOWN`. On the Core server a `SECRET` credential answers `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) while the Core credential store is not mounted. The in-app simulator has no credential store to wait for: it accepts a `SECRET` opaquely, keeps nothing of it and answers `credentialKind: ENCRYPTED` (as it does for the camera credential of operation 89).\n\nA change of the backend, the endpoint, the model or the credential forgets `lastTest`: the last test tested another configuration.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The stored configuration and when it applies. Never the credential.",
@@ -22524,7 +22524,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the body carries `credential` and the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the credential is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -22570,6 +22570,23 @@
                       "error": {
                         "code": "ORIGIN_NOT_ALLOWED",
                         "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session sends a credential",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device and the body carries `credential`. One ACCESS_DENIED row is written; the credential is not used. The same body without `credential` is stored.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "This action is available on the web console only. The attempt was audited.",
+                        "details": {
+                          "operationId": "updateSttConfig",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }

@@ -24,9 +24,19 @@
  * after the probe. In `SIMULATED` nothing is measured and nothing is handed over: the figures stay
  * the simulator's. A hand-over that fails does not refuse the start (the checks passed; the figure
  * is a display fact): it is logged and persisted, and the figures stay as they were.
+ *
+ * S99-01 (batch N; ruling D241): in REAL_PRODUCTION the step also asks HOW MANY operators still have
+ * the published demo password of the seed (`storedDemoPasswordOperators`): one read of the stored
+ * hash sets on the pool, each verified with the product's own verifier (the password-hash wrapper of
+ * the identity module - the hashes are salted, so nothing is compared as text). The read hands back
+ * a COUNT: no operator ID, no hash, no salt and no password leaves that function, and its failure is
+ * "could not be read" (the check then refuses the start: fail closed).
  */
 import type { FastifyInstance } from 'fastify';
+import type { QueryResultRow } from 'pg';
 import { isDevelopmentKeySubject } from '@dems/shared/evidence-verify';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
+import { verifyPassword } from '../../modules/identity/password-hash';
 import { factDoorsOf } from '../../engine';
 import { inspectProgram, type ProgramInspector } from '../adapters/local';
 import { captureOperationDecisionOf, type CaptureOperationDecision } from '../fence/operation';
@@ -45,6 +55,7 @@ export {
   CaptureBootRefusal,
   EvidenceStoreProblem,
   HandshakeFailure,
+  OPERATORS_UNREADABLE,
   PROOF_BUILD_MARK,
   RELEASE_WORKER_VERSION,
   SIGNING_STORE_SUBPATH,
@@ -90,6 +101,12 @@ export interface CaptureBootMount {
   readonly signingKeyProblem?: (directory: string, now: number) => string | null;
   /** Another reader of "the stored signing key is a development key", for tests. Default: the certificate of the store. */
   readonly signingKeyIsDevelopment?: (directory: string, now: number) => boolean;
+  /**
+   * Another counter of "operators whose stored credential verifies against the published demo password"
+   * (S99-01), for tests and for an app without a database. Default: the stored hash sets, read on the
+   * pool and verified one by one (`storedDemoPasswordOperators`). Asked in REAL_PRODUCTION only.
+   */
+  readonly demoPasswordOperators?: () => Promise<number | null>;
   readonly launcher?: WorkerLauncher;
   readonly helloTimeoutMs?: number;
   /** Where the measured figures go (CS-09). Default: the engine's fact door `applyStorageVolume`, when an engine runs behind the seam. */
@@ -145,6 +162,41 @@ function storedSigningKeyIsDevelopment(directory: string, now: number): boolean 
   }
 }
 
+/** Every stored hash set of an operator, by the columns the verifier needs. Read at boot of a production Core only (S99-01). */
+export const SELECT_STORED_HASH_SETS = 'SELECT algorithm, memory_kib, passes, parallelism, salt, hash FROM public.operator_credentials';
+
+interface StoredHashSetRow extends QueryResultRow {
+  readonly algorithm: string;
+  readonly memory_kib: number;
+  readonly passes: number;
+  readonly parallelism: number;
+  readonly salt: Buffer;
+  readonly hash: Buffer;
+}
+
+/**
+ * S99-01: how many operators of this database still have the published demo password - each stored
+ * hash set is verified with the product's verifier, one after another (a derivation is memory-hard;
+ * a boot is no place to run a dozen at once). Null when the operators cannot be read or a stored set
+ * cannot be verified: the caller refuses the start. Nothing but the count is returned.
+ */
+export async function storedDemoPasswordOperators(
+  app: Pick<FastifyInstance, 'db'>,
+  verify: (candidate: string, record: Parameters<typeof verifyPassword>[1]) => Promise<boolean> = verifyPassword,
+): Promise<number | null> {
+  try {
+    const rows = await app.db.read('capture.boot.operators', async (pool) => (await pool.query<StoredHashSetRow>(SELECT_STORED_HASH_SETS)).rows);
+    let count = 0;
+    for (const row of rows) {
+      if (await verify(DEMO_OPERATOR_PASSWORD, { algorithm: row.algorithm, memoryKib: row.memory_kib, passes: row.passes, parallelism: row.parallelism, salt: row.salt, hash: row.hash })) count += 1;
+    }
+    return count;
+  } catch {
+    // The error of a read or of a derivation is not passed on: it could name a row. The refusal says OPERATORS_UNREADABLE.
+    return null;
+  }
+}
+
 /** Mounts the boot checks on the app: the control and the boot step. Called once, by the capture unit, after the fence. */
 export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootMount): CaptureBootControl {
   const decision = captureOperationDecisionOf(app.config);
@@ -170,6 +222,7 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
         probeEvidenceVolume: () => (mount.probeEvidenceVolume ?? probeEvidenceVolume)(mediaStoreDir),
         signingKeyProblem: () => (mount.signingKeyProblem ?? storedSigningKeyProblem)(`${dataDir}/${SIGNING_STORE_SUBPATH}`, app.clock.now()),
         signingKeyIsDevelopment: () => (mount.signingKeyIsDevelopment ?? storedSigningKeyIsDevelopment)(`${dataDir}/${SIGNING_STORE_SUBPATH}`, app.clock.now()),
+        demoPasswordOperators: () => (mount.demoPasswordOperators ?? (() => storedDemoPasswordOperators(app)))(),
         handshake,
         sinks: mount.sinks,
       });

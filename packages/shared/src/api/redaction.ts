@@ -10,6 +10,8 @@
  * WHAT IS BLANKED IN A TEXT (`redactCredentialText`)
  *
  *   1. A token of this server, by its prefix: `ses_…`, `dvc_…`, `bio_…` become `ses_***` (01_specs §5.3).
+ *   1b. The userinfo of a URL that carries a password, whatever the scheme: `rtsp://user:password@host`
+ *      becomes `rtsp://***@host` (security review S99-04; see `URL_USERINFO`).
  *   2. Whatever follows the `Bearer` scheme.
  *   3. The value of a member whose NAME says credential, wherever it stands and however it is
  *      written: `apiKey`, `api_key`, `x-api-key`, `authorization`, `credential`,
@@ -67,6 +69,18 @@ export const CREDENTIAL_BLANK = '***';
 // `mts`: the signed media session token of operation 88 (task 3 row 90; C3 §2.4, §7 `EVIDENCE_MEDIA_TOKEN_PREFIX`; SEC35-13; check M8-BLK-1).
 // `exs`: the signed download token of a finished export (fix pass F-M8, ruling D178; `EVIDENCE_EXPORT_DOWNLOAD_TOKEN_PREFIX`).
 const TOKEN = /\b(ses|dvc|bio|mts|exs)_[A-Za-z0-9_-]+/g;
+
+/**
+ * THE USERINFO OF A URL (security review S99-04; SEC35-04: the camera-credential form
+ * `rtsp://user:password@host`, and the same under `http(s)` or any other scheme). Where a URL names
+ * an account AND a password before its host, the whole userinfo becomes the blank: the account name
+ * of a credential pair is credential material too (SEC35-36). The password may hold `@` and `:`
+ * (the userinfo ends at the LAST `@` before the path); it holds no `/`, no blank and no quote - a
+ * password with a raw `/` is not a URL any parser reads, and widening the rule to it would blank
+ * the path of every URL with a port and an `@` in its query. A userinfo WITHOUT a password
+ * (`rtsp://viewer@host`) names no secret and stays.
+ */
+const URL_USERINFO = /\b([A-Za-z][A-Za-z0-9+.-]{1,15}:\/\/)[^\s/@"'<>]*:[^\s/"'<>]*@/g;
 
 /**
  * An authentication scheme and what follows it. Written as a header writes it (`Bearer`, `Basic`,
@@ -232,7 +246,7 @@ export function redactCredentialText(text: string): string {
   // decoded text is what is judged and returned. Otherwise the text stays byte for byte.
   const decoded = urlDecoded(text);
   const source = decoded !== text && mentionsCredential(decoded) ? decoded : text;
-  const schemes = blankSchemes(source.replace(TOKEN, `$1_${CREDENTIAL_BLANK}`));
+  const schemes = blankSchemes(source.replace(URL_USERINFO, `$1${CREDENTIAL_BLANK}@`).replace(TOKEN, `$1_${CREDENTIAL_BLANK}`));
   if (!mentionsCredential(schemes)) return schemes;
   const members = blankSpans(schemes, MEMBER, (found) => {
     const name = blankedName(found, true);

@@ -166,7 +166,35 @@ Row 56 = satisfied by D61 + D62. Stale rows 50a/51a above are closed (scope done
 | 60 | coder-execution | verifier | launched |
 | 77 | coder-execution | verifier | driver launched early (D79) |
 
-## PAUSE POINT — 2026-10-09 (user: "setelah ini pause dulu"; decisions D120-D131)
+## STATE ON 2026-10-12 — after the final chain (controller; supersedes "PAUSE POINT"; source of truth for detail: decisions D132..D241)
+
+HEAD `713d83f` (main, local, no remote). Completion line "DONE ON THIS MAC WITH FAKE DEVICES": rows through 101 have reported; batch N (the final chain's small fixes), the report, and the UI judging session D150 are still to do.
+
+| Stage | State | Evidence |
+|---|---|---|
+| Build rows 57-96, 126-142 | done | commits `e296ce7`, `abf742f`; notes `implementation/` up to 122 |
+| Six milestone code reviews (63, 69, 74, 80, 88, 93) + fixes | done | `gateway_check/16`..`21`; commit `f293221` |
+| Gates, first round (64, 70, 75, 81, 89, 94) | done: 2 PASS WITH CONDITIONS, 4 FAIL | `gateway_check/08`..`13` |
+| Fix waves H, I, K, L, M | done | commits `74fd1f1`, `57b80a9`, `b05106b`, `7b1aded`, `a5d75ed`; notes 123-161 |
+| Re-gates, targeted re-checks, final re-checks, confirmation | done | `09b/c/d`, `10b/c/d/e`, `11b`, `12b/c/d`, `13b/c/d`, `14` |
+| Milestone verdicts | M3..M8 each PASS WITH CONDITIONS | `08`, `09d`, `10e`, `11b` + `10d`, `12d`, `13d` |
+| Test-suite consolidation (user, D233) | done | `test/13`..`15`; commit `951c80e` |
+| Row 95 full regression | GREEN | `test/16` |
+| Row 97 hygiene (two passes) | done | notes 162, 163; commits `951c80e..713d83f` |
+| Row 98 verification | PASS WITH CONDITIONS | `verification/01_verification.md` |
+| Row 99 security review | CAUTION (0 critical, 1 high) | `verification/02_security.md` |
+| Row 100 final test report | YES WITH LISTED GAPS; Part A GREEN | `test/17` |
+| Row 101 senior code review | YES WITH CONDITIONS (5 major) | `gateway_check/22` |
+| Batch N (chain fixes, errata PE-WL / PE-WM, README) | IN PROGRESS | D241 |
+| `report/report.md` | TO DO | — |
+| UI judging session + its fix batch (D150, D151 biometrics skipped) | TO DO | — |
+| Last whole regression + final commit + memory | TO DO | — |
+
+Not met / not proven at this point: `M8-CMP-1` composite export (user's FFmpeg licence decision); `M5-SEC-SRC-1`; `M4-LOCAL-MIC-1` (user's run failed on rate); user-attended local-device checks; class-C hardware; biometrics (skipped by the user).
+Waiting on the user (non-blocking): FFmpeg licence; quarantine policy; SEC35-26; S99-02 server-side local-device confirmation; S99-03 export archive retention; key escrow (SEC35-09); microphone `--diagnose`; data clean-up (`.cache/gates` 2.7 GB, `.data/test-row61-row140e2e-*` 1.3 GB, lane 2 quarantine 199 MB, `.data/capture-local/runs` 10 MB).
+Rule in force for every agent: NO selection, pre-check or start of a LOCAL_DEVICE source (D163, letter restored by D241).
+
+## PAUSE POINT (HISTORY) — 2026-10-09 (user: "setelah ini pause dulu"; decisions D120-D131)
 
 Controller: Claude Code (rows 57 onward). No new row starts until the user says to continue.
 

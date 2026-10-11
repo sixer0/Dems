@@ -23,9 +23,12 @@ import {
   STT_CONFIG_FIELDS,
   STT_CONFIG_OPERATIONS,
   STT_CREDENTIAL_REF_PATTERN,
+  STT_CREDENTIAL_WEB_CONSOLE_ONLY,
+  STT_CREDENTIAL_WEB_CONSOLE_ONLY_REFUSED,
   STT_LOOPBACK_ENDPOINT_PATTERN,
   STT_MODEL_ID_MAX_LENGTH,
   STT_MODEL_ID_PATTERN,
+  STT_WEB_CONSOLE_ONLY_EXAMPLE,
   SttConfigSchema,
   SttConfigUpdateRequestSchema,
   SttConfigUpdateResultSchema,
@@ -39,6 +42,7 @@ import {
   serializeOpenApiDocument,
   sttConfigChangedDetails,
   sttCredentialKindAfter,
+  validateCoreApiResponse,
   type SttConfig,
   type SttConfigStored,
   type SttConfigUpdateResult,
@@ -63,8 +67,8 @@ const SECRET = ['stt', 'PLANTED', 'k3y', 'Zx9Qv7Lm2Rt5'].join('-');
 const REFERENCE = ['omlx-settings', ['auth', 'planted_ref_Zx9Qv7'].join('.')].join(':');
 const USERS = { INVESTIGATOR: 'budi.santoso', SUPERVISOR: 'andi.pratama', TECHNICIAN: 'rina.wijaya' } as const;
 
-async function simAs(role: keyof typeof USERS | null): Promise<Sim> {
-  const sim = createSim({ storage: null, authStorage: null, clock: createManualClock(AT), scheduler: () => () => {} });
+async function simAs(role: keyof typeof USERS | null, deviceConsole = false): Promise<Sim> {
+  const sim = createSim({ storage: null, authStorage: null, clock: createManualClock(AT), scheduler: () => () => {}, deviceConsole });
   await sim.ready;
   if (role !== null) sim.actions.signIn(USERS[role], DEMO_OPERATOR_PASSWORD);
   return sim;
@@ -366,6 +370,47 @@ describe('who may call (the simulator, the same code path as Simulated mode)', (
       expect(sttRows(sim)).toHaveLength(1);
       sim.stop();
     }
+  });
+});
+
+// Batch N (security review S99-09; ruling D241): the simulator of a tablet or phone app answers as the
+// Core server does - a body of operation 91 that carries `credential` is web console only.
+describe('S99-09: a credential in the body of operation 91 is web console only (the simulator inside a tablet or phone app)', () => {
+  it.each([
+    ['SECRET', { kind: 'SECRET', value: SECRET }],
+    ['REFERENCE', { kind: 'REFERENCE', ref: REFERENCE }],
+    ['CLEAR', { kind: 'CLEAR' }],
+  ] as const)('a %s credential from a device console: 403 NOT_PERMITTED (WEB_CONSOLE_ONLY), nothing stored, no STT row; the body without it is stored', async (_kind, credential) => {
+    const sim = await simAs('TECHNICIAN', true);
+    const refused = post(sim, { revision: 1, enabled: false, credential });
+    expect(outcome(refused)).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
+    expect(JSON.stringify(refused.body)).not.toContain('PLANTED');
+    expect(sttRows(sim)).toEqual([]);
+    expect((get(sim).body as SttConfig).enabled).toBe(true);
+    // CONTROL (gate 81): the same session, the same change, no credential.
+    const saved = post(sim, { revision: 1, enabled: false });
+    expect(saved.status).toBe(200);
+    expect(sttRows(sim)).toHaveLength(1);
+    sim.stop();
+  });
+
+  it('CONTROL: the web console (the default simulator) stores the same credential; a role without CAPTURE_CONFIG on a device is refused for the permission', async () => {
+    const web = await simAs('TECHNICIAN');
+    expect(post(web, { revision: 1, credential: { kind: 'REFERENCE', ref: REFERENCE } }).status).toBe(200);
+    web.stop();
+    const tablet = await simAs('INVESTIGATOR', true);
+    expect(outcome(post(tablet, { revision: 1, credential: { kind: 'CLEAR' } }))).toEqual([403, 'NOT_PERMITTED', undefined]);
+    tablet.stop();
+  });
+
+  it('the contract example of that 403 is the one the registry names, and the access rule of operation 91 has no condition', () => {
+    const example = (CORE_API_EXAMPLES.updateSttConfig?.responses[403] as Record<string, { value: unknown }> | undefined)?.['webConsoleOnly'];
+    expect(example?.value).toEqual(STT_WEB_CONSOLE_ONLY_EXAMPLE.value);
+    expect(validateCoreApiResponse('updateSttConfig', 403, example?.value)).toEqual({ ok: true });
+    const operation = CORE_API_OPERATIONS.find((entry) => entry.operationId === 'updateSttConfig');
+    expect(operation?.description).toContain(STT_CREDENTIAL_WEB_CONSOLE_ONLY);
+    expect(JSON.stringify(operation?.responses[403] ?? null)).toContain(JSON.stringify(STT_CREDENTIAL_WEB_CONSOLE_ONLY_REFUSED).slice(1, -1));
+    expect(operation?.access).toEqual({ kind: 'PERMISSION', permission: 'CAPTURE_CONFIG' });
   });
 });
 

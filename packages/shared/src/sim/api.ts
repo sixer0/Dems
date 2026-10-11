@@ -759,7 +759,8 @@ function editCaptureConfig({ store, clock, deviceConsole }: SimApiTarget, change
 }
 
 /**
- * `403 NOT_PERMITTED` of the three credential-carrying operations (89, 95, 96) inside a tablet or
+ * `403 NOT_PERMITTED` of the three credential-carrying operations (89, 95, 96) - and of operation 91
+ * when its body carries `credential` (S99-09) - inside a tablet or
  * phone app (C3 §2.6 "Simulator"; D80(3)): the same code and reason as the Core server's condition
  * `WEB_CONSOLE_SESSION`. Decided before the body is looked at.
  */
@@ -1066,13 +1067,18 @@ const STT_ROUTES: readonly Route[] = [
   {
     method: 'POST',
     pattern: /^\/api\/v1\/transcription\/config$/,
-    handle: ({ store, clock }, _params, body) => {
+    handle: (target, _params, body) => {
+      const { store, clock } = target;
       const state = store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, STT_DENIED);
       if (refused) return refused;
       const parsed = SttConfigUpdateRequestSchema.safeParse(body);
       // E-30: the refusal names where, never what — the body may hold a credential.
       if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      // S99-09 (ruling D241): a body that carries `credential` is web console only, as on the Core server -
+      // asked of the parsed body's member, before anything of it is used. A body without it is the tablet's to send.
+      const webOnly = parsed.data.credential === undefined ? null : webConsoleOnlyRefusal(target);
+      if (webOnly) return webOnly;
       const now = clock.now();
       const held = simSttConfig(store, now);
       const plan = planSttConfigUpdate({ ...held.values, credentialKind: held.credentialKind, revision: held.revision }, parsed.data);

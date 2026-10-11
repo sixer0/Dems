@@ -76,3 +76,21 @@ Second BLUEPRINT_APPROVAL gate (row 40 / RF-9): blueprint rev 2.0 with the six n
 | checkpoint suites | test-expert | **sonnet (override)** | running | whole suites once, report `test/02_checkpoint_wave_c_suites.md` | D122 |
 
 Model override recorded (CLAUDE.md §11 rule 3): `test-expert` run on Sonnet for the checkpoint suite run. Reason: the user's instruction D122 (long test runs go to a separate Sonnet agent); the task is mechanical (run commands, quote output), no judgment. This departs from §11 rule 1 ("never downgrade a verification-phase agent") on the user's explicit instruction; the verification-phase rows of the final chain stay on the session model.
+
+## 2026-10-10 .. 2026-10-12 — controller summary after the pause (detail per delegation: decisions D132..D241)
+
+| Phase | Delegations (agent: what) | Model overrides (CLAUDE.md section 11) | Result |
+|---|---|---|---|
+| Waves C-F | coder-execution drivers per row; six senior-code-reviewer reviews; fix drivers | none | commits `e296ce7`, `abf742f`, `f293221` |
+| Gates round 1 | six verifier sessions, one at a time | none | 2 PASS WITH CONDITIONS, 4 FAIL |
+| Wave H | fix drivers A-F, R, Z1, Z2, H-Y | none | `74fd1f1` |
+| Re-gates 70, 75 (x2), 81, 89, 94 | verifier | none | reports `09b`, `10b`, `10c`, `11b`, `12b`, `13b` |
+| Waves I, K, L, M | coder-execution: server / web (with a browser from wave L) / mobile (with devices from wave K) + closing passes | docs errata passes and small specified passes on `sonnet` (mechanical, checkable against notes) | `57b80a9`, `b05106b`, `7b1aded`, `a5d75ed` |
+| Pre-commit runs | test-expert as TEST RUNNER on `sonnet` — a downgrade of a tier-R agent by the USER's instruction D122 ("pisahkan ke agent sonnet"); it runs and reports, never judges or fixes | `sonnet` (user instruction; recorded as an exception to rule 1) | `test/05`..`12`, `16` |
+| Environment agents, git checkpoints | coder-execution / git-specialist | env on `sonnet` once the procedure was written (wave M); git-specialist is tier D | notes `initialization/04`..`10`; checkpoint notes |
+| Targeted + final re-checks, confirmation | verifier, one session per gate | none | `09c/d`, `10d/e`, `12c/d`, `13c/d`, `14` |
+| Suite consolidation | test-expert: audit, then five owners (one per workspace) | none | `test/13`..`15`; `951c80e` |
+| M9 rows 95, 97 | test-expert (runner, `sonnet`, D122); coder-execution x2; git-specialist (20 commits) | as stated | `test/16`; notes 162, 163 |
+| Final chain 98-101 | verifier, security-review, test-expert, senior-code-reviewer — none downgraded | none | `verification/01`, `02`; `test/17`; `gateway_check/22` |
+
+Gates named and recovered during the run: none of `RT_BYPASS` / `BLUEPRINT_NOT_APPROVED`; `INCOMPLETE_DOCS_MISSING` did not occur (every listed artifact was found before advancing). Controller lapses are listed in D219 (fixture account quoted in a note, redacted before commit), D240 (row 97 brief; overlapping whole suites during the consolidation) and D241 (D163's letter; trackers; parallel final chain; one over-stated confirmation).

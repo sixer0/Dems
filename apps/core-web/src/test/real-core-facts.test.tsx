@@ -8,7 +8,7 @@ import { describe, afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } 
 import { cleanup, render, screen, within, act, configure } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
+import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { type SocketLike } from '@dems/shared/realtime'
 import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
@@ -49,7 +49,7 @@ import { DEMO_NOW, mount, newSim, page, realCore, useRealCorePages } from '@/tes
 // | Dashboard card, platform column | "TPM 2.0 Verified" | "NOT REPORTED" | "card platform" |
 // | Header pill checklist | "TPM 2.0 and Secure Boot OK", "Trusted time source OK" | "Not reported", "Host system clock" | "pill" |
 // | Network & Time banner, chip, source, tiers, facts, offset | "RTC holdover", stratum 0, "Last sync 07:00:00" | host clock, "Not configured", nothing measured | "network & time" |
-// | Session Monitor, Session Size | 47 MB (the simulator's formula) against 18 MB durable | the durable bytes of `captureCheckpoints`; none stated = a dash | "session size" |
+// | Session Monitor, Session Size | 47 MB (the simulator's formula) against 34 MB durable | the durable bytes of `captureCheckpoints`; none stated = a dash | "session size" |
 // | Session Monitor timeline while connecting | "Recording Started" | not drawn until the Core says a fragment is durable | "timeline" |
 //
 // Every case has its CONTROL: the simulated lane keeps its demonstration figures.
@@ -246,12 +246,13 @@ describe("the Dashboard, the header checklist, Network & Time and the Monitor of
   })
 
   describe('G75b-06 Session Monitor: the session size is the durable bytes', () => {
-    const checkpoints = { fragments: 15, bytes: 18_000_000, lastAt: DEMO_NOW, cameras: [] }
+    // V98-09 (batch N): the CONTRACT'S example (34 MB durable), at this test's instant.
+    const checkpoints = { ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, cameras: [...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE.cameras], lastAt: DEMO_NOW }
 
-    it('own capture with checkpoints: 18 MB (the checkpoint), not the 47 MB of `bytesWritten`', async () => {
+    it('own capture with checkpoints: 34 MB (the checkpoint of the contract example), not the 47 MB of `bytesWritten`', async () => {
       mount('/session', 'recording', (sim) => setSession(sim, { captureDurable: true, bytesWritten: 47_000_000, captureCheckpoints: checkpoints }))
       const size = await screen.findByTestId('sm-session-size', {}, FIND)
-      expect(size).toHaveTextContent('18 MB')
+      expect(size).toHaveTextContent('34 MB')
       expect(size).not.toHaveTextContent('47')
     })
 
@@ -525,7 +526,8 @@ describe("platform facts by name, the restart fault, the session size, a blocked
   })
 
   describe('3. Storage page: the session size of a session of the Core\'s own capture', () => {
-    const checkpoints = { fragments: 15, bytes: 2_500_000_000, lastAt: DEMO_NOW, cameras: [] }
+    // V98-09 (batch N): the CONTRACT'S example with a figure of the size this card rounds to GB.
+    const checkpoints = { ...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, cameras: [...SESSION_CAPTURE_CHECKPOINTS_EXAMPLE.cameras], bytes: 2_500_000_000, lastAt: DEMO_NOW }
 
     it('with checkpoints: the durable bytes (2.50 GB), not `bytesWritten` (7.00 GB)', async () => {
       mount('/storage', 'recording', (sim) => setSession(sim, { captureDurable: true, bytesWritten: 7_000_000_000, captureCheckpoints: checkpoints }))

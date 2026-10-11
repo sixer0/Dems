@@ -459,26 +459,16 @@ export interface V2Row {
 
 /** The rows of today's contract, in a fixed order. The transcript row exists only when the answer judges one. */
 /**
- * How ONE part of a camera file's row is worded (fix wave K, G89b-06). The file row has three
- * parts and each belongs to one check of the same result: stored bytes = V-04, decrypted bytes =
- * V-05, fragment chain = V-06. A part whose check the verifier did NOT RUN (`SKIPPED`: an earlier
- * check failed, no session key, outside the run) was not checked - it reads "Not run", never FAIL:
- * a skipped V-05 is not a failure of the plaintext (ev D). Without a check list, or with the check
- * run, the row's own flag decides as before. The file row can also say so itself
- * (`plainChecked === false`, PE-WK-46): that is per FILE, so it decides the decrypted-bytes part
- * first, before the result's check list (the web reads it the same way).
+ * How ONE part of a camera file's row is worded: THE SHARED RULE (batch N; final code review
+ * R101-03, ruling D241). The three parts each belong to one check of the same result - stored bytes
+ * = V-04, decrypted bytes = V-05, fragment chain = V-06 - and what a part says is decided in
+ * `@dems/shared/evidence-rules`, once for these apps and the web console: `PASS` when the answer
+ * states it; `NOT_RUN` - drawn "Not run", never FAIL - when the answer states the check did not run
+ * for the part (`plainChecked === false` of the file row, read by name, or the part's check
+ * `SKIPPED`); else `FAIL`. This file re-exports it under the names its callers use; the rule's
+ * vectors are in `packages/shared/test/evidence-verify.test.ts`.
  */
-export type V2FilePart = 'stored' | 'plain' | 'chain';
-export const V2_FILE_PART_CHECK = { stored: 'V-04', plain: 'V-05', chain: 'V-06' } as const satisfies Record<V2FilePart, V2KnownCheckId>;
-export type V2PartOutcome = 'PASS' | 'FAIL' | 'SKIPPED';
-
-export function v2FilePartOutcome(file: Pick<V2FileRow, 'storedOk' | 'plainOk' | 'chainOk' | 'plainChecked'>, part: V2FilePart, checks: readonly Pick<V2Check, 'id' | 'status'>[] | null): V2PartOutcome {
-  const ok = part === 'stored' ? file.storedOk : part === 'plain' ? file.plainOk : file.chainOk;
-  if (ok) return 'PASS';
-  if (part === 'plain' && file.plainChecked === false) return 'SKIPPED';
-  const check = checks?.find((entry) => entry.id === V2_FILE_PART_CHECK[part]) ?? null;
-  return check !== null && check.status === 'SKIPPED' ? 'SKIPPED' : 'FAIL';
-}
+export { V2_FILE_PART_CHECK, v2FilePartOutcome, type V2FilePart, type V2PartOutcome } from '@dems/shared/evidence-rules';
 
 export function v2Rows(answer: VerifyV2Answer): V2Row[] {
   const rows: V2Row[] = answer.files.map((file) => ({ id: `file:${file.trackId}`, ok: file.ok, file }));

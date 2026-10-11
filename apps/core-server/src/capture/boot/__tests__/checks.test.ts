@@ -2,6 +2,7 @@
 // AC-3; capture spec §A.1.2). No file is read and no process is started here: every fact is handed in.
 // One refusal test per rule, each beside the configuration that passes (the control).
 import { CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
+import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { CaptureOperation } from '../../adapters/kinds';
 import type { ProgramFacts } from '../../adapters/local';
@@ -73,6 +74,7 @@ function scene(overrides: Partial<Omit<CaptureBootDeps, 'sinks'>> & { readonly c
     probeEvidenceVolume: () => (calls.push('volume'), overrides.volume ?? goodVolume()),
     signingKeyProblem: () => (calls.push('key'), null),
     signingKeyIsDevelopment: () => false,
+    demoPasswordOperators: async () => 0,
     handshake: async () => (calls.push('handshake'), overrides.hello ?? HELLO),
     ...overrides,
     sinks: recorded.sinks,
@@ -300,6 +302,46 @@ describe('F-M7 R88-08 (3): a development signing key never signs for a productio
     await expect(runCaptureBootChecks(development.deps)).resolves.toMatchObject({ operation: 'REAL_DEVELOPMENT' });
     const production = scene({ signingKeyIsDevelopment: () => false } as never);
     await expect(runCaptureBootChecks(production.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+  });
+});
+
+// ── Batch N (security review row 99, finding S99-01 HIGH; ruling D241) ───────────────────────────
+describe('S99-01: a production Core does not start while an operator still has the published demo password', () => {
+  it('REAL_PRODUCTION with 3 such operators: REFUSED by name, the COUNT is said and logged, the worker is not started', async () => {
+    const { deps, calls, recorded } = scene({ demoPasswordOperators: async () => (calls.push('operators'), 3) });
+    expect(deps.decision.operation).toBe('REAL_PRODUCTION');
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', reason: 'operators=3' });
+    expect(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION).toBe('CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION');
+    // After the file checks and the key, before any process is started.
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'operators']);
+    expect(recorded.lines.at(-1)).toMatchObject({ level: 'error', fields: { code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', operation: 'REAL_PRODUCTION', operators: 3 } });
+    expect(recorded.persisted.at(-1)).toMatchObject({ level: 'error', source: 'capture.boot', code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION' });
+    // The text names the remedy and the count; the published password itself is in no line, no error-log row and no message.
+    const password: string = DEMO_OPERATOR_PASSWORD;
+    expect(failure.message).toMatch(/3 operator/);
+    expect(JSON.stringify([failure.message, recorded.lines, recorded.persisted]).includes(password)).toBe(false);
+  });
+
+  it('FAIL CLOSED: REAL_PRODUCTION whose operators cannot be read (null) is refused under the same code, reason OPERATORS_UNREADABLE', async () => {
+    const { deps, calls } = scene({ demoPasswordOperators: async () => null });
+    expect(await refusalOf(deps)).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', reason: 'OPERATORS_UNREADABLE' });
+    expect(calls).not.toContain('handshake');
+    const throwing = scene({ demoPasswordOperators: async () => Promise.reject(new Error('the pool is closed')) });
+    expect(await refusalOf(throwing.deps)).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION', reason: 'OPERATORS_UNREADABLE' });
+    expect(JSON.stringify(throwing.recorded.lines)).not.toContain('the pool is closed');
+  });
+
+  it('CONTROL: REAL_PRODUCTION with no such operator passes; REAL_DEVELOPMENT and SIMULATED never ask', async () => {
+    const production = scene({ demoPasswordOperators: async () => (production.calls.push('operators'), 0) });
+    await expect(runCaptureBootChecks(production.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(production.calls).toEqual(['inspect', 'volume', 'key', 'operators', 'handshake']);
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated', demoControls: true }] as const) {
+      const other = scene({ config, demoPasswordOperators: async () => (other.calls.push('operators'), 9) });
+      await expect(runCaptureBootChecks(other.deps)).resolves.toMatchObject({ operation: other.deps.decision.operation });
+      expect(other.deps.decision.operation).not.toBe('REAL_PRODUCTION');
+      expect(other.calls).not.toContain('operators');
+    }
   });
 });
 

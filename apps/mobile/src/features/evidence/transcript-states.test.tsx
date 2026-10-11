@@ -7,7 +7,8 @@ import type { ReactNode } from 'react';
 import { RuntimeTestProviders, createTestSim } from '@/runtime/testing/test-sim';
 import { readItemV2, TRANSCRIPT_MODEL_MEMBER, readTranscriptModel } from './item-v2';
 import { transcriptQueryKey, transcriptRevisionsQueryKey } from './transcript';
-import { paneStateOf, sealedWithoutDocument, type TranscriptDocument, REVISION_REASON_MEMBER, type TranscriptRevision } from './transcript-model';
+import * as sharedRules from '@dems/shared/evidence-rules';
+import { paneStateOf, sealedWithoutDocument, type TranscriptDocument, REVISION_REASON_MEMBER, readRevisionReason, type TranscriptRevision } from './transcript-model';
 import { TranscriptPane } from './transcript-pane';
 import { EVIDENCE_EXPORT_DESTINATION_DEFAULT_EXAMPLE, EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE, EVIDENCE_TRANSCRIPT_MODEL_SERVER_EXAMPLE, EXPORT_ACCEPTED_NO_ARCHIVE_EXAMPLE } from '@dems/shared/api';
 import { Stepper } from '@/components/composed/stepper';
@@ -15,7 +16,6 @@ import { legendDevelopmentClass } from './audio-source-band';
 import { EXPORT_STEPS, initialExportDestination } from './evidence-model';
 import { answeredArchiveOnCoreOf } from './export-job-model';
 import { readDetailFacts } from './item-facts';
-import { V2_FILE_PART_CHECK, v2FilePartOutcome } from './verify-v2';
 
 const EV = 'EV-20261001-0014';
 const H = (char: string): string => char.repeat(64);
@@ -141,10 +141,11 @@ describe('the transcript model (G81b-06; contract_wave_k.md S2 section 1)', () =
     expect(readItemV2({ [TRANSCRIPT_MODEL_MEMBER]: EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE }).transcriptModel?.name).toBe(EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE.name);
     // Absent, or not the contract's shape: NOT STATED - never a default.
     expect(readItemV2({}).transcriptModel).toBeNull();
-    expect(readTranscriptModel({ name: 'x' })).toBeNull();
-    expect(readTranscriptModel({ ...EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE, reportedByServer: 'no' })).toBeNull();
-    // A hash that is no SHA-256 is not a hash.
-    expect(readTranscriptModel({ ...EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE, modelSha256: 'abc' })?.modelSha256).toBeNull();
+    expect(readItemV2({ [TRANSCRIPT_MODEL_MEMBER]: { name: 'x' } }).transcriptModel).toBeNull();
+    // R101-03 (ruling D241): the reader and the member name ARE the shared ones - the bounds and the "not stated" cases
+    // are held once, in packages/shared/test/evidence-verify.test.ts, for these apps and the web console.
+    expect(readTranscriptModel).toBe(sharedRules.readTranscriptModel);
+    expect(TRANSCRIPT_MODEL_MEMBER).toBe(sharedRules.TRANSCRIPT_MODEL_MEMBER);
   });
 
   it('a LOCAL model: its name, the version "declared by the installation", the quantisation and the file hash', () => {
@@ -183,6 +184,9 @@ describe('the revision list (G81b-09)', () => {
 
   it('the reason the answer states is drawn under the revision; the member has ONE name', () => {
     expect(REVISION_REASON_MEMBER).toBe('reason');
+    // R101-03 (ruling D241): the reading is the shared one (trimmed, bounded after trimming) - what the web console reads too.
+    expect(REVISION_REASON_MEMBER).toBe(sharedRules.REVISION_REASON_MEMBER);
+    expect(readRevisionReason).toBe(sharedRules.readRevisionReason);
     pane({}, [revision({ reason: 'Street name corrected' })]);
     expect(screen.getByTestId('evidence-transcript-revision-reason-1')).toHaveTextContent('Reason: Street name corrected');
   });
@@ -191,32 +195,6 @@ describe('the revision list (G81b-09)', () => {
     pane({}, [revision({})]);
     expect(screen.getByTestId('evidence-transcript-revision-1')).toBeTruthy();
     expect(screen.queryByTestId(/^evidence-transcript-revision-reason-/)).toBeNull();
-  });
-});
-
-describe('the file row of a verify result (G89b-06)', () => {
-  const file = { storedOk: false, plainOk: false, chainOk: false };
-  const checks = [
-    { id: 'V-04', status: 'FAIL' },
-    { id: 'V-05', status: 'SKIPPED' },
-    { id: 'V-06', status: 'FAIL' },
-  ] as const;
-
-  it('the parts and their checks: stored bytes V-04, decrypted bytes V-05, fragment chain V-06', () => {
-    expect(V2_FILE_PART_CHECK).toEqual({ stored: 'V-04', plain: 'V-05', chain: 'V-06' });
-  });
-
-  it('the tamper demonstration: stored bytes FAIL, decrypted bytes NOT RUN (V-05 was skipped), fragment chain FAIL', () => {
-    expect(v2FilePartOutcome(file, 'stored', checks)).toBe('FAIL');
-    expect(v2FilePartOutcome(file, 'plain', checks)).toBe('SKIPPED');
-    expect(v2FilePartOutcome(file, 'chain', checks)).toBe('FAIL');
-  });
-
-  it('CONTROL: a part whose check RAN and failed is FAIL; a part that passed is PASS whatever the check list says; no check list = the flag', () => {
-    expect(v2FilePartOutcome(file, 'plain', [{ id: 'V-05', status: 'FAIL' }])).toBe('FAIL');
-    expect(v2FilePartOutcome({ ...file, plainOk: true }, 'plain', checks)).toBe('PASS');
-    expect(v2FilePartOutcome(file, 'plain', null)).toBe('FAIL');
-    expect(v2FilePartOutcome(file, 'plain', [])).toBe('FAIL');
   });
 });
 
