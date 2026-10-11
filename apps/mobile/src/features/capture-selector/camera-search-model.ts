@@ -126,9 +126,6 @@ export function searchGate(input: SearchGateInput): SearchGateState {
   return 'allowed';
 }
 
-/** The gated control of flow 9 on these clients (§11; check `M4-DISC-RBAC-T` / `-P`). */
-export const SEARCH_GATED_CONTROLS = ['G13'] as const;
-
 /**
  * The body of the panel. `checking` and `denied` come from the gate; the others from operation 94's
  * answer, never from a client clock:

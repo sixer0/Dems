@@ -23,8 +23,6 @@ const DAY = 24 * HOUR;
 /** A `jsonb` value as a bind parameter: the driver would turn a JavaScript array into an array literal. */
 export const json = (value: unknown): string => JSON.stringify(value);
 export const hash32 = (marker: string): Buffer => sha256(`fixture:${marker}`);
-/** A 128-hex-character value (64 raw bytes): the Ed25519 signature shape. */
-export const hex128 = (marker: string): string => sha256Hex(`fixture:${marker}`) + sha256Hex(`fixture2:${marker}`);
 export const hex64 = (marker: string): string => sha256Hex(`fixture:${marker}`);
 
 /** `INSERT INTO public.<table> (...) VALUES ($1, ...)`. Table and column names are constants of this file. */

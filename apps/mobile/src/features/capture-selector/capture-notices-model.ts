@@ -289,9 +289,6 @@ export function inputScanOf(body: unknown): CaptureInputScan | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** The gated control of flow 13 on these clients (§11; check `M4-MIC-RESCAN-T` / `-P`). */
-export const RESCAN_GATED_CONTROLS = ['G17'] as const;
-
 // ── A capture fault by its reason (fix pass F-M5, review R74-03) ─────────────────────────────────
 
 /**

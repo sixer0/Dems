@@ -70,8 +70,6 @@ export interface ConnectFormValues {
   password: string
 }
 
-export const EMPTY_CONNECT_FORM: ConnectFormValues = { username: '', password: '' }
-
 /** A message key under `common.captureConnect`: what is wrong with a field. Never the field's text. */
 export type ConnectFieldMessage = 'required' | 'charset'
 

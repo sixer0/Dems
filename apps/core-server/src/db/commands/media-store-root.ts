@@ -25,8 +25,6 @@
  */
 import { isAbsolute, resolve } from 'node:path';
 
-/** The table, for a message. */
-export const MEDIA_STORE_TABLE = 'core_media_store';
 /** The longest path the table admits (`core_media_store_root_check`). */
 export const MEDIA_STORE_ROOT_MAX_LENGTH = 1024;
 

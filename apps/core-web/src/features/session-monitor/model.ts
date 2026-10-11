@@ -408,14 +408,6 @@ export function micTiles(mics: SimState['mics']): MicTileModel[] {
   return mics.map((mic) => ({ id: mic.id, name: mic.name, state: mic.state, clipLatched: mic.clipLatched }))
 }
 
-/** The short name of a mic input ("MIC 1"): the key under `common.devices`. */
-export const MIC_INPUT_LABEL_KEY = { 'MIC-01': 'common.devices.mic1', 'MIC-02': 'common.devices.mic2' } as const
-
-/** `MIC_INPUT_LABEL_KEY` for a value read from a payload; `null` when it is not a mic input. */
-export function micInputLabelKey(value: unknown): (typeof MIC_INPUT_LABEL_KEY)[keyof typeof MIC_INPUT_LABEL_KEY] | null {
-  return value === 'MIC-01' || value === 'MIC-02' ? MIC_INPUT_LABEL_KEY[value] : null
-}
-
 /** Dot tone of a microphone (research/04 §3.2 O: READY, NO SIGNAL, CLIP). */
 export function micTone(mic: MicTileModel): 'success' | 'warning' | 'danger' | 'muted' {
   if (mic.state === 'NO_SIGNAL') return 'muted'

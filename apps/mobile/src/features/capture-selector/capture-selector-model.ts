@@ -270,7 +270,6 @@ export function selectorGate(input: SelectorGateInput): SelectorGateState {
 
 /** The gated controls of flow 1 this row draws on the tablet and the phone (§11; check M4-PC-1). */
 export const SELECTOR_GATED_CONTROLS = ['G1', 'G2', 'G3'] as const;
-export type SelectorGatedControl = (typeof SELECTOR_GATED_CONTROLS)[number];
 
 // ── Commands and their answers (ops 79, 80) ──────────────────────────────────────────────
 

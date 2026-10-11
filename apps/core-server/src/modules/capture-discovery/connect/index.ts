@@ -90,9 +90,6 @@ export {
 } from './service';
 export { INSERT_CAPTURE_CREDENTIAL, UPSERT_CAPTURE_CREDENTIAL } from './statements';
 
-/** The operations this folder answers. */
-export const CAPTURE_CONNECT_OPERATIONS = ['testCaptureCandidateConnection', 'adoptCaptureCandidate', 'setCaptureDeviceCredential'] as const;
-
 /**
  * The longest account name the table takes (`capture_device_credentials_username_check`). ONE bound
  * (decision D117; review row 69, finding R69-11): the shared constant `CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH`

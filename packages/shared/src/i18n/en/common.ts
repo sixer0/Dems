@@ -865,7 +865,6 @@ export const common = {
       localMicrophone: "This Mac's microphone",
       test: 'Test source',
     },
-    notAllowed: 'This source can only be used in the development configuration.',
     verify: {
       development: 'DEVELOPMENT SOURCES — this package was not recorded from production devices.',
       production: 'Sources: declared as production devices by the Core that sealed this package.',

@@ -628,8 +628,6 @@ export const evidence = {
     development: 'Signed with a DEVELOPMENT key — not a production signature',
     notEstablished: 'Signing key: not established — the signature or its certificate did not verify',
     noticesTitle: 'Not covered by the package signature',
-    /** The signature line of the evidence detail, after the item was verified with a development-key answer. */
-    detailDevelopment: 'Signed with a DEVELOPMENT key — not a production signature',
   },
 
   /**
@@ -720,7 +718,6 @@ export const evidence = {
       coreRecordLine: "The Core server's record of this item.",
       noSpeechChip: 'No speech detected',
       signatureSimulated: 'Manifest signature (simulated stand-in)',
-      sourcesV1Title: 'Sources',
     },
   },
 } as const satisfies ResourceTree;

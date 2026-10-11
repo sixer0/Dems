@@ -128,13 +128,6 @@ export function useMicInputName(): (inputId: string) => string {
   return useCallback((inputId: string) => micInputName(t, inputId, realCapture && locals.split(',').includes(inputId)), [t, realCapture, locals])
 }
 
-/** The pre-check items that stand for a capture source (ux §8f.2 "Pre-check": camera and microphone rows). */
-export type SourcePrecheckId = 'LENS_1' | 'LENS_2' | 'MIC_1' | 'MIC_2' | 'MIC_PRIMARY' | 'MIC_STANDBY'
-
-export function isSourcePrecheckId(id: string): id is SourcePrecheckId {
-  return id === 'LENS_1' || id === 'LENS_2' || id === 'MIC_1' || id === 'MIC_2' || id === 'MIC_PRIMARY' || id === 'MIC_STANDBY'
-}
-
 /**
  * The device a pre-check row stands for: the selector the open session was created under (the
  * session's `captureConfig` snapshot of operation 27), else the stored one — the two are equal while
