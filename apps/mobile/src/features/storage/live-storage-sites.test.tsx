@@ -9,14 +9,12 @@
 import './testing/storage-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { rateLimited, refusal } from '@dems/shared/live/testing';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { runtimeLog } from '@/runtime';
 import { renderLiveStorage, renderSimulatedStorage, resetLiveStorageBed, type LiveStorageBed, type LiveStorageBedOptions } from './testing/live-storage-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveStorageBed | null = null;
 

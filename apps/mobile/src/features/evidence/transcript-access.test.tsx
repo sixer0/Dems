@@ -23,8 +23,6 @@ import { transcriptQueryKey, transcriptRevisionsQueryKey } from './transcript';
 import type { TranscriptDocument } from './transcript-model';
 import { TranscriptPane } from './transcript-pane';
 
-jest.setTimeout(30_000);
-
 let bed: LiveEvidenceBed | null = null;
 
 beforeEach(async () => {

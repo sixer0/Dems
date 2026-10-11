@@ -37,8 +37,6 @@ import { evidenceMediaRefKey } from './use-evidence-media-ref';
 import { exportJobQueryKey } from './export-job';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
 
-jest.setTimeout(30_000);
-
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('live evidence export', () => {
 unmountBeforeTheHooksOfThisGroup();

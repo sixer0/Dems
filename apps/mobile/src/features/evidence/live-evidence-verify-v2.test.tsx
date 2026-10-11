@@ -14,7 +14,7 @@
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen } from '@testing-library/react-native';
 import { en } from '@dems/shared/i18n';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
@@ -22,8 +22,6 @@ import { evidenceEn } from './i18n';
 import { VERIFY_ASK_MS } from './integrity-tab';
 import { renderLiveEvidence, resetLiveEvidenceBed, type LiveEvidenceBed } from './testing/live-evidence-bed';
 import { RECORDED_VERIFY_V2 } from './testing/verify-v2-recorded';
-
-jest.setTimeout(30_000);
 
 let bed: LiveEvidenceBed | null = null;
 

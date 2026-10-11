@@ -12,15 +12,13 @@
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { EXPORT_AUTH_MS } from './export-sheet';
 import { VERIFY_ASK_MS } from './integrity-tab';
 import { pressMenuItem } from './testing/kit-helpers';
 import { renderLiveEvidence, resetLiveEvidenceBed, type LiveEvidenceBed } from './testing/live-evidence-bed';
 import { SCRAMBLE_MS } from './use-scramble';
-
-jest.setTimeout(30_000);
 
 let bed: LiveEvidenceBed | null = null;
 

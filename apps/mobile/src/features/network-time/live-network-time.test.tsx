@@ -12,15 +12,13 @@
 import './testing/network-time-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { renderLiveStorage, renderSimulatedStorage, resetLiveStorageBed, type LiveStorageBed, type LiveStorageBedOptions } from '@/features/storage/testing/live-storage-bed';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { networkTimeEn } from './i18n';
-
-jest.setTimeout(30_000);
 
 let bed: LiveStorageBed | null = null;
 

@@ -9,15 +9,13 @@
 import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import { rateLimited } from '@dems/shared/live/testing';
 import { FaultKind } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle as flushSimulated } from './testing/devices-harness';
 import { notPermitted, renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed, type LiveDevicesBedOptions } from './testing/live-devices-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveDevicesBed | null = null;
 

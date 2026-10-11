@@ -12,7 +12,7 @@
 import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { en } from '@dems/shared/i18n';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
@@ -20,8 +20,6 @@ import { HealthChart } from './health-chart';
 import { HEALTH_METRIC, type HealthMetric, type HealthSeries } from './sim-adapter';
 import { renderDevicesApp, settle } from './testing/devices-harness';
 import { renderLiveDevices, resetLiveDevicesBed, type LiveDevicesBed } from './testing/live-devices-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveDevicesBed | null = null;
 

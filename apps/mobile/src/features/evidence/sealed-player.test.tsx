@@ -24,8 +24,6 @@ import { seekAvailabilityOf, bandSegments, segmentAt } from './sealed-playback';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
 import { AppState, ScrollView, type AppStateStatus } from 'react-native';
 
-jest.setTimeout(40_000);
-
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('the indexed view, a renewal, a player error, the action bar and the legend', () => {
 unmountBeforeTheHooksOfThisGroup();

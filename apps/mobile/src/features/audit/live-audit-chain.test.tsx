@@ -9,7 +9,7 @@
 import './testing/audit-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen } from '@testing-library/react-native';
 import type { AuditChainLineageEntry, AuditChainStatus } from '@dems/shared/api';
 import { OUTAGE, rateLimited, refusal, type FakeAnswer } from '@dems/shared/live/testing';
@@ -17,8 +17,6 @@ import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { FaultKind, selectAuditChainBreak } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderLiveAudit, resetLiveAuditBed, type LiveAuditBed, type LiveAuditBedOptions } from './testing/live-audit-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveAuditBed | null = null;
 

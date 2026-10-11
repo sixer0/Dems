@@ -43,12 +43,6 @@ import { PAIR_TIMELINE } from './pairing-model';
 
 jest.mock('@/features/home/pulse-ring', () => ({ PulseRing: () => null }));
 
-// Row CF-M1 (controller note after CF-M2's suite run): every test here mounts the whole route tree
-// with the real Pair screen, so under a loaded host one test passed jest's default 5 s and failed
-// while passing alone. No test waits on real time (the clocks are the simulator's and the routing
-// queue's microtasks); the budget is only for slow rendering, so it is set per file, generously.
-jest.setTimeout(30_000);
-
 const LIVE_UNPAIRED: PairingInfo = { required: true, state: 'UNPAIRED', notice: null, deviceId: null };
 const LIVE_REVOKED: PairingInfo = { required: true, state: 'UNPAIRED', notice: 'revoked', deviceId: null };
 const LIVE_PAIRED: PairingInfo = { required: true, state: 'PAIRED', notice: null, deviceId: 'DEV-0002' };

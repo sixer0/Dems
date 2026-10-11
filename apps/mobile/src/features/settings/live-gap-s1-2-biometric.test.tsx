@@ -22,8 +22,6 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { SECURE_ITEM_KEYS } from '@/runtime/secure-credentials';
 import { BIO_TOKENS, renderLiveSettings, resetLiveSettingsBed, type LiveSettingsBed } from './testing/live-settings-bed';
 
-jest.setTimeout(30_000);
-
 let bed: LiveSettingsBed | null = null;
 const store = () => globalThis.__DEMS_SECURE_STORE_MOCK__;
 

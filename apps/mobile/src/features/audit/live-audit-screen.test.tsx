@@ -14,7 +14,7 @@
 import './testing/audit-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen, within } from '@testing-library/react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { AUTH_MAX_FAILURES, OPERATORS, type AuditRow } from '@dems/shared/sim';
@@ -22,8 +22,6 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderAuditApp, settle as flushSimulated } from './testing/audit-harness';
 import { MARKER_PASSWORD, renderLiveAudit, resetLiveAuditBed, type LiveAuditBed, type LiveAuditBedOptions } from './testing/live-audit-bed';
 import type { TestSim } from '@/runtime/testing/test-sim';
-
-jest.setTimeout(30_000);
 
 let bed: LiveAuditBed | null = null;
 

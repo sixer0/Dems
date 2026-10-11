@@ -9,15 +9,13 @@
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { fireEvent, screen } from '@testing-library/react-native';
 import { OUTAGE } from '@dems/shared/live/testing';
 import { toWibIso } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { evidenceRecordJson } from './metadata-tab';
 import { renderLiveEvidence, resetLiveEvidenceBed, type LiveEvidenceBed } from './testing/live-evidence-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveEvidenceBed | null = null;
 

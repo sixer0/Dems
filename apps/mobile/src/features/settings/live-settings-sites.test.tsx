@@ -10,14 +10,12 @@
 import './testing/settings-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { rateLimited } from '@dems/shared/live/testing';
 import { FaultKind, ROLE_PERMISSIONS, ScenarioName } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { notPermitted, renderLiveSettings, resetLiveSettingsBed, type LiveSettingsBed, type LiveSettingsBedOptions } from './testing/live-settings-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveSettingsBed | null = null;
 

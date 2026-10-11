@@ -13,14 +13,12 @@
 import './testing/settings-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { SECURE_ITEM_KEYS } from '@/runtime/secure-credentials';
 import { renderLiveSettings, renderSimulatedSettings, resetLiveSettingsBed, type LiveSettingsBed, type LiveSettingsBedOptions } from './testing/live-settings-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveSettingsBed | null = null;
 const store = () => globalThis.__DEMS_SECURE_STORE_MOCK__;

@@ -91,12 +91,6 @@ jest.mock('expo-router', () => ({
   useIsFocused: () => true,
 }));
 
-// Row CF-M1 (the same class as the controller's note on `pairing-handoff-routes.test.tsx`): in CF-M1's
-// full mobile run at host load 11, the 423 countdown test passed jest's default 5 s on the slow render of
-// the real Live source and Pair screen, and passed alone. The clocks here are the fake transport's
-// (`elapse`); real time only lets the kit's frames run. The budget is for slow rendering, per file.
-jest.setTimeout(30_000);
-
 /** The marker code (SD-23). Put together here, so that a search of the tree for it finds this line only. */
 const MARKER_CODE = ['604', '173'].join('');
 const WRONG_CODE = '000000';

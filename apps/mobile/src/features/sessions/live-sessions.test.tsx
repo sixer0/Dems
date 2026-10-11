@@ -32,8 +32,6 @@ import {
 import { REFRESH_MS } from './sessions-screen';
 import { renderSessionsApp, settle as settleSimulated } from './testing/sessions-harness';
 
-jest.setTimeout(30_000);
-
 let bed: LiveSummaryBed | null = null;
 
 beforeEach(async () => {

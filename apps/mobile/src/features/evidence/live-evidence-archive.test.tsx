@@ -11,7 +11,7 @@
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { EvidenceStatus } from '@dems/shared/sim';
 import { resetCoreErrorPresenterForTests, runtimeLog } from '@/runtime';
@@ -19,8 +19,6 @@ import { evidenceEn } from './i18n';
 import { renderEvidenceApp, settle as settleSim } from './testing/evidence-harness';
 import { pressMenuItem } from './testing/kit-helpers';
 import { renderLiveEvidence, resetLiveEvidenceBed, type LiveEvidenceBed, type LiveEvidenceBedOptions } from './testing/live-evidence-bed';
-
-jest.setTimeout(30_000);
 
 let bed: LiveEvidenceBed | null = null;
 

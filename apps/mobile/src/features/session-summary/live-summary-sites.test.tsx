@@ -27,8 +27,6 @@ import {
   type LiveSummaryBedOptions,
 } from './testing/live-summary-bed';
 
-jest.setTimeout(30_000);
-
 let bed: LiveSummaryBed | null = null;
 
 beforeEach(async () => {
