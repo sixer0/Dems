@@ -21,7 +21,9 @@
  * asynchronous write would be lost there. An append is bounded to two calls in the steady state
  * (review finding W91-8): the size check for the rotation and the append itself. The folder is
  * made and the mode set to 0600 once per file (again after a rotation or a failed append), not on
- * every entry.
+ * every entry. An append that fails in the steady state (the folder removed from outside, re-check
+ * finding RC-3) prepares the folder again and writes its entry ONCE more; if that fails too, the
+ * entry is in the stream logger only.
  */
 import { appendFileSync, chmodSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -186,7 +188,7 @@ export function createErrorLog(file: string | null, options: ErrorLogOptions = {
     file,
     append(entry) {
       if (file === null) return;
-      try {
+      const write = (): void => {
         if (!prepared) mkdirSync(dirname(file), { recursive: true });
         if (rotateIfLarge(file, rotateBytes)) prepared = false;
         const row = { timestamp: new Date().toISOString(), service: SERVICE_NAME, ...entry };
@@ -197,9 +199,22 @@ export function createErrorLog(file: string | null, options: ErrorLogOptions = {
           chmodSync(file, 0o600);
           prepared = true;
         }
+      };
+      try {
+        write();
       } catch {
-        // The stream logger still has the event. The next append prepares the file again.
+        // A failure in the steady state is most often the folder removed from outside (re-check
+        // finding RC-3): prepare it again and write THIS entry once more, so it is not the one that
+        // is lost. A failure while preparing is not tried twice.
+        const steady = prepared;
         prepared = false;
+        if (!steady) return;
+        try {
+          write();
+        } catch {
+          // The stream logger still has the event. The next append prepares the file again.
+          prepared = false;
+        }
       }
     },
   };

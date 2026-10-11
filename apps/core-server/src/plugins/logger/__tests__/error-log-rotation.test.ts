@@ -97,12 +97,36 @@ describe('the rotation of the persistent error log (HBX-4, W91-8)', () => {
     expect(vi.mocked(fs.chmodSync)).toHaveBeenCalledTimes(1);
   });
 
-  it('a failed append never throws, and the next append prepares the file again', () => {
+  // Re-check finding RC-3 (B12, blueprint row 97): the folder removed from outside after the first
+  // append used to cost the NEXT entry (3 appends, 1 line). The append now prepares the folder again
+  // and writes that entry once more, so only what was in the removed file is gone.
+  it('the folder removed from outside: the next entry is not lost, the file is made again with mode 0600', () => {
     const file = join(dir, 'gone', 'errors.log');
     const log = createErrorLog(file);
     log.append(ENTRY);
     fs.rmSync(join(dir, 'gone'), { recursive: true, force: true });
+    expect(() => log.append({ ...ENTRY, message: 'the entry after the removal' })).not.toThrow();
+    expect(lines(file)).toEqual([expect.objectContaining({ message: 'the entry after the removal' })]);
+    expect(modeOf(file)).toBe('600');
+    log.append(ENTRY);
+    expect(lines(file)).toHaveLength(2);
+    // Steady state again: the third append made no folder call of its own.
+    vi.mocked(fs.mkdirSync).mockClear();
+    log.append(ENTRY);
+    expect(vi.mocked(fs.mkdirSync)).not.toHaveBeenCalled();
+  });
+
+  it('a failed append never throws, also when the second try fails; a later append prepares the file again', () => {
+    const file = join(dir, 'gone', 'errors.log');
+    const log = createErrorLog(file);
+    log.append(ENTRY);
+    // The folder becomes a FILE: neither the first try nor the one after `mkdir` can write.
+    fs.rmSync(join(dir, 'gone'), { recursive: true, force: true });
+    fs.writeFileSync(join(dir, 'gone'), 'not a folder');
     expect(() => log.append(ENTRY)).not.toThrow();
+    expect(fs.readFileSync(join(dir, 'gone'), 'utf8')).toBe('not a folder');
+    // The obstacle goes: the next append writes, exactly once.
+    fs.rmSync(join(dir, 'gone'));
     log.append(ENTRY);
     expect(lines(file)).toHaveLength(1);
   });
