@@ -120,7 +120,8 @@ describe('MODG: the route list of the module equals the registry operations it o
     const gets = CORE_API_OPERATIONS.filter((operation) => operation.method === 'get').length;
     const posts = CORE_API_OPERATIONS.filter((operation) => operation.method === 'post').length;
     console.info(`[row113] registry totals | operations=${CORE_API_OPERATIONS.length} GET=${gets} POST=${posts}`);
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([97, 36, 61]);
+    // 97, 36, 61 until task 4 blueprint row 63 added the two sound-card operations 98 and 99 (both POST).
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([99, 36, 63]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {

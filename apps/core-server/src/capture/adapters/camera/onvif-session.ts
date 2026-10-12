@@ -46,12 +46,30 @@
  * The credential cannot be erased from memory (CR-3: no zeroing is claimed). It is a parameter of
  * the one call; when the call ends the two values are taken off the client object, and nothing
  * the call returns holds them.
+ *
+ * TASK 4 ROW 26 (WP-04; design addendum 2.3, 4.1 a and e, 7.2; logic H-03, H-05, H-11 of the
+ * input-av scheme, `nvr/onvif_client.py:232-256`). Two things were added, both reads:
+ *
+ *   WHICH PROFILE IS A CAMERA'S STREAM. A `REACHABLE` result also names, per video source (lens),
+ *   the profile with the largest pixel area - "main stream" is that rule, not a profile name - with
+ *   the larger picture first: the ONVIF profile token, the video-source token and the announced
+ *   size. The announced ENCODING takes no part in the choice (the bench cameras announce H264 and
+ *   deliver HEVC), and NO PROFILE CODE IS FORMED HERE: a code is the stream's own statement and is
+ *   formed by the stream test from the stream (addendum 7.2; AD-06). A token is device text: it is
+ *   held to one character rule and one length and is otherwise returned unchanged.
+ *
+ *   WHERE THAT STREAM IS. A second facade, `createOnvifStreamLocator`, has one call, `locate`: the
+ *   clock read, the service read and ONE `GetStreamUri` for a named profile token. It answers the
+ *   address the device names, only if it is the host-and-path form on the candidate's own host
+ *   WITHOUT a user part (`credentialFreeLocator`, the rule of the injection point). It is resolved
+ *   at each start of a source and stored nowhere (H-11); it holds no credential, and this file
+ *   still OPENS NO STREAM. The connection test goes on comparing and dropping the address (D82).
  */
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
 import cam from 'onvif/lib/cam.js';
 import type { CaptureTimers } from '../../types';
-import { usingCredential, type SealedCredential } from '../credential';
+import { credentialFreeLocator, usingCredential, type SealedCredential } from '../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import { ConnectionTestOutcome, type CameraCandidate, type ConnectionTestResult } from '../types';
 // The target of a test is worked out in a sibling file that holds no client (pass F-Y): the
@@ -95,6 +113,8 @@ export const OnvifTestReason = {
   STREAM_SCHEME: 'STREAM_SCHEME',
   STREAM_USER_PART: 'STREAM_USER_PART',
   STREAM_HOST_MISMATCH: 'STREAM_HOST_MISMATCH',
+  /** Only from `locate`: an address on the right host that is not the host-and-path form (a query, a fragment, a character outside the rule, too long). */
+  STREAM_LOCATOR_FORM: 'STREAM_LOCATOR_FORM',
   NO_H264_PROFILE: 'NO_H264_PROFILE',
 } as const;
 export type OnvifTestReason = (typeof OnvifTestReason)[keyof typeof OnvifTestReason];
@@ -106,8 +126,28 @@ export type OnvifTestWarning = (typeof OnvifTestWarning)[keyof typeof OnvifTestW
 export const ONVIF_SESSION_READS = ['GetSystemDateAndTime', 'GetServices', 'GetCapabilities', 'GetProfiles', 'GetStreamUri'] as const;
 export type OnvifSessionRead = (typeof ONVIF_SESSION_READS)[number];
 
-/** What one test answers. Codes and counts only: no device text, no locator, no credential member. */
+/**
+ * The stream of one video source as the device announces it (task 4 row 26). The two tokens are
+ * ONVIF tokens, not Core profile codes: 1 to 64 characters of `A-Z a-z 0-9 _ . : -`, unchanged.
+ */
+export interface OnvifStreamProfile {
+  /** The ONVIF profile token: what `locate` is asked with. */
+  readonly token: string;
+  /** The video source (lens) the profile belongs to. Null when the device names none, or one the rule does not admit. */
+  readonly videoSourceToken: string | null;
+  /** The announced picture, whole pixels inside 1 to 16,384. Both null when either is absent or outside: such a profile counts as area 0. */
+  readonly width: number | null;
+  readonly height: number | null;
+}
+
+/** What one test answers. Codes, counts and bounded tokens only: no free device text, no locator, no credential member. */
 export interface OnvifSessionResult extends ConnectionTestResult {
+  /**
+   * One entry per video source, the profile with the largest announced pixel area of that source,
+   * the larger picture first (equal areas: the device's order). Read from EVERY usable profile,
+   * whatever encoding the device announces; empty unless `REACHABLE`.
+   */
+  readonly profiles: readonly OnvifStreamProfile[];
   /** Null for `REACHABLE`. */
   readonly reason: OnvifTestReason | null;
   readonly warnings: readonly OnvifTestWarning[];
@@ -137,9 +177,38 @@ export interface OnvifConnectionTester {
   test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult>;
 }
 
+/** What one `locate` answers. The locator is the one piece of device text: checked, bounded, without a credential. */
+export interface OnvifLocatorResult {
+  /** `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE` or `UNREACHABLE`. Never `NOT_H264`: no codec is judged here. */
+  readonly outcome: ConnectionTestOutcome;
+  /** Null for `REACHABLE`. */
+  readonly reason: OnvifTestReason | null;
+  /** The host-and-path stream locator of the profile, on the candidate's own host, without a user part. Null unless `REACHABLE`. */
+  readonly locator: string | null;
+  readonly reads: readonly OnvifSessionRead[];
+  readonly credentialRequests: number;
+  readonly rejectedCredentialRequests: number;
+}
+
+/** THE SECOND FACADE (task 4 row 26): one call, three reads at most (four when `GetServices` is not answered), nothing else reachable. */
+export interface OnvifStreamLocator {
+  /**
+   * Reads where the stream of ONE profile is, now. Rejects before any request with
+   * `CAPTURE_PROFILE_UNKNOWN` for a token that is not of the token form, and as `test` does for an
+   * aborted signal and for a candidate that may not be contacted. Otherwise it RESOLVES. At most
+   * one request carries the credential, and a refusal of it is final (the lock-out bound of `test`).
+   * Nothing keeps the answer: a caller resolves again at each start of a source.
+   */
+  locate(candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal): Promise<OnvifLocatorResult>;
+}
+
 const PROFILE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
 const STREAM_SCHEME = 'rtsp:';
 const STREAM_ADDRESS_MAX_CHARS = 512;
+/** A locator that leaves this file: visible ASCII only. */
+const LOCATOR_CHARS = /^[\x21-\x7e]+$/;
+/** The largest side of a picture this file believes a device (the syntax limit of both codecs' levels is below it). */
+const PICTURE_SIDE_MAX = 16_384;
 /** The hash names of a Digest challenge the test answers. Anything else is not answered (SEC35-31; P-5). */
 const DIGEST_ALGORITHMS: readonly string[] = ['MD5', 'SHA-256'];
 const NOT_AUTHORIZED = /not\s*authori[sz]ed|unauthori[sz]ed|failedauthentication|authentication\s+(?:failed|required)/i;
@@ -202,12 +271,23 @@ interface ReadProfile {
   readonly token: string;
   readonly h264: boolean;
   readonly gopMs: number | null;
+  /** What the profiles of one video source have in common. Never leaves this file: it may be device text outside the token rule. */
+  readonly sourceKey: string;
+  readonly videoSourceToken: string | null;
+  readonly width: number | null;
+  readonly height: number | null;
 }
+
+const isPictureSide = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= PICTURE_SIDE_MAX;
 
 /**
  * The usable profiles of a `GetProfiles` answer, read by fixed paths (no recursive walk): a
  * profile with a token of the code form, a video source configuration and a video encoder
  * configuration. Everything else of the answer is dropped here.
+ *
+ * The video source and the size (task 4 row 26) never make a profile unusable: a source token
+ * outside the token rule still groups its profiles and is answered as null; a size that is absent,
+ * not whole or outside the bound is answered as null and counts as area 0.
  */
 function usableProfilesOf(answer: unknown, limit: number): ReadProfile[] {
   const list: readonly unknown[] = Array.isArray(answer) ? answer : [];
@@ -215,13 +295,48 @@ function usableProfilesOf(answer: unknown, limit: number): ReadProfile[] {
   for (const profile of list.slice(0, limit)) {
     const token = member(member(profile, '$'), 'token');
     const encoder = member(profile, 'videoEncoderConfiguration');
-    if (typeof token !== 'string' || !PROFILE_TOKEN.test(token) || !isRecord(member(profile, 'videoSourceConfiguration')) || !isRecord(encoder)) continue;
+    const source = member(profile, 'videoSourceConfiguration');
+    if (typeof token !== 'string' || !PROFILE_TOKEN.test(token) || !isRecord(source) || !isRecord(encoder)) continue;
     const frames = member(member(encoder, 'H264'), 'govLength') ?? member(encoder, 'govLength');
     const rate = member(member(encoder, 'rateControl'), 'frameRateLimit');
     const gopMs = typeof frames === 'number' && typeof rate === 'number' && frames > 0 && rate > 0 ? (frames / rate) * 1_000 : null;
-    usable.push({ token, h264: member(encoder, 'encoding') === 'H264', gopMs });
+    // The package turns an all-digit text into a number: such a source still groups, under its own kind of key.
+    const named = member(source, 'sourceToken');
+    const sourceKey = typeof named === 'string' ? `text:${named}` : typeof named === 'number' ? `number:${named}` : 'none';
+    const width = member(member(encoder, 'resolution'), 'width');
+    const height = member(member(encoder, 'resolution'), 'height');
+    const sized = isPictureSide(width) && isPictureSide(height);
+    usable.push({
+      token,
+      h264: member(encoder, 'encoding') === 'H264',
+      gopMs,
+      sourceKey,
+      videoSourceToken: typeof named === 'string' && PROFILE_TOKEN.test(named) ? named : null,
+      width: sized ? width : null,
+      height: sized ? height : null,
+    });
   }
   return usable;
+}
+
+const areaOf = (profile: { readonly width: number | null; readonly height: number | null }): number => (profile.width ?? 0) * (profile.height ?? 0);
+
+/**
+ * The stream of each video source (H-03; `nvr/onvif_client.py:243-249` of the input-av scheme):
+ * the profiles are grouped by their video source, of each group the one with the largest pixel
+ * area is taken (the first of equals), and the groups are answered with the larger picture first
+ * (equal areas keep the device's order). The announced encoding is not looked at.
+ */
+function mainProfilesOf(usable: readonly ReadProfile[]): OnvifStreamProfile[] {
+  const largest = new Map<string, ReadProfile>();
+  for (const profile of usable) {
+    const held = largest.get(profile.sourceKey);
+    if (held === undefined || areaOf(profile) > areaOf(held)) largest.set(profile.sourceKey, profile);
+  }
+  // A Map keeps the place of a key's first entry, and the sort is stable: equals stay in the device's order.
+  return [...largest.values()]
+    .sort((a, b) => areaOf(b) - areaOf(a))
+    .map((profile) => Object.freeze({ token: profile.token, videoSourceToken: profile.videoSourceToken, width: profile.width, height: profile.height }));
 }
 
 /** Null when the stream address of a profile is the candidate's own; else the reason. The address itself is dropped. */
@@ -239,6 +354,24 @@ function streamAddressFault(answer: unknown, host: string): OnvifTestReason | nu
   return parsed.hostname === host ? null : OnvifTestReason.STREAM_HOST_MISMATCH;
 }
 
+/**
+ * The stream address of a profile as a locator that may leave this file (task 4 row 26; H-05):
+ * first the comparison of the test (scheme, NO USER PART, the candidate's own host), then the rule
+ * of the injection point - host and path, no query, no fragment, at most 256 characters - and
+ * visible ASCII only. The text is the device's, unchanged; a refusal names no part of it.
+ */
+function locatorOf(answer: unknown, host: string): { readonly locator: string } | { readonly reason: OnvifTestReason } {
+  const fault = streamAddressFault(answer, host);
+  if (fault !== null) return { reason: fault };
+  const address = member(answer, 'uri');
+  if (typeof address !== 'string' || !LOCATOR_CHARS.test(address)) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
+  try {
+    return { locator: credentialFreeLocator(address) };
+  } catch {
+    return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
+  }
+}
+
 /** What the agent's sockets are to this file: a stream that can be watched and destroyed. No socket module is imported. */
 interface WatchedSocket {
   readonly connecting?: boolean;
@@ -249,11 +382,101 @@ interface WatchedSocket {
 
 type CreateConnection = (options: object, callback?: (error: Error | null, stream: never) => void) => unknown;
 
-export function createOnvifConnectionTester(options: OnvifConnectionTesterOptions): OnvifConnectionTester {
-  const limits: OnvifSessionLimits = { ...ONVIF_SESSION_LIMITS, ...options.limits };
-  const { timers } = options;
+type Invoke = (callback: (error: unknown, value?: unknown) => void) => void;
 
-  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult> => {
+/** Why an exchange ended before its steps did: the caller's deadline, the byte cap, or a fault of this file's own steps. */
+type Cut = 'DEADLINE' | 'BYTE_CAP' | 'FAULT';
+
+/**
+ * What the steps of one exchange with a device work with (task 4 row 26: the test and the locator
+ * read are two courses of the same exchange). The client is a member HERE and of nothing a course
+ * answers: it does not leave the file.
+ */
+interface Exchange {
+  readonly client: InstanceType<typeof cam.Cam>;
+  readonly target: ConnectionTarget;
+  /** Whether a credential was supplied. */
+  readonly authenticated: boolean;
+  readonly reads: readonly OnvifSessionRead[];
+  credentialRequests(): number;
+  rejectedCredentialRequests(): number;
+  ask(read: OnvifSessionRead, invoke: Invoke): Promise<Answer>;
+  authorizedAsk(read: OnvifSessionRead, invoke: Invoke): Promise<Answer>;
+}
+
+interface Course<Result> {
+  steps(session: Exchange): Promise<Result>;
+  /** The answer of an exchange that was cut. */
+  cut(session: Exchange, cause: Cut): Result;
+}
+
+/** An outcome that ends a course, with its reason. */
+interface Halt {
+  readonly outcome: ConnectionTestOutcome;
+  readonly reason: OnvifTestReason;
+}
+const NO_ANSWER: Halt = Object.freeze({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NO_ANSWER });
+const NOT_ONVIF: Halt = Object.freeze({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF });
+const cutReason = (cause: Cut): OnvifTestReason => (cause === 'DEADLINE' ? OnvifTestReason.DEADLINE : cause === 'BYTE_CAP' ? OnvifTestReason.BYTE_CAP : OnvifTestReason.NOT_ONVIF);
+
+const refusalOf = (failure: Failure, authenticated: boolean): Halt => ({
+  outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED,
+  reason:
+    failure === 'CREDENTIAL_REFUSED'
+      ? OnvifTestReason.CREDENTIAL_REFUSED
+      : failure === 'NO_DIGEST_CHALLENGE' || failure === 'SCHEME_NOT_ALLOWED'
+        ? OnvifTestReason.SCHEME_NOT_ALLOWED
+        : authenticated
+          ? OnvifTestReason.CREDENTIAL_REFUSED
+          : OnvifTestReason.CREDENTIAL_ABSENT,
+});
+
+/**
+ * Steps 1 and 2 of both courses: the device's clock and its service addresses, without a
+ * credential. Null when the device named a media service; else where the course ends.
+ */
+async function mediaServiceOf({ client, ask, authorizedAsk, authenticated }: Exchange): Promise<Halt | null> {
+  // 1. The device's clock, without a credential (PRE_AUTH). A device that refuses it is asked no second time with one.
+  const clock = await ask('GetSystemDateAndTime', (callback) => client.getSystemDateAndTime(callback));
+  if (!clock.ok && clock.failure === 'TRANSPORT') return NO_ANSWER;
+  if (!clock.ok && !isAuthFailure(clock.failure)) return NOT_ONVIF;
+
+  // 2. The service addresses, without a credential; `GetCapabilities` only when `GetServices` is not answered.
+  let services = await ask('GetServices', (callback) => client.getServices(false, callback));
+  if (!services.ok && services.failure !== 'TRANSPORT') services = await ask('GetCapabilities', (callback) => client.getCapabilities(callback));
+  // A device that keeps both behind authentication: the credential's one request is spent here.
+  if (!services.ok && isAuthFailure(services.failure) && authenticated) services = await authorizedAsk('GetServices', (callback) => client.getServices(false, callback));
+  if (!services.ok) {
+    if (services.failure === 'TRANSPORT') return NO_ANSWER;
+    if (isAuthFailure(services.failure)) return refusalOf(services.failure, authenticated);
+    return NOT_ONVIF;
+  }
+  const addresses = Reflect.get(client, 'uri') as unknown;
+  if (!isRecord(member(addresses, 'media')) && !isRecord(member(addresses, 'media2'))) return { outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.NO_MEDIA_SERVICE };
+  return null;
+}
+
+/** ONE `GetStreamUri` for a profile token: the answer as the package read it, or where the course ends. */
+async function streamAnswerOf({ client, authorizedAsk, authenticated }: Exchange, profileToken: string): Promise<{ readonly halt: Halt } | { readonly halt: null; readonly value: unknown }> {
+  const stream = await authorizedAsk('GetStreamUri', (callback) => client.getStreamUri({ protocol: 'RTSP', profileToken }, callback));
+  if (stream.ok) return { halt: null, value: stream.value };
+  if (stream.failure === 'TRANSPORT') return { halt: NO_ANSWER };
+  if (isAuthFailure(stream.failure)) return { halt: refusalOf(stream.failure, authenticated) };
+  return { halt: { outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_ADDRESS_MISSING } };
+}
+
+/**
+ * ONE exchange with one device: its agent, its client, its bounds, and the rule of how a
+ * credential travels. Both facades run their course through it, so neither has a second way out.
+ */
+function exchange<Result>(
+  limits: OnvifSessionLimits,
+  timers: CaptureTimers,
+  candidate: CameraCandidate,
+  credential: SealedCredential | null,
+  signal: AbortSignal,
+  course: Course<Result>,
+): Promise<Result> {
     if (signal.aborted) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.ABORTED));
     let target: ConnectionTarget;
     try {
@@ -263,7 +486,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
     }
     const authenticated = credential !== null;
 
-    return new Promise<OnvifSessionResult>((resolveTest) => {
+    return new Promise<Result>((resolveExchange) => {
       const reads: OnvifSessionRead[] = [];
       const sockets = new Set<WatchedSocket>();
       const cancels = new Set<() => void>();
@@ -304,7 +527,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
           });
           socket.on('data', (chunk) => {
             received += chunk.length;
-            if (received > limits.maxReceivedBytes) finish(ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.BYTE_CAP));
+            if (received > limits.maxReceivedBytes) cut('BYTE_CAP');
           });
           return socket;
         },
@@ -354,21 +577,9 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
         Object.assign(client, { username: undefined, password: undefined, useWSSecurity: false });
       };
 
-      const ended = (outcome: ConnectionTestOutcome, reason: OnvifTestReason | null, usable: readonly ReadProfile[] = []): OnvifSessionResult =>
-        Object.freeze({
-          outcome,
-          authenticated,
-          usableProfiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE ? usable.map((profile) => profile.token) : []),
-          reason,
-          warnings: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE && usable.some((profile) => profile.gopMs !== null && profile.gopMs > limits.gopBoundMs) ? [OnvifTestWarning.GOP_ABOVE_BOUND] : []),
-          reads: Object.freeze([...reads]),
-          credentialRequests,
-          rejectedCredentialRequests,
-        });
+      const onAbort = (): void => cut('DEADLINE');
 
-      const onAbort = (): void => finish(ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.DEADLINE));
-
-      function finish(result: OnvifSessionResult): void {
+      function finish(result: Result): void {
         if (settled) return;
         settled = true;
         disarm();
@@ -378,12 +589,16 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
         for (const socket of sockets) socket.destroy();
         sockets.clear();
         agent.destroy();
-        resolveTest(result);
+        resolveExchange(result);
+      }
+      /** Ends the exchange with the course's own answer for a cut. Nothing is asked of the course once it has ended. */
+      function cut(cause: Cut): void {
+        if (!settled) finish(course.cut(session, cause));
       }
       signal.addEventListener('abort', onAbort, { once: true });
 
       /** One read of the package: its callback is taken once, and nothing it throws escapes (SEC35-33 (3)). */
-      const ask = (read: OnvifSessionRead, invoke: (callback: (error: unknown, value?: unknown) => void) => void): Promise<Answer> =>
+      const ask = (read: OnvifSessionRead, invoke: Invoke): Promise<Answer> =>
         new Promise<Answer>((resolveRead) => {
           let called = false;
           const once = (error: unknown, value?: unknown): void => {
@@ -407,7 +622,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
        * A read that may need the credential (see the file comment). At most one request of it
        * carries the credential, and a refusal of that request is final.
        */
-      const authorizedAsk = async (read: OnvifSessionRead, invoke: (callback: (error: unknown, value?: unknown) => void) => void): Promise<Answer> => {
+      const authorizedAsk = async (read: OnvifSessionRead, invoke: Invoke): Promise<Answer> => {
         if (credential === null) return ask(read, invoke);
         if (!armed) arm('HTTP_DIGEST');
         const before = credentialRequests;
@@ -433,69 +648,116 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
         return first;
       };
 
-      const refusedAs = (failure: Failure): OnvifSessionResult =>
-        ended(
-          ConnectionTestOutcome.AUTHENTICATION_FAILED,
-          failure === 'CREDENTIAL_REFUSED'
-            ? OnvifTestReason.CREDENTIAL_REFUSED
-            : failure === 'NO_DIGEST_CHALLENGE' || failure === 'SCHEME_NOT_ALLOWED'
-              ? OnvifTestReason.SCHEME_NOT_ALLOWED
-              : authenticated
-                ? OnvifTestReason.CREDENTIAL_REFUSED
-                : OnvifTestReason.CREDENTIAL_ABSENT,
-        );
-      const noAnswer = (): OnvifSessionResult => ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.NO_ANSWER);
+      const session: Exchange = Object.freeze({
+        client,
+        target,
+        authenticated,
+        reads,
+        credentialRequests: () => credentialRequests,
+        rejectedCredentialRequests: () => rejectedCredentialRequests,
+        ask,
+        authorizedAsk,
+      });
 
-      const steps = async (): Promise<OnvifSessionResult> => {
-        // 1. The device's clock, without a credential (PRE_AUTH). A device that refuses it is asked no second time with one.
-        const clock = await ask('GetSystemDateAndTime', (callback) => client.getSystemDateAndTime(callback));
-        if (!clock.ok && clock.failure === 'TRANSPORT') return noAnswer();
-        if (!clock.ok && !isAuthFailure(clock.failure)) return ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.NOT_ONVIF);
+      // Whatever goes wrong in this file's own steps is an answer too: an exchange never rejects once it started.
+      course.steps(session).then(finish, () => cut('FAULT'));
+    });
+}
 
-        // 2. The service addresses, without a credential; `GetCapabilities` only when `GetServices` is not answered.
-        let services = await ask('GetServices', (callback) => client.getServices(false, callback));
-        if (!services.ok && services.failure !== 'TRANSPORT') services = await ask('GetCapabilities', (callback) => client.getCapabilities(callback));
-        // A device that keeps both behind authentication: the credential's one request is spent here.
-        if (!services.ok && isAuthFailure(services.failure) && credential !== null) services = await authorizedAsk('GetServices', (callback) => client.getServices(false, callback));
-        if (!services.ok) {
-          if (services.failure === 'TRANSPORT') return noAnswer();
-          if (isAuthFailure(services.failure)) return refusedAs(services.failure);
-          return ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.NOT_ONVIF);
-        }
-        const addresses = Reflect.get(client, 'uri') as unknown;
-        if (!isRecord(member(addresses, 'media')) && !isRecord(member(addresses, 'media2'))) return ended(ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.NO_MEDIA_SERVICE);
+export function createOnvifConnectionTester(options: OnvifConnectionTesterOptions): OnvifConnectionTester {
+  const limits: OnvifSessionLimits = { ...ONVIF_SESSION_LIMITS, ...options.limits };
+  const { timers } = options;
+
+  const ended = (session: Exchange, outcome: ConnectionTestOutcome, reason: OnvifTestReason | null, usable: readonly ReadProfile[] = [], main: readonly OnvifStreamProfile[] = []): OnvifSessionResult =>
+    Object.freeze({
+      outcome,
+      authenticated: session.authenticated,
+      usableProfiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE ? usable.map((profile) => profile.token) : []),
+      profiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE ? [...main] : []),
+      reason,
+      warnings: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE && usable.some((profile) => profile.gopMs !== null && profile.gopMs > limits.gopBoundMs) ? [OnvifTestWarning.GOP_ABOVE_BOUND] : []),
+      reads: Object.freeze([...session.reads]),
+      credentialRequests: session.credentialRequests(),
+      rejectedCredentialRequests: session.rejectedCredentialRequests(),
+    });
+
+  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult> =>
+    exchange<OnvifSessionResult>(limits, timers, candidate, credential, signal, {
+      cut: (session, cause) => ended(session, ConnectionTestOutcome.UNREACHABLE, cutReason(cause)),
+      steps: async (session) => {
+        const { client, authorizedAsk } = session;
+        // 1, 2. The clock and the service addresses.
+        const stopped = await mediaServiceOf(session);
+        if (stopped !== null) return ended(session, stopped.outcome, stopped.reason);
 
         // 3. The media profiles: the read the credential is for.
         const listed = await authorizedAsk('GetProfiles', (callback) => client.getProfiles(callback));
         if (!listed.ok) {
-          if (listed.failure === 'TRANSPORT') return noAnswer();
-          if (isAuthFailure(listed.failure)) return refusedAs(listed.failure);
-          return ended(ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.PROFILE_ANSWER_INVALID);
+          if (listed.failure === 'TRANSPORT') return ended(session, NO_ANSWER.outcome, NO_ANSWER.reason);
+          if (isAuthFailure(listed.failure)) {
+            const refused = refusalOf(listed.failure, session.authenticated);
+            return ended(session, refused.outcome, refused.reason);
+          }
+          return ended(session, ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.PROFILE_ANSWER_INVALID);
         }
         const usable = usableProfilesOf(listed.value, limits.maxProfiles);
-        if (usable.length === 0) return ended(ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.NO_USABLE_PROFILE);
+        if (usable.length === 0) return ended(session, ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.NO_USABLE_PROFILE);
         const h264 = usable.filter((profile) => profile.h264);
 
         // 4. ONE stream address, compared with the candidate's own address and then dropped (D82).
         const checked = h264[0] ?? usable[0];
-        if (checked === undefined) return ended(ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.NO_USABLE_PROFILE);
-        const stream = await authorizedAsk('GetStreamUri', (callback) => client.getStreamUri({ protocol: 'RTSP', profileToken: checked.token }, callback));
-        if (!stream.ok) {
-          if (stream.failure === 'TRANSPORT') return noAnswer();
-          if (isAuthFailure(stream.failure)) return refusedAs(stream.failure);
-          return ended(ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.STREAM_ADDRESS_MISSING);
-        }
-        const fault = streamAddressFault(stream.value, target.host);
-        if (fault !== null) return ended(ConnectionTestOutcome.WRONG_PROFILE, fault);
+        if (checked === undefined) return ended(session, ConnectionTestOutcome.WRONG_PROFILE, OnvifTestReason.NO_USABLE_PROFILE);
+        const stream = await streamAnswerOf(session, checked.token);
+        if (stream.halt !== null) return ended(session, stream.halt.outcome, stream.halt.reason);
+        const fault = streamAddressFault(stream.value, session.target.host);
+        if (fault !== null) return ended(session, ConnectionTestOutcome.WRONG_PROFILE, fault);
 
-        if (h264.length === 0) return ended(ConnectionTestOutcome.NOT_H264, OnvifTestReason.NO_H264_PROFILE);
-        return ended(ConnectionTestOutcome.REACHABLE, null, h264);
-      };
+        // The codec verdict below is the one of task 3 and is not this row's: it moves to the stream (task 4 row 50).
+        if (h264.length === 0) return ended(session, ConnectionTestOutcome.NOT_H264, OnvifTestReason.NO_H264_PROFILE);
+        // Task 4 row 26: the stream of each video source, from every usable profile, the larger picture first.
+        return ended(session, ConnectionTestOutcome.REACHABLE, null, h264, mainProfilesOf(usable));
+      },
+    });
 
-      // Whatever goes wrong in this file's own steps is an answer too: the test never rejects once it started.
-      steps().then(finish, () => finish(ended(ConnectionTestOutcome.UNREACHABLE, OnvifTestReason.NOT_ONVIF)));
+  return Object.freeze({ test });
+}
+
+/**
+ * The locator read of a profile (task 4 row 26; design addendum 2.3 step 3, 4.1 a; H-05, H-11).
+ * The same exchange as the test - the same agent, bounds, address rule and credential rule - with
+ * another course: the clock, the service addresses, ONE `GetStreamUri`. No profile is listed and
+ * none is chosen here: the caller names the token it was configured with.
+ */
+export function createOnvifStreamLocator(options: OnvifConnectionTesterOptions): OnvifStreamLocator {
+  const limits: OnvifSessionLimits = { ...ONVIF_SESSION_LIMITS, ...options.limits };
+  const { timers } = options;
+
+  const answered = (session: Exchange, outcome: ConnectionTestOutcome, reason: OnvifTestReason | null, locator: string | null = null): OnvifLocatorResult =>
+    Object.freeze({
+      outcome,
+      reason,
+      locator: outcome === ConnectionTestOutcome.REACHABLE ? locator : null,
+      reads: Object.freeze([...session.reads]),
+      credentialRequests: session.credentialRequests(),
+      rejectedCredentialRequests: session.rejectedCredentialRequests(),
+    });
+
+  const locate = (candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal): Promise<OnvifLocatorResult> => {
+    // The token goes into a request body as it is: nothing but the token form is ever sent.
+    if (typeof profileToken !== 'string' || !PROFILE_TOKEN.test(profileToken)) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN));
+    return exchange<OnvifLocatorResult>(limits, timers, candidate, credential, signal, {
+      cut: (session, cause) => answered(session, ConnectionTestOutcome.UNREACHABLE, cutReason(cause)),
+      steps: async (session) => {
+        const stopped = await mediaServiceOf(session);
+        if (stopped !== null) return answered(session, stopped.outcome, stopped.reason);
+        const stream = await streamAnswerOf(session, profileToken);
+        if (stream.halt !== null) return answered(session, stream.halt.outcome, stream.halt.reason);
+        const read = locatorOf(stream.value, session.target.host);
+        if ('reason' in read) return answered(session, ConnectionTestOutcome.WRONG_PROFILE, read.reason);
+        return answered(session, ConnectionTestOutcome.REACHABLE, null, read.locator);
+      },
     });
   };
 
-  return Object.freeze({ test });
+  return Object.freeze({ locate });
 }

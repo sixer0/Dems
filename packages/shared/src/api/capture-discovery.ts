@@ -70,7 +70,7 @@ export type CaptureSourceClass = (typeof CaptureSourceClass)[keyof typeof Captur
 
 /**
  * What a search looked for: cameras on the network (93, the pre-check), the local inputs (97), or
- * the audio cards of the host (task 4, the audio-card search; no operation states it yet).
+ * the audio cards of the host (task 4, operation 98 `searchCaptureAudioCards`, `capture-audio-cards.ts`).
  */
 export const CaptureDiscoveryScope = { CAMERA_NETWORK: 'CAMERA_NETWORK', MIC_LOCAL: 'MIC_LOCAL', AUDIO_CARDS: 'AUDIO_CARDS' } as const;
 export type CaptureDiscoveryScope = (typeof CaptureDiscoveryScope)[keyof typeof CaptureDiscoveryScope];

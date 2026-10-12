@@ -129,10 +129,10 @@ beforeAll(async () => {
 });
 
 describe('the database this file runs on', () => {
-  it('is the runtime role on schema version 6 / dbc-7, and this row brought no migration', async () => {
+  it('is the runtime role on schema version 7 / dbc-8, and this row brought no migration', async () => {
     expect((await app.query('SELECT current_user AS role')).rows[0]).toEqual({ role: 'dems_app' });
     const meta = (await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([7, 'dbc-8']);
   });
 });
 

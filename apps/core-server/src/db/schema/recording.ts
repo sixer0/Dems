@@ -13,7 +13,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { bigint, check, foreignKey, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { code, hex64, oneOf, sessionId } from './checks';
+import { code, flat, hex64, noSecretKeys, oneOf, sessionId } from './checks';
 import { captureDevices } from './capture';
 import { operators } from './rbac';
 import {
@@ -27,6 +27,7 @@ import {
   type AudioIntervalReasonValue,
   type CaptureAdapterKindValue,
   type CaptureSourceSlotValue,
+  type FlatJson,
   type MicRoleValue,
   type SealingJobStatusValue,
   type VideoTrackIdValue,
@@ -169,6 +170,15 @@ export type SealingJobRow = typeof sealingJobs.$inferSelect;
 export type NewSealingJobRow = typeof sealingJobs.$inferInsert;
 
 /**
+ * The SQL/JSON path that finds a text value of `source_facts` outside its bound: a string member
+ * that is not 0 to 120 characters free of control characters. A literal of this file: statement
+ * text for the CHECK, never a bind parameter and never a value from outside this folder. It is
+ * written in the form PostgreSQL prints a path back (no blank around `?`), so that the statement
+ * text of the migration and the catalog's text of the CHECK are one text.
+ */
+const SOURCE_FACT_TEXT_OUT_OF_BOUND = `'$.*?(@.type() == "string" && !(@ like_regex "^[^[:cntrl:]]{0,120}$"))'`;
+
+/**
  * T-41 (dbc-4 §N.3, D-DB-14). The session-start record of what fed each of the four slots: four
  * rows per session, written in ONE statement inside the transaction that persists the transition
  * to `RECORDING` (MR-S1; rows 66 / 71), so they are durable before the first fragment row. The
@@ -188,6 +198,12 @@ export const sessionCaptureSources = pgTable(
     deviceId: text('device_id').notNull(),
     adapterKind: text('adapter_kind').$type<CaptureAdapterKindValue>().notNull(),
     recordedAt: bigint('recorded_at', { mode: 'number' }).notNull(),
+    // ── schema v7 addition (set A of task 4; schema design 2.3). Declared LAST: `0015` appends it
+    //    (ALTER ADD COLUMN). The facts of the device AS IT WAS WHEN THE SESSION STARTED: a
+    //    point-in-time copy, never a reference to the registry. `DEFAULT '{}'` is permanent, so
+    //    every earlier row and every simulated session reads `{}` and no statement had to change.
+    //    Written in the INSERT and never updated: `0016` pins `REVOKE UPDATE (source_facts)`. ──
+    sourceFacts: jsonb('source_facts').$type<FlatJson>().notNull().default({}),
   },
   (t) => [
     primaryKey({ name: 'session_capture_sources_pkey', columns: [t.sessionId, t.slot] }),
@@ -206,8 +222,29 @@ export const sessionCaptureSources = pgTable(
       'session_capture_sources_pairing_check',
       sql`(${t.slot} IN ('VIDEO-01', 'VIDEO-02') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.slot} IN ('MIC-PRIMARY', 'MIC-STANDBY') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)})`,
     ),
+    // Schema v7: a flat map with none of the 28 denied key names, as an audit detail is - so no
+    // user name, no locator and no ONVIF endpoint reference can be a fact (S13-13: no free JSON).
+    check('session_capture_sources_source_facts_flat_check', flat(t.sourceFacts)),
+    check('session_capture_sources_source_facts_no_secret_keys_check', noSecretKeys(t.sourceFacts)),
+    // The bound on device text (S13-13, S13-12 (b)): the whole map is at most 2,048 bytes, and
+    // every text value is at most 120 characters (the bound of `capture_devices.model`) with no
+    // control character. The character rule of a device string is the adapter's (AD-07 (1)); this
+    // is the database's backstop, so an oversized body is refused whoever wrote it.
+    check(
+      'session_capture_sources_source_facts_bound_check',
+      sql`octet_length(${t.sourceFacts}::text) <= 2048 AND NOT jsonb_path_exists(${t.sourceFacts}, ${sql.raw(SOURCE_FACT_TEXT_OUT_OF_BOUND)})`,
+    ),
   ],
 );
 
-export type SessionCaptureSourceRow = typeof sessionCaptureSources.$inferSelect;
+/** A source row AS THE DATABASE HOLDS IT since schema v7: `sourceFacts` is always there (`{}` by default). */
+export type StoredSessionCaptureSourceRow = typeof sessionCaptureSources.$inferSelect;
+/**
+ * SEAM OF TASK 4 ROW 17, TO BE REMOVED BY ROW 71 (the writer of the facts). `sourceFacts` is
+ * optional here because the one builder of this type outside the schema folder, the bulk fixture
+ * (`db/fixtures/pipeline.ts`), builds rows without it and is not this row's to edit; such a row
+ * is inserted with the column's permanent default `{}`. Row 71 states the facts in that builder
+ * and replaces this alias by `StoredSessionCaptureSourceRow`.
+ */
+export type SessionCaptureSourceRow = Omit<StoredSessionCaptureSourceRow, 'sourceFacts'> & { sourceFacts?: FlatJson };
 export type NewSessionCaptureSourceRow = typeof sessionCaptureSources.$inferInsert;

@@ -685,7 +685,7 @@ describe('the 49 simulator actions and the operations they reach (01_specs §7.1
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });
 
-  it('42 actions reach 45 operations, every one of them in the registry; the other 52 are reads and server functions', () => {
+  it('42 actions reach 45 operations, every one of them in the registry; the other 54 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
     expect(reaching).toHaveLength(42);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
@@ -697,8 +697,9 @@ describe('the 49 simulator actions and the operations they reach (01_specs §7.1
     // reached by no simulator action: 92 - 41 = 51. Blueprint row 66 lands the hosted pair of SH-18:
     // operations 78, 79, 80 (`setCaptureConfig`) and 81 (`switchAudioSource`) are reached now, 51 - 4 = 47.
     // Task 3 R-9..R-11 (row 132, D106) add the five operations 93-97, answered by the sim route table
-    // and by server modules, reached by no simulator action: 97 - 45 = 52.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(52);
+    // and by server modules, reached by no simulator action: 97 - 45 = 52. Task 4 row 63 adds the two
+    // sound-card operations 98-99, answered by the sim route table, reached by no action: 99 - 45 = 54.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(54);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);
@@ -859,9 +860,9 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move: 97 operations (36 GET / 61 POST), 77 audit types (67 + the ten of task 4 row 19)', () => {
+    it('the totals do not move with the indexed view: 99 operations (36 GET / 63 POST; 97 + the two of task 4 row 63), 77 audit types (67 + the ten of task 4 row 19)', () => {
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
-      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([97, 36, 61]);
+      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([99, 36, 63]);
       expect(Object.keys(AuditType)).toHaveLength(77);
     });
   });

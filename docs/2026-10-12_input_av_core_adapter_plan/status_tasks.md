@@ -46,3 +46,15 @@
 | 2026-10-12 22:55 | batch 1+2 | selesai: 2, 3, 4, 13, 20, 27, 38, 95, 147, 160; berjalan: 19, 52, 87+103; penyesuaian baris WP-13a oleh task-architect BERJALAN |
 | 2026-10-12 23:15 | batch 1+2 | 14 baris selesai/landed; operan integrasi I-1 BERJALAN; baris kode lain ditahan sampai I-1 selesai |
 | 2026-10-12 22:49 | blueprint dipotong ulang untuk WP-13a | 173 baris; C21. Uji penuh sebelum commit BERJALAN; baris 76 (dokumen) BERJALAN |
+| 2026-10-12 23:10 | commit 7969f0fa (fase kontrak + kosakata) | SELESAI; batch 3 (5, 6, 17, 24, 26, 63, 104, 109, 124, 161) BERJALAN |
+| 2026-10-12 23:21 | batch 3 | selesai: 5, 24, 109, 124; berjalan: 6, 17, 26, 63, 104, 161 |
+| 2026-10-12 23:24 | baris 161 (daftar nama WP-13a), 26 | SELESAI; C24, C25. Berjalan: 6, 17, 63, 104 |
+| 2026-10-12 23:26 | baris 6 (E-11) | SELESAI: jalur salah DITERIMA 18/18 -> cabang A tidak tersedia; baris 7 (probe) BERJALAN |
+| 2026-10-12 23:43 | baris 7 (E-11b) | SELESAI: jalur terbaca hanya lewat teks log pustaka; C26 (bacaan fail-closed -> cabang B) menunggu cek keamanan; baris 8 (gerbang RC-1) BERJALAN |
+| 2026-10-12 23:44 | koreksi baris di atas | baris 8 BELUM diluncurkan; yang berjalan adalah cek keamanan atas bacaan C26 (verification/05_security_branch_b.md). Baris 8 menyusul setelah putusannya |
+| 2026-10-12 23:47 | baris 63 | landed (99 operasi); sisa -> I-2 setelah baris 17. Berjalan: 17, cek keamanan cabang B |
+| 2026-10-12 23:50 | cek keamanan cabang B | ACCEPT bersyarat (BR-01..BR-12); C27: cabang B dipilih, sementara sampai baris 141. Baris 8 (gerbang) + pelampiran BR ke blueprint BERJALAN |
+| 2026-10-12 23:54 | baris 8 (gerbang RC-1) | LULUS: cabang B, sementara sampai baris 141; C28 |
+| 2026-10-12 23:55 | baris 17 (skema set A) | landed: skema versi 7, 45 tabel; C29. I-2 BERJALAN |
+| 2026-10-13 00:09 | blueprint: cabang B dilampirkan | 179 baris, 87 persyaratan terlacak; C30. I-2 masih berjalan |
+| 2026-10-13 00:16 | I-2 | landed, semua pemeriksaan hijau; C31. Uji penuh c02 BERJALAN, lalu commit kedua |

@@ -167,7 +167,7 @@ function difference(
 }
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('43 tables, 440 columns, 182 named CHECKs, 40 foreign keys: the difference is empty', async () => {
+  it('45 tables, 461 columns, 199 named CHECKs, 43 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(inventory.tables, live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -195,7 +195,9 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // dbc-4 §N.11 (set 4, row 129): +1 table (T-41), +7 columns, +6 CHECKs, +1 foreign key.
     // PE-129b-01 (set 6, row 129b): +1 table (T-42), +10 columns, +7 CHECKs, no foreign key.
     // PE-0013-01 (set 7): +1 table (T-43), +4 columns (3 of T-43, `alerts.reason`), +3 CHECKs.
-    expect(counts).toMatchObject({ tables: 43, columns: 440, checks: 182, foreignKeys: 40 });
+    // Task 4 schema set A (set 8, dbc-8): +2 tables (T-44, T-45), +21 columns (10 + 10 +
+    // `session_capture_sources.source_facts`), +17 CHECKs (7 + 6 + 3 + the slot-pair CHECK), +3 foreign keys.
+    expect(counts).toMatchObject({ tables: 45, columns: 461, checks: 199, foreignKeys: 43 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -239,7 +241,7 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
     const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
-    expect(byType).toEqual({ c: 182, f: 40, n: notNullColumns, p: 43, u: 15 });
+    expect(byType).toEqual({ c: 199, f: 43, n: notNullColumns, p: 45, u: 16 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });
@@ -354,7 +356,10 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     // + 3 unique indexes); t would be TOAST (it lives in pg_toast, not here).
     // dbc-4 §N.11: + T-41, + its primary key, + the partial unique index on onvif_uuid.
     // PE-129b-01: + T-42 and its primary key.
-    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 85, r: 43 }); // PE-0013-01: + T-43 and its primary key
+    // PE-0013-01: + T-43 and its primary key (i: 85, r: 43).
+    // Task 4 schema set A: + T-44 and T-45, + their two primary keys, + the unique constraint on
+    // a sound-card input, + the plain index on (device, lens, role).
+    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 89, r: 45 });
   });
 
   it('every table has exactly one primary key; a single-row table has the key singleton with default true and CHECK (singleton)', async () => {
@@ -366,8 +371,8 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     const { rows } = await db.ownerPool().query<{ table_name: string; definition: string }>(
       "SELECT conrelid::regclass::text AS table_name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype = 'p' ORDER BY 1",
     );
-    expect(rows).toHaveLength(43);
-    expect(new Set(rows.map((row) => row.table_name)).size).toBe(43);
+    expect(rows).toHaveLength(45);
+    expect(new Set(rows.map((row) => row.table_name)).size).toBe(45);
     for (const name of singletons) {
       expect(rows.find((row) => row.table_name === name)?.definition, name).toBe('PRIMARY KEY (singleton)');
     }

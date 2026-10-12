@@ -100,12 +100,12 @@ describe('M4A-1: the defect on a (3, dbc-4) database', () => {
     await migrateToVersion3(owner);
     const ledger = await inspectLedger(owner);
     expect(ledger.ok).toBe(true);
-    expect(ledger.pending).toEqual([TAG, '0011_session_stt_config', '0012_session_stt_config_privileges', '0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges']);
+    expect(ledger.pending).toEqual([TAG, '0011_session_stt_config', '0012_session_stt_config_privileges', '0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges', '0015_capture_streams_audio_inputs', '0016_capture_streams_audio_inputs_privileges']);
     expect((await inspectLedger(owner, folderOf(11))).pending).toEqual([TAG]);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 3 (dbc-4); this server expects 6 (dbc-7). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      'B-3: the database is at schema version 3 (dbc-4); this server expects 7 (dbc-8). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
     );
     await expect(checkSchemaVersion(db.appPool(), { schemaVersion: 3, contractRevision: 'dbc-4' })).resolves.toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe('M4A-2: set 5 applies one file and changes neither an object nor a row'
     const catalogBefore = await owner.query(objects);
     const rowsBefore = await stored(owner);
     // The set stops at 0010, so the applier commits the file and then reports that the version
-    // is not this code's (6, 'dbc-7') - the same device as `migrateToVersion3`.
+    // is not this code's (7, 'dbc-8') - the same device as `migrateToVersion3`.
     const folder = folderOf(11);
     expect(await readSchemaVersion(owner)).toEqual({ schemaVersion: 3, contractRevision: 'dbc-4' });
     const error = await applyMigrations(owner, folder).catch((thrown: unknown) => thrown);

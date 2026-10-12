@@ -95,7 +95,7 @@ const CALLERS: ReadonlyArray<readonly [label: string, principal: Principal]> = [
   ...ROLES.map((role) => [`${role} on a paired device`, operator(role, 'DEV-0001')] as const),
 ];
 
-describe('AC-B-16, unit form: all 97 operations for nine callers', () => {
+describe('AC-B-16, unit form: all 99 operations for nine callers', () => {
   it.each(CALLERS)('%s: every operation answers what its access rule and the role matrix say', (_label, principal) => {
     const wrong: string[] = [];
     for (const operation of CORE_API_OPERATIONS) {
@@ -106,10 +106,12 @@ describe('AC-B-16, unit form: all 97 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 97 x 9 = 873; the denied cells of an operator are re-derived from the registry and the role table (34 INVESTIGATOR, 3 SUPERVISOR, 34 TECHNICIAN at 97 operations), as spec AC-B-16 counts them', () => {
+  it('the cells are 99 x 9 = 891; the denied cells of an operator are re-derived from the registry and the role table (36 INVESTIGATOR, 3 SUPERVISOR, 34 TECHNICIAN at 99 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
     // C3 §2.5 (blueprint row 113): 92 operations x 9 callers. C3 §10.1 (blueprint row 132, D106): 97 x 9.
-    expect(cells).toBe(873);
+    // Task 4 blueprint row 63: 99 x 9. The two sound-card operations need CAPTURE_CONFIG, which an
+    // INVESTIGATOR does not hold (34 -> 36); SUPERVISOR and TECHNICIAN hold it (no change).
+    expect(cells).toBe(891);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
@@ -127,11 +129,12 @@ describe('AC-B-16, unit form: all 97 operations for nine callers', () => {
       }).map((operation) => operation.operationId);
     for (const role of ROLES) expect(denied(role), role).toEqual(deniedByRoleTable(role));
     console.log(`[ac-b-16] denied cells over ${CORE_API_OPERATIONS.length} operations: ${ROLES.map((role) => `${role} ${denied(role).length}`).join(', ')}`);
-    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 34, SUPERVISOR: 3, TECHNICIAN: 34 });
+    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 36, SUPERVISOR: 3, TECHNICIAN: 34 });
     // The same on a device: the transport changes no permission. What it adds is the one condition
     // that names the transport (C3 §0 `WEB_CONSOLE_SESSION`, D80(3)): the three operations whose body
-    // carries a camera credential refuse a HOLDER of their permission there too.
-    const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'];
+    // carries a camera credential refuse a HOLDER of their permission there too, and so do the two
+    // sound-card operations of task 4 row 63 (design addendum 4.2, "Role").
+    const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput'];
     for (const role of ROLES) {
       const onDevice = CORE_API_OPERATIONS.filter(
         (operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, 'DEV-0001')))) === '403 NOT_PERMITTED',
@@ -357,13 +360,15 @@ describe('the conditions of a rule (spec §7.3 line 7)', () => {
 });
 
 describe('WEB_CONSOLE_SESSION: the operations whose body carries a camera credential are web console only (C3 §0, §2.6; D80(3); SEC35-45)', () => {
-  const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'];
+  // Task 4 blueprint row 63 (design addendum 4.2, "Role"): the two sound-card operations 98 and 99
+  // carry the same condition on the same permission, although their bodies hold no credential.
+  const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput'];
   const refusalOf = (operationId: string, principal: Principal) => {
     const decision = decideAccess(ruleOf(operationId), granted(principal));
     return decision.allowed ? null : decision.refusal;
   };
 
-  it('operations 89, 95 and 96 carry it, each on the permission CAPTURE_CONFIG; no other operation does', () => {
+  it('operations 89, 95, 96, 98 and 99 carry it, each on the permission CAPTURE_CONFIG; no other operation does', () => {
     const carriers = CORE_API_OPERATIONS.filter((operation) => ruleOf(operation.operationId).conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
     expect(carriers.map((operation) => operation.operationId)).toEqual(WEB_ONLY);
     for (const operationId of WEB_ONLY) {

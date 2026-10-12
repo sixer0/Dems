@@ -424,7 +424,8 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
 
   it('the client never leaves the file: what the file exports is the facade and its vocabulary', () => {
     const exported = [...session.matchAll(/^export\s+(?:const|function|interface|type|class)\s+(\w+)/gm)].map((match) => match[1] ?? '');
-    expect([...new Set(exported)].sort()).toEqual(['ONVIF_SESSION_LIMITS', 'ONVIF_SESSION_READS', 'OnvifConnectionTester', 'OnvifConnectionTesterOptions', 'OnvifSessionLimits', 'OnvifSessionRead', 'OnvifSessionResult', 'OnvifTestReason', 'OnvifTestWarning', 'createOnvifConnectionTester']);
+    // Task 4 row 26 (G-R10 / G-R11 amended by row 3's decision text: "the connection file keeps no configuration call"): + the locator facade, its answer and the stream of a video source - four names, no client.
+    expect([...new Set(exported)].sort()).toEqual(['ONVIF_SESSION_LIMITS', 'ONVIF_SESSION_READS', 'OnvifConnectionTester', 'OnvifConnectionTesterOptions', 'OnvifLocatorResult', 'OnvifSessionLimits', 'OnvifSessionRead', 'OnvifSessionResult', 'OnvifStreamLocator', 'OnvifStreamProfile', 'OnvifTestReason', 'OnvifTestWarning', 'createOnvifConnectionTester', 'createOnvifStreamLocator']);
     expect(session).not.toMatch(/\breturn\s+client\b|\bexport\s+default\b|\bexport\s*\{/);
     expect(session).toContain('return Object.freeze({ test });');
   });

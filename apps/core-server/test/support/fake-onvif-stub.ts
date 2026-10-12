@@ -40,6 +40,22 @@
  *
  * The fixture credential is a constructor argument of the test's set-up code. It is not a default
  * of this file and never a default of the product (C-N15).
+ *
+ * THE NETWORK CALLS (task 4, blueprint row 109, WP-22a; OFF unless the option `network` is given,
+ * so everything above holds unchanged for every stub built without it, `SystemReboot` included):
+ * with `network`, the device listener also answers the four calls of the set-camera-address
+ * exchange (`apps/input-av/nvr/onvif_client.py:192-230` is the reference of the order):
+ * GetNetworkInterfaces, SetNetworkInterfaces, SetNetworkDefaultGateway, SystemReboot - all four
+ * authenticated as GetProfiles is. The stub keeps a small state (interface token, hardware
+ * address, IPv4 address, prefix, gateway, a pending change, a reboot count) and a record per
+ * network request that says whether the request was well-formed XML and whether it was accepted.
+ * Reply modes, one switch each (`setNetworkMode`): MALFORMED_REPLY, OVERSIZED_REPLY, MARKUP_TOKEN
+ * (the interface token holds markup characters; the request that writes it back must escape it)
+ * and TWO_ENDPOINTS (a Probe is answered by two endpoint references from the one address).
+ * What it does NOT do: it never changes an address of this host and never listens anywhere but
+ * 127.0.0.1 - "the camera moved" is a value in its state, not a socket; IPv6, link settings, MTU
+ * and DNS are not read; well-formedness is judged by a small scanner, not an XML parser.
+ * Every value is synthetic (RFC 5737 addresses, an RFC 7042 documentation hardware address).
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createSocket, type RemoteInfo, type Socket as UdpSocket } from 'node:dgram';
@@ -149,6 +165,116 @@ export type FakeOnvifDeviceMode =
 /** ST-4. */
 export type FakeOnvifRtspMode = 'H264' | 'H265' | 'H264_NO_PARAMETER_SETS';
 
+// ── The profile set of a camera with two video sources (task 4, integration pass I-2: request of row 26; only with the option `profileSet`) ──
+
+/** One profile of the set: the tokens and the size `GetProfiles` announces, and the path `GetStreamUri` names for it. */
+export interface FakeOnvifProfile {
+  readonly token: string;
+  readonly videoSourceToken: string;
+  readonly width: number;
+  readonly height: number;
+  readonly streamPath: string;
+}
+
+/** A profile token with lower-case letters, a dot, a colon and a hyphen: the form a selector code cannot hold. */
+export const FAKE_ONVIF_ODD_PROFILE_TOKEN = 'Main.Stream:0-a';
+
+/**
+ * `profileSet: 'TWO_SOURCES'`: five profiles on two video sources, in the order `GetProfiles` lists
+ * them. Per source the pixel areas differ and the largest is not listed first; the larger of the two
+ * sources is the second one. `GetStreamUri` answers per profile token and faults for any other.
+ */
+export const FAKE_ONVIF_TWO_SOURCE_PROFILES: readonly FakeOnvifProfile[] = Object.freeze([
+  Object.freeze({ token: 'lens1.sub', videoSourceToken: 'vs_1', width: 704, height: 576, streamPath: '/lens1/sub' }),
+  Object.freeze({ token: 'lens1.main', videoSourceToken: 'vs_1', width: 1920, height: 1080, streamPath: '/lens1/main' }),
+  Object.freeze({ token: 'lens2-sub', videoSourceToken: 'Video.Source:0-b', width: 640, height: 360, streamPath: '/lens2/sub' }),
+  Object.freeze({ token: 'lens2-mid', videoSourceToken: 'Video.Source:0-b', width: 1280, height: 720, streamPath: '/lens2/mid' }),
+  Object.freeze({ token: FAKE_ONVIF_ODD_PROFILE_TOKEN, videoSourceToken: 'Video.Source:0-b', width: 2560, height: 1440, streamPath: '/lens2/main' }),
+]);
+
+export type FakeOnvifProfileSet = 'TWO_SOURCES';
+
+/** The address `GetStreamUri` names for a profile of the set, on the stub's own RTSP port. */
+export const fakeOnvifProfileStreamUri = (rtspPort: number, profile: FakeOnvifProfile): string => `rtsp://${FAKE_ONVIF_HOST}:${rtspPort}${profile.streamPath}`;
+
+// ── The network calls of the set-camera-address exchange (row 109; only with the option `network`) ──
+
+/** The four calls, in the order the exchange makes them. */
+export const FAKE_ONVIF_NETWORK_OPERATIONS = ['GetNetworkInterfaces', 'SetNetworkInterfaces', 'SetNetworkDefaultGateway', 'SystemReboot'] as const;
+export type FakeOnvifNetworkOperation = (typeof FAKE_ONVIF_NETWORK_OPERATIONS)[number];
+/**
+ * The read the `onvif` package makes by itself after a gateway set that was given a callback
+ * (`node_modules/onvif/lib/device.js:373-388`). NOT one of the four: answered only with
+ * `network.gatewayReadBack`, otherwise it is a violation like any other operation.
+ */
+export const FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION = 'GetNetworkDefaultGateway';
+/** What the stub reports until a test sets something else. Synthetic: RFC 5737 addresses, an RFC 7042 documentation hardware address. */
+export const FAKE_ONVIF_NETWORK_DEFAULTS = {
+  interfaceToken: 'eth0',
+  hwAddress: '00:00:5e:00:53:01',
+  address: '192.0.2.20',
+  prefixLength: 24,
+  gateway: '192.0.2.1',
+} as const;
+/**
+ * The interface token of mode `MARKUP_TOKEN`: quote, angle brackets, an apostrophe and an ampersand.
+ * In the reply it is an escaped attribute value (the reply is well-formed). Written back RAW into
+ * `<InterfaceToken>` it makes the request not well-formed, which the stub answers with a fault and
+ * records (`wellFormed: false`).
+ */
+export const FAKE_ONVIF_MARKUP_TOKEN = `eth0"><x y='1'>&`;
+/** The padding of mode `OVERSIZED_REPLY`: the reply is well-formed and larger than this (the connection test's cap is 1 MiB). */
+export const FAKE_ONVIF_OVERSIZED_REPLY_BYTES = 2 * 1024 * 1024;
+
+export type FakeOnvifNetworkMode =
+  | 'NORMAL'
+  | 'MALFORMED_REPLY' //        status 200, a body cut in the middle of an element
+  | 'OVERSIZED_REPLY' //        a well-formed body above FAKE_ONVIF_OVERSIZED_REPLY_BYTES
+  | 'MARKUP_TOKEN' //           the interface token is FAKE_ONVIF_MARKUP_TOKEN
+  | 'TWO_ENDPOINTS'; //         a Probe is answered by two endpoint references from the one address
+
+export interface FakeOnvifNetworkOptions {
+  readonly hwAddress?: string;
+  readonly address?: string;
+  readonly prefixLength?: number;
+  readonly gateway?: string;
+  /** What SetNetworkInterfaces answers in `RebootNeeded`. true: the change is applied by SystemReboot; false: at once. Default true. */
+  readonly rebootNeeded?: boolean;
+  /** SetNetworkDefaultGateway is answered with a fault (the reference treats it as a warning). Default false. */
+  readonly gatewayFault?: boolean;
+  /** Also answer `GetNetworkDefaultGateway` (see FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION). Default false. */
+  readonly gatewayReadBack?: boolean;
+  /** SystemReboot is obeyed and the connection is closed without an answer (a camera that goes down at once). Default false. */
+  readonly rebootDropsConnection?: boolean;
+}
+
+export interface FakeOnvifNetworkState {
+  readonly interfaceToken: string;
+  readonly hwAddress: string;
+  readonly address: string;
+  readonly prefixLength: number;
+  readonly dhcp: boolean;
+  readonly gateway: string;
+  /** A change SetNetworkInterfaces accepted that waits for SystemReboot. */
+  readonly pending: { readonly address: string; readonly prefixLength: number; readonly dhcp: boolean } | null;
+  readonly rebootCount: number;
+  /** The second endpoint reference of mode `TWO_ENDPOINTS`. */
+  readonly twinEndpointRef: string;
+}
+
+/** One network request as the stub judged it. Addresses are recorded only when they are dotted IPv4; never a header, a token of the account or a secret. */
+export interface FakeOnvifNetworkRequest {
+  readonly operation: FakeOnvifNetworkOperation | typeof FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION;
+  /** Was the whole request body well-formed XML? */
+  readonly wellFormed: boolean;
+  readonly accepted: boolean;
+  readonly refusal: null | 'NOT_WELL_FORMED' | 'INTERFACE_TOKEN_UNKNOWN' | 'ADDRESS_INVALID' | 'GATEWAY_REFUSED';
+  readonly address: string | null;
+  readonly prefixLength: number | null;
+  readonly dhcp: boolean | null;
+  readonly gateway: string | null;
+}
+
 export interface FakeOnvifPorts {
   /** UDP. */
   readonly discovery: number;
@@ -175,6 +301,14 @@ export interface FakeOnvifStubOptions {
   readonly govLength?: number;
   /** The RTSP responder asks for digest authentication before it answers DESCRIBE. Default false. */
   readonly rtspDigest?: boolean;
+  /** Row 109: answer the four network calls. Absent (the default): they are violations, as every Set operation is. */
+  readonly network?: FakeOnvifNetworkOptions;
+  /**
+   * Integration pass I-2 (request of row 26): `GetProfiles` lists `FAKE_ONVIF_TWO_SOURCE_PROFILES` and
+   * `GetStreamUri` answers per profile token. Absent (the default): the one profile `profile_1` on the
+   * one source, and one stream address for whatever token is asked, as before.
+   */
+  readonly profileSet?: FakeOnvifProfileSet;
 }
 
 export interface FakeOnvifRequest {
@@ -214,6 +348,16 @@ export interface FakeOnvifStub {
   setDiscoveryMode(mode: FakeOnvifDiscoveryMode): void;
   setDeviceMode(mode: FakeOnvifDeviceMode): void;
   setRtspMode(mode: FakeOnvifRtspMode): void;
+  /**
+   * Row 109. Throws on a stub built without `network`. MALFORMED_REPLY and OVERSIZED_REPLY shape the
+   * reply of every network call, or of the one call named in `only`; a Set call is still OBEYED
+   * (the device did it and answered badly). MARKUP_TOKEN and TWO_ENDPOINTS ignore `only`.
+   */
+  setNetworkMode(mode: FakeOnvifNetworkMode, only?: FakeOnvifNetworkOperation): void;
+  /** Row 109. Throws on a stub built without `network`. */
+  networkState(): FakeOnvifNetworkState;
+  /** Row 109. The network requests that passed authentication, in order; empty without `network`. Cleared by `resetLog()`. */
+  networkRequests(): readonly FakeOnvifNetworkRequest[];
   /** ST-2 "an answer nobody asked for": one ProbeMatches datagram to that socket, related to no Probe. */
   sendUnsolicited(target: { readonly address: string; readonly port: number }): Promise<void>;
   /** The devices that answer a Probe, in order. */
@@ -300,6 +444,68 @@ function elementText(xml: string, localName: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+function xmlUnescape(text: string): string {
+  return text
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&apos;', "'")
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_whole, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d{1,7});/g, (_whole, decimal: string) => String.fromCodePoint(Number(decimal)))
+    .replaceAll('&amp;', '&');
+}
+
+const XML_NAME = '[A-Za-z_][\\w.-]*(?::[A-Za-z_][\\w.-]*)?';
+const XML_ENTITY = /^&(?:amp|lt|gt|quot|apos|#\d{1,7}|#x[0-9a-fA-F]{1,6});/;
+const DOTTED_IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
+/**
+ * Is this text ONE well-formed XML element with balanced tags, quoted attributes and no bare `&` or
+ * stray `<`? A scanner for the stub's own judgement of a request (row 109), not an XML parser: it
+ * accepts an XML declaration and comments, and refuses a DOCTYPE, CDATA and processing instructions
+ * (no ONVIF request needs them). It does not check namespaces or duplicate attributes.
+ */
+export function isWellFormedXml(text: string): boolean {
+  const entitiesOk = (chunk: string): boolean => {
+    for (let at = chunk.indexOf('&'); at >= 0; at = chunk.indexOf('&', at + 1)) if (!XML_ENTITY.test(chunk.slice(at, at + 12))) return false;
+    return true;
+  };
+  const closeTag = new RegExp(`</(${XML_NAME})\\s*>`, 'y');
+  const openTag = new RegExp(`<(${XML_NAME})((?:\\s+${XML_NAME}\\s*=\\s*(?:"[^"<]*"|'[^'<]*'))*)\\s*(/?)>`, 'y');
+  const open: string[] = [];
+  let roots = 0;
+  let at = /^\s*<\?xml\s[^?]*\?>/.exec(text)?.[0].length ?? 0;
+  while (at < text.length) {
+    const lt = text.indexOf('<', at);
+    const chunk = text.slice(at, lt < 0 ? text.length : lt);
+    if (!entitiesOk(chunk) || (open.length === 0 && chunk.trim() !== '')) return false;
+    if (lt < 0) break;
+    if (text.startsWith('<!--', lt)) {
+      const end = text.indexOf('-->', lt + 4);
+      if (end < 0) return false;
+      at = end + 3;
+      continue;
+    }
+    closeTag.lastIndex = lt;
+    const closing = closeTag.exec(text);
+    if (closing !== null) {
+      if (open.pop() !== closing[1]) return false;
+      at = closeTag.lastIndex;
+      continue;
+    }
+    openTag.lastIndex = lt;
+    const opening = openTag.exec(text);
+    if (opening === null || !entitiesOk(opening[2] ?? '')) return false;
+    if (open.length === 0) {
+      roots += 1;
+      if (roots > 1) return false;
+    }
+    if (opening[3] !== '/') open.push(opening[1] ?? '');
+    at = openTag.lastIndex;
+  }
+  return roots === 1 && open.length === 0;
+}
+
 /** `key="value"` and `key=value` pairs of an HTTP or RTSP `Authorization: Digest ...` header. */
 function digestFields(header: string): Map<string, string> {
   const fields = new Map<string, string>();
@@ -333,6 +539,29 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
   let discoveryMode: FakeOnvifDiscoveryMode = 'NORMAL';
   let deviceMode: FakeOnvifDeviceMode = 'NORMAL';
   let rtspMode: FakeOnvifRtspMode = 'H264';
+  // Row 109: the network calls. `network === null` is every stub built before that row: nothing below is reached.
+  const network = options.network ?? null;
+  if (network !== null) {
+    const prefix = network.prefixLength ?? FAKE_ONVIF_NETWORK_DEFAULTS.prefixLength;
+    if (!DOTTED_IPV4.test(network.address ?? FAKE_ONVIF_NETWORK_DEFAULTS.address) || !DOTTED_IPV4.test(network.gateway ?? FAKE_ONVIF_NETWORK_DEFAULTS.gateway) || !Number.isInteger(prefix) || prefix < 1 || prefix > 32) {
+      throw new RangeError('fake ONVIF stub: the network option needs dotted IPv4 addresses and a prefix length of 1 to 32');
+    }
+  }
+  // Integration pass I-2: `profileSet === null` is every stub built before it: nothing it guards is reached.
+  const profileSet = options.profileSet ?? null;
+  let networkMode: FakeOnvifNetworkMode = 'NORMAL';
+  let networkModeOnly: FakeOnvifNetworkOperation | null = null;
+  let networkLog: FakeOnvifNetworkRequest[] = [];
+  const twinEndpointRef = `urn:uuid:${randomUUID()}`;
+  const networkNow = {
+    address: network?.address ?? FAKE_ONVIF_NETWORK_DEFAULTS.address,
+    prefixLength: network?.prefixLength ?? FAKE_ONVIF_NETWORK_DEFAULTS.prefixLength,
+    dhcp: false,
+    gateway: network?.gateway ?? FAKE_ONVIF_NETWORK_DEFAULTS.gateway,
+    pending: null as FakeOnvifNetworkState['pending'],
+    rebootCount: 0,
+  };
+  const interfaceToken = (): string => (networkMode === 'MARKUP_TOKEN' ? FAKE_ONVIF_MARKUP_TOKEN : FAKE_ONVIF_NETWORK_DEFAULTS.interfaceToken);
   let log: FakeOnvifRequest[] = [];
   let violationList: FakeOnvifViolation[] = [];
   const usedTokenNonces = new Set<string>();
@@ -380,6 +609,10 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       case 'SILENT':
         return [];
       case 'NORMAL':
+        // Row 109, network mode TWO_ENDPOINTS: a second camera on the same (factory) address answers too.
+        if (network !== null && networkMode === 'TWO_ENDPOINTS' && first !== undefined) {
+          return [...deviceList, { ...first, endpointRef: twinEndpointRef }].map((device) => probeMatches(messageId, probeMatch(device, deviceServiceUrl)));
+        }
         return deviceList.map((device) => probeMatches(messageId, probeMatch(device, deviceServiceUrl)));
       case 'WRONG_RELATES_TO':
         return deviceList.map((device) => probeMatches(`urn:uuid:${randomUUID()}`, probeMatch(device, deviceServiceUrl)));
@@ -500,6 +733,18 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
   function profilesXml(): string {
     if (deviceMode === 'NO_PROFILE') return '<trt:GetProfilesResponse/>';
     const encoding = deviceMode === 'H265_ONLY' ? 'H265' : 'H264';
+    if (profileSet !== null) {
+      // Integration pass I-2: two video sources, several profiles each; the encoder element is the one of the single profile below.
+      return `<trt:GetProfilesResponse>${FAKE_ONVIF_TWO_SOURCE_PROFILES.map(
+        (profile, index) =>
+          `<trt:Profiles token="${xmlEscape(profile.token)}" fixed="true"><tt:Name>profile ${index + 1}</tt:Name>` +
+          `<tt:VideoSourceConfiguration token="vsc_${index + 1}"><tt:Name>source</tt:Name><tt:SourceToken>${xmlEscape(profile.videoSourceToken)}</tt:SourceToken></tt:VideoSourceConfiguration>` +
+          `<tt:VideoEncoderConfiguration token="vec_${index + 1}"><tt:Name>encoder</tt:Name><tt:Encoding>${encoding}</tt:Encoding>` +
+          `<tt:Resolution><tt:Width>${profile.width}</tt:Width><tt:Height>${profile.height}</tt:Height></tt:Resolution>` +
+          `<tt:RateControl><tt:FrameRateLimit>25</tt:FrameRateLimit><tt:EncodingInterval>1</tt:EncodingInterval><tt:BitrateLimit>4096</tt:BitrateLimit></tt:RateControl>` +
+          `<tt:${encoding}><tt:GovLength>${govLength}</tt:GovLength></tt:${encoding}></tt:VideoEncoderConfiguration></trt:Profiles>`,
+      ).join('')}</trt:GetProfilesResponse>`;
+    }
     return (
       `<trt:GetProfilesResponse><trt:Profiles token="profile_1" fixed="true"><tt:Name>main</tt:Name>` +
       `<tt:VideoSourceConfiguration token="vsc_1"><tt:Name>source</tt:Name><tt:SourceToken>vs_1</tt:SourceToken></tt:VideoSourceConfiguration>` +
@@ -547,6 +792,100 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     }
   }
 
+  // ── The network calls (row 109) ──────────────────────────────────────────────────────────────
+
+  const isNetworkCall = (operation: string): operation is FakeOnvifNetworkRequest['operation'] =>
+    network !== null && ((FAKE_ONVIF_NETWORK_OPERATIONS as readonly string[]).includes(operation) || (network.gatewayReadBack === true && operation === FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION));
+
+  function applyPending(): void {
+    if (networkNow.pending === null) return;
+    networkNow.address = networkNow.pending.address;
+    networkNow.prefixLength = networkNow.pending.prefixLength;
+    networkNow.dhcp = networkNow.pending.dhcp;
+    networkNow.pending = null;
+  }
+
+  /** An authenticated network request: judged, recorded, obeyed, then answered in the shape the mode asks for. */
+  function answerNetwork(operation: FakeOnvifNetworkRequest['operation'], xml: string, request: IncomingMessage, response: ServerResponse): void {
+    const record = { operation, wellFormed: isWellFormedXml(xml), accepted: false, refusal: null as FakeOnvifNetworkRequest['refusal'], address: null as string | null, prefixLength: null as number | null, dhcp: null as boolean | null, gateway: null as string | null };
+    networkLog.push(record);
+    const refuse = (refusal: NonNullable<FakeOnvifNetworkRequest['refusal']>, subcode: string, reason: string): void => {
+      record.refusal = refusal;
+      reply(response, 400, fault('Sender', subcode, reason));
+    };
+    if (!record.wellFormed) {
+      refuse('NOT_WELL_FORMED', 'WellFormed', 'the request is not well-formed XML');
+      return;
+    }
+    let body: string;
+    switch (operation) {
+      case 'GetNetworkInterfaces':
+        body =
+          `<tds:GetNetworkInterfacesResponse><tds:NetworkInterfaces token="${xmlEscape(interfaceToken())}"><tt:Enabled>true</tt:Enabled>` +
+          `<tt:Info><tt:Name>eth0</tt:Name><tt:HwAddress>${xmlEscape(network?.hwAddress ?? FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress)}</tt:HwAddress><tt:MTU>1500</tt:MTU></tt:Info>` +
+          `<tt:IPv4><tt:Enabled>true</tt:Enabled><tt:Config><tt:Manual><tt:Address>${networkNow.address}</tt:Address><tt:PrefixLength>${networkNow.prefixLength}</tt:PrefixLength></tt:Manual>` +
+          `<tt:DHCP>${String(networkNow.dhcp)}</tt:DHCP></tt:Config></tt:IPv4></tds:NetworkInterfaces></tds:GetNetworkInterfacesResponse>`;
+        break;
+      case 'SetNetworkInterfaces': {
+        const token = /<(?:[\w.-]+:)?InterfaceToken(?:\s[^>]*)?>([^<]*)</.exec(xml)?.[1];
+        const address = elementText(xml, 'Address');
+        const prefix = Number(elementText(xml, 'PrefixLength') ?? Number.NaN);
+        const dhcp = elementText(xml, 'DHCP') === 'true';
+        record.dhcp = dhcp;
+        record.address = address !== null && DOTTED_IPV4.test(address) ? address : null;
+        record.prefixLength = Number.isInteger(prefix) ? prefix : null;
+        // The token is compared as the text the element holds once unescaped, with nothing trimmed.
+        if (token === undefined || xmlUnescape(token) !== interfaceToken()) {
+          refuse('INTERFACE_TOKEN_UNKNOWN', 'InvalidNetworkInterfaceToken', 'the interface token is not one of this device');
+          return;
+        }
+        if (!dhcp && (record.address === null || record.prefixLength === null || record.prefixLength < 1 || record.prefixLength > 32)) {
+          refuse('ADDRESS_INVALID', 'InvalidIPv4Address', 'a manual IPv4 address and a prefix length are required');
+          return;
+        }
+        const rebootNeeded = network?.rebootNeeded ?? true;
+        networkNow.pending = { address: dhcp ? networkNow.address : (record.address ?? networkNow.address), prefixLength: dhcp ? networkNow.prefixLength : (record.prefixLength ?? networkNow.prefixLength), dhcp };
+        if (!rebootNeeded) applyPending();
+        body = `<tds:SetNetworkInterfacesResponse><tds:RebootNeeded>${String(rebootNeeded)}</tds:RebootNeeded></tds:SetNetworkInterfacesResponse>`;
+        break;
+      }
+      case 'SetNetworkDefaultGateway': {
+        const gateway = elementText(xml, 'IPv4Address');
+        record.gateway = gateway !== null && DOTTED_IPV4.test(gateway) ? gateway : null;
+        if (network?.gatewayFault === true || record.gateway === null) {
+          refuse('GATEWAY_REFUSED', 'InvalidGatewayAddress', 'the gateway address is not accepted');
+          return;
+        }
+        networkNow.gateway = record.gateway;
+        body = '<tds:SetNetworkDefaultGatewayResponse/>';
+        break;
+      }
+      case 'GetNetworkDefaultGateway':
+        body = `<tds:GetNetworkDefaultGatewayResponse><tds:NetworkGateway><tt:IPv4Address>${networkNow.gateway}</tt:IPv4Address></tds:NetworkGateway></tds:GetNetworkDefaultGatewayResponse>`;
+        break;
+      case 'SystemReboot':
+        networkNow.rebootCount += 1;
+        applyPending();
+        if (network?.rebootDropsConnection === true) {
+          record.accepted = true;
+          request.socket.destroy(); // obeyed, and the camera is gone before it answers
+          return;
+        }
+        body = '<tds:SystemRebootResponse><tds:Message>Rebooting</tds:Message></tds:SystemRebootResponse>';
+        break;
+    }
+    record.accepted = true;
+    const shaped = networkModeOnly === null || networkModeOnly === operation ? networkMode : 'NORMAL';
+    if (shaped === 'MALFORMED_REPLY') {
+      const whole = envelope(body);
+      reply(response, 200, `${whole.slice(0, whole.indexOf('<s:Body>') + 8 + Math.floor(body.length / 2))}<tt:Cut attr=>`);
+    } else if (shaped === 'OVERSIZED_REPLY') {
+      reply(response, 200, envelope(`${body}<!--${'x'.repeat(FAKE_ONVIF_OVERSIZED_REPLY_BYTES)}-->`));
+    } else {
+      reply(response, 200, envelope(body));
+    }
+  }
+
   function onHttp(request: IncomingMessage, response: ServerResponse): void {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -566,7 +905,8 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       // A password in clear is recorded whatever else is true of the request (CT-1: it must never be sent).
       const clear = /^Basic\s/i.test(authorization) || token === 'CLEAR';
       if (clear) violationList.push({ code: 'PASSWORD_IN_CLEAR', channel: 'device', operation });
-      if (!(FAKE_ONVIF_ALLOWED_OPERATIONS as readonly string[]).includes(operation)) {
+      const networkCall = isNetworkCall(operation) ? operation : null; // row 109: null on every stub built without `network`
+      if (networkCall === null && !(FAKE_ONVIF_ALLOWED_OPERATIONS as readonly string[]).includes(operation)) {
         violationList.push({ code: 'OPERATION_NOT_ALLOWED', channel: 'device', operation });
         reply(response, 400, fault('Sender', 'ActionNotSupported', 'the fixture serves the read-only list of the connection test only'));
         return;
@@ -581,6 +921,29 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
           reply(response, 401, fault('Sender', 'NotAuthorized', 'sender not authorized'), { 'WWW-Authenticate': digestChallenge() });
           return;
         }
+      }
+      if (networkCall !== null) {
+        answerNetwork(networkCall, xml, request, response);
+        return;
+      }
+      // Integration pass I-2: with a profile set the stream address is the asked profile's own; a token the
+      // device does not list is a fault. (The mode FOREIGN_STREAM_HOST keeps its one foreign address.)
+      if (profileSet !== null && operation === 'GetStreamUri' && deviceMode !== 'FOREIGN_STREAM_HOST') {
+        const asked = xmlUnescape(elementText(xml, 'ProfileToken') ?? '');
+        const profile = FAKE_ONVIF_TWO_SOURCE_PROFILES.find((entry) => entry.token === asked);
+        if (profile === undefined) {
+          reply(response, 400, fault('Sender', 'NoProfile', 'the fixture lists no profile with that token'));
+          return;
+        }
+        reply(
+          response,
+          200,
+          envelope(
+            `<trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>${fakeOnvifProfileStreamUri(ports.rtsp, profile)}</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>` +
+              `<tt:InvalidAfterReboot>false</tt:InvalidAfterReboot><tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetStreamUriResponse>`,
+          ),
+        );
+        return;
       }
       reply(response, 200, envelope(operationXml(operation)));
     });
@@ -750,6 +1113,28 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     setRtspMode(mode) {
       rtspMode = mode;
     },
+    setNetworkMode(mode, only) {
+      if (network === null) throw new Error('fake ONVIF stub: built without the network option, it answers no network call');
+      networkMode = mode;
+      networkModeOnly = only ?? null;
+    },
+    networkState() {
+      if (network === null) throw new Error('fake ONVIF stub: built without the network option, it answers no network call');
+      return {
+        interfaceToken: interfaceToken(),
+        hwAddress: network.hwAddress ?? FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress,
+        address: networkNow.address,
+        prefixLength: networkNow.prefixLength,
+        dhcp: networkNow.dhcp,
+        gateway: networkNow.gateway,
+        pending: networkNow.pending,
+        rebootCount: networkNow.rebootCount,
+        twinEndpointRef,
+      };
+    },
+    networkRequests() {
+      return networkLog;
+    },
     async sendUnsolicited(target) {
       const first = deviceList[0] ?? { endpointRef: `urn:uuid:${randomUUID()}`, name: 'Unasked', hardware: 'FAKE-CAM-1' };
       await sendDatagram(probeMatches(`urn:uuid:${randomUUID()}`, probeMatch(first, deviceServiceUrl)), target.port, target.address);
@@ -775,6 +1160,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     resetLog() {
       log = [];
       violationList = [];
+      networkLog = [];
     },
   };
 }

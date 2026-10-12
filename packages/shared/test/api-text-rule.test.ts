@@ -157,7 +157,8 @@ describe('API-13 over the whole registry', () => {
     // Task 3 M6 row 113 adds the body of op 91 `updateSttConfig` (C3 §2.5): 31 -> 32 bodies.
     // Task 3 R-9 (row 132, D106; C3 §2.6) adds the optional bodies of ops 95 and 96: 32 -> 34 bodies.
     // Pass D1b (D140) adds the optional body of op 88 (`fileId`, an enum: no free text): 34 -> 35 bodies.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(35);
+    // Task 4 row 63 (design addendum 4.2) adds the body of op 99 `registerCaptureAudioInput`: 35 -> 36 bodies.
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(36);
     expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(6);
     expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
     expect(checked).toContain('SignInRequest(root).password');
@@ -223,7 +224,8 @@ describe('API-13 over the whole registry', () => {
     const added = names.slice(18);
     // R-9..R-11 (row 132, D106) add the eight schemas of ops 93-97: 140 -> 148.
     // Pass D1b (D140) adds the optional body of op 88: 148 -> 149.
-    expect(added).toHaveLength(149);
+    // Task 4 row 63 (design addendum 4.2) adds the four schemas of ops 98-99: 149 -> 153.
+    expect(added).toHaveLength(153);
     let leaves = 0;
     const open: string[] = [];
     for (const name of added) {

@@ -49,7 +49,7 @@ function firstResponse<T>(operationId: string, status: number, name: string): T 
   return example!.value as T;
 }
 
-describe('the examples of the 87 operations that only the Core server answers', () => {
+describe('the examples of the 89 operations that only the Core server answers', () => {
   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
     let responses = 0;
     for (const operation of NEW_OPERATIONS) {
@@ -73,8 +73,9 @@ describe('the examples of the 87 operations that only the Core server answers', 
       }
     }
     // 65 of the backend task, 14 of task 3 M2-W7, the 3 STT configuration operations of M6 row 113
-    // (C3 §2.5) and the 5 of the camera search of R-9..R-11 (row 132, D106; C3 §2.6).
-    expect(NEW_OPERATIONS).toHaveLength(87);
+    // (C3 §2.5), the 5 of the camera search of R-9..R-11 (row 132, D106; C3 §2.6) and the 2 of the
+    // sound cards of task 4 row 63 (design addendum 4.2).
+    expect(NEW_OPERATIONS).toHaveLength(89);
     expect(responses).toBeGreaterThan(300);
   });
 

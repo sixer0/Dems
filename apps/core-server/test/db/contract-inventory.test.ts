@@ -8,7 +8,9 @@
 //      41 tables, 426 columns, 172 named CHECKs, 40 foreign keys; and with T-42 of erratum
 //      PE-129b-01 (`contract-v5-delta.ts`, row 129b): 42 tables, 436 columns, 179 CHECKs; with
 //      T-43 and `alerts.reason` of erratum PE-0013-01 (`contract-v6-delta.ts`): 43 tables, 440
-//      columns, 182 CHECKs;
+//      columns, 182 CHECKs; with T-44, T-45, `session_capture_sources.source_facts` and the
+//      nullable slot columns of task 4 schema set A (`contract-v7-delta.ts`): 45 tables, 461
+//      columns, 199 CHECKs, 43 foreign keys;
 //   2. the typed schema declares the same tables, columns, types, nullability and defaults;
 //   3. the hand-written migration files are the statements of contract §6.3 and §8.3;
 //   4. CL-12: every closed value set of the contract equals the shared constant it cites, and
@@ -45,7 +47,7 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
     expect(serialise(parseContract(contractText))).toBe(serialise(inventory));
   });
 
-  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6 and dbc-7 deltas = 43 tables, 440 columns, 182 CHECKs, 40 foreign keys", () => {
+  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6, dbc-7 and dbc-8 deltas = 45 tables, 461 columns, 199 CHECKs, 43 foreign keys", () => {
     // The base is the CLOSED task-2 contract (§15.6 states its own totals — re-pinned in
     // contract-inventory.ts's composition header); the delta is dbc-3 §A/§B/§B.13/§C transcribed
     // in contract-v2-delta.ts. The per-kind totals below are the composition's measured output;
@@ -56,21 +58,24 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
       // PE-129b-01 (set 6): +1 table (T-42), +10 columns, +1 PK, +7 CHECKs.
       // PE-0013-01 (set 7): +1 table (T-43, 3 columns, 1 PK, 2 CHECKs), +1 column and +1 CHECK on
       // `alerts`; `transcript_revisions_key_id_check` keeps its name (count unchanged).
-      tables: 43,
-      columns: 440,
-      primaryKeys: 43,
-      foreignKeys: 40,
-      uniques: 15,
+      // Task 4 schema set A (set 8, dbc-8): +2 tables (T-44: 10 columns, 1 PK, 1 FK, 1 index,
+      // 7 CHECKs; T-45: 10 columns, 1 PK, 2 FKs, 1 unique, 6 CHECKs), +1 column and +3 CHECKs on
+      // `session_capture_sources`, +1 CHECK on `capture_config` (six of its columns nullable).
+      tables: 45,
+      columns: 461,
+      primaryKeys: 45,
+      foreignKeys: 43,
+      uniques: 16,
       uniqueIndexes: 4,
-      indexes: 23,
-      checks: 182,
+      indexes: 24,
+      checks: 199,
     });
     expect(inventory.tables.map((table) => table.id).sort()).toEqual(
-      Array.from({ length: 43 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
+      Array.from({ length: 45 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
     );
     // The counts the closed contract states in its own text (§15.6), and the ones dbc-3 claims:
     // 30 -> 39 tables (§0.1, the 9-new/5-changed reconciliation) plus the R-8 singleton T-40
-    // (§B.13, confirmed by decision D24) = 40, plus T-41 of dbc-4 §N.3 = 41, plus T-42 of PE-129b-01 = 42, plus T-43 of PE-0013-01 = the 43 pinned above.
+    // (§B.13, confirmed by decision D24) = 40, plus T-41 of dbc-4 §N.3 = 41, plus T-42 of PE-129b-01 = 42, plus T-43 of PE-0013-01 = 43, plus T-44 and T-45 of task 4 schema set A = the 45 pinned above.
     expect(contractText).toContain('30 tables; boot checks B-1 to B-9; PostgreSQL behaviours PG-01 to PG-28; 98 named CHECKs; 25 foreign keys; 302 columns');
     expect(dbc3Text).toContain('| Table count | 30 -> 39 |');
     // The stable prefix only: the status wording after it is documentation (it moved from "proposed"
@@ -97,7 +102,7 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
 });
 
 describe('the typed schema declares what the contract lists', () => {
-  it('the 43 tables with the same names', () => {
+  it('the 45 tables with the same names', () => {
     expect(tables).toHaveLength(inventory.counts.tables);
     expect([...SCHEMA_TABLE_NAMES]).toEqual(inventory.tables.map((table) => table.name).sort());
   });
@@ -256,14 +261,14 @@ describe('the hand-written migration files are the statements of the contract', 
     expect(text).toContain("VALUES (true, 1, 'dbc-2')");
   });
 
-  it('the set is fifteen files; the nine hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01)', () => {
+  it('the set is seventeen files; the ten hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01; task 4 schema set A)', () => {
     expect(readMigrationSet().map((entry) => entry.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     const marker = ['-->', 'statement-breakpoint'].join(' ');
     // Hand-written: the v1 trio plus the two privilege migrations row 46/row 112 wrote by hand
     // and the privilege migration of set 4, row 129, and of set 5, row 129a (0004, 0006 and 0008 are drizzle-generated
     // and legitimately carry the marker as lines).
-    expect(readMigrationSet()).toHaveLength(15);
-    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges']) {
+    expect(readMigrationSet()).toHaveLength(17);
+    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges', '0016_capture_streams_audio_inputs_privileges']) {
       for (const line of file(tag).split('\n')) {
         if (line.includes(marker)) expect(line, `${tag}: the marker must be a line of its own`).toBe(marker);
       }
@@ -311,14 +316,15 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
   it('every value set of the contract is a constant of the typed schema, with the same values in the same order', () => {
     const declared = schema as unknown as Record<string, unknown>;
     // 28 sets in §2.4 of the closed contract + 14 added or swapped by dbc-3 §C.6/§E.3/§B (R1)
-    // + 2 of dbc-4 §N.2/§N.3 (CAPTURE_ADAPTER_KIND, CAPTURE_SOURCE_SLOT).
-    expect(Object.keys(inventory.valueSets)).toHaveLength(44);
+    // + 2 of dbc-4 §N.2/§N.3 (CAPTURE_ADAPTER_KIND, CAPTURE_SOURCE_SLOT)
+    // + 2 of task 4 schema set A (CAPTURE_STREAM_ROLE, CAPTURE_STREAM_CODEC).
+    expect(Object.keys(inventory.valueSets)).toHaveLength(46);
     for (const [name, values] of Object.entries(inventory.valueSets)) {
       expect(declared[name], name).toEqual(values);
     }
   });
 
-  it('the twenty-one server-native sets have no shared constant yet; they are the lists of the contract', () => {
+  it('the twenty-three server-native sets have no shared constant yet; they are the lists of the contract', () => {
     const serverNative = [
       'SESSION_END_REASON', 'DEVICE_STATE', 'CODE_STATE', 'BIO_REVOKE_REASON', 'EXPORT_SCOPE',
       'SNAPSHOT_CAUSE', 'CHAIN_DISCARD_REASON',
@@ -330,6 +336,8 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
       // Added with schema v3 (dbc-4 §N.2/§N.3). CAPTURE_ADAPTER_KIND moves to `shared` above when
       // row 136 adds the shared constant of the five kinds (the CL-12 equality then pins it).
       'CAPTURE_ADAPTER_KIND', 'CAPTURE_SOURCE_SLOT',
+      // Added with schema v7 (task 4 schema set A): the role and the codec of a camera stream.
+      'CAPTURE_STREAM_ROLE', 'CAPTURE_STREAM_CODEC',
     ];
     expect(Object.keys(inventory.valueSets).filter((name) => !(name in shared)).sort()).toEqual([...serverNative].sort());
     expect(inventory.valueSets['SESSION_END_REASON']).toHaveLength(8);

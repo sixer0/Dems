@@ -3,7 +3,7 @@
   "info": {
     "title": "DEMS Core API",
     "version": "0.3.0",
-    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 97 operations and one WebSocket channel.",
+    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 99 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
   "servers": [
@@ -24770,6 +24770,647 @@
           "dems-core-server"
         ]
       }
+    },
+    "/api/v1/capture/audio-cards/search": {
+      "post": {
+        "operationId": "searchCaptureAudioCards",
+        "tags": [
+          "Device"
+        ],
+        "summary": "List the sound cards",
+        "description": "Lists the sound cards of the host the Core runs on, once, now. **No body.** No card, path, address or filter can be sent. Nothing lists in the background and nothing chooses a card: the listing happens because an operator asked for it, and it is not stored. It opens no card for capture, changes no level and registers nothing.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nPer capture device of a card the answer holds the card id, the device index, the USB id, the product name, the native channel count, the sample sizes, and the inputs that are registered microphones with their registry ids. The product name is **untrusted device text**: printable ASCII, at most 64 characters, a name that fails the rule replaced by a fixed word; a client draws it as text and trusts none of it.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row with `scope: AUDIO_CARDS`: a search id and counts, never a product name, a USB id or a card id.\n\nOne listing at a time per Core: a second call while one runs answers `409 INVALID_STATE` with `details.reason: AUDIO_CARD_SEARCH_IN_PROGRESS`. Over the spacing bound the Core answers `429 RATE_LIMITED` with `retry-after` and `details.reason: AUDIO_CARD_SEARCH_RATE_LIMITED`: nothing is listed and no audit row is written.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator reads no host: it answers a fixed list of two cards that are named as test cards, with no registered input. On a tablet or phone the simulator refuses with the same `403`.",
+        "responses": {
+          "200": {
+            "description": "The sound cards as this listing found them. Not stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAudioCardSearch"
+                },
+                "examples": {
+                  "simulated": {
+                    "summary": "The simulator's fixed listing: two test cards, no registered input",
+                    "value": {
+                      "searchedAt": 1790823600000,
+                      "cards": [
+                        {
+                          "cardId": "DEMS_TEST_A",
+                          "deviceIndex": 0,
+                          "usbId": null,
+                          "product": "DEMS test sound card A (simulated)",
+                          "channelCount": 4,
+                          "sampleBits": [
+                            16,
+                            24
+                          ],
+                          "registered": []
+                        },
+                        {
+                          "cardId": "DEMS_TEST_B",
+                          "deviceIndex": 0,
+                          "usbId": null,
+                          "product": "DEMS test sound card B (simulated)",
+                          "channelCount": 2,
+                          "sampleBits": [
+                            16
+                          ],
+                          "registered": []
+                        }
+                      ],
+                      "truncated": false
+                    }
+                  },
+                  "registered": {
+                    "summary": "A USB card whose first input is a registered microphone",
+                    "value": {
+                      "searchedAt": 1790823600000,
+                      "cards": [
+                        {
+                          "cardId": "EXAMPLE_CARD",
+                          "deviceIndex": 0,
+                          "usbId": "0000:0000",
+                          "product": "Example USB audio interface",
+                          "channelCount": 8,
+                          "sampleBits": [
+                            16,
+                            24
+                          ],
+                          "registered": [
+                            {
+                              "inputNumber": 1,
+                              "deviceId": "MIC-03"
+                            }
+                          ]
+                        }
+                      ],
+                      "truncated": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "searchCaptureAudioCards",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "searchCaptureAudioCards",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or another listing is running (INVALID_STATE, `details.reason: AUDIO_CARD_SEARCH_IN_PROGRESS`). Nothing is listed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "locked": {
+                    "summary": "A session is open",
+                    "value": {
+                      "error": {
+                        "code": "CAPTURE_CONFIG_LOCKED",
+                        "message": "The capture configuration cannot be changed while a session is open.",
+                        "details": {
+                          "simCode": "CAPTURE_CONFIG_LOCKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "inProgress": {
+                    "summary": "Another listing is running",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "The sound cards are being listed. Try again shortly.",
+                        "details": {
+                          "reason": "AUDIO_CARD_SEARCH_IN_PROGRESS"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 4, blueprint row 63 (WP-07b); design addendum 4.2, operation 98; plan review P12-F05 (c), P12-F06; security addendum AD-07 (not in the design book)",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_DISCOVERY_SEARCHED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/capture/audio-cards/inputs": {
+      "post": {
+        "operationId": "registerCaptureAudioInput",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Register a sound-card input as a microphone",
+        "description": "Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nAn input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.\n\nRefusals, each storing nothing: `404 NOT_FOUND` when the Core's own listing has no such card and device; `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_BEYOND_CARD` when the card has no input of that number, or `AUDIO_CARD_SEARCH_IN_PROGRESS` while a listing runs. The refusal never quotes the input and carries no device text.\n\nWrites one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator captures from no sound card and registers nothing: for a card of its fixed list it answers `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_NOT_REGISTRABLE` (or `AUDIO_INPUT_BEYOND_CARD` for an input the test card does not have), and `404` for any other card. It writes no audit row and changes no state.",
+        "responses": {
+          "200": {
+            "description": "The input already had a microphone: re-enabled, or found on a card at another place. No second device was made.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAudioInputRegistration"
+                },
+                "examples": {
+                  "reenabled": {
+                    "summary": "The input already had a microphone: no second device",
+                    "value": {
+                      "deviceId": "MIC-03",
+                      "change": "REENABLED",
+                      "inputNumber": 1,
+                      "channelCount": 8
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A new microphone was registered for the input.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAudioInputRegistration"
+                },
+                "examples": {
+                  "registered": {
+                    "summary": "A new microphone",
+                    "value": {
+                      "deviceId": "MIC-03",
+                      "change": "REGISTERED",
+                      "inputNumber": 1,
+                      "channelCount": 8
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks CAPTURE_CONFIG",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "registerCaptureAudioInput",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_CONFIG, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "registerCaptureAudioInput",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The listing has no card of this id with this device index (NOT_FOUND). Nothing is stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "No such card in the listing",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "No sound card has this ID.",
+                        "details": {
+                          "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, `details.reason`: AUDIO_INPUT_BEYOND_CARD, AUDIO_CARD_SEARCH_IN_PROGRESS, or AUDIO_INPUT_NOT_REGISTRABLE from an answerer that captures from no sound card). Nothing is stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "locked": {
+                    "summary": "A session is open",
+                    "value": {
+                      "error": {
+                        "code": "CAPTURE_CONFIG_LOCKED",
+                        "message": "The capture configuration cannot be changed while a session is open.",
+                        "details": {
+                          "simCode": "CAPTURE_CONFIG_LOCKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "beyondCard": {
+                    "summary": "The card has no input of this number",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "The sound card has no such input.",
+                        "details": {
+                          "reason": "AUDIO_INPUT_BEYOND_CARD"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "notRegistrable": {
+                    "summary": "The simulator registers no sound-card input",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "A sound-card input can be registered on a production Core only.",
+                        "details": {
+                          "reason": "AUDIO_INPUT_NOT_REGISTRABLE"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body does not match its schema (INVALID_INPUT). The refusal never quotes the input. Nothing is stored.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 4, blueprint row 63 (WP-07b); design addendum 4.2, operation 99; plan review P12-F05 (c), P12-F06; security addendum AD-07 (not in the design book)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureAudioInputRegisterRequest"
+              },
+              "examples": {
+                "firstInput": {
+                  "summary": "The first input of a card of the listing",
+                  "value": {
+                    "cardId": "DEMS_TEST_A",
+                    "deviceIndex": 0,
+                    "inputNumber": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_CONFIG",
+          "permissions": [
+            "CAPTURE_CONFIG"
+          ],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_AUDIO_INPUT_CHANGED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
     }
   },
   "components": {
@@ -37066,6 +37707,197 @@
         ],
         "additionalProperties": false,
         "description": "The local microphone inputs as a re-read found them (C3 §2.6 op 97). It registers nothing."
+      },
+      "CaptureAudioCard": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{1,32}$",
+            "description": "The card id in the kernel's own form. A request of operation 99 names a card by it."
+          },
+          "deviceIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31,
+            "description": "The capture device of the card: 0 to 31."
+          },
+          "usbId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Vendor and product id of a USB card, `vvvv:pppp` in lower-case hexadecimal; null for a card that is not USB."
+          },
+          "product": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "description": "The product name the card announced. Untrusted device text: printable ASCII only, 1 to 64 characters; a name that fails the rule is replaced by a fixed word before it is answered. Draw it as text only."
+          },
+          "channelCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64,
+            "description": "The native channel count of the card: its inputs are numbered 1 to this value."
+          },
+          "sampleBits": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 16
+                },
+                {
+                  "type": "number",
+                  "const": 24
+                },
+                {
+                  "type": "number",
+                  "const": 32
+                }
+              ]
+            },
+            "description": "The sample sizes the card offers, in bits. A closed set; never a format name of the device."
+          },
+          "registered": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "inputNumber": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "deviceId": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9-]{0,31}$",
+                  "description": "The registered microphone behind this input, e.g. `MIC-03`."
+                }
+              },
+              "required": [
+                "inputNumber",
+                "deviceId"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The inputs of this card that are registered microphones, by input number. An input that is not listed is not registered."
+          }
+        },
+        "required": [
+          "cardId",
+          "deviceIndex",
+          "usbId",
+          "product",
+          "channelCount",
+          "sampleBits",
+          "registered"
+        ],
+        "additionalProperties": false,
+        "description": "One sound card of the Core's host as a listing found it (task 4, operation 98). It registers nothing and is in no slice."
+      },
+      "CaptureAudioCardSearch": {
+        "type": "object",
+        "properties": {
+          "searchedAt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cards": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaptureAudioCard"
+            },
+            "description": "One entry per capture device of a sound card. Empty when the host has none."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the host has more than 32 entries: a warning, not a note."
+          }
+        },
+        "required": [
+          "searchedAt",
+          "cards",
+          "truncated"
+        ],
+        "additionalProperties": false,
+        "description": "The sound cards of the Core's host as one listing found them (task 4, operation 98). Not stored."
+      },
+      "CaptureAudioInputRegisterRequest": {
+        "type": "object",
+        "properties": {
+          "cardId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{1,32}$",
+            "description": "A card of the Core's own listing, by its card id."
+          },
+          "deviceIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31,
+            "description": "The capture device of that card."
+          },
+          "inputNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64,
+            "description": "The input to register: 1 to the channel count of the card."
+          }
+        },
+        "required": [
+          "cardId",
+          "deviceIndex",
+          "inputNumber"
+        ],
+        "additionalProperties": false,
+        "description": "Request body of `POST /api/v1/capture/audio-cards/inputs` (task 4, operation 99). No product name, USB id, channel count, sample size, path or address member exists."
+      },
+      "CaptureAudioInputRegistration": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9-]{0,31}$",
+            "description": "The microphone behind the input, e.g. `MIC-03`: the next free number for a new one, minted by the Core."
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "REGISTERED",
+              "CARD_CHANGED",
+              "REENABLED"
+            ],
+            "description": "REGISTERED: a new microphone. REENABLED: the input already had one; no second device was made. CARD_CHANGED: the stored input was found on a card at another place and now names that card."
+          },
+          "inputNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "channelCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64,
+            "description": "The native channel count the Core read from its own listing."
+          }
+        },
+        "required": [
+          "deviceId",
+          "change",
+          "inputNumber",
+          "channelCount"
+        ],
+        "additionalProperties": false,
+        "description": "What a registration of a sound-card input did (task 4, operation 99). No device text."
       }
     },
     "headers": {

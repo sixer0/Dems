@@ -98,9 +98,9 @@ function expectRefused(booted: Booted, code: string, deviceIds: readonly string[
 }
 
 describe('the schema this row was written against', () => {
-  it('schema version 6, contract dbc-7', async () => {
+  it('schema version 7, contract dbc-8', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([6, 'dbc-7']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([7, 'dbc-8']);
   });
 });
 

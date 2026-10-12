@@ -747,6 +747,44 @@ export function sttConfig(overrides: Row = {}): Row {
   };
 }
 
+/**
+ * One `capture_device_streams` row (T-44, task 4 schema set A): the main stream of a camera as a
+ * stream test read it. The token is of the form a real camera uses (lower case, an underscore),
+ * which is exactly why it is not the profile code.
+ */
+export function captureDeviceStream(deviceId: string, profile: string, overrides: Row = {}): Row {
+  return {
+    device_id: deviceId,
+    profile,
+    onvif_profile_token: 'profile_1',
+    video_source_token: 'VideoSource_1',
+    lens: 1,
+    stream_role: 'MAIN',
+    codec: 'HEVC',
+    width: 1920,
+    height: 1080,
+    read_at: T,
+    ...overrides,
+  };
+}
+
+/** One `capture_audio_inputs` row (T-45, task 4 schema set A): input 1 of a four-channel USB card. */
+export function captureAudioInput(deviceId: string, overrides: Row = {}): Row {
+  return {
+    device_id: deviceId,
+    usb_id: '1235:8211',
+    card_id: 'USB',
+    card_device: 0,
+    input_number: 1,
+    native_channels: 4,
+    sample_rate: 48_000,
+    sample_bits: 24,
+    updated_by: 'OPR-001',
+    updated_at: T,
+    ...overrides,
+  };
+}
+
 /** The one `core_media_store` row (T-43, erratum PE-0013-01): the media store root of a Core. */
 export function mediaStore(overrides: Row = {}): Row {
   return { singleton: true, media_root: '/srv/dems/media/sessions', recorded_at: T, ...overrides };

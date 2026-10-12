@@ -1,5 +1,5 @@
 /**
- * The typed schema of the DEMS Core database: 43 tables in schema `public` (database contract
+ * The typed schema of the DEMS Core database: 45 tables in schema `public` (database contract
  * §3.3, §4, `dbc-3` §B and `dbc-4` §N; plan rows W17 and M2-W2; table 40 = T-40 `stt_config`,
  * row 112; table 41 = T-41 `session_capture_sources`, row 129). This
  * file is the entry `drizzle.config.ts` names, and what every later row imports.
@@ -16,7 +16,8 @@
  *              T-25 core_device, T-26 core_state, T-27 hardware_snapshot, T-28 health_snapshots,
  *              T-43 core_media_store (erratum PE-0013-01; ruling D166)
  *   meta       T-29 schema_meta
- *   capture    T-32 capture_devices, T-31 capture_config, T-33 capture_device_credentials
+ *   capture    T-32 capture_devices, T-31 capture_config, T-33 capture_device_credentials,
+ *              T-44 capture_device_streams, T-45 capture_audio_inputs (task 4 schema set A)
  *   recording  T-34 session_audio_intervals, T-35 recording_fragments, T-39 sealing_jobs,
  *              T-41 session_capture_sources (dbc-4 §N.3; R-9..R-11)
  *   transcript T-36 transcript_chunks, T-37 transcripts, T-38 transcript_revisions
@@ -56,6 +57,14 @@
  * generated `0013_key_id_fault_reason_media_root.sql` (the key-id form of
  * `transcript_revisions_key_id_check`, `alerts.reason`, T-43 `core_media_store` in `./core`) plus
  * the hand-written `0014_key_id_fault_reason_media_root_privileges.sql` (the version step).
+ *
+ * SCHEMA VERSION 7 (`dbc-8`; schema set A of task 4, `docs/2026-10-12_input_av_core_adapter_plan/
+ * masterplan/03_db_schema_extension.md` sections 2.1 to 2.3 with design addendum 1.4 #1 and 7.2):
+ * the generated `0015_capture_streams_audio_inputs.sql` (T-44 and T-45 in `./capture`,
+ * `session_capture_sources.source_facts` in `./recording`, the six slot columns of
+ * `capture_config` nullable with `capture_config_slot_pair_check`, the value sets
+ * `CAPTURE_STREAM_ROLE` and `CAPTURE_STREAM_CODEC`) plus the hand-written
+ * `0016_capture_streams_audio_inputs_privileges.sql` (the grants and the version step).
  *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),

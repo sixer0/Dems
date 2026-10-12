@@ -166,8 +166,21 @@ const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_D
 //   82 listAudioSourceIntervals    the session wiring of row 71 (no route in wave D yet)
 //   84 getTranscript, 85 createTranscriptRevision, 86 listTranscriptRevisions
 //                                  the transcript read / revision routes (the server side of row 92's UI)
+// Task 4 (blueprint row 63, WP-07b; integration pass I-2): the contract of the two sound-card
+// operations 98 and 99 landed before their routes. Row 70 (the live path) routes them and takes both
+// entries out again. In the order `compareRoutes` reports (sorted):
+//   99 registerCaptureAudioInput, 98 searchCaptureAudioCards      task 4 row 70
 const LANDED_UNROUTED: readonly string[] = [
+  'POST /api/v1/capture/audio-cards/inputs',
+  'POST /api/v1/capture/audio-cards/search',
 ];
+/**
+ * The operations of `LANDED_UNROUTED` and the rest. A walk of this file that CALLS every operation
+ * calls the routed ones: an unrouted path answers the router's 404, which is no answer of the
+ * operation. The split is drift-guarded by the equalities on `LANDED_UNROUTED` in block 1.
+ */
+const UNROUTED_OPERATIONS: readonly CoreApiRegistryOperation[] = OPERATIONS.filter((operation) => LANDED_UNROUTED.includes(routeKey(operation.method, operation.path)));
+const ROUTED_OPERATIONS: readonly CoreApiRegistryOperation[] = OPERATIONS.filter((operation) => !UNROUTED_OPERATIONS.includes(operation));
 
 const COMMITTED_OPENAPI = fileURLToPath(new URL('../../../../packages/shared/openapi/openapi.json', import.meta.url));
 
@@ -445,20 +458,22 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 97 operations, 36 GET and 61 POST, each with one access rule and one audit rule', () => {
+  it('the registry holds exactly 99 operations, 36 GET and 63 POST, each with one access rule and one audit rule', () => {
     // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
     // the six capture-config and credential operations, the three audio-source and sealing ones,
     // the five transcript, media-session and export-job ones), and to 92 with the confirmed R-8
     // (C3 §2.5: the STT configuration operations 90 to 92; task 3 row 113), and to 97 with R-9..R-11
     // (C3 §2.6, §10.1: the camera search, the connection test, the adoption and the local-input
     // re-read, 93 to 97; task 3 row 132, decision D106). R1 (D44): acceptance reads the CURRENT
-    // registry, the closed document never.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(97);
-    expect(OPERATIONS).toHaveLength(97);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(97);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(97);
+    // registry, the closed document never. Task 4 (blueprint row 63): the two sound-card operations
+    // 98 and 99, both POST: 97 + 2 = 99, 36 GET / 63 POST.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(99);
+    expect(OPERATIONS).toHaveLength(99);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(99);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(99);
     expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(36);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(61);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(63);
+    expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual(['searchCaptureAudioCards', 'registerCaptureAudioInput']);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -481,13 +496,15 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     console.info(`[w52] unregistered operations (registry against router): ${JSON.stringify(byRouter.unregistered)}`);
     console.info(`[w52] unregistered operations (registry against guard): ${JSON.stringify(byGuard.unregistered)}`);
     console.info(`[w52] the one route outside the registry: ${router.filter((route) => !REGISTRY_ROUTES.includes(route)).join(', ')}`);
-    expect(byRouter).toEqual({ undocumented: [], unregistered: [] });
-    expect(byGuard).toEqual({ undocumented: [], unregistered: [] });
+    // Task 4 row 63: the two sound-card operations have no route until row 70 (LANDED_UNROUTED).
+    expect(byRouter).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
+    expect(byGuard).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
     // The 97 operations of the registry and the channel, each once; the exception is there and is
     // the only one. (The pin read 79 - the base, operations 90 to 92 and the channel - and was never
     // moved while the registry grew; it is reached only once nothing is unrouted, and then it is 98.)
     // Row 90 (ruling D140): and the evidence media route - two routes outside the registry, 99 in all.
-    expect(router).toHaveLength(REGISTRY_ROUTES.length + EXTERNAL_ROUTES.length);
+    // Task 4 row 63: the registry holds 99; its two unrouted operations are not in the router, so 100 stays.
+    expect(router).toHaveLength(REGISTRY_ROUTES.length - LANDED_UNROUTED.length + EXTERNAL_ROUTES.length);
     // Fix pass F-M8 (ruling D178): and the export download route - three routes outside the registry, 100 in all.
     expect(router).toHaveLength(100);
     expect(new Set(router).size).toBe(100);
@@ -514,10 +531,10 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     }
     // And by Fastify's own question, without the printed table: every operation has its route.
     const missing = OPERATIONS.filter((operation) => !main.app.hasRoute({ method: methodOf(operation), url: operation.path.replace('{id}', ':id') })).map((operation) => operation.operationId);
-    expect(missing).toEqual([]);
+    expect(missing).toEqual(UNROUTED_OPERATIONS.map((operation) => operation.operationId));
   });
 
-  it('the committed openapi.json lists the same 97 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 99 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -533,7 +550,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(97);
+    expect(documented).toHaveLength(99);
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -1259,10 +1276,11 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
 describe('AC-B-14: the refusals of the stages, generated for every operation of the registry', () => {
   it('401 NOT_SIGNED_IN: every operation that is not PUBLIC, called without a credential', async () => {
     const guarded = OPERATIONS.filter((operation) => operation.access.kind !== CoreApiAccessKind.PUBLIC);
-    // 97 operations, four of them PUBLIC (the pin read 71 of the 75 of the base).
+    // 99 operations, four of them PUBLIC (the pin read 71 of the 75 of the base).
     expect(OPERATIONS.length - guarded.length).toBe(4);
-    expect(guarded).toHaveLength(93);
-    for (const operation of guarded) {
+    expect(guarded).toHaveLength(95);
+    // The two unrouted operations (task 4 row 70) answer the router's 404: they are not called.
+    for (const operation of guarded.filter((entry) => !UNROUTED_OPERATIONS.includes(entry))) {
       fresh(main);
       await expectCall(main, operation.operationId, NOBODY, 'no credential', {}, 401, 'NOT_SIGNED_IN');
     }
@@ -1283,7 +1301,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
 
   it('403: every operation that documents it, by the refusal its access rule gives (a sample of every access kind and condition)', async () => {
     const lines: string[] = [];
-    for (const operation of OPERATIONS) {
+    for (const operation of ROUTED_OPERATIONS) {
       if (operation.responses[403] === undefined) continue;
       fresh(main);
       const { access, operationId } = operation;
@@ -1313,7 +1331,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
       lines.push(`${operationId} [${describeCoreApiAccess(access)}${conditions.length > 0 ? ` + ${conditions.join(' + ')}` : ''}]: ${answer.status} ${answer.code} (${answer.note})`);
     }
     console.info(`[w52] 403 per operation:\n${lines.map((line) => `[w52]   ${line}`).join('\n')}`);
-    expect(lines).toHaveLength(OPERATIONS.filter((operation) => operation.responses[403] !== undefined).length);
+    expect(lines).toHaveLength(ROUTED_OPERATIONS.filter((operation) => operation.responses[403] !== undefined).length);
 
     // A device that was revoked: its credential and the session an operator opened on it (RB-6).
     fresh(main);
@@ -1327,7 +1345,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
   });
 
   it('400 INVALID_JSON and 413 PAYLOAD_TOO_LARGE: every operation with a request body, called by a caller its rule lets through', async () => {
-    const withBody = OPERATIONS.filter((operation) => operation.requestBody !== undefined);
+    const withBody = ROUTED_OPERATIONS.filter((operation) => operation.requestBody !== undefined);
     console.info(`[w52] operations with a request body: ${withBody.length}`);
     for (const operation of withBody) {
       fresh(main);
@@ -1380,7 +1398,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
 
     // Every path, with a method it does not have. `allow` lists exactly the path's methods.
     const paths = new Map<string, Set<string>>();
-    for (const operation of OPERATIONS) paths.set(operation.path, (paths.get(operation.path) ?? new Set<string>()).add(methodOf(operation)));
+    for (const operation of ROUTED_OPERATIONS) paths.set(operation.path, (paths.get(operation.path) ?? new Set<string>()).add(methodOf(operation)));
     let refused = 0;
     for (const [path, methods] of paths) {
       fresh(main);
@@ -1929,7 +1947,11 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
  * Documented statuses this file does not produce, with the reason. A status listed here that WAS
  * produced fails the last block, so the table cannot go stale.
  */
-const NOT_PRODUCED: Readonly<Record<string, string>> = {};
+// Task 4 (blueprint row 63): every documented status of the two unrouted operations, by the list
+// `LANDED_UNROUTED` itself - no entry is written by hand, and row 70 empties it with that list.
+const NOT_PRODUCED: Readonly<Record<string, string>> = Object.fromEntries(
+  UNROUTED_OPERATIONS.flatMap((operation) => listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, 'no route until task 4 row 70 (LANDED_UNROUTED)'])),
+);
 
 /**
  * Error codes the server answers that the registry does not name for that operation and status,
@@ -2051,8 +2073,8 @@ describe('SC6: what the whole file received', () => {
     const stale = cells.filter((cell) => cell.codes !== null && cell.reason !== null).map((cell) => `${cell.operationId} ${cell.status}`);
     expect(missing).toEqual([]);
     expect(stale).toEqual([]);
-    // The primary success status of each of the 97 operations.
-    const withoutSuccess = OPERATIONS.filter((operation) => ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
+    // The primary success status of each of the 97 routed operations (99 less the two of LANDED_UNROUTED).
+    const withoutSuccess = ROUTED_OPERATIONS.filter((operation) => ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
     expect(withoutSuccess).toEqual([]);
     console.info(`[w52] duration of the file up to its last block: ${Math.round(performance.now() - FILE_STARTED)} ms`);
   });

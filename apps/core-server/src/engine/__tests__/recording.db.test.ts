@@ -138,8 +138,8 @@ describe('AC-B-07: a 60 s recording stores no meter frame, and the tables grow o
     const events = host.engine.slice('events').length - start.state.events.length;
     expect(countChanges(start.counts, counts)).toEqual({ audit_log: 12, events, health_snapshots: 1 });
     // 41 tables since dbc-4; the recording still writes exactly the three it wrote in v1.
-    expect(Object.keys(counts)).toHaveLength(43); // + T-42 `session_stt_config` (PE-129b-01, row 129b), + T-43 `core_media_store` (PE-0013-01)
-    console.info(`[w26] AC-B-07: 60 s of recording: audit_log +12, events +${events}, health_snapshots +1; the other 38 tables unchanged`);
+    expect(Object.keys(counts)).toHaveLength(45); // + T-42 `session_stt_config` (PE-129b-01, row 129b), + T-43 `core_media_store` (PE-0013-01), + T-44 and T-45 (task 4 schema set A)
+    console.info(`[w26] AC-B-07: 60 s of recording: audit_log +12, events +${events}, health_snapshots +1; the other 42 tables unchanged`);
   });
 
   it('1,200 meter frames were produced and handed to the realtime seam; not one member of a frame is in any row of any table', async () => {

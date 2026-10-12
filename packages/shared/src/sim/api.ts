@@ -1,12 +1,13 @@
 /**
- * Simulated REST handlers for the 30 simulated operations: the 9 §21.2 endpoints
+ * Simulated REST handlers for the 32 simulated operations: the 9 §21.2 endpoints
  * (masterplan/01_specs.md §14.7 `api.ts`, §14.9 `simAwareFetch`; AC-58) plus the 13 capture,
  * audio-source, sealing and transcript operations of schema v2 (task 3 M2-W9b, blueprint row 51a;
  * OD-17 "the simulator emulates v2" supersedes the old "simulator untouched" rule, OD-23;
  * `masterplan/03_api_contract.md` (C3) §2) plus the 3 STT configuration operations 90-92 (task 3 M6,
  * blueprint row 113; C3 §2.5; R-8) plus the 5 camera-search, connection-test, adoption and
  * local-input operations 93-97 (task 3 R-9..R-11, blueprint row 132, decision D106; C3 §2.6
- * "Simulator").
+ * "Simulator") plus the 2 sound-card operations 98-99 (task 4, blueprint row 63; design addendum
+ * 4.2): a fixed listing of two test cards, and a registration that registers nothing.
  *
  * `handleSimApiRequest(sim, { method, path, body })` → `{ status, headers, body }`:
  * - every response carries `x-dems-simulated: 1` and `content-type: application/json`;
@@ -20,6 +21,12 @@
  * The body types below are the contract for step 33's OpenAPI schemas.
  */
 import { CAPTURE_DISCOVERY_RESULT_TTL_MS, CAPTURE_CONNECTION_TEST_MAX_FAILURES, CAPTURE_CONNECTION_TEST_VALIDITY_MS } from '../api/capture';
+import {
+  CaptureAudioCardReason,
+  CaptureAudioInputRegisterRequestSchema,
+  simCaptureAudioCards,
+  type CaptureAudioCardSearch,
+} from '../api/capture-audio-cards';
 import {
   CaptureCandidateAdoptRequestSchema,
   CaptureCandidateStatus,
@@ -114,7 +121,8 @@ export interface SimApiRoute {
 /**
  * The simulated operations (method, OpenAPI path template, operationId): the nine of book §21.2
  * followed by the thirteen of schema v2 (ops 76-87 and 89, C3 §2.2), the three of the STT
- * configuration (90-92) and the five of the camera search (93-97), in registry order. Op 88
+ * configuration (90-92), the five of the camera search (93-97) and the two of the sound cards
+ * (98-99; task 4, blueprint row 63), in registry order. Op 88
  * (`createEvidenceMediaSession`) is LIVE-only and is deliberately absent: Simulated mode plays the
  * bundled demo media instead (C3 §2.4). The set is pinned against the registry's `mode: 'simulated'`
  * operations by `test/openapi.test.ts`.
@@ -153,6 +161,9 @@ export const SIM_API_ROUTES: readonly SimApiRoute[] = [
   { method: 'POST', path: '/api/v1/capture/discovery/candidates/{id}/test', operationId: 'testCaptureCandidateConnection' },
   { method: 'POST', path: '/api/v1/capture/discovery/candidates/{id}/adopt', operationId: 'adoptCaptureCandidate' },
   { method: 'POST', path: '/api/v1/capture/inputs/rescan', operationId: 'rescanCaptureInputs' },
+  // ── Sound cards: the listing and the registration of an input (task 4, blueprint row 63; design addendum 4.2; ops 98-99) ──
+  { method: 'POST', path: '/api/v1/capture/audio-cards/search', operationId: 'searchCaptureAudioCards' },
+  { method: 'POST', path: '/api/v1/capture/audio-cards/inputs', operationId: 'registerCaptureAudioInput' },
 ];
 
 
@@ -460,8 +471,8 @@ export interface SimApiTarget {
    * True when this simulator runs inside a tablet or phone app (`CreateSimOptions.deviceConsole`):
    * the operator's session is then "bound to a paired device", and the three operations that carry
    * a camera credential (89, 95, 96) answer `403 NOT_PERMITTED` with `details.reason:
-   * WEB_CONSOLE_ONLY`, as the Core server does (C3 §2.6 "Simulator"; D80(3)). Default false: the
-   * web console.
+   * WEB_CONSOLE_ONLY`, as the Core server does (C3 §2.6 "Simulator"; D80(3)). So do the two
+   * sound-card operations (98, 99; task 4 row 63). Default false: the web console.
    */
   deviceConsole?: boolean;
 }
@@ -768,7 +779,8 @@ function editCaptureConfig({ store, clock, deviceConsole }: SimApiTarget, change
  * `403 NOT_PERMITTED` of the three credential-carrying operations (89, 95, 96) - and of operation 91
  * when its body carries `credential` (S99-09) - inside a tablet or
  * phone app (C3 §2.6 "Simulator"; D80(3)): the same code and reason as the Core server's condition
- * `WEB_CONSOLE_SESSION`. Decided before the body is looked at.
+ * `WEB_CONSOLE_SESSION`. Decided before the body is looked at. The two sound-card operations
+ * (98, 99; task 4 row 63) carry the same condition and are refused the same way.
  */
 function webConsoleOnlyRefusal(target: SimApiTarget): SimApiResponse | null {
   if (target.deviceConsole !== true) return null;
@@ -1194,6 +1206,7 @@ interface SimDiscoveryHolder {
 
 const SIM_DISCOVERY = new WeakMap<SimStore, SimDiscoveryHolder>();
 const DISCOVERY_DENIED = 'Your role cannot search for cameras or connect one (RBAC).';
+const AUDIO_CARDS_DENIED = 'Your role cannot list the sound cards or register an input (RBAC).';
 
 function simDiscoveryHolder(store: SimStore): SimDiscoveryHolder {
   let holder = SIM_DISCOVERY.get(store);
@@ -1521,6 +1534,69 @@ const DISCOVERY_ROUTES: readonly Route[] = [
         }),
       });
       return respond(200, { scannedAt: now, inputs, unregisteredCount: 0 } satisfies CaptureInputScan);
+    },
+  },
+  {
+    // 98 searchCaptureAudioCards (task 4, blueprint row 63; design addendum 4.2). The simulator reads
+    // no host: the answer is the fixed listing of two test cards, none of whose inputs is registered.
+    // The Core server's order: the role, the web-console condition, the idle lock (no audit row).
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/audio-cards\/search$/,
+    handle: (target) => {
+      const { store, clock } = target;
+      const state = store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, AUDIO_CARDS_DENIED) ?? webConsoleOnlyRefusal(target) ?? captureLockedRefusal(state);
+      if (refused) return refused;
+      const now = clock.now();
+      const cards = simCaptureAudioCards();
+      store.setState({
+        ...state,
+        ...recordActivity(state, now, {
+          audit: {
+            type: AuditType.CAPTURE_DISCOVERY_SEARCHED,
+            message: 'Sound cards listed',
+            actorId: signedInOperatorId(state),
+            // Counts and codes only: no product name, no USB id and no card id.
+            details: captureDiscoverySearchedDetails({
+              searchId: nextSearchId(simDiscoveryHolder(store)),
+              scope: CaptureDiscoveryScope.AUDIO_CARDS,
+              trigger: CaptureDiscoveryTrigger.MANUAL,
+              outcome: 'COMPLETE',
+              responderCount: cards.length,
+              newCount: cards.filter((card) => card.registered.length === 0).length,
+              registeredCount: cards.filter((card) => card.registered.length > 0).length,
+              interfaceCount: 0,
+              operationId: 'searchCaptureAudioCards',
+              permission: Permission.CAPTURE_CONFIG,
+            }),
+          },
+        }),
+      });
+      return respond(200, { searchedAt: now, cards, truncated: false } satisfies CaptureAudioCardSearch);
+    },
+  },
+  {
+    // 99 registerCaptureAudioInput. The simulator captures from no sound card, so it registers
+    // nothing, writes no audit row and changes no state: every answer is a refusal the contract
+    // names. A card of the fixed listing: 409 (the input is beyond the card, or the simulator
+    // registers none); any other card: 404.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/audio-cards\/inputs$/,
+    handle: (target, _params, body) => {
+      const state = target.store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, AUDIO_CARDS_DENIED) ?? webConsoleOnlyRefusal(target) ?? captureLockedRefusal(state);
+      if (refused) return refused;
+      const parsed = CaptureAudioInputRegisterRequestSchema.safeParse(body);
+      // The refusal names where, never what.
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const card = simCaptureAudioCards().find((entry) => entry.cardId === parsed.data.cardId && entry.deviceIndex === parsed.data.deviceIndex);
+      if (!card) return fail(404, 'NOT_FOUND', 'No sound card has this ID.');
+      if (parsed.data.inputNumber > card.channelCount) {
+        return failWith(409, 'INVALID_STATE', 'The sound card has no such input.', { reason: CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD });
+      }
+      return failWith(409, 'INVALID_STATE', 'A sound-card input can be registered on a production Core only.', {
+        reason: CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE,
+      });
     },
   },
 ];

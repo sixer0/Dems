@@ -51,6 +51,7 @@
     "pg:remove-data": "node scripts/pg/remove-data.mjs",
     "pg:remove": "node scripts/pg/remove.mjs",
     "test:pg-scripts": "node --test scripts/pg/",
+    "test:host-helper": "python3 -I -B scripts/host/netalias/test_dems_core_netalias.py",
     "test:seal-e2e": "DEMS_SEAL_E2E=1 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock /usr/bin/lockf -k .locks/db-migrate.lock vitest run --root apps/core-server --project db --maxWorkers=1 src/sealing-host/__tests__/e2e/seal-e2e.db.test.ts",
     "test:dev-session-e2e": "env -u DEMS_LOCAL_SESSION_ATTENDED -u DEMS_USER_ATTENDED DEMS_DEV_SESSION_E2E=1 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock /usr/bin/lockf -k .locks/db-migrate.lock vitest run --root apps/core-server --project db --maxWorkers=1 src/capture/fence/__tests__/e2e/development-session-e2e.db.test.ts",
     "test:kill-matrix": "sh scripts/test/kill-matrix.sh",

@@ -23,6 +23,7 @@ import { V2 } from './contract-v2-delta';
 import { V3 } from './contract-v3-delta';
 import { V5 } from './contract-v5-delta';
 import { V6 } from './contract-v6-delta';
+import { V7 } from './contract-v7-delta';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The workspace root of the repository: this folder is four levels below it. */
@@ -283,7 +284,26 @@ export function parseContract(text: string): ContractInventory {
   for (const added of V6.newTables) {
     tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
   }
-  for (const change of [...V2.changedTables, ...V3.changedTables, ...V6.changedTables]) {
+  // ── Schema v7 (schema set A of task 4, contract revision dbc-8): T-44 `capture_device_streams`,
+  // T-45 `capture_audio_inputs`, `session_capture_sources.source_facts` with three CHECKs, the six
+  // slot columns of `capture_config` nullable with `capture_config_slot_pair_check`, and two value
+  // sets (contract-v7-delta.ts).
+  Object.assign(valueSets, V7.valueSets);
+  for (const added of V7.newTables) {
+    tables.push({ id: added.id, name: added.name, columns: added.columns.map((c) => ({ ...c })), constraints: added.constraints.map((c) => ({ ...c })) as ContractConstraint[] });
+  }
+  for (const change of V7.nullableColumns) {
+    const table = tables.find((candidate) => candidate.name === change.table);
+    if (table === undefined) throw new Error(`dbc-8 delta: the composed inventory has no table ${change.table}`);
+    const mutable = table as unknown as { columns: ContractColumn[] };
+    for (const name of change.columns) {
+      const position = mutable.columns.findIndex((column) => column.name === name);
+      const column = mutable.columns[position];
+      if (column === undefined || !column.notNull) throw new Error(`dbc-8 delta: ${change.table}.${name} is not a NOT NULL column of the composed inventory`);
+      mutable.columns[position] = { ...column, notNull: false };
+    }
+  }
+  for (const change of [...V2.changedTables, ...V3.changedTables, ...V6.changedTables, ...V7.changedTables]) {
     const table = tables.find((candidate) => candidate.name === change.name);
     if (table === undefined) throw new Error(`dbc-3/dbc-4 delta: the composed inventory has no table ${change.name}`);
     const mutable = table as unknown as { columns: ContractColumn[]; constraints: ContractConstraint[] };
@@ -298,7 +318,7 @@ export function parseContract(text: string): ContractInventory {
   const all = tables.flatMap((table) => table.constraints);
   const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
   return {
-    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts)',
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts)',
     valueSets,
     formats,
     tables,

@@ -38,6 +38,7 @@ import {
   type HelperProcessOptions,
   type ProgramFacts,
 } from '../index';
+import { LEFTOVER_CANDIDATE_LIMIT, leftoverPrograms, linuxProgramPathReader, processShortName, programPathReaderFor } from '../leftover';
 
 const SCHEME = ['rtsp', '://'].join('');
 const INGEST = `${SCHEME}127.0.0.1:8559/cam1`;
@@ -587,6 +588,81 @@ describe('the process door (HL-2, HL-4, HL-7)', () => {
     expect(calls.map((call) => [call.command, call.args])).toEqual([['/bin/ps', ['-axo', 'pid=,comm=']]]);
     const broken: HelperDoor = () => ({ pid: null, ended: Promise.resolve({ exitCode: null, signal: null, spawnFailed: true, diagnostics: '', output: '' }), alive: () => false, kill: () => {} });
     expect(await leftoverHelperPids(broken, clock.timers, PROGRAM)).toBeNull();
+  });
+
+  // Task 4, blueprint row 24 (WP-02; HA-12, review finding P12-F12 b). THE DOUBLE: a door that starts nothing and
+  // answers the two fixed programs from recorded text - the table in the macOS form or in the Linux short-name form,
+  // and the link of a process by its pid. No Linux host is read here: the real reading is hardware check 9A/H-24.
+  describe('leftover detection behind the platform seam (row 24, HA-12)', () => {
+    const RELAY = '/opt/dems/bin/dems-capture-relay';
+    const tableDoor = (table: string, links: Readonly<Record<number, string | null>> = {}) => {
+      const calls: (readonly [string, readonly string[]])[] = [];
+      const door: HelperDoor = (options) => {
+        calls.push([options.command, options.args]);
+        const answer = (exitCode: number, output: string) => ({ pid: 1, ended: Promise.resolve({ exitCode, signal: null, spawnFailed: false, diagnostics: '', output }), alive: () => false, kill: () => {} });
+        if (options.command === '/bin/ps') return answer(0, table);
+        const link = links[Number(/^\/proc\/(\d+)\/exe$/.exec(options.args[0] ?? '')?.[1])];
+        return link === undefined || link === null ? answer(1, '') : answer(0, `${link}\n`);
+      };
+      return { door, calls };
+    };
+    const MACOS = ['    1 /sbin/launchd', '  202 /opt/dems/bin/ffmpeg', '  203 /opt/dems/bin/dems-capture-relay', '  204 /usr/local/bin/ffmpeg'].join('\n');
+    const LINUX = ['      1 systemd', '    302 ffmpeg', '    303 ffmpeg', '    304 ffmpeg', '    305 dems-capture-re', '    306 ffmpeg', '    307 ffmpeg', '    308 bash'].join('\n');
+    const LINKS = { 302: PROGRAM, 303: '/usr/bin/ffmpeg', 304: PROGRAM, 305: RELAY, 306: null, 307: `${PROGRAM} (deleted)` };
+
+    it('the macOS form: a planted leftover is named by the path in the table, and no program path is read', async () => {
+      const clock = manualCaptureTimers();
+      const { door, calls } = tableDoor(MACOS);
+      expect(programPathReaderFor('darwin', door, clock.timers)).toBeUndefined();
+      expect(await leftoverPrograms(door, clock.timers, [PROGRAM, RELAY], new Set(), programPathReaderFor('darwin', door, clock.timers))).toEqual([
+        { pid: 202, program: PROGRAM },
+        { pid: 203, program: RELAY },
+      ]);
+      expect(calls).toEqual([['/bin/ps', ['-axo', 'pid=,comm=']]]);
+    });
+
+    it('the Linux short-name form: nothing is named without the reader (P12-F12 b), a planted leftover is named with it', async () => {
+      const clock = manualCaptureTimers();
+      const { door, calls } = tableDoor(LINUX, LINKS);
+      expect(processShortName(RELAY)).toBe('dems-capture-re');
+      expect(await leftoverPrograms(door, clock.timers, [PROGRAM, RELAY])).toEqual([]);
+      calls.length = 0;
+      const reader = programPathReaderFor('linux', door, clock.timers);
+      expect(reader).toBeDefined();
+      // 302 the planted helper; 303 another program of the same name; 304 the Core's own; 305 the planted relay under
+      // its cut name; 306 not readable, so counted; 307 a helper whose file was replaced after it started.
+      expect(await leftoverPrograms(door, clock.timers, [PROGRAM, RELAY], new Set([304]), reader)).toEqual([
+        { pid: 302, program: PROGRAM },
+        { pid: 305, program: RELAY },
+        { pid: 306, program: PROGRAM },
+        { pid: 307, program: PROGRAM },
+      ]);
+      expect(calls).toEqual([
+        ['/bin/ps', ['-axo', 'pid=,comm=']],
+        ['/usr/bin/readlink', ['/proc/302/exe']],
+        ['/usr/bin/readlink', ['/proc/303/exe']],
+        ['/usr/bin/readlink', ['/proc/305/exe']],
+        ['/usr/bin/readlink', ['/proc/306/exe']],
+        ['/usr/bin/readlink', ['/proc/307/exe']],
+      ]);
+      expect(await leftoverHelperPids(door, clock.timers, PROGRAM, new Set([304]), reader)).toEqual([302, 306, 307]);
+    });
+
+    it('the reader is bounded: a reading that does not end is killed, and too many candidates answer like an unreadable table', async () => {
+      const clock = manualCaptureTimers();
+      const killed: string[] = [];
+      let end: (exit: HelperExit) => void = () => {};
+      const hanging: HelperDoor = () => ({ pid: 1, ended: new Promise<HelperExit>((resolve) => (end = resolve)), alive: () => true, kill: (signal) => { killed.push(signal); end({ exitCode: null, signal, spawnFailed: false, diagnostics: '', output: '' }); } });
+      const reading = linuxProgramPathReader(hanging, clock.timers)(302);
+      await clock.advance(5_000);
+      expect(await reading).toBeNull();
+      expect(killed).toEqual(['SIGKILL']);
+      expect(await linuxProgramPathReader(hanging, clock.timers)(0)).toBeNull();
+      const crowd = Array.from({ length: LEFTOVER_CANDIDATE_LIMIT + 1 }, (_, index) => `  ${1000 + index} ffmpeg`).join('\n');
+      const asked: number[] = [];
+      expect(await leftoverPrograms(tableDoor(crowd).door, clock.timers, [PROGRAM], new Set(), async (pid) => { asked.push(pid); return '/usr/bin/ffmpeg'; })).toBeNull();
+      expect(asked).toHaveLength(LEFTOVER_CANDIDATE_LIMIT);
+    });
   });
 });
 

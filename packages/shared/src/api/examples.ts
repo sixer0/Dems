@@ -60,6 +60,7 @@ import { STORAGE_EXAMPLES } from './storage';
 import { SYSTEM_EXAMPLES } from './system';
 import { STT_CONFIG_EXAMPLES } from './transcription';
 import { CAPTURE_DISCOVERY_EXAMPLES } from './capture-discovery';
+import { CAPTURE_AUDIO_CARD_EXAMPLES } from './capture-audio-cards';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -574,4 +575,6 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   ...STT_CONFIG_EXAMPLES,
   // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6): operations 93-97.
   ...CAPTURE_DISCOVERY_EXAMPLES,
+  // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): operations 98-99.
+  ...CAPTURE_AUDIO_CARD_EXAMPLES,
 };

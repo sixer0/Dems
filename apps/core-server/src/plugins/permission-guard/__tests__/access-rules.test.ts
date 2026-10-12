@@ -59,15 +59,16 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 }
 
 describe('the rule book of the contract registry', () => {
-  it('compiles a rule for every one of the 97 operations: none lacks an access rule or an audit rule', () => {
+  it('compiles a rule for every one of the 99 operations: none lacks an access rule or an audit rule', () => {
     // C3 §2.5 (blueprint row 113): 89 + the STT configuration operations 90-92 = 92.
     // C3 §2.6, §10.1 (blueprint row 132, decision D106): + the camera-search operations 93-97 = 97.
-    expect(book.operationIds).toHaveLength(97);
+    // Task 4 blueprint row 63 (design addendum 4.2): + the sound-card operations 98-99 = 99.
+    expect(book.operationIds).toHaveLength(99);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(97);
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(99);
   });
 
-  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6)', () => {
+  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 59 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 row 63)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -75,7 +76,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 57, ANY_OF: 1 });
+    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 59, ANY_OF: 1 });
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -126,6 +127,9 @@ describe('the rule book of the contract registry', () => {
       ['setCaptureDeviceCredential', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
       ['testCaptureCandidateConnection', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
       ['adoptCaptureCandidate', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      // Task 4 blueprint row 63 (design addendum 4.2, "Role"): the two sound-card operations, web console only.
+      ['searchCaptureAudioCards', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      ['registerCaptureAudioInput', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
     ]);
   });
 

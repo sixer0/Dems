@@ -1,0 +1,617 @@
+#!/usr/bin/python3 -ISB
+# DEMS Core address helper: adds and removes ONE temporary private /24 address on the camera
+# port, so that a factory-new camera on another subnet can be reached during commissioning.
+#
+# THIS FILE IS INSTALLED BY THE USER, AS ROOT, AFTER ITS SECURITY REVIEW. No agent and no script
+# of this repository installs it, runs it with privilege or lets it change a host address.
+# The steps, the hashes to compare and the proofs of refusal are in the helper installation
+# chapter of the hardware acceptance package; the installed state is items HOST-43 to HOST-47 of
+# scripts/host/HOST-PROFILE-UBUNTU-24.04.md.
+#
+# Form (decision C19): a root service on a local socket. The service manager starts one instance
+# of this file per connection, as root, with the connection as standard input and output and
+# standard error to the journal (dems-core-netalias.socket, dems-core-netalias@.service).
+# The Core's service user never starts this file and never passes it an argument.
+#
+#   request  one line, at most 64 bytes, printable ASCII, single spaces, ended by a line feed:
+#              add <a.b.c.d>/24 <minutes>      minutes 5 to 480
+#              del <a.b.c.d>/24
+#   answer   one line "<code> <NAME>", the same code is the exit status. Closed set, see CODES.
+#   journal  one line per call on standard error: calling user, verb, address, result.
+#            The address is printed only after it passed every check of its form; no other text
+#            of the caller is ever printed, in the answer or in the journal.
+#
+# The helper is the enforcement boundary (security item S13-08): it trusts no caller. It
+#   1. takes the verb and one address; reads the interface from a root-owned file, checks the
+#      name against a pattern and against the kernel's interface list, refuses the interface of
+#      the default route;
+#   2. accepts an RFC 1918 address with /24 only, host part 1 to 254;
+#   3. refuses "add" when another interface holds an address in that /24, and when its own limit
+#      of marked addresses is reached;
+#   4. always runs the conflict check and refuses when its tool is missing;
+#   5. marks what it adds (a root-owned file under /run) and gives the address a kernel lifetime
+#      of 5 to 480 minutes;
+#   6. removes only an address it marked;
+#   7. calls its tools by absolute path with a fixed search path and a fixed, two-entry
+#      environment, reads nothing from its own environment, evaluates no input, starts no shell;
+#   8. writes one journal line per call;
+#   9. answers with fixed codes and fixed words.
+#
+# The one command-line form is "check", for root during installation: it reads the same files
+# and the route table, changes nothing, and is not reachable through the socket, because the
+# service unit starts this file without arguments.
+#
+# Python 3 standard library only (Ubuntu 24.04 ships /usr/bin/python3; no package is added).
+
+import errno
+import json
+import os
+import re
+import select
+import socket
+import stat
+import struct
+import subprocess
+import sys
+import time
+
+# --- CONSTANTS (begin) -----------------------------------------------------------------------
+# Every path and number below is a constant of this file. Nothing here is read from the
+# environment, from an argument or from the request. The test copy is made by the build step
+# make_test_copy.py, which replaces the values of this block and nothing else; the file handed to
+# the user is this one, and its hash is in SHA256SUMS.
+IP_TOOL = "/usr/sbin/ip"
+ARPING_TOOL = "/usr/bin/arping"
+INTERFACE_FILE = "/etc/dems/netalias-interface"
+SYSFS_NET = "/sys/class/net"
+MARKS_DIR = "/run/dems-core-netalias/marks"
+GROUP_FILE = "/etc/group"
+PASSWD_FILE = "/etc/passwd"
+TRUSTED_OWNER_UID = 0
+PEER_OPTION_LEVEL = 1
+PEER_OPTION_NAME = 17
+PEER_STRUCT = "3i"
+# --- CONSTANTS (end) -------------------------------------------------------------------------
+
+# The dedicated group of the socket. Its ONLY member is the Core's service user (HOST-43); that
+# member is the one caller this helper serves.
+SERVICE_GROUP = "dems-netalias"
+
+TOOL_ENV = (("PATH", "/usr/sbin:/usr/bin:/sbin:/bin"), ("LC_ALL", "C"))
+TOOL_TIMEOUT_S = 5
+CONFLICT_PROBES = 2
+CONFLICT_WAIT_S = 3
+CONFLICT_TIMEOUT_S = 8
+REQUEST_MAX_BYTES = 64
+REQUEST_TIMEOUT_S = 5
+MINUTES_MIN = 5
+MINUTES_MAX = 480
+# One temporary address at a time. Security item S13-08 (3) allows two; the Core's own table
+# allows one, and one is the narrower bound.
+MAX_MARKED = 1
+JOURNAL_TAG = "dems-core-netalias"
+
+CODES = {
+    "OK": 0,
+    # the call itself
+    "ARGUMENTS": 10,
+    "PEER_UNKNOWN": 11,
+    "PEER_NOT_SERVICE_USER": 12,
+    "REQUEST_TOO_LONG": 13,
+    "REQUEST_MALFORMED": 14,
+    "VERB_UNKNOWN": 15,
+    "REQUEST_TIMEOUT": 16,
+    # the address
+    "ADDRESS_MALFORMED": 20,
+    "PREFIX_NOT_24": 21,
+    "ADDRESS_LOOPBACK": 22,
+    "ADDRESS_LINK_LOCAL": 23,
+    "ADDRESS_MULTICAST": 24,
+    "ADDRESS_NOT_PRIVATE": 25,
+    "HOST_PART_OUT_OF_RANGE": 26,
+    "LIFETIME_OUT_OF_RANGE": 27,
+    # the installation
+    "SERVICE_USER_UNRESOLVED": 30,
+    "INTERFACE_FILE_UNSAFE": 31,
+    "INTERFACE_NAME_INVALID": 32,
+    "INTERFACE_ABSENT": 33,
+    "INTERFACE_HAS_DEFAULT_ROUTE": 34,
+    "STATE_DIR_UNSAFE": 35,
+    "TOOL_MISSING": 36,
+    "CONFLICT_TOOL_MISSING": 37,
+    # the host's state
+    "OTHER_INTERFACE_HOLDS_SUBNET": 40,
+    "ALIAS_LIMIT_REACHED": 41,
+    "ADDRESS_ALREADY_PRESENT": 42,
+    "CAMERA_INTERFACE_HOLDS_SUBNET": 43,
+    "ADDRESS_IN_USE": 44,
+    "NOT_MARKED": 45,
+    # a tool did not do its work
+    "HOST_STATE_UNREADABLE": 50,
+    "CONFLICT_CHECK_FAILED": 51,
+    "ADD_FAILED": 52,
+    "DEL_FAILED": 53,
+    "MARK_WRITE_FAILED": 54,
+    "INTERNAL": 60,
+}
+
+INTERFACE_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
+ACCOUNT_NAME = re.compile(r"\A[a-z_][a-z0-9_-]{0,31}\Z")
+ADDRESS_TOKEN = re.compile(r"\A([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/([0-9]{1,2})\Z")
+QUAD = re.compile(r"\A([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\Z")
+MINUTES_TOKEN = re.compile(r"\A[1-9][0-9]{0,2}\Z")
+
+
+class Refusal(Exception):
+    """A named refusal. It carries a name of CODES and nothing else."""
+
+    def __init__(self, name):
+        Exception.__init__(self, name)
+        self.name = name
+
+
+class Call:
+    """What the journal line may say about this call. Only checked values are stored here."""
+
+    def __init__(self):
+        self.caller = "-"
+        self.verb = "-"
+        self.address = "-"
+        self.note = ""
+
+
+# --- Files this helper relies on ---
+
+
+def _not_writable_by_others(st):
+    return st.st_uid == TRUSTED_OWNER_UID and (st.st_mode & 0o022) == 0
+
+
+def _safe_regular_file(path):
+    """A regular file, not a symbolic link, owned by the trusted owner, not writable by group or others."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(st.st_mode) and _not_writable_by_others(st)
+
+
+def _safe_directory(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and _not_writable_by_others(st)
+
+
+def _safe_tool(path):
+    """The tool as the kernel will execute it: a regular file of the trusted owner, executable."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(st.st_mode) and _not_writable_by_others(st) and (st.st_mode & 0o100) != 0
+
+
+def _read_small(path, limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        data = os.read(fd, limit + 1)
+    finally:
+        os.close(fd)
+    if len(data) > limit:
+        raise ValueError("too large")
+    return data
+
+
+def service_user_id():
+    """The user id of the ONE member of the dedicated group, from the local account files."""
+    try:
+        if not (_safe_regular_file(GROUP_FILE) and _safe_regular_file(PASSWD_FILE)):
+            raise ValueError("unsafe")
+        members = None
+        for line in _read_small(GROUP_FILE, 1 << 20).decode("ascii").split("\n"):
+            fields = line.split(":")
+            if len(fields) == 4 and fields[0] == SERVICE_GROUP:
+                if members is not None:
+                    raise ValueError("group twice")
+                members = [name for name in fields[3].split(",") if name != ""]
+        if members is None or len(members) != 1 or ACCOUNT_NAME.match(members[0]) is None:
+            raise ValueError("not one member")
+        found = None
+        for line in _read_small(PASSWD_FILE, 1 << 20).decode("ascii").split("\n"):
+            fields = line.split(":")
+            if len(fields) == 7 and fields[0] == members[0]:
+                if found is not None or re.match(r"\A[0-9]{1,10}\Z", fields[2]) is None:
+                    raise ValueError("account twice or bad id")
+                found = int(fields[2])
+        if found is None or found == 0:
+            raise ValueError("no account, or root")
+        return found
+    except (OSError, ValueError, UnicodeError):
+        raise Refusal("SERVICE_USER_UNRESOLVED") from None
+
+
+def configured_interface():
+    """The camera interface: the one line of the root-owned file, checked, present in the kernel."""
+    if not (_safe_directory(os.path.dirname(INTERFACE_FILE)) and _safe_regular_file(INTERFACE_FILE)):
+        raise Refusal("INTERFACE_FILE_UNSAFE")
+    try:
+        raw = _read_small(INTERFACE_FILE, 64)
+    except (OSError, ValueError):
+        raise Refusal("INTERFACE_FILE_UNSAFE") from None
+    text = raw.decode("latin-1")
+    if text.endswith("\n"):
+        text = text[:-1]
+    if INTERFACE_NAME.match(text) is None:
+        raise Refusal("INTERFACE_NAME_INVALID")
+    if not os.path.lexists(os.path.join(SYSFS_NET, text)):
+        raise Refusal("INTERFACE_ABSENT")
+    return text
+
+
+# --- The caller ---
+
+
+def peer_user_id():
+    """The user id the kernel recorded for the other end of standard input, a local stream socket."""
+    try:
+        duplicate = os.dup(0)
+        try:
+            peer = socket.socket(fileno=duplicate)
+        except OSError:
+            os.close(duplicate)
+            raise
+        try:
+            if peer.family != socket.AF_UNIX or peer.type != socket.SOCK_STREAM:
+                raise OSError(errno.ENOTSOCK, "not a local stream socket")
+            raw = peer.getsockopt(PEER_OPTION_LEVEL, PEER_OPTION_NAME, struct.calcsize(PEER_STRUCT))
+        finally:
+            peer.close()
+        if len(raw) != struct.calcsize(PEER_STRUCT):
+            raise OSError(errno.EINVAL, "short credentials")
+        user = struct.unpack(PEER_STRUCT, raw)[1]
+    except (OSError, ValueError, struct.error):
+        raise Refusal("PEER_UNKNOWN") from None
+    if not isinstance(user, int) or user < 0 or user >= 0xFFFFFFFF:
+        raise Refusal("PEER_UNKNOWN")
+    return user
+
+
+# --- The request ---
+
+
+def read_request_line():
+    """One line of at most REQUEST_MAX_BYTES bytes from standard input, and nothing after it."""
+    deadline = time.monotonic() + REQUEST_TIMEOUT_S
+    data = b""
+    while b"\n" not in data:
+        if len(data) > REQUEST_MAX_BYTES:
+            raise Refusal("REQUEST_TOO_LONG")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([0], [], [], remaining)[0]:
+            raise Refusal("REQUEST_TIMEOUT")
+        chunk = os.read(0, REQUEST_MAX_BYTES + 1 - len(data))
+        if chunk == b"":
+            raise Refusal("REQUEST_MALFORMED")
+        data += chunk
+    end = data.index(b"\n")
+    if end + 1 > REQUEST_MAX_BYTES:
+        raise Refusal("REQUEST_TOO_LONG")
+    if end + 1 != len(data):
+        raise Refusal("REQUEST_MALFORMED")
+    if select.select([0], [], [], 0)[0] and os.read(0, 1) != b"":
+        raise Refusal("REQUEST_MALFORMED")
+    return data[:end]
+
+
+def parse_quad(text):
+    """Four decimal parts 0 to 255 without a leading zero, or None."""
+    match = QUAD.match(text)
+    if match is None:
+        return None
+    parts = []
+    for part in match.groups():
+        if len(part) > 1 and part[0] == "0":
+            return None
+        number = int(part)
+        if number > 255:
+            return None
+        parts.append(number)
+    return tuple(parts)
+
+
+def checked_address(token):
+    """The address of the request as four numbers. Refuses everything but a private /24 host address."""
+    match = ADDRESS_TOKEN.match(token)
+    if match is None:
+        raise Refusal("ADDRESS_MALFORMED")
+    quad = parse_quad(token.split("/")[0])
+    if quad is None:
+        raise Refusal("ADDRESS_MALFORMED")
+    if match.group(5) != "24":
+        raise Refusal("PREFIX_NOT_24")
+    a, b, _, d = quad
+    if a == 127:
+        raise Refusal("ADDRESS_LOOPBACK")
+    if a == 169 and b == 254:
+        raise Refusal("ADDRESS_LINK_LOCAL")
+    if 224 <= a <= 239:
+        raise Refusal("ADDRESS_MULTICAST")
+    if not (a == 10 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168)):
+        raise Refusal("ADDRESS_NOT_PRIVATE")
+    if d < 1 or d > 254:
+        raise Refusal("HOST_PART_OUT_OF_RANGE")
+    return quad
+
+
+def parse_request(line, call):
+    """(verb, address as four numbers, minutes or None). Fills `call` only with checked values."""
+    for byte in line:
+        if byte < 0x20 or byte > 0x7E:
+            raise Refusal("REQUEST_MALFORMED")
+    tokens = line.decode("ascii").split(" ")
+    if "" in tokens:
+        raise Refusal("REQUEST_MALFORMED")
+    if tokens[0] not in ("add", "del"):
+        raise Refusal("VERB_UNKNOWN")
+    verb = tokens[0]
+    call.verb = verb
+    if len(tokens) != (3 if verb == "add" else 2):
+        raise Refusal("REQUEST_MALFORMED")
+    quad = checked_address(tokens[1])
+    minutes = None
+    if verb == "add":
+        if MINUTES_TOKEN.match(tokens[2]) is None or not MINUTES_MIN <= int(tokens[2]) <= MINUTES_MAX:
+            raise Refusal("LIFETIME_OUT_OF_RANGE")
+        minutes = int(tokens[2])
+    call.address = dotted(quad) + "/24"
+    return verb, quad, minutes
+
+
+def dotted(quad):
+    return "%d.%d.%d.%d" % quad
+
+
+def as_number(quad):
+    return (quad[0] << 24) | (quad[1] << 16) | (quad[2] << 8) | quad[3]
+
+
+# --- The tools ---
+
+
+def run_tool(vector, timeout):
+    """Runs one tool by absolute path. Returns (exit status or None, standard output). No shell."""
+    try:
+        done = subprocess.run(
+            vector,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=dict(TOOL_ENV),
+            cwd="/",
+            timeout=timeout,
+            close_fds=True,
+            shell=False,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, b""
+    return done.returncode, done.stdout
+
+
+def _json_list(vector):
+    status, output = run_tool(vector, TOOL_TIMEOUT_S)
+    if status != 0 or len(output) > (1 << 20):
+        raise Refusal("HOST_STATE_UNREADABLE")
+    try:
+        value = json.loads(output.decode("utf-8"))
+    except (ValueError, UnicodeError):
+        raise Refusal("HOST_STATE_UNREADABLE") from None
+    if not isinstance(value, list):
+        raise Refusal("HOST_STATE_UNREADABLE")
+    return value
+
+
+def default_route_interfaces():
+    names = set()
+    for route in _json_list([IP_TOOL, "-json", "-4", "route", "show", "default"]):
+        if not isinstance(route, dict):
+            raise Refusal("HOST_STATE_UNREADABLE")
+        hops = route.get("nexthops", [])
+        if not isinstance(hops, list):
+            raise Refusal("HOST_STATE_UNREADABLE")
+        for entry in [route] + hops:
+            if isinstance(entry, dict) and isinstance(entry.get("dev"), str):
+                names.add(entry["dev"])
+    return names
+
+
+def host_addresses():
+    """Every IPv4 address of the host as (interface name, four numbers, prefix length)."""
+    found = []
+    for link in _json_list([IP_TOOL, "-json", "-4", "addr", "show"]):
+        if not isinstance(link, dict) or not isinstance(link.get("ifname"), str):
+            raise Refusal("HOST_STATE_UNREADABLE")
+        infos = link.get("addr_info", [])
+        if not isinstance(infos, list):
+            raise Refusal("HOST_STATE_UNREADABLE")
+        for info in infos:
+            if not isinstance(info, dict):
+                raise Refusal("HOST_STATE_UNREADABLE")
+            if info.get("family") != "inet":
+                continue
+            local = info.get("local")
+            length = info.get("prefixlen")
+            quad = parse_quad(local) if isinstance(local, str) else None
+            if quad is None or isinstance(length, bool) or not isinstance(length, int) or not 0 <= length <= 32:
+                raise Refusal("HOST_STATE_UNREADABLE")
+            found.append((link["ifname"], quad, length))
+    return found
+
+
+def overlaps_slash24(quad, other, other_length):
+    """True when the network of `other` and the /24 of `quad` share an address."""
+    length = min(other_length, 24)
+    mask = (0xFFFFFFFF << (32 - length)) & 0xFFFFFFFF if length > 0 else 0
+    return (as_number(quad) & mask) == (as_number(other) & mask)
+
+
+# --- The marks: what this helper added ---
+
+
+def marked_addresses():
+    if not _safe_directory(MARKS_DIR):
+        raise Refusal("STATE_DIR_UNSAFE")
+    marks = set()
+    try:
+        names = os.listdir(MARKS_DIR)
+    except OSError:
+        raise Refusal("STATE_DIR_UNSAFE") from None
+    for name in names:
+        quad = parse_quad(name)
+        if quad is None or dotted(quad) != name or not _safe_regular_file(os.path.join(MARKS_DIR, name)):
+            raise Refusal("STATE_DIR_UNSAFE")
+        marks.add(quad)
+    return marks
+
+
+def write_mark(quad, interface, minutes):
+    try:
+        fd = os.open(
+            os.path.join(MARKS_DIR, dotted(quad)),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o644,
+        )
+        try:
+            os.write(fd, ("%s/24 %s %d %d\n" % (dotted(quad), interface, int(time.time()), minutes)).encode("ascii"))
+        finally:
+            os.close(fd)
+    except OSError:
+        raise Refusal("MARK_WRITE_FAILED") from None
+
+
+def drop_mark(quad):
+    try:
+        os.unlink(os.path.join(MARKS_DIR, dotted(quad)))
+    except OSError:
+        pass
+
+
+def on_camera_interface(addresses, interface, quad):
+    return any(name == interface and held == quad and length == 24 for name, held, length in addresses)
+
+
+# --- The two verbs ---
+
+
+def installation(need_conflict_tool):
+    """The checks every call makes on what the user installed. Returns the camera interface."""
+    interface = configured_interface()
+    if not _safe_tool(IP_TOOL):
+        raise Refusal("TOOL_MISSING")
+    if need_conflict_tool and not _safe_tool(ARPING_TOOL):
+        raise Refusal("CONFLICT_TOOL_MISSING")
+    marked_addresses()
+    if interface in default_route_interfaces():
+        raise Refusal("INTERFACE_HAS_DEFAULT_ROUTE")
+    return interface
+
+
+def add(quad, minutes, call):
+    interface = installation(need_conflict_tool=True)
+    addresses = host_addresses()
+    marks = marked_addresses()
+    # A mark whose address the kernel has already expired is no longer an address in place.
+    for stale in [mark for mark in marks if not on_camera_interface(addresses, interface, mark)]:
+        drop_mark(stale)
+        marks.discard(stale)
+    if any(held == quad for _, held, _ in addresses):
+        raise Refusal("ADDRESS_ALREADY_PRESENT")
+    if any(name != interface and overlaps_slash24(quad, held, length) for name, held, length in addresses):
+        raise Refusal("OTHER_INTERFACE_HOLDS_SUBNET")
+    if len(marks) >= MAX_MARKED:
+        raise Refusal("ALIAS_LIMIT_REACHED")
+    if any(name == interface and overlaps_slash24(quad, held, length) for name, held, length in addresses):
+        raise Refusal("CAMERA_INTERFACE_HOLDS_SUBNET")
+    status, _ = run_tool(
+        [ARPING_TOOL, "-D", "-q", "-c", str(CONFLICT_PROBES), "-w", str(CONFLICT_WAIT_S), "-I", interface, dotted(quad)],
+        CONFLICT_TIMEOUT_S,
+    )
+    if status == 1:
+        raise Refusal("ADDRESS_IN_USE")
+    if status != 0:
+        raise Refusal("CONFLICT_CHECK_FAILED")
+    seconds = str(minutes * 60)
+    write_mark(quad, interface, minutes)
+    status, _ = run_tool(
+        [IP_TOOL, "addr", "add", dotted(quad) + "/24", "dev", interface, "valid_lft", seconds, "preferred_lft", seconds],
+        TOOL_TIMEOUT_S,
+    )
+    if status != 0:
+        # A tool that answered "no" added nothing. A tool that did not answer (time bound) may
+        # have: the mark stays, so that "del" can still remove the address; the next "add"
+        # drops the mark if the address is not there.
+        if status is not None:
+            drop_mark(quad)
+        raise Refusal("ADD_FAILED")
+
+
+def delete(quad, call):
+    interface = installation(need_conflict_tool=False)
+    if quad not in marked_addresses():
+        raise Refusal("NOT_MARKED")
+    if not on_camera_interface(host_addresses(), interface, quad):
+        drop_mark(quad)
+        call.note = "already-absent"
+        return
+    status, _ = run_tool([IP_TOOL, "addr", "del", dotted(quad) + "/24", "dev", interface], TOOL_TIMEOUT_S)
+    if status != 0:
+        raise Refusal("DEL_FAILED")
+    drop_mark(quad)
+
+
+def serve(arguments, call):
+    if arguments == ["check"]:
+        call.verb = "check"
+        call.caller = str(os.getuid())
+        service_user_id()
+        installation(need_conflict_tool=True)
+        return
+    if arguments:
+        raise Refusal("ARGUMENTS")
+    expected = service_user_id()
+    caller = peer_user_id()
+    call.caller = str(caller)
+    if caller != expected:
+        raise Refusal("PEER_NOT_SERVICE_USER")
+    verb, quad, minutes = parse_request(read_request_line(), call)
+    if verb == "add":
+        add(quad, minutes, call)
+    else:
+        delete(quad, call)
+
+
+def main():
+    os.umask(0o022)
+    call = Call()
+    try:
+        serve(sys.argv[1:], call)
+        result = "OK"
+    except Refusal as refusal:
+        result = refusal.name if refusal.name in CODES else "INTERNAL"
+    except BaseException:
+        result = "INTERNAL"
+    code = CODES[result]
+    note = " note=" + call.note if call.note else ""
+    journal = "%s: caller_uid=%s verb=%s address=%s result=%s code=%d%s\n" % (
+        JOURNAL_TAG, call.caller, call.verb, call.address, result, code, note)
+    for descriptor, text in ((2, journal), (1, "%d %s\n" % (code, result))):
+        try:
+            os.write(descriptor, text.encode("ascii"))
+        except OSError:
+            pass
+    os._exit(code)
+
+
+main()

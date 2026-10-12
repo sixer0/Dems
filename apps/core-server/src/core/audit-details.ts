@@ -183,9 +183,9 @@ export const CAPTURE_CREDENTIAL_REVEAL_REASONS = ['SESSION_OPEN', 'RELAY_RESTART
 export type CaptureCredentialRevealReason = (typeof CAPTURE_CREDENTIAL_REVEAL_REASONS)[number];
 /**
  * `scope` of CAPTURE_DISCOVERY_SEARCHED: the two of the shared contract and the third of design
- * addendum 04 section 4.2, the listing of sound cards (`searchCaptureAudioCards`). The literal is
- * stated here until the shared `CaptureDiscoveryScope` carries it (request of row 19); the set
- * makes the two the same value, so that landing changes nothing in this rule.
+ * addendum 04 section 4.2, the listing of sound cards (`searchCaptureAudioCards`). The shared
+ * `CaptureDiscoveryScope` carries all three since integration pass I-1 (member `AUDIO_CARDS`); the
+ * literal beside it is the same value and the set states it once, so this rule did not change.
  */
 export const CAPTURE_DISCOVERY_AUDIT_SCOPES: readonly string[] = [...new Set<string>([...Object.values(CaptureDiscoveryScope), 'AUDIO_CARDS'])];
 /** `change` of CAPTURE_AUDIO_INPUT_CHANGED (design addendum 04 section 4.2). */

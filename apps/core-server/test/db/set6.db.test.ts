@@ -51,8 +51,13 @@ const TABLE = 'public.session_stt_config';
 const COLUMNS = ['session_id', 'enabled', 'backend', 'endpoint', 'model', 'language', 'diarization', 'credential_kind', 'config_revision', 'taken_at'] as const;
 const SET_5 = { schemaVersion: 4, contractRevision: 'dbc-5' } as const;
 const SET_6 = { schemaVersion: 5, contractRevision: 'dbc-6' } as const;
-/** The two files of set 7, pending on every database of this file. */
-const LATER = ['0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges'] as const;
+/** The files of set 7 and of set 8 (task 4 schema set A), pending on every database of this file. */
+const LATER = [
+  '0013_key_id_fault_reason_media_root',
+  '0014_key_id_fault_reason_media_root_privileges',
+  '0015_capture_streams_audio_inputs',
+  '0016_capture_streams_audio_inputs_privileges',
+] as const;
 const SESSION_A = 'SES-20261009-0001';
 const SESSION_B = 'SES-20261009-0002';
 const temporary: string[] = [];
@@ -122,7 +127,7 @@ describe('M6S-1: the pre-state, a (4, dbc-5) database that holds rows', () => {
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 4 (dbc-5); this server expects 6 (dbc-7). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      'B-3: the database is at schema version 4 (dbc-5); this server expects 7 (dbc-8). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
     );
     await expect(checkSchemaVersion(db.appPool(), SET_5)).resolves.toBeUndefined();
   });
@@ -155,7 +160,7 @@ describe('M6S-3: set 6 applies its two files and changes no stored row', () => {
     const rowsBefore = await storedBefore(owner);
     const objectsBefore = (await owner.query<{ objects: number }>(objects)).rows[0]?.objects ?? 0;
     // The set stops at 0012: the applier commits the two files, then reports that the version is
-    // not this code's (6, 'dbc-7').
+    // not this code's (7, 'dbc-8').
     const folder = folderOf(13);
     expect(await readSchemaVersion(owner)).toEqual(SET_5);
     expect((await inspectLedger(owner, folder)).pending).toEqual([...TAGS]);

@@ -34,10 +34,20 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * of the fault key) and T-43 `core_media_store` (the media store root for the command-line reset).
  * Code that writes the new column or table fails at its first statement on a database without the
  * set, so B-3 refuses it there, and refuses older code here.
+ *
+ * 7 since migration set 8 (`0015_capture_streams_audio_inputs.sql` +
+ * `0016_capture_streams_audio_inputs_privileges.sql`; schema set A of task 4, design
+ * `docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md` sections 2.1
+ * to 2.3 with design addendum 1.4 #1 and 7.2; decisions U8, U11, C14): T-44
+ * `capture_device_streams`, T-45 `capture_audio_inputs`, `session_capture_sources.source_facts`,
+ * and the six slot columns of `capture_config` nullable with `capture_config_slot_pair_check`.
+ * Code that writes a new table or the new column fails at its first statement on a database
+ * without the set, and older code must not read a selector row that may hold an unassigned slot,
+ * so B-3 refuses in both directions.
  */
-export const DB_SCHEMA_VERSION = 6;
+export const DB_SCHEMA_VERSION = 7;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-7';
+export const DB_CONTRACT_REVISION = 'dbc-8';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

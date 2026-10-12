@@ -1,0 +1,24 @@
+# DEMS Core address helper: the local socket (decision C19; host profile item HOST-44).
+# Installed by the user as /etc/systemd/system/dems-core-netalias.socket, owner root, mode 0644.
+# Every value is a constant; this file is covered by SHA256SUMS.
+#
+# One request per connection: the service manager starts dems-core-netalias@.service for each
+# connection and hands it the connection. Only root and the members of the group dems-netalias
+# can connect; that group has ONE member, the Core's service user (HOST-43).
+
+[Unit]
+Description=DEMS Core address helper (local socket)
+
+[Socket]
+ListenStream=/run/dems-core-netalias/socket
+SocketUser=root
+SocketGroup=dems-netalias
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=1
+MaxConnectionsPerSource=1
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

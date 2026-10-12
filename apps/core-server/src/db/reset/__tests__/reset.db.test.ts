@@ -239,7 +239,10 @@ describe('T-RS-1: two resets of a used database', () => {
     // the capture trio is upsert-kept (§E.1), so they stay out of this list.
     // 23 since dbc-4: `session_capture_sources` (T-41) is rebuilt, never kept.
     // 24 since PE-129b-01: `session_stt_config` (T-42) is rebuilt too.
-    expect(rebuilt).toHaveLength(24);
+    // 26 since task 4 schema set A: T-44 `capture_device_streams` and T-45 `capture_audio_inputs` are
+    // counted here because a reset does not carry them yet (the kept set is still 13; the reset row
+    // that carries them with `capture_devices` takes them out of this list again).
+    expect(rebuilt).toHaveLength(26);
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     const withoutSignIn = { without: { operators: ['last_sign_in_at'] } };
     expect((await digestAll(owner, withoutSignIn))['operators']).toBe((await digestAll(reference.ownerPool(), withoutSignIn))['operators']);

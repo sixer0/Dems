@@ -151,6 +151,18 @@ export const CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND = {
 export const CAPTURE_SOURCE_SLOT = ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
 /** The production adapter kinds: what the reset-guard cross-check refuses to exempt (§N.10). */
 export const CAPTURE_PRODUCTION_ADAPTER_KINDS = ['ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE'] as const;
+/**
+ * Whether a stream of a camera is its main stream or its sub-stream
+ * (`capture_device_streams.stream_role`, T-44; schema v7, set A of task 4). A CLOSED set.
+ */
+export const CAPTURE_STREAM_ROLE = ['MAIN', 'SUB'] as const;
+/**
+ * The video codec a stream delivers, as the Core read it from the stream itself
+ * (`capture_device_streams.codec`, T-44; requirement AD-06 (1)). A CLOSED set in the words of
+ * `MediaProfile.codec` (`capture/adapters/types.ts`) and of manifest field 43: no text a camera
+ * chose is ever a member, so an unknown codec is `OTHER` and never its name.
+ */
+export const CAPTURE_STREAM_CODEC = ['H264', 'HEVC', 'OTHER'] as const;
 /** The role of one mic inside `AUDIO-01` (T-34; OD-01/OD-09). */
 export const MIC_ROLE = ['PRIMARY', 'STANDBY'] as const;
 /** Why a `session_audio_intervals` row opened or closed (T-34; R-3). */
@@ -263,6 +275,8 @@ export type ChainDiscardReason = (typeof CHAIN_DISCARD_REASON)[number];
 export type CaptureDeviceKindValue = (typeof CAPTURE_DEVICE_KIND)[number];
 export type CaptureAdapterKindValue = (typeof CAPTURE_ADAPTER_KIND)[number];
 export type CaptureSourceSlotValue = (typeof CAPTURE_SOURCE_SLOT)[number];
+export type CaptureStreamRoleValue = (typeof CAPTURE_STREAM_ROLE)[number];
+export type CaptureStreamCodecValue = (typeof CAPTURE_STREAM_CODEC)[number];
 export type MicRoleValue = (typeof MIC_ROLE)[number];
 export type AudioIntervalReasonValue = (typeof AUDIO_INTERVAL_REASON)[number];
 export type SealingJobStatusValue = (typeof SEALING_JOB_STATUS)[number];

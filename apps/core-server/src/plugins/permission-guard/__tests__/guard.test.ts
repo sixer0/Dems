@@ -248,7 +248,7 @@ describe('RB-1, AC-B-12: the boot check of app.ready()', () => {
     const registered = guard.registeredRules();
     // What is registered is exactly the registry and the socket route, each once.
     expect(registered.map((rule) => rule.operationId).sort()).toEqual([...ALL_OPERATIONS, REALTIME_CHANNEL_ID].sort());
-    expect(ALL_OPERATIONS).toHaveLength(97);
+    expect(ALL_OPERATIONS).toHaveLength(99); // 97 + the two sound-card operations of task 4 row 63
     // Each one with the rule of its registry entry, at its registry route.
     for (const operationId of ALL_OPERATIONS) expect(registered.find((rule) => rule.operationId === operationId)).toBe(guard.rules.ruleOf(operationId));
     // The stand-ins and the routes of the real units make up the registry, and no operation is in both.

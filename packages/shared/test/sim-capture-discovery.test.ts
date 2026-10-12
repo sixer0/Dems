@@ -7,13 +7,17 @@
 // tests of the clients compare them.
 import { describe, expect, it } from 'vitest';
 import {
+  CaptureAudioCardSearchSchema,
   CaptureInputScanSchema,
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
   CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CaptureConnectionOutcome,
   SIM_ADOPTED_DEVICE_ID,
+  SIM_CAPTURE_AUDIO_CARD_IDS,
   SIM_CAPTURE_CANDIDATE_IDS,
+  simCaptureAudioCards,
   validateCoreApiResponse,
+  type CaptureAudioCardSearch,
   type CaptureCandidateAdoption,
   type CaptureConnectionTest,
   type CaptureDiscoverySearch,
@@ -28,6 +32,8 @@ import { DEMO_OPERATOR_PASSWORD, createManualClock, createSim, nextCaptureCamera
 const AT = Date.UTC(2026, 9, 1, 3, 0, 0);
 const DISCOVERY = '/api/v1/capture/discovery';
 const RESCAN = '/api/v1/capture/inputs/rescan';
+const AUDIO_CARDS = '/api/v1/capture/audio-cards/search';
+const AUDIO_INPUTS = '/api/v1/capture/audio-cards/inputs';
 const FRESH = `${DISCOVERY}/candidates/${SIM_CAPTURE_CANDIDATE_IDS.fresh}`;
 const REGISTERED = `${DISCOVERY}/candidates/${SIM_CAPTURE_CANDIDATE_IDS.registered}`;
 const CANARY_USER = 'canary-user-7f3a';
@@ -374,6 +380,92 @@ describe('operation 97: the local inputs, read again', () => {
     // It registers nothing and is no camera search: the candidate read stays empty.
     expect(h.state().captureDevices.devices).toHaveLength(5);
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
+  });
+});
+
+// Task 4, blueprint row 63 (design addendum 4.2): what the in-app simulator answers for the two
+// sound-card operations. It reads no host and captures from no sound card.
+describe('operations 98 and 99: the sound cards and the registration of an input (task 4 row 63)', () => {
+  const FIRST_INPUT = { cardId: SIM_CAPTURE_AUDIO_CARD_IDS.four, deviceIndex: 0, inputNumber: 1 };
+
+  it('98: the fixed listing of two test cards, and one CAPTURE_DISCOVERY_SEARCHED row with scope AUDIO_CARDS that holds counts and codes only', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const listed = h.call<CaptureAudioCardSearch>('POST', AUDIO_CARDS);
+    expect(listed).toEqual({ status: 200, body: { searchedAt: AT, cards: simCaptureAudioCards(), truncated: false } });
+    expect(CaptureAudioCardSearchSchema.safeParse(listed.body).success).toBe(true);
+    expect(validateCoreApiResponse('searchCaptureAudioCards', 200, listed.body)).toEqual({ ok: true });
+    // Fixed: a second call answers the same cards, and writes its own row.
+    h.clock.advance(1_000);
+    expect(h.call<CaptureAudioCardSearch>('POST', AUDIO_CARDS).body.cards).toEqual(listed.body.cards);
+    const rows = h.rows('CAPTURE_DISCOVERY_SEARCHED');
+    expect(rows.map((row) => row.details)).toEqual([
+      { searchId: 'DSC-000001', scope: 'AUDIO_CARDS', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 2, newCount: 2, registeredCount: 0, interfaceCount: 0, operationId: 'searchCaptureAudioCards', permission: 'CAPTURE_CONFIG' },
+      { searchId: 'DSC-000002', scope: 'AUDIO_CARDS', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 2, newCount: 2, registeredCount: 0, interfaceCount: 0, operationId: 'searchCaptureAudioCards', permission: 'CAPTURE_CONFIG' },
+    ]);
+    // No product name and no card id reaches a row: not in the details, not in the message.
+    const written = JSON.stringify(rows);
+    for (const card of listed.body.cards) {
+      expect(written).not.toContain(card.cardId);
+      expect(written).not.toContain(card.product);
+    }
+    // It registers nothing and is no camera search.
+    expect(h.state().captureDevices.devices).toHaveLength(5);
+    expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
+  });
+
+  it('99: the simulator registers nothing - 404 for an unknown card, 409 for an input beyond the card, 409 for any input it has; no row, no device, no change of state', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const before = h.state();
+    const unknown = h.call('POST', AUDIO_INPUTS, { ...FIRST_INPUT, cardId: 'OTHER_CARD' });
+    expect([unknown.status, codeOf(unknown.body)]).toEqual([404, 'NOT_FOUND']);
+    const otherDevice = h.call('POST', AUDIO_INPUTS, { ...FIRST_INPUT, deviceIndex: 1 });
+    expect(otherDevice.status).toBe(404);
+    const beyond = h.call('POST', AUDIO_INPUTS, { ...FIRST_INPUT, inputNumber: 5 });
+    expect([beyond.status, codeOf(beyond.body), reasonOf(beyond.body)]).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_BEYOND_CARD']);
+    // The second test card has two inputs: its third is beyond it.
+    expect(reasonOf(h.call('POST', AUDIO_INPUTS, { cardId: SIM_CAPTURE_AUDIO_CARD_IDS.two, deviceIndex: 0, inputNumber: 3 }).body)).toBe('AUDIO_INPUT_BEYOND_CARD');
+    for (const inputNumber of [1, 2, 3, 4]) {
+      const refused = h.call('POST', AUDIO_INPUTS, { ...FIRST_INPUT, inputNumber });
+      expect([refused.status, codeOf(refused.body), reasonOf(refused.body)], String(inputNumber)).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
+      expect(validateCoreApiResponse('registerCaptureAudioInput', 409, refused.body)).toEqual({ ok: true });
+    }
+    // A body outside the schema is 422 and names where, never what.
+    for (const body of [{}, { ...FIRST_INPUT, inputNumber: 0 }, { ...FIRST_INPUT, cardId: 'hw:1,0' }, { ...FIRST_INPUT, product: CANARY_USER }]) {
+      const answer = h.call('POST', AUDIO_INPUTS, body);
+      expect([answer.status, codeOf(answer.body)]).toEqual([422, 'INVALID_INPUT']);
+      expect(JSON.stringify(answer.body)).not.toContain(CANARY_USER);
+    }
+    // Nothing happened: the same state object, so no audit row, no device and no selector change.
+    expect(h.state()).toBe(before);
+    expect(h.rows('CAPTURE_AUDIO_INPUT_CHANGED')).toEqual([]);
+    expect(h.state().captureDevices.devices).toHaveLength(5);
+  });
+
+  it('who may call: signed out 401, a role without CAPTURE_CONFIG 403, a tablet or phone 403 WEB_CONSOLE_ONLY, a session open 409 CAPTURE_CONFIG_LOCKED - each before the body is used and with no row', () => {
+    const calls = (h: ReturnType<typeof harness>) => {
+      const before = h.state().audit.rows.length;
+      const answers = [h.call('POST', AUDIO_CARDS), h.call('POST', AUDIO_INPUTS, { not: 'a request' })];
+      expect(h.state().audit.rows).toHaveLength(before);
+      return answers;
+    };
+    const signedOut = harness();
+    expect(calls(signedOut).map((answer) => [answer.status, codeOf(answer.body)])).toEqual([[401, 'NOT_SIGNED_IN'], [401, 'NOT_SIGNED_IN']]);
+    const investigator = harness();
+    signIn(investigator, 'budi.santoso');
+    expect(calls(investigator).map((answer) => [answer.status, codeOf(answer.body)])).toEqual([[403, 'NOT_PERMITTED'], [403, 'NOT_PERMITTED']]);
+    const tablet = harness({ deviceConsole: true });
+    signIn(tablet, 'rina.wijaya');
+    expect(calls(tablet).map((answer) => [answer.status, codeOf(answer.body), reasonOf(answer.body)])).toEqual([
+      [403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY'],
+      [403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY'],
+    ]);
+    const open = harness();
+    signIn(open, 'andi.pratama');
+    open.sim.actions.loadScenario('recording');
+    expect(open.state().session?.state).toBe('RECORDING');
+    expect(calls(open).map((answer) => [answer.status, codeOf(answer.body)])).toEqual([[409, 'CAPTURE_CONFIG_LOCKED'], [409, 'CAPTURE_CONFIG_LOCKED']]);
   });
 });
 

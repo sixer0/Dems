@@ -303,8 +303,10 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     expect(schema.properties.model.pattern).toBe(STT_MODEL_ID_PATTERN.source);
     // The totals after R-9..R-11 (row 132, D106; C3 §10.1): 158 -> 166 schemas, 92 -> 97 operations.
     // Pass D1b (D140): the optional body of op 88 is one more schema, 166 -> 167; the operations stay 97.
-    expect(Object.keys(document.components.schemas)).toHaveLength(167);
-    expect(CORE_API_OPERATIONS).toHaveLength(97);
+    // Task 4 blueprint row 63 (design addendum 4.2): the four schemas and the two operations of the
+    // sound cards, 167 -> 171 and 97 -> 99. Nothing of the STT configuration moved.
+    expect(Object.keys(document.components.schemas)).toHaveLength(171);
+    expect(CORE_API_OPERATIONS).toHaveLength(99);
   });
 });
 

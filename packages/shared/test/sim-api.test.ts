@@ -38,9 +38,9 @@ const CREATE_BODY = {
 };
 
 describe('routes', () => {
-  it('lists the 30 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17), the 3 STT configuration ops 90-92 (C3 §2.5) and the 5 camera-search ops 93-97 (C3 §2.6))', () => {
-    expect(SIM_API_ROUTES).toHaveLength(30);
-    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(30);
+  it('lists the 32 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17), the 3 STT configuration ops 90-92 (C3 §2.5), the 5 camera-search ops 93-97 (C3 §2.6) and the 2 sound-card ops 98-99 (task 4 row 63))', () => {
+    expect(SIM_API_ROUTES).toHaveLength(32);
+    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(32);
   });
 
   it('marks every response simulated and JSON, including errors', () => {

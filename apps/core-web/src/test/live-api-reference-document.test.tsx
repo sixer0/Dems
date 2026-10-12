@@ -129,21 +129,23 @@ function assertLogDiscipline(): void {
 }
 
 describe('AR-2: the Simulated views (AC-C-100)', () => {
-  it('the default view is the document of before: 31 operations, byte-equal to `buildApiDocument(true)`', () => {
+  it('the default view is the document of before: 33 operations, byte-equal to `buildApiDocument(true)`', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
     // Task 3 M6 row 113 (C3 §2.5): the three simulated STT configuration operations 90-92 join the offline scope, 23 -> 26.
     // Task 3 R-9..R-11, row 132 (C3 §2.6, §10.1): the five simulated operations 93-97 join it, 26 -> 31.
-    expect(countOperations(view)).toBe(31)
+    // Task 4 blueprint row 63 (design addendum 4.2): the two simulated sound-card operations 98-99 join it, 31 -> 33.
+    expect(countOperations(view)).toBe(33)
     expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
   })
 
-  it('"Show Core-server endpoints" lists 97: the 31 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
+  it('"Show Core-server endpoints" lists 99: the 33 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
     const plain = buildApiDocument(true)
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
-    // The registry total of C3 §10.1 (89 + ops 90-92 + ops 93-97); the Core-server-only count stays 66.
-    expect(countOperations(view)).toBe(97)
+    // The registry total of C3 §10.1 (89 + ops 90-92 + ops 93-97) + the two of task 4 row 63 (ops 98-99,
+    // both simulated); the Core-server-only count stays 66.
+    expect(countOperations(view)).toBe(99)
     expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
@@ -196,7 +198,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     },
   )
 
-  it('the 31 route as before with the switch on: health to the network, the 30 to the simulator', async () => {
+  it('the 33 route as before with the switch on: health to the network, the 32 to the simulator', async () => {
     const { request, networkFetch, fetch } = await harness(CORE_ONLY)
     await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
     expect(networkFetch).toHaveBeenCalledTimes(1)
@@ -205,7 +207,8 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
       expect(response.headers.get('x-dems-simulated'), operation.operationId).toBe('1')
     }
     // 25 until task 3 row 132 added the five simulated operations 93-97 (C3 §2.6).
-    expect(request).toHaveBeenCalledTimes(30)
+    // 30 until task 4 row 63 added the two simulated sound-card operations 98-99 (design addendum 4.2).
+    expect(request).toHaveBeenCalledTimes(32)
   })
 
   it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
@@ -233,9 +236,9 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('97 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('99 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(97)
+    expect(countOperations(document)).toBe(99)
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
     expect(document.info.version).toBe('0.3.0')
@@ -329,17 +332,18 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     ])
   })
 
-  it('every one of the 87 operations that are not denied goes to the network (the simulated ones too)', async () => {
+  it('every one of the 89 operations that are not denied goes to the network (the simulated ones too)', async () => {
     const { fetch, networkFetch } = liveHarness()
     const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
     // 97 of the registry (C3 §10.1) minus the ten of AR-3a (six of 01_specs §7.7, operations 89
     // and 91 of task 3: row 113 fix round 1, navigator finding N-2, and operations 95 and 96 of the
-    // camera connect flow: row 132, C3 §2.6 "Web Try-it").
-    expect(allowed).toHaveLength(87)
+    // camera connect flow: row 132, C3 §2.6 "Web Try-it"). Task 4 row 63: 99 of the registry minus
+    // the same ten - the two sound-card operations 98-99 carry no secret and are not denied.
+    expect(allowed).toHaveLength(89)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(87)
+    expect(networkFetch).toHaveBeenCalledTimes(89)
   })
 
   it.each([

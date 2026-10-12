@@ -24,7 +24,7 @@ export * from './state-slices';
 export * from './realtime-examples';
 // Backend task (01_specs §7.8 to §7.15, §7.17; plan row W27, contract C): areas 4 to 11 (schemas,
 // operations, examples), the state values their examples show, and the map of the 42 simulator
-// actions to operations. The registry held 75 at that row; it holds 97 now (`core-api.ts`, pinned by test/api-registry.test.ts).
+// actions to operations. The registry held 75 at that row; it holds 99 now (`core-api.ts`, pinned by test/api-registry.test.ts).
 export * from './sessions';
 export * from './evidence';
 export * from './devices';
@@ -45,6 +45,9 @@ export * from './transcription';
 // adoption and the local-input re-read of operations 93-97 (schemas, operations, examples, the
 // audit-detail builders the Core server and the simulator share).
 export * from './capture-discovery';
+// Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the listing of the sound cards and the
+// registration of one input, operations 98-99 (schemas, operations, examples, the audit-detail builder).
+export * from './capture-audio-cards';
 // Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client
 // log-blanking lists (web error sink, mobile runtime log). Dependency-free.
 export * from './redaction';

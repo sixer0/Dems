@@ -89,6 +89,9 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   session_stt_config: 'session_id',
   // Schema v6 (PE-0013-01): T-43, one row.
   core_media_store: 'singleton',
+  // Schema v7 (task 4 schema set A): T-44, keyed by (device_id, profile); T-45, one row per microphone.
+  capture_device_streams: 'device_id, profile',
+  capture_audio_inputs: 'device_id',
 };
 
 /**

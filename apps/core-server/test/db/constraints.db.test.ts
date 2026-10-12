@@ -20,9 +20,11 @@ import {
   audioInterval,
   authSession,
   biometricToken,
+  captureAudioInput,
   captureConfig,
   captureDevice,
   captureDeviceCredential,
+  captureDeviceStream,
   captureSource,
   mediaStore,
   sessionSttSnapshot,
@@ -259,6 +261,25 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['alerts_reason_check', 'alerts', alert('ALR-000001', { reason: 'mic disconnected' })],
   ['core_media_store_singleton_check', 'core_media_store', mediaStore({ singleton: false })],
   ['core_media_store_root_check', 'core_media_store', mediaStore({ media_root: 'media/sessions' })],
+  // ── schema v7 (task 4 schema set A): the seven CHECKs of T-44, the six of T-45, the three of
+  //    `session_capture_sources.source_facts`, and the slot pair of the selector. ──
+  ['capture_device_streams_device_id_check', 'capture_device_streams', captureDeviceStream('MIC-01', 'HEVC_1080P')],
+  ['capture_device_streams_profile_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'profile_1')],
+  ['capture_device_streams_token_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P', { onvif_profile_token: 'profile 1' })],
+  ['capture_device_streams_lens_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P', { lens: 5 })],
+  ['capture_device_streams_stream_role_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P', { stream_role: 'THIRD' })],
+  ['capture_device_streams_codec_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P', { codec: 'H265' })],
+  ['capture_device_streams_size_check', 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P', { height: null })],
+  ['capture_audio_inputs_device_id_check', 'capture_audio_inputs', captureAudioInput('CAM-01')],
+  ['capture_audio_inputs_usb_id_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_id: '1235:821G' })],
+  ['capture_audio_inputs_card_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { card_id: 'USB Audio' })],
+  ['capture_audio_inputs_input_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { input_number: 5 })],
+  ['capture_audio_inputs_sample_rate_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { sample_rate: 44_100 })],
+  ['capture_audio_inputs_sample_bits_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { sample_bits: 20 })],
+  ['session_capture_sources_source_facts_flat_check', 'session_capture_sources', captureSource('VIDEO-01', { source_facts: json({ model: { name: 'nested' } }) })],
+  ['session_capture_sources_source_facts_no_secret_keys_check', 'session_capture_sources', captureSource('VIDEO-01', { source_facts: json({ model: 'Fixture model', username: 'someone' }) })],
+  ['session_capture_sources_source_facts_bound_check', 'session_capture_sources', captureSource('VIDEO-01', { source_facts: json({ model: 'm'.repeat(121) }) })],
+  ['capture_config_slot_pair_check', 'capture_config', captureConfig({ video_01_profile: null })],
 ];
 
 /**
@@ -289,11 +310,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 182 CHECKs of the contract: 177 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 199 CHECKs of the contract: 194 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(182);
-    expect(REFUSED_BY_CHECK).toHaveLength(177);
+    expect(named).toHaveLength(199);
+    expect(REFUSED_BY_CHECK).toHaveLength(194);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -319,7 +340,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 43 tables', async () => {
+  it('one valid row in each of the 45 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -384,6 +405,15 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'core_media_store', mediaStore());
     await insertRow(owner, 'transcript_revisions', transcriptRevision(8, { signature_key_id: 'CORE-KEY-EVSIGN-01' }));
     await insertRow(owner, 'transcript_revisions', transcriptRevision(9, { signature_key_id: 'DEMO-KEY-EVSIGN-01' }));
+    // schema v7 (task 4 schema set A): the main and the sub stream of one camera, and a second
+    // statement for the same lens and role (the index is plain: addendum 7.2); a stream no test
+    // has read yet (no codec, no size, no video source); one input of a sound card (MIC-02 keeps
+    // no row: the foreign-key list below needs a microphone without one).
+    await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_1080P'));
+    await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-01', 'HEVC_360P', { onvif_profile_token: 'profile_2', stream_role: 'SUB', width: 640, height: 360 }));
+    await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-01', 'H264_1080P25', { codec: 'H264' }));
+    await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-02', 'H264_1080P25', { video_source_token: null, codec: null, width: null, height: null }));
+    await insertRow(owner, 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_id: null }));
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),
@@ -468,11 +498,16 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['stt_config_updated_by_fkey', 'stt_config', sttConfig({ updated_by: 'OPR-777' })],
     // schema v3 (dbc-4 §N.3): the one new foreign key, with an unknown device.
     ['session_capture_sources_device_id_fkey', 'session_capture_sources', captureSource('VIDEO-01', { session_id: 'SES-20261001-0777', device_id: 'CAM-99' })],
+    // schema v7 (task 4 schema set A): the three new foreign keys - an unknown camera, an unknown
+    // microphone, and an unknown operator on the input of a microphone that has no row yet.
+    ['capture_device_streams_device_id_fkey', 'capture_device_streams', captureDeviceStream('CAM-99', 'HEVC_1080P')],
+    ['capture_audio_inputs_device_id_fkey', 'capture_audio_inputs', captureAudioInput('MIC-99', { input_number: 3 })],
+    ['capture_audio_inputs_updated_by_fkey', 'capture_audio_inputs', captureAudioInput('MIC-02', { input_number: 2, updated_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 40 foreign keys of the contract', () => {
+  it('the list covers all 43 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(40);
+    expect(named).toHaveLength(43);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 

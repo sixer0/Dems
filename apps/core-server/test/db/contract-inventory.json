@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -265,6 +265,15 @@
       "VIDEO-02",
       "MIC-PRIMARY",
       "MIC-STANDBY"
+    ],
+    "CAPTURE_STREAM_ROLE": [
+      "MAIN",
+      "SUB"
+    ],
+    "CAPTURE_STREAM_CODEC": [
+      "H264",
+      "HEVC",
+      "OTHER"
     ]
   },
   "formats": {
@@ -3587,37 +3596,37 @@
         {
           "name": "video_01_device_id",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
           "name": "video_01_profile",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
           "name": "video_02_device_id",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
           "name": "video_02_profile",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
           "name": "mic_primary_id",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
           "name": "mic_standby_id",
           "type": "text",
-          "notNull": true,
+          "notNull": false,
           "default": null
         },
         {
@@ -3694,6 +3703,11 @@
           "name": "capture_config_updated_by_fkey",
           "kind": "FOREIGN KEY",
           "definition": "(updated_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_config_slot_pair_check",
+          "kind": "CHECK",
+          "definition": "((\"capture_config\".\"video_01_device_id\" IS NULL) = (\"capture_config\".\"video_01_profile\" IS NULL)) AND ((\"capture_config\".\"video_02_device_id\" IS NULL) = (\"capture_config\".\"video_02_profile\" IS NULL))"
         }
       ]
     },
@@ -4614,6 +4628,12 @@
           "type": "bigint",
           "notNull": true,
           "default": null
+        },
+        {
+          "name": "source_facts",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'{}'"
         }
       ],
       "constraints": [
@@ -4646,6 +4666,21 @@
           "name": "session_capture_sources_device_id_fkey",
           "kind": "FOREIGN KEY",
           "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "session_capture_sources_source_facts_flat_check",
+          "kind": "CHECK",
+          "definition": "public.dems_jsonb_is_flat(\"session_capture_sources\".\"source_facts\")"
+        },
+        {
+          "name": "session_capture_sources_source_facts_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT (\"session_capture_sources\".\"source_facts\" ?| ARRAY['password','passwordHash','salt','token','tokenHash','sessionToken','deviceCredential','credential','credentialHash','biometricToken','code','codeHash','pairingCode','qrPayload','username','cookie','authorization','secret','secretCiphertext','ciphertext','nonce','keyRef','onvifUuid','signedUrl','mediaUrl','credentialRef','credentialValue','apiKey'])"
+        },
+        {
+          "name": "session_capture_sources_source_facts_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"session_capture_sources\".\"source_facts\"::text) <= 2048 AND NOT jsonb_path_exists(\"session_capture_sources\".\"source_facts\", '$.*?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,120}$\"))')"
         }
       ]
     },
@@ -4797,16 +4832,252 @@
           "definition": "char_length(\"core_media_store\".\"media_root\") BETWEEN 1 AND 1024 AND \"core_media_store\".\"media_root\" ~ '^/[^[:cntrl:]]*$' AND position('://' in \"core_media_store\".\"media_root\") = 0"
         }
       ]
+    },
+    {
+      "id": "T-44",
+      "name": "capture_device_streams",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "profile",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "onvif_profile_token",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "video_source_token",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "lens",
+          "type": "smallint",
+          "notNull": true,
+          "default": "1"
+        },
+        {
+          "name": "stream_role",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "codec",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "width",
+          "type": "integer",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "height",
+          "type": "integer",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "read_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_device_streams_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id, profile)"
+        },
+        {
+          "name": "capture_device_streams_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_device_streams_device_lens_role_idx",
+          "kind": "INDEX",
+          "definition": "(device_id, lens, stream_role)"
+        },
+        {
+          "name": "capture_device_streams_device_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"device_id\" ~ '^CAM-[0-9]{2,}$'"
+        },
+        {
+          "name": "capture_device_streams_profile_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "capture_device_streams_token_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"onvif_profile_token\" ~ '^[A-Za-z0-9_.:-]{1,64}$' AND (\"capture_device_streams\".\"video_source_token\" IS NULL OR \"capture_device_streams\".\"video_source_token\" ~ '^[A-Za-z0-9_.:-]{1,64}$')"
+        },
+        {
+          "name": "capture_device_streams_lens_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"lens\" BETWEEN 1 AND 4"
+        },
+        {
+          "name": "capture_device_streams_stream_role_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"stream_role\" IN ('MAIN', 'SUB')"
+        },
+        {
+          "name": "capture_device_streams_codec_check",
+          "kind": "CHECK",
+          "definition": "\"capture_device_streams\".\"codec\" IS NULL OR \"capture_device_streams\".\"codec\" IN ('H264', 'HEVC', 'OTHER')"
+        },
+        {
+          "name": "capture_device_streams_size_check",
+          "kind": "CHECK",
+          "definition": "(\"capture_device_streams\".\"width\" IS NULL AND \"capture_device_streams\".\"height\" IS NULL) OR (\"capture_device_streams\".\"width\" IS NOT NULL AND \"capture_device_streams\".\"height\" IS NOT NULL AND \"capture_device_streams\".\"width\" BETWEEN 1 AND 16384 AND \"capture_device_streams\".\"height\" BETWEEN 1 AND 16384)"
+        }
+      ]
+    },
+    {
+      "id": "T-45",
+      "name": "capture_audio_inputs",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "usb_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "card_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "card_device",
+          "type": "smallint",
+          "notNull": true,
+          "default": "0"
+        },
+        {
+          "name": "input_number",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "native_channels",
+          "type": "smallint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "sample_rate",
+          "type": "integer",
+          "notNull": true,
+          "default": "48000"
+        },
+        {
+          "name": "sample_bits",
+          "type": "smallint",
+          "notNull": true,
+          "default": "24"
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "updated_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "capture_audio_inputs_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(device_id)"
+        },
+        {
+          "name": "capture_audio_inputs_device_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(device_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_audio_inputs_updated_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(updated_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "capture_audio_inputs_card_input_key",
+          "kind": "UNIQUE",
+          "definition": "(card_id, card_device, input_number)"
+        },
+        {
+          "name": "capture_audio_inputs_device_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"device_id\" ~ '^MIC-[0-9]{2,}$'"
+        },
+        {
+          "name": "capture_audio_inputs_usb_id_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"usb_id\" IS NULL OR \"capture_audio_inputs\".\"usb_id\" ~ '^[0-9a-f]{4}:[0-9a-f]{4}$'"
+        },
+        {
+          "name": "capture_audio_inputs_card_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"card_id\" ~ '^[A-Za-z0-9_]{1,32}$' AND \"capture_audio_inputs\".\"card_device\" BETWEEN 0 AND 31"
+        },
+        {
+          "name": "capture_audio_inputs_input_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"input_number\" BETWEEN 1 AND 64 AND \"capture_audio_inputs\".\"native_channels\" BETWEEN 1 AND 64 AND \"capture_audio_inputs\".\"input_number\" <= \"capture_audio_inputs\".\"native_channels\""
+        },
+        {
+          "name": "capture_audio_inputs_sample_rate_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"sample_rate\" = 48000"
+        },
+        {
+          "name": "capture_audio_inputs_sample_bits_check",
+          "kind": "CHECK",
+          "definition": "\"capture_audio_inputs\".\"sample_bits\" IN (16, 24, 32)"
+        }
+      ]
     }
   ],
   "counts": {
-    "tables": 43,
-    "columns": 440,
-    "primaryKeys": 43,
-    "foreignKeys": 40,
-    "uniques": 15,
+    "tables": 45,
+    "columns": 461,
+    "primaryKeys": 45,
+    "foreignKeys": 43,
+    "uniques": 16,
     "uniqueIndexes": 4,
-    "indexes": 23,
-    "checks": 182
+    "indexes": 24,
+    "checks": 199
   }
 }

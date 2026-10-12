@@ -31,7 +31,7 @@ export interface TableMinimum {
   readonly mix: string;
 }
 
-/** The 43 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10. */
+/** The 45 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10; T-44 and T-45 of task 4 set A appended. */
 export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'roles', minimum: 3, mix: 'unchanged' },
   { table: 'permissions', minimum: 14, mix: 'the 14 seeded by schema v2 (dbc-3 §G revised): CAPTURE_CONFIG and TRANSCRIPT_REVISE joined the list' },
@@ -99,6 +99,10 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   // Schema v6 (erratum PE-0013-01): the media store root of a Core (T-43). The fixture builds none:
   // the one row is a fact of a running installation, written by the Core at boot.
   { table: 'core_media_store', minimum: 0, mix: 'PE-0013-01: none built; one row, written by the Core at boot' },
+  // Schema v7 (task 4 schema set A): the stream facts of a camera profile (T-44) and the sound-card
+  // input of a microphone (T-45). The fixture builds none: a connection test and a registration write them.
+  { table: 'capture_device_streams', minimum: 0, mix: 'task 4 set A: none built; one row per profile of a camera, written by its connection test' },
+  { table: 'capture_audio_inputs', minimum: 0, mix: 'task 4 set A: none built; one row per registered sound-card microphone' },
 ] as const);
 
 /** The required mix as numbers. Every value is a minimum, except `pairingCodes.activeAtMost`. */

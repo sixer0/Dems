@@ -106,6 +106,20 @@
       "when": 1791595402815,
       "tag": "0014_key_id_fault_reason_media_root_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791823665220,
+      "tag": "0015_capture_streams_audio_inputs",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791823666563,
+      "tag": "0016_capture_streams_audio_inputs_privileges",
+      "breakpoints": true
     }
   ]
 }

@@ -403,7 +403,7 @@ export async function applyChanges(executor: RowExecutor, changes: readonly RowC
 
 // ── Counts ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The 43 tables of the typed schema (schema v6: v2 + R-8 + T-41 of dbc-4 + T-42 of PE-129b-01 + T-43 of PE-0013-01): binding name and SQL name, sorted by SQL name. */
+/** The 45 tables of the typed schema (schema v7: v2 + R-8 + T-41 of dbc-4 + T-42 of PE-129b-01 + T-43 of PE-0013-01 + T-44 and T-45 of task 4 set A): binding name and SQL name, sorted by SQL name. */
 export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly table: PgTable }> = [
   ['roles', schema.roles],
   ['permissions', schema.permissions],
@@ -456,11 +456,15 @@ export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly tabl
   // Schema v6 (erratum PE-0013-01; ruling D166): the Core's media store root. Counted here only;
   // the engine's write-through never names it (its one writer is the boot step `media.storeRoot`).
   ['core_media_store', schema.coreMediaStore],
+  // Schema v7 (task 4 schema set A; T-44, T-45): the stream facts of a camera profile and the
+  // sound-card input of a microphone. Counted here only; the engine's write-through never names them.
+  ['capture_device_streams', schema.captureDeviceStreams],
+  ['capture_audio_inputs', schema.captureAudioInputs],
 ]
   .map(([sqlName, table]) => ({ sqlName: sqlName as string, table: table as PgTable }))
   .sort((a, b) => (a.sqlName < b.sqlName ? -1 : 1));
 
-/** The row count of each of the 43 tables, by SQL name. */
+/** The row count of each of the 45 tables, by SQL name. */
 export async function countAllTables(executor: RowExecutor): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const { sqlName, table } of ALL_TABLES) {

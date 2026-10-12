@@ -62,7 +62,7 @@ import {
 
 const AT = Date.parse(OPENAPI_EXAMPLE_INSTANT);
 
-/** The components of the 31 offline operations (ten baseline + thirteen simulated capture + three STT configuration + five of the camera search), in builder order. */
+/** The components of the 33 offline operations (ten baseline + thirteen simulated capture + three STT configuration + five of the camera search + two of the sound cards), in builder order. */
 const OFFLINE_SCHEMA_NAMES = [
   'HealthResponse',
   'SessionCreateRequest',
@@ -119,6 +119,11 @@ const OFFLINE_SCHEMA_NAMES = [
   'CaptureCandidateAdoptRequest',
   'CaptureCandidateAdoption',
   'CaptureInputScan',
+  // Task 4 (blueprint row 63; design addendum 4.2): three of the four schemas of ops 98-99; the
+  // fourth, `CaptureAudioInputRegistration`, is the answer of the successes only the Core server sends.
+  'CaptureAudioCard',
+  'CaptureAudioCardSearch',
+  'CaptureAudioInputRegisterRequest',
 ];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
@@ -172,9 +177,9 @@ describe('AC-56: the OpenAPI document', () => {
     expect((await validate(serializeOpenApiDocument(broken))).valid).toBe(false);
   });
 
-  it('has 31 operations: GET /api/v1/health LIVE and the 30 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search) SIMULATED', () => {
-    expect(operations).toHaveLength(31);
-    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(31);
+  it('has 33 operations: GET /api/v1/health LIVE and the 32 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search + 2 sound cards) SIMULATED', () => {
+    expect(operations).toHaveLength(33);
+    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(33);
 
     const live = operations.filter((entry) => entry.operation['x-dems-mode'] === 'live');
     expect(live.map((entry) => `${entry.method} ${entry.path}`)).toEqual([`get ${HEALTH_PATH}`]);
@@ -187,7 +192,8 @@ describe('AC-56: the OpenAPI document', () => {
     // pinned by count and by the badges below (their exact routes are pinned in api-registry.test.ts).
     // Task 3 M6 row 113 (C3 §2.5) adds the three STT configuration operations 90-92: 22 -> 25.
     // Task 3 R-9..R-11 (row 132, D106; C3 §2.6) add the five operations 93-97: 25 -> 30.
-    expect(simulatedPaths.length).toBe(30);
+    // Task 4 row 63 (design addendum 4.2) adds the two sound-card operations 98-99: 30 -> 32.
+    expect(simulatedPaths.length).toBe(32);
     for (const endpoint of BOOK_21_2) expect(simulatedPaths, endpoint).toContain(endpoint);
     for (const entry of simulated) {
       expect(badgeNames(entry.operation)).toContain(API_BADGES.SIMULATED.name);
@@ -195,7 +201,7 @@ describe('AC-56: the OpenAPI document', () => {
     }
     const badgeCount = (name: string) => operations.filter((entry) => badgeNames(entry.operation).includes(name)).length;
     expect(badgeCount('LIVE')).toBe(1);
-    expect(badgeCount('SIMULATED')).toBe(30);
+    expect(badgeCount('SIMULATED')).toBe(32);
   });
 
   it('marks only the export RBAC + AUDIT, and every x-dems-rbac lists exactly the roles holding its permission', () => {
@@ -217,13 +223,13 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
-    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 97 operations (C3 §10.1).
+    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 99 operations (97 of C3 §10.1 + the two of task 4 row 63).
     // The document this file describes is the offline one, which the generator still renders.
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(97);
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(99);
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
@@ -263,7 +269,7 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('generates one component per contract schema of its scope, from the zod schemas', () => {
-    // Changed by design (W19; OD-17 M2; M6 row 113): the offline document holds the 53 schemas its 31 operations
+    // Changed by design (W19; OD-17 M2; M6 row 113; task 4 row 63): the offline document holds the 56 schemas its 33 operations
     // use, in registry order (a subsequence of `CORE_API_SCHEMAS`); the `all` scope holds one component
     // per entry of `CORE_API_SCHEMAS`.
     expect(Object.keys(document.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
@@ -413,7 +419,7 @@ async function rig(seen: Map<string, Set<number>>): Promise<SimRig> {
 const RECORDING_INPUT = CORE_API_EXAMPLES.createSession!.request!.recordingScenario!.value as Record<string, unknown>;
 
 describe('the contract matches the simulated handlers (sim/api.ts)', () => {
-  it("the simulator's route table lists exactly the simulated operations of the registry (30)", () => {
+  it("the simulator's route table lists exactly the simulated operations of the registry (32)", () => {
     const documented = CORE_API_OPERATIONS.filter((operation) => operation.mode === 'simulated').map(
       (operation) => `${operation.method.toUpperCase()} ${operation.path} ${operation.operationId}`,
     );
@@ -721,6 +727,45 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(n.call('rescanCaptureInputs', 'POST', RESCAN_PATH).status).toBe(200);
     n.sim.stop();
 
+    // Flow 15 (task 4, blueprint row 63; design addendum 4.2): the two sound-card operations 98-99.
+    // Signed out: 401 on both. An INVESTIGATOR lacks CAPTURE_CONFIG: 403 on both.
+    const CARDS_PATH = '/api/v1/capture/audio-cards/search';
+    const INPUTS_PATH = '/api/v1/capture/audio-cards/inputs';
+    const FIRST_INPUT = { cardId: 'DEMS_TEST_A', deviceIndex: 0, inputNumber: 1 };
+    const audioCalls = (target: SimRig): number[] => [
+      target.call('searchCaptureAudioCards', 'POST', CARDS_PATH).status,
+      target.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, FIRST_INPUT).status,
+    ];
+    const o = await rig(seen);
+    expect(audioCalls(o)).toEqual([401, 401]);
+    o.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
+    expect(audioCalls(o)).toEqual([403, 403]);
+    o.sim.stop();
+    // A TECHNICIAN: the fixed listing of two test cards (200); the registration registers nothing -
+    // 400 / 422 for a body that is no request, 404 for a card that is not in the listing, 409 for an
+    // input the card does not have and 409 for one it has (the simulator captures from no sound card).
+    const p = await rig(seen);
+    p.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const listed = p.call('searchCaptureAudioCards', 'POST', CARDS_PATH);
+    expect(listed.status).toBe(200);
+    expect((listed.body as { cards: { cardId: string }[] }).cards.map((card) => card.cardId)).toEqual(['DEMS_TEST_A', 'DEMS_TEST_B']);
+    expect(p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, '[1]').status).toBe(400);
+    expect(p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, { cardId: 'DEMS_TEST_A' }).status).toBe(422);
+    expect(p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, { ...FIRST_INPUT, product: 'x' }).status).toBe(422);
+    expect(p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, { ...FIRST_INPUT, cardId: 'OTHER' }).status).toBe(404);
+    const reasonOf = (answer: { body: unknown }): unknown => (answer.body as { error: { details?: { reason?: string } } }).error.details?.reason;
+    const beyond = p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, { ...FIRST_INPUT, inputNumber: 5 });
+    expect([beyond.status, reasonOf(beyond)]).toEqual([409, 'AUDIO_INPUT_BEYOND_CARD']);
+    const refused = p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, FIRST_INPUT);
+    expect([refused.status, reasonOf(refused)]).toEqual([409, 'AUDIO_INPUT_NOT_REGISTRABLE']);
+    p.sim.stop();
+    // A SUPERVISOR with a session open: both are idle only (409 CAPTURE_CONFIG_LOCKED).
+    const q = await rig(seen);
+    q.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    q.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
+    expect(audioCalls(q)).toEqual([409, 409]);
+    q.sim.stop();
+
     // Every status of the simulated operations that the simulator can produce was produced by it.
     // Changed by design (W27; 01_specs §7.19): the five baseline reads document a 401 and a 403, and
     // `startSession` a 422, that only the Core server sends (`responses[status].services`). RECON-A adds
@@ -744,7 +789,9 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // Task 3 R-9 (row 132; C3 §2.6 op 93): the 200 of a search that is still RUNNING and the 409 of
     // another session's search or of a recording — the simulator's search is COMPLETE when it is
     // answered and it has one console = 2. Total 25.
-    expect(coreServerOnly).toBe(25);
+    // Task 4 row 63 (design addendum 4.2, op 99): the 201 and the 200 of a registration - the
+    // simulator captures from no sound card and registers nothing = 2. Total 27.
+    expect(coreServerOnly).toBe(27);
   });
 });
 

@@ -126,14 +126,14 @@ async function openLive() {
 }
 
 describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
-  it('97 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
+  it('99 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
     const { bed: live } = await openLive()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
     const document = lastConfiguration().content
-    expect(listOpenApiOperations(document)).toHaveLength(97)
+    expect(listOpenApiOperations(document)).toHaveLength(99) // 97 + the two sound-card operations of task 4 row 63
     expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
     expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('97 operations')
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('99 operations')
     expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.3.0')
     expect(screen.queryByTestId('api-show-simulated')).toBeNull()
@@ -287,11 +287,12 @@ async function openSimulated() {
 }
 
 describe('Simulated mode (AC-C-100, AR-2)', () => {
-  it('31 operations as before; "Show Core-server endpoints" lists 97 with CORE SERVER and refuses their Try-it without a request', async () => {
+  it('33 operations as before; "Show Core-server endpoints" lists 99 with CORE SERVER and refuses their Try-it without a request', async () => {
+    // Task 4 blueprint row 63: the two simulated sound-card operations 98-99 (31 -> 33, 97 -> 99; the 66 do not move).
     const { sim, fetched } = await openSimulated()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'simulated')
-    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(31)
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('31 operations')
+    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(33)
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('33 operations')
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.0')
     expect(screen.queryByTestId('api-live-warning')).toBeNull()
     expect(screen.getByTestId('api-realtime-connect')).toBeInTheDocument()
@@ -300,8 +301,8 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(97))
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('97 operations')
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(99))
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('99 operations')
     expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
     expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(66)
 
@@ -320,7 +321,7 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(JSON.stringify(webErrorSink.records())).not.toContain(MARKER_PASSWORD)
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(31))
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(33))
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

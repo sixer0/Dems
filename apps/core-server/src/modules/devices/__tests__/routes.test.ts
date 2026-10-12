@@ -107,7 +107,10 @@ describe('MODG: the route list of the module equals its registry operations', ()
     // Blueprint row 132 (decision D106; C3 §2.6): operations 93 to 97 carry the Device tag too and are
     // answered by `modules/capture-discovery` (93, 94) and by rows 142 (95, 96) and 133 (97).
     const CAPTURE_DISCOVERY_AREA = ['startCaptureDiscovery', 'getCaptureDiscovery', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'rescanCaptureInputs'];
-    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA]);
+    // Task 4 blueprint row 63 (design addendum 4.2): operations 98 and 99 carry the Device tag too.
+    // The contract only: no module answers them yet (the microphone registration module is row 70).
+    const AUDIO_CARD_AREA = ['searchCaptureAudioCards', 'registerCaptureAudioInput'];
+    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);
     for (const operationId of DEVICES_OPERATIONS) expect(operationOf(operationId).operationId).toBe(operationId);

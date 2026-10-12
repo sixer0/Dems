@@ -88,6 +88,10 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   session_stt_config: 0,
   // Schema v6 (erratum PE-0013-01): the seed writes no media store root; the Core does, at boot.
   core_media_store: 0,
+  // Schema v7 (task 4 schema set A): the seed writes no stream fact and no sound-card input; a
+  // connection test and a registration do.
+  capture_device_streams: 0,
+  capture_audio_inputs: 0,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

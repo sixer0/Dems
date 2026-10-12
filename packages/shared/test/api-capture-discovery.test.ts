@@ -19,6 +19,18 @@ import { describe, expect, it } from 'vitest';
 import {
   API_ERROR_CODES,
   CAPTURE_ADAPTER_CODE_PATTERN,
+  CAPTURE_AUDIO_CARD_ACCESS,
+  CAPTURE_AUDIO_CARD_DEVICE_INDEX_MAX,
+  CAPTURE_AUDIO_CARD_ID_PATTERN,
+  CAPTURE_AUDIO_CARD_MAX_CHANNELS,
+  CAPTURE_AUDIO_CARD_MAX_ENTRIES,
+  CAPTURE_AUDIO_CARD_OPERATIONS,
+  CAPTURE_AUDIO_CARD_SCHEMAS,
+  CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS,
+  CAPTURE_AUDIO_CARD_TEXT_MAX_LENGTH,
+  CAPTURE_AUDIO_CARD_TEXT_PATTERN,
+  CAPTURE_AUDIO_SAMPLE_BITS,
+  CAPTURE_AUDIO_USB_ID_PATTERN,
   CAPTURE_CANDIDATE_ID_PATTERN,
   CAPTURE_CANDIDATE_TEXT_MAX_LENGTH,
   CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS,
@@ -45,19 +57,28 @@ import {
   CORE_API_ENVELOPE_RESPONSES,
   CORE_API_EXAMPLES,
   CORE_API_OPERATIONS,
+  CaptureAudioCardReason,
+  CaptureAudioCardSchema,
+  CaptureAudioCardSearchSchema,
+  CaptureAudioInputChange,
+  CaptureAudioInputRegisterRequestSchema,
+  CaptureAudioInputRegistrationSchema,
   CaptureCandidateAdoptRequestSchema,
   CaptureCandidateSchema,
   CaptureConnectionOutcome,
   CaptureConnectionTestRequestSchema,
   CaptureCredentialWriteRequestSchema,
   CaptureDiscoveryReason,
+  CaptureDiscoveryScope,
   CaptureDiscoverySearchSchema,
   CaptureDiscoveryStateSchema,
   CaptureSourceClass,
   CoreApiAccessCondition,
   CoreApiAuditNone,
   CoreApiScope,
+  SIM_CAPTURE_AUDIO_CARD_IDS,
   WEB_CONSOLE_ONLY_REASON,
+  captureAudioInputChangedDetails,
   captureCandidateAdoptedDetails,
   captureConnectionTestedDetails,
   captureDeviceUnreachableDetails,
@@ -68,6 +89,7 @@ import {
   listCoreApiOperations,
   listCoreApiResponseStatuses,
   serializeOpenApiDocument,
+  simCaptureAudioCards,
   simCaptureCandidates,
   simCaptureDiscoverySearch,
   validateCoreApiResponse,
@@ -97,23 +119,25 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
       [96, 'adoptCaptureCandidate', 'post', '/api/v1/capture/discovery/candidates/{id}/adopt', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_CANDIDATE_ADOPTED', 'ACCESS_DENIED'],
       [97, 'rescanCaptureInputs', 'post', '/api/v1/capture/inputs/rescan', 'Device', 'simulated', 'CAPTURE_CONFIG', [], 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED'],
     ]);
-    // They are the last five entries of the table, in number order.
-    expect(CORE_API_OPERATIONS.slice(-5).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    // They were the last five entries of the table, in number order; task 4 row 63 appends the two
+    // sound-card operations 98-99 after them, so their place moves by two.
+    expect(CORE_API_OPERATIONS.slice(-7, -2).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
     // The adoption also writes the verification row and, with a credential, the credential fact.
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 97 operations, 36 GET, 61 POST, offline 31, 77 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 99 operations, 36 GET, 63 POST, offline 33, 77 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+    // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
     const all = listCoreApiOperations(CoreApiScope.ALL);
-    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([97, 36, 61]);
-    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(31);
+    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([99, 36, 63]);
+    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(33);
     expect(Object.values(AuditType)).toHaveLength(77);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
-    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(97);
+    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(99);
     // Must FAIL when the registry and the document differ by one operation: a registry without the last one.
-    expect(all.slice(0, -1)).toHaveLength(96);
+    expect(all.slice(0, -1)).toHaveLength(98);
   });
 
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
@@ -169,9 +193,14 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
     for (const operation of CAPTURE_DISCOVERY_OPERATIONS) expect(describeCoreApiAccess(operation.access), operation.operationId).toBe('CAPTURE_CONFIG');
   });
 
-  it('the three operations whose body carries a camera credential are web console only: 89, 95 and 96, and no other', () => {
-    const webOnly = CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
-    expect(webOnly.map((operation) => operation.operationId)).toEqual(['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate']);
+  it('the three operations whose body carries a camera credential are web console only: 89, 95 and 96; so are the two sound-card operations 98 and 99, and no other', () => {
+    const everyWebOnly = CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
+    // Task 4 row 63 (design addendum 4.2, "Role"): 98 and 99 are web console only by that ruling;
+    // their bodies hold no credential, so the credential rule below is held for the first three.
+    const AUDIO_CARD_IDS = ['searchCaptureAudioCards', 'registerCaptureAudioInput'];
+    expect(everyWebOnly.map((operation) => operation.operationId)).toEqual(['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', ...AUDIO_CARD_IDS]);
+    expect(CAPTURE_AUDIO_CARD_ACCESS).toEqual(CAPTURE_CREDENTIAL_ACCESS);
+    const webOnly = everyWebOnly.filter((operation) => !AUDIO_CARD_IDS.includes(operation.operationId));
     expect(CAPTURE_CREDENTIAL_ACCESS).toEqual({ kind: 'PERMISSION', permission: 'CAPTURE_CONFIG', conditions: ['WEB_CONSOLE_SESSION'] });
     expect(WEB_CONSOLE_ONLY_REASON).toBe('WEB_CONSOLE_ONLY');
     // Exactly the operations whose request schema holds a `credential` pair, or IS one.
@@ -181,8 +210,8 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
       return json.includes('CaptureCredentialWriteRequest') || operation.requestBody.schema === 'CaptureCredentialWriteRequest';
     });
     expect(carriesCredential.map((operation) => operation.operationId)).toEqual(webOnly.map((operation) => operation.operationId));
-    // Each of the three documents the refusal on its 403, with the reason and the audit row.
-    for (const operation of webOnly) {
+    // Each of the five documents the refusal on its 403, with the reason and the audit row.
+    for (const operation of everyWebOnly) {
       expect(operation.responses[403]?.description, operation.operationId).toContain('WEB_CONSOLE_ONLY');
       expect(operation.responses[403]?.description, operation.operationId).toContain('ACCESS_DENIED');
       expect(CORE_API_EXAMPLES[operation.operationId]?.responses[403]?.webConsoleOnly, operation.operationId).toBeDefined();
@@ -423,5 +452,179 @@ describe('the audit details (C3 §5.2; M4-AUD-1: exact keys, no values)', () => 
       sessionId: 'SES-20261009-0003',
     });
     expect([...CAPTURE_DEVICE_UNREACHABLE_REASONS]).toEqual(['UNREACHABLE', 'AUTHENTICATION_FAILED', 'NOT_CONNECTED', 'PERMISSION_DENIED', 'DEVICE_BUSY', 'DEVICE_NOT_FOUND', 'OPEN_FAILED', 'HELPER_EXITED']);
+  });
+});
+
+// Task 4, blueprint row 63 (WP-07b; design addendum 4.2; plan review P12-F05 (c), P12-F06; security
+// addendum AD-07): the contract of operations 98-99, the listing of the sound cards and the
+// registration of one input. The contract only: no Core route answers them yet.
+describe('task 4 row 63: operations 98 and 99, the sound cards and the registration of an input', () => {
+  it('number, id, method, path, tag, mode, access, conditions and audit; they are the last two entries of the table', () => {
+    const rows = CAPTURE_AUDIO_CARD_OPERATIONS.map((operation) => [
+      numberOf(operation.source),
+      operation.operationId,
+      operation.method,
+      operation.path,
+      operation.tag,
+      operation.mode,
+      describeCoreApiAccess(operation.access),
+      [...operation.access.conditions],
+      operation.audit.success,
+      operation.audit.denial,
+    ]);
+    expect(rows).toEqual([
+      [98, 'searchCaptureAudioCards', 'post', '/api/v1/capture/audio-cards/search', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED'],
+      [99, 'registerCaptureAudioInput', 'post', '/api/v1/capture/audio-cards/inputs', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_AUDIO_INPUT_CHANGED', 'ACCESS_DENIED'],
+    ]);
+    expect(CORE_API_OPERATIONS.slice(-2).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    expect(Object.keys(CAPTURE_AUDIO_CARD_SCHEMAS)).toEqual(['CaptureAudioCard', 'CaptureAudioCardSearch', 'CaptureAudioInputRegisterRequest', 'CaptureAudioInputRegistration']);
+    // The audit types and the third search scope exist since row 19 and the integration pass I-1.
+    expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_AUDIO_INPUT_CHANGED]).toBe('DEVICE');
+    expect(CaptureDiscoveryScope.AUDIO_CARDS).toBe('AUDIO_CARDS');
+  });
+
+  it('the documented statuses; 429 and 503 are envelope-level and named in the text; the simulator never sends a success of 99', () => {
+    const search = findCoreApiOperation('searchCaptureAudioCards')!;
+    const register = findCoreApiOperation('registerCaptureAudioInput')!;
+    expect(listCoreApiResponseStatuses(search)).toEqual([200, 401, 403, 409]);
+    expect(listCoreApiResponseStatuses(register)).toEqual([200, 201, 400, 401, 403, 404, 409, 422]);
+    // What the in-app simulator can answer: every status of 98; of 99 every refusal and no success.
+    expect(listCoreApiResponseStatuses(search, CoreApiScope.OFFLINE)).toEqual([200, 401, 403, 409]);
+    expect(listCoreApiResponseStatuses(register, CoreApiScope.OFFLINE)).toEqual([400, 401, 403, 404, 409, 422]);
+    expect([search.requestBody, search.query, search.pathParam]).toEqual([undefined, undefined, undefined]);
+    expect([register.requestBody, register.pathParam]).toEqual([{ schema: 'CaptureAudioInputRegisterRequest', required: true }, undefined]);
+    for (const operation of CAPTURE_AUDIO_CARD_OPERATIONS) {
+      // A Core that is not in production capture: 503 with the reason of a camera search without an adapter.
+      expect(operation.description, operation.operationId).toContain('`503 NOT_READY`');
+      expect(operation.description, operation.operationId).toContain(CaptureDiscoveryReason.DISCOVERY_NOT_READY);
+      expect(operation.description, operation.operationId).toContain('CAPTURE_CONFIG_LOCKED');
+      expect(validateCoreApiResponse(operation.operationId, 503, { error: { code: 'NOT_READY', message: 'Not ready.', details: { reason: 'DISCOVERY_NOT_READY' } } })).toEqual({ ok: true });
+      expect(validateCoreApiResponse(operation.operationId, 429, { error: { code: 'RATE_LIMITED', message: 'Too many requests.', details: { reason: 'AUDIO_CARD_SEARCH_RATE_LIMITED' } } })).toEqual({ ok: true });
+    }
+    expect(search.description).toContain(CaptureAudioCardReason.AUDIO_CARD_SEARCH_RATE_LIMITED);
+    expect(register.description).toContain(CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD);
+    expect(Object.values(CaptureAudioCardReason)).toEqual(['AUDIO_CARD_SEARCH_IN_PROGRESS', 'AUDIO_INPUT_BEYOND_CARD', 'AUDIO_INPUT_NOT_REGISTRABLE', 'AUDIO_CARD_SEARCH_RATE_LIMITED']);
+    expect(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS).toBe(CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS);
+  });
+
+  it('every example parses, and the named reasons of the examples are reasons of the contract', () => {
+    const reasons = new Set<string>([...Object.values(CaptureAudioCardReason), WEB_CONSOLE_ONLY_REASON]);
+    let checked = 0;
+    for (const operation of CAPTURE_AUDIO_CARD_OPERATIONS) {
+      const examples = CORE_API_EXAMPLES[operation.operationId];
+      for (const [status, named] of Object.entries(examples?.responses ?? {})) {
+        for (const [name, example] of Object.entries(named ?? {})) {
+          expect(validateCoreApiResponse(operation.operationId, Number(status), example.value), `${operation.operationId} ${status} ${name}`).toEqual({ ok: true });
+          const reason = (example.value as { error?: { details?: { reason?: string } } }).error?.details?.reason;
+          if (reason !== undefined && reason !== 'DEVICE_REVOKED') expect(reasons, `${operation.operationId} ${status} ${name}`).toContain(reason);
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(15);
+    expect(CaptureAudioInputRegisterRequestSchema.safeParse(CORE_API_EXAMPLES.registerCaptureAudioInput?.request?.firstInput?.value).success).toBe(true);
+  });
+
+  it('AD-07 (1): device text is held to a closed character rule and a stated length, in the schema', () => {
+    const card = simCaptureAudioCards()[0]!;
+    expect(CaptureAudioCardSchema.safeParse(card).success).toBe(true);
+    const product = (value: string): boolean => CaptureAudioCardSchema.safeParse({ ...card, product: value }).success;
+    expect(product('USB Audio CODEC (rev 2)')).toBe(true);
+    expect(product('x'.repeat(CAPTURE_AUDIO_CARD_TEXT_MAX_LENGTH))).toBe(true);
+    for (const refused of [
+      '',
+      'x'.repeat(CAPTURE_AUDIO_CARD_TEXT_MAX_LENGTH + 1),
+      'line\nbreak',
+      'tab\there',
+      'nul\u0000',
+      'escape\u001b[31m',
+      'delete\u007f',
+      'café',
+      'right-to-left ‮ override',
+      'left-to-right ‎ mark',
+      'zero​width',
+      'joiner‍',
+      'byte order ﻿ mark',
+      'lone \ud800 surrogate',
+    ]) {
+      expect(product(refused), JSON.stringify(refused)).toBe(false);
+    }
+    const usb = (value: unknown): boolean => CaptureAudioCardSchema.safeParse({ ...card, usbId: value }).success;
+    expect([usb(null), usb('08bb:2902')]).toEqual([true, true]);
+    for (const refused of ['08BB:2902', '8bb:2902', '08bb2902', '08bb:29020', ' 08bb:2902', '08bb:2902\n', 'vvvv:pppp']) expect(usb(refused), refused).toBe(false);
+    const id = (value: string): boolean => CaptureAudioCardSchema.safeParse({ ...card, cardId: value }).success;
+    expect([id('CODEC'), id('USB_Audio_1'), id('x'.repeat(32))]).toEqual([true, true, true]);
+    for (const refused of ['', 'x'.repeat(33), 'USB Audio', 'hw:1,0', 'card/1', '../card', 'c\u0000', 'caïd']) expect(id(refused), JSON.stringify(refused)).toBe(false);
+    // Integers within their bounds; the sample sizes are a closed set and never a format name.
+    const whole = (member: string, value: unknown): boolean => CaptureAudioCardSchema.safeParse({ ...card, [member]: value }).success;
+    expect([whole('deviceIndex', 0), whole('deviceIndex', CAPTURE_AUDIO_CARD_DEVICE_INDEX_MAX), whole('channelCount', 1), whole('channelCount', CAPTURE_AUDIO_CARD_MAX_CHANNELS)]).toEqual([true, true, true, true]);
+    expect([whole('deviceIndex', -1), whole('deviceIndex', 32), whole('deviceIndex', 0.5), whole('channelCount', 0), whole('channelCount', 65), whole('channelCount', '2')]).toEqual([false, false, false, false, false, false]);
+    expect([...CAPTURE_AUDIO_SAMPLE_BITS]).toEqual([16, 24, 32]);
+    expect([whole('sampleBits', [16, 24, 32]), whole('sampleBits', []), whole('sampleBits', [8]), whole('sampleBits', ['S24_3LE']), whole('sampleBits', [16, 16, 24, 32])]).toEqual([true, true, false, false, false]);
+    expect(whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03' }])).toBe(true);
+    expect([whole('registered', [{ inputNumber: 0, deviceId: 'MIC-03' }]), whole('registered', [{ inputNumber: 1, deviceId: 'mic 3' }]), whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03', product: 'x' }])]).toEqual([false, false, false]);
+    // A strict object: no member beyond the seven.
+    expect(Object.keys(CaptureAudioCardSchema.shape)).toEqual(['cardId', 'deviceIndex', 'usbId', 'product', 'channelCount', 'sampleBits', 'registered']);
+    expect(whole('path', '/dev/snd/pcmC1D0c')).toBe(false);
+    // The list is capped, and the cap is what `truncated` speaks of.
+    const many = (length: number) => ({ searchedAt: 0, cards: Array.from({ length }, () => card), truncated: false });
+    expect([CaptureAudioCardSearchSchema.safeParse(many(CAPTURE_AUDIO_CARD_MAX_ENTRIES)).success, CaptureAudioCardSearchSchema.safeParse(many(CAPTURE_AUDIO_CARD_MAX_ENTRIES + 1)).success]).toEqual([true, false]);
+  });
+
+  it('AD-07 (2): the request of 99 is a card id of the kernel\'s form and two integers; nothing a device chose can be sent', () => {
+    expect(Object.keys(CaptureAudioInputRegisterRequestSchema.shape)).toEqual(['cardId', 'deviceIndex', 'inputNumber']);
+    const body = { cardId: 'CODEC', deviceIndex: 0, inputNumber: 1 };
+    expect(CaptureAudioInputRegisterRequestSchema.safeParse(body).success).toBe(true);
+    expect(CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, inputNumber: CAPTURE_AUDIO_CARD_MAX_CHANNELS }).success).toBe(true);
+    for (const member of ['product', 'usbId', 'channelCount', 'sampleBits', 'sampleRate', 'model', 'name', 'path', 'device', 'address', 'deviceId', 'role']) {
+      expect(CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, [member]: 'x' }).success, member).toBe(false);
+    }
+    for (const refused of [
+      {},
+      { cardId: 'CODEC', deviceIndex: 0 },
+      { ...body, inputNumber: 0 },
+      { ...body, inputNumber: 65 },
+      { ...body, inputNumber: 1.5 },
+      { ...body, inputNumber: '1' },
+      { ...body, deviceIndex: -1 },
+      { ...body, deviceIndex: 32 },
+      { ...body, cardId: 'hw:CARD=CODEC,DEV=0' },
+      { ...body, cardId: 'CODEC; rm -rf /' },
+      { ...body, cardId: '--device' },
+      { ...body, cardId: 1 },
+    ]) {
+      expect(CaptureAudioInputRegisterRequestSchema.safeParse(refused).success, JSON.stringify(refused)).toBe(false);
+    }
+    expect(CAPTURE_AUDIO_CARD_ID_PATTERN.test('CODEC')).toBe(true);
+    expect(CAPTURE_AUDIO_USB_ID_PATTERN.test('08bb:2902')).toBe(true);
+    expect(CAPTURE_AUDIO_CARD_TEXT_PATTERN.test('USB Audio CODEC')).toBe(true);
+  });
+
+  it('the answer of 99 and its audit row: a registry id, a change code and two integers, no device text', () => {
+    expect(Object.keys(CaptureAudioInputRegistrationSchema.shape)).toEqual(['deviceId', 'change', 'inputNumber', 'channelCount']);
+    expect(Object.values(CaptureAudioInputChange)).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED']);
+    const answer = { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 2, channelCount: 4 };
+    expect(CaptureAudioInputRegistrationSchema.safeParse(answer).success).toBe(true);
+    expect(CaptureAudioInputRegistrationSchema.safeParse({ ...answer, change: 'DELETED' }).success).toBe(false);
+    expect(CaptureAudioInputRegistrationSchema.safeParse({ ...answer, product: 'USB Audio CODEC' }).success).toBe(false);
+    const facts = { deviceId: 'MIC-03', change: CaptureAudioInputChange.REENABLED, inputNumber: 2, channelCount: 4 };
+    expect(captureAudioInputChangedDetails(facts)).toEqual({ ...facts, operationId: 'registerCaptureAudioInput' });
+    expect(Object.keys(captureAudioInputChangedDetails({ ...facts, permission: 'CAPTURE_CONFIG' }))).toEqual(['deviceId', 'change', 'inputNumber', 'channelCount', 'operationId', 'permission']);
+    expect(Object.keys(captureAudioInputChangedDetails({ ...facts, permission: null }))).toHaveLength(5);
+  });
+
+  it('the simulator\'s listing is fixed and says what it is: two test cards, no USB id, no registered input', () => {
+    const cards = simCaptureAudioCards();
+    expect(cards.map((card) => [card.cardId, card.deviceIndex, card.usbId, card.channelCount, card.registered.length])).toEqual([
+      [SIM_CAPTURE_AUDIO_CARD_IDS.four, 0, null, 4, 0],
+      [SIM_CAPTURE_AUDIO_CARD_IDS.two, 0, null, 2, 0],
+    ]);
+    for (const card of cards) {
+      expect(card.product).toMatch(/^DEMS test sound card [AB] \(simulated\)$/);
+      expect(CaptureAudioCardSchema.safeParse(card).success).toBe(true);
+    }
+    // Each call builds a new list: a caller that changes its copy changes no other answer.
+    expect(simCaptureAudioCards()).not.toBe(cards);
+    expect(simCaptureAudioCards()).toEqual(cards);
   });
 });

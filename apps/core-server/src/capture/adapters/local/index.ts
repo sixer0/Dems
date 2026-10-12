@@ -25,7 +25,7 @@ export {
 export { LOCAL_DEVICE_NAME_MAX, isUsableDeviceName, parseDeviceList, selectLocalDevice, type DeviceSelection, type LocalDeviceList } from './device-list';
 export { LocalSourceError, LocalSourceErrorCode, LocalSourceErrorReason } from './errors';
 export { HelperProgramRefusal, helperProgramRefusal } from './helper-program';
-export { leftoverHelperPids } from './leftover';
+export { LEFTOVER_CANDIDATE_LIMIT, leftoverHelperPids, leftoverPrograms, linuxProgramPathReader, processShortName, programPathReaderFor, type LeftoverProcess, type ProgramPathReader } from './leftover';
 export { createLocalMicAdapter, type LocalMicAdapter, type LocalMicAdapterOptions } from './mic-adapter';
 export { MIC_HELPER_LIMITS, createMicHelper, type LocalMicStream, type MicHelper, type MicHelperLimits, type MicHelperOptions, type MicPrepareRequest } from './mic-helper';
 export { LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, MicHelperArgumentError, SPEECH_FIXTURE_SUBPATH, isMicPipeArgument, isSpeechFixtureArgument, micPrecheckArguments, micPushArguments, speechFixturePath, type MicSource } from './mic-helper-args';

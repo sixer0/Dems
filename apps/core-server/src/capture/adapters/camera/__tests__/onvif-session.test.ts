@@ -16,7 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FAKE_ONVIF_ALLOWED_OPERATIONS, FAKE_ONVIF_HOST, createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifStub, type FakeOnvifStubOptions } from '../../../../../test/support/fake-onvif-stub';
+import { FAKE_ONVIF_ALLOWED_OPERATIONS, FAKE_ONVIF_HOST, FAKE_ONVIF_ODD_PROFILE_TOKEN, FAKE_ONVIF_TWO_SOURCE_PROFILES, createFakeOnvifStub, fakeOnvifProfileStreamUri, freeFakeOnvifPorts, type FakeOnvifStub, type FakeOnvifStubOptions } from '../../../../../test/support/fake-onvif-stub';
 import {
   ODD_DEVICE_FOREIGN_HOST,
   ODD_DEVICE_HOST,
@@ -40,7 +40,7 @@ import { sealCredential } from '../../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../../errors';
 import { CaptureAdapterKind } from '../../kinds';
 import { ConnectionTestOutcome, type CameraCandidate } from '../../types';
-import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, type OnvifSessionResult } from '../onvif-session';
+import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, createOnvifStreamLocator, type OnvifLocatorResult, type OnvifSessionResult } from '../onvif-session';
 import { connectionTargetOf } from '../connection-target';
 
 // Two canaries, as the credential of the fixture account: neither is a word of any message.
@@ -126,6 +126,8 @@ describe('M4-CONN-OUT-1 (adapter half): the five outcomes on the fake stub, thro
       outcome: ConnectionTestOutcome.REACHABLE,
       authenticated: true,
       usableProfiles: ['profile_1'],
+      // Task 4 row 26: the stream of the one video source, with its tokens and its announced size.
+      profiles: [{ token: 'profile_1', videoSourceToken: 'vs_1', width: 1920, height: 1080 }],
       reason: null,
       warnings: [],
       reads: ['GetSystemDateAndTime', 'GetServices', 'GetProfiles', 'GetStreamUri'],
@@ -540,5 +542,266 @@ describe('CR-1, CR-4 / SEC35-34: nothing the call returns, and nothing that outl
     expect(error).toBeInstanceOf(CaptureAdapterError);
     expect(holds(error, ACCOUNT)).toBe(false);
     expect(String((error as Error).stack)).not.toContain(ACCOUNT.secret);
+  });
+});
+
+// Task 4 row 26 (WP-04; design addendum 2.3, 4.1, 7.2; logic H-03, H-05, H-11 of the input-av scheme).
+// The fake stub of row 60 announces ONE profile of ONE video source, and it is being extended by
+// another row: every device of more than that is the scripted device with a LOCAL profile answer.
+describe('task 4 row 26: the stream of each video source, and the locator of a profile', () => {
+  const STREAM = ['rtsp', '//'].join(':');
+  const DIGEST = { 'WWW-Authenticate': 'Digest realm="odd", nonce="00112233445566778899aabbccddeeff", qop="auth"' };
+
+  interface FixtureProfile {
+    readonly token: string;
+    /** `null`: the device names no video source. */
+    readonly source?: string | null;
+    /** `null`: the device announces no size. A text is sent as it is. */
+    readonly width?: number | string | null;
+    readonly height?: number | string;
+    readonly encoding?: string;
+  }
+  const profilesOf = (profiles: readonly FixtureProfile[]): OddDeviceReply =>
+    ok(
+      `<trt:GetProfilesResponse>${profiles
+        .map(
+          (profile, index) =>
+            `<trt:Profiles token="${profile.token}" fixed="true"><tt:Name>p${index}</tt:Name>` +
+            `<tt:VideoSourceConfiguration token="vsc_${index}"><tt:Name>source</tt:Name>${profile.source === null ? '' : `<tt:SourceToken>${profile.source ?? 'vs_0'}</tt:SourceToken>`}</tt:VideoSourceConfiguration>` +
+            `<tt:VideoEncoderConfiguration token="vec_${index}"><tt:Name>encoder</tt:Name><tt:Encoding>${profile.encoding ?? 'H264'}</tt:Encoding>` +
+            (profile.width === null ? '' : `<tt:Resolution><tt:Width>${profile.width ?? 1920}</tt:Width><tt:Height>${profile.height ?? 1080}</tt:Height></tt:Resolution>`) +
+            `<tt:RateControl><tt:FrameRateLimit>25</tt:FrameRateLimit><tt:EncodingInterval>1</tt:EncodingInterval><tt:BitrateLimit>4096</tt:BitrateLimit></tt:RateControl>` +
+            `<tt:H264><tt:GovLength>50</tt:GovLength></tt:H264></tt:VideoEncoderConfiguration></trt:Profiles>`,
+        )
+        .join('')}</trt:GetProfilesResponse>`,
+    );
+
+  /** A camera behind Digest that lists `profiles` and names `address` for whatever profile it is asked. */
+  const camera = (profiles: readonly FixtureProfile[], address = `${STREAM}${ODD_DEVICE_HOST}:554/main`): Promise<OddOnvifDevice> =>
+    startOdd((request, _index, base) => {
+      if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+      if (request.operation === 'GetServices') return servicesAnswer(base);
+      if (request.authorization === '') return notAuthorizedFault(401, DIGEST);
+      return request.operation === 'GetProfiles' ? profilesOf(profiles) : streamAnswer(address);
+    });
+  const tested = async (profiles: readonly FixtureProfile[]): Promise<OnvifSessionResult> => {
+    const device = await camera(profiles);
+    const result = await tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never());
+    await device.stop();
+    return result;
+  };
+  const locator = (timers: CaptureTimers = manualTimers()) => createOnvifStreamLocator({ timers });
+
+  const TWO_LENSES: readonly FixtureProfile[] = [
+    { token: 'a.sub', source: 'vs_A', width: 704, height: 576 },
+    { token: 'a.main', source: 'vs_A', width: 1920, height: 1080, encoding: 'H265' },
+    { token: 'b.main', source: 'vs_B', width: 2560, height: 1440 },
+    { token: 'b.sub', source: 'vs_B', width: 640, height: 360 },
+    { token: 'a.main2', source: 'vs_A', width: 1920, height: 1080 },
+  ];
+
+  it('two video sources with several profiles each: 2 profiles, per source the largest pixel area, the larger picture first', async () => {
+    const result = await tested(TWO_LENSES);
+    expect(result.outcome).toBe(ConnectionTestOutcome.REACHABLE);
+    expect(result.profiles).toEqual([
+      { token: 'b.main', videoSourceToken: 'vs_B', width: 2560, height: 1440 },
+      // The first of two equal areas; the encoding the device announces (H265 here) takes no part.
+      { token: 'a.main', videoSourceToken: 'vs_A', width: 1920, height: 1080 },
+    ]);
+    // What the row does not touch: the H.264 list of task 3, in the device's order.
+    expect(result.usableProfiles).toEqual(['a.sub', 'b.main', 'b.sub', 'a.main2']);
+    expect(Object.isFrozen(result.profiles) && result.profiles.every((profile) => Object.isFrozen(profile))).toBe(true);
+    // No profile code is formed here: every value is the device's token or a number.
+    expect(JSON.stringify(result.profiles)).not.toMatch(/H264|HEVC|H265|1080P/);
+
+    // Control: the order is the rule's and not the device's - the same answer for the reversed list, but for the tie.
+    expect((await tested([...TWO_LENSES].reverse())).profiles.map((profile) => profile.token)).toEqual(['b.main', 'a.main2']);
+    // Control: one video source gives ONE profile, however many it lists; no source named is one source too.
+    expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, source: 'vs_A' })))).profiles.map((profile) => profile.token)).toEqual(['b.main']);
+    expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, source: null })))).profiles).toEqual([{ token: 'b.main', videoSourceToken: null, width: 2560, height: 1440 }]);
+    // Control: a result that is not REACHABLE names none.
+    expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, encoding: 'H265' })))).profiles).toEqual([]);
+  });
+
+  it('a token with lower-case letters, a dot, a colon and a hyphen is returned unchanged, and asked for unchanged', async () => {
+    const ODD_TOKEN = 'Main.Stream:0-a';
+    const device = await camera([{ token: ODD_TOKEN, source: 'Video.Source:0-b' }]);
+    const result = await tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never());
+    expect(result.profiles).toEqual([{ token: ODD_TOKEN, videoSourceToken: 'Video.Source:0-b', width: 1920, height: 1080 }]);
+    expect(result.usableProfiles).toEqual([ODD_TOKEN]);
+    expect(device.requests().filter((request) => request.operation === 'GetStreamUri').every((request) => request.body.includes(`>${ODD_TOKEN}</`))).toBe(true);
+
+    const located = await locator().locate(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), ODD_TOKEN, never());
+    expect(located).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, locator: `${STREAM}${ODD_DEVICE_HOST}:554/main` });
+    expect(device.requests().at(-1)?.body).toContain(`>${ODD_TOKEN}</`);
+
+    // Control: the token rule does refuse - 65 characters, a space, and (a limit of the package, which
+    // reads the text of a plain number as a number) a token that is a plain number are not usable profiles.
+    const refused = await tested([{ token: 'a'.repeat(65) }, { token: 'two words' }, { token: '101' }, { token: 'kept' }]);
+    expect(refused.profiles.map((profile) => profile.token)).toEqual(['kept']);
+  });
+
+  it('device text in the source token and the size: bounded, held to the rule or answered as null; never copied', async () => {
+    const HOSTILE = `${'x'.repeat(290)}&lt;b&gt;`;
+    const result = await tested([
+      { token: 'h.sub', source: HOSTILE, width: 640, height: 360 },
+      { token: 'h.main', source: HOSTILE, width: 1280, height: 720 },
+      { token: 'other', source: `${HOSTILE}2`, width: 800, height: 600 },
+      // A source token that is a plain number reaches the file as a number (a limit of the package):
+      // two sources still, neither token is answered. One with a leading zero stays text.
+      { token: 'n0', source: '7', width: 320, height: 240 },
+      { token: 'n1', source: '8', width: 320, height: 200 },
+      { token: 'n2', source: '007', width: 160, height: 120 },
+    ]);
+    expect(result.profiles).toEqual([
+      { token: 'h.main', videoSourceToken: null, width: 1280, height: 720 },
+      { token: 'other', videoSourceToken: null, width: 800, height: 600 },
+      { token: 'n0', videoSourceToken: null, width: 320, height: 240 },
+      { token: 'n1', videoSourceToken: null, width: 320, height: 200 },
+      { token: 'n2', videoSourceToken: '007', width: 160, height: 120 },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('xxxxxxxx');
+
+    // A size that is absent, zero, negative, not whole or above the bound is null and counts as area 0.
+    const sizes = await tested([
+      { token: 'absent', source: 's1', width: null },
+      { token: 'zero', source: 's2', width: 0, height: 1080 },
+      { token: 'negative', source: 's3', width: -1920, height: 1080 },
+      { token: 'fraction', source: 's4', width: '1920.5', height: 1080 },
+      { token: 'huge', source: 's5', width: 99_999, height: 99_999 },
+      { token: 'text', source: 's6', width: 'wide', height: 'high' },
+      { token: 'small', source: 's7', width: 320, height: 240 },
+    ]);
+    expect(sizes.profiles).toEqual([
+      { token: 'small', videoSourceToken: 's7', width: 320, height: 240 },
+      ...['absent', 'zero', 'negative', 'fraction', 'huge', 'text'].map((token, index) => ({ token, videoSourceToken: `s${index + 1}`, width: null, height: null })),
+    ]);
+    // Control: within one source the one profile with a believable size wins over a "larger" unbelievable one.
+    expect((await tested([{ token: 'huge', width: 99_999, height: 99_999 }, { token: 'small', width: 320, height: 240 }])).profiles.map((profile) => profile.token)).toEqual(['small']);
+  });
+
+  it('locate on the fake stub: the credential-free locator of the profile, ONE authenticated GetStreamUri, no profile listed, no stream opened', async () => {
+    const stub = await startStub();
+    const timers = manualTimers();
+    const facade = locator(timers);
+    const result = await facade.locate(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), 'profile_1', never());
+    expect(result).toEqual({
+      outcome: ConnectionTestOutcome.REACHABLE,
+      reason: null,
+      locator: stub.addresses().streamUri,
+      reads: ['GetSystemDateAndTime', 'GetServices', 'GetStreamUri'],
+      credentialRequests: 1,
+      rejectedCredentialRequests: 0,
+    });
+    expect(result.locator).not.toContain('@');
+    expect(deviceRequests(stub).map((request) => `${request.operation}:${request.authPresent}`)).toEqual(['GetSystemDateAndTime:false', 'GetServices:false', 'GetStreamUri:false', 'GetStreamUri:true']);
+    expect(stub.requestLog().filter((request) => request.channel !== 'device')).toEqual([]);
+    expect(stub.violations()).toEqual([]);
+    expect(timers.pending()).toBe(0);
+    // The facade has one member, and neither it nor its answer holds the credential.
+    expect(Object.keys(facade)).toEqual(['locate']);
+    expect(Object.isFrozen(facade) && Object.isFrozen(result)).toBe(true);
+    const text = `${inspect([facade, result], { depth: 12, showHidden: true, getters: true })}\n${JSON.stringify(result)}`;
+    expect(text.includes(ACCOUNT.secret) || text.includes(ACCOUNT.username)).toBe(false);
+
+    // A wrong secret: one request carried it, the refusal is final, no locator.
+    stub.resetLog();
+    const refused = await facade.locate(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(WRONG), 'profile_1', never());
+    expect(refused).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, reason: OnvifTestReason.CREDENTIAL_REFUSED, locator: null, credentialRequests: 1, rejectedCredentialRequests: 1 });
+    expect(deviceRequests(stub).filter((request) => request.authPresent)).toHaveLength(1);
+    // A stream address on another host is not a locator.
+    stub.setDeviceMode('FOREIGN_STREAM_HOST');
+    expect(await facade.locate(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), 'profile_1', never())).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_HOST_MISMATCH, locator: null });
+    expect(stub.violations()).toEqual([]);
+  });
+
+  it('a locator with a user part is refused; so is every address that is not the host-and-path form, and no part of it is answered', async () => {
+    const results: OnvifLocatorResult[] = [];
+    for (const [address, reason] of [
+      [`${STREAM}someone:something@${ODD_DEVICE_HOST}:554/main`, OnvifTestReason.STREAM_USER_PART],
+      [`${STREAM}someone@${ODD_DEVICE_HOST}/main`, OnvifTestReason.STREAM_USER_PART],
+      [`${STREAM}${ODD_DEVICE_HOST}/main?next=someone@elsewhere`, OnvifTestReason.STREAM_USER_PART],
+      [`${STREAM}${ODD_DEVICE_HOST}/main?channel=someone`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      [`${STREAM}${ODD_DEVICE_HOST}/main#someone`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      [`${STREAM}${ODD_DEVICE_HOST}/someone/`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      [`${STREAM}${ODD_DEVICE_HOST}/someoné`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      [`${STREAM}${ODD_DEVICE_HOST}/${'someone'.repeat(40)}`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      [`http://${ODD_DEVICE_HOST}/someone`, OnvifTestReason.STREAM_SCHEME],
+      [`${STREAM}${ODD_DEVICE_FOREIGN_HOST}/someone`, OnvifTestReason.STREAM_HOST_MISMATCH],
+      ['', OnvifTestReason.STREAM_ADDRESS_MISSING],
+    ] as const) {
+      const device = await camera([{ token: 'main' }], address);
+      const result = await locator().locate(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), 'main', never());
+      expect(result, address).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason, locator: null });
+      results.push(result);
+      await device.stop();
+    }
+    expect(inspect(results, { depth: 12 })).not.toMatch(/someon|something|elsewhere/);
+    // Control: the same device with the host-and-path form is answered, unchanged.
+    const device = await camera([{ token: 'main' }], `${STREAM}${ODD_DEVICE_HOST}:554/someone/main`);
+    expect((await locator().locate(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), 'main', never())).locator).toBe(`${STREAM}${ODD_DEVICE_HOST}:554/someone/main`);
+  });
+
+  it('locate refuses before any request: a token outside the token form, an aborted signal, a candidate that may not be contacted', async () => {
+    const stub = await startStub();
+    const address = stub.addresses().deviceServiceUrl;
+    for (const token of ['', 'two words', 'a'.repeat(65), 'main</ProfileToken><x>', 'mäin']) {
+      await expect(locator().locate(candidateAt(address), sealCredential(ACCOUNT), token, never()), token).rejects.toMatchObject({ code: CaptureAdapterRefusal.PROFILE_UNKNOWN });
+    }
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(locator().locate(candidateAt(address), sealCredential(ACCOUNT), 'profile_1', aborted.signal)).rejects.toMatchObject({ code: CaptureAdapterRefusal.ABORTED });
+    await expect(locator().locate(candidateAt(address, { host: ODD_DEVICE_FOREIGN_HOST }), sealCredential(ACCOUNT), 'profile_1', never())).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+    expect(stub.requestLog()).toEqual([]);
+    // Control: the same stub does log a locate that may run.
+    await locator().locate(candidateAt(address), sealCredential(ACCOUNT), 'profile_1', never());
+    expect(stub.requestLog().length).toBeGreaterThan(0);
+  });
+
+  it('locate ends in a named outcome whatever the device does: a profile it does not know, silence until the deadline, no credential', async () => {
+    const unknown = await startOdd((request, _index, base) => {
+      if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+      if (request.operation === 'GetServices') return servicesAnswer(base);
+      if (request.authorization === '') return notAuthorizedFault(401, DIGEST);
+      return { kind: 'ANSWER', status: 400, body: soapEnvelope('<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang="en">no such profile</s:Text></s:Reason></s:Fault>') };
+    });
+    expect(await locator().locate(candidateAt(unknown.serviceUrl), sealCredential(ACCOUNT), 'gone', never())).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_ADDRESS_MISSING, locator: null, rejectedCredentialRequests: 0 });
+
+    const silent = await startOdd(() => ({ kind: 'HANG' }));
+    const deadline = new AbortController();
+    const timers = manualTimers();
+    const pending = locator(timers).locate(candidateAt(silent.serviceUrl), sealCredential(ACCOUNT), 'main', deadline.signal);
+    await expect.poll(() => silent.requests().length).toBe(1);
+    deadline.abort();
+    expect(await pending).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.DEADLINE, locator: null, credentialRequests: 0 });
+    expect(timers.pending()).toBe(0);
+
+    const stub = await startStub();
+    expect(await locator().locate(candidateAt(stub.addresses().deviceServiceUrl), null, 'profile_1', never())).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, reason: OnvifTestReason.CREDENTIAL_ABSENT, locator: null, credentialRequests: 0 });
+    expect(deviceRequests(stub).filter((request) => request.authPresent)).toEqual([]);
+  });
+
+  // Integration pass I-2: the same rules on the fake stub's own profile set (the request of this row),
+  // beside the scripted device above, which keeps the controls a fixed set cannot give.
+  it('on the fake stub with two video sources: the largest profile of each source, the odd token unchanged, and the locator of each profile by its own token', async () => {
+    const stub = await startStub({ profileSet: 'TWO_SOURCES' });
+    const address = stub.addresses().deviceServiceUrl;
+    const result = await tester().test(candidateAt(address), sealCredential(ACCOUNT), never());
+    expect(result.outcome).toBe(ConnectionTestOutcome.REACHABLE);
+    expect(result.profiles).toEqual([
+      { token: FAKE_ONVIF_ODD_PROFILE_TOKEN, videoSourceToken: 'Video.Source:0-b', width: 2560, height: 1440 },
+      { token: 'lens1.main', videoSourceToken: 'vs_1', width: 1920, height: 1080 },
+    ]);
+    expect(result.usableProfiles).toEqual(FAKE_ONVIF_TWO_SOURCE_PROFILES.map((profile) => profile.token));
+
+    const rtspPort = Number(new URL(stub.addresses().streamUri).port);
+    for (const profile of FAKE_ONVIF_TWO_SOURCE_PROFILES) {
+      const located = await locator().locate(candidateAt(address), sealCredential(ACCOUNT), profile.token, never());
+      expect(located, profile.token).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, locator: fakeOnvifProfileStreamUri(rtspPort, profile), credentialRequests: 1 });
+    }
+    // A token the device does not list ends in a named outcome, with no locator.
+    expect(await locator().locate(candidateAt(address), sealCredential(ACCOUNT), 'profile_1', never())).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_ADDRESS_MISSING, locator: null });
+    expect(stub.violations()).toEqual([]);
+    expect(stub.requestLog().filter((request) => request.channel !== 'device')).toEqual([]);
   });
 });

@@ -49,7 +49,7 @@
  * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
  *   simulator can answer them), `live` for every other one (only a service answers it).
  *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
- *   ten above); `'all'` is every entry: 97 operations, 36 GET and 61 POST.
+ *   ten above); `'all'` is every entry: 99 operations, 36 GET and 63 POST.
  * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
  *   `CORE_API_OPERATIONS` is the widened view.
  */
@@ -86,6 +86,7 @@ import {
 } from '../sim/vocabulary';
 import { ADMINISTRATION_OPERATIONS, ADMINISTRATION_SCHEMAS } from './administration';
 import { ALERT_OPERATIONS, ALERT_SCHEMAS } from './alerts';
+import { CAPTURE_AUDIO_CARD_OPERATIONS, CAPTURE_AUDIO_CARD_SCHEMAS } from './capture-audio-cards';
 import { CAPTURE_DISCOVERY_OPERATIONS, CAPTURE_DISCOVERY_SCHEMAS } from './capture-discovery';
 import { ALLOW_HEADER_NAME, API_BASE_PATH, EXPORT_REASON_MAX_LENGTH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
 import {
@@ -662,6 +663,8 @@ export const CORE_API_SCHEMAS = {
   ...STT_CONFIG_SCHEMAS,
   // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6): the eight schemas of operations 93-97.
   ...CAPTURE_DISCOVERY_SCHEMAS,
+  // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the four schemas of operations 98-99.
+  ...CAPTURE_AUDIO_CARD_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1072,6 +1075,9 @@ const OPERATION_TABLE = [
   // Task 3 R-9..R-11 (blueprint row 132, decision D106; C3 §2.6, §10.1): camera search, connection
   // test, adoption and the local-input re-read. 92 + 5 = 97 operations, 36 GET / 61 POST.
   ...CAPTURE_DISCOVERY_OPERATIONS, // 93-97
+  // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the listing of the sound cards and the
+  // registration of one input. 97 + 2 = 99 operations, 36 GET / 63 POST.
+  ...CAPTURE_AUDIO_CARD_OPERATIONS, // 98-99
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

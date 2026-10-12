@@ -291,7 +291,9 @@ export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; re
   { heading: '### 2.5 ', section: 'C3 §2.5', rows: 3, what: 'the three of operations 90 to 92' },
   // Task 3 R-9..R-11 (blueprint row 132, decision D106): the camera search, the connection test, the
   // adoption and the local-input re-read. The identity table of §2.6 has the columns of §2.2.
-  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 5, what: 'the five of operations 93 to 97' },
+  // Task 4 (blueprint row 63, integration pass I-2): the same table gained the two sound-card
+  // operations 98 and 99, in the form of its five rows; no new table, no new permission.
+  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 7, what: 'the seven of operations 93 to 99' },
 ];
 
 /** True for a row the composed table takes from C3, not from the closed task-2 base. */

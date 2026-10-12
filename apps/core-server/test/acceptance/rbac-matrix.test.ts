@@ -1,7 +1,7 @@
 // Acceptance test "role-by-endpoint matrix" of the DEMS Core server (plan row W47; success
 // criterion SC4; AC-B-15, AC-B-16, AC-B-81; SR-73; spec §4.4, §6.6, §7, §12.1, §14.2).
 //
-// WHAT IS ASKED. Every one of the 97 operations of the contract registry answers each kind of
+// WHAT IS ASKED. Every one of the 99 operations of the contract registry answers each kind of
 // caller exactly as the specification says, through the real pipeline stages.
 //
 // HOW A CELL GETS ITS EXPECTATION. The test loops over the registry's 75 entries. The expected
@@ -11,7 +11,7 @@
 // against the operation tables of spec §7 (all 75 rows, read mechanically from the document), and
 // the stored matrix against spec §4.4 and the shared role table.
 //
-// THE CALLERS. Sixteen columns over the 97 operations:
+// THE CALLERS. Sixteen columns over the 99 operations (the routed ones; see DEFERRED_ROUTE):
 //   AC-B-15, five callers        an unauthenticated caller (a signed-out web console), an unpaired
 //                                device (no credential, no Origin), and the three roles signed in
 //                                on the web console;
@@ -167,8 +167,14 @@ function routedOperations(): CoreApiRegistryOperation[] {
 // (decision D146) routed operation 82 (`listAudioSourceIntervals`, the sessions module) and
 // operations 84, 85 and 86 (`modules/transcripts`): their four entries left it.
 // Row 82b (decision D153) routed operation 83 (`getSealingProgress`, `modules/sealing`): the last
-// entry left it. Every operation of the registry is routed; the record stays as the named, empty set.
-const DEFERRED_ROUTE: Readonly<Record<string, string>> = {};
+// entry left it. Every operation of the registry was routed then; the record was the named, empty set.
+// Task 4 (blueprint row 63, integration pass I-2): the contract of the two sound-card operations 98
+// and 99 landed before their routes. Row 70 (the live path, milestone M4 / WP-07b) routes them and
+// takes both entries out again.
+const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
+  searchCaptureAudioCards: 'task 4 row 70 (M4 / WP-07b): the sound-card listing route',
+  registerCaptureAudioInput: 'task 4 row 70 (M4 / WP-07b): the microphone registration route',
+};
 
 /**
  * The answer the specification gives a caller on an operation: `expectationOf` with what it takes
@@ -965,16 +971,17 @@ function summaryOf(column: readonly Cell[]): string {
 // The registry against the specification (an independent check of the registry itself)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the contract registry against the composed operation tables: all 97 rows, read from the documents', () => {
-  it('the composed document holds operations 1 to 97 and the registry holds the same 97, each once', () => {
+describe('the contract registry against the composed operation tables: all 99 rows, read from the documents', () => {
+  it('the composed document holds operations 1 to 99 and the registry holds the same 99, each once', () => {
     // R1 (D44): 75 rows of the closed task-2 §7 base + 14 rows of C3 §2.2 + 3 rows of C3 §2.5 (the
     // STT configuration operations 90 to 92, task 3 row 113) + 5 rows of C3 §2.6 (the camera search,
     // the connection test, the adoption and the local-input re-read, 93 to 97; task 3 row 132,
-    // decision D106), composed by the reader. The total is the one C3 §10.1 states: 97.
-    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 97 }, (_unused, index) => index + 1));
-    expect(CORE_API_OPERATIONS).toHaveLength(97);
+    // decision D106), composed by the reader. The total C3 §10.1 states is 97; task 4 (blueprint
+    // row 63, integration pass I-2) added the two sound-card rows 98 and 99 to the table of §2.6: 99.
+    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 99 }, (_unused, index) => index + 1));
+    expect(CORE_API_OPERATIONS).toHaveLength(99);
     expect(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort()).toEqual(spec.operations.map((operation) => operation.operationId).sort());
-    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(97);
+    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(99);
   });
 
   it('every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row', () => {
@@ -1001,7 +1008,7 @@ describe('the contract registry against the composed operation tables: all 97 ro
     expect(registry).toEqual(document);
   });
 
-  it('the access rules are 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission and 1 any-of, in the registry and in the composed document', () => {
+  it('the access rules are 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 59 with one permission and 1 any-of, in the registry and in the composed document', () => {
     const kindOfMarker = (marker: string): string => {
       if (marker === 'PUBLIC' || marker === 'DEVICE' || marker === 'AUTHENTICATED') return marker;
       return marker.startsWith('ANY-OF(') ? CoreApiAccessKind.ANY_OF : CoreApiAccessKind.PERMISSION;
@@ -1011,7 +1018,8 @@ describe('the contract registry against the composed operation tables: all 97 ro
     expect(registry).toEqual(tally(spec.operations.map((operation) => kindOfMarker(operation.access))));
     // C3 §2.5: operation 90 is AUTHENTICATED (29 -> 30), 91 and 92 need CAPTURE_CONFIG (50 -> 52).
     // C3 §2.6: the five of 93 to 97 need CAPTURE_CONFIG too (52 -> 57); no new permission (R-9 AC-12).
-    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 57, ANY_OF: 1 });
+    // Task 4 row 63: the two sound-card operations 98 and 99 need CAPTURE_CONFIG as well (57 -> 59).
+    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 59, ANY_OF: 1 });
     // Every permission a rule names is one of the fourteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
@@ -1050,7 +1058,7 @@ describe('the contract registry against the composed operation tables: all 97 ro
     console.info(`[w47] spec §7 (revision ${spec.revision}, ${spec.lines} lines) against the registry: 75 of 75 rows equal in method, path, access rule, conditions and audit rule; exports ${exports.join(', ')}`);
   });
 
-  it('the condition WEB_CONSOLE_SESSION (C3 §0, §2.6, §3.1, §4; D80(3)): the reason of its refusal is the same in the document and in the registry, and it stands on the three operations whose body carries a camera credential', () => {
+  it('the condition WEB_CONSOLE_SESSION (C3 §0, §2.6, §3.1, §4; D80(3)): the reason of its refusal is the same in the document and in the registry, and it stands on the three operations whose body carries a camera credential and on the two sound-card operations', () => {
     expect(spec.webConsoleOnlyReason).toBe(WEB_CONSOLE_ONLY_REASON);
     const carrying = CORE_API_OPERATIONS.filter((operation) => conditionsOf(operation).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
     // From the DOCUMENT: the access cells of §2.6 (operations 95 and 96) and the changed row of §3.1 (operation 89).
@@ -1059,6 +1067,9 @@ describe('the contract registry against the composed operation tables: all 97 ro
       [89, 'setCaptureDeviceCredential'],
       [95, 'testCaptureCandidateConnection'],
       [96, 'adoptCaptureCandidate'],
+      // Task 4 row 63: the two rows the table of §2.6 gained, web console only (design addendum 4.2).
+      [98, 'searchCaptureAudioCards'],
+      [99, 'registerCaptureAudioInput'],
     ]);
     expect(carrying.map((operation) => operation.operationId).sort()).toEqual(documented.map((operation) => operation.operationId).sort());
     // It adds to a permission (CAPTURE_CONFIG): it is defined on no marker without one.
@@ -1137,7 +1148,8 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     const deniedBase = Object.fromEntries(spec.roles.map((role) => [role, deniedOf(role).filter((operationId) => baseOps.some((operation) => operation.operationId === operationId)).length]));
     expect(deniedBase).toMatchObject(spec.statedDeniedCells);
     const deltaRows = spec.operations.filter((operation) => isApiContractSection(operation.section));
-    expect(deltaRows).toHaveLength(22);
+    // Task 4 row 63: and the two sound-card rows of C3 §2.6 (98, 99), 22 + 2.
+    expect(deltaRows).toHaveLength(24);
     const deniedDelta = deniedCellsFromTable(deltaRows, spec.grants, spec.roles);
     expect(denied).toEqual(Object.fromEntries(spec.roles.map((role) => [role, (deniedBase[role] ?? 0) + (deniedDelta[role] ?? 0)])));
     console.info(`[w47] denied cells over the composed 97: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);
@@ -1196,7 +1208,8 @@ describe('the matrix as a whole', () => {
     // blueprint row 66 landed the five selector operations 76 to 80, 78 + 5 = 83; rows 132, 133 and
     // 142 routed operation 89 and operations 93 to 97 (C3 §2.6), 83 + 6 = 89; rows 71b, 91 and 90
     // routed operations 81, 87 and 88 (wave D), 89 + 3 = 92; integration pass D4 routed operations
-    // 82, 84, 85 and 86, 92 + 4 = 96; row 82b routed operation 83, 96 + 1 = 97 = the whole registry.
+    // 82, 84, 85 and 86, 92 + 4 = 96; row 82b routed operation 83, 96 + 1 = 97. The registry holds
+    // 99 since task 4 row 63; operations 98 and 99 are routed by row 70 (DEFERRED_ROUTE), so 97 stays.
     expect(routedOperations()).toHaveLength(97);
     expect(routedOperations()).toHaveLength(CORE_API_OPERATIONS.length - Object.keys(DEFERRED_ROUTE).length);
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
