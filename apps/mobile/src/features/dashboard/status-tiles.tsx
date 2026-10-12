@@ -96,7 +96,7 @@ function StatusTile({ tile, index, enter }: { tile: HomeTile; index: number; ent
           <View style={styles.head}>
             <Icon size={22} color={toneHex[tile.tone]} />
             <View style={styles.headText}>
-              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={1.2} style={styles.name}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.2} style={styles.name}>
                 {t(`features.dashboard.tiles.${tile.id}`)}
               </Text>
               <Text

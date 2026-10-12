@@ -143,6 +143,11 @@ export const dashboardEn = {
     finalizing: 'View finalization',
     recovery: 'Open recovery',
     summary: 'View session summary',
+    /**
+     * Decision D247 item 6: the unacknowledged Summary of a session this device did not run. After a sign-in the
+     * app no longer opens it by itself; Home says it is there, and the button above opens it.
+     */
+    summaryElsewhere: 'Session {{sessionId}} was sealed on another console. Summary not yet acknowledged.',
     viewEvidence: 'View Evidence',
     /** Fix wave J (JA2-04): why the wizard's entry is disabled while the Core link is down. */
     offlineReason: 'Core offline. A session cannot be started from this device until the link returns.',

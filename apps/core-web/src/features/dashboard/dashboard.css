@@ -466,9 +466,10 @@
   .dems-strip-value[data-long='true'] .dems-dot {
     margin-top: 0.3em;
   }
+  /* Fix wave Q (CW-01 sweep): a label breaks between its words; inside a word only when the word is longer than its cell. */
   .dems-strip-value[data-long='true'] .dems-strip-value-text {
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .dems-strip-sep {
     flex: none;
@@ -554,7 +555,9 @@
   }
   .dems-tile .dev-source-badge {
     display: flex;
-    flex-wrap: nowrap;
+    /* Fix wave Q (CW-02): `nowrap` left the kind beside the chip no width in a narrow tile - "Test source" stood one
+       letter per line (180 px high). The kind goes under the chip when it does not fit beside it. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -565,9 +568,18 @@
     white-space: nowrap;
   }
   .dems-tile .dev-source-kind {
-    min-width: 0;
+    min-width: min-content;
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: normal;
+  }
+  /* Fix wave Q (CW-02): four tiles in one row need about 150 px each for "Development source" and the lines of the
+     "No preview" frame; a narrower card (1280 x 800: 136 px a tile) draws them two by two and the row grows. */
+  @container dash-card (max-width: 640px) {
+    .dems-dash-tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* A row is never lower than a tile's head and a picture that holds its format chip. */
+      grid-auto-rows: minmax(128px, auto);
+    }
   }
   /* Fix wave J (JW-18): the role chip, the ring and the meter stood in one row that was wider than the tile - the chips
      read "rimary" / "andby" and the level "-51 dB" was cut. The row wraps, and below 1600 px the decorative ring goes. */

@@ -557,5 +557,35 @@ export const enWeb = {
         unsealableCauseUnknown: 'The Core states no cause code for this session.',
       },
     },
+    /**
+     * Fix wave Q, driver Q-W (the confirmation of fix wave J: JW-13 in its custody part, CW-04, CT-08).
+     */
+    waveQ: {
+      /** JW-13: the two custody actions that have no audit twin (the others read the audit vocabulary; `lib/event-words.ts`). */
+      custody: {
+        RECORDING_INTERRUPTED: 'Recording interrupted',
+        EXPORT_DOWNLOADED: 'Export downloaded',
+      },
+      /** JW-13: a cause is said in words; the code the Core recorded follows as the reference. */
+      cause: {
+        line: 'Cause: {{words}} (code {{cause}})',
+      },
+      sessions: {
+        unsealableCause: 'Why it could not be sealed: {{words}} (the code the Core recorded: {{cause}})',
+      },
+      /** CP-05 (the web's side): a demonstration record is named so on its list row and its header. */
+      evidence: {
+        demonstrationRecord: 'Demonstration record',
+        demonstrationHint: 'A demonstration record: its seal and its values are simulated. It is not evidence.',
+      },
+      /** CT-08 (the web's side): the New Session form of a Core in its own capture states the selector's profile; it offers no choice. */
+      profile: {
+        hint: 'Set per camera on Devices & Inputs. The session records with it.',
+      },
+      /** CW-04 (truth rule 3f): the seal dialog of the demonstration Core says what it is. */
+      sealDialog: {
+        demonstration: 'Demonstration: this seal is simulated. The item is a demonstration record, not evidence.',
+      },
+    },
   },
 } as const satisfies ResourceTree

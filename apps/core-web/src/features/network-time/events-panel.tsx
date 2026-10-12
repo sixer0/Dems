@@ -1,4 +1,4 @@
-import { eventTitle } from '@/lib/event-words'
+import { eventTitle, faultKindWords } from '@/lib/event-words'
 import { Table } from '@heroui/react'
 import { ScrollText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -76,7 +76,7 @@ function EventDetail({ event }: { event: SimEvent }) {
   let text: string | null = null
   if (typeof params.source === 'string') text = t('networkTime.log.detail.source', { source: params.source })
   else if (typeof params.kind === 'string' && params.kind in FAULT_KINDS) {
-    text = t(`common.faultKind.${params.kind as FaultKindKey}`)
+    text = faultKindWords(t, params.kind)
   } else if (typeof params.evidenceId === 'string') text = t('networkTime.log.detail.evidence', { id: params.evidenceId })
   else if (typeof params.version === 'string') text = t('networkTime.log.detail.version', { version: params.version })
   if (!text) return null
@@ -84,4 +84,3 @@ function EventDetail({ event }: { event: SimEvent }) {
 }
 
 const FAULT_KINDS = { GNSS_LOSS: true, CAMERA_LOSS: true } as const
-type FaultKindKey = keyof typeof FAULT_KINDS

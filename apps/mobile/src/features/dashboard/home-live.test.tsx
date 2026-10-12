@@ -286,7 +286,9 @@ describe('JA2-05: alert toasts on the Live source', () => {
   };
   const toastTexts = (text: string) => screen.queryAllByText(text).length;
   /** How many nodes carry the persistent toast's sentence (the kit draws a toast's text in more than one node). */
-  const persistentNodes = () => screen.queryAllByText(/It stays until it is acknowledged\.$/).length;
+  // Fix wave Q (CT-04, CP-06; ruling of D246): the sentence states the toast's real life - it leaves on the
+  // acknowledgement OR when the Core resolves the alert; the bell keeps the alert until it is acknowledged.
+  const persistentNodes = () => screen.queryAllByText(/The bell keeps it until it is acknowledged\.$/).length;
   const warningNodes = () => screen.queryAllByText(/The bell lists it\.$/).length;
 
   it.each(MODES)('%s, motion %s: a NEW critical alert shows a toast that STAYS, and leaves when the Core says it is acknowledged', async (window, linkMotion) => {
@@ -294,7 +296,9 @@ describe('JA2-05: alert toasts on the Live source', () => {
     expect(toastTexts(i18n.t('common.faultKind.STORAGE_FULL'))).toBe(0);
     await raise(home, CRITICAL);
     expect(toastTexts(i18n.t('common.faultKind.STORAGE_FULL'))).toBeGreaterThan(0);
-    expect(screen.queryAllByText(/^Critical alert at \d\d:\d\d:\d\d\. It stays until it is acknowledged\.$/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/^Critical alert at \d\d:\d\d:\d\d\. It stays until it is acknowledged or the Core reports it resolved\. The bell keeps it until it is acknowledged\.$/).length).toBeGreaterThan(0);
+    // The old sentence promised a stay that the resolve case (next test) never kept.
+    expect(screen.queryAllByText(/It stays until it is acknowledged\.$/)).toHaveLength(0);
     const one = persistentNodes();
     // It does not time out: far beyond the kit's default duration it is still there.
     await home.elapse(60_000, 5_000);
@@ -323,6 +327,9 @@ describe('JA2-05: alert toasts on the Live source', () => {
     await raise(home, { ...CRITICAL, active: false, resolvedAt: at + 5_000 });
     await home.elapse(1_000, 250);
     expect(persistentNodes()).toBe(0);
+    // CT-04: the toast is gone, the alert is not - the bell still counts it until it is acknowledged.
+    expect(home.state.alerts.find((held) => held.id === CRITICAL.id)?.acknowledged).toBe(false);
+    expect(textOf('home-bell-count')).toBe('1');
   });
 
   it('a warning: a toast while its switch is on, NO toast while it is off - and a critical alert shows whatever the switches say', async () => {

@@ -523,8 +523,11 @@
   /* ── Tiles (cameras, audio inputs) ───────────────────────────────────────────────────── */
   .dev-tile-head {
     display: flex;
+    /* Fix wave Q (CW-01 sweep): beside the state chip and the source badge the name had 45 px - "Camera / 1",
+       "VIDEO- / 01". The row wraps: the chips go under the name, which is never narrower than its longest word. */
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 6px 10px;
     min-width: 0;
   }
 
@@ -532,7 +535,7 @@
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    min-width: 0;
+    min-width: max-content;
   }
 
   .dev-tile-name {

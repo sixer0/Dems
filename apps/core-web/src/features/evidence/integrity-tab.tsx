@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Card, Chip, ProgressBar, Table } from '@heroui/react'
 import { Copy, KeyRound, PackageCheck, RotateCcw, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -6,7 +6,6 @@ import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { EvidenceLifecycleStage } from '@dems/shared/domain'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
-import type { TFunction } from 'i18next'
 import { hasSealedValues, useSim, verificationOfRecordFailed } from '@dems/shared/sim'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
 import { useMotionPolicy } from '@/motion'
@@ -14,7 +13,7 @@ import { CheckList } from './check-list'
 import { VerdictChip, type VerdictState } from './chips'
 import { copyText } from './clipboard'
 import { readItemFacts } from './item-facts'
-import { auditActionWords, causeWords } from './cause-words'
+import { custodyActionWords, custodyDetailWords } from '@/lib/event-words'
 import { NotSealedStatement } from './item-marks'
 import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, storedVerification, type EvidenceRow } from './model'
 import { selectOperators } from './selectors'
@@ -33,39 +32,11 @@ export interface IntegrityTabProps {
 }
 
 /**
- * R-W-1 (closing fix CF-W): a custody action code ("RECORDING_STOPPED", "SESSION_INCOMPLETE") may wrap
- * only after an underscore, so a narrow Action column shows "RECORDING_ / STOPPED" instead of making
- * the table wider than its card (a code has no other break opportunity). The words are unchanged:
- * `<wbr>` adds no text.
+ * Fix wave J (JW-13), fix wave Q (JW-13, the part the confirmation found): the custody table printed raw
+ * codes (`VERIFY_FAILED`, `VERIFIED`, `SEALED` beside the worded "Recording started"). Every action and
+ * every code inside a detail is worded by the ONE map (`lib/event-words.ts`): its own words, else the
+ * readable form of the code. The code itself stays as the cell's `title` and `data-custody-action`.
  */
-/**
- * Fix wave J (JW-13): the custody table printed raw codes (`RECORDING_STOPPED`, `VERIFY_FAILED`,
- * "STORAGE_FULL; recovered", "Cause: CAPTURE_FAULT"). The action reads the audit vocabulary's name
- * (`common.auditType.*`), a fault code inside a detail its name (`common.faultKind.*`); a code the
- * vocabulary does not hold stays as it is (breakable after an underscore).
- */
-function custodyActionWords(t: TFunction, action: string): ReactNode {
-  return auditActionWords(t, action) ?? breakableCode(action)
-}
-
-function custodyDetailWords(t: TFunction, detail: string): string {
-  return detail.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, (code) => causeWords(t, code))
-}
-
-function breakableCode(code: string): ReactNode {
-  const parts = code.split('_')
-  return parts.map((part, index) => (
-    <Fragment key={`${index}:${part}`}>
-      {part}
-      {index < parts.length - 1 ? (
-        <>
-          _<wbr />
-        </>
-      ) : null}
-    </Fragment>
-  ))
-}
-
 /**
  * Hash & Integrity tab (01_specs §14.5.3; research/04 §5.1; D67 (b)(c); review 40 R2/M3; M-C-21).
  *
@@ -103,7 +74,7 @@ function breakableCode(code: string): ReactNode {
  * narrower than the sum of its columns' longest unbreakable words plus padding — the date token,
  * `RECORDING_STOPPED`, "Pratama", "supervisor": 472 px in a 441 px card at 1440x900, 97 px over at
  * 1280x800 with the Detail out of sight. The table now has fixed column widths (`evidence.css`), so it
- * is never wider than its card; an action code may wrap only after an underscore (`breakableCode`);
+ * is never wider than its card; an action is drawn in words (`lib/event-words.ts`), which wrap between words;
  * on a narrow card (< 26rem of content, the 1280 px layout) the Detail sits under the action, and on a
  * phone-width card (< 20rem) the actor too. The cells carry the classes that layout uses, and the row
  * says whether it has a Detail (`data-detail`).

@@ -28,6 +28,7 @@ import { withAlpha } from '@/components/media/color';
 import { DEMO_MEDIA_LIVE, demoMediaForEvidence, type DemoMediaAsset } from '@/components/media/demo-media';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { PreviewThumb, useRealCaptureView } from '@/features/devices/camera-preview';
+import { DemonstrationChip, useSimulatedCoreLink } from '@/features/evidence/evidence-chips';
 import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { SessionStatusChip } from './session-status-chip';
 import { evidenceSuffix, handOffFor, type SessionRow as SessionRowModel } from './sessions-model';
@@ -68,6 +69,9 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
   // Wave H closing pass Z2 (G70-03, ruling D196; driver D's left surface): on a Core in REAL capture no
   // bundled picture - the live loop's poster, the room still - stands where a camera picture would be.
   const realCapture = useRealCaptureView();
+  // Fix wave Q (CP-05, truth rule 3f): on a SIMULATED Core the row of a sealed session carries the word its Summary,
+  // its item and its verdict carry - it said plain "Sealed".
+  const demonstration = useSimulatedCoreLink() && row.status === 'SEALED';
 
   return (
     <View style={styles.wrap}>
@@ -119,11 +123,14 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.meta}>
                 {date}
               </Text>
-              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.subject}>
+              {/* Fix wave Q (CP-07): a name wraps to a second line before it is cut. */}
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.subject}>
                 {row.subjectName}
               </Text>
-              <View style={[styles.chips, isMultiPane ? styles.chipsPane : null]} testID={`session-row-chips-${row.id}`}>
+              {/* Fix wave Q: with the demonstration mark (a third chip) the chips wrap on a phone too. */}
+              <View style={[styles.chips, isMultiPane || demonstration ? styles.chipsPane : null]} testID={`session-row-chips-${row.id}`}>
                 <SubjectTypeChip type={row.subjectType} size="sm" testID={`session-row-subject-${row.id}`} />
+                {demonstration ? <DemonstrationChip testID={`session-row-demonstration-${row.id}`} /> : null}
                 {duration === null && connecting ? null : duration === null ? (
                   <LiveDuration testID={`session-row-duration-${row.id}`} oneLine={isMultiPane} />
                 ) : (

@@ -229,8 +229,36 @@
     display: flex;
     flex-direction: column;
   }
+  /* Fix wave Q (JW-10): ONE long subject name made the Subject column 509 px wide (every cell was `nowrap`), the table
+     1180 px in a 1024 px card at 1280 and 1276 px in 1077 px at 1920: the Status column and the row menu lay outside
+     the card. The table has a FIXED layout now: it is exactly as wide as its card, the columns whose content is the
+     product's own (ID and time, duration and size, status, the row menu) keep the width that content needs, and the
+     two free-text columns (Subject, Case) share the rest and wrap inside it. Status and Actions are never cut. */
   .evi-table .table__content {
     min-width: 720px;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .evi-table .evi-col-evidence {
+    width: 176px;
+  }
+  .evi-table .evi-col-duration {
+    width: 100px;
+  }
+  .evi-table .evi-col-status {
+    width: 252px;
+  }
+  .evi-table .evi-col-case {
+    width: 22%;
+  }
+  /* The Status cell: the chip and the marks of the item stand under each other and are never cut. */
+  .evi-table .evi-cell-status {
+    overflow: visible;
+    white-space: normal;
+  }
+  .evi-table .evi-cell-status > * {
+    margin-block: 2px;
+    margin-inline-end: 4px;
   }
   .evi-row {
     cursor: pointer;
@@ -349,6 +377,21 @@
   .evi-table .evi-caption {
     white-space: nowrap;
     word-break: normal;
+  }
+  /* Fix wave Q (JW-10): free text of a row (the subject's name, the case number, the investigator's name: typed by an
+     operator, of any length). It wraps inside its column - also inside a word, a name without a space included - and
+     is cut after three lines by an ellipsis; the cell's `title` and its text for assistive technology stay whole. */
+  .evi-table .evi-free {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .evi-demonstration-chip {
+    white-space: nowrap;
   }
   /* DR-47-2: the 8-of-12 table column is about 790 px at 1440; thumbnails return at ≥ 1600 px. */
   @media (max-width: 1599px) {

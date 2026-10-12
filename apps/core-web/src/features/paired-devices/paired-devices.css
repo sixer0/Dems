@@ -72,6 +72,8 @@
 
   .pd-card-header {
     display: flex;
+    /* Fix wave Q (CW-01 sweep): the row wraps; the title never gets narrower than a word. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     min-height: 28px;
@@ -88,7 +90,7 @@
   .pd-card-title {
     margin: 0;
     flex: 1 1 auto;
-    min-width: 0;
+    min-width: min-content;
     font-size: 14px;
     line-height: 20px;
     font-weight: 600;
@@ -96,7 +98,7 @@
     text-transform: uppercase;
     color: var(--foreground);
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: normal;
   }
 
   .pd-card-action {

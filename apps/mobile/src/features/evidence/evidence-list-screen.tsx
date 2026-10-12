@@ -24,7 +24,7 @@
  * Backend task W74: the archive of the row kebab is site S3-1 (`archive-dialog.tsx`). The action
  * comes from `useCoreActions()` in both modes; its result is handed to the dialog, which settles it.
  */
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useRouter, type Href } from 'expo-router';
 import { Button, Menu, SearchField, SkeletonGroup, TagGroup } from 'heroui-native';
 import { List } from 'lucide-react-native';
@@ -37,6 +37,7 @@ import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { Emblem } from '@/components/media';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
+import { LIST_KEEP_POSITION, useTopOnQueryChange } from '@/lib/list-position';
 import { enterRise, rowReveal, triggerHaptic, useMotionSettings } from '@/motion';
 import { reportRuntimeIssue, useRuntimeStatus } from '@/runtime';
 import { ArchiveDialog } from './archive-dialog';
@@ -181,6 +182,8 @@ function EvidenceListColumn({ query, onQueryChange, density, onDensityChange, se
   const filtered = isFiltered(query);
   // A filter or sort change re-reveals the list (the rows stagger again).
   const revealKey = `${query.filter}|${query.sort}|${density}|${columns}`;
+  // Fix wave Q: the answer to a new search is read from the top (a filter or sort change remounts the list anyway).
+  const listRef = useTopOnQueryChange<FlashListRef<(typeof rows)[number]>>(query.query, rows.length);
 
   const setFilter = (filter: EvidenceFilter) => {
     if (filter === query.filter) return;
@@ -261,17 +264,15 @@ function EvidenceListColumn({ query, onQueryChange, density, onDensityChange, se
         <View style={styles.listWrap} accessibilityLabel={t('features.evidence.list.label')}>
           <FlashList
             key={revealKey}
+            ref={listRef}
             testID="evidence-rows"
             data={rows}
             numColumns={columns}
             keyExtractor={(item) => item.id}
-            // Fix wave J (JM-03: "a just-sealed item is missing from the Evidence list until the list is pulled
-            // down"; reproduced on the tablet, normal launch, with a session recorded on the tablet). The item WAS in
-            // the list's data and in the view tree - one row ABOVE the viewport. This list keeps the visible content
-            // in place when rows are inserted before it (`maintainVisibleContentPosition`, on by default in this
-            // version): with the list at its top, the new first row was put above the top edge and the old first
-            // row stayed where it was. The newest item is the first thing an operator looks for: no such hold.
-            maintainVisibleContentPosition={{ disabled: true }}
+            // JM-03 (wave J: a just-sealed item was in the data ONE ROW ABOVE the viewport) and CP-01 / CT-02 (wave Q:
+            // with the keeping DISABLED the first opening after a sign-in and a filter change laid the rows out
+            // wrong): the position is kept, and a reader at the top is taken to a new first row. `@/lib/list-position`.
+            maintainVisibleContentPosition={LIST_KEEP_POSITION}
             extraData={selectedId}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"

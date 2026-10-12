@@ -58,7 +58,10 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
   const small = variant === 'thumb'
   return (
     <div
-      className={cn('relative isolate aspect-video w-full rounded-lg border border-border bg-neutral-900 text-neutral-200', className)}
+      // Fix wave Q (CW-02): in a Dashboard tile the frame is as tall as its four lines at least (`data-variant="tile"`:
+      // the lines are in the flow, not laid over a box of whatever height the row left - 44 px for 64 px of text at 1440;
+      // `min-h-fit shrink-0` after the caller's classes, so the caller's `min-h-0` cannot shrink it under its text).
+      className={cn('relative isolate aspect-video w-full rounded-lg border border-border bg-neutral-900 text-neutral-200', className, variant === 'tile' && 'flex min-h-fit shrink-0 flex-col')}
       data-testid="camera-no-preview-frame"
       data-camera={cameraId}
       data-variant={variant}
@@ -66,14 +69,21 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
       <div
         role="img"
         aria-label={t('devices.noPreview.aria', { name, state })}
+        title={small ? t('devices.noPreview.aria', { name, state }) : undefined}
         data-testid="camera-no-preview"
         data-camera={cameraId}
         data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : 'ONLINE'}
         // Fix wave L (G89c-08): in a Dashboard tile (variant `tile`) the four lines fit the short stage at 1440 x 900 - a small icon and tight lines.
-        className={cn('absolute inset-0 flex flex-col items-center justify-center overflow-hidden rounded-[inherit] px-2 text-center', variant === 'tile' ? 'gap-0' : 'gap-1')}
+        className={cn(
+          'flex flex-col items-center justify-center rounded-[inherit] px-2 text-center',
+          variant === 'tile' ? 'relative min-h-fit flex-1 gap-0 py-1' : 'absolute inset-0 gap-1 overflow-hidden',
+        )}
       >
         <VideoOff aria-hidden="true" size={small || variant === 'tile' ? 14 : 24} strokeWidth={1.75} />
-        <span className={cn('font-semibold', small ? 'text-[11px] leading-4' : variant === 'tile' ? 'text-xs leading-4' : 'text-sm')}>{t('devices.noPreview.title')}</span>
+        {/* Fix wave Q (CW-02 sweep): a thumb (59 x 33 px in the Monitor's inputs card) has no room for the icon AND the
+            words - "No / preview" was cut by the frame. The thumb draws the icon; its words stay for assistive technology
+            (the frame's name) and as the hover title. */}
+        <span className={cn('font-semibold', small ? 'sr-only' : variant === 'tile' ? 'text-xs leading-4' : 'text-sm')}>{t('devices.noPreview.title')}</span>
         <span data-part="name" className={cn('max-w-full break-words text-[11px] leading-4', small && 'sr-only')}>
           {name}
         </span>

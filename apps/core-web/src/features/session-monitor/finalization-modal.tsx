@@ -8,6 +8,8 @@ import { BootRecoveryState, SessionState } from '@dems/shared/domain'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { captureFactsOf, useSim } from '@dems/shared/sim'
 import { Stepper, StepperStamp, type StepperStep } from '@/components/composed'
+import { DemoMark } from '@/components/demo-mark'
+import { useDemonstrationCore } from '@/components/demonstration-core'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { logSessionMonitorError } from './log'
 import { shortHash } from './model'
@@ -179,6 +181,8 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
   // Fix wave K (G89b-05): the sealed item as THIS Core signed it - a real item says its key and its sources, never a word about DEMO packages.
   const sealedItem = useSim((s) => (sealed && evidenceId ? (s.evidence.find((entry) => entry.id === evidenceId) ?? null) : null))
   const realSeal = realSealFactsOf(sealedItem)
+  // Fix wave Q (CW-04): on the demonstration Core the dialog says that this seal is a demonstration.
+  const demonstration = useDemonstrationCore()
 
   return (
     <>
@@ -200,8 +204,15 @@ function FinalizationBody({ sessionId, state, onClose, sawRecovery }: { sessionI
           </Modal.Heading>
           <span className="sm-final-subtitle font-mono">{t('session.finalization.subtitle', { sessionId })}</span>
         </span>
+        {/* Fix wave Q (CW-04; truth rule 3f): the one window that announces "sealed" on the demonstration Core says DEMO · SIMULATED. */}
+        <DemoMark block="seal-dialog" long className="sm-final-demo" />
       </Modal.Header>
       <Modal.Body className="sm-final-body">
+        {demonstration ? (
+          <p className="sm-final-package-note" data-testid="sm-final-demonstration">
+            {t('web.waveQ.sealDialog.demonstration')}
+          </p>
+        ) : null}
         <UnsealableNotice sessionId={sessionId} />
         <InterruptedSealNotice sessionId={sessionId} sealed={sealed} />
         {endedUnsealable ? null : attention !== null ? (
@@ -321,6 +332,9 @@ function PackageBlock({ pkg, simulatedManifestHash, real }: { pkg: PackageState;
   // server data". In Live mode the digest is the Core server's (the replica), so it is labelled LIVE
   // (plan row W65; found by the row's lane check).
   const live = useCoreMode() === CoreMode.LIVE
+  // Fix wave Q (CW-04): "LIVE" beside the digest of a simulated seal read as "real". A Live console on the demonstration
+  // Core says DEMO · SIMULATED there; "LIVE" is left for a Core in its own capture.
+  const demonstration = useDemonstrationCore()
   if (real !== null) {
     // G89b-05: a real item - the manifest digest, the key it is signed with and its mark, the development sources where so. No DEMO vocabulary.
     return (
@@ -363,8 +377,8 @@ function PackageBlock({ pkg, simulatedManifestHash, real }: { pkg: PackageState;
       <dl className="sm-final-package" data-testid="sm-final-package" data-source={live ? 'core' : 'simulated'}>
         <div className="sm-final-package-head">
           <span>{t('session.finalization.manifestDigest')}</span>
-          <Chip size="sm" variant="soft" color="default">
-            <Chip.Label>{live ? t('common.coreMode.chip.LIVE') : t('common.simulated.chip')}</Chip.Label>
+          <Chip size="sm" variant="soft" color={live && demonstration ? 'warning' : 'default'} data-testid="sm-final-source-chip" data-source-chip={live ? (demonstration ? 'DEMO' : 'LIVE') : 'SIMULATED'}>
+            <Chip.Label>{live ? (demonstration ? t('web.waveJ.demo.chip') : t('common.coreMode.chip.LIVE')) : t('common.simulated.chip')}</Chip.Label>
           </Chip>
         </div>
         {simulatedManifestHash ? (

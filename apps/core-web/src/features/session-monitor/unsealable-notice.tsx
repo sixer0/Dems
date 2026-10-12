@@ -1,3 +1,4 @@
+import { sealCauseLine } from '@/lib/event-words'
 import { useTranslation } from 'react-i18next'
 import { SEAL_UNSEALABLE_PLAIN_SENTENCE, useSim } from '@dems/shared/sim'
 import { selectUnsealableCause } from './unsealable-cause'
@@ -16,7 +17,7 @@ export function UnsealableNotice({ sessionId }: { sessionId: string | null }) {
       <p data-testid="sm-unsealable-sentence">{SEAL_UNSEALABLE_PLAIN_SENTENCE}</p>
       {cause === '' ? null : (
         <p className="sm-final-package-note" data-testid="sm-unsealable-cause">
-          {t('web.waveL.notice.cause', { cause })}
+          {sealCauseLine(t, cause)}
         </p>
       )}
     </div>

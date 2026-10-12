@@ -1,3 +1,4 @@
+import { auditTypeWords } from '@/lib/event-words'
 import { memo, useRef, useState } from 'react'
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
@@ -90,7 +91,7 @@ const AuditLine = memo(function AuditLine({ row, inserted, highlight }: { row: A
       <time className="sm-audit-time" dateTime={new Date(row.at).toISOString()}>
         {formatClock(row.at)}
       </time>
-      <span className="sm-audit-message">{t(`common.auditType.${row.type}`)}</span>
+      <span className="sm-audit-message">{auditTypeWords(t, row.type)}</span>
       {inserted ? (
         <TextScramble as="span" className="sm-audit-hash" characterSet={HEX} duration={SCRAMBLE_S} aria-label={t('session.audit.hash', { hash })}>
           {hash}

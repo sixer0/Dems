@@ -4,6 +4,7 @@
  */
 import {
   AUTH_IDLE_TIMEOUT_MS,
+  FAULT_SEVERITY,
   FaultKind,
   ROLE_PERMISSIONS,
   ScenarioName,
@@ -129,15 +130,23 @@ export type NotificationCategory = 'devices' | 'storage' | 'time' | 'system';
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] = ['devices', 'storage', 'time', 'system'];
 
 /**
- * Which alert kinds each switch covers. The critical kinds (the sim's CRITICAL_FAULTS) have no
- * switch: they always show (§4.15 "Critical is always on").
+ * Which alert kinds each switch covers. The critical kinds have no switch: they always show (§4.15
+ * "Critical is always on").
+ *
+ * Fix wave Q (CP-06, truth rule 3d): `CAMERA_LOSS` stood under "Cameras and microphones" and `AUDIT_TAMPER`
+ * under "Enclosure and system" although both are CRITICAL (`FAULT_SEVERITY`) and show with every switch off -
+ * Settings offered a switch for alerts it ignores. A switch lists only kinds it can silence; the critical
+ * kinds are listed apart, as "always shown" (`ALWAYS_SHOWN_KINDS`, read from the severity table itself).
  */
 export const NOTIFICATION_KINDS: Readonly<Record<NotificationCategory, readonly FaultKind[]>> = {
-  devices: [FaultKind.CAMERA_LOSS, FaultKind.MIC_NO_SIGNAL, FaultKind.MIC_CLIP],
+  devices: [FaultKind.MIC_NO_SIGNAL, FaultKind.MIC_CLIP],
   storage: [FaultKind.STORAGE_LOW],
   time: [FaultKind.GNSS_LOSS],
-  system: [FaultKind.TAMPER, FaultKind.FAN_STALL, FaultKind.AUDIT_TAMPER],
+  system: [FaultKind.TAMPER, FaultKind.FAN_STALL],
 };
+
+/** The kinds whose alerts are CRITICAL: no switch silences their toast. In the order of the severity table. */
+export const ALWAYS_SHOWN_KINDS: readonly FaultKind[] = (Object.keys(FAULT_SEVERITY) as FaultKind[]).filter((kind) => FAULT_SEVERITY[kind] === 'CRITICAL');
 
 export type NotificationPrefs = Readonly<Record<NotificationCategory, boolean>>;
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = { devices: true, storage: true, time: true, system: true };
@@ -239,9 +248,9 @@ export function biometricSwitchView(
 
 /**
  * `shown`: the panel. `presentation`: hidden by presentation mode (both modes, as before).
- * LIVE mode only (AC-C-52, [SP:DC-1, DC-2]): `not-permitted` without DEMO_CONTROL (the Core
- * answers 403 NOT_PERMITTED whatever its flag), `flag-off` when the Core server runs without its
- * demo flag (`session.demoControls` false; the Core answers 403 DEMO_DISABLED).
+ * LIVE mode only (AC-C-52, [SP:DC-1, DC-2]): `flag-off` when the Core server runs without its
+ * demo flag (`session.demoControls` false) - for EVERY role, since fix wave Q (CT-07); `not-permitted`
+ * without DEMO_CONTROL on a Core that has the controls.
  */
 export type DemoControlsAccess = 'shown' | 'presentation' | 'not-permitted' | 'flag-off';
 
@@ -255,8 +264,11 @@ export function demoControlsAccess(input: {
 }): DemoControlsAccess {
   if (input.presentationMode) return 'presentation';
   if (!input.live) return 'shown';
-  if (!input.permitted) return 'not-permitted';
-  return input.demoFlag ? 'shown' : 'flag-off';
+  // Fix wave Q (CT-07: one fact, one caption). On a Core that runs WITHOUT its demo flag nobody has demo
+  // controls: every role reads that (a technician read "The demo controls require the Supervisor role", as if
+  // a supervisor had them there). The role rule is said only where the controls exist.
+  if (!input.demoFlag) return 'flag-off';
+  return input.permitted ? 'shown' : 'not-permitted';
 }
 
 // ── System Maintenance: Demo controls (§4.15, 01S §14.5.8, MA-30) ──────────────────────────

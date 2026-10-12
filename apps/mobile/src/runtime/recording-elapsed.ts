@@ -31,7 +31,7 @@
  */
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { selectElapsedSeconds, useSim, useSimInstance } from '@dems/shared/sim';
-import { coreClockOf, type CoreClock } from './core-clock';
+import { coreClockOf, coreInstantOnDeviceClock, type CoreClock } from './core-clock';
 import { reportRuntimeIssue } from './log';
 
 /** Re-read a little after the boundary, so the new second is already there when the timer wakes (ms). */
@@ -198,4 +198,29 @@ export function useRecordingElapsedSeconds(): number {
   const fromStore = useSim(selectElapsedSeconds);
   const ticked = useRecordingTickerSeconds();
   return Math.max(fromStore, ticked);
+}
+
+/**
+ * Decision D247 item 5: where the running recording STARTED on this device's own clock (epoch ms of
+ * `Date.now()`), or `null` (no recording that still runs; or SIMULATED / HEARTBEAT, whose recording time is
+ * the simulator's clock - it may run at another speed and has no instant on the device clock).
+ *
+ * The monitor's timer hands it to a UI-thread frame callback (`timer-readout.tsx`), which draws
+ * `floor((Date.now() - origin) / 1000)` whenever React's own second is late: neither a late message nor a
+ * late render can then hold the time. It is re-read with every second React draws (`drawnSeconds`), so a
+ * better estimate of the Core's offset reaches the UI thread within a second; like the ticker it ends with
+ * the Core's report of the stop (D19(b)).
+ */
+export function useRecordingLocalOrigin(drawnSeconds: number): number | null {
+  const startedAt = useSim((s) =>
+    s.session?.state === 'RECORDING' && s.session.stoppedAt === null ? (s.session.startedAt ?? null) : null,
+  );
+  const coreClock = coreClockOf(useSimInstance());
+  return useMemo(() => {
+    if (coreClock === null || startedAt === null) return null;
+    const origin = coreInstantOnDeviceClock(coreClock, startedAt);
+    return Number.isFinite(origin) ? origin : null;
+    // `drawnSeconds` is the refresh: one reading of the Core clock per drawn second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coreClock, startedAt, drawnSeconds]);
 }

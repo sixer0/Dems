@@ -1,3 +1,4 @@
+import { enumValueWords } from '@/lib/event-words'
 import { DemoMark } from '@/components/demo-mark'
 import { useState, type ReactNode, type RefObject } from 'react'
 import { Alert, Button, Card, Checkbox, Chip, Label, ListBox, Spinner } from '@heroui/react'
@@ -349,7 +350,7 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
   // that states `platformNotReported` reads the same.
   const platformNotReported = usePlatformNotReported()
   const notReported = isSecurityNotReportedNote(item) || (platformNotReported && item.id === 'SECURITY' && item.status === 'PASS')
-  const valueText = notReported ? t('web.waveJ.precheck.securityNotReported') : item.value && !note ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
+  const valueText = notReported ? t('web.waveJ.precheck.securityNotReported') : item.value && !note ? enumValueWords(t, enumKey, item.value) : null
   const resolved = item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK'
   return (
     <div className="sn-check" data-check={item.id} data-status={item.status} data-note={note ? 'true' : undefined} data-not-reported={notReported ? 'true' : undefined} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>

@@ -294,7 +294,14 @@ export function SessionLiveScreen() {
     />
   );
   // Row 139 (D84, D91): before the first durable fragment there is nothing to stop and seal; the control says so.
-  const endSession = <EndSession disabled={readOnly} blockedReason={connecting ? t('common.session.stopWhileConnecting') : undefined} onEnd={onEnd} />;
+  const endSession = (
+    <EndSession
+      disabled={readOnly}
+      blockedReason={connecting ? t('common.session.stopWhileConnecting') : undefined}
+      disabledReason={t('features.session-live.endSession.linkLost')}
+      onEnd={onEnd}
+    />
+  );
   const timeline = (
     <View ref={timelineRef} collapsable={false} style={styles.timelineHost}>
       <SessionTimeline

@@ -235,10 +235,14 @@
     var(--surface);
 }
 
+/* Fix wave Q (CW-01): the title stood in ONE row with the DEMO mark and the header's control; in a narrow card the
+   row left it 20 px and it broke inside its words ("A / U / DI / O"). The row wraps: the title keeps the width of its
+   longest word at least, and the mark and the control go to the next line when the row is full. */
 .sm-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   min-height: 24px;
   flex: none;
 }
@@ -253,9 +257,10 @@
 
 .sm-card-title {
   margin: 0;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: min-content;
   white-space: normal;
-    overflow-wrap: break-word;
+  overflow-wrap: normal;
   font-size: 15px;
   font-weight: 600;
   line-height: 20px;
@@ -549,9 +554,12 @@
   list-style: none;
 }
 
+/* Fix wave Q (CW-01): the label took the width of its one line and left the value whatever remained - "SHA- / 256",
+   "(UTC+0 / 7:00)" in a narrow card. A short value keeps its one line (up to 58 % of the row) and the label wraps
+   between its words in what is left; neither column is ever narrower than its longest word. */
 .sm-check {
   display: grid;
-  grid-template-columns: 18px auto minmax(0, 1fr);
+  grid-template-columns: 18px minmax(min-content, 1fr) fit-content(58%);
   align-items: center;
   gap: 10px;
   min-height: 24px;
@@ -567,18 +575,18 @@
 .sm-check[data-status='idle'] .sm-check-icon { color: var(--muted); }
 
 .sm-check-label {
-  white-space: nowrap;
+  white-space: normal;
   font-size: 13.5px;
   color: var(--foreground);
 }
 
 .sm-check-value {
-  min-width: 0;
+  min-width: min-content;
   text-align: right;
   font-size: 12.5px;
   color: var(--color-foreground-2, #d8cec6);
   white-space: normal;
-    overflow-wrap: break-word;
+  overflow-wrap: normal;
 }
 
 /* Fix wave K (G89b-11): the capture checkpoints under the check rows - a label line, then one line per
@@ -618,7 +626,7 @@
 }
 
 /* Fix wave M (G89d-06): the evidence item named by the closing sentence of a sealed session's card. */
-.sm-check-link { font-family: var(--font-mono); color: var(--link); text-underline-offset: 3px; }
+.sm-check-link { font-family: var(--font-mono); color: var(--link); text-underline-offset: 3px; white-space: nowrap; }
 .sm-check-link:hover { text-decoration: underline; }
 
 .sm-check[data-status='fail'] .sm-check-value { color: #f87171; }
@@ -989,8 +997,10 @@
 }
 
 .sm-audit-message {
+  /* Fix wave Q (CW-01 sweep): the name of an audit row breaks between its words, never inside one. */
+  min-width: min-content;
   white-space: normal;
-    overflow-wrap: break-word;
+  overflow-wrap: normal;
   color: var(--foreground);
 }
 
@@ -1229,6 +1239,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Fix wave Q (CW-04): the DEMO mark of the seal dialog sits at the end of the header and keeps its width. */
+.sm-final-demo {
+  margin-left: auto;
+  flex: none;
 }
 
 .sm-final-icon {

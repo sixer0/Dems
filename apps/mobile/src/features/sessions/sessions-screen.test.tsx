@@ -11,6 +11,7 @@ import '@/navigation/testing/router-harness';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { SessionOutcome, SubjectTypeLabel, startOfWibDay } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
+import { NEW_ROW_AUTOSCROLL_PX } from '@/lib/list-position';
 import { REFRESH_MS } from './sessions-screen';
 import { renderSessionsApp, settle } from './testing/sessions-harness';
 
@@ -228,6 +229,17 @@ describe('Sessions hub', () => {
     await settle();
     expect(h.app.getPathname()).toBe('/evidence');
     expect(h.app.getSearchParams()).toMatchObject({ selected: sealed.evidenceId });
+  });
+
+  // Fix wave Q (CP-01 / CT-02, with JM-03 of wave J): as the Evidence list (`@/lib/list-position`). Reproduced on the
+  // phone: with the keeping DISABLED the first row lay over "Start New Session" and the search field at the first
+  // opening after a sign-in; with the anchor kept it did not.
+  it('CP-01 + JM-03: the hub keeps its scroll anchor (never `disabled`) and takes a reader at the top to a newer first row', async () => {
+    renderSessionsApp({ window: 'phonePortrait' });
+    await settle();
+    const list = screen.getByTestId('sessions-rows');
+    expect(list.props.maintainVisibleContentPosition).toMatchObject({ autoscrollToTopThreshold: NEW_ROW_AUTOSCROLL_PX });
+    expect(list.props.maintainVisibleContentPosition.disabled).toBeUndefined();
   });
 
   // Fix wave J round two (JT-20): the detail pane kept a session the filter had removed from the list.

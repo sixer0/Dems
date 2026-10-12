@@ -25,8 +25,10 @@ export const evidenceEn = {
     compact: 'Compact',
   },
   search: {
-    placeholder: 'Search session ID, subject, or case number…',
-    label: 'Search evidence',
+    // Fix wave Q (JA2-27 / JT-12): the hint fits the field of a phone and of the tablet's list pane (it was cut to
+    // "…case number.." and wrapped into a clipped second line); the spoken label says the whole of it.
+    placeholder: 'Search ID, subject or case',
+    label: 'Search evidence by session ID, subject or case number',
   },
   filters: {
     label: 'Filter by status',
@@ -199,6 +201,8 @@ export const evidenceEn = {
     manifestToast: 'Manifest download is simulated in this demo',
     manifestToastLive: 'Manifest download is not available on this device.',
     exportDisabled: 'Only sealed evidence can be exported',
+    /** Fix wave Q (CP-04): the row menu's Verify of a record that was never sealed. */
+    verifyNotSealed: 'Not sealed — nothing to verify',
     archiveDisabled: 'Archiving needs the Supervisor role',
     archiveTitle: 'Archive {{id}}?',
     archiveBody: 'The item moves to retention. This is recorded in the audit log.',

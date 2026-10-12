@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { ChevronRight, CloudDownload, FileText, Stethoscope, Upload, Zap, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Permission, roleHas, selectRole, useSim } from '@dems/shared/sim'
+import { Permission, isUpdaterNotAvailable, roleHas, selectRole, useSim } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { Spotlight } from '@/components/ui/spotlight'
 import { useRouteEnterDelay } from '@/components/shell'
@@ -65,6 +65,10 @@ export function QuickActions({ onRunDiagnostics, onSoftwareUpdate, runBusy = fal
   const m = useMotionPolicy()
   const routeDelay = useRouteEnterDelay()
   const role = useSim(selectRole)
+  // Fix wave Q (CW-08 b): a Core without an updater (`update.updaterNotAvailable`) offers no "Software Update - Signed A/B
+  // system update" card above a card that says nothing can be installed (truth rule 3d).
+  const noUpdater = useSim((s) => isUpdaterNotAvailable(s.update))
+  const cards = noUpdater ? QUICK.filter((spec) => spec.id !== 'softwareUpdate') : QUICK
 
   const renderCard = (spec: QuickSpec): ReactNode => {
     const allowed = spec.permission === null || roleHas(role, spec.permission)
@@ -113,7 +117,7 @@ export function QuickActions({ onRunDiagnostics, onSoftwareUpdate, runBusy = fal
   return (
     <SystemPanel id="quick" icon={Zap} title={t('common.quickActions.title')} bodyClassName="sys-qa-body">
       <nav className="sys-qa-grid" aria-label={t('system.quickActions.label')}>
-        {QUICK.map((spec, index) => (
+        {cards.map((spec, index) => (
           <motion.div
             key={spec.id}
             className="sys-qa-cell"

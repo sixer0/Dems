@@ -93,9 +93,11 @@ export const sessionLiveEn = {
     timelineEmpty: 'No events yet',
   },
 
-  // S6 End Session (M-C-19): hold 1.5 s, then the reason dialog.
+  // S6 End Session (M-C-19; fix wave Q, JT-09): a tap or a hold opens the reason dialog - the dialog is the guard.
   endSession: {
     holdA11yHint: 'Opens the End Session dialog. A reason is required.',
+    hint: 'Tap or hold. A reason is asked before anything ends.',
+    linkLost: 'Core link lost. The session can be ended from this device when the link is back.',
     holding: 'Keep holding…',
     reasonCount: '{{count}} / {{max}}',
     reasonRule: 'At least {{min}} characters.',

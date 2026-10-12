@@ -3,12 +3,13 @@ import { Button, Card, Chip, Description, Label, Spinner, Switch } from '@heroui
 import { AnimatePresence, motion } from 'motion/react'
 import { Circle, Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { OperatorRole, type SimOperator, type SubjectType } from '@dems/shared/sim'
+import { OperatorRole, useSim, type SimOperator, type SubjectType } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { GlowRing } from '@/components/composed/glow-ring'
 import { GlowLayer, tween, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
-import { SUBJECT_TONE } from './model'
+import { useSelfCaptureCore } from '@/lib/own-capture'
+import { selectorProfileLinesOf, SUBJECT_TONE } from './model'
 
 export interface ReadySummary {
   sessionId: string | null
@@ -54,6 +55,9 @@ export interface ReadyStepProps {
  */
 export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, countdown, onStart, onCancelCountdown, canStart, enterDelayMs, startPending = false, startRef, startBlockedBy = null }: ReadyStepProps) {
   const { t } = useTranslation()
+  // Fix wave Q (CT-08): as on the form - the selector's profile on a Core in its own capture.
+  const selfCapture = useSelfCaptureCore()
+  const profileLines = useSim(selectorProfileLinesOf)
   const m = useMotionPolicy()
   const subjectTone = summary.subjectType ? toneChipProps(SUBJECT_TONE[summary.subjectType]) : null
   const ringState = warnings > 0 ? 'ATTENTION' : 'READY'
@@ -115,7 +119,7 @@ export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, c
             </div>
             <div>
               <dt>{t('sessionNew.ready.summary.profile')}</dt>
-              <dd>{t('sessionNew.info.profile.standard')}</dd>
+              <dd data-testid="sn-summary-profile">{selfCapture ? (profileLines === '' ? t('web.waveL.profile.notStated') : <span className="sn-mono sn-profile-lines">{profileLines.split(' · ').map((line) => <span key={line} className="sn-profile-line">{line}</span>)}</span>) : t('sessionNew.info.profile.standard')}</dd>
             </div>
             <div>
               <dt>{t('sessionNew.ready.summary.devices')}</dt>

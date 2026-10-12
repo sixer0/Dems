@@ -1,3 +1,4 @@
+import { custodyActionWords } from '@/lib/event-words'
 import { useMemo, useState } from 'react'
 import { Alert, Button, Chip, EmptyState, ToggleButton, ToggleButtonGroup } from '@heroui/react'
 import type { Key } from '@heroui/react'
@@ -254,7 +255,7 @@ export function MetadataTab({ row, mediaUnavailable = false }: MetadataTabProps)
             <div key={`${entry.at}-${index}`}>
               <dt>{`${formatWibDateTime(Date.parse(entry.at))} UTC${formatUtcOffset()}`}</dt>
               <dd>
-                {entry.action} · {entry.actorName}
+                <span title={entry.action}>{custodyActionWords(t, entry.action)}</span> · {entry.actorName}
               </dd>
             </div>
           ))}

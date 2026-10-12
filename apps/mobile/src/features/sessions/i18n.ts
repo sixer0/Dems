@@ -28,8 +28,10 @@ export const sessionsEn = {
     busyHint: 'A session is in progress. Finish it before starting a new one.',
   },
   search: {
-    placeholder: 'Search session ID, subject, or case number…',
-    label: 'Search sessions',
+    // Fix wave Q (JA2-27 / JT-12): the hint fits the field of a phone and of the tablet's list pane (it was cut to
+    // "…case number.." and wrapped into a clipped second line); the spoken label says the whole of it.
+    placeholder: 'Search ID, subject or case',
+    label: 'Search sessions by session ID, subject or case number',
   },
   filters: {
     label: 'Filter sessions',
@@ -74,6 +76,17 @@ export const sessionsEn = {
     setup: 'This session was set up by {{who}}, not by you. You can continue it or cancel it.',
     summary: 'This session was recorded by {{who}}, not by you. You can read its summary and acknowledge it with Done.',
     nothing: 'This session belongs to {{who}}. Your role ({{role}}) cannot act on it: go to Home.',
+    /**
+     * Fix wave Q (CT-05): the toast of a session run from another console. This device is not moved to it; the
+     * toast says what happened and where it can be read.
+     */
+    toast: {
+      recording: 'Session {{id}} is recording',
+      ended: 'Session {{id}} has ended and is being sealed',
+      sealed: 'Session {{id}} is sealed',
+      interrupted: 'Session {{id}} was interrupted',
+      description: 'It is run from another console, so this device stays on this page. Sessions and Home show it.',
+    },
   },
   /** Round two (JT-20): the detail pane while the selected session is not in the filtered list. */
   paneFiltered: {

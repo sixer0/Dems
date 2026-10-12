@@ -294,6 +294,15 @@ describe('Settings', () => {
     expect(await storedPrefs()).toEqual({ haptics: true, notifications: { devices: true, storage: false, time: true, system: true } });
     const critical = screen.getByTestId('settings-notify-critical');
     expect(critical.props.accessibilityState).toMatchObject({ disabled: true, checked: true });
+    // Fix wave Q (CP-06): "Camera loss" stood under the switch "Cameras and microphones" although a camera loss is
+    // CRITICAL and shows with that switch off. A switch names only what it silences; the critical kinds are named
+    // apart, as always shown - and the sentence gives a critical toast's real life (CT-04).
+    expect(screen.queryByText(/Camera loss/)).toBeNull();
+    expect(screen.queryByText('Cameras and microphones')).toBeNull();
+    expect(screen.getByText('Microphones')).toBeTruthy();
+    expect(screen.getByText('MIC no signal, MIC clipping')).toBeTruthy();
+    expect(screen.getByText('Critical alerts — always shown')).toBeTruthy();
+    expect(screen.getByText(/^No switch silences these: Camera signal lost, Storage full, Power failure, TPM failure, Security fault, Audit log tampered, Capture fault\. A critical toast stays until its alert is acknowledged or the Core reports it resolved; the bell keeps the alert until it is acknowledged\.$/)).toBeTruthy();
     expect(getMissingKeys()).toEqual([]);
   });
 

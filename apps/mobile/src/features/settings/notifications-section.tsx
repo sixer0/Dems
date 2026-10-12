@@ -4,7 +4,7 @@
  * always on: a disabled, selected `Switch` with the explanation.
  */
 import { useTranslation } from 'react-i18next';
-import { NOTIFICATION_CATEGORIES } from './settings-model';
+import { ALWAYS_SHOWN_KINDS, NOTIFICATION_CATEGORIES } from './settings-model';
 import { useSettingsPrefs } from './settings-prefs';
 import { GroupCard, SectionStack, SwitchRow } from './settings-controls';
 
@@ -33,7 +33,8 @@ export function NotificationsSection() {
           key="critical"
           testID="settings-notify-critical"
           label={t('features.settings.notifications.critical')}
-          description={`${t('features.settings.notifications.criticalHint')} ${t('system.settings.notifyCriticalAlways')}`}
+          // Fix wave Q (CP-06): the critical kinds by name, from the severity table - a camera loss among them.
+          description={t('features.settings.notifications.criticalHint', { kinds: ALWAYS_SHOWN_KINDS.map((kind) => t(`common.faultKind.${kind}`)).join(', ') })}
           isSelected
           isDisabled
           onChange={() => undefined}

@@ -1,6 +1,9 @@
 // AC-64 (masterplan/01_specs.md §14.13, §14.14; blueprint row 47, RL-31): the Evidence table filters
 // by status, paginates at 10 per page and searches the evidence ID, case number and subject. The
 // fixture is the simulator's own dataset: 13 evidence items (D61), so page 2 exists (≥ 11 rows).
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EvidenceStatus, selectEvidenceStats } from '@dems/shared/sim'
@@ -137,6 +140,91 @@ describe('evidence table (AC-64)', () => {
       }))
     })
     await waitFor(() => expect(rowIds()).toEqual([target.id]))
+  })
+})
+
+// Fix wave Q, driver Q-W (JW-10, NOT CONFIRMED by the confirmation of wave J): on lane 2 one long subject name
+// ("Round Two Wijayakusuma Hadiningrat J2M form note Counsel present") made the Subject column 509 px wide and the
+// table 1180 px in a 1024 px card at 1280 x 800 (1276 px in 1077 px at 1920 x 1080): the Status column and the row
+// menu lay outside the card. The rule, held here (the box check in a browser holds the geometry at the three widths):
+// a FIXED table layout as wide as its card; the product's own columns keep a set width; free text wraps inside its
+// column and is cut by an ellipsis only with the whole text as its title; the status and the row menu are never cut.
+describe('evidence table: every column and the row menu stay inside the card (JW-10)', () => {
+  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../features/evidence/evidence.css'), 'utf8')
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ')
+  const rule = (selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*')
+    const match = new RegExp(`(?:^|[}{;])\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(flat)
+    return match ? match[1]!.trim() : ''
+  }
+
+  it('the stylesheet: a fixed layout of the card\'s width; set widths for ID, Duration, Status, Case and the row menu', () => {
+    const table = rule('.evi-table .table__content')
+    expect(table).toContain('table-layout: fixed;')
+    expect(table).toContain('width: 100%;')
+    for (const column of ['evidence', 'duration', 'status', 'case']) expect(rule(`.evi-table .evi-col-${column}`), column).toMatch(/^width: \d+(px|%);$/)
+    expect(rule('.evi-col-actions')).toContain('width: 52px;')
+    expect(rule('.evi-col-select')).toContain('width: 40px;')
+    // Subject has NO set width: it takes what is left, whatever the name's length.
+    expect(rule('.evi-table .evi-col-subject')).toBe('')
+  })
+
+  it('the stylesheet: free text wraps (inside a word too) and is cut after three lines; the status cell and its chip are never cut', () => {
+    const free = rule('.evi-table .evi-free')
+    expect(free).toContain('white-space: normal;')
+    expect(free).toContain('overflow-wrap: anywhere;')
+    expect(free).toContain('-webkit-line-clamp: 3;')
+    expect(free).toContain('max-width: 100%;')
+    const status = rule('.evi-table .evi-cell-status')
+    expect(status).toContain('overflow: visible;')
+    expect(status).not.toMatch(/ellipsis|line-clamp|hidden/)
+    expect(rule('.evi-status-chip, .evi-subject-chip')).toBe('white-space: nowrap;')
+    expect(rule('.evi-col-actions')).not.toMatch(/ellipsis|hidden/)
+  })
+
+  it('a row with a very long subject and case: both carry the whole text as their title and the free-text class; the status chip and the row menu do not', async () => {
+    const { sim } = mountEvidence('/evidence')
+    await findPage('page-evidence')
+    await waitFor(() => expect(tableRows()).toHaveLength(10))
+    const target = sim.store.getState().evidence.find((item) => item.id === rowIds()[0])!
+    const subjectName = 'Round Two Wijayakusuma Hadiningrat J2M form note Counsel present and a name without any space Wijayakusumahadiningratsastrowardoyo'
+    const caseNumber = 'LP/B/2026/X/SPKT/POLDA-METRO-JAYA/DITRESKRIMUM/1012-9907'
+    act(() => {
+      sim.store.setState({ evidence: sim.store.getState().evidence.map((item) => (item.id === target.id ? { ...item, subjectName, caseNumber } : item)) })
+    })
+    const subject = await screen.findByTestId(`evidence-row-subject-${target.id}`)
+    await waitFor(() => expect(subject).toHaveTextContent(subjectName))
+    expect(subject).toHaveAttribute('title', subjectName)
+    expect(subject).toHaveClass('evi-free')
+    const caseCell = screen.getByTestId(`evidence-row-case-${target.id}`)
+    expect(caseCell).toHaveTextContent(caseNumber)
+    expect(caseCell).toHaveAttribute('title', caseNumber)
+    expect(caseCell).toHaveClass('evi-free')
+    // The whole name is the row's text for assistive technology (nothing of it is removed from the document).
+    const row = tableRows().find((entry) => entry.dataset.rowId === target.id)!
+    expect(row.textContent).toContain(subjectName)
+    // CP-05 control: Simulated mode draws no "Demonstration record" mark on a row (the Live case: `live-w0-evidence-words.test.tsx`).
+    expect(document.querySelector('[data-demonstration]')).toBeNull()
+    // Status and Actions: in their own cells, with no free-text class on them or inside them.
+    const status = row.querySelector<HTMLElement>('.evi-cell-status')!
+    expect(status.querySelector('[data-evidence-status]')).not.toBeNull()
+    expect(status.querySelector('.evi-free')).toBeNull()
+    const menu = within(row).getByTestId(`evidence-row-menu-${target.id}`)
+    expect(menu.closest('td')).toHaveClass('evi-col-actions')
+    expect(menu.closest('.evi-free')).toBeNull()
+    // The header carries the column classes the fixed layout reads its widths from.
+    const headers = within(screen.getByTestId('evidence-table')).getAllByRole('columnheader')
+    expect(headers.map((header) => [...header.classList].find((name) => name.startsWith('evi-col-')))).toEqual([
+      'evi-col-select',
+      'evi-col-thumb',
+      'evi-col-evidence',
+      'evi-col-subject',
+      'evi-col-case',
+      'evi-col-duration',
+      'evi-col-status',
+      'evi-col-actions',
+    ])
+    expect(getMissingI18nKeys()).toEqual([])
   })
 })
 

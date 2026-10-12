@@ -115,6 +115,62 @@ describe('app.json launcher icon and splash (05 M-05; D48 background = the canva
   it('keeps step 67 plugins, including expo-video for the feed', () => {
     const names = app.plugins.map((p: unknown) => (Array.isArray(p) ? p[0] : p));
     // Step 94 (06_packaging_spec §2.2) appends the local DEMO release-signing plugin.
-    expect(names).toEqual(['expo-router', 'expo-splash-screen', 'expo-video', 'expo-font', 'expo-status-bar', 'expo-local-authentication', './plugins/with-dems-release-signing']);
+    // Decision D247 appends the guard that refuses an Android build with an unpatched library.
+    expect(names).toEqual(['expo-router', 'expo-splash-screen', 'expo-video', 'expo-font', 'expo-status-bar', 'expo-local-authentication', './plugins/with-dems-release-signing', './plugins/with-dems-library-patches']);
+  });
+});
+
+describe('library source patches (decision D247: Reanimated 4.5.1, the unmounted-view retry)', () => {
+  const VERSION = '4.5.1';
+  const PATCH_MARKER = `DEMS-PATCH react-native-reanimated+${VERSION}`;
+  const patchFile = path.join(APP, 'patches', `react-native-reanimated+${VERSION}.patch`);
+  const script = readFileSync(path.join(APP, 'scripts/apply-patches.sh'), 'utf8');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const plugin = require('../../../plugins/with-dems-library-patches') as {
+    applyDemsLibraryPatchGuard: (contents: string) => string;
+    MARKER: string;
+    LIB_VERSION: string;
+    PATCH_MARKER: string;
+  };
+
+  it('the patch file exists, is a unified diff of one Android file and writes the marker the guards look for', () => {
+    expect(existsSync(patchFile)).toBe(true);
+    const patch = readFileSync(patchFile, 'utf8');
+    expect(patch.match(/^\+\+\+ .*$/gm)).toEqual(['+++ b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt']);
+    expect(patch).toContain(`+    // ${PATCH_MARKER}`);
+    // The stack is what cost the UI thread: the patched line logs no throwable argument.
+    expect(patch).toMatch(/^-\s+Log\.w\("Reanimated", "synchronouslyUpdateUIProps failed for tag \$viewTag", e\)$/m);
+    expect(patch).toMatch(/^\+\s+if \(viewExistsMethod\?\.invoke\(mountingManager, viewTag\) == false\) \{$/m);
+  });
+
+  it('the script names the exact version, the marker and the system patch tool, and both fail loudly', () => {
+    expect(script.startsWith('#!/bin/sh\n')).toBe(true);
+    expect(script).toContain(`LIB_VERSION="${VERSION}"`);
+    expect(script).toContain(`MARKER="${PATCH_MARKER}"`);
+    expect(script).toContain('and the patch is for exactly $LIB_VERSION');
+    expect(script).toContain('patch -p1 -N -f -s --dry-run');
+    expect(script).toContain('is NOT patched');
+    expect(script).not.toMatch(/patch-package|npx|npm i/);
+  });
+
+  it('the package the app depends on is exactly the patched version, and the root install runs the script', () => {
+    const mobilePackage = JSON.parse(readFileSync(path.join(APP, 'package.json'), 'utf8'));
+    const rootPackage = JSON.parse(readFileSync(path.join(APP, '../../package.json'), 'utf8'));
+    expect(mobilePackage.dependencies['react-native-reanimated']).toBe(VERSION);
+    expect(rootPackage.scripts.postinstall).toBe('sh apps/mobile/scripts/apply-patches.sh');
+    expect(mobilePackage.devDependencies['patch-package']).toBeUndefined();
+    expect(rootPackage.devDependencies?.['patch-package']).toBeUndefined();
+  });
+
+  it('the Gradle guard: one marked block, preBuild depends on it, same version and marker as the script', () => {
+    expect(plugin.LIB_VERSION).toBe(VERSION);
+    expect(plugin.PATCH_MARKER).toBe(PATCH_MARKER);
+    const once = plugin.applyDemsLibraryPatchGuard('android {\n}\n');
+    expect(once.split(plugin.MARKER).length - 1).toBe(1);
+    expect(once).toContain('tasks.named("preBuild").configure { dependsOn(demsCheckLibraryPatches) }');
+    expect(once).toContain(`contains("${PATCH_MARKER}")`);
+    expect(once).toContain(`is NOT patched. Run apps/mobile/scripts/apply-patches.sh; an unpatched library must not be packaged.`);
+    expect(once).toContain(`and the patch is for exactly ${VERSION}`);
+    expect(plugin.applyDemsLibraryPatchGuard(once)).toBe(once);
   });
 });

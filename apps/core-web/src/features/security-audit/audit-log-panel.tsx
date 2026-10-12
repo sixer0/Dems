@@ -1,3 +1,4 @@
+import { auditTypeWords } from '@/lib/event-words'
 import {
   createContext,
   memo,
@@ -87,13 +88,16 @@ interface ColumnSpec {
 }
 
 const COLUMNS: readonly ColumnSpec[] = [
-  { id: 'seq', width: 88, sortable: true },
-  { id: 'time', width: 168, sortable: true },
-  { id: 'event', width: '1fr', minWidth: 240, sortable: true, rowHeader: true },
-  { id: 'actor', width: 196, sortable: true },
-  { id: 'category', width: 150, sortable: true },
-  { id: 'severity', width: 124, sortable: true },
-  { id: 'chain', width: 178, sortable: true },
+  // Fix wave Q (box check at 1280 x 800): the fixed columns summed to 904 px + 240 px for the event = 1144 px in a
+  // 1008 px card, so the last columns lay outside it (round three gave the table a cue instead). The six fixed columns
+  // are as wide as their widest content needs (measured in the browser on lane 2); the event takes the rest.
+  { id: 'seq', width: 76, sortable: true },
+  { id: 'time', width: 156, sortable: true },
+  { id: 'event', width: '1fr', minWidth: 232, sortable: true, rowHeader: true },
+  { id: 'actor', width: 170, sortable: true },
+  { id: 'category', width: 128, sortable: true },
+  { id: 'severity', width: 104, sortable: true },
+  { id: 'chain', width: 140, sortable: true },
 ]
 
 const SEVERITY_RANK: Record<Severity, number> = { INFO: 0, SUCCESS: 1, WARNING: 2, CRITICAL: 3 }
@@ -275,7 +279,7 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
   const [filters, setFilters] = useState<AuditFilterState>(EMPTY_FILTERS)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'seq', desc: true }])
 
-  const labelOf = useCallback((row: AuditRowView) => t(`common.auditType.${row.type}`), [t])
+  const labelOf = useCallback((row: AuditRowView) => auditTypeWords(t, row.type), [t])
   const actorOf = useCallback(
     (row: AuditRowView) =>
       row.actorKind === 'OPERATOR'
@@ -440,7 +444,9 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
         return (
           <span className="sa-event">
             <span className="sa-event-label">{labelOf(view)}</span>
-            <span className="sa-event-refs">{sub || view.id}</span>
+            {/* Fix wave Q (box check): the row is 40 px high (a virtualised table) - a reference line that wrapped pushed the
+                event's name out of its cell. One line, cut by an ellipsis, with the whole line as its title. */}
+            <span className="sa-event-refs sa-event-refs-line" title={sub || view.id}>{sub || view.id}</span>
           </span>
         )
       }

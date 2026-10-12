@@ -39,8 +39,8 @@ import {
 import { toneChipProps } from '@dems/shared/tokens'
 import { tween, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
-import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
-import { isSessionMessage, SUBJECT_TONE, SUBJECT_TYPES } from './model'
+import { useOwnCaptureCore, usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
+import { isSessionMessage, selectorProfileLinesOf, SUBJECT_TONE, SUBJECT_TYPES } from './model'
 
 export const INFO_FORM_ID = 'sn-info-form'
 
@@ -95,6 +95,9 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
   const m = useMotionPolicy()
   const errorText = useErrorText()
   const operators = useSim(selectStartOperators)
+  // Fix wave Q (CT-08): the profile of a Core in its own capture is its selector's, never the label of the form's `profileId`.
+  const selfCapture = useSelfCaptureCore()
+  const profileLines = useSim(selectorProfileLinesOf)
   const investigators = useMemo(() => operators.filter((operator) => roleHas(operator.role, Permission.SESSION_START)), [operators])
 
   const container: Variants = {
@@ -357,6 +360,18 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
               />
             </motion.div>
 
+            {selfCapture ? (
+              // Fix wave Q (CT-08): a Core in its own capture records with the profile of its selector lines - not a choice of this form.
+              <motion.div variants={m.variants.row} className="sn-field">
+                <div className="sn-toggle-field" data-testid="sn-profile" data-source="selector">
+                  <span className="sn-label">{t('web.waveL.profile.configuredLabel')}</span>
+                  <span className="sn-mono sn-profile-lines" data-testid="sn-profile-lines">
+                    {profileLines === '' ? t('web.waveL.profile.notStated') : profileLines.split(' · ').map((line) => <span key={line} className="sn-profile-line">{line}</span>)}
+                  </span>
+                  <span className="sn-caption">{t('web.waveQ.profile.hint')}</span>
+                </div>
+              </motion.div>
+            ) : (
             <motion.div variants={m.variants.row} className="sn-field">
               <Controller
                 control={control}
@@ -395,6 +410,7 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
                 }}
               />
             </motion.div>
+            )}
 
             <motion.div variants={m.variants.row} className="sn-field sn-field-notes">
               <Controller
@@ -466,6 +482,8 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
   const { t } = useTranslation()
   const values = useWatch({ control })
   const stated = useSim(selectReadiness)
+  const selfCapture = useSelfCaptureCore()
+  const profileLines = useSim(selectorProfileLinesOf)
   // Fix wave J (JW-04; truth rule 3c): "Security PASS" here, "Security: Not reported" on the Dashboard and "SECURE" in the
   // header were three answers to one question. A Core that states `security.platformNotReported` computed no posture:
   // its SECURITY row reads "Not reported" (a row that names a fault keeps it) and is not counted as ready.
@@ -513,7 +531,7 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
           </div>
           <div>
             <dt>{t('sessionNew.ready.summary.profile')}</dt>
-            <dd>{values.profileId ? t('sessionNew.info.profile.standard') : empty}</dd>
+            <dd data-testid="sn-preview-profile">{selfCapture ? (profileLines === '' ? t('web.waveL.profile.notStated') : <span className="sn-mono sn-profile-lines">{profileLines.split(' · ').map((line) => <span key={line} className="sn-profile-line">{line}</span>)}</span>) : values.profileId ? t('sessionNew.info.profile.standard') : empty}</dd>
           </div>
         </dl>
       </Card>

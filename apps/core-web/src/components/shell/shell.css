@@ -1476,7 +1476,8 @@
   font-size: 12px;
   line-height: 16px;
   color: var(--color-foreground-2, #d8cec6);
-  overflow-wrap: anywhere;
+  /* Fix wave Q (CW-01 sweep): the reason beside a control is a label - it breaks between its words. */
+  overflow-wrap: break-word;
 }
 
 /* Fix wave J (JA2-25 / JW-21): the bell lists up to twenty open alerts in a scroll; a resolved one is tagged. */
@@ -1487,13 +1488,23 @@
 .dems-alert-row {
   flex-wrap: wrap;
 }
+/* Fix wave Q (CW-05): the row is a three-column grid (icon, text, time). The tag and the control of the second line
+   were placed by the grid wherever a cell was free - the tag into a narrow cell, where "Resolved, not acknowledged"
+   broke over three lines. The tag stands under the text, the control under the time; both on one line. */
 .dems-alert-resolved {
-  flex-basis: 100%;
+  grid-column: 2;
+  align-self: center;
   font-size: 11px;
   color: var(--color-foreground-2, #d8cec6);
 }
 .dems-alert-ack {
-  margin-left: auto;
+  grid-column: 3;
+  justify-self: end;
+}
+.dems-popover-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
 }
 /* Fix wave J round three: "Acknowledge all" stands between the heading and the list. */
 .dems-alert-ack-all {

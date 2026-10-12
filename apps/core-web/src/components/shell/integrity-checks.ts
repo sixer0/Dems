@@ -10,6 +10,7 @@
  *   (POWER_FAIL on `recording`), so the popover can never read all-OK under a CRITICAL ring.
  * Every selector returns primitives or a stable array, so `useSim` (shallow) stays stable.
  */
+import { faultKindWords } from '@/lib/event-words'
 import type { TFunction } from 'i18next'
 import {
   FaultKind,
@@ -114,7 +115,7 @@ export function pillSubtitle(t: TFunction, state: PillState, cause: string): str
   if (state === 'CRITICAL' && cause === 'SEAL_BLOCKED') return t('web.sealBlocked.title')
   if (state === 'CRITICAL' && cause === 'CORE_NOT_RUNNING') return t('web.securePill.criticalKind', { kind: t(faultKindLabelKey('POWER_FAIL', { coreNotRunning: true })) })
   if (state === 'CRITICAL' && cause.startsWith('KIND:')) {
-    return t('web.securePill.criticalKind', { kind: t(`common.faultKind.${cause.slice(5) as FaultKind}`) })
+    return t('web.securePill.criticalKind', { kind: faultKindWords(t, cause.slice(5)) })
   }
   if (state === 'CRITICAL' && cause.startsWith('COUNT:')) return t('web.securePill.criticalCount', { count: Number(cause.slice(6)) })
   return t(`shell.securePill.${state}.subtitle`)

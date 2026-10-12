@@ -3,9 +3,9 @@ import { useEffect, useRef } from 'react';
 import { palette } from '@dems/shared/tokens';
 import { putKeyboardAway } from '@/lib/keyboard';
 import { stackAnimation, useMotionSettings } from '@/motion';
-import { isPairingBlocked, useActiveSession, useAuth, usePairing } from '@/runtime';
+import { isPairingBlocked, useActiveSession, useAuth, usePairing, useSessionRanHere } from '@/runtime';
 import { clearPendingHref, peekPendingHref, setSignedInSnapshot } from './pending-href';
-import { postSignInHref, sessionResyncHref } from './session-routes';
+import { postSignInHref, signInSessionHref } from './session-routes';
 
 /**
  * The root stack with the auth guard (04_mobile_specs §3.3) and the pairing-required gate
@@ -109,13 +109,20 @@ export function useBootHref(): string {
   'use no memo';
   const { isAuthenticated } = useAuth();
   const session = useActiveSession();
+  const ranHere = useSessionRanHere(session.sessionId);
   if (isPairingBlocked(usePairing())) return '/pair';
   if (!isAuthenticated) return '/login';
   // W93-22 (FXR-M): the runtime's contract declares `summaryAcknowledged` (`runtime/contract.ts`); read directly.
-  const resync = sessionResyncHref(session.state, {
-    sessionId: session.sessionId,
-    ...(session.summaryAcknowledged !== undefined ? { summaryAcknowledged: session.summaryAcknowledged } : {}),
-  });
+  // D247 item 6: an unacknowledged Summary is opened only for a session this device ran (`ranHere` is read
+  // above the early returns: a hook).
+  const resync = signInSessionHref(
+    session.state,
+    {
+      sessionId: session.sessionId,
+      ...(session.summaryAcknowledged !== undefined ? { summaryAcknowledged: session.summaryAcknowledged } : {}),
+    },
+    ranHere,
+  );
   return postSignInHref(resync, peekPendingHref());
 }
 

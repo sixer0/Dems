@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { reportRuntimeIssue } from '@/runtime';
+import { putKeyboardAway } from './keyboard';
 
 /** How long after asking the kit to open the sheet its slide must have STARTED. */
 export const SHEET_OPEN_CHECK_MS = 250;
@@ -43,6 +44,17 @@ export function useConfirmedOpen(want: boolean, onGiveUp: () => void, context: {
   }
   useEffect(() => {
     if (!want) started.current = false;
+  }, [want]);
+  // Fix wave Q (the keyboard's one rule, `./keyboard`; CT-06, CP-02, JM-04): a sheet that OPENS takes the focus
+  // from the field of the screen behind it (the Evidence search field kept the keyboard focus behind the export
+  // wizard: text typed before the wizard's own field was tapped went into the search, the filter hid the selected
+  // item and the wizard was gone), and a sheet that CLOSES takes the keyboard of its own field with it. Every
+  // sheet of the app opens through this hook, so this is the one place.
+  const wanted = useRef(false);
+  useEffect(() => {
+    if (wanted.current === want) return undefined;
+    wanted.current = want;
+    return putKeyboardAway();
   }, [want]);
   useEffect(() => {
     if (!want) return undefined;

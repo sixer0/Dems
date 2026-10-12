@@ -72,7 +72,9 @@ describe('Sessions page: why a seal was given up (operation 38 `unsealableCause`
     const row = await screen.findByTestId(`session-row-${EXAMPLE.id}`)
     expect(row).toHaveAttribute('data-state', 'QUARANTINED')
     await waitFor(() => expect(within(row).getByTestId('session-unsealable-cause')).toHaveAttribute('data-cause', EXAMPLE.unsealableCause))
-    expect(within(row).getByTestId('session-unsealable-cause')).toHaveTextContent(`Why it could not be sealed (the code the Core recorded): ${EXAMPLE.unsealableCause}`)
+    // Fix wave Q (JW-13), pin moved: the cause in words first, the Core's code after them.
+    expect(EXAMPLE.unsealableCause).toBe('SIGNING_KEY_UNAVAILABLE')
+    expect(within(row).getByTestId('session-unsealable-cause')).toHaveTextContent('Why it could not be sealed: Signing key unavailable (the code the Core recorded: SIGNING_KEY_UNAVAILABLE)')
     expect(requests('listSessionHistory')).toHaveLength(1)
     expect(requests('listSessionHistory')[0]).toMatchObject({ method: 'GET' })
     // The page still says what became of the recording and what to do.

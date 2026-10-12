@@ -1,15 +1,16 @@
 // C-1 GlowRing: ring sweep maths (05_mobile_plan M-04) and the full / reduced motion contract.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, cleanup, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import { palette } from '@dems/shared/tokens';
 import { resetSkiaCalls, skiaCalls } from '@/components/media/testing/skia-mock';
-import { GlowRing } from './glow-ring';
+import { CENTRE_REST_MARGIN_MS, CENTRE_REST_SETTLE_MS, GlowRing } from './glow-ring';
 import {
   BRACKET_ARCS,
   GLOW_RING_SIZE,
   RING_ROTATE_MS,
+  RING_SCHEDULE,
   arcDelay,
   arcIntervals,
   isEscalation,
@@ -123,6 +124,68 @@ describe('GlowRing component', () => {
       jest.advanceTimersByTime(2000);
     });
     expect(ends.every((e) => Math.abs(e.value - 1) < 1e-6)).toBe(true);
+  });
+
+  // Fix wave Q (JT-08: the Home ring's words were gone after a session's Done and stayed gone - the arcs were drawn).
+  // The words used to be visible only through an animated style; React's own value of that view was the opacity 0
+  // it was mounted with, and a re-commit after a dropped settled value drew 0 again. The REST is React's now.
+  it('JT-08 (full motion): while the reveal plays the content has the animated style; once it has had its time the content RESTS in a plain style of opacity 1', () => {
+    render(
+      <GlowRing mode="hero" motion="full" sweepDelayMs={300} testID="ring">
+        <Text>READY</Text>
+      </GlowRing>,
+    );
+    const flat = () => StyleSheet.flatten(screen.getByTestId('ring-centre').props.style) as { opacity?: unknown };
+    // Not yet at rest: the plain rest style is not the one in use.
+    expect(screen.getByTestId('ring-centre').props.style).not.toBe(undefined);
+    expect(flat().opacity).not.toBe(1);
+    act(() => {
+      jest.advanceTimersByTime(300 + RING_SCHEDULE.centre.delay + RING_SCHEDULE.centre.duration + CENTRE_REST_MARGIN_MS - 10);
+    });
+    expect(flat().opacity).not.toBe(1);
+    act(() => {
+      jest.advanceTimersByTime(20);
+    });
+    // The rest is ASKED for now; it begins when the runtime reports that the value 1 is applied (a short timing's end):
+    // a swap on the JS clock alone froze a half-way value on a loaded tablet, and the words stayed dim.
+    // (Under jest the timing may complete in the same tick; on a device it is the runtime's own report.)
+    act(() => {
+      jest.advanceTimersByTime(CENTRE_REST_SETTLE_MS + 60);
+    });
+    // At rest: a plain object React owns - opacity 1, scale 1 - whatever the animated value does afterwards.
+    expect(flat()).toEqual({ opacity: 1, transform: [{ scale: 1 }] });
+    expect(screen.getByText('READY')).toBeTruthy();
+  });
+
+  it('JT-08 (reduced motion): the content rests at once', () => {
+    render(
+      <GlowRing mode="hero" motion="reduced" testID="ring">
+        <Text>READY</Text>
+      </GlowRing>,
+    );
+    expect(StyleSheet.flatten(screen.getByTestId('ring-centre').props.style)).toEqual({ opacity: 1, transform: [{ scale: 1 }] });
+  });
+
+  it('JT-08: a replay of the sweep (a new sign-in) reveals again and comes to rest again', () => {
+    const view = render(
+      <GlowRing mode="hero" motion="full" replayKey="a" testID="ring">
+        <Text>READY</Text>
+      </GlowRing>,
+    );
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(StyleSheet.flatten(screen.getByTestId('ring-centre').props.style)).toEqual({ opacity: 1, transform: [{ scale: 1 }] });
+    view.rerender(
+      <GlowRing mode="hero" motion="full" replayKey="b" testID="ring">
+        <Text>READY</Text>
+      </GlowRing>,
+    );
+    expect((StyleSheet.flatten(screen.getByTestId('ring-centre').props.style) as { opacity?: unknown }).opacity).not.toBe(1);
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(StyleSheet.flatten(screen.getByTestId('ring-centre').props.style)).toEqual({ opacity: 1, transform: [{ scale: 1 }] });
   });
 
   it('renders the static final frame with reduced motion (D43 test switch)', () => {

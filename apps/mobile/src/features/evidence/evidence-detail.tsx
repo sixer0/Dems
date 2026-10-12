@@ -242,7 +242,8 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
       label: t('evidence.detail.fields.subject'),
       value: (
         <View style={styles.subjectValue}>
-          <Text maxFontSizeMultiplier={1.2} style={styles.factValue} numberOfLines={1}>
+          {/* Fix wave Q (CP-07): a name wraps to a second line before it is cut ("Confirmation Judge P…"). */}
+          <Text maxFontSizeMultiplier={1.2} style={[styles.factValue, styles.subjectName]} numberOfLines={2}>
             {item.subjectName}
           </Text>
           <EvidenceSubjectChip subjectType={item.subjectType} />
@@ -253,7 +254,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     { id: 'location', icon: MapPin, label: t('evidence.detail.fields.location'), value: item.room },
     { id: 'duration', icon: Clock, label: t('evidence.detail.fields.duration'), value: formatDuration(item.durationMs), mono: true },
     { id: 'fileSize', icon: HardDrive, label: t('evidence.detail.fields.fileSize'), value: t(`common.units.${size.unit}`, { value: size.value }) },
-    { id: 'status', icon: ShieldCheck, label: t('evidence.detail.fields.status'), value: <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} testID="evidence-fact-status-chip" /> },
+    { id: 'status', icon: ShieldCheck, label: t('evidence.detail.fields.status'), value: <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} neverSealed={!hasSealedValues(item)} testID="evidence-fact-status-chip" /> },
   ];
 
   const hero = (
@@ -271,7 +272,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         ) : null}
         <LinearGradient colors={[withAlpha(palette.black, 0), withAlpha(palette.black, 0.9)]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
         <View style={styles.heroChip}>
-          <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} size="md" testID="evidence-detail-status" />
+          <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} neverSealed={!hasSealedValues(item)} size="md" testID="evidence-detail-status" />
         </View>
         <View style={styles.heroBadge}>
           <ItemDevelopmentBadge item={item} testID="evidence-detail-development" />
@@ -578,15 +579,21 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         </>
       )}
       {/* Round two (JT-16; JM-N7): a disabled Play says why, where Export says its reason - never a grey button alone. */}
-      {playDisabledReason !== null ? (
-        <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-play-reason">
-          {playDisabledReason}
-        </Text>
-      ) : null}
-      {exportRefused ? (
-        <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-export-requires-role">
-          {t('features.evidence.waveK.export.controlRequiresRole', { role: t('common.roles.SUPERVISOR') })}
-        </Text>
+      {/* Fix wave Q (JA2-27 remainder: "the two reason lines float over scrolled content"). The lines belong to the
+          action bar: one block with the bar's own top edge, so the scrolled page ends at a line above them. */}
+      {playDisabledReason !== null || exportRefused ? (
+        <View style={styles.actionNotes} testID="evidence-action-reasons">
+          {playDisabledReason !== null ? (
+            <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-play-reason">
+              {playDisabledReason}
+            </Text>
+          ) : null}
+          {exportRefused ? (
+            <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-export-requires-role">
+              {t('features.evidence.waveK.export.controlRequiresRole', { role: t('common.roles.SUPERVISOR') })}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
       {actionBar}
       <PlaySheet
@@ -733,5 +740,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.black,
   },
   action: { flex: 1 },
-  actionNote: { paddingHorizontal: spacing[3], paddingTop: spacing[1], textAlign: 'right', backgroundColor: palette.black },
+  actionNote: { paddingHorizontal: spacing[3], paddingTop: spacing[1], textAlign: 'right' },
+  actionNotes: { backgroundColor: palette.black, borderTopWidth: 1, borderTopColor: derived.separator, paddingBottom: 2 },
+  subjectName: { textAlign: 'right' },
 });

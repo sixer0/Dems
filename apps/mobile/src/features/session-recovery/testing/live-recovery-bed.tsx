@@ -71,6 +71,7 @@ import { TEST_INSETS, WINDOWS, renderRoutes, resetShellState, setWindow, type Wi
 import { AppProviders } from '@/providers';
 import {
   SessionRouteSync,
+  markSessionAttended,
   createMobileLive,
   resetCoreErrorPresenterForTests,
   resetCoreLinkPrefsForTests,
@@ -403,6 +404,10 @@ export async function renderLiveRecovery({
   if (created === null) throw new Error('jest is a debug build: a Live source is built');
   (bed as { mobile: MobileLive }).mobile = created;
   const liveSim = created.sim;
+  // Fix wave Q (CT-05): the sessions of this bed are sessions of THIS device (it stands for the device that ran
+  // them), so the route sync follows them as before. A session of another console is `session-route-sync-live.test`.
+  markSessionAttended(liveSim.store.getState().session?.id ?? null);
+  liveSim.store.subscribe((state) => markSessionAttended(state.session?.id ?? null));
 
   const { width, height } = WINDOWS[window];
   const metrics: Metrics = { frame: { x: 0, y: 0, width, height }, insets: TEST_INSETS };

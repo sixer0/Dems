@@ -93,6 +93,18 @@ export function createCoreClock(
   };
 }
 
+/**
+ * The instant on THIS DEVICE's clock (`localNow`, `Date.now()` of any thread of the app) at which the Core's
+ * clock read `coreMs`, by the estimate `now()` gives at this moment. A display that must run without the JS
+ * thread (the recording timer's UI-thread clock, decision D247 item 5) anchors itself there. Pure given the
+ * two readings; `NaN` when the clock has no finite reading.
+ */
+export function coreInstantOnDeviceClock(clock: Pick<CoreClock, 'now'>, coreMs: number, localNow: number = Date.now()): number {
+  const coreNow = clock.now();
+  if (!Number.isFinite(coreNow) || !Number.isFinite(localNow) || !Number.isFinite(coreMs)) return Number.NaN;
+  return coreMs - (coreNow - localNow);
+}
+
 const coreClocks = new WeakMap<object, CoreClock>();
 
 /** Registers the Core clock of a Live source's `Sim` (`createMobileLive`). */

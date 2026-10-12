@@ -12,6 +12,7 @@ import { UI_RUNTIME_NOTICE, UiRuntimeBoundary } from './motion-policy-provider';
 import { getMotionSettings, motionStore, reducedReasons, resetMotionStateForTests, resolvePolicy } from './policy';
 import {
   UI_RUNTIME_BEAT_MS,
+  UI_RUNTIME_BUSY_BEATS,
   UI_RUNTIME_MISSES,
   UI_RUNTIME_RELOAD_GUARD_MS,
   UI_RUNTIME_RELOAD_KEY,
@@ -27,8 +28,16 @@ jest.mock('expo', () => ({ reloadAppAsync: (reason?: string) => mockReload(reaso
 // The echo of the heartbeat crosses back to JS through `scheduleOnRN`: on by default (as on a healthy device); a
 // test turns it off to model a runtime whose reactions no longer run. (The Worklets mock of `jest.setup.ts` is
 // already instantiated when a test file loads, so its function is replaced on the module, not by `jest.mock`.)
+//
+// Fix wave Q (CT-01): a beat goes out two ways. `echoes` is the way through the reaction (the mapper loop);
+// `uiRuns` is the UI runtime itself (the direct job of `scheduleOnUI`): off models a device too busy to run
+// anything, where no way brings a beat back.
 let echoes = true;
-const worklets = jest.requireMock<{ scheduleOnRN: (run: (...args: unknown[]) => void, ...args: unknown[]) => void }>('react-native-worklets');
+let uiRuns = true;
+const worklets = jest.requireMock<{
+  scheduleOnRN: (run: (...args: unknown[]) => void, ...args: unknown[]) => void;
+  scheduleOnUI: (run: (...args: unknown[]) => void, ...args: unknown[]) => void;
+}>('react-native-worklets');
 
 const records: MotionLogRecord[] = [];
 const flush = async (): Promise<void> => {
@@ -38,8 +47,13 @@ const flush = async (): Promise<void> => {
 beforeEach(async () => {
   jest.useFakeTimers();
   echoes = true;
+  uiRuns = true;
   jest.spyOn(worklets, 'scheduleOnRN').mockImplementation((run, ...args) => {
-    if (echoes) run(...args);
+    // The reaction's echo is tagged 'mapper', the direct job's 'direct' (`onAnswer` of the watch).
+    if (args[1] === 'direct' ? uiRuns : echoes && uiRuns) run(...args);
+  });
+  jest.spyOn(worklets, 'scheduleOnUI').mockImplementation((run, ...args) => {
+    if (uiRuns) run(...args);
   });
   mockReload.mockClear();
   records.length = 0;
@@ -228,6 +242,57 @@ describe('useUiRuntimeWatch (the heartbeat)', () => {
       jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 10);
     });
     expect(motionStore.getState().uiRuntimeStalled).toBe(false);
+  });
+
+  // Fix wave Q (CT-01). Measured on the tablet, quiet host, note 176: the detector fired twice inside one recording
+  // and remounted every screen each time, while the runtime was alive and the UI thread merely busy.
+  it(`CT-01: a BUSY device (nothing comes back, neither the reaction nor a direct job) is never marked, however long; it is recorded once as a warning after ${UI_RUNTIME_BUSY_BEATS} beats`, () => {
+    renderHook(() => useUiRuntimeWatch());
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 2 + 100);
+    });
+    uiRuns = false;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * (UI_RUNTIME_MISSES + UI_RUNTIME_BUSY_BEATS) * 4);
+    });
+    expect(motionStore.getState().uiRuntimeStalled).toBe(false);
+    expect(records.map((record) => [record.level, record.source])).toEqual([['warn', 'motion.uiRuntime.busy']]);
+    // The device answers again: nothing to take back, and a later busy stretch is recorded anew.
+    uiRuns = true;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 3);
+    });
+    uiRuns = false;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * (UI_RUNTIME_BUSY_BEATS + 2));
+    });
+    expect(motionStore.getState().uiRuntimeStalled).toBe(false);
+    expect(records.map((record) => record.source)).toEqual(['motion.uiRuntime.busy', 'motion.uiRuntime.busy']);
+  });
+
+  it('CT-01: busy beats between real misses neither add a miss nor clear one', () => {
+    renderHook(() => useUiRuntimeWatch());
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 2 + 100);
+    });
+    // The loop stops (direct jobs still run): misses are counted ...
+    echoes = false;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * (UI_RUNTIME_MISSES - 2));
+    });
+    // ... then the device is busy for a while: no judgement ...
+    uiRuns = false;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 3);
+    });
+    expect(motionStore.getState().uiRuntimeStalled).toBe(false);
+    // ... and when it runs again with the loop still stopped, the count goes on from where it was.
+    uiRuns = true;
+    act(() => {
+      jest.advanceTimersByTime(UI_RUNTIME_BEAT_MS * 4);
+    });
+    expect(motionStore.getState().uiRuntimeStalled).toBe(true);
+    expect(records.filter((record) => record.source === 'motion.uiRuntime.stalled')).toHaveLength(1);
   });
 
   it('in the background no beat is judged (no frame runs there)', () => {

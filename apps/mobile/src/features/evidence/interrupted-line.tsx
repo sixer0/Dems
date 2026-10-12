@@ -49,7 +49,8 @@ export function NeverSealedLine({ item, withDetail = false, testID }: { item: un
   const detail = t('common.truth.incompleteSession.RECORDED_NOT_SEALED');
   return (
     <View testID={testID} accessible accessibilityRole="text" accessibilityLabel={withDetail ? `${status}. ${detail}` : status}>
-      <Text maxFontSizeMultiplier={1.2} numberOfLines={withDetail ? undefined : 1} style={styles.status}>
+      {/* Fix wave Q (CP-07): two lines in a row - on the phone the one line read "Incomplete session — n…". */}
+      <Text maxFontSizeMultiplier={1.2} numberOfLines={withDetail ? undefined : 2} style={styles.status}>
         {status}
       </Text>
       {withDetail ? (

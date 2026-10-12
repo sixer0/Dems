@@ -14,6 +14,16 @@
  * Reduced motion: no fill; the Dialog opens on press. Screen readers: the `activate` action (a
  * TalkBack double-tap) opens the Dialog directly, no hold needed.
  *
+ * **Fix wave Q (JT-09, ruling of D246: "an operator must ALWAYS be able to end a session").** The control no
+ * longer depends on a timed gesture. EVERY completed touch on it opens the SAME reason Dialog, in both motion
+ * modes: a tap (`onPress`), a hold that reaches 1.5 s (`onLongPress`, the fill is its progress), and a release
+ * whose own timestamps say the finger was down for 1.5 s (the lagging-JS case of wave J). The Dialog is the
+ * guard against a stray touch: nothing ends before a reason of 5 characters is typed and "End Session" is
+ * pressed in it. What was measured before the change (quiet host, tablet, note 176): 4 of 5 holds of 2.0 s
+ * opened nothing while the screen stood in its still form - there `reduced` made `onLongPress` return early
+ * and the platform sends no `onPress` after a long press, so a HOLD was the one gesture that could not end a
+ * session in that form; and a tap did nothing in the full form. The form changed under the operator's finger.
+ *
  * Live mode (backend task, row W68; [CS:§8.6] S2-1, §8.1 LB-1, LB-6, LB-10; F59). The Dialog's
  * "End Session" sends `stopSession` to the Core server:
  *
@@ -42,9 +52,6 @@ import { PendingSpinner, busyState, usePendingPress } from '@/runtime';
 import { HOLD_HAPTIC_BEATS_MS, HOLD_TO_CONFIRM_MS, STOP_REASON_MAX, STOP_REASON_MIN, checkStopReason } from './session-live.math';
 import type { MonitorHandlers } from './use-monitor';
 
-/** How long the hold hint stays raised after a short tap (JT-09). */
-export const HOLD_NUDGE_MS = 2500;
-
 export interface EndSessionProps {
   disabled: boolean;
   /**
@@ -52,18 +59,32 @@ export interface EndSessionProps {
    * as its hint. Set while the cameras connect: the Core would refuse the stop (`CAPTURE_NOT_DURABLE`).
    */
   blockedReason?: string | undefined;
+  /**
+   * Fix wave Q: why the control is disabled without a `blockedReason` (the Core link is lost), said under it.
+   * Unlike `blockedReason` it does NOT close an open Dialog: a reason being typed is kept while the link returns.
+   */
+  disabledReason?: string | undefined;
   /** Sends `stopRecording(reason)`; the handlers run once the command settled (S2-1). */
   onEnd: (reason: string, handlers: MonitorHandlers) => void;
 }
 
 /** The pinned End Session control plus its reason Dialog. */
-export function EndSession({ disabled, blockedReason, onEnd }: EndSessionProps) {
+export function EndSession({ disabled, blockedReason, disabledReason, onEnd }: EndSessionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const blocked = blockedReason !== undefined;
   return (
     <>
-      <EndSessionButton disabled={disabled || blocked} blockedReason={blockedReason} dialogOpen={dialogOpen} onConfirmHold={() => setDialogOpen(true)} />
-      <EndSessionDialog isOpen={dialogOpen && !blocked} onOpenChange={setDialogOpen} onEnd={onEnd} />
+      <EndSessionButton
+        disabled={disabled || blocked}
+        blockedReason={blockedReason ?? (disabled ? disabledReason : undefined)}
+        dialogOpen={dialogOpen}
+        onConfirmHold={() => setDialogOpen(true)}
+      />
+      {/* Fix wave Q (seen in the device proof: after a resync of the Core link the session read "connecting" for a
+          moment, the open Dialog was taken away with the reason typed so far, and its keyboard stayed over the
+          monitor). A Dialog that is open stays open: `blocked` keeps the BUTTON from opening one, and a stop the
+          Core cannot take yet is refused by the Core and said by the Dialog's own refusal path. */}
+      <EndSessionDialog isOpen={dialogOpen} onOpenChange={setDialogOpen} onEnd={onEnd} />
     </>
   );
 }
@@ -81,14 +102,6 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
   const reduced = policy === 'reduced';
   const fill = useSharedValue(0);
   const [holding, setHolding] = useState(false);
-  const [nudged, setNudged] = useState(false);
-  const nudge = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (nudge.current !== null) clearTimeout(nudge.current);
-    },
-    [],
-  );
   const midBeat = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completed = useRef(false);
 
@@ -149,27 +162,25 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
     }
   };
 
+  // Fix wave Q (JT-09): a hold completes in BOTH motion modes. Under `reduced` this returned early, and the
+  // platform delivers no `onPress` after a long press - a hold then opened nothing at all.
   const onLongPress = () => {
-    if (disabled || reduced || completed.current) return;
+    if (disabled || completed.current) return;
     clearBeat();
     triggerHaptic('endSessionHold');
-    fill.set(1);
+    if (!reduced) fill.set(1);
     open();
   };
 
+  // Fix wave Q (JT-09, the ruling): a tap opens the reason Dialog in BOTH motion modes. The Dialog is the guard.
   const onPress = () => {
     if (disabled || completed.current) return;
-    if (reduced) {
-      triggerHaptic('endSessionHold');
-      open();
-      return;
+    triggerHaptic('endSessionHold');
+    if (!reduced) {
+      cancelAnimation(fill);
+      fill.set(1);
     }
-    // A short tap in full motion: explain the hold instead of ending anything. Round two (JT-09, JA2-N7): the
-    // explanation is the line under the button, raised for a moment and announced - no toast any more (it lay
-    // over the header, and a toast over a control swallows the next press).
-    setNudged(true);
-    if (nudge.current !== null) clearTimeout(nudge.current);
-    nudge.current = setTimeout(() => setNudged(false), HOLD_NUDGE_MS);
+    open();
   };
 
   const onAccessibilityAction = (event: AccessibilityActionEvent) => {
@@ -206,11 +217,12 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
         <Text testID="monitor-end-session-blocked" maxFontSizeMultiplier={1.2} accessibilityLiveRegion="polite" style={styles.hint}>
           {blockedReason}
         </Text>
-      ) : !reduced ? (
-        <Text maxFontSizeMultiplier={1.2} style={[styles.hint, nudged ? styles.hintNudged : null]} testID={nudged ? 'monitor-end-session-hold-nudge' : 'monitor-end-session-hold-hint'} accessibilityLiveRegion={nudged ? 'assertive' : 'none'}>
-          {t('session.actions.endSession.holdHint')}
+      ) : (
+        // One sentence in both motion modes (the control behaves the same in both): what a touch does, and what guards it.
+        <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="monitor-end-session-hint">
+          {t('features.session-live.endSession.hint')}
         </Text>
-      ) : null}
+      )}
     </View>
   );
 }
@@ -235,6 +247,10 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
   const showError = (touched && !check.valid) || refusedByCore;
 
   const close = () => {
+    // Fix wave Q (JT-23 original): the field is blurred BEFORE its dialog goes. A dialog that closed with its
+    // field focused left the keyboard over Session Live with no field on screen (seen in the confirmation and
+    // again in wave Q's films); once the field is gone there is nothing left to blur.
+    putKeyboardAway();
     onOpenChange(false);
     setTouched(false);
     setRefusedReason(null);
@@ -328,7 +344,6 @@ const styles = StyleSheet.create({
   },
   label: { fontFamily: fontFamily.native.bold, fontSize: 19, lineHeight: 24, color: derived.dangerForeground },
   hint: { fontFamily: fontFamily.native.normal, fontSize: 12, lineHeight: 16, color: palette.gray, textAlign: 'center' },
-  hintNudged: { fontFamily: fontFamily.native.bold, color: palette.gold },
   // Tablets: a readable column instead of a full-width sheet of text (the phone is narrower anyway).
   dialog: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   field: { marginTop: spacing[2] },

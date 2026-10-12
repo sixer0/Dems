@@ -25,7 +25,7 @@ import type { EvidenceItem } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { useMobileLive } from '@/runtime';
 import { ItemDevelopmentBadge } from './development-source';
-import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
+import { DemonstrationChip, EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { posterForEvidence } from './evidence-media';
 import { InterruptedLine, NeverSealedLine } from './interrupted-line';
 import { Permission, hasSealedValues, verificationOfRecordFailed } from '@dems/shared/sim';
@@ -57,6 +57,17 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
   const live = useMobileLive() !== null;
   const facts = readItemFacts(item);
   const bundledPoster = !live || isDemoItem(facts);
+  // Fix wave Q (CP-08): a never-sealed record's chip says so; (CT-03 / CP-03) a LONG status has a line of its own.
+  // Beside the body the chip "Sealed · verification FAILED" took the row's width: the id shrank to nothing, the date
+  // read "9 Oct…", the name "Dew…", the subject chip broke inside its word.
+  const neverSealed = !hasSealedValues(item);
+  const statusOwnLine = verificationFailed;
+  const statusChip = <EvidenceStatusChip status={item.status} verificationFailed={verificationFailed} neverSealed={neverSealed} testID={`evidence-row-status-${item.id}`} />;
+  // Fix wave Q (CP-05): on a Core link the row of a demonstration record carries the word its Summary, item and
+  // verdict carry. The fact is the item's own kind (`isDemoItem`: a simulated or bundled-demo source AND no sealed
+  // package stated by the Core) - a seeded item that a real-capture Core sealed itself is NOT one (seen on lane 2:
+  // the tampered seed item, whose verdict is a real one, must not be called a demonstration).
+  const demonstration = live && isDemoItem(facts);
 
   return (
     <View style={styles.wrap}>
@@ -90,11 +101,14 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.meta}>
                 {date}
               </Text>
-              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.subject}>
+              {/* Fix wave Q (CP-07): a name wraps to a second line before it is cut ("Confirmation Judge …"). */}
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.subject}>
                 {item.subjectName}
               </Text>
+              {statusOwnLine ? <View style={styles.statusLine} testID={`evidence-row-status-line-${item.id}`}>{statusChip}</View> : null}
               <View style={styles.chips} testID={`evidence-row-chips-${item.id}`}>
                 <EvidenceSubjectChip subjectType={item.subjectType} />
+                {demonstration ? <DemonstrationChip testID={`evidence-row-demonstration-${item.id}`} /> : null}
                 {/* Row 92 (R-11): only for an item the Core recorded from development sources, in Live mode. */}
                 <ItemDevelopmentBadge item={item} testID={`evidence-row-development-${item.id}`} />
                 <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.duration} testID={`evidence-row-duration-${item.id}`}>
@@ -104,8 +118,8 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
               <InterruptedLine facts={facts} testID={`evidence-row-interrupted-${item.id}`} />
               <NeverSealedLine item={item} testID={`evidence-row-never-sealed-${item.id}`} />
             </View>
-            <View style={styles.trailing}>
-              <EvidenceStatusChip status={item.status} verificationFailed={verificationFailed} testID={`evidence-row-status-${item.id}`} />
+            <View style={[styles.trailing, statusOwnLine ? styles.trailingMenuOnly : null]}>
+              {statusOwnLine ? null : statusChip}
               <RowMenu item={item} canArchive={canArchive} onAction={onAction} />
             </View>
           </View>
@@ -127,6 +141,7 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
   // item's own Export button does - it used to offer Export to an investigator and refuse at the wizard's first step.
   const exportGate = useRoleGate(Permission.EVIDENCE_EXPORT);
   const exportReason = !exportable ? t('features.evidence.actions.exportDisabled') : exportGate.allowed ? null : exportGate.hint;
+  const neverSealed = !hasSealedValues(item);
   return (
     <Menu>
       <Menu.Trigger asChild>
@@ -146,8 +161,14 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
           <Menu.Item testID={`evidence-row-view-${item.id}`} onPress={() => onAction(item.id, 'view')}>
             <Menu.ItemTitle>{t('features.evidence.actions.view')}</Menu.ItemTitle>
           </Menu.Item>
-          <Menu.Item testID={`evidence-row-verify-${item.id}`} onPress={() => onAction(item.id, 'verify')}>
-            <Menu.ItemTitle>{t('features.evidence.actions.verify')}</Menu.ItemTitle>
+          {/* Fix wave Q (CP-04, truth rule 3d): a never-sealed record has nothing to verify - the entry says so and takes
+              no press (it was enabled, and opened the item on "Not sealed ... nothing to verify"). */}
+          <Menu.Item testID={`evidence-row-verify-${item.id}`} isDisabled={neverSealed} onPress={() => onAction(item.id, 'verify')}>
+            <MenuItemText
+              title={t('features.evidence.actions.verify')}
+              description={neverSealed ? t('features.evidence.actions.verifyNotSealed') : null}
+              testID={`evidence-row-verify-text-${item.id}`}
+            />
           </Menu.Item>
           <Menu.Item
             testID={`evidence-row-export-${item.id}`}
@@ -198,4 +219,6 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: spacing[1], rowGap: 4, marginTop: 2 },
   duration: { flexShrink: 0,  fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.foreground, fontVariant: ['tabular-nums'] },
   trailing: { alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: spacing[1] },
+  trailingMenuOnly: { justifyContent: 'center' },
+  statusLine: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 },
 });

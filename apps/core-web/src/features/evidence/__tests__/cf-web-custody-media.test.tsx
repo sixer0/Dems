@@ -109,31 +109,51 @@ const bodyRows = () => Array.from(screen.getByTestId('evidence-custody').querySe
 // ── R-W-1 ────────────────────────────────────────────────────────────────────────────────────
 
 describe('R-W-1: the custody cells', () => {
-  it('an action code may break only after an underscore: a <wbr> follows each "_" and the words are unchanged', () => {
+  // Fix wave Q (JW-13, the part the confirmation of wave J did not confirm): the table of lane 2 printed "VERIFY_FAILED"
+  // (20 rows of one item), "VERIFIED" and "SEALED" beside the worded "Recording started". EVERY action is drawn in the
+  // words of the ONE map (`lib/event-words.ts`); the code stays as the cell's title and the row's attribute. The case
+  // this replaces pinned the raw code with a break opportunity after each underscore.
+  it('every action is drawn in words - never as its code; the code is the title; a code no vocabulary holds reads in its readable form', () => {
     const sim = createDatasetSim()
-    const item = withStopReason(datasetItem(sim, '0006'))
+    const base = withStopReason(datasetItem(sim, '0006'))
+    const last = base.custody[base.custody.length - 1]!.at
+    const item: EvidenceItem = {
+      ...base,
+      custody: [
+        ...base.custody,
+        { at: last + 1_000, action: 'VERIFIED', actorId: OPERATOR_IDS.ANDI, detail: null },
+        { at: last + 2_000, action: 'VERIFY_FAILED', actorId: OPERATOR_IDS.ANDI, detail: 'Mismatch: VIDEO-02' },
+        { at: last + 3_000, action: 'RECORDING_INTERRUPTED', actorId: null, detail: 'CAPTURE_FAULT' },
+        { at: last + 4_000, action: 'EXPORT_DOWNLOADED', actorId: OPERATOR_IDS.ANDI, detail: null },
+        { at: last + 5_000, action: 'TRANSFERRED_TO_COURT', actorId: null, detail: null },
+      ],
+    }
     renderIntegrity(sim, rowOf(sim, item))
     const rows = bodyRows()
     const newestFirst = [...item.custody].reverse()
     expect(rows).toHaveLength(newestFirst.length)
-    expect(newestFirst.some((entry) => entry.action.includes('_'))).toBe(true)
+    const drawn = new Map<string, string>()
     rows.forEach((row, index) => {
       const action = newestFirst[index]!.action
-      const code = row.querySelector('.evi-custody-action')
-      // Fix wave J (JW-13): an action the audit vocabulary names is shown by its name (the code is the title); a code it
-      // does not hold stays as it is, breakable after an underscore.
-      expect(code).toHaveAttribute('title', action)
-      const named = Object.prototype.hasOwnProperty.call(en.common.auditType, action)
-      if (named) {
-        expect(code?.textContent).toBe((en.common.auditType as Record<string, string>)[action])
-        expect(code?.querySelectorAll('wbr')).toHaveLength(0)
-        return
-      }
-      expect(code?.textContent).toBe(action)
-      const breaks = Array.from(code?.querySelectorAll('wbr') ?? [])
-      expect(breaks).toHaveLength(action.split('_').length - 1)
-      for (const opportunity of breaks) expect(opportunity.previousSibling?.textContent?.endsWith('_')).toBe(true)
+      const cell = row.querySelector('.evi-custody-action')
+      expect(cell).toHaveAttribute('title', action)
+      expect(row.dataset.custodyAction).toBe(action)
+      expect(cell?.querySelectorAll('wbr')).toHaveLength(0)
+      // Never the code: no run of capitals joined by an underscore, and not the code itself.
+      expect(cell?.textContent, action).not.toMatch(/[A-Z0-9]_[A-Z0-9]/)
+      expect(cell?.textContent, action).not.toBe(action)
+      drawn.set(action, cell?.textContent ?? '')
     })
+    expect(drawn.get('SEALED')).toBe(en.common.auditType.EVIDENCE_SEALED)
+    expect(drawn.get('VERIFIED')).toBe(en.common.auditType.EVIDENCE_VERIFIED)
+    expect(drawn.get('VERIFY_FAILED')).toBe(en.common.auditType.EVIDENCE_VERIFY_FAILED)
+    expect(drawn.get('RECORDING_STOPPED')).toBe(en.common.auditType.RECORDING_STOPPED)
+    expect(drawn.get('RECORDING_INTERRUPTED')).toBe('Recording interrupted')
+    expect(drawn.get('EXPORT_DOWNLOADED')).toBe('Export downloaded')
+    expect(drawn.get('TRANSFERRED_TO_COURT')).toBe('Transferred to court')
+    // The fault code inside a detail reads its name too.
+    const interrupted = rows.find((row) => row.dataset.custodyAction === 'RECORDING_INTERRUPTED')
+    expect(interrupted?.querySelector('.evi-custody-detail')?.textContent).toBe(en.common.faultKind.CAPTURE_FAULT)
   })
 
   it('the columns and cells carry the classes the fixed widths and the narrow layout use; an empty Detail is marked', () => {

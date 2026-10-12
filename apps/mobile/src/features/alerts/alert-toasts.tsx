@@ -29,7 +29,7 @@ import { useFailedStart } from '@/features/session-live/capture-start-notice';
 import { useSettingsPrefs } from '@/features/settings/settings-prefs';
 import { reportRuntimeIssue, useCoreErrorPresenter } from '@/runtime';
 import { alertLabel } from './alert-label';
-import { NO_ALERT_TOASTS, alertToastStep, type AlertToastState } from './alert-toasts-model';
+import { NO_ALERT_TOASTS, alertToastLabel, alertToastStep, type AlertToastState } from './alert-toasts-model';
 
 /** The id of an alert's toast: one per alert id. */
 export const alertToastId = (alertId: string): string => `alert-${alertId}`;
@@ -58,7 +58,8 @@ export function AlertToasts() {
       toast.show({
         id: alertToastId(alert.id),
         variant: persistent ? 'danger' : 'warning',
-        label,
+        // CT-04: the first sentence of the alert's words; the bell holds all of them. The announcement says all.
+        label: alertToastLabel(label),
         description: t(persistent ? 'features.alerts.toast.criticalDescription' : 'features.alerts.toast.warningDescription', { time }),
         ...(persistent
           ? {

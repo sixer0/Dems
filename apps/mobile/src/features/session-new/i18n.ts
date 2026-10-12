@@ -23,6 +23,10 @@ export const sessionNewEn = {
     // Fix wave M (G70d-03): the visible way out of a session that exists (CREATE, PRECHECK, ARMED).
     cancelSession: 'Cancel session',
   },
+  /** Fix wave Q (CT-08): the Recording Profile of a Core in its own capture - the selector's lines, a fact of the Core. */
+  profile: {
+    fromSelector: 'Set by the capture selector of this Core. The sealed item states the format of each track.',
+  },
   info: {
     scanned: 'Case number filled by the simulated scan',
     // D28/Q3: the English gloss of a subject type, shown on long-press (and as accessibilityHint).

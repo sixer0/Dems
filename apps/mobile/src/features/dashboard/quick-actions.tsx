@@ -35,6 +35,7 @@ import { SectionCard } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { EASING, durationMs, useAmbientLoop, useHaptics, useMotionSettings } from '@/motion';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
+import { useSessionRanHere } from '@/runtime';
 import { useFailedStart } from '@/features/session-live/capture-start-notice';
 import { SealRetryControl, useSealBlocked } from '@/features/session-finalizing/seal-attention';
 import type { HomeStatus, PrimaryAction, PrimaryActionKind } from './home-model';
@@ -106,6 +107,11 @@ export function QuickActions({ action, status, stacked = false }: QuickActionsPr
   });
   const openSetupParts = openSetup === null ? null : openSetup.split('|');
   const openSetupView = openSetupParts === null ? null : { id: openSetupParts[0] ?? '', state: openSetupParts[1] ?? '', who: openSetupParts[2] === '' ? t('features.dashboard.actions.openSetupYou') : (openSetupParts[2] ?? '') };
+  // D247 item 6: the Summary that waits belongs to a session run from another console. Nothing opened it after
+  // the sign-in; this line says it is there, and "View session summary" above opens it.
+  const pendingSummaryId = useSim((s) => (s.session !== null && s.session.state === 'SEALED' ? s.session.id : null));
+  const ranHere = useSessionRanHere(pendingSummaryId);
+  const summaryElsewhere = action.kind === 'summary' && pendingSummaryId !== null && !ranHere ? pendingSummaryId : null;
   const lockedHint = offline ? t('features.dashboard.actions.offlineReason') : roleLocked ? (startGate.hint ?? '') : '';
 
   return (
@@ -142,7 +148,8 @@ export function QuickActions({ action, status, stacked = false }: QuickActionsPr
             onPress={() => router.push('/evidence')}
           >
             <FileText size={22} color={palette.foreground} />
-            <Button.Label numberOfLines={1} className="text-base">
+            {/* Fix wave Q (CP-09): in the phone's landscape the label read "View Evi…"; it shrinks before it is cut. */}
+            <Button.Label numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} className="text-base">
               {t('features.dashboard.actions.viewEvidence')}
             </Button.Label>
           </Button>
@@ -160,6 +167,11 @@ export function QuickActions({ action, status, stacked = false }: QuickActionsPr
         {action.kind === 'continueSetup' && openSetupView !== null ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="home-action-open-setup" accessibilityLiveRegion="polite">
             {t(openSetupView.state === 'ARMED' ? 'features.dashboard.actions.openArmed' : 'features.dashboard.actions.openSetup', { sessionId: openSetupView.id, who: openSetupView.who })}
+          </Text>
+        ) : null}
+        {summaryElsewhere !== null ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="home-action-summary-elsewhere" accessibilityLiveRegion="polite">
+            {t('features.dashboard.actions.summaryElsewhere', { sessionId: summaryElsewhere })}
           </Text>
         ) : null}
         {blocked ? (

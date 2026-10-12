@@ -16,11 +16,11 @@ import { ScanLine, Search } from 'lucide-react-native';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Controller, type ControllerFieldState } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SESSION_INPUT_LIMITS } from '@dems/shared/api';
 import { RECORDING_PROFILES, ROOMS, type SimOperator, type SubjectType } from '@dems/shared/sim';
-import { derived, palette, spacing, statusSoft, toneHex, toneTextHex } from '@dems/shared/tokens';
+import { derived, fontFamily, palette, spacing, statusSoft, toneHex, toneTextHex, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { SubjectTypeCodeTone } from '@/components/kit/subject-type-chip';
 import { enterRise, triggerHaptic, useMotionSettings } from '@/motion';
@@ -28,6 +28,7 @@ import { useCoreLink } from '@/runtime';
 import { filterInvestigators, SUBJECT_TYPE_ORDER, type SessionNewArrangement } from './session-new-model';
 import type { CreateFailure, SessionForm } from './use-session-new';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { useConfiguredProfile } from './configured-profile';
 
 /** How long the long-press gloss line stays (D28/Q3). */
 const GLOSS_MS = 3_000;
@@ -175,7 +176,19 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
     />
   );
 
-  const profileField = (
+  // Fix wave Q (CT-08): on a Core in its own capture the profile is the selector's (a fact, not a choice of this form).
+  const configured = useConfiguredProfile();
+  const profileField = configured.ownCapture ? (
+    <View style={styles.fieldGap} testID="session-new-profile-configured" accessible accessibilityLabel={`${t('sessionNew.info.profile.label')}: ${configured.lines === '' ? t('common.platformNotReported.value') : configured.lines}`}>
+      <Label>{t('sessionNew.info.profile.label')}</Label>
+      <Text maxFontSizeMultiplier={1.2} style={styles.profileFact} testID="session-new-profile-lines">
+        {configured.lines === '' ? t('common.platformNotReported.value') : configured.lines}
+      </Text>
+      <Text maxFontSizeMultiplier={1.2} style={styles.profileNote}>
+        {t('features.session-new.profile.fromSelector')}
+      </Text>
+    </View>
+  ) : (
     <Controller
       control={form.control}
       name="profileId"
@@ -506,6 +519,8 @@ const styles = StyleSheet.create({
   columns: { flexDirection: 'row', gap: spacing[4] },
   column: { flex: 1, gap: spacing[3] },
   fieldGap: { gap: spacing[1] },
+  profileFact: { fontFamily: fontFamily.native.mono, fontSize: typography.data.size, lineHeight: typography.data.lineHeight, color: palette.foreground },
+  profileNote: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   tags: { flexDirection: 'row', gap: spacing[1] },
   tag: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 44 },
   tagIdle: { backgroundColor: derived.fieldBackground, borderColor: derived.fieldBorder, borderWidth: 1 },

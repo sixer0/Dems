@@ -1,3 +1,4 @@
+import { auditTypeWords, enumValueWords } from '@/lib/event-words'
 import { useEffect, useState } from 'react'
 import type { Key } from '@heroui/react'
 import { AlertDialog, Button, Chip, Description, Label, ListBox, Select, Spinner, Switch, toast, ToggleButton, ToggleButtonGroup } from '@heroui/react'
@@ -201,8 +202,8 @@ function DemoBody() {
     if (!row) return undefined
     const eventKind = typeof row.details.eventKind === 'string' ? row.details.eventKind : null
     return t('system.demo.auditWritten', {
-      type: t(`common.auditType.${row.type}`),
-      kind: eventKind ? t(`common.enums.auditEventKind.${eventKind}` as 'common.enums.auditEventKind.AUDIO_CLIP', { defaultValue: eventKind }) : row.id,
+      type: auditTypeWords(t, row.type),
+      kind: eventKind ? enumValueWords(t, 'auditEventKind', eventKind) : row.id,
     })
   }
 
@@ -445,9 +446,9 @@ function DemoBody() {
                   return (
                     <li key={row.id} className="sys-demo-audit-row" data-type={row.type}>
                       <span className="sys-mono sys-muted">{formatWibTime(row.at)}</span>
-                      <span className="sys-strong">{t(`common.auditType.${row.type}`)}</span>
+                      <span className="sys-strong">{auditTypeWords(t, row.type)}</span>
                       {kind ? (
-                        <span className="sys-demo-kind">{t(`common.enums.auditEventKind.${kind}` as 'common.enums.auditEventKind.AUDIO_CLIP', { defaultValue: kind })}</span>
+                        <span className="sys-demo-kind">{enumValueWords(t, 'auditEventKind', kind)}</span>
                       ) : null}
                       <span className="sys-mono sys-muted sys-demo-hash" title={row.hash}>
                         {row.id} · {row.hash.slice(0, 10)}

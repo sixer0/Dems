@@ -1,3 +1,4 @@
+import { sealCauseLine } from '@/lib/event-words'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Popover, toast } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
@@ -119,12 +120,15 @@ export function NotificationsBell() {
             </ul>
           )}
           {/* Fix wave J (JW-21): the alerts have a page of their own - every alert, cleared ones too, with its acknowledgement. */}
-          <Link to="/alerts" className="dems-popover-link" onClick={() => setOpen(false)} data-testid="bell-all-alerts">
-            {t('web.waveJ.alerts.link')}
-          </Link>
-          <Link to="/security-audit" className="dems-popover-link" onClick={() => setOpen(false)}>
-            {t('shell.notifications.viewAll')}
-          </Link>
+          {/* Fix wave Q (CW-05): the two links stood together as "All alertsView all events" - one row with a gap, wrapping when narrow. */}
+          <div className="dems-popover-links">
+            <Link to="/alerts" className="dems-popover-link" onClick={() => setOpen(false)} data-testid="bell-all-alerts">
+              {t('web.waveJ.alerts.link')}
+            </Link>
+            <Link to="/security-audit" className="dems-popover-link" onClick={() => setOpen(false)}>
+              {t('shell.notifications.viewAll')}
+            </Link>
+          </div>
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
@@ -168,7 +172,7 @@ function UnsealableNoticeRow({ alert }: { alert: SimAlert }) {
         <span className="dems-alert-detail">
           {sessionId !== null ? t('web.waveL.notice.ofSession', { sessionId }) : null}
           {sessionId !== null && cause !== null ? ' · ' : null}
-          {cause !== null ? t('web.waveL.notice.cause', { cause }) : null}
+          {cause !== null ? sealCauseLine(t, cause) : null}
         </span>
         {mayClose ? (
           <Button size="sm" variant="outline" onPress={acknowledge} isDisabled={busy} isPending={pending} data-testid={`alert-unsealable-acknowledge-${alert.id}`}>

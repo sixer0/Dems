@@ -1,3 +1,4 @@
+import { auditTypeWords, faultKindWords } from '@/lib/event-words'
 import { memo, useMemo } from 'react'
 import { Chip } from '@heroui/react'
 import { ShieldAlert } from 'lucide-react'
@@ -55,8 +56,8 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
       id: row.id,
       at: row.at,
       tone: toneClass(SEVERITY_TONE[row.severity]),
-      title: t(`common.auditType.${row.type}`),
-      sub: [kind ? t(`common.faultKind.${kind}`) : null, row.evidenceId, row.id].filter(Boolean).join(' • '),
+      title: auditTypeWords(t, row.type),
+      sub: [kind ? faultKindWords(t, kind) : null, row.evidenceId, row.id].filter(Boolean).join(' • '),
     }
   }), [recent, t])
 

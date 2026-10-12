@@ -11,7 +11,7 @@ import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { ROW_REVEAL_DELAY_MS } from './choreography'
 import { useEvidenceAssets } from './demo-assets'
 import { ItemDevelopmentBadge } from './development-source'
-import { InterruptedMark, NotSealedMark } from './item-marks'
+import { DemonstrationRecordMark, InterruptedMark, NotSealedMark } from './item-marks'
 import {
   ARCHIVABLE_STATUSES,
   byteSize,
@@ -53,6 +53,9 @@ const SORTABLE: EvidenceSortColumn[] = ['evidence', 'subject', 'case', 'duration
  * `Skeleton` while the simulator hydrates and an `EmptyState` when the filters match nothing.
  * Cells are two-line (ID over recorded time, subject over its type chip, case over investigator,
  * duration over size) so the table fits the 8-of-12 column at 1440 px (DR-47-2).
+ * Fix wave Q (JW-10): the table has a FIXED layout (`evidence.css`) - the ID, Duration, Status and Actions columns
+ * keep the width their content needs, Subject and Case share the rest and wrap inside it. A long subject name can
+ * no longer push the Status column and the row menu out of the card at any width.
  * Motion (M-C-11): `useRowMotion` reveals, FLIPs and cross-fades the rows.
  */
 export function EvidenceTable(props: EvidenceTableProps) {
@@ -226,14 +229,15 @@ export function EvidenceTable(props: EvidenceTableProps) {
                         </Table.Cell>
                         <Table.Cell>
                           <span className="evi-cell-stack">
-                            <span className="evi-strong">{row.item.subjectName}</span>
+                            {/* Fix wave Q (JW-10): free text never widens the table - it wraps inside its column and is cut after three lines, with the whole text as its title. */}
+                            <span className="evi-strong evi-free" title={row.item.subjectName} data-testid={`evidence-row-subject-${row.id}`}>{row.item.subjectName}</span>
                             <SubjectTypeChip type={row.item.subjectType} />
                           </span>
                         </Table.Cell>
                         <Table.Cell>
                           <span className="evi-cell-stack">
-                            <span className="evi-mono">{row.item.caseNumber}</span>
-                            <span className="evi-caption">{row.investigatorName}</span>
+                            <span className="evi-mono evi-free" title={row.item.caseNumber} data-testid={`evidence-row-case-${row.id}`}>{row.item.caseNumber}</span>
+                            <span className="evi-caption evi-free" title={row.investigatorName}>{row.investigatorName}</span>
                           </span>
                         </Table.Cell>
                         <Table.Cell>
@@ -242,8 +246,10 @@ export function EvidenceTable(props: EvidenceTableProps) {
                             <span className="evi-caption">{t(`common.units.${size.unit}`, { value: size.value })}</span>
                           </span>
                         </Table.Cell>
-                        <Table.Cell>
+                        <Table.Cell className="evi-cell-status">
                           <EvidenceStatusChip status={row.item.status} item={row.item} />
+                          {/* Fix wave Q (CP-05, the web's side): a demonstration record says so on its row, as its item page does. */}
+                          <DemonstrationRecordMark item={row.item} testId={`evidence-row-demonstration-${row.id}`} />
                           {/* Row 92 (R-11): drawn only for an item the Core recorded from development sources, in Live mode. */}
                           <ItemDevelopmentBadge item={row.item} testId={`evidence-row-development-${row.id}`} />
                           {/* Wave H C2 (G75-03): drawn only for an item that says `interrupted: true`. */}

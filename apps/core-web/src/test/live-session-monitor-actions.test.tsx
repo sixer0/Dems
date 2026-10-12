@@ -378,7 +378,17 @@ describe('B-2 stop (LB-1, LB-6, LB-10; F59; Q16)', () => {
     // [CS] §3.2: the digest of the sealed item is the Core's, so the Live overlay never says "simulated".
     const pkg = await within(screen.getByTestId('finalization-modal')).findByTestId('sm-final-package')
     expect(pkg).toHaveAttribute('data-source', 'core')
-    expect(screen.getByTestId('finalization-modal').textContent ?? '').not.toMatch(/simulat/i)
+    // Fix wave Q (CW-04; truth rule 3f), pin moved: this Core is the DEMONSTRATION (it states neither a host clock nor
+    // `platformNotReported`), and the one window that announces "sealed" carried no mark and a chip "LIVE", which read as
+    // "real". The dialog says DEMO · SIMULATED in its header, says that the seal is simulated, and the chip beside the
+    // digest says DEMO · SIMULATED - not "LIVE". (The control - a Core in its own capture draws none of it and no "LIVE"
+    // either - is in `real-core-facts.test.tsx`, "G89b-05".)
+    const sealedDialog = screen.getByTestId('finalization-modal')
+    expect(within(sealedDialog).getByTestId('demo-mark-seal-dialog')).toHaveTextContent('DEMO · SIMULATED')
+    expect(within(sealedDialog).getByTestId('sm-final-demonstration')).toHaveTextContent('Demonstration: this seal is simulated. The item is a demonstration record, not evidence.')
+    expect(within(pkg).getByTestId('sm-final-source-chip')).toHaveAttribute('data-source-chip', 'DEMO')
+    expect(within(pkg).getByTestId('sm-final-source-chip')).toHaveTextContent('DEMO · SIMULATED')
+    expect(sealedDialog.textContent ?? '').not.toMatch(/\bLIVE\b/)
   })
 
   it('422 INVALID_REASON (F59: the Core counts characters, the client code units): the reason field\'s error, the dialog stays open with the text', async () => {

@@ -199,25 +199,60 @@ describe('phone portrait (MB 4, compact)', () => {
 });
 
 describe('End Session (S6, M-C-19, S21)', () => {
-  it('a short tap never ends anything; the 1.5 s hold opens the reason Dialog', async () => {
+  // Fix wave Q (JT-09; ruling of D246): REPLACES "a short tap never ends anything". An operator must always be able
+  // to end a session: a tap and a hold open the SAME reason Dialog, and the Dialog is the guard (nothing has ended).
+  it('a tap opens the reason Dialog and ends nothing; so does the 1.5 s hold', async () => {
     const h = await openPhone();
     fireEvent.press(screen.getByTestId('monitor-end-session'));
-    expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
-    expect(screen.getByTestId('monitor-end-session').props.delayLongPress ?? 1500).toBe(1500);
-    fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
     expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
     expect(screen.getByText('End Session?')).toBeTruthy();
     expect(h.sim.store.getState().session?.state).toBe('RECORDING');
+    fireEvent.press(screen.getByTestId('monitor-end-keep'));
+    expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
+
+    expect(screen.getByTestId('monitor-end-session').props.delayLongPress ?? 1500).toBe(1500);
+    fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    expect(h.sim.store.getState().session?.state).toBe('RECORDING');
   });
 
-  // Fix wave J round two (JT-09, JA2-N7; JA2-36).
-  it('JT-09: a short tap raises the hold hint under the button - no toast lies over the header or a control; JA2-36: the dialog states the rule before any error', async () => {
-    await openPhone();
-    expect(screen.getByTestId('monitor-end-session-hold-hint')).toHaveTextContent('Hold to end the session');
+  // Fix wave Q (JT-09). Measured on the tablet (note 176): in the still / reduced form a HOLD opened nothing - the
+  // long press returned early there and the platform sends no press after a long press. Both gestures, both modes.
+  it.each<[string, boolean]>([
+    ['full motion', false],
+    ['reduced motion', true],
+  ])('JT-09 (%s): tap, hold, and a release after a full hold each open the Dialog; one hint says so', async (_name, reduced) => {
+    if (reduced) act(() => motionStore.getState().setOsReduceMotion(true));
+    const h = await openPhone();
+    const hint = screen.getByTestId('monitor-end-session-hint');
+    expect(hint).toHaveTextContent('Tap or hold. A reason is asked before anything ends.');
+    // The old sentence promised a hold only, and existed in one mode only.
+    expect(screen.queryByText('Hold to end the session')).toBeNull();
+    expect(screen.queryByTestId('monitor-end-session-hold-hint')).toBeNull();
+
+    const close = () => {
+      fireEvent.press(screen.getByTestId('monitor-end-keep'));
+      expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
+    };
+    // 1. a tap
     fireEvent.press(screen.getByTestId('monitor-end-session'));
-    expect(screen.getByTestId('monitor-end-session-hold-nudge')).toHaveTextContent('Hold to end the session');
-    // The words exist ONCE on the screen: the line under the button, not a toast as well.
-    expect(screen.getAllByText('Hold to end the session')).toHaveLength(1);
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    close();
+    // 2. a hold the platform reports (no press follows a long press)
+    fireEvent(screen.getByTestId('monitor-end-session'), 'pressIn', { nativeEvent: { timestamp: 5_000 } });
+    fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
+    fireEvent(screen.getByTestId('monitor-end-session'), 'pressOut', { nativeEvent: { timestamp: 7_000 } });
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    close();
+    // 3. the Dialog can be opened again after each close (the control is not left "completed")
+    fireEvent.press(screen.getByTestId('monitor-end-session'));
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    expect(h.sim.store.getState().session?.state).toBe('RECORDING');
+  });
+
+  // Fix wave J round two (JA2-N7; JA2-36): no toast lies over the header or a control; the dialog states its rule.
+  it('JA2-36: the dialog states the rule before any error; the reason is taken as typed', async () => {
+    await openPhone();
     fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
     expect(screen.getByTestId('monitor-end-reason-count')).toHaveTextContent(/At least 5 characters\./);
     expect(screen.getByTestId('monitor-end-reason').props.autoCorrect).toBe(false);
@@ -232,6 +267,7 @@ describe('End Session (S6, M-C-19, S21)', () => {
     const button = screen.getByTestId('monitor-end-session');
     fireEvent(button, 'pressIn', { nativeEvent: { timestamp: 10_000 } });
     fireEvent(button, 'pressOut', { nativeEvent: { timestamp: 10_900 } });
+    // A release alone of a short touch opens nothing by itself (the platform's `onPress` is what a tap delivers).
     expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
     fireEvent(button, 'pressIn', { nativeEvent: { timestamp: 20_000 } });
     // No `onLongPress` is delivered (the lagging-JS case): the release alone carries the 1.6 s.
@@ -291,9 +327,14 @@ describe('Core link lost (S7, MA-10 UI half)', () => {
     expect(h.sim.store.getState().session!.snapshotCount).toBe(snapshots);
     fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
     expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
+    // Fix wave Q: neither does a tap, and the control says why it takes no touch.
+    fireEvent.press(screen.getByTestId('monitor-end-session'));
+    expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
+    expect(screen.getByTestId('monitor-end-session-blocked')).toHaveTextContent('Core link lost. The session can be ended from this device when the link is back.');
     expect(h.sim.store.getState().session?.state).toBe('RECORDING');
 
     act(() => h.sim.actions.setTabletLink('CONNECTED'));
+    expect(screen.getByTestId('monitor-end-session-hint')).toBeTruthy();
     expect(screen.getByTestId('monitor-banner-resynced')).toBeTruthy();
     expect(screen.getByText('Resynced')).toBeTruthy();
   });

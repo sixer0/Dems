@@ -16,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
 import { MotionPolicyProvider, UiRuntimeBoundary } from '@/motion';
+import { KeyboardGuard } from '@/lib/keyboard-guard';
 import { RootNavigator } from '@/navigation';
 import { RouteErrorFallback } from '@/navigation/route-error-fallback';
 import { AppProviders, BootGate, heroUIConfig } from '@/providers';
@@ -68,6 +69,8 @@ export default function RootLayout() {
               <SignedOutLanding />
             </UiRuntimeBoundary>
           </BootGate>
+          {/* Fix wave Q (JT-23, CT-06, CP-13): a keyboard that is up while no field is focused is put away. */}
+          <KeyboardGuard />
           <StatusBar style="light" />
         </AppProviders>
       )}

@@ -189,6 +189,19 @@ describe('G70-03 the other surfaces, real capture', () => {
     expect(tiles(within(page).getByTestId('device-tile-VIDEO-02'))).toHaveLength(1)
     expect(feeds(page)).toHaveLength(0)
     tiles(page).forEach(expectNeutral)
+    // Fix wave Q (CW-02): at 1440 x 900 the picture box of a Dashboard tile was 44 px high for 64 px of text ("No
+    // preview" cut at the top, the state at the bottom): its lines lay OVER the box (`absolute inset-0`, cut by
+    // `overflow-hidden`) and the box could shrink to nothing (`min-h-0`). In a Dashboard tile the lines are in the
+    // flow and the frame never shrinks under them - in every `tile` frame (the Devices page's too, whose 16:9 frame is tall enough anyway). (The geometry at 1280 / 1440 / 1920 is the browser box check's.)
+    for (const tile of tiles(page)) {
+      const frame = tile.parentElement!
+      expect(frame).toHaveAttribute('data-variant', 'tile')
+      expect(frame).toHaveClass('min-h-fit', 'shrink-0', 'flex', 'flex-col')
+      expect(frame).not.toHaveClass('min-h-0')
+      expect(tile).toHaveClass('relative', 'flex-1')
+      expect(tile).not.toHaveClass('absolute')
+      expect(tile).not.toHaveClass('overflow-hidden')
+    }
   })
 
   it('Session Monitor during a recording: the feed and the input thumbs are "No preview"; nothing is drawn as a picture', async () => {

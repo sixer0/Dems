@@ -9,7 +9,7 @@
  * | Class | Layout |
  * |---|---|
  * | compact (phone portrait) | MB 2, one column |
- * | compact-landscape | 2 columns: status, tiles, actions \| recent sessions |
+ * | compact-landscape | 2 columns: status, actions, tiles \| recent sessions (fix wave Q, CP-09: the action above the fold) |
  * | medium (tablet portrait) | 2 columns, 5 \| 3 of 8: GlowRing hero + status + tiles \| actions + recent |
  * | expanded (tablet landscape) | 3 zones: GlowRing hero + status + chip row \| device tiles 2x2 \| recent + actions |
  *
@@ -88,14 +88,16 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
               <PanelBoundary name="status">
                 <SystemStatusCard status={status} variant="card" />
               </PanelBoundary>
-              <PanelBoundary name="tiles">
-                <StatusTiles tiles={tiles} />
-              </PanelBoundary>
+              {/* Fix wave Q (CP-09): in the phone's landscape the primary action stood below the fold, under the tiles.
+                  It follows the status it acts on; the tiles come after it. */}
               {layoutClass === 'compact-landscape' ? (
                 <PanelBoundary name="actions">
                   <QuickActions action={action} status={status} />
                 </PanelBoundary>
               ) : null}
+              <PanelBoundary name="tiles">
+                <StatusTiles tiles={tiles} />
+              </PanelBoundary>
             </View>
           </Pane>
           <Pane name="activity" flex={1} style={FLEX_PANE}>

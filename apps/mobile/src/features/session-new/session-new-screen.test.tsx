@@ -405,6 +405,43 @@ describe('round two: New Session says what is true at each step', () => {
     expect(screen.getByTestId('session-new-step-2')).toBeTruthy();
   });
 
+  // Fix wave Q (CT-08): the tablet said "Recording Profile: Standard (1080p / 25 fps)" on New Session and Ready of a
+  // Core whose selector records H264_720P30 - one press from the sealed item that states 720p30.
+  it('CT-08: on a Core in its own capture step 1 and Ready state the selector\'s lines in force, never the profileId label; CONTROL: a simulated Core keeps its label', async () => {
+    const h = await openFlow();
+    // CONTROL (the simulated lane, pinned): the form's own choice.
+    expect(screen.getByTestId('session-new-profile')).toBeTruthy();
+    expect(screen.queryByTestId('session-new-profile-configured')).toBeNull();
+    expect(screen.getAllByText('Standard (1080p / 25 fps)').length).toBeGreaterThan(0);
+
+    // The Core states its own capture (the host clock is its time source), and its selector lines name 720p30.
+    act(() => {
+      h.sim.store.setState((state) => ({
+        time: { ...state.time, hostClock: true },
+        captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => ({ ...line, profile: 'H264_720P30' })) },
+      }));
+    });
+    expect(screen.queryByTestId('session-new-profile')).toBeNull();
+    expect(screen.getByTestId('session-new-profile-lines')).toHaveTextContent('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30');
+    expect(screen.queryByText('Standard (1080p / 25 fps)')).toBeNull();
+    expect(screen.queryByText(/1080p/)).toBeNull();
+
+    await goToReady(h);
+    expect(screen.getByTestId('session-new-step-3')).toBeTruthy();
+    expect(within(screen.getByTestId('session-new-summary-profile')).getByText('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30')).toBeTruthy();
+    expect(screen.queryByText(/1080p/)).toBeNull();
+
+    // A selector that states no profile: "Not reported", never a model figure.
+    act(() => {
+      h.sim.store.setState((state) => ({
+        captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map(({ profile: _profile, ...line }) => line) as typeof state.captureConfig.cameras },
+        ...(state.session ? { session: { ...state.session, captureConfig: null } as typeof state.session } : {}),
+      }));
+    });
+    expect(within(screen.getByTestId('session-new-summary-profile')).getByText('Not reported')).toBeTruthy();
+    expect(getMissingKeys()).toEqual([]);
+  });
+
   it('JA2-09: a long subject name is drawn whole on Ready (two lines), never cut to one', async () => {
     const h = await openFlow();
     const name = 'Judge A2 Wijayakusuma Hadiningrat';

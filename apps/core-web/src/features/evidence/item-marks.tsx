@@ -3,7 +3,8 @@ import { causeWords } from './cause-words'
 import { hasSealedValues } from '@dems/shared/sim'
 import { Film, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { mediaReasonOf, readItemFacts, type DetailFacts } from './item-facts'
+import { useWebLive } from '@/runtime'
+import { isDemoItem, mediaReasonOf, readItemFacts, type DetailFacts } from './item-facts'
 
 /**
  * The marks of the Evidence page that state a FACT OF THE ITEM as the Core server reports it
@@ -53,6 +54,25 @@ export function NotSealedMark({ item, testId }: { item: unknown; testId: string 
       </Chip>
       {facts.interruptedCause !== null ? <span className="evi-caption">{t('evidence.itemFacts.interrupted.cause', { cause: causeWords(t, facts.interruptedCause) })}</span> : null}
     </span>
+  )
+}
+
+/**
+ * Fix wave Q (CP-05, the web's side; truth rule 3a / 3f): THE MARK OF A DEMONSTRATION RECORD on a Core server. The
+ * list row of such an item read plain "Sealed" while its own page says "Demonstration record of a simulated
+ * session" and its verify result "Demonstration". The row and the item header draw this ONE mark, so the list says
+ * what the page says. Drawn in Live mode for a v1 / simulated demonstration item (`isDemoItem`: the Core states
+ * `integritySource` DEMO_PACKAGE or SIMULATED and no sealed package); Simulated mode draws none (its banner says
+ * what every row is), and a recording sealed on this Core never carries it.
+ */
+export function DemonstrationRecordMark({ item, testId }: { item: unknown; testId: string }) {
+  const { t } = useTranslation()
+  const live = useWebLive() !== null
+  if (!live || !isDemoItem(item)) return null
+  return (
+    <Chip size="sm" variant="soft" color="warning" className="evi-demonstration-chip" data-testid={testId} data-demonstration="true">
+      <Chip.Label title={t('web.waveQ.evidence.demonstrationHint')}>{t('web.waveQ.evidence.demonstrationRecord')}</Chip.Label>
+    </Chip>
   )
 }
 

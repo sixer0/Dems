@@ -75,6 +75,19 @@ export function isSessionActive(state: SessionState | null): boolean {
   return state !== null && state !== 'SEALED';
 }
 
+/**
+ * Decision D247 item 6 (the ruling of CT-05 extended to the sign-in): where the session's state sends an
+ * operator who has JUST SIGNED IN. As `sessionResyncHref`, with one exception: a SEALED session whose
+ * Summary is not acknowledged and that was NOT run on this device (`ranHere` false: another device or the
+ * web console ran it) is not opened - `null`, so the pending href or Home is next, and Home offers that
+ * Summary as an entry ("Session ... was sealed on another console. Summary not yet acknowledged.").
+ */
+export function signInSessionHref(state: SessionState | null, context: ResyncContext, ranHere: boolean): SessionHref | null {
+  const href = sessionResyncHref(state, context);
+  if (state === 'SEALED' && href !== null && !ranHere) return null;
+  return href;
+}
+
 /** Where a signed-in operator lands (04 §3.3): the resync target, then the pending href, then Home. */
 export function postSignInHref(resync: string | null, pending: string | null): string {
   return resync ?? pending ?? '/home';

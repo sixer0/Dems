@@ -1,3 +1,4 @@
+import { severityWords } from '@/lib/event-words'
 import { alertRows } from './model'
 import { useMemo } from 'react'
 import { Button, Card, Chip, Spinner, toast } from '@heroui/react'
@@ -85,7 +86,7 @@ function AlertRow({ alert }: { alert: SimAlert }) {
   return (
     <li className="alr-row" data-testid={`alert-row-${alert.id}`} data-active={alert.active ? 'true' : 'false'} data-acknowledged={alert.acknowledged ? 'true' : 'false'} aria-busy={busy || undefined}>
       <Chip size="sm" variant="soft" color={SEVERITY_COLOR[alert.severity] ?? 'default'}>
-        <Chip.Label>{t(`common.severity.${alert.severity}` as never, { defaultValue: alert.severity }) as string}</Chip.Label>
+        <Chip.Label>{severityWords(t, alert.severity)}</Chip.Label>
       </Chip>
       <span className="ses-stack alr-text">
         <span className="alr-message">{notice === null ? alert.message : captureNoticeLine(t, notice)}</span>

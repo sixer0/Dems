@@ -56,6 +56,7 @@ import {
   useCoreLink,
   useCoreLinkReadOnly,
   useRecordingElapsedSeconds,
+  useRecordingLocalOrigin,
   type ElapsedTicker,
 } from '@/runtime';
 import { camerasNotConnectedOf } from '@/features/capture-selector/capture-notices-model';
@@ -98,6 +99,14 @@ export function useMonitorSession(): MonitorSession {
  */
 export function useMonitorElapsedSeconds(): number {
   return useRecordingElapsedSeconds();
+}
+
+/**
+ * Decision D247 item 5: the start of the running recording on this device's clock, for the timer's UI-thread
+ * clock (`timer-readout.tsx`); `null` when there is none (stopped, or a simulator).
+ */
+export function useMonitorClockOrigin(drawnSeconds: number): number | null {
+  return useRecordingLocalOrigin(drawnSeconds);
 }
 
 /** Re-exported for the monitor's tests; the ticker now lives in the runtime (`recording-elapsed.ts`). */

@@ -106,6 +106,16 @@ describe.each([
   });
 });
 
+describe('D247 item 5: a simulator has no instant on the device clock', () => {
+  it('the simulated monitor mounts no device-clock layer: its time is the simulator\'s clock, drawn by React alone', async () => {
+    const h = await openPhone();
+    act(() => h.advance(3_000));
+    expect(screen.queryAllByTestId('monitor-timer-clocked')).toHaveLength(0);
+    expect(screen.queryAllByTestId('monitor-feed-timer-clocked')).toHaveLength(0);
+    expect(drawn('monitor-timer', typography.display.lineHeight)).toBe('00:18:45');
+  });
+});
+
 describe('nextCell: the odometer step of a column (always forward, within its 20 cells)', () => {
   it.each([
     [0, 1, 1],

@@ -94,8 +94,10 @@
 
 .sn-card-header {
   display: flex;
+  /* Fix wave Q (CW-01 sweep): as on the Session Monitor - the row wraps; the title never gets narrower than a word. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   min-height: 24px;
 }
 
@@ -109,9 +111,10 @@
 
 .sn-card-title {
   margin: 0;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: min-content;
   white-space: normal;
-    overflow-wrap: break-word;
+  overflow-wrap: normal;
   font-size: 15px;
   font-weight: 600;
   line-height: 20px;
@@ -335,6 +338,9 @@
 
 .sn-readiness li {
   display: flex;
+  /* Fix wave Q (CW-01 sweep): the note of a row ("Host system clock") left its label 25 px - "Time Sync" stood one
+     letter per line. The note goes under the label when the row is short. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -364,9 +370,18 @@
   box-shadow: 0 0 8px rgb(239 68 68 / 0.6);
 }
 
+/* Fix wave Q (CW-01 sweep): a label breaks between its words; inside a word only when the word is longer than its row. */
 .sn-readiness-label {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  min-width: min-content;
+  overflow-wrap: break-word;
+}
+.sn-profile-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+.sn-profile-line {
+  white-space: nowrap;
 }
 
 /* Fix wave J (JW-04): a check this Core does not report is neither green nor a warning. */

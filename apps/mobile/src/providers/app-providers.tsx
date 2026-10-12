@@ -12,6 +12,7 @@ import { AuthProvider } from '@/auth';
 import { i18n } from '@/i18n';
 import { OperatorQueryScope } from '@/lib/operator-query-scope';
 import { SimRuntimeProvider, createResyncBus, installRuntimeLogSinks, type MobileSimOptions } from '@/runtime';
+import { toastContentWrapper } from './toast-area';
 
 /** Font scaling cap that keeps layouts stable at large system font sizes (01S §5.4, 04 §2.6). */
 export const MAX_FONT_SIZE_MULTIPLIER = 1.2;
@@ -28,7 +29,9 @@ export function heroUIConfig(reducedMotion: boolean): HeroUINativeConfig {
     // VM-04: the kit disables all of its animations under 'disable-all' (reduced motion, §7.7).
     ...(reducedMotion ? { animation: 'disable-all' as const } : {}),
     // §4.19: toasts at the top; critical toasts persist until dismissed (set per toast).
-    toast: { defaultProps: { placement: 'top' } },
+    // Fix wave Q (CT-04): "the top" is the top of the CONTENT area - under the header row, beside the rail
+    // (`toast-area.tsx`): a toast covers no navigation.
+    toast: { defaultProps: { placement: 'top' }, contentWrapper: toastContentWrapper },
   };
 }
 

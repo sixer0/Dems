@@ -12,7 +12,7 @@
  */
 import { SessionState } from '@dems/shared/domain'
 import { SESSION_CREATE_MESSAGES } from '@dems/shared/api'
-import { isPrecheckNote, SECURITY_NOT_REPORTED_PRECHECK_RULE, SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
+import { cameraLinesInForce, isPrecheckNote, SECURITY_NOT_REPORTED_PRECHECK_RULE, SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
 import { PRECHECK_UNREACHABLE_VALUE } from '@/lib/capture-notices'
 
@@ -219,4 +219,23 @@ const MESSAGE_KEYS = new Set<string>(Object.values(SESSION_CREATE_MESSAGES))
 /** True when a zod issue message is one of the schema's i18n keys. */
 export function isSessionMessage(message: string | undefined): message is SessionMessageKey {
   return message !== undefined && MESSAGE_KEYS.has(message)
+}
+
+// ── The profile a new session records with (fix wave Q, CT-08) ───────────────────────────
+
+/**
+ * Fix wave Q (CT-08, the web's side; D228 (3)): on a Core in its own capture the form said "Recording Profile -
+ * Standard (1080p / 25 fps)" - the label of the form's `profileId`, a choice of the simulator's model - for a
+ * session whose configured and sealed profile is H264_720P30. The profile such a Core records with is what its
+ * SELECTOR LINES IN FORCE say (`cameraLinesInForce`: the open session's snapshot, else the stored selector; a sealed
+ * session's snapshot names nothing), one part per track - the same words as the Monitor's "Configured profile" row.
+ * A primitive (a string), so a store selector never loops. '' = no line states a profile ("Not reported").
+ */
+export function selectorProfileLinesOf(state: Parameters<typeof cameraLinesInForce>[0]): string {
+  const lines = cameraLinesInForce(state) as readonly { readonly trackId?: unknown; readonly profile?: unknown }[]
+  return lines
+    .filter((line): line is { readonly trackId: string; readonly profile: string } => typeof line.trackId === 'string' && typeof line.profile === 'string' && line.profile !== '' && line.profile.length <= 40)
+    .toSorted((a, b) => a.trackId.localeCompare(b.trackId))
+    .map((line) => `${line.trackId}: ${line.profile}`)
+    .join(' · ')
 }

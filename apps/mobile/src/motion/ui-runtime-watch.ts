@@ -36,12 +36,25 @@
  *   a runtime that has really stopped never answers again, so an answer proves the miss was a starved device.
  *   Seen on the tablet emulator with the host at a load of 60: screen captures hung, three beats (12 s) went
  *   unanswered, and the runtime was alive - hence five beats, and the way back.
+ *
+ * **Fix wave Q (CT-01): the heartbeat tells a STOPPED mapper loop from a BUSY device.** Measured on the tablet on
+ * a quiet host (note 176): in a process that had run for an hour the detector fired 25 s into a recording and
+ * again 66 s later, each time remounting every screen in the middle of the recording (the timer and End Session
+ * jumped, an open dialog and its keyboard focus were lost, End Session changed between "hold" and "tap" under
+ * the operator's finger) - while the runtime was alive: the UI thread was busy for seconds at a time, so neither
+ * the beat nor anything else was answered. Five missed beats could not tell the two apart. Now every beat goes
+ * out on TWO ways: through a reaction (a mapper: it stops when the loop stops) and as a direct job on the UI
+ * runtime (`scheduleOnUI`: it needs no mapper). Only a beat whose DIRECT job came back while its reaction did
+ * not counts as a miss - that is the picture of a stopped loop on a runtime that still runs. A beat on which
+ * neither came back says the device is busy: it counts for nothing (it neither adds a miss nor clears one), and
+ * `UI_RUNTIME_BUSY_BEATS` of them in a row are recorded once as a warning, never as a fallback. A beat the JS
+ * timer itself delivered late (JS was the busy side) is not judged either.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reloadAppAsync } from 'expo';
 import { useCallback, useEffect, useRef } from 'react';
 import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { reportMotionIssue } from './log';
 import { motionStore } from './policy';
 import { useMotionState } from './use-motion-policy';
@@ -50,6 +63,10 @@ import { useMotionState } from './use-motion-policy';
 export const UI_RUNTIME_BEAT_MS = 4000;
 /** Beats in a row without an echo before the runtime counts as stalled (20 s: a slow frame is not a stall). */
 export const UI_RUNTIME_MISSES = 5;
+/** Beats in a row on which NOTHING came back (a busy device) before one warning is recorded (fix wave Q). */
+export const UI_RUNTIME_BUSY_BEATS = 5;
+/** A beat the JS timer delivered this much late was sent by a busy JS thread: it is not judged (fix wave Q). */
+export const UI_RUNTIME_LATE_BEAT_MS = UI_RUNTIME_BEAT_MS / 2;
 
 /** Where the time of the last automatic restart is kept (ms since the epoch, as text). */
 export const UI_RUNTIME_RELOAD_KEY = 'dems.mobile.uiRuntimeReload.v1';
@@ -158,15 +175,18 @@ export function useUiRuntimeWatch(): boolean {
   const appActive = useMotionState((s) => s.appActive);
   const fault = useMotionState((s) => s.uiRuntimeFault);
   const beat = useSharedValue(0);
+  /** The newest beat each way has brought back: through the reaction (`mapper`) and as a direct job (`direct`). */
   const echoed = useRef(0);
+  const direct = useRef(0);
   const counter = useRef(0);
-  const onEcho = useCallback((value: number) => {
-    echoed.current = value;
+  const onAnswer = useCallback((value: number, way: 'mapper' | 'direct') => {
+    if (way === 'mapper') echoed.current = Math.max(echoed.current, value);
+    else direct.current = Math.max(direct.current, value);
   }, []);
   useAnimatedReaction(
     () => beat.get(),
     (now, previous) => {
-      if (now !== previous) scheduleOnRN(onEcho, now);
+      if (now !== previous) scheduleOnRN(onAnswer, now, 'mapper');
     },
     [beat],
   );
@@ -178,15 +198,44 @@ export function useUiRuntimeWatch(): boolean {
     // After a REPORTED error nothing is left to watch.
     if (fault !== null || !appActive) return undefined;
     let sent: number | null = null;
+    let sentAt = Date.now();
     let misses = 0;
+    let busy = 0;
+    let busyRecorded = false;
     const timer = setInterval(() => {
-      if (sent !== null) misses = echoed.current === sent ? 0 : misses + 1;
-      if (stalled && sent !== null && misses === 0) {
-        // The suspected runtime answered: it is alive. (The effect starts a new watch when the state changes.)
-        clearInterval(timer);
-        reportMotionIssue('info', 'motion.uiRuntime.answered', new Error('The animation runtime answers its heartbeat again; the still form is taken back.'));
-        motionStore.getState().clearUiRuntimeSuspicion();
-        return;
+      const now = Date.now();
+      // The JS timer itself came late: JS was the busy side, and what it sent had no fair time to come back.
+      const lateBeat = now - sentAt > UI_RUNTIME_BEAT_MS + UI_RUNTIME_LATE_BEAT_MS;
+      if (sent !== null) {
+        const mapperAnswered = echoed.current === sent;
+        const directAnswered = direct.current === sent;
+        if (mapperAnswered) {
+          misses = 0;
+          busy = 0;
+          busyRecorded = false;
+        } else if (directAnswered && !lateBeat) {
+          // The runtime ran a job of this beat and its reaction did not: the picture of a stopped mapper loop.
+          misses += 1;
+          busy = 0;
+        } else {
+          // Nothing came back (or JS was late): a busy device. Not a miss, and not an answer.
+          busy += 1;
+          if (busy >= UI_RUNTIME_BUSY_BEATS && !busyRecorded) {
+            busyRecorded = true;
+            reportMotionIssue('warn', 'motion.uiRuntime.busy', new Error('The device did not answer the heartbeat in time; the animation runtime is not judged while it is busy.'), {
+              beatMs: UI_RUNTIME_BEAT_MS,
+              beats: busy,
+              jsLate: lateBeat,
+            });
+          }
+        }
+        if (stalled && mapperAnswered) {
+          // The suspected runtime answered: it is alive. (The effect starts a new watch when the state changes.)
+          clearInterval(timer);
+          reportMotionIssue('info', 'motion.uiRuntime.answered', new Error('The animation runtime answers its heartbeat again; the still form is taken back.'));
+          motionStore.getState().clearUiRuntimeSuspicion();
+          return;
+        }
       }
       if (!stalled && misses >= UI_RUNTIME_MISSES) {
         clearInterval(timer);
@@ -196,10 +245,16 @@ export function useUiRuntimeWatch(): boolean {
       // A new number each beat (never one this process used before): a late echo of an old beat is no answer.
       counter.current += 1;
       sent = counter.current;
+      sentAt = now;
       beat.set(sent);
+      const number = sent;
+      scheduleOnUI(() => {
+        'worklet';
+        scheduleOnRN(onAnswer, number, 'direct');
+      });
     }, UI_RUNTIME_BEAT_MS);
     return () => clearInterval(timer);
-  }, [stalled, fault, appActive, beat]);
+  }, [stalled, fault, appActive, beat, onAnswer]);
 
   return stalled;
 }

@@ -14,7 +14,7 @@ import { rateLimited, OUTAGE } from '@dems/shared/live/testing';
 import { OPERATORS, PRECHECK_TOTAL_MAX_MS } from '@dems/shared/sim';
 import { renderLiveSessionNew, resetLiveSessionNewBed, type LiveSessionNewBed, type LiveSessionNewBedOptions } from './testing/live-session-new-bed';
 import { en } from '@dems/shared/i18n';
-import { getMissingKeys, resetMissingKeys } from '@/i18n';
+import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { sessionNewEn } from './i18n';
 import { renderSessionNewApp, settle } from './testing/session-new-harness';
@@ -607,7 +607,14 @@ describe('truthful copy (§3.2, MD-8; F-2)', () => {
     expect(screen.getByTestId('session-new-step-2')).toBeTruthy();
     expect(screen.getByText(LIVE_HINT)).toBeTruthy();
     expect(screen.queryByText(SIMULATED_HINT)).toBeNull();
-    expect(wordsOnScreen().filter((text) => SIMULATION.test(text))).toEqual([]);
+    // Fix wave Q (CP-10, truth rule 3f; contract J-S 7): this bed's Core states neither of its own-capture facts - it is
+    // a SIMULATED Core, and the Devices Check says so ONCE, in the words Home uses. No OTHER text claims a simulation
+    // (the app itself simulates nothing in LIVE mode).
+    const DEMONSTRATION = i18n.t('features.dashboard.status.simulatedCore');
+    expect(screen.getByTestId('session-new-gate-demonstration')).toHaveTextContent(DEMONSTRATION);
+    const claims = wordsOnScreen().filter((text) => SIMULATION.test(text));
+    expect(claims.length).toBeGreaterThan(0);
+    expect(claims.filter((text) => text !== DEMONSTRATION)).toEqual([]);
     expect(getMissingKeys()).toEqual([]);
   });
 

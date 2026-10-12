@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, renderHook, screen, within } from '@testing-library/react-native';
 import { EvidenceStatus, verificationOfRecordFailed } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { FlashList } from '@shopify/flash-list';
+import { LIST_KEEP_POSITION, NEW_ROW_AUTOSCROLL_PX, useTopOnQueryChange } from '@/lib/list-position';
 import { renderEvidenceApp, settle } from './testing/evidence-harness';
 
 function visibleRowIds(): string[] {
@@ -27,14 +28,48 @@ describe('T-M15 Evidence list', () => {
 
   // Fix wave J, JM-03 (reproduced on the tablet, normal launch: EV-20261012-0067, sealed on the tablet, was in the
   // view tree ONE ROW ABOVE the viewport of the list; the list showed -0066 first until it was pulled down).
-  // jsdom has no scroll position, so the rule held here is the cause's: the list does not hold the visible
-  // content in place when a row is inserted before it.
-  it('JM-03 - the list does not keep its place when a newer item is inserted at the top (the new item is the first row to see)', async () => {
+  // Fix wave Q, CP-01 / CT-02 (reproduced on the phone, normal launch): wave J's `{ disabled: true }` took the list's
+  // scroll anchor away, and the first opening after a sign-in and a filter change laid the rows out over one another.
+  // jsdom has no scroll position and no measured rows, so the rule held here is the cause's, for BOTH findings: the
+  // keeping of the position is never disabled, and a reader at the top is scrolled to a row added at the top.
+  it('JM-03 + CP-01 - the list keeps its scroll anchor (never `disabled`) and takes a reader at the top to a newer first row', async () => {
     renderEvidenceApp({ window: 'phonePortrait' });
     await settle();
     const list = screen.UNSAFE_getByType(FlashList);
     expect(list.props.testID).toBe('evidence-rows');
-    expect(list.props.maintainVisibleContentPosition).toEqual({ disabled: true });
+    expect(list.props.maintainVisibleContentPosition).toBe(LIST_KEEP_POSITION);
+    expect(list.props.maintainVisibleContentPosition.disabled).toBeUndefined();
+    expect(list.props.maintainVisibleContentPosition.autoscrollToTopThreshold).toBe(NEW_ROW_AUTOSCROLL_PX);
+    expect(NEW_ROW_AUTOSCROLL_PX).toBeGreaterThan(0);
+  });
+
+  // Fix wave Q (found on the tablet while re-proving JM-03): with the position kept, clearing a search for one old item
+  // left the list standing at that item, near its end. The answer to a new query is read from the top.
+  it('a changed search takes the list to its first row (not the first render, not a re-render with the same query, not an empty list)', () => {
+    const calls: number[] = [];
+    const frames = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((run) => {
+      run(0);
+      return 1;
+    });
+    const hook = renderHook(
+      ({ key, count }: { key: string; count: number }) => {
+        const ref = useTopOnQueryChange<{ scrollToIndex(params: { index: number; animated?: boolean }): unknown }>(key, count);
+        (ref as { current: unknown }).current = { scrollToIndex: ({ index }: { index: number }) => calls.push(index) };
+        return ref;
+      },
+      { initialProps: { key: '', count: 80 } },
+    );
+    expect(calls).toEqual([]);
+    hook.rerender({ key: '', count: 81 });
+    expect(calls).toEqual([]);
+    hook.rerender({ key: 'EV-20261009-0005', count: 1 });
+    expect(calls).toEqual([0]);
+    hook.rerender({ key: '', count: 81 });
+    expect(calls).toEqual([0, 0]);
+    // A query that matches nothing: there is no first row to go to.
+    hook.rerender({ key: 'no such item', count: 0 });
+    expect(calls).toEqual([0, 0]);
+    frames.mockRestore();
   });
 
   // Fix wave J, JT-04 (truth rule 3b; contract_wave_j.md J-S 8): the tampered item, with a FAIL of record on the Core,

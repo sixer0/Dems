@@ -16,7 +16,8 @@
 import 'react-native-gesture-handler/jestSetup';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { cleanup } from '@testing-library/react-native';
+import { act, cleanup, screen } from '@testing-library/react-native';
+import { Text } from 'react-native';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SimState } from '@dems/shared/sim';
@@ -25,7 +26,20 @@ import { createHomeBed, flush, type HomeBed } from '@/features/dashboard/testing
 import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
 import { resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests } from './index';
 import { watchLiveResync, type LiveResyncSource } from './live-resync-watch';
-import { SessionRouteSync } from './session-route-sync';
+import { resetForeignSessionSignalForTests, subscribeForeignSession, type ForeignSessionSignal } from './foreign-session-signal';
+import {
+  ATTENDED_STORAGE_KEY,
+  SessionRouteSync,
+  hydrateAttendedSessions,
+  isSessionAttended,
+  isSessionFlowPath,
+  markSessionAttended,
+  resetAttendedSessionsForTests,
+} from './session-route-sync';
+import { QuickActions } from '@/features/dashboard/quick-actions';
+import { primaryActionFor } from '@/features/dashboard/home-model';
+import { useBootHref } from '@/navigation/root-navigator';
+import { signInSessionHref } from '@/navigation/session-routes';
 import { createTestSim } from './testing/test-sim';
 
 const mockReplace = jest.fn();
@@ -72,6 +86,8 @@ function acknowledgedAndNewer(before: SimState, nextId: string): SimState {
 const nextSessionId = (id: string): string => id.replace(/(\d{4})$/, (seq) => String(Number(seq) + 1).padStart(4, '0'));
 
 let bed: HomeBed | null = null;
+/** Fix wave Q (CT-05): what the route sync told instead of navigating. */
+const told: ForeignSessionSignal[] = [];
 
 beforeAll(async () => {
   // Reanimated's UI-side frame-callback registry initialises on real timers (S72-12).
@@ -81,6 +97,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   mockReplace.mockClear();
   mockRoute.pathname = '/sessions';
+  told.length = 0;
+  resetAttendedSessionsForTests();
+  resetForeignSessionSignalForTests();
+  subscribeForeignSession((signal) => told.push(signal));
   await AsyncStorage.clear();
   resetCoreLinkPrefsForTests();
   resetDebugLaunchForTests();
@@ -99,7 +119,11 @@ afterEach(() => {
 });
 
 describe('SessionRouteSync on a Live reconnect (D169, W72 F-2)', () => {
-  it('opens the summary of the session the snapshot brought (Y), not the one rendered before the outage (X)', async () => {
+  // Fix wave Q (CT-05; ruling of D246) REPLACES "opens the summary of the session the snapshot brought (Y)": Y was
+  // sealed on the Core while this device was away - a session it never took part in. Such a session never moves
+  // the operator; it is told. D169's own rule stays and is what the telling proves: the route sync reads the
+  // session the SNAPSHOT brought (Y), never the one rendered before the outage (X).
+  it('a session sealed elsewhere during the outage (Y) is TOLD, not opened; the stale one (X) is neither opened nor told', async () => {
     const { state: before, sessionId: x } = sealedPending();
     const y = nextSessionId(x);
     bed = createHomeBed();
@@ -116,10 +140,34 @@ describe('SessionRouteSync on a Live reconnect (D169, W72 F-2)', () => {
     bed.state = acknowledgedAndNewer(before, y);
     await bed.elapse(1_500, 250);
     bed.comeBack();
+    for (let waited = 0; waited < 20_000 && told.length === 0; waited += 250) await bed.elapse(250, 250);
+
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(told).toEqual([{ sessionId: y, phase: 'sealed' }]);
+  });
+
+  // CONTROL of the rule above, and D169 as it was: a session this device DID take part in is followed.
+  it('CONTROL: the same reconnect for a session this device took part in opens its summary (Y), never the stale one (X)', async () => {
+    const { state: before, sessionId: x } = sealedPending();
+    const y = nextSessionId(x);
+    markSessionAttended(y);
+    bed = createHomeBed();
+    bed.state = before;
+    bed.mount(<SessionRouteSync />);
+    await bed.signIn();
+    await flush();
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    bed.goDown();
+    await flush();
+    bed.state = acknowledgedAndNewer(before, y);
+    await bed.elapse(1_500, 250);
+    bed.comeBack();
     for (let waited = 0; waited < 20_000 && mockReplace.mock.calls.length === 0; waited += 250) await bed.elapse(250, 250);
 
     expect(mockReplace.mock.calls.map((call) => call[0])).toEqual([`/session/summary/${y}`]);
     expect(mockReplace).not.toHaveBeenCalledWith(`/session/summary/${x}`);
+    expect(told).toEqual([]);
   });
 
   it('a reconnect whose snapshot changed nothing navigates nowhere new: on the pending summary already, it stays', async () => {
@@ -141,10 +189,12 @@ describe('SessionRouteSync on a Live reconnect (D169, W72 F-2)', () => {
 });
 
 describe('SessionRouteSync on a Live reconnect whose snapshot changed nothing', () => {
-  it('a recording, the operator elsewhere: after the confirmation it opens the monitor once (as before D169)', async () => {
+  it('a recording this device took part in, the operator elsewhere: after the confirmation it opens the monitor once (as before D169)', async () => {
     const recording = createTestSim({ scenario: 'recording' });
     const state = recording.sim.store.getState();
     expect(state.session?.state).toBe('RECORDING');
+    // Fix wave Q (CT-05): the operator started this recording here (they stood on its monitor), then went to Evidence.
+    markSessionAttended(state.session!.id);
     mockRoute.pathname = '/evidence';
     bed = createHomeBed();
     bed.state = state;
@@ -159,6 +209,48 @@ describe('SessionRouteSync on a Live reconnect whose snapshot changed nothing', 
     for (let waited = 0; waited < 20_000 && mockReplace.mock.calls.length === 0; waited += 250) await bed.elapse(250, 250);
     await bed.elapse(2_000, 250);
     expect(mockReplace.mock.calls.map((call) => call[0])).toEqual(['/session/live']);
+    expect(told).toEqual([]);
+  });
+
+  // Fix wave Q (CT-05, seen three times on the tablet and on the phone in the confirmation: the operator was taken
+  // from Evidence and from Network & Time to the Finalizing and the Summary of sessions run from the web console).
+  it('CT-05: a recording run from ANOTHER console, the operator on Evidence: the reconnect moves nobody and tells it once', async () => {
+    const recording = createTestSim({ scenario: 'recording' });
+    const state = recording.sim.store.getState();
+    mockRoute.pathname = '/evidence';
+    bed = createHomeBed();
+    bed.state = state;
+    bed.mount(<SessionRouteSync />);
+    await bed.signIn();
+    await flush();
+    bed.goDown();
+    await flush();
+    await bed.elapse(1_500, 250);
+    bed.comeBack();
+    for (let waited = 0; waited < 20_000 && told.length === 0; waited += 250) await bed.elapse(250, 250);
+    await bed.elapse(2_000, 250);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(told).toEqual([{ sessionId: state.session!.id, phase: 'recording' }]);
+    // A second outage of the same recording says nothing again.
+    bed.goDown();
+    await flush();
+    await bed.elapse(1_500, 250);
+    bed.comeBack();
+    for (let waited = 0; waited < 12_000; waited += 250) await bed.elapse(250, 250);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(told).toHaveLength(1);
+  });
+
+  it('CT-05: the screens of a session\'s flow are what "taking part" means - and only the Summary of THAT session', () => {
+    expect(isSessionFlowPath('/session/new', 'SES-1')).toBe(true);
+    expect(isSessionFlowPath('/session/live', 'SES-1')).toBe(true);
+    expect(isSessionFlowPath('/session/finalizing', 'SES-1')).toBe(true);
+    expect(isSessionFlowPath('/session/recovery', 'SES-1')).toBe(true);
+    expect(isSessionFlowPath('/session/summary/SES-1', 'SES-1')).toBe(true);
+    expect(isSessionFlowPath('/session/summary/SES-0', 'SES-1')).toBe(false);
+    expect(isSessionFlowPath('/evidence', 'SES-1')).toBe(false);
+    expect(isSessionFlowPath('/home', 'SES-1')).toBe(false);
+    expect(isSessionFlowPath('/session/live', null)).toBe(false);
   });
 });
 
@@ -183,6 +275,88 @@ function fakeLive() {
   };
   return live as typeof live & LiveResyncSource;
 }
+
+// Decision D247 item 6 (note 176 decision 3; the ruling of CT-05 extended): CT-05 stopped the ROUTE SYNC from
+// moving an operator to a session of another console, but right after a SIGN-IN the boot router still opened
+// the unacknowledged Summary of whatever session the Core held (seen twice on 12 Oct: the Summaries of the web
+// console's sessions). The boot target is now the Summary only for a session this device ran; for any other
+// one it is Home (or the pending link), and Home says the Summary is there.
+function BootProbe() {
+  return <Text testID="boot-href">{useBootHref()}</Text>;
+}
+const bootHref = (): string => String(screen.getByTestId('boot-href').props.children);
+
+describe('D247 item 6: after a sign-in, the unacknowledged Summary of a session run elsewhere is not opened', () => {
+  it('the rule: SEALED and unacknowledged opens its Summary only when the session ran on this device; no other state changes', () => {
+    const pending = { sessionId: 'SES-20261012-0118', summaryAcknowledged: false };
+    expect(signInSessionHref('SEALED', pending, true)).toBe('/session/summary/SES-20261012-0118');
+    expect(signInSessionHref('SEALED', pending, false)).toBeNull();
+    expect(signInSessionHref('SEALED', { ...pending, summaryAcknowledged: true }, true)).toBeNull();
+    // A session that still runs is the Core's one session whoever started it: the sign-in goes to it as before.
+    expect(signInSessionHref('RECORDING', pending, false)).toBe('/session/live');
+    expect(signInSessionHref('FINALIZING', pending, false)).toBe('/session/finalizing');
+    expect(signInSessionHref('FAULT', pending, false)).toBe('/session/recovery');
+    expect(signInSessionHref(null, {}, false)).toBeNull();
+  });
+
+  it('a session sealed from another console waits for its acknowledgement: the sign-in lands on Home, and Home offers the Summary', async () => {
+    const { state, sessionId } = sealedPending();
+    bed = createHomeBed();
+    bed.state = state;
+    bed.mount(
+      <>
+        <BootProbe />
+        <QuickActions action={primaryActionFor('SEALED', { sessionId, summaryAcknowledged: false })} />
+      </>,
+    );
+    await bed.signIn();
+    await flush();
+    expect(isSessionAttended(sessionId)).toBe(false);
+    expect(bootHref()).toBe('/home');
+    expect(String(screen.getByTestId('home-action-summary-elsewhere').props.children)).toBe(
+      `Session ${sessionId} was sealed on another console. Summary not yet acknowledged.`,
+    );
+    // The operator may open it: the way is Home's own "View session summary".
+    expect(screen.getByTestId('home-action-primary').props.accessibilityLabel).toBe('View session summary');
+
+    // Once this device stands on that Summary it takes part in the session (CT-05's own rule): no line any more.
+    act(() => markSessionAttended(sessionId));
+    expect(screen.queryByTestId('home-action-summary-elsewhere')).toBeNull();
+  });
+
+  it('CONTROL: a session this device ran opens its Summary after the sign-in, and Home draws no such line', async () => {
+    const { state, sessionId } = sealedPending();
+    markSessionAttended(sessionId);
+    bed = createHomeBed();
+    bed.state = state;
+    bed.mount(
+      <>
+        <BootProbe />
+        <QuickActions action={primaryActionFor('SEALED', { sessionId, summaryAcknowledged: false })} />
+      </>,
+    );
+    await bed.signIn();
+    await flush();
+    expect(bootHref()).toBe(`/session/summary/${sessionId}`);
+    expect(screen.queryByTestId('home-action-summary-elsewhere')).toBeNull();
+  });
+
+  it('this device remembers the sessions it ran across a relaunch: the newest ids are stored and read back', async () => {
+    markSessionAttended('SES-20261012-0118');
+    await flush();
+    expect(JSON.parse((await AsyncStorage.getItem(ATTENDED_STORAGE_KEY)) ?? '[]')).toEqual(['SES-20261012-0118']);
+    // The relaunch: the module's memory is gone, the stored list is read.
+    resetAttendedSessionsForTests();
+    expect(isSessionAttended('SES-20261012-0118')).toBe(false);
+    await hydrateAttendedSessions();
+    expect(isSessionAttended('SES-20261012-0118')).toBe(true);
+    // A damaged stored value is no session, and no error reaches the operator.
+    resetAttendedSessionsForTests();
+    await AsyncStorage.setItem(ATTENDED_STORAGE_KEY, '{not json');
+    await hydrateAttendedSessions();
+    expect(isSessionAttended('SES-20261012-0118')).toBe(false);
+  });
+});
 
 describe('watchLiveResync (D169)', () => {
   it('no outage seen: runs at once', () => {

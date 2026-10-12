@@ -111,7 +111,13 @@ describe('No network, no address, no storage, no credential, no raw link state (
 
 describe('One LIVE idiom (rule 5)', () => {
   it('the files that pick a LIVE behaviour read `useCoreLink().source`; none reads the data-mode hook', () => {
-    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['archive-dialog.tsx', 'evidence-detail.tsx', 'export-sheet.tsx']);
+    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual([
+      'archive-dialog.tsx',
+      // Fix wave Q (CP-05): `useSimulatedCoreLink` - the Summary's rule for the demonstration mark, for list rows.
+      'evidence-chips.tsx',
+      'evidence-detail.tsx',
+      'export-sheet.tsx',
+    ]);
     expect(matching(/\buseCoreMode\b|\buseLive\b\(/)).toEqual([]);
   });
 });

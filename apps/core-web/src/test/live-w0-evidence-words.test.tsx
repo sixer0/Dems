@@ -124,3 +124,30 @@ describe('Live mode: the Core server\'s record is called so', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 })
+
+// Fix wave Q, driver Q-W (CP-05, the web's side; truth rules 3a / 3f): the list row of a demonstration record read plain
+// "Sealed" while its own page says more ("DEMO package", "Demonstration record of a simulated session"). The row and
+// the header draw ONE mark. Simulated mode draws none (`evidence-table.test.tsx`, "JW-10": its banner says what every
+// row is); the mark follows `isDemoItem` - the Core's `integritySource`, never a guess.
+describe('Live mode: a demonstration record is named so on its list row, as on its page (CP-05)', () => {
+  it('the list row of a demonstration item carries "Demonstration record" beside its status, with its hint as the title', async () => {
+    opened = await openLiveEvidence('/evidence')
+    const table = await screen.findByTestId('evidence-table', {}, UI)
+    const mark = await within(table).findByTestId(`evidence-row-demonstration-${EV.sealed7}`, {}, UI)
+    expect(mark).toHaveTextContent('Demonstration record')
+    expect(mark.querySelector('[title]')).toHaveAttribute('title', 'A demonstration record: its seal and its values are simulated. It is not evidence.')
+    // In the Status cell, beside the status chip - which still says what the Core's status is.
+    const cell = mark.closest('td')!
+    expect(cell).toHaveClass('evi-cell-status')
+    expect(cell.querySelector('[data-evidence-status]')).toHaveAttribute('data-evidence-status', 'SEALED')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('the item header says the same', async () => {
+    opened = await openLiveEvidence(`/evidence/${EV.sealed7}`)
+    await findDetailBody()
+    const header = await screen.findByTestId('evidence-detail-header', {}, UI)
+    expect(within(header).getByTestId('evidence-detail-demonstration')).toHaveTextContent('Demonstration record')
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})

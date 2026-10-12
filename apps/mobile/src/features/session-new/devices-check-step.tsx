@@ -31,6 +31,7 @@ import { busyState } from '@/runtime';
 import { CheckIcon } from './check-icon';
 import { DevicePreviews } from './device-previews';
 import { CHECK_ORDER, checkMicBinding, itemsWith, micRoleLine, precheckNoteOf, precheckTone, resolvedCount, valueKey, type GatePhase } from './session-new-model';
+import { useSimulatedCoreLink } from '@/features/evidence/evidence-chips';
 
 export interface DevicesCheckStepProps {
   precheck: PrecheckSlice | null;
@@ -74,6 +75,7 @@ export function DevicesCheckStep({
   paused,
 }: DevicesCheckStepProps) {
   const { t } = useTranslation();
+  const simulatedCore = useSimulatedCoreLink();
   const settings = useMotionSettings();
   const items = precheck?.items ?? [];
   const done = resolvedCount(items);
@@ -114,6 +116,12 @@ export function DevicesCheckStep({
         }
         testID="session-new-gate"
       >
+        {/* Fix wave Q (CP-10, truth rule 3f): the checks of a SIMULATED Core are a demonstration, said in the app's words. */}
+        {simulatedCore ? (
+          <View style={styles.demonstration}>
+            <StatusChip testID="session-new-gate-demonstration" tone="info" label={t('features.dashboard.status.simulatedCore')} icon={null} size="sm" />
+          </View>
+        ) : null}
         {phase === 'block' ? (
           <Animated.View entering={FadeIn.duration(REDUCED_FADE_MS).reduceMotion(ReduceMotion.System)}>
             <Alert status="danger" testID="session-new-gate-block">
@@ -314,6 +322,7 @@ function useGateHaptics(phase: GatePhase): void {
 }
 
 const styles = StyleSheet.create({
+  demonstration: { flexDirection: 'row', marginBottom: 8 },
   stack: { gap: spacing[3] },
   stackTight: { gap: spacing[2] },
   ackRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: 48 },

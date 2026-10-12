@@ -1,3 +1,4 @@
+import { readableCode } from '@/lib/event-words'
 import { useState } from 'react'
 import { Button, Card } from '@heroui/react'
 import { Download, PackageCheck } from 'lucide-react'
@@ -83,7 +84,7 @@ function ExportEntry({ evidenceId, entry }: { evidenceId: string; entry: Finishe
     setState({ busy: false, last: result.outcome })
   }
 
-  const kind = entry.kind === 'PACKAGE' || entry.kind === 'COMPOSITE' ? t(`evidence.exportJob.kind.${entry.kind}`) : entry.kind
+  const kind = entry.kind === 'PACKAGE' || entry.kind === 'COMPOSITE' ? t(`evidence.exportJob.kind.${entry.kind}`) : readableCode(entry.kind)
   return (
     <li className="flex flex-wrap items-center gap-2" data-testid={`evidence-export-entry-${entry.jobId}`} data-export-id={entry.exportId}>
       <span className="evi-strong evi-mono">{t('evidence.itemFacts.exports.entry', { exportId: entry.exportId, kind })}</span>

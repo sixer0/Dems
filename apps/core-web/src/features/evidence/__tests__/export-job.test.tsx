@@ -278,7 +278,9 @@ describe('a failed job', () => {
   it('any other cause: the FAIL wording with the cause of the Core, as an alert; it is an answer, so nothing is recorded as a failed read', async () => {
     await exportSealed([{ ...JOB, status: 'FAILED', progressPct: 60, failureReason: 'SOURCE_VERIFY_FAILED' }])
     await until(() => expect(job()).toHaveAttribute('data-status', 'FAILED'), POLLS)
-    expect(screen.getByTestId('export-job-failed')).toHaveTextContent('The export job FAILED (SOURCE_VERIFY_FAILED).')
+    // Fix wave Q (JW-13), pin moved: the cause in words; the code stays on the element (`data-reason`).
+    expect(screen.getByTestId('export-job-failed')).toHaveTextContent('The export job FAILED (Source verify failed).')
+    expect(screen.getByTestId('export-job-failed')).toHaveAttribute('data-reason', 'SOURCE_VERIFY_FAILED')
     expect(screen.getByTestId('export-job-failed')).toHaveAttribute('role', 'alert')
     expect(screen.getByTestId('export-job-status')).toHaveTextContent('FAILED')
     expect(webErrorSink.records().filter((record) => record.source === 'Evidence.export.job')).toEqual([])

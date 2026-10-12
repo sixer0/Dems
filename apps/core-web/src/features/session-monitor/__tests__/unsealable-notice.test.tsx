@@ -4,7 +4,7 @@
 import { cleanup, render, screen, act, fireEvent, waitFor, within, configure } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
 import { en } from '@dems/shared/i18n'
-import { ALWAYS_VISIBLE, createSim, SEAL_UNSEALABLE_PLAIN_SENTENCE, SimProvider, unsealableSentence, type Sim, type SimAlert, OPERATOR_IDS, SEAL_AUTOMATIC_RETRIES, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, SEAL_UNSEALABLE_EXAMPLE_ALERT, SEAL_UNSEALABLE_EXAMPLE_SESSION_ID, alertBlocksRecording, canResolveUnsealable, canRetryBlockedSeal, openUnsealableNoticesOf, type SimState } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createSim, SEAL_BLOCKED_DETAIL_SENTENCE, SEAL_UNSEALABLE_PLAIN_SENTENCE, SimProvider, unsealableSentence, type Sim, type SimAlert, OPERATOR_IDS, SEAL_AUTOMATIC_RETRIES, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, SEAL_UNSEALABLE_EXAMPLE_ALERT, SEAL_UNSEALABLE_EXAMPLE_SESSION_ID, alertBlocksRecording, canResolveUnsealable, canRetryBlockedSeal, openUnsealableNoticesOf, type SimState } from '@dems/shared/sim'
 import '@/i18n'
 import { UnsealableNotice } from '../unsealable-notice'
 import { sealRetryingSessionOf } from '@/lib/seal-attention'
@@ -42,7 +42,8 @@ describe("the UNSEALABLE state as the Monitor overlay draws it (F-M7b)", () => {
       expect(screen.getByTestId('sm-unsealable-sentence').textContent).toBe('This recording could not be sealed. Its files were kept in quarantine on the Core.')
       expect(screen.getByTestId('sm-unsealable-sentence').textContent).toBe(SEAL_UNSEALABLE_PLAIN_SENTENCE)
       expect(notice.textContent).not.toContain('(NOTHING_SEALABLE)')
-      expect(screen.getByTestId('sm-unsealable-cause').textContent).toBe('Cause code: NOTHING_SEALABLE')
+      // Fix wave Q (JW-13), pin moved: the cause in words (`lib/event-words.ts`), the Core's code after them as the reference.
+      expect(screen.getByTestId('sm-unsealable-cause').textContent).toBe('Cause: Nothing sealable (code NOTHING_SEALABLE)')
       expect(en.common.sealUnsealable.notice).toContain('{{cause}}')
       // A state, not an operator error: a status region, no alert role, no control to press.
       expect(notice.getAttribute('role')).toBe('status')
@@ -116,7 +117,7 @@ describe("the open notice of a recording that could not be sealed, the retry of 
       // No code in brackets in the sentence (G75d-04); the code is its own detail.
       expect(row).not.toHaveTextContent('(SESSION_KEY_NOT_OF_SESSION)')
       expect(row).toHaveTextContent(SEAL_UNSEALABLE_EXAMPLE_SESSION_ID)
-      expect(row).toHaveTextContent('Cause code: SESSION_KEY_NOT_OF_SESSION')
+      expect(row).toHaveTextContent(`Cause: ${SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_NOT_OF_SESSION} (code SESSION_KEY_NOT_OF_SESSION)`)
       // BUDI is the investigator: no control, the sentence says who can.
       expect(within(row).queryByTestId(`alert-unsealable-acknowledge-${SEAL_UNSEALABLE_EXAMPLE_ALERT.id}`)).toBeNull()
       expect(within(row).getByTestId(`alert-unsealable-who-${SEAL_UNSEALABLE_EXAMPLE_ALERT.id}`)).toHaveTextContent(L.notice.closeBySupervisor)
@@ -303,7 +304,7 @@ describe("the open notice of a recording that could not be sealed, the retry of 
       const notice = await page('sm-unsealable')
       expect(within(notice).getByTestId('sm-unsealable-sentence')).toHaveTextContent(SEAL_UNSEALABLE_PLAIN_SENTENCE)
       expect(notice).not.toHaveTextContent('(SESSION_KEY_NOT_OF_SESSION)')
-      expect(within(notice).getByTestId('sm-unsealable-cause')).toHaveTextContent('Cause code: SESSION_KEY_NOT_OF_SESSION')
+      expect(within(notice).getByTestId('sm-unsealable-cause')).toHaveTextContent(`Cause: ${SEAL_BLOCKED_DETAIL_SENTENCE.SESSION_KEY_NOT_OF_SESSION} (code SESSION_KEY_NOT_OF_SESSION)`)
       const dialog = notice.closest('[role=dialog]')!
       expect(dialog).toHaveTextContent(L.unsealableEnd.title)
       expect(dialog).not.toHaveTextContent(en.session.finalization.title)

@@ -1,3 +1,4 @@
+import { auditTypeWords, faultKindWords } from '@/lib/event-words'
 import { useEffect, useRef, useState, type Key, type ReactNode } from 'react'
 import { Button, Drawer, EmptyState, Table, Tabs } from '@heroui/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -554,7 +555,7 @@ function logDetail(row: AuditRow, t: TFunction, words: DeviceWords): string {
     case 'FAULT_RAISED':
     case 'FAULT_CLEARED':
     case 'AUDIT_CHAIN_DISCONTINUITY':
-      return kind ? t(`common.faultKind.${kind}`) : EMPTY_DATE_TEXT
+      return kind ? faultKindWords(t, kind) : EMPTY_DATE_TEXT
     case 'DEVICE_COMMAND':
       if (row.details.command === DeviceCommand.TEST_SIGNAL) return t(words.testSignal)
       if (row.details.command === DeviceCommand.IDENTIFY) return t('common.deviceMenu.identify')
@@ -593,7 +594,7 @@ function DeviceLog({ deviceId }: { deviceId: DeviceId }) {
                 <Table.Cell>
                   <span className="dev-log-event">
                     <StatusDot tone={SEVERITY_TONE[row.severity]} />
-                    {t(`common.auditType.${row.type}`)}
+                    {auditTypeWords(t, row.type)}
                   </span>
                 </Table.Cell>
                 <Table.Cell className="text-foreground-2">{logDetail(row, t, words)}</Table.Cell>

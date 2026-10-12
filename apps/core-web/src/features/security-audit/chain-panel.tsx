@@ -1,3 +1,4 @@
+import { auditTypeWords } from '@/lib/event-words'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Chip, Spinner, Tag, TagGroup, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -287,7 +288,7 @@ export const ChainPanel = memo(function ChainPanel({ chain, onShowEntry, classNa
         <div className="sa-block-inspect" data-testid="chain-inspect">
           <span>
             <strong>{t('securityAudit.chain.entry', { seq: selected.row.seq })}</strong>{' '}
-            <span className="sa-mono">{selected.row.id}</span> • {t(`common.auditType.${selected.row.type}`)} •{' '}
+            <span className="sa-mono">{selected.row.id}</span> • {auditTypeWords(t, selected.row.type)} •{' '}
             <span className="sa-mono">{formatDate(selected.row.at, DATE_PATTERNS.dateTime)}</span>
           </span>
           <span>

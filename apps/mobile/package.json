@@ -15,6 +15,8 @@
     "prebuild": "EXPO_NO_TELEMETRY=1 expo prebuild --platform android --no-install",
     "doctor": "EXPO_NO_TELEMETRY=1 expo-doctor",
     "deps:check": "EXPO_NO_TELEMETRY=1 expo install --check",
+    "patches:apply": "sh scripts/apply-patches.sh",
+    "patches:check": "sh scripts/apply-patches.sh --check",
     "reverse": "adb reverse tcp:4400 tcp:4400 && adb reverse tcp:8081 tcp:8081 && adb reverse tcp:4420 tcp:4420"
   },
   "dependencies": {

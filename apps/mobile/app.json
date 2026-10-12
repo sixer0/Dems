@@ -45,7 +45,8 @@
       "expo-font",
       "expo-status-bar",
       "expo-local-authentication",
-      "./plugins/with-dems-release-signing"
+      "./plugins/with-dems-release-signing",
+      "./plugins/with-dems-library-patches"
     ],
     "experiments": {
       "typedRoutes": true,

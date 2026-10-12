@@ -75,6 +75,7 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
         target: 'CAM-02',
         params: { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', cause: 'UNREACHABLE', searchResponderCount: 1 },
       }
+      resetMissingI18nKeys()
       mountStep(
         OPERATOR_IDS.ANDI,
         [...OTHERS, unreachable('LENS_2', 'WARN', { deviceId: 'CAM-02', deviceKind: 'CAMERA', rule: 'oneCamera' }), pass('MIC_PRIMARY'), pass('MIC_STANDBY')],
@@ -86,6 +87,12 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
       expect(row).toHaveAttribute('data-rule', 'oneCamera')
       expect(row).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record one camera only. It did not answer the pre-check. A search found 1 camera.')
       expect(row.textContent ?? '').not.toMatch(/lens fault|no signal|core text/i)
+      // Fix wave Q (CW-03): the row asked the tree for `common.enums.lensState.UNREACHABLE` - a key that does not exist
+      // (one "missing i18n key" warning in the console of lane 2) - although the row draws its sentence, not the value.
+      // The value is worded through the one map (`lib/event-words.ts`, which asks the tree first): no key is recorded as
+      // missing, and the raw value is nowhere on the row.
+      expect(row.textContent ?? '').not.toContain('UNREACHABLE')
+      expect(getMissingI18nKeys()).toEqual([])
       // "Search again" for cameras stands beside the pre-check's own Retry; none for microphones here.
       expect(within(screen.getByTestId('precheck-search-camera')).getByRole('button')).toHaveTextContent(en.common.captureSearch.again)
       expect(screen.queryByTestId('precheck-search-microphone')).not.toBeInTheDocument()

@@ -14,6 +14,7 @@ import { StatusChip } from '@/components/kit';
 import { SessionCaptureCheckpoints } from './capture-checkpoints';
 import type { StripChip } from './session-live.math';
 import { useMonitorStrip } from './use-monitor';
+import { useSimulatedCoreLink } from '@/features/evidence/evidence-chips';
 
 export interface StatusStripProps {
   direction?: 'row' | 'column';
@@ -21,6 +22,7 @@ export interface StatusStripProps {
 
 export function StatusStrip({ direction = 'row' }: StatusStripProps) {
   const { t } = useTranslation();
+  const simulatedCore = useSimulatedCoreLink();
   const chips = useMonitorStrip();
   const labelOf = (chip: StripChip): string => {
     switch (chip.kind) {
@@ -46,6 +48,11 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
     }
   };
 
+  // Fix wave Q (CP-10, truth rule 3f): on a SIMULATED Core the monitor's own words say that the feeds and the
+  // recording state are a demonstration - the only mark was the one burnt into the bundled picture.
+  const demonstration = simulatedCore ? (
+    <StatusChip key="demonstration" testID="monitor-strip-demonstration" tone="info" label={t('features.dashboard.status.simulatedCore')} icon={null} size="sm" />
+  ) : null;
   const items = chips.map((chip) => (
     <StatusChip
       key={chip.id}
@@ -60,6 +67,7 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
   if (direction === 'column') {
     return (
       <View testID="monitor-status-strip" accessibilityLabel={t('features.session-live.strip.label')} style={styles.column}>
+        {demonstration}
         {items}
         <SessionCaptureCheckpoints />
       </View>
@@ -69,6 +77,7 @@ export function StatusStrip({ direction = 'row' }: StatusStripProps) {
     <View testID="monitor-status-strip" accessibilityLabel={t('features.session-live.strip.label')}>
       <ScrollShadow LinearGradientComponent={LinearGradient} color={palette.black} size={24}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {demonstration}
           {items}
         </ScrollView>
       </ScrollShadow>

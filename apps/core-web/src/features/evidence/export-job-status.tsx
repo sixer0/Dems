@@ -1,3 +1,4 @@
+import { causeCodeWords } from '@/lib/event-words'
 import { Alert, Button, Chip, ProgressBar } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Download, RotateCcw } from 'lucide-react'
@@ -192,7 +193,7 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
                   : job.failureReason === EXPORT_JOBS_NOT_AVAILABLE
                     ? t('evidence.exportJob.failedNotAvailable')
                     : job.failureReason !== null
-                  ? t('evidence.exportJob.failed', { reason: job.failureReason })
+                  ? t('evidence.exportJob.failed', { reason: causeCodeWords(t, job.failureReason) })
                   : t('evidence.exportJob.failedNoReason')}
             </Alert.Title>
           </Alert.Content>

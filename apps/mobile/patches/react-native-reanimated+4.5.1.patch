@@ -1,0 +1,50 @@
+--- a/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
++++ b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
+@@ -243,6 +243,29 @@
+             .first {
+                 it.name.startsWith("updatePropsSynchronously") && it.parameterTypes.size == 2
+             }.apply { isAccessible = true }
++    }
++
++    // DEMS-PATCH react-native-reanimated+4.5.1 (apps/mobile/patches): MountingManager.getViewExists is
++    // the exact precondition of the RetryableMountingLayerException that updatePropsSynchronously
++    // throws for a tag no surface knows. Null when React Native has no such method: no check then.
++    private val viewExistsMethod by lazy {
++        mountingManager.javaClass.methods
++            .firstOrNull {
++                it.name.startsWith("getViewExists") && it.parameterTypes.size == 1
++            }?.apply { isAccessible = true }
++    }
++
++    private var skippedUnmountedUpdates = 0L
++    private var skippedUnmountedLoggedAt = 0L
++
++    // DEMS-PATCH: one line without a stack, at most every 5 s, instead of one stack per tag per retry.
++    private fun noteSkippedUnmountedUpdate(viewTag: Int) {
++        skippedUnmountedUpdates++
++        val now = SystemClock.uptimeMillis()
++        if (now - skippedUnmountedLoggedAt >= 5000) {
++            skippedUnmountedLoggedAt = now
++            Log.i("Reanimated", "DEMS-PATCH skipped $skippedUnmountedUpdates synchronous updates of unmounted views so far (last tag $viewTag)")
++        }
+     }
+ 
+     @DoNotStrip
+@@ -253,9 +276,16 @@
+         SynchronousPropsBufferParser.parse(intBuffer, doubleBuffer) { viewTag, props ->
+             if (BuildConfig.IS_REACT_NATIVE_86_OR_NEWER) {
+                 try {
++                    // DEMS-PATCH: a tag without a mounted view is skipped before the call, so no
++                    // exception is built for it; the registry entry is left to its owner (C++).
++                    if (viewExistsMethod?.invoke(mountingManager, viewTag) == false) {
++                        noteSkippedUnmountedUpdate(viewTag)
++                        return@parse
++                    }
+                     updatePropsSynchronouslyMethod.invoke(mountingManager, viewTag, props)
+                 } catch (e: Exception) {
+-                    Log.w("Reanimated", "synchronouslyUpdateUIProps failed for tag $viewTag", e)
++                    // DEMS-PATCH: the cause in one line; no stack on the UI thread.
++                    Log.w("Reanimated", "synchronouslyUpdateUIProps failed for tag $viewTag: ${e.cause ?: e}")
+                 }
+             } else {
+                 mFabricUIManager.synchronouslyUpdateViewOnUIThread(viewTag, props)

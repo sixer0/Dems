@@ -7,6 +7,7 @@ import { formatUtcOffset } from '@dems/shared/realtime'
 import { useSim, useSimReady, type SimState } from '@dems/shared/sim'
 import { PageHeader } from '@/components/shell/page-header'
 import { causeWords } from '@/features/evidence/cause-words'
+import { causeCodeWords } from '@/lib/event-words'
 import { formatEvidenceDuration, formatWibDateTime } from '@/features/evidence/model'
 import { useSessionCauses } from './causes'
 import { quarantinedSessionIds, sessionRows, type SessionFilter, type SessionRow } from './model'
@@ -163,10 +164,10 @@ function SessionState({ row }: { row: SessionRow }) {
           {t(`web.waveJ.sessions.detail.${state.kind}`)}
         </span>
       )}
-      {/* Fix wave J round three (J2-S 4): the cause the Core recorded for giving the seal up, as its code - never a guessed sentence. */}
+      {/* Fix wave J round three (J2-S 4), fix wave Q (JW-13): the cause the Core recorded for giving the seal up - in the words of the ONE map (`lib/event-words.ts`), with the Core's code beside them as the reference. */}
       {state.kind === 'QUARANTINED' ? (
         <span className="ses-caption" data-testid="session-unsealable-cause" data-cause={row.unsealableCause ?? ''}>
-          {row.unsealableCause !== null ? t('web.waveJ3.sessions.unsealableCause', { cause: row.unsealableCause }) : t('web.waveJ3.sessions.unsealableCauseUnknown')}
+          {row.unsealableCause !== null ? t('web.waveQ.sessions.unsealableCause', { words: causeCodeWords(t, row.unsealableCause), cause: row.unsealableCause }) : t('web.waveJ3.sessions.unsealableCauseUnknown')}
         </span>
       ) : null}
       {state.evidenceId !== null ? (

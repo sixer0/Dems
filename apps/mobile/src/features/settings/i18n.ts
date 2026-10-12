@@ -52,13 +52,15 @@ export const settingsEn = {
   notifications: {
     intro: 'Choose which alert toasts this device shows.',
     categories: {
-      devices: { label: 'Cameras and microphones', hint: 'Camera loss, MIC no signal, MIC clipping' },
+      // Fix wave Q (CP-06): a switch names only what it can silence. A camera loss is critical: it is listed below.
+      devices: { label: 'Microphones', hint: 'MIC no signal, MIC clipping' },
       storage: { label: 'Storage', hint: 'Storage running low' },
       time: { label: 'Time sources', hint: 'GNSS loss and time fallback' },
-      system: { label: 'Enclosure and system', hint: 'Tamper, fan stall, audit-chain warnings' },
+      system: { label: 'Enclosure and system', hint: 'Tamper, fan stall' },
     },
-    critical: 'Critical alerts',
-    criticalHint: 'Storage full, power failure, TPM failure and security faults.',
+    critical: 'Critical alerts — always shown',
+    /** `kinds`: the names of `ALWAYS_SHOWN_KINDS`, from `common.faultKind.*`. The life is the toast's own sentence. */
+    criticalHint: 'No switch silences these: {{kinds}}. A critical toast stays until its alert is acknowledged or the Core reports it resolved; the bell keeps the alert until it is acknowledged.',
   },
   security: {
     biometric: 'Biometric sign-in',

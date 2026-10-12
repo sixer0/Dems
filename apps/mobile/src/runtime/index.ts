@@ -147,7 +147,18 @@ export {
   type CoreLinkSourceSetting,
 } from './core-link';
 export { hrefPath, isForcedTransition, resyncNavigation, resyncTarget, type ResyncContext, type ResyncTrigger, type SessionHref } from './route-sync';
-export { SessionRouteSync } from './session-route-sync';
+export {
+  ATTENDED_KEEP,
+  ATTENDED_STORAGE_KEY,
+  SessionRouteSync,
+  hydrateAttendedSessions,
+  isSessionAttended,
+  isSessionFlowPath,
+  markSessionAttended,
+  resetAttendedSessionsForTests,
+  useSessionRanHere,
+} from './session-route-sync';
+export { emitForeignSession, foreignSessionPhase, resetForeignSessionSignalForTests, subscribeForeignSession, type ForeignSessionPhase, type ForeignSessionSignal } from './foreign-session-signal';
 export {
   KEEP_AWAKE_STATES,
   KEEP_AWAKE_TAG,
@@ -217,7 +228,7 @@ export { useCoreLinkReadOnly } from './use-core-link-read-only';
 export { PendingSpinner, busyState, type PendingSpinnerProps } from './pending-control';
 export { heartbeatWhileEnded, isLinkSettling, isRunEndedByCore, liveLinkWhileEnded, useNoticeLiveLink, type EndedRunSource } from './ended-link';
 export { createStallTolerantTimers, STALL_LATENESS_MS, STALL_MAX_POSTPONE_MS, STALL_MAX_YIELDS, STALL_YIELD_MS } from './stall-tolerant-timers';
-export { CORE_CLOCK_WINDOW_MS, coreClockOf, createCoreClock, registerCoreClock, type CoreClock } from './core-clock';
+export { CORE_CLOCK_WINDOW_MS, coreClockOf, coreInstantOnDeviceClock, createCoreClock, registerCoreClock, type CoreClock } from './core-clock';
 export {
   ELAPSED_TICK_MS,
   SECOND_TICK_MARGIN_MS,
@@ -226,6 +237,7 @@ export {
   elapsedSecondsAt,
   msToNextSecond,
   useRecordingElapsedSeconds,
+  useRecordingLocalOrigin,
   useRecordingTickerSeconds,
   type ElapsedTicker,
 } from './recording-elapsed';

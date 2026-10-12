@@ -21,6 +21,7 @@
     }
   },
   "scripts": {
+    "postinstall": "sh apps/mobile/scripts/apply-patches.sh",
     "theme:gen": "npm run build -w @dems/shared",
     "dev:mock": "npm run dev -w @dems/mock-core",
     "dev:web": "npm run dev -w @dems/core-web",

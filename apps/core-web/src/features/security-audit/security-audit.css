@@ -485,6 +485,13 @@
     .sa-block { min-width: 74px; padding: 7px 8px !important; }
     .sa-block:not(:first-child)::before { width: 14px; }
   }
+  /* Fix wave Q (box check at 1280 x 800): twelve blocks needed 1057 px in a 1008 px strip - the last one lay outside
+     it. Closer together below 1440 px; every block and its link stay whole. */
+  @media (max-width: 1439px) {
+    .sa-strip-list { gap: 9px !important; }
+    .sa-block { min-width: 70px; padding: 7px 7px !important; }
+    .sa-block:not(:first-child)::before { width: 9px; }
+  }
 
   .sa-block-seq {
     font-family: var(--font-mono);
@@ -637,6 +644,14 @@
     color: var(--muted);
     white-space: normal;
     overflow-wrap: break-word;
+  }
+
+  .sa-event-refs-line {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .sa-chain-cell {

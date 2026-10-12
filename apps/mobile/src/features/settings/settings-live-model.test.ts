@@ -77,8 +77,10 @@ describe('who sees the Demo controls (AC-C-52)', () => {
     expect(demoControlsAccess({ presentationMode: true, live: true, permitted: true, demoFlag: true })).toBe('presentation');
     expect(demoControlsAccess({ presentationMode: false, live: true, permitted: true, demoFlag: true })).toBe('shown');
     expect(demoControlsAccess({ presentationMode: false, live: true, permitted: true, demoFlag: false })).toBe('flag-off');
-    // The Core answers NOT_PERMITTED before it looks at its flag ([SP:DC-1, DC-2]); the screen says the same.
     expect(demoControlsAccess({ presentationMode: false, live: true, permitted: false, demoFlag: true })).toBe('not-permitted');
-    expect(demoControlsAccess({ presentationMode: false, live: true, permitted: false, demoFlag: false })).toBe('not-permitted');
+    // Fix wave Q (CT-07) REPLACES "the screen says NOT_PERMITTED whatever the flag": on a Core without its demo flag
+    // no role has the controls, and every role reads that ONE caption - a supervisor and a technician alike.
+    expect(demoControlsAccess({ presentationMode: false, live: true, permitted: false, demoFlag: false })).toBe('flag-off');
+    expect(demoControlsAccess({ presentationMode: false, live: true, permitted: true, demoFlag: false })).toBe(demoControlsAccess({ presentationMode: false, live: true, permitted: false, demoFlag: false }));
   });
 });

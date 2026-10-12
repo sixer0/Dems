@@ -31,7 +31,7 @@
  * the rows says the list is what this device last received. Outside LIVE `offline` is false and the hub
  * is as before.
  */
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Alert, Button, SearchField, SkeletonGroup, TagGroup } from 'heroui-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -43,6 +43,7 @@ import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/
 import { SectionCard } from '@/components/kit';
 import { Emblem } from '@/components/media';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
+import { LIST_KEEP_POSITION, useTopOnQueryChange } from '@/lib/list-position';
 import { enterRise, rowReveal, triggerHaptic, useMotionSettings } from '@/motion';
 import { useCoreLinkNotice, useRuntimeStatus } from '@/runtime';
 import { HubTop } from './hub-top';
@@ -205,6 +206,8 @@ function SessionsListColumn({ query, onQueryChange, selectedId, withControls }: 
   const filtered = isFiltered(query);
   // A filter change or a finished refresh re-reveals the rows (they stagger again).
   const revealKey = `${query.filter}|${seq}`;
+  // Fix wave Q: the answer to a new filter or search is read from the top.
+  const listRef = useTopOnQueryChange<FlashListRef<SessionRowModel>>(`${query.filter}|${query.query}`, rows.length);
 
   const onPress = useCallback((row: SessionRowModel) => open(row), [open]);
 
@@ -264,8 +267,10 @@ function SessionsListColumn({ query, onQueryChange, selectedId, withControls }: 
       ) : null}
       <View style={styles.listWrap} accessibilityLabel={t('features.sessions.list.label')}>
         <FlashList
-          // Fix wave J (JM-03, as the Evidence list): a new first row must not be held above the viewport.
-          maintainVisibleContentPosition={{ disabled: true }}
+          // JM-03 (a new first row is not held above the viewport) and CP-01 / CT-02 (the first opening and a filter
+          // change lay out correctly): `@/lib/list-position`.
+          maintainVisibleContentPosition={LIST_KEEP_POSITION}
+          ref={listRef}
           testID="sessions-rows"
           data={status.ready ? rows : []}
           keyExtractor={(item) => `${revealKey}:${item.id}`}

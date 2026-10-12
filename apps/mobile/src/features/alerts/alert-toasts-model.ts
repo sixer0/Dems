@@ -28,6 +28,26 @@ export function alertToastKind(alert: Pick<SimAlert, 'severity' | 'kind'>, prefs
   return shouldNotify(alert.kind, prefs) ? 'warning' : null;
 }
 
+/** A toast's label is at most this long (fix wave Q, CT-04). */
+export const ALERT_TOAST_LABEL_MAX = 140;
+
+/**
+ * Fix wave Q (CT-04: "the critical toast is as large as the Core's sentence" - five lines across the window, word
+ * for word the notice of the page under it). A toast carries the FIRST sentence of the alert's words, cut at
+ * `ALERT_TOAST_LABEL_MAX` on a word; the bell and the page hold all of them. A label that is one sentence, or
+ * short, is unchanged.
+ */
+export function alertToastLabel(label: string): string {
+  const text = label.trim();
+  // A sentence ends at a full stop followed by a new sentence; "SES-2026...", "1.5 dB" and "13:04" hold no such break.
+  const end = text.search(/\.(?=\s+[A-Z"“])/);
+  const first = end >= 0 ? text.slice(0, end + 1) : text;
+  if (first.length <= ALERT_TOAST_LABEL_MAX) return first;
+  const cut = first.slice(0, ALERT_TOAST_LABEL_MAX);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > ALERT_TOAST_LABEL_MAX / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`;
+}
+
 export interface AlertToastState {
   /** Alert ids a toast was shown for (and ids that were present, not critical, when the consumer started). */
   readonly seen: readonly string[];

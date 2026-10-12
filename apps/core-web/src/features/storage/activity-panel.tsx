@@ -1,4 +1,4 @@
-import { eventTitle } from '@/lib/event-words'
+import { eventTitle, faultKindWords } from '@/lib/event-words'
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence } from 'motion/react'
@@ -40,7 +40,7 @@ export function ActivityPanel() {
     if (event.type !== 'FAULT_RAISED' && event.type !== 'FAULT_CLEARED') return title
     // Only the two storage fault kinds pass the storage-activity filter.
     const kind = event.params.kind === 'STORAGE_FULL' ? 'STORAGE_FULL' : 'STORAGE_LOW'
-    return `${title} · ${t(`common.faultKind.${kind}`)}`
+    return `${title} · ${faultKindWords(t, kind)}`
   }
 
   const detailOf = (event: SimEvent): string | null => {

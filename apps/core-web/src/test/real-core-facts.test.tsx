@@ -11,7 +11,7 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { type SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, UPDATER_NOT_AVAILABLE, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys, createI18n } from '@/i18n'
 import { enWeb } from '@/i18n-web'
@@ -29,6 +29,7 @@ import { countedDevicesOf, COUNTED_DEVICES, selectBanner, selectSummary } from '
 import { keyEntries, ownCoreKeyEntries } from '@/features/security-audit/sim-adapter'
 import { realSealFactsOf } from '@/features/session-monitor/real-seal-facts'
 import { captureFaultReasonOf, STREAM_PROFILE_DIFFERS, streamProfileNoticeOf, timelineWithoutRepeatedFaults, configuredProfileLinesOf } from '@/features/session-monitor/sim-adapter'
+import { selectorProfileLinesOf } from '@/features/session-new/model'
 import { manifestDigestSourceOf, manifestSuffixKey } from '@/features/dashboard/sim-adapter'
 import { isGeneratedSource, restingSourceChecked, sourceDeviceText } from '@/features/devices/own-core-words'
 import { registeredRoster, rosterStateNotChecked } from '@/features/devices/registered-devices-model'
@@ -982,6 +983,25 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
       expect(within(root).getByTestId('system-about-cameraModelFirmware')).toHaveTextContent(NR.value)
       expect(root).not.toHaveTextContent('Dual-lens IP camera')
     })
+    // Fix wave Q (CW-08 b; truth rule 3d): a Core without an updater offered the quick action "Software Update - Signed A/B
+    // system update" above a card that says nothing can be installed.
+    it('System: a Core that states it has no updater offers no "Software Update" quick action; the other three stay', async () => {
+      mount('/system', 'idle', (sim) => {
+        realCore(sim)
+        sim.store.setState({ update: { ...sim.store.getState().update, ...UPDATER_NOT_AVAILABLE } })
+      })
+      const root = await page('page-system')
+      expect(await within(root).findByTestId('system-quick-runDiagnostics', {}, FIND)).toBeInTheDocument()
+      expect(within(root).getByTestId('system-quick-reviewAudit')).toBeInTheDocument()
+      expect(within(root).getByTestId('system-quick-exportEvidence')).toBeInTheDocument()
+      expect(within(root).queryByTestId('system-quick-softwareUpdate')).toBeNull()
+      expect(root).not.toHaveTextContent(en.common.quickActions.softwareUpdate.subtitle)
+    })
+    it('CONTROL - a Core with an updater (the simulated lane) keeps the "Software Update" quick action', async () => {
+      mount('/system', 'idle')
+      const root = await page('page-system')
+      expect(await within(root).findByTestId('system-quick-softwareUpdate', {}, FIND)).toHaveTextContent(en.common.quickActions.softwareUpdate.title)
+    })
   })
 
   describe('G75c-04: the header checklist', () => {
@@ -1006,7 +1026,8 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
     })
 
     it('names the Core key, the development key and the development sources; never "No DEMO package exists for this item."', async () => {
-      const sim = mount('/session', 'finalizing')
+      // Fix wave Q (CW-04): mounted as what it is - a Core in its own capture (it was mounted without the Core's two statements).
+      const sim = mount('/session', 'finalizing', realCore)
       await screen.findByTestId('finalization-modal', {}, FIND)
       // The Core seals the session: the item it names is one it signed for real.
       act(() => {
@@ -1021,6 +1042,13 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
       expect(within(block).getByTestId('sm-final-development-sources')).toHaveTextContent(enWeb.web.sealDialog.developmentSources)
       expect(block).not.toHaveTextContent(en.session.finalization.noPackage)
       expect(block).not.toHaveTextContent('DEMO')
+      // Fix wave Q (CW-04), the control of the demonstration dialog (`live-session-monitor-actions.test.tsx`, "B-2 stop"):
+      // a Core in its own capture draws no DEMO mark, no "this seal is simulated" and no "LIVE" chip in this dialog.
+      const dialog = screen.getByTestId('finalization-modal')
+      expect(within(dialog).queryByTestId('demo-mark-seal-dialog')).toBeNull()
+      expect(within(dialog).queryByTestId('sm-final-demonstration')).toBeNull()
+      expect(within(dialog).queryByTestId('sm-final-source-chip')).toBeNull()
+      expect(dialog.textContent ?? '').not.toMatch(/\bLIVE\b/)
       expect(getMissingI18nKeys()).toEqual([])
     })
   })
@@ -1310,6 +1338,40 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       expect(row).toHaveTextContent(L.profile.configuredLabel)
       expect(row).toHaveTextContent('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30')
       expect(details).not.toHaveTextContent('1080p / 25 fps')
+    })
+    // Fix wave Q (CT-08, the web's side): the New Session form said "Recording Profile - Standard (1080p / 25 fps)" - the label
+    // of the form's `profileId` - on a Core whose selector lines say H264_720P30.
+    it('the New Session form: the rule is the selector lines IN FORCE - the open session\'s snapshot, else the stored selector; a sealed session\'s snapshot names nothing', () => {
+      const other = { cameras: [{ trackId: 'VIDEO-01', profile: 'H264_1080P25' }] }
+      expect(selectorProfileLinesOf({ session: null, captureConfig: selector })).toBe('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30')
+      expect(selectorProfileLinesOf({ session: { state: 'PRECHECK', captureConfig: other }, captureConfig: selector } as never)).toBe('VIDEO-01: H264_1080P25')
+      expect(selectorProfileLinesOf({ session: { state: 'SEALED', captureConfig: other }, captureConfig: selector } as never)).toBe('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30')
+      expect(selectorProfileLinesOf({ session: null, captureConfig: { cameras: [{ trackId: 'VIDEO-01', profile: '' }] } })).toBe('')
+    })
+    it('the New Session form of a Core in its own capture states the selector\'s profile per track and offers no choice; never "1080p / 25 fps"', async () => {
+      mount('/session/new', 'idle', (sim) => {
+        realCore(sim)
+        const state = sim.store.getState()
+        sim.store.setState({ captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => ({ ...line, profile: 'H264_720P30' })) } })
+      })
+      const field = await page('sn-profile')
+      expect(field).toHaveAttribute('data-source', 'selector')
+      expect(field).toHaveTextContent(L.profile.configuredLabel)
+      // One whole token per track (a line never breaks inside "VIDEO-02: H264_720P30").
+      const lines = (root: HTMLElement) => Array.from(root.querySelectorAll('.sn-profile-line')).map((line) => line.textContent)
+      expect(lines(within(field).getByTestId('sn-profile-lines'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30'])
+      expect(field.querySelector('button, select, [role=combobox]')).toBeNull()
+      expect(lines(screen.getByTestId('sn-preview-profile'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30'])
+      expect(screen.getByTestId('sn-step-info')).not.toHaveTextContent('1080p / 25 fps')
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+    it('CONTROL - the simulated lane keeps the form\'s "Recording Profile" choice and its label', async () => {
+      mount('/session/new', 'idle')
+      const field = await page('sn-profile')
+      expect(field).not.toHaveAttribute('data-source')
+      expect(field).toHaveTextContent(en.sessionNew.info.profile.label)
+      expect(field).toHaveTextContent(en.sessionNew.info.profile.standard)
+      expect(screen.queryByTestId('sn-profile-lines')).toBeNull()
     })
     it('CONTROL - the simulated lane keeps "Recording Profile" and its label', async () => {
       mount('/session', 'finalizing')

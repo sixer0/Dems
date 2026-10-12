@@ -23,7 +23,7 @@ import { FinishedExports } from './finished-exports'
 import { SealedFormat } from './sealed-format'
 import { IntegrityTab } from './integrity-tab'
 import { isDemoItem, mediaKindOf, playableFilesOf } from './item-facts'
-import { InterruptedMark, MediaNone, NotSealedMark } from './item-marks'
+import { DemonstrationRecordMark, InterruptedMark, MediaNone, NotSealedMark } from './item-marks'
 import { readItemV2 } from './item-v2'
 import { logEvidenceError } from './log'
 import { MediaTab } from './media-tab'
@@ -271,6 +271,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
             </div>
             <div className="evi-still-meta">
               <EvidenceStatusChip status={item.status} item={item} size="md" />
+              <DemonstrationRecordMark item={item} testId="evidence-detail-demonstration" />
               <Chip size="sm" variant="secondary" className="evi-demo-chip" data-testid="evidence-package-chip" data-package={packageChip.kind}>
                 <Chip.Label>{packageChip.label}</Chip.Label>
               </Chip>

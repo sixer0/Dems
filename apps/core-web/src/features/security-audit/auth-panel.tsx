@@ -1,3 +1,4 @@
+import { auditTypeWords } from '@/lib/event-words'
 import { memo, useMemo } from 'react'
 import { Chip } from '@heroui/react'
 import { Fingerprint } from 'lucide-react'
@@ -57,7 +58,7 @@ export const AuthPanel = memo(function AuthPanel({ className }: AuthPanelProps) 
         id: row.id,
         at: row.at,
         tone: toneClass(SEVERITY_TONE[row.severity]),
-        title: t(`common.auditType.${row.type}`),
+        title: auditTypeWords(t, row.type),
         sub: method
           ? `${actor(row)} • ${t('securityAudit.auth.via', { method: t(`common.authMethod.${method as 'PASSWORD'}`) })}`
           : actor(row),

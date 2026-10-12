@@ -1,4 +1,5 @@
 import { AlertToasts } from '@/features/alerts/alert-toasts';
+import { ForeignSessionToasts } from '@/features/sessions/foreign-session-toasts';
 import { AppStack } from '@/navigation';
 import { KeepAwakeController, SessionDiagnostics, SessionRouteSync } from '@/runtime';
 
@@ -20,6 +21,8 @@ export default function AppLayout() {
       <KeepAwakeController />
       {/* Fix wave J (JA2-05): the alert toasts Settings → Notifications promises, on every signed-in screen. */}
       <AlertToasts />
+      {/* Fix wave Q (CT-05): a session run from another console is told, never navigated to. */}
+      <ForeignSessionToasts />
     </>
   );
 }

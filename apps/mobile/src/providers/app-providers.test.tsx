@@ -10,7 +10,8 @@ import { useTranslation } from 'react-i18next';
 import { Dimensions, Text } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
 import { useHeartbeat, type SocketLike } from '@dems/shared/realtime';
-import { useLayoutClass } from '@/layout';
+import { NAV_DIMENSIONS, useLayoutClass } from '@/layout';
+import { toastAreaOffsets, toastContentWrapper } from './toast-area';
 import { AppProviders, BootGate, MAX_FONT_SIZE_MULTIPLIER, SPLASH_MAX_HOLD_MS, heroUIConfig } from '@/providers';
 import { RuntimeContractProvider, createRuntimeContract, useAuth, useCoreLink } from '@/runtime';
 
@@ -61,8 +62,28 @@ describe('heroUIConfig', () => {
   it('caps font scaling and puts toasts at the top', () => {
     expect(heroUIConfig(false)).toEqual({
       textProps: { maxFontSizeMultiplier: MAX_FONT_SIZE_MULTIPLIER },
-      toast: { defaultProps: { placement: 'top' } },
+      toast: { defaultProps: { placement: 'top' }, contentWrapper: toastContentWrapper },
     });
+  });
+
+  // Fix wave Q (CT-04: the critical toast covered the page title, the clock, the bell, the account button and the
+  // rail's "Home" and "Sessions"): the toast area is the content area of the window's layout class.
+  it('CT-04: the toast area lies under the header row and beside the navigation rail; a phone has no rail and keeps its tab bar free (top toasts)', () => {
+    const header = NAV_DIMENSIONS.headerHeight;
+    // The tablet of the finding (1280 x 800 dp, extended rail) and its portrait; the phone both ways.
+    expect(toastAreaOffsets(1280, 800)).toEqual({ top: header, start: NAV_DIMENSIONS.extendedRail });
+    expect(toastAreaOffsets(800, 1280)).toEqual({ top: header, start: NAV_DIMENSIONS.rail });
+    expect(toastAreaOffsets(411, 923)).toEqual({ top: header, start: 0 });
+    expect(toastAreaOffsets(923, 411)).toEqual({ top: header, start: NAV_DIMENSIONS.compactRail });
+    expect(header).toBeGreaterThan(0);
+    expect(NAV_DIMENSIONS.extendedRail).toBeGreaterThan(0);
+
+    const area = render(toastContentWrapper(<Text testID="a-toast">toast</Text>));
+    const view = area.getByTestId('toast-area');
+    // It takes no touch itself, and offsets its own box (the kit positions toasts against it).
+    expect(view.props.pointerEvents).toBe('box-none');
+    expect(view.props.style).toMatchObject({ flex: 1, marginTop: header });
+    expect(area.getByTestId('a-toast')).toBeTruthy();
   });
 
   it("switches every kit animation off under reduced motion ('disable-all', VM-04)", () => {

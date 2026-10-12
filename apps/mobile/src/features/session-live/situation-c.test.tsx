@@ -177,6 +177,26 @@ describe('connecting cameras: between the accepted start and the first durable f
     expect(screen.queryByTestId('monitor-end-session-blocked')).toBeNull();
     expect(getMissingKeys()).toEqual([]);
   });
+
+  // Fix wave Q (seen in the device proof on the tablet): after a resync of the Core link the session read "connecting"
+  // for a moment - the OPEN End dialog was taken away with the reason typed so far, and its keyboard stayed over the
+  // monitor with no field. `blocked` keeps the button from OPENING a dialog; it does not close one.
+  it('an End dialog that is already open stays open, with its reason, while the session reads "connecting" for a moment', async () => {
+    const h = await open();
+    fireEvent.press(screen.getByTestId('monitor-end-session'));
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId('monitor-end-reason'), 'Interview complete');
+
+    setDurable(h, false);
+    expect(isDisabled('monitor-end-session')).toBe(true);
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    expect(screen.getByTestId('monitor-end-reason').props.value).toBe('Interview complete');
+
+    setDurable(h, true);
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
+    expect(screen.getByTestId('monitor-end-reason').props.value).toBe('Interview complete');
+    expect(h.sim.store.getState().session?.state).toBe('RECORDING');
+  });
 });
 
 describe('one camera of two: a degraded session (WARNING)', () => {

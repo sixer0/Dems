@@ -19,8 +19,8 @@ import {
   vec,
   type SkPath,
 } from '@shopify/react-native-skia';
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { View, type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -34,6 +34,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { motion as motionTokens, palette } from '@dems/shared/tokens';
 import { withAlpha } from '@/components/media/color';
 import {
@@ -108,6 +109,16 @@ function buildPaths(g: RingGeometry): RingPaths {
   };
 }
 
+/** After the reveal's nominal end the rest is asked for (JT-08) this much later. */
+export const CENTRE_REST_MARGIN_MS = 200;
+/** The short timing to 1 whose completion says "the runtime has applied the resting value". */
+export const CENTRE_REST_SETTLE_MS = 80;
+
+const styles = StyleSheet.create({
+  /** The rest of the ring's content: React's value, so no re-commit can take the words away. */
+  centreRest: { opacity: 1, transform: [{ scale: 1 }] },
+});
+
 export function GlowRing({
   mode = 'hero',
   size: requestedSize,
@@ -131,14 +142,44 @@ export function GlowRing({
   const tickOpacity = useSharedValue(reduced ? 1 : 0);
   const innerEnd = useSharedValue(reduced ? 1 : 0);
   const centre = useSharedValue(reduced ? 1 : 0);
+  // Fix wave Q (JT-08: "the Home ring lost its text and stayed empty" after a session's Done - the ring's arcs were
+  // drawn, the words inside it were not, until the next sign-in). The words were visible ONLY through the animated
+  // style below: React's own style of that view is the value it was mounted with, opacity 0. Reanimated hands a
+  // settled animated value back to React from a JS interval and its native side drops settled values older than 2 s
+  // first (the mechanism `session-live/timer-readout.tsx` describes for the timer's digits): after a JS stall - a
+  // seal that is retried and blocked is one - the 1 was dropped, and the next React commit of the view applied
+  // React's value again: 0, for good. So the REST is React's: once the reveal has had its time the content is drawn
+  // by a plain style (opacity 1), and the animated style is in use only while the reveal plays.
+  //
+  // WHEN the rest begins is said by the UI runtime, not by a JS clock alone. A first version swapped the styles on a
+  // JS timer of the sweep's length: on the loaded tablet the animation had started late and stood at about 0.45
+  // when the timer fired - taking the animated style away froze that value, and the words stayed dim (seen in the
+  // device proof of this wave). So at the sweep's nominal end JS asks for the value 1 once more (a short timing from
+  // wherever the value is) and swaps only in that timing's own completion callback: the runtime has then APPLIED 1.
+  // The run of the sweep that has come to rest (a replay is a new run: its rest is asked for anew).
+  const run = `${sweepDelayMs}|${String(replayKey)}`;
+  const [restedRun, setRestedRun] = useState<string | null>(null);
+  const atRest = reduced || restedRun === run;
+  const onRest = useCallback((which: string) => setRestedRun(which), []);
   useEffect(() => {
     if (reduced) {
       tickOpacity.set(1);
       innerEnd.set(1);
       centre.set(1);
-      return;
+      return undefined;
     }
     const d = sweepDelayMs;
+    const rest = setTimeout(
+      () => {
+        centre.set(
+          withTiming(1, { duration: CENTRE_REST_SETTLE_MS }, (finished) => {
+            'worklet';
+            if (finished) scheduleOnRN(onRest, run);
+          }),
+        );
+      },
+      d + RING_SCHEDULE.centre.delay + RING_SCHEDULE.centre.duration + CENTRE_REST_MARGIN_MS,
+    );
     tickOpacity.set(0);
     innerEnd.set(0);
     centre.set(0);
@@ -149,7 +190,8 @@ export function GlowRing({
     centre.set(
       withDelay(d + RING_SCHEDULE.centre.delay, withTiming(1, { duration: RING_SCHEDULE.centre.duration, easing: LUXE })),
     );
-  }, [reduced, sweepDelayMs, replayKey, tickOpacity, innerEnd, centre]);
+    return () => clearTimeout(rest);
+  }, [reduced, sweepDelayMs, replayKey, tickOpacity, innerEnd, centre, onRest, run]);
 
   // Ambient loops: rotation (not in mini mode), breathing glow, recording pulse.
   const rotation = useSharedValue(0);
@@ -291,7 +333,11 @@ export function GlowRing({
           <BlurMask blur={g.innerStroke * 1.5} style="solid" />
         </Circle>
       </Canvas>
-      {children !== undefined ? <Animated.View style={centreStyle}>{children}</Animated.View> : null}
+      {children !== undefined ? (
+        <Animated.View testID={testID ? `${testID}-centre` : undefined} style={atRest ? styles.centreRest : centreStyle}>
+          {children}
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

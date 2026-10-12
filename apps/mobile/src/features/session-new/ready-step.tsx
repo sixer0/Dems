@@ -20,6 +20,7 @@ import { GlowRing } from '@/components/composed/glow-ring';
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { animateFade, animateTiming, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings } from '@/motion';
+import { useConfiguredProfile } from './configured-profile';
 import { COUNTDOWN_DIGIT_MS } from './session-new-model';
 
 export interface ReadyStepProps {
@@ -39,6 +40,7 @@ export function ReadyStep({ input, operators, warnings, countdown, onCountdownCh
   const policy = useMotionPolicy();
   const settings = useMotionSettings();
   const investigator = operators.find((operator) => operator.id === input?.investigatorId);
+  const configured = useConfiguredProfile();
   const verdict =
     warnings === 0
       ? t('sessionNew.ready.summary.allReady')
@@ -69,7 +71,13 @@ export function ReadyStep({ input, operators, warnings, countdown, onCountdownCh
           testID: 'session-new-summary-investigator',
         },
         { id: 'room', label: t('sessionNew.ready.summary.room'), value: input.room },
-        { id: 'profile', label: t('sessionNew.ready.summary.profile'), value: t('sessionNew.info.profile.standard') },
+        // Fix wave Q (CT-08): the selector's lines on a Core in its own capture, never the `profileId` label.
+        {
+          id: 'profile',
+          label: t('sessionNew.ready.summary.profile'),
+          value: configured.ownCapture ? (configured.lines === '' ? t('common.platformNotReported.value') : configured.lines) : t('sessionNew.info.profile.standard'),
+          testID: 'session-new-summary-profile',
+        },
         {
           id: 'devices',
           label: t('sessionNew.ready.summary.devices'),

@@ -1,19 +1,11 @@
 import type { TFunction } from 'i18next'
-import { en } from '@dems/shared/i18n'
-
-const FAULT_KINDS: Readonly<Record<string, string>> = en.common.faultKind
-const AUDIT_TYPES: Readonly<Record<string, string>> = en.common.auditType
+import { causeCodeWords } from '@/lib/event-words'
 
 /**
  * A cause code as the operator reads it (fix wave J, JW-13 / JW-27): the fault's name where the vocabulary
- * has one ("Storage full"), else the code as it is. The vocabulary is asked first, so a code it does
- * not hold is never looked up as a sentence (and never recorded as a missing one).
+ * has one ("Storage full"). Fix wave Q (JW-13): the ONE map is `lib/event-words.ts`; a code no vocabulary
+ * holds reads in its readable form ("Capture stalled"), never as the raw code.
  */
 export function causeWords(t: TFunction, cause: string): string {
-  return Object.prototype.hasOwnProperty.call(FAULT_KINDS, cause) ? t(`common.faultKind.${cause}` as never) : cause
-}
-
-/** The name of an audit / custody action where the audit vocabulary has one, else null. */
-export function auditActionWords(t: TFunction, action: string): string | null {
-  return Object.prototype.hasOwnProperty.call(AUDIT_TYPES, action) ? (t(`common.auditType.${action}` as never) as string) : null
+  return causeCodeWords(t, cause)
 }

@@ -17,10 +17,9 @@
  */
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BottomSheet } from 'heroui-native';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ReduceMotion } from 'react-native-reanimated';
-import { putKeyboardAway } from '@/lib/keyboard';
 import { useConfirmedOpen } from '@/lib/sheet-open';
 import { SimContext, useSimInstance } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
@@ -104,13 +103,8 @@ export function SheetFrame({
   // The sheet therefore opens only once its body has reported a layout.
   const [laidOut, setLaidOut] = useState(false);
   if (!presence.mounted && laidOut) setLaidOut(false);
-  // JT-23 / JM-04: a sheet that closes takes the keyboard of its own field with it.
-  const wasOpen = useRef(isOpen);
-  useEffect(() => {
-    const closed = wasOpen.current && !isOpen;
-    wasOpen.current = isOpen;
-    return closed ? putKeyboardAway() : undefined;
-  }, [isOpen]);
+  // JT-23 / JM-04: a sheet that closes takes the keyboard of its own field with it - since fix wave Q the rule of
+  // every sheet, in `useConfirmedOpen` (opening and closing).
   // JM-02: the open is confirmed by the library's own report of a slide, and asked again when none came.
   // Round two (JM-08 ruling: a multi-step or scrolling surface is a SHEET in both motion modes - it was a centred
   // Dialog under reduced motion, a different thing with a different way out). The reduced form is the sheet with
