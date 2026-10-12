@@ -23,10 +23,13 @@ export {
   credentialAtInjection,
   credentialFreeLocator,
   sealCredential,
+  startMessageBytes,
   streamLocator,
   usingCredential,
   type CameraCredential,
   type InjectedStreamAccess,
+  type StartMessage,
+  type StartMessagePlainMember,
 } from './credential';
 export { CaptureAdapterError, CaptureAdapterRefusal } from './errors';
 export {
@@ -70,6 +73,8 @@ export {
 } from './mic-transport';
 export { OPENER_CAPABLE_KINDS, createCaptureDeviceRegistry, type CaptureDeviceRegistryOptions } from './registry';
 export {
+  AUDIO_INPUT_BEYOND_CARD,
+  AudioInputBeyondCardError,
   AudioInputErrorCode,
   ConnectionTestOutcome,
   PoePortStatus,

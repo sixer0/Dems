@@ -146,7 +146,7 @@ function plantedEvents(type: SimEventType, change: (event: SimEvent) => FixtureE
 const HEX64 = /^[0-9a-f]{64}$/;
 
 describe('where each audit type is written', () => {
-  it('the fixture writes all 67 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  it('the fixture writes all 77 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -157,7 +157,8 @@ describe('where each audit type is written', () => {
       bySource[source] = (bySource[source] ?? 0) + 1;
     }
     // Row 132 (D106; C3 §5.2): the four types of the camera search join the list, 19 -> 23 (63 -> 67 in all).
-    expect(bySource).toEqual({ 'ALLOW-LIST': 23, MODULE: 11, SIMULATOR: 33 });
+    // Task 4 blueprint row 19 (WP-23a): the ten of the hardware-input port join the list, 23 -> 33 (67 -> 77 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 33, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -186,6 +187,18 @@ describe('where each audit type is written', () => {
         'EVIDENCE_MEDIA_SERVED',
         'MIC_SILENT',
         'TRANSCRIPT_REVISED',
+        // Task 4 blueprint row 19 (WP-23a): the ten of the hardware-input port. Their live writers
+        // land with rows 70, 106 to 111 and 115; the fixture states one row of each until then.
+        'CAMERA_FACTORY_SCANNED',
+        'CAMERA_NETWORK_SET',
+        'CAPTURE_AUDIO_INPUT_CHANGED',
+        'CAPTURE_DEVICE_ADDRESS_CHANGED',
+        'CAPTURE_NETWORK_CONFIG_CHANGED',
+        'HOST_ALIAS_ADDED',
+        'HOST_ALIAS_REMOVED',
+        'HOST_ALIAS_REMOVE_FAILED',
+        'INSTALLATION_ACCEPTANCE_REVOKED',
+        'INSTALLATION_ACCEPTED',
       ].sort(),
     );
   });
@@ -269,7 +282,7 @@ describe('every audit row of the fixture', () => {
             : `simulator: ${braces(shapes.get(type)?.signatures ?? [])}`;
       return `| ${type} | ${source ?? 'none'} | ${expected} | ${counted(ofType(type).map((row) => `{${signatureOf(row.details)}}`))} |`;
     });
-    expect(lines).toHaveLength(67);
+    expect(lines).toHaveLength(77);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -282,7 +295,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(67);
+    expect(lines).toHaveLength(77);
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

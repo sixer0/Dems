@@ -69,3 +69,22 @@ Controller decisions C1-C5 recorded. Verification wave (rows 11, 12, 13) launche
 | 13 | security-review / opus | verification/02_security.md | CAUTION: 0 FAIL, 17 CAUTION (6 high); relay ACCEPT conditional on RC-1..RC-6 (E-11 before WP-03) |
 
 Controller: C7-C13 recorded. No verification row FAILED; under U12 B1/B2 and U14 the work continues. Next: design addendum for P12-B1/B2 (data-analyst) in parallel with the git preparation (git-specialist: branch, local exclude); then security check of the addendum; then the implementation blueprint (task-architect).
+
+## Track D, implementation - batches 1 and 2 (2026-10-12)
+
+| Row | Agent / model | Status | Result |
+|---|---|---|---|
+| 2 | data-analyst / sonnet | complete | baseline pins: 97 operations, 67 audit types, 14 permissions, 44 value sets, 15 migrations, schema 6, 43 tables |
+| 3 | data-analyst / opus | complete | AM-2..AM-8, SR-1..SR-4 drafted -> adopted C17 |
+| 4 | git-specialist / sonnet | complete | data guard effective; plan committed 2307e9dc |
+| 13 | coder-execution / sonnet (override: mechanical) | complete | E-6: 16,777,216 of 16,777,216 24-bit values survive |
+| 19 | coder-execution / opus | needs-review -> I-1 | 77 audit types; pins moved; labels + openapi left |
+| 20 | coder-execution / opus | complete | adapter contract members, additive; 62/62 |
+| 27 | data-analyst / opus | complete | 5 column readers + 31 selector-line readers not null-safe -> C18, blueprint re-cut running |
+| 38 | coder-execution / opus | complete | connection-test contract wording; 128/128 |
+| 52 | coder-execution / opus | needs-review -> I-1 | camera slice states resolution/rate/codec; fps nullable left |
+| 87, 103 | data-analyst / opus | complete | lift texts (C20, pending conditions); helper privilege form (C19) |
+| 95 | coder-execution / opus | complete | destination rule; 199/199 |
+| 147 | coder-execution / opus | complete | opaque injection result, startMessageBytes; 11/11 |
+| 160 | data-analyst / sonnet | complete | release packager cannot reach apps/input-av |
+| I-1 | coder-execution / opus | running | integration pass over the seams of rows 19, 20, 38, 52, 147 |

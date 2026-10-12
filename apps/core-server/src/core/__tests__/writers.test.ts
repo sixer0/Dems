@@ -6,7 +6,7 @@ import { AUDIT_TYPE_CATEGORY, AuditType, SIM_EVENT_CATEGORY, SimEventType, appen
 import { describe, expect, it } from 'vitest';
 import { MappingError, auditRowToRow, eventToRow } from '../../db/mapping';
 import { AUDIT_DETAIL_FORBIDDEN_KEYS, EVENT_CATEGORY } from '../../db/schema/value-sets';
-import { SERVER_AUDIT_DETAIL_RULES, detailRulesOf } from '../audit-details';
+import { CAPTURE_CREDENTIAL_REVEAL_REASONS, CAPTURE_DISCOVERY_AUDIT_SCOPES, SERVER_AUDIT_DETAIL_RULES, detailRulesOf } from '../audit-details';
 import { auditInputOf, checkAuditRow } from '../audit-writer';
 import { CoreError } from '../errors';
 import { checkEvent, eventInputOf } from '../event-writer';
@@ -47,11 +47,12 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 67 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 77 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
     // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63. C3 §5.2, §10.1 (blueprint row 132,
     // decision D106): + the four of the camera search, the test, the adoption and the no-device warning = 67.
-    expect(types).toHaveLength(67);
+    // Task 4 blueprint row 19 (WP-23a): + the ten of the hardware-input port = 77.
+    expect(types).toHaveLength(77);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -227,7 +228,7 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
   });
 });
 
-describe('the allow-list of the twenty-three server-written types (spec §13.1; C3 §5.2, §2.5)', () => {
+describe('the allow-list of the thirty-three server-written types (spec §13.1; C3 §5.2, §2.5; task 4 row 19)', () => {
   const accepted: Record<string, AuditEntry[]> = {
     ACCESS_DENIED: [
       { type: 'ACCESS_DENIED', actorId: 'OPR-003', deviceId: null, message: 'Denied', details: { operationId: 'startSession', permission: 'SESSION_START', role: 'TECHNICIAN' } },
@@ -262,7 +263,7 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
     EVIDENCE_MEDIA_SERVED: [{ type: 'EVIDENCE_MEDIA_SERVED', actorId: 'OPR-001', deviceId: null, message: 'Served', details: { fileId: 'VIDEO-01', bytesServed: 4_194_304, rangeStart: 0, rangeEnd: 4_194_303, signed: true, expiresAt: 1_790_823_900_000 } }],
     EVIDENCE_EXPORT_FAILED: [{ type: 'EVIDENCE_EXPORT_FAILED', actorId: 'OPR-002', deviceId: null, message: 'Export failed', details: { jobId: 'EXPJ-000001', kind: 'PACKAGE', reason: 'DISK_FULL' } }],
     CAPTURE_CREDENTIAL_SET: [{ type: 'CAPTURE_CREDENTIAL_SET', actorId: 'OPR-003', deviceId: null, message: 'Credential stored', details: { deviceId: 'CAM-01', operationId: 'setCaptureCredential', permission: 'CAPTURE_CONFIG' } }],
-    CAPTURE_CREDENTIAL_REVEALED: [{ type: 'CAPTURE_CREDENTIAL_REVEALED', actorId: 'OPR-002', deviceId: null, message: 'Credential revealed', details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' } }],
+    CAPTURE_CREDENTIAL_REVEALED: [{ type: 'CAPTURE_CREDENTIAL_REVEALED', actorId: 'OPR-002', deviceId: null, message: 'Credential revealed', details: { deviceId: 'CAM-01', reason: 'CONNECTION_TEST' } }],
     // Task 3 M6 (blueprint row 113; C3 §2.5): field NAMES and two flags, never a value.
     STT_CONFIG_CHANGED: [
       { type: 'STT_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'STT configuration changed', details: { changedFields: 'enabled', enabled: false, backend: 'cpu-local', credentialChanged: false, revision: 2 } },
@@ -287,12 +288,40 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       { type: 'CAPTURE_DEVICE_UNREACHABLE', actorId: 'OPR-001', deviceId: null, message: 'Capture device not reachable', details: { deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', reason: 'UNREACHABLE', degraded: true, sessionId: 'SES-20261009-0003' } },
       { type: 'CAPTURE_DEVICE_UNREACHABLE', actorId: null, deviceId: null, message: 'Capture device not reachable', details: { deviceId: 'MIC-01', deviceKind: 'MIC', phase: 'SESSION_START', reason: 'PERMISSION_DENIED', degraded: false, sessionId: 'SES-20261009-0003' } },
     ],
+    // Task 4 blueprint row 19 (WP-23a; design addendum 04 sections 4.2, 8.2): the ten of the
+    // hardware-input port. Ids, closed codes, counts and IP literals; no device text.
+    CAPTURE_AUDIO_INPUT_CHANGED: [
+      { type: 'CAPTURE_AUDIO_INPUT_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Microphone input registered', details: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2 } },
+      { type: 'CAPTURE_AUDIO_INPUT_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Microphone input enabled again', details: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 8, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' } },
+    ],
+    CAPTURE_NETWORK_CONFIG_CHANGED: [
+      { type: 'CAPTURE_NETWORK_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Camera network configuration changed', details: { changedFields: 'interfaceName', revision: 2 } },
+      { type: 'CAPTURE_NETWORK_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Camera network configuration changed', details: { changedFields: 'cameraSubnet,factoryAddresses,aliasHost,aliasMinutes,cameraIpStart', revision: 3, operationId: 'updateCaptureNetworkConfig', permission: 'CAPTURE_CONFIG' } },
+    ],
+    HOST_ALIAS_ADDED: [{ type: 'HOST_ALIAS_ADDED', actorId: 'OPR-003', deviceId: null, message: 'Temporary host address added', details: { aliasId: '00000000-0000-4000-8000-0000000000a1', address: '192.168.1.253', reason: 'FACTORY_SCAN', expiresAt: 1_790_825_400_000 } }],
+    HOST_ALIAS_REMOVED: [
+      { type: 'HOST_ALIAS_REMOVED', actorId: null, deviceId: null, message: 'Temporary host address removed', details: { aliasId: '00000000-0000-4000-8000-0000000000a1', address: '192.168.1.253', removeReason: 'BOOT_SWEEP' } },
+      { type: 'HOST_ALIAS_REMOVED', actorId: 'OPR-003', deviceId: null, message: 'Temporary host address removed', details: { aliasId: '00000000-0000-4000-8000-0000000000a1', address: '192.168.1.253', removeReason: 'MANUAL', operationId: 'removeHostAlias', permission: 'CAPTURE_CONFIG' } },
+    ],
+    HOST_ALIAS_REMOVE_FAILED: [{ type: 'HOST_ALIAS_REMOVE_FAILED', actorId: null, deviceId: null, message: 'Temporary host address could not be removed', details: { aliasId: '00000000-0000-4000-8000-0000000000a1', address: '192.168.1.253', removeReason: 'EXPIRED', failureReason: 'HELPER_FAILED' } }],
+    CAMERA_FACTORY_SCANNED: [
+      { type: 'CAMERA_FACTORY_SCANNED', actorId: 'OPR-003', deviceId: null, message: 'Factory address scan performed', details: { outcome: 'COMPLETE', addressCount: 4, responderCount: 1 } },
+      { type: 'CAMERA_FACTORY_SCANNED', actorId: 'OPR-003', deviceId: null, message: 'Factory address scan could not run', details: { outcome: 'FAILED', addressCount: 5, responderCount: 0, searchId: 'DSC-000020', aliasId: '00000000-0000-4000-8000-0000000000a1', failureReason: 'NOT_CONFIGURED', operationId: 'scanFactoryCameras', permission: 'CAPTURE_CONFIG' } },
+    ],
+    CAMERA_NETWORK_SET: [
+      { type: 'CAMERA_NETWORK_SET', actorId: 'OPR-003', deviceId: null, message: 'Camera network address requested', details: { phase: 'REQUESTED', fromAddress: '192.168.1.64', toAddress: '192.168.10.101' } },
+      { type: 'CAMERA_NETWORK_SET', actorId: 'OPR-003', deviceId: null, message: 'Camera network address not set', details: { phase: 'FAILED', fromAddress: '192.168.1.64', toAddress: '192.168.10.101', mac: 'AA:BB:CC:00:11:22', deviceId: 'CAM-03', candidateId: 'CND-4F2A91C0D377', aliasId: '00000000-0000-4000-8000-0000000000a1', failureReason: 'AUTH_REFUSED', guardTripped: true, operationId: 'setCameraNetwork', permission: 'CAPTURE_CONFIG' } },
+    ],
+    CAPTURE_DEVICE_ADDRESS_CHANGED: [{ type: 'CAPTURE_DEVICE_ADDRESS_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Camera address changed', details: { deviceId: 'CAM-01', fromAddress: '192.168.1.64', toAddress: '192.168.10.101', reason: 'SET_CAMERA_ADDRESS' } }],
+    INSTALLATION_ACCEPTED: [{ type: 'INSTALLATION_ACCEPTED', actorId: 'OPR-002', deviceId: null, message: 'Installation accepted', details: { acceptanceId: '00000000-0000-4000-8000-0000000000c1', stepCount: 12, passedCount: 11 } }],
+    INSTALLATION_ACCEPTANCE_REVOKED: [{ type: 'INSTALLATION_ACCEPTANCE_REVOKED', actorId: 'OPR-002', deviceId: null, message: 'Installation acceptance revoked', details: { acceptanceId: '00000000-0000-4000-8000-0000000000c1' } }],
   };
 
-  it('covers exactly the twenty-three types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the thirty-three types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
-    expect(typed).toHaveLength(23);
+    // Task 4 blueprint row 19: 23 + the ten of the hardware-input port = 33; the simulator's 44 do not move.
+    expect(typed).toHaveLength(33);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -328,6 +357,17 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId', 'host', 'endpointRef', 'guardTripped', 'reason', 'permission'],
       CAPTURE_CANDIDATE_ADOPTED: ['deviceId', 'candidateId', 'searchId', 'adapter', 'sourceClass', 'credentialSet', 'operationId', 'host', 'endpointRef', 'permission'],
       CAPTURE_DEVICE_UNREACHABLE: ['deviceId', 'deviceKind', 'phase', 'reason', 'degraded', 'sessionId'],
+      // Task 4 blueprint row 19 (WP-23a): the ten closed lists.
+      CAPTURE_AUDIO_INPUT_CHANGED: ['deviceId', 'change', 'inputNumber', 'channelCount', 'operationId', 'permission'],
+      CAPTURE_NETWORK_CONFIG_CHANGED: ['changedFields', 'revision', 'operationId', 'permission'],
+      HOST_ALIAS_ADDED: ['aliasId', 'address', 'reason', 'expiresAt', 'operationId', 'permission'],
+      HOST_ALIAS_REMOVED: ['aliasId', 'address', 'removeReason', 'operationId', 'permission'],
+      HOST_ALIAS_REMOVE_FAILED: ['aliasId', 'address', 'removeReason', 'failureReason', 'operationId', 'permission'],
+      CAMERA_FACTORY_SCANNED: ['outcome', 'addressCount', 'responderCount', 'searchId', 'aliasId', 'failureReason', 'operationId', 'permission'],
+      CAMERA_NETWORK_SET: ['phase', 'fromAddress', 'toAddress', 'mac', 'deviceId', 'candidateId', 'aliasId', 'failureReason', 'guardTripped', 'operationId', 'permission'],
+      CAPTURE_DEVICE_ADDRESS_CHANGED: ['deviceId', 'fromAddress', 'toAddress', 'reason', 'operationId', 'permission'],
+      INSTALLATION_ACCEPTED: ['acceptanceId', 'stepCount', 'passedCount', 'operationId', 'permission'],
+      INSTALLATION_ACCEPTANCE_REVOKED: ['acceptanceId', 'operationId', 'permission'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -353,7 +393,97 @@ describe('the allow-list of the twenty-three server-written types (spec §13.1; 
       CAPTURE_CONNECTION_TESTED: ['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId'],
       CAPTURE_CANDIDATE_ADOPTED: ['deviceId', 'candidateId', 'searchId', 'adapter', 'sourceClass', 'credentialSet', 'operationId'],
       CAPTURE_DEVICE_UNREACHABLE: ['deviceId', 'deviceKind', 'phase', 'reason', 'degraded', 'sessionId'],
+      CAPTURE_AUDIO_INPUT_CHANGED: ['deviceId', 'change', 'inputNumber', 'channelCount'],
+      CAPTURE_NETWORK_CONFIG_CHANGED: ['changedFields', 'revision'],
+      HOST_ALIAS_ADDED: ['aliasId', 'address', 'reason', 'expiresAt'],
+      HOST_ALIAS_REMOVED: ['aliasId', 'address', 'removeReason'],
+      HOST_ALIAS_REMOVE_FAILED: ['aliasId', 'address', 'removeReason', 'failureReason'],
+      CAMERA_FACTORY_SCANNED: ['outcome', 'addressCount', 'responderCount'],
+      CAMERA_NETWORK_SET: ['phase', 'fromAddress', 'toAddress'],
+      CAPTURE_DEVICE_ADDRESS_CHANGED: ['deviceId', 'fromAddress', 'toAddress', 'reason'],
+      INSTALLATION_ACCEPTED: ['acceptanceId', 'stepCount', 'passedCount'],
+      INSTALLATION_ACCEPTANCE_REVOKED: ['acceptanceId'],
     });
+  });
+
+  it('task 4 row 19: the ten types of the hardware-input port refuse a foreign key, device text and a value outside their form; the reveal reason is one of three; the sound-card scope is accepted', () => {
+    const NEW_TYPES = [
+      'CAPTURE_AUDIO_INPUT_CHANGED',
+      'CAPTURE_NETWORK_CONFIG_CHANGED',
+      'HOST_ALIAS_ADDED',
+      'HOST_ALIAS_REMOVED',
+      'HOST_ALIAS_REMOVE_FAILED',
+      'CAMERA_FACTORY_SCANNED',
+      'CAMERA_NETWORK_SET',
+      'CAPTURE_DEVICE_ADDRESS_CHANGED',
+      'INSTALLATION_ACCEPTED',
+      'INSTALLATION_ACCEPTANCE_REVOKED',
+    ] as const;
+    // The ten are the last ten of the vocabulary, in this order (67 -> 77).
+    expect(Object.values(AuditType).slice(-10)).toEqual([...NEW_TYPES]);
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const first = (type: string): AuditEntry => accepted[type]?.[0] as AuditEntry;
+    for (const type of NEW_TYPES) {
+      // The writer accepts every stated row of the type ...
+      for (const item of accepted[type] ?? []) expect(codeOf(() => auditInputOf(item)), type).toBe('accepted');
+      // ... refuses a credential name by the key rule, and device text or a name of the host by the list.
+      for (const key of ['username', 'secret', 'password', 'credential', 'onvifUuid']) expect(codeOf(() => auditInputOf(withDetail(first(type), key, 'x'))), `${type}.${key}`).toBe('AUDIT_DETAIL_KEY_FORBIDDEN');
+      for (const key of ['productName', 'cardName', 'usbId', 'model', 'vendor', 'label', 'interfaceName', 'subnet', 'url', 'host', 'steps', 'siteAddress']) {
+        expect(codeOf(() => auditInputOf(withDetail(first(type), key, 'x'))), `${type}.${key}`).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+      }
+    }
+    const invalid: Array<[string, string, unknown]> = [
+      ['CAPTURE_AUDIO_INPUT_CHANGED', 'deviceId', 'USB Audio CODEC'],
+      ['CAPTURE_AUDIO_INPUT_CHANGED', 'change', 'RENAMED'],
+      ['CAPTURE_AUDIO_INPUT_CHANGED', 'inputNumber', '1'],
+      ['CAPTURE_AUDIO_INPUT_CHANGED', 'channelCount', -2],
+      // Field NAMES only: a value, an unknown name and a repeated name are refused.
+      ['CAPTURE_NETWORK_CONFIG_CHANGED', 'changedFields', 'interfaceName=eth1'],
+      ['CAPTURE_NETWORK_CONFIG_CHANGED', 'changedFields', 'revision'],
+      ['CAPTURE_NETWORK_CONFIG_CHANGED', 'changedFields', 'aliasHost,aliasHost'],
+      ['CAPTURE_NETWORK_CONFIG_CHANGED', 'changedFields', ''],
+      ['CAPTURE_NETWORK_CONFIG_CHANGED', 'revision', 0],
+      ['HOST_ALIAS_ADDED', 'aliasId', 'eth1:192.168.1.253'],
+      // An IPv4 literal: never with a prefix length, never a name, a URL or a part above 255.
+      ['HOST_ALIAS_ADDED', 'address', '192.168.1.253/24'],
+      ['HOST_ALIAS_ADDED', 'address', 'eth1'],
+      ['HOST_ALIAS_ADDED', 'address', '192.168.1.256'],
+      ['HOST_ALIAS_ADDED', 'reason', 'operator asked'],
+      ['HOST_ALIAS_ADDED', 'expiresAt', '30 minutes'],
+      ['HOST_ALIAS_REMOVED', 'removeReason', 'FACTORY_SCAN'],
+      ['HOST_ALIAS_REMOVE_FAILED', 'failureReason', 'RTNETLINK answers: Cannot assign requested address'],
+      ['CAMERA_FACTORY_SCANNED', 'outcome', 'PARTIAL'],
+      ['CAMERA_FACTORY_SCANNED', 'addressCount', '192.168.1.64'],
+      ['CAMERA_FACTORY_SCANNED', 'searchId', 'scan-1'],
+      ['CAMERA_NETWORK_SET', 'phase', 'WAITING'],
+      ['CAMERA_NETWORK_SET', 'fromAddress', 'http://192.168.1.64/onvif/device_service'],
+      ['CAMERA_NETWORK_SET', 'toAddress', 'admin:pass@192.168.10.101'],
+      ['CAMERA_NETWORK_SET', 'mac', 'aa-bb-cc-00-11-22'],
+      ['CAMERA_NETWORK_SET', 'failureReason', 'wrong password'],
+      ['CAMERA_NETWORK_SET', 'guardTripped', 'yes'],
+      ['CAPTURE_DEVICE_ADDRESS_CHANGED', 'fromAddress', 'camera.local'],
+      ['CAPTURE_DEVICE_ADDRESS_CHANGED', 'toAddress', 'rtsp://192.168.10.101:554/stream1'],
+      ['CAPTURE_DEVICE_ADDRESS_CHANGED', 'reason', 'the camera moved'],
+      ['INSTALLATION_ACCEPTED', 'acceptanceId', 'ACC-1'],
+      ['INSTALLATION_ACCEPTED', 'passedCount', 11.5],
+      ['INSTALLATION_ACCEPTANCE_REVOKED', 'acceptanceId', 'Room 2 was rebuilt'],
+    ];
+    for (const [type, key, value] of invalid) expect(codeOf(() => auditInputOf(withDetail(first(type), key, value))), `${type}.${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+
+    // AD-03 (1): the reveal reason is the closed set of three; any other code is refused.
+    const revealed = first('CAPTURE_CREDENTIAL_REVEALED');
+    expect([...CAPTURE_CREDENTIAL_REVEAL_REASONS]).toEqual(['SESSION_OPEN', 'RELAY_RESTART', 'CONNECTION_TEST']);
+    for (const reason of CAPTURE_CREDENTIAL_REVEAL_REASONS) expect(codeOf(() => auditInputOf(withDetail(revealed, 'reason', reason))), reason).toBe('accepted');
+    for (const reason of ['MEDIA_DIAGNOSTICS', 'SUPPORT', 'session_open', 'SET_CAMERA_ADDRESS', '']) {
+      expect(codeOf(() => auditInputOf(withDetail(revealed, 'reason', reason))), reason).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    }
+    expect(Object.keys(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CREDENTIAL_REVEALED)).toEqual(['deviceId', 'reason']);
+
+    // Design addendum 04 section 4.2: the third scope of a search, the listing of sound cards.
+    const searched = first('CAPTURE_DISCOVERY_SEARCHED');
+    expect([...CAPTURE_DISCOVERY_AUDIT_SCOPES]).toEqual(['CAMERA_NETWORK', 'MIC_LOCAL', 'AUDIO_CARDS']);
+    for (const scope of CAPTURE_DISCOVERY_AUDIT_SCOPES) expect(codeOf(() => auditInputOf(withDetail(searched, 'scope', scope))), scope).toBe('accepted');
+    expect(codeOf(() => auditInputOf(withDetail(searched, 'scope', 'USB')))).toBe('AUDIT_DETAIL_VALUE_INVALID');
   });
 
   it('M4-AUD-1: the four types of the camera search refuse a username, a secret, a URL, a label and a value outside their form', () => {

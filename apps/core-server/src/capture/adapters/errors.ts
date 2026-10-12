@@ -27,6 +27,8 @@ export const CaptureAdapterRefusal = {
   PROFILE_UNKNOWN: 'CAPTURE_PROFILE_UNKNOWN',
   /** A locator that is not the host-and-path form: it carries a user part, or is not a stream locator at all (SEC35-04). */
   LOCATOR_INVALID: 'CAPTURE_LOCATOR_INVALID',
+  /** A start message that cannot be made into bytes: a member that is not a plain value or the one stream access (task 4 row 147; AD-03 point 6). */
+  START_MESSAGE_INVALID: 'CAPTURE_START_MESSAGE_INVALID',
   /** The PoE port is not one this controller serves. */
   POE_PORT_UNKNOWN: 'CAPTURE_POE_PORT_UNKNOWN',
   /** The source was asked for after the call was aborted. */
@@ -49,6 +51,7 @@ const TEXT: Readonly<Record<CaptureAdapterRefusal, string>> = Object.freeze({
   SOURCE_KIND_NOT_RECORDABLE: 'no opener exists for this source kind',
   CAPTURE_PROFILE_UNKNOWN: 'the capture device has no such media profile',
   CAPTURE_LOCATOR_INVALID: 'a stream locator must be the host-and-path form without a user part',
+  CAPTURE_START_MESSAGE_INVALID: 'a start message must be a flat object of plain values and at most one stream access',
   CAPTURE_POE_PORT_UNKNOWN: 'the PoE controller does not serve this port',
   CAPTURE_ADAPTER_ABORTED: 'the call was aborted',
   CAPTURE_ADAPTER_CLASS_C: 'this adapter member is class C: specified, not built in this phase',

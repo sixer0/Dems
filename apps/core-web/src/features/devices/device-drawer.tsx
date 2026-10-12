@@ -234,7 +234,8 @@ function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
         [label('model'), realCapture ? notReported : camera.model],
         [label('firmware'), realCapture ? notReported : <Mono key="fw">{camera.firmware}</Mono>],
         [label('track'), <Mono key="track">{camera.id}</Mono>],
-        [label('format'), realCapture ? notReported : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec })],
+        // A stream that states no rate (`fps` null) reads the same "not reported" form: the format words carry a rate.
+        [label('format'), realCapture || camera.fps === null ? notReported : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec })],
         [label('bitrate'), realCapture ? notReported : t('common.units.mbps', { value: camera.bitrateMbps })],
         [label('port'), realCapture ? notReported : labels.port(CAMERA_POE_PORT)],
         [label('recState'), camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT],

@@ -133,13 +133,15 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 67 values; the nine task-3 capture types, STT_CONFIG_CHANGED and the four of the camera search sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
+  it('AuditType: 77 values; the nine task-3 capture types, STT_CONFIG_CHANGED, the four of the camera search and the ten of task 4 row 19 sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
     // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
     // Task 3 M6 (blueprint row 113; C3 §2.5): 62 -> 63 with STT_CONFIG_CHANGED, category DEVICE.
     // Task 3 R-9..R-11 (blueprint row 132, D106; C3 §5.2, §10.1): 63 -> 67 with the four types of the
     // camera search, the connection test, the adoption and the no-device warning.
-    expect(values(V.AuditType)).toHaveLength(67);
+    // Task 4 blueprint row 19 (WP-23a): 67 -> 77 with the ten types of the hardware-input port,
+    // appended last; the positions of the earlier groups below move by that delta of ten.
+    expect(values(V.AuditType)).toHaveLength(77);
     expect(values(V.AuditCategory)).toHaveLength(8);
     expect(values(V.SimEventType)).toHaveLength(46);
     const added = {
@@ -157,8 +159,8 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       expect(V.AuditType[type]).toBe(type);
       expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(added[type]);
     }
-    expect(values(V.AuditType).slice(-14, -5)).toEqual(Object.keys(added));
-    expect(values(V.AuditType).at(-5)).toBe('STT_CONFIG_CHANGED');
+    expect(values(V.AuditType).slice(-24, -15)).toEqual(Object.keys(added));
+    expect(values(V.AuditType).at(-15)).toBe('STT_CONFIG_CHANGED');
     expect(V.AUDIT_TYPE_CATEGORY.STT_CONFIG_CHANGED).toBe('DEVICE');
     // C3 §5.3 (erratum PE-121-09): exactly four entries, each in an EXISTING category.
     const discovery = {
@@ -167,7 +169,22 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       CAPTURE_CANDIDATE_ADOPTED: 'DEVICE',
       CAPTURE_DEVICE_UNREACHABLE: 'DEVICE',
     } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
-    expect(values(V.AuditType).slice(-4)).toEqual(Object.keys(discovery));
+    expect(values(V.AuditType).slice(-14, -10)).toEqual(Object.keys(discovery));
     for (const type of Object.keys(discovery) as (keyof typeof discovery)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(discovery[type]);
+    // Task 4 blueprint row 19 (WP-23a): exactly ten entries, each in an EXISTING category.
+    const hardwareInput = {
+      CAPTURE_AUDIO_INPUT_CHANGED: 'DEVICE',
+      CAPTURE_NETWORK_CONFIG_CHANGED: 'DEVICE',
+      HOST_ALIAS_ADDED: 'SECURITY',
+      HOST_ALIAS_REMOVED: 'SECURITY',
+      HOST_ALIAS_REMOVE_FAILED: 'SECURITY',
+      CAMERA_FACTORY_SCANNED: 'DEVICE',
+      CAMERA_NETWORK_SET: 'DEVICE',
+      CAPTURE_DEVICE_ADDRESS_CHANGED: 'DEVICE',
+      INSTALLATION_ACCEPTED: 'SYSTEM',
+      INSTALLATION_ACCEPTANCE_REVOKED: 'SYSTEM',
+    } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
+    expect(values(V.AuditType).slice(-10)).toEqual(Object.keys(hardwareInput));
+    for (const type of Object.keys(hardwareInput) as (keyof typeof hardwareInput)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(hardwareInput[type]);
   });
 });

@@ -3,7 +3,8 @@
  * §4.6 RB-4 and RB-6, §6.2, §6.3; SR-54; task 3 M2-W7 blueprint row 48 adds the nine capture-phase
  * types of `C3 §5.2` — register CS-14; task 3 M6 blueprint row 113 adds `STT_CONFIG_CHANGED` of
  * `C3 §2.5` — R-8; task 3 blueprint row 132 (decision D106) adds the four of the camera search,
- * the connection test, the adoption and the no-device warning of `C3 §5.2` — R-9, R-10).
+ * the connection test, the adoption and the no-device warning of `C3 §5.2` — R-9, R-10). Task 4
+ * blueprint row 19 (WP-23a) adds the ten of the hardware-input port: the list now holds thirty-three.
  *
  * The types of this list are written by server-native modules only (the permission guard, pairing,
  * user administration, identity, and from task 3: the capture-config store, the mic switch, the
@@ -170,6 +171,52 @@ const endpointRef = (required: boolean): DetailRule => ({
   accepts: (value) => typeof value === 'string' && ENDPOINT_REF_URN.test(value),
 });
 
+// ── Task 4 (blueprint row 19, WP-23a): the closed sets and forms the ten lists of the hardware-input
+// port name. Exported where a writer has to state one of the values, so that it binds to the same
+// list the audit writer checks (the module rows 45, 70, 106 to 111, 115 import them; none adds one).
+/**
+ * `reason` of CAPTURE_CREDENTIAL_REVEALED (security addendum 04, AD-03 (1)): the closed set of three.
+ * The adapter's reader can say `SESSION_OPEN` and `RELAY_RESTART`, the connection test's
+ * `CONNECTION_TEST`; neither takes a reason from its caller, and no other reason exists.
+ */
+export const CAPTURE_CREDENTIAL_REVEAL_REASONS = ['SESSION_OPEN', 'RELAY_RESTART', 'CONNECTION_TEST'] as const;
+export type CaptureCredentialRevealReason = (typeof CAPTURE_CREDENTIAL_REVEAL_REASONS)[number];
+/**
+ * `scope` of CAPTURE_DISCOVERY_SEARCHED: the two of the shared contract and the third of design
+ * addendum 04 section 4.2, the listing of sound cards (`searchCaptureAudioCards`). The literal is
+ * stated here until the shared `CaptureDiscoveryScope` carries it (request of row 19); the set
+ * makes the two the same value, so that landing changes nothing in this rule.
+ */
+export const CAPTURE_DISCOVERY_AUDIT_SCOPES: readonly string[] = [...new Set<string>([...Object.values(CaptureDiscoveryScope), 'AUDIO_CARDS'])];
+/** `change` of CAPTURE_AUDIO_INPUT_CHANGED (design addendum 04 section 4.2). */
+export const CAPTURE_AUDIO_INPUT_CHANGES = ['REGISTERED', 'CARD_CHANGED', 'REENABLED'] as const;
+/** The six settings of `capture_network_config` an operator can change (schema extension 03 section 2.4), by member name. */
+export const CAPTURE_NETWORK_CONFIG_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart'] as const;
+/** Why a temporary host address was added, and how it left (schema extension 03 section 2.5: `HOST_ALIAS_REASON`, `HOST_ALIAS_REMOVE_REASON`). */
+export const HOST_ALIAS_AUDIT_REASONS = ['FACTORY_SCAN', 'SET_CAMERA_ADDRESS'] as const;
+export const HOST_ALIAS_AUDIT_REMOVE_REASONS = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP'] as const;
+/** `phase` of CAMERA_NETWORK_SET: written before the call as well as after it (schema extension 03 section 2.5, the recommendation to WP-23). */
+export const CAMERA_NETWORK_SET_PHASES = ['REQUESTED', 'COMPLETED', 'FAILED'] as const;
+
+/** The id of a row whose key is a random UUID (`host_network_aliases.id`, `installation_acceptances.id`). */
+const rowUuid = matching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'a row id (a lower-case UUID)');
+/** A dotted IPv4 literal, each part 0 to 255. Never a URL, a name, a prefix length or `user:password@`. */
+const IPV4_LITERAL = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+const ipv4Literal = matching(IPV4_LITERAL, 'an IPv4 literal (never a URL)');
+/** A hardware address in its one closed form: six pairs of upper-case hex digits with colons. */
+const macAddress = matching(/^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$/, 'a MAC address (AA:BB:CC:DD:EE:FF)');
+/** `changedFields` of CAPTURE_NETWORK_CONFIG_CHANGED: field NAMES of the closed set, comma-separated, each once (the pattern of `sttFieldNames`). Never a value. */
+const NETWORK_FIELD_NAMES: ReadonlySet<string> = new Set(CAPTURE_NETWORK_CONFIG_FIELDS);
+const networkFieldNames = (required: boolean): DetailRule => ({
+  required,
+  form: `one or more of ${CAPTURE_NETWORK_CONFIG_FIELDS.join(', ')}, comma-separated, each once`,
+  accepts: (value) => {
+    if (typeof value !== 'string' || value === '') return false;
+    const names = value.split(',');
+    return names.every((name) => NETWORK_FIELD_NAMES.has(name)) && new Set(names).size === names.length;
+  },
+});
+
 const REQUIRED = true;
 const OPTIONAL = false;
 
@@ -298,9 +345,11 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     permission: code(OPTIONAL),
   },
   [AuditType.CAPTURE_CREDENTIAL_REVEALED]: {
-    // SEC35-02: the supervisor reveal path writes the fact only.
+    // SEC35-02: the reveal writes the fact only. Erratum (task 4, design addendum 04 section 2.3): the
+    // writer is the credential reader of the capture adapters, not a "supervisor reveal path".
+    // AD-03 (1) (blueprint row 19): `reason` is the closed set of three, no longer any code.
     deviceId: hardwareDeviceId(REQUIRED),
-    reason: code(REQUIRED),
+    reason: oneOf(CAPTURE_CREDENTIAL_REVEAL_REASONS, `one of ${CAPTURE_CREDENTIAL_REVEAL_REASONS.join(', ')}`)(REQUIRED),
   },
   [AuditType.STT_CONFIG_CHANGED]: {
     // C3 §2.5 (blueprint row 113; R-8): exactly these five keys. Field NAMES and two flags; never
@@ -318,7 +367,8 @@ export const SERVER_AUDIT_DETAIL_RULES = {
   // `endpointRef`, never `onvifUuid` (a forbidden key).
   [AuditType.CAPTURE_DISCOVERY_SEARCHED]: {
     searchId: searchId(REQUIRED),
-    scope: oneOf(Object.values(CaptureDiscoveryScope), 'one of CAMERA_NETWORK, MIC_LOCAL')(REQUIRED),
+    // Task 4 (blueprint row 19; design addendum 04 section 4.2): the third scope, the sound-card listing.
+    scope: oneOf(CAPTURE_DISCOVERY_AUDIT_SCOPES, `one of ${CAPTURE_DISCOVERY_AUDIT_SCOPES.join(', ')}`)(REQUIRED),
     trigger: oneOf(Object.values(CaptureDiscoveryTrigger), 'one of MANUAL, PRECHECK')(REQUIRED),
     outcome: oneOf(['COMPLETE', 'FAILED'], 'one of COMPLETE, FAILED')(REQUIRED),
     responderCount: count(REQUIRED),
@@ -367,12 +417,114 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     degraded: flag(REQUIRED),
     sessionId: sessionId(REQUIRED),
   },
+  // ── Task 4 (blueprint row 19, WP-23a; design addendum 04 sections 4.2, 8.2; schema extension 03
+  // sections 2.2, 2.4, 2.5, 2.6): the ten types of the hardware-input port, exact key lists. Ids,
+  // closed codes, counts and IP literals only. No list holds a product or card name, a USB id, an
+  // interface name, a subnet, a username, a secret, a URL or any text a device announced (S13-12 (b)).
+  // `operationId` and `permission` are optional on each, as on the lists of row 132: a row written
+  // by a timer or at boot (an alias that expired, the boot sweep) has neither.
+  [AuditType.CAPTURE_AUDIO_INPUT_CHANGED]: {
+    // Design addendum 04 section 4.2: device id, change code, input number, channel count. No device text.
+    deviceId: hardwareDeviceId(REQUIRED),
+    change: oneOf(CAPTURE_AUDIO_INPUT_CHANGES, `one of ${CAPTURE_AUDIO_INPUT_CHANGES.join(', ')}`)(REQUIRED),
+    inputNumber: count(REQUIRED),
+    channelCount: count(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_NETWORK_CONFIG_CHANGED]: {
+    // Schema extension 03 section 2.4: the NAMES of the changed fields (the pattern of STT_CONFIG_CHANGED), never a value.
+    changedFields: networkFieldNames(REQUIRED),
+    revision: revisionNumber(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.HOST_ALIAS_ADDED]: {
+    // Schema extension 03 section 2.5: the row's id, the address put on the camera interface (an IPv4
+    // literal; the interface is not named, SEC35-30), why, and when it ends.
+    aliasId: rowUuid(REQUIRED),
+    address: ipv4Literal(REQUIRED),
+    reason: oneOf(HOST_ALIAS_AUDIT_REASONS, `one of ${HOST_ALIAS_AUDIT_REASONS.join(', ')}`)(REQUIRED),
+    expiresAt: count(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.HOST_ALIAS_REMOVED]: {
+    aliasId: rowUuid(REQUIRED),
+    address: ipv4Literal(REQUIRED),
+    removeReason: oneOf(HOST_ALIAS_AUDIT_REMOVE_REASONS, `one of ${HOST_ALIAS_AUDIT_REMOVE_REASONS.join(', ')}`)(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.HOST_ALIAS_REMOVE_FAILED]: {
+    // `failureReason` is the code stored as `remove_error`: a code, never the helper's error text.
+    aliasId: rowUuid(REQUIRED),
+    address: ipv4Literal(REQUIRED),
+    removeReason: oneOf(HOST_ALIAS_AUDIT_REMOVE_REASONS, `one of ${HOST_ALIAS_AUDIT_REMOVE_REASONS.join(', ')}`)(REQUIRED),
+    failureReason: code(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAMERA_FACTORY_SCANNED]: {
+    // The commissioning scan (WP-19c): counts of addresses asked and of answers, never the addresses
+    // or what answered. `searchId` when the answers join a candidate list; `aliasId` when a temporary
+    // host address served the scan.
+    outcome: oneOf(['COMPLETE', 'FAILED'], 'one of COMPLETE, FAILED')(REQUIRED),
+    addressCount: count(REQUIRED),
+    responderCount: count(REQUIRED),
+    searchId: searchId(OPTIONAL),
+    aliasId: rowUuid(OPTIONAL),
+    failureReason: code(OPTIONAL),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAMERA_NETWORK_SET]: {
+    // The set-IP job (WP-22b): one row when the change is requested and one when it ends, so that a
+    // Core that dies during the wait leaves a trace. The typed credential of the job joins no key.
+    phase: oneOf(CAMERA_NETWORK_SET_PHASES, `one of ${CAMERA_NETWORK_SET_PHASES.join(', ')}`)(REQUIRED),
+    fromAddress: ipv4Literal(REQUIRED),
+    toAddress: ipv4Literal(REQUIRED),
+    mac: macAddress(OPTIONAL),
+    deviceId: hardwareDeviceId(OPTIONAL),
+    candidateId: candidateId(OPTIONAL),
+    aliasId: rowUuid(OPTIONAL),
+    failureReason: code(OPTIONAL),
+    guardTripped: flag(OPTIONAL),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.CAPTURE_DEVICE_ADDRESS_CHANGED]: {
+    // `capture_devices.address` of a registered camera changed: the two IP literals and a code for why.
+    deviceId: hardwareDeviceId(REQUIRED),
+    fromAddress: hostLiteral(REQUIRED),
+    toAddress: hostLiteral(REQUIRED),
+    reason: code(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.INSTALLATION_ACCEPTED]: {
+    // Schema extension 03 section 2.6: the record id and counts only; the record itself is the table row.
+    acceptanceId: rowUuid(REQUIRED),
+    stepCount: count(REQUIRED),
+    passedCount: count(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.INSTALLATION_ACCEPTANCE_REVOKED]: {
+    // The typed revoke reason stays in the table row (`revoke_reason`); the audit row names the record.
+    acceptanceId: rowUuid(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
-/** The twenty-three types that have a list (nine of the backend task, nine of the capture phase, one of R-8, four of R-9 / R-10). */
+/**
+ * The thirty-three types that have a list (nine of the backend task, nine of the capture phase, one
+ * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19).
+ */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (67 minus the 23 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (77 minus the 33 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

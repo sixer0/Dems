@@ -432,6 +432,21 @@ export const AuditType = {
   CAPTURE_CONNECTION_TESTED: 'CAPTURE_CONNECTION_TESTED',
   CAPTURE_CANDIDATE_ADOPTED: 'CAPTURE_CANDIDATE_ADOPTED',
   CAPTURE_DEVICE_UNREACHABLE: 'CAPTURE_DEVICE_UNREACHABLE',
+  // Task 4 (blueprint row 19, WP-23a; design addendum 04 sections 4.2 and 8.2; schema extension 03
+  // sections 2.2, 2.4, 2.5, 2.6): the ten types of the hardware-input port, in ONE change set ahead
+  // of their writers (67 -> 77). Written by Core-server modules only; the simulator emits none.
+  // Each has an exact detail-key list in `apps/core-server/src/core/audit-details.ts`: ids, codes,
+  // counts and IP literals - never device text, an interface name, a username or a secret.
+  CAPTURE_AUDIO_INPUT_CHANGED: 'CAPTURE_AUDIO_INPUT_CHANGED',
+  CAPTURE_NETWORK_CONFIG_CHANGED: 'CAPTURE_NETWORK_CONFIG_CHANGED',
+  HOST_ALIAS_ADDED: 'HOST_ALIAS_ADDED',
+  HOST_ALIAS_REMOVED: 'HOST_ALIAS_REMOVED',
+  HOST_ALIAS_REMOVE_FAILED: 'HOST_ALIAS_REMOVE_FAILED',
+  CAMERA_FACTORY_SCANNED: 'CAMERA_FACTORY_SCANNED',
+  CAMERA_NETWORK_SET: 'CAMERA_NETWORK_SET',
+  CAPTURE_DEVICE_ADDRESS_CHANGED: 'CAPTURE_DEVICE_ADDRESS_CHANGED',
+  INSTALLATION_ACCEPTED: 'INSTALLATION_ACCEPTED',
+  INSTALLATION_ACCEPTANCE_REVOKED: 'INSTALLATION_ACCEPTANCE_REVOKED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -508,6 +523,19 @@ export const AUDIT_TYPE_CATEGORY = {
   CAPTURE_CONNECTION_TESTED: 'SECURITY',
   CAPTURE_CANDIDATE_ADOPTED: 'DEVICE',
   CAPTURE_DEVICE_UNREACHABLE: 'DEVICE',
+  // Task 4 (blueprint row 19, WP-23a): exactly ten entries, each in an EXISTING category. The three
+  // alias types record a change of the HOST's own addresses, made through a privileged helper:
+  // SECURITY (there is no network category among the eight; schema extension 03 section 2.5).
+  CAPTURE_AUDIO_INPUT_CHANGED: 'DEVICE',
+  CAPTURE_NETWORK_CONFIG_CHANGED: 'DEVICE',
+  HOST_ALIAS_ADDED: 'SECURITY',
+  HOST_ALIAS_REMOVED: 'SECURITY',
+  HOST_ALIAS_REMOVE_FAILED: 'SECURITY',
+  CAMERA_FACTORY_SCANNED: 'DEVICE',
+  CAMERA_NETWORK_SET: 'DEVICE',
+  CAPTURE_DEVICE_ADDRESS_CHANGED: 'DEVICE',
+  INSTALLATION_ACCEPTED: 'SYSTEM',
+  INSTALLATION_ACCEPTANCE_REVOKED: 'SYSTEM',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

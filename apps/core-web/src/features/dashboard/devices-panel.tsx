@@ -320,7 +320,8 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
       <CameraPreview
         cameraId={cameraId}
         variant="tile"
-        label={t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+        // No format chip for a stream that states no rate (`fps` null): the format words carry a rate.
+        label={camera.fps === null ? null : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
         noSignal={fault}
         ariaLabel={`${name} · ${state}`}
         className="aspect-auto min-h-0 flex-1"

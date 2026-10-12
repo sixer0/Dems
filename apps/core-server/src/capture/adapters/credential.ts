@@ -13,11 +13,15 @@
  * `credentialAtInjection` has no caller in the product yet; a static test holds it to "this file
  * and nothing else reads the two members of a credential".
  *
+ * The injection result is opaque too (security addendum AD-03 point 6): it prints as the mark,
+ * and ONE function, `startMessageBytes`, reads it - into the bytes of the start message, which
+ * the process door writes and zero-fills. No text of a start message is ever made.
+ *
  * A credential is wrapped at the edge (`sealCredential`) and travels as an opaque object: turned
  * into text, into JSON or into an inspection it gives a fixed mark, it has no enumerable member,
  * and it cannot be cloned or spread into a log line. It cannot be erased from memory (CR-3: no
- * zeroing is claimed); what is guaranteed is that no path but `credentialAtInjection` and
- * `usingCredential` reads it.
+ * zeroing is claimed); what is guaranteed is that no path but `startMessageBytes` (through the
+ * result of `credentialAtInjection`) and `usingCredential` reads it.
  */
 import { CaptureAdapterError, CaptureAdapterRefusal } from './errors';
 
@@ -107,21 +111,159 @@ export function streamLocator(parts: { readonly host: string; readonly port?: nu
   return credentialFreeLocator(`${STREAM_SCHEME}//${authority}/${parts.path.replace(/^\/+/, '')}`, deviceId);
 }
 
-/** What the process that opens a stream is started with: the locator and, apart from it, the two values. */
-export interface InjectedStreamAccess {
-  readonly locator: string;
-  readonly username: string;
-  readonly secret: string;
+const ACCESS = new WeakMap<object, { readonly locator: string; readonly credential: CameraCredential }>();
+
+/**
+ * What the process that opens a stream is started with: the locator and, apart from it, the two
+ * values (security addendum AD-03 point 6, weakness W-2). It is opaque as a `SealedCredential`
+ * is: no member, own or inherited, holds a value, so turned into text, into JSON or into an
+ * inspection, spread, cloned or carried as the cause of an error it gives the mark. Its one
+ * reader is `startMessageBytes`.
+ */
+export class InjectedStreamAccess {
+  constructor(locator: string, sealed: SealedCredential) {
+    ACCESS.set(this, Object.freeze({ locator: credentialFreeLocator(locator), credential: reveal(sealed) }));
+    Object.freeze(this);
+  }
+  toString(): string {
+    return CREDENTIAL_MARK;
+  }
+  toJSON(): string {
+    return CREDENTIAL_MARK;
+  }
+  [INSPECT](): string {
+    return CREDENTIAL_MARK;
+  }
 }
 
 /**
  * THE injection point (SEC35-04). The only place where a locator and a credential are put into
  * one value. The result goes into the start message of the process that opens the stream and
- * nowhere else: it is not logged, not audited, not stored, not put into an error.
+ * nowhere else: it is not logged, not audited, not stored, not put into an error - and if it is,
+ * it shows the mark.
  */
 export function credentialAtInjection(locator: string, sealed: SealedCredential): InjectedStreamAccess {
-  const credential = reveal(sealed);
-  return Object.freeze({ locator: credentialFreeLocator(locator), username: credential.username, secret: credential.secret });
+  return new InjectedStreamAccess(locator, sealed);
+}
+
+/** A member of a start message beside the stream access: a plain value, never a container. */
+export type StartMessagePlainMember = string | number | boolean | null;
+/**
+ * A start message: flat, its members plain values and at most ONE stream access (the result of
+ * `credentialAtInjection`), under the name the receiving process expects.
+ */
+export type StartMessage = Readonly<Record<string, StartMessagePlainMember | InjectedStreamAccess>>;
+
+const QUOTE = 0x22;
+const BACKSLASH = 0x5c;
+const HEX = '0123456789abcdef';
+
+/** The UTF-8 bytes of a text in memory of their own (never a slice of the shared pool), so that a zero-fill clears every copy this file made. */
+function ownBytes(text: string): Buffer {
+  const bytes = Buffer.alloc(Buffer.byteLength(text, 'utf8'));
+  bytes.write(text, 'utf8');
+  return bytes;
+}
+
+/** Length of a raw value as a JSON string: two quotes, 2 bytes for a quote or a backslash, 6 for a control byte. */
+function quotedLength(raw: Buffer): number {
+  let length = 2;
+  for (const byte of raw) length += byte === QUOTE || byte === BACKSLASH ? 2 : byte < 0x20 ? 6 : 1;
+  return length;
+}
+
+/** Writes a raw value as a JSON string, byte by byte: no text of the value is made. Returns the next offset. */
+function writeQuoted(out: Buffer, start: number, raw: Buffer): number {
+  let at = start;
+  out[at++] = QUOTE;
+  for (const byte of raw) {
+    if (byte === QUOTE || byte === BACKSLASH) {
+      out[at++] = BACKSLASH;
+      out[at++] = byte;
+    } else if (byte < 0x20) {
+      // A control byte (a line end among them) leaves as its six-byte escape: the message stays one line.
+      at += out.write('\\u00', at, 'latin1');
+      out[at++] = HEX.charCodeAt(byte >> 4);
+      out[at++] = HEX.charCodeAt(byte & 0x0f);
+    } else {
+      out[at++] = byte;
+    }
+  }
+  out[at++] = QUOTE;
+  return at;
+}
+
+/** A text with a surrogate that has no partner has no UTF-8 form: it would leave as another value. */
+function wellFormed(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * THE serialiser of a start message (security addendum AD-03 point 6), and the one reader of a
+ * stream access. It returns the bytes of one line - a JSON object in the order of the message's
+ * members, the stream access as an object of `locator`, `username`, `secret`, then a line feed -
+ * in memory of its own, which the process door writes to the child's standard input and then
+ * zero-fills. No text of the message is made on the way: every value is copied byte by byte, and
+ * the copies this function makes are zero-filled before it returns, also when it refuses. (The
+ * credential's own two texts cannot be erased, CR-3; nothing here adds a third.)
+ *
+ * It refuses, by a code that names no part of the message: a member that is not a plain value or
+ * a stream access made by this file, a second stream access, a number that is not finite, a text
+ * without a UTF-8 form.
+ */
+export function startMessageBytes(message: StartMessage): Buffer {
+  const refuse = (): never => {
+    throw new CaptureAdapterError(CaptureAdapterRefusal.START_MESSAGE_INVALID);
+  };
+  /** The message as pieces: structure and plain literals as ASCII text, every text value as raw bytes to be quoted. */
+  const pieces: (string | Buffer)[] = [];
+  const text = (value: string): void => {
+    if (!wellFormed(value)) refuse();
+    pieces.push(ownBytes(value));
+  };
+  try {
+    let accesses = 0;
+    let separator = '{';
+    for (const [name, member] of Object.entries(message)) {
+      pieces.push(separator);
+      separator = ',';
+      text(name);
+      pieces.push(':');
+      if (member === null || typeof member === 'boolean') pieces.push(String(member));
+      else if (typeof member === 'number') pieces.push(Number.isFinite(member) ? String(member) : refuse());
+      else if (typeof member === 'string') text(member);
+      else {
+        const access = ACCESS.get(member);
+        if (access === undefined || (accesses += 1) > 1) return refuse();
+        pieces.push('{"locator":');
+        text(access.locator);
+        pieces.push(',"username":');
+        text(access.credential.username);
+        pieces.push(',"secret":');
+        text(access.credential.secret);
+        pieces.push('}');
+      }
+    }
+    pieces.push(separator === '{' ? '{}\n' : '}\n');
+    let length = 0;
+    for (const piece of pieces) length += typeof piece === 'string' ? piece.length : quotedLength(piece);
+    const out = Buffer.alloc(length);
+    let at = 0;
+    for (const piece of pieces) at = typeof piece === 'string' ? at + out.write(piece, at, 'latin1') : writeQuoted(out, at, piece);
+    return out;
+  } finally {
+    for (const piece of pieces) if (typeof piece !== 'string') piece.fill(0);
+  }
 }
 
 /** A user part inside any locator-shaped text: scheme, two slashes, anything up to an `@` before the next slash. */

@@ -568,6 +568,13 @@ export interface SessionHistoryEntry {
   unsealableCause?: string;
 }
 
+/**
+ * The codec a camera's status states, as the screens name it: a closed set (task 4 row 52, WP-10b;
+ * AD-06 (1)). `H.264` is the stored `H264` and `HEVC` the stored `HEVC` of manifest field 43; the
+ * writer maps the stored code, and no text of a device, a relay or an ONVIF answer is ever a member.
+ */
+export type CameraStreamCodec = 'H.264' | 'HEVC';
+
 export interface CameraStatus {
   id: VideoTrackId;
   deviceId: string;
@@ -576,9 +583,22 @@ export interface CameraStatus {
   lens: LensState;
   online: boolean;
   recState: TrackRecState | null;
-  resolution: '1080p';
-  fps: 25;
-  codec: 'H.264';
+  /**
+   * What the camera's stream states about itself (task 4 row 52, WP-10b; design addendum 7.3, review
+   * P12-F08 rows 5 and 6), in place of the three literals `1080p`, `25`, `H.264`. The simulator's
+   * cameras state exactly those three values.
+   *
+   * The picture: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`. The same
+   * rule as the seal's stream statement (`streamProfileOf`), in the lower-case form the screens show.
+   */
+  resolution: string;
+  /**
+   * The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate
+   * (an HEVC stream today). The simulator's cameras state 25. The same type in
+   * `CameraStreamFactSchemas.fps` and in `ApiVideoTrack` (integration pass I-1, remainder of row 52).
+   */
+  fps: number | null;
+  codec: CameraStreamCodec;
   bitrateMbps: number;
   poePort: string;
   model: string;

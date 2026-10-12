@@ -762,6 +762,37 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     for (const name of ['meta', 'device', 'operators', 'audit', 'storage'] as const) expect(refuses(name, null), name).toBe(true);
   });
 
+  // Task 4 row 52 (WP-10b; design addendum 7.3; review P12-F08 rows 5 and 6; AD-06 (1), (2)).
+  it('a camera states its stream: picture, rate and codec are the stream\'s facts, each closed or bounded, and the simulator states what it stated', () => {
+    // The simulator's two cameras, in every scenario: the three former literals, unchanged.
+    for (const name of SCENARIO_NAMES) {
+      expect(scenarioState(name).cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]), name).toEqual([['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]);
+    }
+    const [first, second] = state.cameras;
+    const withFacts = (facts: Record<string, unknown>) => [{ ...first, ...facts }, second];
+    // What the literals refused and a real camera delivers.
+    for (const facts of [{ codec: 'HEVC' }, { resolution: '720p', fps: 30 }, { resolution: '2160p', fps: 60 }, { resolution: '2560x1920', fps: 20, codec: 'HEVC' }, { fps: 1 }, { fps: 240 }, { fps: null }, { codec: 'HEVC', fps: null }]) {
+      expect(refuses('cameras', withFacts(facts)), JSON.stringify(facts)).toBe(false);
+    }
+    // The codec is a closed set: the stored code, another case, a codec outside it and device text are refused.
+    for (const codec of ['H264', 'h.264', 'hevc', 'H.265', 'AV1', '', '<b>H.264</b>', 'H.264 ', 'x'.repeat(300), null, 264]) {
+      expect(refuses('cameras', withFacts({ codec })), String(codec)).toBe(true);
+    }
+    // The picture is `<height>p` or `<width>x<height>`, each number 100 to 9999.
+    for (const resolution of ['1080P', '1080', '1080i', '99p', '10800p', '0720p', '1920X1080', '1920x', 'x1080', '1920x1080p', ' 1080p', '1080p\n', '<1080p>', 'x'.repeat(300), '', null, 1080]) {
+      expect(refuses('cameras', withFacts({ resolution })), String(resolution)).toBe(true);
+    }
+    // The rate is a whole number from 1 to 240.
+    for (const fps of [0, -25, 29.97, 241, '25', Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(refuses('cameras', withFacts({ fps })), String(fps)).toBe(true);
+    }
+    // None of the three may be left out.
+    for (const member of ['resolution', 'fps', 'codec'] as const) {
+      const { [member]: _dropped, ...rest } = first!;
+      expect(refuses('cameras', [rest, second]), member).toBe(true);
+    }
+  });
+
   it('identifiers and hashes have their form', () => {
     expect(refuses('lastSealedSessionId', 'SES-1')).toBe(true);
     expect(refuses('lastSealedSessionId', 'SES-20261001-0024')).toBe(false);

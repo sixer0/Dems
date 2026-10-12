@@ -76,7 +76,7 @@ export interface CandidateTestRecord {
   readonly testedAt: number;
   /** Present only for an `AUTHENTICATION_FAILED` test in which the credential was NOT sent (finding R69-13). */
   readonly reason?: CaptureConnectionTestReason;
-  /** The usable H.264 profile codes the test read; empty unless `REACHABLE`. */
+  /** The usable profile codes the test read; empty unless `REACHABLE`. */
   readonly profiles: readonly string[];
 }
 

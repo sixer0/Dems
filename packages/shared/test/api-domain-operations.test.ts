@@ -859,10 +859,10 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move: 97 operations (36 GET / 61 POST), 67 audit types', () => {
+    it('the totals do not move: 97 operations (36 GET / 61 POST), 77 audit types (67 + the ten of task 4 row 19)', () => {
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
       expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([97, 36, 61]);
-      expect(Object.keys(AuditType)).toHaveLength(67);
+      expect(Object.keys(AuditType)).toHaveLength(77);
     });
   });
 });

@@ -513,6 +513,33 @@ export type SessionHistorySliceBody = z.output<typeof SessionHistorySliceSchema>
 export const ActiveCameraIdSliceSchema = videoTrackId().describe('Slice `activeCameraId`: the camera the monitor shows.');
 export type ActiveCameraIdSliceBody = z.output<typeof ActiveCameraIdSliceSchema>;
 
+/** The picture of a camera stream on the status surface: `1080p`, `720p`, `2560x1920` (task 4 row 52). */
+export const CAMERA_RESOLUTION_PATTERN = /^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$/;
+/** The highest nominal rate a camera status states (task 4 row 52): a bound, not a capability. */
+export const CAMERA_FPS_MAX = 240;
+/** The codecs a camera status can state, as the screens name them: `CameraStreamCodec` of the simulator (task 4 row 52; AD-06 (1)). */
+export const CAMERA_STREAM_CODECS = ['H.264', 'HEVC'] as const;
+/**
+ * What a camera's stream states about itself, in place of the literals `1080p`, `25`, `H.264`
+ * (task 4 row 52, WP-10b; design addendum 7.3; review P12-F08 rows 5 and 6). One definition for the
+ * `cameras` slice and for the video track status of the device operations. Each member is closed or
+ * bounded (AD-06 (1), (2)): no device text fits any of the three.
+ */
+export const CameraStreamFactSchemas = {
+  resolution: z
+    .string()
+    .regex(CAMERA_RESOLUTION_PATTERN)
+    .describe('The picture the stream states: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`; each number 100 to 9999.'),
+  // Null (integration pass I-1, the remainder of row 52): a stream whose rate is not stated.
+  fps: z
+    .int()
+    .min(1)
+    .max(CAMERA_FPS_MAX)
+    .nullable()
+    .describe('The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate. Never a default.'),
+  codec: z.enum(CAMERA_STREAM_CODECS).describe('The codec of the stream, read from the stream itself: a closed set.'),
+} as const;
+
 export const CamerasSliceSchema = z
   .array(
     z.strictObject({
@@ -523,9 +550,9 @@ export const CamerasSliceSchema = z
       lens: z.enum(LensState),
       online: z.boolean(),
       recState: z.enum(TrackRecState).nullable().describe('Null when not recording.'),
-      resolution: z.literal('1080p'),
-      fps: z.literal(25),
-      codec: z.literal('H.264'),
+      resolution: CameraStreamFactSchemas.resolution,
+      fps: CameraStreamFactSchemas.fps,
+      codec: CameraStreamFactSchemas.codec,
       bitrateMbps: amount(),
       poePort: text(),
       model: text(),

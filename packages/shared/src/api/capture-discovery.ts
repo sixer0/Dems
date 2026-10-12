@@ -68,8 +68,11 @@ import { apiText } from './text';
 export const CaptureSourceClass = { PRODUCTION: 'PRODUCTION', DEVELOPMENT: 'DEVELOPMENT' } as const;
 export type CaptureSourceClass = (typeof CaptureSourceClass)[keyof typeof CaptureSourceClass];
 
-/** What a search looked for: cameras on the network (93, the pre-check) or the local inputs (97). */
-export const CaptureDiscoveryScope = { CAMERA_NETWORK: 'CAMERA_NETWORK', MIC_LOCAL: 'MIC_LOCAL' } as const;
+/**
+ * What a search looked for: cameras on the network (93, the pre-check), the local inputs (97), or
+ * the audio cards of the host (task 4, the audio-card search; no operation states it yet).
+ */
+export const CaptureDiscoveryScope = { CAMERA_NETWORK: 'CAMERA_NETWORK', MIC_LOCAL: 'MIC_LOCAL', AUDIO_CARDS: 'AUDIO_CARDS' } as const;
 export type CaptureDiscoveryScope = (typeof CaptureDiscoveryScope)[keyof typeof CaptureDiscoveryScope];
 
 /** Who started a search: an operator (93) or a pre-check run with an unreachable camera. Nothing else starts one. */
@@ -83,7 +86,20 @@ export type CaptureDiscoveryState = (typeof CaptureDiscoveryState)[keyof typeof 
 export const CaptureCandidateStatus = { NEW: 'NEW', REGISTERED: 'REGISTERED' } as const;
 export type CaptureCandidateStatus = (typeof CaptureCandidateStatus)[keyof typeof CaptureCandidateStatus];
 
-/** The five outcomes of a connection test, exactly (R-9 AC-6; D80(11)). A failed test is a 200 result. */
+/**
+ * The five outcomes of a connection test, exactly (R-9 AC-6; D80(11)). A failed test is a 200 result.
+ *
+ * Task 4, blueprint row 38 (WP-05; decision AM-2, ruling U12 A6; design addendum 7.2, 7.3; AD-06):
+ * the vocabulary is extended ADDITIVELY - no member is removed or renamed, and what a member
+ * covers grows. A profile is USABLE when the stream it delivers is of a codec of the Core's closed
+ * set, H.264 or HEVC. The codec is decided in the Core, from the stream; what the camera reports
+ * about itself is advice only and is never a part of an answer.
+ *   REACHABLE   authenticated, and at least one usable profile (H.264 or HEVC).
+ *   NOT_H264    the name is KEPT: the camera answered and no profile is usable, because what it
+ *               delivers is neither H.264 nor HEVC. It no longer means "the camera is not set to
+ *               H.264": a client must not word it as an instruction to switch an HEVC camera.
+ * The other three are unchanged.
+ */
 export const CaptureConnectionOutcome = {
   REACHABLE: 'REACHABLE',
   AUTHENTICATION_FAILED: 'AUTHENTICATION_FAILED',
@@ -267,7 +283,7 @@ export const CaptureConnectionTestSchema = z
     outcome: z.enum(CaptureConnectionOutcome),
     authenticated: z.boolean().describe('Whether a credential was supplied: a fact, never a value.'),
     testedAt: epochMs(),
-    usableProfileCount: count().describe('Usable H.264 media profiles the test read. A count: no profile name.'),
+    usableProfileCount: count().describe('Usable media profiles the test read: profiles whose stream is H.264 or HEVC, as the Core judged it. A count: no profile name and no codec text.'),
     failedAttemptsRemaining: count().describe('Refused credentials this host may still see before the lock-out guard closes.'),
     reason: z.enum(CaptureConnectionTestReason).optional().describe('Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).'),
   })
@@ -611,11 +627,11 @@ export const CAPTURE_DISCOVERY_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Test the connection to a candidate camera',
     description: [
-      'One read-only connection attempt against the candidate in the path, inside one time limit: authenticate, list the media profiles, look for a usable H.264 profile. It changes no setting of the camera and is never repeated without a new operator action.',
+      'One read-only connection attempt against the candidate in the path, inside one time limit: authenticate, list the media profiles, look for a usable profile. A profile is usable when the stream it delivers is H.264 or HEVC: the Core decides the codec, from a closed set; what the camera reports about itself is advice only. It changes no setting of the camera and is never repeated without a new operator action.',
       '**Web console only.** Needs CAPTURE_CONFIG and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. Idle only: with a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.',
       NO_TARGET,
       '`credential` is required for a `PRODUCTION` candidate (`422 INVALID_INPUT`, `details.reason: CREDENTIAL_REQUIRED`): no credential means no connection attempt. A `DEVELOPMENT` candidate (a fixture on loopback) may be tested without one. Both fields are 1 or more printable ASCII characters. ' + CREDENTIAL_SCOPE,
-      '**A failed test is a `200` result, not an HTTP error.** Exactly five outcomes: `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE`, `NOT_H264`, `UNREACHABLE`. The answer holds no device error text, no URL and no credential member. Every accepted attempt writes one CAPTURE_CONNECTION_TESTED row, whatever the outcome: ids, the outcome and facts, never the username, the secret or a URL (`host` and `endpointRef` for a PRODUCTION candidate only).',
+      '**A failed test is a `200` result, not an HTTP error.** Exactly five outcomes: `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE`, `NOT_H264`, `UNREACHABLE`. `NOT_H264` keeps its name and means that the camera answered and has no usable profile: what it delivers is neither H.264 nor HEVC. The answer holds no device error text, no URL and no credential member. Every accepted attempt writes one CAPTURE_CONNECTION_TESTED row, whatever the outcome: ids, the outcome and facts, never the username, the secret or a URL (`host` and `endpointRef` for a PRODUCTION candidate only).',
       'Other refusals, each before any request leaves the Core: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`), `CANDIDATE_NOT_TESTABLE` or `CONNECTION_TEST_IN_PROGRESS`.',
       RATE_AND_READY('`CONNECTION_TEST_RATE_LIMITED` or `CONNECTION_TEST_LOCKOUT_GUARD` (too many refused credentials on this host)', '`DISCOVERY_NOT_READY`'),
       `${SIM_V2_NOTE} The simulator contacts nothing: the first fixed candidate answers \`REACHABLE\`, and the body is accepted opaquely, never stored and never echoed. On a tablet or phone the simulator refuses with the same \`403\`.`,
@@ -879,7 +895,7 @@ export const CAPTURE_DISCOVERY_EXAMPLES: Readonly<Record<string, OperationExampl
     responses: {
       200: {
         reachable: {
-          summary: 'The camera answered and has a usable H.264 profile',
+          summary: 'The camera answered and has a usable profile',
           value: { candidateId: SIM_CAPTURE_CANDIDATE_IDS.fresh, ...EXAMPLE_TESTED, usableProfileCount: 1, failedAttemptsRemaining: 2 } satisfies CaptureConnectionTest,
         },
         authenticationFailed: {

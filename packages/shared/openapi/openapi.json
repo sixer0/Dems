@@ -15020,7 +15020,17 @@
                 "CAPTURE_DISCOVERY_SEARCHED",
                 "CAPTURE_CONNECTION_TESTED",
                 "CAPTURE_CANDIDATE_ADOPTED",
-                "CAPTURE_DEVICE_UNREACHABLE"
+                "CAPTURE_DEVICE_UNREACHABLE",
+                "CAPTURE_AUDIO_INPUT_CHANGED",
+                "CAPTURE_NETWORK_CONFIG_CHANGED",
+                "HOST_ALIAS_ADDED",
+                "HOST_ALIAS_REMOVED",
+                "HOST_ALIAS_REMOVE_FAILED",
+                "CAMERA_FACTORY_SCANNED",
+                "CAMERA_NETWORK_SET",
+                "CAPTURE_DEVICE_ADDRESS_CHANGED",
+                "INSTALLATION_ACCEPTED",
+                "INSTALLATION_ACCEPTANCE_REVOKED"
               ]
             }
           },
@@ -23832,7 +23842,7 @@
           "Device"
         ],
         "summary": "Test the connection to a candidate camera",
-        "description": "One read-only connection attempt against the candidate in the path, inside one time limit: authenticate, list the media profiles, look for a usable H.264 profile. It changes no setting of the camera and is never repeated without a new operator action.\n\n**Web console only.** Needs CAPTURE_CONFIG and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. Idle only: with a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests.\n\n`credential` is required for a `PRODUCTION` candidate (`422 INVALID_INPUT`, `details.reason: CREDENTIAL_REQUIRED`): no credential means no connection attempt. A `DEVELOPMENT` candidate (a fixture on loopback) may be tested without one. Both fields are 1 or more printable ASCII characters. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential.\n\n**A failed test is a `200` result, not an HTTP error.** Exactly five outcomes: `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE`, `NOT_H264`, `UNREACHABLE`. The answer holds no device error text, no URL and no credential member. Every accepted attempt writes one CAPTURE_CONNECTION_TESTED row, whatever the outcome: ids, the outcome and facts, never the username, the secret or a URL (`host` and `endpointRef` for a PRODUCTION candidate only).\n\nOther refusals, each before any request leaves the Core: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`), `CANDIDATE_NOT_TESTABLE` or `CONNECTION_TEST_IN_PROGRESS`.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `CONNECTION_TEST_RATE_LIMITED` or `CONNECTION_TEST_LOCKOUT_GUARD` (too many refused credentials on this host): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator contacts nothing: the first fixed candidate answers `REACHABLE`, and the body is accepted opaquely, never stored and never echoed. On a tablet or phone the simulator refuses with the same `403`.",
+        "description": "One read-only connection attempt against the candidate in the path, inside one time limit: authenticate, list the media profiles, look for a usable profile. A profile is usable when the stream it delivers is H.264 or HEVC: the Core decides the codec, from a closed set; what the camera reports about itself is advice only. It changes no setting of the camera and is never repeated without a new operator action.\n\n**Web console only.** Needs CAPTURE_CONFIG and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row, before the body is used. Idle only: with a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests.\n\n`credential` is required for a `PRODUCTION` candidate (`422 INVALID_INPUT`, `details.reason: CREDENTIAL_REQUIRED`): no credential means no connection attempt. A `DEVELOPMENT` candidate (a fixture on loopback) may be tested without one. Both fields are 1 or more printable ASCII characters. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential.\n\n**A failed test is a `200` result, not an HTTP error.** Exactly five outcomes: `REACHABLE`, `AUTHENTICATION_FAILED`, `WRONG_PROFILE`, `NOT_H264`, `UNREACHABLE`. `NOT_H264` keeps its name and means that the camera answered and has no usable profile: what it delivers is neither H.264 nor HEVC. The answer holds no device error text, no URL and no credential member. Every accepted attempt writes one CAPTURE_CONNECTION_TESTED row, whatever the outcome: ids, the outcome and facts, never the username, the secret or a URL (`host` and `endpointRef` for a PRODUCTION candidate only).\n\nOther refusals, each before any request leaves the Core: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`), `CANDIDATE_NOT_TESTABLE` or `CONNECTION_TEST_IN_PROGRESS`.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `CONNECTION_TEST_RATE_LIMITED` or `CONNECTION_TEST_LOCKOUT_GUARD` (too many refused credentials on this host): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator contacts nothing: the first fixed candidate answers `REACHABLE`, and the body is accepted opaquely, never stored and never echoed. On a tablet or phone the simulator refuses with the same `403`.",
         "responses": {
           "200": {
             "description": "The outcome of the test. A failed test is a result, not an error. Never the credential.",
@@ -23854,7 +23864,7 @@
                 },
                 "examples": {
                   "reachable": {
-                    "summary": "The camera answered and has a usable H.264 profile",
+                    "summary": "The camera answered and has a usable profile",
                     "value": {
                       "candidateId": "CND-000000000001",
                       "outcome": "REACHABLE",
@@ -25622,15 +25632,29 @@
           },
           "resolution": {
             "type": "string",
-            "const": "1080p"
+            "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$",
+            "description": "The picture the stream states: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`; each number 100 to 9999."
           },
           "fps": {
-            "type": "number",
-            "const": 25
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate. Never a default."
           },
           "codec": {
             "type": "string",
-            "const": "H.264"
+            "enum": [
+              "H.264",
+              "HEVC"
+            ],
+            "description": "The codec of the stream, read from the stream itself: a closed set."
           },
           "bitrateMbps": {
             "type": "number",
@@ -27885,15 +27909,29 @@
             },
             "resolution": {
               "type": "string",
-              "const": "1080p"
+              "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$",
+              "description": "The picture the stream states: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`; each number 100 to 9999."
             },
             "fps": {
-              "type": "number",
-              "const": 25
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 240
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate. Never a default."
             },
             "codec": {
               "type": "string",
-              "const": "H.264"
+              "enum": [
+                "H.264",
+                "HEVC"
+              ],
+              "description": "The codec of the stream, read from the stream itself: a closed set."
             },
             "bitrateMbps": {
               "type": "number",
@@ -31868,7 +31906,17 @@
               "CAPTURE_DISCOVERY_SEARCHED",
               "CAPTURE_CONNECTION_TESTED",
               "CAPTURE_CANDIDATE_ADOPTED",
-              "CAPTURE_DEVICE_UNREACHABLE"
+              "CAPTURE_DEVICE_UNREACHABLE",
+              "CAPTURE_AUDIO_INPUT_CHANGED",
+              "CAPTURE_NETWORK_CONFIG_CHANGED",
+              "HOST_ALIAS_ADDED",
+              "HOST_ALIAS_REMOVED",
+              "HOST_ALIAS_REMOVE_FAILED",
+              "CAMERA_FACTORY_SCANNED",
+              "CAMERA_NETWORK_SET",
+              "CAPTURE_DEVICE_ADDRESS_CHANGED",
+              "INSTALLATION_ACCEPTED",
+              "INSTALLATION_ACCEPTANCE_REVOKED"
             ]
           },
           "category": {
@@ -34516,7 +34564,17 @@
               "CAPTURE_DISCOVERY_SEARCHED",
               "CAPTURE_CONNECTION_TESTED",
               "CAPTURE_CANDIDATE_ADOPTED",
-              "CAPTURE_DEVICE_UNREACHABLE"
+              "CAPTURE_DEVICE_UNREACHABLE",
+              "CAPTURE_AUDIO_INPUT_CHANGED",
+              "CAPTURE_NETWORK_CONFIG_CHANGED",
+              "HOST_ALIAS_ADDED",
+              "HOST_ALIAS_REMOVED",
+              "HOST_ALIAS_REMOVE_FAILED",
+              "CAMERA_FACTORY_SCANNED",
+              "CAMERA_NETWORK_SET",
+              "CAPTURE_DEVICE_ADDRESS_CHANGED",
+              "INSTALLATION_ACCEPTED",
+              "INSTALLATION_ACCEPTANCE_REVOKED"
             ]
           },
           "actorId": {
@@ -36763,7 +36821,7 @@
           "usableProfileCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Usable H.264 media profiles the test read. A count: no profile name."
+            "description": "Usable media profiles the test read: profiles whose stream is H.264 or HEVC, as the Core judged it. A count: no profile name and no codec text."
           },
           "failedAttemptsRemaining": {
             "type": "integer",

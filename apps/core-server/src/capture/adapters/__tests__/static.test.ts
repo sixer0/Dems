@@ -27,7 +27,7 @@ import { CAPTURE_ADAPTER_KIND } from '../../../db/schema/value-sets';
 import { DEVICE_COMMAND_OF_OPERATION } from '../../../modules/devices';
 import { CAPTURE_DEVICE_COMMANDS, SEAM_OF_DEVICE_COMMAND, operationOfDeviceCommand } from '../commands';
 import { CAPTURE_ADAPTER_KINDS, CaptureAdapterKind } from '../kinds';
-import { MIC_CLOCK_COMPENSATION_PPM, MIC_LATENESS_TARGET_MS, MIC_TRANSPORTS, MIC_WORKER_BUFFER_CAP_MS, micPipePath, withinMicClockRange } from '../mic-transport';
+import { MIC_CLOCK_COMPENSATION_PPM, MIC_EXACT_SOURCE_BITS, MIC_LATENESS_TARGET_MS, MIC_PCM24_SCALE, MIC_TRANSPORTS, MIC_WORKER_BUFFER_CAP_MS, micPipePath, withinMicClockRange } from '../mic-transport';
 
 const ADAPTERS = 'src/capture/adapters/';
 const tree = codeOnly(readTree(WORKSPACE).filter((file) => /\.[cm]?tsx?$/.test(file.path)));
@@ -145,6 +145,31 @@ describe('A-3: the microphone transport states the worker\'s clock range and its
     expect(Number(cap?.[1]) * 1_000).toBe(MIC_WORKER_BUFFER_CAP_MS);
     // Control: a worker that changed either number would be seen.
     expect(Number(/^#define MIC_MAX_PPM (\d+)\b/m.exec(source.replace('MIC_MAX_PPM 5000', 'MIC_MAX_PPM 4000'))?.[1])).not.toBe(MIC_CLOCK_COMPENSATION_PPM);
+  });
+
+  it('E-6: every signed 24-bit sample survives the conversion to the pipe\'s 32-bit float, raw and scaled', () => {
+    expect(MIC_TRANSPORTS.PCM_FIFO.sampleFormat).toBe('F32LE');
+    expect(MIC_EXACT_SOURCE_BITS).toBe(24);
+    expect(MIC_PCM24_SCALE).toBe(2 ** 23);
+    const first = -(2 ** 23);
+    const last = 2 ** 23 - 1;
+    const f32 = new Float32Array(1);
+    let checked = 0;
+    let equalRaw = 0;
+    let equalScaled = 0;
+    for (let n = first; n <= last; n++) {
+      f32[0] = n; // integer -> float32 (what the pipe holds)
+      if (f32[0] === n) equalRaw++;
+      f32[0] = n / MIC_PCM24_SCALE; // the scaled form, the one ffmpeg writes
+      if (f32[0] * MIC_PCM24_SCALE === n) equalScaled++;
+      checked++;
+    }
+    expect(checked).toBe(16_777_216);
+    expect(equalRaw).toBe(16_777_216);
+    expect(equalScaled).toBe(16_777_216);
+    // Control: the first width that is NOT exact is 25 bits (2^24 + 1 rounds), so the check can fail.
+    f32[0] = 2 ** 24 + 1;
+    expect(f32[0]).not.toBe(2 ** 24 + 1);
   });
 
   it('a pipe path stays under the run directory: both IDs are held to their patterns first', () => {

@@ -434,6 +434,17 @@ export const common = {
     CAPTURE_CONNECTION_TESTED: 'Camera connection tested',
     CAPTURE_CANDIDATE_ADOPTED: 'Camera added',
     CAPTURE_DEVICE_UNREACHABLE: 'Capture device not reachable',
+    // Task 4 (blueprint row 19, WP-23a): the ten types of the input-av port.
+    CAPTURE_AUDIO_INPUT_CHANGED: 'Microphone input changed',
+    CAPTURE_NETWORK_CONFIG_CHANGED: 'Camera network configuration changed',
+    HOST_ALIAS_ADDED: 'Temporary host address added',
+    HOST_ALIAS_REMOVED: 'Temporary host address removed',
+    HOST_ALIAS_REMOVE_FAILED: 'Temporary host address removal failed',
+    CAMERA_FACTORY_SCANNED: 'Factory address scan performed',
+    CAMERA_NETWORK_SET: 'Camera network address set',
+    CAPTURE_DEVICE_ADDRESS_CHANGED: 'Camera address changed',
+    INSTALLATION_ACCEPTED: 'Installation accepted',
+    INSTALLATION_ACCEPTANCE_REVOKED: 'Installation acceptance revoked',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */

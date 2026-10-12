@@ -489,7 +489,8 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // adds STT_CONFIG_CHANGED, 62 -> 63 — the C3 §2.5 total; R-9..R-11 add the four of C3 §5.2
     // (search, connection test, adoption, device unreachable), 63 -> 67 — the C3 §10.1 total).
     expect(PERMISSIONS).toHaveLength(14);
-    expect(AUDIT_TYPES).toHaveLength(67);
+    // Task 4 blueprint row 19 (WP-23a): + the ten of the hardware-input port, 67 -> 77.
+    expect(AUDIT_TYPES).toHaveLength(77);
   });
 
   it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 57 with one permission, 1 any-of', () => {

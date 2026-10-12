@@ -29,6 +29,16 @@
  * holds and the bound that is asked for, and `mic-transport.test.ts` holds the first to the
  * worker's source so that it cannot change unnoticed. Until the worker is changed a transport
  * must not be opened for a source whose clock is known to be outside the range.
+ *
+ * THE SAMPLE-WIDTH STATEMENT FOR PRODUCTION (task 4 row 13, WP-09, check E-6). A real microphone is
+ * captured at up to 24 bits and converted to 32-bit float at the pipe, because the pipe carries
+ * float only (`F32LE`). That conversion loses nothing: a 32-bit float holds 24 significant bits, so
+ * every signed 24-bit integer (all 16,777,216 values, -8,388,608 to 8,388,607) is represented
+ * exactly, and so is the scaled value `n / 2^23` (a power-of-two scale only moves the exponent).
+ * The test holds this for every value. It says nothing about the STORED audio, which is resampled
+ * (D85) and encoded to AAC after the pipe: bit-exact storage is not promised and no second
+ * transport or multi-channel pipe is built (S4-1, S4-2). A source wider than 24 bits (for example
+ * 32-bit integer) is NOT covered by this statement and must not be opened without a new check.
  */
 import { CaptureMicInputKind } from '@dems/capture-protocol';
 import { CaptureAdapterError, CaptureAdapterRefusal } from './errors';
@@ -40,6 +50,11 @@ export const MIC_CLOCK_COMPENSATION_PPM = 5_000;
 export const MIC_WORKER_BUFFER_CAP_MS = 2_000;
 /** The lateness bound D85 R-3 asks of the worker for a source beyond the range. Not built (see the header). */
 export const MIC_LATENESS_TARGET_MS = 100;
+
+/** The widest integer sample that converts to the pipe's 32-bit float without loss (check E-6). */
+export const MIC_EXACT_SOURCE_BITS = 24;
+/** The scale of a signed 24-bit sample to the float range [-1, 1): 2^23. */
+export const MIC_PCM24_SCALE = 8_388_608;
 
 /** The promise of one transport kind. A value object: it holds no path and no device. */
 export interface MicTransportStatement {

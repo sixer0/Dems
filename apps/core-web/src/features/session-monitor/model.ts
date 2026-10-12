@@ -373,7 +373,8 @@ export interface CameraTileModel {
   ready: boolean
   online: boolean
   resolution: string
-  fps: number
+  /** Null: the stream states no rate; the tile then shows no format line. */
+  fps: number | null
   codec: string
 }
 

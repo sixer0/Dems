@@ -484,8 +484,8 @@ export function buildOperations(world: World, directory: OperatorDirectory, reco
  * The nine capture-phase types of task 3 (C3 §5.2; register CS-14). The fixture states ONE row of
  * each, with details exactly in the form of the audit writer's list (`SERVER_AUDIT_DETAIL_RULES`),
  * so that every gate over the allow-list - the writer's own `auditInputOf`, the key scan, the
- * table of printed references - covers all 67 types from the first load (the 63rd, STT_CONFIG_CHANGED
- * of row 113, and the four of row 132 are the last rows below). The modules that will
+ * table of printed references - covers all 77 types from the first load (the 63rd, STT_CONFIG_CHANGED
+ * of row 113, the four of row 132 and the ten of task 4 blueprint row 19 are the last rows below). The modules that will
  * write these rows on a live path land with their milestones (op 81 with row 71, the transcript
  * revisions with M7/M8, the credential paths with row 66): until then the fixture is the reference
  * holder, and each row names the actor whose permission owns the future operation. No credential,
@@ -576,10 +576,11 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
   world.record(at(8), {
     audit: {
       type: 'CAPTURE_CREDENTIAL_REVEALED',
-      message: 'Camera credential revealed for diagnostics',
+      // Task 4 (blueprint row 19; AD-03 (1)): `reason` is one of the closed set of three.
+      message: 'Camera credential revealed for a connection test',
       actorId: supervisor(at(8)),
       deviceId: null,
-      details: { deviceId: 'CAM-01', reason: 'MEDIA_DIAGNOSTICS' },
+      details: { deviceId: 'CAM-01', reason: 'CONNECTION_TEST' },
     },
   });
   // Task 3 M6 (blueprint row 113; C3 §2.5; R-8): the one type of the STT configuration. Unlike the
@@ -635,6 +636,104 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       deviceId: null,
       severity: 'WARNING',
       details: { deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', reason: 'UNREACHABLE', degraded: true, sessionId: 'SES-20261001-0001' },
+    },
+  });
+  // Task 4 (blueprint row 19, WP-23a; design addendum 04 sections 4.2, 8.2): the ten types of the
+  // hardware-input port - ONE row of each, in the form of the audit writer's list, so that the
+  // fixture keeps covering every type (77). Their live writers land with rows 70, 106 to 111 and
+  // 115; until then the fixture is the reference holder. Ids, closed codes, counts and addresses of
+  // the documentation and private ranges only: no device text, no interface name, no secret.
+  const ALIAS_ID = '00000000-0000-4000-8000-0000000000a1';
+  const ACCEPTANCE_ID = '00000000-0000-4000-8000-0000000000c1';
+  world.record(at(14), {
+    audit: {
+      type: 'CAPTURE_AUDIO_INPUT_CHANGED',
+      message: 'Microphone input registered',
+      actorId: technician(at(14)),
+      deviceId: null,
+      details: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2, permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  world.record(at(15), {
+    audit: {
+      type: 'CAPTURE_NETWORK_CONFIG_CHANGED',
+      message: 'Camera network configuration changed',
+      actorId: technician(at(15)),
+      deviceId: null,
+      details: { changedFields: 'interfaceName,cameraSubnet', revision: 2 },
+    },
+  });
+  world.record(at(16), {
+    audit: {
+      type: 'HOST_ALIAS_ADDED',
+      message: 'Time-limited host address added',
+      actorId: technician(at(16)),
+      deviceId: null,
+      details: { aliasId: ALIAS_ID, address: '192.168.1.253', reason: 'FACTORY_SCAN', expiresAt: at(16) + 30 * 60 * 1000 },
+    },
+  });
+  world.record(at(17), {
+    audit: {
+      type: 'CAMERA_FACTORY_SCANNED',
+      message: 'Factory address scan performed',
+      actorId: technician(at(17)),
+      deviceId: null,
+      details: { outcome: 'COMPLETE', addressCount: 4, responderCount: 1, aliasId: ALIAS_ID },
+    },
+  });
+  world.record(at(18), {
+    audit: {
+      type: 'CAMERA_NETWORK_SET',
+      message: 'Camera network address set',
+      actorId: technician(at(18)),
+      deviceId: null,
+      details: { phase: 'COMPLETED', fromAddress: '192.168.1.64', toAddress: '192.168.10.101', aliasId: ALIAS_ID },
+    },
+  });
+  world.record(at(19), {
+    audit: {
+      type: 'HOST_ALIAS_REMOVE_FAILED',
+      message: 'Time-limited host address could not be removed',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { aliasId: ALIAS_ID, address: '192.168.1.253', removeReason: 'JOB_DONE', failureReason: 'HELPER_FAILED' },
+    },
+  });
+  world.record(at(20), {
+    audit: {
+      type: 'HOST_ALIAS_REMOVED',
+      message: 'Time-limited host address removed',
+      actorId: null,
+      deviceId: null,
+      details: { aliasId: ALIAS_ID, address: '192.168.1.253', removeReason: 'EXPIRED' },
+    },
+  });
+  world.record(at(21), {
+    audit: {
+      type: 'CAPTURE_DEVICE_ADDRESS_CHANGED',
+      message: 'Camera address changed',
+      actorId: technician(at(21)),
+      deviceId: null,
+      details: { deviceId: 'CAM-01', fromAddress: '192.168.1.64', toAddress: '192.168.10.101', reason: 'SET_CAMERA_ADDRESS' },
+    },
+  });
+  world.record(at(22), {
+    audit: {
+      type: 'INSTALLATION_ACCEPTED',
+      message: 'Installation accepted',
+      actorId: supervisor(at(22)),
+      deviceId: null,
+      details: { acceptanceId: ACCEPTANCE_ID, stepCount: 12, passedCount: 12 },
+    },
+  });
+  world.record(at(23), {
+    audit: {
+      type: 'INSTALLATION_ACCEPTANCE_REVOKED',
+      message: 'Installation acceptance revoked',
+      actorId: supervisor(at(23)),
+      deviceId: null,
+      details: { acceptanceId: ACCEPTANCE_ID },
     },
   });
 }

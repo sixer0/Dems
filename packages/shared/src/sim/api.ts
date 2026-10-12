@@ -216,7 +216,8 @@ export interface ApiVideoTrack {
   online: boolean;
   recState: string | null;
   resolution: string;
-  fps: number;
+  /** Null: the stream states no rate. */
+  fps: number | null;
   codec: string;
   bitrateMbps: number;
 }

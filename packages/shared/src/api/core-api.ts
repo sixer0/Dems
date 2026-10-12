@@ -129,6 +129,7 @@ import { SECURITY_AUDIT_OPERATIONS, SECURITY_AUDIT_SCHEMAS } from './security-au
 import { sessionCreateSchema } from './session-schema';
 import { AUDIO_SOURCE_OPERATIONS, AUDIO_SOURCE_SCHEMAS, SESSION_OPERATIONS, SESSION_SCHEMAS } from './sessions';
 import {
+  CameraStreamFactSchemas,
   CaptureConfigCameraSchema,
   CaptureConfigMicSchema,
   STATE_SCHEMAS,
@@ -402,9 +403,10 @@ export const VideoTrackStatusSchema = z
     lens: z.enum(LensState),
     online: z.boolean(),
     recState: z.enum(TrackRecState).nullable().describe('Null when not recording.'),
-    resolution: z.literal('1080p'),
-    fps: z.literal(25),
-    codec: z.literal('H.264'),
+    // Task 4 row 52 (WP-10b): the stream's own facts, the same three schemas as the `cameras` slice.
+    resolution: CameraStreamFactSchemas.resolution,
+    fps: CameraStreamFactSchemas.fps,
+    codec: CameraStreamFactSchemas.codec,
     bitrateMbps: z.number().nonnegative(),
   })
   .describe('One video track (VIDEO-01 or VIDEO-02), its source device and its stream state (schema v2).');

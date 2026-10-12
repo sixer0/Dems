@@ -103,11 +103,11 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 97 operations, 36 GET, 61 POST, offline 31, 67 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 97 operations, 36 GET, 61 POST, offline 31, 77 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     const all = listCoreApiOperations(CoreApiScope.ALL);
     expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([97, 36, 61]);
     expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(31);
-    expect(Object.values(AuditType)).toHaveLength(67);
+    expect(Object.values(AuditType)).toHaveLength(77);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
@@ -274,6 +274,19 @@ describe('no secret in any shape (row-121 gate; RK-12; C-N8)', () => {
     expect(CaptureDiscoveryStateSchema.safeParse(many(CAPTURE_DISCOVERY_MAX_CANDIDATES)).success).toBe(true);
     expect(CaptureDiscoveryStateSchema.safeParse(many(CAPTURE_DISCOVERY_MAX_CANDIDATES + 1)).success).toBe(false);
     expect(Object.values(CaptureConnectionOutcome)).toEqual(['REACHABLE', 'AUTHENTICATION_FAILED', 'WRONG_PROFILE', 'NOT_H264', 'UNREACHABLE']);
+  });
+
+  it('task 4 row 38: the outcomes of before are all still members, `NOT_H264` is kept, and the texts say "usable profile" with no H.264-only wording', () => {
+    // Additive (decision AM-2): a value an audit row or a client already holds stays a value of the set.
+    const members = Object.values(CaptureConnectionOutcome) as string[];
+    for (const before of ['REACHABLE', 'AUTHENTICATION_FAILED', 'WRONG_PROFILE', 'NOT_H264', 'UNREACHABLE']) expect(members, before).toContain(before);
+    expect(CaptureConnectionOutcome.NOT_H264).toBe('NOT_H264');
+    const operation = findCoreApiOperation('testCaptureCandidateConnection');
+    expect(operation?.description).toContain('look for a usable profile');
+    expect(operation?.description).toContain('neither H.264 nor HEVC');
+    const texts = JSON.stringify([operation?.description, CORE_API_EXAMPLES.testCaptureCandidateConnection, createOpenApiDocument({ scope: CoreApiScope.ALL }).components?.schemas?.['CaptureConnectionTest']]);
+    expect(texts).not.toMatch(/usable H\.264/i);
+    expect(texts).toContain('H.264 or HEVC');
   });
 });
 

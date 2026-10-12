@@ -101,7 +101,7 @@ export interface ConnectionTestResult {
   readonly outcome: ConnectionTestOutcome;
   /** Whether a credential was supplied: a fact, never a value. */
   readonly authenticated: boolean;
-  /** The usable H.264 profile codes the test read; empty unless `REACHABLE`. */
+  /** The usable profile codes the test read; empty unless `REACHABLE`. */
   readonly usableProfiles: readonly string[];
 }
 
@@ -120,6 +120,17 @@ export interface SourceHandle {
 /** Where an opened camera source pushes: the worker's loopback listener of the plan (`CapturePlanCamera.ingestUrl`). */
 export interface CameraSourceTarget {
   readonly ingestUrl: string;
+  /**
+   * The media profile to pull: the code of the plan's camera line (task 4 row 20; design addendum
+   * 2.3 and 4.1 e). One camera may fill both slots with two profiles, so an adapter that pulls
+   * from a device keys an open source by device AND profile. The fake, generated and local
+   * adapters ignore the member: their source has one stream.
+   *
+   * Optional in this row only so that the contract lands alone: the session start passes the
+   * plan's value from task 4 row 47 on. An adapter that needs a profile refuses an open without
+   * one by a named code (`CaptureAdapterRefusal.PROFILE_UNKNOWN`); it never chooses one itself.
+   */
+  readonly profile?: string;
 }
 
 export interface CameraAdapter {
@@ -199,6 +210,38 @@ export interface AudioStreamHandle extends SourceHandle {
   readonly input: CapturePlanMic['input'];
   /** What the transport promises about format, timing and clock (`mic-transport.ts`). */
   readonly transport: MicTransportStatement;
+  /**
+   * Launches what feeds `input`, when the transport has something to launch (a helper process).
+   * Declared here (task 4 row 20; design addendum 4.1 d) because the session start already calls
+   * it on every handle that has one, all in the same turn, with the session's signal; until this
+   * row it found the member by its name only. A handle without it delivers from `open` on (the
+   * fakes). Rejects when the launch fails; `close()` is still called after a failure.
+   */
+  start?(signal?: AbortSignal): Promise<void>;
+}
+
+/**
+ * The named refusal of an input number that the sound card does not have (task 4 row 20; specs
+ * S3-2; design addendum 4.2 "Refusals"). Its own name, NOT a sixth member of
+ * `AudioInputErrorCode`: those five are the causes of a registered input that cannot be used and
+ * are a closed wire vocabulary (C3 op 97), while this one refuses a registration or an open
+ * before any device is touched. Nothing raises it yet: the card listing (task 4 row 64) does.
+ */
+export const AUDIO_INPUT_BEYOND_CARD = 'AUDIO_INPUT_BEYOND_CARD';
+
+/**
+ * Carries the code and, at most, a registry ID. The text is one fixed sentence: no card name, no
+ * USB id, no input number and no channel count is put into it (the rule of `errors.ts`, CR-4).
+ */
+export class AudioInputBeyondCardError extends Error {
+  readonly code: typeof AUDIO_INPUT_BEYOND_CARD = AUDIO_INPUT_BEYOND_CARD;
+  /** The microphone the refusal is about (`MIC-NN`), or null when no device is registered yet. */
+  readonly deviceId: string | null;
+  constructor(deviceId: string | null = null) {
+    super('the sound card has no such input');
+    this.name = 'AudioInputBeyondCardError';
+    this.deviceId = deviceId;
+  }
 }
 
 export interface AudioInputAdapter {
