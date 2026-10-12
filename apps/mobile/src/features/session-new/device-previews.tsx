@@ -20,7 +20,8 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { useSim, type SimState } from '@dems/shared/sim';
+import { isLevelNotMeasured, micInputOfChannel, useSim, type SimState } from '@dems/shared/sim';
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { SectionCard, StatusChip } from '@/components/kit';
@@ -114,6 +115,7 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
   const values = useAudioSharedValues(channel);
   const noSignalText = t('session.feed.noSignal');
   const a11y = useAudioAccessibilityValue(channel, { noSignalText });
+  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[micInputOfChannel(micLinesInForce(s), channel)]));
   // Fire and forget (operation 52 in Live mode): nothing waits for the answer, as before. A
   // rejection is logged; in Live mode the presenter also words it (a denial, an outage, a limit).
   const resetClip = () => {
@@ -158,6 +160,13 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
         <Typography type="body-xs" weight="medium" color="muted" style={styles.meterLabel}>
           {micLabel}
         </Typography>
+        {/* Round two (JW-08 mobile half; contract J-S 6; seen on the tablet: "MIC 1, -60 dBFS" beside "Not checked" at
+            rest): a frame the Core marks `notMeasured` is no level - the words, no bars and no number. */}
+        {notMeasured ? (
+          <Typography type="body-xs" color="muted" accessibilityLabel={`${micLabel}: ${t('common.truth.levelNotMeasured')}`} testID={`session-new-meter-${channel}-not-measured`}>
+            {t('common.truth.levelNotMeasured')}
+          </Typography>
+        ) : (
         <View style={styles.meter}>
           <DbfsMeter
             level={values.level}
@@ -174,6 +183,7 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
             testID={`session-new-meter-${channel}`}
           />
         </View>
+        )}
       </View>
     </View>
   );
@@ -182,6 +192,8 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
 export interface LiveDeviceColumnProps {
   /** Step 2 shows the gate itself in the content column, so the column shows only the previews. */
   showChecks: boolean;
+  /** Round two (JT-22): the devices check of this session has run (step 3) - the card no longer promises it. */
+  afterChecks?: boolean;
   paused: boolean;
 }
 
@@ -189,7 +201,7 @@ export interface LiveDeviceColumnProps {
  * Tablet landscape: previews, meters and the eight §5.3 checks evaluated against the live device
  * state (the same rules the gate applies; the gate itself runs on step 2).
  */
-export function LiveDeviceColumn({ showChecks, paused }: LiveDeviceColumnProps) {
+export function LiveDeviceColumn({ showChecks, afterChecks = false, paused }: LiveDeviceColumnProps) {
   const { t } = useTranslation();
   // Fix wave L (G70c-06): ONE statement of the link per screen. While the Core link is down this card
   // holds the Core's LAST report, which nothing confirms any more: it says so instead of "ONLINE / READY".
@@ -202,7 +214,7 @@ export function LiveDeviceColumn({ showChecks, paused }: LiveDeviceColumnProps) 
       {showChecks ? (
         <SectionCard
           title={t('features.session-new.devices.liveTitle')}
-          description={t(linkDown ? 'features.session-new.devices.liveHintLinkDown' : 'features.session-new.devices.liveHint')}
+          description={t(linkDown ? 'features.session-new.devices.liveHintLinkDown' : afterChecks ? 'features.session-new.devices.liveHintAfter' : 'features.session-new.devices.liveHint')}
           testID="session-new-live-checks"
         >
           <LiveChecks linkDown={linkDown} />

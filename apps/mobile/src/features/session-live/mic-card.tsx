@@ -26,7 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
+import { isLevelNotMeasured, micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
 import { MicStateTone, fontFamily, palette, toneHex, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
@@ -122,6 +122,27 @@ function useNoSignal(values: AudioSharedValues): boolean {
   return flat;
 }
 
+export type MicLevelState = 'WAITING' | 'OK' | 'NO_SIGNAL' | 'NOT_MEASURED';
+
+/**
+ * Fix wave J (JM-05; tablet, normal launch: "the two microphone cards are EMPTY for the first 12 s of a
+ * recording" - reproduced at 00:00:04: no meter, no number, no word).
+ *
+ * The meter is a canvas fed through shared values on the UI runtime; until its first frames are painted the
+ * card held nothing a person could read. The STATE of the input is a fact of the store and needs no canvas:
+ * whether a level frame of this line has arrived, and what it says. It is read here on the JS side (a boolean
+ * and a word per card, changing a few times in a session - never per audio frame) and drawn by React under the
+ * meter, from the first render of the card.
+ */
+export function useMicLevelState(micId: MicStatus['id']): MicLevelState {
+  return useSim((s) => {
+    const frame = s.audio.inputs[micInputOfChannel(micLinesInForce(s), micId)];
+    if (frame === undefined) return 'WAITING';
+    if (isLevelNotMeasured(frame)) return 'NOT_MEASURED';
+    return frame.noSignal ? 'NO_SIGNAL' : 'OK';
+  });
+}
+
 export interface MicCardProps extends Omit<MicMeterProps, 'testID'> {
   style?: StyleProp<ViewStyle>;
 }
@@ -146,6 +167,9 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
   // channel record's constant `MIC-01` / `MIC-02`, which no selector edit moves.
   const lineInput = useSim((s) => micInputOfChannel(micLinesInForce(s), mic.id));
   const active = sourceRole === 'ACTIVE';
+  const levelState = useMicLevelState(mic.id);
+  // While the cameras connect the meter's place says CONNECTING and nothing is recorded yet: no second word.
+  const connecting = useConnectingCameras();
 
   // §7.6: one Warning haptic when the CLIP latch sets (never tied to the 20 Hz data).
   const wasLatched = useRef(mic.clipLatched);
@@ -179,6 +203,16 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
       {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
       <MicInputSourceBadge inputId={lineInput} testID={`monitor-mic-source-${mic.channel}`} />
       <MicMeter mic={mic} testID={`monitor-meter-${mic.channel}`} {...meter} />
+      {/* JM-05: the state of the input in words, by React, whatever the canvas above has painted so far. */}
+      {connecting ? null : (
+      <Text
+        maxFontSizeMultiplier={1.2}
+        style={[styles.levelState, levelState === 'NO_SIGNAL' || mic.state === 'NO_SIGNAL' ? styles.levelStateAlarm : null]}
+        testID={`monitor-mic-level-state-${mic.channel}`}
+      >
+        {t(`features.session-live.mic.levelState.${mic.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : levelState}`)}
+      </Text>
+      )}
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}
       <SelectionGlow selected={active} radius={CARD_RADIUS} testID={`monitor-mic-glow-${mic.channel}`} />
     </Surface>
@@ -194,6 +228,13 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   /** The meter's place while the cameras connect (the `card` meter's height; no canvas, no level). */
   connecting: { minHeight: 64, alignItems: 'center', justifyContent: 'center' },
+  levelState: {
+    fontFamily: fontFamily.native.medium,
+    fontSize: typography.caption.size,
+    lineHeight: typography.caption.lineHeight,
+    color: palette.gray,
+  },
+  levelStateAlarm: { color: toneHex.danger },
   connectingText: {
     fontFamily: fontFamily.native.mono,
     fontSize: typography.caption.size,

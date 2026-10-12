@@ -25,14 +25,16 @@ import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectScanCovers } from './static-scan'
+import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SYSTEM_COMPONENTS_EXAMPLE, UPDATE_NOT_AVAILABLE_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { type FakeCommandOptions } from '@dems/shared/live/testing'
 import type { SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, UPDATE_VERSION, type Sim } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { PRESENTATION_MODE_STORAGE_KEY, resetPresentationModeForTests } from '@/lib/presentation-mode'
+import { WEB_CONSOLE_VERSION } from '@/lib/product-versions'
 import { createAppRouter } from '@/router'
 import { webErrorSink } from '@/runtime'
 import { createLiveTestBed, SUPERVISOR_SESSION, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
@@ -62,9 +64,10 @@ let bed: LiveTestBed | undefined
 const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
 const records = (source: string) => webErrorSink.records().filter((record) => record.source === source)
 
-async function liveSystem(options: { strict?: boolean } = {}): Promise<{ bed: LiveTestBed; page: LivePage }> {
+async function liveSystem(options: { strict?: boolean; prepare?: (bed: LiveTestBed) => void } = {}): Promise<{ bed: LiveTestBed; page: LivePage }> {
   const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
   bed = created
+  options.prepare?.(created)
   const page = await created.load()
   await created.mount(page, '/system', { strict: options.strict === true })
   await screen.findByTestId('page-system')
@@ -103,6 +106,141 @@ afterEach(async () => {
   bed?.dispose()
   bed = undefined
   vi.restoreAllMocks()
+})
+
+// Fix wave J round three, driver J3-W (finding JW-26 / JA2-30; truth rule 3f; `contract_wave_j.md`
+// J2-S 2): ONE version per component. The console CALLS operation 64 where it shows a version on a
+// Core in its own capture, reads `components` BY NAME (the exported example `SYSTEM_COMPONENTS_EXAMPLE`),
+// states its own version from its one constant, and never draws the demonstration model's "2.4.1" /
+// "2.5.0" there outside a block that carries the "Synthetic demo values" chip. The SIMULATED lane is
+// pinned unchanged by the control.
+describe('JW-26: one version per component (operation 64 `components`)', () => {
+  /** The served state of a Core in its own capture: its two statements and "no updater" (contract examples). */
+  const ownCapture = (created: LiveTestBed): void => {
+    const served = created.core.served
+    created.core.served = { ...served, security: { ...served.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE }, time: { ...HOST_CLOCK_TIME }, update: { ...served.update, ...UPDATE_NOT_AVAILABLE_EXAMPLE } }
+  }
+  // The sidebar's footer is drawn at desktop widths only: these cases run at 1920.
+  const desktop = window.matchMedia
+  beforeEach(() => {
+    window.matchMedia = ((query: string) => {
+      const min = /min-width:\s*(\d+)px/.exec(query)
+      return { matches: min ? 1920 >= Number(min[1]) : false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false } as MediaQueryList
+    }) as typeof window.matchMedia
+  })
+  afterEach(() => {
+    window.matchMedia = desktop
+  })
+  /** Every element whose OWN text holds `needle`. */
+  const holders = (needle: string): Element[] =>
+    Array.from(document.body.querySelectorAll('*')).filter((element) => Array.from(element.childNodes).some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').includes(needle)))
+  /** The block of `element` that may carry model values: a System panel or the page banner, with the chip in it. */
+  const chipped = (element: Element): boolean => {
+    const block = element.closest('[data-testid^="system-panel-"], [data-testid="system-banner"]')
+    return block !== null && (block.querySelector('[data-synthetic-block]') !== null || (block.textContent ?? '').includes(en.system.about.synthetic))
+  }
+
+  it('a Core in its own capture: one GET of operation 64; About lists Core server, Capture worker, API contract from the member by name and the Web console from its constant', async () => {
+    await liveSystem({ prepare: ownCapture })
+    const block = await screen.findByTestId('system-components')
+    await waitFor(() => expect(within(block).getByTestId('system-component-core')).toHaveTextContent(SYSTEM_COMPONENTS_EXAMPLE.core.version))
+    expect(within(block).getByTestId('system-component-captureWorker')).toHaveTextContent(SYSTEM_COMPONENTS_EXAMPLE.captureWorker.version)
+    expect(within(block).getByTestId('system-component-apiContract')).toHaveTextContent(SYSTEM_COMPONENTS_EXAMPLE.apiContract.version)
+    expect(within(block).getByTestId('system-component-webConsole')).toHaveTextContent(WEB_CONSOLE_VERSION)
+    expect(block).toHaveTextContent('Core server')
+    expect(block).toHaveTextContent('Capture worker')
+    expect(block).toHaveTextContent('API contract')
+    expect(block).toHaveTextContent('Web console')
+    // The four readers of the page and the two of the shell share ONE read.
+    expect(requests('getSystemStatus')).toHaveLength(1)
+    expect(requests('getSystemStatus')[0]).toMatchObject({ method: 'GET' })
+    // The identity's own row is the Core's statement; the model's release row and its drift check are not drawn.
+    expect(screen.getByTestId('system-about-coreSoftwareVersion')).toHaveTextContent(SYSTEM_COMPONENTS_EXAMPLE.core.version)
+    expect(screen.getByTestId('system-about-tabletAppVersion')).toHaveTextContent('Paired Devices')
+    expect(screen.queryByTestId('system-about-release')).toBeNull()
+    expect(screen.queryByTestId('system-drift')).toBeNull()
+    // Settings > About names the components, not "v2.4.1".
+    openItem('about')
+    expect(screen.getByTestId('system-settings-about-body')).toHaveTextContent(`Core server ${SYSTEM_COMPONENTS_EXAMPLE.core.version} · Web console ${WEB_CONSOLE_VERSION}`)
+    // The shell: the sidebar footer names both; no bare "v…".
+    expect(screen.getByTestId('shell-footer-version-webConsole')).toHaveTextContent(`Web console ${WEB_CONSOLE_VERSION}`)
+    expect(screen.getByTestId('shell-footer-version-core')).toHaveTextContent(`Core server ${SYSTEM_COMPONENTS_EXAMPLE.core.version}`)
+    expect(screen.queryByTestId('shell-footer-version')).toBeNull()
+    // The update card of a Core without an updater draws no version at all.
+    expect(screen.getByTestId('system-update-not-available')).toBeInTheDocument()
+    expect(screen.queryByTestId('system-update-current')).toBeNull()
+    // THE RULE over the whole document: the model's two versions appear only inside a block that carries the chip.
+    for (const model of [SOFTWARE_VERSION, UPDATE_VERSION]) {
+      for (const element of holders(model)) expect(chipped(element), `"${element.textContent}" shows ${model} outside a chipped block`).toBe(true)
+    }
+    expect(screen.getByTestId('synthetic-values-system-banner')).toBeInTheDocument()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('a Core in SIMULATED capture states no capture worker: no such row (the member is read, not assumed)', async () => {
+    const { bed } = await liveSystem({
+      prepare: (created) => {
+        ownCapture(created)
+        const { captureWorker: _none, ...withoutWorker } = SYSTEM_COMPONENTS_EXAMPLE
+        const answer = created.fake.example('getSystemStatus', 200, 'ownCapture')
+        created.fake.answer('getSystemStatus', () => ({ status: 200, body: { ...(answer.body as object), components: withoutWorker } }))
+      },
+    })
+    const block = await screen.findByTestId('system-components')
+    await waitFor(() => expect(within(block).getByTestId('system-component-core')).toHaveTextContent(SYSTEM_COMPONENTS_EXAMPLE.core.version))
+    expect(within(block).queryByTestId('system-component-captureWorker')).toBeNull()
+    expect(block).not.toHaveTextContent('Capture worker')
+    expect(bed.fake.violations).toEqual([])
+  })
+
+  it('an older Core answers without `components`: the Core\'s rows read "Not reported", the console still states its own; nothing of the model takes their place', async () => {
+    await liveSystem({
+      prepare: (created) => {
+        ownCapture(created)
+        created.fake.answer('getSystemStatus', () => created.fake.example('getSystemStatus', 200, 'idle'))
+      },
+    })
+    const block = await screen.findByTestId('system-components')
+    await waitFor(() => expect(requests('getSystemStatus')).toHaveLength(1))
+    expect(within(block).getByTestId('system-component-core')).toHaveTextContent('Not reported')
+    expect(within(block).getByTestId('system-component-core')).toHaveAttribute('data-reported', 'false')
+    expect(within(block).getByTestId('system-component-apiContract')).toHaveTextContent('Not reported')
+    expect(within(block).getByTestId('system-component-webConsole')).toHaveTextContent(WEB_CONSOLE_VERSION)
+    expect(screen.getByTestId('system-about-coreSoftwareVersion')).toHaveTextContent('Not reported')
+    expect(screen.getByTestId('shell-footer-version-core')).toHaveTextContent('Core server Not reported')
+    expect(block.textContent).not.toContain(SOFTWARE_VERSION)
+  })
+
+  it('the read is refused: "Not reported", ONE record in the console\'s log with status and code only, and no toast', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await liveSystem({
+      prepare: (created) => {
+        ownCapture(created)
+        created.fake.answer('getSystemStatus', () => created.fake.example('getSystemStatus', 403, 'originNotAllowed'))
+      },
+    })
+    const block = await screen.findByTestId('system-components')
+    await waitFor(() => expect(records('ProductVersions.getSystemStatus')).toHaveLength(1))
+    expect(within(block).getByTestId('system-component-core')).toHaveTextContent('Not reported')
+    expect(records('ProductVersions.getSystemStatus')[0]).toMatchObject({ level: 'warn', message: 'The versions of the components of this Core could not be read.' })
+    expect(records('ProductVersions.getSystemStatus')[0]?.context).toMatchObject({ operation: 'getSystemStatus', status: 403 })
+    expect(toastTexts()).toEqual([])
+  })
+
+  it('CONTROL - the SIMULATED lane is unchanged: operation 64 is not asked, the model\'s v2.4.1 stays where it was, no component block', async () => {
+    await liveSystem()
+    expect(screen.getByTestId('system-about-release')).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+    expect(screen.getByTestId('system-update-current')).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+    expect(screen.getByTestId('system-banner')).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+    expect(screen.getByTestId('system-drift')).toBeInTheDocument()
+    expect(screen.getByTestId('shell-footer-version')).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+    expect(screen.queryByTestId('system-components')).toBeNull()
+    expect(screen.queryByTestId('shell-footer-components')).toBeNull()
+    openItem('about')
+    expect(screen.getByTestId('system-settings-about-body')).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+    expect(requests('getSystemStatus')).toHaveLength(0)
+  })
 })
 
 describe('B-10 the live camera (settings-panel; operation 51)', () => {

@@ -170,6 +170,80 @@ export function buildItemIntegrity(input: EvidenceIntegrityInput & { subjectName
   };
 }
 
+// ── A recording that was NEVER SEALED (fix wave J; truth rule 3a; findings JA2-01 / JW-01) ─────────
+// An item is sealed exactly when `sealedAt` is set. The item of an INCOMPLETE session (interrupted,
+// recovered, never sealed - SYS-008) is a RECORD: it has no track hash, no manifest and no signature,
+// and there is nothing a verification could compare. Until wave J such an item was built with the
+// full integrity block of a seal, and `verify()` answered PASS for it on every lane.
+
+/**
+ * The digest of nothing: what the REQUIRED members `manifestHash` and `signature.value` of a
+ * never-sealed item hold (the closed item shape and the table need 64 hex characters there). It is
+ * no hash of anything and is never shown; `hasSealedValues` is the reader.
+ */
+export const EVIDENCE_NOT_SEALED_DIGEST = '0'.repeat(64);
+/** The key id of that placeholder: no key signed anything. */
+export const EVIDENCE_NOT_SEALED_KEY_ID = 'NOT-SEALED';
+/** The placeholder of the required member `signature` of a never-sealed item. Never shown. */
+export const EVIDENCE_NOT_SEALED_SIGNATURE: EvidenceSignature = Object.freeze({
+  value: EVIDENCE_NOT_SEALED_DIGEST,
+  keyId: EVIDENCE_NOT_SEALED_KEY_ID,
+  algorithm: 'SIMULATED-SHA256',
+  simulated: true,
+});
+
+/**
+ * THE ONE READER (both clients, the Core, the simulator): does this item carry sealed values?
+ * True exactly when `sealedAt` is a number. Takes `unknown`, never throws; anything that is no
+ * item answers false - an absent fact is never the favourable value.
+ */
+export function hasSealedValues(item: unknown): boolean {
+  return typeof item === 'object' && item !== null && !Array.isArray(item) && typeof (item as Record<string, unknown>)['sealedAt'] === 'number';
+}
+
+/**
+ * The shape of a never-sealed item: no track, the null digest in the two required members, no v2
+ * file list, no chain head, no transcript hash, and no verification of record. The identity for an
+ * item that already has it, and for every sealed item (returned as it is).
+ *
+ * The Core applies it to what it READS from its store too (`evidenceItemFromRows`), so that a row
+ * written before wave J - with the integrity block of a seal, perhaps with a stored PASS - is
+ * answered without them.
+ */
+export function neverSealedShape<Item extends EvidenceItem>(item: Item): Item {
+  if (item.sealedAt !== null) return item;
+  const shaped =
+    item.tracks.length === 0 &&
+    item.manifestHash === EVIDENCE_NOT_SEALED_DIGEST &&
+    item.signature.value === EVIDENCE_NOT_SEALED_DIGEST &&
+    item.verification.status === 'NOT_RUN' &&
+    item.files === undefined &&
+    item.fragmentChainHead === undefined &&
+    item.transcriptSha256 === undefined &&
+    item.transcript === undefined;
+  if (shaped) return item;
+  const { files: _files, fragmentChainHead: _head, transcriptSha256: _transcriptSha256, transcript: _transcript, ...rest } = item;
+  return {
+    ...rest,
+    tracks: [],
+    manifestHash: EVIDENCE_NOT_SEALED_DIGEST,
+    signature: { ...EVIDENCE_NOT_SEALED_SIGNATURE },
+    verification: { status: 'NOT_RUN', at: null },
+    tampered: false,
+    tamperedTrackId: null,
+  } as unknown as Item;
+}
+
+/**
+ * THE VERIFICATION OF RECORD FAILED (truth rule 3b; findings JT-04 / JW-09): the member every list
+ * entry and every item carries. A client that reads true never shows a plain "Sealed".
+ */
+export function verificationOfRecordFailed(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
+  const verification = (item as Record<string, unknown>)['verification'];
+  return typeof verification === 'object' && verification !== null && (verification as Record<string, unknown>)['status'] === 'FAIL';
+}
+
 /**
  * The sealed FILES of a v2 item (register SH-07; D224/D225; C3 §3 row 39: "`files[]` (one whole
  * fMP4 per camera ...)"; evidence package spec §A.1: the package holds `fragments/VIDEO-01.mp4`
@@ -307,8 +381,9 @@ export interface SealEvidenceInput extends EvidenceIntegrityInput {
  */
 export function createEvidenceItem(input: SealEvidenceInput): EvidenceItem {
   const integrity = buildItemIntegrity(input);
-  const v2 = input.schemaV2 === true;
-  return {
+  // Fix wave J (truth rule 3a): a never-sealed item has no v2 seal members either.
+  const v2 = input.schemaV2 === true && input.sealedAt !== null;
+  return neverSealedShape({
     id: input.evidenceId,
     sessionId: input.sessionId,
     caseNumber: input.caseNumber,
@@ -346,7 +421,7 @@ export function createEvidenceItem(input: SealEvidenceInput): EvidenceItem {
           transcriptSha256: transcriptSha256(input),
         }
       : {}),
-  };
+  });
 }
 
 /** What the stored media of an altered track now hashes to (anything but the sealed hash). */
@@ -361,6 +436,12 @@ export function tamperedTrackHash(input: EvidenceIntegrityInput, trackId: TrackI
  * because the attacker changed media, not the sealed manifest.
  */
 export function verifyEvidenceItem(item: EvidenceItem, at: EpochMs): EvidenceVerifyResult {
+  // Fix wave J (JA2-02): every verdict of the simulator is a demonstration - it compared the hashes of a
+  // demonstration record and read no stored media. The member says so on the answer itself.
+  return { ...simulatedVerdictOf(item, at), demonstration: true };
+}
+
+function simulatedVerdictOf(item: EvidenceItem, at: EpochMs): EvidenceVerifyResult {
   const input = integrityInputOf(item);
   const alteredTrack = item.tampered ? (item.tamperedTrackId ?? DEFAULT_TAMPER_TRACK) : null;
   const entry =
@@ -562,3 +643,57 @@ export const EVIDENCE_ITEM_KIND_VECTORS: readonly { readonly name: string; reado
   { name: 'disagreement: the manifest says NOT interrupted, a custody entry says it - the manifest wins', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: false, custody: [{ action: 'RECORDING_INTERRUPTED', detail: 'CAPTURE_FAULT' }] }, kind: 'SEALED_HERE', interrupted: false, cause: null },
   { name: 'disagreement: the manifest says interrupted, no custody entry - the manifest wins, no cause', item: { integritySource: 'REAL', sealedPackage: 'PRESENT', interrupted: true, custody: [{ action: 'RECORDING_STOPPED', detail: null }] }, kind: 'SEALED_HERE', interrupted: true, cause: null },
 ];
+
+// ── What an INCOMPLETE session of the history is (fix wave J; finding JW-22) ────────────────────────
+// ONE rule over the members of a history entry (operation 38 `listSessionHistory`, slice
+// `sessionHistory`), so that the web console and the devices' Sessions hub say the same thing.
+
+export type IncompleteSessionKind = 'QUARANTINED' | 'RECORDED_NOT_SEALED' | 'NEVER_RECORDED';
+
+export interface IncompleteSessionFact {
+  readonly kind: IncompleteSessionKind;
+  /** The fault that ended the session (`faultKind`), or null when the entry names none. */
+  readonly cause: string | null;
+  /** The never-sealed record of the session, when it has one. */
+  readonly evidenceId: string | null;
+}
+
+/**
+ * Null for a session that is not INCOMPLETE (and for anything that is no entry). Else:
+ *   QUARANTINED          it recorded and has NO evidence item: the seal was not possible, nothing of
+ *                        it is presented as evidence, and the Core moved its recordings to its
+ *                        quarantine folder (`endUnsealableTransition` is the only writer of such an entry);
+ *   RECORDED_NOT_SEALED  it recorded and has an item: a never-sealed record (`hasSealedValues` false);
+ *   NEVER_RECORDED       it ended before a recording started.
+ */
+/**
+ * WHY THE SEAL OF A QUARANTINED SESSION WAS GIVEN UP (fix wave J round two; JW-22 remainder), as the Core's
+ * code - or null. Two sources that exist, no column: the entry's own `unsealableCause` (operation 38 states it
+ * from the audit row `SESSION_INCOMPLETE`), and - for a reader of the replicated slices - the alert the Core
+ * raised for the session (`target` = the session, `params.reason: 'UNSEALABLE'`, `params.cause`). The alert
+ * list is a ring: an old session whose alert has left it reads null from the slices and still has its cause
+ * on operation 38. Takes `unknown`, never throws.
+ */
+export function unsealableCauseOf(entry: unknown, alerts?: unknown): string | null {
+  if (!isFactRecord(entry) || entry['outcome'] !== 'INCOMPLETE') return null;
+  const own = entry['unsealableCause'];
+  if (typeof own === 'string' && FACT_CODE.test(own)) return own;
+  const sessionId = entry['id'];
+  if (typeof sessionId !== 'string' || !Array.isArray(alerts)) return null;
+  for (const alert of alerts) {
+    if (!isFactRecord(alert) || alert['target'] !== sessionId) continue;
+    const params = alert['params'];
+    if (!isFactRecord(params) || params['reason'] !== 'UNSEALABLE') continue;
+    const cause = params['cause'];
+    if (typeof cause === 'string' && FACT_CODE.test(cause)) return cause;
+  }
+  return null;
+}
+
+export function incompleteSessionFactOf(entry: unknown): IncompleteSessionFact | null {
+  if (!isFactRecord(entry) || entry['outcome'] !== 'INCOMPLETE') return null;
+  const cause = typeof entry['faultKind'] === 'string' && FACT_CODE.test(entry['faultKind']) ? entry['faultKind'] : null;
+  const evidenceId = typeof entry['evidenceId'] === 'string' ? entry['evidenceId'] : null;
+  if (evidenceId !== null) return { kind: 'RECORDED_NOT_SEALED', cause, evidenceId };
+  return { kind: typeof entry['startedAt'] === 'number' ? 'QUARANTINED' : 'NEVER_RECORDED', cause, evidenceId: null };
+}

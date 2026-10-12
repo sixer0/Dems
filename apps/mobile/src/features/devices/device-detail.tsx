@@ -44,7 +44,7 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { EMPTY_DATE_TEXT, formatClock } from '@dems/shared/realtime';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
+import { Permission, selectRole, useSim, type AuditRow, type DeviceCommand } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { CameraPreview, useRealCaptureView } from './camera-preview';
@@ -53,6 +53,7 @@ import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
+import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { DeviceCommandDialog } from './device-command-dialog';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, SyntheticValuesChip } from './device-status-chip';
@@ -65,6 +66,7 @@ import {
   STATUS_TONE,
   detailFactsOf,
   isDeviceId,
+  relayWords,
   type DetailFacts,
   type DeviceId,
   type DeviceStatus,
@@ -166,6 +168,10 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
   const status = useDeviceStatus(deviceId);
   const recording = useIsRecording();
   const canManage = useCanManageDevices();
+  // Fix wave J (the one RBAC rule): operations 65 and 49 need DIAGNOSTICS_RUN. Every role of today holds it, so
+  // the gate only ever says "Checking your permissions…" - but a role without it gets a disabled control with
+  // the role's name, never a failing press.
+  const diagnosticsGate = useRoleGate(Permission.DIAGNOSTICS_RUN);
   const roleKnown = useSim((state) => selectRole(state) !== null);
   const { layoutClass } = useLayoutClass();
   const [tab, setTab] = useState<DetailTab>('overview');
@@ -237,8 +243,8 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
         <Alert status="warning" testID="device-tablet-offline">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title>{t('devices.other.tabletOfflineTitle')}</Alert.Title>
-            <Alert.Description>{t('devices.other.tabletOfflineBody')}</Alert.Description>
+            <Alert.Title>{t('features.devices.other.deviceOfflineTitle')}</Alert.Title>
+            <Alert.Description>{t('features.devices.other.deviceOfflineBody')}</Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -305,12 +311,22 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           }}
           accessibilityLabel={t('features.devices.actions.diagnosticsLabel')}
           testID="device-action-diagnostics"
+          isDisabled={!diagnosticsGate.allowed}
+          {...(diagnosticsGate.hint === null ? {} : { accessibilityHint: diagnosticsGate.hint })}
           {...busyState(diagnosticsPress.busy)}
         >
           {diagnosticsPress.pending ? <PendingSpinner color={palette.gold} testID="device-action-diagnostics-spinner" /> : <Stethoscope size={18} color={palette.gold} />}
           <Button.Label numberOfLines={1}>{t('features.devices.actions.diagnostics')}</Button.Label>
         </Button>
-        <Button variant="outline" size="sm" style={styles.action} onPress={() => setCommand('TEST_SIGNAL')} testID="device-action-test-signal">
+        <Button
+          variant="outline"
+          size="sm"
+          style={styles.action}
+          isDisabled={!diagnosticsGate.allowed}
+          onPress={() => setCommand('TEST_SIGNAL')}
+          testID="device-action-test-signal"
+          {...(diagnosticsGate.hint === null ? {} : { accessibilityHint: diagnosticsGate.hint })}
+        >
           <Activity size={18} color={palette.gold} />
           <Button.Label numberOfLines={1}>{t('features.devices.actions.testSignal')}</Button.Label>
         </Button>
@@ -327,6 +343,11 @@ function KnownDeviceDetail({ deviceId, variant, header }: { deviceId: DeviceId; 
           <Button.Label numberOfLines={1}>{t('features.devices.actions.restart')}</Button.Label>
         </Button>
       </View>
+      {diagnosticsGate.hint !== null && diagnosticsGate.hint !== restartHint ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="device-diagnostics-hint">
+          {diagnosticsGate.hint}
+        </Text>
+      ) : null}
       {restartHint ? (
         <Text maxFontSizeMultiplier={1.2} style={styles.hint} testID="device-restart-hint">
           {restartHint}
@@ -391,7 +412,8 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
         paused={!focused}
         noSignal={status === 'FAULT'}
         labels={{ noSignal: t('common.status.noSignal') }}
-        accessibilityLabel={t('devices.cameras.feedAria', { name })}
+        // Fix wave J (JA2-33): the picture of a simulated Core is the bundled demo picture - never "Live preview".
+        accessibilityLabel={t('devices.live.feedAria', { name })}
         style={styles.feed}
       />
     </View>
@@ -401,15 +423,15 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
 function MicHero({ deviceId, onClipReset }: { deviceId: DeviceId; onClipReset: (channel: AudioTrackId) => void }) {
   const mic = useMic(deviceId);
   const focused = useIsFocused();
-  const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   if (!mic) return null;
   return (
     <View style={styles.meterPlate} testID="device-detail-meter-plate">
       <DeviceMicMeter
         mic={mic}
         variant="large"
-        paused={!focused || testSwitch}
-        holdReadout={testSwitch}
+        // Fix wave J (JA2-34): the large meter draws its own number, so the test switch does not stop its clock -
+        // under that switch the motion policy is reduced (no tween), and the number stays the input's.
+        paused={!focused}
         onClipReset={() => onClipReset(mic.id)}
         testID="device-detail-meter"
       />
@@ -419,13 +441,16 @@ function MicHero({ deviceId, onClipReset }: { deviceId: DeviceId; onClipReset: (
 
 function IconHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceStatus }) {
   const { t } = useTranslation();
+  const recording = useIsRecording();
   const Icon = OTHER_ICON[deviceId] ?? Tablet;
-  const color = deviceId === 'REC-INDICATOR' ? palette.danger : deviceId === 'POE-SWITCH' ? palette.gold : toneHex[STATUS_TONE[status]];
+  // Fix wave J (JA2-33): ONE statement of the indicator, from the Core's session fact - red and "recording" only while a session records.
+  const relay = deviceId === 'REC-INDICATOR' ? relayWords(status, recording) : null;
+  const color = relay !== null ? (relay.lit ? palette.danger : relay.fault ? toneHex.danger : palette.gray) : deviceId === 'POE-SWITCH' ? palette.gold : toneHex[STATUS_TONE[status]];
   return (
     <View style={styles.iconPlate} testID="device-detail-icon-plate">
       <Icon size={48} color={color} />
-      <Text maxFontSizeMultiplier={1.2} style={styles.iconPlateText}>
-        {t(STATUS_LABEL_KEY[status])}
+      <Text maxFontSizeMultiplier={1.2} style={styles.iconPlateText} testID="device-detail-icon-state">
+        {relay !== null ? t(relay.key) : t(STATUS_LABEL_KEY[status])}
       </Text>
     </View>
   );
@@ -452,8 +477,17 @@ function useFieldLabel() {
   return (key: string) => t(`devices.drawer.field.${key}`);
 }
 
-function Facts({ items }: { items: readonly KeyValueItem[] }) {
-  return <KeyValueList items={items} testID="device-overview" />;
+function Facts({ items, note }: { items: readonly KeyValueItem[]; note?: string }) {
+  if (note === undefined) return <KeyValueList items={items} testID="device-overview" />;
+  return (
+    <View style={styles.block}>
+      <KeyValueList items={items} testID="device-overview" />
+      {/* Fix wave J (JA2-26): where the latch is shown, its remedy is said. */}
+      <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="device-clip-remedy" accessibilityLiveRegion="polite">
+        {note}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -552,6 +586,7 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
           clip,
           { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
         ]}
+        {...(mic.clipLatched ? { note: t('features.devices.detail.clipRemedy') } : {})}
       />
     );
   }
@@ -569,6 +604,7 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
           { id: 'recState', label: label('recState'), value: mic.recState ? t(`common.enums.trackRecState.${mic.recState}`) : EMPTY_DATE_TEXT },
           { id: 'adc', label: label('adc'), value: t('devices.drawer.value.adc') },
         ]}
+        {...(mic.clipLatched ? { note: t('features.devices.detail.clipRemedy') } : {})}
       />
       <Text maxFontSizeMultiplier={1.2} style={styles.hint}>
         {t('features.devices.detail.readOnlyNote')}
@@ -607,7 +643,7 @@ function RelayOverview({ status }: { status: DeviceStatus }) {
     <ModelValues block="relay" marked={realCapture}>
       <Facts
         items={[
-          { id: 'status', label: label('status'), value: t(STATUS_LABEL_KEY[status]) },
+          { id: 'status', label: label('status'), value: t(relayWords(status, recording).key), testID: 'device-fact-relay-status' },
           {
             id: 'lamp',
             label: label('lamp'),
@@ -657,6 +693,22 @@ function DeviceHealth({ deviceId, live }: { deviceId: DeviceId; live: boolean })
   const series = useHealthSeries(deviceId);
   // The series is derived from the simulator's model (see the file header, Health): on a Core in its own capture it is marked as that.
   const realCapture = useRealCaptureView();
+  const facts = useDetailFacts(deviceId);
+  const { t } = useTranslation();
+  // Fix wave J (JT-03): a generated source of a Core in its own capture has no link the Core measures - "Link
+  // quality 99.9%" beside "Not checked" was the model's figure. Nothing is drawn but the statement.
+  if (facts === 'GENERATED') {
+    return (
+      <View style={styles.block} testID="device-health-not-reported" accessible accessibilityRole="text">
+        <Text maxFontSizeMultiplier={1.2} style={styles.body}>
+          {t('common.platformNotReported.value')}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.note}>
+          {t('features.devices.health.notReported')}
+        </Text>
+      </View>
+    );
+  }
   return (
     <ModelValues block="health" marked={realCapture}>
       <HealthChart series={series} testID="device-health" live={live} />
@@ -774,6 +826,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[1],
   },
   missing: { padding: spacing[3], gap: spacing[2] },
+  note: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray },
   body: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: derived.foreground2 },
   lampOn: { fontFamily: fontFamily.native.bold, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.danger, letterSpacing: 0.5 },
   log: { gap: spacing[1] },

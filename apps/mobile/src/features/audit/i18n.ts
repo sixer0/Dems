@@ -25,7 +25,12 @@ export const auditEn = {
     olderBreak: 'Break at #{{seq}}, before these entries',
     verifyLabel: 'Verify the audit hash chain',
     verifiedAt: 'Checked {{count}} entries at {{time}}',
-    failedAt: 'Breaks at entry #{{seq}}: {{reason}}',
+    failedAt: 'Breaks at entry #{{seq}}: {{reason}} (checked at {{time}})',
+    // Fix wave J (JA2-31): a verdict the chain no longer agrees with is an earlier check, with its time.
+    staleChip: 'Earlier check',
+    staleVerdict: 'At {{time}} {{found}}. The chain has changed since then. Verify again.',
+    staleFoundOk: 'the check passed over {{count}} entries',
+    staleFoundBreak: 'the check found a break at entry #{{seq}}',
     showEntry: 'Show entry',
     linkLabel: 'Entry #{{seq}}, {{status}}',
   },
@@ -82,11 +87,13 @@ export const auditEn = {
     // CPS1-12 (a): AUTH_FAILED / AUTH_LOCKED name the operator whose username was typed; nobody signed in.
     typedActor: 'Username typed: {{name}}',
     // Operation 60 `stored`: the Core's check of its table, which no demo fault breaks (client spec §8.2 A9).
-    storedVerified: 'Stored chain verified through entry #{{seq}}',
-    storedBroken: 'Stored chain breaks at entry #{{seq}}',
+    storedVerified: 'Stored audit log, checked separately: verified through entry #{{seq}}',
+    // JA2-31: under a FAIL of the chain the Core holds, the stored log's own result names both things.
+    storedVerifiedAfterBreak: 'The break is in the chain the Core is holding. Its stored audit log, checked separately, verifies through entry #{{seq}}',
+    storedBroken: 'Stored audit log, checked separately: breaks at entry #{{seq}}',
     // Operation 60 `lineageTotal`: chains a demo reset or a scenario load discarded (SD-19).
-    earlierChains_one: 'Earlier chains: {{count}}, discarded by a demo reset or a scenario load',
-    earlierChains_other: 'Earlier chains: {{count}}, discarded by demo resets or scenario loads',
+    earlierChains_one: 'The audit chain was restarted {{count}} time by a demo reset or a scenario load',
+    earlierChains_other: 'The audit chain was restarted {{count}} times by demo resets or scenario loads',
     // The runtime's one link rule (useCoreLinkNotice): the list holds what the Core sent last.
     offlineTitle: 'Core server unreachable',
     offlineBody: 'The entries shown are the last the Core sent.',

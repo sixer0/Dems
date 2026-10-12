@@ -23,7 +23,7 @@
  * modules, so that the permission guard covers them): operation 87 is `modules/evidence-export`,
  * operation 42 stays in `modules/evidence`; both reach this unit through `evidenceExport(app)`.
  */
-export { COMPOSITE_ENCODER_GATE, COMPOSITE_LICENCE_RECORD, GPL_ONLY_ENCODERS, compositeEncoderAllowed, selectedCompositeEncoder, type CompositeEncoder, type CompositeSource } from './composite';
+export { COMPOSITE_ENCODER_GATE, COMPOSITE_LICENCE_RECORD, GPL_ONLY_ENCODERS, compositeEncoderAllowed, exportKindsOf, selectedCompositeEncoder, type CompositeEncoder, type CompositeSource } from './composite';
 export {
   COMPOSITE_ENTRY,
   EXPORT_MANIFEST_FILE,

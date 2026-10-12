@@ -135,6 +135,23 @@ describe('phone portrait (MB 4, compact)', () => {
     expect(screen.getByTestId('monitor-audio-sheet-meter-2')).toBeTruthy();
     expect(screen.getByText('MIC 1 - Interviewer')).toBeTruthy();
     expect(screen.getByText('MIC 2 - Subject')).toBeTruthy();
+    // CONTROL of JT-07: the simulated lane keeps its own sentence (two tracks there).
+    expect(screen.getByText('MIC 1 and MIC 2 are separate tracks and are never mixed.')).toBeTruthy();
+  });
+
+  // Fix wave J, JT-07: on a Core in its own capture the sheet said "MIC 1 and MIC 2 are separate tracks and are
+  // never mixed" and named them "Interviewer" / "Subject" - a recording that Core does not make (one audio track,
+  // from the active microphone; the standby only after a switch). The simulated wording stays where it is true.
+  it('JT-07 - own capture: the Audio Monitor says ONE audio track from the active microphone, and names no "Interviewer" / "Subject"', async () => {
+    const h = await openPhone();
+    act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable: true } as typeof s.session })));
+    fireEvent.press(screen.getByTestId('monitor-action-audio'));
+    expect(screen.getByText(/This Core records one audio track, from the active microphone\./)).toBeTruthy();
+    expect(screen.queryByText('MIC 1 and MIC 2 are separate tracks and are never mixed.')).toBeNull();
+    expect(screen.queryByText('MIC 1 - Interviewer')).toBeNull();
+    expect(screen.queryByText('MIC 2 - Subject')).toBeNull();
+    expect(screen.getByTestId('monitor-audio-sheet-meter-1')).toBeTruthy();
+    expect(screen.getByTestId('monitor-audio-sheet-meter-2')).toBeTruthy();
   });
 
   it('Settings: Pause monitoring is UI-only (the recording continues), camera and meter size apply', async () => {
@@ -191,6 +208,35 @@ describe('End Session (S6, M-C-19, S21)', () => {
     expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
     expect(screen.getByText('End Session?')).toBeTruthy();
     expect(h.sim.store.getState().session?.state).toBe('RECORDING');
+  });
+
+  // Fix wave J round two (JT-09, JA2-N7; JA2-36).
+  it('JT-09: a short tap raises the hold hint under the button - no toast lies over the header or a control; JA2-36: the dialog states the rule before any error', async () => {
+    await openPhone();
+    expect(screen.getByTestId('monitor-end-session-hold-hint')).toHaveTextContent('Hold to end the session');
+    fireEvent.press(screen.getByTestId('monitor-end-session'));
+    expect(screen.getByTestId('monitor-end-session-hold-nudge')).toHaveTextContent('Hold to end the session');
+    // The words exist ONCE on the screen: the line under the button, not a toast as well.
+    expect(screen.getAllByText('Hold to end the session')).toHaveLength(1);
+    fireEvent(screen.getByTestId('monitor-end-session'), 'onLongPress');
+    expect(screen.getByTestId('monitor-end-reason-count')).toHaveTextContent(/At least 5 characters\./);
+    expect(screen.getByTestId('monitor-end-reason').props.autoCorrect).toBe(false);
+    fireEvent.changeText(screen.getByTestId('monitor-end-reason'), 'Interview complete');
+    expect(screen.getByTestId('monitor-end-reason-count')).not.toHaveTextContent(/At least 5 characters/);
+  });
+
+  // Fix wave J round two: on the tablet under host load a 1.9 s hold opened nothing - the long-press timer starts when
+  // the press-in reaches JS, and a lagging JS thread handled the release first.
+  it('a release after a FULL hold completes it by the touch\'s own timestamps, also when the long-press timer never fired; a short hold does not', async () => {
+    await openPhone();
+    const button = screen.getByTestId('monitor-end-session');
+    fireEvent(button, 'pressIn', { nativeEvent: { timestamp: 10_000 } });
+    fireEvent(button, 'pressOut', { nativeEvent: { timestamp: 10_900 } });
+    expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
+    fireEvent(button, 'pressIn', { nativeEvent: { timestamp: 20_000 } });
+    // No `onLongPress` is delivered (the lagging-JS case): the release alone carries the 1.6 s.
+    fireEvent(button, 'pressOut', { nativeEvent: { timestamp: 21_600 } });
+    expect(screen.getByTestId('monitor-end-dialog')).toBeTruthy();
   });
 
   it('requires a reason of at least 5 characters, then stops the recording and follows the session', async () => {

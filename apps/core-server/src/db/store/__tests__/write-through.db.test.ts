@@ -189,7 +189,8 @@ describe('write-through as the runtime role, and rehydration', () => {
       events: state.meta.counters.event - 1,
       session_history: 14,
       evidence_items: 14,
-      evidence_tracks: 56,
+      // Fix wave J: 48 of the seed (its never-sealed item has none) + the four of the session this journey seals.
+      evidence_tracks: 52,
       exports: 4,
       engine_counters: 6,
       active_session: 0,

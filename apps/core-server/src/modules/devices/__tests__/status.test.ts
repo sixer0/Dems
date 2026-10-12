@@ -6,7 +6,7 @@
 // handler on the SAME state, member by member, so Live mode cannot drift from Simulated mode in
 // what a read says. The one difference is stated and measured: the 20 Hz meter levels, which
 // are no part of the committed state (a recorded difference, ruled by D89; formerly gap BE-GAP-W36-1).
-import { AudioStatusResponseSchema, DeviceHealthResponseSchema, DeviceInventorySchema, VideoStatusResponseSchema, validateCoreApiResponse } from '@dems/shared/api';
+import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE, AudioStatusResponseSchema, DeviceHealthResponseSchema, DeviceInventorySchema, VideoStatusResponseSchema, validateCoreApiResponse } from '@dems/shared/api';
 import {
   AUDIO_CLIP_BURST_DBFS,
   AUDIO_FLOOR_DBFS,
@@ -21,6 +21,7 @@ import {
   type SimActions,
   type SimState,
   type SimStore,
+  ownCaptureCoreFactsTransition,
 } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { DURABLE_SLICE_KEYS, UNMAPPED_SLICES } from '../../../db/mapping';
@@ -110,6 +111,24 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     expect(faults.cameras[1]).toMatchObject({ trackId: 'VIDEO-02', lens: 'FAULT', online: false, recState: 'LOST' });
     expect(faults.audio[1]).toMatchObject({ inputId: 'MIC-02', state: 'CLIP', recState: 'DEGRADED', clip: true, noSignal: false });
     expect(faults.time.source).not.toBe('GNSS');
+  });
+
+  it('fix wave J (JW-04 / JT-03, JW-08): a Core in its own capture says `platformNotReported` beside the TPM placeholders, and "not measured" for a level it does not measure', () => {
+    const own = ownCaptureCoreFactsTransition(scenarioState('idle'));
+    const committed = committedOf(own);
+    const health = deviceHealthOf(committed, NOW);
+    expect(health.security).toMatchObject({ platformNotReported: true });
+    expect(health).toEqual(simulatorAnswer(own, HEALTH));
+    expect(validateCoreApiResponse('getDeviceHealth', 200, health)).toEqual({ ok: true });
+    // The meter frame of a Core at rest: not measured - and the answer says so, never "no signal".
+    const frame = { audio: { inputs: { 'MIC-01': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE }, 'MIC-02': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE } }, activeInputId: 'MIC-01' } } as unknown as Parameters<typeof audioStatusOf>[2];
+    const audio = audioStatusOf(committed, NOW, frame);
+    expect(audio.channels.map((channel) => [channel.notMeasured, channel.noSignal])).toEqual([[true, false], [true, false]]);
+    expect(validateCoreApiResponse('getAudioStatus', 200, audio)).toEqual({ ok: true });
+    // CONTROL: the simulated device states neither member.
+    const simulated = deviceHealthOf(committedOf(scenarioState('idle')), NOW);
+    expect(simulated.security).not.toHaveProperty('platformNotReported');
+    expect(audioStatusOf(committedOf(scenarioState('idle')), NOW).channels.every((channel) => !('notMeasured' in channel))).toBe(true);
   });
 
   it.each(Object.values(FaultKind))('with the fault %s injected into the recording scenario the three answers still equal the simulator\'s', (kind) => {

@@ -3,10 +3,10 @@
 // quick actions and the real System Maintenance section, inside the real `AppProviders` with a test
 // simulator signed in as a demo operator:
 //
-// - Start Session (Home quick action, Sessions hub) is disabled with "Requires the Investigator role"
+// - Start Session (Home quick action, Sessions hub) is disabled with "Requires the Investigator or Supervisor role"
 //   for the TECHNICIAN, and opens the wizard for the INVESTIGATOR;
 // - `/session/new` reached any other way (a deep link) is refused for the TECHNICIAN: the route goes to
-//   `/home` with ONE toast "Not permitted" / "Requires the Investigator role" and the wizard never renders;
+//   `/home` with ONE toast "Not permitted" / "Requires the Investigator or Supervisor role" and the wizard never renders;
 // - Install update is disabled with "Requires the Technician role" for the INVESTIGATOR and the
 //   SUPERVISOR, and enabled for the TECHNICIAN.
 //
@@ -17,7 +17,8 @@ import { TEST_INSETS, WINDOWS, renderRoutes, resetShellState, setWindow } from '
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react-native';
+import { UPDATE_NOT_AVAILABLE_EXAMPLE } from '@dems/shared/api';
 import { Stack, router, type Href } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Text } from 'react-native';
@@ -107,28 +108,28 @@ afterEach(() => {
 
 describe('roleGateFor (pure): the permission, the role the sentence names, and an unknown role', () => {
   it('SESSION_START: INVESTIGATOR and SUPERVISOR hold it, TECHNICIAN is locked; the sentence names the Investigator role', () => {
-    expect(roleGateFor(OperatorRole.INVESTIGATOR, Permission.SESSION_START)).toEqual({ allowed: true, known: true, locked: false, requiredRole: 'INVESTIGATOR' });
+    expect(roleGateFor(OperatorRole.INVESTIGATOR, Permission.SESSION_START)).toEqual({ allowed: true, known: true, locked: false, requiredRole: 'INVESTIGATOR', requiredRoles: ['INVESTIGATOR', 'SUPERVISOR'] });
     expect(roleGateFor(OperatorRole.SUPERVISOR, Permission.SESSION_START).locked).toBe(false);
-    expect(roleGateFor(OperatorRole.TECHNICIAN, Permission.SESSION_START)).toEqual({ allowed: false, known: true, locked: true, requiredRole: 'INVESTIGATOR' });
+    expect(roleGateFor(OperatorRole.TECHNICIAN, Permission.SESSION_START)).toEqual({ allowed: false, known: true, locked: true, requiredRole: 'INVESTIGATOR', requiredRoles: ['INVESTIGATOR', 'SUPERVISOR'] });
   });
 
   it('MAINTENANCE: only the TECHNICIAN holds it (the Core refuses startSoftwareUpdate to the others)', () => {
     expect(roleGateFor(OperatorRole.TECHNICIAN, Permission.MAINTENANCE).locked).toBe(false);
-    expect(roleGateFor(OperatorRole.INVESTIGATOR, Permission.MAINTENANCE)).toEqual({ allowed: false, known: true, locked: true, requiredRole: 'TECHNICIAN' });
+    expect(roleGateFor(OperatorRole.INVESTIGATOR, Permission.MAINTENANCE)).toEqual({ allowed: false, known: true, locked: true, requiredRole: 'TECHNICIAN', requiredRoles: ['TECHNICIAN'] });
     expect(roleGateFor(OperatorRole.SUPERVISOR, Permission.MAINTENANCE).locked).toBe(true);
   });
 
   it('no signed-in role yet: not allowed, but not "locked" (no sentence, and a route guard does not leave)', () => {
-    expect(roleGateFor(null, Permission.SESSION_START)).toEqual({ allowed: false, known: false, locked: false, requiredRole: 'INVESTIGATOR' });
+    expect(roleGateFor(null, Permission.SESSION_START)).toEqual({ allowed: false, known: false, locked: false, requiredRole: 'INVESTIGATOR', requiredRoles: ['INVESTIGATOR', 'SUPERVISOR'] });
   });
 });
 
 describe('Home quick action: Start Session needs SESSION_START (E2E-P-5)', () => {
-  it('TECHNICIAN: the primary action is disabled with "Requires the Investigator role"; a press opens nothing', async () => {
+  it('TECHNICIAN: the primary action is disabled with "Requires the Investigator or Supervisor role"; a press opens nothing', async () => {
     const t = await renderApp('rina.wijaya', '/quick');
     expect(disabled('home-action-primary')).toBe(true);
-    expect(screen.getByTestId('home-action-primary-locked')).toHaveTextContent('Requires the Investigator role');
-    expect(screen.getByTestId('home-action-primary').props.accessibilityHint).toBe('Requires the Investigator role');
+    expect(screen.getByTestId('home-action-primary-locked')).toHaveTextContent('Requires the Investigator or Supervisor role');
+    expect(screen.getByTestId('home-action-primary').props.accessibilityHint).toBe('Requires the Investigator or Supervisor role');
     fireEvent.press(screen.getByTestId('home-action-primary'));
     await flushAsync();
     expect(t.app.getPathname()).toBe('/quick');
@@ -155,11 +156,11 @@ describe('Home quick action: Start Session needs SESSION_START (E2E-P-5)', () =>
 });
 
 describe('Sessions hub: Start New Session needs SESSION_START (E2E-P-5)', () => {
-  it('TECHNICIAN: disabled with "Requires the Investigator role"; a press opens nothing', async () => {
+  it('TECHNICIAN: disabled with "Requires the Investigator or Supervisor role"; a press opens nothing', async () => {
     const t = await renderApp('rina.wijaya', '/sessions');
     expect(screen.getByTestId('screen-sessions')).toBeTruthy();
     expect(disabled('sessions-start')).toBe(true);
-    expect(screen.getByTestId('sessions-start-locked')).toHaveTextContent('Requires the Investigator role');
+    expect(screen.getByTestId('sessions-start-locked')).toHaveTextContent('Requires the Investigator or Supervisor role');
     expect(screen.queryByTestId('sessions-start-busy')).toBeNull();
     fireEvent.press(screen.getByTestId('sessions-start'));
     await flushAsync();
@@ -174,7 +175,7 @@ describe('Sessions hub: Start New Session needs SESSION_START (E2E-P-5)', () => 
 });
 
 describe('/session/new by any other way: the route refuses a role without SESSION_START', () => {
-  it('TECHNICIAN, a deep link: Home, ONE toast "Not permitted" / "Requires the Investigator role", the wizard never renders', async () => {
+  it('TECHNICIAN, a deep link: Home, ONE toast "Not permitted" / "Requires the Investigator or Supervisor role", the wizard never renders', async () => {
     const before = refusals();
     const t = await renderApp('rina.wijaya', '/session/new?step=1');
     await flushAsync();
@@ -184,7 +185,7 @@ describe('/session/new by any other way: the route refuses a role without SESSIO
     // The kit's toast draws its label and description twice (measured with a single `toast.show`), so
     // "one toast" is counted on the guard's one log record per refused visit.
     expect(screen.queryAllByText('Not permitted').length).toBeGreaterThan(0);
-    expect(screen.queryAllByText('Requires the Investigator role').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Requires the Investigator or Supervisor role').length).toBeGreaterThan(0);
     expect(refusals() - before).toBe(1);
   });
 
@@ -225,13 +226,39 @@ describe('System Maintenance: Install update needs MAINTENANCE (O-2)', () => {
     expect(screen.getByTestId('settings-update-install-locked')).toHaveTextContent('Requires the Technician role');
   });
 
-  it('TECHNICIAN: enabled, no sentence; a press starts the update', async () => {
+  // Fix wave J (JT-06, truth rule 3e): REPLACES "a press starts the update". The press asks first and says what
+  // will happen; "Not now" starts nothing; the confirmation starts it.
+  it('TECHNICIAN: enabled, no sentence; a press ASKS (the version, the slot, the restart) and starts nothing; "Not now" starts nothing; the confirmation starts the update', async () => {
     const t = await renderApp('rina.wijaya', '/maintenance');
     expect(disabled('settings-update-install')).toBe(false);
     expect(screen.queryByTestId('settings-update-install-locked')).toBeNull();
     fireEvent.press(screen.getByTestId('settings-update-install'));
     await flushAsync();
+    expect(t.sim.store.getState().update.state).toBe('IDLE');
+    const version = t.sim.store.getState().update.availableVersion;
+    expect(screen.getByText(`Install update v${version}?`)).toBeTruthy();
+    expect(screen.getByText(/installs it to the inactive system slot \([AB]\) and restarts into it/)).toBeTruthy();
+    fireEvent.press(screen.getByTestId('settings-update-cancel'));
+    await flushAsync();
+    expect(t.sim.store.getState().update.state).toBe('IDLE');
+    fireEvent.press(screen.getByTestId('settings-update-install'));
+    await flushAsync();
+    fireEvent.press(screen.getByTestId('settings-update-confirm'));
+    await flushAsync();
     expect(t.sim.store.getState().update.state).toBe('RUNNING');
+  });
+
+  // JT-06 (contract_wave_j.md J-S 11): a Core in its own capture states `updaterNotAvailable`.
+  it('a Core without an updater: the card says so, draws no version and offers no Install control - to any role', async () => {
+    const t = await renderApp('rina.wijaya', '/maintenance');
+    act(() => {
+      t.sim.store.setState((state) => ({ ...state, update: { ...state.update, ...UPDATE_NOT_AVAILABLE_EXAMPLE } }));
+    });
+    await flushAsync();
+    expect(screen.getByTestId('settings-update-not-available')).toHaveTextContent('Software update is not available on this Core.');
+    expect(screen.queryByTestId('settings-update-install')).toBeNull();
+    expect(screen.queryByTestId('settings-update-body')).toBeNull();
+    expect(within(screen.getByTestId('settings-update')).queryByText(/v\d+\.\d+\.\d+/)).toBeNull();
   });
 });
 
@@ -261,6 +288,15 @@ describe('W93-11: an unknown role — disabled with a reason, and the deep link 
     expect(screen.getByTestId('sessions-start-locked')).toHaveTextContent('Checking your permissions…');
   });
 
+  // Fix wave J round two (RC-7 of note 163): the waiting screen has a visible exit.
+  it('RC-7: the waiting screen offers "Back to Home", and it leaves for Home', async () => {
+    const t = await renderApp(null, '/session/new?step=1');
+    expect(screen.getByTestId('screen-session-new-checking')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('session-new-checking-home'));
+    await flushAsync();
+    expect(t.app.getPathname()).toBe('/home');
+  });
+
   it('a deep link while the role is unknown: the waiting screen, never the wizard; INVESTIGATOR known -> the wizard', async () => {
     const before = refusals();
     const t = await renderApp(null, '/session/new?step=1');
@@ -285,7 +321,7 @@ describe('W93-11: an unknown role — disabled with a reason, and the deep link 
     await flushAsync();
     expect(t.app.getPathname()).toBe('/home');
     expect(screen.queryByTestId('wizard-open')).toBeNull();
-    expect(screen.queryAllByText('Requires the Investigator role').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Requires the Investigator or Supervisor role').length).toBeGreaterThan(0);
     expect(refusals() - before).toBe(1);
   });
 });

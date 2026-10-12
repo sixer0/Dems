@@ -938,7 +938,7 @@ describe('offline, and a limit (AC-C-59, LB-6, LB-10, CL-22)', () => {
     expect(rejections[0]).toBeInstanceOf(LiveTransportError);
     expect(rejections[0]).toMatchObject({ reason: 'UNAVAILABLE', status: 429, retryAfterSeconds: 37 });
     expect(outcomes).toEqual(['shown']);
-    expect(screen.getAllByText('The Core server is limiting requests from this tablet').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('The Core server is limiting requests from this device').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Try again in 37 s.').length).toBeGreaterThan(0);
     // Never the offline wording, never a changed link.
     expect(screen.queryByText('Core server unreachable')).toBeNull();

@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
@@ -48,6 +49,8 @@ export function NetworkTimePanel({ id, icon: Icon, title, action, className, bod
           <Icon className="nt-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="nt-card-title">{title}</h2>
           {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
+          {/* Fix wave J (JW-07): the demonstration Core's network and time values are marked on every panel. */}
+          <DemoMark block={`network-${id}`} />
           {action ? <div className="nt-card-action">{action}</div> : null}
         </div>
         <div className={cn('nt-card-body', bodyClassName)}>

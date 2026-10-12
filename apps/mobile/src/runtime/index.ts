@@ -199,6 +199,8 @@ export {
   createCoreErrorCoalescer,
   describeCoreError,
   requiredRoleFor,
+  requiredRolesFor,
+  roleNamesText,
   resetCoreErrorPresenterForTests,
   useCoreErrorPresenter,
   type CoreErrorCoalescer,

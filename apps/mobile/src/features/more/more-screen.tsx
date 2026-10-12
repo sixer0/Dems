@@ -25,6 +25,8 @@ import { fontFamily, palette, typography } from '@dems/shared/tokens';
 import { Emblem } from '@/components/media/emblem';
 import { SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings } from '@/motion';
+import { developerControlsShown } from '@/features/settings/settings-model';
+import { useSettingsPrefs } from '@/features/settings/settings-prefs';
 import { ConsoleTiles } from './console-tiles';
 import { MoreBoundary } from './more-boundary';
 import { MoreFooter, MoreLinks } from './more-links';
@@ -41,6 +43,9 @@ export function MoreScreen() {
   const { layoutClass, nav } = useLayoutClass();
   const settings = useMotionSettings();
   const withConsole = showsConsole(nav);
+  // Fix wave J (JA2-29, N-03): the developer gallery follows the one rule for developer pages
+  // (development build AND presentation mode off), as Settings does.
+  const developer = developerControlsShown({ dev: __DEV__, presentationMode: useSettingsPrefs().presentationMode });
   const linksSlot = withConsole ? SLOT.console + CONSOLE_DESTINATIONS.length : SLOT.console + 1;
   const tablet = !withConsole;
 
@@ -71,7 +76,7 @@ export function MoreScreen() {
 
           <Animated.View entering={enterRise(linksSlot, settings)}>
             <MoreBoundary name="links">
-              <MoreLinks debug={__DEV__} />
+              <MoreLinks debug={developer} />
             </MoreBoundary>
           </Animated.View>
 

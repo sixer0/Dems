@@ -2,7 +2,8 @@ import { Chip, Spinner } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Archive, CircleDot, Eye, LockKeyhole, Share2, ShieldAlert, ShieldCheck, ShieldQuestion, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { EvidenceStatus, SubjectType } from '@dems/shared/sim'
+import { evidenceStatusLabel } from './status-label'
+import { verificationOfRecordFailed, type EvidenceStatus, type SubjectType } from '@dems/shared/sim'
 import { toneChipProps } from '@dems/shared/tokens'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,12 @@ const STATUS_ICON: Record<EvidenceStatus, LucideIcon> = {
 
 export interface EvidenceStatusChipProps {
   status: EvidenceStatus
+  /**
+   * Fix wave J (JT-04 / JW-09; truth rule 3b): the item itself, so the chip can state its verification of
+   * record. An item whose stored verdict is FAIL (`verificationOfRecordFailed`) NEVER reads plain "Sealed" -
+   * on the list row, the header, the Status fact and the preview alike, because they all draw this chip.
+   */
+  item?: unknown
   size?: 'sm' | 'md'
   className?: string
 }
@@ -25,23 +32,26 @@ export interface EvidenceStatusChipProps {
 /**
  * Evidence status chip (research/04 §5.1): Recorded green, **Sealed violet** (D28/Q4, the `sealed`
  * tone), Exported blue, Under Review amber, Archived grey. Label changes cross-fade (M-C-10).
+ * A failed verification of record turns it to the danger tone with "Sealed · verification FAILED" (wave J).
  */
-export function EvidenceStatusChip({ status, size = 'sm', className }: EvidenceStatusChipProps) {
+export function EvidenceStatusChip({ status, item, size = 'sm', className }: EvidenceStatusChipProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
-  const tone = toneChipProps(STATUS_TONE[status])
-  const Icon = STATUS_ICON[status]
+  const failed = verificationOfRecordFailed(item) && status !== 'RECORDED'
+  const tone = toneChipProps(failed ? 'danger' : STATUS_TONE[status])
+  const Icon = failed ? ShieldAlert : STATUS_ICON[status]
   return (
     <Chip
       color={tone.color}
       variant="soft"
       size={size}
       data-evidence-status={status}
+      data-verification-failed={failed ? 'true' : undefined}
       className={cn('evi-status-chip transition-colors duration-[400ms]', tone.className, className)}
     >
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
-          key={status}
+          key={`${status}-${failed ? 'F' : ''}`}
           className="inline-flex items-center gap-1"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -49,7 +59,7 @@ export function EvidenceStatusChip({ status, size = 'sm', className }: EvidenceS
           transition={m.transitions.crossFade}
         >
           <Icon className="size-3" aria-hidden="true" strokeWidth={2.2} />
-          <Chip.Label>{t(`common.evidenceStatus.${status}`)}</Chip.Label>
+          <Chip.Label>{evidenceStatusLabel(t, status, item)}</Chip.Label>
         </motion.span>
       </AnimatePresence>
     </Chip>

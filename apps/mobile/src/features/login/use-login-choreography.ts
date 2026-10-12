@@ -31,6 +31,14 @@
  * every part is drawn from a style whose React value IS its resting value (opacity 1, no rise, no
  * flight); the shake and the exit stay animated on top of it. Whatever Reanimated keeps or drops, the
  * next commit draws a usable Login.
+ *
+ * Fix wave J (JM-01 d): "a style whose React value is its resting value" was not true of the four `...Rest`
+ * animated styles below. Reanimated hands an animated style's first value to React only in the FIRST render of
+ * a view (`AnimatedComponent`, `_isFirstRender`); a style swapped in later reaches the view through the UI
+ * runtime alone. On a process whose animation runtime had stopped (one worklet error, see
+ * `@/motion/ui-runtime-watch`) the swap drew nothing: the Login stayed without wordmark, caption and card.
+ * So the resting picture is now PLAIN styles (`WORDMARK_REST` ...). The animated ones are layered in only
+ * while a shake or the exit plays (`acting`); if that motion is lost the card merely does not shake.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -91,6 +99,12 @@ export function entranceEndMs(entrance: LoginEntrance, settings: MotionSettings)
 /** The resting picture of the parts that only fade, rise or fly in: drawn by React (no shared value). */
 const BACKDROP_REST = { opacity: 1 } as const;
 const EMBLEM_REST = { transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }] };
+const WORDMARK_REST = { opacity: 1, transform: [{ scale: 1 }] };
+const CAPTION_REST = { opacity: 1 } as const;
+const CARD_REST = { opacity: 1, transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }] };
+const COMPANION_REST = { opacity: 1, transform: [{ translateY: 0 }] };
+/** M-C-22: the shake lasts 300 ms; the plain resting styles return this long after it started. */
+export const SHAKE_ACT_MS = 300 + ENTRANCE_REST_MARGIN_MS;
 
 export interface EmblemOrigin {
   /** Offset from the emblem's resting centre to the header logo slot, dp. */
@@ -154,13 +168,25 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
     [initial, reduced, origin, emblemFlight],
   );
 
+  // JM-01 d: the animated resting styles are in use only while a shake or the exit plays.
+  const [acting, setActing] = useState<'shake' | 'exit' | null>(null);
+  const [shakeRun, setShakeRun] = useState(0);
+  useEffect(() => {
+    if (acting !== 'shake') return undefined;
+    const timer = setTimeout(() => setActing((now) => (now === 'shake' ? null : now)), durationMs(SHAKE_ACT_MS, initial.settings));
+    return () => clearTimeout(timer);
+  }, [acting, shakeRun, initial]);
+
   /** M-C-22: one card shake (300 ms, never looping); reduced motion shows the red border only. */
   const shake = useCallback(() => {
+    setActing((now) => now ?? 'shake');
+    setShakeRun((n) => n + 1);
     shakeX.set(animateShake(initial.settings));
   }, [initial, shakeX]);
 
   /** M-APP-01 (Login half): the card leaves; the brand text fades 150 ms later. */
   const leave = useCallback(() => {
+    setActing('exit');
     exit.set(animateTiming(1, CARD_EXIT_MS, 'exit', initial.settings));
   }, [initial, exit]);
 
@@ -203,9 +229,8 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
     };
   });
 
-  // CF2-A (RF-PH-4): after the entrance, styles whose React value is the resting one (opacity 1, no
-  // rise); only the exit and the shake stay animated on top. Their first (React) value has `exit` and
-  // `shakeX` at 0, so a commit can only ever draw the resting picture.
+  // CF2-A (RF-PH-4) + JM-01 d: after the entrance the resting picture is the PLAIN styles above. These four
+  // animated ones carry the exit and the shake, and are used only while one of the two plays (`acting`).
   const wordmarkRest = useAnimatedStyle(() => ({ opacity: 1 - exit.get(), transform: [{ scale: 1 }] }));
   const captionRest = useAnimatedStyle(() => ({ opacity: 1 - exit.get() }));
   const cardRest = useAnimatedStyle(() => {
@@ -235,10 +260,10 @@ export function useLoginChoreography(entrance: LoginEntrance, settings: MotionSe
     shake,
     leave,
     backdropStyle: entranceOver ? BACKDROP_REST : backdropStyle,
-    wordmarkStyle: entranceOver ? wordmarkRest : wordmarkStyle,
-    captionStyle: entranceOver ? captionRest : captionStyle,
-    cardStyle: entranceOver ? cardRest : cardStyle,
-    companionStyle: entranceOver ? companionRest : companionStyle,
+    wordmarkStyle: !entranceOver ? wordmarkStyle : acting ? wordmarkRest : WORDMARK_REST,
+    captionStyle: !entranceOver ? captionStyle : acting ? captionRest : CAPTION_REST,
+    cardStyle: !entranceOver ? cardStyle : acting ? cardRest : CARD_REST,
+    companionStyle: !entranceOver ? companionStyle : acting ? companionRest : COMPANION_REST,
     emblemStyle: entranceOver ? EMBLEM_REST : emblemStyle,
   };
 }

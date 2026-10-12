@@ -29,8 +29,36 @@ import {
   isPlatformNotReported,
   platformNotReportedTransition,
   type SessionCaptureCheckpoints,
+  DIAGNOSTIC_NOT_REPORTED_CHECKS,
+  PLATFORM_DEVICE_NOT_REPORTED,
+  SECURITY_NOT_REPORTED_PRECHECK_RULE,
+  UPDATER_NOT_AVAILABLE_REASON,
+  isDiagnosticNotReported,
+  isLevelNotMeasured,
+  isOwnCaptureCoreState,
+  isUpdaterNotAvailable,
+  platformDevices,
+  selectPlatformDevices,
+  updaterNotAvailableTransition,
 } from '../src/sim';
-import { ActiveSessionSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, FaultsSliceSchema, PrecheckItemSchema, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, SecuritySliceSchema } from '../src/api';
+import {
+  ActiveSessionSchema,
+  AUDIO_FRAME_NOT_MEASURED_EXAMPLE,
+  AudioSliceSchema,
+  CORE_NOT_RUNNING_FAULT_EXAMPLE,
+  DIAGNOSTIC_NOT_REPORTED_EXAMPLE,
+  DiagnosticsSliceSchema,
+  FaultsSliceSchema,
+  PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE,
+  PRECHECK_SECURITY_NOT_REPORTED_RULE,
+  PrecheckItemSchema,
+  SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE,
+  SESSION_CAPTURE_CHECKPOINTS_EXAMPLE,
+  SecuritySliceSchema,
+  UPDATE_NOT_AVAILABLE_EXAMPLE,
+  UPDATE_NOT_AVAILABLE_REASON,
+  UpdateSliceSchema,
+} from '../src/api';
 import { en } from '../src/i18n';
 import * as ownCaptureBed from './support/own-capture-bed';
 
@@ -379,7 +407,7 @@ describe('batch N: the checkpoint example, and where a pre-check item carries `p
 });
 
 describe('platform security not reported, and the restart fault', () => {
-  const { bed } = ownCaptureBed;
+  const { bed, INPUT } = ownCaptureBed;
 
   describe('security.platformNotReported (G75b-06, D217 (7))', () => {
     it('a Core in its own capture states it from its first state, and keeps it through ticks and a derived security change', () => {
@@ -417,6 +445,189 @@ describe('platform security not reported, and the restart fault', () => {
       expect(en.common.platformNotReported.value).toBe('Not reported');
       expect(en.common.platformNotReported.tpm).toBe('TPM: not reported');
       expect(en.common.platformNotReported.secureBoot).toBe('Secure Boot: not reported');
+    });
+  });
+
+  // Fix wave J (decision D243; truth rule 3c; findings JW-04 / JT-03): every answer of the Core that stated a PASS
+  // over hardware it does not read says "not reported" itself. Each case has its control on the simulated device.
+  describe('fix wave J: no answer of a Core in its own capture states a platform PASS', () => {
+    it('JW-04: the pre-check SECURITY item is a NOTE "not reported" - never READY / PASS - and the run still passes', () => {
+      const h = bed({ capture: 'external' });
+      h.armed();
+      const item = h.state().session?.precheck.items.find((entry) => entry.id === 'SECURITY');
+      expect(item).toMatchObject({ status: 'WARN', value: 'NOT_REPORTED', reasonCode: null, params: { rule: SECURITY_NOT_REPORTED_PRECHECK_RULE } });
+      expect(item).toMatchObject({ status: PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE.status, value: PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE.value, reason: PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE.reason, params: PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE.params });
+      expect(SECURITY_NOT_REPORTED_PRECHECK_RULE).toBe(PRECHECK_SECURITY_NOT_REPORTED_RULE);
+      expect(isPrecheckNote(item!)).toBe(true);
+      expect(PrecheckItemSchema.safeParse(item).success).toBe(true);
+      // A note is no warning: nothing to acknowledge, the session is ARMED.
+      expect(h.state().session).toMatchObject({ state: 'ARMED', precheck: { outcome: 'PASS', warningsAcknowledged: false } });
+      // No item of the run says READY / PASS about security.
+      expect(h.state().session?.precheck.items.filter((entry) => entry.id === 'SECURITY' && (entry.status === 'PASS' || entry.value === 'READY'))).toEqual([]);
+    });
+
+    it('JW-04 CONTROL - the simulated device keeps "SECURITY READY PASS", and a security FAULT still blocks on a Core in its own capture', () => {
+      const simulated = bed();
+      simulated.armed();
+      expect(simulated.state().session?.precheck.items.find((entry) => entry.id === 'SECURITY')).toMatchObject({ status: 'PASS', value: 'READY' });
+      const own = bed({ capture: 'external' });
+      own.sim.actions.inject('SECURITY_FAULT');
+      own.sim.actions.createSession(INPUT);
+      own.sim.actions.beginPrecheck();
+      own.run(6_000);
+      expect(own.state().session?.precheck.items.find((entry) => entry.id === 'SECURITY')).toMatchObject({ status: 'BLOCK', value: 'FAULT' });
+      expect(own.state().session?.precheck.outcome).toBe('BLOCK');
+    });
+
+    it('JT-03: the diagnostics rows over SMART, the fan, PoE and the platform say "not reported"; the others are evaluated; the run counts no warning', () => {
+      const h = bed({ capture: 'external' });
+      h.sim.actions.signOut();
+      h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+      h.sim.actions.runDiagnostics();
+      h.run(20_000);
+      const run = h.state().diagnostics;
+      expect(run?.completedAt).not.toBeNull();
+      const byId = Object.fromEntries((run?.checks ?? []).map((check) => [check.id, check]));
+      for (const id of DIAGNOSTIC_NOT_REPORTED_CHECKS) {
+        expect(byId[id], id).toMatchObject({ status: 'WARN', detail: DIAGNOSTIC_NOT_REPORTED_EXAMPLE.detail, params: DIAGNOSTIC_NOT_REPORTED_EXAMPLE.params });
+        expect(isDiagnosticNotReported(byId[id]), id).toBe(true);
+      }
+      expect([...DIAGNOSTIC_NOT_REPORTED_CHECKS]).toEqual(['STORAGE', 'FAN', 'NETWORK', 'SECURITY']);
+      // No row says PASS about hardware the Core does not read.
+      expect((run?.checks ?? []).filter((check) => check.status === 'PASS').map((check) => check.id).filter((id) => DIAGNOSTIC_NOT_REPORTED_CHECKS.includes(id))).toEqual([]);
+      for (const id of ['CPU', 'CAMERA', 'AUDIO']) expect(isDiagnosticNotReported(byId[id]), id).toBe(false);
+      expect(DiagnosticsSliceSchema.safeParse(run).success).toBe(true);
+      const done = h.state().events.filter((event) => event.type === 'DIAGNOSTICS_COMPLETED').at(-1);
+      expect(done?.params).toMatchObject({ notReported: 4, fail: 0 });
+      expect(done?.severity).not.toBe('SUCCESS');
+      expect(done?.message).not.toContain('all passed');
+    });
+
+    it('JT-03 CONTROL - the simulated device answers all eight rows and none is "not reported"', () => {
+      const h = bed();
+      h.sim.actions.signOut();
+      h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+      h.sim.actions.runDiagnostics();
+      h.run(20_000);
+      const checks = h.state().diagnostics?.checks ?? [];
+      expect(checks.filter((check) => isDiagnosticNotReported(check))).toEqual([]);
+      expect(checks.find((check) => check.id === 'SECURITY')).toMatchObject({ status: 'PASS', detail: 'TPM 2.0 and Secure Boot OK' });
+      expect(isDiagnosticNotReported(null)).toBe(false);
+      expect(isDiagnosticNotReported({ status: 'PASS', params: { rule: 'NOT_REPORTED' } })).toBe(false);
+    });
+
+    it('the platform device list and operation `getDeviceStatus` say NOT_REPORTED for the TPM (the readers wave I left)', () => {
+      const own = bed({ capture: 'external' });
+      expect(platformDevices(own.state()).find((device) => device.id === 'TPM')).toEqual({ id: 'TPM', name: expect.any(String), online: false, status: PLATFORM_DEVICE_NOT_REPORTED, satellites: null });
+      expect(selectPlatformDevices(own.state()).find((device) => device.id === 'TPM')?.status).toBe('NOT_REPORTED');
+      const answer = own.sim.request({ method: 'GET', path: '/api/v1/device/health' });
+      expect(answer.status).toBe(200);
+      expect((answer.body as { security: unknown }).security).toMatchObject({ platformNotReported: true });
+      const simulated = bed();
+      expect(platformDevices(simulated.state()).find((device) => device.id === 'TPM')).toMatchObject({ online: true, status: 'OK' });
+      expect((simulated.sim.request({ method: 'GET', path: '/api/v1/device/health' }).body as { security: object }).security).not.toHaveProperty('platformNotReported');
+    });
+
+    it('JW-07: ONE reader says whether the Core is in its own capture - false for the simulated device (everything it shows is a demonstration)', () => {
+      expect(isOwnCaptureCoreState(bed({ capture: 'external' }).state())).toBe(true);
+      expect(isOwnCaptureCoreState(bed().state())).toBe(false);
+      expect(isOwnCaptureCoreState({ time: { hostClock: true }, security: {} })).toBe(true);
+      expect(isOwnCaptureCoreState({ time: {}, security: { platformNotReported: true } })).toBe(true);
+      expect(isOwnCaptureCoreState({})).toBe(false);
+      expect(isOwnCaptureCoreState(null)).toBe(false);
+    });
+  });
+
+  // Fix wave J (findings JT-06 / JW-06): "Install update" is the simulator's demonstration. A Core in its own capture has no updater.
+  describe('fix wave J: no software updater on a Core in its own capture', () => {
+    const technician = (h: ReturnType<typeof bed>): void => {
+      h.sim.actions.signOut();
+      h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    };
+
+    it('JT-06: the update slice states `updaterNotAvailable` from the first state, and `startSoftwareUpdate` is refused - nothing starts, no row', () => {
+      const h = bed({ capture: 'external' });
+      expect(h.state().update).toMatchObject(UPDATE_NOT_AVAILABLE_EXAMPLE);
+      expect(isUpdaterNotAvailable(h.state().update)).toBe(true);
+      expect(UpdateSliceSchema.safeParse(h.state().update).success).toBe(true);
+      technician(h);
+      const before = h.state();
+      let thrown: unknown = null;
+      try {
+        h.sim.actions.startSoftwareUpdate();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toMatchObject({ name: 'SimTransitionError', code: 'COMMAND_UNSUPPORTED', reason: UPDATER_NOT_AVAILABLE_REASON });
+      expect(UPDATER_NOT_AVAILABLE_REASON).toBe(UPDATE_NOT_AVAILABLE_REASON);
+      expect(h.state().update).toEqual(before.update);
+      expect(h.state().audit.total).toBe(before.audit.total);
+      h.run(15_000);
+      expect(h.state().update.state).toBe('IDLE');
+      expect(h.state().audit.rows.some((row) => row.type === 'UPDATE_STARTED')).toBe(false);
+    });
+
+    it('JT-06: a stored state that holds a running demonstration update is put right - nothing is installing', () => {
+      const h = bed();
+      technician(h);
+      h.sim.actions.startSoftwareUpdate();
+      expect(h.state().update.state).toBe('RUNNING');
+      const stated = updaterNotAvailableTransition(h.state());
+      expect(stated.update).toMatchObject({ state: 'IDLE', startedAt: null, completedAt: null, updaterNotAvailable: true });
+      expect(updaterNotAvailableTransition(stated)).toBe(stated);
+    });
+
+    it('JT-06 CONTROL - the simulated device keeps its demonstration update: no member, and the update runs', () => {
+      const h = bed();
+      expect(h.state().update).not.toHaveProperty('updaterNotAvailable');
+      expect(isUpdaterNotAvailable(h.state().update)).toBe(false);
+      technician(h);
+      h.sim.actions.startSoftwareUpdate();
+      expect(h.state().update.state).toBe('RUNNING');
+      expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'UPDATE_STARTED' });
+      expect(UpdateSliceSchema.safeParse({ ...h.state().update, updaterNotAvailable: false }).success).toBe(false);
+    });
+  });
+
+  // Fix wave J (finding JW-08): both microphones read "NO SIGNAL" beside "READY - PASS" whenever no capture was open.
+  describe('fix wave J: a level that is not measured is not NO SIGNAL', () => {
+    it('JW-08: at rest a Core in its own capture states `notMeasured` on both inputs, and never `noSignal`', () => {
+      const h = bed({ capture: 'external' });
+      h.run(2_000);
+      const frames = Object.values(h.state().audio.inputs);
+      expect(frames).toHaveLength(2);
+      for (const frame of frames) {
+        expect(frame).toMatchObject({ notMeasured: true, noSignal: false, dbfs: -90, peak: -90 });
+        expect(isLevelNotMeasured(frame)).toBe(true);
+      }
+      expect(AudioSliceSchema.safeParse(h.state().audio).success).toBe(true);
+      expect(frames[0]).toMatchObject({ noSignal: AUDIO_FRAME_NOT_MEASURED_EXAMPLE.noSignal, notMeasured: AUDIO_FRAME_NOT_MEASURED_EXAMPLE.notMeasured, dbfs: AUDIO_FRAME_NOT_MEASURED_EXAMPLE.dbfs });
+      // Through a pre-check too: the Core measures nothing until a capture is open.
+      h.armed();
+      expect(Object.values(h.state().audio.inputs).every((frame) => frame.notMeasured === true && !frame.noSignal)).toBe(true);
+    });
+
+    it('JW-08: while a capture is OPEN an input without a fresh measured level IS "no signal" - the fault word keeps its meaning', () => {
+      const h = bed({ capture: 'external' });
+      h.armed();
+      h.sim.actions.startRecording();
+      h.run(2_000);
+      expect(h.state().session?.state).toBe('RECORDING');
+      for (const frame of Object.values(h.state().audio.inputs)) {
+        expect(frame.noSignal).toBe(true);
+        expect(frame).not.toHaveProperty('notMeasured');
+      }
+    });
+
+    it('JW-08 CONTROL - the simulated device generates a level at all times and never sets the member', () => {
+      const h = bed();
+      h.run(2_000);
+      for (const frame of Object.values(h.state().audio.inputs)) {
+        expect(frame).not.toHaveProperty('notMeasured');
+        expect(frame.noSignal).toBe(false);
+        expect(isLevelNotMeasured(frame)).toBe(false);
+      }
+      expect(isLevelNotMeasured(null)).toBe(false);
     });
   });
 

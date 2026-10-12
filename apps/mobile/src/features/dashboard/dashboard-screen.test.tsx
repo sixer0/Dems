@@ -5,7 +5,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react-native';
-import { Dimensions } from 'react-native';
+import { BackHandler, Dimensions } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
@@ -14,6 +14,14 @@ import { resetCoreLinkPrefsForTests } from '@/runtime';
 import { createTestSim, flushAsync, renderWithRuntime, type TestSim } from '@/runtime/testing/test-sim';
 import { DashboardScreen } from './dashboard-screen';
 import { HOME_LOOPS } from './home-motion';
+
+// Fix wave J round two (ruling (a), JA2-16): on the phone the bell and the account menu are bottom sheets. The real
+// sheet library cannot run under jest (its worklet closes over the whole `react-native` module); the package's own
+// mock renders sheet content inline (`session-live/testing/monitor-test-setup.ts` has the long form of this note).
+jest.mock('@gorhom/bottom-sheet', () => ({
+  __esModule: true,
+  ...jest.requireActual<Record<string, unknown>>('@gorhom/bottom-sheet/mock'),
+}));
 
 jest.mock('@shopify/react-native-skia', () =>
   jest
@@ -133,8 +141,31 @@ describe('Home (Dashboard) screen', () => {
     cleanup();
   });
 
-  it('phone portrait: MB 2 regions H1–H5 in order, READY copy, 2/2, 2/2, 20% used, three recent rows', async () => {
+  // Fix wave J (JT-19): Android Back on Home left the app without a question.
+  it('JT-19: the first Android Back on Home stays and says "Press Back again to leave DEMS."; the second one leaves', async () => {
+    const handlers: (() => boolean | null | undefined)[] = [];
+    const listen = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      const press = handler as () => boolean | null | undefined;
+      handlers.push(press);
+      return { remove: () => void handlers.splice(handlers.indexOf(press), 1) };
+    });
     await mount();
+    expect(handlers).toHaveLength(1);
+    let held: boolean | null | undefined;
+    act(() => {
+      held = handlers[0]!();
+    });
+    await flushAsync();
+    // Held: the app stays, with the answer.
+    expect(held).toBe(true);
+    expect(screen.queryAllByText('Press Back again to leave DEMS.').length).toBeGreaterThan(0);
+    // The second Back within the window is not held: Android's own action (leave) runs.
+    expect(handlers[0]!()).toBe(false);
+    listen.mockRestore();
+  });
+
+  it('phone portrait: MB 2 regions H1–H5 in order, READY copy, 2/2, 2/2, 20% used, three recent rows', async () => {
+    const test = await mount();
     expect(screen.getByTestId('screen-home')).toBeTruthy();
     expect(orderOf(['home-header', 'home-status', 'home-tiles', 'home-actions', 'home-recent'])).toEqual([
       'home-header',
@@ -160,9 +191,11 @@ describe('Home (Dashboard) screen', () => {
     // H4.
     expect(label('home-action-primary')).toBe('Start Session');
     expect(label('home-action-evidence')).toBe('View Evidence');
-    // H5: newest first, evidence ids, "Today HH:mm" (UTC+07:00), subject chips from i18n (MA-21).
+    // H5: newest first, "Today HH:mm" (UTC+07:00), subject chips from i18n (MA-21). Fix wave J (JA2-28): the rows of
+    // "Recent Sessions" read the SESSION ids they open (they read EV-… and opened SES-…).
     const ids = [0, 1, 2].map((i) => textOf(`home-recent-row-${i}-id`));
-    expect(ids).toEqual(['EV-20261001-0013', 'EV-20261001-0012', 'EV-20261001-0011']);
+    expect(ids).toEqual(test.sim.store.getState().sessionHistory.slice().sort((a, b) => b.endedAt - a.endedAt).slice(0, 3).map((entry) => entry.id));
+    expect(ids.every((id) => /^SES-\d{8}-\d{4}$/.test(id))).toBe(true);
     expect(textOf('home-recent-row-0-when')).toBe('Today 09:35');
     expect(label('home-recent-row-0-subject')).toBe(i18n.t('common.subjectType.TERSANGKA'));
     expect(label('home-recent-row-1-subject')).toBe(i18n.t('common.subjectType.SAKSI'));
@@ -227,7 +260,8 @@ describe('Home (Dashboard) screen', () => {
     });
     expect(textOf('home-tile-microphone-state')).toBe('Clipping');
     expect(textOf('home-status-title')).toBe('Attention Needed');
-    expect(textOf('home-flag-MIC_AUDIO-02_CLIP')).toContain('MIC 2: clipping');
+    // Fix wave J (JA2-26): the latched clip names its remedy.
+    expect(textOf('home-flag-MIC_AUDIO-02_CLIP')).toBe('• MIC 2: clipping was detected. Reset the clip mark in Devices.');
     expect(getMissingKeys()).toEqual([]);
   });
 
@@ -244,6 +278,11 @@ describe('Home (Dashboard) screen', () => {
     fireEvent.press(screen.getByTestId('home-bell'));
     const alert = test.sim.store.getState().alerts.find((a) => a.active)!;
     expect(textOf(`home-alert-${alert.id}`)).toContain(i18n.t('common.faultKind.FAN_STALL'));
+    // Round two, ruling (a) (JA2-16): on the phone the list is the Settings sheets' frame (its content is in the
+    // accessibility tree, each element under its own name) - not the kit Popover - and the button names its alert.
+    expect(screen.getByTestId('home-alerts-sheet')).toBeTruthy();
+    expect(screen.queryByTestId('home-alerts-popover')).toBeNull();
+    expect(String(screen.getByTestId(`home-alert-${alert.id}-acknowledge`).props.accessibilityLabel)).toContain(i18n.t('common.faultKind.FAN_STALL'));
     layoutAncestors(`home-alert-${alert.id}`);
     fireEvent.press(screen.getByText(i18n.t('common.actions.acknowledge')));
     expect(test.sim.store.getState().alerts.find((a) => a.id === alert.id)?.acknowledged).toBe(true);
@@ -257,6 +296,10 @@ describe('Home (Dashboard) screen', () => {
     stubMeasure('home-avatar');
     fireEvent.press(screen.getByTestId('home-avatar'));
     expect(screen.getByText('AKP Budi Santoso')).toBeTruthy();
+    // Ruling (a): a sheet of labelled buttons on the phone; ruling (c): "Lock console" says what it does.
+    expect(screen.getByTestId('home-account-sheet')).toBeTruthy();
+    expect(screen.getByTestId('home-menu-lock').props.accessibilityLabel).toBe('Lock console');
+    expect(textOf('home-menu-lock-note')).toBe('Ends your sign-in on this device. Sign in again to continue.');
     layoutAncestors('home-menu-profile');
     fireEvent.press(screen.getByTestId('home-menu-profile'));
     expect(mockPush).toHaveBeenLastCalledWith('/settings');
@@ -268,6 +311,62 @@ describe('Home (Dashboard) screen', () => {
     expect(test.sim.store.getState().auth.status).toBe('SIGNED_OUT');
     expect(test.sim.store.getState().session?.state).toBe('RECORDING');
     expect(screen.queryByTestId('home-avatar')).toBeNull();
+  });
+
+  // Fix wave J closing pass (J4, item 5; note 171 decision 2, "JA2-16 on the tablet"): the tablet kept the kit's anchored
+  // `Popover` / `Menu`, whose content is in no accessibility tree. It now takes the phone's sheet: the content sits in a
+  // modal view whose wrapper is NOT one opaque accessible node, every control under its own name.
+  describe.each(['tabletLandscape', 'tabletPortrait'] as const)('the bell and the account menu on %s are the sheet form (accessible content)', (window) => {
+    /** The sheet's content root: the nearest ancestor marked as a modal view; no ancestor on the way is one accessible node that would swallow it. */
+    const modalRootOf = (testID: string) => {
+      let node = screen.getByTestId(testID).parent;
+      while (node !== null && node.props.accessibilityViewIsModal !== true) {
+        expect(node.props.accessible === true && typeof node.type === 'string').toBe(false);
+        node = node.parent;
+      }
+      return node;
+    };
+
+    it('bell: the alerts are in the sheet - its title, each alert with its named "Acknowledge", the link - and no popover is drawn', async () => {
+      const test = await mount({ window });
+      act(() => {
+        test.sim.actions.inject('FAN_STALL');
+        test.advance(200);
+      });
+      fireEvent.press(screen.getByTestId('home-bell'));
+      const alert = test.sim.store.getState().alerts.find((a) => a.active)!;
+      expect(screen.getByTestId('home-alerts-sheet')).toBeTruthy();
+      expect(screen.queryByTestId('home-alerts-popover')).toBeNull();
+      expect(modalRootOf('home-alerts-sheet')).not.toBeNull();
+      expect(modalRootOf(`home-alert-${alert.id}`)).not.toBeNull();
+      expect(within(screen.getByTestId('home-alerts-sheet')).getByText(i18n.t('shell.notifications.title'))).toBeTruthy();
+      expect(textOf(`home-alert-${alert.id}`)).toContain(i18n.t('common.faultKind.FAN_STALL'));
+      expect(String(screen.getByTestId(`home-alert-${alert.id}-acknowledge`).props.accessibilityLabel)).toContain(i18n.t('common.faultKind.FAN_STALL'));
+      expect(screen.getByTestId('home-alerts-view-all')).toBeTruthy();
+      expect(screen.getByTestId('home-alerts-sheet-close').props.accessibilityLabel).toBe(i18n.t('features.settings.sheets.close'));
+      // The control still works from the sheet.
+      layoutAncestors(`home-alert-${alert.id}`);
+      fireEvent.press(screen.getByTestId(`home-alert-${alert.id}-acknowledge`));
+      expect(test.sim.store.getState().alerts.find((a) => a.id === alert.id)?.acknowledged).toBe(true);
+    });
+
+    it('account: name, role and three labelled buttons in the sheet; "Lock console" says what it does and still ends the sign-in', async () => {
+      const test = await mount({ window });
+      fireEvent.press(screen.getByTestId('home-avatar'));
+      expect(screen.getByTestId('home-account-sheet')).toBeTruthy();
+      expect(modalRootOf('home-menu-lock')).not.toBeNull();
+      expect(within(screen.getByTestId('home-account-sheet')).getByText('AKP Budi Santoso')).toBeTruthy();
+      expect(screen.getByTestId('home-menu-profile').props.accessibilityLabel).toBe(i18n.t('features.dashboard.header.menuSettings'));
+      expect(screen.getByTestId('home-menu-lock').props.accessibilityLabel).toBe('Lock console');
+      expect(screen.getByTestId('home-menu-sign-out').props.accessibilityLabel).toBe(i18n.t('shell.userMenu.signOut'));
+      expect(textOf('home-menu-lock-note')).toBe('Ends your sign-in on this device. Sign in again to continue.');
+      // The kit Menu's item text of before is not drawn.
+      expect(screen.queryByTestId('home-menu-lock-text')).toBeNull();
+      layoutAncestors('home-menu-lock');
+      fireEvent.press(screen.getByTestId('home-menu-lock'));
+      await flushAsync();
+      expect(test.sim.store.getState().auth.status).toBe('SIGNED_OUT');
+    });
   });
 
   it('tablet landscape (expanded): 3 zones with the hero ring, chip row, 2x2 device tiles and sealed-today 7', async () => {

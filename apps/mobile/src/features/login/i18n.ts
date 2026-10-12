@@ -30,7 +30,7 @@ export const loginEn = {
   retryExhausted: 'Still unreachable. Restart the app to try again.',
   // L7 (§6.3): biometric states beyond the shared `mobile.biometric.*` copy.
   biometric: {
-    notBound: 'Sign in with your password once to enable biometric sign-in on this tablet.',
+    notBound: 'Sign in with your password once to enable biometric sign-in on this device.',
     boundTo: 'Biometric sign-in for {{name}}',
     failedTitle: 'Fingerprint not recognised',
     error: 'Biometric sign-in is not available right now. Use your password.',
@@ -39,6 +39,10 @@ export const loginEn = {
   demo: {
     pairingCode: 'Demo pairing code: {{code}}',
     fillHint: 'Fills the form as {{name}}',
+    // Fix wave J (JA2-N6): the accessible name of a demo operator row, with the role.
+    rowLabel: '{{name}}, user name {{username}}, {{role}}',
+    // LIVE (condition C2): no role chip is drawn, because the Core may have changed the role.
+    rowLabelLive: '{{name}}, user name {{username}}, demo account created as {{role}}',
   },
   // L11: the Core link chip.
   coreChip: {

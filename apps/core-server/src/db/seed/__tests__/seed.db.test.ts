@@ -60,14 +60,15 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
     expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(19);
   });
 
-  it('AC-B-02: 3 operators, 3 roles, 14 permissions, 22 grants, 1 Core device, 13 items with 52 tracks, 13 history entries', async () => {
+  // Fix wave J (truth rule 3a): 48 tracks - four for each of the 12 sealed items, none for the one item that was never sealed.
+  it('AC-B-02: 3 operators, 3 roles, 14 permissions, 22 grants, 1 Core device, 13 items with 48 tracks, 13 history entries', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     // R3 (D44): the vocabulary counts are recomputed FROM SOURCE, never hardcoded: the shared
     // permission enum and the shared role table (rows 47/49 grew them 12->14 and 18->22).
     expect([counts['operators'], counts['roles']]).toEqual([3, 3]);
     expect(counts['permissions']).toBe(Object.values(Permission).length);
     expect(counts['role_permissions']).toBe(Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0));
-    expect([counts['core_device'], counts['evidence_items'], counts['evidence_tracks'], counts['session_history']]).toEqual([1, 13, 52, 13]);
+    expect([counts['core_device'], counts['evidence_items'], counts['evidence_tracks'], counts['session_history']]).toEqual([1, 13, 48, 13]);
   });
 
   it('the audit and event counts equal those of the shared createIdleState for the same now: 82 and 59, confirmed by running', async () => {

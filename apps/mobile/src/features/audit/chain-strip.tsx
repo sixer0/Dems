@@ -25,6 +25,12 @@
  *     `view` (its check of the audit ring it holds), stamped with the store's clock, which is the
  *     Core's (S4-3); the Core's `stored` and `lineage` lines follow it (`chain-live.tsx`). A
  *     rejection goes to the runtime's refusal presenter first and the last verdict, if any, stays.
+ *
+ *   Fix wave J (JA2-31): a verdict is a statement about the chain AT ITS TIME. When the chain's state
+ *   no longer agrees with it (a FAIL after the break was cleared or moved; a PASS after a break
+ *   appeared) the verdict is drawn as an earlier check (`audit-verify-stale`: neutral chip, its time,
+ *   "Verify again"), never as a red FAIL beside "Chain OK". The Core's stored-log lines belong to that
+ *   same answer and leave with it.
  * - `TamperAlert`: the EVT-30 discontinuity `Alert status="danger"` (same copy as the web Alert),
  *   with "Show entry" and "Acknowledge". Acknowledging stops the broken row's slow glow; the break
  *   stays on record.
@@ -52,7 +58,7 @@ import {
   useMotionSettings,
 } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress } from '@/runtime';
-import { shortHash, stripEntries } from './audit-model';
+import { shortHash, stripEntries, verdictStale } from './audit-model';
 import { LiveChainLines } from './chain-live';
 
 /** One escalation pulse (03M R8 / M-C-10), always passed explicitly to the builder (D73). */
@@ -100,14 +106,15 @@ export function ChainStatusChip({ breakSeq }: { breakSeq: number | null }) {
 
 // ── Strip ────────────────────────────────────────────────────────────────────────────────
 
-type VerifyState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; result: ChainVerifyResult; at: number };
+/** `breakSeq`: the chain's break state when the verdict was given (JA2-31: the verdict is of that state). */
+type VerifyState = { kind: 'idle' } | { kind: 'running' } | { kind: 'done'; result: ChainVerifyResult; at: number; breakSeq: number | null };
 
 /**
  * Runs `verifyAuditChain()` (site S1-7): in Simulated mode one frame after the Spinner shows, as
  * before; in Live mode at the press. Only a press starts it: nothing is sent from a mount effect
  * (decision D158, F69-1), so a development build's StrictMode sends nothing at mount.
  */
-function useChainVerify() {
+function useChainVerify(breakSeq: number | null) {
   const actions = useCoreActions();
   const sim = useSimInstance();
   const live = useCoreLink().source === 'LIVE';
@@ -117,6 +124,11 @@ function useChainVerify() {
   const { toast } = useToast();
   const [state, setState] = useState<VerifyState>({ kind: 'idle' });
   const frame = useRef<number | null>(null);
+  // The chain's break state as of the latest render, for the answer's callback (JA2-31).
+  const breakSeqNow = useRef(breakSeq);
+  useEffect(() => {
+    breakSeqNow.current = breakSeq;
+  }, [breakSeq]);
   useEffect(() => () => {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
   }, []);
@@ -128,7 +140,7 @@ function useChainVerify() {
       settle(() => actions.verifyAuditChain(), {
         ok: (result) => {
           // S4-3: the store's clock; in Live mode the store is the Live source, its clock the Core's.
-          setState({ kind: 'done', result, at: sim.store.getState().clock.now });
+          setState({ kind: 'done', result, at: sim.store.getState().clock.now, breakSeq: breakSeqNow.current });
           triggerHaptic(result.ok ? 'verifyPass' : 'verifyFail');
         },
         fail: (error) => {
@@ -176,10 +188,12 @@ export function ChainStrip({ rows, head, total, breakSeq, focused }: ChainStripP
   const { t } = useTranslation();
   const m = useMotionSettings();
   const { tail, olderBreakSeq } = stripEntries(rows, breakSeq, STRIP_BLOCKS);
-  const verify = useChainVerify();
+  const verify = useChainVerify(breakSeq);
   const intact = breakSeq === null;
   /** Simulated mode's one frame between the press and the synchronous check (the Spinner as before). */
   const running = verify.state.kind === 'running';
+  // JA2-31: the chain's break state at the verdict against the chain as it is NOW (the header chip's fact).
+  const stale = verify.state.kind === 'done' && verdictStale(verify.state.breakSeq, breakSeq);
 
   return (
     <View style={styles.strip} testID="audit-chain-strip">
@@ -235,9 +249,9 @@ export function ChainStrip({ rows, head, total, breakSeq, focused }: ChainStripP
         </Button>
       </View>
       {verify.state.kind === 'done' ? (
-        <VerifyVerdict key={verify.state.at} result={verify.state.result} at={verify.state.at} motion={m.policy} />
+        <VerifyVerdict key={verify.state.at} result={verify.state.result} at={verify.state.at} motion={m.policy} stale={stale} />
       ) : null}
-      {verify.live && verify.state.kind === 'done' ? <LiveChainLines /> : null}
+      {verify.live && verify.state.kind === 'done' && !stale ? <LiveChainLines verdictOk={verify.state.result.ok} /> : null}
     </View>
   );
 }
@@ -287,7 +301,7 @@ function LinkBlock({ index, seq, broken, head, breathing }: { index: number; seq
   );
 }
 
-function VerifyVerdict({ result, at, motion }: { result: ChainVerifyResult; at: number; motion: 'full' | 'reduced' }) {
+function VerifyVerdict({ result, at, motion, stale }: { result: ChainVerifyResult; at: number; motion: 'full' | 'reduced'; stale: boolean }) {
   const { t } = useTranslation();
   const m = useMotionSettings();
   const scale = useSharedValue(motion === 'reduced' ? 1 : result.ok ? 0.6 : 1);
@@ -303,7 +317,23 @@ function VerifyVerdict({ result, at, motion }: { result: ChainVerifyResult; at: 
   const time = formatDate(at, DATE_PATTERNS.time);
   const text = result.ok
     ? t('features.audit.chain.verifiedAt', { count: result.checked, time })
-    : t('features.audit.chain.failedAt', { seq: result.seq, reason: t(`securityAudit.chain.reason.${result.reason}`) });
+    : t('features.audit.chain.failedAt', { seq: result.seq, reason: t(`securityAudit.chain.reason.${result.reason}`), time });
+
+  // JA2-31: the chain has changed since this check. It is stated as an earlier check with its time
+  // and what it found, in a neutral tone, and it asks for a new one. No PASS / FAIL chip stands.
+  if (stale) {
+    const found = result.ok
+      ? t('features.audit.chain.staleFoundOk', { count: result.checked })
+      : t('features.audit.chain.staleFoundBreak', { seq: result.seq });
+    return (
+      <View style={styles.verdict} testID="audit-verify-stale" accessibilityLiveRegion="polite">
+        <StatusChip size="sm" tone="default" icon={null} label={t('features.audit.chain.staleChip')} />
+        <Text maxFontSizeMultiplier={1.2} style={styles.verdictText} testID="audit-verify-text">
+          {t('features.audit.chain.staleVerdict', { time, found })}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <Animated.View entering={enterRise(0, m, { distance: 'riseSm' })} style={styles.verdict} testID={`audit-verify-${result.ok ? 'PASS' : 'FAIL'}`}>

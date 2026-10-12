@@ -9,6 +9,13 @@
  *   do not reach portalled content either: sheets take what they need as props;
  * - content-sized sheets open reliably on dems_phone, scrolling ones stayed parked: every Settings
  *   sheet is short and content-sized.
+ *
+ * Accessibility (fix wave J, JA2-16). The sheet library wraps its content in ONE accessible node,
+ * role `adjustable`, named "Bottom Sheet" (`@gorhom/bottom-sheet` defaults): a screen reader lands on
+ * that node and the title, the text and the controls inside are not offered one by one. The frame turns
+ * the wrapper off (`accessible={false}`, no role, no name), so every element is reachable under its own
+ * name; the content root is marked as a modal view; the kit names the dialog by its `Title` and closes
+ * it on the Android Back key (it consumes the key, so the screen underneath is not left).
  */
 import { BottomSheet } from 'heroui-native';
 import type { ReactNode } from 'react';
@@ -17,6 +24,7 @@ import { StyleSheet, View } from 'react-native';
 import { SimContext, useSimInstance } from '@dems/shared/sim';
 import { spacing } from '@dems/shared/tokens';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 export interface SheetFrameProps {
   isOpen: boolean;
@@ -31,13 +39,16 @@ export function SheetFrame({ isOpen, onClose, title, description, testID, childr
   const { t } = useTranslation();
   const sim = useSimInstance();
   const presence = useSheetPresence(isOpen);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: testID });
   if (!presence.mounted) return null;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content>
+        <BottomSheet.Content onAnimate={confirmed.onAnimate} accessible={false} accessibilityRole="none" accessibilityLabel="">
           <SheetContentSignal onChange={presence.setContentMounted}>
+           <View accessibilityViewIsModal>
             <View style={styles.header} testID={testID}>
               <View style={styles.headerText}>
                 <BottomSheet.Title>{title}</BottomSheet.Title>
@@ -49,6 +60,7 @@ export function SheetFrame({ isOpen, onClose, title, description, testID, childr
             <View style={styles.body}>
               <SimContext.Provider value={sim}>{children}</SimContext.Provider>
             </View>
+           </View>
           </SheetContentSignal>
         </BottomSheet.Content>
       </BottomSheet.Portal>

@@ -347,7 +347,9 @@ describe('the root layout mounts the landing beside the navigator (what these te
   // The layout cannot be loaded in Jest (it imports `global.css`), so this check reads its text. An
   // in-memory mutation of the layout cannot reach a file read; the negative controls below show the
   // check fails for a layout without the landing, or with it outside the boot gate.
-  const MOUNTED = /<BootGate>\s*<>\s*<RootNavigator \/>\s*<SignedOutLanding \/>\s*<\/>\s*<\/BootGate>/;
+  // Fix wave J (JM-01 d): the two now sit inside `UiRuntimeBoundary` (the screens are mounted anew, or replaced by a
+  // plain notice, when the animation runtime stops) - still inside the boot gate, still side by side.
+  const MOUNTED = /<BootGate>\s*(?:\{\/\*[^]*?\*\/\}\s*)?<UiRuntimeBoundary>\s*<RootNavigator \/>\s*<SignedOutLanding \/>\s*<\/UiRuntimeBoundary>\s*<\/BootGate>/;
   const layout = readFileSync(join(__dirname, '../../app/_layout.tsx'), 'utf8');
 
   it('`src/app/_layout.tsx` renders `<RootNavigator />` and `<SignedOutLanding />` inside BootGate', () => {
@@ -357,6 +359,7 @@ describe('the root layout mounts the landing beside the navigator (what these te
 
   it('negative controls: the check fails without the landing, and with the landing outside the gate', () => {
     expect(layout.replace('<SignedOutLanding />', '')).not.toMatch(MOUNTED);
-    expect(layout.replace(/<BootGate>\s*<>\s*<RootNavigator \/>\s*<SignedOutLanding \/>\s*<\/>\s*<\/BootGate>/, '<BootGate><RootNavigator /></BootGate><SignedOutLanding />')).not.toMatch(MOUNTED);
+    expect(layout.replace(MOUNTED, '<BootGate><RootNavigator /></BootGate><SignedOutLanding />')).not.toMatch(MOUNTED);
+    expect(layout.replace(MOUNTED, '<BootGate><RootNavigator /></BootGate><SignedOutLanding />')).not.toBe(layout);
   });
 });

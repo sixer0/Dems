@@ -11,7 +11,8 @@
  *   Live source keeps them on its handle (`auditChain`, client spec §2.5) and they are read through
  *   `useLiveSelector`. Nothing is computed on the tablet. During the demo fault AUDIT_TAMPER the
  *   verdict (the Core's ring) breaks while the stored line stays verified, as the server spec
- *   defines (§12.3).
+ *   defines (§12.3). In that case the line names both things (`storedVerifiedAfterBreak`), so a
+ *   verified stored log under a FAIL does not read as a contradiction (fix wave J, JA2-31).
  * - `AuditLinkNotice`: "Core server unreachable" while the Core link is down, by the runtime's one
  *   rule in one call (`useCoreLinkNotice`, rows M0 and M1): the rows shown are the last the Core
  *   sent. A 429 is no link state (LB-10) and never reaches it.
@@ -27,11 +28,13 @@ import { useCoreLinkNotice, type MobileLiveSim } from '@/runtime';
 import { storedChainLine } from './audit-model';
 
 /** The stored-chain line and the earlier-chains line of the last verification (Live mode). */
-export function LiveChainLines() {
+export function LiveChainLines({ verdictOk = true }: { verdictOk?: boolean }) {
   const { t } = useTranslation();
   const chain = useLiveSelector((live: MobileLiveSim | null) => live?.auditChain ?? null);
   if (chain === null) return null;
-  const stored = storedChainLine(chain.stored);
+  // Fix wave J (JA2-31): directly under a FAIL, "stored ... verified" read as a contradiction. The two
+  // checks are of two things; when they differ the line says which one the break is in.
+  const stored = storedChainLine(chain.stored, verdictOk);
   return (
     <View style={styles.lines} testID="audit-live-chain">
       <Text maxFontSizeMultiplier={1.2} style={[styles.line, chain.stored.ok ? null : styles.lineBroken]} testID={`audit-live-stored-${chain.stored.ok ? 'ok' : 'broken'}`}>

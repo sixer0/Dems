@@ -15,7 +15,11 @@ import {
   type FaultKind,
   type SessionCreateInput,
   type SimState,
+  EVIDENCE_NOT_SEALED_DIGEST,
+  EVIDENCE_NOT_SEALED_SIGNATURE,
+  hasSealedValues,
 } from '../src/sim';
+import { EvidenceItemSchema } from '../src/api';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0); // 2026-10-01 10:00 WIB
 
@@ -271,6 +275,74 @@ describe('allowed transitions (§14.7 table)', () => {
     expect(evidence).toMatchObject({ status: 'RECORDED', sealedAt: null });
     expect(state.audit.rows.map((row) => row.type)).toEqual(expect.arrayContaining(['RECOVERY_STARTED', 'SESSION_INCOMPLETE', 'RECOVERY_COMPLETED']));
     expect(state.audit.rows.some((row) => row.type === 'EVIDENCE_SEALED' && row.sessionId === sessionId)).toBe(false);
+
+    // Fix wave J (decision D243; truth rule 3a; BLOCKER JA2-01 / JW-01). The item of a session that "will never be
+    // sealed" carries NO sealed value: no track (so no per-track hash), the null digest where the shape needs a manifest
+    // hash, a placeholder where it needs a signature, no v2 seal member - and it parses as an item of the contract.
+    expect(evidence).toMatchObject({ tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE, verification: { status: 'NOT_RUN', at: null }, tampered: false });
+    expect(evidence).not.toHaveProperty('files');
+    expect(evidence).not.toHaveProperty('fragmentChainHead');
+    expect(evidence).not.toHaveProperty('transcriptSha256');
+    expect(hasSealedValues(evidence)).toBe(false);
+    expect(EvidenceItemSchema.safeParse(JSON.parse(JSON.stringify(evidence))).success).toBe(true);
+    // No 64-hex value of the record is anything but the null digest.
+    expect((JSON.stringify(evidence).match(/[0-9a-f]{64}/g) ?? []).filter((hex) => hex !== EVIDENCE_NOT_SEALED_DIGEST)).toEqual([]);
+
+    // Verify answers that there is nothing sealed to verify: refused, no verdict, no custody entry, no row, no event.
+    const rows = state.audit.total;
+    const events = state.events.length;
+    let refused: unknown = null;
+    try {
+      h.sim.actions.verify(evidence!.id);
+    } catch (error) {
+      refused = error;
+    }
+    expect(refused).toMatchObject({ name: 'SimTransitionError', code: 'UNSEALED_EVIDENCE', event: 'verify' });
+    expect(h.state().evidence.find((item) => item.sessionId === sessionId)).toEqual(evidence);
+    expect(h.state().audit.total).toBe(rows);
+    expect(h.state().events.length).toBe(events);
+    expect(h.state().audit.rows.some((row) => (row.type === 'EVIDENCE_VERIFIED' || row.type === 'EVIDENCE_VERIFY_FAILED') && row.evidenceId === evidence!.id)).toBe(false);
+  });
+
+  it('fix wave J CONTROL - a session that IS sealed carries its sealed values and verifies (a demonstration verdict); every other non-sealed end makes no item', () => {
+    const h = harness();
+    h.toRecording();
+    h.run(12_000);
+    const sessionId = h.state().session?.id;
+    h.sim.actions.stopRecording('Interview completed');
+    h.run(20_000);
+    const sealed = h.state().evidence.find((item) => item.sessionId === sessionId);
+    expect(sealed).toMatchObject({ status: 'SEALED', integritySource: 'SIMULATED' });
+    expect(hasSealedValues(sealed)).toBe(true);
+    expect(sealed?.tracks).toHaveLength(4);
+    expect(sealed?.manifestHash).not.toBe(EVIDENCE_NOT_SEALED_DIGEST);
+    expect(h.sim.actions.verify(sealed!.id)).toMatchObject({ ok: true, demonstration: true });
+
+    // Cancelled before a recording, and a fault before a recording: no evidence item at all.
+    const before = h.state().evidence.length;
+    h.sim.actions.acknowledgeSummary(sessionId ?? '');
+    h.sim.actions.createSession({ ...INPUT, caseNumber: 'LP/2026/1001-0042' });
+    h.sim.actions.cancel();
+    h.sim.actions.createSession({ ...INPUT, caseNumber: 'LP/2026/1001-0043' });
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    h.sim.actions.inject('POWER_FAIL');
+    h.sim.actions.recover();
+    h.run(5_000);
+    expect(h.state().session).toBeNull();
+    expect(h.state().evidence).toHaveLength(before);
+    expect(h.state().sessionHistory[0]).toMatchObject({ outcome: 'INCOMPLETE', startedAt: null, evidenceId: null });
+    // While a session records, stops and finalizes there is no item of it either.
+    h.sim.actions.clearFault('POWER_FAIL');
+    h.sim.actions.createSession({ ...INPUT, caseNumber: 'LP/2026/1001-0044' });
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    h.sim.actions.startRecording();
+    h.run(3_000);
+    const open = h.state().session?.id;
+    expect(h.state().evidence.some((item) => item.sessionId === open)).toBe(false);
+    h.sim.actions.stopRecording('Interview completed');
+    expect(h.state().evidence.some((item) => item.sessionId === open)).toBe(false);
   });
 
   it.each(['CREATE', 'PRECHECK', 'ARMED'])('%s → cancel → no session, audit SESSION_CANCELLED', (from) => {

@@ -44,6 +44,7 @@
 import { EvidenceMediaSource, type EvidenceDetail, type EvidenceMediaRef } from '@dems/shared/api';
 import { AuditType, Permission, type EvidenceItem } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { captureOperationOf } from '../capture/fence';
 import { STREAM_PROFILE_DIFFERS_REASON, itemWithSealedFacts, sealedFactsDoorsOf, type ItemWithSealedFacts, type SealedItemFacts } from '../engine';
 import { createExportService } from '../evidence-export';
 import { hasSealedPackageHere, sessionPackageDir } from '../evidence-verify';
@@ -68,6 +69,8 @@ export const SEALED_FACTS_CACHE_ENTRIES = 512;
 /** `media.reason` of an item that was never sealed, and of one with no package here and no bundled one. */
 export const MEDIA_NOT_SEALED_REASON = 'NOT_SEALED';
 export const MEDIA_NO_PACKAGE_REASON = 'NOT_A_SEALED_PACKAGE';
+/** Fix wave J (JA2-02): the record of a session of a Core in SIMULATED capture - a demonstration without media. */
+export const MEDIA_DEMONSTRATION_RECORD_REASON = 'DEMONSTRATION_RECORD';
 
 /** What a test replaces. */
 export interface EvidenceFactsParts {
@@ -231,7 +234,10 @@ export function evidenceFacts(app: FastifyInstance): EvidenceFactsControl {
       } else if (bundled.source === EvidenceMediaSource.DEMO_PACKAGE) {
         media = bundled;
       } else {
-        media = { source: EvidenceMediaSource.NONE, packageSuffix: null, reason: item.sealedAt === null ? MEDIA_NOT_SEALED_REASON : MEDIA_NO_PACKAGE_REASON };
+        // Fix wave J (JA2-02): an item a Core in SIMULATED capture sealed is a demonstration record that recorded no
+        // media - said by its own code, not as "no sealed package in the evidence store" beside a Summary that stored one.
+        const demonstrationRecord = item.sealedAt !== null && item.integritySource === 'SIMULATED' && captureOperationOf(app.config) === 'SIMULATED';
+        media = { source: EvidenceMediaSource.NONE, packageSuffix: null, reason: item.sealedAt === null ? MEDIA_NOT_SEALED_REASON : demonstrationRecord ? MEDIA_DEMONSTRATION_RECORD_REASON : MEDIA_NO_PACKAGE_REASON };
       }
 
       const principal = request.principal;

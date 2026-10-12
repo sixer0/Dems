@@ -604,7 +604,7 @@ describe('password sign-in on a paired tablet (S1-1, §9.2)', () => {
     await expect(signIn()).resolves.toEqual({ ok: false, reason: 'UNAVAILABLE' });
     expect(probe()).toContain('failure=LIMIT/42');
     expect(latest.session!.signInFailure).toMatchObject({ kind: 'LIMIT', outage: false, retryAfterSeconds: 42 });
-    expect(screen.queryAllByText('The Core server is limiting requests from this tablet').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('The Core server is limiting requests from this device').length).toBeGreaterThan(0);
     expect(screen.queryAllByText('Try again in 42 s.').length).toBeGreaterThan(0);
     // No failed attempt was counted, the link is as it was, and the next attempt signs in.
     expect(probe()).toContain('locked=false/0/5');
@@ -903,7 +903,7 @@ describe('the DEPARTURE-6 conditions (MB-6a, AC-C-105)', () => {
     expect(store().has(SECURE_ITEM_KEYS.biometricToken)).toBe(false);
     expect(store().has(SECURE_ITEM_KEYS.biometricMarker)).toBe(false);
     expect(probe()).toContain('bio=off/null/open');
-    expect(screen.queryAllByText('Biometric sign-in could not be turned on on this tablet.').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Biometric sign-in could not be turned on on this device.').length).toBeGreaterThan(0);
     // The session stays, and the Core was told: it holds no live token that nobody has.
     expect(probe()).toContain(`auth=${OPERATOR.id}`);
     expect(requests('setBiometricEnrollment').map((call) => call.body)).toEqual([{ enabled: true }, { enabled: false }]);
@@ -1041,7 +1041,7 @@ describe('biometric sign-in with rotation (MB-3 to MB-6, AC-C-69, finding F72)',
     expect(probe()).toContain('notice=biometric-invalid');
     expect(probe()).toContain('bio=off/null/open');
     expect(probe()).toContain(`pairing=PAIRED/${STORED.deviceId}`);
-    expect(screen.getByText('Biometric sign-in is no longer valid on this tablet. Sign in with your password to enable it again.')).toBeTruthy();
+    expect(screen.getByText('Biometric sign-in is no longer valid on this device. Sign in with your password to enable it again.')).toBeTruthy();
     // The button is gone: a second press sends nothing.
     await expect(fingerprint()).resolves.toEqual({ kind: 'unavailable' });
     expect(requests('signInWithBiometric')).toHaveLength(1);
@@ -1234,7 +1234,7 @@ describe('`session.ended` with `TOKEN_REUSE` (AC-C-108, §6.5)', () => {
     expect(probe()).toContain('notice=token-reuse');
     expect(probe()).toContain('lastSignOut=-');
     expect(screen.getByTestId('auth-notice-token-reuse')).toBeTruthy();
-    expect(screen.getByText('Biometric sign-in was turned off on this tablet because its token was used a second time. Sign in with your password.')).toBeTruthy();
+    expect(screen.getByText('Biometric sign-in was turned off on this device because its token was used a second time. Sign in with your password.')).toBeTruthy();
     expect(screen.queryByTestId('idle-lock-dialog')).toBeNull();
 
     expect(store().has(SECURE_ITEM_KEYS.biometricToken)).toBe(false);

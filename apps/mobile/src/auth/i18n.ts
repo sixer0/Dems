@@ -13,9 +13,9 @@ export const authEn = {
   // screen's other notices are.
   notice: {
     // §6.5: `session.ended` with `TOKEN_REUSE`.
-    tokenReuse: 'Biometric sign-in was turned off on this tablet because its token was used a second time. Sign in with your password.',
+    tokenReuse: 'Biometric sign-in was turned off on this device because its token was used a second time. Sign in with your password.',
     // MB-3: the Core refused the stored token for good; MB-6a: the token could not be read or kept.
-    biometricInvalid: 'Biometric sign-in is no longer valid on this tablet. Sign in with your password to enable it again.',
+    biometricInvalid: 'Biometric sign-in is no longer valid on this device. Sign in with your password to enable it again.',
     // §6.4: `session.ended` with `USER_DISABLED`.
     userDisabled: 'This account was disabled by an administrator.',
     // WS-14: `session.ended` with `ABSOLUTE_EXPIRED`.
@@ -27,6 +27,6 @@ export const authEn = {
     // MB-1: the Settings switch in a session that was created with the fingerprint.
     passwordSessionRequired: 'Sign in with your password to change biometric sign-in.',
     // The offer after a password sign-in was accepted and the tablet could not keep the token.
-    enrolFailed: 'Biometric sign-in could not be turned on on this tablet.',
+    enrolFailed: 'Biometric sign-in could not be turned on on this device.',
   },
 } as const satisfies ResourceTree;

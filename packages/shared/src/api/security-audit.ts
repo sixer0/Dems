@@ -76,11 +76,24 @@ import { AuditRowSchema, REPLICATED_SLICE_SCHEMAS, SimEventSchema } from './stat
 // Schemas
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/** Fix wave J (GM-02): `evidenceVerification` of operation `getSecurityStatus`: 50 sealed items, 31 PASS, 1 FAIL, 18 never verified. */
+export const SECURITY_STATUS_EVIDENCE_VERIFICATION_EXAMPLE = Object.freeze({ sealed: 50, passed: 31, failed: 1, neverVerified: 18 } as const);
+
 export const SecurityStatusSchema = z
   .strictObject({
     security: REPLICATED_SLICE_SCHEMAS.security,
     auditHead: sha256Hex().describe('Hash of the newest audit row of the stored chain; 64 zeros when the chain is empty.'),
     auditTotal: count().describe('Rows of the stored chain: the `seq` of its newest row.'),
+    // Fix wave J (confirmation finding GM-02): the Core's own count, over EVERY item - not over the newest rows of the audit view.
+    evidenceVerification: z
+      .strictObject({
+        sealed: count().describe('Items that are sealed (`sealedAt` set). Never-sealed records are not counted.'),
+        passed: count().describe('Sealed items whose verification of record is PASS.'),
+        failed: count().describe('Sealed items whose verification of record is FAIL.'),
+        neverVerified: count().describe('Sealed items with no verification of record (NOT_RUN).'),
+      })
+      .optional()
+      .describe('Core server only: how many sealed items have / have no verification of record, counted over the whole evidence list by each item\'s `verification.status`. `passed + failed + neverVerified = sealed`. Absent: not stated (Simulated mode, an older Core).'),
   })
   .describe('The `security` slice in its wire form, with the head and the row count of the audit chain.');
 export type SecurityStatus = z.output<typeof SecurityStatusSchema>;
@@ -503,7 +516,7 @@ export const SECURITY_AUDIT_EXAMPLES: Readonly<Record<string, OperationExamples>
       200: {
         secure: {
           summary: 'Posture SECURE, 82 audit rows',
-          value: { security: EXAMPLE_SLICES.security, auditHead: HEAD, auditTotal: TOTAL } satisfies SecurityStatus,
+          value: { security: EXAMPLE_SLICES.security, auditHead: HEAD, auditTotal: TOTAL, evidenceVerification: SECURITY_STATUS_EVIDENCE_VERIFICATION_EXAMPLE } satisfies SecurityStatus,
         },
       },
       401: SIGNED_OUT,

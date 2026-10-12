@@ -17,6 +17,8 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
 } from './settings-model';
 import { parseSettingsPrefs } from './settings-prefs';
+import { NO_ALERT_TOASTS, alertToastKind, alertToastStep } from '@/features/alerts/alert-toasts-model';
+import type { SimAlert } from '@dems/shared/sim';
 
 describe('settings model', () => {
   it('MB 10 rows: Application 3, System 7 (5 of MB 10 + Capture, row 68 + Transcription status, row 118), in mockup order; System opens the existing screens', () => {
@@ -59,6 +61,53 @@ describe('settings model', () => {
     expect(shouldNotify(FaultKind.STORAGE_LOW, off)).toBe(true);
     const allOff = { devices: false, storage: false, time: false, system: false };
     for (const kind of CRITICAL_FAULTS) expect(shouldNotify(kind, allOff)).toBe(true);
+  });
+
+  // Fix wave J (JA2-05): the consumer of the switches (`<AlertToasts />`, `features/alerts`). Before it, nothing read them.
+  describe('notifications: the alert-toast consumer of the switches (JA2-05)', () => {
+    const alert = (id: string, kind: SimAlert['kind'], severity: SimAlert['severity'], over: Partial<SimAlert> = {}): SimAlert => ({ id, at: 1, severity, kind, message: kind, active: true, acknowledged: false, resolvedAt: null, ...over });
+    const ON = DEFAULT_NOTIFICATION_PREFS;
+    const ALL_OFF = { devices: false, storage: false, time: false, system: false };
+
+    it('severity decides first: CRITICAL always toasts; a warning follows its switch; INFO and SUCCESS never toast', () => {
+      for (const kind of CRITICAL_FAULTS) expect([kind, alertToastKind({ kind, severity: 'CRITICAL' }, ALL_OFF)]).toEqual([kind, 'critical']);
+      expect(alertToastKind({ kind: FaultKind.STORAGE_LOW, severity: 'WARNING' }, ON)).toBe('warning');
+      expect(alertToastKind({ kind: FaultKind.STORAGE_LOW, severity: 'WARNING' }, { ...ON, storage: false })).toBeNull();
+      expect(alertToastKind({ kind: FaultKind.MIC_CLIP, severity: 'WARNING' }, { ...ON, storage: false })).toBe('warning');
+      expect(alertToastKind({ kind: FaultKind.GNSS_LOSS, severity: 'WARNING' }, { ...ON, time: false })).toBeNull();
+      expect(alertToastKind({ kind: 'SYSTEM', severity: 'INFO' }, ON)).toBeNull();
+      expect(alertToastKind({ kind: 'SYSTEM', severity: 'SUCCESS' }, ON)).toBeNull();
+    });
+
+    it('one toast per alert id: a slice replicated again raises nothing; a critical one is persistent', () => {
+      const critical = alert('ALR-1', FaultKind.STORAGE_FULL, 'CRITICAL');
+      const warning = alert('ALR-2', FaultKind.STORAGE_LOW, 'WARNING');
+      const started = alertToastStep(NO_ALERT_TOASTS, [], ON, true);
+      const first = alertToastStep(started.state, [critical, warning], ON, false);
+      expect(first.show.map((entry) => [entry.alert.id, entry.persistent])).toEqual([['ALR-1', true], ['ALR-2', false]]);
+      const again = alertToastStep(first.state, [{ ...critical }, { ...warning }], ON, false);
+      expect([again.show, again.hide]).toEqual([[], []]);
+    });
+
+    it('a critical toast leaves when the alert is acknowledged, resolved, or gone - a warning that was there at the start is never announced', () => {
+      const critical = alert('ALR-1', FaultKind.TPM_FAILURE, 'CRITICAL');
+      const atStart = alertToastStep(NO_ALERT_TOASTS, [critical, alert('ALR-2', FaultKind.FAN_STALL, 'WARNING')], ON, true);
+      // At the start: the unacknowledged critical alert is shown at once ("stays until acknowledged"); the warning is not.
+      expect(atStart.show.map((entry) => entry.alert.id)).toEqual(['ALR-1']);
+      expect(alertToastStep(atStart.state, [{ ...critical, acknowledged: true }], ON, false).hide).toEqual(['ALR-1']);
+      expect(alertToastStep(atStart.state, [{ ...critical, active: false }], ON, false).hide).toEqual(['ALR-1']);
+      expect(alertToastStep(atStart.state, [], ON, false).hide).toEqual(['ALR-1']);
+      // An acknowledged critical alert found at the start raises no toast.
+      expect(alertToastStep(NO_ALERT_TOASTS, [{ ...critical, acknowledged: true }], ON, true).show).toEqual([]);
+    });
+
+    it('a switch that is off silences NEW warnings of its category only; turning it on later announces only later alerts', () => {
+      const started = alertToastStep(NO_ALERT_TOASTS, [], ALL_OFF, true);
+      const silent = alertToastStep(started.state, [alert('ALR-3', FaultKind.STORAGE_LOW, 'WARNING')], ALL_OFF, false);
+      expect(silent.show).toEqual([]);
+      const later = alertToastStep(silent.state, [alert('ALR-3', FaultKind.STORAGE_LOW, 'WARNING'), alert('ALR-4', FaultKind.STORAGE_LOW, 'WARNING')], ON, false);
+      expect(later.show.map((entry) => entry.alert.id)).toEqual(['ALR-4']);
+    });
   });
 
   it('biometric switch: on only for the bound operator; needs enrolled hardware to turn on', () => {

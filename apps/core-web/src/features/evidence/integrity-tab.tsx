@@ -6,13 +6,16 @@ import { DEMO_EVIDENCE_INDEX } from '@dems/shared/demo-data'
 import { formatUtcOffset } from '@dems/shared/realtime'
 import { EvidenceLifecycleStage } from '@dems/shared/domain'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
-import { useSim } from '@dems/shared/sim'
+import type { TFunction } from 'i18next'
+import { hasSealedValues, useSim, verificationOfRecordFailed } from '@dems/shared/sim'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
 import { useMotionPolicy } from '@/motion'
 import { CheckList } from './check-list'
 import { VerdictChip, type VerdictState } from './chips'
 import { copyText } from './clipboard'
 import { readItemFacts } from './item-facts'
+import { auditActionWords, causeWords } from './cause-words'
+import { NotSealedStatement } from './item-marks'
 import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, storedVerification, type EvidenceRow } from './model'
 import { selectOperators } from './selectors'
 import { useRetryCooldown } from './use-retry-cooldown'
@@ -35,6 +38,20 @@ export interface IntegrityTabProps {
  * the table wider than its card (a code has no other break opportunity). The words are unchanged:
  * `<wbr>` adds no text.
  */
+/**
+ * Fix wave J (JW-13): the custody table printed raw codes (`RECORDING_STOPPED`, `VERIFY_FAILED`,
+ * "STORAGE_FULL; recovered", "Cause: CAPTURE_FAULT"). The action reads the audit vocabulary's name
+ * (`common.auditType.*`), a fault code inside a detail its name (`common.faultKind.*`); a code the
+ * vocabulary does not hold stays as it is (breakable after an underscore).
+ */
+function custodyActionWords(t: TFunction, action: string): ReactNode {
+  return auditActionWords(t, action) ?? breakableCode(action)
+}
+
+function custodyDetailWords(t: TFunction, detail: string): string {
+  return detail.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, (code) => causeWords(t, code))
+}
+
 function breakableCode(code: string): ReactNode {
   const parts = code.split('_')
   return parts.map((part, index) => (
@@ -105,7 +122,8 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const facts = useMemo(() => readItemFacts(row.item), [row.item])
   const pkg = fromItem ? null : row.pkg
 
-  const recordNow = storedVerification(row.item)
+  const sealed = hasSealedValues(row.item)
+  const recordNow = sealed ? storedVerification(row.item) : null
   // FXR-W W92-10 (D227 O-RF-T-3; the mobile card's CF-M2 rule): while a run is on screen the line keeps
   // the record's value from the run's start. In Live mode the Core's delta updates the record before
   // the run reveals its checks (CL-16), so the line would show the new verdict before the run does.
@@ -127,6 +145,7 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
     if (result?.phase === 'done') retry.reset()
   }
 
+  const recordFailed = verificationOfRecordFailed(row.item)
   // M-C-09 lifecycle: stages fill in sequence up to the current one (instant under reduced motion).
   const currentIndex = Math.max(0, LIFECYCLE.indexOf(row.item.lifecycleStage))
   const [stepped, setStepped] = useState(-1)
@@ -149,7 +168,10 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   const lifecycleSteps: StepperStep[] = LIFECYCLE.map((stage, index) => ({
     id: stage,
     label: t(`common.enums.evidenceLifecycleStage.${stage}`),
-    status: index < revealed ? 'done' : index === revealed && index === currentIndex ? 'active' : 'pending',
+    // Fix wave J (JT-04 / JW-09; truth rule 3b): the stage of an item whose verification of record FAILED is not a plain
+    // "Sealed local evidence: Active" - it carries the failed verification, in the error tone.
+    status: index < revealed ? 'done' : index === revealed && index === currentIndex ? (recordFailed ? 'error' : 'active') : 'pending',
+    description: index === currentIndex && recordFailed ? t('web.waveJ.evidence.lifecycleFailed') : undefined,
   }))
 
   const nameOf = (actorId: string | null) =>
@@ -184,6 +206,14 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   return (
     <div className="evi-integrity" data-testid="evidence-integrity" data-mode={state.mode}>
       <div className="evi-integrity-main">
+        {/* Fix wave J (JW-01; truth rule 3a; contract J-S 1): an item that was never sealed has no sealed value, no manifest,
+            no signature, no Verify control and no verdict - on ANY lane. The page states what the item is. */}
+        {!sealed ? (
+          <Card className="evi-verify-card" data-testid="evidence-verify-card" data-verdict-source="none" data-not-sealed="true">
+            <NotSealedStatement item={row.item} />
+          </Card>
+        ) : (
+          <>
         <Card className="evi-verify-card" data-testid="evidence-verify-card" data-verdict-source={showStored ? 'record' : state.phase === 'idle' ? 'none' : 'run'}>
           <div className="evi-verify-head">
             <VerdictChip verdict={verdict} runKey={state.runId} size="lg" />
@@ -200,6 +230,15 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
                   ? t('evidence.live.verify.note')
                   : (state.label ?? (state.mode === 'package' ? t('evidence.verify.trustNote') : t('evidence.verify.simulatedNote')))}
               </span>
+              {/* Fix wave J (JA2-02 / JW-01): a verdict the simulator computed over a demonstration record says that it is one. */}
+              {state.demonstration === true && state.phase === 'done' ? (
+                <span className="evi-caption evi-strong" role="status" data-testid="evidence-verify-demonstration">
+                  <Chip size="sm" variant="soft" color="warning" className="mr-1">
+                    <Chip.Label>{t('web.waveJ.demo.chip')}</Chip.Label>
+                  </Chip>
+                  {t('web.waveJ.evidence.demonstrationVerdict')}
+                </span>
+              ) : null}
               {lastLine ? (
                 <span className="evi-caption evi-verify-last" data-testid="evidence-verify-last" data-status={stored?.status}>
                   {lastLine}
@@ -392,6 +431,8 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
             ) : null}
           </ul>
         </Card>
+          </>
+        )}
       </div>
 
       <div className="evi-integrity-side">
@@ -442,11 +483,12 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
                           </span>
                         </Table.Cell>
                         <Table.Cell className="evi-custody-action-cell">
-                          <span className="evi-strong evi-custody-action">{breakableCode(entry.action)}</span>
+                          {/* Fix wave J (JW-13): the action by its name where the audit vocabulary has one; the code stays as the title. */}
+                          <span className="evi-strong evi-custody-action" title={entry.action}>{custodyActionWords(t, entry.action)}</span>
                         </Table.Cell>
                         <Table.Cell className="evi-custody-actor">{nameOf(entry.actorId)}</Table.Cell>
                         <Table.Cell className="evi-custody-detail" data-empty={entry.detail ? undefined : 'true'}>
-                          <span className="evi-caption">{entry.detail ?? '—'}</span>
+                          <span className="evi-caption">{entry.detail ? custodyDetailWords(t, entry.detail) : '—'}</span>
                         </Table.Cell>
                       </Table.Row>
                     ))}

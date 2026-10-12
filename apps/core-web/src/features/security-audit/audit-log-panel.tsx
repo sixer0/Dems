@@ -34,7 +34,8 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { motion, useAnimate } from 'motion/react'
-import { CircleCheck, CircleX, FileDown, Link2, ScrollText } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CircleCheck, CircleX, FileDown, Link2, ScrollText } from 'lucide-react'
+import { useSidewaysMore } from '@/lib/sideways-scroll'
 import { useTranslation } from 'react-i18next'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
 import { AuditCategory, faultKindLabelKey, Permission, selectCan, Severity, useSim } from '@dems/shared/sim'
@@ -344,6 +345,9 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
   const [focusedSeq, setFocusedSeq] = useState<number | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  // Fix wave J round three: the table may be wider than its card (1144 px in 1008 px at 1280) - it then SAYS that
+  // columns lie to the side, and on which side (`lib/sideways-scroll.ts`).
+  const sideways = useSidewaysMore(tableRef)
   const pendingFocus = useRef<number | null>(null)
   const [handledNonce, setHandledNonce] = useState<number | null>(null)
   if (focusRequest && focusRequest.nonce !== handledNonce) {
@@ -571,7 +575,7 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
 
       <RevealContext.Provider value={book}>
       <div ref={panelRef}>
-      <div ref={fadeScope} className="sa-table-wrap">
+      <div ref={fadeScope} className="sa-table-wrap" data-more-right={sideways === 'right' || sideways === 'both' ? 'true' : undefined} data-more-left={sideways === 'left' || sideways === 'both' ? 'true' : undefined}>
         <Table variant="secondary" className="sa-table">
           <Virtualizer layout={TableLayout} layoutOptions={{ rowHeight: ROW_HEIGHT, headingHeight: HEADING_HEIGHT }}>
             <Table.Content
@@ -635,6 +639,14 @@ export const AuditLogPanel = memo(function AuditLogPanel({ chain, focusRequest, 
       </div>
       </div>
       </RevealContext.Provider>
+
+      {sideways === 'none' ? null : (
+        <p className="sa-sideways-cue" role="note" data-testid="audit-sideways-cue" data-more={sideways}>
+          {sideways === 'left' ? <ArrowLeft className="sa-sideways-icon" aria-hidden="true" /> : null}
+          <span>{t(`web.waveJ3.sideways.${sideways}`)}</span>
+          {sideways === 'left' ? null : <ArrowRight className="sa-sideways-icon" aria-hidden="true" />}
+        </p>
+      )}
 
       <div className="sa-table-footer">
         <span>

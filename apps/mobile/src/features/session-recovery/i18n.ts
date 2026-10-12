@@ -41,7 +41,7 @@ export const sessionRecoveryEn = {
     segmentNone: 'No media recorded',
     timeLocked: '{{source}} locked throughout',
     timeFallback: '{{from}} → {{to}} at {{time}}',
-    analysis: 'Sealing rule checked (SYS-008)',
+    analysis: 'Sealing rule checked',
   },
   // Per-track result chips and lines.
   track: {

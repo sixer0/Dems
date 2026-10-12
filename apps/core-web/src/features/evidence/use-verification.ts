@@ -56,7 +56,7 @@ import {
   type DemoVerificationReport,
 } from '@dems/shared/demo-data'
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
-import { useSimInstance, type EvidenceVerifyResult } from '@dems/shared/sim'
+import { hasSealedValues, useSimInstance, type EvidenceVerifyResult } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
@@ -112,6 +112,17 @@ export interface VerifyState {
   v2?: VerifyV2Answer | null | undefined
   /** The item is schema v2: the view waits for (and then draws) a v2 result, never the v1 rows. Absent = false. */
   awaitsV2?: boolean | undefined
+  /**
+   * Fix wave J (JA2-02 / JW-01; `contract_wave_j.md` J-S 2): the verdict carries `demonstration: true` - the
+   * simulator compared the hashes of a demonstration record and read no stored media. The page words such a
+   * verdict as a demonstration, never as a bare "verified by the Core". Absent = false.
+   */
+  demonstration?: boolean | undefined
+}
+
+/** `demonstration` of a verify answer, read BY NAME. */
+export function isDemonstrationVerdict(result: unknown): boolean {
+  return typeof result === 'object' && result !== null && (result as Record<string, unknown>)['demonstration'] === true
 }
 
 /**
@@ -267,6 +278,12 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
   const run = useCallback(async (): Promise<VerifyState | null> => {
     const target = rowRef.current
     if (!target || running.current) return null
+    // Fix wave J (JW-01; truth rule 3a; contract J-S 1): an item that was never sealed has nothing to verify. No request is
+    // sent (the Core would answer 409 NOT_SEALED) and nothing can turn green: the page says what the item is.
+    if (!hasSealedValues(target.item)) {
+      if (toasts) toast.warning(t('web.waveJ.evidence.notSealedVerify'))
+      return null
+    }
     running.current = true
     const myGeneration = ++generation.current
     const correlationId = newCorrelationId('verify')
@@ -380,6 +397,7 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
           mode: 'core',
           checks: views,
           verdict: verdictOfAnswer(coreResult, v2),
+          demonstration: isDemonstrationVerdict(coreResult),
           v2,
           awaitsV2: v2 !== null,
           label: null,
@@ -433,6 +451,7 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
           mode: 'simulated',
           checks: views,
           verdict: verdictOfAnswer(result, null),
+          demonstration: isDemonstrationVerdict(result),
           label: null,
           report: null,
           runId,
@@ -446,7 +465,8 @@ export function useEvidenceVerification(row: EvidenceRow | null, options: Eviden
       if (toasts) {
         const failed =
           final.v2 != null ? v2FailedNames(final.v2, t) : final.checks.filter((check) => check.phase === 'fail').map((check) => check.id.replace('track:', ''))
-        if (final.verdict === 'PASS') toast.success(t('evidence.verify.toastPass', { id: target.id }))
+        // Wave J: the toast of a demonstration verdict says that it is one ("Integrity verified ... PASS" carried no mark).
+        if (final.verdict === 'PASS') toast.success(t('evidence.verify.toastPass', { id: target.id }), final.demonstration === true ? { description: t('web.waveJ.evidence.demonstrationVerdict') } : undefined)
         else toast.danger(t('evidence.verify.toastFail', { id: target.id, checks: failed.join(', ') }))
       }
       return final

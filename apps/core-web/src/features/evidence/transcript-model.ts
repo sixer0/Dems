@@ -261,3 +261,30 @@ export function readRefusalOf(status: number | null, code: string): TranscriptRe
   if (status === 403) return 'DENIED'
   return 'FAILED'
 }
+
+/**
+ * A segment as the operator counts it (fix wave J round three; note N-13 of `report/judging_b1_web.md`):
+ * the first segment is "segment 1". The sealed document, the revision request and every record keep
+ * the index from 0 - only what is READ changes ("Revise segment 3" named the fourth).
+ */
+export function segmentNumberOf(index: number): number {
+  return index + 1
+}
+
+/** From this much recording after the last transcribed word on, the pane says so. Shorter tails are ordinary silence. */
+export const TRANSCRIPT_TAIL_NOTICE_MS = 30_000
+
+/**
+ * HOW FAR THE TRANSCRIPT REACHES (fix wave J round three; note N-19): the end of the last sealed
+ * segment against the length of the recording. An item read "Transcript assembled" although its
+ * text ended at 0:16 of a 2:02 recording, without a word about the other 1:46. `null`: the transcript
+ * reaches the end (or within `TRANSCRIPT_TAIL_NOTICE_MS` of it), has no segment (the pane says "no
+ * speech" itself), or the length is not known. It states two facts of the item and no cause: why
+ * nothing was transcribed after that point is not something the console knows.
+ */
+export function transcriptTailOf(segments: readonly Pick<TranscriptSegment, 'endMs'>[], durationMs: number | null | undefined): { readonly lastEndMs: number; readonly durationMs: number } | null {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0 || segments.length === 0) return null
+  let lastEndMs = 0
+  for (const segment of segments) if (segment.endMs > lastEndMs) lastEndMs = segment.endMs
+  return durationMs - lastEndMs >= TRANSCRIPT_TAIL_NOTICE_MS ? { lastEndMs, durationMs } : null
+}

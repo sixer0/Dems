@@ -2,7 +2,9 @@ import { Chip } from '@heroui/react'
 import { Fingerprint } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSim, type DeviceIdentity, type SimState } from '@dems/shared/sim'
+import { ComponentVersionRows } from '@/components/component-versions'
 import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
+import { useProductVersions } from '@/lib/product-versions'
 import { SystemPanel } from './panel'
 import { releaseInfo } from './sim-adapter'
 
@@ -44,6 +46,10 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
   const about = useSim(selectAbout)
   const platformNotReported = usePlatformNotReported()
   const selfCapture = useSelfCaptureCore()
+  // Fix wave J round three (JW-26): on a Core in its own capture `device.softwareVersion`, the identity's two
+  // version fields and the update slice are the demonstration model's. They are not drawn there; the
+  // components are listed by name with the versions the Core (operation 64) and this console state.
+  const versions = useProductVersions(device.softwareVersion)
   const release = releaseInfo(device.softwareVersion)
   const drift = device.identity.coreSoftwareVersion !== device.softwareVersion || about.updateVersion !== device.softwareVersion
 
@@ -51,7 +57,7 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
     { key: 'deviceId', label: t('system.about.deviceId'), value: device.id, mono: true },
     { key: 'room', label: t('system.about.room'), value: device.room },
     { key: 'model', label: t('system.about.model'), value: device.productName },
-    { key: 'release', label: t('system.about.softwareRelease'), value: `v${device.softwareVersion}`, mono: true },
+    ...(versions.modelVersion !== null ? [{ key: 'release', label: t('system.about.softwareRelease'), value: `v${versions.modelVersion}`, mono: true }] : []),
     { key: 'hardware', label: t('system.about.hardwareRevision'), value: device.identity.chassisRevision, mono: true },
     { key: 'slot', label: t('system.about.activeSlot'), value: t('system.update.slot', { slot: about.slot }) },
     { key: 'ip', label: t('system.about.ipAddress'), value: about.ip, mono: true },
@@ -82,6 +88,16 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
         ))}
       </dl>
 
+      {versions.ownCore ? (
+        <section className="sys-subsection" aria-label={t('web.waveJ3.versions.title')} data-testid="system-components">
+          <h3 className="sys-subtitle">{t('web.waveJ3.versions.title')}</h3>
+          <p className="sys-small" data-testid="system-components-source">{t('web.waveJ3.versions.source')}</p>
+          <dl className="sys-identity">
+            <ComponentVersionRows rows={versions.rows} rowClassName="sys-identity-row" valueClassName="sys-mono" testIdPrefix="system-component" />
+          </dl>
+        </section>
+      ) : null}
+
       <div className="sys-about-split">
         <section className="sys-subsection" aria-label={t('system.about.identityTitle')}>
           <h3 className="sys-subtitle">{t('system.about.identityTitle')}</h3>
@@ -92,6 +108,12 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
                 {/* Closing pass J (D217 (7)): a Core that states `security.platformNotReported` reads no TPM - the row says so, not the dataset's model. */}
                 {field === 'tpmModelFirmware' && platformNotReported ? (
                   <dd data-testid="system-about-tpm">{t('common.platformNotReported.value')}</dd>
+                ) : versions.ownCore && field === 'coreSoftwareVersion' ? (
+                  // JW-26: the Core's own statement (operation 64 `components.core`), never the model's field.
+                  <dd className={versions.coreVersion === null ? undefined : 'sys-mono'} data-testid="system-about-coreSoftwareVersion">{versions.coreVersion ?? t('common.platformNotReported.value')}</dd>
+                ) : versions.ownCore && field === 'tabletAppVersion' ? (
+                  // JW-26: an app states its own version when it pairs; the list is on Paired Devices. The model's field is not it.
+                  <dd data-testid="system-about-tabletAppVersion">{t('web.waveJ3.versions.pairedApps')}</dd>
                 ) : selfCapture && (field === 'deviceCertificateId' || field === 'cameraModelFirmware') ? (
                   // Fix wave K (C-2): this Core reports no device certificate, and the camera record of the dataset ("Dual-lens IP camera DL-2") is not its source.
                   <dd data-testid={`system-about-${field}`}>{t('common.platformNotReported.value')}</dd>
@@ -108,10 +130,12 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
         <section className="sys-subsection" aria-label={t('system.about.sbomTitle')} data-testid="system-sbom">
           <h3 className="sys-subtitle">{t('system.about.sbomTitle')}</h3>
           <dl className="sys-identity">
-            <div className="sys-identity-row">
-              <dt>{t('system.about.softwareRelease')}</dt>
-              <dd className="sys-mono">v{release.version}</dd>
-            </div>
+            {versions.modelVersion !== null ? (
+              <div className="sys-identity-row">
+                <dt>{t('system.about.softwareRelease')}</dt>
+                <dd className="sys-mono">v{release.version}</dd>
+              </div>
+            ) : null}
             <div className="sys-identity-row">
               <dt>{t('system.about.buildId')}</dt>
               <dd className="sys-mono">{release.buildId}</dd>
@@ -130,14 +154,17 @@ export function AboutPanel({ anchorId }: { anchorId: string }) {
               <dt>{t('system.about.sbomFormat')}</dt>
               <dd>{release.format}</dd>
             </div>
-            <div className="sys-identity-row">
-              <dt>{t('system.about.drift')}</dt>
-              <dd>
-                <Chip size="sm" variant="soft" color={drift ? 'warning' : 'success'} className="sys-status-chip" data-testid="system-drift">
-                  <Chip.Label>{drift ? t('system.about.driftFound') : t('system.about.driftNone')}</Chip.Label>
-                </Chip>
-              </dd>
-            </div>
+            {/* JW-26: the drift check compares three version fields of the model; on a Core in its own capture none of them is a version of it. */}
+            {versions.modelVersion !== null ? (
+              <div className="sys-identity-row">
+                <dt>{t('system.about.drift')}</dt>
+                <dd>
+                  <Chip size="sm" variant="soft" color={drift ? 'warning' : 'success'} className="sys-status-chip" data-testid="system-drift">
+                    <Chip.Label>{drift ? t('system.about.driftFound') : t('system.about.driftNone')}</Chip.Label>
+                  </Chip>
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </section>
       </div>

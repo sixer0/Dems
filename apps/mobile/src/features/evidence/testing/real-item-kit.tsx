@@ -23,7 +23,7 @@ export const CORE_KEY = 'CORE-KEY-EVSIGN-01';
 
 export type ItemChange = (item: EvidenceItem) => EvidenceItem;
 
-export type ContractItemName = 'withPackage' | 'productSealed' | 'productSealedInterrupted' | 'productSealedOneCamera' | 'noMedia' | 'outsideCaseScope' | 'seedSealedDemo';
+export type ContractItemName = 'withPackage' | 'productSealed' | 'productSealedInterrupted' | 'productSealedOneCamera' | 'noMedia' | 'outsideCaseScope' | 'seedSealedDemo' | 'neverSealed' | 'simulatedSealed';
 /** A `getEvidence` 200 example of the contract, checked against the strict schema of operation 40; a fresh copy. */
 export function contractDetail(name: ContractItemName): EvidenceDetail {
   const example = (CORE_API_EXAMPLES.getEvidence?.responses[200] as Record<string, { value: unknown }> | undefined)?.[name];

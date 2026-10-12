@@ -422,6 +422,10 @@ describe('AC-C-11: error rebuilding (CL-20, CL-21)', () => {
     [409, 'INVALID_STATE', { simCode: 'NO_WARNINGS', from: 'PRECHECK', event: 'acknowledgePrecheckWarnings' }, 'NO_WARNINGS', 'PRECHECK', 'acknowledgePrecheckWarnings'],
     [409, 'PRECHECK_RUNNING', { simCode: 'CHECKS_RUNNING', from: 'PRECHECK', event: 'retryPrecheck' }, 'CHECKS_RUNNING', 'PRECHECK', 'retryPrecheck'],
     [409, 'NOT_SEALED', { simCode: 'UNSEALED_EVIDENCE', from: null, event: 'archiveEvidence' }, 'UNSEALED_EVIDENCE', null, 'archiveEvidence'],
+    // Fix wave J (truth rule 3a): operation 41 for a never-sealed item - the Live source throws what the in-app simulator throws.
+    [409, 'NOT_SEALED', { simCode: 'UNSEALED_EVIDENCE', from: null, event: 'verify' }, 'UNSEALED_EVIDENCE', null, 'verify'],
+    // Fix wave J (JT-06 / JW-06): operation 67 on a Core without an updater.
+    [409, 'COMMAND_UNSUPPORTED', { simCode: 'COMMAND_UNSUPPORTED', from: null, event: 'startSoftwareUpdate', reason: 'UPDATER_NOT_AVAILABLE' }, 'COMMAND_UNSUPPORTED', null, 'startSoftwareUpdate'],
     [422, 'INVALID_INPUT', { simCode: 'POLICY_RANGE', from: null, event: 'setStoragePolicy' }, 'POLICY_RANGE', null, 'setStoragePolicy'],
     [422, 'INVALID_INPUT', { simCode: 'NOTE_INVALID', from: 'RECORDING', event: 'addNote' }, 'NOTE_INVALID', 'RECORDING', 'addNote'],
     // Without details: the replica's session state, the action's name, the code of the table read backwards.
@@ -767,6 +771,18 @@ describe('refusals and failures through the transport (AC-C-11, CL-19, CL-21)', 
     expect(running).toEqual({ ok: false, status: 409, reason: EXPORT_IN_PROGRESS_REASON });
     expect(EXPORT_IN_PROGRESS_REASON).toBe('EXPORT_IN_PROGRESS');
     expect(fake.log.requestsOf('exportEvidence').at(-1)?.body).toEqual({ reason: request.reason, destination: request.destination, kind: 'COMPOSITE' });
+
+    // Fix wave J (truth rule 3d; JA2-03 / JW-03): the refusal of an output the Core cannot produce is THROWN as the simulator
+    // throws it - with its reason - and is never read as "not sealed" (until wave J every other 409 was).
+    fake.answerOnce('exportEvidence', { status: 409, body: { error: { code: 'COMMAND_UNSUPPORTED', message: 'Composite video is not available in this build.', details: { simCode: 'COMMAND_UNSUPPORTED', reason: 'COMPOSITE_ENCODER_NOT_SELECTED' }, requestId: 'req-000001' } } });
+    const unsupported = await source.actions.exportEvidence(evidenceId, { ...request, kind: 'COMPOSITE' }).then(
+      (value) => ({ resolved: value }),
+      (error: unknown) => ({ rejected: error }),
+    );
+    expect(unsupported).toMatchObject({ rejected: { name: 'SimTransitionError', code: 'COMMAND_UNSUPPORTED', reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } });
+    // CONTROL: a 409 NOT_SEALED is still the result it was.
+    fake.answerOnce('exportEvidence', refusal(409, 'NOT_SEALED', 'Only sealed evidence can be exported.'));
+    expect(await source.actions.exportEvidence(evidenceId, request)).toEqual({ ok: false, status: 409, reason: 'NOT_SEALED' });
 
     const accepted = (jobId?: unknown) => ({ status: 202, body: { exportId: 'EXP-000032', evidenceId, status: 'QUEUED', ...(jobId === undefined ? {} : { jobId }) } });
     fake.answerOnce('exportEvidence', accepted('EXPJ-000777'));

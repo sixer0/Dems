@@ -15,7 +15,7 @@ import { HeroUINativeProvider } from 'heroui-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
-import { MotionPolicyProvider } from '@/motion';
+import { MotionPolicyProvider, UiRuntimeBoundary } from '@/motion';
 import { RootNavigator } from '@/navigation';
 import { RouteErrorFallback } from '@/navigation/route-error-fallback';
 import { AppProviders, BootGate, heroUIConfig } from '@/providers';
@@ -62,10 +62,11 @@ export default function RootLayout() {
       {(policy) => (
         <AppProviders reducedMotion={policy === 'reduced'}>
           <BootGate>
-            <>
+            {/* Fix wave J (JM-01 d): the screens are mounted anew, drawn still, if the animation runtime stops. */}
+            <UiRuntimeBoundary>
               <RootNavigator />
               <SignedOutLanding />
-            </>
+            </UiRuntimeBoundary>
           </BootGate>
           <StatusBar style="light" />
         </AppProviders>

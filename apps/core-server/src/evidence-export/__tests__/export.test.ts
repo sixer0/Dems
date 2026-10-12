@@ -9,13 +9,14 @@
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PackageFile, cameraFilePath, canonicalJson } from '@dems/shared/evidence-package';
+import { EXPORT_KINDS_EXAMPLE } from '@dems/shared/api';
 import { verifyPackageV2 } from '@dems/shared/evidence-verify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPackage, flipByte, removeScratch, sha256Hex, throwAwaySigner, type BuiltPackage } from '../../evidence-verify/__tests__/support';
 import { corePorts } from '../../evidence-verify';
-import { COMPOSITE_ENCODER_GATE, GPL_ONLY_ENCODERS, compositeEncoderAllowed, selectedCompositeEncoder } from '../composite';
+import { COMPOSITE_ENCODER_GATE, GPL_ONLY_ENCODERS, compositeEncoderAllowed, exportKindsOf, selectedCompositeEncoder } from '../composite';
 import { buildExportManifest, computeExportManifestSha256, parseExportManifest, signExportManifest, serializeExportSignature, type ExportManifest } from '../export-manifest';
-import { ExportFailure, exportPackage } from '../package-export';
+import { ExportFailure, ExportFailureCode, exportPackage } from '../package-export';
 import { verifyExportAtDestination, type ReceiverVerifyResult } from '../receiver-verify';
 import { SecretForm, secretFormsIn } from '../secret-sweep';
 import { verifyEd25519 } from '../../capture';
@@ -403,3 +404,18 @@ describe('SEC35-09 and the failure paths: nothing half-written stays, and nothin
     expect(failedChecks(await receive(delivered, built))).toEqual(['X-02']);
   });
 });
+
+// Fix wave J (decision D243; truth rule 3d; findings JA2-03 / JW-03): what operation 40 states of the export outputs.
+describe('exportKindsOf: the export outputs this Core can produce (fix wave J)', () => {
+  it('this build selects no encoder: a PACKAGE is available, a COMPOSITE is not and names the code the job itself failed with - the contract\'s example', () => {
+    expect(selectedCompositeEncoder()).toBeNull();
+    const kinds = exportKindsOf(selectedCompositeEncoder() !== null);
+    expect(kinds).toEqual([...EXPORT_KINDS_EXAMPLE]);
+    expect(kinds[1]).toEqual({ kind: 'COMPOSITE', available: false, reason: ExportFailureCode.COMPOSITE_ENCODER_NOT_SELECTED });
+  });
+
+  it('CONTROL - with a selected encoder the kind is available and carries no reason', () => {
+    expect(exportKindsOf(true)).toEqual([{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: true }]);
+  });
+});
+

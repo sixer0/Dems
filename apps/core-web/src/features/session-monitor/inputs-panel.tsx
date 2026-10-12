@@ -1,3 +1,5 @@
+import { useTrackReach } from '@/features/devices/track-reach'
+import type { VideoTrackId } from '@dems/shared/domain'
 import { useMemo, useRef } from 'react'
 import { Card } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
@@ -73,9 +75,7 @@ export function InputsPanel({ paused }: { paused: boolean }) {
                   <span className={cn('sm-dot', camera.ready ? 'sm-dot-success' : 'sm-dot-danger')} aria-hidden="true" />
                   {camera.name}
                 </p>
-                <p className={cn('sm-input-state', camera.ready ? 'text-success' : 'text-danger')}>
-                  {camera.online ? t(`common.enums.lensState.${camera.ready ? 'READY' : 'FAULT'}`) : t('session.inputs.offline')}
-                </p>
+                <CameraState cameraId={camera.id} ready={camera.ready} online={camera.online} />
                 {/* Fix wave K (C-2, ruling D222 (2)): "1080p • 25 fps" is the dataset's camera record, not the stream of the source behind the track on a Core in real capture. */}
                 {realCapture ? null : <p className="sm-input-meta">{t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}</p>}
               </div>
@@ -118,5 +118,20 @@ export function InputsPanel({ paused }: { paused: boolean }) {
         </div>
       ) : null}
     </Panel>
+  )
+}
+
+/**
+ * Fix wave J (JW-23 (4); rule 3c): the state word of a camera here is the one the Dashboard and the Devices page say.
+ * "READY" of a source the Core never checked reads "Not checked" (`useTrackReach`).
+ */
+function CameraState({ cameraId, ready, online }: { cameraId: VideoTrackId; ready: boolean; online: boolean }) {
+  const { t } = useTranslation()
+  const notChecked = useTrackReach(cameraId) === 'NOT_CHECKED' && ready && online
+  if (notChecked) return <p className="sm-input-state" data-testid={`sm-input-state-${cameraId}`} data-reach="NOT_CHECKED">{t('web.source.notChecked')}</p>
+  return (
+    <p className={cn('sm-input-state', ready ? 'text-success' : 'text-danger')} data-testid={`sm-input-state-${cameraId}`}>
+      {online ? t(`common.enums.lensState.${ready ? 'READY' : 'FAULT'}`) : t('session.inputs.offline')}
+    </p>
   )
 }

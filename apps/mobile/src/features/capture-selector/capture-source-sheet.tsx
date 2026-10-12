@@ -41,7 +41,8 @@ import { PendingSpinner, busyState } from '@/runtime';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
 import { cameraLineStatus, micLineCommand, micOptionRefusal, type CameraOption, type MicOption, type SelectorCommand } from './capture-selector-model';
 import { MicrophoneLimitLine, SourceBadge } from './development-source-badge';
-import { SheetContentSignal, useSheetPresence } from '@/features/devices/use-sheet-presence';
+import { SheetContentSignal, useSheetBack, useSheetPresence } from '@/features/devices/use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 /** Task 3 row 138 (flow 12; D131): handed in as a plain value — the sheet is portalled, so it reads no store itself. */
 export interface SourceBadgeMode {
@@ -94,17 +95,21 @@ export function CaptureSourceSheet({ request, fullHeight, busy, pending, onSave,
   // The last request stays drawn while the sheet closes.
   const [shown, setShown] = useState<SourceSheetRequest | null>(request);
   if (request !== null && request !== shown) setShown(request);
-  if (!presence.mounted || shown === null) return null;
   const close = () => {
     // The answer closes the sheet while the command is out.
     if (busy) return;
     onClose();
   };
+  // Fix wave J (JA2-16): Android Back closes the picker and stays on the screen (not while a command is out).
+  useSheetBack(request !== null, close);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, close, { testID: 'capture-source-sheet' });
+  if (!presence.mounted || shown === null) return null;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : close())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : close())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}
           {...(fullHeight ? { snapPoints: ['92%'], enableDynamicSizing: false, enableOverDrag: false } : {})}
           overrideReduceMotion={ReduceMotion.Never}
           {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}
@@ -147,7 +152,7 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
   };
 
   return (
-    <View testID="capture-source-sheet">
+    <View testID="capture-source-sheet" accessibilityViewIsModal>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <BottomSheet.Title>
@@ -159,10 +164,12 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
         </View>
         <BottomSheet.Close accessibilityLabel={t('features.capture-selector.selector.sheet.close')} testID="capture-source-close" onPress={onClose} />
       </View>
-      <ListGroup variant="transparent" accessibilityRole="radiogroup">
+      <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t(`features.capture-selector.selector.sheet.${sheetKey}Title`, { track })}>
         {request.kind === 'camera'
           ? request.options.map((option) => {
               const status = cameraLineStatus({ online: option.online, streamState: option.streamState ?? 'LIVE' });
+              // Fix wave J (JA2-24): the camera that feeds the OTHER track says so before it is chosen.
+              const otherTrack = option.assignedTo !== null && option.assignedTo !== request.trackId ? option.assignedTo : null;
               const word = cameraOptionWord({ reported: request.reported?.[option.deviceId] ?? null, realCapture: request.reported !== undefined, recording: request.recording === true, onTrack: option.assignedTo !== null });
               return (
                 <OptionRow
@@ -184,6 +191,7 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
                     )
                   }
                   source={developmentSourceOf({ sourceClass: option.sourceClass ?? undefined, adapter: option.adapter ?? undefined, deviceKind: 'CAMERA', ...(request.badgeMode ?? NO_BADGE) })}
+                  warning={otherTrack === null ? null : t('features.capture-selector.selector.sheet.inUseByOtherTrack', { track: t(`features.capture-selector.selector.track.${otherTrack}`) })}
                   selected={draft === option.deviceId}
                   disabled={busy}
                   onPress={setDraft}
@@ -251,21 +259,25 @@ interface OptionRowProps {
   source?: DevelopmentSourceKind | null;
   /** Why this option cannot be chosen, as a sentence (the row is disabled with it); null / left out when it can. */
   refusal?: string | null;
+  /** What the operator must know BEFORE choosing this option (it stays choosable); null / left out for none. */
+  warning?: string | null;
   selected: boolean;
   disabled: boolean;
   onPress: (id: string) => void;
 }
 
-function OptionRow({ id, icon, title, detail, chip, source = null, refusal = null, selected, disabled, onPress }: OptionRowProps) {
+function OptionRow({ id, icon, title, detail, chip, source = null, refusal = null, warning = null, selected, disabled, onPress }: OptionRowProps) {
   const Icon = icon === 'camera' ? Camera : Mic;
+  const hint = refusal ?? warning;
   return (
     <View style={styles.wrap}>
       <ListGroup.Item
         testID={`capture-source-option-${id}`}
         accessibilityRole="radio"
-        accessibilityState={{ selected, disabled }}
+        // Fix wave J (JA2-16 / N-10): a radio row exposes its CHECKED state (not only `selected`).
+        accessibilityState={{ selected, checked: selected, disabled }}
         accessibilityLabel={detail === '' ? title : `${title}, ${detail}`}
-        {...(refusal === null ? {} : { accessibilityHint: refusal })}
+        {...(hint === null ? {} : { accessibilityHint: hint })}
         disabled={disabled}
         onPress={() => onPress(id)}
         style={[styles.item, selected ? styles.itemSelected : null]}
@@ -297,6 +309,11 @@ function OptionRow({ id, icon, title, detail, chip, source = null, refusal = nul
               {refusal}
             </Text>
           )}
+          {warning === null ? null : (
+            <Text maxFontSizeMultiplier={1.2} style={styles.warning} testID={`capture-source-warning-${id}`}>
+              {warning}
+            </Text>
+          )}
         </ListGroup.ItemContent>
         {/* G70c-03: the status chip takes no touch either - the row is the one target. */}
         <ListGroup.ItemSuffix pointerEvents="none">{chip}</ListGroup.ItemSuffix>
@@ -316,5 +333,6 @@ const styles = StyleSheet.create({
   content: { flex: 1, minWidth: 0, gap: 2 },
   title: { fontFamily: fontFamily.native.monoMedium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
   detail: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.gray },
+  warning: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.warning },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing[1], marginTop: spacing[2], marginBottom: spacing[2] },
 });

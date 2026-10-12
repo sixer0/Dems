@@ -26,7 +26,7 @@
  * seen once on the tablet is traced in `gateway_check/11d_efix_mobile_screens.md`.
  */
 import { useRouter, type Href } from 'expo-router';
-import { Alert, ListGroup, Separator, SkeletonGroup } from 'heroui-native';
+import { Alert, Button, ListGroup, Separator, SkeletonGroup } from 'heroui-native';
 import { Boxes } from 'lucide-react-native';
 import { Fragment, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,7 @@ import { DeviceRow } from './device-row';
 import { DEVICE_SHORT_NAME_KEY, SECTIONS, STATUS_LABEL_KEY, STATUS_RANK, attentionDevices, isDeviceId, type DeviceId, type DeviceSection, type DeviceStatus } from './devices-model';
 import { PanelBoundary } from './panel-boundary';
 import { RegisteredDeviceRows, useRegisteredDevices } from './registered-device-rows';
-import { useDeviceStatuses } from './use-devices-data';
+import { useDeviceStatuses, useIsRecording } from './use-devices-data';
 
 export interface DevicesScreenProps {
   /** Device selected with `?selected=` (the detail pane on medium and expanded, 04 §2.4), or null. */
@@ -154,7 +154,7 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
         </SkeletonGroup>
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="devices-scroll">
-          {attention.length > 0 ? <AttentionAlert devices={attention} statuses={statuses} /> : null}
+          {attention.length > 0 ? <AttentionAlert devices={attention} statuses={statuses} onOpen={onSelect} /> : null}
           {/* Task 3 row 138 (MB-08; ux §8c flow 9, §8e flow 11): the no-device notifications and the "Camera
               search" panel, above the selector. One provider = one search for the banner, the panel and the
               selector's empty state (G13). Each in its own boundary, as the selector. */}
@@ -197,9 +197,13 @@ function DevicesList({ selectedId, twoColumns, onSelect }: DevicesListProps) {
 }
 
 /** Calm escalation (03M P7): one fade-in, a steady colour, the worst device named first. */
-function AttentionAlert({ devices, statuses }: { devices: readonly DeviceId[]; statuses: Readonly<Record<DeviceId, DeviceStatus>> }) {
+function AttentionAlert({ devices, statuses, onOpen }: { devices: readonly DeviceId[]; statuses: Readonly<Record<DeviceId, DeviceStatus>>; onOpen: (id: string) => void }) {
   const { t } = useTranslation();
   const m = useMotionSettings();
+  // Fix wave J (JA2-26): "Recording continues on the Core." is said only while a session records; a latched
+  // clip names its remedy and the way to it.
+  const recording = useIsRecording();
+  const clipped = devices.find((id) => statuses[id] === 'CLIP') ?? null;
   const worst = devices[0]!;
   const critical = STATUS_RANK[statuses[worst]] >= 2;
   const detail = t('devices.banner.issueDetail', {
@@ -214,8 +218,18 @@ function AttentionAlert({ devices, statuses }: { devices: readonly DeviceId[]; s
           <Alert.Title>{t('features.devices.attention.title', { count: devices.length })}</Alert.Title>
           <Alert.Description>
             {devices.length > 1 ? t('devices.banner.moreIssues', { detail, count: devices.length - 1 }) : detail}
-            {` · ${t('features.devices.attention.recordingContinues')}`}
+            {` · ${t(recording ? 'features.devices.attention.recordingContinues' : 'features.devices.attention.noSession')}`}
           </Alert.Description>
+          {clipped === null ? null : (
+            <>
+              <Alert.Description testID="devices-attention-clip-remedy">{t('features.devices.attention.clipRemedy', { device: t(DEVICE_SHORT_NAME_KEY[clipped]) })}</Alert.Description>
+              <View style={styles.alertActions}>
+                <Button variant="outline" size="sm" onPress={() => onOpen(clipped)} testID="devices-attention-open-clip">
+                  <Button.Label>{t('features.devices.attention.openDevice', { device: t(DEVICE_SHORT_NAME_KEY[clipped]) })}</Button.Label>
+                </Button>
+              </View>
+            </>
+          )}
         </Alert.Content>
       </Alert>
     </Animated.View>
@@ -245,5 +259,6 @@ const styles = StyleSheet.create({
   columns: { flexDirection: 'row', gap: spacing[2], alignItems: 'flex-start' },
   col: { flex: 1, gap: spacing[2] },
   skeletons: { paddingHorizontal: spacing[3], gap: spacing[2] },
+  alertActions: { flexDirection: 'row', marginTop: spacing[1] },
   placeholder: { flex: 1, paddingTop: spacing[5], paddingHorizontal: spacing[3] },
 });

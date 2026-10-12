@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
 import { BadgeCheck, CircleDot, Hourglass, Layers, Share2, type LucideIcon } from 'lucide-react'
@@ -7,9 +7,11 @@ import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { EvidenceStatus, Permission, selectCan, selectEvidence, selectEvidenceStats, useSim, useSimReady } from '@dems/shared/sim'
 import { AnimatedNumber } from '@/components/ui/animated-number'
+import { RoleReason } from '@/components/role-reason'
 import { browserMatchMedia, useMediaQuery } from '@/motion/use-media-query'
 import { useMotionPolicy } from '@/motion'
 import { LIST_BEAT_MS, usePanelVariants, useStaggerVariants } from './choreography'
+import { sessionsWithoutItem } from '@/features/sessions/model'
 import { EvidenceTable } from './evidence-table'
 import { ExportWizard } from './export-wizard'
 import { buildEvidenceRows, STATUS_FILTERS, type EvidenceRow } from './model'
@@ -24,7 +26,8 @@ import { useEvidenceTable } from './use-evidence-table'
 const listRoute = getRouteApi('/_app/evidence/')
 
 /** ≥ 1280 px the sticky preview is beside the table; below it a row action opens the detail page. */
-const PREVIEW_QUERY = '(min-width: 1280px)'
+// Fix wave J (JW-10): the preview pane stands beside the table only where the table's columns still fit (`evidence.css`).
+const PREVIEW_QUERY = '(min-width: 1600px)'
 
 type SearchPatch = Partial<Record<'q' | 'status' | 'caseType' | 'investigator' | 'from' | 'to', string | undefined>>
 
@@ -55,6 +58,7 @@ export function EvidenceListBody() {
   const operators = useSim(selectOperators)
   const stats = useSim(selectEvidenceStats)
   const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
+  const roleMayExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
   const wide = useMediaQuery(PREVIEW_QUERY, browserMatchMedia())
 
   // Wave H C2 (G94-14): in Live mode a bundled thumbnail joins a demo item only (`buildEvidenceRow`).
@@ -72,6 +76,9 @@ export function EvidenceListBody() {
     [search.q, search.status, search.caseType, search.investigator, search.from, search.to],
   )
   const model = useEvidenceTable(rows, filters, search.page)
+
+  const sessionHistory = useSim((s) => s.sessionHistory)
+  const orphanSessions = useMemo(() => sessionsWithoutItem(sessionHistory, search.q), [sessionHistory, search.q])
 
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -167,13 +174,26 @@ export function EvidenceListBody() {
         <EvidenceToolbar filters={filters} investigators={investigators} statusCounts={statusCounts} onChange={updateSearch} onClear={clearFilters} />
       </motion.div>
 
+      {/* Fix wave J (JW-22): a search that names a session WITHOUT an evidence item (quarantined, never recorded) said only
+          "No evidence matches". It now says that the session exists and where it is listed. */}
+      {orphanSessions.length > 0 ? (
+        <p className="evi-session-hint" role="status" data-testid="evidence-session-hint" data-count={orphanSessions.length}>
+          {t('web.waveJ.sessions.evidenceHint', { count: orphanSessions.length })}{' '}
+          <Link to="/session/history" search={{ q: search.q }} className="dems-popover-link" data-testid="evidence-session-hint-link">
+            {t('web.waveJ.sessions.evidenceHintLink')}
+          </Link>
+        </p>
+      ) : null}
+
       {selectedIds.size > 0 ? (
         <div className="evi-bulk" role="status" data-testid="evidence-bulk">
           <span>{t('evidence.table.selected', { count: selectedIds.size })}</span>
-          <Button size="sm" variant="primary" onPress={() => openWizard([...selectedIds])} data-testid="evidence-bulk-export">
+          <Button size="sm" variant="primary" isDisabled={!roleMayExport} aria-describedby={roleMayExport ? undefined : 'evidence-bulk-export-reason'} onPress={() => openWizard([...selectedIds])} data-testid="evidence-bulk-export">
             <Share2 className="size-4" aria-hidden="true" />
             {t('evidence.table.bulkExport', { count: selectedIds.size })}
           </Button>
+          {/* Fix wave J (JW-14 / JW-25): the one bulk action, disabled with its reason for a role that may not export. */}
+          {roleMayExport ? null : <RoleReason id="evidence-bulk-export-reason" permission={Permission.EVIDENCE_EXPORT} />}
           <Button size="sm" variant="ghost" onPress={() => setSelectedIds(new Set())}>
             {t('evidence.table.clearSelection')}
           </Button>

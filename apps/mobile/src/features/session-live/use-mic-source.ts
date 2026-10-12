@@ -51,8 +51,7 @@ import {
   switchRefusal,
   type MicSourceRole,
   type MicSwitchBlock,
-  type SwitchRefusal,
-} from './mic-source-model';
+  type SwitchRefusal, noSignalInputOf } from './mic-source-model';
 
 export interface MicSourceView {
   readonly sessionId: string | null;
@@ -64,6 +63,8 @@ export interface MicSourceView {
   readonly block: MicSwitchBlock | null;
   /** The input of an active `MIC_SILENT` warning while recording, or `null`. */
   readonly silentInputId: string | null;
+  /** JA2-06: the input of an active `MIC_NO_SIGNAL` fault while recording, or `null`. */
+  readonly noSignalInputId: string | null;
 }
 
 /** The active/standby pair, the gate of the toggle and the silence warning, in both data modes. */
@@ -91,7 +92,9 @@ export function useMicSource(): MicSourceView {
   const micLines = useSim((s) => micLinesInForce(s));
   const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines]);
 
-  return { sessionId, recording, activeInputId, standbyInputId, block, silentInputId };
+  const noSignalInputId = useMemo(() => (recording ? noSignalInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines]);
+
+  return { sessionId, recording, activeInputId, standbyInputId, block, silentInputId, noSignalInputId };
 }
 
 /**
@@ -165,7 +168,8 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
           toast.show({
             variant: 'success',
             label: t('session.audioSource.switched', { mic: micName(active) }),
-            placement: 'bottom',
+            // Round two (JT-09): never over End Session - the confirmation is at the top, like the monitor's other two.
+            placement: 'top',
             duration: 2500,
           });
           reportRuntimeIssue('info', SOURCE, 'Active microphone switched', { from, to, active });

@@ -98,18 +98,28 @@ export function readAllEvents(readPage: CorePageReader<EventPage>, options: LogW
   return walkAllEvents(readPage, { ...options, fail })
 }
 
+/** What `softwareVersion` of the file reads when a Core in its own capture has not stated its version. */
+export const LOG_EXPORT_VERSION_NOT_REPORTED = 'not-reported'
+
 /** The file's content: the export's identity, why it was made, the stored rows it covers and the events. */
 export interface LogExportFile {
   readonly kind: 'dems-log-export'
   readonly source: 'core-server'
-  /** The DEMS stack holds synthetic demo data only. */
-  readonly demo: true
+  /**
+   * `true` on the demonstration (a simulated Core: its data is synthetic). ABSENT on a Core in its own capture
+   * (fix wave J closing pass J4, item 3): its audit rows and events are what that Core recorded, not demo data.
+   */
+  readonly demo?: true
+  /** What the file is: `LOG_EXPORT_NOTICE_DEMO` on the demonstration, `LOG_EXPORT_NOTICE_OWN_CAPTURE` on a Core in its own capture. */
   readonly notice: string
   readonly exportId: string
   readonly scope: 'LOGS'
   readonly reason: string
   readonly deviceId: string
+  /** The demonstration model's version on the demonstration; on a Core in its own capture the Core server's own version (operation 64), or `not-reported` (JW-26). */
   readonly softwareVersion: string
+  /** A Core in its own capture: each component by its id with the version its owner states (`null` = not stated). Absent on the demonstration. */
+  readonly components?: readonly { readonly id: string; readonly version: string | null }[]
   readonly exportedAt: string
   readonly audit: { readonly total: number; readonly head: string | null; readonly rows: readonly AuditRow[] }
   readonly events: readonly SimEvent[]
@@ -117,11 +127,20 @@ export interface LogExportFile {
   readonly diagnostics: DiagnosticsRun | null
 }
 
+/** The file's statement about itself on the demonstration (a simulated Core). Unchanged wording. */
+export const LOG_EXPORT_NOTICE_DEMO = 'DEMO - log export of the DEMS Core server (synthetic demo data). Built from every page of its audit chain and events.'
+/** The same on a Core in its own capture: the Core's own records - no demo flag and no word of synthetic data. */
+export const LOG_EXPORT_NOTICE_OWN_CAPTURE =
+  'Log export of this DEMS Core server: the audit chain and the events this Core recorded, read from every page of both lists; services and diagnostics as this Core reported them to the console.'
+
 export function buildLogExportFile(input: {
+  /** This Core runs its own capture (`isOwnCaptureCoreState`): the file is that Core's record, not demo data. Absent or false: the demonstration. */
+  ownCapture?: boolean
   exportId: string
   reason: string
   deviceId: string
   softwareVersion: string
+  components?: readonly { readonly id: string; readonly version: string | null }[]
   at: number
   rows: readonly AuditRow[]
   events: readonly SimEvent[]
@@ -131,13 +150,14 @@ export function buildLogExportFile(input: {
   return {
     kind: 'dems-log-export',
     source: 'core-server',
-    demo: true,
-    notice: 'DEMO - log export of the DEMS Core server (synthetic demo data). Built from every page of its audit chain and events.',
+    ...(input.ownCapture === true ? {} : { demo: true as const }),
+    notice: input.ownCapture === true ? LOG_EXPORT_NOTICE_OWN_CAPTURE : LOG_EXPORT_NOTICE_DEMO,
     exportId: input.exportId,
     scope: 'LOGS',
     reason: input.reason,
     deviceId: input.deviceId,
     softwareVersion: input.softwareVersion,
+    ...(input.components === undefined ? {} : { components: input.components }),
     exportedAt: new Date(input.at).toISOString(),
     audit: { total: input.rows.length, head: input.rows.at(-1)?.hash ?? null, rows: input.rows },
     events: input.events,

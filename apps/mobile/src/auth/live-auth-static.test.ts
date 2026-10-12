@@ -113,8 +113,8 @@ describe('the copy (`features.auth.*`)', () => {
   const copy = leaves(authEn, AUTH_I18N_PREFIX);
 
   it('holds the sentences of the specification, word for word', () => {
-    expect(authEn.notice.tokenReuse).toBe('Biometric sign-in was turned off on this tablet because its token was used a second time. Sign in with your password.');
-    expect(authEn.notice.biometricInvalid).toBe('Biometric sign-in is no longer valid on this tablet. Sign in with your password to enable it again.');
+    expect(authEn.notice.tokenReuse).toBe('Biometric sign-in was turned off on this device because its token was used a second time. Sign in with your password.');
+    expect(authEn.notice.biometricInvalid).toBe('Biometric sign-in is no longer valid on this device. Sign in with your password to enable it again.');
     expect(authEn.notice.userDisabled).toBe('This account was disabled by an administrator.');
     expect(authEn.notice.absoluteExpired).toBe('Your session reached its 8-hour limit. Sign in again.');
     expect(authEn.biometric.screenLockNote).toBe("Biometric sign-in asks for this device's screen-lock check.");

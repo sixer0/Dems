@@ -1,6 +1,6 @@
 // Kit recipes (04_mobile_specs §4.0): StatusChip, SubjectTypeChip, SectionCard, KeyValueList, cn.
-import { describe, expect, it } from '@jest/globals';
-import { render, screen } from '@testing-library/react-native';
+import { describe, expect, it, jest } from '@jest/globals';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { HeroUINativeProvider } from 'heroui-native';
 import type { ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
@@ -30,6 +30,21 @@ describe('cn', () => {
 });
 
 describe('StatusChip', () => {
+  // Fix wave J (JA2-32, JT-13): "Core Live" and the Home chips were announced as buttons and did nothing.
+  it('is a readout: announced as text, not as a button, unless it is given a press of its own', () => {
+    const onPress = jest.fn();
+    renderKit(
+      <>
+        <StatusChip tone="success" label="Core Live" testID="chip-readout" />
+        <StatusChip tone="success" label="Open" testID="chip-button" onPress={onPress} />
+      </>,
+    );
+    expect(screen.getByTestId('chip-readout').props.accessibilityRole).toBe('text');
+    expect(screen.getByTestId('chip-button').props.accessibilityRole).not.toBe('text');
+    fireEvent.press(screen.getByTestId('chip-button'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
   it('renders a design badge with its label (SEALED → violet sealed tone)', () => {
     renderKit(<StatusChip badge="SEALED" testID="chip-sealed" />);
     expect(screen.getByTestId('chip-sealed')).toBeTruthy();

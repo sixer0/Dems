@@ -8,8 +8,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE } from '@dems/shared/api'
 import type { DemoCheckId } from '@dems/shared/demo-data'
 import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, type EvidenceItem, type Sim } from '@dems/shared/sim'
@@ -19,6 +20,8 @@ import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { IntegrityTab } from '../integrity-tab'
 import { MediaTab } from '../media-tab'
 import { buildEvidenceRow, type EvidenceRow } from '../model'
+import * as playbackLink from '../playback-link'
+import { SessionAnnotations } from '../session-annotations'
 import type { EvidenceVerification, VerifyState } from '../use-verification'
 import { createDatasetSim, evidenceIdOf, stopSims } from './harness'
 
@@ -117,6 +120,15 @@ describe('R-W-1: the custody cells', () => {
     rows.forEach((row, index) => {
       const action = newestFirst[index]!.action
       const code = row.querySelector('.evi-custody-action')
+      // Fix wave J (JW-13): an action the audit vocabulary names is shown by its name (the code is the title); a code it
+      // does not hold stays as it is, breakable after an underscore.
+      expect(code).toHaveAttribute('title', action)
+      const named = Object.prototype.hasOwnProperty.call(en.common.auditType, action)
+      if (named) {
+        expect(code?.textContent).toBe((en.common.auditType as Record<string, string>)[action])
+        expect(code?.querySelectorAll('wbr')).toHaveLength(0)
+        return
+      }
       expect(code?.textContent).toBe(action)
       const breaks = Array.from(code?.querySelectorAll('wbr') ?? [])
       expect(breaks).toHaveLength(action.split('_').length - 1)
@@ -237,5 +249,73 @@ describe('O-RT-1: Simulated mode keeps its words', () => {
     render(withProviders(<MediaTab row={row} playToken={null} onPlayHandled={() => undefined} mediaUnavailable />, { sim }))
     expect(screen.getByTestId('evidence-media-empty')).toHaveAttribute('data-source', 'simulated')
     expect(screen.getByText(en.evidence.media.noMediaBody)).toBeInTheDocument()
+  })
+})
+
+// ── JW-13 / JT-11 (fix wave J, rounds one and three) ─────────────────────────────────────────
+
+// What the operator added to the session is ON the item (`contract_wave_j.md` J2-S 1): the markers,
+// the notes written during the recording, and - since round two - the note of the session form as
+// the first note (`origin: 'SESSION_FORM'`). The block reads the two members BY NAME; the exported
+// example `EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE` is the item of these cases.
+describe('JW-13: the markers and notes of the session, on the item', () => {
+  const annotated = (sim: Sim): EvidenceItem => ({ ...datasetItem(sim, '0002'), ...JSON.parse(JSON.stringify(EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE)) }) as EvidenceItem
+
+  it('the exported example: the marker with its label, the in-session note with its time, and the form\'s note LABELLED as such, without a time', () => {
+    const sim = createDatasetSim()
+    render(withProviders(<SessionAnnotations item={annotated(sim)} />, { sim }))
+    const block = screen.getByTestId('evidence-annotations')
+    expect(block).toHaveTextContent('Markers and notes of the session')
+    const marker = EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.markers[0]
+    expect(within(block).getByTestId('evidence-annotation-markers')).toHaveTextContent(`Marker ${marker.index}: ${marker.label}`)
+    const [formNote, sessionNote] = EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.notes
+    const form = within(block).getByTestId('evidence-note-form')
+    expect(form).toHaveTextContent(`Note from the session form: ${formNote.text}`)
+    expect(form).toHaveAttribute('data-origin', 'SESSION_FORM')
+    // Its `at` is the creation of the session: no clock time is printed for it.
+    expect(form.textContent).not.toMatch(/\d{2}:\d{2}:\d{2}/)
+    const written = within(block).getAllByTestId('evidence-note')
+    expect(written).toHaveLength(1)
+    expect(written[0]).toHaveTextContent(`Note: ${sessionNote.text}`)
+    expect(written[0]!.textContent).toMatch(/\d{2}:\d{2}:\d{2} UTC/)
+    // The form's note is the first of the list, as the Core sends it.
+    expect(within(block).getByTestId('evidence-annotation-notes').firstElementChild).toBe(form)
+    expect(within(block).queryByTestId('evidence-annotations-none')).toBeNull()
+    // No snapshot is offered: an item has no such member.
+    expect(block.textContent).not.toMatch(/snapshot/i)
+  })
+
+  it('a marker\'s time is pressable: it asks the playback for the marker\'s offset from the start of the recording', () => {
+    const sim = createDatasetSim()
+    const item = annotated(sim)
+    const seek = vi.spyOn(playbackLink, 'requestPlaybackSeek').mockResolvedValue(undefined as never)
+    render(withProviders(<SessionAnnotations item={item} />, { sim }))
+    const marker = EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.markers[0]
+    fireEvent.click(screen.getByTestId(`evidence-marker-${marker.index}`))
+    expect(seek).toHaveBeenCalledTimes(1)
+    expect(seek).toHaveBeenCalledWith(item.id, Math.max(0, marker.at - item.recordedAt))
+    seek.mockRestore()
+  })
+
+  it('an item with none says so plainly - "No markers or notes were recorded in this session." - instead of an empty block', () => {
+    const sim = createDatasetSim()
+    render(withProviders(<SessionAnnotations item={{ ...datasetItem(sim, '0002'), markers: [], notes: [] }} />, { sim }))
+    const block = screen.getByTestId('evidence-annotations')
+    expect(within(block).getByTestId('evidence-annotations-none')).toHaveTextContent('No markers or notes were recorded in this session.')
+    expect(within(block).queryByTestId('evidence-annotation-markers')).toBeNull()
+    expect(within(block).queryByTestId('evidence-annotation-notes')).toBeNull()
+  })
+
+  it('CONTROL - a note without `origin` is never titled as the form\'s; a record that states neither member draws nothing (the console does not say "none" about what it was not told)', () => {
+    const sim = createDatasetSim()
+    const base = datasetItem(sim, '0002')
+    const [, sessionNote] = EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.notes
+    render(withProviders(<SessionAnnotations item={{ ...base, markers: [], notes: [{ ...sessionNote }] }} />, { sim }))
+    expect(screen.queryByTestId('evidence-note-form')).toBeNull()
+    expect(screen.getByTestId('evidence-annotations').textContent).not.toContain('Note from the session form')
+    cleanup()
+    const { markers: _markers, notes: _notes, ...older } = base
+    render(withProviders(<SessionAnnotations item={older as EvidenceItem} />, { sim }))
+    expect(screen.queryByTestId('evidence-annotations')).toBeNull()
   })
 })

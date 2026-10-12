@@ -16,6 +16,8 @@ import {
   matchCoreApiOperation,
   simActionsOfOperation,
   validateCoreApiResponse,
+  VERIFY_NOT_SEALED_EXAMPLE,
+  VERIFY_NOT_SEALED_TEXT,
 } from '@dems/shared/api';
 import { ROLE_PERMISSIONS, SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError, type EvidenceVerifyResult, type ExportResult, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse, RouteOptions } from 'fastify';
@@ -456,6 +458,33 @@ describe('operation 41 verifyEvidence: the hosted action `verify`', () => {
     const response = await built.post(verifyUrl(ID));
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(failed);
+    expect(validateCoreApiResponse('verifyEvidence', 200, response.json())).toEqual({ ok: true });
+  });
+
+  it('fix wave J (truth rule 3a; JA2-01 / JW-01): an item that was never sealed - 409 NOT_SEALED "nothing sealed to verify", the contract\'s example, and no verdict leaves the server', async () => {
+    const built = await build();
+    built.actAs(operator('INVESTIGATOR'));
+    built.engineAnswers(() => {
+      throw hostRefusal(new SimTransitionError(null, 'verify', 'the item was never sealed: there is nothing sealed to verify', SimErrorCode.UNSEALED_EVIDENCE));
+    });
+    const response = await built.post(verifyUrl(ID));
+    expect(outcomeOf(response)).toEqual([409, 'NOT_SEALED']);
+    // The wording of THIS operation - not the archive's "cannot be archived".
+    expect(errorOf(response)).toMatchObject({ message: VERIFY_NOT_SEALED_TEXT, details: { simCode: 'UNSEALED_EVIDENCE', from: null, event: 'verify' } });
+    expect(errorOf(response)).toMatchObject({ code: VERIFY_NOT_SEALED_EXAMPLE.value.error.code, message: VERIFY_NOT_SEALED_EXAMPLE.value.error.message, details: VERIFY_NOT_SEALED_EXAMPLE.value.error.details });
+    expect(validateCoreApiResponse('verifyEvidence', 409, response.json())).toEqual({ ok: true });
+    // A refusal carries no state position: nothing was committed.
+    expect(response.headers[REVISION_HEADER_NAME]).toBeUndefined();
+    expect(response.json()).not.toHaveProperty('ok');
+  });
+
+  it('fix wave J (JA2-02): a verdict of the simulator leaves the server WITH its mark `demonstration: true`', async () => {
+    const built = await build();
+    built.actAs(operator('INVESTIGATOR'));
+    built.engineAnswers({ ...VERDICT, demonstration: true });
+    const response = await built.post(verifyUrl(ID));
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, demonstration: true });
     expect(validateCoreApiResponse('verifyEvidence', 200, response.json())).toEqual({ ok: true });
   });
 

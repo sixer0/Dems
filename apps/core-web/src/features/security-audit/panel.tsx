@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button, Card } from '@heroui/react'
 import { motion } from 'motion/react'
@@ -44,6 +45,8 @@ export function Panel({ id, icon: Icon, title, action, subtitle, className, body
           <Icon className="sa-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <div className="sa-card-heading">
             <h2 className="sa-card-title">{title}</h2>
+            {/* Fix wave J (JW-07): the demonstration Core's values are marked on every panel. */}
+            <DemoMark block={`security-${id}`} />
             {subtitle ? <p className="sa-card-subtitle">{subtitle}</p> : null}
           </div>
           {action ? <div className="sa-card-action">{action}</div> : null}

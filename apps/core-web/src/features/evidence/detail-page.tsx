@@ -7,7 +7,8 @@ import { Archive, Copy, Download, FileVideo, MoreHorizontal, Play, Share2 } from
 import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
-import { Permission, interruptedFactOf, selectCan, useSim, type EvidenceItem } from '@dems/shared/sim'
+import { OperatorRole, Permission, hasSealedValues, interruptedFactOf, isBundledDemoItem, isOwnCaptureCoreState, isSealedOnThisCore, selectCan, selectRole, useSim, useSimInstance, type EvidenceItem } from '@dems/shared/sim'
+import { RoleReason } from '@/components/role-reason'
 import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
 import { deferEffectStart } from '@/lib/effect-start'
 import { useMotionPolicy } from '@/motion'
@@ -16,13 +17,13 @@ import { copyText } from './clipboard'
 import { DETAIL_BEAT_MS, usePanelVariants } from './choreography'
 import { useEvidenceAssets } from './demo-assets'
 import { ItemDevelopmentBadge } from './development-source'
-import { saveBytes } from './export-download'
+import { manifestSummaryDownload, saveBytes } from './export-download'
 import { ExportWizard } from './export-wizard'
 import { FinishedExports } from './finished-exports'
 import { SealedFormat } from './sealed-format'
 import { IntegrityTab } from './integrity-tab'
 import { isDemoItem, mediaKindOf, playableFilesOf } from './item-facts'
-import { InterruptedMark, MediaNone } from './item-marks'
+import { InterruptedMark, MediaNone, NotSealedMark } from './item-marks'
 import { readItemV2 } from './item-v2'
 import { logEvidenceError } from './log'
 import { MediaTab } from './media-tab'
@@ -38,6 +39,7 @@ import {
 } from './model'
 import { consumeAutoVerify, takeHeaderOrigin, type HeaderOrigin } from './pending-actions'
 import { SealedPlayer } from './sealed-player'
+import { SessionAnnotations } from './session-annotations'
 import { selectOperators } from './selectors'
 import { TranscriptPane } from './transcript-pane'
 import { useArchiveEvidence } from './use-archive'
@@ -101,9 +103,13 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const live = useCoreMode() === CoreMode.LIVE
+  const sim = useSimInstance()
   const { archive, control: archiving } = useArchiveEvidence()
   const operators = useSim(selectOperators)
   const canArchive = useSim((s) => selectCan(s, Permission.EVIDENCE_REVIEW))
+  // Fix wave J (JW-14): the role's own permission, for the visible reason beside a control the role may not use.
+  const roleMayExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
+  const rolePlays = useSim((s) => { const role = selectRole(s); return role === OperatorRole.INVESTIGATOR || role === OperatorRole.SUPERVISOR })
   const { urlFor, load } = useEvidenceAssets()
   const routeDelay = useRouteEnterDelay()
   const row = useMemo(() => rowForMedia(buildEvidenceRow(item, operators, { live }), media), [item, live, media, operators])
@@ -121,7 +127,11 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const access = facts?.access ?? { play: null, transcript: null, export: null }
   const fileIds = useMemo(() => (sealedPlayback ? playableFilesOf(facts, item) : null), [facts, item, sealedPlayback])
   // No player, no picture and no demo words: a Live item that is not a demo item and is not streamable.
-  const noMedia = live && mediaKind === 'NONE' && !demoItem && media.status !== 'unavailable'
+  // Wave J (JA2-02 / JW-01; contract J-S 1, J-S 2): a never-sealed record and the demonstration record of a simulated
+  // session have no media either, and the Core says why (`NOT_SEALED`, `DEMONSTRATION_RECORD`) - they get the stated
+  // reason, never "No DEMO media" or "no sealed package in the evidence store".
+  const statedNoMedia = facts?.mediaReason === 'NOT_SEALED' || facts?.mediaReason === 'DEMONSTRATION_RECORD'
+  const noMedia = live && mediaKind === 'NONE' && (!demoItem || statedNoMedia) && media.status !== 'unavailable'
   const hasTranscript = v2.isV2 || v2.transcript !== null || v2.transcriptSha256 !== null
   // The source classes of the last verify run on this page (never the current device list).
   const verifiedSources = verification.state.v2?.sources ?? null
@@ -131,7 +141,8 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
 
   // List "Verify" hand-off: start once on arrival (StrictMode-safe: the ref survives the double render).
   const autoVerify = useRef<boolean | null>(null)
-  if (autoVerify.current === null) autoVerify.current = consumeAutoVerify(item.id)
+  // Wave J (JW-01): a never-sealed item has nothing to verify; the hand-off is consumed and not run.
+  if (autoVerify.current === null) autoVerify.current = consumeAutoVerify(item.id) && hasSealedValues(item)
   const runRef = useRef(verification.run)
   useEffect(() => {
     runRef.current = verification.run
@@ -176,7 +187,18 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
   const headerVariants = usePanelVariants(DETAIL_BEAT_MS.header)
   const tabsVariants = usePanelVariants(DETAIL_BEAT_MS.tabs)
 
-  const exportable = EXPORTABLE_STATUSES.includes(item.status)
+  // Fix wave J (JW-14 (c)): Export was enabled for a role that may not export and refused two steps later, with the raw
+  // permission name. The Core's own word for this caller (`access.export`, operation 40) or, without it, the role's
+  // permission disables the control here, with the reason beside it.
+  const exportDenied = access.export === false || (access.export === null && !roleMayExport)
+  const playDenied = sealedPlayback && access.play === false
+  const sealed = hasSealedValues(item)
+  // Fix wave J (JW-02; contract J-S 4): no operation returns the signed manifest of an item by itself - it leaves the
+  // Core only inside the Package export. "Download manifest" handed out a console-built summary named `simulated`
+  // for a really sealed item. Now: an item sealed on this Core -> the entry is disabled and points to Export; a
+  // bundled / simulated DEMO item -> the summary under its DEMO name; a never-sealed item -> no manifest at all.
+  const manifestKind: 'EXPORT' | 'DEMO' | 'NONE' = !sealed ? 'NONE' : isSealedOnThisCore(item) ? 'EXPORT' : !live || isBundledDemoItem(item) ? 'DEMO' : 'NONE'
+  const exportable = EXPORTABLE_STATUSES.includes(item.status) && sealed
   const archivable = canArchive && ARCHIVABLE_STATUSES.includes(item.status) && !archiving.busy
   const size = byteSize(item.sizeBytes)
   const poster = urlFor(row.posterPath)
@@ -192,21 +214,22 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
         const bytes = await load(row.pkg.files.manifest.path)
         saveBytes(bytes, `${row.id}-manifest.demo.json`, 'application/json')
       } else {
-        const text = `${JSON.stringify({ simulated: true, evidenceId: row.id, manifestHash: item.manifestHash, tracks: item.tracks, signature: item.signature }, null, 2)}\n`
-        saveBytes(text, `${row.id}-manifest.simulated.json`, 'application/json')
+        // Pass J5 (truth rule 3f): on a Core in its own capture the values are that Core's record of a demonstration item, not simulated data.
+        const summary = manifestSummaryDownload(row, live && isOwnCaptureCoreState(sim.store.getState()))
+        saveBytes(summary.text, summary.fileName, 'application/json')
       }
-      toast.success(t('evidence.detail.manifestDownloaded'))
+      toast.success(t('web.waveJ.evidence.manifestDemoToast'))
     } catch (error) {
       logEvidenceError('detail.downloadManifest', error, { evidenceId: row.id })
       toast.danger(t('evidence.detail.manifestDownloadFailed'))
     }
-  }, [item.manifestHash, item.signature, item.tracks, load, row.id, row.pkg, t])
+  }, [live, load, row, sim, t])
 
   const onMore = (key: Key) => {
     if (key === 'copy') {
       void copyText(item.id, { ok: t('evidence.detail.idCopied'), failed: t('evidence.integrity.copyFailed') }, 'detail.copyId')
     } else if (key === 'manifest') {
-      void downloadManifest()
+      if (manifestKind === 'DEMO') void downloadManifest()
     } else if (key === 'archive') {
       archive(item.id, 'detail')
     }
@@ -247,12 +270,13 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
               )}
             </div>
             <div className="evi-still-meta">
-              <EvidenceStatusChip status={item.status} size="md" />
+              <EvidenceStatusChip status={item.status} item={item} size="md" />
               <Chip size="sm" variant="secondary" className="evi-demo-chip" data-testid="evidence-package-chip" data-package={packageChip.kind}>
                 <Chip.Label>{packageChip.label}</Chip.Label>
               </Chip>
               <ItemDevelopmentBadge item={item} testId="evidence-detail-development" />
               <InterruptedMark item={item} testId="evidence-interrupted" />
+              <NotSealedMark item={item} testId="evidence-not-sealed-mark" />
             </div>
           </div>
 
@@ -305,7 +329,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
               <div>
                 <dt>{t('evidence.detail.fields.status')}</dt>
                 <dd>
-                  <EvidenceStatusChip status={item.status} />
+                  <EvidenceStatusChip status={item.status} item={item} />
                 </dd>
               </div>
               <div>
@@ -315,11 +339,11 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
             </dl>
             {/* LB-1: the kit's Button drops `aria-busy` (F63-2), so the action row carries it while an archive is out. */}
             <div className="evi-detail-actions" aria-busy={archiving.busy || undefined}>
-              <Button variant="primary" onPress={onPlay} isDisabled={(!row.pkg && !sealedPlayback) || (sealedPlayback && access.play === false)} data-testid="evidence-play">
+              <Button variant="primary" onPress={onPlay} isDisabled={(!row.pkg && !sealedPlayback) || playDenied} aria-describedby={playDenied ? 'evidence-play-reason' : undefined} data-testid="evidence-play">
                 <Play className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.play')}
               </Button>
-              <Button variant="outline" isDisabled={!exportable} onPress={() => setWizard((previous) => ({ key: previous.key + 1, open: true }))} data-testid="evidence-export">
+              <Button variant="outline" isDisabled={!exportable || exportDenied} aria-describedby={exportDenied ? 'evidence-export-reason' : undefined} onPress={() => setWizard((previous) => ({ key: previous.key + 1, open: true }))} data-testid="evidence-export">
                 <Share2 className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.export')}
               </Button>
@@ -335,15 +359,20 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                   {t('evidence.detail.actions.more')}
                 </Button>
                 <Dropdown.Popover placement="bottom end" className="min-w-[220px]">
-                  <Dropdown.Menu aria-label={t('evidence.detail.actions.more')} disabledKeys={archivable ? [] : ['archive']} onAction={onMore}>
+                  <Dropdown.Menu aria-label={t('evidence.detail.actions.more')} disabledKeys={[...(archivable ? [] : ['archive']), ...(manifestKind === 'EXPORT' ? ['manifest'] : [])]} onAction={onMore}>
                     <Dropdown.Item id="copy" textValue={t('evidence.detail.actions.copyId')}>
                       <Copy className="size-4" aria-hidden="true" />
                       <Label>{t('evidence.detail.actions.copyId')}</Label>
                     </Dropdown.Item>
-                    <Dropdown.Item id="manifest" textValue={t('evidence.detail.actions.downloadManifest')}>
-                      <Download className="size-4" aria-hidden="true" />
-                      <Label>{t('evidence.detail.actions.downloadManifest')}</Label>
-                    </Dropdown.Item>
+                    {manifestKind === 'NONE' ? null : (
+                      <Dropdown.Item id="manifest" textValue={manifestKind === 'DEMO' ? t('web.waveJ.evidence.manifestDemo') : t('evidence.detail.actions.downloadManifest')} data-testid="evidence-manifest-item" data-manifest={manifestKind}>
+                        <Download className="size-4" aria-hidden="true" />
+                        <span className="flex min-w-0 flex-col">
+                          <Label>{manifestKind === 'DEMO' ? t('web.waveJ.evidence.manifestDemo') : t('evidence.detail.actions.downloadManifest')}</Label>
+                          {manifestKind === 'EXPORT' ? <span className="evi-caption whitespace-normal" data-testid="evidence-manifest-in-export">{t('web.waveJ.evidence.manifestInExport')}</span> : null}
+                        </span>
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item id="archive" textValue={t('evidence.detail.actions.archive')}>
                       <Archive className="size-4" aria-hidden="true" />
                       <Label>{t('evidence.detail.actions.archive')}</Label>
@@ -352,6 +381,29 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                 </Dropdown.Popover>
               </Dropdown>
             </div>
+            {/* Fix wave J (JW-14): ONE rule - a control the role may not use is disabled WITH its visible reason. */}
+            {playDenied || exportDenied ? (
+              <div className="evi-detail-reasons" data-testid="evidence-role-reasons">
+                {playDenied ? (
+                  <span>
+                    {/* A role that may play in general but not THIS item (the Core's case scope) gets the Core's own sentence, not a role. */}
+                    {t('evidence.detail.actions.play')}:{' '}
+                    {rolePlays ? (
+                      <span id="evidence-play-reason" className="dems-role-reason" data-testid="evidence-play-scope-reason">
+                        {t('evidence.itemFacts.media.mayNotPlay')}
+                      </span>
+                    ) : (
+                      <RoleReason id="evidence-play-reason" permission={[OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR]} />
+                    )}
+                  </span>
+                ) : null}
+                {exportDenied ? (
+                  <span>
+                    {t('evidence.detail.actions.export')}: <RoleReason id="evidence-export-reason" permission={Permission.EVIDENCE_EXPORT} />
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </Card>
       </motion.section>
@@ -392,7 +444,8 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
                       ) : (
                         <MediaTab row={row} playToken={playToken} onPlayHandled={onPlayHandled} mediaUnavailable={media.status === 'unavailable'} />
                       )}
-                      {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} mayRead={access.transcript} /> : null}
+                      {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} mayRead={access.transcript} durationMs={item.durationMs} /> : null}
+                      <SessionAnnotations item={item} />
                     </div>
                   ) : key === 'metadata' ? (
                     <MetadataTab row={row} mediaUnavailable={media.status === 'unavailable'} />
@@ -406,7 +459,7 @@ function EvidenceDetail({ item, media, tab, onTab }: EvidenceDetailProps) {
         </Card>
       </motion.section>
 
-      <ExportWizard key={wizard.key} rows={[row]} destinationDefault={media.facts?.exportDestinationDefault ?? null} isOpen={wizard.open} onOpenChange={(open) => setWizard((previous) => ({ ...previous, open }))} />
+      <ExportWizard key={wizard.key} rows={[row]} destinationDefault={media.facts?.exportDestinationDefault ?? null} exportKinds={media.facts?.exportKinds ?? null} isOpen={wizard.open} onOpenChange={(open) => setWizard((previous) => ({ ...previous, open }))} />
     </div>
   )
 }

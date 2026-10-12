@@ -218,7 +218,8 @@ export function LcdDisplay({ page }: LcdDisplayProps) {
             {lcd.deviceId}
           </Line>
           <Line y={250}>{t('devices.front.lcd.deviceId', { id: lcd.deviceId, room: lcd.room })}</Line>
-          <Line y={298}>{t('devices.front.lcd.firmware', { version: lcd.version })}</Line>
+          {/* Fix wave J round three (JW-26): the model's firmware number is not drawn on a Core in its own capture. */}
+          <Line y={298}>{selfCapture ? t('web.waveJ3.versions.lcdFirmware') : t('devices.front.lcd.firmware', { version: lcd.version })}</Line>
           <Line y={346}>{t('devices.front.lcd.serial', { serial: DEVICE_IDENTITY.serialNumber })}</Line>
           <Line y={394} color={platformNotReported && lcd.tpmOk && lcd.secureBoot ? DIM : lcd.tpmOk && lcd.secureBoot ? statusText.success : statusText.danger}>
             {platformNotReported && lcd.tpmOk && lcd.secureBoot

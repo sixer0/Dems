@@ -5,6 +5,7 @@ import { formatClock } from '@dems/shared/realtime'
 import { useSimInstance } from '@dems/shared/sim'
 import { palette, statusText } from '@dems/shared/tokens'
 import { useSimSecond } from '@/components/media'
+import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { useMotionPolicy } from '@/motion'
 import { useMicPoints } from './context'
 import { useDeviceWords } from './live'
@@ -76,6 +77,9 @@ export function HealthChart({ deviceId }: HealthChartProps) {
     <div className="dev-health" data-testid="device-health" data-metric={series.metric} data-points={series.points.length}>
       <div className="dev-health-head">
         <span className="dev-health-metric">{metric}</span>
+        {/* Fix wave J (JW-23 (1)): "LINK QUALITY - NOW 99.7%" of a source nobody checked is the device model's series. Every
+            series but a microphone's measured level carries the mark on a Core in its own capture. */}
+        {series.metric === 'signal' ? null : <SyntheticValuesChip block={`health-${series.metric}`} />}
         <span className="dev-health-now">
           <span className="dev-health-now-label">{t('devices.drawer.health.now')}</span>
           <span className="dev-health-now-value font-mono tabular-nums">{last ? format(last.v) : '—'}</span>

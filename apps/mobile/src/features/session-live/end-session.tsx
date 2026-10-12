@@ -27,11 +27,12 @@
  * In Simulated mode the stop settles before the press returns: no state is set, nothing waits, and
  * the Dialog looks and behaves exactly as before.
  */
-import { Button, Description, Dialog, FieldError, Label, TextArea, TextField, useToast } from 'heroui-native';
+import { Button, Description, Dialog, FieldError, Label, TextArea, TextField } from 'heroui-native';
 import { Square } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type AccessibilityActionEvent } from 'react-native';
+import { StyleSheet, Text, View, type AccessibilityActionEvent, type GestureResponderEvent } from 'react-native';
+import { putKeyboardAway } from '@/lib/keyboard';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { derived, fontFamily, motion as motionTokens, palette, spacing } from '@dems/shared/tokens';
@@ -40,6 +41,9 @@ import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState, usePendingPress } from '@/runtime';
 import { HOLD_HAPTIC_BEATS_MS, HOLD_TO_CONFIRM_MS, STOP_REASON_MAX, STOP_REASON_MIN, checkStopReason } from './session-live.math';
 import type { MonitorHandlers } from './use-monitor';
+
+/** How long the hold hint stays raised after a short tap (JT-09). */
+export const HOLD_NUDGE_MS = 2500;
 
 export interface EndSessionProps {
   disabled: boolean;
@@ -73,11 +77,18 @@ interface EndSessionButtonProps {
 
 function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }: EndSessionButtonProps) {
   const { t } = useTranslation();
-  const { toast } = useToast();
   const policy = useMotionPolicy();
   const reduced = policy === 'reduced';
   const fill = useSharedValue(0);
   const [holding, setHolding] = useState(false);
+  const [nudged, setNudged] = useState(false);
+  const nudge = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (nudge.current !== null) clearTimeout(nudge.current);
+    },
+    [],
+  );
   const midBeat = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completed = useRef(false);
 
@@ -102,8 +113,14 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
     onConfirmHold();
   };
 
-  const onPressIn = () => {
+  // Round two (seen on the tablet under host load: a 1.9 s hold opened nothing). The long-press is a JS timer that
+  // starts when the press-in REACHES JS; when the JS thread lags by more than the 0.4 s a finger holds beyond the
+  // 1.5 s, the release is handled first and the hold is lost. The touch's own timestamps say how long the finger
+  // was down: a release after a full hold completes it.
+  const pressedAt = useRef<number | null>(null);
+  const onPressIn = (event: GestureResponderEvent) => {
     if (disabled || reduced) return;
+    pressedAt.current = event.nativeEvent.timestamp;
     completed.current = false;
     setHolding(true);
     triggerHaptic('holdProgress');
@@ -114,10 +131,18 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
     fill.set(withTiming(1, { duration: HOLD_TO_CONFIRM_MS, easing: Easing.linear }));
   };
 
-  const onPressOut = () => {
+  const onPressOut = (event: GestureResponderEvent) => {
     if (reduced) return;
     setHolding(false);
     clearBeat();
+    const heldMs = pressedAt.current === null ? 0 : event.nativeEvent.timestamp - pressedAt.current;
+    pressedAt.current = null;
+    if (!completed.current && !disabled && heldMs >= HOLD_TO_CONFIRM_MS) {
+      triggerHaptic('endSessionHold');
+      fill.set(1);
+      open();
+      return;
+    }
     if (!completed.current) {
       cancelAnimation(fill);
       fill.set(withSpring(0, motionTokens.spring.snappy));
@@ -125,7 +150,7 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
   };
 
   const onLongPress = () => {
-    if (disabled || reduced) return;
+    if (disabled || reduced || completed.current) return;
     clearBeat();
     triggerHaptic('endSessionHold');
     fill.set(1);
@@ -133,14 +158,18 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
   };
 
   const onPress = () => {
-    if (disabled) return;
+    if (disabled || completed.current) return;
     if (reduced) {
       triggerHaptic('endSessionHold');
       open();
       return;
     }
-    // A short tap in full motion: explain the hold instead of ending anything.
-    toast.show({ variant: 'default', label: t('session.actions.endSession.holdHint') });
+    // A short tap in full motion: explain the hold instead of ending anything. Round two (JT-09, JA2-N7): the
+    // explanation is the line under the button, raised for a moment and announced - no toast any more (it lay
+    // over the header, and a toast over a control swallows the next press).
+    setNudged(true);
+    if (nudge.current !== null) clearTimeout(nudge.current);
+    nudge.current = setTimeout(() => setNudged(false), HOLD_NUDGE_MS);
   };
 
   const onAccessibilityAction = (event: AccessibilityActionEvent) => {
@@ -178,7 +207,7 @@ function EndSessionButton({ disabled, blockedReason, dialogOpen, onConfirmHold }
           {blockedReason}
         </Text>
       ) : !reduced ? (
-        <Text maxFontSizeMultiplier={1.2} style={styles.hint}>
+        <Text maxFontSizeMultiplier={1.2} style={[styles.hint, nudged ? styles.hintNudged : null]} testID={nudged ? 'monitor-end-session-hold-nudge' : 'monitor-end-session-hold-hint'} accessibilityLiveRegion={nudged ? 'assertive' : 'none'}>
           {t('session.actions.endSession.holdHint')}
         </Text>
       ) : null}
@@ -218,6 +247,8 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
   const confirm = () => {
     setTouched(true);
     if (!check.valid) return;
+    // JT-23 / JM-04: the reason is given - the keyboard goes (on the phone it covered Finalizing for the whole seal).
+    putKeyboardAway();
     const sent = check.value;
     press.run((release) =>
       onEnd(sent, {
@@ -250,6 +281,9 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
                 onBlur={() => setTouched(true)}
                 placeholder={t('session.actions.endSession.reasonPlaceholder')}
                 maxLength={STOP_REASON_MAX}
+                // Round two (JA2-36): the reason is taken as typed - the keyboard's autocorrect rewrote it ("abc" -> "ABC").
+                autoCorrect={false}
+                autoCapitalize="sentences"
                 numberOfLines={3}
                 style={styles.textArea}
               />
@@ -259,7 +293,10 @@ function EndSessionDialog({ isOpen, onOpenChange, onEnd }: EndSessionDialogProps
                 </FieldError>
               ) : (
                 <Description testID="monitor-end-reason-count">
-                  {t('features.session-live.endSession.reasonCount', { count: check.length, max: STOP_REASON_MAX })}
+                  {/* JA2-36: the rule is said BEFORE the button stays grey - "at least 5 characters". */}
+                  {check.valid
+                    ? t('features.session-live.endSession.reasonCount', { count: check.length, max: STOP_REASON_MAX })
+                    : `${t('features.session-live.endSession.reasonRule', { min: STOP_REASON_MIN })} ${t('features.session-live.endSession.reasonCount', { count: check.length, max: STOP_REASON_MAX })}`}
                 </Description>
               )}
             </TextField>
@@ -291,6 +328,7 @@ const styles = StyleSheet.create({
   },
   label: { fontFamily: fontFamily.native.bold, fontSize: 19, lineHeight: 24, color: derived.dangerForeground },
   hint: { fontFamily: fontFamily.native.normal, fontSize: 12, lineHeight: 16, color: palette.gray, textAlign: 'center' },
+  hintNudged: { fontFamily: fontFamily.native.bold, color: palette.gold },
   // Tablets: a readable column instead of a full-width sheet of text (the phone is narrower anyway).
   dialog: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   field: { marginTop: spacing[2] },

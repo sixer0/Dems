@@ -103,6 +103,9 @@ export function SessionsScreen({ selectedId }: SessionsScreenProps) {
   const { layoutClass, isMultiPane } = useLayoutClass();
   const [query, setQuery] = useState<HubQuery>(DEFAULT_HUB_QUERY);
   const expanded = layoutClass === 'expanded';
+  // JT-20: only a FILTERED list can hide the selection (an unfiltered one that does not hold the id yet is still loading).
+  const paneRows = useHubRows(query).rows;
+  const selectedHidden = isMultiPane && selectedId !== null && isFiltered(query) && !paneRows.some((row) => row.id === selectedId);
 
   const list = (
     <SessionsListColumn
@@ -126,7 +129,14 @@ export function SessionsScreen({ selectedId }: SessionsScreenProps) {
             {list}
           </Pane>
           <Pane name="detail" style={expanded ? DETAIL_PANE_FLEX : styles.flexBasisZero}>
-            {selectedId ? <SessionDetail key={selectedId} sessionId={selectedId} variant="pane" /> : <DetailPlaceholder />}
+            {/* Round two (JT-20): the pane follows the list - a session the filter or the search removed is not kept open. */}
+            {selectedId && !selectedHidden ? (
+              <SessionDetail key={selectedId} sessionId={selectedId} variant="pane" />
+            ) : selectedId ? (
+              <FilteredOutPlaceholder id={selectedId} onClear={() => setQuery(DEFAULT_HUB_QUERY)} />
+            ) : (
+              <DetailPlaceholder />
+            )}
           </Pane>
         </PaneLayout>
       ) : (
@@ -254,6 +264,8 @@ function SessionsListColumn({ query, onQueryChange, selectedId, withControls }: 
       ) : null}
       <View style={styles.listWrap} accessibilityLabel={t('features.sessions.list.label')}>
         <FlashList
+          // Fix wave J (JM-03, as the Evidence list): a new first row must not be held above the viewport.
+          maintainVisibleContentPosition={{ disabled: true }}
           testID="sessions-rows"
           data={status.ready ? rows : []}
           keyExtractor={(item) => `${revealKey}:${item.id}`}
@@ -403,6 +415,19 @@ function FiltersPane({ query, onQueryChange }: QueryProps) {
         <FilterChips query={query} onQueryChange={onQueryChange} counts={counts} vertical />
       </Animated.View>
     </ScrollView>
+  );
+}
+
+function FilteredOutPlaceholder({ id, onClear }: { id: string; onClear: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.placeholder} testID="session-detail-filtered-out">
+      <SectionCard title={t('features.sessions.paneFiltered.title', { id })} description={t('features.sessions.paneFiltered.body')}>
+        <Button variant="outline" onPress={onClear} testID="session-detail-filtered-out-clear">
+          <Button.Label>{t('features.sessions.paneFiltered.clear')}</Button.Label>
+        </Button>
+      </SectionCard>
+    </View>
   );
 }
 

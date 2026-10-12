@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectPressOutsideDismisses, pressOutside } from '@/test/press-outside'
 import type { SocketLike } from '@dems/shared/realtime'
 import {
   ALWAYS_VISIBLE,
@@ -292,6 +293,33 @@ describe('Session Monitor: End Session → SEALED (AC-63 unit form, fake timers)
 })
 
 describe('Session Monitor: session actions', () => {
+  // Fix wave J (JW-16; "by code only" in round one, proven here): the marker dialog had no Cancel (only the X),
+  // and a press outside "End Session?" closed it and discarded the typed reason without a question.
+  it('JW-16: the marker dialog has a Cancel that adds nothing; a press outside "End Session?" keeps the dialog and the typed reason; Escape closes it', async () => {
+    await expectPressOutsideDismisses()
+    const { sim } = mountSession()
+    await findPage()
+    const before = sim.store.getState().session?.timeline.length ?? 0
+
+    fireEvent.click(screen.getByTestId('sm-action-marker'))
+    fireEvent.change(await screen.findByTestId('sm-marker-input'), { target: { value: 'Typed and given up' } })
+    fireEvent.click(screen.getByTestId('sm-marker-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('sm-marker-input')).not.toBeInTheDocument())
+    expect(sim.store.getState().session?.timeline.length ?? 0).toBe(before)
+
+    fireEvent.click(screen.getByTestId('sm-action-end'))
+    const dialog = await screen.findByTestId('sm-end-dialog')
+    fireEvent.change(within(dialog).getByTestId('sm-end-reason'), { target: { value: 'Interview finished for today' } })
+    await pressOutside()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(screen.getByTestId('sm-end-dialog')).toBeInTheDocument()
+    expect((within(screen.getByTestId('sm-end-dialog')).getByTestId('sm-end-reason') as HTMLTextAreaElement).value).toBe('Interview finished for today')
+    expect(sim.store.getState().session?.state).toBe('RECORDING')
+    fireEvent.keyDown(screen.getByTestId('sm-end-dialog'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('sm-end-dialog')).not.toBeInTheDocument())
+    expect(sim.store.getState().session?.state).toBe('RECORDING')
+  })
+
   it('adds a marker, a note and a snapshot to the session timeline (M-C-17, M-C-18)', async () => {
     const { sim } = mountSession()
     await findPage()

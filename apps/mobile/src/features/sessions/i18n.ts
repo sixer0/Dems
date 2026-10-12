@@ -69,6 +69,18 @@ export const sessionsEn = {
     linkDownTitle: 'Core server unreachable',
     linkDownBody: 'This list is what this device last received from the Core server. It updates by itself once the connection is back.',
   },
+  /** Round two, ruling (d) (JM-09): the open session was set up by another operator - whose it is, and what this operator can do. */
+  foreign: {
+    setup: 'This session was set up by {{who}}, not by you. You can continue it or cancel it.',
+    summary: 'This session was recorded by {{who}}, not by you. You can read its summary and acknowledge it with Done.',
+    nothing: 'This session belongs to {{who}}. Your role ({{role}}) cannot act on it: go to Home.',
+  },
+  /** Round two (JT-20): the detail pane while the selected session is not in the filtered list. */
+  paneFiltered: {
+    title: '{{id}} is not in this list',
+    body: 'The filter or the search hides the selected session. Clear the filters to see it again, or choose a row.',
+    clear: 'Clear filters',
+  },
   pane: {
     emptyTitle: 'Select a session',
     emptyBody: 'Pick a session from the list to see its details here.',
@@ -81,8 +93,11 @@ export const sessionsEn = {
     fault: 'Fault',
     timeRange: '{{start}} – {{end}}',
     incompleteTitle: 'Session marked INCOMPLETE',
-    incompleteBody: 'It will never be sealed (SYS-008). The recorded part is kept as evidence {{evidenceId}}.',
-    incompleteBodyNoEvidence: 'It will never be sealed (SYS-008).',
+    incompleteBody: 'It will never be sealed. The recorded part is kept as evidence {{evidenceId}}.',
+    incompleteBodyNoEvidence: 'It will never be sealed.',
+    // Round two (J2-S 4): why the seal of a quarantined session was given up, as the Core states it.
+    unsealableCause: 'Why the seal was given up: {{cause}}.',
+    unsealableCauseNotStated: 'The Core states no cause for it here.',
     pendingTitle: 'Summary not yet acknowledged',
     pendingBody: 'Open the session summary to review the seal and acknowledge it.',
     actions: {

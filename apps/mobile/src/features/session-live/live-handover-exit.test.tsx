@@ -21,7 +21,7 @@ import './testing/monitor-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { StyleSheet, type ViewStyle } from 'react-native';
@@ -29,6 +29,7 @@ import { LayoutAnimationConfig } from 'react-native-reanimated';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { resetFinalizingHandoverForTests } from '@/features/session-finalizing/handover';
 import { motionStore, resetMotionStateForTests } from '@/motion';
+import { MonitorLeavingNotice } from './monitor-leaving-notice';
 import { renderLiveMonitor, resetLiveMonitorBed, type LiveMonitorBed } from './testing/live-monitor-bed';
 
 let bed: LiveMonitorBed | null = null;
@@ -144,3 +145,23 @@ describe('the monitor file keeps the banner out of Reanimated\'s exiting bookkee
     expect(((StyleSheet.flatten([{ overflow: 'hidden' }]) ?? {}) as ViewStyle).overflow).toBe('hidden');
   });
 });
+
+// Fix wave J round two (JA2-19): a recording ended from outside left a black screen for 1.5 s or more.
+describe('JA2-19: the route draws one sentence while it leaves for a screen other than Finalizing', () => {
+  const routeSource = readFileSync(join(__dirname, '../../app/(app)/session/live.tsx'), 'utf8');
+
+  it('the route renders the notice WITH every redirect that is not the Finalizing hand-over', () => {
+    expect(routeSource).toMatch(/if \(redirect !== null\) \{\s*return \(\s*<>\s*<MonitorLeavingNotice to=\{redirect\} \/>\s*<Redirect href=\{redirect\} \/>/);
+    expect(routeSource).not.toMatch(/if \(redirect !== null\) return <Redirect/);
+  });
+
+  it('the notice is plain views with the sentence of where it goes - no Reanimated view, no entering or exiting animation', () => {
+    const noticeSource = readFileSync(join(__dirname, 'monitor-leaving-notice.tsx'), 'utf8');
+    expect(noticeSource).not.toMatch(/react-native-reanimated|entering=|exiting=/);
+    const view = render(<MonitorLeavingNotice to="/session/recovery" />);
+    expect(screen.getByTestId('monitor-leaving')).toHaveTextContent('The recording was interruptedOpening session recovery…');
+    view.rerender(<MonitorLeavingNotice to="/home" />);
+    expect(screen.getByTestId('monitor-leaving')).toHaveTextContent('This session is no longer recordingOpening the next screen…');
+  });
+});
+

@@ -67,6 +67,11 @@ export function RegisteredDeviceRows({ kind, selectedId, onPress }: RegisteredDe
   );
 }
 
+/** The chip tone of a registered device: READY without a checked fact of the Core ("Not checked") is neutral, never green. */
+export function registeredStateTone(state: ReturnType<typeof rosterDeviceState>, checked: boolean): (typeof LOCAL_STATE_TONE)[keyof typeof LOCAL_STATE_TONE] | 'default' {
+  return state === 'READY' && !checked ? 'default' : LOCAL_STATE_TONE[state];
+}
+
 function RegisteredDeviceRow({ device, selected, onPress }: { device: RegisteredDevice; selected: boolean; onPress: (deviceId: string) => void }) {
   const { t } = useTranslation();
   const { live } = useSourceBadgeMode();
@@ -98,11 +103,15 @@ function RegisteredDeviceRow({ device, selected, onPress }: { device: Registered
           <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.title} testID={`registered-device-name-${device.id}`}>
             {name}
           </Text>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.detail} testID={`registered-device-used-${device.id}`}>
+          {/* Fix wave J (JT-12): two lines - "Not assigned · CAM-04" lost the id, the one part that names the device. */}
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.detail} testID={`registered-device-used-${device.id}`}>
             {`${usedAs} · ${device.id}`}
           </Text>
           {/* Decided by the Core: no node when it sent no development class, and none in Simulated mode. */}
-          <DevelopmentSourceBadge deviceId={device.id} testID={`registered-device-source-${device.id}`} />
+          {/* Fix wave J (JT-14): the badge takes no touch inside the row - a tap anywhere opens the detail. */}
+          <View pointerEvents="none" testID={`registered-device-source-wrap-${device.id}`}>
+            <DevelopmentSourceBadge deviceId={device.id} testID={`registered-device-source-${device.id}`} />
+          </View>
           {onKey === null ? null : (
             <View style={styles.line} accessibilityRole="text" accessibilityLiveRegion="polite" testID={`registered-device-on-${device.id}`}>
               <Radio size={14} color={palette.warning} />
@@ -120,8 +129,9 @@ function RegisteredDeviceRow({ device, selected, onPress }: { device: Registered
             </View>
           ) : null}
         </ListGroup.ItemContent>
-        <ListGroup.ItemSuffix style={styles.suffix}>
-          <StatusChip size="sm" tone={LOCAL_STATE_TONE[state]} label={stateText} testID={`registered-device-state-${device.id}`} />
+        <ListGroup.ItemSuffix style={styles.suffix} pointerEvents="none">
+          {/* Fix wave J (JT-14): ONE colour rule for "Not checked" - neutral, as the detail and the assigned cameras draw it. */}
+          <StatusChip size="sm" tone={registeredStateTone(state, sourceChecked(device))} label={stateText} testID={`registered-device-state-${device.id}`} />
           <ChevronRight size={20} color={palette.gold} />
         </ListGroup.ItemSuffix>
       </ListGroup.Item>

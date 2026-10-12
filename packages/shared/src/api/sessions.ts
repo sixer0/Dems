@@ -687,6 +687,29 @@ const CHECKS_RUNNING = (event: string) => ({
   }),
 });
 
+/**
+ * An entry of operation 38 for a session that recorded and could not be sealed (fix wave J round two; JW-22
+ * remainder): `unsealableCause` is `details.cause` of its `SESSION_INCOMPLETE` audit row.
+ */
+export const SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE = {
+  id: 'SES-20261001-0024',
+  outcome: 'INCOMPLETE',
+  caseNumber: 'LP/2026/1001-0002',
+  subjectName: 'Wahyu Saputra',
+  subjectType: 'TERSANGKA',
+  investigatorId: 'OPR-001',
+  room: 'Interview Room 1',
+  profileId: 'STANDARD_1080P25',
+  createdAt: 1790820000000,
+  startedAt: 1790820060000,
+  endedAt: 1790820120000,
+  durationMs: 60000,
+  sizeBytes: 0,
+  evidenceId: null,
+  faultKind: null,
+  unsealableCause: 'SIGNING_KEY_UNAVAILABLE',
+} as const satisfies SessionHistoryPage['items'][number];
+
 export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   beginPrecheck: {
     pathParams: OPEN,
@@ -813,6 +836,10 @@ export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           value: { items: EXAMPLE_SESSION_HISTORY, nextCursor: '1790819100000-SES-20261001-0022' } satisfies SessionHistoryPage,
         },
         last: { summary: 'The last page', value: { items: [], nextCursor: null } satisfies SessionHistoryPage },
+        unsealable: {
+          summary: 'A recorded session whose seal was given up: no evidence item, its recordings in the quarantine folder, and the cause the Core recorded',
+          value: { items: [SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE], nextCursor: null } satisfies SessionHistoryPage,
+        },
       },
       401: SIGNED_OUT,
       403: BASIC_403_EXAMPLES,

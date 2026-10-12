@@ -38,10 +38,14 @@ export const devicesEn = {
     title_one: '{{count}} device needs attention',
     title_other: '{{count}} devices need attention',
     recordingContinues: 'Recording continues on the Core.',
+    // Fix wave J (JA2-26): the sentence follows the Core's session fact, and a latched clip names its remedy.
+    noSession: 'No session is recording.',
+    clipRemedy: 'The clip mark stays until it is reset: open {{device}} and press "Reset clip".',
+    openDevice: 'Open {{device}}',
   },
   pane: {
     emptyTitle: 'Select a device',
-    emptyBody: 'Its live preview or level meter, health and log appear here.',
+    emptyBody: 'Its picture or level meter, health and log appear here.',
   },
   detail: {
     notFound: 'This device is not part of this room.',
@@ -56,10 +60,26 @@ export const devicesEn = {
     percent: '{{value}}%',
     readOnlyNote: 'Gain and phantom power are read-only in this demo.',
     clipLatched: 'Latched',
-    tabletSelf: 'This tablet · Core link',
+    tabletSelf: 'This device · Core link',
+    // Fix wave J (JA2-26): where the latch is, the way to end it is said.
+    clipRemedy: 'A clip was detected. "Reset clip" clears the mark.',
+  },
+  // Fix wave J (JA2-13): device-neutral names of the row that stands for THIS device (phone or tablet).
+  other: {
+    deviceControl: 'Device Control',
+    deviceOfflineTitle: 'Device control offline',
+    deviceOfflineBody: 'Recording continues on the Core. Reconnect this device to regain control.',
+    lampOff: 'Lamp off',
   },
   health: {
     unavailable: 'No samples yet. They appear once per second.',
+    // Fix wave J (JT-03): a Core in its own capture reports no health history of a generated source.
+    notReported: 'This Core reports no health history for this source.',
+  },
+  // Fix wave J (JW-08): a microphone without a measured level. Never the fault word "No signal".
+  level: {
+    notMeasured: 'Not measured',
+    notMeasuredNote: 'A level is measured only while a capture is open.',
   },
   actions: {
     diagnostics: 'Diagnostics',
@@ -77,6 +97,12 @@ export const devicesEn = {
   diagnostics: {
     close: 'Close diagnostics',
     failedToStart: 'Diagnostics could not start. Please try again.',
+    // Fix wave J (JT-03): a check this Core does not read is "Not reported", and the summary counts it apart.
+    reportedPassed: 'Every reported check passed',
+    notReported_one: '{{count}} check is not reported by this Core',
+    notReported_other: '{{count}} checks are not reported by this Core',
+    summaryJoin: '{{summary}} · {{notReported}}',
+    label: 'Diagnostics checks',
   },
   /**
    * LIVE mode (backend task W78; 04_client_integration_spec §3.2, MD-8; gateway rule 8): the Core

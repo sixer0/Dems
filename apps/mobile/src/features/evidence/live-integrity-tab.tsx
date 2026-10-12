@@ -242,6 +242,11 @@ export function LiveIntegrityTab({ item, operatorNames, autoVerify = false, bund
               {t(CORE_HEADING_KEYS[headingState])}
             </Text>
             <StatusChip size="sm" tone="sealed" icon={null} label={t('features.evidence.integrity.coreLabel')} testID="evidence-integrity-label" />
+            {/* Fix wave J (JA2-02, truth rules 3a / 3f; contract_wave_j.md J-S 2): a verdict the simulator computed says so -
+                the hashes of a demonstration record were compared, no stored media was read. Never a bare "Verified". */}
+            {verdict?.demonstration === true ? (
+              <StatusChip size="sm" tone="warning" icon={null} label={t('common.truth.demonstrationChip')} testID="evidence-integrity-demonstration" />
+            ) : null}
           </View>
           <Button size="sm" variant={done ? 'outline' : 'primary'} isDisabled={busy} onPress={verify} testID="evidence-verify">
             {busy ? <Spinner size="sm" /> : null}

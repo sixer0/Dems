@@ -54,7 +54,7 @@ export const networkTime = {
       trackStartValue: 'Common timeline',
       sourceMeta: 'Source metadata',
       sourceMetaValue: '{{source}} {{lock}}',
-      derived: 'Derived for the demo; the book leaves the A/V limits TBD (§22.2).',
+      derived: 'Derived for the demo; the A/V limits are not specified yet.',
     },
   },
 
@@ -124,13 +124,13 @@ export const networkTime = {
     mbps: '{{value}} Mbps',
     sparklineLabel: 'Bandwidth over the last {{seconds}} seconds: {{down}} Mbps down, {{up}} Mbps up',
     collecting: 'Collecting samples…',
-    tablet: 'Tablet link',
+    tablet: 'Operator device link',
     tabletState: {
       CONNECTED: 'Connected',
       OFFLINE: 'Offline',
     },
-    tabletDetail: 'Management domain · paired control tablet',
-    tabletOffline: 'Recording continues on the Core. The tablet resyncs when it reconnects.',
+    tabletDetail: 'Management domain · paired operator device',
+    tabletOffline: 'Recording continues on the Core. The device resyncs when it reconnects.',
     ports: {
       POE_CAM_1: 'CAM 1',
       POE_CAM_2_AUX: 'CAM 2 / AUX',
@@ -226,7 +226,7 @@ export const networkTime = {
     rtcHoldoverDetail: 'The RTC holds time and the offset drifts until GNSS or NTP returns.',
     restored: 'GNSS lock restored',
     restoredDetail: 'The time source is back to GNSS stratum 1.',
-    tabletOffline: 'Tablet link lost',
+    tabletOffline: 'Operator device link lost',
     tabletOfflineDetail: 'Recording continues on the Core.',
   },
 } as const satisfies ResourceTree;

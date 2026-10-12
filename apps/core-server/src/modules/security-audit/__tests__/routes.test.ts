@@ -30,7 +30,7 @@ import { notReady } from '../../../plugins/error-envelope';
 import type { ErrorLogEntry } from '../../../plugins/logger';
 import { permissionGuard, routePatternOf } from '../../../plugins/permission-guard';
 import { NO_REASON } from '../export-request';
-import { SECURITY_AUDIT_MODULE_OPERATIONS, securityAuditControl } from '../index';
+import { SECURITY_AUDIT_MODULE_OPERATIONS, evidenceVerificationCountsOf, securityAuditControl } from '../index';
 import { AUDIT, AUDIT_CHAIN, AUDIT_EXPORT, EVENTS, LOGS_EXPORT, SECURITY_STATUS, WEB_ORIGIN, errorOf, outcomeOf } from './support';
 
 const EPOCH = 7;
@@ -386,12 +386,27 @@ describe('a read that fails is the server\'s failure: 503 NOT_READY, logged and 
     expect(JSON.stringify(built.persisted)).not.toContain(MARKER);
   });
 
-  it('getSecurityStatus reads the slice `security` and nothing else of the engine, and runs no command', async () => {
+  it('getSecurityStatus reads the slices `security` and `evidence` and nothing else of the engine, and runs no command', async () => {
     const built = await build();
     built.actAs(operator('TECHNICIAN'));
-    await built.get(SECURITY_STATUS);
-    expect(built.slices).toEqual(['security']);
+    const response = await built.get(SECURITY_STATUS);
+    // Fix wave J (GM-02): `evidence` - the count of items with / without a verification of record is the Core's own.
+    expect(built.slices).toEqual(['security', 'evidence']);
     expect(built.calls).toEqual([]);
+    // (The stored head is not readable in this bed: the answer itself is held by `reads.db.test.ts`.)
+    expect(response.statusCode).toBe(503);
+  });
+
+  it('fix wave J (GM-02): the counts are over EVERY item by its verification of record - they add up, and a never-sealed record is no "never verified" item', () => {
+    const item = (sealedAt: number | null, status: string) => ({ sealedAt, verification: { status } });
+    const items = [item(1, 'PASS'), item(1, 'PASS'), item(1, 'FAIL'), item(1, 'NOT_RUN'), item(1, 'NOT_RUN'), item(1, 'NOT_RUN'), item(null, 'NOT_RUN'), item(null, 'PASS')];
+    const counts = evidenceVerificationCountsOf(items);
+    expect(counts).toEqual({ sealed: 6, passed: 2, failed: 1, neverVerified: 3 });
+    expect(counts.passed + counts.failed + counts.neverVerified).toBe(counts.sealed);
+    expect(evidenceVerificationCountsOf([])).toEqual({ sealed: 0, passed: 0, failed: 0, neverVerified: 0 });
+    // 1,500 items: the count does not depend on any window of rows (the tile's old number came from the newest 1,000 audit rows).
+    const many = Array.from({ length: 1_500 }, (_, index) => item(1, index < 40 ? 'PASS' : 'NOT_RUN'));
+    expect(evidenceVerificationCountsOf(many)).toEqual({ sealed: 1_500, passed: 40, failed: 0, neverVerified: 1_460 });
   });
 
   it('an engine that is not running answers 503 before the table is asked: the status, and the view of the chain', async () => {

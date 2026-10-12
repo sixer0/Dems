@@ -1,6 +1,7 @@
 import { Redirect, Stack, useRouter, useSegments, type Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { palette } from '@dems/shared/tokens';
+import { putKeyboardAway } from '@/lib/keyboard';
 import { stackAnimation, useMotionSettings } from '@/motion';
 import { isPairingBlocked, useActiveSession, useAuth, usePairing } from '@/runtime';
 import { clearPendingHref, peekPendingHref, setSignedInSnapshot } from './pending-href';
@@ -46,6 +47,12 @@ export function RootNavigator() {
   const router = useRouter();
   const wasAuthenticated = useRef(isAuthenticated);
   const awaitingTarget = useRef(false);
+
+  // Fix wave J (JT-23 / JM-04): the soft keyboard belongs to the screen whose field opened it. Seen on both
+  // devices: it stayed over Finalizing after the End Session reason, and once over Devices, a screen with no
+  // field at all. Every change of route puts it away; a field of the new screen that takes focus opens it again.
+  const route = segments.join('/');
+  useEffect(() => putKeyboardAway(), [route]);
 
   useEffect(() => {
     setSignedInSnapshot(isAuthenticated);

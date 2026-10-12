@@ -127,12 +127,31 @@ describe('one LIVE idiom (rule 5) and one link rule (rows M0, M1)', () => {
 describe('the copy (rule 8; §3.2)', () => {
   it('the text LIVE mode adds says nothing about a simulation', () => {
     const live = leaves(auditEn.live);
-    expect(live.map((leaf) => leaf.key)).toEqual(['typedActor', 'storedVerified', 'storedBroken', 'earlierChains_one', 'earlierChains_other', 'offlineTitle', 'offlineBody']);
+    expect(live.map((leaf) => leaf.key)).toEqual(['typedActor', 'storedVerified', 'storedVerifiedAfterBreak', 'storedBroken', 'earlierChains_one', 'earlierChains_other', 'offlineTitle', 'offlineBody']);
     expect(live.filter((leaf) => /simulat|mock/i.test(leaf.text))).toEqual([]);
   });
 
   it('no `SIM-GAP` marker: the folder holds none, as at `acaff20` (KI-07 stays 13 IDs / 62 markers)', () => {
     const marker = new RegExp(`${['SIM', 'GAP'].join('-')}-M\\d+-\\d+`, 'g');
     expect(raw.flatMap((file) => file.source.match(marker) ?? [])).toEqual([]);
+  });
+});
+
+/** Fix wave J (JA2-13, JA2-29): every string of a copy tree, with its key path; interpolation names removed. */
+function operatorCopy(node: unknown, path: string[] = []): { key: string; text: string }[] {
+  if (typeof node === 'string') return [{ key: path.join('.'), text: node.replace(/\{\{[^}]*\}\}/g, '') }];
+  if (typeof node !== 'object' || node === null) return [];
+  return Object.entries(node).flatMap(([name, child]) => operatorCopy(child, [...path, name]));
+}
+/** Specification and developer language, and the device kind, that operator copy must not carry. */
+const NOT_OPERATOR_COPY = /tablet|§|design book|\badb\b|THIRD_PARTY|repository|this phase|\bSYS-\d|\bEVT-\d|\b(?:AC|SEC|M\d)-[A-Z0-9]|\bD\d{2,3}\b|\bbook\b/i;
+
+describe('fix wave J: operator copy of the Audit view', () => {
+  it('JA2-29 / N-02: no specification id or developer wording in any string', () => {
+    const found = operatorCopy(auditEn, ['features', 'audit'])
+      .filter(({ text }) => NOT_OPERATOR_COPY.test(text))
+      .map(({ key }) => key);
+    expect(found).toEqual([]);
+    expect(/discarded|Earlier chains/i.test(auditEn.live.earlierChains_other)).toBe(false);
   });
 });

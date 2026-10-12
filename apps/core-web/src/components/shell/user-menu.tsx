@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { selectOperator, SignOutReason, useSim } from '@dems/shared/sim'
+import { markConsoleLocked } from '@/lib/lock-return'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { reportShellError } from './shell-report'
@@ -42,7 +43,11 @@ export function UserMenu() {
       },
     })
   const onAction = (key: Key) => {
-    if (key === 'lock') signOut(SignOutReason.LOCK)
+    if (key === 'lock') {
+      // Fix wave J (JW-19): the next sign-in returns to the page that was locked (`lib/lock-return.ts`).
+      markConsoleLocked()
+      signOut(SignOutReason.LOCK)
+    }
     else if (key === 'signOut') signOut(SignOutReason.USER)
   }
 

@@ -84,9 +84,8 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-card-subtitle {
@@ -342,18 +341,16 @@
     line-height: 18px;
     font-weight: 500;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-control-detail {
     font-size: 12px;
     line-height: 16px;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   /* ── Keys & certificates ────────────────────────────────────────────────────────────── */
@@ -402,9 +399,8 @@
     font-size: 12px;
     line-height: 16px;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+  overflow-wrap: break-word;
   }
 
   .sa-demo-note {
@@ -630,9 +626,8 @@
     font-size: 13px;
     line-height: 17px;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-event-refs {
@@ -640,9 +635,8 @@
     font-size: 11px;
     line-height: 14px;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-chain-cell {
@@ -653,6 +647,33 @@
   }
 
   .sa-chain-icon { width: 14px; height: 14px; flex: none; color: var(--sa-tone); }
+
+  /* Fix wave J round three: columns that lie to the side are announced - a soft edge on that side of the
+     table and a line of words under it. Neither is drawn while the whole table is in view. */
+  .sa-table-wrap[data-more-right='true']::after,
+  .sa-table-wrap[data-more-left='true']::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .sa-table-wrap[data-more-right='true']::after { right: 0; background: linear-gradient(to left, rgb(255 200 107 / 0.28), transparent); border-right: 2px solid var(--accent); }
+  .sa-table-wrap[data-more-left='true']::before { left: 0; background: linear-gradient(to right, rgb(255 200 107 / 0.28), transparent); border-left: 2px solid var(--accent); }
+
+  .sa-sideways-cue {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .sa-sideways-cue[data-more='left'] { justify-content: flex-start; }
+  .sa-sideways-icon { width: 14px; height: 14px; flex: none; }
 
   .sa-table-footer {
     display: flex;
@@ -719,9 +740,8 @@
     font-weight: 700;
     color: var(--foreground);
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-kpi-value[data-tone] { color: var(--sa-tone-text); }
@@ -765,18 +785,16 @@
     font-size: 13px;
     line-height: 17px;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-feed-sub {
     font-size: 12px;
     line-height: 16px;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .sa-feed-empty {

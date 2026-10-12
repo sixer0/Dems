@@ -47,6 +47,31 @@ export const evidenceEn = {
     rowActions: 'Actions for {{id}}',
     thumbnail: 'Poster of {{id}}',
   },
+  /** Round two (JT-11 / JA2-08; contract J2-S 1): the markers and notes the item carries. */
+  annotations: {
+    title: 'Markers and notes of the session',
+    marker: 'Marker {{index}}',
+    markerSeek: 'Marker {{index}} at {{time}}: play from there',
+    noLabel: 'no label',
+    note: 'Note',
+    formNote: 'Note from the session form',
+  },
+  /** Round two (JT-10): the transcript and the sealed player of one item know each other. */
+  transcriptLink: {
+    seek: 'Play from {{start}}',
+    now: 'At the playhead',
+    noPlayer: 'Press Play first: the recording is not open in the player.',
+  },
+  /** Round two (JA2-07): the item of an interrupted session that was never sealed (`sealedAt === null`). */
+  neverSealed: {
+    status: 'Incomplete session — not sealed',
+  },
+  /** Round two (JT-20): the detail pane while the selected item is not in the filtered list. */
+  paneFiltered: {
+    title: '{{id}} is not in this list',
+    body: 'The filter or the search hides the selected item. Clear the filters to see it again, or choose a row.',
+    clear: 'Clear filters',
+  },
   pane: {
     emptyTitle: 'Select an evidence item',
     emptyBody: 'Its details, media and integrity appear here.',
@@ -72,7 +97,7 @@ export const evidenceEn = {
     unavailable: 'The Core did not say which media belongs to this item, so no bundled media is shown.',
   },
   metadata: {
-    manifestTitle: 'Manifest (§11.3)',
+    manifestTitle: 'Manifest',
     jsonTitle: 'manifest.json (DEMO)',
     notAvailable: 'No DEMO package for this item: the manifest is not on this device.',
     fields: {
@@ -94,7 +119,7 @@ export const evidenceEn = {
     tracksValue_other: '{{count}} SHA-256',
     certShort: 'cert {{serial}}',
     encryptionDemo: 'DEMO: not applied',
-    exportTitle: 'Export package (§19.2)',
+    exportTitle: 'Export package',
     exportId: 'Export ID',
     exportZip: 'Package SHA-256 ({{file}})',
     exportBy: 'Exported by',
@@ -115,7 +140,7 @@ export const evidenceEn = {
   },
   integrity: {
     verifiedByCore: 'Verified by the Core',
-    verifiedByCoreNote: 'Integrity is checked on the Core against the sealed package; this tablet shows the Core’s result.',
+    verifiedByCoreNote: 'Integrity is checked on the Core against the sealed package; this device shows the Core’s result.',
     demoLabel: 'DEMO - precomputed',
     simulatedLabel: 'SIMULATED',
     notVerified: 'Not verified on this screen yet',
@@ -144,7 +169,7 @@ export const evidenceEn = {
       exportSignature: 'Export signature',
     },
     noPackage: 'No DEMO package for this item. The values below are the simulator’s own, labelled SIMULATED.',
-    lifecycle: 'Evidence lifecycle (§19.1)',
+    lifecycle: 'Evidence lifecycle',
     custody: 'Chain of custody',
     custodyEmpty: 'No custody entries yet.',
     custodyRow: '{{time}} · {{action}} · {{actor}}',
@@ -155,7 +180,7 @@ export const evidenceEn = {
     verifyError: 'The Core could not verify this item. Try again.',
     // Live mode (backend task W74; 04_client_integration_spec §14 point 7): the Core's verdict is the record.
     coreLabel: 'Core record',
-    coreNote: 'The Core runs the verification and returns the verdict of record; this tablet shows it as it is.',
+    coreNote: 'The Core runs the verification and returns the verdict of record; this device shows it as it is.',
     // Closing-fix CF-M2 (R-T-2): the Live card's heading follows the verification the Core holds.
     failedOnCore: 'Verification failed on the Core',
     notVerifiedYet: 'Not verified yet',
@@ -172,7 +197,7 @@ export const evidenceEn = {
     archive: 'Archive',
     downloadManifest: 'Download manifest',
     manifestToast: 'Manifest download is simulated in this demo',
-    manifestToastLive: 'Manifest download is not available on this tablet.',
+    manifestToastLive: 'Manifest download is not available on this device.',
     exportDisabled: 'Only sealed evidence can be exported',
     archiveDisabled: 'Archiving needs the Supervisor role',
     archiveTitle: 'Archive {{id}}?',
@@ -243,7 +268,7 @@ export const evidenceEn = {
     manifestSha: 'Session manifest SHA-256',
     zipSha: 'Package SHA-256 ({{file}})',
     zipNote: 'Package built on the Core (simulated); its hash is recorded in the export manifest.',
-    zipNoteLive: 'The Core recorded this export. No file is sent to this tablet.',
+    zipNoteLive: 'The Core recorded this export. No file is sent to this device.',
     // The LIVE success toast is the shared `evidence.live.export.success`: row W74's own `successLive` was
     // merged into it in the closing copy round (decision D162 DN-5, W83 ledger #93).
     destinationValue: 'Destination',

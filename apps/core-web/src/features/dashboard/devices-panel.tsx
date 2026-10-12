@@ -10,6 +10,7 @@ import { audioPairInForce, DeviceCommand, noLiveLevelsOf, useSim, type SimState 
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
 import { CameraPreview } from '@/features/devices/camera-preview'
+import { useTrackReach } from '@/features/devices/track-reach'
 import { MicSourceMarks, TrackSourceMarks } from '@/features/devices/source-badge'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useDeviceCommandGate } from '@/lib/device-command-gate'
@@ -295,15 +296,20 @@ function Tile({ index, beatMs, testId, children }: { index: number; beatMs: numb
 function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index: number; beatMs: number }) {
   const { t } = useTranslation()
   const camera = useSim(useMemo(() => selectCamera(cameraId), [cameraId]))
+  // Fix wave J (JW-23 (4)): "READY" of a source the Core never checked (a camera on a dead port) reads "Not checked".
+  const reach = useTrackReach(cameraId)
   if (!camera) return null
   const fault = !camera.online || camera.lens === 'FAULT'
+  const notChecked = reach === 'NOT_CHECKED' && !fault && !camera.recording
   // REC is a state here (red dot, "REC"); the elapsed timer lives on the ring and in panel D.
-  const tone: StatusTone = fault || camera.recording ? 'danger' : 'success'
+  const tone: StatusTone = fault || camera.recording ? 'danger' : notChecked ? 'default' : 'success'
   const state = fault
     ? t('common.status.noSignal')
     : camera.recording
       ? t('common.enums.trackRecState.REC')
-      : t('common.enums.lensState.READY')
+      : notChecked
+        ? t('web.source.notChecked')
+        : t('common.enums.lensState.READY')
   const name = t(CAMERA_NAME_KEY[cameraId])
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${cameraId}`}>

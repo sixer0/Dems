@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Fragment, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
@@ -8,6 +9,7 @@ import type { StatusTone } from '@dems/shared/tokens'
 import { motion as tokens } from '@dems/shared/tokens'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { isOwnCaptureCore, isPlatformNotReportedCore } from '@/lib/own-capture'
+import { useTrackReach } from '@/features/devices/track-reach'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import {
@@ -80,8 +82,14 @@ export function StatusStripPanel() {
 
   const freeTb = storage.freeTb
   const freeText = t('common.units.tb', { value: formatOneDecimal(freeTb) })
-  const camerasValue =
-    devices.camerasOnline === devices.camerasTotal
+  // Fix wave J (JW-23 (4) / rule 3c): the strip said "2 Cameras: Ready" above two tiles that said "Not checked". ONE
+  // statement per fact: a source the Core never checked is "Not checked" here too (the rule of `source-state.ts`).
+  const reach1 = useTrackReach('VIDEO-01')
+  const reach2 = useTrackReach('VIDEO-02')
+  const camerasNotChecked = devices.camerasOnline === devices.camerasTotal && (reach1 === 'NOT_CHECKED' || reach2 === 'NOT_CHECKED')
+  const camerasValue = camerasNotChecked
+    ? t('web.source.notChecked')
+    : devices.camerasOnline === devices.camerasTotal
       ? t('dashboard.statusStrip.value.ready')
       : t('dashboard.statusStrip.value.camerasOnline', { online: devices.camerasOnline, total: devices.camerasTotal })
   const micValue =
@@ -112,7 +120,7 @@ export function StatusStripPanel() {
       label: t('dashboard.statusStrip.cameras', { count: devices.camerasTotal }),
       value: camerasValue,
       valueText: camerasValue,
-      tone: cameraTone(devices),
+      tone: camerasNotChecked ? 'default' : cameraTone(devices),
       page: t('shell.nav.devices'),
     },
     {
@@ -174,6 +182,8 @@ export function StatusStripPanel() {
   return (
     <DashPanel id="c" beatMs={DASH_BEATS.strip} surface="bare" ariaLabel={t('dashboard.statusStrip.label')}>
       <div className="dems-strip-card rounded-xl">
+        {/* Fix wave J (JW-07): the strip's GNSS / security / network values of the demonstration Core are marked. */}
+        <DemoMark block="dashboard-strip" className="dems-strip-demo" long />
         <nav className="dems-strip" aria-label={t('dashboard.statusStrip.label')}>
           {cells.map((cell, index) => (
             <Fragment key={cell.id}>

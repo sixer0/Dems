@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { useId } from 'react'
 import useMeasure from 'react-use-measure'
 import { motion } from 'motion/react'
@@ -6,6 +7,7 @@ import { useSim } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { GlowRing } from '@/components/composed'
 import { usePlatformNotReported } from '@/lib/own-capture'
+import { selectStatedAlertCount, selectStatedAlertMessage, useSystemStatement } from '@/lib/system-statement'
 import { useMotionPolicy } from '@/motion'
 import { DashPanel } from './dash-panel'
 import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
@@ -56,11 +58,24 @@ export function SystemRingPanel() {
   // Fix wave M (G75e-04, ruling D234 (1) after D228 (2)): the open notice is said ALSO while a session records beside
   // it. The ring stays the recording ring (REC, the timer); its line and its caption state the notice, never "SECURE".
   const noticeRecording = !blocked && !retrying && openNotices > 0 && ring.state === 'RECORDING'
-  const ringState = blocked ? 'CRITICAL' : retrying || noticeOnly ? 'ATTENTION' : ring.state
+  // Fix wave J (JW-04, JW-05, JT-01; truth rule 3c): the ring reads the SAME statement as the header pill
+  // (`lib/system-statement.ts`). Two facts the ring's own flags do not hold: a lost Core link ("state unknown", never
+  // READY) and an active alert no flag stands for (an unreachable capture source) - also while a session records.
+  const statement = useSystemStatement()
+  const alertCount = useSim(selectStatedAlertCount)
+  const alertMessage = useSim(selectStatedAlertMessage)
+  const offline = statement.kind === 'CORE_OFFLINE'
+  const alertActive = !offline && !blocked && !retrying && alertCount > 0 && (ring.state === 'READY' || ring.state === 'RECORDING')
+  const alertCritical = alertActive && statement.kind === 'CRITICAL'
+  const ringState = offline ? 'UNKNOWN' : blocked ? 'CRITICAL' : alertCritical ? 'CRITICAL' : retrying || noticeOnly || (alertActive && ring.state === 'READY') ? 'ATTENTION' : ring.state
   // Integration pass D7 item 3 (ux §8e.2; D84, D91): before the first durable fragment the ring is not the
   // recording ring (the adapter sends the system's own state, no REC, no timer) and the line under it says so.
-  const statusLine = blocked
+  const statusLine = offline
+    ? t('web.waveJ.ring.offlineSub')
+    : blocked
     ? t('web.waveL.notice.blockedRingSub')
+    : alertActive
+      ? t(ring.state === 'RECORDING' ? 'web.waveJ.ring.alertRecording' : 'web.waveJ.ring.alertSub', { count: alertCount })
     : retrying
       ? t('web.waveM.ring.retrySub')
     : noticeRecording
@@ -88,6 +103,9 @@ export function SystemRingPanel() {
         className="dems-dash-ring-cell"
         data-ring-size={size}
         data-connecting={ring.connecting ? 'true' : undefined}
+        data-statement={statement.kind}
+        data-core-offline={offline ? 'true' : undefined}
+        data-alert-active={alertActive ? 'true' : undefined}
         data-seal-blocked={blocked ? 'true' : undefined}
         data-open-notice={noticeOnly || noticeRecording ? 'true' : undefined}
         data-seal-retrying={retrying ? 'true' : undefined}
@@ -103,7 +121,7 @@ export function SystemRingPanel() {
           </defs>
           <path d="M 62 1 C 96 16, 100 70, 78 99" fill="none" stroke={`url(#${gradientId})`} strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
         </svg>
-        <GlowRing state={ringState} size={size} mode="hero" recordingSince={blocked || retrying ? null : ring.since} delayMs={ringDelay}>
+        <GlowRing state={ringState} size={size} mode="hero" recordingSince={offline || blocked || retrying ? null : ring.since} delayMs={ringDelay}>
           <motion.div
             className="dems-ring-details"
             initial={{ opacity: 0 }}
@@ -117,9 +135,15 @@ export function SystemRingPanel() {
             <span className="dems-ring-status" data-testid="ring-status-line">
               {statusLine}
             </span>
+            {/* Fix wave J (JW-07): "SECURE • HEALTHY • OPERATIONAL" of the demonstration Core is marked as that. */}
+            <DemoMark block="dashboard-ring" className="dems-ring-demo" long />
             <span className={size < CAPTION_MIN_SIZE ? 'sr-only' : 'dems-ring-caption'}>
-              {blocked
+              {offline
+                ? t('web.waveJ.ring.offlineDetail')
+                : blocked
                 ? t('web.waveL.notice.blockedRingDetail', { sessionId: blockedSessionId })
+                : alertActive
+                  ? alertMessage
                 : retrying
                   ? t('web.waveM.ring.retryDetail', { sessionId: retryingSessionId })
                 : noticeOnly || noticeRecording

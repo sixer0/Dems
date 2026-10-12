@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const DENIED = 'Not permitted';
-const DENIED_ROLE = 'Requires the Investigator role';
+const DENIED_ROLE = 'Requires the Investigator or Supervisor role';
 const OFFLINE = 'Core server unreachable';
 const OFFLINE_HINT = 'Nothing was changed.';
 const isBusy = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.busy === true;
@@ -163,7 +163,7 @@ describe('S1-4: Next on step 1 — createSession, then beginPrecheck (nested set
     const b = await openStep1();
     b.fake.answerOnce('createSession', rateLimited(30));
     await pressAndSettle('session-new-next', b);
-    expect(toastShown('The Core server is limiting requests from this tablet')).toBe(true);
+    expect(toastShown('The Core server is limiting requests from this device')).toBe(true);
     expect(toastShown('Try again in 30 s.')).toBe(true);
     expect(toastShown(OFFLINE)).toBe(false);
     expect(screen.queryByTestId('session-new-link-down')).toBeNull();

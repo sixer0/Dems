@@ -148,9 +148,17 @@ function TabScreenFade({ focused, children }: { focused: boolean; children: Reac
   );
 }
 
-/** The canvas-coloured veil over a newly focused screen, from 1 to 0 on the UI thread; untouchable, hidden from TalkBack. */
+/**
+ * Fix wave J (JM-07): where the veil starts. It started at 1 - a fully opaque canvas - so every tab change on
+ * the phone showed a COMPLETELY EMPTY screen (header included) for 116-333 ms, until the UI thread ran the
+ * fade (measured per frame, 5 of 5 changes). A veil that starts translucent is a cross-fade from its first
+ * frame: the new screen is readable at once, whenever the UI thread starts the fade - or never does.
+ */
+export const TAB_VEIL_START_OPACITY = 0.55;
+
+/** The canvas-coloured veil over a newly focused screen, from `TAB_VEIL_START_OPACITY` to 0 on the UI thread; untouchable, hidden from TalkBack. */
 function FadeVeil({ settings }: { settings: MotionSettings }) {
-  const opacity = useSharedValue(1);
+  const opacity = useSharedValue(TAB_VEIL_START_OPACITY);
   useEffect(() => {
     opacity.set(animateFade(0, settings, 'fast'));
   }, [settings, opacity]);

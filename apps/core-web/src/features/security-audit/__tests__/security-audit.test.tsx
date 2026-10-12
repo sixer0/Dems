@@ -20,7 +20,11 @@ import {
   type AuditLogSlice,
   type Sim,
 } from '@dems/shared/sim'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
+import { sidewaysMoreOf } from '@/lib/sideways-scroll'
 import { createAppRouter } from '@/router'
 import {
   buildControls,
@@ -368,6 +372,53 @@ describe("Security & Audit: the chain, the controls, the page", () => {
       await waitFor(() => expect(auditCount()).toBe(`${total + 1} of ${total + 1} entries`))
     })
 
+    // Fix wave J round three (the box check of round one: at 1280 px the audit table is 1144 px wide in 1008 px):
+    // a table that is wider than its card SAYS that columns lie to the side, on which side, and stops saying
+    // it when they are in view. jsdom has no layout, so the widths are given to the element.
+    it('the audit table announces the columns that lie to the side - right, both, left - and nothing when it fits', async () => {
+      await mountPage()
+      const table = screen.getByTestId('audit-table')
+      const wrap = table.closest('.sa-table-wrap') as HTMLElement
+      const lay = (box: { scrollLeft: number; clientWidth: number; scrollWidth: number }) => {
+        for (const [name, value] of Object.entries(box)) Object.defineProperty(table, name, { configurable: true, value })
+        fireEvent.scroll(table)
+      }
+      // CONTROL - a table that fits (and jsdom's own zero widths) raises no cue.
+      expect(screen.queryByTestId('audit-sideways-cue')).toBeNull()
+      lay({ scrollLeft: 0, clientWidth: 1144, scrollWidth: 1144 })
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      expect(screen.queryByTestId('audit-sideways-cue')).toBeNull()
+      expect(wrap).not.toHaveAttribute('data-more-right')
+
+      // 1280 px: 1144 px of columns in 1008 px - the columns to the right are announced, in words and on the edge.
+      lay({ scrollLeft: 0, clientWidth: 1008, scrollWidth: 1144 })
+      const cue = await screen.findByTestId('audit-sideways-cue')
+      expect(cue).toHaveAttribute('data-more', 'right')
+      expect(cue).toHaveAttribute('role', 'note')
+      expect(cue).toHaveTextContent('More columns to the right: scroll the table sideways')
+      expect(wrap).toHaveAttribute('data-more-right', 'true')
+      expect(wrap).not.toHaveAttribute('data-more-left')
+
+      lay({ scrollLeft: 60, clientWidth: 1008, scrollWidth: 1144 })
+      await waitFor(() => expect(screen.getByTestId('audit-sideways-cue')).toHaveAttribute('data-more', 'both'))
+      expect(wrap).toHaveAttribute('data-more-left', 'true')
+
+      // Scrolled to the end: only the left side is announced.
+      lay({ scrollLeft: 136, clientWidth: 1008, scrollWidth: 1144 })
+      await waitFor(() => expect(screen.getByTestId('audit-sideways-cue')).toHaveAttribute('data-more', 'left'))
+      expect(screen.getByTestId('audit-sideways-cue')).toHaveTextContent('More columns to the left: scroll the table sideways')
+      expect(wrap).not.toHaveAttribute('data-more-right')
+
+      // The rule itself, with its one pixel of tolerance.
+      expect(sidewaysMoreOf({ scrollLeft: 0, clientWidth: 1008, scrollWidth: 1009 })).toBe('none')
+      expect(sidewaysMoreOf({ scrollLeft: 0, clientWidth: 1008, scrollWidth: 1144 })).toBe('right')
+      // The stylesheet draws the edge only for the side that is announced.
+      const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../security-audit.css'), 'utf8')
+      expect(css).toMatch(/\.sa-table-wrap\[data-more-right='true'\]::after/)
+      expect(css).toMatch(/\.sa-table-wrap\[data-more-left='true'\]::before/)
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
     it('gates Export audit on AUDIT_EXPORT: disabled for the Investigator with the role named (S20)', async () => {
       await mountPage(OPERATOR_IDS.BUDI)
       const button = screen.getByTestId('export-audit')
@@ -394,6 +445,12 @@ describe("Security & Audit: the chain, the controls, the page", () => {
       expect(result).toHaveTextContent(String(last?.details.exportId))
       expect(result).toHaveTextContent('Internal review by the unit head')
       expect(sim.store.getState().audit.total).toBe(before + 1)
+      // Fix wave J (JW-24; "by code only" in round one, proven here): the dialog showed a step "Hash and seal - Done"
+      // for a file that holds the rows and the chain head and NO signature and NO seal. The step is named for what
+      // it does.
+      expect(dialog).toHaveTextContent('Add the chain head')
+      expect(dialog.textContent).not.toMatch(/Hash and seal/i)
+      // (The sentence about the file itself is drawn where a file is built: Live mode, `test/live-security-audit-export.test.tsx`.)
       await waitFor(() => expect(within(screen.getByTestId('panel-custody')).getAllByText(/Audit export/).length).toBeGreaterThan(0))
     })
 

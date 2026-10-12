@@ -543,6 +543,11 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           summary: 'Core server: an export job of this item is still running',
           value: apiError('EXPORT_IN_PROGRESS', 'An export job is already running for this evidence item.'),
         },
+        // Fix wave J (truth rule 3d; JA2-03 / JW-03): an output this build cannot produce is refused before any job.
+        compositeUnavailable: {
+          summary: 'kind COMPOSITE on a Core without a selected encoder: refused before any job, export id or row',
+          value: { error: { ...apiError('COMMAND_UNSUPPORTED', 'Composite video is not available in this build.').error, details: { reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } } },
+        },
       },
       422: {
         invalidReason: {

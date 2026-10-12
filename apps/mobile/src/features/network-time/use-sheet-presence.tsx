@@ -23,7 +23,7 @@
  * animation can play, then unmounts.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { BackHandler, View } from 'react-native';
 
 export const SHEET_EXIT_MS = 450;
 
@@ -80,6 +80,8 @@ export function SheetContentSignal({ onChange, children }: { onChange: (mounted:
   return (
     <View
       testID="sheet-content-signal"
+      // Fix wave J (JA2-16): the sheet's whole content is ONE modal group for a screen reader (the page under it is not read).
+      accessibilityViewIsModal
       onLayout={(event) => {
         if (event.nativeEvent.layout.height > 0) onChange(true);
       }}
@@ -87,4 +89,20 @@ export function SheetContentSignal({ onChange, children }: { onChange: (mounted:
       {children}
     </View>
   );
+}
+
+/**
+ * Fix wave J (JA2-16): Android Back closes the open sheet / dialog and is consumed, so the screen
+ * under it stays where it is. Registered only while `open`; the newest listener answers first, so a
+ * sheet over a screen's own Back guard closes before that guard is asked.
+ */
+export function useSheetBack(open: boolean, onClose: () => void): void {
+  useEffect(() => {
+    if (!open) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [open, onClose]);
 }

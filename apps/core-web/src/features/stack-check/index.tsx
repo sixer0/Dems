@@ -15,7 +15,8 @@ export function StackCheckPage() {
   const motionMode = useMotionMode()
   return (
     <div className="dems-page" data-testid="page-stack-check">
-      <PageHeader icon={Activity} title={t('shell.nav.stackCheck')} />
+      {/* Fix wave J (JW-20): the page says what it is - a diagnostic of the console build, not an operator page. */}
+      <PageHeader icon={Activity} title={t('shell.nav.stackCheck')} subtitle={t('web.waveJ.stackCheck.subtitle')} />
       <HomePage motionMode={motionMode} />
     </div>
   )

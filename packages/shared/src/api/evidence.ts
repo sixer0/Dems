@@ -114,7 +114,7 @@ export const EvidenceMediaRefSchema = z
       .regex(/^[A-Z][A-Z0-9_]{0,63}$/)
       .optional()
       .describe(
-        'Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core\'s store and no bundled demo package belongs to it), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.',
+        'Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core\'s store and no bundled demo package belongs to it), `DEMONSTRATION_RECORD` (fix wave J: the item is the record of a session of a Core in SIMULATED capture - a demonstration that recorded no media; a client says so and never "no sealed package in the evidence store"), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.',
       ),
   })
   .refine((ref) => (ref.source === EvidenceMediaSource.DEMO_PACKAGE) === (ref.packageSuffix !== null), {
@@ -165,6 +165,24 @@ export const EvidenceDetailSchema = z
       .optional()
       .describe(
         'Core server only: the destination text the Core records for an export request that names none - `Case file transfer` on a Core in its own capture, `Case file transfer (simulated)` on a Core in simulated capture. A client pre-selects the destination whose recorded text equals it, so that every client offers the same default.',
+      ),
+    // Fix wave J (truth rule 3d; findings JA2-03 / JW-03): which export outputs THIS Core can produce, stated before a request.
+    exportKinds: z
+      .array(
+        z.strictObject({
+          kind: z.enum(['PACKAGE', 'COMPOSITE']),
+          available: z.boolean().describe('True: a request of this kind is accepted. False: it is refused (`409 COMMAND_UNSUPPORTED`) before any job.'),
+          reason: z
+            .string()
+            .regex(/^[A-Z][A-Z0-9_]{2,63}$/)
+            .optional()
+            .describe('Present exactly when `available` is false: why, as a code - `COMPOSITE_ENCODER_NOT_SELECTED` (no encoder is selected in this build).'),
+        }),
+      )
+      .max(2)
+      .optional()
+      .describe(
+        'Core server only: the export outputs of operation 42 and whether this Core can produce each. A client offers a kind ENABLED only when its entry says `available: true`, and draws an unavailable kind disabled with its reason. Absent (Simulated mode, an older Core): only PACKAGE is offered.',
       ),
   })
   .describe('One evidence item and the reference to its media.');
@@ -292,6 +310,13 @@ export const EvidenceVerifyResultSchema = z
       .describe('Schema v2: the sealed transcript hash matches the stored document; absent for an item without a transcript.'),
     manifestOk: z.boolean(),
     signatureOk: z.boolean().describe('Schema v2: a real Ed25519 signature is verified with the Core public key (OD-02).'),
+    // Fix wave J (finding JA2-02): the verdict of the simulator says that it is one.
+    demonstration: z
+      .literal(true)
+      .optional()
+      .describe(
+        'Present and true on every verdict the SIMULATOR computed (a `SIMULATED` item, a v1 `DEMO_PACKAGE` item): the hashes of a demonstration record were compared and no stored media was read. A client words such a verdict as a demonstration, never as a bare "verified by the Core". Absent on the verdict of a real sealed package.',
+      ),
     // The verify-v2 report (rows 85, 119, 141). Every member is optional: a v1 answer carries none.
     overall: z.enum(VERIFY_REPORT_OVERALL).optional().describe('Schema v2: PASS, or the gravest failure class among the findings.'),
     interrupted: z.boolean().optional().describe('Schema v2: the package is the sealed durable prefix of an interrupted recording (V-12). A state, not a failure.'),
@@ -654,6 +679,7 @@ export const EVIDENCE_OPERATIONS = [
     description: [
       'Runs the integrity verification of an item and returns the verdict of record. Schema v2 (C3 §3 op 41; OD-02/OD-03/OD-21): per-FILE fragment-chain verify — both hashes of every camera file and every checkpoint of its chain — plus the transcript hash and the real Ed25519 signature; one tampered fragment answers `ok: false` (OD-02 L2). A failed verification is an answer, not an error: `200` with `ok: false`.',
       'Writes EVIDENCE_VERIFIED or EVIDENCE_VERIFY_FAILED, by the verdict, and adds a custody entry. The files, the hashes, the manifest hash and the signature are not changed (I11).',
+      'An item that was never sealed (`sealedAt: null`, status RECORDED: the record of an interrupted session) is refused `409 NOT_SEALED`: it has no track hash, no manifest and no signature. A verdict the simulator computed over a demonstration record carries `demonstration: true`.',
       hostedNote('verify'),
     ].join('\n\n'),
     source: backendSource(SECTION, 41),
@@ -663,6 +689,8 @@ export const EVIDENCE_OPERATIONS = [
       401: NOT_SIGNED_IN,
       403: VIEW_REFUSED,
       404: UNKNOWN_EVIDENCE,
+      // Fix wave J (truth rule 3a): a never-sealed item has nothing a verification could compare. No verdict, no row, no custody entry.
+      409: { description: 'The item is RECORDED: it was never sealed, so there is nothing sealed to verify (NOT_SEALED). Nothing is written.', schema: 'ApiError' },
       422: INVALID_PATH_PARAMETER,
     },
     access: EVIDENCE_VIEW,
@@ -882,6 +910,8 @@ const VERIFY_PASSED: EvidenceVerifyResultBody = {
   tracks: EXAMPLE_EVIDENCE_ITEM.tracks.map((track) => ({ trackId: track.trackId, expected: track.sha256, actual: track.sha256, ok: true })),
   manifestOk: true,
   signatureOk: true,
+  // Fix wave J (JA2-02): the simulator's verdict over a demonstration record says that it is one.
+  demonstration: true,
 };
 
 /**
@@ -970,7 +1000,87 @@ const VERIFY_FAILED: EvidenceVerifyResultBody = {
   ],
   manifestOk: true,
   signatureOk: true,
+  demonstration: true,
 };
+
+/**
+ * FIX WAVE J, driver J-S (truth rule 3a; findings JA2-01 / JW-01): THE ITEM OF A RECORDING THAT WAS
+ * NEVER SEALED, as operations 39 and 40 and the slice `evidence` carry it on every lane. `sealedAt`
+ * is null: that is the fact (`hasSealedValues` of `@dems/shared/sim` reads it). It has NO track, the
+ * two required members hold the null digest (64 zeros, the digest of nothing) and a placeholder
+ * signature, and its verification is NOT_RUN. A client shows none of them and offers no Verify.
+ */
+export const EVIDENCE_NOT_SEALED_DIGEST_EXAMPLE = '0'.repeat(64);
+export const EVIDENCE_NOT_SEALED_ITEM_EXAMPLE = {
+  ...EXAMPLE_EVIDENCE_ITEM,
+  id: STATE_EXAMPLE_IDS.recordedEvidenceId,
+  sessionId: 'SES-20260930-0016',
+  caseNumber: 'LP/2026/0930-0006',
+  subjectName: 'Hendra Wijaya',
+  sealedAt: null,
+  status: 'RECORDED',
+  lifecycleStage: 'RECORDING',
+  tracks: [],
+  manifestHash: EVIDENCE_NOT_SEALED_DIGEST_EXAMPLE,
+  signature: { value: EVIDENCE_NOT_SEALED_DIGEST_EXAMPLE, keyId: 'NOT-SEALED', algorithm: 'SIMULATED-SHA256', simulated: true },
+  custody: [
+    { at: 1_790_758_800_000, action: 'RECORDING_STARTED', actorId: 'OPR-001', detail: null },
+    { at: 1_790_760_240_000, action: 'SESSION_INCOMPLETE', actorId: null, detail: 'POWER_FAIL; recovered' },
+  ],
+  verification: { status: 'NOT_RUN', at: null },
+  tampered: false,
+  tamperedTrackId: null,
+  integritySource: 'SIMULATED',
+} satisfies EvidenceDetail['evidence'];
+
+/**
+ * FIX WAVE J, ROUND TWO (findings JT-11 / JW-13 / JA2-08): what the operator added to a session, as the
+ * item carries it after the seal - the members `markers` and `notes` of `EvidenceItem` (operations 39 and
+ * 40, slice `evidence`). They exist since schema v1 and are written when the item is made, from the
+ * session the Core held: every marker of the recording, every note written during it, and - new - the
+ * session form's "Notes" as the first note (`origin: 'SESSION_FORM'`). A snapshot is a mark on the
+ * session's timeline and an audit row; no picture exists and the item carries none.
+ */
+export const EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE = {
+  markers: [{ id: 'TL-000412', at: 1_790_819_160_000, index: 1, label: 'Key statement' }],
+  notes: [
+    { id: 'NOTE-FORM', at: 1_790_819_040_000, authorId: 'OPR-001', text: 'Second interview; counsel present.', origin: 'SESSION_FORM' },
+    { id: 'NOTE-000413', at: 1_790_819_220_000, authorId: 'OPR-001', text: 'Subject asked for a break.' },
+  ],
+} as const satisfies Pick<EvidenceDetail['evidence'], 'markers' | 'notes'>;
+
+/**
+ * FIX WAVE J (finding JA2-02): the media reference of an item a Core in SIMULATED capture sealed
+ * itself - a demonstration record without media. `reason` is the new value of the open code set.
+ */
+export const EVIDENCE_MEDIA_DEMONSTRATION_RECORD_REASON = 'DEMONSTRATION_RECORD';
+export const EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE = { source: 'NONE', packageSuffix: null, reason: EVIDENCE_MEDIA_DEMONSTRATION_RECORD_REASON } as const satisfies EvidenceMediaRef;
+
+/**
+ * FIX WAVE J (truth rule 3d; findings JA2-03 / JW-03): `exportKinds` of operation 40 as every Core
+ * of this build states it - a PACKAGE can be produced, a COMPOSITE cannot (no encoder is selected).
+ */
+export const EXPORT_COMPOSITE_UNAVAILABLE_REASON = 'COMPOSITE_ENCODER_NOT_SELECTED';
+export const EXPORT_KINDS_EXAMPLE = [
+  { kind: 'PACKAGE', available: true },
+  { kind: 'COMPOSITE', available: false, reason: EXPORT_COMPOSITE_UNAVAILABLE_REASON },
+] as const satisfies NonNullable<EvidenceDetail['exportKinds']>;
+
+/**
+ * FIX WAVE J (truth rule 3a): operation 41 for a never-sealed item - `409 NOT_SEALED`, nothing written.
+ * The in-app simulator throws `SimTransitionError` with `code: UNSEALED_EVIDENCE` for the same item.
+ */
+export const VERIFY_NOT_SEALED_TEXT = 'This item was never sealed: there is nothing sealed to verify.';
+export const VERIFY_NOT_SEALED_EXAMPLE = simRefusalExample(
+  `${STATE_EXAMPLE_IDS.recordedEvidenceId}: incomplete session, never sealed`,
+  'NOT_SEALED',
+  VERIFY_NOT_SEALED_TEXT,
+  'UNSEALED_EVIDENCE',
+  { from: null, event: 'verify' },
+);
+
+/** FIX WAVE J (JA2-02): a verdict of the simulator, as operation 41 answers it for a demonstration record. */
+export const VERIFY_DEMONSTRATION_EXAMPLE: EvidenceVerifyResultBody = VERIFY_PASSED;
 
 /**
  * The item of the `getEvidence.productSealed` example: what a Core answers for an item it sealed itself
@@ -1118,6 +1228,24 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             media: { source: 'DEMO_PACKAGE', packageSuffix: '0004' },
           } satisfies EvidenceDetail,
         },
+        // Fix wave J (truth rule 3a): the record of an interrupted session, on every lane.
+        neverSealed: {
+          summary: 'A recording that was never sealed (the item of an INCOMPLETE session): no track, no manifest, no signature - the two required members hold the null digest - and nothing to verify',
+          value: {
+            evidence: EVIDENCE_NOT_SEALED_ITEM_EXAMPLE,
+            media: { source: 'NONE', packageSuffix: null, reason: 'NOT_SEALED' },
+            exportKinds: [...EXPORT_KINDS_EXAMPLE],
+          } satisfies EvidenceDetail,
+        },
+        // Fix wave J (JA2-02): what a Core in SIMULATED capture says of a session it sealed itself.
+        simulatedSealed: {
+          summary: 'An item a Core in SIMULATED capture sealed: a demonstration record without media',
+          value: {
+            evidence: { ...EXAMPLE_EVIDENCE_ITEM, status: 'SEALED', lifecycleStage: 'SEALED_LOCAL_EVIDENCE', integritySource: 'SIMULATED' },
+            media: EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE,
+            exportKinds: [...EXPORT_KINDS_EXAMPLE],
+          } satisfies EvidenceDetail,
+        },
         // Wave H C1 (gate finding G94-01; request of wave H C2): what a Core answers for an item it sealed itself.
         productSealed: {
           summary: 'A product-sealed item on a Core server: its sealed camera files play through a media session (operation 88); the sealed facts, what this caller may do and the finished exports are stated',
@@ -1128,6 +1256,8 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             exports: [{ exportId: 'EXP-000033', jobId: 'EXPJ-000033', kind: 'PACKAGE', completedAt: 1_791_620_071_205, exportedBy: 'OPR-002', archiveBytes: 136_096_844, archiveSha256: '7a'.repeat(32) }],
             // Fix wave K (G94b-11 / -12): the Core's one default destination, true to its mode.
             exportDestinationDefault: EVIDENCE_EXPORT_DESTINATION_DEFAULT_EXAMPLE,
+            // Fix wave J (JA2-03 / JW-03): what this Core can export.
+            exportKinds: [...EXPORT_KINDS_EXAMPLE],
           } satisfies EvidenceDetail,
         },
         // Reconcile pass R (decisions D205, D207): the other kinds of item a Core answers. Every evidence-item
@@ -1219,6 +1349,7 @@ export const EVIDENCE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       401: SIGNED_OUT,
       403: VIEW_DENIED,
       404: NOT_FOUND,
+      409: { notSealed: VERIFY_NOT_SEALED_EXAMPLE },
       422: BAD_PATH,
     },
   },

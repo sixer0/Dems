@@ -53,6 +53,7 @@ import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
 import { Alert, Button, Slider, Spinner } from 'heroui-native';
 import { Pause, Play, RotateCcw } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { publishPlaybackPosition, usePlaybackSeekRequests } from './playback-link';
 import { useTranslation } from 'react-i18next';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
@@ -342,11 +343,19 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const play = () => {
     // After a renewal that got no session, asking again is rate-limited like "Open again" (3 s, 6 s, 12 s; three tries).
     if (sessionEnded.current && !consumeRetry()) return;
+    // Round two (seen with JT-17: "Play at the end of a clip toggles 'playing' at 0:57 / 0:57 without restarting"):
+    // a Play pressed at the END of the file starts the recording again from its beginning.
+    const fromStart = fileEnded && seekRef.current !== 'NONE';
     setFileEnded(false);
+    if (fromStart) {
+      position.current = 0;
+      setPositionMs(0);
+    }
     if (stale()) {
       void open({ seconds: position.current / 1000, play: true }, true);
       return;
     }
+    if (fromStart) for (const player of players) setTime(player, 0);
     if (players.length > 1 && needsResync(leadPlayer.currentTime, followPlayer.currentTime, 0)) align(followPlayer, leadPlayer.currentTime);
     for (const player of players) player.play();
     markPlaying(true);
@@ -366,6 +375,17 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     }
     for (const player of players) setTime(player, seconds);
   };
+
+  // Round two (JT-10): the transcript of this item follows the playhead and may ask for a seek (`playback-link.ts`).
+  const linkPosition = phase.kind === 'ready' ? positionMs : null;
+  useEffect(() => {
+    publishPlaybackPosition(evidenceId, linkPosition);
+  }, [evidenceId, linkPosition]);
+  usePlaybackSeekRequests(evidenceId, (ms) => {
+    if (phase.kind !== 'ready') return;
+    seekTo(ms);
+    onAttention?.();
+  });
 
   const onPlayerError = (fileId: CameraFileId) => {
     const at = position.current;
@@ -478,6 +498,13 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
     let alive = true;
     queueMicrotask(() => {
       if (!alive) return;
+      // Round two (JT-17): playback that stopped WITHOUT a session end (a failed fragment, a player error) is not
+      // started again by the screen's action either - the player's own Play is disabled for it. The stop
+      // sentence is brought into view instead; "Open again" under it is the way on.
+      if (phase.kind === 'ready' && phase.stoppedAtMs !== null && phase.stopCause !== 'SESSION' && !playingRef.current) {
+        onAttention?.();
+        return;
+      }
       // G94b-04: the screen's action reads "Pause" while the player plays, and pauses it.
       if (phase.kind === 'ready') (playingRef.current ? pause : play)();
       else if (phase.kind === 'idle') void open({ seconds: 0, play: true }, false);

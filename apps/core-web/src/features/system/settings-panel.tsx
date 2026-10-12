@@ -20,7 +20,9 @@ import { selectOperator, useSim, type SimActions, type SimState } from '@dems/sh
 import { usePendingControl } from '@/lib/pending-control'
 import { CAMERA_SEARCH_ANCHOR } from '@/features/devices/camera-search'
 import { CAPTURE_SELECTOR_ANCHOR } from '@/features/devices/capture-selector'
+import { useComponentVersionText } from '@/components/component-version-text'
 import { useOwnCaptureCore } from '@/lib/own-capture'
+import { useProductVersions } from '@/lib/product-versions'
 import { useMotionPolicy } from '@/motion'
 import { useSystemLiveMode } from './live'
 import { SystemPanel } from './panel'
@@ -112,6 +114,8 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
   const presentation = usePresentationModeSetting()
   const account = useSim(selectAccount)
   const device = useSim(selectDeviceSettings)
+  const versions = useProductVersions(device.version)
+  const versionText = useComponentVersionText()
   const hostClock = useOwnCaptureCore()
   // The simulator's settings slice (step 54, W52-2), mirrored to localStorage.
   const [prefs, updatePrefs] = useConsolePrefs()
@@ -286,7 +290,12 @@ export function SettingsPanel({ maintenanceAnchor, aboutAnchor }: { maintenanceA
         </Item>
 
         <Item id="about" icon={Info} title={t('system.settings.aboutDems')}>
-          <p className="sys-mono">{t('system.settings.aboutBody', { product: device.product, version: device.version, deviceId: device.deviceId })}</p>
+          {/* Fix wave J round three (JW-26): the model's version is not this Core's - name the components instead. */}
+          <p className="sys-mono" data-testid="system-settings-about-body">
+            {versions.modelVersion !== null
+              ? t('system.settings.aboutBody', { product: device.product, version: versions.modelVersion, deviceId: device.deviceId })
+              : [...versions.rows.filter((row) => row.id === 'core' || row.id === 'webConsole').map((row) => versionText(row).line), device.deviceId].join(' · ')}
+          </p>
           <Button size="sm" variant="ghost" className="sys-link-button" onPress={() => jumpTo(aboutAnchor, m.reduced)}>
             {t('system.settings.goToAbout')}
           </Button>

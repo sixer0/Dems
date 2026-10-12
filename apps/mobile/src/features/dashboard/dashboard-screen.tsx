@@ -21,7 +21,7 @@ import { useIsFocused } from 'expo-router';
 import { useToast } from 'heroui-native';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
 import { useSim, type SimState } from '@dems/shared/sim';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { DeviceTiles } from './device-tiles';
@@ -44,6 +44,7 @@ const FLEX_PANE: ViewStyle = { width: 'auto' };
 export function DashboardScreen() {
   const { layoutClass } = useLayoutClass();
   useNewSealToast();
+  useLeaveAppGuard();
   const tablet = layoutClass === 'medium' || layoutClass === 'expanded';
 
   return (
@@ -92,7 +93,7 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
               </PanelBoundary>
               {layoutClass === 'compact-landscape' ? (
                 <PanelBoundary name="actions">
-                  <QuickActions action={action} />
+                  <QuickActions action={action} status={status} />
                 </PanelBoundary>
               ) : null}
             </View>
@@ -101,7 +102,7 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
             <View style={styles.stack}>
               {layoutClass === 'compact' ? (
                 <PanelBoundary name="actions">
-                  <QuickActions action={action} />
+                  <QuickActions action={action} status={status} />
                 </PanelBoundary>
               ) : null}
               <PanelBoundary name="recent">
@@ -127,7 +128,7 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
           <Pane name="activity" flex={3} style={FLEX_PANE}>
             <View style={styles.stack}>
               <PanelBoundary name="actions">
-                <QuickActions action={action} stacked />
+                <QuickActions action={action} status={status} stacked />
               </PanelBoundary>
               <PanelBoundary name="recent">
                 <RecentSessions rows={rows} chipBelow showSealedToday />
@@ -151,7 +152,7 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
           </Pane>
           <Pane name="devices" flex={1} minWidth={320} style={FLEX_PANE}>
             <PanelBoundary name="devices">
-              <DeviceTiles />
+              <DeviceTiles live={status.live} />
             </PanelBoundary>
           </Pane>
           <Pane name="activity" width={EXPANDED_ZONES.activity}>
@@ -160,7 +161,7 @@ function HomeBody({ layoutClass }: { layoutClass: LayoutClass }) {
                 <RecentSessions rows={rows} chipBelow showSealedToday />
               </PanelBoundary>
               <PanelBoundary name="actions">
-                <QuickActions action={action} stacked />
+                <QuickActions action={action} status={status} stacked />
               </PanelBoundary>
             </View>
           </Pane>
@@ -196,6 +197,37 @@ function useNewSealToast(): void {
     if (!focused || count <= previous || newest === null) return;
     toast.show({ variant: 'success', label: t('dashboard.sealedToday.newSeal', { evidenceId: newest }) });
   }, [count, newest, focused, toast, t]);
+}
+
+/** How long the "press Back again" answer stands. */
+export const LEAVE_APP_WINDOW_MS = 2_500;
+
+/**
+ * Fix wave J (JT-19): Android Back on Home left the app without a word (and the operator found Login on the
+ * way back). Home is the root: the first Back answers "Press Back again to leave DEMS" and stays; a second
+ * Back within the window leaves as before. Only while Home is the screen in view; a popover or a menu that is
+ * open takes the Back first (the kit registers its handler later, so it runs before this one).
+ */
+function useLeaveAppGuard(): void {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const focused = useIsFocused();
+  const armedAt = useRef(0);
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+  useEffect(() => {
+    if (!focused) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const now = Date.now();
+      if (now - armedAt.current < LEAVE_APP_WINDOW_MS) return false;
+      armedAt.current = now;
+      toastRef.current.show({ id: 'home-leave-app', variant: 'default', label: t('features.dashboard.leaveApp'), duration: LEAVE_APP_WINDOW_MS });
+      return true;
+    });
+    return () => subscription.remove();
+  }, [focused, t]);
 }
 
 const styles = StyleSheet.create({

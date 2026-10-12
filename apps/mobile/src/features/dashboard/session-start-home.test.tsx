@@ -15,7 +15,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@j
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
-import { DEMO_OPERATOR_PASSWORD, type SimAlert, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, ScenarioName, coreNotRunningFaultTransition, injectFaultTransition, SEAL_RECORDING_KEPT_SENTENCE, sealBlockedNoticeOf, PLATFORM_NOT_REPORTED } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, type SimAlert, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_RETRYING_EXAMPLE_FINALIZATION, sealAttentionOf, SEAL_BLOCKED_EXAMPLE_SESSION_ID, ScenarioName, coreNotRunningFaultTransition, injectFaultTransition, SEAL_RECORDING_KEPT_SENTENCE, sealBlockedNoticeOf, PLATFORM_NOT_REPORTED } from '@dems/shared/sim';
 import { LiveMiniBar } from '@/components/composed/nav/live-mini-bar';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
@@ -29,6 +29,14 @@ import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-clean
 import { Dimensions } from 'react-native';
 import { NoPreviewTile } from '@/features/devices/camera-preview';
 import { StorageKpis } from '@/features/storage/storage-kpis';
+
+// Fix wave J closing pass (J4, item 5): the bell is the sheet form in EVERY layout class now (it was the kit Popover on the
+// tablet, the default window of this file). The real sheet library cannot run under jest; the package's own mock renders
+// the sheet's content inline (`dashboard-screen.test.tsx` and `session-live/testing/monitor-test-setup.ts` say why).
+jest.mock('@gorhom/bottom-sheet', () => ({
+  __esModule: true,
+  ...jest.requireActual<Record<string, unknown>>('@gorhom/bottom-sheet/mock'),
+}));
 
 jest.mock('@shopify/react-native-skia', () =>
   jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock(),
@@ -444,11 +452,42 @@ describe('G75b-02 on Home: the open session whose seal is blocked', () => {
     );
   });
 
+  // Fix wave J (JT-02) and round two, ruling (b): the retry is ON Home's blocked entry itself, with its confirmation.
+  it('JT-02: Home offers "Retry sealing" beside the blocked entry to the roles operation 33 allows; the press asks first', async () => {
+    const test = await mountFinalizing();
+    block(test);
+    await flushAsync();
+    expect(screen.getByTestId('home-seal-retry')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('home-seal-retry-button'));
+    await flushAsync();
+    expect(screen.getByTestId('home-seal-retry-dialog')).toHaveTextContent(new RegExp(SEAL_BLOCKED_EXAMPLE_SESSION_ID));
+    expect(screen.getByTestId('home-seal-retry-confirm')).toBeTruthy();
+    expect(screen.getByTestId('home-seal-retry-cancel')).toBeTruthy();
+  });
+
   it('CONTROL - a seal that simply runs: "View finalization", no blocked line, and the status card as before', async () => {
     await mountFinalizing();
     expect(screen.getByTestId('home-action-primary').props.accessibilityLabel).toBe('View finalization');
     expect(screen.queryByTestId('home-action-seal-blocked')).toBeNull();
     expect(textOf('home-status-title')).not.toBe('Sealing blocked');
+  });
+
+  // Fix wave J (JT-01 (a); truth rule 3c): Home read "SYSTEM READY - All systems operational" for 3.5 minutes while a
+  // seal failed and was retried. From the FIRST failed step it says so (`sealAttentionOf`: RETRYING).
+  it('JT-01 (a): a seal the Core is RETRYING - "Sealing is being retried" with the session and the kept recording, never "Ready"', async () => {
+    const test = await mountFinalizing();
+    act(() => test.sim.store.setState((s) => ({ session: { ...s.session!, id: SEAL_BLOCKED_EXAMPLE_SESSION_ID, state: 'FINALIZING', finalization: SEAL_RETRYING_EXAMPLE_FINALIZATION } })));
+    await flushAsync();
+    expect(sealAttentionOf(test.sim.store.getState())?.kind).toBe('RETRYING');
+    expect(textOf('home-status-title')).toBe('Sealing is being retried');
+    expect(textOf('home-status-subtitle')).toContain(SEAL_BLOCKED_EXAMPLE_SESSION_ID);
+    expect(textOf('home-status-subtitle')).toContain(SEAL_RECORDING_KEPT_SENTENCE);
+    expect(textOf('home-status')).not.toMatch(/Ready for Recording|All systems operational/);
+    expect(screen.getByTestId('home-status-ring').props.accessibilityLabel).toBe('System status: ATTENTION');
+    expect(textOf('home-action-seal-retrying')).toContain(`sealing of session ${SEAL_BLOCKED_EXAMPLE_SESSION_ID}`);
+    // Round two: ONE statement - while the Core retries, the line says "being retried", never "blocked".
+    expect(textOf('home-action-seal-retrying')).toContain('is being retried');
+    expect(textOf('home-action-seal-retrying')).not.toContain('is blocked');
   });
 
   it('the alert resolved (the seal completed or the session was ended): the blocked words leave', async () => {
@@ -611,3 +650,42 @@ describe('the real-capture facts of Home and Storage (mirror of the web\'s C-2)'
   });
 });
 });
+
+// Fix wave J round two (JT-24): Home with an open setup or an armed session showed nothing but a renamed button.
+describe('JT-24: Home says that a session is being set up, which one and whose', () => {
+  async function mountWithSetup(state: 'PRECHECK' | 'ARMED', viewer: string): Promise<TestSim> {
+    const test = createTestSim();
+    expect(test.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    test.sim.actions.loadScenario(ScenarioName.FINALIZING);
+    act(() => test.sim.store.setState((s) => ({ session: { ...s.session!, state, createdBy: 'OPR-001' } as unknown as typeof s.session })));
+    if (viewer !== 'budi.santoso') {
+      test.sim.actions.signOut('USER');
+      expect(test.sim.actions.signIn(viewer, DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    }
+    renderWithRuntime(<DashboardScreen />, { sim: test.sim });
+    await flushAsync();
+    return test;
+  }
+
+  it('the operator\'s own setup: "being set up by you", and that the Core takes no other session', async () => {
+    const test = await mountWithSetup('PRECHECK', 'budi.santoso');
+    const id = test.sim.store.getState().session!.id;
+    expect(screen.getByTestId('home-action-primary').props.accessibilityLabel).toBe('Continue setup');
+    expect(screen.getByTestId('home-action-open-setup')).toHaveTextContent(`Session ${id} is being set up by you. The Core takes no other session until it is started or cancelled.`);
+  });
+
+  it('another operator\'s ARMED session: named, with "recording starts with one press"', async () => {
+    const test = await mountWithSetup('ARMED', 'andi.pratama');
+    const id = test.sim.store.getState().session!.id;
+    expect(screen.getByTestId('home-action-open-setup')).toHaveTextContent(`Session ${id} is armed by AKP Budi Santoso: recording starts with one press. The Core takes no other session until it is started or cancelled.`);
+  });
+
+  it('CONTROL - no open setup: no such line', async () => {
+    const test = createTestSim();
+    expect(test.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    renderWithRuntime(<DashboardScreen />, { sim: test.sim });
+    await flushAsync();
+    expect(screen.queryByTestId('home-action-open-setup')).toBeNull();
+  });
+});
+

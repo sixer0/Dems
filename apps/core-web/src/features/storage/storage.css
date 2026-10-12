@@ -452,8 +452,6 @@
     font-size: 12px;
     line-height: 16px;
     color: var(--stor-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .stor-kpi-secondary { color: var(--muted); }
@@ -705,9 +703,8 @@
   .stor-activity-title {
     font-size: 13px;
     color: var(--foreground);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .stor-activity-detail {
@@ -715,9 +712,8 @@
     font-family: var(--font-mono);
     font-size: 11.5px;
     color: var(--muted);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
     text-align: right;
   }
 

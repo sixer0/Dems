@@ -23,12 +23,10 @@ import { RollingNumber } from '@/components/composed/rolling-number';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { failedStartWords } from '@/features/capture-selector/capture-notices-model';
 import { useFailedStart } from '@/features/session-live/capture-start-notice';
-import { useConnectingCameras } from '@/features/session-live/rec-indicator';
 import { crossFadeIn, layoutTransition, useAmbientLoop, useMotionPolicy, useMotionSettings } from '@/motion';
-import { durationText, type FlagLine, type HomeStatus } from './home-model';
+import { durationText, homeChipKey, type FlagLine, type HomeStatus } from './home-model';
 import { HOME_BEATS, HOME_LOOPS, beatDelay, homeEnter } from './home-motion';
 import { useElapsedSeconds, useHomeSession } from './use-home-data';
-import { useSealBlocked } from '@/features/session-finalizing/seal-attention';
 import { openNoticeCloseKey, openNoticeDetail, useCanCloseNotice, useOpenNotices } from '@/features/session-finalizing/open-notice';
 import { SEAL_RECORDING_KEPT_SENTENCE } from '@dems/shared/sim';
 
@@ -54,31 +52,23 @@ export interface SystemStatusCardProps {
 }
 
 /**
- * Integration pass D7 item 3 (ux §8e.2; D84, D91 R-1 option A): RECORDING before the first durable
- * fragment (`captureDurable: false`) is "Connecting cameras…" — no REC chip, no timer, no red ring,
- * nothing that says a recording exists. A session without the member reads as recording, as before.
+ * Fix wave J (JA2-04 / JT-01, truth rule 3c): this card decides NOTHING about the system's state. Ring,
+ * tone, title and subtitle follow `status.presentation` - `homeStatusOf` of the Core's facts
+ * (`home-model.ts`), the same value the header chip, the tiles and the primary action read:
+ *
+ * - `OFFLINE`: "Core offline - state unknown" on the neutral ring (the link is down: nothing is known).
+ * - `CAMERAS_CONNECTING` (pass D7 item 3, ux §8e.2): RECORDING before the first durable fragment - no REC chip,
+ *   no timer, no red ring.
+ * - `SEAL_RETRYING` / `SEAL_BLOCKED` (fix wave I G75b-02; JT-01 (a)): the seal of the open session, from
+ *   its FIRST failed step.
+ * - `NOTICE` (fix wave L, G75d-01): READY with an open unsealable notice is amber "Open notice".
  */
-function useConnectingStatus(status: HomeStatus): boolean {
-  const connecting = useConnectingCameras();
-  return connecting && status.kind === 'RECORDING';
-}
-
-/**
- * Fix wave L (G75d-01): READY while an unsealable notice is open is never drawn as plain "READY /
- * All systems operational". The notice does not block recording, so the state stays READY - with the
- * notice stated on the ring, the title and the lines under it. Any other state keeps its own words
- * (a fault, a recording, a blocked seal say more than the notice does; the bell still lists it).
- */
-function useReadyWithNotice(status: HomeStatus) {
-  const notices = useOpenNotices();
-  return status.kind === 'READY' && notices.length > 0 ? notices : null;
-}
-
 export function SystemStatusCard({ status, variant, heroSize = 280 }: SystemStatusCardProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const settings = useMotionSettings();
-  const recording = status.kind === 'RECORDING';
+  // The way to the monitor is offered while a session records and the link is up (the monitor words a lost link itself).
+  const recording = status.presentation === 'RECORDING' || status.presentation === 'CAMERAS_CONNECTING';
 
   const body =
     variant === 'hero' ? (
@@ -118,17 +108,19 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
   const policy = useMotionPolicy();
   const settings = useMotionSettings();
   const focused = useIsFocused();
-  const connecting = useConnectingStatus(status);
-  const breathing = useAmbientLoop(HOME_LOOPS.ringBreath, { paused: !focused });
-  useAmbientLoop(HOME_LOOPS.ringRotate, { active: mode === 'hero', paused: !focused });
-  useAmbientLoop(HOME_LOOPS.ringRec, { active: status.ring === 'recording' && !connecting, paused: !focused });
-  const noticed = useReadyWithNotice(status) !== null;
-  const Icon = connecting ? SHIELD.UNKNOWN : noticed ? SHIELD.ATTENTION : SHIELD[status.kind];
-  const tone = connecting ? palette.gray : noticed ? toneHex.warning : toneHex[status.tone];
-  // The neutral ring while the cameras connect: not the red recording ring, not a fault colour.
-  // G75d-01: READY with an open notice is the amber ring - not the plain green one.
-  const ringState = connecting ? 'offline' : noticed ? 'attention' : status.ring;
-  const stateWord = connecting ? t('common.session.trackConnecting') : t(`common.systemState.${status.kind}`);
+  const presentation = status.presentation;
+  const connecting = presentation === 'CAMERAS_CONNECTING';
+  const offline = presentation === 'OFFLINE';
+  const noticed = presentation === 'NOTICE';
+  const breathing = useAmbientLoop(HOME_LOOPS.ringBreath, { paused: !focused || offline });
+  useAmbientLoop(HOME_LOOPS.ringRotate, { active: mode === 'hero' && !offline, paused: !focused });
+  useAmbientLoop(HOME_LOOPS.ringRec, { active: presentation === 'RECORDING', paused: !focused });
+  const plainReady = presentation === 'READY';
+  const Icon = connecting || offline ? SHIELD.UNKNOWN : status.tone === 'warning' ? SHIELD.ATTENTION : presentation === 'RECORDING' ? SHIELD.RECORDING : status.tone === 'danger' ? SHIELD.CRITICAL : SHIELD[status.kind];
+  const tone = connecting || offline ? palette.gray : toneHex[status.tone];
+  // The ring is the presentation's: neutral while the cameras connect or the link is down, amber for a notice or a retried seal.
+  const ringState = status.ring;
+  const stateWord = t(homeChipKey(status));
   const spokenState = noticed ? t('features.session-finalizing.openNotice.ringState') : stateWord;
 
   return (
@@ -143,10 +135,10 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
       accessibilityLabel={t('features.dashboard.status.ringLabel', { state: spokenState })}
     >
       {mode === 'mini' ? (
-        status.kind === 'RECORDING' && !connecting ? (
+        presentation === 'RECORDING' ? (
           <Icon size={22} color={tone} fill={tone} />
         ) : (
-          <Icon size={34} color={palette.black} fill={status.kind === 'READY' && !noticed ? palette.gold : tone} strokeWidth={1.75} />
+          <Icon size={34} color={palette.black} fill={plainReady ? palette.gold : tone} strokeWidth={1.75} />
         )
       ) : (
         <View style={[styles.heroCentre, { maxWidth: size * HERO_TEXT_SHARE }]}>
@@ -159,13 +151,20 @@ function StatusRing({ status, mode, size }: { status: HomeStatus; mode: 'mini' |
             adjustsFontSizeToFit
             minimumFontScale={0.5}
             maxFontSizeMultiplier={1.2}
-            style={[styles.stateWord, { color: connecting ? palette.gray : noticed ? toneTextHex.warning : status.kind === 'READY' ? palette.gold : toneTextHex[status.tone] }]}
+            style={[styles.stateWord, { color: connecting || offline ? palette.gray : plainReady ? palette.gold : toneTextHex[status.tone] }]}
           >
-            {stateWord}
+            {noticed ? t(`common.systemState.${status.kind}`) : stateWord}
           </Text>
-          {status.kind === 'READY' ? (
+          {/* "SECURE - HEALTHY - OPERATIONAL" is said ONLY of plain READY: never beside a notice, a fault or a lost link. */}
+          {plainReady || noticed || offline ? (
             <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={[styles.ringFlags, noticed ? { color: toneTextHex.warning } : null]} testID="home-status-ring-sub">
-              {noticed ? t('features.session-finalizing.openNotice.ringSub') : t('dashboard.systemRing.flags')}
+              {offline
+                ? t('features.dashboard.status.OFFLINE.ringSub')
+                : noticed
+                  ? t('features.session-finalizing.openNotice.ringSub')
+                  : status.platformNotReported
+                    ? t('features.dashboard.status.READY.ringSubNotReported')
+                    : t('dashboard.systemRing.flags')}
             </Text>
           ) : null}
         </View>
@@ -179,63 +178,83 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
   const { t } = useTranslation();
   const settings = useMotionSettings();
   const session = useHomeSession();
-  const connecting = useConnectingStatus(status);
+  const presentation = status.presentation;
+  const connecting = presentation === 'CAMERAS_CONNECTING';
+  const offline = presentation === 'OFFLINE';
   // Pass D7 item 3 (ux §8e.2 situation C): a session that recorded nothing says so, in full.
   const failedStart = useFailedStart();
-  const failedWords = failedStart === null ? null : failedStartWords(t, failedStart);
-  const baseColour = status.kind === 'RECORDING' || status.kind === 'UNKNOWN' ? palette.foreground : toneTextHex[status.tone];
+  const failedWords = failedStart === null || offline ? null : failedStartWords(t, failedStart);
   const centred = align === 'center';
   const extra = status.flags.length - MAX_FLAGS;
   // Wave H driver B (G75-07 (b)): CRITICAL while the open session is RECORDING - the recording continues, nothing is blocked.
-  const criticalRecording = status.kind === 'CRITICAL' && session.state === 'RECORDING' && !connecting;
-  // Fix wave I (re-gate 75, G75b-02): the open session's seal is BLOCKED (the Core's alert, `sealBlockedNoticeOf`).
-  // Home names that state - nothing is "recording" and no recording is blocked; the session waits to be sealed.
-  const sealBlocked = useSealBlocked();
+  const criticalRecording = presentation === 'CRITICAL' && status.sessionState === 'RECORDING';
+  // Fix wave I (G75b-02) / fix wave J (JT-01 (a)): the seal of the open session, blocked or retried - Home names
+  // that state from the first failed step; nothing is "ready" while the Core takes no new session.
+  const seal = status.seal;
+  const sealBlocked = presentation === 'SEAL_BLOCKED' ? seal : null;
+  const sealRetrying = presentation === 'SEAL_RETRYING' ? seal : null;
   // Fix wave L (G75d-01): READY with an open unsealable notice - stated, with who closes it.
-  const notices = useReadyWithNotice(status);
+  const openNotices = useOpenNotices();
   const canClose = useCanCloseNotice();
-  const noticed = notices !== null && failedWords === null && sealBlocked === null && !connecting;
-
-  const colour = noticed ? toneTextHex.warning : baseColour;
+  const noticed = presentation === 'NOTICE' && failedWords === null;
+  const plain = presentation === 'RECORDING' || presentation === 'UNKNOWN' || connecting || offline;
+  const colour = plain ? palette.foreground : toneTextHex[status.tone];
+  const lines = presentation === 'ATTENTION' || presentation === 'CRITICAL' || presentation === 'CRITICAL_ALERT' || presentation === 'SEAL_BLOCKED' || presentation === 'SEAL_RETRYING';
 
   const subtitle =
-    failedWords !== null
+    offline
+      ? t(status.sessionState === 'RECORDING' ? 'features.dashboard.status.OFFLINE.subtitleRecording' : 'features.dashboard.status.OFFLINE.subtitle')
+      : failedWords !== null
       ? `${failedWords.title}. ${failedWords.body}`
       : sealBlocked !== null
         ? `${sealBlocked.sessionId} · ${SEAL_RECORDING_KEPT_SENTENCE}`
+      : sealRetrying !== null
+        ? [sealRetrying.sessionId, sealRetrying.sentence, SEAL_RECORDING_KEPT_SENTENCE].filter((part): part is string => part !== null && part !== '').join(' · ')
       : noticed
-        ? openNoticeDetail(t, notices)
+        ? openNoticeDetail(t, openNotices)
       : criticalRecording
         ? t('common.criticalWhileRecording.subtitle', { sessionId: session.sessionId ?? '' })
-        : status.kind === 'ATTENTION'
+        : presentation === 'ATTENTION'
           ? t('features.dashboard.status.ATTENTION.subtitle', { count: status.flags.length })
-          : status.kind === 'RECORDING'
+          : presentation === 'CRITICAL_ALERT'
+            ? t('features.dashboard.status.CRITICAL_ALERT.subtitle')
+          : presentation === 'RECORDING' || connecting
             ? connecting
               ? (session.sessionId ?? '')
               : t('features.dashboard.status.RECORDING.subtitle', { sessionId: session.sessionId ?? '' })
-            : t(`${status.copyKey}.subtitle`);
+            : presentation === 'READY' && status.platformNotReported
+              ? t('features.dashboard.status.READY.subtitleNotReported')
+              : t(`${status.copyKey}.subtitle`);
 
   return (
-    <Animated.View key={status.kind} entering={crossFadeIn(settings)} style={[styles.text, centred ? styles.textCentre : null]}>
+    <Animated.View key={presentation} entering={crossFadeIn(settings)} style={[styles.text, centred ? styles.textCentre : null]}>
       <Text
         testID="home-status-title"
         maxFontSizeMultiplier={1.2}
         style={[styles.title, { color: colour }, centred ? styles.centre : null]}
       >
-        {connecting
+        {offline
+          ? t('features.dashboard.status.OFFLINE.title')
+          : connecting
           ? t('common.session.connectingCameras')
           : sealBlocked !== null
             ? t('features.session-finalizing.sealAttention.chip')
+            : sealRetrying !== null
+              ? t('features.session-finalizing.sealAttention.retryingTitle')
             : criticalRecording
               ? t('common.criticalWhileRecording.title')
               : noticed
                 ? t('features.session-finalizing.openNotice.title')
-                : t(`${status.copyKey}.title`)}
+                : presentation === 'ATTENTION'
+                  ? t('features.dashboard.status.ATTENTION.title')
+                  : presentation === 'CRITICAL_ALERT'
+                    ? t('features.dashboard.status.CRITICAL_ALERT.title')
+                    : t(`${status.copyKey}.title`)}
       </Text>
       <Text
         testID="home-status-subtitle"
         maxFontSizeMultiplier={1.2}
-        style={[styles.subtitle, { color: noticed ? toneTextHex.warning : status.kind === 'READY' ? toneTextHex.success : palette.gray }, centred ? styles.centre : null]}
+        style={[styles.subtitle, { color: noticed ? toneTextHex.warning : presentation === 'READY' ? toneTextHex.success : palette.gray }, centred ? styles.centre : null]}
       >
         {subtitle}
       </Text>
@@ -244,8 +263,14 @@ function StatusText({ status, align }: { status: HomeStatus; align: 'left' | 'ce
           {t(openNoticeCloseKey(canClose))}
         </Text>
       ) : null}
-      {status.kind === 'RECORDING' && !connecting ? <RecRow centred={centred} /> : null}
-      {status.kind === 'ATTENTION' || status.kind === 'CRITICAL' ? (
+      {/* Truth rule 3f (JA2-N1): on a simulated Core Home says ONCE that what it shows is a demonstration. */}
+      {status.simulatedCore ? (
+        <View style={[styles.simulated, centred ? styles.textCentre : null]}>
+          <StatusChip testID="home-status-simulated" tone="info" label={t('features.dashboard.status.simulatedCore')} icon={null} size="sm" />
+        </View>
+      ) : null}
+      {presentation === 'RECORDING' ? <RecRow centred={centred} /> : null}
+      {lines ? (
         <View testID="home-status-flags" style={[styles.flags, centred ? styles.textCentre : null]}>
           {status.flags.slice(0, MAX_FLAGS).map((flag) => (
             <FlagText key={flag.id} flag={flag} />
@@ -333,6 +358,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
   },
   flags: { marginTop: 4, gap: 2 },
+  simulated: { marginTop: 6, flexDirection: 'row' },
   flag: {
     fontFamily: fontFamily.native.normal,
     fontSize: typography.caption.size,

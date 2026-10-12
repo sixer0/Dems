@@ -219,9 +219,8 @@
   .dev-search-device-text {
     display: block;
     max-width: 28ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .dev-scan-list {
@@ -537,12 +536,11 @@
   }
 
   .dev-tile-name {
-    overflow: hidden;
     font-size: 14px;
     line-height: 20px;
     font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
     color: var(--foreground);
   }
 
@@ -565,7 +563,7 @@
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   .dev-tile-marks {
@@ -916,11 +914,10 @@
   }
 
   .dev-other-detail {
-    overflow: hidden;
     font-size: 12px;
     line-height: 16px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
     color: var(--color-foreground-2);
   }
 

@@ -160,21 +160,8 @@ export function DevicesCheckStep({
             search this pre-check ran, and "Search again" (G13 cameras, G17 microphones). No control switches
             the microphone here (D83). Nothing is drawn when every configured source answered. */}
         {phase === 'block' || phase === 'warn' ? <PrecheckCaptureNotices items={items} testID="session-new-capture-notices" /> : null}
-
-        <ListGroup variant="transparent" testID="session-new-checks">
-          {CHECK_ORDER.map((id, index) => {
-            const item = items.find((candidate) => candidate.id === id) ?? null;
-            return (
-              <Fragment key={id}>
-                {index > 0 ? <Separator /> : null}
-                <Animated.View entering={rowReveal(index, settings)}>
-                  <CheckRow item={item} id={id} settings={settings} />
-                </Animated.View>
-              </Fragment>
-            );
-          })}
-        </ListGroup>
-
+        {/* Round two (JA2-23 / JT-22): the remedy stands beside "Recording is blocked", above the eight rows - it was
+            below them, under the fold on the phone. */}
         {phase === 'block' || (phase === 'warn' && !armed) ? (
           <Button
             variant="outline"
@@ -193,6 +180,21 @@ export function DevicesCheckStep({
           </Button>
         ) : null}
         {phase === 'block' || (phase === 'warn' && !armed) ? <LocalSourcesChecking checking={sourcesChecking} testID="session-new-retry-sources-checking" /> : null}
+
+        <ListGroup variant="transparent" testID="session-new-checks">
+          {CHECK_ORDER.map((id, index) => {
+            const item = items.find((candidate) => candidate.id === id) ?? null;
+            return (
+              <Fragment key={id}>
+                {index > 0 ? <Separator /> : null}
+                <Animated.View entering={rowReveal(index, settings)}>
+                  <CheckRow item={item} id={id} settings={settings} />
+                </Animated.View>
+              </Fragment>
+            );
+          })}
+        </ListGroup>
+
       </SectionCard>
     </View>
   );
@@ -227,14 +229,20 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
   let description: string;
   if (!resolved) description = status === 'RUNNING' ? t('sessionNew.devices.resolving') : t('common.precheckStatus.PENDING');
   else if (unreachable !== null) description = unreachable;
+  // Round two (JT-03 remainder; contract_wave_j.md J-S 5 - SEEN ON THE TABLET after the lanes ran the new server code:
+  // "Security, Enclosure tamper detected, NOTE"). The Core's NOTE on the SECURITY row means "platform security: not
+  // reported" - no tamper was detected. It reads "Not reported"; a real tamper WARN (no note) keeps its sentence.
+  else if (id === 'SECURITY' && note) description = t('common.platformNotReported.value');
   else if (id === 'SECURITY' && status === 'WARN') description = t('features.session-new.devices.tamper');
   else description = t(valueKey(id, value ?? ''), { defaultValue: value ?? '' });
   // Task 3 row 68 (MB-02): a microphone row names the role its input holds in the selector, and the input.
   const binding = checkMicBinding(id, roleLine);
+  // Round two (JT-13): the NOTE chip of the host-clock row is explained in the row - it was a word nobody explained.
+  const noteText = !note ? null : id === 'TIME' ? t('features.session-new.devices.noteTime') : id === 'SECURITY' ? t('features.session-new.devices.noteSecurity') : null;
   const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.role.${binding.role}`), input: binding.inputId }) : null;
 
   return (
-    <ListGroup.Item testID={`session-new-check-${id}`} accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${note ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${status}`)}`}>
+    <ListGroup.Item testID={`session-new-check-${id}`} accessibilityRole="text" accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${note ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${status}`)}`}>
       <ListGroup.ItemPrefix>
         <CheckIcon id={id} tone={resolved ? tone : 'default'} />
       </ListGroup.ItemPrefix>
@@ -242,6 +250,7 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
         <ListGroup.ItemTitle>{t(`sessionNew.devices.checks.${id}`)}</ListGroup.ItemTitle>
         <ListGroup.ItemDescription testID={`session-new-check-${id}-value`}>{description}</ListGroup.ItemDescription>
         {roleText ? <ListGroup.ItemDescription testID={`session-new-check-${id}-role`}>{roleText}</ListGroup.ItemDescription> : null}
+        {noteText ? <ListGroup.ItemDescription testID={`session-new-check-${id}-note`}>{noteText}</ListGroup.ItemDescription> : null}
         <PrecheckSourceBadge checkId={id} />
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>

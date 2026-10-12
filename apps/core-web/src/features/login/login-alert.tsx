@@ -189,7 +189,9 @@ function NoticeAlert({
             : notice.kind === 'disabled'
               ? t('login.live.notices.userDisabled')
               : notice.kind === 'console-locked'
-                ? t('login.notices.consoleLocked')
+                ? // Fix wave J round three (JT-18 / JW-19, ruling D244): "Lock console" ends the session - the Login says so in
+                  // its own distinct words, the same on the web console and on the devices: the SHARED key (closing pass J4).
+                  t('login.notices.consoleLocked')
                 : t('login.notices.signedOut')
       return (
         <Alert status={status} role={role} data-testid="login-alert" data-kind={notice.kind}>

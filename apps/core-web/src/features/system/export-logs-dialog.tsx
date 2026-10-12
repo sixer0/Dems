@@ -8,10 +8,12 @@ import { EXPORT_REASON_MIN_LENGTH, Permission, useSimInstance, type ExportResult
 import { CoreErrorNoticeKind, useCoreErrorPresenter } from '@/lib/core-errors'
 import { SIGNED_OUT_PAGE } from '@/lib/core-page-walk'
 import { usePendingControl } from '@/lib/pending-control'
+import { productVersionsOf, useSystemComponents } from '@/lib/product-versions'
 import { useWebLive } from '@/runtime'
 import {
   buildLogExportFile,
   downloadJson,
+  LOG_EXPORT_VERSION_NOT_REPORTED,
   LOG_PAGE_LIMIT,
   logExportTarget,
   LogWalkError,
@@ -44,6 +46,7 @@ export function ExportLogsDialog({ isOpen, onOpenChange }: ExportLogsDialogProps
   const { t } = useTranslation()
   const actions = useCoreActions()
   const sim = useSimInstance()
+  const systemComponents = useSystemComponents()
   const live = useWebLive()
   const presentCoreError = useCoreErrorPresenter()
   const { busy, pending, ref: submitRef, run: runExport } = usePendingControl()
@@ -102,13 +105,18 @@ export function ExportLogsDialog({ isOpen, onOpenChange }: ExportLogsDialogProps
       })
       const events = await readAllEvents(readEventPage, { signedIn, onPage: (read) => setPage(auditPages + read + 1) })
       const state = sim.store.getState()
+      const versions = productVersionsOf({ ...systemComponents, modelVersion: state.device.softwareVersion })
       downloadJson(
         `dems-logs-${state.device.id}-${exportId}.json`,
         buildLogExportFile({
+          // Closing pass J4, item 3: on a Core in its own capture the file states what it is - no `demo` flag, no "synthetic".
+          ownCapture: versions.ownCore,
           exportId,
           reason: exportReason,
           deviceId: state.device.id,
-          softwareVersion: state.device.softwareVersion,
+          // Fix wave J round three (JW-26): the file of a Core in its own capture names that Core's version, not the model's.
+          softwareVersion: versions.modelVersion ?? versions.coreVersion ?? LOG_EXPORT_VERSION_NOT_REPORTED,
+          ...(versions.ownCore ? { components: versions.rows } : {}),
           at: target.at ?? state.clock.now,
           rows,
           events,

@@ -41,10 +41,10 @@ afterEach(() => {
 });
 
 const DENIED = 'Not permitted';
-const DENIED_ROLE = 'Requires the Investigator role';
+const DENIED_ROLE = 'Requires the Investigator or Supervisor role';
 const OFFLINE = 'Core server unreachable';
 const OFFLINE_HINT = 'Nothing was changed.';
-const LIMIT = 'The Core server is limiting requests from this tablet';
+const LIMIT = 'The Core server is limiting requests from this device';
 const isBusy = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.busy === true;
 const toastShown = (text: string) => screen.queryAllByText(text).length > 0;
 
@@ -127,8 +127,14 @@ describe('the Summary in LIVE mode shows the Core\'s data and claims no simulati
     // simulated signature (`api/state-slices.ts`, evidence `signature`; decision D158 DC-4).
     const claims = wordsUnder('screen-session-summary').filter((word) => SIMULATION_WORDING.test(word));
     const signature = new Set(wordsUnder('summary-hash-signature').filter((word) => SIMULATION_WORDING.test(word)));
+    // Fix wave J round two (JA2-02; truth rule 3f of decision D243, contract J-S 2 / J-S 7) - this Core states neither
+    // of the two own-capture facts, so it is a SIMULATED Core: the Summary says ONCE, in the shared words, that the
+    // session is a demonstration record (seen on the phone: the word was on the signature row only, while the item
+    // and the verdict said "demonstration"). That statement and the signature row are the only two places.
+    expect(screen.getByTestId('summary-demonstration')).toHaveTextContent(/DEMONSTRATION.*Demonstration record of a simulated session: no media was recorded\./);
+    const statement = new Set(wordsUnder('summary-demonstration').filter((word) => SIMULATION_WORDING.test(word)));
     expect(claims.length).toBeGreaterThan(0);
-    expect(claims.filter((word) => !signature.has(word))).toEqual([]);
+    expect(claims.filter((word) => !signature.has(word) && !statement.has(word))).toEqual([]);
     expect(screen.queryByTestId('summary-link-down')).toBeNull();
     // Opening the Summary sent nothing (decision D158).
     expect(b.commandsSinceSignIn()).toEqual([]);

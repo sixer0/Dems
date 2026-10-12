@@ -105,8 +105,13 @@ describe('ST-5: a seed with now one day later', () => {
       for (const item of rows.evidenceItems) {
         const frozen = DEMO_PACKAGE_INTEGRITY[item.id.slice(-4)];
         expect(frozen, item.id).toBeDefined();
-        expect(item.manifestHash).toBe(frozen?.manifestSha256);
         const tracks = rows.evidenceTracks.filter((track) => track.evidenceId === item.id).sort((a, b) => a.position - b.position);
+        // Fix wave J (truth rule 3a): the item of the INCOMPLETE session was never sealed - it stores NO value of its package, on both days.
+        if (item.sealedAt === null) {
+          expect([item.id.slice(-4), item.status, item.manifestHash, tracks]).toEqual(['0006', 'RECORDED', '0'.repeat(64), []]);
+          continue;
+        }
+        expect(item.manifestHash).toBe(frozen?.manifestSha256);
         expect(tracks.map((track) => track.sha256)).toEqual(frozen?.tracks);
       }
     }

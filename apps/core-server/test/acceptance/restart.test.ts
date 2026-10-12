@@ -43,7 +43,7 @@ import {
   type SessionHistoryPage,
   type StorageDetail,
 } from '@dems/shared/api';
-import { AUDIT_RING_SIZE, ROLE_PERMISSIONS, createManualClock, recordingBytes, type AuditRow, type ControllableClock, type OperatorRole, type SimOperator } from '@dems/shared/sim';
+import { AUDIT_RING_SIZE, EVIDENCE_NOT_SEALED_DIGEST, ROLE_PERMISSIONS, createManualClock, hasSealedValues, recordingBytes, type AuditRow, type ControllableClock, type OperatorRole, type SimOperator } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -741,7 +741,10 @@ describe('AC-B-04, SR-17: a policy change, a paired device, a role change and a 
       security: answerOf<SecurityStatus>(before, 'getSecurityStatus').security,
       auditHead: pageAfter.head,
       auditTotal: pageAfter.total,
+      // Fix wave J (GM-02): the Core's own count, the same after the restart as before it.
+      evidenceVerification: answerOf<SecurityStatus>(before, 'getSecurityStatus').evidenceVerification,
     });
+    expect(answerOf<SecurityStatus>(after, 'getSecurityStatus').evidenceVerification).toMatchObject({ sealed: 13 });
 
     // The role change is that operator's, in that operator's own session of before the stop.
     const own = await sessionInfo(server, reassigned.cookie);
@@ -1171,7 +1174,10 @@ describe('AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after th
     expectContract('getEvidence', detail);
     const item = (detail.json() as EvidenceDetail).evidence;
     expect(item).toMatchObject({ sessionId, status: 'RECORDED', sealedAt: null, recordedAt: startedAt, endedAt: committed, durationMs: committed - startedAt, sizeBytes: recordingBytes(committed - startedAt) });
-    expect(item.tracks).toHaveLength(4);
+    // Fix wave J (truth rule 3a): a recording that was never sealed carries no track hash, no manifest and no signature - also after a restart.
+    expect(item.tracks).toEqual([]);
+    expect(hasSealedValues(item)).toBe(false);
+    expect([item.manifestHash, item.signature.value, item.verification.status]).toEqual([EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_DIGEST, 'NOT_RUN']);
     expect((item.markers ?? []).map((marker) => marker.label)).toEqual(['Key statement']);
     expect(item.custody.at(-1)).toMatchObject({ action: 'SESSION_INCOMPLETE', actorId: null });
 
@@ -1259,7 +1265,10 @@ describe('AC-B-05, AC-B-06: a session in flight at the stop is in FAULT after th
     expectContract('getEvidence', detail);
     const item = (detail.json() as EvidenceDetail).evidence;
     expect(item).toMatchObject({ sessionId, status: 'RECORDED', sealedAt: null, durationMs: stoppedRecordingAt - startedAt, sizeBytes: recordingBytes(stoppedRecordingAt - startedAt) });
-    expect(item.tracks).toHaveLength(4);
+    // Fix wave J (truth rule 3a): a recording that was never sealed carries no track hash, no manifest and no signature - also after a restart.
+    expect(item.tracks).toEqual([]);
+    expect(hasSealedValues(item)).toBe(false);
+    expect([item.manifestHash, item.signature.value, item.verification.status]).toEqual([EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_DIGEST, 'NOT_RUN']);
     expect(item.custody.at(-1)).toMatchObject({ action: 'SESSION_INCOMPLETE', actorId: null });
 
     const trail = await readTrail(owner);

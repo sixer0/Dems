@@ -140,7 +140,7 @@ const TimelineItem = memo(function TimelineItem({ event, title, detail, inserted
       </time>
 
       <motion.div className="min-w-0" initial={textInitial} animate={TEXT_REST} transition={textTransition}>
-        <Typography type="body-sm" weight="medium" truncate className="block">
+        <Typography type="body-sm" weight="medium" className="block break-words">
           {title}
         </Typography>
       </motion.div>
@@ -151,7 +151,7 @@ const TimelineItem = memo(function TimelineItem({ event, title, detail, inserted
           animate={TEXT_REST}
           transition={textTransition}
         >
-          <Typography type="body-xs" color="muted" truncate className="block">
+          <Typography type="body-xs" color="muted" className="block break-words">
             {detail}
           </Typography>
         </motion.div>

@@ -13,16 +13,19 @@ import {
   isCoreNotRunningKind,
   isHostClockTime,
   isPlatformNotReported,
+  isOwnCaptureCoreState,
   sealBlockedNoticeOf,
+  sealAttentionOf,
+  systemTruthFactsOf,
+  SYSTEM_FACT_SEAL_RETRYING,
+  openUnsealableNoticesOf,
   micInputOfChannel,
-  selectActiveAlerts,
   selectDeviceStats,
   selectElapsedMs,
   selectPendingSummaryId,
   selectRecentSessions,
   selectSealedToday,
   selectStorage,
-  selectUnacknowledgedAlertCount,
   startOfWibDay,
   systemStatus,
   useSim,
@@ -30,7 +33,8 @@ import {
   type SimState,
   type SystemFlag,
 } from '@dems/shared/sim';
-import { useRecordingTickerSeconds } from '@/runtime';
+import { useCoreLinkNotice, useRecordingTickerSeconds } from '@/runtime';
+import { selectConnectingCameras } from '@/features/session-live/mic-source-model';
 import { useRealCaptureView } from '@/features/devices/camera-preview';
 import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { cameraLineReportOf, micLineDeviceIdOf, micLineReportOf, sourceStateWord, type SourceStateKind } from '@/features/capture-selector/source-state';
@@ -38,7 +42,8 @@ import type { SessionState } from '@dems/shared/domain';
 import {
   cameraTileFor,
   chipRowFor,
-  homeStatusFor,
+  homeStatusOf,
+  offlineTile,
   micTileFor,
   micTileSourceRole,
   realCaptureCameraTileFor,
@@ -47,7 +52,10 @@ import {
   recentRowsFor,
   storageTileFor,
   type ChipSpec,
+  type HomeCoreFact,
+  type HomeFacts,
   type HomeStatus,
+  type HomeUnreachableSource,
   type HomeTile,
   type PrimaryAction,
   type RecentRow,
@@ -73,20 +81,76 @@ function statusKey(s: SimState): string[] {
 /** The id of the Home flag line of the restart fault of a Core in its own capture (no i18n key: its text is the shared label). */
 export const CORE_NOT_RUNNING_FLAG_ID = 'CORE_NOT_RUNNING';
 
-/** H2: the system status (ring state, tone, copy, flag lines). */
+/**
+ * The facts beside `systemStatus()` that Home is a function of (fix wave J, JA2-04 / JT-01), as ONE flat
+ * string: nothing re-renders per frame (F74-13). Each is the reading the rest of the app already uses -
+ * `sealAttentionOf`, `openUnsealableNoticesOf`, the reported state of the selector's lines, the alerts.
+ */
+function factsLine(s: SimState, realCapture: boolean, live: boolean): string {
+  // A session slice without its `finalization` member (an older snapshot) states no seal: read defensively.
+  const attention = (s.session as { readonly finalization?: unknown } | null)?.finalization === undefined ? null : sealAttentionOf(s);
+  const seal = attention === null ? null : { kind: attention.kind, sessionId: attention.sessionId, sentence: attention.kind === 'BLOCKED' ? attention.message : attention.sentence };
+  const notices = openUnsealableNoticesOf(s);
+  const recording = s.session?.state === 'RECORDING';
+  const unreachable: HomeUnreachableSource[] = [];
+  if (realCapture) {
+    for (const line of cameraLinesInForce(s)) {
+      const report = cameraLineReportOf(s, line.trackId);
+      if (sourceStateWord(report, live, recording).kind === 'NOT_REACHABLE') unreachable.push({ kind: 'camera', trackId: line.trackId, deviceId: report.deviceId });
+    }
+    for (const mic of s.mics) {
+      const report = micLineReportOf(s, mic.id);
+      if (sourceStateWord(report, live, recording).kind === 'NOT_REACHABLE') unreachable.push({ kind: 'microphone', trackId: mic.id, deviceId: report.deviceId });
+    }
+  }
+  // J-S 13: what the Core states beyond the flags, by the SHARED reader the web's ring and pill use. Home words
+  // three of them itself - the seal, an unsealable notice, a source a line above already names - so they are
+  // not said twice.
+  const statedDevices = new Set(unreachable.map((source) => source.deviceId));
+  const OWN = new Set(['SEAL_BLOCKED', 'UNSEALABLE', SYSTEM_FACT_SEAL_RETRYING]);
+  const coreFacts: HomeCoreFact[] = systemTruthFactsOf({ alerts: s.alerts, session: null })
+    .filter((fact) => !OWN.has(fact.id) && !(fact.target !== null && statedDevices.has(fact.target)))
+    .map((fact) => ({ id: fact.id, severity: fact.severity, message: fact.message, blocksRecording: fact.blocksRecording }));
+  return JSON.stringify({
+    seal,
+    openNotices: notices.length,
+    unreachable,
+    coreFacts,
+    connecting: selectConnectingCameras(s),
+    sessionState: s.session?.state ?? null,
+    platformNotReported: isPlatformNotReported(s.security),
+    // J-S 7: a Core in its own capture states a host clock or `platformNotReported`; a simulated Core states neither.
+    simulatedCore: live && !realCapture && !isOwnCaptureCoreState(s),
+  });
+}
+
+/**
+ * H2: THE status of Home - `homeStatusOf` of the Core's facts (fix wave J; truth rule 3c). The card, the
+ * header chip, the ring, the tiles and the primary action all read this one value.
+ */
 export function useHomeStatus(): HomeStatus {
   const key = useSim(statusKey);
+  const realCapture = useRealCaptureView();
+  const { live } = useSourceBadgeMode();
+  const facts = useSim((s) => factsLine(s, realCapture, live));
+  // The runtime's one link rule (rows M0-M2): offline at the first OFFLINE or STALE, a few seconds after the socket drops.
+  const { offline } = useCoreLinkNotice();
   return useMemo(() => {
     const [state, ...flags] = key;
-    return homeStatusFor({
-      state: state as HomeStatus['kind'],
-      flags: flags.map((entry) => {
-        const [severity, id, message] = entry.split(FLAG_SEPARATOR);
-        return { severity: severity as SystemFlag['severity'], id: id ?? '', message: message ?? '' };
-      }),
+    const rest = JSON.parse(facts) as Omit<HomeFacts, 'system' | 'linkOffline'>;
+    return homeStatusOf({
+      ...rest,
+      linkOffline: offline,
+      system: {
+        state: state as HomeStatus['kind'],
+        flags: flags.map((entry) => {
+          const [severity, id, message] = entry.split(FLAG_SEPARATOR);
+          return { severity: severity as SystemFlag['severity'], id: id ?? '', message: message ?? '' };
+        }),
+      },
     });
     // `key` is shallow-stable (useSim + useShallow), so its identity is the memo key.
-  }, [key]);
+  }, [key, facts, offline]);
 }
 
 export interface HomeSession {
@@ -151,6 +215,7 @@ export function useHomeTiles(): readonly HomeTile[] {
   // Fix wave L (G70c-02): the Camera tile of a Core in real capture - the cameras ON the lines in force, as reported.
   const cameraLines = useSim((s) => (realCapture ? cameraLinesInForce(s).map((line) => sourceStateWord(cameraLineReportOf(s, line.trackId), live, s.session?.state === 'RECORDING').kind) : ([] as string[])));
   const recording = useSim((s) => s.session?.state === 'RECORDING');
+  const { offline } = useCoreLinkNotice();
   return useMemo(() => {
     const signal = micTileFor(
       micStates.map((entry) => ({
@@ -168,8 +233,10 @@ export function useHomeTiles(): readonly HomeTile[] {
         )
       : signal;
     const camera = realCapture ? realCaptureCameraTileFor(cameraLines.map((state) => ({ state: state as SourceStateKind })), recording) : cameraTileFor(cams);
-    return [camera, microphone, storageTileFor(storage)];
-  }, [cams, micStates, storage, realCapture, micLines, cameraLines, recording]);
+    const tiles = [camera, microphone, storageTileFor(storage)];
+    // Fix wave J (JA2-04): without the Core link the counts are the last known ones - not drawn as present facts.
+    return offline ? tiles.map(offlineTile) : tiles;
+  }, [cams, micStates, storage, realCapture, micLines, cameraLines, recording, offline]);
 }
 
 /** H5: the three most recent sessions ("Today 09:35" is decided per WIB day, not per second). */
@@ -184,12 +251,20 @@ export function useSealedToday(): number {
   return useSim(selectSealedToday);
 }
 
-/** Bell: the unacknowledged count and the latest active alerts (newest first, at most `limit`). */
-export function useAlertSummary(limit = 5): { count: number; alerts: SimAlert[] } {
-  const count = useSim(selectUnacknowledgedAlertCount);
-  const active = useSim(selectActiveAlerts);
-  const alerts = useMemo(() => active.slice(-limit).reverse(), [active, limit]);
-  return { count, alerts };
+/** How many alerts the bell lists at most (it scrolls); the newest are kept. */
+export const BELL_LIMIT = 20;
+
+/**
+ * Bell (fix wave J, JA2-25): every alert that still asks for something, newest first, at most `limit` -
+ * the ACTIVE ones, and the ones the Core resolved that nobody acknowledged (they used to leave the device
+ * while the Core kept them unacknowledged). `count` is the unacknowledged ones of that list - the badge.
+ */
+export function useAlertSummary(limit = BELL_LIMIT): { count: number; alerts: SimAlert[]; total: number } {
+  const open = useSim((s) => s.alerts.filter((alert) => alert.active || !alert.acknowledged));
+  return useMemo(() => {
+    const newestFirst = [...open].reverse();
+    return { count: open.filter((alert) => !alert.acknowledged).length, alerts: newestFirst.slice(0, limit), total: open.length };
+  }, [open, limit]);
 }
 
 /** Tablet: the Security, Time & Network chip row (plus Storage when `withStorage`). */

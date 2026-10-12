@@ -79,6 +79,7 @@ export {
 } from './use-motion-policy';
 export {
   MotionPolicyProvider,
+  UiRuntimeBoundary,
   reducedMotionMode,
   type MotionPolicyProviderProps,
 } from './motion-policy-provider';
@@ -118,3 +119,4 @@ export {
   type MotionPrefs,
 } from './prefs';
 export { reportMotionIssue, setMotionLogSink, type MotionLogRecord, type MotionLogSink } from './log';
+export { UI_RUNTIME_BEAT_MS, UI_RUNTIME_MISSES, installUiRuntimeErrorTrap, markUiRuntimeStalled, useUiRuntimeWatch } from './ui-runtime-watch';

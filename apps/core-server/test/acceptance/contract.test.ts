@@ -1208,6 +1208,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     expect(bodyOf<{ ok: boolean }>(verified).ok).toBe(true);
     await expectCall(main, 'verifyEvidence', supervisor, 'an item the Core does not have', { id: UNKNOWN }, 404, 'NOT_FOUND');
     await expectCall(main, 'verifyEvidence', supervisor, 'a malformed {id}', { id: 'x' }, 422, 'INVALID_INPUT');
+    // Fix wave J (truth rule 3a; JA2-01 / JW-01): an item that was never sealed has nothing sealed to verify.
+    const unverifiable = await expectCall(main, 'verifyEvidence', supervisor, 'an item that was never sealed', { id: unsealedEvidenceId }, 409, 'NOT_SEALED');
+    expect(detailsOf(unverifiable)).toEqual({ simCode: 'UNSEALED_EVIDENCE', from: null, event: 'verify' });
 
     // Spec §7.3 line 10 for the export: 404, then 409, then 422 (decision D92 DN-2).
     const exported = await expectCall(main, 'exportEvidence', supervisor, 'the sealed item is exported', { id: sealedEvidenceId, payload: export_ }, 202);

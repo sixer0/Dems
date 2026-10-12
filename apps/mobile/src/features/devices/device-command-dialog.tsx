@@ -30,6 +30,7 @@ import { StyleSheet, View } from 'react-native';
 import { palette, spacing } from '@dems/shared/tokens';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter } from '@/runtime';
 import { usePendingPress } from './use-pending-press';
+import { useSheetBack } from './use-sheet-presence';
 
 export interface DeviceCommandDialogProps {
   /** The command to confirm, or null when closed. */
@@ -100,11 +101,13 @@ export function DeviceCommandDialog({ command, deviceId, deviceName, live = fals
     if (press.busy) return;
     onClose();
   };
+  // Fix wave J (JA2-16): Android Back cancels the dialog (never while the command is out) and stays on the device.
+  useSheetBack(command !== null, cancel);
   return (
     <Dialog isOpen={command !== null} onOpenChange={(open) => (open ? undefined : cancel())}>
       <Dialog.Portal>
         <Dialog.Overlay />
-        <Dialog.Content testID="device-command-dialog">
+        <Dialog.Content testID="device-command-dialog" accessibilityViewIsModal>
           <Dialog.Title>
             {restart ? t('features.devices.actions.restartTitle', { name: deviceName }) : t('features.devices.actions.testSignalTitle', { name: deviceName })}
           </Dialog.Title>

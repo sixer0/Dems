@@ -13,6 +13,7 @@
 // | D117: the password is sent as typed; the check of the form holds no typed character | "the model" |
 import { fireEvent, screen, waitFor, within, configure } from '@testing-library/react'
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
+import { expectPressOutsideDismisses, pressOutside } from '@/test/press-outside'
 import { CaptureConnectionOutcome, CAPTURE_DISCOVERY_EXAMPLES, CaptureConnectionTestReason, CaptureConnectionTestSchema, type CaptureConnectionTest } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS, setSimConnectionTestOutcome, type Sim } from '@dems/shared/sim'
@@ -288,6 +289,23 @@ describe('adding (ux §8d.6) and abandon (ux §8d.7)', { timeout: 60_000 }, () =
     expect(screen.getByTestId('camera-connect-credential-fact')).toHaveTextContent(C.passwordStored)
     expect(document.body.innerHTML).not.toContain('fixture-pass-77')
     expect(document.body.innerHTML).not.toMatch(/\*{3,}|•{3,}/)
+  })
+
+  // Fix wave J (JW-16; "by code only" in round one, proven here): a press outside the Connect dialog closed it
+  // and discarded the typed account without a question. It closes by its own Close / X and by Escape only.
+  it('JW-16: a press outside does not close the dialog and the typed account stays; Close closes it', async () => {
+    await expectPressOutsideDismisses()
+    await openConnect()
+    await showFields()
+    type('operator', 'fixture-pass')
+    await pressOutside()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(screen.getByTestId('camera-connect-dialog')).toBeInTheDocument()
+    expect(screen.getByTestId('camera-connect-body')).toBeInTheDocument()
+    expect(username().value).toBe('operator')
+    expect(password().value).toBe('fixture-pass')
+    fireEvent.click(screen.getByTestId('camera-connect-close'))
+    await waitFor(() => expect(screen.queryByTestId('camera-connect-body')).not.toBeInTheDocument())
   })
 
   it('closing before a test, after a failed test and after a passing test registers nothing; the next opening has two empty fields', async () => {

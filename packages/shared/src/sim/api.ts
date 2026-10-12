@@ -238,6 +238,8 @@ export interface ApiAudioChannel {
   peak: number;
   clip: boolean;
   noSignal: boolean;
+  /** Fix wave J (JW-08): the level is not measured now (`AudioFrame.notMeasured`). */
+  notMeasured?: true;
   gainDb: number;
   phantom: boolean;
 }
@@ -272,7 +274,7 @@ export interface ApiDeviceHealth {
   activeInputId: CaptureMicInputId;
   storage: ApiStorageStatus;
   time: { source: string; locked: boolean; stratum: number; offsetMs: number; lastSyncAt: string };
-  security: { state: string; posture: string; tpmOk: boolean; secureBoot: boolean; tamper: boolean };
+  security: { state: string; posture: string; tpmOk: boolean; secureBoot: boolean; tamper: boolean; platformNotReported?: true };
   services: { id: string; name: string; status: string }[];
   serverTime: string;
 }
@@ -382,6 +384,7 @@ function audioInputs(state: SimState): ApiAudioChannel[] {
       peak: frame.peak,
       clip: frame.clip,
       noSignal: frame.noSignal,
+      ...(frame.notMeasured === true ? { notMeasured: true as const } : {}),
       gainDb: mic.gainDb,
       phantom: mic.phantom,
     };
@@ -438,6 +441,8 @@ function deviceHealth(state: SimState, now: EpochMs): ApiDeviceHealth {
       tpmOk: state.security.tpm.ok,
       secureBoot: state.security.secureBoot,
       tamper: state.security.tamper,
+      // Fix wave J (JW-04 / JT-03): the statement of the slice, on this answer too (absent on the simulated device).
+      ...(state.security.platformNotReported === true ? { platformNotReported: true as const } : {}),
     },
     services: state.services.map((service) => ({ id: service.id, name: service.name, status: service.status })),
     serverTime: toWibIso(now),
@@ -1880,11 +1885,19 @@ const ROUTES: readonly Route[] = [
     method: 'POST',
     pattern: /^\/api\/v1\/evidence\/([^/]+)\/export$/,
     handle: ({ actions }, [id = ''], body) => {
-      const result = actions.exportEvidence(id, {
-        reason: typeof body.reason === 'string' ? body.reason : '',
-        destination: typeof body.destination === 'string' ? body.destination : '',
-        ...(body.kind === 'PACKAGE' || body.kind === 'COMPOSITE' ? { kind: body.kind } : {}),
-      });
+      let result: ExportResult;
+      try {
+        result = actions.exportEvidence(id, {
+          reason: typeof body.reason === 'string' ? body.reason : '',
+          destination: typeof body.destination === 'string' ? body.destination : '',
+          ...(body.kind === 'PACKAGE' || body.kind === 'COMPOSITE' ? { kind: body.kind } : {}),
+        });
+      } catch (error) {
+        // Fix wave J (truth rule 3d; JA2-03 / JW-03): a COMPOSITE is an output this build cannot produce - refused as the
+        // Core refuses it (`409 COMMAND_UNSUPPORTED`), and nothing was recorded.
+        if (error instanceof SimTransitionError && error.code === SimErrorCode.COMMAND_UNSUPPORTED) return fail(409, 'COMMAND_UNSUPPORTED', 'Composite video is not available in this build.');
+        throw error;
+      }
       if (!result.ok) return exportFailure(result);
       // Schema v2 (C3 §3 op 42): the answer is the queue receipt; op 87 polls the job to completion.
       return respond(202, { exportId: result.exportId, evidenceId: id, status: 'QUEUED', jobId: exportJobIdOf(result.exportId) ?? undefined } satisfies ApiExportBody);

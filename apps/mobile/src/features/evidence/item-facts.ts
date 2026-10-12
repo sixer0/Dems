@@ -64,6 +64,8 @@ export const MEMBER = {
     exportCompletedAt: 'completedAt',
     /** Fix wave K (contract_wave_k.md S2 section 2): the text the Core records when an export names no destination. */
     exportDestinationDefault: 'exportDestinationDefault',
+    /** Fix wave J (contract_wave_j.md J-S 3, JA2-03): which export outputs this Core can produce. */
+    exportKinds: 'exportKinds',
     /** Fix wave L (contract_wave_l.md section 4, G89c-04): the item as operation 40 answers it, and its notice. */
     evidence: 'evidence',
     streamProfileNotice: 'streamProfileNotice',
@@ -137,6 +139,12 @@ export interface DetailFacts {
   readonly exports: readonly FinishedExportFact[] | null;
   /** `exportDestinationDefault` of operation 40; null: not stated (never a default of this app). */
   readonly exportDestinationDefault: string | null;
+  /**
+   * Fix wave J (JA2-03): `exportKinds` of operation 40, read BY NAME - per kind whether a request of it is
+   * accepted. Null: not stated. An entry that is not `{ kind: 'PACKAGE' | 'COMPOSITE', available: boolean }` is
+   * dropped (an unknown kind is not offered).
+   */
+  readonly exportKinds: readonly { readonly kind: 'PACKAGE' | 'COMPOSITE'; readonly available: boolean }[] | null;
   /**
    * Fix wave L (G89c-04): the format of each camera file AS SIGNED (manifest field 36, `evidence.files[].profile`
    * of operation 40), in file order; null: the Core stated none (no sealed manifest was read). Never `profileId`.
@@ -295,6 +303,7 @@ export function readDetailFacts(body: unknown): DetailFacts {
           .filter((entry): entry is FinishedExportFact => entry !== null)
       : null,
     exportDestinationDefault: text(source[MEMBER.detail.exportDestinationDefault], 200),
+    exportKinds: readExportKinds(source[MEMBER.detail.exportKinds]),
     sealedProfiles: readSealedProfiles(source[MEMBER.detail.evidence]),
     streamProfileNotice: readStreamProfileNotice(source[MEMBER.detail.evidence]),
   };
@@ -348,6 +357,9 @@ export const WORDED_MEDIA_REASONS = ['PACKAGE_MISSING', 'QUARANTINED', 'UNSEALAB
 /** The i18n key and options of the reason line under "no playable media". */
 export function mediaReasonLine(reason: string | null): { readonly key: string; readonly options?: { readonly reason: string } } {
   if (reason === null) return { key: 'evidence.itemFacts.media.reason.NOT_REPORTED' };
+  // Fix wave J (JA2-02; contract_wave_j.md J-S 2): a session sealed on a SIMULATED Core is a demonstration record
+  // without media - said so, not "no sealed package ... in the evidence store".
+  if (reason === 'DEMONSTRATION_RECORD') return { key: 'common.truth.demonstrationRecord' };
   if ((WORDED_MEDIA_REASONS as readonly string[]).includes(reason)) return { key: `evidence.itemFacts.media.reason.${reason}` };
   return { key: 'evidence.itemFacts.media.reasonOther', options: { reason } };
 }
@@ -372,4 +384,16 @@ export function signingKeyClassOf(signature: SignatureFacts | null, verified: 'D
   if (signature?.developmentKey === true) return 'DEVELOPMENT';
   if (signature?.developmentKey === false) return 'NOT_DEVELOPMENT';
   return 'UNKNOWN';
+}
+
+/** `exportKinds` of operation 40 (JA2-03): the well-formed entries; null when the member is not a list. */
+function readExportKinds(value: unknown): DetailFacts['exportKinds'] {
+  if (!Array.isArray(value)) return null;
+  const out: { kind: 'PACKAGE' | 'COMPOSITE'; available: boolean }[] = [];
+  for (const entry of value.slice(0, 4)) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const { kind, available } = entry as { kind?: unknown; available?: unknown };
+    if ((kind === 'PACKAGE' || kind === 'COMPOSITE') && typeof available === 'boolean') out.push({ kind, available });
+  }
+  return out;
 }

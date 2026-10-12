@@ -49,7 +49,8 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeInLeft, FadeInRight, ReduceMotion, type EntryOrExitLayoutType } from 'react-native-reanimated';
 import type { SessionCreateFormValues } from '@dems/shared/api';
 import { useCorePermission } from '@dems/shared/live';
-import { Permission, useSimInstance } from '@dems/shared/sim';
+import { Permission, useSim, useSimInstance } from '@dems/shared/sim';
+import { ForeignSessionNotice } from '@/features/sessions/foreign-session-notice';
 import { motion as motionTokens, palette, spacing } from '@dems/shared/tokens';
 import { Stepper, type StepDef, type StepStatusWords } from '@/components/composed/stepper';
 import { Pane, PaneLayout, SafeScreen, useLayoutClass } from '@/layout';
@@ -137,6 +138,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
 
   const data = useSessionNewData();
   const current = effectiveStep(data.state, step);
+  const sessionCreatedBy = useSim((s) => s.session?.createdBy ?? null);
   const phase = gatePhase(data.precheck);
   const investigators = useMemo(() => eligibleInvestigators(data.operators), [data.operators]);
   const actions = useFlowActions(data.state, data.sessionId);
@@ -562,6 +564,8 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
           </Alert.Content>
         </Alert>
       ) : null}
+      {/* Round two, ruling (d) (JM-09): the open setup of ANOTHER operator says whose it is and what this operator can do. */}
+      {current > 1 ? <ForeignSessionNotice surface="setup" createdBy={sessionCreatedBy} testID="session-new-foreign-session" /> : null}
       {/* Fix F-M4 (R69-01): a session left in CREATE is not checked by itself when the check turns on a local device. */}
       <LocalSourceNotStarted visible={current === 1 && data.state === 'CREATE' && !createPress.busy} onRun={() => void onNextInfo()} />
       {stepBody}
@@ -598,7 +602,7 @@ export function SessionNewScreen({ step }: SessionNewScreenProps) {
             <Pane name="devices" width={DEVICE_COLUMN_WIDTH}>
               <KeyboardAwareScrollView style={styles.flex} contentContainerStyle={styles.deviceColumn} testID="session-new-device-scroll">
                 <StepBoundary name="devices">
-                  <LiveDeviceColumn showChecks={current !== 2} paused={paused} />
+                  <LiveDeviceColumn showChecks={current !== 2} afterChecks={current > 2} paused={paused} />
                 </StepBoundary>
               </KeyboardAwareScrollView>
             </Pane>
@@ -670,6 +674,9 @@ function FlowStepper({ current, phase, state, arrangement, onBackToChecks }: Flo
         orientation={stepperOrientation(arrangement)}
         motion={settings.policy}
         statusWords={words}
+        // Round two (JA2-22): only the step a press opens is a button - "Devices Check" from Ready. "Session Info"
+        // stays text: the session exists on the Core from step 2 on and no operation amends its details.
+        canPressStep={(index) => index === 1 && current === 3}
         onStepPress={(index) => {
           if (index !== 1 || current !== 3) return;
           triggerHaptic('stepperSelect');

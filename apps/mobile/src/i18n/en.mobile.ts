@@ -14,6 +14,8 @@ export const enMobile = {
       name: 'DEMS Edge Client',
       // §2.3: the rail foot, web parity (01S §14.4).
       versionFooter: 'DEMS EDGE CLIENT · v{{version}}',
+      // Round two (JW-26): the app's own build, named as the app's.
+      ownVersion: 'App v{{version}}',
     },
     // §2.3: bottom bar (5) and rail (8) destinations.
     nav: {
@@ -33,6 +35,8 @@ export const enMobile = {
     // the role-gated controls are disabled with this reason, and a deep link to the wizard waits on it.
     rbac: {
       checking: 'Checking your permissions…',
+      // Fix wave J (JT-16): joins the roles a sentence names ("Investigator or Supervisor").
+      or: 'or',
     },
     // §3.8: live mini-bar.
     miniBar: {
@@ -59,7 +63,7 @@ export const enMobile = {
       cancelLabel: 'Use password',
       notEnrolled: 'Biometrics not set up on this device',
       lockout: 'Biometrics locked — use your password',
-      enableOffer: 'Enable biometric sign-in on this tablet?',
+      enableOffer: 'Enable biometric sign-in on this device?',
       enable: 'Enable',
       notNow: 'Not now',
       identityNote: 'Simulated identity binding',
@@ -71,7 +75,10 @@ export const enMobile = {
     },
     // §4.2 and §4.1 L11: pairing (derived screen) and the Core trust line.
     pairing: {
-      title: 'Pair this tablet',
+      // Fix wave J (JA2-13, N-05): device-neutral, the same on the phone and the tablet layout; a PAIRED
+      // device titles the screen and the Login link for what they show ("Pairing details").
+      title: 'Pair this device',
+      titlePaired: 'Pairing details',
       steps: {
         discover: 'Discover',
         verifyCode: 'Verify code',
@@ -91,7 +98,8 @@ export const enMobile = {
       },
       trustLinePaired: 'Core: {{device}} • paired (simulated)',
       trustLineUnpaired: 'Core: {{device}} • not paired',
-      link: 'Pair this tablet',
+      link: 'Pair this device',
+      linkPaired: 'Pairing details',
     },
     // §4.4 step 2 and §4.5 S7: Core link source and the connection banner (M-MB-04).
     coreLink: {
@@ -123,18 +131,18 @@ export const enMobile = {
         // §5.2 step 6: the sign-in was answered, its data did not arrive in time.
         snapshotHint: 'The Core did not send its data in time. Try again.',
         // LB-10: a limit is not an outage.
-        limit: 'The Core server is limiting requests from this tablet',
+        limit: 'The Core server is limiting requests from this device',
         limitHint: 'Try again in {{seconds}} s.',
         limitHintSoon: 'Try again in a moment.',
         // 500, or an answer outside the contract.
         failed: 'The Core server could not complete the request',
         failedHint: 'Try again. If it happens again, check the Core server.',
         // The tablet could not read its own credential: nothing was sent.
-        credentials: 'This tablet could not read its credential',
+        credentials: 'This device could not read its credential',
         credentialsHint: 'Nothing was sent. Try again.',
         // The action has no operation in Live mode, or the tablet's own storage failed.
         notAvailable: 'Not available right now',
-        notAvailableHint: 'This action cannot be done on this tablet at the moment.',
+        notAvailableHint: 'This action cannot be done on this device at the moment.',
         // Envelope codes without a simulator class.
         demoDisabled: 'Demo controls are turned off on the Core server',
         refused: 'The Core refused this action',

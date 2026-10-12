@@ -4,7 +4,7 @@
 // 2026-10-11); the finding ids stay in the titles. The contract examples named here are asserted
 // case for case.
 import { describe, expect, it } from 'vitest';
-import { ActiveSessionSchema, AlertsSliceSchema } from '../src/api';
+import { ActiveSessionSchema, AlertsSliceSchema, SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE, SessionHistoryEntrySchema } from '../src/api';
 import {
   SEAL_BLOCKED_DETAILS,
   SEAL_BLOCKED_DETAIL_SENTENCE,
@@ -12,6 +12,8 @@ import {
   SEAL_BLOCKED_EXAMPLE_FINALIZATION,
   SEAL_BLOCKED_EXAMPLE_SESSION_ID,
   SEAL_BLOCKED_REASON,
+  SEAL_RETRY_CONTROL_NAME,
+  SEAL_RETRY_HOW_SENTENCE,
   SEAL_RETRYING_EXAMPLE_FINALIZATION,
   sealAttentionOf,
   sealBlockedNoticeOf,
@@ -19,6 +21,8 @@ import {
   applySealingProgressTransition,
   createManualClock,
   createSim,
+  incompleteSessionFactOf,
+  unsealableCauseOf,
   endUnsealableTransition,
   FaultKind,
   FINALIZATION_ORDER,
@@ -62,6 +66,18 @@ describe('a blocked or retrying seal', () => {
       expect(attention).toMatchObject({ kind: 'BLOCKED', sessionId: SEAL_BLOCKED_EXAMPLE_SESSION_ID, cause: 'SEALER_FAILED', step: 'CLOSE_TRACKS', detail: 'SESSION_KEY_STORE_UNAVAILABLE', attempt: 4, recordingKept: true });
       expect(attention?.kind === 'BLOCKED' ? attention.sentence : '').toMatch(/^The Core's key store cannot be used/);
       expect(attention?.kind === 'BLOCKED' ? attention.message : '').toMatch(/^Sealing of this session is blocked\./);
+    });
+
+    // Fix wave J closing pass (J4, item 4): the devices have "Retry sealing" too (D243 reversed D228 (1)); the sentence
+    // every restore hint of the Core ends with, and the example alert both clients test against, say so.
+    it('where the retry is pressed: the web console\'s Session Monitor OR the session\'s screen of the tablet or phone, by an investigator or a supervisor, or a restart', () => {
+      expect(SEAL_RETRY_HOW_SENTENCE).toBe(
+        'an investigator or a supervisor presses "Retry sealing" on the Session Monitor of the web console or on the session\'s screen of the tablet or phone, or the Core is restarted.',
+      );
+      expect(SEAL_RETRY_HOW_SENTENCE).toContain(`"${SEAL_RETRY_CONTROL_NAME}"`);
+      expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain(SEAL_RETRY_HOW_SENTENCE);
+      // CONTROL: the sentence of before named the web console alone.
+      expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).not.toContain('web console, or the Core is restarted');
     });
 
     it('RETRYING: a failed step and no alert', () => {
@@ -144,8 +160,32 @@ describe('the terminal outcome UNSEALABLE', () => {
       expect(next.session).toBeNull();
       expect(isSessionActive(next.session)).toBe(false);
       expect(next.sessionHistory[0]).toMatchObject({ id: sessionId, outcome: SessionOutcome.INCOMPLETE, evidenceId: null });
+      // Fix wave J (JW-22): THIS is the entry a client reads as "quarantined" - recorded, no evidence item (`incompleteSessionFactOf`).
+      expect(incompleteSessionFactOf(next.sessionHistory[0])).toMatchObject({ kind: 'QUARANTINED', evidenceId: null });
       // Nothing is presented as evidence: the recordings are in the quarantine, not in an item.
       expect(next.evidence).toHaveLength(items);
+    });
+
+    it('fix wave J round two (JW-22): the CAUSE of the given-up seal is readable without a column - from the session\'s alert, or from the entry operation 38 answers', () => {
+      const { failed, sessionId, clock } = finalizingWithFailedSeal();
+      const next = endUnsealableTransition(failed, clock.now(), { sessionId, cause: 'SIGNING_KEY_UNAVAILABLE' });
+      const entry = next.sessionHistory[0];
+      // The replicated entry itself carries no cause (no column): the reader takes it from the alert of THAT session.
+      expect(entry).not.toHaveProperty('unsealableCause');
+      expect(unsealableCauseOf(entry)).toBeNull();
+      expect(unsealableCauseOf(entry, next.alerts)).toBe('SIGNING_KEY_UNAVAILABLE');
+      // The audit row is the stored record operation 38 reads: the same code.
+      expect(next.audit.rows.find((row) => row.type === 'SESSION_INCOMPLETE' && row.sessionId === sessionId)?.details).toMatchObject({ reason: 'UNSEALABLE', cause: 'SIGNING_KEY_UNAVAILABLE' });
+      // Operation 38's entry states it by name; the reader prefers it (the alert ring may have dropped the alert).
+      expect(unsealableCauseOf({ ...entry, unsealableCause: 'NOTHING_SEALABLE' }, next.alerts)).toBe('NOTHING_SEALABLE');
+      expect(unsealableCauseOf(SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE)).toBe('SIGNING_KEY_UNAVAILABLE');
+      expect(SessionHistoryEntrySchema.safeParse(SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE).success).toBe(true);
+      // CONTROLS: an alert of ANOTHER session, an alert of another reason, a sealed entry and a non-code say nothing.
+      expect(unsealableCauseOf(entry, next.alerts.map((alert) => ({ ...alert, target: 'SES-20260101-0001' })))).toBeNull();
+      expect(unsealableCauseOf(entry, next.alerts.map((alert) => ({ ...alert, params: { ...alert.params, reason: 'SEAL_BLOCKED' } })))).toBeNull();
+      expect(unsealableCauseOf({ ...entry, outcome: 'SEALED', unsealableCause: 'X_Y' }, next.alerts)).toBeNull();
+      expect(unsealableCauseOf({ ...entry, unsealableCause: 'not a code' })).toBeNull();
+      expect(SessionHistoryEntrySchema.safeParse({ ...SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE, unsealableCause: 'not a code' }).success).toBe(false);
     });
 
     it('writes ONE audit row SESSION_INCOMPLETE with details.reason UNSEALABLE and the named cause', () => {

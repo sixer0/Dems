@@ -222,6 +222,14 @@ describe('shared i18n resources: language and copy rules', () => {
     expect(en.common.storage.usedLabel).toBe('USED');
     expect(en.common.storage.freeOf).toBe('{{free}} free of {{total}}');
   });
+
+  // Fix wave J closing pass (J4, item 2; ruling D244): ONE lock sentence. The web console and the devices both read this key;
+  // their tests pin the key, this test pins the ruled words.
+  it('the Login notice after "Lock console" is the ruled sentence, and it is not the sign-out notice', () => {
+    expect(en.login.notices.consoleLocked).toBe('Console locked — sign in to continue');
+    expect(en.login.notices.consoleLocked).not.toBe(en.login.notices.signedOut);
+    expect(allText.filter((text) => /console locked/i.test(text))).toEqual([en.login.notices.consoleLocked]);
+  });
 });
 
 describe('shared i18n resources: i18next syntax', () => {

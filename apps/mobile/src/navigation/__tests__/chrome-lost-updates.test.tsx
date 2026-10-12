@@ -25,7 +25,7 @@ import type { ReactTestInstance } from 'react-test-renderer';
 import { palette } from '@dems/shared/tokens';
 import { colorFadeBudgetMs, indicatorTravelBudgetMs } from '@/components/composed/nav';
 import { FULL_MOTION, REDUCED_MOTION, resetMotionStateForTests } from '@/motion';
-import { tabFadeBudgetMs } from '../app-tabs';
+import { TAB_VEIL_START_OPACITY, tabFadeBudgetMs } from '../app-tabs';
 
 jest.mock('@/features/home/pulse-ring', () => ({ PulseRing: () => null }));
 
@@ -196,6 +196,12 @@ describe('E2E-P-1 (phone bar), every UI-thread update lost: the highlight still 
     expect(screen.getByTestId('nav-item-sessions-fading-icon', HIDDEN_TOO)).toBeTruthy();
     expect(screen.getByTestId('nav-item-evidence-fading-icon', HIDDEN_TOO)).toBeTruthy();
     expect(screen.queryAllByTestId('tab-fade-veil', HIDDEN_TOO).length).toBeGreaterThan(0);
+    // Fix wave J (JM-07): the veil is never an opaque canvas - the new screen shows through it from its first frame
+    // (a tab change drew a completely empty screen for up to a third of a second while the veil sat at 1).
+    for (const veil of screen.queryAllByTestId('tab-fade-veil', HIDDEN_TOO)) {
+      expect(effectiveOpacity(veil)).toBeLessThanOrEqual(TAB_VEIL_START_OPACITY);
+      expect(effectiveOpacity(veil)).toBeLessThan(1);
+    }
     // While the copy travels, the settled pill is hidden (not moved): exactly one pill is visible.
     expect(visibleIndicators('nav-bottom-indicator')).toHaveLength(1);
 

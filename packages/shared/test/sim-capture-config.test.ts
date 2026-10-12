@@ -52,6 +52,7 @@ import {
   createAudioRuntime,
   feedCaptureLevels,
   micInputOfChannel,
+  CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS,
 } from '../src/sim';
 import * as failedStartBed from './support/failed-start-bed';
 import * as micIdBed from './support/mic-id-bed';
@@ -145,6 +146,31 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
       expect(Object.values(row.details ?? {}).every((value) => typeof value === 'string')).toBe(true);
     }
     expect(CaptureConfigSliceSchema.safeParse(h.state().captureConfig).success).toBe(true);
+  });
+
+  it('fix wave J (JA2-24): the camera that feeds the other track is refused WITH its reason - `CAMERA_ON_BOTH_TRACKS` - and nothing is changed', () => {
+    const h = harness();
+    const before = h.state();
+    let refused: unknown = null;
+    try {
+      // "Change camera" of Video track 1: the operator picks the camera of track 2 (same profile).
+      h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' });
+    } catch (error) {
+      refused = error;
+    }
+    expect(refused).toMatchObject({ name: 'SimTransitionError', code: 'INVALID_INPUT', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS });
+    expect(CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS).toBe('CAMERA_ON_BOTH_TRACKS');
+    expect(h.state()).toBe(before);
+    // CONTROL: the camera of the track itself is no refusal (nothing changes), and a refusal of another kind names no such reason.
+    h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-01', trackId: 'VIDEO-01' });
+    let other: unknown = null;
+    try {
+      h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-99', trackId: 'VIDEO-01' });
+    } catch (error) {
+      other = error;
+    }
+    expect(other).not.toBeNull();
+    expect((other as { reason?: unknown }).reason ?? null).not.toBe(CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS);
   });
 
   it('an edit that changes nothing sets nothing: the same state, no store write, no row', () => {

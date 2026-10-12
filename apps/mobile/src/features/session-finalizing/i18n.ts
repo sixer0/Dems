@@ -44,7 +44,7 @@ export const sessionFinalizingEn = {
   },
   interrupted: {
     title: 'Finalization interrupted',
-    body: '{{fault}}. Recovery takes over from here: the session is analysed and marked incomplete, never sealed (SYS-008).',
+    body: '{{fault}}. Recovery takes over from here: the session is analysed and marked incomplete, never sealed.',
     unknownFault: 'A critical fault occurred',
     open: 'Open recovery status',
   },
@@ -92,12 +92,25 @@ export const sessionFinalizingEn = {
     // the web console's Session Monitor), and "stopped after 3 automatic retries, the Core waits" is the shared sentence
     // of the Core's failed step (`sealStoppedSentence`) - the device no longer maps "start recovery" to the web control.
     // What only the device can say stays here: it offers no retry itself.
-    retryWhere: 'This device has no retry control: the retry is pressed on the web console.',
+    // Fix wave J (JT-02, ruling D243 - D228 (1) reversed): the devices GET the retry for the roles operation 33
+    // allows. The sentence "this device has no retry control" is gone; these say who can, and where.
+    retryYouCan: 'You can retry the seal from this device once the cause is resolved.',
+    retryWhoCan: 'An investigator or a supervisor can retry the seal, from a device or from the web console. Your role ({{role}}) cannot.',
+    retryAction: 'Retry sealing',
+    retryPending: 'Retrying…',
+    retryConfirmTitle: 'Retry sealing of session {{sessionId}}?',
+    retryConfirmBody: 'The Core runs the seal of this session once more, now. If the cause is not resolved it will be blocked again. The recording is kept either way.',
+    retryConfirm: 'Retry sealing',
+    retryCancel: 'Not now',
+    retrySent: 'The Core is sealing the session again.',
+    retryRefused: 'The Core did not start the retry. Nothing was changed.',
     staysOpen: 'You can leave this screen. The session stays open on the Core until it is sealed; Home and Sessions show it as "{{chip}}".',
     retryingBody: 'The Core runs the seal again by itself. You can leave this screen; the session stays open on the Core until it is sealed.',
     chip: 'Sealing blocked',
     action: 'Sealing blocked: view',
     newSession: 'A new session cannot be started: sealing of session {{sessionId}} is blocked, and the Core records no new session until it is sealed.',
+    // Round two (seen on the tablet's Home during the retries): one statement - "being retried", not "blocked", while the Core retries.
+    newSessionRetrying: 'A new session cannot be started: sealing of session {{sessionId}} is being retried, and the Core records no new session until it is sealed.',
     hubBody: 'Sealing of this session is blocked.',
   },
   /**

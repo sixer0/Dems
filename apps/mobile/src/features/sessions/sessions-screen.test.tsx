@@ -186,7 +186,9 @@ describe('Sessions hub', () => {
     expect(screen.getByTestId('session-detail-id')).toHaveTextContent(incomplete.id);
     expect(screen.getByTestId('session-detail-status').props.accessibilityLabel).toBe('Incomplete');
     expect(screen.getByTestId('session-detail-incomplete')).toBeTruthy();
-    expect(screen.getByTestId('session-detail-incomplete')).toHaveTextContent(/SYS-008/);
+    // Round two (JA2-29 / N-08): operator copy names no specification id.
+    expect(screen.getByTestId('session-detail-incomplete')).toHaveTextContent(/It will never be sealed\./);
+    expect(screen.getByTestId('session-detail-incomplete')).not.toHaveTextContent(/SYS-008|§/);
     fireEvent.press(screen.getByTestId('session-detail-back'));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -226,6 +228,24 @@ describe('Sessions hub', () => {
     await settle();
     expect(h.app.getPathname()).toBe('/evidence');
     expect(h.app.getSearchParams()).toMatchObject({ selected: sealed.evidenceId });
+  });
+
+  // Fix wave J round two (JT-20): the detail pane kept a session the filter had removed from the list.
+  it('JT-20 tablet landscape: a filter that removes the selected session empties the pane and says so; "Clear filters" brings it back', async () => {
+    const h = renderSessionsApp({ window: 'tabletLandscape' });
+    await settle();
+    const sealed = h.history().find((entry) => entry.outcome === SessionOutcome.SEALED && entry.evidenceId)!;
+    fireEvent.press(screen.getByTestId(`session-row-${sealed.id}`));
+    await settle();
+    fireEvent.press(screen.getByTestId('sessions-filter-INCOMPLETE'));
+    await settle();
+    expect(screen.queryByTestId(`session-row-${sealed.id}`)).toBeNull();
+    const pane = within(screen.getByTestId('pane-detail'));
+    expect(pane.queryByTestId('session-detail-id')).toBeNull();
+    expect(pane.getByTestId('session-detail-filtered-out')).toHaveTextContent(new RegExp(`${sealed.id} is not in this list`));
+    fireEvent.press(pane.getByTestId('session-detail-filtered-out-clear'));
+    await settle();
+    expect(within(screen.getByTestId('pane-detail')).getByTestId('session-detail-id')).toHaveTextContent(sealed.id);
   });
 
   it('tablet portrait: list 360 dp | detail; a deep link to /sessions/<id> hands over to the pane', async () => {

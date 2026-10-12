@@ -46,7 +46,7 @@ import { sealDoorsOf } from '../../engine/seal-doors';
 import { sessionPackageDir } from '../../evidence-verify';
 import { buildPackage, removeScratch, scratch, type BuiltPackage } from '../../evidence-verify/__tests__/support';
 import { SEALING_STEP_ORDER, loadSealingSigner } from '../../sealing';
-import { evidenceExport, parseExportManifest, parseExportSignature, verifyExportAtDestination } from '../index';
+import { evidenceExport, parseExportManifest, parseExportSignature, replaceExportServicePartsForTest, verifyExportAtDestination } from '../index';
 import { systemUnzip } from '../../../cli/verify-export';
 import { RECEIVER_EXIT, runReceiverCommand } from '../receiver-cli';
 import { UNZIP } from './support';
@@ -196,7 +196,26 @@ describe('fix F-M8: a real sealed item is exported by a job, recorded when it co
     };
 
     // ── R93-03, the failing half: a COMPOSITE (the licence gate is closed) ──────────────────────
+    // Fix wave J (truth rule 3d; JA2-03 / JW-03). FIRST the product as it is: a COMPOSITE is an output this build cannot
+    // produce, so the request is REFUSED before any job - no export id, no request row, no failure row, the item untouched -
+    // and operation 40 said so beforehand.
+    const detail = (await app.inject({ method: 'GET', url: `/api/v1/evidence/${evidenceId}`, headers: supervisor })).json() as { exportKinds?: unknown };
+    expect(detail.exportKinds).toEqual([{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: false, reason: 'COMPOSITE_ENCODER_NOT_SELECTED' }]);
+    const refused = await app.inject({ method: 'POST', url: exportUrl, headers: supervisor, payload: { reason: 'Prosecutor request', kind: 'COMPOSITE' } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ error: { code: 'COMMAND_UNSUPPORTED', details: { reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } } });
+    expect(validateCoreApiResponse('exportEvidence', 409, refused.json())).toEqual({ ok: true });
+    await jobs?.idle();
+    await app.pipeline.drain();
+    expect(await auditOf(evidenceId, 'EVIDENCE_EXPORTED')).toEqual([]);
+    expect(await auditOf(evidenceId, 'EVIDENCE_EXPORT_FAILED')).toEqual([]);
+    expect(await storedItem(evidenceId)).toMatchObject({ status: 'SEALED' });
+
+    // THEN the path of a job that FAILS after it was admitted (R93-03), kept under test: the request is let through by a
+    // test part ("this Core says it can"), and the job itself still finds no encoder.
+    replaceExportServicePartsForTest(app, { compositeAvailable: () => true });
     const composite = await app.inject({ method: 'POST', url: exportUrl, headers: supervisor, payload: { reason: 'Prosecutor request', kind: 'COMPOSITE' } });
+    replaceExportServicePartsForTest(app, { compositeAvailable: () => false });
     expect(composite.statusCode).toBe(202);
     const compositeBody = composite.json() as { exportId: string; jobId: string };
     expect(validateCoreApiResponse('exportEvidence', 202, compositeBody)).toEqual({ ok: true });

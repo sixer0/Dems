@@ -49,8 +49,10 @@ export const moreEn = {
     },
     settings: {
       detail: 'Preferences, security, about',
-      sections_one: '{{count}} section',
-      sections_other: '{{count}} sections',
+      // Fix wave J (JA2-35): the count of the rows the Settings list shows (some open another screen,
+      // so they are "items", not "sections").
+      items_one: '{{count}} item',
+      items_other: '{{count}} items',
     },
     /** Tablets: the rail already shows these four (04 §2.3 "More dissolves"). */
     inRail: 'Storage, Network & Time, Audit and Settings are in the navigation rail.',

@@ -7,6 +7,7 @@ import {
   CircleHelp,
   CircleX,
   Lock,
+  Shield,
   ShieldAlert,
   ShieldQuestion,
   ShieldX,
@@ -19,14 +20,13 @@ import { palette } from '@dems/shared/tokens'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { tween, useAmbientLoop, useMotionPolicy } from '@/motion'
 import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
-import { sealRetryingSessionOf } from '@/lib/seal-attention'
+import { selectStatedAlertCount, selectStatedAlertMessage, useSystemStatement } from '@/lib/system-statement'
 import {
   INTEGRITY_CHECK_IDS,
   ownCoreRow,
   pillSubtitle,
   selectIntegrityChecks,
   selectPillCause,
-  selectPillState,
   type CheckStatus,
   type PillState,
 } from './integrity-checks'
@@ -74,7 +74,6 @@ export function SecurePill() {
   const m = useMotionPolicy()
   const [open, setOpen] = useState(false)
   const ready = useSimReady()
-  const simState = useSim(selectPillState)
   const checks = useSim(selectIntegrityChecks)
   // G75b-07: the CRITICAL line names the fault; the integrity sentence is kept for integrity flags.
   const cause = useSim(selectPillCause)
@@ -82,7 +81,9 @@ export function SecurePill() {
   const ownCore = useOwnCaptureCore()
   // Closing pass J (D217 (7)): the platform row reads the Core's own statement `security.platformNotReported`.
   const platformNotReported = usePlatformNotReported()
-  const state: PillState = ready ? simState : 'UNKNOWN'
+  // Fix wave J: the pill's state IS the one statement's (declared here, used by the dot and the pulse below).
+  const statement = useSystemStatement()
+  const state: PillState = statement.kind === 'UNKNOWN' ? 'UNKNOWN' : statement.kind === 'CRITICAL' ? 'CRITICAL' : statement.kind === 'ATTENTION' ? 'ATTENTION' : 'SECURE'
   const dotRef = useRef<HTMLSpanElement>(null)
   const dotLoop = useAmbientLoop('secure-dot', {
     ref: dotRef,
@@ -99,27 +100,53 @@ export function SecurePill() {
     pulses = escalated ? seen.pulses + 1 : seen.pulses
     setSeen({ state, pulses })
   }
-  // Fix wave L (G75d-01, ruling D228 (2)): while a recording sits in quarantine (an ACTIVE unsealable alert - the one
-  // fact is `openUnsealableNoticesOf`) the pill never reads "SECURE / All systems operational" without it. The notice
-  // blocks no recording, so it is an open notice, not a critical state; a real fault keeps its own words.
+  // Fix wave J (JW-04, JW-05; truth rule 3c): the pill's word is `systemStatementOf` - ONE pure function of the Core's
+  // facts (`lib/system-statement.ts`), the same the Dashboard ring reads. It is never "SECURE / All systems operational"
+  // while the Core link is lost, a seal is retried, an alert is active, a recording sits in quarantine (waves L and M),
+  // or while the Core states that it reports no platform posture.
   const openNotices = useSim((s) => openUnsealableNoticesOf(s).length)
-  // Fix wave M (G75e-06, ruling D234 (3)): while the Core retries a seal by itself (up to 155 s: `sealRetryingSessionOf`
-  // - a step failed and is waited for, or the retry run itself) the pill says so, never "SECURE / All systems
-  // operational". It is the state of the open session, so it comes before the open notice; a real fault keeps its words.
-  const sealRetried = useSim((s) => sealRetryingSessionOf(s) !== null)
-  const retrying = state === 'SECURE' && sealRetried
-  const openNotice = state === 'SECURE' && !retrying && openNotices > 0
-  const raised = retrying || openNotice
-  const Icon = raised ? ShieldAlert : PILL_ICON[state]
-  const title = retrying ? t('web.waveM.pill.retryLabel') : openNotice ? t('web.waveL.notice.pillLabel') : t(`shell.securePill.${state}.title`)
-  const subtitle = retrying ? t('web.waveM.pill.retrySub') : openNotice ? t('web.waveL.notice.pillSub', { count: openNotices }) : pillSubtitle(t, state, cause)
+  const alertCount = useSim(selectStatedAlertCount)
+  const alertMessage = useSim(selectStatedAlertMessage)
+  const retrying = statement.kind === 'SEAL_RETRYING'
+  const openNotice = statement.kind === 'OPEN_NOTICE'
+  const alertActive = statement.kind === 'ALERT_ACTIVE'
+  const offline = statement.kind === 'CORE_OFFLINE'
+  const notReported = statement.kind === 'NO_FAULT_REPORTED'
+  const raised = retrying || openNotice || alertActive
+  const Icon = raised ? ShieldAlert : offline ? ShieldQuestion : notReported ? Shield : PILL_ICON[state]
+  const title = retrying
+    ? t('web.waveM.pill.retryLabel')
+    : openNotice
+      ? t('web.waveL.notice.pillLabel')
+      : alertActive
+        ? t('web.waveJ.pill.alertLabel')
+        : offline
+          ? t('web.waveJ.pill.offlineLabel')
+          : notReported
+            ? t('web.waveJ.pill.noFaultLabel')
+            : t(`shell.securePill.${state}.title`)
+  const subtitle = retrying
+    ? t('web.waveM.pill.retrySub')
+    : openNotice
+      ? t('web.waveL.notice.pillSub', { count: openNotices })
+      : alertActive
+        ? t('web.waveJ.pill.alertSub', { count: alertCount })
+        : offline
+          ? t('web.waveJ.pill.offlineSub')
+          : notReported
+            ? t('web.waveJ.pill.noFaultSub')
+            : state === 'CRITICAL' && cause === '' && alertCount > 0
+              ? t('web.waveJ.pill.alertSub', { count: alertCount })
+              : pillSubtitle(t, state, cause)
+  const pillTone = raised ? 'ATTENTION' : offline || notReported ? 'UNKNOWN' : state
 
   return (
     <Popover isOpen={open} onOpenChange={setOpen}>
       <Button
         variant="outline"
         className="dems-secure-pill"
-        data-state={raised ? 'ATTENTION' : state}
+        data-state={pillTone}
+        data-statement={statement.kind}
         data-open-notice={openNotice ? 'true' : undefined}
         data-seal-retrying={retrying ? 'true' : undefined}
         data-testid="secure-pill"
@@ -134,7 +161,7 @@ export function SecurePill() {
         <span
           ref={dotRef}
           className="dems-status-dot"
-          data-tone={state}
+          data-tone={pillTone === 'UNKNOWN' ? 'UNKNOWN' : state}
           data-shell-slot="secure-dot"
           data-pulses={pulses}
           aria-hidden="true"
@@ -160,10 +187,20 @@ export function SecurePill() {
               {t('web.waveL.notice.pillSub', { count: openNotices })}. {t('web.waveL.notice.ringSub')}
             </p>
           ) : null}
+          {alertActive && alertMessage !== '' ? (
+            <p className="dems-popover-empty" role="status" data-testid="secure-pill-alert">
+              {alertMessage}
+            </p>
+          ) : null}
+          {offline ? (
+            <p className="dems-popover-empty" role="status" data-testid="secure-pill-offline">
+              {t('web.waveJ.pill.offlineDetail')}
+            </p>
+          ) : null}
           <ul className="dems-check-list" data-testid="integrity-checklist">
             {INTEGRITY_CHECK_IDS.map((id, index) => {
-              const stated: CheckStatus | 'UNKNOWN' = ready ? (checks[index] ?? 'OK') : 'UNKNOWN'
-              const notStated = ready ? ownCoreRow(id, stated, { hostClock: ownCore, platformNotReported }) : null
+              const stated: CheckStatus | 'UNKNOWN' = ready && !offline ? (checks[index] ?? 'OK') : 'UNKNOWN'
+              const notStated = ready && !offline ? ownCoreRow(id, stated, { hostClock: ownCore, platformNotReported }) : null
               const status: CheckStatus | 'UNKNOWN' = notStated !== null ? 'UNKNOWN' : stated
               const CheckIcon = CHECK_ICON[status]
               return (

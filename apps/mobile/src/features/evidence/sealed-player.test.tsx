@@ -862,5 +862,68 @@ describe('G94c-06 - the player and its message are brought into view', () => {
     expect(screen.getByTestId('evidence-playback-stopped-position')).toBeTruthy();
     expect(scrolls).toEqual([{ y: 480, animated: false }]);
   });
+
+  // Fix wave J closing pass (J4, item 6): JT-17 was "fixed in code only - no test" (note 171, 2.2). The stop of a
+  // tampered item reaches the player as an error on a media session that has NOT ended (the Core refuses the fragment):
+  // the same event as G94b-10 above.
+  it('JT-17: after a stop that is not the session\'s end, the action bar\'s Play starts NO player and asks for NO session - it brings the stop sentence into view; "Open again" is the way on', async () => {
+    const { b, lead, follow } = await playingFromActionBar();
+    fireEvent(block(), 'layout', { nativeEvent: { layout: { x: 0, y: 480, width: 400, height: 700 } } });
+    act(() => lead.emit('timeUpdate', { currentTime: 3.2 }));
+    act(() => lead.emit('statusChange', { status: 'error' }));
+    await b.flush();
+    expect(screen.getByTestId('evidence-playback-stopped-position')).toHaveTextContent(/Playback stopped at 0:03 and did not resume\./);
+    // The action bar offers "Play" again (the players are paused) ...
+    expect(screen.getByTestId('evidence-action-play-label-play')).toBeTruthy();
+    const before = { plays: [lead.play.mock.calls.length, follow.play.mock.calls.length], writes: [lead.writes.length, follow.writes.length], sessions: b.requests('createEvidenceMediaSession').length };
+    fireEvent(scrollView(), 'scrollBeginDrag');
+    scrolls.length = 0;
+    // ... and a press on it does not run the refused place again.
+    fireEvent.press(screen.getByTestId('evidence-action-play'));
+    await b.flush();
+    expect([lead.play.mock.calls.length, follow.play.mock.calls.length]).toEqual(before.plays);
+    expect([lead.writes.length, follow.writes.length]).toEqual(before.writes);
+    expect(b.requests('createEvidenceMediaSession')).toHaveLength(before.sessions);
+    expect(screen.getByTestId('evidence-playback-stopped-position')).toBeTruthy();
+    expect(screen.getByTestId('evidence-action-play-label-play')).toBeTruthy();
+    expect(screen.queryByTestId('evidence-action-play-label-pause')).toBeNull();
+    expect(screen.getByTestId('evidence-sealed-toggle-paused')).toBeTruthy();
+    // The sentence is brought into view although the operator had scrolled away (the press and the player both ask).
+    expect(scrolls.length).toBeGreaterThan(0);
+    expect(scrolls.every((to) => to.y === 480)).toBe(true);
+    // A second press is the same (no toggle hides behind it).
+    fireEvent.press(screen.getByTestId('evidence-action-play'));
+    await b.flush();
+    expect([lead.play.mock.calls.length, follow.play.mock.calls.length]).toEqual(before.plays);
+    // The way on is the control under the sentence: it asks for the sessions again.
+    fireEvent.press(screen.getByTestId('evidence-playback-reopen'));
+    await b.flush();
+    expect(b.requests('createEvidenceMediaSession').length).toBeGreaterThan(before.sessions);
+  });
+
+  it('JT-17 CONTROL: a plain Pause is not such a stop - the action bar\'s Play starts the players again', async () => {
+    const { b, lead, follow } = await playingFromActionBar();
+    fireEvent.press(screen.getByTestId('evidence-sealed-toggle-playing'));
+    const plays = [lead.play.mock.calls.length, follow.play.mock.calls.length];
+    fireEvent.press(screen.getByTestId('evidence-action-play'));
+    await b.flush();
+    expect([lead.play.mock.calls.length, follow.play.mock.calls.length]).toEqual([plays[0]! + 1, plays[1]! + 1]);
+    expect(screen.getByTestId('evidence-action-play-label-pause')).toBeTruthy();
+  });
+
+  it('JT-17 (seen with it): Play at the END of the recording starts it again from 0:00 - it does not toggle "playing" at the end', async () => {
+    const { b, lead, follow } = await playingFromActionBar();
+    act(() => lead.emit('timeUpdate', { currentTime: 60.7 }));
+    act(() => lead.emit('playToEnd'));
+    expect(screen.getByTestId('evidence-action-play-label-play')).toBeTruthy();
+    const plays = lead.play.mock.calls.length;
+    fireEvent.press(screen.getByTestId('evidence-action-play'));
+    await b.flush();
+    expect(lead.writes.at(-1)).toBe(0);
+    expect(follow.writes.at(-1)).toBe(0);
+    expect(lead.play.mock.calls.length).toBe(plays + 1);
+    expect(screen.getByTestId('evidence-sealed-time')).toHaveTextContent(/^0:00/);
+    expect(screen.getByTestId('evidence-action-play-label-pause')).toBeTruthy();
+  });
 });
 });

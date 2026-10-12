@@ -32,6 +32,7 @@ import {
   TRACK_ORDER,
   verifyEvidenceItem,
   type EvidenceItem,
+  EVIDENCE_NOT_SEALED_DIGEST,
 } from '../src/sim';
 
 const INDEX = DEMO_EVIDENCE_INDEX;
@@ -115,15 +116,24 @@ describe('the idle dataset agrees with every DATASET package (review 40 §5.c it
         status: pkg.status,
         tampered: pkg.tampered,
         tamperedTrackId: pkg.tamperedTrackId,
-        manifestHash: pkg.files.manifest.sha256,
         integritySource: 'DEMO_PACKAGE',
         startTimeSource: 'GNSS',
         endTimeSource: 'GNSS',
       });
+      // Fix wave J (truth rule 3a): the package of the INCOMPLETE session (0006, RECORDED) belongs to an item that was
+      // never sealed. The item carries NO value of that package: no track hash, no manifest digest.
+      if (pkg.status === 'RECORDED') {
+        expect(item).toMatchObject({ sealedAt: null, tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST });
+        expect(JSON.stringify(item)).not.toContain(pkg.files.manifest.sha256);
+        for (const track of pkg.tracks) expect(JSON.stringify(item)).not.toContain(track.sealedSha256);
+        continue;
+      }
+      expect(item?.manifestHash).toBe(pkg.files.manifest.sha256);
       for (const track of pkg.tracks) {
         expect(item?.tracks.find((entry) => entry.trackId === track.trackId)?.sha256).toBe(track.sealedSha256);
       }
     }
+    expect(dataset.filter((pkg) => pkg.status === 'RECORDED').map((pkg) => pkg.evidenceSuffix)).toEqual(['0006']);
   });
 
   it('EV 0005 is tampered on AUDIO-02 at load: verify fails on exactly that track, with the altered copy hash', () => {
@@ -138,10 +148,15 @@ describe('the idle dataset agrees with every DATASET package (review 40 §5.c it
     expect(altered).toMatchObject({ expected: pkg.verification.checks.find((c) => c.id === 'track:AUDIO-02')?.expected });
     expect(altered?.actual).toBe(pkg.tracks.find((track) => track.altered)?.stored.sha256);
     expect(result.manifestOk && result.signatureOk).toBe(true);
-    // Every other dataset item verifies (like the packages' precomputed reports).
-    for (const other of state.evidence.filter((entry) => entry.id !== item.id)) {
+    // Every other SEALED dataset item verifies (like the packages' precomputed reports).
+    for (const other of state.evidence.filter((entry) => entry.id !== item.id && entry.sealedAt !== null)) {
       expect(verifyEvidenceItem(other, AS_OF).ok, other.id).toBe(true);
     }
+    // Fix wave J (truth rule 3a; JA2-01 / JW-01): the never-sealed item has nothing a verification could confirm -
+    // its record holds no hash at all, so no comparison can ever answer PASS for it.
+    const neverSealed = state.evidence.filter((entry) => entry.sealedAt === null);
+    expect(neverSealed.map((entry) => entry.id)).toEqual(['EV-20260930-0006']);
+    expect(verifyEvidenceItem(neverSealed[0]!, AS_OF).ok).toBe(false);
   });
 
   it('Security & Audit keys: DEVICE_CERT and EVIDENCE_SIGNING_KEY are the Ed25519 DEMO certificate and key', () => {

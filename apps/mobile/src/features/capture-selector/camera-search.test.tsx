@@ -20,6 +20,8 @@ import type { Sim } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle, type DevicesHarness } from '@/features/devices/testing/devices-harness';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
+import { isSimulatedCoreSearch } from './camera-search-panel';
+import { captureSelectorEn } from './i18n';
 
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('camera search', () => {
@@ -81,7 +83,7 @@ describe('entry and idle (§8c.1, S2)', () => {
     const { h, requests } = await openDevices();
     const panel = screen.getByTestId('camera-search');
     expect(within(panel).getByText('Camera search')).toBeTruthy();
-    expect(screen.getByTestId('camera-search-intro')).toHaveTextContent('Search the network for cameras. Searching connects to nothing.');
+    expect(screen.getByTestId('camera-search-intro')).toHaveTextContent('Search the network for cameras. A search only lists the cameras that answer; it changes no setting.');
     expect(action().props.accessibilityLabel).toBe('Search for cameras');
     expect(disabled('camera-search-action')).toBe(false);
     expect(requests.count(`GET ${DISCOVERY}`)).toBe(1);
@@ -351,13 +353,15 @@ describe('the other states (S5, S7-S12)', () => {
     expect(action().props.accessibilityLabel).toBe('Search again');
   });
 
-  it('S9: 503 reads "not available on this Core yet" with Retry — one call per press, none by itself', async () => {
+  it('S9: 503 reads "not available on this Core right now" with Retry — one call per press, none by itself', async () => {
     jest.useFakeTimers();
     const { requests } = await openDevices();
     requests.answer((request) => (request.method === 'POST' && request.path === DISCOVERY ? refusal(503, 'NOT_READY', 'DISCOVERY_NOT_READY') : undefined));
     fireEvent.press(action());
     await settle();
-    expect(screen.getByTestId('camera-search-unavailable')).toHaveTextContent(/Camera search is not available on this Core yet\./);
+    expect(screen.getByTestId('camera-search-unavailable')).toHaveTextContent(/Camera search is not available on this Core right now\./);
+    // Fix wave J (JA2-N10): no "yet" - the sentence promises nothing.
+    expect(screen.getByTestId('camera-search-unavailable')).not.toHaveTextContent(/\byet\b/);
     act(() => jest.advanceTimersByTime(60_000));
     await settle();
     expect(requests.count(`POST ${DISCOVERY}`)).toBe(1);
@@ -526,4 +530,27 @@ describe('the camera search in the PHONE layout', () => {
     expect(screen.UNSAFE_queryAllByProps({ secureTextEntry: true })).toHaveLength(0);
   });
 });
+});
+
+// Fix wave J (JA2-N10; headline 5): a SIMULATED Core has no camera search - the rule that tells it apart.
+describe('fix wave J - `isSimulatedCoreSearch`', () => {
+  it('Live data, a device list, no device that states a source class = a simulated Core; everything else is not', () => {
+    const plain = [{}, {}];
+    const real = [{ sourceClass: 'DEVELOPMENT' }, {}];
+    expect(isSimulatedCoreSearch(plain, true)).toBe(true);
+    expect(isSimulatedCoreSearch(real, true)).toBe(false);
+    // A Core the client knows nothing of yet is not called simulated.
+    expect(isSimulatedCoreSearch([], true)).toBe(false);
+    // Simulated client mode: the in-app simulator searches (its own demonstration), unchanged.
+    expect(isSimulatedCoreSearch(plain, false)).toBe(false);
+  });
+
+  it('the copy: no "yet", no "connects to nothing"; the simulated-Core sentence says what to do instead', () => {
+    const search = captureSelectorEn.search;
+    expect(search.intro).not.toMatch(/connects to nothing/);
+    expect(search.unavailable).not.toMatch(/\byet\b/);
+    expect(search.simulatedCore).toMatch(/simulated/);
+    expect(search.simulatedCore).toMatch(/Camera Devices/);
+    expect(search.simulatedCore).not.toMatch(/\byet\b|Retry/);
+  });
 });

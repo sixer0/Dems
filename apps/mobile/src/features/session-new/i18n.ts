@@ -50,6 +50,9 @@ export const sessionNewEn = {
     previewTitle: 'Camera and audio preview',
     liveTitle: 'Live device status',
     liveHint: 'The same eight checks run when you continue.',
+    liveHintAfter: 'The devices check of this session has passed. This is the status the Core reports now.',
+    noteTime: 'A note, not a warning: the Core takes its time from the host system clock.',
+    noteSecurity: 'A note, not a warning: this Core reads no TPM and no Secure Boot state.',
     // Fix wave L (G70c-06): the card while the Core link is down - one statement of the link per screen.
     liveHintLinkDown: 'Not connected to the Core server. The device status is not known until the connection is back.',
     liveNotKnown: 'Not known',
@@ -60,6 +63,7 @@ export const sessionNewEn = {
     warningAcknowledged: 'Ready, 1 warning acknowledged',
     warningsAcknowledged: 'Ready, {{count}} warnings acknowledged',
     countdownHint: 'Recording starts after a 3-2-1 countdown.',
+    countdownOffHint: 'Recording starts at once, without a countdown.',
     cancelCountdown: 'Cancel',
     startFailed: 'Recording could not start. Please try again.',
   },
@@ -83,6 +87,8 @@ export const sessionNewEn = {
     maxRetries: 'Still failing. Go back and reopen Start Session.',
   },
   actionFailed: 'That action could not be completed. Please try again.',
+  // Round two (RC-7): the exit of the "Checking your permissions…" screen.
+  checkingBackHome: 'Back to Home',
   // Fix wave M (G70d-03): the session this form belonged to was cancelled on another client.
   cancelledElsewhere: {
     title: 'The session was cancelled',

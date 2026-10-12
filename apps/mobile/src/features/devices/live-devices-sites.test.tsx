@@ -135,7 +135,8 @@ describe('S3-2: Test signal (operation 49) through the device-command dialog', (
     await confirmCommand('device-action-test-signal', b);
     await b.elapse(200);
     expect(toastShown(DENIED)).toBe(true);
-    expect(toastShown('Requires the Investigator role')).toBe(true);
+    // Fix wave J (JT-16): the sentence names every role that holds the permission the refusal names.
+    expect(toastShown(/^Requires the Investigator(, | or ).*role$/)).toBe(true);
     expect(toastShown('Test signal sent to MIC 2')).toBe(false);
     expect(toastShown(FAILED)).toBe(false);
     expect(screen.queryByTestId('device-command-dialog')).toBeNull();
@@ -172,7 +173,7 @@ describe('S3-2: Test signal (operation 49) through the device-command dialog', (
     b.fake.answerOnce('testDeviceSignal', rateLimited(30));
     await confirmCommand('device-action-test-signal', b);
     await b.elapse(200);
-    expect(toastShown('The Core server is limiting requests from this tablet')).toBe(true);
+    expect(toastShown('The Core server is limiting requests from this device')).toBe(true);
     expect(toastShown('Try again in 30 s.')).toBe(true);
     expect(toastShown(OFFLINE)).toBe(false);
     expect(toastShown('Test signal sent to Camera 1')).toBe(false);
@@ -305,7 +306,8 @@ describe('S2-8: Run diagnostics (operation 65)', () => {
     await press('device-action-diagnostics', b);
     await b.elapse(200);
     expect(toastShown(DENIED)).toBe(true);
-    expect(toastShown('Requires the Investigator role')).toBe(true);
+    // Fix wave J (JT-16): the sentence names every role that holds the permission the refusal names.
+    expect(toastShown(/^Requires the Investigator(, | or ).*role$/)).toBe(true);
     expect(screen.queryByTestId('device-diagnostics-sheet')).toBeNull();
     expect(isBusy('device-action-diagnostics')).toBe(false);
   });

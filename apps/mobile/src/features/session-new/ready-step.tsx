@@ -54,7 +54,8 @@ export function ReadyStep({ input, operators, warnings, countdown, onCountdownCh
           label: t('sessionNew.ready.summary.subject'),
           value: (
             <View style={styles.subject} testID="session-new-summary-subject">
-              <Typography type="body" numberOfLines={1} style={styles.subjectName}>
+              {/* Round two (JA2-09 / JT-12): the name is whole on the last screen before recording - two lines, the chip under it. */}
+              <Typography type="body" numberOfLines={2} style={styles.subjectName}>
                 {input.subjectName}
               </Typography>
               <SubjectTypeChip type={input.subjectType} size="sm" />
@@ -107,7 +108,8 @@ export function ReadyStep({ input, operators, warnings, countdown, onCountdownCh
           <View style={styles.switchText}>
             <Label onPress={() => onCountdownChange(!countdown)}>{t('sessionNew.ready.countdown')}</Label>
             <Typography type="body-xs" color="muted">
-              {t('features.session-new.ready.countdownHint')}
+              {/* Round two (JT-22): the caption follows the switch - it promised a countdown with the switch off. */}
+              {t(countdown ? 'features.session-new.ready.countdownHint' : 'features.session-new.ready.countdownOffHint')}
             </Typography>
           </View>
         </View>
@@ -162,8 +164,8 @@ const styles = StyleSheet.create({
   wide: { flexDirection: 'row', gap: spacing[4], alignItems: 'flex-start' },
   summaryWide: { flex: 1 },
   ringBox: { alignItems: 'center', gap: spacing[1], paddingVertical: spacing[1], minWidth: 160 },
-  subject: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flexShrink: 1 },
-  subjectName: { flexShrink: 1 },
+  subject: { alignItems: 'flex-end', gap: spacing[1], flexShrink: 1 },
+  subjectName: { flexShrink: 1, textAlign: 'right' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: 48 },
   switchText: { flex: 1 },
   overlay: {

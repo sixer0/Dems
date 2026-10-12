@@ -30,7 +30,8 @@ export const DEVICE_NAME_KEY: Readonly<Record<DeviceId, string>> = {
   'MIC-02': 'features.devices.mic.title2',
   'POE-SWITCH': 'devices.other.poeSwitch',
   'REC-INDICATOR': 'devices.other.recordingIndicator',
-  TABLET: 'devices.other.tabletControl',
+  // Fix wave J (JA2-13): the row stands for THIS device - a phone or a tablet.
+  TABLET: 'features.devices.other.deviceControl',
 };
 
 /** Short name used in toasts and dialogs ("MIC 1", "Camera 2", …). */
@@ -144,4 +145,15 @@ export type DetailFacts = 'SIMULATED' | 'GENERATED' | 'MODEL_VALUES';
 export function detailFactsOf(realCapture: boolean, adapter: string | null | undefined): DetailFacts {
   if (!realCapture) return 'SIMULATED';
   return adapter === 'FAKE' ? 'GENERATED' : 'MODEL_VALUES';
+}
+
+// ── The Recording Indicator (fix wave J, JA2-33) ─────────────────────────────────────────────────────────
+/**
+ * The ONE statement of the Recording Indicator, from the Core's session fact: the lamp is lit exactly while
+ * a session records; at rest it is "Lamp off" (never "Active" beside a red beacon); a fault keeps its word.
+ * Pure: `key` is an i18n key.
+ */
+export function relayWords(status: DeviceStatus, recording: boolean): { readonly key: string; readonly lit: boolean; readonly fault: boolean } {
+  if (status === 'FAULT' || status === 'OFFLINE') return { key: STATUS_LABEL_KEY[status], lit: false, fault: true };
+  return recording ? { key: 'devices.other.recordingLamp', lit: true, fault: false } : { key: 'features.devices.other.lampOff', lit: false, fault: false };
 }

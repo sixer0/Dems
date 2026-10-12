@@ -13,7 +13,7 @@
  * and the rule, never a value of a row.
  */
 import { createHash } from 'node:crypto';
-import { GENESIS_HASH, verifyAuditChain } from '@dems/shared/sim';
+import { EVIDENCE_NOT_SEALED_DIGEST, GENESIS_HASH, verifyAuditChain } from '@dems/shared/sim';
 import { FINALIZATION_STEPS_V2 } from '@dems/shared/domain';
 import { auditRowFromRow, isStorableText } from '../mapping';
 import {
@@ -278,8 +278,17 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     must(row.sizeBytes >= 0 && HEX64.test(row.sha256), 'evidence_tracks', 'evidence_tracks_values_check');
     tracksOf.set(row.evidenceId, [...(tracksOf.get(row.evidenceId) ?? []), row.position]);
   }
-  for (const id of fixtureEvidence) {
-    must((tracksOf.get(id) ?? []).sort().join(',') === '1,2,3,4', 'evidence_tracks', 'an item does not have exactly four tracks at positions 1 to 4');
+  // Fix wave J (truth rule 3a): a SEALED item has its four tracks; an item that was never sealed (`sealed_at` NULL) has none -
+  // it carries no track hash, the null digest and no verification of record (`neverSealedShape` of the shared simulator).
+  for (const row of rows.evidenceItems) {
+    const positions = (tracksOf.get(row.id) ?? []).sort().join(',');
+    if (row.sealedAt === null) {
+      must(positions === '', 'evidence_tracks', 'an item that was never sealed holds a track');
+      must(row.manifestHash === EVIDENCE_NOT_SEALED_DIGEST && row.signatureValue === EVIDENCE_NOT_SEALED_DIGEST && row.verificationStatus === 'NOT_RUN', 'evidence_items', 'an item that was never sealed holds a sealed value or a verdict');
+    } else {
+      must(positions === '1,2,3,4', 'evidence_tracks', 'an item does not have exactly four tracks at positions 1 to 4');
+      must(row.manifestHash !== EVIDENCE_NOT_SEALED_DIGEST, 'evidence_items', 'a sealed item holds the null digest');
+    }
   }
   unique(rows.evidenceTracks.map((row) => `${row.evidenceId}|${row.trackId}`), 'evidence_tracks', 'evidence_tracks_pkey');
   const custodyOf = new Map<string, number>();

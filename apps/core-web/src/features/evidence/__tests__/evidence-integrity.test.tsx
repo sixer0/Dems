@@ -13,7 +13,8 @@ import {
   verifyDemoPackage,
   demoVerificationTrust,
 } from '@dems/shared/demo-data'
-import { createEvidenceItem, FaultKind, OPERATOR_IDS } from '@dems/shared/sim'
+import { createEvidenceItem, FaultKind, hasSealedValues, OPERATOR_IDS } from '@dems/shared/sim'
+import { evidenceStatusLabel } from '../status-label'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createFetchLoader, demoAssetUrlFor, isCertificatePath } from '../demo-assets'
 import { joinDemoPackage } from '../model'
@@ -196,4 +197,59 @@ describe('DEMO asset loading', () => {
     // EV 0005's AUDIO-02 resolves to the package's altered copy, not the pristine media folder.
     expect(PKG_0005.tracks[3]?.stored.path).toMatch(/^demo-evidence\/SESSION-.*\/media\/AUDIO-02\.m4a$/)
   })
+})
+
+// Fix wave J, driver J-W - JW-01 (BLOCKER; truth rule 3a; contract J-S 1): an item that was never sealed shows no sealed
+// values, no manifest, no signature, no Verify control and no verdict - it states what it is. JW-09 / JT-04 (truth rule
+// 3b): an item whose verification of record FAILED never reads plain "Sealed".
+describe('wave J: a never-sealed item, and a failed verification of record', () => {
+  it('JW-01: the Hash & Integrity tab of a never-sealed item states it and offers nothing that could turn green', async () => {
+    const { sim } = mountEvidence('/evidence', { assets: await diskAssets() })
+    const recorded = sim.store.getState().evidence.find((item) => !hasSealedValues(item))
+    expect(recorded, 'the dataset holds one never-sealed record').toBeDefined()
+    cleanup()
+    stopSims()
+    mountEvidence(`/evidence/${recorded!.id}?tab=integrity`, { assets: await diskAssets() })
+    await findPage('page-evidence-detail')
+    expect(await screen.findByTestId('evidence-not-sealed')).toHaveTextContent('This item was never sealed')
+    expect(screen.queryByTestId('evidence-verify')).toBeNull()
+    expect(screen.queryByTestId('evidence-hashes')).toBeNull()
+    expect(screen.queryByTestId('evidence-verdict')).toBeNull()
+    expect(screen.getByTestId('evidence-integrity').textContent ?? '').not.toMatch(/PASS|Sealed values|Manifest hash|Manifest signature|Verified/)
+    // The header says it too, and Export is not offered for it.
+    expect(screen.getByTestId('evidence-not-sealed-mark')).toHaveTextContent('Not sealed')
+    expect(screen.getByTestId('evidence-export')).toBeDisabled()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('JW-01 NEGATIVE CONTROL: a sealed item keeps its sealed values and its Verify control', async () => {
+    mountEvidence(`/evidence/${PKG_0001.evidenceId}?tab=integrity`, { assets: await diskAssets() })
+    await findPage('page-evidence-detail')
+    expect(screen.getByTestId('evidence-verify')).toBeInTheDocument()
+    expect(screen.getByTestId('evidence-hashes')).toBeInTheDocument()
+    expect(screen.queryByTestId('evidence-not-sealed')).toBeNull()
+    expect(screen.queryByTestId('evidence-not-sealed-mark')).toBeNull()
+  })
+
+  it('JW-09: the status word carries a FAIL of record; without one it is the plain status', () => {
+    const t = ((key: string, values?: Record<string, string>) => (key === 'web.waveJ.evidence.verificationFailedStatus' ? `${values?.status} · verification FAILED` : key === 'common.evidenceStatus.SEALED' ? 'Sealed' : key)) as never
+    expect(evidenceStatusLabel(t, 'SEALED', { verification: { status: 'FAIL', at: 1 } })).toBe('Sealed · verification FAILED')
+    expect(evidenceStatusLabel(t, 'SEALED', { verification: { status: 'PASS', at: 1 } })).toBe('Sealed')
+    expect(evidenceStatusLabel(t, 'SEALED', { verification: { status: 'NOT_RUN', at: null } })).toBe('Sealed')
+    expect(evidenceStatusLabel(t, 'SEALED')).toBe('Sealed')
+  })
+
+  it(
+    'JW-09: after a FAIL the header chip, the Status fact and the lifecycle of the tampered item state the failed verification',
+    async () => {
+      mountEvidence(`/evidence/${PKG_0005.evidenceId}?tab=integrity`, { assets: await diskAssets() })
+      await findPage('page-evidence-detail')
+      fireEvent.click(screen.getByTestId('evidence-verify'))
+      await waitFor(() => expect(screen.getByTestId('evidence-verdict')).toHaveAttribute('data-verdict', 'FAIL'), { timeout: UI_TIMEOUT })
+      await waitFor(() => expect(document.querySelectorAll('[data-verification-failed="true"]').length).toBeGreaterThanOrEqual(2), { timeout: UI_TIMEOUT })
+      for (const chip of document.querySelectorAll('[data-evidence-status]')) expect(chip.textContent).toMatch(/verification FAILED/)
+      expect(screen.getByTestId('evidence-lifecycle')).toHaveTextContent('The verification of record FAILED')
+    },
+    UI_TIMEOUT,
+  )
 })

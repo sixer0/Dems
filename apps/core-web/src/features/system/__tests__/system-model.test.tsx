@@ -1,9 +1,11 @@
 // Step 52: pure view-model and adapter tests for the System & Maintenance page.
 import { describe, expect, it } from 'vitest'
+import { DIAGNOSTIC_NOT_REPORTED_EXAMPLE } from '@dems/shared/api'
 import { createManualClock, createSim, FaultKind, ALWAYS_VISIBLE, type DiagnosticsRun } from '@dems/shared/sim'
 import {
   activeFaultKeys,
   bannerTone,
+  diagnosticsTone,
   countServices,
   DEMO_FAULTS,
   formatAsOf,
@@ -58,6 +60,27 @@ describe('System page model', () => {
     }
     expect(summarizeDiagnostics(run)).toEqual({ done: 3, total: 4, pass: 1, warn: 1, fail: 1, complete: false })
     expect(summarizeDiagnostics(null)).toBeNull()
+  })
+
+  // Fix wave J (JT-03 / JW-04; contract J-S 5): a row over hardware the Core does not read states nothing - it is
+  // resolved, and it is neither a pass nor a warning. The contract's exported example is fed unmodified.
+  it('a diagnostics row the Core does not report is counted as done, never as a warning or a pass', () => {
+    const run: DiagnosticsRun = {
+      id: 'DIAG-2',
+      startedAt: 0,
+      completedAt: 10,
+      checks: [
+        { id: 'CPU', label: 'CPU', status: 'PASS', detail: null },
+        { ...DIAGNOSTIC_NOT_REPORTED_EXAMPLE } as DiagnosticsRun['checks'][number],
+        { ...DIAGNOSTIC_NOT_REPORTED_EXAMPLE, id: 'FAN' } as DiagnosticsRun['checks'][number],
+      ],
+    }
+    const summary = summarizeDiagnostics(run)
+    expect(summary).toEqual({ done: 3, total: 3, pass: 1, warn: 0, fail: 0, complete: true })
+    expect(diagnosticsTone(summary!)).toBe('success')
+    // NEGATIVE CONTROL: the same row without the rule is a warning.
+    const plain = { ...run, checks: [run.checks[0]!, { ...run.checks[1]!, params: {} }] } as DiagnosticsRun
+    expect(summarizeDiagnostics(plain)?.warn).toBe(1)
   })
 
   it('covers every fault kind with a toggle or the time-source control, and reads targeted toggles exactly', () => {

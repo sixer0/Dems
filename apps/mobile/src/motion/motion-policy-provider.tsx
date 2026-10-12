@@ -11,7 +11,9 @@
  * - app state: loops pause in the background;
  * - renders `<ReducedMotionConfig mode={reduced ? ReduceMotion.Always : ReduceMotion.Never}>`
  *   (explicit modes, because `System` would only use the start-time value, VM-05);
- * - mounts the `?debug=1` overlay.
+ * - mounts the `?debug=1` overlay;
+ * - watches the animation runtime (`./ui-runtime-watch`, fix wave J): when it stops, the policy turns
+ *   `reduced` for the rest of the process and the children are mounted anew under it.
  *
  * The HeroUI Native `animation: 'disable-all'` switch lives in `AppProviders` (step 68,
  * `heroUIConfig(reducedMotion)`). The root layout (step 70) passes the policy through the render
@@ -24,15 +26,17 @@
  * `kitAnimation(policy)` gives the same value for any other kit root.
  */
 import * as Linking from 'expo-linking';
-import { useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, AppState, LogBox } from 'react-native';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, AppState, LogBox, Pressable, StyleSheet, Text, View } from 'react-native';
+import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { ReduceMotion, ReducedMotionConfig, useReducedMotion } from 'react-native-reanimated';
 import { MotionDebugOverlay } from './debug-overlay';
 import { reportMotionIssue } from './log';
 import { motionStore } from './policy';
 import { MOBILE_PREFS_KEY, readMotionPrefs } from './prefs';
 import type { MotionPolicy } from './tokens';
-import { useMotionPolicy } from './use-motion-policy';
+import { restartNow, useUiRuntimeWatch } from './ui-runtime-watch';
+import { useMotionPolicy, useMotionState } from './use-motion-policy';
 
 // Reanimated prints one dev warning when ReducedMotionConfig overrides the system value. The
 // override is intended (explicit modes, VM-05), so the LogBox banner, which would cover the bottom
@@ -110,6 +114,9 @@ export function MotionPolicyProvider({ children, debugOverlay = true }: MotionPo
     };
   }, []);
 
+  // Fix wave J (JM-01 d): the heartbeat and the error trap of the animation runtime. When it has stopped the
+  // policy below is `reduced` (reason `runtime`); `UiRuntimeBoundary` mounts the screens anew under it.
+  useUiRuntimeWatch();
   const policy = useMotionPolicy();
 
   return (
@@ -120,3 +127,55 @@ export function MotionPolicyProvider({ children, debugOverlay = true }: MotionPo
     </>
   );
 }
+
+/** The notice's words (plain: this screen must not depend on anything that can fail with the runtime). */
+export const UI_RUNTIME_NOTICE = {
+  title: 'The display is restarting',
+  heldTitle: 'The display stopped',
+  body: 'An animation fault stopped the display engine of this device. The app starts itself again; you will be asked to sign in.',
+  heldBody: 'An animation fault stopped the display engine of this device, for the second time within a minute, so the app did not start itself again.',
+  recording: 'A recording in progress is not affected: it continues on the Core server.',
+  restart: 'Restart the app',
+} as const;
+
+/**
+ * Fix wave J (JM-01 d: "one failed animation can never take a screen away"), the place where the screens meet
+ * the state of the animation runtime (`./ui-runtime-watch`). It sits BELOW the app's providers (the root
+ * layout puts it around the navigator).
+ *
+ * - The runtime REPORTED an error: the screens are not drawn at all - any of them may hold a view that waits,
+ *   hidden, for an animation that will never run. A plain notice stands in their place while the app starts
+ *   itself again; if it may not (a second fault within a minute) the notice offers the restart to the operator.
+ * - Only the heartbeat is missing: the screens are mounted anew under the `still` settings (the operator stays
+ *   signed in; the navigator keeps its route).
+ */
+export function UiRuntimeBoundary({ children }: { children: ReactNode }) {
+  const stalled = useMotionState((s) => s.uiRuntimeStalled);
+  const fault = useMotionState((s) => s.uiRuntimeFault);
+  if (fault !== null) {
+    const held = fault === 'held';
+    return (
+      <View style={noticeStyles.root} testID="ui-runtime-notice" accessibilityRole="alert">
+        <Text style={noticeStyles.title} accessibilityRole="header">
+          {held ? UI_RUNTIME_NOTICE.heldTitle : UI_RUNTIME_NOTICE.title}
+        </Text>
+        <Text style={noticeStyles.body}>{held ? UI_RUNTIME_NOTICE.heldBody : UI_RUNTIME_NOTICE.body}</Text>
+        <Text style={noticeStyles.body}>{UI_RUNTIME_NOTICE.recording}</Text>
+        {held ? (
+          <Pressable style={noticeStyles.button} accessibilityRole="button" testID="ui-runtime-notice-restart" onPress={() => void restartNow()}>
+            <Text style={noticeStyles.buttonLabel}>{UI_RUNTIME_NOTICE.restart}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+  return <Fragment key={stalled ? 'ui-runtime-stalled' : 'ui-runtime-live'}>{children}</Fragment>;
+}
+
+const noticeStyles = StyleSheet.create({
+  root: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing[3], padding: spacing[6], backgroundColor: palette.black },
+  title: { fontFamily: fontFamily.native.semibold, fontSize: typography.h2.size, lineHeight: typography.h2.lineHeight, color: palette.foreground, textAlign: 'center' },
+  body: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.gray, textAlign: 'center', maxWidth: 560 },
+  button: { marginTop: spacing[3], paddingVertical: spacing[3], paddingHorizontal: spacing[6], borderRadius: 999, backgroundColor: palette.gold, minHeight: 48, justifyContent: 'center' },
+  buttonLabel: { fontFamily: fontFamily.native.semibold, fontSize: typography.body.size, color: palette.black },
+});

@@ -14,6 +14,7 @@ import {
   selectConnectingCameras,
   selectStandbyInputId,
   sessionStartRoles,
+  noSignalInputOf,
   silentInputOf,
   switchFailureFacts,
   switchRefusal,
@@ -172,5 +173,17 @@ describe('a microphone beyond the built-in pair (MIC-03)', () => {
     const fault = (target: string | null) => ({ kind: 'MIC_SILENT', target }) as unknown as SimState['faults']['active'][number];
     expect(silentInputOf([fault('MIC-03')], 'MIC-01')).toBe('MIC-03');
     expect(silentInputOf([fault(null)], 'MIC-03')).toBe('MIC-03');
+  });
+});
+
+// Fix wave J round two (JA2-06).
+describe('MIC_NO_SIGNAL names an input (the same target rule as MIC_SILENT)', () => {
+  const fault = (kind: string, target: string | null) => ({ kind, target }) as unknown as SimState['faults']['active'][number];
+  it('null without the fault; the input, the channel of the input, or the active input', () => {
+    expect(noSignalInputOf([], MicInputId.MIC_01)).toBeNull();
+    expect(noSignalInputOf([fault('MIC_SILENT', 'MIC-01')], MicInputId.MIC_01)).toBeNull();
+    expect(noSignalInputOf([fault('MIC_NO_SIGNAL', 'MIC-02')], MicInputId.MIC_01)).toBe('MIC-02');
+    expect(noSignalInputOf([fault('MIC_NO_SIGNAL', 'AUDIO-01')], MicInputId.MIC_02)).toBe('MIC-01');
+    expect(noSignalInputOf([fault('MIC_NO_SIGNAL', null)], MicInputId.MIC_02)).toBe('MIC-02');
   });
 });

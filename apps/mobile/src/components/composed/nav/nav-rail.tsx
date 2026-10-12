@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import { TOPO_SVG } from '@dems/shared/brand';
 import { SOFTWARE_VERSION } from '@dems/shared/sim';
+import { useShownVersion } from '@/lib/app-version';
 import { derived, fontFamily, palette, radius, typography } from '@dems/shared/tokens';
 import { Emblem } from '@/components/media/emblem';
 import type { NavChrome } from '@/layout';
@@ -18,6 +19,8 @@ import { useIndicatorTrack } from './use-indicator';
 /**
  * Device software version at the extended rail's foot ("DEMS EDGE CLIENT · v2.4.1", 04 §2.3, web
  * parity): the simulator dataset's `SOFTWARE_VERSION`, the one source the web sidebar reads too.
+ * Round two (JW-26): in Live mode the foot states the app's OWN build under the app's name
+ * (`useShownVersion`); this constant is the Simulated source's value.
  */
 export const RAIL_FOOTER_VERSION: string = SOFTWARE_VERSION;
 
@@ -60,6 +63,7 @@ const LIST_INSET = 8;
  */
 export function NavRail({ items, active, nav, collapse }: NavRailProps) {
   const { t } = useTranslation();
+  const shownVersion = useShownVersion();
   const insets = useSafeAreaInsets();
   const { frame, travel, onItemLayout } = useIndicatorTrack(active);
   const layout = itemLayoutFor(nav);
@@ -137,7 +141,7 @@ export function NavRail({ items, active, nav, collapse }: NavRailProps) {
 
       {nav.extended ? (
         <Text numberOfLines={1} maxFontSizeMultiplier={1.2} testID="nav-rail-footer" style={styles.footer}>
-          {t('mobile.app.versionFooter', { version: RAIL_FOOTER_VERSION })}
+          {t('mobile.app.versionFooter', { version: shownVersion.version })}
         </Text>
       ) : null}
 

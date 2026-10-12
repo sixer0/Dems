@@ -43,6 +43,34 @@ export interface SelectorNotice {
   /** The refusal class (never `ok`). */
   readonly result: Exclude<AnswerClass, 'ok'>;
   readonly rowKey: string;
+  /**
+   * Fix wave J (JA2-24): WHY the Core did not accept the choice, when it is known - the chosen camera feeds
+   * the other track (`cameraOnOtherTrack`), or the reason code the Core gave (`core`). Absent: no reason is known.
+   */
+  readonly cause?: SelectorRefusalCause;
+}
+
+export type SelectorRefusalCause =
+  | { readonly kind: 'cameraOnOtherTrack'; readonly deviceId: string; readonly trackId: string }
+  | { readonly kind: 'core'; readonly reason: string };
+
+/**
+ * The cause of an `invalid` answer (pure). A camera that already feeds the other track is the cause the
+ * client can name itself (the Core accepts it only with two profiles, OD-05); otherwise the Core's own
+ * reason code, when it gave one.
+ */
+export function refusalCauseOf(
+  command: SelectorCommand,
+  result: AnswerClass,
+  lines: readonly { readonly trackId: string; readonly deviceId: string | null }[],
+  reason: string | null,
+): SelectorRefusalCause | null {
+  if (result !== 'invalid') return null;
+  if (command.kind === 'camera') {
+    const other = lines.find((line) => line.trackId !== command.trackId && line.deviceId === command.deviceId);
+    if (other !== undefined) return { kind: 'cameraOnOtherTrack', deviceId: command.deviceId, trackId: other.trackId };
+  }
+  return reason !== null && reason !== '' ? { kind: 'core', reason } : null;
 }
 
 export interface SelectorRetry {
@@ -148,11 +176,14 @@ export function useCaptureSelector(): CaptureSelector {
         setCooldownS(0);
         setAwaited(answer.updatedAt === null ? null : { rowKey, updatedAt: answer.updatedAt });
       } else {
-        setNotice({ result: answer.result, rowKey });
+        // The camera lines the Core holds now (nothing was changed): what the refusal is explained against.
+        const held = sim.store.getState();
+        const cause = refusalCauseOf(command, answer.result, cameraRows(held.captureConfig, held.captureDevices), answer.facts.reason);
+        setNotice({ result: answer.result, rowKey, ...(cause === null ? {} : { cause }) });
       }
       return answer.result;
     },
-    [port],
+    [port, sim],
   );
 
   const runRetry = useCallback(() => {

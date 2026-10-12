@@ -188,7 +188,7 @@ const readsAreTheSlices: {
   storage: Same<StorageDetail, Pick<SimState, 'storage' | 'storagePolicy'>>;
   network: Same<NetworkStatus, Pick<SimState, 'network' | 'tabletLink'>>;
   time: Same<Omit<TimeStatus, 'cameraOffsets'>, Pick<SimState, 'time'>>; // v2 adds server-side camera offsets (C3 §3 op 57); the slice stays the sim's
-  system: Same<SystemStatus, Pick<SimState, 'device' | 'services' | 'update' | 'diagnostics' | 'settings'>>;
+  system: Same<Omit<SystemStatus, 'components'>, Pick<SimState, 'device' | 'services' | 'update' | 'diagnostics' | 'settings'>>; // fix wave J round two (JW-26): `components` is the Core's own statement of its versions, no slice
   alerts: Same<AlertList, Pick<SimState, 'alerts'>>;
   history: Same<SessionHistoryPage['items'][number], SessionHistoryEntry>;
   evidence: Parity<EvidencePage['items'][number], EvidenceItem>;
@@ -295,14 +295,27 @@ describe('the answers of the hosted actions parse with their schemas', () => {
   it('verify: the verdict of every dataset item, passed and failed', () => {
     const { actions, state } = rig('idle', SUPERVISOR);
     let failed = 0;
+    let neverSealed = 0;
     for (const item of state().evidence) {
+      // Fix wave J (truth rule 3a; JA2-01 / JW-01): a never-sealed item has nothing to verify - refused, and nothing is written.
+      if (item.sealedAt === null) {
+        neverSealed += 1;
+        const rows = state().audit.total;
+        expect(() => actions.verify(item.id), item.id).toThrowError(expect.objectContaining({ code: 'UNSEALED_EVIDENCE' }));
+        expect(state().audit.total, item.id).toBe(rows);
+        expect(state().evidence.find((entry) => entry.id === item.id), item.id).toEqual(item);
+        continue;
+      }
       const result = actions.verify(item.id);
       expect(EvidenceVerifyResultSchema.parse(wire(result)), item.id).toEqual(result);
       expect(result.tracks.map((track) => track.trackId), item.id).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
+      // Fix wave J (JA2-02): every verdict of the simulator says that it is a demonstration.
+      expect(result.demonstration, item.id).toBe(true);
       if (!result.ok) failed += 1;
     }
-    // The dataset has one item whose AUDIO-02 track fails.
+    // The dataset has one item whose AUDIO-02 track fails, and one item that was never sealed.
     expect(failed).toBe(1);
+    expect(neverSealed).toBe(1);
     expect(EvidenceVerifyResultSchema.safeParse({ evidenceId: 'EV-20260930-0004', ok: true, at: AT, tracks: [], manifestOk: true, signatureOk: true, note: 'x' }).success).toBe(false);
   });
 
@@ -778,16 +791,27 @@ describe('the export job and the camera file of the media session', () => {
       const path = `/api/v1/evidence/${sealed.id}/export`;
       const reason = 'Case file handover for prosecutor review';
 
+      // Fix wave J (truth rule 3d; JA2-03 / JW-03): a COMPOSITE is an output this build cannot produce. It is refused
+      // before anything is recorded - no export id, no row, no event, the item as it was - and never delivered as a Package.
+      const before = { rows: h.state().audit.total, events: h.state().events.length, item: h.state().evidence.find((item) => item.id === sealed.id) };
       const composite = h.sim.request({ method: 'POST', path, body: { reason, kind: 'COMPOSITE' } });
-      expect(composite.status).toBe(202);
-      const receipt = composite.body as { exportId: string; jobId: string };
+      expect(composite.status).toBe(409);
+      expect(composite.body).toMatchObject({ error: { code: 'COMMAND_UNSUPPORTED' } });
+      expect(h.state().audit.total).toBe(before.rows);
+      expect(h.state().events.length).toBe(before.events);
+      expect(h.state().evidence.find((item) => item.id === sealed.id)).toEqual(before.item);
+
+      // The kind that IS available is named on the row and answered by op 87.
+      const named = h.sim.request({ method: 'POST', path, body: { reason, kind: 'PACKAGE' } });
+      expect(named.status).toBe(202);
+      const receipt = named.body as { exportId: string; jobId: string };
       expect(EvidenceExportAcceptedSchema.safeParse(receipt).success).toBe(true);
       expect(receipt.jobId).toBe(`EXPJ-${receipt.exportId.slice('EXP-'.length)}`);
-      expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', details: { exportId: receipt.exportId, kind: 'COMPOSITE' } });
+      expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_EXPORTED', details: { exportId: receipt.exportId, kind: 'PACKAGE' } });
       const job = h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${receipt.jobId}` });
       expect(job.status).toBe(200);
       expect(EvidenceExportJobSchema.safeParse(job.body).success).toBe(true);
-      expect(job.body).toMatchObject({ jobId: receipt.jobId, evidenceId: sealed.id, kind: 'COMPOSITE', derived: true, status: 'COMPLETE' });
+      expect(job.body).toMatchObject({ jobId: receipt.jobId, evidenceId: sealed.id, kind: 'PACKAGE', derived: false, status: 'COMPLETE' });
 
       // A request that names no kind writes none (the row is what it was before; absent reads as PACKAGE).
       const plain = h.sim.request({ method: 'POST', path, body: { reason } });

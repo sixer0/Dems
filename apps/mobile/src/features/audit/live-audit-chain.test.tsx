@@ -90,7 +90,7 @@ describe('S1-7 and S4-3: Verify sends operation 60 and shows the Core\'s verdict
     // S4-3: the time stamp is the store's clock, which in LIVE is the Core's (the Live source's clock slice).
     expect(verdictText()).toBe(`Checked ${view.checked} entries at ${formatDate(b.state().clock.now, DATE_PATTERNS.time)}`);
     expect(view.checked).toBe(b.state().audit.rows.length);
-    expect(screen.getByTestId('audit-live-stored-ok')).toHaveTextContent(`Stored chain verified through entry #${stored.checked}`);
+    expect(screen.getByTestId('audit-live-stored-ok')).toHaveTextContent(`Stored audit log, checked separately: verified through entry #${stored.checked}`);
     expect(screen.queryByTestId('audit-live-lineage')).toBeNull();
     expect(isBusy()).toBe(false);
     expect(screen.queryByTestId('audit-verify-spinner')).toBeNull();
@@ -134,9 +134,21 @@ describe('S1-7 and S4-3: Verify sends operation 60 and shows the Core\'s verdict
     await pressVerify(b);
     await b.flush();
     expect(screen.getByTestId('audit-verify-FAIL')).toBeTruthy();
-    expect(verdictText()).toBe(`Breaks at entry #${breakSeq}: Hash mismatch`);
+    expect(verdictText()).toMatch(new RegExp(`^Breaks at entry #${breakSeq}: Hash mismatch \\(checked at \\d\\d:\\d\\d:\\d\\d\\)$`));
     // The demo fault cannot reach the table (implementation/39 §6.1): the stored line stays verified.
-    expect(screen.getByTestId('audit-live-stored-ok')).toHaveTextContent(`Stored chain verified through entry #${b.engine.sim.store.getState().audit.total}`);
+    // Fix wave J (JA2-31): under a FAIL that line says WHICH chain broke, so "verified" is no contradiction.
+    expect(screen.getByTestId('audit-live-stored-ok')).toHaveTextContent(
+      `The break is in the chain the Core is holding. Its stored audit log, checked separately, verifies through entry #${b.engine.sim.store.getState().audit.total}`,
+    );
+    expect(b.requests('verifyAuditChain')).toHaveLength(1);
+
+    // JA2-31: the fault is cleared on the Core. The FAIL and the lines of that answer do not stand beside "Chain OK".
+    await b.onEngine((engine) => engine.sim.actions.clearFault(FaultKind.AUDIT_TAMPER));
+    await b.flush();
+    expect(screen.getByTestId('audit-chain-chip-ok')).toBeTruthy();
+    expect(screen.queryByTestId('audit-verify-FAIL')).toBeNull();
+    expect(screen.queryByTestId('audit-live-chain')).toBeNull();
+    expect(verdictText()).toMatch(new RegExp(`the check found a break at entry #${breakSeq}\\. The chain has changed since then\\. Verify again\\.$`));
     expect(b.requests('verifyAuditChain')).toHaveLength(1);
   });
 
@@ -158,14 +170,14 @@ describe('S1-7 and S4-3: Verify sends operation 60 and shows the Core\'s verdict
     await pressVerify(b);
     await b.flush();
     expect(screen.getByTestId('audit-verify-PASS')).toBeTruthy();
-    expect(screen.getByTestId('audit-live-stored-broken')).toHaveTextContent('Stored chain breaks at entry #42');
-    expect(screen.getByTestId('audit-live-lineage')).toHaveTextContent('Earlier chains: 2, discarded by demo resets or scenario loads');
+    expect(screen.getByTestId('audit-live-stored-broken')).toHaveTextContent('Stored audit log, checked separately: breaks at entry #42');
+    expect(screen.getByTestId('audit-live-lineage')).toHaveTextContent('The audit chain was restarted 2 times by demo resets or scenario loads');
 
     // One discarded chain: the singular sentence.
     b.lineage = [entry(1, 'RESET')];
     await pressVerify(b);
     await b.flush();
-    expect(screen.getByTestId('audit-live-lineage')).toHaveTextContent('Earlier chains: 1, discarded by a demo reset or a scenario load');
+    expect(screen.getByTestId('audit-live-lineage')).toHaveTextContent('The audit chain was restarted 1 time by a demo reset or a scenario load');
     expect(b.requests('verifyAuditChain')).toHaveLength(2);
   });
 
@@ -226,7 +238,7 @@ describe('S1-7 and S4-3: Verify sends operation 60 and shows the Core\'s verdict
     b.fake.answerOnce('verifyAuditChain', rateLimited(30));
     await pressVerify(b);
     await b.flush();
-    expect(toastShown('The Core server is limiting requests from this tablet')).toBe(true);
+    expect(toastShown('The Core server is limiting requests from this device')).toBe(true);
     expect(toastShown('Try again in 30 s.')).toBe(true);
     expect(toastShown(OFFLINE)).toBe(false);
     expect(screen.queryByTestId('audit-link-offline')).toBeNull();

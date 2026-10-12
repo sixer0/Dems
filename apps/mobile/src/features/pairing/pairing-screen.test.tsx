@@ -5,8 +5,8 @@
 // deterministic. expo-router's hooks are mocked; Skia is step 71's module mock.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
-import { Dimensions } from 'react-native';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react-native';
+import { BackHandler, Dimensions } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { DEMO_OPERATOR_PASSWORD, DEMO_PAIRING_CODE, PairingState, type SimState } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
@@ -114,6 +114,10 @@ describe('Pairing screen', () => {
     const test = await mount();
     expect(screen.getByTestId('screen-pair')).toBeTruthy();
     expect(screen.getByTestId('pairing-stepper')).toBeTruthy();
+    // Fix wave J (JA2-13): device-neutral wording, the same on the phone and the tablet layout.
+    expect(screen.getByRole('header', { name: 'Pair this device' })).toBeTruthy();
+    expect(screen.queryByText(/tablet/i)).toBeNull();
+    expect(screen.queryByText(/§|book/)).toBeNull();
     expect(textOf('pairing-state-chip')).toBe('Not paired');
     expect(textOf('pairing-status-line')).toBe('Ready to pair with DEMS-IR-01.');
     expect(screen.getByTestId('pairing-identity-device').props.accessibilityLabel).toBe('Device, DEMS-IR-01');
@@ -159,7 +163,7 @@ describe('Pairing screen', () => {
     expect(textOf('pairing-state-chip')).toBe('Paired');
     expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
     expect(screen.getByTestId('pairing-identity-last-audit').props.accessibilityLabel).toMatch(
-      /^Last pairing audit, #\d+ Tablet paired · \d\d:\d\d:\d\d$/,
+      /^Last pairing audit, #\d+ Device paired · \d\d:\d\d:\d\d$/,
     );
     expect(trigger).toHaveBeenCalledWith('pairingSuccess');
     // Signed out: the hand-off goes on to sign-in.
@@ -267,9 +271,50 @@ describe('Pairing screen', () => {
   it('unpair(): behind a Dialog, writes one UNPAIRED audit row and returns to the code prompt', async () => {
     const test = await mount({ pairing: PairingState.PAIRED, signIn: true });
     expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
+    // Fix wave J (N-05, JA2-N3): a PAIRED device does not ask to be paired; the screen is its pairing details.
+    expect(screen.getByRole('header', { name: 'Pairing details' })).toBeTruthy();
+    expect(screen.queryByText('Pair this device')).toBeNull();
+    expect(screen.getByText('Device paired')).toBeTruthy();
+    expect(screen.queryByText(/tablet/i)).toBeNull();
     expect(screen.queryByTestId('pairing-handoff')).toBeNull();
     expect(textOf('pairing-continue')).toBe('Done');
     expect(screen.queryByTestId('pairing-unpair-dialog')).toBeNull();
+
+    const backListeners: (() => boolean | null | undefined)[] = [];
+    const backSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, listener) => {
+      const press = listener as () => boolean | null | undefined;
+      backListeners.push(press);
+      return { remove: () => void backListeners.splice(backListeners.indexOf(press), 1) };
+    });
+    fireEvent.press(screen.getByTestId('pairing-unpair'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(screen.getByTestId('pairing-unpair-dialog')).toBeTruthy();
+    // Fix wave J (JA2-16): the kit Dialog is a modal dialog for accessibility, named by its title, and
+    // the Android Back key closes IT (the key is consumed: the screen underneath is not left).
+    let dialogHost: ReactTestInstance | null = screen.getByTestId('pairing-unpair-dialog');
+    while (dialogHost !== null && dialogHost.props.role !== 'dialog') dialogHost = dialogHost.parent;
+    expect(dialogHost).not.toBeNull();
+    expect(dialogHost!.props['aria-modal']).toBe(true);
+    const title = within(dialogHost!).getByText('Unpair this device?');
+    expect(title.props.role).toBe('heading');
+    // The title is the dialog's name (`aria-labelledby` points at it).
+    expect(dialogHost!.props['aria-labelledby']).toBe(title.props.nativeID);
+    expect(within(dialogHost!).getByText('This device will no longer be bound to DEMS-IR-01. You can pair it again with a new code. The action is written to the audit log.')).toBeTruthy();
+    expect(backListeners).toHaveLength(1);
+    let consumed: boolean | null | undefined;
+    act(() => {
+      consumed = backListeners[0]!();
+    });
+    expect(consumed).toBe(true);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    expect(screen.queryByTestId('pairing-unpair-dialog')).toBeNull();
+    expect(pairing(test).state).toBe('PAIRED');
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    backSpy.mockRestore();
 
     fireEvent.press(screen.getByTestId('pairing-unpair'));
     await act(async () => {
@@ -291,6 +336,7 @@ describe('Pairing screen', () => {
     expect(lastAudit(test)?.type).toBe('UNPAIRED');
     expect(lastAudit(test)?.actorId).toBe('OPR-001');
     expect(screen.getByTestId('pairing-code-card')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Pair this device' })).toBeTruthy();
     expect(textOf('pairing-state-chip')).toBe('Not paired');
     expect(screen.getByTestId('pairing-identity-paired-at').props.accessibilityLabel).toBe('Paired at, Not paired');
     expect(mockRouter.back).not.toHaveBeenCalled();

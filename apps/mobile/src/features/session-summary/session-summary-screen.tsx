@@ -40,13 +40,14 @@ import { useTranslation } from 'react-i18next';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
-import { formatDuration } from '@dems/shared/sim';
+import { formatDuration, isOwnCaptureCoreState, useSim } from '@dems/shared/sim';
+import { ForeignSessionNotice } from '@/features/sessions/foreign-session-notice';
 import { derived, fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { Stepper, type StepDef, type StepStatusWords } from '@/components/composed/stepper';
 import { KeyValueList, SectionCard, StatusChip, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { Pane, SafeScreen, useLayoutClass, type LayoutClass } from '@/layout';
 import { enterRise, useMotionSettings, type MotionSettings } from '@/motion';
-import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLinkNotice, usePendingPress, type PendingPress } from '@/runtime';
+import { PendingSpinner, busyState, reportRuntimeIssue, useCoreLink, useCoreLinkNotice, usePendingPress, type PendingPress } from '@/runtime';
 import { FinalizationPipeline } from '@/features/session-finalizing/finalization-pipeline';
 import { pipelineSeconds, pipelineStatuses, sealedAfterSeconds } from '@/features/session-finalizing/finalizing.model';
 import { FlowBoundary } from '@/features/session-finalizing/flow-boundary';
@@ -90,6 +91,11 @@ export function SessionSummaryScreen({ sessionId, handover = false }: SessionSum
   const focused = useIsFocused();
   const { layoutClass } = useLayoutClass();
   const session = useSummarySession(sessionId);
+  // JM-09: the creator of the session the Core still holds open for its summary (a past session draws no notice).
+  // J-S 7: in Live mode a Core that states neither of its own-capture facts is a SIMULATED Core.
+  const liveSource = useCoreLink().source === 'LIVE';
+  const simulatedCore = useSim((s) => !isOwnCaptureCoreState(s)) && liveSource;
+  const pendingCreatedBy = useSim((s) => (s.session?.id === sessionId ? (s.session.createdBy ?? null) : null));
   const evidence = useSummaryEvidence(sessionId);
   const finalization = useSummaryFinalization(sessionId);
   const acknowledge = useAcknowledgeSummary(sessionId);
@@ -214,6 +220,26 @@ export function SessionSummaryScreen({ sessionId, handover = false }: SessionSum
   return (
     <SafeScreen id="session-summary">
       {header}
+      {/* Round two (JA2-02, truth rule 3f; contract J-S 2 / J-S 7 - seen on the phone: the Summary of a session sealed on a
+          SIMULATED Core carried the word only on its signature). The Summary says what the item and the verdict say:
+          a demonstration record, in the shared words. */}
+      {simulatedCore ? (
+        <View style={styles.foreign}>
+          <Alert status="default" testID="summary-demonstration">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>{t('common.truth.demonstrationChip')}</Alert.Title>
+              <Alert.Description>{`${t('common.truth.demonstrationRecord')} ${t('common.truth.simulatedCoreDetail')}`}</Alert.Description>
+            </Alert.Content>
+          </Alert>
+        </View>
+      ) : null}
+      {/* Round two, ruling (d) (JM-09): an unacknowledged Summary of ANOTHER operator's session says so, in both layouts. */}
+      {session.pending ? (
+        <View style={styles.foreign}>
+          <ForeignSessionNotice surface="summary" createdBy={pendingCreatedBy} testID="summary-foreign-session" />
+        </View>
+      ) : null}
       {twoPane ? (
         <ScrollView contentContainerStyle={styles.tabletScroll}>
           <View style={[styles.twoPane, maxWidth !== undefined ? { maxWidth } : null, styles.centre]}>
@@ -663,6 +689,7 @@ const styles = StyleSheet.create({
     color: palette.foreground,
   },
   centre: { width: '100%', alignSelf: 'center' },
+  foreign: { paddingHorizontal: spacing[3], paddingBottom: spacing[1] },
   noticeScroll: { flexGrow: 1, justifyContent: 'center', padding: spacing[3] },
   phoneScroll: { padding: spacing[3], paddingBottom: spacing[4] },
   tabletScroll: { padding: spacing[4] },

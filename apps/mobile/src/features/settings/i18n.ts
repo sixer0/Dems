@@ -40,25 +40,14 @@ export const settingsEn = {
   preferences: {
     motionGroup: 'Motion and feedback',
     demoGroup: 'Demo',
-    coreGroup: 'Core connection',
-    displayGroup: 'Display and language',
     debugGroup: 'Developer',
     coreLinkHint: 'Simulated runs the Core inside the app. mock-core heartbeat follows the mock-core service on this computer.',
-    coreLinkHintRelease: 'Simulated runs the Core inside the app. mock-core heartbeat is a developer setup only (adb reverse to mock-core).',
     // Backend task W82 (04_client_integration_spec §9.5): the line that follows the two hints above,
-    // for the third segment. Debug builds; a release build shows the segment disabled with its own line.
-    coreLinkHintLive: 'Live uses the Core server on this computer through adb reverse. The tablet must be paired.',
-    coreLinkHintLiveRelease: 'Live is a developer setup as well (adb reverse to the Core server).',
-    meterSize: 'Meter size',
-    meterSizeHint: 'Default size of the live audio meters on the session monitor.',
-    meterStandard: 'Standard',
-    meterCompact: 'Compact',
-    language: 'Language',
-    languageEnglish: 'English',
-    languageIndonesian: 'Bahasa Indonesia — later',
-    languageHint: 'Indonesian domain terms such as Tersangka and Saksi stay as they are.',
+    // for the third segment. Fix wave J: the control shows in a development build only, so the two
+    // release-build lines are gone.
+    coreLinkHintLive: 'Live uses the Core server this device is linked to. The device must be paired.',
     performanceOverlay: 'Performance overlay',
-    performanceOverlayHint: 'Frame rates, meter frames and running loops. Debug builds only; this run of the app only.',
+    performanceOverlayHint: 'Frame rates, meter frames and running loops. This run of the app only.',
   },
   notifications: {
     intro: 'Choose which alert toasts this device shows.',
@@ -90,9 +79,16 @@ export const settingsEn = {
     diagnosticsTitle: 'Diagnostics',
     runDiagnostics: 'Run diagnostics',
     lastRun: 'Last run {{time}}: {{pass}} passed, {{warn}} attention, {{fail}} failed',
+    lastRunNotReported: 'Last run {{time}}: {{summary}}',
     diagnosticsSheetTitle: 'Run Diagnostics',
     updateCurrent: 'Installed v{{version}} · slot {{slot}}',
     updateAvailable: 'v{{version}} available',
+    // Fix wave J (JT-06): the confirmation of "Install update".
+    installConfirmTitle: 'Install update v{{version}}?',
+    installConfirmBody: 'The Core runs its update sequence now: it verifies the package, installs it to the inactive system slot ({{slot}}) and restarts into it. No session can be started while it runs.',
+    installConfirmSimulated: 'Simulated: no software is installed.',
+    installConfirm: 'Install update',
+    installCancel: 'Not now',
     demoHiddenPresentation: 'Demo controls are hidden in presentation mode.',
     faultActiveHint: 'Active. Tap to clear it.',
     faultIdleHint: 'Tap to inject it.',
@@ -102,16 +98,28 @@ export const settingsEn = {
     productTitle: 'Product',
     product: 'Product',
     softwareRelease: 'Software release',
-    tabletApp: 'Tablet app',
+    tabletApp: 'Device app',
     appBuild: 'App build',
+    // Round two (JW-26): the versions of the real components, each named for what it is.
+    versions: {
+      title: 'Versions',
+      note: 'The Core server states its own versions. The mobile app states its own build.',
+      core: 'Core server',
+      captureWorker: 'Capture worker',
+      apiContract: 'API contract',
+      mobileApp: 'Mobile app',
+    },
+    // Fix wave J (JA2-29, N-02): the card's title without the specification reference of the shared key.
+    identityTitle: 'Configuration identity',
     licences: 'Licences and credits',
     licencesOpen: 'Show licences',
     fonts: 'Fonts',
     fontsLine: 'Inter, Orbitron and JetBrains Mono, under the SIL Open Font License 1.1.',
     photo: 'Hero photograph',
     photoLine: 'Empty meeting room by Leandro Alamino, Pexels, under the Pexels License.',
-    noticesFile: 'The full list is in THIRD_PARTY_NOTICES.md at the root of the repository.',
-    stackDiagnostics: 'Stack diagnostics',
+    noticesFile: 'The full list of third-party notices is delivered with the software.',
+    // Developer page (development build, presentation mode off).
+    stackDiagnostics: 'Stack diagnostics (developer)',
   },
   sheets: {
     close: 'Close',
@@ -136,8 +144,10 @@ export const settingsEn = {
     // AC-C-52: the Demo controls act on the Core, so every connected console sees them.
     demoNote: 'Demo only. Faults are injected on the Core server, and every connected console sees them.',
     demoFlagOff: 'Demo controls are turned off on the Core server. They appear when it runs with its demo flag on.',
-    demoNotPermitted: 'Your role does not include the demo controls.',
+    // Fix wave J (RBAC, one rule): a refusal names the role that may. DEMO_CONTROL is the Supervisor's
+    // alone in the shared role table (`ROLE_PERMISSIONS`); `settings-live-static.test.ts` pins that.
+    demoNotPermitted: 'The demo controls require the Supervisor role.',
     // CPM1-1: the Core or the tablet's storage did not take a change of the biometric switch; nothing changed.
-    biometricFailed: 'Biometric sign-in was not changed on this tablet. Try again.',
+    biometricFailed: 'Biometric sign-in was not changed on this device. Try again.',
   },
 } as const satisfies ResourceTree;

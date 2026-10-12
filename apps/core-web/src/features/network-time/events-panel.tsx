@@ -1,3 +1,4 @@
+import { eventTitle } from '@/lib/event-words'
 import { Table } from '@heroui/react'
 import { ScrollText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +51,7 @@ export function EventsPanel() {
                     <Table.Cell>
                       <span className="nt-log-event" data-severity={event.severity}>
                         <span className="nt-log-dot" aria-hidden="true" />
-                        <span className="nt-log-title">{t(`common.eventType.${event.type}`)}</span>
+                        <span className="nt-log-title">{eventTitle(t, event)}</span>
                         <EventDetail event={event} />
                       </span>
                     </Table.Cell>

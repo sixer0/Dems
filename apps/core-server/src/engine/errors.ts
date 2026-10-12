@@ -104,10 +104,23 @@ function isRefusedSimCode(code: SimErrorCode): code is RefusedSimCode {
  * and `from` and `event` of a refused transition - with its `reason` when the simulator named one
  * (`CAPTURE_NOT_DURABLE`): names of the vocabulary, never a part of the input. `message`, when given, replaces the general text (a module knows its own wording).
  */
+/**
+ * The sentence of a refusal by its NAMED reason (`details.reason`), where the code's own sentence
+ * ("The device does not support this command.") would say the wrong thing (fix wave J; findings
+ * JT-06 / JW-06, JA2-03 / JW-03): a Core in its own capture has no software updater; a COMPOSITE is
+ * an export output this build cannot produce. The contract's example texts.
+ */
+export const SIM_REFUSAL_REASON_TEXT: Readonly<Record<string, string>> = Object.freeze({
+  UPDATER_NOT_AVAILABLE: 'Software update is not available on this Core.',
+  COMPOSITE_ENCODER_NOT_SELECTED: 'Composite video is not available in this build.',
+});
+
 export function simRefusal(error: unknown, message?: string): ApiFailure | null {
   const simCode = simErrorCode(error);
   if (simCode === null || !isRefusedSimCode(simCode)) return null;
   const rule = SIM_REFUSAL_RULES[simCode];
+  // Fix wave J: a refusal that NAMES its reason and has a sentence of its own is answered with that sentence.
+  const named = error instanceof SimTransitionError && error.reason !== null && Object.hasOwn(SIM_REFUSAL_REASON_TEXT, error.reason) ? SIM_REFUSAL_REASON_TEXT[error.reason] : undefined;
   const details: Record<string, string | number | boolean | null> = { simCode };
   if (error instanceof SimPermissionError && simCode === SimErrorCode.NOT_PERMITTED) details['permission'] = error.permission;
   if (error instanceof SimTransitionError) {
@@ -116,7 +129,7 @@ export function simRefusal(error: unknown, message?: string): ApiFailure | null 
     // The named reason of a refused transition (pass D11): `CAPTURE_NOT_DURABLE` of a stop while the cameras connect - a code of the vocabulary.
     if (error.reason !== null) details['reason'] = error.reason;
   }
-  return new ApiFailure(rule.status, rule.code, message ?? rule.message, { details: details as ErrorDetails, cause: error });
+  return new ApiFailure(rule.status, rule.code, message ?? named ?? rule.message, { details: details as ErrorDetails, cause: error });
 }
 
 /** The simulator code of a refusal the host threw (`details.simCode`), or null. */

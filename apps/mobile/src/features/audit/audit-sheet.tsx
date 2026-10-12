@@ -5,6 +5,13 @@
  * findings of step 83 carry over: the body scrolls in a fixed-height sheet (the record and both
  * hashes can outgrow a phone screen), and the sheet ignores the system reduce-motion setting (it never
  * snapped open under `?motion=off`) and takes the short reduced fade instead.
+ *
+ * Accessibility (fix wave J, JA2-16). The sheet library wraps its content in ONE accessible node,
+ * role `adjustable`, named "Bottom Sheet" (`@gorhom/bottom-sheet` defaults): a screen reader lands on
+ * that node and the title, the text and the controls inside are not offered one by one. The frame turns
+ * the wrapper off (`accessible={false}`, no role, no name), so every element is reachable under its own
+ * name; the content root is marked as a modal view; the kit names the dialog by its `Title` and closes
+ * it on the Android Back key (it consumes the key, so the screen underneath is not left).
  */
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BottomSheet } from 'heroui-native';
@@ -15,6 +22,7 @@ import { ReduceMotion } from 'react-native-reanimated';
 import { spacing } from '@dems/shared/tokens';
 import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 export interface AuditSheetProps {
   isOpen: boolean;
@@ -27,21 +35,27 @@ export function AuditSheet({ isOpen, onClose, title, children }: AuditSheetProps
   const { t } = useTranslation();
   const reduced = useMotionPolicy() === 'reduced';
   const presence = useSheetPresence(isOpen);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: 'audit-sheet' });
   if (!presence.mounted) return null;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}
           snapPoints={['88%']}
           enableDynamicSizing={false}
           enableOverDrag={false}
           contentContainerClassName="h-full"
           overrideReduceMotion={ReduceMotion.Never}
+          accessible={false}
+          accessibilityRole="none"
+          accessibilityLabel=""
           {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}
         >
           <SheetContentSignal onChange={presence.setContentMounted} style={styles.fill}>
-            <View style={styles.header} testID="audit-sheet" accessibilityLabel={t('features.audit.detail.sheetLabel')}>
+           <View style={styles.fill} accessibilityViewIsModal>
+            <View style={styles.header} testID="audit-sheet">
               <View style={styles.headerText}>
                 <BottomSheet.Title>{title}</BottomSheet.Title>
               </View>
@@ -49,6 +63,7 @@ export function AuditSheet({ isOpen, onClose, title, children }: AuditSheetProps
               <BottomSheet.Close accessibilityLabel={t('common.actions.close')} testID="audit-sheet-close" onPress={onClose} />
             </View>
             <BottomSheetScrollView contentContainerStyle={styles.body}>{children}</BottomSheetScrollView>
+           </View>
           </SheetContentSignal>
         </BottomSheet.Content>
       </BottomSheet.Portal>

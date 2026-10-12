@@ -19,8 +19,9 @@ export interface CancelDialogProps {
 /** "Discard this session?" (04 §5.7: cancelling after data entry opens an AlertDialog). */
 export function CancelDialog({ isOpen, onOpenChange, onConfirm, confirmPending = false, confirmRef }: CancelDialogProps) {
   const { t } = useTranslation()
+  // Fix wave J (JW-16): Escape did nothing here while it closed every other dialog; it now answers "Keep editing".
   return (
-    <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
+    <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={onOpenChange} isKeyboardDismissDisabled={false}>
       <AlertDialog.Container size="sm">
         <AlertDialog.Dialog aria-label={t('sessionNew.cancelDialog.title')} data-testid="sn-cancel-dialog">
           <AlertDialog.Header>

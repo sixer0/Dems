@@ -324,5 +324,238 @@ export const enWeb = {
         sealedNoteNoItem: 'Fragment hashes and the signature are stated on the evidence item of this session.',
       },
     },
+    /** Fix wave J, driver J-W (the UI judging session, report/judging_b1_web.md; decision D243). */
+    waveJ: {
+      /** JW-04 / JW-05: the header pill's words for the statements the kit's four states do not hold. */
+      pill: {
+        alertLabel: 'ALERT ACTIVE',
+        alertSub_one: '{{count}} active alert',
+        alertSub_other: '{{count}} active alerts',
+        offlineLabel: 'CORE OFFLINE',
+        offlineSub: 'State unknown',
+        offlineDetail: 'The link to the Core is lost. Nothing below is known until it is back.',
+        noFaultLabel: 'NO FAULT REPORTED',
+        noFaultSub: 'Platform security: not reported',
+      },
+      /** JW-04 / JW-05 / JT-01: the Dashboard ring's words for the same statements. */
+      ring: {
+        offlineSub: 'CORE OFFLINE • STATE UNKNOWN',
+        offlineDetail: 'The link to the Core is lost. The state shown on this page is the last one received.',
+        alertSub_one: '{{count}} ACTIVE ALERT',
+        alertSub_other: '{{count}} ACTIVE ALERTS',
+        alertRecording_one: 'RECORDING • {{count}} ACTIVE ALERT',
+        alertRecording_other: 'RECORDING • {{count}} ACTIVE ALERTS',
+      },
+      /** JW-07 (truth rule 3f): the mark of a feed, a recording state or an integrity statement of the demonstration. */
+      demo: {
+        chip: 'DEMO · SIMULATED',
+        short: 'DEMO',
+        hint: 'This Core is the demonstration: pictures, recording state, integrity checks and platform values are simulated.',
+        modeChip: 'LIVE · DEMO CORE',
+        modeTooltip: 'This console shows the data of a Core server that runs the demonstration: its recordings and device values are simulated.',
+        feedNote: 'Simulated picture',
+      },
+      /** JW-14: ONE rule for "the role may not" - a disabled control with its visible reason, a page that says so. */
+      rbac: {
+        or: 'or',
+        pageTitle: '{{page}}: not available to your role',
+        signedInAs: 'You are signed in as {{role}}.',
+        toDashboard: 'Go to the Dashboard',
+        exportStep: 'Exporting evidence needs the Supervisor role.',
+      },
+      /** JW-01 / JW-02 / JW-09 / JW-27: what an evidence item states about its own seal and verification. */
+      evidence: {
+        verificationFailedStatus: '{{status}} · verification FAILED',
+        lifecycleFailed: 'The verification of record FAILED',
+        notSealedChip: 'Not sealed',
+        notSealedTitle: 'This item was never sealed',
+        notSealedBody: 'The recording ended before it could be sealed. There are no sealed values, no manifest and no signature, and there is nothing to verify.',
+        notSealedVerify: 'This item was never sealed: there is nothing sealed to verify.',
+        manifestInExport: 'The signed manifest is part of the export package. Use Export.',
+        manifestDemo: 'Download DEMO manifest summary',
+        manifestDemoToast: 'DEMO manifest summary downloaded',
+        demonstrationRecord: 'Demonstration record of a simulated session: no media was recorded.',
+        demonstrationVerdict: 'Demonstration: the hashes of a demonstration record were compared. No stored media was read.',
+      },
+      /** JW-03: the activity lists tell a requested export from a completed one. */
+      events: {
+        exportRequested: 'Export requested',
+      },
+      /** JW-08: a microphone level the Core did not measure (no capture is open). */
+      meter: {
+        notMeasured: 'Not measured',
+        notMeasuredHint: 'The Core measures a level only while a capture is open.',
+      },
+      /** JT-06 / JW-06 (truth rule 3e): "Install update" asks first; a Core without an updater offers none. */
+      update: {
+        confirmTitle: 'Install v{{version}}?',
+        confirmBody: 'The signed bundle is checked and installed to the inactive slot {{slot}}. The running version v{{current}} stays in its slot as the rollback target.',
+        confirmRestart: 'The Core then restarts into the new slot. The console and every paired device lose the Core for the length of the restart. No session can be recorded meanwhile.',
+        confirmAction: 'Install and restart',
+        notAvailable: 'Software update is not available on this Core. It has no updater: nothing can be installed from here.',
+        notAvailableChip: 'Not available',
+      },
+      /** GM-02: the tamper tile reads the Core's own count over every sealed item (`evidenceVerification`). */
+      tamper: {
+        neverVerified_one: '{{count}} of the {{total}} sealed items of this Core has no verification of record.',
+        neverVerified_other: '{{count}} of the {{total}} sealed items of this Core have no verification of record.',
+        allVerified: 'Every one of the {{total}} sealed items of this Core has a verification of record.',
+        fromItems: 'Counted by the Core over every sealed item',
+      },
+      /** JW-22: the Sessions page - every finished session with its state, quarantined and INCOMPLETE ones included. */
+      sessions: {
+        title: 'SESSIONS',
+        subtitle: 'Every finished session of this Core, with what became of its recording.',
+        link: 'All sessions',
+        summary: '{{total}} sessions · {{incomplete}} not sealed',
+        search: 'Search session, evidence, case or subject',
+        filterLabel: 'Session state',
+        filter: { ALL: 'All', SEALED: 'Sealed', INCOMPLETE: 'Not sealed' },
+        columns: { session: 'Session', case: 'Case and subject', time: 'Started', state: 'State' },
+        notStarted: 'No recording started',
+        none: 'This Core lists no finished session.',
+        noMatch: 'No session matches.',
+        state: {
+          SEALED: 'Sealed',
+          QUARANTINED: 'Not sealed · recording kept in quarantine',
+          RECORDED_NOT_SEALED: 'Not sealed · recording interrupted',
+          NEVER_RECORDED: 'Ended before a recording started',
+        },
+        detail: {
+          QUARANTINED: 'The session recorded, but it could not be sealed. It has no evidence item. Its recording is kept in the quarantine folder of the Core and is not evidence. What to do: tell the administrator of this installation, who recovers the files from the Core; record the interview again if it is needed as evidence.',
+          RECORDED_NOT_SEALED: 'The recording was interrupted and was never sealed. Its item is a record without sealed values: it cannot be verified or exported.',
+          NEVER_RECORDED: 'Nothing was recorded.',
+        },
+        quarantineTitle_one: '{{count}} recording is kept in quarantine',
+        quarantineTitle_other: '{{count}} recordings are kept in quarantine',
+        quarantineBody: 'A recording in quarantine was not sealed and is not evidence. The administrator of this installation recovers the files from the quarantine folder of the Core. Each such session is listed below with its cause.',
+        evidenceHint_one: '{{count}} session matches this search and has no evidence item (not sealed).',
+        evidenceHint_other: '{{count}} sessions match this search and have no evidence item (not sealed).',
+        evidenceHintLink: 'Show in Sessions',
+      },
+      /** JW-28: the Dashboard's words for a session that is over, and for a count of today. */
+      dashboard: {
+        lastSession: 'LAST SESSION',
+        sealedToday: 'Sealed today',
+      },
+      /** JW-23: the four facts of a Core in its own capture that carried no mark. */
+      devices: {
+        bannerTitle: 'NO DEVICE FAULT REPORTED',
+        bannerDetail: 'A capture source is checked when a pre-check or a recording opens it. PoE, relay and tablet-link values are synthetic demo values.',
+      },
+      network: {
+        notReported: 'Network not reported',
+      },
+      /** JW-20: the developer diagnostic says what it is. */
+      stackCheck: {
+        subtitle: 'Developer diagnostic of this console build. It is not an operator page and shows no evidence.',
+      },
+      /** JW-24: the audit export states what its file holds. */
+      auditExport: {
+        hashStep: 'Add the chain head',
+        notSigned: 'The file holds the audit rows and the head of the hash chain. It is not signed and not sealed: its proof is the chain itself, which the Core can verify.',
+      },
+      /** JW-17: New Session copy that contradicted the state. */
+      sessionNew: {
+        startHintCountdown: 'Recording starts after the 3-2-1 countdown and is sealed when you end the session.',
+        armedBody: 'The pre-recording checks are done. Start the recording from the session setup.',
+        nextForm: 'Fill in the required fields to continue.',
+        nextChecking: 'The capture sources are being read.',
+        nextBlocked: 'A check blocks recording. Resolve it and re-run the checks.',
+        nextAck: 'Acknowledge the warnings to continue.',
+        nextRunning: 'The checks are running.',
+        required: 'Required',
+        nameLimit: 'The name is limited to {{max}} characters.',
+        policyBlockOwn: 'Core offline, storage full, security fault, no camera reachable',
+        policyWarnOwn: 'A camera or a microphone that does not answer (the session then records without it), storage low',
+      },
+      /** JW-21: the Alerts page. */
+      alerts: {
+        title: 'ALERTS',
+        subtitle: 'Every alert this Core holds, active and cleared, with its acknowledgement.',
+        link: 'All alerts',
+        summary: '{{total}} alerts · {{open}} not acknowledged',
+        none: 'This Core holds no alert.',
+        active: 'Active',
+        cleared: 'Cleared',
+        ackDone: 'Acknowledged',
+        ackOpen: 'Not acknowledged',
+        acknowledge: 'Acknowledge',
+        acknowledged: 'Alert {{id}} acknowledged',
+        resolvedOpen: 'Resolved, not acknowledged',
+      },
+      /** JT-10 / JW-12: the transcript follows the playback, and a segment's time seeks. */
+      transcript: {
+        seek: 'Play from {{start}}',
+        noPlayer: 'This item has no playback on this console.',
+      },
+      /** JT-11 / JW-13: the markers and notes of the session, on the item. */
+      annotations: {
+        title: 'Markers and notes of the session',
+        marker: 'Marker {{index}}',
+        noLabel: '(no label)',
+        note: 'Note',
+      },
+      /** JW-04: the pre-check's SECURITY row on a Core that reports no platform posture. */
+      precheck: {
+        securityNotReported: 'This Core reads no TPM, Secure Boot or enclosure state. Nothing was checked.',
+      },
+    },
+    /** Fix wave J, round three (driver J3-W): the sentences of the remaining web findings. */
+    waveJ3: {
+      /** JW-26: one version per component, each by its name. */
+      versions: {
+        title: 'Software components',
+        source: 'Each version is stated by its own component: the three of the Core by this Core, the console by this build. They are not demo values.',
+        component: { core: 'Core server', captureWorker: 'Capture worker', apiContract: 'API contract', webConsole: 'Web console' },
+        line: '{{component}} {{version}}',
+        pairedApps: 'Each paired device states its own app version: see Paired Devices',
+        lcdFirmware: 'FW NOT REPORTED',
+      },
+      /** JW-13 / JT-11: the form's note is named for what it is; an un-annotated session says so. */
+      annotations: {
+        formNote: 'Note from the session form',
+        none: 'No markers or notes were recorded in this session.',
+      },
+      /** N-07: the export wizard's second step checks the operator's own role; it is not an approval by somebody else. */
+      exportRole: {
+        step: 'Role check',
+        check: 'Check my role',
+        permits: 'Your role may export',
+      },
+      /** N-19: the transcript ends well before the recording does. Two facts of the item, no cause. */
+      transcript: {
+        tail: 'The last transcribed segment ends at {{last}}. The recording runs {{duration}}: this transcript has no text after {{last}}.',
+      },
+      /** A table that is wider than its card says on which side its other columns are. */
+      sideways: {
+        right: 'More columns to the right: scroll the table sideways',
+        left: 'More columns to the left: scroll the table sideways',
+        both: 'More columns on both sides: scroll the table sideways',
+      },
+      /** The bell's backlog: "Acknowledge all" - one press, a confirmation that names the count, one request per alert. */
+      ackAll: {
+        action_one: 'Acknowledge all ({{count}})',
+        action_other: 'Acknowledge all ({{count}})',
+        progress: 'Acknowledging {{done}} of {{total}}',
+        confirmTitle_one: 'Acknowledge {{count}} alert?',
+        confirmTitle_other: 'Acknowledge {{count}} alerts?',
+        confirmBody_one: '{{count}} alert is marked as acknowledged for every console of this Core. The fault behind it is not cleared by this.',
+        confirmBody_other: '{{count}} alerts are marked as acknowledged for every console of this Core, one after the other. The faults behind them are not cleared by this.',
+        confirmLeft_one: '{{count}} notice of a recording that could not be sealed (kept in quarantine) is not included. It is left for individual acknowledgement on its own row.',
+        confirmLeft_other: '{{count}} notices of recordings that could not be sealed (kept in quarantine) are not included. They are left for individual acknowledgement, each on its own row.',
+        confirmAction_one: 'Acknowledge {{count}} alert',
+        confirmAction_other: 'Acknowledge {{count}} alerts',
+        done_one: '{{count}} alert acknowledged',
+        done_other: '{{count}} alerts acknowledged',
+        partial: '{{done}} of {{total}} alerts acknowledged. The rest is unchanged.',
+        partialBody: 'An acknowledgement was not accepted. Try again for the alerts that are left.',
+      },
+      /** JW-22 remainder (contract J2-S 4): why the seal of a quarantined session was given up. */
+      sessions: {
+        unsealableCause: 'Why it could not be sealed (the code the Core recorded): {{cause}}',
+        unsealableCauseUnknown: 'The Core states no cause code for this session.',
+      },
+    },
   },
 } as const satisfies ResourceTree

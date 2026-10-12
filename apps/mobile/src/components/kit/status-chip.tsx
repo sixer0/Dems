@@ -67,6 +67,9 @@ export function StatusChip({
   return (
     <Chip
       accessibilityLabel={label}
+      // Fix wave J (JA2-32, JT-13): a status chip is a READOUT. Without an `onPress` of its own it is announced as
+      // text, not as a button that does nothing (the kit chip is a pressable and reported itself clickable).
+      {...(chipProps.onPress === undefined ? { accessibilityRole: 'text' as const, pointerEvents: 'none' as const } : {})}
       {...chipProps}
       color={toneProps.color}
       variant={variant}

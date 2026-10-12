@@ -444,6 +444,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     description: [
       'The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).',
       'Fed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).',
+      'Fix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source only in a pre-check, at a session start and in a microphone re-scan; a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Clients show such a device as "Not checked" at rest.',
       'Needs a signed-in operator. Every role may read it.',
       SIM_V2_NOTE,
     ].join('\n\n'),

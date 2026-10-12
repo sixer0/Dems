@@ -29,7 +29,7 @@ export interface StatusTilesProps {
  * value is not part of it - a storage percentage that moves rolls inside the tile it is in.
  */
 export function tileStatement(tile: HomeTile): string {
-  return `${tile.id}|${tile.stateKey}|${tile.tone}|${tile.total ?? ''}|${tile.count ?? ''}|${tile.reported === true ? 'r' : ''}`;
+  return `${tile.id}|${tile.stateKey}|${tile.tone}|${tile.total ?? ''}|${tile.count ?? ''}|${tile.reported === true ? 'r' : ''}${tile.unknown === true ? '|u' : ''}`;
 }
 
 /**
@@ -74,7 +74,9 @@ function StatusTile({ tile, index, enter }: { tile: HomeTile; index: number; ent
   // Fix wave I: a state that is a whole key (the real-capture microphone states) is resolved as such.
   const state = t(tile.stateKey.startsWith('features.') ? tile.stateKey : `features.dashboard.tiles.state.${tile.stateKey}`, tile.count !== undefined ? { count: tile.count } : {});
   const label =
-    tile.id === 'storage'
+    tile.unknown === true
+      ? t('features.dashboard.tiles.a11y.unknown', { name: t(`features.dashboard.tiles.${tile.id}`) })
+      : tile.id === 'storage'
       ? t('features.dashboard.tiles.a11y.storage', { percent: tile.value, state })
       : tile.id === 'camera'
         ? t(tile.reported === true ? 'features.capture-selector.sourceState.homeCamerasLabel' : 'features.dashboard.tiles.a11y.camera', { online: tile.value, total: tile.total ?? 0, state })
@@ -108,6 +110,12 @@ function StatusTile({ tile, index, enter }: { tile: HomeTile; index: number; ent
             </View>
           </View>
           <View style={styles.valueRow}>
+            {/* Fix wave J (JA2-04): the Core link is down - no count is drawn as if it were current. */}
+            {tile.unknown === true ? (
+              <Text testID={`home-tile-${tile.id}-value`} maxFontSizeMultiplier={1.2} style={styles.noValue}>
+                {t('features.dashboard.tiles.noValue')}
+              </Text>
+            ) : (
             <RollingNumber
               testID={`home-tile-${tile.id}-value`}
               value={shown}
@@ -119,7 +127,8 @@ function StatusTile({ tile, index, enter }: { tile: HomeTile; index: number; ent
               suffix={suffix}
               accessibilityLabel={`${tile.value}${suffix}`}
             />
-            {tile.id === 'storage' ? (
+            )}
+            {tile.id === 'storage' && tile.unknown !== true ? (
               <Text maxFontSizeMultiplier={1.2} style={styles.used}>
                 {t('features.dashboard.tiles.used')}
               </Text>
@@ -151,6 +160,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
   },
   valueRow: { alignItems: 'center', gap: 0 },
+  noValue: {
+    fontFamily: fontFamily.native.semibold,
+    fontSize: typography.h1.size,
+    lineHeight: typography.h1.lineHeight,
+    color: palette.gray,
+  },
   used: {
     fontFamily: fontFamily.native.medium,
     fontSize: typography.label.size,

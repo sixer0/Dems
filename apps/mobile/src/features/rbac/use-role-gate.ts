@@ -22,7 +22,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { roleHas, selectRole, useSim, type OperatorRole, type Permission } from '@dems/shared/sim';
-import { requiredRoleFor } from '@/runtime';
+import { requiredRoleFor, requiredRolesFor, roleNamesText } from '@/runtime';
 
 export interface RoleGateState {
   /** The signed-in operator's role holds the permission. */
@@ -33,13 +33,15 @@ export interface RoleGateState {
   readonly locked: boolean;
   /** The least privileged role that holds the permission (the one the sentence names), or null. */
   readonly requiredRole: OperatorRole | null;
+  /** Every role that holds the permission (JT-16: the sentence names them all). */
+  readonly requiredRoles: readonly OperatorRole[];
 }
 
 /** The gate for a role and a permission (pure; the hook below reads the role from the store). */
 export function roleGateFor(role: OperatorRole | null, permission: Permission): RoleGateState {
   const allowed = roleHas(role, permission);
   const known = role !== null;
-  return { allowed, known, locked: known && !allowed, requiredRole: requiredRoleFor(permission) };
+  return { allowed, known, locked: known && !allowed, requiredRole: requiredRoleFor(permission), requiredRoles: requiredRolesFor(permission) };
 }
 
 export interface RoleGate extends RoleGateState {
@@ -55,7 +57,7 @@ export function useRoleGate(permission: Permission): RoleGate {
     const hint = !gate.known
       ? t('mobile.rbac.checking')
       : gate.locked && gate.requiredRole !== null
-        ? t('common.rbac.requiresRole', { role: t(`common.roles.${gate.requiredRole}`) })
+        ? t('common.rbac.requiresRole', { role: roleNamesText(t, gate.requiredRoles) })
         : null;
     return { ...gate, hint };
   }, [role, permission, t]);

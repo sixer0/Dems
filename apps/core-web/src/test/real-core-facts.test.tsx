@@ -11,7 +11,7 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE, SESSION_CAPTURE_CHECKPOINTS_EXAMPLE, CORE_NOT_RUNNING_FAULT_EXAMPLE, START_REFUSED_SESSION_KEY_EXAMPLE, CORE_API_EXAMPLES, EVIDENCE_SEALED_PROFILE_EXAMPLE, EVIDENCE_STREAM_PROFILE_NOTICE_EXAMPLE } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { type SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, createManualClock, createMemoryAuthStorage, createSim, HOST_CLOCK_TIME, OPERATOR_IDS, SOFTWARE_VERSION, type ScenarioName, type Sim, CORE_NOT_RUNNING_LABEL, SEAL_BLOCKED_EXAMPLE_ALERT, SEAL_BLOCKED_EXAMPLE_FINALIZATION, SEAL_BLOCKED_EXAMPLE_SESSION_ID, START_REFUSED_REASONS, coreNotRunningFaultTransition, startRefusedReasonOf, startRefusedSentenceKey, type EvidenceItem } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys, createI18n } from '@/i18n'
 import { enWeb } from '@/i18n-web'
@@ -22,6 +22,7 @@ import { INTEGRITY_CHECK_IDS, ownCoreRow, pillSubtitle, selectIntegrityChecks, s
 import { buildControls, postureOf, verifyChain } from '@/features/security-audit/model'
 import { CoreErrorNoticeKind, describeCoreError } from '@/lib/core-errors'
 import { isOwnCaptureCore, isPlatformNotReportedCore, isSelfCaptureCore, reportedSigningKeyOf } from '@/lib/own-capture'
+import { WEB_CONSOLE_VERSION } from '@/lib/product-versions'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { countedDevicesOf, COUNTED_DEVICES, selectBanner, selectSummary } from '@/features/devices/model'
@@ -873,6 +874,28 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
       expect(within(gnss).getByTestId('other-status-GNSS')).toHaveTextContent(enWeb.web.ownCore.time.notConfigured)
       for (const never of ['Attestation OK', 'sealing enabled', 'time from RTC', 'NO FIX', '· RTC', 'TPM OK']) expect(root, never).not.toHaveTextContent(never)
       expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    // Fix wave J round three (JW-26): no surface of a Core in its own capture shows the model's version as the
+    // real thing - the shell footer names the console and the Core, the front panel's LCD draws no number.
+    // (Without a Live source operation 64 is not read: the Core's row is "Not reported", never "2.4.1".)
+    it('JW-26: the shell footer names "Web console" and "Core server"; the LCD and the page draw no model version', async () => {
+      mount('/devices', 'idle', realCore)
+      const root = await page('page-devices')
+      const footer = await screen.findByTestId('shell-footer-components', {}, FIND)
+      expect(within(footer).getByTestId('shell-footer-version-webConsole')).toHaveTextContent(`Web console ${WEB_CONSOLE_VERSION}`)
+      expect(within(footer).getByTestId('shell-footer-version-core')).toHaveTextContent(`Core server ${NR.value}`)
+      expect(screen.queryByTestId('shell-footer-version')).toBeNull()
+      expect(root.textContent).not.toContain(SOFTWARE_VERSION)
+      expect(document.body.textContent).not.toContain(`v${SOFTWARE_VERSION}`)
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    it('CONTROL (JW-26) - the simulated lane keeps the model\'s "v2.4.1" in the shell footer', async () => {
+      mount('/devices', 'idle')
+      await page('page-devices')
+      expect(await screen.findByTestId('shell-footer-version', {}, FIND)).toHaveTextContent(`v${SOFTWARE_VERSION}`)
+      expect(screen.queryByTestId('shell-footer-components')).toBeNull()
     })
 
     it('CONTROL - the simulated lane keeps "Attestation OK · sealing enabled" and its locked GNSS receiver', async () => {

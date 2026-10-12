@@ -99,6 +99,11 @@ export interface DetailFacts {
    * (`exportDestinationDefault`); null: not reported (an older Core, the simulator) - the wizard's first option.
    */
   readonly exportDestinationDefault: string | null
+  /**
+   * Fix wave J (JW-03; truth rule 3d; `contract_wave_j.md` J-S 3): `exportKinds` of operation 40 - which export
+   * outputs THIS Core can make. null: not stated (the in-app simulator, an older Core) - only PACKAGE is offered.
+   */
+  readonly exportKinds: readonly ExportKindFact[] | null
   readonly transcript: { readonly noSpeech: boolean | null; readonly reason: string | null }
   /**
    * Fix wave L (G89c-04; `contract_wave_l.md` section 4): the per-track `profile` of the SIGNED manifest
@@ -162,6 +167,7 @@ export const NO_DETAIL_FACTS: DetailFacts = {
   access: { play: null, transcript: null, export: null },
   exports: null,
   exportDestinationDefault: null,
+  exportKinds: null,
   transcript: { noSpeech: null, reason: null },
   sealedProfiles: null,
   streamProfileNotice: null,
@@ -181,6 +187,38 @@ function readExport(value: unknown): FinishedExport | null {
   if (exportId === null || jobId === null) return null
   const completedAt = value[MEMBER.exportCompletedAt]
   return { exportId, jobId, kind: code(value[MEMBER.exportKind]) ?? 'PACKAGE', completedAt: typeof completedAt === 'number' && Number.isFinite(completedAt) ? completedAt : null }
+}
+
+/** One entry of `exportKinds` (operation 40): an output kind, whether this Core can make it, and the code why not. */
+export interface ExportKindFact {
+  readonly kind: 'PACKAGE' | 'COMPOSITE'
+  readonly available: boolean
+  /** A code, present exactly when `available` is false (`COMPOSITE_ENCODER_NOT_SELECTED`). */
+  readonly reason: string | null
+}
+
+/** Reads `exportKinds`. Not an array, or no entry that can be read: null = not stated. */
+export function readExportKinds(value: unknown): readonly ExportKindFact[] | null {
+  if (!Array.isArray(value)) return null
+  const kinds: ExportKindFact[] = []
+  for (const entry of value.slice(0, 8)) {
+    if (!isRecord(entry)) continue
+    const kind = entry['kind']
+    if ((kind !== 'PACKAGE' && kind !== 'COMPOSITE') || typeof entry['available'] !== 'boolean') continue
+    kinds.push({ kind, available: entry['available'], reason: entry['available'] ? null : code(entry['reason']) })
+  }
+  return kinds.length > 0 ? kinds : null
+}
+
+/**
+ * THE RULE OF AN EXPORT OUTPUT (truth rule 3d): a kind is offered ENABLED only when the Core's entry says
+ * `available: true`. PACKAGE without a statement is what every Core makes; COMPOSITE without a statement is
+ * not offered at all; COMPOSITE stated `available: false` is drawn DISABLED with its reason.
+ */
+export function exportKindOffer(kinds: readonly ExportKindFact[] | null, kind: 'PACKAGE' | 'COMPOSITE'): 'ENABLED' | 'DISABLED' | 'NOT_OFFERED' {
+  const stated = kinds?.find((entry) => entry.kind === kind)
+  if (stated === undefined) return kind === 'PACKAGE' ? 'ENABLED' : 'NOT_OFFERED'
+  return stated.available ? 'ENABLED' : 'DISABLED'
 }
 
 /** Reads the body of operation 40. Never throws; a member it cannot read is `null` = not reported. */
@@ -204,6 +242,7 @@ export function readDetailFacts(body: unknown): DetailFacts {
           .filter((entry): entry is FinishedExport => entry !== null)
       : null,
     exportDestinationDefault: text(body[MEMBER.exportDestinationDefault], 120),
+    exportKinds: readExportKinds(body['exportKinds']),
     transcript: { noSpeech: flag(transcript[MEMBER.transcriptNoSpeech]), reason: code(transcript[MEMBER.transcriptReason]) },
     sealedProfiles: readSealedProfiles(body['evidence']),
     streamProfileNotice: readStreamProfileNotice(body['evidence']),

@@ -110,9 +110,8 @@
 .sn-card-title {
   margin: 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 15px;
   font-weight: 600;
   line-height: 20px;
@@ -145,9 +144,8 @@
 
 .sn-ellipsis {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
 }
 
 /* ── Step 1: Session Info ──────────────────────────────────────────────────────────────── */
@@ -368,9 +366,22 @@
 
 .sn-readiness-label {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+/* Fix wave J (JW-04): a check this Core does not report is neither green nor a warning. */
+.sn-readiness li[data-status='NOT_REPORTED'] .sn-dot,
+.sn-readiness li[data-status='NOTE'] .sn-dot {
+  background: transparent;
+  border: 1px solid var(--muted);
+  box-shadow: none;
+}
+
+.sn-readiness-note {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--color-foreground-2);
 }
 
 /* ── Step 2: Devices Check ─────────────────────────────────────────────────────────────── */
@@ -480,10 +491,11 @@
   color: var(--foreground);
 }
 
+/* Fix wave J (GM-01 / JW-11): the sentence of a check is NEVER cut. A warning's consequence ("The session will
+   record one camera only.") was the part an ellipsis hid at 1280, 1440 and 1920; the row grows instead. */
 .sn-check-detail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 12px;
   line-height: 16px;
   color: var(--color-foreground-2);

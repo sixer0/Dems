@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAlertsRouteImport } from './routes/_app/alerts'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppDevicesRouteImport } from './routes/_app/devices'
 import { Route as AppNetworkTimeRouteImport } from './routes/_app/network-time'
@@ -25,6 +26,7 @@ import { Route as AppDeveloperApiRouteImport } from './routes/_app/developer/api
 import { Route as AppEvidenceIndexRouteImport } from './routes/_app/evidence/index'
 import { Route as AppEvidenceEvidenceIdRouteImport } from './routes/_app/evidence/$evidenceId'
 import { Route as AppSessionIndexRouteImport } from './routes/_app/session/index'
+import { Route as AppSessionHistoryRouteImport } from './routes/_app/session/history'
 import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 
 const AppRoute = AppRouteImport.update({
@@ -39,6 +41,11 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAlertsRoute = AppAlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
@@ -106,6 +113,11 @@ const AppSessionIndexRoute = AppSessionIndexRouteImport.update({
   path: '/session/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSessionHistoryRoute = AppSessionHistoryRouteImport.update({
+  id: '/session/history',
+  path: '/session/history',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSessionNewRoute = AppSessionNewRouteImport.update({
   id: '/session/new',
   path: '/session/new',
@@ -115,6 +127,7 @@ const AppSessionNewRoute = AppSessionNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/alerts': typeof AppAlertsRoute
   '/dashboard': typeof AppDashboardRoute
   '/devices': typeof AppDevicesRoute
   '/network-time': typeof AppNetworkTimeRoute
@@ -126,12 +139,14 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
   '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/session/history': typeof AppSessionHistoryRoute
   '/session/new': typeof AppSessionNewRoute
   '/evidence/': typeof AppEvidenceIndexRoute
   '/session/': typeof AppSessionIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/alerts': typeof AppAlertsRoute
   '/dashboard': typeof AppDashboardRoute
   '/devices': typeof AppDevicesRoute
   '/network-time': typeof AppNetworkTimeRoute
@@ -144,6 +159,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
   '/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/session/history': typeof AppSessionHistoryRoute
   '/session/new': typeof AppSessionNewRoute
   '/evidence': typeof AppEvidenceIndexRoute
   '/session': typeof AppSessionIndexRoute
@@ -152,6 +168,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/alerts': typeof AppAlertsRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/devices': typeof AppDevicesRoute
   '/_app/network-time': typeof AppNetworkTimeRoute
@@ -164,6 +181,7 @@ export interface FileRoutesById {
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/developer/api': typeof AppDeveloperApiRoute
   '/_app/evidence/$evidenceId': typeof AppEvidenceEvidenceIdRoute
+  '/_app/session/history': typeof AppSessionHistoryRoute
   '/_app/session/new': typeof AppSessionNewRoute
   '/_app/evidence/': typeof AppEvidenceIndexRoute
   '/_app/session/': typeof AppSessionIndexRoute
@@ -173,6 +191,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/alerts'
     | '/dashboard'
     | '/devices'
     | '/network-time'
@@ -184,12 +203,14 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/developer/api'
     | '/evidence/$evidenceId'
+    | '/session/history'
     | '/session/new'
     | '/evidence/'
     | '/session/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/alerts'
     | '/dashboard'
     | '/devices'
     | '/network-time'
@@ -202,6 +223,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/developer/api'
     | '/evidence/$evidenceId'
+    | '/session/history'
     | '/session/new'
     | '/evidence'
     | '/session'
@@ -209,6 +231,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/alerts'
     | '/_app/dashboard'
     | '/_app/devices'
     | '/_app/network-time'
@@ -221,6 +244,7 @@ export interface FileRouteTypes {
     | '/_app/admin/users'
     | '/_app/developer/api'
     | '/_app/evidence/$evidenceId'
+    | '/_app/session/history'
     | '/_app/session/new'
     | '/_app/evidence/'
     | '/_app/session/'
@@ -252,6 +276,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/alerts': {
+      id: '/_app/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AppAlertsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/dashboard': {
@@ -345,6 +376,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSessionIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/session/history': {
+      id: '/_app/session/history'
+      path: '/session/history'
+      fullPath: '/session/history'
+      preLoaderRoute: typeof AppSessionHistoryRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/session/new': {
       id: '/_app/session/new'
       path: '/session/new'
@@ -356,6 +394,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppAlertsRoute: typeof AppAlertsRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDevicesRoute: typeof AppDevicesRoute
   AppNetworkTimeRoute: typeof AppNetworkTimeRoute
@@ -368,12 +407,14 @@ interface AppRouteChildren {
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppDeveloperApiRoute: typeof AppDeveloperApiRoute
   AppEvidenceEvidenceIdRoute: typeof AppEvidenceEvidenceIdRoute
+  AppSessionHistoryRoute: typeof AppSessionHistoryRoute
   AppSessionNewRoute: typeof AppSessionNewRoute
   AppEvidenceIndexRoute: typeof AppEvidenceIndexRoute
   AppSessionIndexRoute: typeof AppSessionIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAlertsRoute: AppAlertsRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDevicesRoute: AppDevicesRoute,
   AppNetworkTimeRoute: AppNetworkTimeRoute,
@@ -386,6 +427,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppDeveloperApiRoute: AppDeveloperApiRoute,
   AppEvidenceEvidenceIdRoute: AppEvidenceEvidenceIdRoute,
+  AppSessionHistoryRoute: AppSessionHistoryRoute,
   AppSessionNewRoute: AppSessionNewRoute,
   AppEvidenceIndexRoute: AppEvidenceIndexRoute,
   AppSessionIndexRoute: AppSessionIndexRoute,

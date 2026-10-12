@@ -192,11 +192,12 @@ describe('rule 3 (M4): the engine', () => {
     expect([...literal, ...exports].sort()).toEqual([...hosted].sort());
   });
 
-  it('beside them the folder reads two committed slices and the epoch, in index.ts, and nothing else of the engine', () => {
+  it('beside them the folder reads three committed slices and the epoch, in index.ts, and nothing else of the engine', () => {
     const uses = code.flatMap((file) => [...file.text.matchAll(ENGINE_ANY)].map((match) => `${file.path.slice(FOLDER.length)} ${match[1]}`));
-    expect(uses.sort()).toEqual(['index.ts command', 'index.ts command', 'index.ts epoch', 'index.ts slice', 'index.ts slice']);
+    expect(uses.sort()).toEqual(['index.ts command', 'index.ts command', 'index.ts epoch', 'index.ts slice', 'index.ts slice', 'index.ts slice']);
     const slices = [...textOf(`${FOLDER}index.ts`).matchAll(/\bapp\.engine\.slice\('([a-z]+)'\)/g)].map((match) => match[1]);
-    expect(slices.sort()).toEqual(['audit', 'security']);
+    // Fix wave J (GM-02): `evidence` - operation 58 counts the items with / without a verification of record over the committed slice.
+    expect(slices.sort()).toEqual(['audit', 'evidence', 'security']);
   });
 
   it('no simulator action is called directly, the engine\'s state is not read, and no unit of work is opened here', () => {

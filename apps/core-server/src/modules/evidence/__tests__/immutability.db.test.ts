@@ -255,7 +255,8 @@ describe('AC-B-69: after verify, export, archive and an evidence tamper fault th
     expect(rows.filter((row) => row.evidenceId === item.id).map((row) => row.type)).toEqual(['EVIDENCE_VERIFIED', 'FAULT_RAISED', 'EVIDENCE_VERIFY_FAILED', 'EVIDENCE_EXPORTED', 'EVIDENCE_ARCHIVED']);
     // The same digest over ALL 13 items and 52 tracks did not move either.
     expect(await allSealedDigest(owner)).toEqual(whole);
-    expect(whole.rows).toBe(13 + 13 * 4);
+    // Fix wave J (truth rule 3a): 13 items + four tracks for each of the 12 sealed ones (the never-sealed item has no track row).
+    expect(whole.rows).toBe(13 + 12 * 4);
     console.info(`[w35] AC-B-69 all ${whole.rows} sealed rows of the database (13 items, 52 tracks): ${whole.digest} before and after`);
   });
 

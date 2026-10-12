@@ -1,0 +1,81 @@
+/* Sessions page (fix wave J, JW-22). Nothing here truncates: a cause or an advice wraps. */
+.ses-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gutter, 16px);
+}
+
+.ses-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.ses-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.ses-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.ses-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ses-state {
+  align-items: flex-start;
+  max-width: 460px;
+}
+
+.ses-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.ses-caption {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-foreground-2);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ses-zone {
+  font-size: 11px;
+  color: var(--color-foreground-2);
+}
+
+.ses-empty {
+  margin: 0;
+  padding: 24px 8px;
+  font-size: 14px;
+  color: var(--color-foreground-2);
+}
+
+.ses-link {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+/* Alerts page (fix wave J, JW-21): one row per alert; the message wraps, nothing is cut. */
+.alr-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.alr-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: 10px; background: rgb(255 255 255 / 0.03); }
+.alr-row[data-active='true'] { box-shadow: inset 2px 0 0 var(--warning); }
+.alr-text { flex: 1 1 auto; }
+.alr-message { font-size: 14px; line-height: 20px; color: var(--foreground); overflow-wrap: anywhere; }
+
+/* Fix wave J round three: the Alerts page's "Acknowledge all" sits above the list, on the right. */
+.alr-toolbar { display: flex; justify-content: flex-end; }
+.alr-toolbar:empty { display: none; }

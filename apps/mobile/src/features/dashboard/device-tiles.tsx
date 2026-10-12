@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
+import { isLevelNotMeasured, micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
@@ -59,21 +59,29 @@ function stateKeyFor(tile: DeviceTileInfo): string {
   return tile.kind === 'camera' ? `common.enums.lensState.${tile.state}` : `common.enums.micState.${tile.state}`;
 }
 
-export function DeviceTiles() {
+export interface DeviceTilesProps {
+  /**
+   * Fix wave J (JA2-04; truth rule 3c): `HomeStatus.live`. False while the Core link is down: a tile then
+   * draws no feed, no meter and no state word of the Core - "Not known" - instead of the last known ones.
+   */
+  live?: boolean;
+}
+
+export function DeviceTiles({ live = true }: DeviceTilesProps) {
   const { t } = useTranslation();
   const tiles = useDeviceTiles();
   return (
     <View testID="home-devices" accessibilityLabel={t('dashboard.devices.title')} style={styles.grid}>
       {tiles.map((tile, index) => (
         <View key={tile.trackId} style={styles.cell}>
-          <DeviceTile tile={tile} index={index} />
+          <DeviceTile tile={tile} index={index} live={live} />
         </View>
       ))}
     </View>
   );
 }
 
-function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
+function DeviceTile({ tile, index, live }: { tile: DeviceTileInfo; index: number; live: boolean }) {
   const { t } = useTranslation();
   const router = useRouter();
   const settings = useMotionSettings();
@@ -83,8 +91,8 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
   // "Not checked", "On" - and its badge is that microphone's. The simulated track word stays elsewhere.
   // Fix wave L (G70c-02): a CAMERA tile too, while nothing records (`useDeviceTiles` gives it a line only then).
   const line = tile.line;
-  const tone = line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
-  const stateWord = line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
+  const tone = !live ? 'default' : line !== null ? ((line.tone as StatusTone) ?? 'default') : (STATE_TONE[tile.state] ?? 'default');
+  const stateWord = !live ? t('features.dashboard.tiles.state.unknown') : line !== null ? t(line.stateKey) : t(stateKeyFor(tile));
   // Fix wave K (G75c-07; ux 8e.2, D84): RECORDING before the first durable fragment - no meter, no level and no
   // "Active" / "Standby" is drawn on a microphone tile: real capture sends no level yet, and a bar would read as a recording.
   const connecting = useConnectingCameras();
@@ -102,7 +110,7 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
         <Surface variant="secondary" style={styles.tile}>
           <View style={styles.head}>
             <View style={[styles.dot, { backgroundColor: toneHex[tone] }]} />
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.2} style={styles.name}>
+            <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.name}>
               {name}
             </Text>
             <StatusChip tone={tone} label={stateWord} icon={null} size="sm" testID={`home-device-${tile.trackId}-state-chip`} />
@@ -113,7 +121,7 @@ function DeviceTile({ tile, index }: { tile: DeviceTileInfo; index: number }) {
           ) : (
             <MicInputSourceBadge inputId={tile.line?.deviceId ?? tile.deviceId} testID={`home-device-${tile.trackId}-source`} />
           )}
-          {tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : connecting ? <MicConnecting tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
+          {!live ? <TileUnknown tile={tile} name={name} /> : tile.kind === 'camera' ? <FeedThumb tile={tile} name={name} /> : connecting ? <MicConnecting tile={tile} name={name} /> : <MicMeter tile={tile} name={name} />}
         </Surface>
       </PressableFeedback>
     </Animated.View>
@@ -137,6 +145,9 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
       {...(testSwitch ? { image: poster } : {})}
       motion={policy}
       paused={!focused}
+      // Round two (JT-12): in this small 16:9 box the "No preview" tile draws three short lines - the icon and the
+      // tile's own name (already in its head) were clipped; the device behind the track stays.
+      compact
       noSignal={tile.state === 'OFFLINE' || tile.state === 'FAULT'}
       labels={{ noSignal: t('common.status.noSignal') }}
       accessibilityLabel={t('features.dashboard.devices.feedLabel', { name })}
@@ -150,27 +161,43 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
  * The number is the runtime's 1 Hz readout (01S §14.6), frozen with the meter under the D43 test
  * switch (uiautomator idle) — and read again when the input's no-signal flag flips, in both modes.
  */
-function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): AudioAccessibilityValue {
+function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): AudioAccessibilityValue & { readonly notMeasured: boolean } {
   const { t } = useTranslation();
   const sim = useSimInstance();
   // Ruling D137: the input is the microphone line at the channel's position (a primitive selector).
   const input = useSim((s) => micInputOfChannel(micLinesInForce(s), channel));
   // Change-only: a boolean selector re-renders the tile when the flag flips, never per frame.
   const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
+  // J-S 6: the Core's own statement that it measures no level now (no capture is open). Change-only.
+  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[input]));
   const ticking = useAudioAccessibilityValue(channel, frozen ? { intervalMs: TEST_SWITCH_READOUT_MS } : {});
   // Render-time "adjust state when an input changed" (no effect, no timer): the level at the flip.
-  const [held, setHeld] = useState({ frameFlat, now: ticking.now });
-  if (held.frameFlat !== frameFlat) {
+  // The flip that makes the held number stale: the no-signal flag, or (J-S 6) the Core starting / ending to measure.
+  const flip = `${frameFlat}|${notMeasured}`;
+  const [held, setHeld] = useState({ flip, now: ticking.now });
+  if (held.flip !== flip) {
     const frame = sim.store.getState().audio.inputs[input];
-    setHeld({ frameFlat, now: audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS).now });
+    setHeld({ flip, now: audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS).now });
   }
   const now = frozen ? held.now : ticking.now;
-  const kind = micReadoutKind({ frameFlat, state });
+  const kind = micReadoutKind({ frameFlat, state, notMeasured });
   const text = kind === 'LEVEL' ? `${now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
-  return { min: ticking.min, max: ticking.max, now, text };
+  return { min: ticking.min, max: ticking.max, now, text, notMeasured: notMeasured && kind === 'NO_LEVEL' };
 }
 
-/** The microphone tile while the cameras connect: the word CONNECTING in the meter's place (the Session Live card's rule). */
+/** A tile while the Core link is down: the "no value" mark in the place of the feed or the meter. */
+function TileUnknown({ tile, name }: { tile: DeviceTileInfo; name: string }) {
+  const { t } = useTranslation();
+  return (
+    <View accessible accessibilityLabel={t('features.dashboard.tiles.a11y.unknown', { name })} style={styles.meterBody} testID={`home-device-${tile.trackId}-unknown`}>
+      <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
+        {t('features.dashboard.tiles.noValue')}
+      </Text>
+    </View>
+  );
+}
+
+/** The microphone tile while the cameras connect: the word "Connecting" in the meter's place (the Session Live card's rule). */
 function MicConnecting({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const { t } = useTranslation();
   return (
@@ -195,6 +222,31 @@ function MicMeter({ tile, name }: { tile: DeviceTileInfo; name: string }) {
   const channel = tile.trackId as AudioTrackId;
   const values = useAudioSharedValues(channel);
   const a11y = useMicReadout(channel, tile.state, testSwitch);
+  if (a11y.notMeasured) {
+    // No bars and no number: the meter would draw the floor value as if it were a level (J-S 6 client rule).
+    const label = t('features.dashboard.devices.meterLabel', { name });
+    return (
+      <View style={styles.meterBody}>
+        <View
+          style={styles.meterRow}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={`${label}: ${t('common.truth.levelNotMeasured')}`}
+          testID={`home-device-${tile.trackId}-not-measured`}
+        >
+          <Mic size={22} color={palette.gray} />
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
+            {t('common.truth.levelNotMeasured')}
+          </Text>
+        </View>
+        <View style={styles.readoutRow}>
+          <Text testID={`home-device-${tile.trackId}-dbfs`} maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.dbfs}>
+            {a11y.text}
+          </Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={styles.meterBody}>
       <View style={styles.meterRow}>
@@ -236,10 +288,13 @@ const styles = StyleSheet.create({
   cell: { flexBasis: '47%', flexGrow: 1, minWidth: 0 },
   fill: { flex: 1 },
   tile: { flex: 1, borderRadius: 12, padding: 10, gap: 8 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Round two (JT-12): the head wraps - the state chip goes under the name when both do not fit, so the name is
+  // never shrunk to half its size beside "Not checked".
+  head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 6, rowGap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   name: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     fontFamily: fontFamily.native.medium,
     fontSize: typography.caption.size,
     lineHeight: typography.caption.lineHeight,

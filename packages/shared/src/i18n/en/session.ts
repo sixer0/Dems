@@ -356,7 +356,7 @@ export const session = {
   /** Recovery path (FAULT → RECOVERY → incomplete; SYS-008). */
   recovery: {
     title: 'Recovery in progress',
-    incomplete: 'Session marked INCOMPLETE. It will never be sealed (SYS-008).',
+    incomplete: 'Session marked INCOMPLETE. It will never be sealed.',
     acknowledge: 'Acknowledge',
     stagesLabel: 'Recovery steps',
     done: 'Recovery complete',

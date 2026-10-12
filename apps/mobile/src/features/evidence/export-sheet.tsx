@@ -61,7 +61,8 @@ import { Alert, Button, Description, FieldError, Label, RadioGroup, Spinner, Tex
 import { Lock } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { putKeyboardAway } from '@/lib/keyboard';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { settle, useCoreActions } from '@dems/shared/live';
@@ -114,6 +115,21 @@ interface ExportFacts {
   readonly access: boolean | null;
   /** `exportDestinationDefault`; null: not stated. */
   readonly destinationDefault: string | null;
+  /**
+   * Fix wave J (JA2-03, truth rule 3d; contract J-S 3): `exportKinds` of operation 40 - which outputs THIS Core
+   * can produce. Null: not stated (the in-app simulator, an older Core): then only PACKAGE is offered.
+   */
+  readonly exportKinds: readonly { readonly kind: ExportJobKind; readonly available: boolean }[] | null;
+}
+
+/**
+ * Whether an export output may be chosen (JA2-03): only when the Core states it as available. Nothing is offered
+ * as if the build could do it: an unavailable kind is drawn disabled with its reason, and a request for it is
+ * never sent.
+ */
+export function exportKindAvailable(kinds: ExportFacts['exportKinds'], kind: ExportJobKind): boolean {
+  if (kinds === null) return kind === 'PACKAGE';
+  return kinds.some((entry) => entry.kind === kind && entry.available);
 }
 type FailureReason = Extract<ExportResult, { ok: false }>['reason'] | 'UNKNOWN' | typeof EXPORT_IN_PROGRESS;
 /** Operation 42, schema v2 (integration pass D5): what a new export job builds. PACKAGE is the default and is not named in the request. */
@@ -138,6 +154,7 @@ export function ExportSheet({ isOpen, onClose, evidenceId }: ExportSheetProps) {
     pending: live && ref.status === 'loading',
     access: ref.status === 'ready' ? ref.detail.access.export : null,
     destinationDefault: ref.status === 'ready' ? ref.detail.exportDestinationDefault : null,
+    exportKinds: ref.status === 'ready' ? (ref.detail.exportKinds ?? null) : null,
   };
   return (
     <SheetFrame
@@ -146,6 +163,7 @@ export function ExportSheet({ isOpen, onClose, evidenceId }: ExportSheetProps) {
       title={t('features.evidence.export.title', { id: evidenceId })}
       closeLabel={t('features.evidence.export.close')}
       testID="evidence-export-sheet"
+      dismissOnOutsidePress={false}
     >
       <ExportWizard evidenceId={evidenceId} onClose={onClose} live={live} facts={facts} />
     </SheetFrame>
@@ -155,6 +173,8 @@ export function ExportSheet({ isOpen, onClose, evidenceId }: ExportSheetProps) {
 function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string; onClose: () => void; live: boolean; facts: ExportFacts }) {
   const { t } = useTranslation();
   const m = useMotionSettings();
+  // JA2-20: a phone-width window (the sheet is portalled: the window, not a layout context, is read).
+  const narrow = useWindowDimensions().width < 600;
   const sim = useSimInstance();
   const actions = useCoreActions();
   const presentCoreError = useCoreErrorPresenter();
@@ -272,6 +292,9 @@ function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string
   const submit = useCallback(() => {
     setTouched(true);
     if (!check.valid || building) return;
+    // JT-23 / JM-04: the reason is given - the keyboard goes (it covered the result and its "Done"); the
+    // repeat comes after the reason field is removed (`@/lib/keyboard`).
+    putKeyboardAway();
     setStep(4);
     setBuilding(true);
     setFailure(null);
@@ -279,12 +302,14 @@ function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string
     // Live (S1-6): the request starts with the build step.
     setBuildAnswer(null);
     setBuildFrom(sim.store.getState().clock.now);
-    // The Core cannot say beforehand whether this build has a composite encoder: a COMPOSITE is asked for and its job answers.
-    settle(() => actions.exportEvidence(evidenceId, { reason: check.value, destination: destinationText, ...(kind === 'COMPOSITE' ? { kind } : {}) }), {
+    // JA2-03: the Core says beforehand which outputs it can produce (`exportKinds`); a kind it does not state as
+    // available cannot be chosen above and is never asked for here.
+    const askedKind: ExportJobKind = exportKindAvailable(facts.exportKinds, kind) ? kind : 'PACKAGE';
+    settle(() => actions.exportEvidence(evidenceId, { reason: check.value, destination: destinationText, ...(askedKind === 'COMPOSITE' ? { kind: askedKind } : {}) }), {
       ok: (result) => setBuildAnswer({ kind: 'result', result }),
       fail: (error) => setBuildAnswer({ kind: 'error', error }),
     });
-  }, [check.valid, check.value, building, live, sim, actions, evidenceId, destinationText, kind]);
+  }, [check.valid, check.value, building, live, sim, actions, evidenceId, destinationText, kind, facts.exportKinds]);
 
   /** The answer of the export, shown: Done, or the refusal's message (the union maps as today). */
   const finishBuild = useCallback(
@@ -386,7 +411,8 @@ function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string
 
   return (
     <View style={[styles.root, keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null]} testID="evidence-export-wizard">
-      <Stepper steps={steps} statuses={statuses} orientation="horizontal" motion={m.policy} testID="evidence-export-stepper" />
+      {/* Round two (JA2-20): on a phone the six labels do not fit their columns - one label under the badges. */}
+      <Stepper steps={steps} statuses={statuses} orientation="horizontal" labels={narrow ? 'current' : 'all'} motion={m.policy} testID="evidence-export-stepper" />
 
       {step === 0 ? (
         auth === 'checking' || auth === 'probing' ? (
@@ -461,12 +487,20 @@ function ExportWizard({ evidenceId, onClose, live, facts }: { evidenceId: string
             <>
               <Label>{t('evidence.exportJob.kindLabel')}</Label>
               <RadioGroup value={kind} onValueChange={(value) => setKind(value === 'COMPOSITE' ? 'COMPOSITE' : 'PACKAGE')} testID="evidence-export-kind">
-                {EXPORT_KINDS.map((key) => (
-                  <RadioGroup.Item key={key} value={key} testID={`evidence-export-kind-${key}`}>
-                    {t(`evidence.exportJob.kind.${key}`)}
-                  </RadioGroup.Item>
-                ))}
+                {EXPORT_KINDS.map((key) => {
+                  const available = exportKindAvailable(facts.exportKinds, key);
+                  return (
+                    <RadioGroup.Item key={key} value={key} isDisabled={!available} testID={`evidence-export-kind-${key}`} accessibilityState={{ disabled: !available, checked: kind === key }}>
+                      {t(`evidence.exportJob.kind.${key}`)}
+                    </RadioGroup.Item>
+                  );
+                })}
               </RadioGroup>
+              {EXPORT_KINDS.some((key) => !exportKindAvailable(facts.exportKinds, key)) ? (
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-export-kind-unavailable">
+                  {t('evidence.exportJob.compositeUnavailable')}
+                </Text>
+              ) : null}
             </>
           ) : null}
         </View>

@@ -907,7 +907,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     const EXPECTED: Record<string, number[]> = {
       beginPrecheck: [404, 409], retryPrecheck: [404, 409], acknowledgePrecheckWarnings: [404, 409], cancelSession: [404, 409],
       recoverSession: [404, 409], addSessionMarker: [404, 409], addSessionNote: [404, 409], takeSessionSnapshot: [404, 409],
-      getEvidence: [404], verifyEvidence: [404], archiveEvidence: [404, 409],
+      getEvidence: [404], verifyEvidence: [404, 409], archiveEvidence: [404, 409],
       restartDevice: [404, 409], testDeviceSignal: [404, 409], identifyDevice: [404],
       restartServices: [409], startSoftwareUpdate: [409],
     };
@@ -917,8 +917,13 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     expect(codes('restartDevice')).toEqual(['RECORDING_ACTIVE', 'COMMAND_UNSUPPORTED', 'CAMERA_NOT_LOST']);
     expect(codes('testDeviceSignal')).toEqual(['COMMAND_UNSUPPORTED']);
     expect(codes('archiveEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
+    // Fix wave J (truth rule 3a): a never-sealed item has nothing to verify.
+    expect(codes('verifyEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
     expect(codes('restartServices')).toEqual(['SESSION_ACTIVE']);
-    expect(codes('startSoftwareUpdate')).toEqual(['SESSION_ACTIVE']);
+    // Fix wave J (JT-06 / JW-06): a Core in its own capture has no updater.
+    expect(codes('startSoftwareUpdate')).toEqual(['SESSION_ACTIVE', 'COMMAND_UNSUPPORTED', 'UPDATER_NOT_AVAILABLE']);
+    // Fix wave J (truth rule 3d): an export output the build cannot produce is refused before any job.
+    expect(codes('exportEvidence')).toEqual(expect.arrayContaining(['COMMAND_UNSUPPORTED', 'COMPOSITE_ENCODER_NOT_SELECTED']));
     expect(codes('retryPrecheck')).toEqual(['PRECHECK', 'INVALID_STATE', 'PRECHECK_RUNNING']);
     // The two exports answer 422 INVALID_REASON for a reason that is too short.
     for (const id of ['exportAudit', 'exportLogs']) expect(findCoreApiOperation(id)!.responses[422]?.description, id).toContain('INVALID_REASON');

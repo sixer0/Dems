@@ -43,6 +43,9 @@ import {
   verifyAuditChain,
   wibDateParts,
   type SimActions,
+  EVIDENCE_NOT_SEALED_DIGEST,
+  EVIDENCE_NOT_SEALED_SIGNATURE,
+  hasSealedValues,
 } from '../src/sim';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0); // 2026-10-01 10:00 WIB
@@ -158,9 +161,17 @@ describe('canonical dataset (§14.7, D28)', () => {
     expect(selectEvidenceStats(state)).toMatchObject({ total: 13, sealed: 10, recorded: 1, exported: 1, underReview: 1, pending: 1, sealedToday: 7 });
     for (const item of state.evidence.slice(0, 6)) {
       expect(item.recordedAt).toBeLessThan(startOfWibDay(START));
+      expect(item.signature).toMatchObject({ simulated: true, algorithm: 'SIMULATED-SHA256' });
+      // Fix wave J (truth rule 3a): the seed's RECORDED item was never sealed - no track, the null digest, no verdict.
+      if (item.sealedAt === null) {
+        expect(item).toMatchObject({ id: 'EV-20260930-0006', status: 'RECORDED', tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE, verification: { status: 'NOT_RUN', at: null } });
+        expect(hasSealedValues(item)).toBe(false);
+        continue;
+      }
+      expect(hasSealedValues(item)).toBe(true);
+      expect(item.manifestHash).not.toBe(EVIDENCE_NOT_SEALED_DIGEST);
       expect(item.tracks.map((t) => t.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']);
       expect(item.tracks.every((t) => /^[0-9a-f]{64}$/.test(t.sha256))).toBe(true);
-      expect(item.signature).toMatchObject({ simulated: true, algorithm: 'SIMULATED-SHA256' });
     }
   });
 

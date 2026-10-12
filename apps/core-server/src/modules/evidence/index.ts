@@ -60,6 +60,7 @@ import {
   EvidenceListQuerySchema,
   EvidencePageSchema,
   EvidenceVerifyResultSchema,
+  VERIFY_NOT_SEALED_TEXT,
   findCoreApiOperation,
   type CoreApiRegistryOperation,
   type EvidenceDetail,
@@ -98,6 +99,16 @@ const REFUSAL_WORDING: Readonly<Record<string, string>> = {
   NOT_FOUND: NOT_FOUND_TEXT,
   UNSEALED_EVIDENCE: 'Unsealed evidence cannot be archived.',
 };
+/**
+ * Operation 41 (fix wave J; truth rule 3a; findings JA2-01 / JW-01): an item that was never sealed
+ * has no track hash, no manifest and no signature - the hosted `verify` refuses it and nothing is
+ * written. The contract's text (`VERIFY_NOT_SEALED_TEXT`).
+ */
+const VERIFY_REFUSAL_WORDING: Readonly<Record<string, string>> = {
+  NOT_FOUND: NOT_FOUND_TEXT,
+  UNSEALED_EVIDENCE: VERIFY_NOT_SEALED_TEXT,
+};
+
 
 type ExportRefusal = Extract<ExportResult, { ok: false }>;
 
@@ -146,13 +157,13 @@ function pathIdOf(request: FastifyRequest): string {
  * details the engine host gave it and gets the wording of this area; everything else (a unit
  * that was not committed, an engine that is not running, an unexpected failure) passes as it is.
  */
-async function hosted<Value>(run: () => Promise<EngineOutcome<Value>>): Promise<EngineOutcome<Value>> {
+async function hosted<Value>(run: () => Promise<EngineOutcome<Value>>, wording: Readonly<Record<string, string>> = REFUSAL_WORDING): Promise<EngineOutcome<Value>> {
   try {
     return await run();
   } catch (error) {
     const simCode = simCodeOf(error);
-    if (!(error instanceof ApiFailure) || simCode === null || !Object.hasOwn(REFUSAL_WORDING, simCode)) throw error;
-    throw simRefusal(error.cause, REFUSAL_WORDING[simCode]) ?? error;
+    if (!(error instanceof ApiFailure) || simCode === null || !Object.hasOwn(wording, simCode)) throw error;
+    throw simRefusal(error.cause, wording[simCode]) ?? error;
   }
 }
 
@@ -237,7 +248,8 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       // `mediaRefOf` is the join of the BUNDLED demo packages; a product-sealed item's media state is the Core's own (G94-01).
       const detail = await facts.detail(request, evidence, mediaRefOf(evidence));
       // Fix wave K, driver S2 (G94b-11 / -12): the ONE default destination, the Core's - every client pre-selects it.
-      return { ...detail, exportDestinationDefault: exportDestinationDefault() };
+      // Fix wave J (JA2-03 / JW-03): and the export outputs this Core can produce, so that no client offers one it cannot.
+      return { ...detail, exportDestinationDefault: exportDestinationDefault(), exportKinds: exportService.kinds() };
     },
   });
 
@@ -251,7 +263,8 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
     handler: async (request): Promise<EvidenceVerifyResultBody> => {
       const real = await (realVerification.current()?.verify(request.principal, request.params.id) ?? null);
       if (real !== null) return real;
-      return (await hosted(() => app.engine.command(request.principal, 'verify', request.params.id))).value;
+      // Fix wave J: a never-sealed item is refused by the hosted action (409 NOT_SEALED, no row); its verdicts carry `demonstration: true`.
+      return (await hosted(() => app.engine.command(request.principal, 'verify', request.params.id), VERIFY_REFUSAL_WORDING)).value;
     },
   });
 
@@ -269,12 +282,17 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const evidenceId = pathIdOf(request);
       if (!exportIdPattern.test(evidenceId)) throw exportRefused({ ok: false, status: 404, reason: 'NOT_FOUND' });
 
+      const kind = exportKindOfBody(request.body);
+
       // Fix pass F-M8 (review findings R93-01, R93-03; ruling D178). An item whose sealed package
       // lies in this Core's store is exported by a JOB: the REAL-evidence case scope is held, the
       // jobs must be composed (else the request is refused by name and nothing is marked), and the
       // request is committed DEFERRED - status EXPORTED and the custody entry are the job's
       // completion, never the request's. Every other item takes the hosted action as it is.
-      const admitted = await exportService.admitRequest(request, evidenceId);
+      // Fix wave J (truth rule 3d; JA2-03 / JW-03): the kind goes with the request - an output this Core cannot produce is
+      // refused there (`409 COMMAND_UNSUPPORTED`, `details.reason: COMPOSITE_ENCODER_NOT_SELECTED`), before the ticket,
+      // the hosted action and any job: no export id, no request row, no event.
+      const admitted = await exportService.admitRequest(request, evidenceId, kind);
 
       // Task 3 row 91: an item with an unfinished export job takes no second request (C3 §4). The
       // ticket is taken BEFORE the hosted action, so two requests cannot both pass; while no export
@@ -283,7 +301,6 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
       const ticket = exportJobs === null ? null : exportJobs.begin(evidenceId);
       if (exportJobs !== null && ticket === null) throw new ApiFailure(409, 'EXPORT_IN_PROGRESS', EXPORT_IN_PROGRESS_TEXT);
 
-      const kind = exportKindOfBody(request.body);
       let result: ExportResult;
       try {
         // R93-06: the kind the body named goes onto the request row; `completion` is the server's own member, never the body's.
@@ -297,6 +314,8 @@ export const evidenceModule: FastifyPluginAsync = async (app) => {
                 ...withDestinationDefault(body.request, exportCapture),
                 ...(body.named || admitted.job ? { kind } : {}),
                 ...(admitted.job ? { completion: 'DEFERRED' as const } : {}),
+                // Reached with COMPOSITE only when this Core can produce one (`admitRequest` refused it otherwise): the hosted action is told so.
+                ...(kind === 'COMPOSITE' && exportService.compositeAvailable() ? { compositeAvailable: true } : {}),
               }
             : NO_REASON;
         const outcome = await app.engine.command(request.principal, 'exportEvidence', evidenceId, hostedRequest);

@@ -312,7 +312,10 @@ describe('static rules of the folder (CLG (c); rules 1 to 4 and 9 of 08 §8; 08a
     const calls = production.flatMap(({ text }) => Array.from(code(text).matchAll(/client\.call\('([A-Za-z]+)'/g), (match) => match[1]))
     // FXR-W (W92-8): operation 10's key is shared with Users & Roles, so its one definition is
     // `lib/core-queries.ts`, which the panel uses; the page's own call is 59.
-    expect(calls.sort()).toEqual(['listAuditRows'])
+    // Fix wave J (GM-02; contract J-S 9): + operation `getSecurityStatus`, read for its member `evidenceVerification` -
+    // the Core's own count behind the tamper tile (`evidence-verification.ts`). Pin moved by delta: one read, no command.
+    expect(calls.sort()).toEqual(['getSecurityStatus', 'listAuditRows'])
+    expect(file('evidence-verification.ts')).toMatch(/client\.call\('getSecurityStatus'\)/)
     expect(file('rbac-panel.tsx')).toMatch(/useQuery\(roleMatrixQueryOptions\(useRoleMatrixGate\(\)\)\)/)
     expect(readFileSync(resolve(folder, '../../lib/core-queries.ts'), 'utf8')).toMatch(/client\.call\('getRoleMatrix'\)/)
   })

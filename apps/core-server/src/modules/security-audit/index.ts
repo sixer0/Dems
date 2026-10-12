@@ -83,6 +83,22 @@ export { createStoredChainVerifier, type StoredChainStats, type StoredChainStatu
 export const SECURITY_AUDIT_MODULE_OPERATIONS = ['getSecurityStatus', 'listAuditRows', 'verifyAuditChain', 'exportAudit', 'exportLogs', 'listEvents'] as const;
 export type SecurityAuditModuleOperation = (typeof SECURITY_AUDIT_MODULE_OPERATIONS)[number];
 
+/**
+ * How many SEALED items have a verification of record PASS, FAIL or none (fix wave J, GM-02). A
+ * never-sealed record has nothing to verify and is not counted. `passed + failed + neverVerified = sealed`.
+ */
+export function evidenceVerificationCountsOf(items: readonly { readonly sealedAt: number | null; readonly verification: { readonly status: string } }[]): { sealed: number; passed: number; failed: number; neverVerified: number } {
+  const counts = { sealed: 0, passed: 0, failed: 0, neverVerified: 0 };
+  for (const item of items) {
+    if (item.sealedAt === null) continue;
+    counts.sealed += 1;
+    if (item.verification.status === 'PASS') counts.passed += 1;
+    else if (item.verification.status === 'FAIL') counts.failed += 1;
+    else counts.neverVerified += 1;
+  }
+  return counts;
+}
+
 /** The audit type of the row an accepted export writes, and the detail that names the export. */
 const EXPORT_ROW_TYPE = 'AUDIT_EXPORTED';
 const EXPORT_ROW_ID = 'exportId';
@@ -184,8 +200,11 @@ export const securityAuditModule: FastifyPluginAsync = async (app) => {
     schema: { response: { 200: SecurityStatusSchema } },
     handler: async (request): Promise<SecurityStatus> => {
       const security = app.engine.slice('security');
+      // Fix wave J (confirmation finding GM-02): the Core's own count of items with / without a verification of
+      // record, over EVERY item it holds - a client no longer counts over the newest rows of the audit view.
+      const evidenceVerification = evidenceVerificationCountsOf(app.engine.slice('evidence'));
       const head = await app.db.read('securityAudit.getSecurityStatus', readStoredHead, request);
-      return { security, auditHead: head.hash, auditTotal: head.seq };
+      return { security, auditHead: head.hash, auditTotal: head.seq, evidenceVerification };
     },
   });
 

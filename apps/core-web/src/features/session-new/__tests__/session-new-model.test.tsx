@@ -3,7 +3,8 @@
 // (the reason codes since step 54).
 import { describe, expect, it } from 'vitest'
 import { PRECHECK_ORDER, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
-import { effectiveStep, gateView, isLiveElsewhere, isSessionMessage, maxStepFor, reasonKeyFor } from '../model'
+import { PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE } from '@dems/shared/api'
+import { effectiveStep, gateView, isLiveElsewhere, isSecurityNotReportedNote, isSessionMessage, maxStepFor, precheckNoteKey, reasonKeyFor } from '../model'
 
 function slice(statuses: PrecheckItem['status'][], outcome: PrecheckSlice['outcome'], warningsAcknowledged = false): PrecheckSlice {
   return {
@@ -81,5 +82,29 @@ describe('reasons and schema messages', () => {
     expect(isSessionMessage('sessionNew.info.notes.tooLong')).toBe(true)
     expect(isSessionMessage('Required')).toBe(false)
     expect(isSessionMessage(undefined)).toBe(false)
+  })
+})
+
+// Fix wave J (JW-04; contract J-S 5): the pre-check's SECURITY row of a Core that reads no platform is a NOTE worded
+// "not reported" - never "READY - PASS", never the host-clock sentence, never a warning to count or acknowledge.
+describe('the SECURITY note of a Core that reports no platform (wave J, JW-04)', () => {
+  const security = PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE as unknown as PrecheckItem
+  it('the contract`s example is a note with its own sentence, and it has no reason of the warning table', () => {
+    expect(precheckNoteKey(security)).toBe('web.waveJ.precheck.securityNotReported')
+    expect(isSecurityNotReportedNote(security)).toBe(true)
+    expect(reasonKeyFor(security)).toBeNull()
+  })
+  it('it is not counted as a warning and asks for no acknowledgement', () => {
+    const view = gateView({ items: [security], outcome: 'PASS', warningsAcknowledged: false } as unknown as PrecheckSlice, null, false)
+    expect(view.warnings).toBe(0)
+    expect(view.needsAck).toBe(false)
+  })
+  it('NEGATIVE CONTROL: a security FAULT keeps its words, and the host-clock note keeps its own sentence', () => {
+    const fault = { ...security, status: 'BLOCK', value: 'FAULT', reasonCode: 'SECURITY_FAULT', params: {} } as unknown as PrecheckItem
+    expect(precheckNoteKey(fault)).toBeNull()
+    expect(reasonKeyFor(fault)).toBe('securityFault')
+    const time = { id: 'TIME', status: 'WARN', value: 'HOST_SYSTEM_CLOCK', reason: null, reasonCode: null, params: { rule: 'HOST_SYSTEM_CLOCK' } } as unknown as PrecheckItem
+    if (precheckNoteKey(time) !== null) expect(precheckNoteKey(time)).toBe('sessionNew.precheckNote.timeHostClock')
+    expect(isSecurityNotReportedNote(time)).toBe(false)
   })
 })

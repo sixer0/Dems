@@ -10,9 +10,11 @@ import { appContext, renderRoutes, resetShellState, setWindow, type WindowName, 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { StyleSheet } from 'react-native';
 import type { Metrics } from 'react-native-safe-area-context';
+import { en } from '@dems/shared/i18n';
 import { AUTH_IDLE_TIMEOUT_MS, AUTH_LOCKOUT_MS, OPERATORS, type Sim } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests, MOBILE_PREFS_KEY } from '@/motion';
@@ -22,6 +24,7 @@ import { AppProviders } from '@/providers';
 import { resetCoreLinkPrefsForTests, runtimeLog, setCoreLinkSource, useAuth, type AuthContract } from '@/runtime';
 import { FakeHeartbeatSocket, createTestSim, flushAsync, type TestSim } from '@/runtime/testing/test-sim';
 import { MOBILE_AUTH_KEY, resetAuthPrefsForTests, setAuthPrefs } from '@/auth';
+import { LOGIN_SUBMIT_CLEARANCE } from './login-screen';
 
 jest.mock('@/features/home/pulse-ring', () => ({ PulseRing: () => null }));
 
@@ -118,6 +121,9 @@ describe('T-M04 Login (MA-06)', () => {
     expect(screen.getByText('Digital Evidence Recording Controller')).toBeTruthy();
     expect(screen.getByTestId('login-version')).toHaveTextContent('v2.4.1');
     expect(screen.getByTestId('login-trust-text')).toHaveTextContent('Core: DEMS-IR-01 • paired (simulated)');
+    // Fix wave J (JA2-13, N-05): a paired device's link is named for what it opens; no "tablet" on a phone.
+    expect(screen.getByTestId('login-pair-link')).toHaveTextContent('Pairing details');
+    expect(screen.queryByText(/tablet/i)).toBeNull();
     expect(getMissingKeys()).toEqual([]);
   });
 
@@ -134,8 +140,13 @@ describe('T-M04 Login (MA-06)', () => {
 
   it('shows the generic error with the attempts left and clears the password', async () => {
     const { sim } = await mountLogin();
+    // Fix wave J (JA2-15): Sign In carries its own name (so the platform rebuilds its description when
+    // the state changes) and is not busy once the attempt has ended.
+    expect(screen.getByTestId('login-submit').props.accessibilityLabel).toBe('Sign In');
     await typeCredentials('budi.santoso', WRONG);
     expect(screen.getByTestId('login-alert-invalid')).toBeTruthy();
+    expect(screen.getByTestId('login-submit').props.accessibilityLabel).toBe('Sign In');
+    expect(screen.getByTestId('login-submit').props.accessibilityState).toMatchObject({ busy: false });
     expect(screen.getByText('Invalid username or password.')).toBeTruthy();
     expect(screen.getByText('4 attempts remaining')).toBeTruthy();
     expect(screen.getByTestId('login-password').props.value).toBe('');
@@ -201,6 +212,13 @@ describe('T-M04 Login (MA-06)', () => {
     fireEvent.press(screen.getByTestId('login-demo-trigger'));
     await flushAsync();
     for (const operator of OPERATORS) expect(screen.getByTestId(`login-demo-operator-${operator.username}`)).toBeTruthy();
+    // Fix wave J (JA2-N6): each row is announced with the operator's role, not by name and user name only.
+    const ROLE_WORD = { INVESTIGATOR: 'Investigator', SUPERVISOR: 'Supervisor', TECHNICIAN: 'Technician' } as const;
+    for (const operator of OPERATORS) {
+      expect(screen.getByTestId(`login-demo-operator-${operator.username}`).props.accessibilityLabel).toBe(
+        `${operator.displayName}, user name ${operator.username}, ${ROLE_WORD[operator.role]}`,
+      );
+    }
     fireEvent.press(screen.getByTestId('login-demo-operator-andi.pratama'));
     expect(screen.getByTestId('login-username').props.value).toBe('andi.pratama');
     expect(screen.getByTestId('login-password').props.value).toBe(DEMO_PASSWORD);
@@ -237,7 +255,7 @@ describe('biometric sign-in on the Login (§6.3, L7)', () => {
     await flushAsync();
     expect(screen.getByTestId('login-biometric')).toBeDisabled();
     expect(screen.getByTestId('login-biometric-caption')).toHaveTextContent(
-      'Sign in with your password once to enable biometric sign-in on this tablet.',
+      'Sign in with your password once to enable biometric sign-in on this device.',
     );
   });
 
@@ -303,6 +321,24 @@ describe('sign-out notice and credential hygiene (§3.3, §6.1)', () => {
     expect(screen.getByTestId('login-alert-invalid')).toBeTruthy();
   });
 
+  // Round two, ruling (c) (JT-18 / JA2-35): "Lock console" still ends the sign-in; the Login then says it was a lock.
+  // Closing pass J4, item 2: the words are the SHARED key `login.notices.consoleLocked` (the web console reads the same key);
+  // this test pins the key, not a literal, plus the ruled words once so that a change of the sentence is seen here too.
+  it('JT-18: after "Lock console" the Login reads the shared lock sentence ("Console locked — sign in to continue") - not the sign-out notice', async () => {
+    const { auth } = await mountLogin();
+    await typeCredentials('rina.wijaya', DEMO_PASSWORD);
+    await waitFor(() => expect(screen.getByTestId('screen-home')).toBeTruthy());
+    if (screen.queryByTestId('biometric-offer-decline')) fireEvent.press(screen.getByTestId('biometric-offer-decline'));
+    // `lockConsole()` of the auth session is this call (auth-provider.tsx: `signOut('LOCK')`).
+    act(() => auth().signOut('LOCK'));
+    await waitFor(() => expect(screen.getByTestId('screen-login')).toBeTruthy());
+    expect(auth().isAuthenticated).toBe(false);
+    expect(screen.getByTestId('login-alert-signed-out')).toBeTruthy();
+    expect(en.login.notices.consoleLocked).toBe('Console locked — sign in to continue');
+    expect(screen.getByText(en.login.notices.consoleLocked)).toBeTruthy();
+    expect(screen.queryByText(en.login.notices.signedOut)).toBeNull();
+  });
+
   it('shows the expiry notice after 15 min without activity; recording is untouched', async () => {
     const { sim, advance } = await mountLogin('/login', 'phonePortrait', { scenario: 'recording' });
     await typeCredentials('budi.santoso', DEMO_PASSWORD);
@@ -330,6 +366,51 @@ const LAYOUT_CASES: [WindowName, string][] = [
   ['tabletPortrait', 'medium'],
   ['tabletLandscape', 'expanded'],
 ];
+
+describe('JA2-14: the Login footer on a phone, and Sign In above the keyboard', () => {
+  // Both motion modes: the footer is layout, not an animation, and must not depend on reduced motion.
+  const MOTION_MODES: readonly (readonly [string, 'off' | 'default'])[] = [
+    ['reduced motion (the test switch)', 'off'],
+    ['full motion (the normal launch)', 'default'],
+  ];
+  it.each(MOTION_MODES)('phone portrait, %s: the trust line and the version sit in a pinned row above the bottom safe area, outside the scroll area', async (_name, linkMotion) => {
+    resetMotionStateForTests({ linkMotion });
+    await mountLogin('/login', 'phonePortrait');
+    const scroll = screen.getByTestId('login-scroll');
+    const footer = screen.getByTestId('login-footer');
+    // The scroll area holds the brand, the card and the demo operators; never the footer.
+    expect(within(scroll).getByTestId('login-card')).toBeTruthy();
+    expect(within(scroll).queryByTestId('login-version')).toBeNull();
+    expect(within(scroll).queryByTestId('login-trust-line')).toBeNull();
+    expect(within(footer).getByTestId('login-trust-line')).toBeTruthy();
+    expect(within(footer).getByTestId('login-pair-link')).toBeTruthy();
+    expect(within(footer).getByTestId('login-version')).toHaveTextContent('v2.4.1');
+    // The row clears the gesture bar (the harness gives a bottom inset of 16) and the version keeps a full line.
+    expect(StyleSheet.flatten(footer.props.style).paddingBottom).toBeGreaterThanOrEqual(16 + 8);
+    const version = StyleSheet.flatten(screen.getByTestId('login-version').props.style);
+    expect(version.minHeight).toBeGreaterThanOrEqual(version.lineHeight);
+    expect(version.flexShrink).toBe(0);
+    // The keyboard pattern of the Pair screen: room for the Sign In button under the focused field.
+    expect(scroll.props.bottomOffset).toBe(LOGIN_SUBMIT_CLEARANCE);
+    expect(LOGIN_SUBMIT_CLEARANCE).toBeGreaterThanOrEqual(56 + 16);
+
+    // A notice grows the card inside the scroll area; the footer stays where it is.
+    await typeCredentials('budi.santoso', WRONG);
+    expect(within(screen.getByTestId('login-scroll')).getByTestId('login-alert-invalid')).toBeTruthy();
+    expect(within(screen.getByTestId('login-footer')).getByTestId('login-pair-link')).toBeTruthy();
+    expect(within(screen.getByTestId('login-scroll')).queryByTestId('login-version')).toBeNull();
+  });
+
+  it.each(['phoneLandscape', 'tabletPortrait', 'tabletLandscape'] as const)('%s keeps the footer under the card, with the same keyboard clearance and the full version line', async (window) => {
+    await mountLogin('/login', window);
+    expect(screen.queryByTestId('login-footer')).toBeNull();
+    const scroll = screen.getByTestId('login-scroll');
+    expect(within(scroll).getByTestId('login-trust-line')).toBeTruthy();
+    expect(scroll.props.bottomOffset).toBe(LOGIN_SUBMIT_CLEARANCE);
+    const version = StyleSheet.flatten(within(scroll).getByTestId('login-version').props.style);
+    expect(version.minHeight).toBeGreaterThanOrEqual(version.lineHeight);
+  });
+});
 
 describe('layouts (§2.4, D17)', () => {
   it.each(LAYOUT_CASES)('renders the brand and auth panes on %s (%s)', async (window) => {

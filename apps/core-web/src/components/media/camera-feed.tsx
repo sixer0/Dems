@@ -10,6 +10,7 @@ import {
   type Ref,
 } from 'react'
 import { Chip } from '@heroui/react'
+import { DemoMark } from '@/components/demo-mark'
 import { AnimatePresence, motion, useInView, usePageInView, type Transition } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
@@ -477,6 +478,8 @@ export function CameraFeed({
         </Chip>
       ) : null}
       {actions ? <div className="absolute bottom-2 right-2 flex items-center gap-1">{actions}</div> : null}
+      {/* Fix wave J (JW-07; truth rule 3f): the bundled loop is never shown as a camera's picture without its mark. */}
+      {sim !== null ? <DemoMark block="feed" overlay className={cn('absolute', variant === 'feed' ? 'left-1/2 top-2 -translate-x-1/2' : 'bottom-2 right-2', OVERLAY_CHIP)} /> : null}
     </motion.div>
   )
 }

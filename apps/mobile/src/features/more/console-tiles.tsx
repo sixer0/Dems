@@ -9,7 +9,7 @@
  * | Storage | used % (C-6 RollingNumber `slide`) | Healthy / Low / Full |
  * | Network & Time | time source + LAN state | Synchronized / Attention |
  * | Audit | audit event count | Chain OK / Discontinuity |
- * | Settings | its sections | section count |
+ * | Settings | its sections | the number of rows its list shows (`settingsRowCount`) |
  *
  * Two columns on a phone in portrait, four in phone landscape. Tiles enter on the R1 stagger
  * (`enterRise`, 80 + i × 60 ms, `gentle` spring; reduced motion: a 160 ms fade, no stagger).
@@ -25,7 +25,7 @@ import { derived, fontFamily, palette, typography, type StatusTone } from '@dems
 import { RollingNumber } from '@/components/composed/rolling-number';
 import { StatusChip } from '@/components/kit';
 import { enterRise, useMotionPolicy, useMotionSettings } from '@/motion';
-import { SETTINGS_SECTIONS } from '@/navigation/params';
+import { settingsRowCount } from '@/features/settings/settings-model';
 import { TAB_DESTINATIONS } from '@/navigation/routes';
 import {
   CONSOLE_DESTINATIONS,
@@ -184,7 +184,9 @@ function useTileView(name: ConsoleDestination): TileView {
         detail,
         body: <DetailLines first={detail} />,
         tone: 'default',
-        chip: t('features.more.console.settings.sections', { count: SETTINGS_SECTIONS.length }),
+        // Fix wave J (JA2-35): the rows the Settings list shows (its own count), not the number of
+        // `/settings/<section>` routes ("7 sections" stood over 10 rows).
+        chip: t('features.more.console.settings.items', { count: settingsRowCount() }),
       };
     }
   }

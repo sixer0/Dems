@@ -97,6 +97,11 @@ const records = (source: string) => webErrorSink.records().filter((record) => re
 const restartButton = () => screen.getByTestId('system-restart-services')
 const runButton = () => screen.getByTestId('system-run-diagnostics')
 const installButton = () => screen.getByTestId('system-update-install')
+/** Fix wave J (JT-06 / JW-06): "Install update" asks first; the request is sent by the confirmation's own button. */
+async function confirmInstall(): Promise<void> {
+  fireEvent.click(installButton())
+  fireEvent.click(within(await screen.findByTestId('system-update-confirm')).getByTestId('system-update-confirm-install'))
+}
 
 /** The Core's `diagnostics` slice for a run that has just started: the first check RUNNING, the others PENDING. */
 function runningDiagnostics(id: string): DiagnosticsRun {
@@ -261,7 +266,7 @@ describe('B-10 Install (the update panel, operation 67)', () => {
     expect(version).toBeTruthy()
     bed.fake.answerOnce('startSoftwareUpdate', { status: 202 })
     expect(installButton()).toHaveTextContent(S.live.install)
-    fireEvent.click(installButton())
+    await confirmInstall()
     await waitFor(() => expect(toastWith(LIVE_STARTED(version!))).toHaveLength(1))
     expect(requests('startSoftwareUpdate')).toHaveLength(1)
     expect(requests('startSoftwareUpdate')[0]).toMatchObject({ method: 'POST', path: '/api/v1/system/update' })
@@ -272,14 +277,14 @@ describe('B-10 Install (the update panel, operation 67)', () => {
   it('AC-C-48: the `notPermitted` 403 names the Technician role; 409 SESSION_ACTIVE keeps the friendly warning', async () => {
     const { bed } = await liveSystem()
     bed.fake.answerOnce('startSoftwareUpdate', bed.fake.example('startSoftwareUpdate', 403, 'notPermitted'))
-    fireEvent.click(installButton())
+    await confirmInstall()
     await waitFor(() => expect(toastWith(DENIED)).toHaveLength(1))
     expect(toastWith(DENIED)[0]).toContain(REQUIRES(en.common.roles.TECHNICIAN))
     expect(toastWith(S.live.startedToast.split(' ')[0]!)).toHaveLength(0)
 
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     bed.fake.answerOnce('startSoftwareUpdate', bed.fake.example('startSoftwareUpdate', 409, 'sessionActive'))
-    fireEvent.click(installButton())
+    await confirmInstall()
     await waitFor(() => expect(toastWith(S.update.blockedBySession)).toHaveLength(1))
     expect(records('System.UpdatePanel.install')).toHaveLength(1)
   })
@@ -287,7 +292,7 @@ describe('B-10 Install (the update panel, operation 67)', () => {
   it('an outage: the presenter\'s sentence and no "installing" toast', async () => {
     const { bed } = await liveSystem()
     bed.fake.failOnce('startSoftwareUpdate')
-    fireEvent.click(installButton())
+    await confirmInstall()
     await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
     expect(toastTexts().join(' ')).not.toContain('Installing')
   })
@@ -295,7 +300,8 @@ describe('B-10 Install (the update panel, operation 67)', () => {
   it('a SUPERVISOR (no MAINTENANCE) sees Install and Restart disabled with the role named: the gates follow the replicated role', async () => {
     await liveSystem(SUPERVISOR_SESSION)
     expect(installButton()).toBeDisabled()
-    expect(screen.getByTestId('system-update-locked')).toHaveAccessibleName(new RegExp(`^${S.live.install}: .*Technician`))
+    // Fix wave J (JW-14): the reason is visible beside the disabled control (it lived in a tooltip).
+    expect(within(screen.getByTestId('system-update-locked')).getByTestId('role-reason')).toHaveTextContent('Requires the Technician role')
     expect(restartButton()).toBeDisabled()
   })
 })

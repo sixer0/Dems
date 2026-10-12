@@ -36,7 +36,8 @@ import { PendingSpinner, busyState, usePendingPress } from '@/runtime';
 import { THRESHOLDS } from './storage-model';
 import { canManageStoragePolicy } from './sim-adapter';
 import type { StoragePolicyView } from './use-storage-data';
-import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { SheetContentSignal, useSheetBack, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 export const RETENTION_POLICIES: readonly RetentionPolicyId[] = [
   RetentionPolicyId.DAYS_30,
@@ -80,12 +81,16 @@ export function ManageStorageSheet({ isOpen, onClose, role, policy, onApply }: M
   const apply = (draft: PolicyDraft) => {
     press.run((release) => onApply(draft, { applied: onClose, settled: release }));
   };
+  // Fix wave J (JA2-16): Android Back closes the sheet and stays on Storage.
+  useSheetBack(isOpen, onClose);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: 'storage-manage-sheet' });
   if (!presence.mounted) return null;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content>
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}>
           <SheetContentSignal onChange={presence.setContentMounted}>
             <View style={styles.header} testID="storage-manage-sheet">
               <View style={styles.headerText}>

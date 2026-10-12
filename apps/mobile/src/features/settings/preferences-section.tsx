@@ -7,22 +7,25 @@
  * - Haptics (§7.6), through the same kit hook.
  * - Presentation mode: `presentationMode` merged into `dems.mobile.prefs.v1`, which the Login screen
  *   reads to hide the demo operators (D88); it also hides the Demo controls here.
- * - Core link source: Simulated (default) or the mock-core heartbeat (Q-M8, D38), through the
- *   runtime (`useCoreLinkSourceSetting`, merge-write). Release builds show Heartbeat disabled
- *   (Simulated-only APK, 06_packaging_spec §2.6, D112).
- *   Backend task W82 (04_client_integration_spec §3.3, §9.5; AC-C-31, AC-C-83): the third segment
- *   `Live` (debug builds; disabled in a release build, as Heartbeat). A change across the LIVE
- *   boundary asks first, signs the operator out and then stores the source (`useCoreLinkSwitch`);
- *   SIMULATED <-> HEARTBEAT stays instant. One line about Live follows the existing hint.
- * - Meter size (brief): the monitor's default meter size, merged as `meterSize`.
- * - Language: English; Bahasa Indonesia is shown disabled ("later", A10).
- * - Performance overlay: debug builds only (D-69-5: session-only, no stored field).
+ * - Developer group (fix wave J, JA2-29 / N-03): Core link source and Performance overlay. Shown only
+ *   in a development build while presentation mode is off (`developerControlsShown`); a release
+ *   build and a presentation never show them. Core link source: Simulated (default), the mock-core
+ *   heartbeat (Q-M8, D38) or Live (backend task W82; 04_client_integration_spec §3.3, §9.5), through
+ *   the runtime (`useCoreLinkSourceSetting`, merge-write). A change across the LIVE boundary asks
+ *   first, signs the operator out and then stores the source (`useCoreLinkSwitch`);
+ *   SIMULATED <-> HEARTBEAT stays instant. The launch URL switch `core=LIVE` (runtime/debug.ts) is
+ *   independent of this control. Performance overlay: session-only (D-69-5), read by
+ *   `motion/debug-overlay.tsx`.
+ * - Not shown (fix wave J, Settings audit): "Meter size" had no reader (the session monitor keeps its
+ *   own choice, hand-over H-S88-2) and "Language" had one usable value; a control without an effect
+ *   is not drawn. The stored `meterSize` field and its setter stay in `settings-prefs.ts` for the
+ *   monitor's owner.
  */
 import { useTranslation } from 'react-i18next';
 import { CORE_LINK_SOURCES, isCoreLinkSourceAvailable, type CoreLinkSource } from '@/runtime';
 import { useMotionPreferences } from '@/motion';
 import { CoreModeDialog, useCoreLinkSwitch } from './core-link-switch';
-import { METER_SIZES, type MeterSize } from './settings-model';
+import { developerControlsShown } from './settings-model';
 import { useSettingsPrefs } from './settings-prefs';
 import { GroupCard, SectionStack, SegmentRow, SwitchRow } from './settings-controls';
 
@@ -31,6 +34,7 @@ export function PreferencesSection() {
   const motion = useMotionPreferences();
   const core = useCoreLinkSwitch();
   const prefs = useSettingsPrefs();
+  const developer = developerControlsShown({ dev: __DEV__, presentationMode: prefs.presentationMode });
 
   return (
     <>
@@ -65,56 +69,23 @@ export function PreferencesSection() {
           />
         </GroupCard>
 
-        <GroupCard title={t('features.settings.preferences.coreGroup')} index={2} testID="settings-preferences-core">
-          <SegmentRow<CoreLinkSource>
-            key="core-link"
-            testID="settings-core-link"
-            label={t('mobile.coreLink.sourceLabel')}
-            description={
-              __DEV__
-                ? `${t('features.settings.preferences.coreLinkHint')} ${t('features.settings.preferences.coreLinkHintLive')}`
-                : `${t('features.settings.preferences.coreLinkHintRelease')} ${t('features.settings.preferences.coreLinkHintLiveRelease')}`
-            }
-            value={core.source}
-            options={CORE_LINK_SOURCES.map((source) => ({
-              value: source,
-              label: t(`mobile.coreLink.source.${source}`),
-              // Release builds are Simulated-only (06_packaging_spec §2.6, D112): Heartbeat and Live are disabled.
-              isDisabled: !isCoreLinkSourceAvailable(source),
-            }))}
-            onChange={core.request}
-          />
-        </GroupCard>
-
-        <GroupCard title={t('features.settings.preferences.displayGroup')} index={3} testID="settings-preferences-display">
-          <SegmentRow<MeterSize>
-            key="meter-size"
-            testID="settings-meter-size"
-            label={t('features.settings.preferences.meterSize')}
-            description={t('features.settings.preferences.meterSizeHint')}
-            value={prefs.meterSize}
-            options={METER_SIZES.map((size) => ({
-              value: size,
-              label: t(size === 'card' ? 'features.settings.preferences.meterStandard' : 'features.settings.preferences.meterCompact'),
-            }))}
-            onChange={prefs.setMeterSize}
-          />
-          <SegmentRow<'en' | 'id'>
-            key="language"
-            testID="settings-language"
-            label={t('features.settings.preferences.language')}
-            description={t('features.settings.preferences.languageHint')}
-            value="en"
-            options={[
-              { value: 'en', label: t('features.settings.preferences.languageEnglish') },
-              { value: 'id', label: t('features.settings.preferences.languageIndonesian'), isDisabled: true },
-            ]}
-            onChange={() => undefined}
-          />
-        </GroupCard>
-
-        {__DEV__ ? (
-          <GroupCard title={t('features.settings.preferences.debugGroup')} index={4} testID="settings-preferences-debug">
+        {/* Fix wave J (JA2-29, N-03): the developer controls are not an operator's menu. One group,
+            shown only in a development build while presentation mode is off (`developerControlsShown`). */}
+        {developer ? (
+          <GroupCard title={t('features.settings.preferences.debugGroup')} index={2} testID="settings-preferences-debug">
+            <SegmentRow<CoreLinkSource>
+              key="core-link"
+              testID="settings-core-link"
+              label={t('mobile.coreLink.sourceLabel')}
+              description={`${t('features.settings.preferences.coreLinkHint')} ${t('features.settings.preferences.coreLinkHintLive')}`}
+              value={core.source}
+              options={CORE_LINK_SOURCES.map((source) => ({
+                value: source,
+                label: t(`mobile.coreLink.source.${source}`),
+                isDisabled: !isCoreLinkSourceAvailable(source),
+              }))}
+              onChange={core.request}
+            />
             <SwitchRow
               key="overlay"
               testID="settings-performance-overlay"

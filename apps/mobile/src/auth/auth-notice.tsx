@@ -5,8 +5,8 @@
  *
  * | Notice | Sentence | Status |
  * |---|---|---|
- * | `token-reuse` | "Biometric sign-in was turned off on this tablet because its token was used a second time. Sign in with your password." | danger |
- * | `biometric-invalid` | "Biometric sign-in is no longer valid on this tablet. Sign in with your password to enable it again." | danger |
+ * | `token-reuse` | "Biometric sign-in was turned off on this device because its token was used a second time. Sign in with your password." | danger |
+ * | `biometric-invalid` | "Biometric sign-in is no longer valid on this device. Sign in with your password to enable it again." | danger |
  * | `user-disabled` | "This account was disabled by an administrator." | danger |
  * | `absolute-expired` | "Your session reached its 8-hour limit. Sign in again." | accent |
  *

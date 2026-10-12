@@ -8,7 +8,8 @@ import { describe, afterEach, beforeEach, expect, it, vi, beforeAll, afterAll } 
 import { configure, fireEvent, screen, waitFor, cleanup, render, within } from '@testing-library/react'
 import { en } from '@dems/shared/i18n'
 import { EVIDENCE_ITEM_KIND_VECTORS, type EvidenceItem, SimProvider, type Sim } from '@dems/shared/sim'
-import { isCoreSealedItem, isDemoItem, mediaKindOf, mediaReasonOf, playableFilesOf, readDetailFacts, readItemFacts } from '../item-facts'
+import { EXPORT_KINDS_EXAMPLE } from '@dems/shared/api'
+import { exportKindOffer, isCoreSealedItem, isDemoItem, mediaKindOf, mediaReasonOf, playableFilesOf, readDetailFacts, readExportKinds, readItemFacts } from '../item-facts'
 import { buildEvidenceRow } from '../model'
 import { createDatasetSim, stopSims, diskAssets, findPage, installBrowserStubs, mountEvidence } from './harness'
 import { EV, evidenceWith, findDetailBody, type LiveEvidence, clearToasts, demoPackage, installJsdomStubs, openLiveEvidence } from './live-evidence-bed'
@@ -209,6 +210,9 @@ describe("the media of an item: the reader, no bundled demo media for a REAL ite
       noMedia: { playback: 'none', reason: 'PACKAGE_MISSING', mayPlay: true, mayRead: true },
       outsideCaseScope: { playback: 'sealed', files: 'VIDEO-01,VIDEO-02', mayPlay: false, mayRead: false },
       seedSealedDemo: { playback: 'sealed', files: 'VIDEO-01,VIDEO-02', mayPlay: true, mayRead: true, exports: 0 },
+      // Fix wave J (contract J-S 1, J-S 2): the two new examples of the contract - a never-sealed record and a demonstration record.
+      neverSealed: { playback: 'none', reason: 'NOT_SEALED' },
+      simulatedSealed: { playback: 'none', reason: 'DEMONSTRATION_RECORD' },
     }
 
     it('every 200 example of the contract has its expectation here (a new example cannot go unread)', () => {
@@ -288,7 +292,10 @@ describe("the media of an item: the reader, no bundled demo media for a REAL ite
       await findDetailBody()
       const mark = await screen.findByTestId('evidence-interrupted', {}, UI)
       expect(mark).toHaveTextContent(F.interrupted.status)
-      expect(mark).toHaveTextContent('Cause: CAPTURE_FAULT')
+      // Fix wave J (JW-13 / JW-27): the cause by its name, not the raw code; the code stays on the element for a reader of the page.
+      expect(mark).toHaveTextContent('Cause: Capture fault')
+      expect(mark).not.toHaveTextContent('CAPTURE_FAULT')
+      expect(mark).toHaveAttribute('data-cause', 'CAPTURE_FAULT')
     })
 
     it('G75-03 / G94-14: the list row of an interrupted REAL item says it, and carries no bundled thumbnail although its number joins a package', async () => {
@@ -554,5 +561,29 @@ describe("the Metadata tab: Simulated mode keeps its words, Live mode says what 
       expect(metadata.textContent).not.toContain('no DEMO package joins')
       expect(getMissingI18nKeys()).toEqual([])
     })
+  })
+})
+
+// Fix wave J, driver J-W - JW-03 (truth rule 3d; contract J-S 3): an export output is offered ENABLED only when the Core's
+// `exportKinds` says `available: true`. The contract's exported example is fed unmodified.
+describe('wave J: the export outputs the Core states (JW-03)', () => {
+  it('the contract`s example: Package enabled, Composite drawn disabled with its reason code', () => {
+    const kinds = readDetailFacts({ exportKinds: EXPORT_KINDS_EXAMPLE }).exportKinds
+    expect(kinds).toEqual([
+      { kind: 'PACKAGE', available: true, reason: null },
+      { kind: 'COMPOSITE', available: false, reason: 'COMPOSITE_ENCODER_NOT_SELECTED' },
+    ])
+    expect(exportKindOffer(kinds, 'PACKAGE')).toBe('ENABLED')
+    expect(exportKindOffer(kinds, 'COMPOSITE')).toBe('DISABLED')
+  })
+  it('member absent (the in-app simulator, an older Core): only Package is offered', () => {
+    expect(readDetailFacts({}).exportKinds).toBeNull()
+    expect(exportKindOffer(null, 'PACKAGE')).toBe('ENABLED')
+    expect(exportKindOffer(null, 'COMPOSITE')).toBe('NOT_OFFERED')
+  })
+  it('NEGATIVE CONTROL: a Core that states Composite available gets it enabled; a member that is no list is not read', () => {
+    expect(exportKindOffer(readExportKinds([{ kind: 'COMPOSITE', available: true }]), 'COMPOSITE')).toBe('ENABLED')
+    expect(readExportKinds('COMPOSITE')).toBeNull()
+    expect(readExportKinds([{ kind: 'OTHER', available: true }, { kind: 'COMPOSITE' }])).toBeNull()
   })
 })

@@ -8,7 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodeUtf8, EXPORT_MANIFEST_ITEMS, getDemoEvidencePackage, sha256Hex } from '@dems/shared/demo-data'
 import { OPERATOR_IDS, toWibIso } from '@dems/shared/sim'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
-import { buildDemoExportManifest, exportDownloadPlan, prepareZipDownload } from '../export-download'
+import {
+  buildDemoExportManifest,
+  consoleWritesExportFile,
+  ExportFileNotForItemError,
+  EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_PACKAGE,
+  EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_RECORD,
+  exportDownloadPlan,
+  manifestSummaryDownload,
+  prepareZipDownload,
+} from '../export-download'
 import { buildEvidenceRow } from '../model'
 import { createDatasetSim, diskAssets, diskLoader, findPage, installBrowserStubs, mountEvidence, stopSims } from './harness'
 
@@ -87,6 +96,105 @@ describe('prebuilt export package (EV 0004)', () => {
     expect(json.export).toMatchObject({ exportId: 'EXP-000032', exportedAt: toWibIso(state.clock.now) })
     expect(json.authorization).toEqual({ purpose: 'Prosecutor request', reference: 'AUD-000999' })
   })
+
+  // Fix wave J, pass J5 (truth rule 3f; note 174 decision 2): the export file the CONSOLE writes said `demo: true`, "the
+  // DEMS demo console" and "SIMULATED data" also on a Core in its own capture, and nothing but the wizard's drawing kept it
+  // from being written for a recording of that Core.
+  describe('pass J5: what the console-written export file is on a Core', () => {
+    const datasetRow = (suffix: '0001') => {
+      const state = createDatasetSim(OPERATOR_IDS.ANDI).store.getState()
+      const item = state.evidence.find((entry) => entry.id === getDemoEvidencePackage(suffix)!.evidenceId)
+      if (!item) throw new Error(`EV ${suffix} missing`)
+      return { state, row: buildEvidenceRow(item, state.operators) }
+    }
+    const inputOf = (row: ReturnType<typeof datasetRow>['row'], state: ReturnType<typeof datasetRow>['state']) => ({
+      row,
+      exportId: 'EXP-000032',
+      exportedAt: state.clock.now,
+      operator: { id: 'OPR-002', displayName: 'AKP Andi Pratama', role: 'SUPERVISOR' } as const,
+      destination: 'Case file transfer',
+      reason: 'Prosecutor request',
+      authorizationRef: 'AUD-000999',
+      device: state.device,
+      verification: { report: null, simulated: null },
+    })
+    const parse = (text: string) => JSON.parse(text) as Record<string, unknown>
+
+    it('CONTROL - the demonstration keeps its flag and its wording, word for word (with a package and without one)', () => {
+      const { row, state } = datasetRow('0001')
+      const packaged = parse(buildDemoExportManifest(inputOf(row, state)))
+      expect(packaged.demo).toBe(true)
+      expect(packaged.notice).toBe('DEMO export manifest built in the browser by the DEMS demo console from the sealed DEMO package. Not evidence.')
+      // A Core in SIMULATED capture (Live mode, not its own capture) writes the same file as the in-browser simulator.
+      expect(buildDemoExportManifest({ ...inputOf(row, state), live: true, ownCapture: false })).toBe(buildDemoExportManifest(inputOf(row, state)))
+      const bare = parse(buildDemoExportManifest(inputOf({ ...row, pkg: null }, state)))
+      expect(bare.demo).toBe(true)
+      expect(bare.notice).toBe('DEMO export manifest built in the browser from SIMULATED data (no DEMO package for this item). Not evidence.')
+      expect(bare.sessionManifest).toEqual({ file: null, sha256: row.item.manifestHash, simulated: true })
+      expect(bare.signature).toMatchObject({ simulated: true })
+      expect((bare.payload as { tracks: Record<string, unknown>[] }).tracks.every((track) => track.simulated === true)).toBe(true)
+      expect('demonstrationItem' in packaged || 'demonstrationItem' in bare).toBe(false)
+    })
+
+    it('a Core in its own capture: no `demo` and no `simulated` member; the notice says what the file is; nothing else of it changes', () => {
+      const { row, state } = datasetRow('0001')
+      const demo = parse(buildDemoExportManifest(inputOf(row, state)))
+      const own = parse(buildDemoExportManifest({ ...inputOf(row, state), live: true, ownCapture: true }))
+      expect('demo' in own).toBe(false)
+      expect(own.demonstrationItem).toBe(true)
+      expect(own.notice).toBe(EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_PACKAGE)
+      const { demo: _flag, notice: _demoNotice, ...demoRest } = demo
+      const { demonstrationItem: _item, notice: _ownNotice, ...ownRest } = own
+      expect(ownRest).toEqual(demoRest)
+
+      const bareText = buildDemoExportManifest({ ...inputOf({ ...row, pkg: null }, state), live: true, ownCapture: true })
+      const bare = parse(bareText)
+      expect('demo' in bare).toBe(false)
+      expect(bare.notice).toBe(EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_RECORD)
+      expect(bareText).not.toMatch(/"simulated"/)
+      expect(bare.sessionManifest).toEqual({ file: null, sha256: row.item.manifestHash, source: 'core-record' })
+      for (const notice of [EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_PACKAGE, EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_RECORD]) {
+        expect(notice).not.toMatch(/^DEMO|demo console|simulat|synthetic/i)
+        expect(notice).toMatch(/demonstration item this DEMS Core server holds/)
+        expect(notice).toMatch(/not evidence/)
+      }
+    })
+
+    it('the console writes no export file for an item whose export is the archive of the Core - the rule, and the builder refuses', () => {
+      const { row, state } = datasetRow('0001')
+      const item = (change: Record<string, unknown>) => ({ ...row, item: { ...row.item, ...change } as typeof row.item })
+      const real = item({ integritySource: 'REAL', sealedPackage: 'PRESENT' })
+      const realRecord = item({ integritySource: 'REAL' })
+      const seedSealed = item({ integritySource: 'DEMO_PACKAGE', sealedPackage: 'PRESENT' })
+      const withFiles = item({ files: [{ trackId: 'VIDEO-01' }] })
+      const notStated = item({ integritySource: undefined })
+      // CONTROL: the v1 demonstration item, and anything in Simulated mode.
+      expect(consoleWritesExportFile(row, true)).toBe(true)
+      expect(consoleWritesExportFile(item({ integritySource: 'SIMULATED' }), true)).toBe(true)
+      for (const refused of [real, realRecord, seedSealed, withFiles, notStated]) {
+        expect(consoleWritesExportFile(refused, true)).toBe(false)
+        expect(consoleWritesExportFile(refused, false)).toBe(true)
+        for (const ownCapture of [true, false]) {
+          expect(() => buildDemoExportManifest({ ...inputOf(refused, state), live: true, ownCapture })).toThrow(ExportFileNotForItemError)
+        }
+      }
+    })
+
+    it('the manifest summary of an item without a package: `simulated` on the demonstration (unchanged), the Core\'s record on a Core in its own capture', () => {
+      const { row } = datasetRow('0001')
+      const values = { evidenceId: row.id, manifestHash: row.item.manifestHash, tracks: row.item.tracks, signature: row.item.signature }
+      const demo = manifestSummaryDownload(row, false)
+      expect(demo.fileName).toBe(`${row.id}-manifest.simulated.json`)
+      expect(demo.text).toBe(`${JSON.stringify({ simulated: true, ...values }, null, 2)}\n`)
+      const own = manifestSummaryDownload(row, true)
+      expect(own.fileName).toBe(`${row.id}-manifest.core-record.json`)
+      const file = parse(own.text)
+      expect(file).toMatchObject({ record: 'CORE', demonstrationItem: true, ...JSON.parse(JSON.stringify(values)) })
+      expect(Object.keys(file)).not.toContain('simulated')
+      expect(Object.keys(file)).not.toContain('demo')
+      expect(String(file.note)).not.toMatch(/simulat|synthetic|\bDEMO\b/)
+    })
+  })
 })
 
 describe('export wizard', () => {
@@ -101,18 +209,29 @@ describe('export wizard', () => {
     expect(await screen.findByTestId('export-step-authorise')).toBeInTheDocument()
   }, UI_TIMEOUT)
 
-  it('denies an investigator (RBAC through the simulator) and records EXPORT_DENIED', async () => {
-    const { sim } = await openWizard(PKG_0001.evidenceId, OPERATOR_IDS.BUDI)
-    enterReason('Prosecutor request')
-    await screen.findByTestId('export-step-authorise')
-    fireEvent.click(screen.getByTestId('export-authorise'))
-    const alert = await screen.findByTestId('export-denied')
-    expect(alert).toHaveTextContent('Export not permitted')
-    expect(within(alert).getByTestId('lock-shackle')).toBeInTheDocument()
-    const last = sim.store.getState().audit.rows.at(-1)
-    expect(last).toMatchObject({ type: 'EXPORT_DENIED', evidenceId: PKG_0001.evidenceId, actorId: OPERATOR_IDS.BUDI })
-    expect(screen.queryByTestId('export-next')).not.toBeInTheDocument()
+  // Fix wave J (JW-14 (c)): this case REPLACES "denies an investigator ... and records EXPORT_DENIED". Export was enabled
+  // for a role that may not export and refused two steps later; ONE rule now - the control is disabled WITH its visible
+  // reason naming the role, the wizard does not open, and no attempt is made (so no EXPORT_DENIED row is written).
+  it('an investigator: Export is disabled with the visible reason naming the Supervisor role; no wizard, no attempt', async () => {
+    const { sim } = mountEvidence(`/evidence/${PKG_0001.evidenceId}`, { operatorId: OPERATOR_IDS.BUDI, assets: await diskAssets() })
+    await findPage('page-evidence-detail')
+    const rowsBefore = sim.store.getState().audit.rows.length
+    const button = screen.getByTestId('evidence-export')
+    expect(button).toBeDisabled()
+    const reason = within(screen.getByTestId('evidence-role-reasons')).getByTestId('role-reason')
+    expect(reason).toHaveTextContent('Requires the Supervisor role')
+    expect(button).toHaveAttribute('aria-describedby', reason.id)
+    fireEvent.click(button)
+    expect(screen.queryByTestId('export-wizard')).not.toBeInTheDocument()
+    expect(sim.store.getState().audit.rows).toHaveLength(rowsBefore)
     expect(getMissingI18nKeys()).toEqual([])
+  }, UI_TIMEOUT)
+
+  it('NEGATIVE CONTROL: a supervisor has Export enabled and no reason line', async () => {
+    mountEvidence(`/evidence/${PKG_0001.evidenceId}`, { operatorId: OPERATOR_IDS.ANDI, assets: await diskAssets() })
+    await findPage('page-evidence-detail')
+    expect(screen.getByTestId('evidence-export')).not.toBeDisabled()
+    expect(screen.queryByTestId('evidence-role-reasons')).toBeNull()
   }, UI_TIMEOUT)
 
   it('exports EV 0004 for a supervisor: verified source, custody audit row, then the prebuilt zip download', async () => {

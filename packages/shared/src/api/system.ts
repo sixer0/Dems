@@ -48,6 +48,13 @@ import { REPLICATED_SLICE_SCHEMAS, SettingsSliceSchema, type SettingsSliceBody }
 // Schemas
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/** The service name of a component: lower-case words joined by `-` (a code, not free text). */
+const COMPONENT_NAME_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+/** `<major>.<minor>.<patch>` of a component (no prefix, no build word). */
+const COMPONENT_VERSION_PATTERN = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+/** The release word of the capture worker (the form the Core's handshake accepts). */
+const CAPTURE_WORKER_VERSION_PATTERN = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+
 export const SystemStatusSchema = z
   .strictObject({
     device: REPLICATED_SLICE_SCHEMAS.device,
@@ -55,9 +62,41 @@ export const SystemStatusSchema = z
     update: REPLICATED_SLICE_SCHEMAS.update,
     diagnostics: REPLICATED_SLICE_SCHEMAS.diagnostics,
     settings: REPLICATED_SLICE_SCHEMAS.settings,
+    // Fix wave J, round two (finding JW-26; truth rule 3f): ONE version per component, stated by the Core itself.
+    components: z
+      .strictObject({
+        core: z
+          .strictObject({
+            name: z.string().regex(COMPONENT_NAME_PATTERN).describe('The service name of the Core, as operation 1 states it (`service`).'),
+            version: z.string().regex(COMPONENT_VERSION_PATTERN).describe('The version of the Core server: the value operation 1 answers as `version` and a sealed manifest states as `device.softwareVersion`.'),
+          })
+          .describe('The Core server itself.'),
+        captureWorker: z
+          .strictObject({
+            version: z.string().regex(CAPTURE_WORKER_VERSION_PATTERN).describe('The release word of the capture worker this Core starts, `capture-worker/<major>.<minor>.<patch>`: the one version it accepts at the handshake.'),
+          })
+          .optional()
+          .describe('The capture worker. Present on a Core in its own capture; absent on a Core in SIMULATED capture, which starts none.'),
+        apiContract: z
+          .strictObject({
+            version: z.string().regex(COMPONENT_VERSION_PATTERN).describe('The version of the API contract document this Core serves (`info.version` of its OpenAPI document).'),
+          })
+          .describe('The API contract.'),
+      })
+      .optional()
+      .describe(
+        'Core server only: the versions of the components of THIS Core, each defined in one place. They are the only version statements about the real system: `device.softwareVersion`, `device.identity.coreSoftwareVersion`, `device.identity.tabletAppVersion` and the versions of the `update` slice are values of the hosted demonstration model and are never shown as the version of a Core in its own capture. The web console and the mobile app each state their OWN build version; the app version of a paired device is `appVersion` of the paired-devices list. Absent: Simulated mode, or an older Core.',
+      ),
   })
-  .describe('The system page of the Core: five slices of the Core state, each in its wire form.');
+  .describe('The system page of the Core: five slices of the Core state, each in its wire form, and the versions of its components.');
 export type SystemStatus = z.output<typeof SystemStatusSchema>;
+
+/** The versions a Core in its own capture states (fix wave J round two, JW-26). A Core in SIMULATED capture states no `captureWorker`. */
+export const SYSTEM_COMPONENTS_EXAMPLE = {
+  core: { name: 'dems-core-server', version: '0.2.0' },
+  captureWorker: { version: 'capture-worker/0.5.0' },
+  apiContract: { version: '0.3.0' },
+} as const satisfies NonNullable<SystemStatus['components']>;
 
 export const DiagnosticsRunStartedSchema = z
   .strictObject({
@@ -101,6 +140,7 @@ const DENIED = { denial: AuditType.ACCESS_DENIED } as const;
 const MAINTENANCE = permissionAccess(Permission.MAINTENANCE);
 const MAINTENANCE_REFUSED = notPermitted(Permission.MAINTENANCE);
 const SESSION_OPEN = { description: 'A session is open: maintenance waits until it is closed (SESSION_ACTIVE).', schema: 'ApiError' } as const;
+const UPDATE_REFUSED = { description: 'A session is open: maintenance waits until it is closed (SESSION_ACTIVE). Or the Core has no software updater (COMMAND_UNSUPPORTED, `details.reason: UPDATER_NOT_AVAILABLE`: a Core in its own capture).', schema: 'ApiError' } as const;
 
 export const SYSTEM_OPERATIONS = [
   {
@@ -181,6 +221,7 @@ export const SYSTEM_OPERATIONS = [
     description: [
       'Starts the simulated A/B software update and answers `202` without a body. Its six steps resolve on the Core, in the `update` slice. It is refused while a session is open. No software is installed: the server and the apps keep their version.',
       'Writes UPDATE_STARTED. When an update is already running, or no version is available, nothing changes, nothing is written, and the answer is still `202`.',
+      'Fix wave J: a Core in its own capture has no updater - the `update` slice states `updaterNotAvailable: true` and this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: UPDATER_NOT_AVAILABLE`; nothing is started and nothing is written.',
       hostedNote('startSoftwareUpdate'),
     ].join('\n\n'),
     source: backendSource(SECTION, 67),
@@ -188,7 +229,7 @@ export const SYSTEM_OPERATIONS = [
       202: { description: 'The update is running, or nothing changed.' },
       401: NOT_SIGNED_IN,
       403: MAINTENANCE_REFUSED,
-      409: SESSION_OPEN,
+      409: UPDATE_REFUSED,
     },
     access: MAINTENANCE,
     audit: { success: AuditType.UPDATE_STARTED, ...DENIED },
@@ -251,6 +292,17 @@ export const SYSTEM_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
             settings: EXAMPLE_SLICES.settings,
           } satisfies SystemStatus,
         },
+        ownCapture: {
+          summary: 'A Core in its own capture: the same five slices and the versions of its components (the update and identity values are the demonstration model\'s, not versions of this Core)',
+          value: {
+            device: EXAMPLE_SLICES.device,
+            services: EXAMPLE_SLICES.services,
+            update: EXAMPLE_SLICES.update,
+            diagnostics: EXAMPLE_SLICES.diagnostics,
+            settings: EXAMPLE_SLICES.settings,
+            components: SYSTEM_COMPONENTS_EXAMPLE,
+          } satisfies SystemStatus,
+        },
       },
       401: SIGNED_OUT,
       403: BASIC_403_EXAMPLES,
@@ -276,7 +328,13 @@ export const SYSTEM_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
     responses: {
       401: SIGNED_OUT,
       403: MAINTENANCE_DENIED('startSoftwareUpdate'),
-      409: sessionActive('startSoftwareUpdate'),
+      409: {
+        ...sessionActive('startSoftwareUpdate'),
+        // Fix wave J (JT-06 / JW-06): a Core in its own capture has no updater.
+        updaterNotAvailable: simRefusalExample('A Core in its own capture: it has no software updater', 'COMMAND_UNSUPPORTED', 'Software update is not available on this Core.', 'COMMAND_UNSUPPORTED', {
+          reason: 'UPDATER_NOT_AVAILABLE',
+        }),
+      },
     },
   },
   updateSettings: {

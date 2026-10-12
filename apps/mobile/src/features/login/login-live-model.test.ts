@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import type { CoreLinkInfo, PairingInfo } from '@/runtime';
 import { isLimitFailure, isLiveLogin, liveAttemptFor, liveOfflineNoticeAfter, liveTrustLineFor, liveTrustTextFor, type LiveSignInFailure } from './login-live-model';
+import { loginEn } from './i18n';
 import type { AttemptOutcome } from './login-model';
 
 const link = (source: CoreLinkInfo['source']): CoreLinkInfo => ({ source, state: 'ONLINE' });
@@ -98,5 +99,23 @@ describe('the folder\'s production files read no simulator actions (AC-C-53, CLG
       expect(stripped).not.toMatch(/useSimActions/);
       expect(stripped).not.toMatch(/\.actions\b/);
     }
+  });
+});
+
+/** Fix wave J (JA2-13, JA2-29): every string of a copy tree, with its key path; interpolation names removed. */
+function operatorCopy(node: unknown, path: string[] = []): { key: string; text: string }[] {
+  if (typeof node === 'string') return [{ key: path.join('.'), text: node.replace(/\{\{[^}]*\}\}/g, '') }];
+  if (typeof node !== 'object' || node === null) return [];
+  return Object.entries(node).flatMap(([name, child]) => operatorCopy(child, [...path, name]));
+}
+/** Specification and developer language, and the device kind, that operator copy must not carry. */
+const NOT_OPERATOR_COPY = /tablet|§|design book|\badb\b|THIRD_PARTY|repository|this phase|\bSYS-\d|\bEVT-\d|\b(?:AC|SEC|M\d)-[A-Z0-9]|\bD\d{2,3}\b|\bbook\b/i;
+
+describe('fix wave J: operator copy of the Login', () => {
+  it('JA2-13 / JA2-29: no "tablet" on a phone, no specification id in any string', () => {
+    const found = operatorCopy(loginEn, ['features', 'login'])
+      .filter(({ text }) => NOT_OPERATOR_COPY.test(text))
+      .map(({ key }) => key);
+    expect(found).toEqual([]);
   });
 });

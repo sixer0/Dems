@@ -33,9 +33,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getRouteApi, useNavigate, useRouter } from '@tanstack/react-router'
 import { animate, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { CoreMode } from '@dems/shared/live'
 import { SOFTWARE_VERSION } from '@dems/shared/sim'
+import { useComponentVersionText } from '@/components/component-version-text'
 import { useModeSwitch } from '@/components/shell/mode-switch'
 import { lastTopLevelRoute } from '@/components/shell/shell-entrance'
+import { WEB_CONSOLE_VERSION } from '@/lib/product-versions'
 import { useMotionPolicy } from '@/motion'
 import { AuthCard } from './auth-card'
 import { BrandSide, LoginBackdrop } from './brand-panel'
@@ -58,6 +61,7 @@ export function LoginPage() {
   const { redirect } = loginRoute.useSearch()
   const { tier, tall } = useLoginTier()
   const presentation = usePresentationMode()
+  const versionText = useComponentVersionText()
   // The one confirmed mode change of the console (D144(1), CPW1-1): the shell's hook, naming this
   // page in the page's own log.
   const modeSwitch = useModeSwitch('login.modeSwitch')
@@ -183,7 +187,13 @@ export function LoginPage() {
           className="dems-login-footer"
           {...revealProps(m, { delayMs: choreography.cardMs, leaving, exitDelayMs: HANDOFF.cardDelayMs })}
         >
-          <span className="dems-login-footer-version">{t('common.brand.version', { version: SOFTWARE_VERSION })}</span>
+          {/* Fix wave J round three (JW-26; contract J2-S 2, client rule 5): before a sign-in a Live console
+              cannot know which Core answers, so it states only what is its own - the console's version, by
+              name. The Core states its own in the strip above (operation 1). The in-app simulator keeps the
+              model's version: it IS the demonstration. */}
+          <span className="dems-login-footer-version" data-testid="login-footer-version">
+            {controller.mode === CoreMode.LIVE ? versionText({ id: 'webConsole', version: WEB_CONSOLE_VERSION }).line : t('common.brand.version', { version: SOFTWARE_VERSION })}
+          </span>
           <span className="dems-login-footer-triplet">{t('common.brand.triplet')}</span>
         </motion.footer>
       </section>

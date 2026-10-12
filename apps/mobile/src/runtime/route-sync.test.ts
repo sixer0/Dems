@@ -93,6 +93,29 @@ describe('the table applied to the simulator (MA-08 unit form)', () => {
     expect(targetOf(sim)).toBeNull();
   });
 
+  // Fix wave J (found on the tablet, normal launch, signed in as the technician while the web driver's Summary of
+  // SES-20261012-0098 was unacknowledged: Back was routed back to the Summary and "Done" was refused - "acknowledgeSummary
+  // needs permission SESSION_START" - so no other screen could be reached). The hard form of JM-09.
+  it('an unacknowledged Summary holds only an operator who may acknowledge it: a technician is not routed to it', () => {
+    const { sim, advance } = createTestSim();
+    sim.actions.signIn('budi.santoso', 'demo-2026');
+    sim.actions.loadScenario('recording');
+    const id = sim.store.getState().session!.id;
+    sim.actions.stopRecording('Interview complete');
+    advance(10_000);
+    expect(selectPendingSummaryId(sim.store.getState())).toBe(id);
+    // CONTROL: the investigator who may acknowledge is routed to it.
+    expect(targetOf(sim)).toBe(`/session/summary/${id}`);
+    sim.actions.signOut();
+    sim.actions.signIn('rina.wijaya', 'demo-2026');
+    expect(selectPendingSummaryId(sim.store.getState())).toBe(id);
+    expect(targetOf(sim)).toBeNull();
+    // A supervisor may acknowledge: routed.
+    sim.actions.signOut();
+    sim.actions.signIn('andi.pratama', 'demo-2026');
+    expect(targetOf(sim)).toBe(`/session/summary/${id}`);
+  });
+
   it('a critical fault → recovery; recovery ends with no session', () => {
     const { sim, advance } = createTestSim();
     sim.actions.loadScenario('recording');

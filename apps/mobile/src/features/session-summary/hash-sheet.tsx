@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 export interface HashSheetValue {
   /** Row label, for example "VIDEO-01 · Camera 1" or "Manifest hash". */
@@ -29,12 +30,14 @@ export interface HashSheetProps {
 export function HashSheet({ value, onClose }: HashSheetProps) {
   const { t } = useTranslation();
   const presence = useSheetPresence(value !== null);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: 'summary-hash-sheet' });
   if (!presence.mounted) return null;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content>
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}>
           <SheetContentSignal onChange={presence.setContentMounted}>
             <View style={styles.header} testID="summary-hash-sheet">
               <View style={styles.headerText}>

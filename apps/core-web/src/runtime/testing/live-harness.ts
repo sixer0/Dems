@@ -32,7 +32,7 @@ import { createElement, StrictMode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { CORE_API_EXAMPLES, pickReplicatedState, type AuthSessionInfo, type HealthResponse, type ReplicatedState } from '@dems/shared/api'
+import { CORE_API_EXAMPLES, pickReplicatedState, SYSTEM_COMPONENTS_EXAMPLE, type AuthSessionInfo, type HealthResponse, type ReplicatedState } from '@dems/shared/api'
 import {
   createFakeTransport,
   OUTAGE,
@@ -40,7 +40,7 @@ import {
   type FakeReply,
   type FakeTransport,
 } from '@dems/shared/live/testing'
-import { AUTH_IDLE_TIMEOUT_MS, createIdleState, DEFAULT_SEED, type SimState } from '@dems/shared/sim'
+import { AUTH_IDLE_TIMEOUT_MS, createIdleState, DEFAULT_SEED, isOwnCaptureCoreState, type SimState } from '@dems/shared/sim'
 import { setCoreEndpointMode } from '@/lib/core-endpoint'
 import { createAppRouter, type AppRouter } from '@/router'
 import type { CoreModeControl } from '../core-mode'
@@ -405,6 +405,32 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
       },
     }
   })
+  // Fix wave J round three (JW-26): a console on a Core in its own capture reads operation 64 for the
+  // versions of the Core's components. Answered by what the model Core holds: its five slices and the
+  // contract's `components` - with the capture worker only when the served state is a Core in its own
+  // capture (a SIMULATED Core starts none). A page row that needs another answer scripts its own.
+  answered('getSystemStatus', () => {
+    if (!core.alive()) return fake.example('getSystemStatus', 401)
+    const { captureWorker, ...simulated } = SYSTEM_COMPONENTS_EXAMPLE
+    const served = JSON.parse(JSON.stringify(core.served)) as SimState
+    return {
+      status: 200,
+      body: {
+        device: served.device,
+        services: served.services,
+        update: served.update,
+        diagnostics: served.diagnostics,
+        settings: served.settings,
+        components: isOwnCaptureCoreState(core.served) ? { ...simulated, captureWorker } : simulated,
+      },
+    }
+  })
+  // Fix wave J round three (contract J2-S 4): the Sessions page asks operation 38 why a seal was given
+  // up when its list holds a session in quarantine. Answered by what the model Core holds: its history
+  // in one page (an entry carries `unsealableCause` only when the served entry does).
+  answered('listSessionHistory', () =>
+    core.alive() ? { status: 200, body: { items: JSON.parse(JSON.stringify(core.served.sessionHistory)), nextCursor: null } } : fake.example('listSessionHistory', 401),
+  )
   // CPW1-3: the console's health reader uses the global `fetch`, not the typed client. Answered here,
   // by what the model Core holds, so no Live test can reach a real port through it — including a test
   // that lands on `/login`, whose device strip asks for health on the page's own origin. A page row

@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { useState, type ReactNode, type RefObject } from 'react'
 import { Alert, Button, Card, Checkbox, Chip, Label, ListBox, Spinner } from '@heroui/react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
@@ -27,9 +28,9 @@ import { PrecheckSourceMarks } from '@/features/devices/source-badge'
 import { useMicInputName } from '@/features/devices/source-class'
 import { activeCaptureNotices, captureNoticeText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
-import { useSelfCaptureCore } from '@/lib/own-capture'
+import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { tween, useMotionPolicy } from '@/motion'
-import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, precheckNoteKey, reasonKeyFor, type GateView } from './model'
+import { CHECK_DEVICE_KEY, CHECK_VALUE_ENUM, isSecurityNotReportedNote, precheckNoteKey, reasonKeyFor, type GateView } from './model'
 
 const CHECK_ICON: Record<PrecheckCheckId, LucideIcon> = {
   CORE: Server,
@@ -109,6 +110,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const items = useSim(selectItems)
+  const policyOwnCore = useSelfCaptureCore()
   const reasonOf = useCheckReason()
   const blocked = items.filter((item) => item.status === 'BLOCK')
   // Flow 11 / 13: which kinds of source did not answer, for the "Search again" of each (G13, G17).
@@ -169,6 +171,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
         <header className="sn-card-header">
           <ShieldCheck className="sn-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="sn-card-title">{t('sessionNew.devices.title')}</h2>
+          <DemoMark block="precheck-checks" />
           <span className="sn-card-action">{outcomeChip}</span>
         </header>
         <p className="sn-caption">{t('sessionNew.devices.intro')}</p>
@@ -187,7 +190,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
 
         <ListBox aria-label={t('sessionNew.devices.listLabel')} selectionMode="none" className="sn-checks" data-testid="sn-checks">
           {items.map((item) => (
-            <ListBox.Item key={item.id} id={item.id} textValue={`${t(`sessionNew.devices.checks.${item.id}`)}: ${precheckNoteKey(item) !== null ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${item.status}`)}`}>
+            <ListBox.Item key={item.id} id={item.id} textValue={`${t(`sessionNew.devices.checks.${item.id}`)}: ${isSecurityNotReportedNote(item) ? t('common.platformNotReported.value') : precheckNoteKey(item) !== null ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${item.status}`)}`}>
               <CheckRow item={item} reason={reasonOf(item)} />
             </ListBox.Item>
           ))}
@@ -240,6 +243,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
           <header className="sn-card-header">
             <Camera className="sn-card-icon" aria-hidden="true" strokeWidth={1.75} />
             <h2 className="sn-card-title">{t('sessionNew.devices.previews')}</h2>
+            <DemoMark block="precheck-previews" />
           </header>
           <motion.div className="sn-previews" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: m.flags.stagger ? m.seconds(80) : 0 } } }}>
             {(['VIDEO-01', 'VIDEO-02'] as const).map((cameraId) => (
@@ -253,6 +257,7 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
           <header className="sn-card-header">
             <AudioLines className="sn-card-icon" aria-hidden="true" strokeWidth={1.75} />
             <h2 className="sn-card-title">{t('sessionNew.devices.meters')}</h2>
+            <DemoMark block="precheck-meters" />
             <span className="sn-card-meta sn-speak">
               <Mic className="size-3.5" aria-hidden="true" />
               {t(live ? 'sessionNew.live.speakToTest' : 'sessionNew.devices.speakToTest')}
@@ -275,14 +280,15 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
                 <OctagonX className="size-4" aria-hidden="true" />
                 {t('sessionNew.devices.policy.block')}
               </dt>
-              <dd>{t('sessionNew.devices.policy.blockList')}</dd>
+              {/* Fix wave J (JW-17): "lens fault blocks" beside an unreachable camera that only warns - the list of a Core in its own capture is its own rule. */}
+              <dd>{policyOwnCore ? t('web.waveJ.sessionNew.policyBlockOwn') : t('sessionNew.devices.policy.blockList')}</dd>
             </div>
             <div data-tone="warning">
               <dt>
                 <TriangleAlert className="size-4" aria-hidden="true" />
                 {t('sessionNew.devices.policy.warn')}
               </dt>
-              <dd>{t('sessionNew.devices.policy.warnList')}</dd>
+              <dd>{policyOwnCore ? t('web.waveJ.sessionNew.policyWarnOwn') : t('sessionNew.devices.policy.warnList')}</dd>
             </div>
           </dl>
         </Card>
@@ -336,10 +342,17 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
   // Wave H closing pass Z2: a NOTE states a fact of the installation; its mark is not a warning's, and
   // its `value` (`HOST_SYSTEM_CLOCK`) is no member of the value enumeration - the row reads its sentence.
   const note = precheckNoteKey(item) !== null
-  const valueText = item.value && !note ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
+  // Fix wave J (JW-04): "Security - READY - PASS" beside "Security: Not reported" on the Dashboard. A Core that states
+  // `security.platformNotReported` checked no TPM, Secure Boot or enclosure state: the row says so. A row that names a
+  // fault (WARN / BLOCK) keeps its words - the fault is a fact of the state.
+  // The Core says it itself since wave J (a NOTE with the rule `SECURITY_PLATFORM_NOT_REPORTED`); a PASS of an older Core
+  // that states `platformNotReported` reads the same.
+  const platformNotReported = usePlatformNotReported()
+  const notReported = isSecurityNotReportedNote(item) || (platformNotReported && item.id === 'SECURITY' && item.status === 'PASS')
+  const valueText = notReported ? t('web.waveJ.precheck.securityNotReported') : item.value && !note ? (t(`common.enums.${enumKey}.${item.value}` as never, { defaultValue: item.value }) as string) : null
   const resolved = item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK'
   return (
-    <div className="sn-check" data-check={item.id} data-status={item.status} data-note={note ? 'true' : undefined} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
+    <div className="sn-check" data-check={item.id} data-status={item.status} data-note={note ? 'true' : undefined} data-not-reported={notReported ? 'true' : undefined} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
       <span className="sn-check-icon" aria-hidden="true">
         <Icon className="size-4" strokeWidth={1.75} />
       </span>
@@ -352,7 +365,12 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
         </span>
       </span>
       <span className="sn-check-status">
-        {note ? (
+        {notReported ? (
+          <Chip size="sm" variant="soft" color="default" data-testid="sn-check-chip" data-not-reported="true" className="sn-status-chip">
+            <Info className="size-3.5" aria-hidden="true" />
+            <Chip.Label>{t('common.platformNotReported.value')}</Chip.Label>
+          </Chip>
+        ) : note ? (
           <Chip size="sm" variant="soft" color="default" data-testid="sn-check-chip" data-note="true" className="sn-status-chip">
             <Info className="size-3.5" aria-hidden="true" />
             <Chip.Label>{t('sessionNew.precheckNote.chip')}</Chip.Label>

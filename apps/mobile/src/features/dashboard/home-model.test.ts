@@ -10,7 +10,12 @@ import {
   displaySecondsOfDay,
   durationText,
   flagLineFor,
+  homeChipKey,
   homeStatusFor,
+  homeStatusOf,
+  offlineTile,
+  QUIET_HOME_FACTS,
+  type HomeFacts,
   idSuffix,
   MIC_NO_LEVEL_TEXT,
   micReadoutKind,
@@ -63,6 +68,66 @@ describe('H2 status', () => {
     expect(homeStatusFor({ state: 'CRITICAL', flags: [] })).toMatchObject({ ring: 'critical', tone: 'danger' });
     expect(homeStatusFor({ state: 'RECORDING', flags: [] })).toMatchObject({ ring: 'recording', tone: 'danger' });
     expect(homeStatusFor({ state: 'UNKNOWN', flags: [] })).toMatchObject({ ring: 'offline', tone: 'default' });
+  });
+
+  // Fix wave J (JA2-04, JT-01; truth rule 3c): Home is ONE pure function of the Core's facts. Each row is a
+  // situation a judge met; `not` is what Home said before the fix.
+  describe('homeStatusOf: one statement per combination of facts', () => {
+    const READY: HomeFacts['system'] = { state: 'READY', flags: [] };
+    const flag = (id: string, severity: 'CRITICAL' | 'WARNING') => ({ id, severity, message: id });
+    const facts = (over: Partial<HomeFacts>): HomeFacts => ({ ...QUIET_HOME_FACTS, system: READY, ...over });
+    const RETRY = { kind: 'RETRYING', sessionId: 'SES-20261011-0088', sentence: 'retry 1 of 3, in 30 s' } as const;
+    const BLOCK = { kind: 'BLOCKED', sessionId: 'SES-20261011-0088', sentence: 'Sealing of this session is blocked.' } as const;
+    const CAM2 = { kind: 'camera', trackId: 'VIDEO-02', deviceId: 'CAM-02' } as const;
+    const WARN_FACT = { id: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', severity: 'WARNING', message: 'The evidence volume does not confirm full synchronisation.', blocksRecording: null } as const;
+    const CRIT_FACT = { id: 'CAPTURE_DISCOVERY_EMPTY', severity: 'CRITICAL', message: 'No capture device answers.', blocksRecording: null } as const;
+    const CRIT_NOT_BLOCKING = { ...CRIT_FACT, id: 'NOTICE_ONLY', blocksRecording: false } as const;
+    const rows: readonly [string, HomeFacts, { presentation: string; ring: string; tone: string; chip: string; live: boolean; startBlock: string | null }][] = [
+      ['JA2-04: the Core link is cut on an idle, healthy Home', facts({ linkOffline: true }), { presentation: 'OFFLINE', ring: 'offline', tone: 'default', chip: 'features.dashboard.status.OFFLINE.chip', live: false, startBlock: 'OFFLINE' }],
+      ['JA2-04: the link is cut while a session records', facts({ linkOffline: true, system: { state: 'RECORDING', flags: [] }, sessionState: 'RECORDING' }), { presentation: 'OFFLINE', ring: 'offline', tone: 'default', chip: 'features.dashboard.status.OFFLINE.chip', live: false, startBlock: 'OFFLINE' }],
+      ['the link is cut while a critical fault was shown: still "state unknown"', facts({ linkOffline: true, system: { state: 'CRITICAL', flags: [flag('STORAGE_FULL', 'CRITICAL')] } }), { presentation: 'OFFLINE', ring: 'offline', tone: 'default', chip: 'features.dashboard.status.OFFLINE.chip', live: false, startBlock: 'OFFLINE' }],
+      ['JT-01 (a): a step of the seal failed and the Core retries it', facts({ seal: RETRY, sessionState: 'FINALIZING' }), { presentation: 'SEAL_RETRYING', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['the seal is blocked (the Core alert)', facts({ seal: BLOCK, sessionState: 'FINALIZING', system: { state: 'CRITICAL', flags: [] } }), { presentation: 'SEAL_BLOCKED', ring: 'critical', tone: 'danger', chip: 'common.systemState.CRITICAL', live: true, startBlock: null }],
+      ['JT-01 (b): a camera on a line is not reachable and its alert is active', facts({ unreachable: [CAM2] }), { presentation: 'ATTENTION', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['a WARNING fact of systemTruthOf that nothing else states', facts({ coreFacts: [WARN_FACT] }), { presentation: 'ATTENTION', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['a CRITICAL fact of systemTruthOf', facts({ coreFacts: [CRIT_FACT] }), { presentation: 'CRITICAL_ALERT', ring: 'critical', tone: 'danger', chip: 'common.systemState.CRITICAL', live: true, startBlock: null }],
+      ['a critical fault at rest (storage full)', facts({ system: { state: 'CRITICAL', flags: [flag('STORAGE_FULL', 'CRITICAL')] } }), { presentation: 'CRITICAL', ring: 'critical', tone: 'danger', chip: 'common.systemState.CRITICAL', live: true, startBlock: 'CRITICAL' }],
+      ['a critical fault while a session records', facts({ system: { state: 'CRITICAL', flags: [flag('CAMERA_VIDEO-01', 'CRITICAL')] }, sessionState: 'RECORDING' }), { presentation: 'CRITICAL', ring: 'critical', tone: 'danger', chip: 'common.systemState.CRITICAL', live: true, startBlock: 'CRITICAL' }],
+      ['RECORDING before the first durable fragment', facts({ system: { state: 'RECORDING', flags: [] }, sessionState: 'RECORDING', connecting: true }), { presentation: 'CAMERAS_CONNECTING', ring: 'offline', tone: 'default', chip: 'common.session.trackConnecting', live: true, startBlock: null }],
+      ['a session records, with a warning flag and a warning alert', facts({ system: { state: 'RECORDING', flags: [flag('MIC_AUDIO-01_NO_SIGNAL', 'WARNING')] }, sessionState: 'RECORDING', coreFacts: [WARN_FACT] }), { presentation: 'RECORDING', ring: 'recording', tone: 'danger', chip: 'common.systemState.RECORDING', live: true, startBlock: null }],
+      ['a CRITICAL fact the Core marks "does not block recording": attention, not critical', facts({ coreFacts: [CRIT_NOT_BLOCKING] }), { presentation: 'ATTENTION', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['a warning flag at rest', facts({ system: { state: 'ATTENTION', flags: [flag('STORAGE_LOW', 'WARNING')] } }), { presentation: 'ATTENTION', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['an open unsealable notice on a healthy Core', facts({ openNotices: 1 }), { presentation: 'NOTICE', ring: 'attention', tone: 'warning', chip: 'features.session-finalizing.openNotice.chip', live: true, startBlock: null }],
+      ['a notice AND an unreachable camera: the camera is said first', facts({ openNotices: 1, unreachable: [CAM2] }), { presentation: 'ATTENTION', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['a retried seal AND an unreachable camera: the seal is said first', facts({ seal: RETRY, sessionState: 'FINALIZING', unreachable: [CAM2] }), { presentation: 'SEAL_RETRYING', ring: 'attention', tone: 'warning', chip: 'common.systemState.ATTENTION', live: true, startBlock: null }],
+      ['CONTROL: nothing of the above', facts({}), { presentation: 'READY', ring: 'ready', tone: 'success', chip: 'common.systemState.READY', live: true, startBlock: null }],
+      ['the system slice is not read yet', facts({ system: { state: 'UNKNOWN', flags: [] } }), { presentation: 'UNKNOWN', ring: 'offline', tone: 'default', chip: 'common.systemState.UNKNOWN', live: true, startBlock: null }],
+    ];
+    it.each(rows)('%s', (_name, input, expected) => {
+      const status = homeStatusOf(input);
+      expect({ presentation: status.presentation, ring: status.ring, tone: status.tone, chip: homeChipKey(status), live: status.live, startBlock: status.startBlock }).toEqual(expected);
+    });
+
+    it('READY is said ONLY when no fact stands against it (every other row of the table differs from READY)', () => {
+      const notReady = rows.filter(([name]) => !name.startsWith('CONTROL'));
+      expect(notReady.length).toBe(rows.length - 1);
+      for (const [name, input] of notReady) expect([name, homeStatusOf(input).presentation]).not.toEqual([name, 'READY']);
+    });
+
+    it('names its reason: the unreachable source by name and device, a fact of the Core in its own sentence', () => {
+      expect(homeStatusOf(facts({ unreachable: [CAM2] })).flags).toEqual([
+        { id: 'UNREACHABLE_VIDEO-02', severity: 'WARNING', key: 'features.dashboard.flags.sourceNotReachableDevice', params: { deviceId: 'CAM-02' }, nameKey: 'common.devices.camera2' },
+      ]);
+      // A fact of the Core is drawn in the Core's own sentence.
+      expect(homeStatusOf(facts({ coreFacts: [WARN_FACT] })).flags).toEqual([{ id: 'FACT_EVIDENCE_VOLUME_SYNC_NOT_FULL_0', severity: 'WARNING', key: '', params: { message: WARN_FACT.message } }]);
+      // While a session records its own telemetry words the sources: no "not reachable" line from the registry.
+      expect(homeStatusOf(facts({ system: { state: 'RECORDING', flags: [] }, sessionState: 'RECORDING', unreachable: [CAM2] })).flags).toEqual([]);
+    });
+
+    it('a tile without the link draws no count and says "Not known"', () => {
+      const tile = offlineTile({ ...cameraTileFor({ camerasOnline: 1, camerasTotal: 2 }), reported: true });
+      expect(tile).toEqual({ id: 'camera', value: 1, total: 2, tone: 'default', stateKey: 'features.dashboard.tiles.state.unknown', href: '/devices', unknown: true });
+    });
   });
 
   it('lists critical flags before warnings', () => {
@@ -118,6 +183,10 @@ describe('H3 tiles', () => {
     expect(micReadoutKind({ frameFlat: true, state: 'READY' })).toBe('NO_LEVEL');
     expect(micReadoutKind({ frameFlat: true, state: 'CLIP' })).toBe('NO_LEVEL');
     expect(/signal/i.test(MIC_NO_LEVEL_TEXT)).toBe(false);
+    // Round two (J-S 6): a frame marked `notMeasured` has `noSignal: false` and the floor as a placeholder - no level.
+    expect(micReadoutKind({ frameFlat: false, state: 'READY', notMeasured: true })).toBe('NO_LEVEL');
+    expect(micReadoutKind({ frameFlat: false, state: 'NO_SIGNAL', notMeasured: true })).toBe('NO_SIGNAL');
+    expect(micReadoutKind({ frameFlat: false, state: 'READY', notMeasured: false })).toBe('LEVEL');
   });
 
   it('MIC tile source role: Active / Standby only while a session records', () => {
@@ -154,11 +223,12 @@ describe('H4 primary action (§3.7 table, one copy)', () => {
 });
 
 describe('H5 recent rows', () => {
-  it('shows the evidence id, "today" at UTC+07:00, the subject type and the poster suffix', () => {
+  it('shows the SESSION id the row opens (JA2-28: it showed the evidence id), "today" at UTC+07:00, the subject type and the poster suffix', () => {
     const rows = recentRowsFor([entry({})], NOW);
     expect(rows[0]).toMatchObject({
       sessionId: 'SES-20261001-0023',
-      displayId: 'EV-20261001-0013',
+      displayId: 'SES-20261001-0023',
+      evidenceId: 'EV-20261001-0013',
       whenKey: 'today',
       time: '09:35',
       posterSuffix: '0013',
@@ -171,7 +241,7 @@ describe('H5 recent rows', () => {
     const history = [entry({ evidenceId: null, outcome: 'INCOMPLETE', id: 'SES-X' }), entry({}), entry({}), entry({})];
     const rows = recentRowsFor(history, NOW);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({ displayId: 'SES-X', posterSuffix: null });
+    expect(rows[0]).toMatchObject({ displayId: 'SES-X', evidenceId: null, outcome: 'INCOMPLETE', posterSuffix: null });
   });
 
   it('decides today / yesterday / earlier on the WIB day, not the UTC day', () => {
@@ -210,6 +280,19 @@ describe('clock, timer and chips', () => {
     const degraded = chipRowFor({ posture: 'ATTENTION', timeSource: 'NTP', timeLocked: false, linkUp: false });
     expect(degraded.map((c) => c.tone)).toEqual(['warning', 'info', 'danger']);
     expect(degraded[1]!.valueKey).toBe('common.enums.timeSource.NTP');
+  });
+
+  // Fix wave J round two (JT-03 remainder; truth rule 3c): seen on the tablet - Home "Network: Connected" while
+  // Network & Time said "Network: Not reported".
+  it('a Core in its own capture (either of its two facts): the network chip reads "Not reported", neutral - never the model\'s link', () => {
+    for (const own of [{ platformNotReported: true }, { hostClock: true }]) {
+      for (const linkUp of [true, false]) {
+        const network = chipRowFor({ posture: 'SECURE', timeSource: 'RTC', timeLocked: false, linkUp, ...own }).find((chip) => chip.id === 'network')!;
+        expect([network.valueKey, network.tone]).toEqual(['common.platformNotReported.value', 'default']);
+      }
+    }
+    // CONTROL - the simulated device keeps its link word.
+    expect(chipRowFor({ posture: 'SECURE', timeSource: 'GNSS', timeLocked: true, linkUp: true }).find((chip) => chip.id === 'network')).toMatchObject({ valueKey: 'common.status.connected', tone: 'success' });
   });
 });
 

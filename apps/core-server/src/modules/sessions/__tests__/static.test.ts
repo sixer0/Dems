@@ -151,7 +151,10 @@ describe('rules M4 and M5: a command is the engine host\'s', () => {
 
   it('the two statements of the module are reads: the history page and the audio-source intervals (operation 82), through the typed builder on the pool the pool plugin\'s helper hands over', () => {
     expect(files(/\.\s*select\s*\(/g)).toEqual(['src/modules/sessions/audio-intervals.ts', 'src/modules/sessions/history.ts']);
-    expect(places(/\.\s*select\s*\(/g)).toHaveLength(2);
+    // Fix wave J round two (JW-22): a third READ in `history.ts` - the stored cause of a given-up seal, from the audit
+    // trail, on the same pool inside the same `app.db.read` of operation 38 (no second helper call, no write).
+    expect(places(/\.\s*select\s*\(/g)).toHaveLength(3);
+    expect(places(/\.\s*(?:insert|update|delete)\s*\(/g)).toHaveLength(0);
     // `app.db.read` (review finding CPB1-8): the module keeps no pool and probes nothing itself.
     expect(files(/\bapp\s*\.\s*db\s*\.\s*read\s*\(/g)).toEqual(['src/modules/sessions/audio-intervals.ts', 'src/modules/sessions/history.ts']);
     expect(places(/\bapp\s*\.\s*db\s*\.\s*read\s*\(HISTORY_READ_SOURCE, .*, request\);/g)).toHaveLength(1);

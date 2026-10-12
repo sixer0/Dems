@@ -31,7 +31,7 @@ import {
   type FaultKind,
 } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
-import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
+import { useOwnCaptureCore, usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { CoreReadError, pairedDevicesQueryOptions, retryCoreQuery, usePairedDevicesGate, useQueryFailure } from '@/lib/core-queries'
 import { CORE_QUERY_KEYS } from '@/runtime'
 import { HealthChart } from './health-chart'
@@ -506,6 +506,7 @@ function PanelOverview() {
   const label = useFieldLabel()
   const leds = useSim(frontPanelLeds)
   const health = useSim((s) => s.health)
+  const ownCore = useSelfCaptureCore()
   return (
     <Facts
       facts={[
@@ -522,7 +523,8 @@ function PanelOverview() {
         ],
         [label('temperature'), <Mono key="temp">{t('common.units.celsius', { value: health.cpuTempC.toFixed(1) })}</Mono>],
         [label('fan'), <Mono key="fan">{health.fanOk ? t('common.units.rpm', { value: health.fanRpm }) : t('common.faultKind.FAN_STALL')}</Mono>],
-        [label('firmware'), <Mono key="fw">{`v${DEVICE_IDENTITY.coreSoftwareVersion}`}</Mono>],
+        // Fix wave J round three (JW-26): the firmware of the appliance model's front panel is not a version of a Core in its own capture.
+        [label('firmware'), ownCore ? <span key="fw" data-testid="drawer-panel-firmware">{t('common.platformNotReported.value')}</span> : <Mono key="fw">{`v${DEVICE_IDENTITY.coreSoftwareVersion}`}</Mono>],
       ]}
     />
   )

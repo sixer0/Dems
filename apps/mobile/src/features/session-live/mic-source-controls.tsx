@@ -66,6 +66,8 @@ export interface MicSourcePanelProps {
   standbyInputId: string;
   block: MicSwitchBlock | null;
   silentInputId: string | null;
+  /** JA2-06: the input of an active `MIC_NO_SIGNAL` fault; drawn when no silence warning is. */
+  noSignalInputId?: string | null;
   confirmOpen: boolean;
   busy: boolean;
   pending: boolean;
@@ -82,6 +84,7 @@ export function MicSourcePanel({
   standbyInputId,
   block,
   silentInputId,
+  noSignalInputId = null,
   confirmOpen,
   busy,
   pending,
@@ -121,6 +124,26 @@ export function MicSourcePanel({
                   {...(reason === null ? {} : { accessibilityHint: reason })}
                 >
                   <Button.Label>{t('session.audioSource.silent.action')}</Button.Label>
+                </Button>
+              </View>
+            ) : null}
+          </Alert.Content>
+        </Alert>
+      ) : null}
+
+      {/* Round two (JA2-06): a microphone the Core reports WITHOUT A SIGNAL is said here, by name - on the monitor it
+          showed only in its small meter. When it is the active input the same confirmed switch is offered (nothing
+          is sent by the warning, OD-11). */}
+      {silentInputId === null && noSignalInputId !== null ? (
+        <Alert status={noSignalInputId === activeInputId ? 'danger' : 'warning'} testID="monitor-mic-no-signal" accessibilityLiveRegion="polite">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('features.session-live.micNoSignal.title', { mic: micName(noSignalInputId) })}</Alert.Title>
+            <Alert.Description>{t(noSignalInputId === activeInputId ? 'features.session-live.micNoSignal.activeBody' : 'features.session-live.micNoSignal.standbyBody')}</Alert.Description>
+            {noSignalInputId === activeInputId ? (
+              <View style={styles.alertActions}>
+                <Button variant="outline" size="sm" isDisabled={!offered || busy} onPress={onAsk} testID="monitor-mic-no-signal-switch" {...(reason === null ? {} : { accessibilityHint: reason })}>
+                  <Button.Label>{switchLabel}</Button.Label>
                 </Button>
               </View>
             ) : null}
@@ -183,12 +206,12 @@ export function MicSourceControls() {
   const control = useMicSwitch(view);
 
   // One Warning haptic when a silence warning appears (never tied to the 20 Hz data).
-  const wasSilent = useRef(view.silentInputId !== null);
+  const wasSilent = useRef(view.silentInputId !== null || view.noSignalInputId !== null);
   useEffect(() => {
-    const silent = view.silentInputId !== null;
+    const silent = view.silentInputId !== null || view.noSignalInputId !== null;
     if (silent && !wasSilent.current) triggerHaptic('gateWarn');
     wasSilent.current = silent;
-  }, [view.silentInputId]);
+  }, [view.silentInputId, view.noSignalInputId]);
 
   return (
     <MicSourcePanel
@@ -197,6 +220,7 @@ export function MicSourceControls() {
       standbyInputId={view.standbyInputId}
       block={view.block}
       silentInputId={view.silentInputId}
+      noSignalInputId={view.noSignalInputId}
       confirmOpen={control.confirmOpen}
       busy={control.busy}
       pending={control.pending}

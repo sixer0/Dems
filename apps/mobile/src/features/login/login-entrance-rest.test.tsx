@@ -26,7 +26,7 @@ import { AppProviders } from '@/providers';
 import { resetCoreLinkPrefsForTests } from '@/runtime';
 import { FakeHeartbeatSocket, createTestSim, flushAsync } from '@/runtime/testing/test-sim';
 import { resetAuthPrefsForTests } from '@/auth';
-import { entranceEndMs, useLoginChoreography, type LoginEntrance } from './use-login-choreography';
+import { SHAKE_ACT_MS, entranceEndMs, useLoginChoreography, type LoginEntrance } from './use-login-choreography';
 
 // The model of the device defect: no UI-thread update of an animated style ever lands.
 jest.mock('react-native-reanimated', () => {
@@ -89,6 +89,39 @@ describe('RF-PH-4: the end of the Login entrance is drawn by React', () => {
     }
     const emblem = (StyleSheet.flatten(result.current.emblemStyle as ViewStyle) ?? {}) as ViewStyle;
     expect(emblem.transform).toEqual([{ translateX: 0 }, { translateY: 0 }, { scale: 1 }]);
+  });
+
+  // Fix wave J, JM-01 d (tablet, normal launch: after one worklet error the Login came up without wordmark,
+  // caption and card until the app was killed). The model above was too kind: it lets a `useAnimatedStyle` that
+  // is swapped in AFTER the mount hand its first value to React. Reanimated does that only in a view's FIRST
+  // render; a later style reaches the view through the animation runtime alone - and that had stopped. So the
+  // resting picture must be PLAIN styles: the same module constants for every Login, not a hook's product.
+  it.each(cases)('JM-01 d - %s, %o: after the entrance the resting styles are plain constants, not animated styles', (entrance, settings) => {
+    const first = renderHook(() => useLoginChoreography(entrance, settings));
+    const second = renderHook(() => useLoginChoreography(entrance, settings));
+    // Before the end each hook has its own animated styles.
+    expect(first.result.current.cardStyle).not.toBe(second.result.current.cardStyle);
+    act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    for (const part of ['wordmarkStyle', 'captionStyle', 'cardStyle', 'companionStyle'] as const) {
+      expect(first.result.current[part]).toBe(second.result.current[part]);
+      expect(opacityOf(first.result.current[part])).toBe(1);
+    }
+    // A shake layers the animated style in for its 300 ms, then the plain one is back.
+    act(() => {
+      first.result.current.shake();
+    });
+    expect(first.result.current.cardStyle).not.toBe(second.result.current.cardStyle);
+    act(() => {
+      jest.advanceTimersByTime(SHAKE_ACT_MS * (settings.slow ? 10 : 1) + 50);
+    });
+    expect(first.result.current.cardStyle).toBe(second.result.current.cardStyle);
+    // The exit keeps its animated style until the screen is gone.
+    act(() => {
+      first.result.current.leave();
+    });
+    expect(first.result.current.cardStyle).not.toBe(second.result.current.cardStyle);
   });
 
   it('the entrance end follows the beats: about 1.9 s for `enter`, about 1.4 s for `return`, 0.4 s reduced, x10 in proof mode', () => {

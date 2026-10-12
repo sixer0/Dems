@@ -69,12 +69,14 @@ describe('Settings → Core link source, with LIVE in the list (MD-3)', () => {
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('release build: the LIVE segment is disabled, like the HEARTBEAT one', async () => {
+  // Fix wave J (N-03, J-P's `developerControlsShown`): REPLACES "release build: the LIVE segment is disabled, like the
+  // HEARTBEAT one" - a release build no longer draws the developer's Core link source control at all.
+  it('release build: the Core link source control is not drawn', async () => {
     devGlobal.__DEV__ = false;
     await mountPreferences();
-    expect(screen.getByTestId('settings-core-link-LIVE').props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByTestId('settings-core-link-HEARTBEAT').props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByTestId('settings-core-link-SIMULATED').props.accessibilityState?.disabled ?? false).toBe(false);
+    expect(screen.queryByTestId('settings-core-link')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-LIVE')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
     expect(getMissingKeys()).toEqual([]);
   });
 });

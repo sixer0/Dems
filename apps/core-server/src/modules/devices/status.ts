@@ -60,7 +60,7 @@ export type CommittedState = ReturnType<EngineHost['state']>;
 export type CaptureSlots = Pick<CaptureConfigSliceBody, 'cameras' | 'mics'>;
 
 /** The four members of an audio channel's answer that the simulator takes from its 20 Hz frame. */
-export type ChannelLevels = Pick<AudioFrame, 'dbfs' | 'peak' | 'clip' | 'noSignal'>;
+export type ChannelLevels = Pick<AudioFrame, 'dbfs' | 'peak' | 'clip' | 'noSignal' | 'notMeasured'>;
 
 /**
  * The levels of one channel as the committed `mics` slice decides them: the frame the shared
@@ -169,7 +169,7 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
   return mics.map((mic) => {
     const inputId = micInputOfChannel(slots.mics, mic.id);
     const live = frame?.audio.inputs[inputId];
-    const levels: ChannelLevels = live === undefined ? stateLevelsOf(mic, at) : { dbfs: live.dbfs, peak: live.peak, clip: mic.clipLatched, noSignal: live.noSignal };
+    const levels: ChannelLevels = live === undefined ? stateLevelsOf(mic, at) : { dbfs: live.dbfs, peak: live.peak, clip: mic.clipLatched, noSignal: live.noSignal, ...(live.notMeasured === true ? { notMeasured: true as const } : {}) };
     return {
       inputId,
       deviceId: slotDeviceOf.get(inputId) ?? mic.deviceId,
@@ -181,6 +181,8 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
       peak: levels.peak,
       clip: levels.clip,
       noSignal: levels.noSignal,
+      // Fix wave J (JW-08): a level the Core does not measure now is "not measured", never NO SIGNAL.
+      ...(levels.notMeasured === true ? { notMeasured: true as const } : {}),
       gainDb: mic.gainDb,
       phantom: mic.phantom,
     };
@@ -271,6 +273,8 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
       tpmOk: state.security.tpm.ok,
       secureBoot: state.security.secureBoot,
       tamper: state.security.tamper,
+      // Fix wave J (truth rule 3c; JW-04 / JT-03): a Core in its own capture reads no TPM - the placeholders above are then no readings.
+      ...(state.security.platformNotReported === true ? { platformNotReported: true as const } : {}),
     },
     services: state.services.map((service) => ({ id: service.id, name: service.name, status: service.status })),
     serverTime: toWibIso(now),

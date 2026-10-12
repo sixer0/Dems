@@ -7,8 +7,9 @@
  * tablet pane (device check, tablet 3-pane).
  *
  * All times are the sim clock at UTC+07:00 through the shared arithmetic formatters (`formatDate`,
- * `formatClock`; D28/Q2, H-MB-08). The digits roll once per second (03M M-C-02); under the D43 test
- * switch they step once per minute (uiautomator idle).
+ * `formatClock`; D28/Q2, H-MB-08). The digits roll once per second (03M M-C-02). Fix wave J (JA2-34): under
+ * the D43 test switch the VALUE still follows the second (it read hh:mm:00 for a whole minute); only the
+ * roll is held - that switch resolves the motion policy to reduced, which the digits take.
  */
 import { Clock3 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';

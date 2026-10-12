@@ -112,12 +112,14 @@ export interface NoPreviewTileProps {
   trackId: PreviewTrackId;
   /** The surface's own name of the tile ("Camera 1"); the device behind it is named under it. */
   name?: string;
+  /** A small box (Home's device tile): "No preview", the device on one line and the state - no icon, no repeated tile name. The accessible name stays whole. */
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
 /** "No preview", the device's name and its true state. One accessible element; no picture. */
-export function NoPreviewTile({ trackId, name, style, testID = `no-preview-${trackId}` }: NoPreviewTileProps) {
+export function NoPreviewTile({ trackId, name, compact = false, style, testID = `no-preview-${trackId}` }: NoPreviewTileProps) {
   const { t } = useTranslation();
   const { live } = useSourceBadgeMode();
   // One flat string, so the result compares by value (F74-13).
@@ -134,17 +136,23 @@ export function NoPreviewTile({ trackId, name, style, testID = `no-preview-${tra
   return (
     <View
       testID={testID}
-      style={[styles.tile, style]}
+      style={[styles.tile, compact ? styles.tileCompact : null, style]}
       accessible
       accessibilityRole="text"
       accessibilityLabel={t('features.capture-selector.preview.label', { name: title === '' ? t('features.capture-selector.preview.camera') : title, state: words.state })}
     >
       {/* A crossed-out PICTURE, not a crossed-out camera: the tile says nothing of the camera being off. */}
-      <ImageOff size={22} color={palette.gray} />
+      {compact ? null : <ImageOff size={22} color={palette.gray} />}
       <Text maxFontSizeMultiplier={1.2} style={styles.none} testID={`${testID}-none`}>
         {t('features.capture-selector.preview.none')}
       </Text>
-      {title === '' ? null : (
+      {compact && words.device !== null && words.device !== '' ? (
+        // Compact (Home's tile): the DEVICE behind the track on one line - the tile's head already says "Camera 1".
+        <Text maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.name} testID={`${testID}-name`}>
+          {words.device}
+        </Text>
+      ) : null}
+      {title === '' || compact ? null : (
         <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.name} testID={`${testID}-name`}>
           {title}
         </Text>
@@ -161,19 +169,22 @@ export interface CameraPreviewProps extends CameraFeedProps {
   trackId?: PreviewTrackId;
   /** The surface's own name of the tile ("Camera 1"), for the "No preview" tile. */
   name?: string;
+  /** See `NoPreviewTileProps.compact`. */
+  compact?: boolean;
 }
 
 /**
  * `CameraFeed` with the rule in front of it: the demo picture for a simulated Core, the "No preview"
  * tile for a Core in real capture. The props, the `testID` and the `style` are the feed's.
  */
-export function CameraPreview({ trackId, name, ...feed }: CameraPreviewProps) {
+export function CameraPreview({ trackId, name, compact = false, ...feed }: CameraPreviewProps) {
   const real = useRealCaptureView();
   if (!real) return <CameraFeed {...feed} />;
   return (
     <NoPreviewTile
       trackId={trackId ?? previewTrackOf(feed.cameraId)}
       style={[styles.feedShape, feed.style]}
+      compact={compact}
       {...(name === undefined ? {} : { name })}
       {...(feed.testID === undefined ? {} : { testID: feed.testID })}
     />
@@ -226,6 +237,7 @@ const styles = StyleSheet.create({
     borderColor: derived.surfaceTertiary,
     backgroundColor: derived.surfaceSecondary,
   },
+  tileCompact: { padding: spacing[1] },
   feedShape: { aspectRatio: 16 / 9, overflow: 'hidden' },
   none: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground, textAlign: 'center' },
   name: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size + 1, lineHeight: typography.caption.lineHeight + 2, color: palette.gray, textAlign: 'center' },

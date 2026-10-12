@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { DATE_PATTERNS, formatDate, formatDuration } from '@dems/shared/realtime';
-import { useSim } from '@dems/shared/sim';
+import { incompleteSessionFactOf, unsealableCauseOf, useSim } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, SubjectTypeChip, type KeyValueItem } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
@@ -173,9 +173,22 @@ function useClosedFailedStart(row: SessionRow): FailedStart | null {
   return named ? NOTICE_REASON_NO_CAMERA_CONNECTED : 'OTHER';
 }
 
+/** A Core code as words for an operator ("SIGNING_KEY_UNAVAILABLE" -> "signing key unavailable"); the code set is open. */
+export function causeWords(code: string): string {
+  return code.toLowerCase().replace(/_/g, ' ');
+}
+
 function Notice({ row }: { row: SessionRow }) {
   const { t } = useTranslation();
   const closedFailedStart = useClosedFailedStart(row);
+  // Round two (JW-22 remainder on the devices; contract_wave_j.md J2-S 4; N-08): a session that recorded and
+  // could NOT be sealed says where its recordings are and why the seal was given up - it read only "It will
+  // never be sealed." The cause is the entry's own `unsealableCause`, else the Core's alert (`unsealableCauseOf`).
+  const quarantine = useSim((s) => {
+    const entry = s.sessionHistory.find((candidate) => candidate.id === row.id);
+    if (entry === undefined || incompleteSessionFactOf(entry)?.kind !== 'QUARANTINED') return null;
+    return unsealableCauseOf(entry, s.alerts) ?? '';
+  });
   if (row.pendingSummary) {
     return (
       <Alert status="accent" testID="session-detail-pending">
@@ -200,6 +213,11 @@ function Notice({ row }: { row: SessionRow }) {
                 row.evidenceId ? t('features.sessions.detail.incompleteBody', { evidenceId: row.evidenceId }) : t('features.sessions.detail.incompleteBodyNoEvidence')
               }`}
         </Alert.Description>
+        {closedFailedStart === null && quarantine !== null ? (
+          <Alert.Description testID="session-detail-quarantined">
+            {`${t('common.truth.incompleteSession.QUARANTINED')} ${quarantine === '' ? t('features.sessions.detail.unsealableCauseNotStated') : t('features.sessions.detail.unsealableCause', { cause: causeWords(quarantine) })}`}
+          </Alert.Description>
+        ) : null}
       </Alert.Content>
     </Alert>
   );

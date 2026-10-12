@@ -315,7 +315,9 @@ export function ExportAuditDialog({ isOpen, onOpenChange, chain }: ExportAuditDi
       : undefined
   const steps: StepperStep[] = STEP_IDS.map((id, index) => ({
     id,
-    label: t(`securityAudit.exportAudit.steps.${id}`),
+    // Fix wave J (JW-24): the step read "Hash and seal", and the file carries the rows and the chain head - no signature
+    // and no seal. It is named for what it does.
+    label: id === 'seal' ? t('web.waveJ.auditExport.hashStep') : t(`securityAudit.exportAudit.steps.${id}`),
     status: stepStatus(index, id),
     ...(id === 'build' && buildDescription !== undefined ? { description: <span data-testid="export-audit-pages">{buildDescription}</span> } : {}),
   }))
@@ -406,6 +408,8 @@ export function ExportAuditDialog({ isOpen, onOpenChange, chain }: ExportAuditDi
                         {t('securityAudit.live.exportAudit.download')}
                       </Button>
                     </dd>
+                    <dt className="sr-only">{t('securityAudit.live.exportAudit.fileName')}</dt>
+                    <dd className="sa-muted" data-testid="export-audit-not-signed">{t('web.waveJ.auditExport.notSigned')}</dd>
                   </>
                 ) : null}
               </dl>

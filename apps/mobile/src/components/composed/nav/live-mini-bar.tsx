@@ -40,7 +40,7 @@ export interface LiveMiniBarProps {
 const MINI_BAR_DROP = -24;
 
 /** M-MB-02 enter: `gentle` spring + opacity from y −24; proof mode ×10; reduced: a 160 ms fade. */
-function miniBarEntering(settings: MotionSettings): EntryOrExitLayoutType {
+function miniBarEntering(settings: MotionSettings): EntryOrExitLayoutType | undefined {
   if (settings.policy === 'reduced') return crossFadeIn(settings);
   const { gentle } = motionTokens.spring;
   const builder = settings.slow
@@ -97,7 +97,8 @@ export function LiveMiniBar({ session, placement }: LiveMiniBarProps) {
 
   return (
     <Animated.View
-      entering={miniBarEntering(settings)}
+      // `crossFadeIn` answers `undefined` under the still policy (fix wave J, J-T's motion kit): then no entering prop at all.
+      {...(miniBarEntering(settings) !== undefined ? { entering: miniBarEntering(settings) as EntryOrExitLayoutType } : {})}
       exiting={crossFadeOut(settings)}
       style={placement === 'top' ? [styles.top, { paddingTop: insets.top + 8 }] : styles.aboveBar}
     >

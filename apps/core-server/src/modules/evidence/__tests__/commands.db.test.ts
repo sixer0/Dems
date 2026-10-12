@@ -6,8 +6,8 @@
 // Each block boots the real app on its own clone of the seed template (a process start), on a
 // manual clock and a manual timer. Operators are the seeded ones, signed in on the web console.
 // What is stored is read as `dems_owner`. Counts are relative to the trail AFTER the boot.
-import { EPOCH_HEADER_NAME, EvidenceVerifyResultSchema, EXPORT_ID_PATTERN, REVISION_HEADER_NAME, validateCoreApiResponse } from '@dems/shared/api';
-import { DEFAULT_EXPORT_DESTINATION, EVIDENCE_STATUS_STAGE, ROLE_PERMISSIONS, type AuditRow, type EvidenceItem, type OperatorRole, CAPTURE_CONNECT_MS } from '@dems/shared/sim';
+import { EPOCH_HEADER_NAME, EvidenceVerifyResultSchema, EXPORT_ID_PATTERN, EXPORT_KINDS_EXAMPLE, REVISION_HEADER_NAME, VERIFY_NOT_SEALED_TEXT, validateCoreApiResponse } from '@dems/shared/api';
+import { DEFAULT_EXPORT_DESTINATION, EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_SIGNATURE, EVIDENCE_STATUS_STAGE, ROLE_PERMISSIONS, hasSealedValues, type AuditRow, type EvidenceItem, type OperatorRole, CAPTURE_CONNECT_MS } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -271,15 +271,68 @@ describe('operation 41 verifyEvidence: the hosted action `verify`', () => {
     expect((effect.response.json() as { at: number }).at).toBe(at);
   });
 
-  it('an item of every status can be verified: RECORDED, EXPORTED and UNDER_REVIEW answer 200 and keep their status', async () => {
+  it('a SEALED item of every later status can be verified: EXPORTED and UNDER_REVIEW answer 200, keep their status, and the verdict says it is a demonstration', async () => {
     const { host, owner } = app;
-    for (const item of [app.recorded, app.exported, app.underReview]) {
+    for (const item of [app.exported, app.underReview]) {
       const effect = await effectOf(app, () => host.post(verifyUrl(item.id), app.session.INVESTIGATOR));
       expect(effect.response.statusCode, item.status).toBe(200);
       expect(validateCoreApiResponse('verifyEvidence', 200, effect.response.json()), item.status).toEqual({ ok: true });
+      // Fix wave J (JA2-02): the simulator's verdict over a demonstration record carries its mark.
+      expect(effect.response.json(), item.status).toMatchObject({ ok: true, demonstration: true });
       expect(effect.rows).toHaveLength(1);
       expect((await storedState(owner, item.id)).status).toBe(item.status);
     }
+  });
+
+  it('fix wave J (truth rule 3a; BLOCKER JA2-01 / JW-01): the RECORDED item was never sealed - operations 39 and 40 carry no sealed value of it, and operation 41 answers 409 NOT_SEALED and stores nothing', async () => {
+    const { host, owner } = app;
+    // What the Core says of the item: no track, the null digest, a placeholder signature, no verdict.
+    const detail = (await host.get(itemUrl(app.recorded.id), app.session.INVESTIGATOR)).json() as { evidence: Record<string, unknown>; media: unknown };
+    expect(detail.evidence).toMatchObject({ id: app.recorded.id, status: 'RECORDED', sealedAt: null, tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE, verification: { status: 'NOT_RUN', at: null } });
+    expect(hasSealedValues(detail.evidence)).toBe(false);
+    expect((JSON.stringify(detail.evidence).match(/[0-9a-f]{64}/g) ?? []).filter((hex) => hex !== EVIDENCE_NOT_SEALED_DIGEST)).toEqual([]);
+    expect(validateCoreApiResponse('getEvidence', 200, detail)).toEqual({ ok: true });
+    const listed = ((await host.get(`${EVIDENCE}?status=RECORDED`, app.session.INVESTIGATOR)).json() as { items: Record<string, unknown>[] }).items.find((item) => item['id'] === app.recorded.id);
+    expect(listed).toEqual(detail.evidence);
+
+    // Verify: there is nothing sealed to verify. Refused; no verdict, no row, no event, no custody entry, the stored item as it was.
+    const state = await storedState(owner, app.recorded.id);
+    const effect = await effectOf(app, () => host.post(verifyUrl(app.recorded.id), app.session.INVESTIGATOR));
+    expect(outcomeOf(effect.response)).toEqual([409, 'NOT_SEALED']);
+    expect(errorOf(effect.response).details).toEqual({ simCode: 'UNSEALED_EVIDENCE', from: null, event: 'verify' });
+    expect(errorOf(effect.response).message).toBe(VERIFY_NOT_SEALED_TEXT);
+    expect(validateCoreApiResponse('verifyEvidence', 409, effect.response.json())).toEqual({ ok: true });
+    expectNoStatePosition(effect.response);
+    expect(effect.rows).toEqual([]);
+    expect(effect.events).toEqual([]);
+    expect(effect.published).toEqual([]);
+    expect(effect.statements.at(-1)).toBe('ROLLBACK');
+    expect(host.engine.revision).toBe(effect.revisionBefore);
+    expect(await storedState(owner, app.recorded.id)).toEqual(state);
+    expect(state.verificationStatus ?? 'NOT_RUN').toBe('NOT_RUN');
+  });
+
+  it('fix wave J (truth rule 3d; JA2-03 / JW-03): a COMPOSITE export is refused before any job - 409 COMMAND_UNSUPPORTED, no export id, no row, no event, no export record - and operation 40 says so beforehand', async () => {
+    const { host, owner } = app;
+    const sealed = sealedItem(app, 0);
+    const detail = (await host.get(itemUrl(sealed.id), app.session.SUPERVISOR)).json() as { exportKinds?: unknown };
+    expect(detail.exportKinds).toEqual([...EXPORT_KINDS_EXAMPLE]);
+    const exportsBefore = await countOf(owner, 'exports');
+    const state = await storedState(owner, sealed.id);
+    const effect = await effectOf(app, () => host.post(exportUrl(sealed.id), app.session.SUPERVISOR, { reason: 'Prosecutor request', kind: 'COMPOSITE' }));
+    expect(outcomeOf(effect.response)).toEqual([409, 'COMMAND_UNSUPPORTED']);
+    expect(errorOf(effect.response)).toMatchObject({ message: 'Composite video is not available in this build.', details: { reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } });
+    expect(validateCoreApiResponse('exportEvidence', 409, effect.response.json())).toEqual({ ok: true });
+    expectNoStatePosition(effect.response);
+    // Refused BEFORE the hosted action: no command, no unit of work, nothing stored, nothing published - so nothing a client could list as "Evidence exported".
+    expect(effect.commands).toBe(0);
+    expect(effect.rows).toEqual([]);
+    expect(effect.events).toEqual([]);
+    expect(effect.published).toEqual([]);
+    expect(await countOf(owner, 'exports')).toBe(exportsBefore);
+    expect(await storedState(owner, sealed.id)).toEqual(state);
+    // An unknown item is still 404, whatever kind is asked for.
+    expect(outcomeOf(await host.post(exportUrl(UNKNOWN_EVIDENCE_ID), app.session.SUPERVISOR, { reason: 'Prosecutor request', kind: 'COMPOSITE' }))).toEqual([404, 'NOT_FOUND']);
   });
 
   it('an unknown item: 404 NOT_FOUND with the simulator\'s code; the unit is rolled back and nothing is stored or published', async () => {

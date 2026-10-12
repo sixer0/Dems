@@ -82,7 +82,7 @@ describe('the lines of a finished seed', () => {
     expect(lines.slice(0, 4)).toEqual([
       'db:seed: dems_demo on PostgreSQL 18.4 as dems_owner',
       'db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0',
-      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 314 row(s) in 24 of 43 table(s)',
+      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 310 row(s) in 24 of 43 table(s)',
       'row counts       43 table(s)',
     ]);
     // Four header lines, one line per table in the counts map (30 in v1; the map now names all 42 - T-41 of dbc-4 and T-42 of PE-129b-01 joined with 0 rows:
@@ -98,7 +98,8 @@ describe('the lines of a finished seed', () => {
     // five built-in devices — rows 49/52 — and the stt_config singleton — row 114). The cli.db
     // suite measures exactly this total on a throw-away first build; 312 are written by the seed
     // and the rows of audit_chain_head and schema_meta come from the migrations.
-    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(314);
+    // Fix wave J (truth rule 3a): 310 - the seed's never-sealed item has no track row (4 fewer than 314).
+    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(310);
   });
 });
 

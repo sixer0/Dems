@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
@@ -20,6 +21,8 @@ export interface SystemPanelProps {
   /** DOM id for in-page links (Settings → maintenance / identity). */
   anchorId?: string
   children: ReactNode
+  /** Fix wave J (JW-06): false when the panel draws none of the appliance model's values (the update card of a Core without an updater): no "Synthetic demo values" chip then. */
+  shownValues?: boolean
 }
 
 /**
@@ -34,7 +37,7 @@ const SYNTHETIC_BLOCKS: ReadonlySet<string> = new Set(['services', 'health', 'up
  * (gold icon, tracked uppercase title, optional right-side action), entering on its M-PG-SYS beat
  * (R1). Each panel has its own error boundary, so one failing panel never blanks the page.
  */
-export function SystemPanel({ id, icon: Icon, title, action, className, bodyClassName, anchorId, children }: SystemPanelProps) {
+export function SystemPanel({ id, icon: Icon, title, action, className, bodyClassName, anchorId, children, shownValues = true }: SystemPanelProps) {
   const variants = usePanelVariants(PANEL_BEAT_MS[id])
   return (
     <motion.section
@@ -50,7 +53,9 @@ export function SystemPanel({ id, icon: Icon, title, action, className, bodyClas
         <div className="sys-card-header">
           <Icon className="sys-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="sys-card-title">{title}</h2>
-          {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
+          {SYNTHETIC_BLOCKS.has(id) && shownValues ? <SyntheticValuesChip block={id} /> : null}
+          {/* Fix wave J (JW-07): the demonstration Core's values are marked on every panel. */}
+          <DemoMark block={`system-${id}`} />
           {action ? <div className="sys-card-action">{action}</div> : null}
         </div>
         <div className={cn('sys-card-body', bodyClassName)}>

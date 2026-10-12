@@ -26,6 +26,7 @@ import { exportJobQueryKey } from '../export-job'
 import { COMPOSITE_NOT_SELECTED, EXPORT_JOB_POLL_MS, answeredArchiveOnCoreOf, answeredJobIdOf, exportJobIdOf, forwardProgress, isTerminalJob, readExportDownload, readExportJob } from '../export-job-model'
 import { RECORDED_VERIFY_V2 } from './fixtures/verify-v2-recorded'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, type LiveEvidence } from './live-evidence-bed'
+import { EXPORT_KINDS_EXAMPLE } from '@dems/shared/api'
 import { scriptDetail, type Op40Extra } from './real-item-bed'
 
 configure({ asyncUtilTimeout: 8_000 })
@@ -148,16 +149,62 @@ const job = () => screen.getByTestId(`export-job-${EV.sealed}`)
 const jobReads = () => opened!.bed.fake.log.requestsOf('getEvidenceExportJob')
 
 describe('pass D5: the kind of a new export, the job the 202 names, an export already running', () => {
-  it('Composite chosen: the request names `kind: COMPOSITE`; the job is read by the `jobId` of the 202; a build without the encoder reads as row 92 worded it', async () => {
+  // Fix wave J (JW-03; truth rule 3d; contract J-S 3): the choice follows the Core's own statement `exportKinds`. This case
+  // REPLACES "Composite chosen ... a build without the encoder" - there the console sent COMPOSITE without asking, the Core
+  // wrote an export id and an audit row, and the job failed.
+  it('Composite stated AVAILABLE by the Core: the request names `kind: COMPOSITE`; the job is read by the `jobId` of the 202; the review step states the output', async () => {
     const bed = await exportSealed([{ ...JOB, jobId: 'EXPJ-000777', kind: 'COMPOSITE', derived: true, status: 'FAILED', progressPct: 0, failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED' }], {
       composite: true,
+      detail: { exportKinds: [{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: true }] },
       accepted: (evidenceId) => ({ status: 202, body: { exportId: 'EXP-000032', evidenceId, status: 'QUEUED', jobId: 'EXPJ-000777' } }),
     })
     expect(bed.bed.fake.log.requestsOf('exportEvidence').at(-1)?.body).toMatchObject({ reason: 'Court order 12/2026', kind: 'COMPOSITE' })
     await until(() => expect(job()).toHaveAttribute('data-status', 'FAILED'), POLLS)
     expect(jobReads()[0]?.url).toMatch(/\/api\/v1\/evidence\/exports\/EXPJ-000777$/)
     expect(job()).toHaveTextContent('Composite video is not available in this build.')
+    // A job that FAILED never leaves the wizard's last step reading "done".
+    await until(() => expect(document.querySelector('[data-testid="export-wizard"] [data-step="export"], [data-testid="export-wizard"]')?.textContent ?? '').not.toMatch(/Evidence exported/))
     expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('Composite stated NOT available (the contract`s example): the option is disabled with its reason, and the request names no kind', async () => {
+    opened = await openLiveEvidence(`/evidence/${EV.sealed}`, {
+      before: (bed) => {
+        bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asV2) }
+        scriptDetail(bed, EV.sealed, { source: 'NONE', packageSuffix: null }, { exportKinds: [...EXPORT_KINDS_EXAMPLE] })
+        bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
+      },
+    })
+    await findDetailBody()
+    fireEvent.click(screen.getByTestId('evidence-export'))
+    await screen.findByTestId('export-wizard', {}, UI)
+    // The reason is on the step itself, without opening the list.
+    expect(await screen.findByTestId('export-kind-composite-unavailable', {}, UI)).toHaveTextContent('Composite: Composite video is not available in this build.')
+    fireEvent.click(screen.getByTestId('export-kind'))
+    const option = await screen.findByRole('option', { name: /Composite/ })
+    expect(option.getAttribute('aria-disabled') === 'true' || option.hasAttribute('data-disabled')).toBe(true)
+    // A press on it chooses nothing: the output stays Package.
+    fireEvent.click(option)
+    expect(screen.getByTestId('export-kind')).toHaveTextContent('Package')
+    expect(screen.getByTestId('export-kind')).not.toHaveTextContent('Composite')
+    expect(opened.bed.fake.log.requestsOf('exportEvidence')).toHaveLength(0)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('`exportKinds` absent (an older Core): Composite is not offered at all', async () => {
+    opened = await openLiveEvidence(`/evidence/${EV.sealed}`, {
+      before: (bed) => {
+        bed.core.served = { ...bed.core.served, evidence: evidenceWith(bed, EV.sealed, asV2) }
+        bed.fake.answer('getTranscript', () => bed.fake.example('getTranscript', 409))
+      },
+    })
+    await findDetailBody()
+    fireEvent.click(screen.getByTestId('evidence-export'))
+    await screen.findByTestId('export-wizard', {}, UI)
+    fireEvent.click(screen.getByTestId('export-kind'))
+    await screen.findByRole('option', { name: 'Package' })
+    expect(screen.queryByRole('option', { name: /Composite/ })).toBeNull()
+    expect(screen.queryByTestId('export-kind-composite-unavailable')).toBeNull()
   })
 
   it('no kind chosen: the request names none (the Core reads PACKAGE)', async () => {

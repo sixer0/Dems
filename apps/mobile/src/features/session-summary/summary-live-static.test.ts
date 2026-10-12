@@ -76,7 +76,11 @@ describe('the three folders take the Core through the light Live API (CLG c, AC-
     expect(hook).toMatch(/settle\(\(\) => actions\.acknowledgeSummary\(sessionId\), \{/);
     expect(hook).toMatch(/if \(live && presentCoreError\(error\)\) \{/);
     // No other file of the three folders takes the actions at all.
-    expect(matching(/\buseCoreActions\b/)).toEqual(['session-summary/use-summary.ts']);
+    // Fix wave J (JT-02): the device's "Retry sealing" (operation 33) is the second caller, by the same rule.
+    expect(matching(/\buseCoreActions\b/)).toEqual(['session-finalizing/seal-attention.tsx', 'session-summary/use-summary.ts']);
+    const retry = readFileSync(join(__dirname, '../session-finalizing/seal-attention.tsx'), 'utf8');
+    expect(retry).toMatch(/settle\(\(\) => actions\.recover\(\)/);
+    expect(retry).toMatch(/if \(live && presentCoreError\(error\)\) \{/);
     expect(matching(/\buseMobileLive\b/)).toEqual([]);
   });
 });
@@ -101,7 +105,8 @@ describe('one LIVE idiom, one pending control, one link notice (rule 5; 09b §8)
   it('the mode is read from `useCoreLink().source` only; the link notice is `useCoreLinkNotice()`; no own link rule', () => {
     expect(matching(/\b(?:useCoreMode|getCoreLinkSource|useCoreLinkSource|useCoreLinkSourceSetting|coreLinkSource)\b/)).toEqual([]);
     // Fix wave I (contract note A1 §4): the Finalizing screen reads the mode with the same idiom - "Resumed after restart" is not claimed from an attempt count on a Core server.
-    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['session-finalizing/session-finalizing-screen.tsx', 'session-summary/use-summary.ts']);
+    // Fix wave J round two (JA2-02): the Summary screen reads the mode with the same idiom for its demonstration statement.
+    expect(matching(/useCoreLink\(\)\.source === 'LIVE'/)).toEqual(['session-finalizing/seal-attention.tsx', 'session-finalizing/session-finalizing-screen.tsx', 'session-summary/session-summary-screen.tsx', 'session-summary/use-summary.ts']);
     expect(matching(/\buseCoreLinkNotice\(\)/)).toEqual(['session-summary/session-summary-screen.tsx', 'sessions/sessions-screen.tsx']);
     expect(matching(/\b(?:coreLinkViewOf|offlineNoticeAfter|initialOfflineNotice|useConnectionBanner)\b/)).toEqual([]);
     expect(matching(/'(?:CONNECTING|RESYNCING|STALE|OFFLINE)'/)).toEqual([]);

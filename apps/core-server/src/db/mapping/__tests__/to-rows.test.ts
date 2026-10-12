@@ -185,7 +185,8 @@ describe('the rows of the idle dataset at the fixed instant (contract §9.4)', (
 
   it('tracks are numbered 1 to 4 and custody entries 1 to n, per item', () => {
     for (const item of rows.evidenceItems) {
-      expect(rows.evidenceTracks.filter((track) => track.evidenceId === item.id).map((track) => track.position)).toEqual([1, 2, 3, 4]);
+      // Fix wave J (truth rule 3a): the one never-sealed item of the dataset has no track row at all.
+      expect(rows.evidenceTracks.filter((track) => track.evidenceId === item.id).map((track) => track.position)).toEqual(item.sealedAt === null ? [] : [1, 2, 3, 4]);
       const custody = rows.evidenceCustody.filter((entry) => entry.evidenceId === item.id).map((entry) => entry.seq);
       expect(custody).toEqual(custody.map((_, index) => index + 1));
       expect(custody.length).toBeGreaterThanOrEqual(2);

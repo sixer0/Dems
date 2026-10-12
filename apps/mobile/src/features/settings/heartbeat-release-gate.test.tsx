@@ -112,13 +112,15 @@ describe('Heartbeat Core link in release builds (06 §2.6, D112)', () => {
     expect(result.current).toBe('SIMULATED');
   });
 
-  it('release: Settings shows the Heartbeat option disabled with the developer-only hint; pressing it changes nothing', async () => {
+  // Fix wave J (JA2-29, N-03; replaces "shows the Heartbeat option disabled with the developer-only hint"):
+  // a release build shows NO Core link control. The source gate of the two tests above is unchanged, so
+  // a stored or a programmatic HEARTBEAT still cannot take effect.
+  it('release: Settings does not show the Core link source at all, and nothing is written', async () => {
     asReleaseBuild();
     await mountPreferences();
-    const heartbeat = screen.getByTestId('settings-core-link-HEARTBEAT');
-    expect(heartbeat.props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByText(/developer setup only/i)).toBeTruthy();
-    fireEvent.press(heartbeat);
+    expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-HEARTBEAT')).toBeNull();
+    expect(screen.queryByText(/developer setup only|mock-core|Core link source/i)).toBeNull();
     await flushAsync();
     expect(await storedPrefs()).not.toHaveProperty('coreLinkSource');
     expect(getMissingKeys()).toEqual([]);

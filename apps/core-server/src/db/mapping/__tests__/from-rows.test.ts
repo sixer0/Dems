@@ -1,7 +1,8 @@
 // The way back of the rows this task changed (blueprint row 129b): the three sealed columns of an
 // evidence item (request of row 79) and the order of the two microphone lines of the selector
 // (request of row 66, decision D106 (1), AC-B-70). Pure: no database.
-import { DEFAULT_SEED, createIdleState, type EvidenceItem, type SimState } from '@dems/shared/sim';
+import { DEFAULT_SEED, EVIDENCE_NOT_SEALED_DIGEST, EVIDENCE_NOT_SEALED_SIGNATURE, createIdleState, hasSealedValues, type EvidenceItem, type SimState } from '@dems/shared/sim';
+import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE, EvidenceItemSchema } from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
 import { FIXED_NOW, asStored } from '../../../../test/support/seed';
 import {
@@ -70,6 +71,69 @@ describe('evidence_items: the sealed columns come back as the item carried them'
     ] as const) {
       expect(() => back(columns)).toThrow(MappingError);
     }
+  });
+});
+
+// Fix wave J (decision D243; truth rule 3a; BLOCKER JA2-01 / JW-01): a row with `sealed_at` NULL is a recording that was
+// never sealed. The table needs a manifest hash and a signature in every row, and a database that is KEPT holds rows
+// written before the wave with the whole integrity block of a seal (lane 2 is never reset): what leaves the store has none.
+describe('evidence_items: a row that was never sealed comes back without any sealed value (fix wave J)', () => {
+  const state = idle();
+  const sealed = state.evidence.find((entry) => entry.sealedAt !== null) as EvidenceItem;
+  const recorded = state.evidence.find((entry) => entry.sealedAt === null) as EvidenceItem;
+
+  it('a row written BEFORE the wave - four track rows, a manifest hash, a signature, a stored PASS - is answered with none of them', () => {
+    // The old shape: the unsealed item built like a seal, verified once (what the simulator did until wave J).
+    const old: EvidenceItem = { ...recorded, tracks: sealed.tracks, manifestHash: sealed.manifestHash, signature: sealed.signature, verification: { status: 'PASS', at: FIXED_NOW }, tampered: true, tamperedTrackId: 'AUDIO-02' };
+    const row = evidenceItemToRow(old, context);
+    expect([row.sealedAt, row.manifestHash, row.verificationStatus]).toEqual([null, sealed.manifestHash, 'PASS']);
+    const back = evidenceItemFromRows(row, evidenceTracksToRows(old), evidenceCustodyToRows(old));
+    expect(back).toMatchObject({ sealedAt: null, status: 'RECORDED', tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE, verification: { status: 'NOT_RUN', at: null }, tampered: false, tamperedTrackId: null });
+    expect(hasSealedValues(back)).toBe(false);
+    // Not one hash of the stored integrity block is in the answer.
+    expect((JSON.stringify(back).match(/[0-9a-f]{64}/g) ?? []).filter((hex) => hex !== EVIDENCE_NOT_SEALED_DIGEST)).toEqual([]);
+    // What is not a sealed value comes back as stored: the custody chain, the times, the sizes.
+    expect(back).toMatchObject({ id: old.id, sessionId: old.sessionId, custody: old.custody, recordedAt: old.recordedAt, endedAt: old.endedAt, sizeBytes: old.sizeBytes });
+  });
+
+  it('the item the seed writes NOW already has that shape: no track row, the null digest, and toRow(fromRow(row)) is the same row', () => {
+    expect(recorded).toMatchObject({ tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE });
+    expect(evidenceTracksToRows(recorded)).toEqual([]);
+    const row = evidenceItemToRow(recorded, context);
+    const back = evidenceItemFromRows(row, [], evidenceCustodyToRows(recorded));
+    expect(back).toEqual(recorded);
+    expect(evidenceItemToRow(back, context)).toEqual(row);
+  });
+
+  it('CONTROL - a SEALED row comes back with every sealed value it holds', () => {
+    const back = evidenceItemFromRows(evidenceItemToRow(sealed, context), evidenceTracksToRows(sealed), evidenceCustodyToRows(sealed));
+    expect(back).toEqual(sealed);
+    expect(hasSealedValues(back)).toBe(true);
+    expect(back.tracks).toHaveLength(4);
+    expect(back.manifestHash).not.toBe(EVIDENCE_NOT_SEALED_DIGEST);
+  });
+
+  it('fix wave J round two (JW-13): the markers and the notes of a SEALED item are stored with it and come back whole - the form\'s note with its origin - and a never-sealed item keeps them too', () => {
+    for (const base of [sealed, recorded]) {
+      const annotated: EvidenceItem = { ...base, markers: [...EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.markers], notes: EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.notes.map((note) => ({ ...note })) };
+      const row = evidenceItemToRow(annotated, context);
+      // What the Core stored for the session: the two lists as they are, in the item's own row (no other table, no column added).
+      expect(row.markers).toEqual(EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.markers);
+      expect(row.notes).toEqual(EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.notes);
+      const back = evidenceItemFromRows(row, evidenceTracksToRows(annotated), evidenceCustodyToRows(annotated));
+      expect(back.markers).toEqual(EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.markers);
+      expect(back.notes).toEqual(EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE.notes);
+      expect(back.notes?.[0]).toMatchObject({ id: 'NOTE-FORM', origin: 'SESSION_FORM' });
+      expect(EvidenceItemSchema.safeParse(back).success).toBe(true);
+    }
+    // CONTROL: an item whose session had none comes back with two empty lists, never with another item's.
+    expect(evidenceItemFromRows(evidenceItemToRow(sealed, context), evidenceTracksToRows(sealed), evidenceCustodyToRows(sealed)).notes).toEqual(sealed.notes ?? []);
+  });
+
+  it('the whole state comes back equal through fromRows: the never-sealed item is no difference to write (a kept database is never rewritten)', () => {
+    const back = fromRows(asStored(toRows(state, context)));
+    expect(back.evidence).toEqual(state.evidence);
+    expect(diffSlices(state as never, { ...state, evidence: back.evidence } as never, FIXED_NOW)).toEqual([]);
   });
 });
 

@@ -62,6 +62,7 @@
  * CONTRACT with the scaffold (P25: `app.ts` is frozen): `systemModule` keeps its name.
  */
 import {
+  OPENAPI_CORE_SERVER_DOCUMENT_VERSION,
   DiagnosticsRunStartedSchema,
   ServicesRestartedSchema,
   SettingsSliceSchema,
@@ -74,11 +75,15 @@ import {
 } from '@dems/shared/api';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { CAPTURE_WORKER_VERSION } from '../../capture';
+import { captureOperationOf } from '../../capture/fence';
+import { SERVICE_NAME } from '../../config';
+import { CORE_SERVER_VERSION } from '../../version';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { transcriptionServiceSource } from '../../transcription';
 import { SYSTEM_ACTION_OF_OPERATION, registryEntry } from './operations';
 import { SETTINGS_CHANGED_MESSAGE, SETTINGS_UNIT_LABEL, changedSettingsKeys, settingsChangeLine, settingsPatchOf } from './settings';
-import { systemStatusOf, type TranscriberServiceSource } from './status';
+import { systemComponentsOf, systemStatusOf, type TranscriberServiceSource } from './status';
 
 export { SYSTEM_ACTION_OF_OPERATION, SYSTEM_MODULE_OPERATIONS, registryEntry, type SystemModuleOperation } from './operations';
 export {
@@ -98,9 +103,11 @@ export {
   TranscriberServiceState,
   serviceReportsOf,
   servicesWithProcesses,
+  systemComponentsOf,
   systemStatusOf,
   type ServiceProbes,
   type ServiceReport,
+  type SystemComponents,
   type SystemStatusSource,
   type TranscriberServiceReport,
   type TranscriberServiceSource,
@@ -120,7 +127,18 @@ export const systemModule: FastifyPluginAsync<SystemModuleOptions> = async (app,
   routes.route({
     ...routeOfOperation(registryEntry('getSystemStatus')),
     schema: { response: { 200: SystemStatusSchema } },
-    handler: async (): Promise<SystemStatus> => systemStatusOf(app.engine.state(), { capture: app.capture.status(), transcriber: transcriber() }),
+    // JW-26: the versions of this Core's components, each from its one constant; a Core in SIMULATED capture starts no worker.
+    handler: async (): Promise<SystemStatus> =>
+      systemStatusOf(
+        app.engine.state(),
+        { capture: app.capture.status(), transcriber: transcriber() },
+        systemComponentsOf({
+          service: SERVICE_NAME,
+          coreVersion: CORE_SERVER_VERSION,
+          captureWorkerVersion: captureOperationOf(app.config) === 'SIMULATED' ? null : CAPTURE_WORKER_VERSION,
+          apiContractVersion: OPENAPI_CORE_SERVER_DOCUMENT_VERSION,
+        }),
+      ),
   });
 
   // 65 runDiagnostics
@@ -147,6 +165,8 @@ export const systemModule: FastifyPluginAsync<SystemModuleOptions> = async (app,
   // 67 startSoftwareUpdate
   routes.route({
     ...routeOfOperation(registryEntry('startSoftwareUpdate')),
+    // Fix wave J (JT-06 / JW-06): on a Core in its own capture the hosted action refuses - `update.updaterNotAvailable`,
+    // `409 COMMAND_UNSUPPORTED`, `details.reason: UPDATER_NOT_AVAILABLE` (the engine host words it: `engine/errors.ts`).
     handler: async (request, reply) => {
       await app.engine.command(request.principal, SYSTEM_ACTION_OF_OPERATION.startSoftwareUpdate);
       return reply.code(202).send();

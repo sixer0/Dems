@@ -53,7 +53,7 @@ export function StoragePanel() {
   const legend = [
     { key: 'used', label: t('common.storage.used'), value: t('common.units.gb', { value: storage.usedGb }), dot: 'bg-accent' },
     { key: 'free', label: t('common.storage.free'), value: freeText, dot: 'bg-[#8a6a48]' },
-    { key: 'sealed', label: t('common.storage.sealedEvidence'), value: String(counts.sealedToday), dot: 'bg-success' },
+    { key: 'sealed', /* Fix wave J (JT-21 / JW-28): the figure counts TODAY's seals; the label said "Sealed Evidence" beside 43 sealed items. */ label: t('web.waveJ.dashboard.sealedToday'), value: String(counts.sealedToday), dot: 'bg-success' },
     { key: 'pending', label: t('common.storage.pending'), value: String(counts.pending), dot: 'bg-warning' },
   ]
 
@@ -102,7 +102,7 @@ export function StoragePanel() {
             <div key={row.key}>
               <dt className="flex min-w-0 items-center gap-2 text-foreground-2">
                 <span className={cn('dems-dot', row.dot)} aria-hidden="true" />
-                <span className="truncate">{row.label}</span>
+                <span className="min-w-0 break-words">{row.label}</span>
               </dt>
               <dd data-testid={`storage-legend-${row.key}`}>{row.value}</dd>
             </div>

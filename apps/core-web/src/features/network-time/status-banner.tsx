@@ -37,7 +37,7 @@ export function NetworkTimeBanner() {
   }))
   const pulse = useTimeEscalationKey(view.time)
   const timeTone: StatusTone = view.hostClock ? 'default' : TIME_TONE[view.time]
-  const networkTone = NETWORK_TONE[view.network]
+  const networkTone: StatusTone = view.hostClock && NETWORK_TONE[view.network] === 'success' ? 'default' : NETWORK_TONE[view.network]
   const tone = RANK[networkTone] > RANK[timeTone] ? networkTone : timeTone
   return (
     <Card
@@ -56,7 +56,9 @@ export function NetworkTimeBanner() {
         <p className="nt-banner-title">
           {t('networkTime.banner', {
             time: view.hostClock ? t('web.ownCore.time.value') : t(`networkTime.bannerState.time.${view.time}`),
-            network: t(`networkTime.bannerState.network.${view.network}`),
+            // Fix wave J (JW-23 (3)): "CONNECTED" is the appliance model's LAN link; a Core on its host clock reports no network
+            // status (a link the state says is down keeps its word).
+            network: view.hostClock && NETWORK_TONE[view.network] === 'success' ? t('web.waveJ.network.notReported') : t(`networkTime.bannerState.network.${view.network}`),
           })}
         </p>
         <p className="nt-banner-detail">

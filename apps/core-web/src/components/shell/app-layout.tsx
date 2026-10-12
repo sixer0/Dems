@@ -1,3 +1,9 @@
+import { toast } from '@heroui/react'
+import { useTranslation } from 'react-i18next'
+import { roleReasonText } from '@/components/role-reason-text'
+import { takeDeniedPage } from '@/lib/denied-page'
+import { takeConsoleLocked } from '@/lib/lock-return'
+import { installRestoredPageGuard } from '@/lib/restored-page'
 import { useCallback, useEffect, useRef } from 'react'
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { motion as tokens } from '@dems/shared/tokens'
@@ -41,13 +47,25 @@ export function AppLayout() {
   }, [href])
 
   const signedIn = status === AuthStatus.SIGNED_IN
+  // Fix wave J (JW-15): a shell the browser restored from its back / forward cache after a sign-out is loaded again.
+  useEffect(() => installRestoredPageGuard(), [])
+  // Fix wave J (JW-14 (d)): a route guard that refused the role left for the Dashboard without a word. The refusal
+  // the guard noted is said once, on the page the operator landed on: the page, and the role(s) that open it.
+  const { t } = useTranslation()
+  useEffect(() => {
+    const denied = takeDeniedPage()
+    if (denied === null) return
+    const page = denied.pathname === '/admin/users' ? t('shell.nav.usersRoles') : denied.pathname === '/admin/devices' ? t('shell.nav.pairedDevices') : denied.pathname === '/session/new' ? t('common.actions.startNewSession') : denied.pathname
+    toast.warning(t('web.waveJ.rbac.pageTitle', { page }), { description: roleReasonText(t, denied.permission) })
+  }, [href, t])
   const left = useRef(false)
   const leave = useCallback(() => {
     if (left.current) return
     left.current = true
     void navigate({
       to: '/login',
-      search: status === AuthStatus.EXPIRED ? { redirect: hrefRef.current } : {},
+      // Fix wave J (JT-18 / JW-19): after "Lock console" too, so the next sign-in opens the page that was locked.
+      search: status === AuthStatus.EXPIRED || takeConsoleLocked() ? { redirect: hrefRef.current } : {},
       replace: true,
     })
   }, [navigate, status])

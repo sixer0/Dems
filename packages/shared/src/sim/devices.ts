@@ -67,7 +67,7 @@ export interface PlatformDevice {
   id: PlatformDeviceId;
   name: string;
   online: boolean;
-  /** Machine-readable status: LOCKED / NO_FIX, OK / FAILED, ON / POWER_FAIL. */
+  /** Machine-readable status: LOCKED / NO_FIX, OK / FAILED / NOT_REPORTED (a Core that reads no TPM), ON / POWER_FAIL. */
   status: string;
   /** GNSS satellites in view (GNSS only). */
   satellites: number | null;
@@ -77,6 +77,9 @@ export interface PlatformDevice {
  * The GNSS receiver and the TPM / Secure Element as devices (BOM A.22–A.24, A.27), from the `time`
  * and `security` slices, plus the front panel. They accept the IDENTIFY command only.
  */
+/** `status` of a platform device the Core does not read (fix wave J): read it before `online`. */
+export const PLATFORM_DEVICE_NOT_REPORTED = 'NOT_REPORTED';
+
 export function platformDevices(state: Pick<SimState, 'time' | 'security' | 'faults'>): PlatformDevice[] {
   const powerFail = state.faults.active.some((fault) => fault.kind === FaultKind.POWER_FAIL);
   return [
@@ -87,13 +90,16 @@ export function platformDevices(state: Pick<SimState, 'time' | 'security' | 'fau
       status: state.time.gnss.locked ? 'LOCKED' : 'NO_FIX',
       satellites: state.time.gnss.satellites,
     },
-    {
-      id: 'TPM',
-      name: PLATFORM_DEVICE_NAMES.TPM ?? 'TPM',
-      online: state.security.tpm.ok,
-      status: state.security.tpm.ok ? 'OK' : 'FAILED',
-      satellites: null,
-    },
+    // Fix wave J (truth rule 3c; one of the three readers wave I left): a Core that reads no TPM says so - never OK.
+    state.security.platformNotReported === true
+      ? { id: 'TPM', name: PLATFORM_DEVICE_NAMES.TPM ?? 'TPM', online: false, status: PLATFORM_DEVICE_NOT_REPORTED, satellites: null }
+      : {
+          id: 'TPM',
+          name: PLATFORM_DEVICE_NAMES.TPM ?? 'TPM',
+          online: state.security.tpm.ok,
+          status: state.security.tpm.ok ? 'OK' : 'FAILED',
+          satellites: null,
+        },
     {
       id: 'FRONT-PANEL',
       name: PLATFORM_DEVICE_NAMES['FRONT-PANEL'] ?? 'Front panel',
@@ -103,7 +109,7 @@ export function platformDevices(state: Pick<SimState, 'time' | 'security' | 'fau
     },
   ];
 }
-export const selectPlatformDevices = stableSelector((s: SimState) => [s.time.gnss, s.security.tpm, s.faults], platformDevices);
+export const selectPlatformDevices = stableSelector((s: SimState) => [s.time.gnss, s.security.tpm, s.security.platformNotReported, s.faults], platformDevices);
 
 // ── Front panel (SIM-GAP-W48-3) ──────────────────────────────────────────────────────────
 

@@ -27,7 +27,8 @@ export function useMotionPolicy(): MotionPolicy {
 export function useMotionSettings(): MotionSettings {
   const policy = useStore(motionStore, resolvePolicy);
   const slow = useStore(motionStore, resolveSlow);
-  return useMemo(() => ({ policy, slow }), [policy, slow]);
+  const still = useStore(motionStore, (s) => s.uiRuntimeStalled);
+  return useMemo(() => (still ? { policy, slow, still } : { policy, slow }), [policy, slow, still]);
 }
 
 /** Why the policy is reduced (empty under full motion). */

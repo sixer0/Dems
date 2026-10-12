@@ -1,5 +1,7 @@
 import { useCallback, type Key, type ReactNode } from 'react'
-import { Button, ButtonGroup, Chip, Dropdown, Label, ProgressBar, Spinner, Tooltip } from '@heroui/react'
+import { Button, ButtonGroup, Chip, Dropdown, Label, ProgressBar, Spinner } from '@heroui/react'
+import { RoleReason } from '@/components/role-reason'
+import { roleReasonText } from '@/components/role-reason-text'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -28,11 +30,10 @@ import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
 import { ShineBorder } from '@/components/ui/shine-border'
 import { TextScramble } from '@/components/ui/text-scramble'
 import { useMotionPolicy } from '@/motion'
-import { DashPanel } from './dash-panel'
+import { DashPanel, PanelLink } from './dash-panel'
 import {
   finalizationProgress,
   precheckProgress,
-  requiredRoleFor,
   sessionPanelKind,
   setupStepFor,
   type SessionPanelKind,
@@ -113,7 +114,6 @@ function StartSessionButton({ canStart, invite }: { canStart: boolean; invite: b
   const start = useCallback(() => void navigate({ to: '/session/new', search: { step: 1 } }), [navigate])
   // Both options open the wizard: its step 1 owns profiles and templates (step 46).
   const onOption = useCallback((_key: Key) => start(), [start])
-  const role = requiredRoleFor(Permission.SESSION_START)
 
   const group = (
     <div className="dems-cta-wrap">
@@ -153,17 +153,13 @@ function StartSessionButton({ canStart, invite }: { canStart: boolean; invite: b
   )
 
   if (canStart) return group
+  // Fix wave J (JW-14): the reason is VISIBLE beside the disabled control ("Requires the Investigator or Supervisor role"),
+  // not only in a tooltip.
   return (
-    <Tooltip delay={200}>
-      <Tooltip.Trigger
-        data-testid="start-new-session-locked"
-        aria-label={`${t('common.actions.startNewSession')}: ${t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })}`}
-        className="rounded-lg"
-      >
-        {group}
-      </Tooltip.Trigger>
-      <Tooltip.Content placement="top">{t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })}</Tooltip.Content>
-    </Tooltip>
+    <div className="flex flex-col items-start gap-1" data-testid="start-new-session-locked" aria-label={`${t('common.actions.startNewSession')}: ${roleReasonText(t, Permission.SESSION_START)}`}>
+      {group}
+      <RoleReason permission={Permission.SESSION_START} />
+    </div>
   )
 }
 
@@ -474,7 +470,16 @@ export function ActiveSessionPanel() {
   const invite = systemState === 'READY'
 
   return (
-    <DashPanel id="d" beatMs={DASH_BEATS.row2} title={t('dashboard.activeSession.title')} icon={UsersRound} bodyClassName="relative">
+    <DashPanel
+      id="d"
+      beatMs={DASH_BEATS.row2}
+      // Fix wave J (JW-28): a card titled "ACTIVE SESSION" showed a session that was sealed 16 minutes earlier.
+      title={kind === 'sealed' ? t('web.waveJ.dashboard.lastSession') : t('dashboard.activeSession.title')}
+      icon={UsersRound}
+      bodyClassName="relative"
+      // Fix wave J (JW-22): every finished session, INCOMPLETE and quarantined ones included, is one press from the Dashboard.
+      action={<PanelLink to="/session/history">{t('web.waveJ.sessions.link')}</PanelLink>}
+    >
       <div className="dems-session-stage" data-session-kind={kind}>
         <AnimatePresence initial={false}>
           {kind === 'idle' || !card ? (

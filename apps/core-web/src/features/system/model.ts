@@ -13,6 +13,7 @@ import {
   type Permission,
   type ServiceStatus,
   type UpdateSlice,
+  isDiagnosticNotReported,
 } from '@dems/shared/sim'
 
 // ── RBAC (S20) ──────────────────────────────────────────────────────────────────────────────
@@ -140,12 +141,16 @@ export function summarizeDiagnostics(run: DiagnosticsRun | null): DiagnosticsSum
   let pass = 0
   let warn = 0
   let fail = 0
+  let notReported = 0
   for (const check of run.checks) {
-    if (check.status === 'PASS') pass += 1
+    // Fix wave J (JT-03 / JW-04; `contract_wave_j.md` J-S 5): a row over hardware this Core does not read states
+    // nothing. It is resolved, and it is neither a pass nor a warning to count.
+    if (isDiagnosticNotReported(check)) notReported += 1
+    else if (check.status === 'PASS') pass += 1
     else if (check.status === 'WARN') warn += 1
     else if (check.status === 'FAIL') fail += 1
   }
-  const done = pass + warn + fail
+  const done = pass + warn + fail + notReported
   return { done, total: run.checks.length, pass, warn, fail, complete: run.completedAt !== null }
 }
 

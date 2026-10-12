@@ -12,6 +12,9 @@ import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
 import { resetCoreLinkPrefsForTests } from '@/runtime';
 import { createTestSim, flushAsync, renderWithRuntime, type TestSim } from '@/runtime/testing/test-sim';
+import { SETTINGS_ROWS, settingsRowCount } from '@/features/settings/settings-model';
+import { resetSettingsPrefsForTests, setSettingsPrefs } from '@/features/settings/settings-prefs';
+import { moreEn } from './i18n';
 import { linkDestinations, needsRecovery } from './more-model';
 import { MoreScreen } from './more-screen';
 
@@ -85,6 +88,7 @@ describe('More screen', () => {
     resetCoreLinkPrefsForTests();
     resetMotionStateForTests();
     resetLoopRegistryForTests();
+    resetSettingsPrefsForTests();
     resetMissingKeys();
     mockPush.mockClear();
   });
@@ -118,7 +122,11 @@ describe('More screen', () => {
     expect(label('more-dest-network-time-chip')).toBe('Synchronized');
     expect(label('more-dest-audit-chip')).toBe('Chain OK');
     expect(textOf('more-dest-audit-detail')).toMatch(/^\d+ events$/);
-    expect(label('more-dest-settings-chip')).toBe('7 sections'); // 5 + transcription (row 118) + capture (row 68)
+    // Fix wave J (JA2-35): the tile counts the rows the Settings list shows (3 Application + 7 System),
+    // from the list's own model, not the 7 `/settings/<section>` routes.
+    expect(SETTINGS_ROWS).toHaveLength(10);
+    expect(label('more-dest-settings-chip')).toBe(`${settingsRowCount()} items`);
+    expect(label('more-dest-settings-chip')).toBe('10 items');
     // Links: Pairing, About, Developer gallery (jest runs as a debug build); no Recovery while idle.
     expect(screen.getByTestId('more-link-pairing')).toBeTruthy();
     expect(label('more-link-pairing-chip')).toBe('Paired');
@@ -131,6 +139,21 @@ describe('More screen', () => {
     expect(label('more-core-link')).toBe('Core link: Simulated (Simulated)');
     expect(screen.queryByTestId('more-in-rail')).toBeNull();
     expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('JA2-29: presentation mode takes the developer gallery out of the product menu (one rule with Settings)', async () => {
+    await mount();
+    expect(screen.getByTestId('more-link-dev-gallery')).toBeTruthy();
+    act(() => setSettingsPrefs({ presentationMode: true }));
+    await flushAsync();
+    expect(screen.queryByTestId('more-link-dev-gallery')).toBeNull();
+    expect(screen.queryByText('Developer gallery')).toBeNull();
+    // The operator's rows stay.
+    expect(screen.getByTestId('more-link-pairing')).toBeTruthy();
+    expect(screen.getByTestId('more-link-about')).toBeTruthy();
+    act(() => setSettingsPrefs({ presentationMode: false }));
+    await flushAsync();
+    expect(screen.getByTestId('more-link-dev-gallery')).toBeTruthy();
   });
 
   it('every More destination navigates to its route (console jumps are tab routes, H-MB-01)', async () => {
@@ -208,6 +231,21 @@ describe('More screen', () => {
 });
 
 describe('More model', () => {
+  it('JA2-13 / JA2-29: the More copy carries no "tablet" and no specification or developer wording', () => {
+    const strings = (node: unknown, path: string[] = []): { key: string; text: string }[] =>
+      typeof node === 'string'
+        ? [{ key: path.join('.'), text: node.replace(/\{\{[^}]*\}\}/g, '') }]
+        : typeof node === 'object' && node !== null
+          ? Object.entries(node).flatMap(([name, child]) => strings(child, [...path, name]))
+          : [];
+    const found = strings(moreEn, ['features', 'more'])
+      // The developer gallery row is a developer page (development build, presentation mode off).
+      .filter(({ key }) => !key.startsWith('features.more.links.devGallery.'))
+      .filter(({ text }) => /tablet|§|design book|\badb\b|repository|this phase|\bSYS-\d|\bEVT-\d|\b(?:AC|SEC|M\d)-[A-Z0-9]|\bD\d{2,3}\b/i.test(text))
+      .map(({ key }) => key);
+    expect(found).toEqual([]);
+  });
+
   it('lists Recovery only for FAULT and RECOVERY, and the gallery only in debug builds', () => {
     expect(linkDestinations({ sessionState: null, debug: false })).toEqual(['pairing', 'about']);
     expect(linkDestinations({ sessionState: 'RECORDING', debug: true })).toEqual(['pairing', 'about', 'dev-gallery']);

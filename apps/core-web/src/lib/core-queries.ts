@@ -38,7 +38,7 @@ import { Permission, selectIsSignedIn, useSim } from '@dems/shared/sim'
 import { CORE_QUERY_KEYS, CORE_QUERY_ROOT, useWebLive, type WebLive } from '@/runtime'
 
 /** The operations whose reads fail with a `CoreReadError` (the shared keys here; a page's own read may use it too). */
-export type CoreReadOperation = 'listPairedDevices' | 'getRoleMatrix' | 'getPairingCodeStatus' | 'getCaptureConfig' | 'getCaptureDevices' | 'listAudioSourceIntervals'
+export type CoreReadOperation = 'listPairedDevices' | 'getRoleMatrix' | 'getPairingCodeStatus' | 'getCaptureConfig' | 'getCaptureDevices' | 'listAudioSourceIntervals' | 'getSystemStatus' | 'listSessionHistory'
 
 /**
  * A failed read, carried through the query's error: the operation, the status and the code, never

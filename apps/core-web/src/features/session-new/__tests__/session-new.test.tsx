@@ -364,6 +364,26 @@ describe('Start New Session: guards', () => {
     expect(m.router.state.location.pathname).toBe('/session')
   })
 
+  // Fix wave J (JW-16; "by code only" in round one, proven here): Escape did nothing on "Discard this session?"
+  // while it closed every other dialog. It now answers "Keep editing": the dialog closes, the session stays.
+  it('JW-16: Escape on "Discard this session?" keeps the session (the same as "Keep editing")', async () => {
+    const m = mount()
+    await findPage()
+    fillForm({ caseNumber: 'LP/2026/1001-0116' })
+    m.startEngine()
+    await m.flush(50)
+    fireEvent.click(nextButton())
+    await m.flush(400)
+    expect(m.sim.store.getState().session?.state).toBe('PRECHECK')
+    fireEvent.click(screen.getByTestId('sn-cancel'))
+    await m.flush(100)
+    fireEvent.keyDown(screen.getByTestId('sn-cancel-dialog'), { key: 'Escape' })
+    await m.flush(400)
+    expect(screen.queryByTestId('sn-cancel-dialog')).not.toBeInTheDocument()
+    expect(m.sim.store.getState().session?.state).toBe('PRECHECK')
+    expect(m.sim.store.getState().audit.rows.some((row) => row.type === 'SESSION_CANCELLED')).toBe(false)
+  })
+
   it('discards a setup session through the AlertDialog and returns to the Dashboard', async () => {
     const m = mount()
     await findPage()

@@ -1,10 +1,10 @@
 // Network & Time screen (step 86; 04_mobile_specs §4.14, MB 9; 03M M-PG-NET; MA-11 MB 9 checklist).
 // Renders the real `/network-time` route with a test simulator signed in as a demo operator.
 // Import order: the module mocks, the router harness, the feature harness.
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import './testing/network-time-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
@@ -16,6 +16,14 @@ import type { ReactTestInstance } from 'react-test-renderer';
 import { en } from '@dems/shared/i18n';
 import { HOST_CLOCK_TIME, createSim, createManualClock } from '@dems/shared/sim';
 import { unmountBeforeTheHooksOfThisGroup } from '@/runtime/testing/scoped-cleanup';
+import { networkNotReported } from './use-network-time';
+
+/** What `useMobileLive()` answers: null = Simulated client mode (every older case of this file); an object = Live (fix wave J). */
+let mockLive: { client: { call: () => Promise<unknown> } } | null = null;
+jest.mock('@/runtime', () => {
+  const actual = jest.requireActual<typeof import('@/runtime')>('@/runtime');
+  return { ...actual, useMobileLive: () => mockLive };
+});
 
 // The cases this file held before the consolidation of the suite (D233), under their own hooks.
 describe('network time screen', () => {
@@ -130,7 +138,7 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     );
   });
 
-  it('GNSS loss → NTP → RTC → restored: the tier indicator moves, chips escalate calmly, 1 toast per change (its drawn count does not grow on later ticks)', async () => {
+  it('GNSS loss → NTP → RTC → restored: the tier indicator moves, chips escalate calmly; the loss and the fallback raise NO toast of this screen (the app-wide alert toast is the one statement), the recovery raises 1', async () => {
     const h = renderNetworkTimeApp();
     await settle();
     const toastCount = (text: string) => screen.queryAllByText(text).length;
@@ -144,11 +152,11 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     expect(textOf('network-time-source-value')).toBe('NTP Server (Stratum-3)');
     expect(within(screen.getByTestId('network-time-system-chip')).getByText('Synchronized')).toBeTruthy();
     {
-      // W93-17/R16 (FXR-M): one toast, counted: what one toast draws must not grow on the next ticks.
-      const drawn = toastCount('GNSS signal lost');
-      expect(drawn).toBeGreaterThan(0);
+      // Fix wave J (JA2-05, with J-P's `features/alerts`): the loss is an active alert, toasted once app-wide by the
+      // alert-toast consumer (not mounted in this harness). This screen adds no second toast for the same fact.
+      expect(toastCount('GNSS signal lost')).toBe(0);
       act(() => h.advance(2_000));
-      expect(toastCount('GNSS signal lost')).toBe(drawn);
+      expect(toastCount('GNSS signal lost')).toBe(0);
     }
     // The orbit loop stops while GNSS has no fix.
     expect(activeLoopNames()).not.toContain('network-time-orbit');
@@ -160,11 +168,9 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     expect(within(screen.getByTestId('network-time-sync-chip')).getByText('RTC holdover')).toBeTruthy();
     expect(within(screen.getByTestId('network-time-system-chip')).getByText('Free-running')).toBeTruthy();
     {
-      // W93-17/R16 (FXR-M): one toast, counted: what one toast draws must not grow on the next ticks.
-      const drawn = toastCount('No time reference');
-      expect(drawn).toBeGreaterThan(0);
+      expect(toastCount('No time reference')).toBe(0);
       act(() => h.advance(2_000));
-      expect(toastCount('No time reference')).toBe(drawn);
+      expect(toastCount('No time reference')).toBe(0);
     }
 
     act(() => h.sim.actions.clearFault('GNSS_LOSS'));
@@ -285,4 +291,115 @@ describe('G75b-06 mobile Network & Time: a Core in its own capture', () => {
     expect(allText('network-time-source')).toContain('RTC (holdover)');
   });
 });
+});
+
+// ── Fix wave J (JT-03 / JW-04 mobile half; JA2-34; JA2-13; sub-driver J-P3) ────────────────────────────────
+describe('fix wave J - Network & Time', () => {
+  unmountBeforeTheHooksOfThisGroup();
+  const NETWORK_MODEL = /192\.168|Interview LAN|Mbps|\d+ of \d+ ports|\bW of\b|Connected, |Active/;
+  type Marked = { sourceClass?: string; adapter?: string };
+
+  function allText(testID: string): string {
+    const parts: string[] = [];
+    const walk = (n: ReactTestInstance | string) => {
+      if (typeof n === 'string') parts.push(n);
+      else {
+        if (typeof n.props.accessibilityLabel === 'string') parts.push(n.props.accessibilityLabel);
+        n.children.forEach(walk);
+      }
+    };
+    walk(screen.getAllByTestId(testID)[0]!);
+    return parts.join(' ');
+  }
+
+  beforeEach(() => {
+    mockLive = null;
+    resetMissingKeys();
+  });
+  afterEach(() => {
+    mockLive = null;
+    resetMotionStateForTests();
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  const realCapture = (h: ReturnType<typeof renderNetworkTimeApp>) =>
+    act(() =>
+      h.sim.store.setState((s) => ({
+        captureDevices: { ...s.captureDevices, devices: s.captureDevices.devices.map((device) => ({ ...device, sourceClass: 'DEVELOPMENT', adapter: 'FAKE' }) as typeof device & Marked) },
+        security: { ...s.security, platformNotReported: true },
+        time: { ...HOST_CLOCK_TIME },
+      })),
+    );
+
+  it('the rule `networkNotReported`: Live AND (a Core that states a source class, or states itself an own-capture Core); never in Simulated mode', () => {
+    const sim = createSim({ clock: createManualClock(Date.UTC(2026, 9, 1, 3, 0, 0)), storage: null, authStorage: null });
+    const state = sim.store.getState();
+    expect(networkNotReported(state, false)).toBe(false);
+    // Live, a simulated Core: its network card is its demonstration, unchanged.
+    expect(networkNotReported(state, true)).toBe(false);
+    expect(networkNotReported({ ...state, security: { ...state.security, platformNotReported: true } }, true)).toBe(true);
+    expect(networkNotReported({ ...state, time: { ...HOST_CLOCK_TIME } }, true)).toBe(true);
+    expect(networkNotReported({ ...state, security: { ...state.security, platformNotReported: true } }, false)).toBe(false);
+    sim.stop();
+  });
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('JT-03 on %s: a Core in real capture - LAN, PoE and bandwidth read "Not reported"; no address, name, port count, watt or moving figure; no LAN sheet; this device\'s own link is stated', async (window) => {
+    mockLive = { client: { call: async () => ({ ok: false, status: 503, error: { code: 'NOT_READY' } }) } };
+    const h = renderNetworkTimeApp({ window });
+    realCapture(h);
+    await settle();
+    for (const id of ['lan', 'poe', 'bandwidth']) {
+      expect(screen.getByTestId(`network-time-${id}-chip`)).toHaveTextContent('Not reported');
+      expect(String(screen.getByTestId(`network-time-${id}`).props.accessibilityLabel)).toMatch(/, Not reported$/);
+      // Nothing to open: no row is announced as a button.
+      expect(screen.getByTestId(`network-time-${id}`).props.accessibilityRole).toBe('text');
+    }
+    expect(screen.queryByTestId('network-time-bandwidth-bars')).toBeNull();
+    expect(screen.queryByTestId('network-time-bandwidth-down')).toBeNull();
+    expect(screen.queryByTestId('network-time-lan-sheet')).toBeNull();
+    expect(allText('network-time-network')).not.toMatch(NETWORK_MODEL);
+    expect(screen.getByTestId('network-time-device-link-chip')).toHaveTextContent('Connected');
+    expect(String(screen.getByTestId('network-time-device-link').props.accessibilityLabel)).toBe('Device link, Connected');
+    expect(allText('network-time-network')).not.toMatch(/[Tt]ablet/);
+    if (window === 'tabletLandscape') expect(screen.getByTestId('network-time-header-lan')).toHaveTextContent('Network: Not reported');
+    // The figure does not move: a later tick of the model changes nothing drawn.
+    const before = allText('network-time-network');
+    act(() => h.advance(3_000));
+    await settle();
+    expect(allText('network-time-network')).toBe(before);
+  });
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('CONTROL on %s - the SIMULATED lane is what it was: Connected / Active chips, the bars, the Mbps readout, the LAN sheet with its model values', async (window) => {
+    // Live data of a SIMULATED Core (no device states a class): the demonstration card, unchanged.
+    mockLive = { client: { call: async () => ({ ok: false, status: 503, error: { code: 'NOT_READY' } }) } };
+    const h = renderNetworkTimeApp({ window });
+    await settle();
+    act(() => h.advance(3_000));
+    await settle();
+    expect(screen.getByTestId('network-time-lan-chip')).toHaveTextContent('Connected');
+    expect(screen.getByTestId('network-time-poe-chip')).toHaveTextContent('Active');
+    expect(screen.getByTestId('network-time-bandwidth-bars')).toBeTruthy();
+    expect(screen.getByTestId('network-time-bandwidth-down')).toBeTruthy();
+    expect(screen.queryByTestId('network-time-not-reported')).toBeNull();
+    fireEvent.press(screen.getByTestId('network-time-lan'));
+    await settle();
+    expect(screen.getByTestId('network-time-lan-ip')).toBeTruthy();
+    // JA2-13: the sheet's row of this device is device-neutral; JA2-16: the sheet says it is modal.
+    expect(screen.queryByText('Tablet link')).toBeNull();
+    expect(screen.getByText('Device link')).toBeTruthy();
+    expect(screen.getByTestId('sheet-content-signal').props.accessibilityViewIsModal).toBe(true);
+  });
+
+  it.each(['off', 'default'] as const)('JA2-34 motion=%s: "System Time" follows the SECOND (it read hh:mm:00 for the whole minute under the test switch)', async (linkMotion) => {
+    resetMotionStateForTests({ linkMotion });
+    const h = renderNetworkTimeApp();
+    await settle();
+    act(() => h.advance(7_000));
+    await settle();
+    const shown = String(screen.getByTestId('network-time-clock-digits').props.accessibilityLabel);
+    const d = new Date(h.sim.store.getState().clock.now + 7 * 3_600_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    expect(shown).toBe(`${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`);
+    expect(d.getUTCSeconds()).not.toBe(0);
+  });
 });

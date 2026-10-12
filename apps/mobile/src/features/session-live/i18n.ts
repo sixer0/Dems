@@ -43,6 +43,13 @@ export const sessionLiveEn = {
   // S4 MIC cards.
   mic: {
     meterLabel: '{{mic}} level',
+    // Fix wave J (JM-05): the card's state line, drawn by React from the first second of a recording.
+    levelState: {
+      WAITING: 'Waiting for the first level reading',
+      OK: 'Receiving audio',
+      NO_SIGNAL: 'No signal',
+      NOT_MEASURED: 'Not measured',
+    },
   },
 
   // S2, task 3 M5 (row 73; D84, erratum PE-128-79): RECORDING before the first durable fragment.
@@ -71,6 +78,10 @@ export const sessionLiveEn = {
     close: 'Close',
     audioTitle: 'Audio Monitor',
     audioDescription: 'MIC 1 and MIC 2 are separate tracks and are never mixed.',
+    // Fix wave J (JT-07): what a Core in its own capture records - ONE audio track, fed by the active microphone;
+    // the standby is recorded only from a switch on (the sealed item lists the intervals). The sentence above and
+    // the names "Interviewer" / "Subject" describe the simulated lane's two tracks and stay there only.
+    audioDescriptionOwnCapture: 'This Core records one audio track, from the active microphone. The standby microphone is recorded only after you switch to it; the sealed item lists which microphone fed the track, and when. The two are never mixed.',
     settingsTitle: 'Monitor settings',
     settingsDescription: 'Display only. Recording on the Core is not affected.',
     pauseDescription: 'Pauses the preview and dims the meters. Recording continues.',
@@ -87,12 +98,31 @@ export const sessionLiveEn = {
     holdA11yHint: 'Opens the End Session dialog. A reason is required.',
     holding: 'Keep holding…',
     reasonCount: '{{count}} / {{max}}',
+    reasonRule: 'At least {{min}} characters.',
     ending: 'Ending…',
   },
 
   // S7 connection banner (the banner copy itself is `mobile.coreLink.*`).
   banner: {
     readOnly: 'Session actions are paused until the Core link is back.',
+  },
+
+  // Round two (JT-11): what a snapshot IS - a mark on the session's timeline; the contract stores no image for it.
+  snapshotMarked: 'Snapshot marked on the timeline. No image is stored.',
+
+  // Round two (JA2-19): the monitor's last picture while it leaves for a screen other than Finalizing.
+  leaving: {
+    recoveryTitle: 'The recording was interrupted',
+    recoveryBody: 'Opening session recovery…',
+    endedTitle: 'This session is no longer recording',
+    endedBody: 'Opening the next screen…',
+  },
+
+  // Round two (JA2-06): a microphone the Core reports without a signal, said above the switch.
+  micNoSignal: {
+    title: '{{mic}}: no signal',
+    activeBody: 'The active microphone delivers no audio. The recording continues without sound from it until the signal returns or you switch.',
+    standbyBody: 'The standby microphone delivers no audio. The active microphone is not affected.',
   },
 
   // Toasts for refused simulator actions (SimTransitionError, D61).

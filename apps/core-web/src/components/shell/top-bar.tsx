@@ -12,7 +12,9 @@ import {
   useSim,
   type SimState,
 } from '@dems/shared/sim'
+import { useComponentVersionText } from '@/components/component-version-text'
 import { SlidingNumber } from '@/components/ui/sliding-number'
+import { useProductVersions } from '@/lib/product-versions'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { BrandEmblem } from './brand-emblem'
 import { ModeIndicator } from './mode-indicator'
@@ -206,6 +208,8 @@ function DeviceBlock() {
   const { t } = useTranslation()
   const deviceId = useSim(selectDevice)
   const room = useSim(selectRoom)
+  const versions = useProductVersions(SOFTWARE_VERSION)
+  const versionText = useComponentVersionText()
   return (
     <Tooltip delay={300}>
       <Tooltip.Trigger className="dems-device-block dems-hide-below-md" aria-label={`${t('shell.topBar.deviceId')} ${deviceId}, ${room}`}>
@@ -217,11 +221,17 @@ function DeviceBlock() {
         </span>
       </Tooltip.Trigger>
       <Tooltip.Content placement="bottom" offset={8}>
-        {t('shell.topBar.deviceTooltip', {
-          serial: DEVICE_IDENTITY.serialNumber,
-          firmware: `v${SOFTWARE_VERSION}`,
-          build: DEVICE_IDENTITY.bspVersion,
-        })}
+        {/* Fix wave J round three (JW-26): the serial, firmware and build of the tooltip are the demonstration
+            model's. On a Core in its own capture it names the components by their own versions instead. */}
+        <span data-testid="shell-device-tooltip">
+          {versions.modelVersion !== null
+            ? t('shell.topBar.deviceTooltip', {
+                serial: DEVICE_IDENTITY.serialNumber,
+                firmware: `v${versions.modelVersion}`,
+                build: DEVICE_IDENTITY.bspVersion,
+              })
+            : versions.rows.map((row) => versionText(row).line).join(' • ')}
+        </span>
       </Tooltip.Content>
     </Tooltip>
   )

@@ -53,23 +53,23 @@ export interface HomeStatus {
   copyKey: string;
   /** Critical first, then warnings (the order `systemStatus()` emits within each severity). */
   flags: FlagLine[];
+  /** Fix wave J: THE statement of Home (`homeStatusOf`); `ring` and `tone` are its ring and tone. */
+  presentation: HomePresentation;
+  /** The seal of the open session that is retried or blocked, or null. */
+  seal: HomeFacts['seal'];
+  /** How many unsealable notices are open. */
+  openNotices: number;
+  /** The state of the open session, or null. */
+  sessionState: SessionState | null;
+  /** The Core reports no platform security facts: the ring's sub-line says "Security not reported", never "SECURE". */
+  platformNotReported: boolean;
+  /** LIVE on a simulated Core, link up: Home carries the "Simulated Core" mark (truth rule 3f). */
+  simulatedCore: boolean;
+  /** False while the Core link is down: what Home holds is the last known state, not a present fact. */
+  live: boolean;
+  /** What stands against a new session now, or null. `OFFLINE`: the wizard's entries are disabled with the reason; `CRITICAL`: Start says recording is blocked (the devices check refuses the start). */
+  startBlock: 'OFFLINE' | 'CRITICAL' | null;
 }
-
-const RING_FOR: Record<HomeStatusKind, GlowRingState> = {
-  READY: 'ready',
-  ATTENTION: 'attention',
-  CRITICAL: 'critical',
-  RECORDING: 'recording',
-  UNKNOWN: 'offline',
-};
-
-const TONE_FOR: Record<HomeStatusKind, StatusTone> = {
-  READY: 'success',
-  ATTENTION: 'warning',
-  CRITICAL: 'danger',
-  RECORDING: 'danger',
-  UNKNOWN: 'default',
-};
 
 /** Track ids → the shared short device names (`common.devices.*`). */
 export const TRACK_NAME_KEY: Readonly<Record<string, string>> = {
@@ -98,7 +98,11 @@ export const TRACK_NAME_KEY: Readonly<Record<string, string>> = {
  */
 export type MicReadoutKind = 'LEVEL' | 'NO_SIGNAL' | 'NO_LEVEL';
 
-export function micReadoutKind(input: { readonly frameFlat: boolean; readonly state: string }): MicReadoutKind {
+export function micReadoutKind(input: { readonly frameFlat: boolean; readonly state: string; readonly notMeasured?: boolean }): MicReadoutKind {
+  // Fix wave J round two (JW-08 mobile half, seen on the tablet's Home at rest: "-60 dBFS" under "Not checked";
+  // contract_wave_j.md J-S 6): a frame the Core marks `notMeasured` carries the floor as a PLACEHOLDER of the
+  // required member and `noSignal: false`. It is no level: the line reads "— dBFS".
+  if (input.notMeasured === true) return input.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : 'NO_LEVEL';
   if (!input.frameFlat) return 'LEVEL';
   return input.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : 'NO_LEVEL';
 }
@@ -154,17 +158,210 @@ export function flagLineFor(flag: SystemFlag): FlagLine {
   return { ...base, key: '', params: { message: flag.message } };
 }
 
-export function homeStatusFor(system: SystemStatus): HomeStatus {
+/**
+ * Fix wave J (JA2-04 / JT-01; truth rule 3c): EVERYTHING HOME SAYS ABOUT THE SYSTEM IS ONE PURE FUNCTION
+ * OF THE CORE'S FACTS. The status card, the header chip, the ring, the tiles and the primary action read
+ * the `HomeStatus` this returns and decide nothing themselves.
+ *
+ * | # | The fact (first that holds) | `presentation` | Home says |
+ * |---|---|---|---|
+ * | 1 | the Core link is down (the runtime's one rule, a few seconds after the socket drops) | `OFFLINE` | "Core offline - state unknown"; neutral ring; tiles carry no value; Start is disabled with the reason |
+ * | 2 | the open session's seal is BLOCKED | `SEAL_BLOCKED` | "Sealing blocked" (critical) |
+ * | 3 | a critical fault flag | `CRITICAL` | "Recording Blocked" + the flags |
+ * | 4 | RECORDING before the first durable fragment | `CAMERAS_CONNECTING` | "Connecting cameras…" (neutral) |
+ * | 5 | a session records | `RECORDING` | "Session in progress" |
+ * | 6 | a step of the seal failed and the Core runs it again | `SEAL_RETRYING` | "Sealing is being retried" (amber) - from the FIRST failure, never "Ready" |
+ * | 7 | a CRITICAL fact of `systemTruthOf` (an ACTIVE `SYSTEM` alert) that the Core does not mark "does not block" | `CRITICAL_ALERT` | "Critical alert" (red) + the Core's sentence |
+ * | 8 | a warning flag, a source on a selector line the Core reports NOT reachable, or any other fact of `systemTruthOf` | `ATTENTION` | "Attention Needed" + one line per fact |
+ * | 9 | an open unsealable notice | `NOTICE` | "Open notice" (amber): it does not block recording |
+ * | 10 | none of the above | `READY` | "Ready for Recording" |
+ *
+ * `UNKNOWN` (the system slice not read yet) keeps its own neutral words.
+ */
+export type HomePresentation = 'OFFLINE' | 'SEAL_BLOCKED' | 'CRITICAL' | 'CAMERAS_CONNECTING' | 'RECORDING' | 'SEAL_RETRYING' | 'CRITICAL_ALERT' | 'ATTENTION' | 'NOTICE' | 'READY' | 'UNKNOWN';
+
+/** A source ON a selector line that the Core reports not reachable (a Core in real capture). */
+export interface HomeUnreachableSource {
+  readonly kind: 'camera' | 'microphone';
+  /** Track id of the line (`VIDEO-02`, `AUDIO-01`). */
+  readonly trackId: string;
+  /** The registered device on the line, or null when the selector names none. */
+  readonly deviceId: string | null;
+}
+
+/** One fact of `systemTruthOf` as Home draws it: the Core's own sentence, and whether it blocks recording. */
+export interface HomeCoreFact {
+  readonly id: string;
+  readonly severity: 'WARNING' | 'CRITICAL';
+  readonly message: string;
+  /** `false`: the Core says recording is NOT blocked by it; `true` / `null`: it does, or the Core does not say. */
+  readonly blocksRecording: boolean | null;
+}
+
+/** The Core's facts Home is a function of. Every member is a reading of the store or of the link: no timer, no screen state. */
+export interface HomeFacts {
+  readonly system: SystemStatus;
+  /** LIVE only: the Core link is down (`useCoreLinkNotice().offline`). Always false in SIMULATED / HEARTBEAT. */
+  readonly linkOffline: boolean;
+  /** `sealAttentionOf(state)`: the seal of the open session is retried or blocked. */
+  readonly seal: { readonly kind: 'RETRYING' | 'BLOCKED'; readonly sessionId: string; readonly sentence: string | null } | null;
+  /** How many unsealable notices are open (`openUnsealableNoticesOf`). */
+  readonly openNotices: number;
+  /** Sources on the selector's lines the Core reports not reachable. */
+  readonly unreachable: readonly HomeUnreachableSource[];
+  /**
+   * What the Core states beyond the flags (`systemTruthOf(state).facts` of `@dems/shared/sim`, contract_wave_j.md
+   * J-S 13 - the SAME reader as the web console's ring and pill), without the facts Home words itself: the seal
+   * (`seal`), an unsealable notice (`openNotices`) and a source a line of `unreachable` already names.
+   */
+  readonly coreFacts: readonly HomeCoreFact[];
+  /** RECORDING before the first durable fragment (`selectConnectingCameras`). */
+  readonly connecting: boolean;
+  /** The state of the open session, or null. */
+  readonly sessionState: SessionState | null;
+  /**
+   * The Core states `security.platformNotReported` (contract_wave_j.md J-S 5): it reads no TPM / Secure Boot
+   * and computes no posture. No surface then says SECURE / HEALTHY about the platform - the ring's sub-line too.
+   */
+  readonly platformNotReported: boolean;
+  /**
+   * LIVE on a Core that is NOT in its own capture (`!isOwnCaptureCoreState`, J-S 7; truth rule 3f): what Home
+   * shows is a demonstration, and Home says so once ("Simulated Core").
+   */
+  readonly simulatedCore: boolean;
+}
+
+/** Facts of a Core that states nothing beyond `system` (tests, and the default of `homeStatusFor`). */
+export const QUIET_HOME_FACTS: Omit<HomeFacts, 'system'> = Object.freeze({
+  linkOffline: false,
+  seal: null,
+  openNotices: 0,
+  unreachable: Object.freeze([]) as readonly HomeUnreachableSource[],
+  coreFacts: Object.freeze([]) as readonly HomeCoreFact[],
+  connecting: false,
+  sessionState: null,
+  platformNotReported: false,
+  simulatedCore: false,
+});
+
+const PRESENTATION_RING: Record<HomePresentation, GlowRingState> = {
+  OFFLINE: 'offline',
+  SEAL_BLOCKED: 'critical',
+  CRITICAL: 'critical',
+  CAMERAS_CONNECTING: 'offline',
+  RECORDING: 'recording',
+  SEAL_RETRYING: 'attention',
+  CRITICAL_ALERT: 'critical',
+  ATTENTION: 'attention',
+  NOTICE: 'attention',
+  READY: 'ready',
+  UNKNOWN: 'offline',
+};
+
+const PRESENTATION_TONE: Record<HomePresentation, StatusTone> = {
+  OFFLINE: 'default',
+  SEAL_BLOCKED: 'danger',
+  CRITICAL: 'danger',
+  CAMERAS_CONNECTING: 'default',
+  RECORDING: 'danger',
+  SEAL_RETRYING: 'warning',
+  CRITICAL_ALERT: 'danger',
+  ATTENTION: 'warning',
+  NOTICE: 'warning',
+  READY: 'success',
+  UNKNOWN: 'default',
+};
+
+/** The line of a source the Core reports not reachable ("Camera 2 (CAM-02): not reachable"). */
+function unreachableLine(source: HomeUnreachableSource): FlagLine {
+  const nameKey = TRACK_NAME_KEY[source.trackId];
+  return {
+    id: `UNREACHABLE_${source.trackId}`,
+    severity: 'WARNING',
+    key: source.deviceId === null ? 'features.dashboard.flags.sourceNotReachable' : 'features.dashboard.flags.sourceNotReachableDevice',
+    params: source.deviceId === null ? {} : { deviceId: source.deviceId },
+    ...(nameKey !== undefined ? { nameKey } : {}),
+  };
+}
+
+function presentationOf(facts: HomeFacts, lines: number): HomePresentation {
+  const kind = facts.system.state;
+  if (facts.linkOffline) return 'OFFLINE';
+  if (kind === 'UNKNOWN') return 'UNKNOWN';
+  if (facts.seal?.kind === 'BLOCKED') return 'SEAL_BLOCKED';
+  if (kind === 'CRITICAL') return 'CRITICAL';
+  if (facts.sessionState === 'RECORDING' && facts.connecting) return 'CAMERAS_CONNECTING';
+  if (kind === 'RECORDING') return 'RECORDING';
+  if (facts.seal?.kind === 'RETRYING') return 'SEAL_RETRYING';
+  // The shared rule (J-S 13): a critical fact is critical unless the Core says it does not block recording.
+  if (facts.coreFacts.some((fact) => fact.severity === 'CRITICAL' && fact.blocksRecording !== false)) return 'CRITICAL_ALERT';
+  if (kind === 'ATTENTION' || lines > 0 || facts.coreFacts.length > 0) return 'ATTENTION';
+  if (facts.openNotices > 0) return 'NOTICE';
+  return 'READY';
+}
+
+export function homeStatusOf(facts: HomeFacts): HomeStatus {
+  const system = facts.system;
   const kind = system.state;
   const critical = system.flags.filter((f) => f.severity === 'CRITICAL');
   const warnings = system.flags.filter((f) => f.severity !== 'CRITICAL');
+  const flags = [...critical, ...warnings].map(flagLineFor);
+  // A recording's own telemetry words its sources (the track's flag); the reported state of a line is said at rest.
+  const unreachable = kind === 'RECORDING' || facts.sessionState === 'RECORDING' ? [] : facts.unreachable.map(unreachableLine);
+  // The Core's own sentence for each remaining fact (no i18n key: an id without a key shows its message).
+  const coreLines: FlagLine[] = facts.coreFacts.map((fact, index) => ({ id: `FACT_${fact.id}_${index}`, severity: fact.severity, key: '', params: { message: fact.message } }));
+  const stated = [...flags, ...unreachable, ...coreLines];
+  const presentation = presentationOf(facts, stated.length);
   return {
     kind,
-    ring: RING_FOR[kind],
-    tone: TONE_FOR[kind],
+    presentation,
+    ring: PRESENTATION_RING[presentation],
+    tone: PRESENTATION_TONE[presentation],
     copyKey: `features.dashboard.status.${kind}`,
-    flags: [...critical, ...warnings].map(flagLineFor),
+    flags: stated,
+    seal: facts.seal,
+    openNotices: facts.openNotices,
+    sessionState: facts.sessionState,
+    platformNotReported: facts.platformNotReported,
+    simulatedCore: facts.simulatedCore && presentation !== 'OFFLINE',
+    // Without the link nothing on Home is a present fact: the tiles carry no value and no session is started.
+    live: presentation !== 'OFFLINE',
+    startBlock: presentation === 'OFFLINE' ? 'OFFLINE' : presentation === 'CRITICAL' ? 'CRITICAL' : null,
   };
+}
+
+/** `homeStatusOf` of a Core that states nothing beyond its system status. */
+export function homeStatusFor(system: SystemStatus): HomeStatus {
+  return homeStatusOf({ ...QUIET_HOME_FACTS, system });
+}
+
+/**
+ * The header chip's word (tablet header, `home-header-state`) - the SAME statement as the card:
+ * a `common.systemState.*` word, or the key of the state's own chip word.
+ */
+export function homeChipKey(status: Pick<HomeStatus, 'presentation' | 'kind'>): string {
+  switch (status.presentation) {
+    case 'OFFLINE':
+      return 'features.dashboard.status.OFFLINE.chip';
+    case 'CAMERAS_CONNECTING':
+      return 'common.session.trackConnecting';
+    case 'NOTICE':
+      return 'features.session-finalizing.openNotice.chip';
+    case 'SEAL_RETRYING':
+    case 'ATTENTION':
+      return 'common.systemState.ATTENTION';
+    case 'SEAL_BLOCKED':
+    case 'CRITICAL_ALERT':
+      return 'common.systemState.CRITICAL';
+    default:
+      return `common.systemState.${status.kind}`;
+  }
+}
+
+/** A tile while the Core link is down: no count, no state word of the Core - "Not known". */
+export function offlineTile(tile: HomeTile): HomeTile {
+  const { count: _count, reported: _reported, ...rest } = tile;
+  return { ...rest, tone: 'default', stateKey: 'features.dashboard.tiles.state.unknown', unknown: true };
 }
 
 // ── Header bell: the alert of a session start that recorded nothing (integration pass D7 item 3) ──
@@ -211,6 +408,8 @@ export interface HomeTile {
    * (a Core in real capture), so the spoken label says "reachable", never "online" / "ready".
    */
   reported?: boolean;
+  /** Fix wave J (JA2-04): the Core link is down - the tile draws no value ("—") and says "Not known". */
+  unknown?: boolean;
 }
 
 export function cameraTileFor(stats: Pick<DeviceStats, 'camerasOnline' | 'camerasTotal'>): HomeTile {
@@ -350,8 +549,13 @@ export function primaryActionFor(
 
 export interface RecentRow {
   sessionId: string;
-  /** The evidence id when the session sealed one (MB 2 shows EV ids), else the session id. */
+  /**
+   * Fix wave J (JA2-28): the SESSION id - the card is "Recent Sessions" and a row opens the session's details.
+   * (It was the evidence id: a row read EV-… and opened SES-….)
+   */
   displayId: string;
+  /** The evidence item the session made, or null (cancelled before an item, or quarantined). */
+  evidenceId: string | null;
   /** `features.dashboard.recent.<whenKey>` with `{ time, date }`. */
   whenKey: 'today' | 'yesterday' | 'earlier';
   time: string;
@@ -391,7 +595,8 @@ export function whenKeyFor(atMs: number, nowMs: number): RecentRow['whenKey'] {
 export function recentRowsFor(history: readonly SessionHistoryEntry[], nowMs: number, count = 3): RecentRow[] {
   return history.slice(0, count).map((entry) => ({
     sessionId: entry.id,
-    displayId: entry.evidenceId ?? entry.id,
+    displayId: entry.id,
+    evidenceId: entry.evidenceId ?? null,
     whenKey: whenKeyFor(entry.endedAt, nowMs),
     time: formatDate(entry.endedAt, 'HH:mm'),
     date: formatDate(entry.endedAt, 'D MMM'),
@@ -474,12 +679,17 @@ export function chipRowFor(input: {
           valueKey: synced ? 'common.status.synchronized' : `common.enums.timeSource.${input.timeSource}`,
           tone: synced ? ('success' as const) : (TIME_TONE[input.timeSource] ?? 'warning'),
         },
-    {
-      id: 'network',
-      labelKey: 'dashboard.statusStrip.network',
-      valueKey: input.linkUp ? 'common.status.connected' : 'common.status.disconnected',
-      tone: input.linkUp ? 'success' : 'danger',
-    },
+    // Round two (JT-03 remainder, seen on the tablet: Home "Network: Connected" beside Network & Time's own
+    // "Network: Not reported"; truth rule 3c): a Core in its OWN capture reports no network - `linkUp` is then the
+    // hosted model's value. It states its own capture by either fact (`isOwnCaptureCoreState`).
+    input.platformNotReported === true || input.hostClock === true
+      ? { id: 'network' as const, labelKey: 'dashboard.statusStrip.network', valueKey: 'common.platformNotReported.value', tone: 'default' as const }
+      : {
+          id: 'network' as const,
+          labelKey: 'dashboard.statusStrip.network',
+          valueKey: input.linkUp ? 'common.status.connected' : 'common.status.disconnected',
+          tone: input.linkUp ? ('success' as const) : ('danger' as const),
+        },
     ...(input.storage
       ? [
           {

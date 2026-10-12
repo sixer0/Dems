@@ -315,13 +315,18 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
         const fed = captureLevelAt(runtime, input, at);
         if (fed === null ? runtime.levelSource === 'external' : fed.dbfs === null) {
           channels.set(channel, { meter: meterAt(at), nextClipAt: current.nextClipAt });
+          // Fix wave J (JW-08): with an external source the Core MEASURES a level only while a capture is
+          // open. At rest nothing is measured: that is "not measured", not the fault word NO SIGNAL (which
+          // stood beside "READY - PASS" on every screen of a real-capture Core that was not recording).
+          const measuring = runtime.levelSource !== 'external' || state.session?.state === SessionState.RECORDING;
           frames[input] = {
             seq: previous.seq + 1,
             at,
             dbfs: AUDIO_FLOOR_DBFS,
             peak: AUDIO_FLOOR_DBFS,
             clip: mic?.clipLatched ?? false,
-            noSignal: true,
+            noSignal: measuring,
+            ...(measuring ? {} : { notMeasured: true as const }),
           };
           continue;
         }

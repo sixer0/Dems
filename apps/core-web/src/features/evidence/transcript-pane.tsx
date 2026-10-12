@@ -1,5 +1,6 @@
+import { activeSegmentIndex, requestPlaybackSeek, usePlaybackPosition } from './playback-link'
 import { useMemo, useState } from 'react'
-import { Alert, Button, Chip, Spinner } from '@heroui/react'
+import { Alert, Button, Chip, Spinner, toast } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileText, Lock, PencilLine, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +15,7 @@ import { formatWibDateTime, investigatorNameOf } from './model'
 import { formatMediaTime, permissionGate } from './sealed-playback'
 import { selectOperators } from './selectors'
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript'
-import { currentRevisionNumber, deriveSegments, paneStateOf, revisionReasons, sealedWithoutDocument, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
+import { currentRevisionNumber, deriveSegments, paneStateOf, revisionReasons, sealedWithoutDocument, segmentNumberOf, transcriptTailOf, type DerivedSegment, type TranscriptPaneState, type TranscriptRevision } from './transcript-model'
 import { TranscriptReviseDialog } from './transcript-revise-dialog'
 import { useRetryCooldown } from './use-retry-cooldown'
 
@@ -27,6 +28,8 @@ export interface TranscriptPaneProps {
    * "not permitted". null / absent: not reported - the pane asks as before.
    */
   mayRead?: boolean | null
+  /** The length of the recording (the item's `durationMs`), for the note of a transcript that ends well before it (N-19). */
+  durationMs?: number | null
 }
 
 /** The Core's reason for "no transcript" of an item of the demonstration data (operation 84, `details.reason`). */
@@ -54,7 +57,7 @@ const STATE_COLOR = { ASSEMBLED: 'success', PARTIAL: 'warning', UNAVAILABLE: 'de
  * - A failed read goes to the shared presenter first, then one record with its codes; "Load again"
  *   is rate-limited (3 s, 6 s, 12 s; three tries).
  */
-export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptPaneProps) {
+export function TranscriptPane({ evidenceId, item, mayRead = null, durationMs = null }: TranscriptPaneProps) {
   const { t } = useTranslation()
   const live = useWebLive()
   const queryClient = useQueryClient()
@@ -102,6 +105,8 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
   const stateColor = noSpeech ? 'default' : STATE_COLOR[state]
   const loading = !disabled && !blocked && transcript.isPending && transcript.fetchStatus !== 'idle'
   const nameOf = (operatorId: string) => investigatorNameOf(operators, operatorId)
+  const activeIndex = activeSegmentIndex(derived.map((entry) => entry.segment), usePlaybackPosition(evidenceId))
+  const tail = transcriptTailOf(derived.map((entry) => entry.segment), durationMs)
   const revisingSegment = revising === null ? null : (derived.find((entry) => entry.segment.index === revising.index) ?? null)
 
   const reload = () => {
@@ -135,7 +140,6 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
         ) : null}
       </div>
 
-      <TranscriptModelFacts model={item.transcriptModel} />
 
       {blocked ? (
         <p className="evi-caption" role="status" data-testid="evidence-transcript-may-not-read">
@@ -203,11 +207,19 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
           ) : (
             <ol className="evi-transcript-list m-0 list-none p-0" data-testid="evidence-transcript-segments">
               {derived.map((entry) => (
-                <SegmentRow key={entry.segment.index} entry={entry} gate={gate} authorName={entry.revised ? nameOf(entry.revised.authorId) : ''} onRevise={() => setRevising((previous) => ({ key: (previous?.key ?? 0) + 1, index: entry.segment.index }))} />
+                <SegmentRow key={entry.segment.index} entry={entry} evidenceId={evidenceId} active={activeIndex === entry.segment.index} gate={gate} authorName={entry.revised ? nameOf(entry.revised.authorId) : ''} onRevise={() => setRevising((previous) => ({ key: (previous?.key ?? 0) + 1, index: entry.segment.index }))} />
               ))}
             </ol>
           )}
+          {/* Fix wave J round three (N-19): the transcript ends well before the recording does - said, with both times. */}
+          {tail !== null ? (
+            <p className="evi-caption" role="note" data-testid="evidence-transcript-tail" data-last-end-ms={tail.lastEndMs}>
+              {t('web.waveJ3.transcript.tail', { last: formatMediaTime(tail.lastEndMs), duration: formatMediaTime(tail.durationMs) })}
+            </p>
+          ) : null}
           <RevisionList revisions={revisionList} failed={revisions.isError} nameOf={nameOf} reasons={reasons} />
+          {/* Fix wave J (JW-12): the model block stood between the player and the text and pushed the text below the fold. */}
+          <TranscriptModelFacts model={item.transcriptModel} />
         </>
       ) : null}
 
@@ -227,16 +239,25 @@ export function TranscriptPane({ evidenceId, item, mayRead = null }: TranscriptP
   )
 }
 
-function SegmentRow({ entry, gate, authorName, onRevise }: { entry: DerivedSegment; gate: ReturnType<typeof permissionGate>; authorName: string; onRevise: () => void }) {
+function SegmentRow({ entry, evidenceId, active, gate, authorName, onRevise }: { entry: DerivedSegment; evidenceId: string; active: boolean; gate: ReturnType<typeof permissionGate>; authorName: string; onRevise: () => void }) {
   const { t } = useTranslation()
   const { segment, revised } = entry
   const start = formatMediaTime(segment.startMs)
   const end = formatMediaTime(segment.endMs)
   return (
-    <li className="evi-transcript-segment" data-testid={`evidence-transcript-segment-${segment.index}`} data-revised={revised ? 'true' : 'false'} aria-label={t('evidence.transcript.segmentLabel', { index: segment.index, start, end })}>
-      <span className="evi-mono evi-caption">
+    <li className="evi-transcript-segment" data-testid={`evidence-transcript-segment-${segment.index}`} data-revised={revised ? 'true' : 'false'} data-active={active ? 'true' : undefined} aria-current={active ? 'true' : undefined} aria-label={t('evidence.transcript.segmentLabel', { index: segmentNumberOf(segment.index), start, end })}>
+      {/* Fix wave J (JT-10 / JW-12): a press on the time of a segment takes the playback there (and opens it if it is not open). */}
+      <button
+        type="button"
+        className="evi-mono evi-caption evi-transcript-seek"
+        onClick={() => {
+          if (!requestPlaybackSeek(evidenceId, segment.startMs)) toast.info(t('web.waveJ.transcript.noPlayer'))
+        }}
+        aria-label={t('web.waveJ.transcript.seek', { start })}
+        data-testid={`evidence-transcript-seek-${segment.index}`}
+      >
         {start}–{end}
-      </span>
+      </button>
       <div className="min-w-0">
         {segment.speaker !== null ? (
           <span className="evi-label" data-testid={`evidence-transcript-speaker-${segment.index}`}>
@@ -343,7 +364,7 @@ export function RevisionList({ revisions, failed, nameOf, reasons }: { revisions
               <ul className="m-0 list-none p-0">
                 {revision.changes.map((change, index) => (
                   <li key={`${change.segmentIndex}-${index}`} className="evi-caption">
-                    <span className="evi-strong">{t('evidence.transcript.revisions.change', { index: change.segmentIndex })}</span>: <span className="evi-transcript-text">{change.to}</span>
+                    <span className="evi-strong">{t('evidence.transcript.revisions.change', { index: segmentNumberOf(change.segmentIndex) })}</span>: <span className="evi-transcript-text">{change.to}</span>
                   </li>
                 ))}
               </ul>

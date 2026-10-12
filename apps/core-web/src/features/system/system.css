@@ -229,7 +229,8 @@
   .sys-qa-card[data-enabled='true']:hover .sys-qa-icon { transform: rotate(-8deg); }
   .sys-qa-text { display: flex; flex-direction: column; min-width: 0; }
   .sys-qa-title { font-size: 14px; font-weight: 600; color: var(--foreground); }
-  .sys-qa-subtitle { font-size: 12px; color: var(--sys-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sys-qa-subtitle { font-size: 12px; color: var(--sys-muted); white-space: normal;
+    overflow-wrap: break-word; overflow: hidden; text-overflow: ellipsis; }
   .sys-qa-chevron { margin-left: auto; flex: none; color: var(--sys-gold); }
 
   /* ── Services board (compact kit Table) ────────────────────────────────────────────────── */
@@ -244,9 +245,8 @@
     font-size: 11.5px;
     line-height: 16px;
     color: var(--sys-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .sys-services-table tr[data-status='DEGRADED'] .sys-service-name { color: var(--warning-soft-foreground, #fbbf24); }
   .sys-services-table tr[data-status='STOPPED'] .sys-service-name { color: var(--danger-soft-foreground, #f87171); }
@@ -360,13 +360,25 @@
   .sys-partition[data-kind='active'] { background: rgb(34 197 94 / 0.16); border-color: rgb(34 197 94 / 0.45); }
   .sys-partition[data-kind='target'] { background: rgb(255 159 61 / 0.16); border-color: rgb(255 159 61 / 0.5); }
   .sys-partition[data-kind='boot_recovery'] { background: rgb(96 165 250 / 0.1); }
+  /* Fix wave J (JW-18): seven names did not fit seven bars ("Boot / Recovery" in 24 px). The bar keeps the proportions
+     and a number; the names are listed whole in the legend under it. */
   .sys-partition-label {
-    overflow: hidden;
     font-size: 10.5px;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
     color: var(--sys-muted);
   }
+  .sys-partition-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--sys-muted);
+  }
+  .sys-partition-legend b { color: var(--foreground); font-weight: 600; }
   .sys-partition[data-kind='active'] .sys-partition-label,
   .sys-partition[data-kind='target'] .sys-partition-label { color: var(--foreground); }
 
@@ -398,7 +410,8 @@
   .dems-shell[data-shell-tier='xs'] .sys-kv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sys-kv { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .sys-kv dt { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sys-muted); }
-  .sys-kv dd { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sys-kv dd { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: normal;
+    overflow-wrap: break-word; }
   .sys-about-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
   .dems-shell[data-shell-tier='xs'] .sys-about-split,
   .dems-shell[data-shell-tier='sm'] .sys-about-split { grid-template-columns: minmax(0, 1fr); }
@@ -414,7 +427,8 @@
     font-size: 12px;
   }
   .sys-identity-row dt { color: var(--sys-muted); }
-  .sys-identity-row dd { margin: 0; overflow: hidden; color: var(--foreground); white-space: nowrap; text-overflow: ellipsis; }
+  .sys-identity-row dd { margin: 0; overflow: hidden; color: var(--foreground); white-space: normal;
+    overflow-wrap: break-word; text-overflow: ellipsis; }
 
   /* ── Settings (Accordion) ──────────────────────────────────────────────────────────────── */
   .sys-settings-body { gap: 0; }
@@ -505,7 +519,8 @@
     transition: background-color 400ms, box-shadow 400ms;
   }
   .sys-fault[data-active='true'] .sys-fault-dot { background: var(--sys-fault-tone); box-shadow: 0 0 8px var(--sys-fault-tone); }
-  .sys-fault-label { overflow: hidden; font-size: 13px; font-weight: 600; color: var(--foreground); white-space: nowrap; text-overflow: ellipsis; }
+  .sys-fault-label { overflow: hidden; font-size: 13px; font-weight: 600; color: var(--foreground); white-space: normal;
+    overflow-wrap: break-word; text-overflow: ellipsis; }
   .sys-fault-evt { margin-left: auto; flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--sys-muted); }
   .sys-fault-hint { font-size: 11px; line-height: 15px; color: var(--sys-muted); }
 

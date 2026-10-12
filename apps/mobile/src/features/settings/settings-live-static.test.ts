@@ -16,6 +16,7 @@
 //
 // The texts this file looks for are put together below, so that it does not hold them itself.
 import { describe, expect, it } from '@jest/globals';
+import { ROLE_PERMISSIONS } from '@dems/shared/sim';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { enMobile } from '@/i18n/en.mobile';
@@ -135,7 +136,8 @@ describe('what belongs to the runtime stays there (rules 3, 4, 7 and 9)', () => 
 
   it('one LIVE idiom (rule 5): every file that picks the LIVE wording reads `useCoreLink().source === \'LIVE\'`', () => {
     const idiom = /useCoreLink\(\)\.source === 'LIVE'/;
-    expect(matching(idiom)).toEqual(['core-link-switch.tsx', 'maintenance-section.tsx', 'security-section.tsx', 'settings-screen.tsx']);
+    // Round two (JW-26): the About section picks the Live card of the real components' versions.
+    expect(matching(idiom)).toEqual(['about-section.tsx', 'core-link-switch.tsx', 'maintenance-section.tsx', 'security-section.tsx', 'settings-screen.tsx']);
     // No second way to ask "is this LIVE" (the data-mode hooks, the Live handle, the stored preference).
     expect(matching(/\buseCoreMode\b|\bcoreModeOf\b|\buseLive\(|\buseLiveLink\b|\bgetCoreLinkSource\b|\buseCoreLinkSource\(/)).toEqual([]);
   });
@@ -164,5 +166,41 @@ describe('the copy (rule 8; §3.2; MB-6a (3))', () => {
     const security = fileText('security-section.tsx');
     expect(security).toMatch(/const description = !live \? `\$\{status\} \$\{t\(biometric\.noteKey\)\}\.` : biometric\.changeBlocked \? t\(biometric\.noteKey\) : `\$\{status\} \$\{t\(biometric\.noteKey\)\}`;/);
     expect(security).toMatch(/live \? \{ changeBlocked: session\.biometric\.changeBlocked, protected: session\.biometric\.protected \} : undefined/);
+  });
+});
+
+/** Fix wave J (JA2-13, JA2-29): every string of a copy tree, with its key path; interpolation names removed. */
+function operatorCopy(node: unknown, path: string[] = []): { key: string; text: string }[] {
+  if (typeof node === 'string') return [{ key: path.join('.'), text: node.replace(/\{\{[^}]*\}\}/g, '') }];
+  if (typeof node !== 'object' || node === null) return [];
+  return Object.entries(node).flatMap(([name, child]) => operatorCopy(child, [...path, name]));
+}
+/** Specification and developer language, and the device kind, that operator copy must not carry. */
+const NOT_OPERATOR_COPY = /tablet|§|design book|\badb\b|THIRD_PARTY|repository|this phase|\bSYS-\d|\bEVT-\d|\b(?:AC|SEC|M\d)-[A-Z0-9]|\bD\d{2,3}\b|\bbook\b/i;
+
+describe('fix wave J: operator copy of Settings and of the mobile namespace', () => {
+  it('JA2-13 / JA2-29 / N-02: no "tablet" on a phone, no specification id, no developer path in any string', () => {
+    const found = operatorCopy(settingsEn, ['features', 'settings'])
+      .filter(({ text }) => NOT_OPERATOR_COPY.test(text))
+      .map(({ key }) => key);
+    expect(found).toEqual([]);
+  });
+
+  it('the mobile namespace: the same rule, without exception (round two changed the three refusal sentences together with their assertions)', () => {
+    // Round one listed three sentences that test files of other owners asserted word for word. Round two (one
+    // owner for apps/mobile) changed them and those assertions together: the exception list is empty.
+    const PENDING: string[] = [];
+    const found = operatorCopy(enMobile)
+      .filter(({ text }) => NOT_OPERATOR_COPY.test(text))
+      .map(({ key }) => key);
+    expect(found).toEqual(PENDING);
+  });
+
+  it('RBAC, one rule: the demo-controls refusal names the one role the shared table gives DEMO_CONTROL', () => {
+    const holders = Object.entries(ROLE_PERMISSIONS)
+      .filter(([, permissions]) => (permissions as readonly string[]).includes('DEMO_CONTROL'))
+      .map(([role]) => role);
+    expect(holders).toEqual(['SUPERVISOR']);
+    expect(settingsEn.live.demoNotPermitted).toBe('The demo controls require the Supervisor role.');
   });
 });

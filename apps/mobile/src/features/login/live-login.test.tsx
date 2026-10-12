@@ -237,7 +237,7 @@ describe('the Login screen in LIVE mode shows the three points of the row (AC-C-
     const trust = screen.getByTestId('login-trust-text');
     expect(String(trust.props.children)).toContain(STORED.deviceId);
     // The link reads "Pairing details" in LIVE mode.
-    expect(screen.getByTestId('login-pair-link')).toBeTruthy();
+    expect(screen.getByTestId('login-pair-link')).toHaveTextContent('Pairing details');
 
     // Open the demo disclosure.
     fireEvent.press(screen.getByTestId('login-demo-trigger'));
@@ -245,6 +245,10 @@ describe('the Login screen in LIVE mode shows the three points of the row (AC-C-
 
     // C1: the plain sentence above the list, word for word with the web console.
     expect(screen.getByTestId('login-demo-notice')).toHaveTextContent('Published demo credentials for synthetic accounts on this local demo. They are not a secret.');
+
+    // Fix wave J (JA2-N6): the rows are announced with a role all the same, worded as what it is in LIVE
+    // mode: the role the demo account was created with (the Core may have changed it, condition C2).
+    expect(screen.getByTestId('login-demo-operator-andi.pratama').props.accessibilityLabel).toMatch(/, user name andi\.pratama, demo account created as Supervisor$/);
 
     // No role chip in LIVE mode (a role is the Core's data): no rendered text names a seeded role.
     const texts = screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
@@ -324,7 +328,7 @@ describe('the sign-in settle site on the fake transport (CLG (b), S1-1)', () => 
     await flush();
     // The presenter's limit toast carries the seconds of retry-after.
     const texts = () => screen.UNSAFE_getAllByType(Text).map((node) => String(node.props.children));
-    expect(texts().some((t) => /limiting requests from this tablet/i.test(t))).toBe(true);
+    expect(texts().some((t) => /limiting requests from this device/i.test(t))).toBe(true);
     expect(texts().some((t) => /Try again in 42 s/.test(t))).toBe(true);
     // Neither the offline notice nor a refusal Alert shows; the mode/link stay as they were.
     expect(screen.queryByTestId('login-alert-core-offline')).toBeNull();

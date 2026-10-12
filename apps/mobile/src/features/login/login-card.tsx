@@ -7,7 +7,7 @@
  * - L7 the fingerprint button (§6.3; hidden without hardware, disabled with a caption otherwise);
  * - L10 Demo operators (`Accordion` + `ListGroup`; a row fills the form; hidden in presentation
  *   mode, D28/Q14);
- * - L11 the Core trust line (Core link chip, pairing line, "Pair this tablet" → `/pair`);
+ * - L11 the Core trust line (Core link chip, pairing line, "Pair this device" / "Pairing details" → `/pair`);
  * - L8 the dataset version.
  *
  * The card carries the M-C-22 moments: one shake on a credential error (red borders only under
@@ -31,6 +31,7 @@ import { Eye, EyeOff, Fingerprint, KeyRound, Lock, User } from 'lucide-react-nat
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Controller } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useShownVersion } from '@/lib/app-version';
 import { StyleSheet, Text, View, type TextInput, type ViewStyle } from 'react-native';
 import Animated, {
   FadeIn,
@@ -45,7 +46,6 @@ import {
   DEMO_OPERATOR_PASSWORD,
   DEMO_PAIRING_CODE,
   OPERATORS,
-  SOFTWARE_VERSION,
   useSim,
   type SimState,
 } from '@dems/shared/sim';
@@ -106,6 +106,12 @@ export interface LoginCardProps {
   focusReady: boolean;
   /** Ambient loops may run (the Core-offline chip breath). */
   loopsAllowed: boolean;
+  /**
+   * Where L11 (the Core trust line) and L8 (the version) are drawn. `inline` (default): under the card,
+   * as before. `detached`: not here; the screen draws `<LoginFooter />` itself, pinned under the scroll
+   * area (phone portrait, fix wave J JA2-14).
+   */
+  footer?: 'inline' | 'detached';
 }
 
 export function LoginCard({
@@ -121,6 +127,7 @@ export function LoginCard({
   alertDelayMs,
   focusReady,
   loopsAllowed,
+  footer = 'inline',
 }: LoginCardProps) {
   // react-hook-form hands out mutable objects; keep this component out of React Compiler
   // memoisation (F-70-1: device-only bugs that jest cannot see).
@@ -310,6 +317,10 @@ export function LoginCard({
               size="lg"
               isDisabled={submitDisabled}
               onPress={() => void submit()}
+              // Fix wave J (JA2-15): the button always carries its own name. Without one, Android builds
+              // the content description from the state alone ("busy") and does not clear it when the
+              // attempt ends, so the button stayed announced "busy" after a failed sign-in.
+              accessibilityLabel={pending ? t('login.submitting') : t('login.submit')}
               accessibilityState={{ busy: pending, disabled: submitDisabled }}
             >
               {pending ? <Spinner size="sm" color={palette.black} /> : null}
@@ -346,11 +357,36 @@ export function LoginCard({
 
       <Animated.View style={[styles.companions, companionStyle]}>
         <DemoOperators onFill={controller.fill} live={live} />
-        <TrustLine controller={controller} settings={settings} loopsAllowed={loopsAllowed} />
-        <Text style={styles.version} testID="login-version">
-          {t('common.brand.version', { version: SOFTWARE_VERSION })}
-        </Text>
+        {footer === 'inline' ? <LoginFooter controller={controller} settings={settings} loopsAllowed={loopsAllowed} /> : null}
       </Animated.View>
+    </View>
+  );
+}
+
+export interface LoginFooterProps {
+  controller: LoginController;
+  settings: MotionSettings;
+  loopsAllowed: boolean;
+  /** Phone portrait: the chip and the link share one row, so the pinned footer stays low. */
+  compact?: boolean;
+}
+
+/**
+ * L11 and L8: the Core trust line and the version (fix wave J, JA2-14). One component for both places:
+ * under the card (tablets, phone landscape) and pinned under the scroll area on a phone in portrait,
+ * where a notice or the keyboard used to push it under the gesture bar and off the screen. The version
+ * line keeps its line height whatever the column does (`minHeight`, no shrink).
+ */
+export function LoginFooter({ controller, settings, loopsAllowed, compact = false }: LoginFooterProps) {
+  const { t } = useTranslation();
+  const shown = useShownVersion();
+  return (
+    <View style={compact ? styles.footerCompact : styles.footer}>
+      <TrustLine controller={controller} settings={settings} loopsAllowed={loopsAllowed} compact={compact} />
+      <Text style={[styles.version, compact ? styles.versionCompact : null]} numberOfLines={1} testID="login-version">
+        {/* Round two (JW-26): in Live mode the app states its OWN build, named as the app's - never the model's "2.4.1". */}
+        {shown.kind === 'APP' ? t('mobile.app.ownVersion', { version: shown.version }) : t('common.brand.version', { version: shown.version })}
+      </Text>
     </View>
   );
 }
@@ -472,7 +508,9 @@ function NoticeAlert({ notice, settings, delayMs, coreRetry, live, onUseSimulate
       title = t('login.notices.sessionExpired', { minutes: AUTH_IDLE_TIMEOUT_MS / 60_000 });
       break;
     default:
-      title = t('login.notices.signedOut');
+      // Round two, ruling (c) (JT-18 / JA2-35; the web's JW-19): "Lock console" ends the sign-in as before, and
+      // the Login says so in the web's own words - never the plain sign-out notice.
+      title = notice.kind === 'signed-out' && notice.reason === 'LOCK' ? t('login.notices.consoleLocked') : t('login.notices.signedOut');
   }
 
   return (
@@ -548,6 +586,14 @@ function DemoOperators({ onFill, live }: { onFill: LoginController['fill']; live
                 testID={`login-demo-operator-${operator.username}`}
                 onPress={() => onFill(operator.username, DEMO_OPERATOR_PASSWORD)}
                 accessibilityRole="button"
+                // Fix wave J (JA2-N6): the row is announced with the operator's role. LIVE draws no role
+                // chip (condition C2: the Core may have changed the role), so its label says what the
+                // role is: the one the demo account was created with.
+                accessibilityLabel={t(live ? 'features.login.demo.rowLabelLive' : 'features.login.demo.rowLabel', {
+                  name: operator.displayName,
+                  username: operator.username,
+                  role: t(`common.roles.${operator.role}`),
+                })}
                 accessibilityHint={t('features.login.demo.fillHint', { name: operator.displayName })}
               >
                 <ListGroup.ItemContent>
@@ -580,7 +626,7 @@ function DemoOperators({ onFill, live }: { onFill: LoginController['fill']; live
 // L11
 // ---------------------------------------------------------------------------------------------
 
-function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginController; settings: MotionSettings; loopsAllowed: boolean }) {
+function TrustLine({ controller, settings, loopsAllowed, compact = false }: { controller: LoginController; settings: MotionSettings; loopsAllowed: boolean; compact?: boolean }) {
   const { t } = useTranslation();
   const pairingState = useSim(selectPairingState);
   const device = useSim(selectCoreDeviceId);
@@ -599,27 +645,50 @@ function TrustLine({ controller, settings, loopsAllowed }: { controller: LoginCo
   }, [breathing, settings, breath]);
   const breathStyle = useAnimatedStyle(() => ({ opacity: breath.get() }));
 
+  const chipView = (
+    <Animated.View style={breathStyle}>
+      <StatusChip
+        testID="login-core-chip"
+        tone={chip.tone}
+        label={t(`features.login.coreChip.${chip.kind}`)}
+        icon={chip.kind === 'ONLINE' || chip.kind === 'SETTLING' ? 'Wifi' : 'TriangleAlert'}
+        size="sm"
+      />
+    </Animated.View>
+  );
+  const textView = (
+    <Text style={[styles.trustText, !paired && styles.trustUnpaired]} testID="login-trust-text">
+      {liveText
+        ? t(liveText.textKey, liveText.values)
+        : paired
+          ? t('mobile.pairing.trustLinePaired', { device })
+          : t('mobile.pairing.trustLineUnpaired', { device })}
+    </Text>
+  );
+  // Fix wave J (JA2-13, N-05): the link is named for what it opens. A paired device opens its pairing
+  // details; only an unpaired one is asked to pair ("Pair this device", the same on both layouts).
+  const linkView = (
+    <LinkButton size="sm" onPress={() => router.push('/pair')} testID="login-pair-link">
+      <LinkButton.Label>{t(liveText ? liveText.linkKey : paired ? 'mobile.pairing.linkPaired' : 'mobile.pairing.link')}</LinkButton.Label>
+    </LinkButton>
+  );
+
+  if (compact) {
+    return (
+      <View style={styles.trustCompact} testID="login-trust-line">
+        <View style={styles.trustRow}>
+          {chipView}
+          {linkView}
+        </View>
+        {textView}
+      </View>
+    );
+  }
   return (
     <View style={styles.trust} testID="login-trust-line">
-      <Animated.View style={breathStyle}>
-        <StatusChip
-          testID="login-core-chip"
-          tone={chip.tone}
-          label={t(`features.login.coreChip.${chip.kind}`)}
-          icon={chip.kind === 'ONLINE' || chip.kind === 'SETTLING' ? 'Wifi' : 'TriangleAlert'}
-          size="sm"
-        />
-      </Animated.View>
-      <Text style={[styles.trustText, !paired && styles.trustUnpaired]} testID="login-trust-text">
-        {liveText
-          ? t(liveText.textKey, liveText.values)
-          : paired
-            ? t('mobile.pairing.trustLinePaired', { device })
-            : t('mobile.pairing.trustLineUnpaired', { device })}
-      </Text>
-      <LinkButton size="sm" onPress={() => router.push('/pair')} testID="login-pair-link">
-        <LinkButton.Label>{t(liveText ? liveText.linkKey : 'mobile.pairing.link')}</LinkButton.Label>
-      </LinkButton>
+      {chipView}
+      {textView}
+      {linkView}
     </View>
   );
 }
@@ -663,6 +732,10 @@ const styles = StyleSheet.create({
   },
   mono: { fontFamily: fontFamily.native.mono },
   trust: { alignItems: 'center', gap: spacing[1] },
+  trustCompact: { alignItems: 'center', gap: spacing[0] },
+  trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', columnGap: spacing[2] },
+  footer: { gap: spacing[3], alignItems: 'stretch' },
+  footerCompact: { gap: spacing[0], alignItems: 'stretch' },
   trustText: {
     fontFamily: fontFamily.native.normal,
     fontSize: typography.caption.size,
@@ -678,5 +751,9 @@ const styles = StyleSheet.create({
     color: palette.gray,
     textAlign: 'center',
     marginTop: spacing[1],
+    // JA2-14: the line was 3 px high on the phone. It keeps one full line whatever the column does.
+    minHeight: typography.caption.lineHeight,
+    flexShrink: 0,
   },
+  versionCompact: { marginTop: 0 },
 });

@@ -10,7 +10,7 @@ import type { ResourceTree } from '@/i18n/resources';
 export const pairingEn = {
   header: {
     back: 'Back',
-    subtitle: 'Certificate-bound control link to the Core (book §20.1), simulated in this demo.',
+    subtitle: 'Certificate-bound control link to the Core, simulated in this demo.',
   },
   connection: {
     title: 'Core connection',
@@ -54,18 +54,18 @@ export const pairingEn = {
     pairing: 'Pairing…',
   },
   paired: {
-    title: 'Tablet paired',
-    body: 'This tablet now controls {{device}}. Unpairing removes the control link; recording on the Core is not affected.',
+    title: 'Device paired',
+    body: 'This device now controls {{device}}. Unpairing removes the control link; recording on the Core is not affected.',
     continueToSignIn: 'Continue to sign-in',
     done: 'Done',
     handoff: 'Returning automatically…',
   },
   unpair: {
-    title: 'Unpair this tablet?',
-    body: 'The tablet will no longer be bound to {{device}}. You can pair it again with a new code. The action is written to the audit log.',
+    title: 'Unpair this device?',
+    body: 'This device will no longer be bound to {{device}}. You can pair it again with a new code. The action is written to the audit log.',
     confirm: 'Unpair',
     cancel: 'Keep paired',
-    done: 'Tablet unpaired',
+    done: 'Device unpaired',
     failed: 'Could not unpair. Please try again.',
   },
   stepper: {
@@ -83,13 +83,13 @@ export const pairingEn = {
   // changed. Rule of §3.2: a screen that says "simulated" shows simulator data; nothing here does.
   live: {
     header: {
-      subtitle: 'Pairs this tablet with the Core server. A supervisor issues the code in the web console.',
+      subtitle: 'Pairs this device with the Core server. A supervisor issues the code in the web console.',
     },
     connection: {
       steps: {
         discover: 'Reach the Core server',
         verify: 'The Core checks the pairing code',
-        paired: 'The Core registers this tablet and issues its credential',
+        paired: 'The Core registers this device and issues its credential',
       },
       status: {
         // An unpaired tablet gets no Core data: no name, no ID, no fingerprint to show.
@@ -108,7 +108,7 @@ export const pairingEn = {
     },
     identity: {
       server: 'Core server',
-      serverValue: 'This computer, through adb reverse',
+      serverValue: 'Local connection',
       link: 'Link',
       linkState: {
         online: 'Connected',
@@ -117,11 +117,11 @@ export const pairingEn = {
       },
       coreDevice: 'Core device',
       coreName: 'Core name',
-      tablet: 'This tablet',
+      tablet: 'This device',
       fingerprintUnknown: 'Shown after pairing',
     },
     code: {
-      description: 'Enter the 6-digit pairing code that a supervisor issued for this tablet in the web console.',
+      description: 'Enter the 6-digit pairing code that a supervisor issued for this device in the web console.',
       // `attemptsRemaining` of the Core is the count before the LOCK, not the attempts left of a code.
       attemptsBeforeLock_one: '{{count}} more attempt before pairing is locked for a short time.',
       attemptsBeforeLock_other: '{{count}} more attempts before pairing is locked for a short time.',
@@ -131,7 +131,7 @@ export const pairingEn = {
         OFFLINE: 'The Core server could not be reached. The code was not checked.',
         NO_ANSWER: 'The Core server did not answer. If this code is refused now, ask a supervisor for a new one.',
         FAILED: 'The Core server could not complete the request.',
-        STORAGE: 'This tablet could not store its credential and asked the Core to remove the registration. Ask a supervisor for a new pairing code.',
+        STORAGE: 'This device could not store its credential and asked the Core to remove the registration. Ask a supervisor for a new pairing code.',
       },
       // A 429 is a limit, never a wrong code (decision D116): no attempt was counted.
       limited: 'The Core server is limiting requests. The code was not checked and no attempt was counted.',
@@ -145,15 +145,15 @@ export const pairingEn = {
     },
     notice: {
       revokedTitle: 'Pairing revoked',
-      revoked: "This tablet's pairing was revoked on the Core. Ask a supervisor for a new pairing code.",
+      revoked: "This device's pairing was revoked on the Core. Ask a supervisor for a new pairing code.",
       revokedRecording: 'The recording continues on the Core.',
-      unknownTitle: 'Tablet not registered',
-      unknown: 'This tablet is not registered with this Core. Ask a supervisor for a new pairing code.',
-      unpairedTitle: 'Tablet unpaired',
-      unpaired: 'This tablet was unpaired.',
+      unknownTitle: 'Device not registered',
+      unknown: 'This device is not registered with this Core. Ask a supervisor for a new pairing code.',
+      unpairedTitle: 'Device unpaired',
+      unpaired: 'This device was unpaired.',
     },
     paired: {
-      body: 'This tablet is registered with {{device}} as {{tablet}}. An operator can now sign in on it.',
+      body: 'This device is registered with {{device}} as {{tablet}}. An operator can now sign in on it.',
     },
     unpair: {
       body: 'You will be signed out. It needs a new pairing code from a supervisor to be used again. A recording in progress continues on the Core.',

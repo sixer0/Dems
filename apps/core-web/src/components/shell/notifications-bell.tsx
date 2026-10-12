@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, Popover } from '@heroui/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Badge, Button, Popover, toast } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { motion, useAnimate } from 'motion/react'
 import { Bell, CircleAlert, Info, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { AcknowledgeAllButton, AcknowledgeAllDialog } from './acknowledge-all'
+import { useAcknowledgeAll } from './use-acknowledge-all'
+import { openAlertsOf, selectOpenUnacknowledgedCount } from './open-alerts'
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime'
 import { settle, useCoreActions } from '@dems/shared/live'
-import { SEAL_UNSEALABLE_PLAIN_SENTENCE, canResolveUnsealable, isUnsealableAlert, selectActiveAlerts, selectOperator, selectUnacknowledgedAlertCount, useSim, type SimAlert, type SimState } from '@dems/shared/sim'
+import { SEAL_UNSEALABLE_PLAIN_SENTENCE, canResolveUnsealable, isUnsealableAlert, selectOperator, useSim, type SimAlert, type SimState } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { reportShellError } from './shell-report'
@@ -15,7 +18,6 @@ import { captureFailedStartOf, captureNoticeLine, captureNoticeOf, type CaptureF
 import { failedStartAlertLine } from './failed-start-alert'
 import { useMotionPolicy } from '@/motion'
 
-const LATEST_ALERTS = 5
 /** M-SH-06: the bell swings 0 → 12° → −8° → 0 in about 600 ms (spec literals, D49). */
 const SWING_KEYFRAMES = [0, 12, -8, 0]
 const SWING_MS = 600
@@ -27,10 +29,8 @@ const SEVERITY_ICON: Record<string, LucideIcon> = {
   WARNING: TriangleAlert,
 }
 
-/** Newest active alerts first; alert objects come from the store, so `useSim` stays shallow-stable. */
-function selectLatestAlerts(s: SimState) {
-  return selectActiveAlerts(s).slice(-LATEST_ALERTS).reverse()
-}
+/** The store's alert list (a stable reference); the open ones are derived while rendering (`open-alerts.ts`). */
+const selectAlerts = (s: SimState) => s.alerts
 
 /** The failed start of the open session (FAULT with `captureDurable: false`), or null: a primitive. */
 const selectFailedStart = (s: SimState): CaptureFailedStart | null => captureFailedStartOf(s.session, s.alerts)
@@ -47,16 +47,23 @@ const selectFailedStart = (s: SimState): CaptureFailedStart | null => captureFai
 export function NotificationsBell() {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const count = useSim(selectUnacknowledgedAlertCount)
-  const alerts = useSim(selectLatestAlerts)
+  // Fix wave J (JA2-25 / JW-21; ruling): the badge counts every alert still OPEN for the operator - also one the Core
+  // resolved that nobody acknowledged - and the popover lists them, each with its acknowledgement.
+  const count = useSim(selectOpenUnacknowledgedCount)
+  const allAlerts = useSim(selectAlerts)
+  const alerts = useMemo(() => openAlertsOf(allAlerts), [allAlerts])
   const failedStart = useSim(selectFailedStart)
   const [swingScope, swings] = useAlertSwing(count)
+  // The confirmation and the run live here, outside the popover: it closes when the confirmation opens.
+  const acknowledgeAll = useAcknowledgeAll('bell', () => setOpen(false))
   const label =
     count > 0
       ? `${t('shell.notifications.button')}, ${t('shell.notifications.count', { count })}`
       : t('shell.notifications.button')
 
   return (
+    <>
+    <AcknowledgeAllDialog control={acknowledgeAll} />
     <Popover isOpen={open} onOpenChange={setOpen}>
       <span ref={swingScope} className="dems-bell-scope" data-swings={swings}>
         <Badge.Anchor className="dems-bell">
@@ -75,10 +82,12 @@ export function NotificationsBell() {
       <Popover.Content placement="bottom end" offset={8} className="w-[360px] max-w-[calc(100vw-24px)]">
         <Popover.Dialog aria-label={t('shell.notifications.title')}>
           <Popover.Heading className="dems-popover-heading">{t('shell.notifications.title')}</Popover.Heading>
+          {/* Fix wave J round three: a backlog is cleared with one confirmed press (`acknowledge-all.tsx`). */}
+          <AcknowledgeAllButton control={acknowledgeAll} />
           {alerts.length === 0 ? (
             <p className="dems-popover-empty">{t('shell.notifications.empty')}</p>
           ) : (
-            <ul className="dems-alert-list">
+            <ul className="dems-alert-list dems-alert-scroll" data-testid="bell-open-alerts">
               {alerts.map((alert) => {
                 const Icon = SEVERITY_ICON[alert.severity] ?? Info
                 // Task 3 R-10 (blueprint row 137; ux §8e.1): a no-device notice is worded from `params.reason`,
@@ -98,17 +107,28 @@ export function NotificationsBell() {
                     <time className="dems-alert-time" dateTime={new Date(alert.at).toISOString()}>
                       {formatDate(alert.at, DATE_PATTERNS.time)}
                     </time>
+                    {!alert.active ? (
+                      <span className="dems-alert-resolved" data-testid={`alert-resolved-${alert.id}`}>
+                        {t('web.waveJ.alerts.resolvedOpen')}
+                      </span>
+                    ) : null}
+                    {alert.acknowledged ? null : <AcknowledgeAlert alertId={alert.id} />}
                   </li>
                 )
               })}
             </ul>
           )}
+          {/* Fix wave J (JW-21): the alerts have a page of their own - every alert, cleared ones too, with its acknowledgement. */}
+          <Link to="/alerts" className="dems-popover-link" onClick={() => setOpen(false)} data-testid="bell-all-alerts">
+            {t('web.waveJ.alerts.link')}
+          </Link>
           <Link to="/security-audit" className="dems-popover-link" onClick={() => setOpen(false)}>
             {t('shell.notifications.viewAll')}
           </Link>
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
+    </>
   )
 }
 
@@ -200,4 +220,28 @@ function useAlertSwing(count: number) {
   }, [count, m, animate, scope])
 
   return [scope, swings] as const
+}
+
+/** Fix wave J (JW-21): the acknowledgement of one open alert (operation 70); the Core decides who may. */
+function AcknowledgeAlert({ alertId }: { alertId: string }) {
+  const { t } = useTranslation()
+  const actions = useCoreActions()
+  const presentCoreError = useCoreErrorPresenter()
+  const { busy, pending, run } = usePendingControl()
+  const acknowledge = () =>
+    run((release) => {
+      settle(() => actions.acknowledgeAlert(alertId), {
+        fail: (error) => {
+          if (presentCoreError(error) !== null) return
+          reportShellError('NotificationsBell.acknowledge', error, 'The acknowledgement of an alert was not accepted', { alertId })
+          toast.danger(t('common.errors.generic'))
+        },
+        done: release,
+      })
+    })
+  return (
+    <Button size="sm" variant="ghost" className="dems-alert-ack" onPress={acknowledge} isDisabled={busy} isPending={pending} data-testid={`alert-acknowledge-${alertId}`}>
+      {t('web.waveJ.alerts.acknowledge')}
+    </Button>
+  )
 }

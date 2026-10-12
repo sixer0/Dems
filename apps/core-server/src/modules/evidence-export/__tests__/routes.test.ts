@@ -11,7 +11,7 @@ import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { WEB_ORIGIN } from '../../../../test/support/identity';
 import { buildApp } from '../../../app';
 import type { EngineHost } from '../../../engine';
-import { READ_STORED_EXPORT_FAILURE, READ_STORED_EXPORT_REQUEST, evidenceExport, type EvidenceExportRuntime } from '../../../evidence-export';
+import { READ_STORED_EXPORT_FAILURE, READ_STORED_EXPORT_REQUEST, evidenceExport, replaceExportServicePartsForTest, type EvidenceExportRuntime } from '../../../evidence-export';
 import type { Principal } from '../../../plugins/authenticate';
 import { permissionGuard } from '../../../plugins/permission-guard';
 import { EVIDENCE_EXPORT_MODULE_OPERATIONS } from '../index';
@@ -205,6 +205,8 @@ describe('operation 42 exportEvidence with export jobs provided (the seam of row
     evidenceExport(test.app).provide(jobs.runtime);
     test.actAs(operator('SUPERVISOR'));
     test.engineAnswers({ ok: true, status: 202, exportId: 'EXP-000032' });
+    // Fix wave J: THIS Core can produce a composite (a test part; the build selects no encoder) - only then is a COMPOSITE handed on.
+    replaceExportServicePartsForTest(test.app, { compositeAvailable: () => true });
     const response = await test.post(exportUrl(ID), { reason: 'Prosecutor request', kind: 'COMPOSITE', composite: {} });
     expect(response.statusCode).toBe(202);
     // R93-06: the job operation 87 polls is named in the answer, as the contract and the simulator have it.
@@ -212,7 +214,7 @@ describe('operation 42 exportEvidence with export jobs provided (the seam of row
     expect(validateCoreApiResponse('exportEvidence', 202, response.json())).toEqual({ ok: true });
     expect(jobs.log).toEqual([`begin ${ID}`, 'accepted EXP-000032 COMPOSITE']);
     // R93-06: the kind the body named is on the request the hosted action commits; an item without a package here is not deferred.
-    expect(test.commands[0]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '', kind: 'COMPOSITE' }]);
+    expect(test.commands[0]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '', kind: 'COMPOSITE', compositeAvailable: true }]);
     expect(test.commands).toHaveLength(1);
 
     jobs.log.length = 0;
@@ -220,6 +222,27 @@ describe('operation 42 exportEvidence with export jobs provided (the seam of row
     expect(jobs.log).toEqual([`begin ${ID}`, 'accepted EXP-000032 PACKAGE']);
     // A body that names no kind writes none.
     expect(test.commands[1]).toEqual(['exportEvidence', ID, { reason: 'Prosecutor request', destination: '' }]);
+  });
+
+  it('fix wave J (truth rule 3d; JA2-03 / JW-03): a COMPOSITE this build cannot produce is refused BEFORE the ticket, the hosted action and any job - 409 COMMAND_UNSUPPORTED with its reason', async () => {
+    const test = await bed();
+    const jobs = double();
+    evidenceExport(test.app).provide(jobs.runtime);
+    test.actAs(operator('SUPERVISOR'));
+    test.engineAnswers({ ok: true, status: 202, exportId: 'EXP-000032' });
+    // No part is replaced: the build's own answer (`selectedCompositeEncoder()` is null - the licence gate).
+    const response = await test.post(exportUrl(ID), { reason: 'Prosecutor request', kind: 'COMPOSITE', composite: {} });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'COMMAND_UNSUPPORTED', message: 'Composite video is not available in this build.', details: { reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } } });
+    expect(validateCoreApiResponse('exportEvidence', 409, response.json())).toEqual({ ok: true });
+    // Nothing ran: no ticket was taken, no hosted action, so no export id, no request row and no "Evidence exported" event exist.
+    expect(jobs.log).toEqual([]);
+    expect(test.commands).toEqual([]);
+    // CONTROL: the same request as a PACKAGE is accepted, by the same bed.
+    const accepted = await test.post(exportUrl(ID), { reason: 'Prosecutor request', kind: 'PACKAGE' });
+    expect(accepted.statusCode).toBe(202);
+    expect(jobs.log).toEqual([`begin ${ID}`, 'accepted EXP-000032 PACKAGE']);
+    expect(test.commands).toHaveLength(1);
   });
 
   it('409 EXPORT_IN_PROGRESS while a job of the item is unfinished: the hosted action is not run, so no second request row is written', async () => {

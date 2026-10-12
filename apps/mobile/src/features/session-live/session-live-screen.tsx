@@ -89,10 +89,13 @@ import {
 type SheetName = 'timeline' | 'audio' | 'settings';
 
 /**
- * Snapshot and marker confirmations sit at the bottom for 2.5 s: at the top (the app default, §4.19)
- * they covered the header's History icon, which is where the marker chip flies (seen on dems_phone).
+ * Snapshot and marker confirmations. They sat at the bottom for 2.5 s because at the top (the app default,
+ * §4.19) they covered the header's History icon, which is where the marker chip flies (seen on dems_phone).
  */
-const CONFIRM_TOAST = { placement: 'bottom', duration: 2500 } as const;
+// Round two (JT-09, JA2-N7): they are back at the TOP. At the bottom a confirmation lay over End Session - the one
+// control that must always take a press - for its whole 2.5 s and swallowed the tap. The header they cover for
+// 2 s holds Back (which asks first) and the History icon; the marker's chip still flies there.
+const CONFIRM_TOAST = { placement: 'top', duration: 2000 } as const;
 
 /** §7.3 M-PG-SM enter beats (ms after the route enters). */
 const BEAT = { feed: 80, mics: 140, actions: 200, end: 260 } as const;
@@ -186,7 +189,7 @@ export function SessionLiveScreen() {
       ok: () => {
         if (!flashed) setShutterSignal((n) => n + 1);
         setSnapshotSignal((n) => n + 1);
-        toast.show({ variant: 'success', label: t('session.actions.snapshot.captured'), ...CONFIRM_TOAST });
+        toast.show({ variant: 'success', label: t('features.session-live.snapshotMarked'), ...CONFIRM_TOAST });
       },
       done: () => {
         settled = true;

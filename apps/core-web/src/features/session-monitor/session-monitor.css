@@ -79,15 +79,33 @@
   .sm-area-audit { min-height: 0; }
 }
 
-/* Fit the content area at desktop sizes: the page is exactly as tall as <main>'s content box. */
-@media (min-width: 1280px) and (min-height: 760px) {
+/* Fix wave J (JW-18, headline 11): the page was FITTED into the window from 1280 x 760 up - five rows of fixed share.
+   At 1280 x 800 and 1440 x 900 its panels did not hold their content (cut headings, audit rows cut, storage labels
+   printed over each other), and a sentence that is not cut any more needs room at every width. The rows now keep a
+   MINIMUM and grow with their content; the page is at least as tall as <main> and scrolls when it is taller. */
+@media (min-width: 1280px) {
   .sm-page {
-    height: calc(100dvh - var(--shell-topbar-h, 80px) - 2 * var(--shell-pad, 16px));
-    min-height: 0;
+    min-height: calc(100dvh - var(--shell-topbar-h, 80px) - 2 * var(--shell-pad, 16px));
   }
   .sm-grid {
-    flex: 1 1 0;
-    min-height: 0;
+    flex: 1 0 auto;
+    grid-template-rows:
+      minmax(210px, auto)
+      minmax(190px, auto)
+      auto
+      minmax(200px, auto)
+      minmax(150px, auto);
+  }
+}
+
+@media (min-width: 1600px) {
+  .sm-grid {
+    grid-template-rows:
+      minmax(250px, auto)
+      minmax(230px, auto)
+      auto
+      minmax(230px, auto)
+      minmax(170px, auto);
   }
 }
 
@@ -236,9 +254,8 @@
 .sm-card-title {
   margin: 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 15px;
   font-weight: 600;
   line-height: 20px;
@@ -473,9 +490,8 @@
 .sm-kv-value {
   margin: 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 14px;
   line-height: 20px;
   color: var(--foreground);
@@ -493,9 +509,8 @@
 .sm-kv-zone {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
 }
 .sm-kv-zone {
   font-size: 11px;
@@ -559,12 +574,11 @@
 
 .sm-check-value {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: right;
   font-size: 12.5px;
   color: var(--color-foreground-2, #d8cec6);
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
 }
 
 /* Fix wave K (G89b-11): the capture checkpoints under the check rows - a label line, then one line per
@@ -667,9 +681,8 @@
 }
 
 .sm-audio-name-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
+  white-space: nowrap;
 }
 
 .sm-audio-role {
@@ -700,9 +713,8 @@
 .sm-audio-band-failed,
 .sm-audio-reason {
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 11.5px;
   line-height: 16px;
   color: var(--color-foreground-2, #d8cec6);
@@ -728,12 +740,10 @@
 
 .sm-audio-name {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
   color: var(--foreground);
 }
@@ -858,18 +868,16 @@
 }
 
 .sm-action-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 15px;
   font-weight: 600;
   line-height: 20px;
 }
 
 .sm-action-subtitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 12px;
   line-height: 16px;
   color: var(--color-foreground-2, #d8cec6);
@@ -981,9 +989,8 @@
 }
 
 .sm-audit-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   color: var(--foreground);
 }
 
@@ -1067,9 +1074,8 @@
 
 .sm-input-meta {
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+    overflow-wrap: break-word;
   font-size: 12px;
   color: var(--color-foreground-2, #d8cec6);
 }
@@ -1476,3 +1482,24 @@
   gap: 6px;
   margin-top: 4px;
 }
+
+/* Fix wave J (JW-18): at 1280 x 800 the storage card's ring, free space and the two figures stood in one row of
+   three columns and the labels were printed over each other. The figures go under the ring and the free space there,
+   and the inputs panel grows with its tiles, so nothing is drawn over anything and nothing scrolls sideways. */
+@media (max-width: 1439.98px) {
+  .sm-storage-body { grid-template-columns: auto minmax(0, 1fr); }
+  .sm-storage-kv { grid-column: 1 / -1; }
+  /* The four input tiles keep their two columns; their panel grows with them instead of scrolling inside itself. */
+  .sm-inputs-body { overflow: visible; }
+  .sm-inputs-body .sm-inputs-grid { flex: 0 0 auto; }
+}
+
+/* Fix wave J (JW-22): the link to the finished sessions under the page header. */
+.sm-history-link {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Fix wave J (JW-07): the DEMO mark in a panel header and under the banner never pushes the title out. */
+.sm-card-demo { flex: none; }
+.sm-banner-demo { align-self: flex-start; margin-top: 2px; }

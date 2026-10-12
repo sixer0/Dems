@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useSim } from '@dems/shared/sim'
+import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useMotionPolicy } from '@/motion'
 import { useDeviceLabels } from './labels'
 import { BANNER_RANK, BANNER_TONE, selectBanner } from './model'
@@ -27,9 +28,14 @@ export function DevicesBanner() {
     setSeen({ kind: banner.kind, pulses })
   }
 
+  // Fix wave J (JW-23 (2)): "ALL DEVICES READY 7/7 - Every input and link is operating normally" counted the three
+  // synthetic "other devices" and sources nobody had checked. A Core in its own capture states no such sum.
+  const ownCore = useSelfCaptureCore()
   const title =
     banner.issues === 0
-      ? t('devices.banner.allReady', { ready: banner.ready, total: banner.total })
+      ? ownCore
+        ? t('web.waveJ.devices.bannerTitle')
+        : t('devices.banner.allReady', { ready: banner.ready, total: banner.total })
       : t('devices.banner.attention', { count: banner.issues })
   let detail: string
   if (banner.worst && banner.worstCode) {
@@ -39,11 +45,11 @@ export function DevicesBanner() {
     })
     detail = banner.issues > 1 ? t('devices.banner.moreIssues', { detail: one, count: banner.issues - 1 }) : one
   } else {
-    detail = banner.kind === 'RECORDING' ? t('devices.banner.recordingDetail') : t('devices.banner.readyDetail')
+    detail = banner.kind === 'RECORDING' ? t('devices.banner.recordingDetail') : ownCore ? t('web.waveJ.devices.bannerDetail') : t('devices.banner.readyDetail')
   }
 
   return (
-    <div className="dev-banner" data-testid="devices-banner" data-kind={banner.kind} data-tone={tone} role="status" aria-live="polite">
+    <div className="dev-banner" data-testid="devices-banner" data-kind={banner.kind} data-tone={ownCore && banner.issues === 0 && banner.kind !== 'RECORDING' ? 'default' : tone} data-own-core={ownCore ? 'true' : undefined} role="status" aria-live="polite">
       <span className="dev-banner-dot" aria-hidden="true">
         <span className="dev-banner-dot-glow" />
         <span className="dev-banner-dot-core" />

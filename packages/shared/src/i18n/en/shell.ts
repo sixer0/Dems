@@ -93,7 +93,7 @@ export const shell = {
       storage: 'Evidence storage',
       inputs: 'Cameras and microphones',
       recording: 'Recording pipeline',
-      tablet: 'Operator tablet link',
+      tablet: 'Operator device link',
     },
     checkStatus: {
       OK: 'OK',

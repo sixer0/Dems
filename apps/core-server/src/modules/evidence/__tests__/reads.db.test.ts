@@ -4,7 +4,7 @@
 // The real app, booted, with every stage as the server has it, on a manual clock and a manual
 // timer. Operators are the seeded ones, signed in on the web console. What is stored is read as
 // `dems_owner`. The same reads at the volume of the bulk template are in `bulk.db.test.ts`.
-import { EvidenceDetailSchema, EvidencePageSchema, LIST_CURSOR_PATTERN, validateCoreApiResponse, type EvidenceDetail, type EvidencePage } from '@dems/shared/api';
+import { EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE, EvidenceDetailSchema, EvidencePageSchema, LIST_CURSOR_PATTERN, validateCoreApiResponse, type EvidenceDetail, type EvidencePage } from '@dems/shared/api';
 import { CaseType, EvidenceStatus, type EvidenceItem } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ import { bearer, deviceSignIn, insertPairedDevice } from '../../../../test/suppo
 import { decodeEvidenceCursor } from '../cursor';
 import {
   EVIDENCE,
+  LIVE_SESSION,
   UNKNOWN_EVIDENCE_ID,
   errorOf,
   evidenceApp,
@@ -22,6 +23,7 @@ import {
   itemUrl,
   onTheWire,
   outcomeOf,
+  principalOf,
   sealSession,
   trackListsOf,
   trailLength,
@@ -107,8 +109,13 @@ describe('operation 39 listEvidence on the seeded database', () => {
     const response = await host.get(EVIDENCE, supervisor);
     const lists = trackListsOf(response.json());
     expect(lists).toHaveLength(13);
-    for (const tracks of lists) expect(tracks).toEqual(FOUR_TRACKS);
-    for (const item of pageOf(response.json()).items) {
+    // Fix wave J (truth rule 3a): every SEALED item lists its four tracks; the one item that was never sealed lists none
+    // (it has no track hash) - an answer never lists half of an audio pair either way.
+    const sealedItems = pageOf(response.json()).items.filter((item) => item.sealedAt !== null);
+    expect(lists.filter((tracks) => tracks.length > 0)).toHaveLength(sealedItems.length);
+    expect(lists.filter((tracks) => tracks.length === 0)).toHaveLength(1);
+    for (const tracks of lists) if (tracks.length > 0) expect(tracks).toEqual(FOUR_TRACKS);
+    for (const item of sealedItems) {
       const audio = item.tracks.filter((track) => track.trackId.startsWith('AUDIO'));
       expect(audio.map((track) => track.trackId)).toEqual(['AUDIO-01', 'AUDIO-02']);
       expect(audio[0]?.sha256).not.toBe(audio[1]?.sha256);
@@ -281,7 +288,8 @@ describe('operation 40 getEvidence', () => {
       expect(detail.evidence, item.id).toStrictEqual(onTheWire(item));
       // MS-2: the dataset items join their package on the seed day; the suffix is the four digits of the ID.
       expect(detail.media, item.id).toEqual({ source: 'DEMO_PACKAGE', packageSuffix: item.id.slice(-4) });
-      expect(trackListsOf(response.json())).toEqual([FOUR_TRACKS]);
+      // Fix wave J (truth rule 3a): a sealed item lists its four tracks; the one item that was never sealed lists none.
+      expect(trackListsOf(response.json())).toEqual([item.sealedAt === null ? [] : FOUR_TRACKS]);
     }
   });
 
@@ -290,7 +298,9 @@ describe('operation 40 getEvidence', () => {
     const body = response.json() as { media: Record<string, unknown> };
     // Wave H C1: beside the item and its media reference the Core states what THIS caller may do (`access`: three booleans).
     // Fix wave K (G94b-11 / -12): the Core's default export destination is a text beside them - no path, no URL, no file name.
-    expect(Object.keys(body).sort()).toEqual(['access', 'evidence', 'exportDestinationDefault', 'media']);
+    // Fix wave J (JA2-03 / JW-03): and the export outputs it can produce (`exportKinds`: kinds, booleans and a reason code).
+    expect(Object.keys(body).sort()).toEqual(['access', 'evidence', 'exportDestinationDefault', 'exportKinds', 'media']);
+    expect((body as unknown as { exportKinds: unknown }).exportKinds).toEqual([{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: false, reason: 'COMPOSITE_ENCODER_NOT_SELECTED' }]);
     expect((body as unknown as { access: unknown }).access).toEqual({ play: true, readTranscript: true, export: true });
     expect(Object.keys(body.media).sort()).toEqual(['packageSuffix', 'source']);
     expect(JSON.stringify(body.media)).not.toMatch(/[\\/]|\.\.|\.mp4|\.wav|https?:|file:|assets|demo-evidence/i);
@@ -432,7 +442,13 @@ describe('evidence made by the engine while a client walks the list (plan rule: 
     expect(live.id.slice(-4)).toBe('0014');
     const response = await host.get(itemUrl(live.id), investigator);
     const detail = detailOf(response.json());
-    expect(detail.media).toEqual({ source: 'NONE', packageSuffix: null, reason: 'NOT_A_SEALED_PACKAGE' });
+    // Fix wave J (JA2-02): a session a Core in SIMULATED capture sealed is a demonstration record WITHOUT media, and the
+    // answer says exactly that - not "no sealed package of this item is in the evidence store" beside a Summary that stored one.
+    expect(detail.media).toEqual(EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE);
+    expect(detail.media).toEqual({ source: 'NONE', packageSuffix: null, reason: 'DEMONSTRATION_RECORD' });
+    // The same item says the same thing on the item and in the list: SIMULATED (its verdict carries `demonstration: true`: `commands.db.test.ts`).
+    expect(detail.evidence).toMatchObject({ integritySource: 'SIMULATED', status: 'SEALED' });
+    expect((await list()).items.find((item) => item.id === live.id)).toMatchObject({ integritySource: 'SIMULATED', status: 'SEALED' });
     expect(detail.evidence).toStrictEqual(onTheWire(live));
     expect(validateCoreApiResponse('getEvidence', 200, response.json())).toEqual({ ok: true });
   });
@@ -468,5 +484,62 @@ describe('a session on a paired device (decision D69: a bearer value, no Origin,
     expect(validateCoreApiResponse('verifyEvidence', 200, verified.json())).toEqual({ ok: true });
     expect((await trailSince(owner, before)).at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFIED', actorId: host.operator('INVESTIGATOR').id, evidenceId: item.id });
     for (const response of [listed, detail, verified]) expect(response.headers['set-cookie']).toBeUndefined();
+  });
+});
+
+describe('fix wave J round two (JT-11 / JW-13 / JA2-08): what the operator added to a session is on its SEALED item', () => {
+  it('operation 40 and operation 39 state the markers, the notes and the session form\'s note the Core stored for the session - read from the item\'s own row, the same for every role that may read the item', async () => {
+    const actor = principalOf('INVESTIGATOR');
+    const FORM_NOTE = 'Second interview; counsel present.';
+    await host.engine.setTabletLink('CONNECTED');
+    const created = await host.engine.command(actor, 'createSession', { ...LIVE_SESSION, caseNumber: 'LP/2026/1001-0100', subjectName: 'Annotated Subject', notes: `  ${FORM_NOTE} `, investigatorId: actor.operatorId });
+    if (!created.value.ok || !created.value.created) throw new Error('the engine did not create the session');
+    const sessionId = created.value.sessionId;
+    await host.engine.command(actor, 'beginPrecheck');
+    await host.drive(5_000);
+    if (host.engine.slice('session')?.state === 'PRECHECK') await host.engine.command(actor, 'acknowledgePrecheckWarnings');
+    await host.engine.command(actor, 'startRecording');
+    await host.drive(2_000);
+    await host.engine.command(actor, 'addMarker', 'Key statement');
+    await host.drive(500);
+    await host.engine.command(actor, 'addNote', 'Subject asked for a break.');
+    await host.engine.command(actor, 'snapshot');
+    const open = host.engine.slice('session');
+    await host.engine.command(actor, 'stopRecording', 'Interview completed');
+    await host.drive(20_000);
+    const item = host.engine.slice('evidence').find((entry) => entry.sessionId === sessionId);
+    if (item === undefined || item.status !== 'SEALED') throw new Error('the session did not seal');
+    await host.engine.command(actor, 'acknowledgeSummary', sessionId);
+    await host.app.pipeline.drain();
+
+    // WHAT THE CORE STORED, as dems_owner: the two lists in the item's own row; the open session (and with it the form's field) is gone.
+    const stored = (await owner.query<{ markers: unknown[]; notes: Array<Record<string, unknown>> }>('SELECT markers, notes FROM public.evidence_items WHERE id = $1', [item.id])).rows[0];
+    const marker = open?.timeline.find((entry) => entry.kind === 'MARKER');
+    expect(stored?.markers).toEqual([{ id: marker?.id, at: marker?.at, index: 1, label: 'Key statement' }]);
+    expect(stored?.notes).toEqual([
+      { id: 'NOTE-FORM', at: open?.createdAt, authorId: actor.operatorId, text: FORM_NOTE, origin: 'SESSION_FORM' },
+      { id: open?.notes[0]?.id, at: open?.notes[0]?.at, authorId: actor.operatorId, text: 'Subject asked for a break.' },
+    ]);
+
+    // THE ANSWERS: exactly the stored lists, by name, for each role; valid against the contract.
+    for (const session of [investigator, supervisor, technician]) {
+      const response = await host.get(itemUrl(item.id), session);
+      expect(response.statusCode).toBe(200);
+      const detail = detailOf(response.json());
+      expect(detail.evidence.markers).toEqual(stored?.markers);
+      expect(detail.evidence.notes).toEqual(stored?.notes);
+      expect(validateCoreApiResponse('getEvidence', 200, response.json())).toEqual({ ok: true });
+    }
+    const listed = (await list('?q=LP%2F2026%2F1001-0100')).items;
+    expect(listed.map((entry) => entry.id)).toEqual([item.id]);
+    expect(listed[0]?.markers).toEqual(stored?.markers);
+    expect(listed[0]?.notes).toEqual(stored?.notes);
+    // The snapshot is a mark of the session and an audit row: the item has no member for it (no picture exists).
+    expect(open?.snapshotCount).toBe(1);
+    expect(Object.keys(detailOf((await host.get(itemUrl(item.id), supervisor)).json()).evidence).filter((key) => /snapshot/i.test(key))).toEqual([]);
+    // CONTROL: the item of a session nobody annotated (the one sealed above, no form note) carries two empty lists - never another session's.
+    const plain = (await list('?q=LP%2F2026%2F1001-0099')).items[0];
+    expect(plain?.markers).toEqual([]);
+    expect(plain?.notes).toEqual([]);
   });
 });

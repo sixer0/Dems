@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { useId, type ReactNode } from 'react'
 import { Card } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
@@ -36,6 +37,9 @@ export interface DashPanelProps {
  * enters on its M-PG-DASH beat (R1: opacity, `rise`, `enterFrom`, spring `gentle`); the sign-out
  * exit plays with no stagger (R2). Reduced motion: opacity only (§8).
  */
+/** The titled cards that show no feed, recording state or integrity statement (Recent Events, Quick Actions): no DEMO mark. */
+const DEMO_FREE_PANELS: ReadonlySet<string> = new Set(['i', 'j'])
+
 export function DashPanel({
   id,
   beatMs,
@@ -77,6 +81,8 @@ export function DashPanel({
               <h2 id={titleId} className="dems-dash-title">
                 {title}
               </h2>
+              {/* Fix wave J (JW-07; truth rule 3f): every titled card of the demonstration Core's Dashboard says DEMO. */}
+              {DEMO_FREE_PANELS.has(id) ? null : <DemoMark block={`dashboard-${id}`} className="dems-dash-demo" />}
               {action ? <div className="dems-dash-head-action">{action}</div> : null}
             </header>
           ) : null}
@@ -92,7 +98,7 @@ export function PanelLink({
   to,
   children,
 }: {
-  to: '/devices' | '/storage' | '/evidence' | '/security-audit' | '/network-time' | '/system'
+  to: '/devices' | '/storage' | '/evidence' | '/security-audit' | '/network-time' | '/system' | '/session/history'
   children: ReactNode
 }) {
   return (

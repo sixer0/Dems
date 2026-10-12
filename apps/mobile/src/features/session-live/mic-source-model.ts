@@ -184,6 +184,20 @@ export function silentInputOf(faults: SimState['faults']['active'], activeInputI
   return input ?? activeInputId;
 }
 
+/**
+ * Round two (JA2-06): the input an active `MIC_NO_SIGNAL` fault names, or `null`. On the monitor the ACTIVE
+ * microphone without a signal showed only in its small meter; this is the fact the warning above the
+ * toggle states, with "Switch to standby" when the input is the one inside `AUDIO-01`. Same target rule as
+ * `silentInputOf`; a real-capture Core states the condition as `MIC_SILENT` and is read there.
+ */
+export function noSignalInputOf(faults: SimState['faults']['active'], activeInputId: string, mics: readonly MicLine[] = []): string | null {
+  const fault = faults.find((entry) => entry.kind === 'MIC_NO_SIGNAL');
+  if (!fault) return null;
+  if (isMicInputId(fault.target)) return fault.target;
+  const input = fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02' ? micInputOfChannel(mics, fault.target) : undefined;
+  return input ?? activeInputId;
+}
+
 // ── "Connecting cameras…" (D84, D91 ruling R-1 option A; ux §8 step 5, erratum PE-128-79) ──
 
 /**

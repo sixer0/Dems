@@ -248,7 +248,7 @@ export function SecurityPanel() {
       action={
         <span className={`flex min-w-0 items-center gap-2 text-caption ${TONE_TEXT_CLASS[header.tone]}`} data-testid="stn-summary">
           <StatusDot tone={header.tone} />
-          <span className="truncate" data-testid="stn-summary-text">{headerText}</span>
+          <span className="min-w-0 break-words" data-testid="stn-summary-text">{headerText}</span>
         </span>
       }
     >

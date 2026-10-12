@@ -74,7 +74,9 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
   const { t } = useTranslation();
   const router = useRouter();
   const settings = useMotionSettings();
-  const when = t(`features.dashboard.recent.${row.whenKey}`, { time: row.time, date: row.date });
+  const at = t(`features.dashboard.recent.${row.whenKey}`, { time: row.time, date: row.date });
+  // Fix wave J (JA2-07 on Home): a session that was interrupted and never sealed says so on its row.
+  const when = row.outcome === 'INCOMPLETE' ? t('features.dashboard.recent.incomplete', { when: at }) : at;
   // RESIDUAL-W66-1: a `SessionHistoryEntry` of the replicated state carries no `EvidenceMediaRef`
   // (only operation 40 `getEvidence` does, one item per call), so Home cannot tell a demo package
   // from a session recorded in Live mode (`NONE`). Until the slice carries it, LIVE shows no poster.
@@ -110,10 +112,10 @@ function RecentSessionRow({ row, index, chipBelow, last }: { row: RecentRow; ind
           />
         )}
         <View style={styles.rowText}>
-          <Text testID={`home-recent-row-${index}-id`} numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.id}>
+          <Text testID={`home-recent-row-${index}-id`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={1.2} style={styles.id}>
             {row.displayId}
           </Text>
-          <Text testID={`home-recent-row-${index}-when`} numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.when}>
+          <Text testID={`home-recent-row-${index}-when`} numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.when}>
             {when}
           </Text>
           {chipBelow ? <View style={styles.chipBelow}>{chip}</View> : null}

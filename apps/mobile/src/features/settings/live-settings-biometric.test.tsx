@@ -111,7 +111,7 @@ describe('a session created by password on this tablet (MB-1, MB-2)', () => {
     const b = await openSecurity({ enrolled: { protectedItem: false } });
     b.fake.failOnce('setBiometricEnrollment');
     await toggle(false, b);
-    expect(screen.getAllByText('Biometric sign-in was not changed on this tablet. Try again.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Biometric sign-in was not changed on this device. Try again.').length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/applies until the app restarts/)).toHaveLength(0);
     expect(store().has(SECURE_ITEM_KEYS.biometricToken)).toBe(true);
     expect(switchOf().props.accessibilityState).toMatchObject({ checked: true });

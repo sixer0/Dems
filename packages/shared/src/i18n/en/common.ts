@@ -395,11 +395,11 @@ export const common = {
     RECOVERY_STARTED: 'Recovery started',
     RECOVERY_COMPLETED: 'Recovery completed',
     AUDIT_CHAIN_DISCONTINUITY: 'Audit chain discontinuity',
-    PAIRING_SUCCESS: 'Tablet paired',
+    PAIRING_SUCCESS: 'Device paired',
     PAIRING_FAILED: 'Pairing failed',
     PAIRING_LOCKED: 'Pairing locked',
-    UNPAIRED: 'Tablet unpaired',
-    TABLET_LINK_CHANGED: 'Tablet link changed',
+    UNPAIRED: 'Device unpaired',
+    TABLET_LINK_CHANGED: 'Device link changed',
     DEVICE_COMMAND: 'Device command sent',
     DIAGNOSTICS_RUN: 'Diagnostics run',
     STORAGE_POLICY_CHANGED: 'Storage policy changed',
@@ -489,11 +489,11 @@ export const common = {
     UPDATE_AVAILABLE: 'Update available',
     UPDATE_STARTED: 'Update started',
     UPDATE_COMPLETED: 'Update completed',
-    PAIRED: 'Tablet paired',
-    UNPAIRED: 'Tablet unpaired',
+    PAIRED: 'Device paired',
+    UNPAIRED: 'Device unpaired',
     PAIRING_FAILED: 'Pairing failed',
-    TABLET_CONNECTED: 'Tablet connected',
-    TABLET_DISCONNECTED: 'Tablet disconnected',
+    TABLET_CONNECTED: 'Device connected',
+    TABLET_DISCONNECTED: 'Device disconnected',
     SCENARIO_LOADED: 'Demo scenario loaded',
     AUDIT_CHAIN_BROKEN: 'Audit chain broken',
   },
@@ -724,7 +724,7 @@ export const common = {
     emptyBody: 'Check that each camera is powered and on the same network as the Core, then search again.',
     truncated: 'More than {{max}} devices answered. The first {{max}} are listed.',
     failed: 'The search could not be completed. Nothing was changed.',
-    unavailable: 'Camera search is not available on this Core yet.',
+    unavailable: 'Camera search is not available on this Core.',
     busy: 'Another operator is searching right now. Search again when their search has finished.',
     expired: 'This search result is no longer kept. Search again to see the cameras.',
     developmentGroup: 'Development sources',
@@ -869,7 +869,7 @@ export const common = {
       development: 'DEVELOPMENT SOURCES — this package was not recorded from production devices.',
       production: 'Sources: declared as production devices by the Core that sealed this package.',
       untrusted: 'Sources: not trustworthy — the manifest was altered',
-      v1: 'Sources: not recorded (v1 package)',
+      v1: 'Sources: not recorded for this demonstration item',
     },
     microphoneOn: {
       web: "This Mac's microphone is on",
@@ -1113,6 +1113,47 @@ export const common = {
   coreNotRunning: {
     label: CORE_NOT_RUNNING_LABEL,
     sentence: CORE_NOT_RUNNING_SENTENCE,
+  },
+  /**
+   * Fix wave J (decision D243; `contract_wave_j.md`): ONE wording, for the web console and the mobile
+   * app, of the facts the Core states since that wave. Each key names its member.
+   */
+  truth: {
+    /** `hasSealedValues(item)` is false (JA2-01 / JW-01). */
+    notSealed: 'Not sealed',
+    notSealedDetail: 'This recording was never sealed. It has no sealed hash, no manifest and no signature, and there is nothing to verify.',
+    /** `media.reason: DEMONSTRATION_RECORD` (JA2-02). */
+    demonstrationRecord: 'Demonstration record of a simulated session: no media was recorded.',
+    /** `demonstration: true` on a verdict of operation 41 (JA2-02). */
+    demonstrationVerdict: 'Demonstration verdict: the hashes of a demonstration record were compared. No stored media was read.',
+    demonstrationChip: 'DEMONSTRATION',
+    /** `!isOwnCaptureCoreState(state)` in Live mode (JW-07). */
+    simulatedCore: 'Simulated Core',
+    simulatedCoreDetail: 'This Core runs in simulated capture: the feeds, the recording state and the integrity statements it shows are a demonstration.',
+    /** `verificationOfRecordFailed(item)` (JT-04 / JW-09). */
+    sealedVerificationFailed: 'Sealed · verification FAILED',
+    /** `exportKinds[].available: false` (JA2-03 / JW-03); the reason sentence is `evidence.exportJob.compositeUnavailable`. */
+    exportKindUnavailable: 'Not available in this build',
+    /** `exportPhaseOfEvent(event) === 'REQUESTED'` (JW-03). */
+    exportRequested: 'Export requested',
+    /** "Download manifest" of an item sealed on this Core (JW-02). */
+    manifestInExport: 'The signed manifest is part of the export package. Use Export.',
+    /** `isLevelNotMeasured(frame)` (JW-08). */
+    levelNotMeasured: 'Not measured',
+    levelNotMeasuredDetail: 'The Core measures the level while a recording runs.',
+    /** `isUpdaterNotAvailable(update)` (JT-06 / JW-06). */
+    updaterNotAvailable: 'Software update is not available on this Core.',
+    /** `isDiagnosticNotReported(check)` and the pre-check SECURITY note (JW-04 / JT-03). */
+    notReportedByCore: 'Not reported by this Core',
+    securityNotReported: 'Platform security: not reported. This Core reads no TPM and no Secure Boot state.',
+    /** `incompleteSessionFactOf(entry).kind` (JW-22). */
+    incompleteSession: {
+      QUARANTINED: 'Recorded, could not be sealed. No evidence item exists; the recordings are kept in the quarantine folder of the Core.',
+      RECORDED_NOT_SEALED: 'Interrupted. Its recording is kept as a record that was never sealed.',
+      NEVER_RECORDED: 'Ended before a recording started.',
+    },
+    /** `evidenceVerification` of operation getSecurityStatus (GM-02). */
+    neverVerified: '{{count}} of {{sealed}} sealed items have no verification of record.',
   },
   /**
    * Closing pass J (G75b-06, ruling D217 (7)): the platform facts of a Core that states

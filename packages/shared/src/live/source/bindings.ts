@@ -264,7 +264,7 @@ export type LiveExportAccepted = Extract<ExportResult, { ok: true }> & {
   readonly archiveOnCore?: boolean;
 };
 
-/** CL-19: 401 → NOT_SIGNED_IN, any 403 → FORBIDDEN, 404 → NOT_FOUND, 409 → EXPORT_IN_PROGRESS, SECURITY_FAULT or NOT_SEALED, 422 → INVALID_REASON. */
+/** CL-19: 401 → NOT_SIGNED_IN, any 403 → FORBIDDEN, 404 → NOT_FOUND, 409 → EXPORT_IN_PROGRESS, SECURITY_FAULT or NOT_SEALED (409 COMMAND_UNSUPPORTED is thrown, not a result), 422 → INVALID_REASON. */
 function exportRefusal(failure: CoreCallFailure): ExportResult | undefined {
   switch (failure.status) {
     case 401:
@@ -275,6 +275,10 @@ function exportRefusal(failure: CoreCallFailure): ExportResult | undefined {
       return { ok: false, status: 404, reason: 'NOT_FOUND' };
     case 409:
       if (isRefusal(failure, 409, ApiErrorCode.EXPORT_IN_PROGRESS)) return exportInProgress();
+      // Fix wave J (truth rule 3d; JA2-03 / JW-03): `409 COMMAND_UNSUPPORTED` is the refusal of an export output the
+      // Core cannot produce (`details.reason: COMPOSITE_ENCODER_NOT_SELECTED`). It is NOT "not sealed": it is left to
+      // the common rebuild, which throws the simulator's `SimTransitionError` (`COMMAND_UNSUPPORTED`, with the reason).
+      if (isRefusal(failure, 409, ApiErrorCode.COMMAND_UNSUPPORTED)) return undefined;
       return { ok: false, status: 409, reason: isRefusal(failure, 409, ApiErrorCode.SECURITY_FAULT) ? 'SECURITY_FAULT' : 'NOT_SEALED' };
     case 422:
       return { ok: false, status: 422, reason: 'INVALID_REASON' };

@@ -127,7 +127,7 @@ describe('the start-recording hand-off in Live mode (S2-2, CA-02, AC-C-62)', () 
     await b.flush();
     await b.elapse(200);
     expect(screen.getAllByText('Not permitted').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Requires the Investigator role').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Requires the Investigator or Supervisor role').length).toBeGreaterThan(0);
     expect(screen.queryByText('Recording could not start. Please try again.')).toBeNull();
     expect(b.app.getPathname()).toBe('/session/new');
     expect(b.state().session?.state).toBe('ARMED');

@@ -1,14 +1,16 @@
-import { useEffect, useRef } from 'react'
-import { Button, Chip, ProgressBar, Spinner, toast, Tooltip } from '@heroui/react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertDialog, Button, Chip, ProgressBar, Spinner, toast } from '@heroui/react'
 import { ArrowRight, CloudDownload, HardDrive, LifeBuoy, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCoreActions } from '@dems/shared/live'
-import { Permission, selectCan, useSim, type AuditRow, type SimState } from '@dems/shared/sim'
+import { Permission, isUpdaterNotAvailable, selectCan, useSim, type AuditRow, type SimState } from '@dems/shared/sim'
+import { DemoMark } from '@/components/demo-mark'
+import { RoleReason } from '@/components/role-reason'
 import { Stepper, type StepperStep } from '@/components/composed/stepper'
 import { usePendingControl } from '@/lib/pending-control'
 import { cn } from '@/lib/utils'
 import { useSystemLiveMode } from './live'
-import { NVME_PARTITIONS, requiredRoleFor, updateView } from './model'
+import { NVME_PARTITIONS, updateView } from './model'
 import { SystemPanel } from './panel'
 import { useSimCommand } from './use-sim-command'
 
@@ -71,7 +73,14 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
     status: step.status,
   }))
 
+  // Fix wave J (JT-06 / JW-06; truth rule 3e): "Install update" ran at one click - a sequence that names an install to
+  // the inactive slot and a reboot. It asks first, naming the version, the slot and the restart.
+  const [confirming, setConfirming] = useState(false)
+  // `contract_wave_j.md` J-S 11: a Core in its own capture has no updater (`update.updaterNotAvailable`). The card
+  // says so and offers no Install control; its version and step values are then not readings and are not drawn.
+  const noUpdater = isUpdaterNotAvailable(update)
   const install = () => {
+    setConfirming(false)
     const version = update.availableVersion
     run(
       () => actions.startSoftwareUpdate(),
@@ -83,8 +92,6 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
     )
   }
 
-  const role = requiredRoleFor(Permission.MAINTENANCE)
-  const denied = t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })
   const installButton = (
     <Button
       ref={installRef}
@@ -92,7 +99,8 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
       size="sm"
       isDisabled={!canMaintain || !view.canInstall}
       isPending={installPending}
-      onPress={install}
+      aria-describedby={canMaintain ? undefined : 'system-update-role-reason'}
+      onPress={() => setConfirming(true)}
       data-testid="system-update-install"
     >
       {installPending ? <Spinner size="sm" color="current" aria-hidden="true" /> : <CloudDownload className="size-4" aria-hidden="true" />}
@@ -127,12 +135,44 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
       icon={CloudDownload}
       title={t('system.update.title')}
       action={
-        <Chip size="sm" variant="soft" color={stateChip.color} className="sys-status-chip" data-testid="system-update-state">
-          <Chip.Label>{stateChip.label}</Chip.Label>
+        <Chip size="sm" variant="soft" color={noUpdater ? 'default' : stateChip.color} className="sys-status-chip" data-testid="system-update-state" data-updater={noUpdater ? 'NOT_AVAILABLE' : undefined}>
+          <Chip.Label>{noUpdater ? t('web.waveJ.update.notAvailableChip') : stateChip.label}</Chip.Label>
         </Chip>
       }
       bodyClassName="sys-update-body"
+      shownValues={!noUpdater}
     >
+      <AlertDialog.Backdrop isOpen={confirming} onOpenChange={setConfirming}>
+        <AlertDialog.Container size="sm">
+          <AlertDialog.Dialog aria-label={t('web.waveJ.update.confirmTitle', { version: update.availableVersion ?? '' })} data-testid="system-update-confirm">
+            <AlertDialog.Header>
+              <AlertDialog.Icon status="warning" />
+              <AlertDialog.Heading>{t('web.waveJ.update.confirmTitle', { version: update.availableVersion ?? '' })}</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>
+              <p data-testid="system-update-confirm-body">{t('web.waveJ.update.confirmBody', { slot: update.activeSlot === 'A' ? 'B' : 'A', current: update.currentVersion })}</p>
+              <p className="mt-2">{t('web.waveJ.update.confirmRestart')}</p>
+              <p className="mt-2">
+                <DemoMark block="update-confirm" /> {live ? null : t('common.simulated.note')}
+              </p>
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button variant="ghost" onPress={() => setConfirming(false)} data-testid="system-update-confirm-cancel">
+                {t('common.actions.cancel')}
+              </Button>
+              <Button variant="primary" onPress={install} data-testid="system-update-confirm-install">
+                {t('web.waveJ.update.confirmAction')}
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
+      {noUpdater ? (
+        <p className="sys-update-note" role="status" data-testid="system-update-not-available">
+          {t('web.waveJ.update.notAvailable')}
+        </p>
+      ) : (
+        <>
       <div className="sys-update-top">
         <div className="sys-version">
           <span className="sys-label">{t('system.update.installed')}</span>
@@ -148,15 +188,12 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
           </>
         ) : null}
         <div className="sys-update-cta">
-          {canMaintain ? (
-            installButton
-          ) : (
-            <Tooltip delay={200}>
-              <Tooltip.Trigger className="rounded-lg" aria-label={`${live ? t('system.live.install') : t('system.update.install')}: ${denied}`} data-testid="system-update-locked">
-                {installButton}
-              </Tooltip.Trigger>
-              <Tooltip.Content placement="top">{denied}</Tooltip.Content>
-            </Tooltip>
+          {installButton}
+          {/* Fix wave J (JW-14): the reason is VISIBLE beside the disabled control, not only in a tooltip. */}
+          {canMaintain ? null : (
+            <span data-testid="system-update-locked">
+              <RoleReason id="system-update-role-reason" permission={Permission.MAINTENANCE} />
+            </span>
           )}
         </div>
       </div>
@@ -222,7 +259,7 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
       <div className="sys-partitions" aria-label={t('system.update.partitionsTitle')} role="group">
         <span className="sys-label">{t('system.update.partitionsTitle')}</span>
         <div className="sys-partition-bar">
-          {NVME_PARTITIONS.map((partition) => {
+          {NVME_PARTITIONS.map((partition, index) => {
             const slot = partition.id === 'SLOT_A' ? 'A' : partition.id === 'SLOT_B' ? 'B' : null
             return (
               <span
@@ -232,12 +269,21 @@ export function UpdatePanel({ anchorId }: { anchorId: string }) {
                 data-kind={slot ? (slot === update.activeSlot ? 'active' : slot === inactive && update.state === 'RUNNING' ? 'target' : 'slot') : partition.id.toLowerCase()}
                 title={t(`system.update.partitions.${partition.id}`)}
               >
-                <span className="sys-partition-label">{t(`system.update.partitions.${partition.id}`)}</span>
+                <span className="sys-partition-label" aria-hidden="true">{index + 1}</span>
               </span>
             )
           })}
         </div>
+        <ol className="sys-partition-legend" data-testid="system-partition-legend">
+          {NVME_PARTITIONS.map((partition, index) => (
+            <li key={partition.id}>
+              <b>{index + 1}</b> {t(`system.update.partitions.${partition.id}`)}
+            </li>
+          ))}
+        </ol>
       </div>
+        </>
+      )}
     </SystemPanel>
   )
 }

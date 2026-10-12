@@ -10,6 +10,7 @@ import '@/navigation/testing/router-harness';
 
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
 import { OPERATORS, PRECHECK_ORDER, PRECHECK_TOTAL_MAX_MS, type PrecheckItem } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
@@ -223,6 +224,34 @@ describe('the pre-check TIME note of a Core in its own capture (mobile)', () => 
     expect(row.queryByText('WARN')).toBeNull();
     expect(row.getByText('NOTE')).toBeTruthy();
     expect(String(screen.getByTestId('session-new-check-TIME').props.accessibilityLabel)).toBe('Time Sync, Host system clock, NOTE');
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  // Fix wave J round two (JT-03 remainder; contract J-S 5): SEEN ON THE TABLET with the new server code - the SECURITY
+  // note of a Core that reads no platform was worded "Enclosure tamper detected". The contract's example, unmodified.
+  it('the SECURITY note (the contract\'s example): "Not reported" with its explanation - never "Enclosure tamper detected"; a real tamper WARN keeps its sentence', async () => {
+    const h = renderSessionNewApp({ setup: startGate });
+    await settle();
+    h.openFlow('/session/new?step=2');
+    h.tick(PRECHECK_TOTAL_MAX_MS);
+    await settle();
+    const withSecurity = (security: PrecheckItem) =>
+      act(() => {
+        const session = h.sim.store.getState().session!;
+        h.sim.store.setState({ session: { ...session, precheck: { ...session.precheck, items: session.precheck.items.map((item) => (item.id === 'SECURITY' ? security : item)) } } });
+      });
+    withSecurity(PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE as unknown as PrecheckItem);
+    await settle();
+    expect(precheckNoteOf(PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE as unknown as PrecheckItem)).toBe(true);
+    expect(screen.getByTestId('session-new-check-SECURITY-value')).toHaveTextContent('Not reported');
+    expect(screen.getByTestId('session-new-check-SECURITY-note')).toHaveTextContent('A note, not a warning: this Core reads no TPM and no Secure Boot state.');
+    expect(String(screen.getByTestId('session-new-check-SECURITY').props.accessibilityLabel)).toBe('Security, Not reported, NOTE');
+    expect(within(screen.getByTestId('session-new-check-SECURITY')).queryByText(/tamper/i)).toBeNull();
+    // CONTROL: a WARN that is no note is the simulator's enclosure tamper, worded as before.
+    withSecurity({ id: 'SECURITY', status: 'WARN', value: 'TAMPER', reason: 'core text', reasonCode: 'SECURITY_TAMPER', params: {} } as unknown as PrecheckItem);
+    await settle();
+    expect(screen.getByTestId('session-new-check-SECURITY-value')).toHaveTextContent('Enclosure tamper detected');
+    expect(screen.queryByTestId('session-new-check-SECURITY-note')).toBeNull();
     expect(getMissingKeys()).toEqual([]);
   });
 

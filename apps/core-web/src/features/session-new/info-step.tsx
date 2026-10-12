@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { useMemo, type RefObject } from 'react'
 import {
   Button,
@@ -38,6 +39,7 @@ import {
 import { toneChipProps } from '@dems/shared/tokens'
 import { tween, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
+import { useOwnCaptureCore, usePlatformNotReported } from '@/lib/own-capture'
 import { isSessionMessage, SUBJECT_TONE, SUBJECT_TYPES } from './model'
 
 export const INFO_FORM_ID = 'sn-info-form'
@@ -142,7 +144,11 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
                       autoComplete="off"
                       data-testid="sn-field-case"
                     >
-                      <Label>{t('sessionNew.info.caseNumber.label')}</Label>
+                      <Label>
+                        {t('sessionNew.info.caseNumber.label')}
+                        {/* Fix wave J (JW-17): every required field carries the mark, not only Subject Type. */}
+                        <span className="sn-required" aria-hidden="true"> *</span>
+                      </Label>
                       <InputGroup fullWidth>
                         <InputGroup.Input
                           ref={field.ref}
@@ -243,13 +249,21 @@ export function InfoStep({ control, submitted, onSubmit, onScan, enterDelayMs, s
                       isInvalid={message !== null}
                       autoComplete="off"
                     >
-                      <Label>{t('sessionNew.info.subjectName.label')}</Label>
+                      <Label>
+                        {t('sessionNew.info.subjectName.label')}
+                        {/* Fix wave J (JW-17): every required field carries the mark, not only Subject Type. */}
+                        <span className="sn-required" aria-hidden="true"> *</span>
+                      </Label>
                       <Input
                         ref={field.ref}
                         placeholder={t('sessionNew.info.subjectName.placeholder')}
                         maxLength={SESSION_INPUT_LIMITS.subjectNameMax}
                         data-testid="sn-subject-name"
                       />
+                      {/* Fix wave J (JW-17): the name was cut at the limit without a word. */}
+                      {field.value.length >= SESSION_INPUT_LIMITS.subjectNameMax ? (
+                        <Description data-testid="sn-subject-name-limit">{t('web.waveJ.sessionNew.nameLimit', { max: SESSION_INPUT_LIMITS.subjectNameMax })}</Description>
+                      ) : null}
                       <AnimatePresence initial={false}>
                         {message ? (
                           <motion.span key="error" {...errorMotion}>
@@ -451,8 +465,18 @@ function selectReadiness(s: Parameters<typeof evaluatePrecheck>[0]): PrecheckEva
 function InfoAside({ control, investigators }: { control: Control<SessionCreateFormValues>; investigators: SimOperator[] }) {
   const { t } = useTranslation()
   const values = useWatch({ control })
-  const readiness = useSim(selectReadiness)
-  const ready = readiness.filter((status) => status === 'PASS').length
+  const stated = useSim(selectReadiness)
+  // Fix wave J (JW-04; truth rule 3c): "Security PASS" here, "Security: Not reported" on the Dashboard and "SECURE" in the
+  // header were three answers to one question. A Core that states `security.platformNotReported` computed no posture:
+  // its SECURITY row reads "Not reported" (a row that names a fault keeps it) and is not counted as ready.
+  const platformNotReported = usePlatformNotReported()
+  // The TIME row of a Core on its host clock is a NOTE (the gate counts it as no warning): it read "WARN" here.
+  const hostClock = useOwnCaptureCore()
+  const readiness: (PrecheckEvaluation['status'] | 'NOT_REPORTED' | 'NOTE')[] = stated.map((status, index) =>
+    PRECHECK_ORDER[index] === 'SECURITY' && status !== 'BLOCK' && platformNotReported ? 'NOT_REPORTED' : PRECHECK_ORDER[index] === 'TIME' && status === 'WARN' && hostClock ? 'NOTE' : status,
+  )
+  const reported = readiness.filter((status) => status !== 'NOT_REPORTED' && status !== 'NOTE')
+  const ready = reported.filter((status) => status === 'PASS').length
   const investigator = investigators.find((operator) => operator.id === values.investigatorId)
   const empty = <span className="sn-muted">{t('sessionNew.preview.empty')}</span>
   const subjectTone = values.subjectType ? toneChipProps(SUBJECT_TONE[values.subjectType]) : null
@@ -496,8 +520,9 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
       <Card className="sn-card sn-readiness-card" data-testid="sn-readiness">
         <header className="sn-card-header">
           <h2 className="sn-card-title">{t('sessionNew.preview.readiness')}</h2>
+          <DemoMark block="precheck-readiness" />
           <span className="sn-card-meta" data-testid="sn-readiness-count">
-            {t('sessionNew.preview.readyCount', { ready, total: readiness.length })}
+            {t('sessionNew.preview.readyCount', { ready, total: reported.length })}
           </span>
         </header>
         <ul className="sn-readiness">
@@ -505,7 +530,13 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
             <li key={id} data-status={readiness[index]}>
               <span className="sn-dot" aria-hidden="true" />
               <span className="sn-readiness-label">{t(`sessionNew.devices.checks.${id}`)}</span>
-              <span className="sr-only">{t(`common.precheckStatus.${readiness[index] ?? 'PASS'}`)}</span>
+              {readiness[index] === 'NOTE' ? (
+                <span className="sn-readiness-note" data-testid="sn-readiness-host-clock">{t('web.ownCore.time.value')}</span>
+              ) : readiness[index] === 'NOT_REPORTED' ? (
+                <span className="sn-readiness-note" data-testid="sn-readiness-not-reported">{t('common.platformNotReported.value')}</span>
+              ) : (
+                <span className="sr-only">{t(`common.precheckStatus.${readiness[index] ?? 'PASS'}`)}</span>
+              )}
             </li>
           ))}
         </ul>

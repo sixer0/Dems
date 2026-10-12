@@ -121,7 +121,7 @@ afterEach(async () => {
 describe('the CONNECTING instant of the mode indicator (D147 DN-2; D144(2))', () => {
   it('a socket opened after a loss reads `LIVE · RECONNECTING` in the outage colour, at every attempt, until the link is back', async () => {
     const page = await mountLive()
-    expect(shown(page)).toEqual({ link: LiveLinkState.ONLINE, state: 'LIVE', text: 'LIVE', tone: ['chip--success'] })
+    expect(shown(page)).toEqual({ link: LiveLinkState.ONLINE, state: 'LIVE', text: 'LIVE · DEMO CORE', tone: ['chip--warning'] })
 
     bed!.core.unreachable()
     await bed!.flush()
@@ -147,7 +147,7 @@ describe('the CONNECTING instant of the mode indicator (D147 DN-2; D144(2))', ()
     // The Core is back: the next attempt is accepted and the chip says LIVE in the success colour.
     bed!.core.back()
     await bed!.elapse(40_000, 1_000)
-    expect(shown(page)).toEqual({ link: LiveLinkState.ONLINE, state: 'LIVE', text: 'LIVE', tone: ['chip--success'] })
+    expect(shown(page)).toEqual({ link: LiveLinkState.ONLINE, state: 'LIVE', text: 'LIVE · DEMO CORE', tone: ['chip--warning'] })
     expect(getMissingI18nKeys()).toEqual([])
   })
 

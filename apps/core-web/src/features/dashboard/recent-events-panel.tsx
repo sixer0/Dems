@@ -1,3 +1,4 @@
+import { eventTitle } from '@/lib/event-words'
 import { useCallback, useMemo } from 'react'
 import { ScrollShadow } from '@heroui/react'
 import { AnimatePresence } from 'motion/react'
@@ -105,7 +106,7 @@ export function RecentEventsPanel() {
 function EventRow({ event, detail, fresh, start }: { event: SimEvent; detail: string | null; fresh: boolean; start: RecordingStartOutcome }) {
   const { t } = useTranslation()
   // G75-11: an accepted start that recorded nothing (yet) is not worded as a recording that started.
-  const title = start === 'STARTED' ? t(`common.eventType.${event.type}`) : t(`dashboard.captureStart.${start}`)
+  const title = start === 'STARTED' ? eventTitle(t, event) : t(`dashboard.captureStart.${start}`)
   const tone = start === 'FAILED' ? EVENT_TONE.CRITICAL : start === 'CONNECTING' ? EVENT_TONE.INFO : EVENT_TONE[event.severity]
   return (
     <div role="listitem" className="dems-event-row" data-testid="recent-event" data-event-id={event.id} data-fresh={fresh ? 'true' : 'false'} data-start={start === 'STARTED' ? undefined : start}>

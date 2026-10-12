@@ -17,14 +17,14 @@
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { pickReplicatedState, SIM_ACTION_OPERATIONS, type HealthResponse, type ReplicatedState } from '@dems/shared/api'
+import { pickReplicatedState, SIM_ACTION_OPERATIONS, type AuthSessionInfo, type HealthResponse, type ReplicatedState } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { CoreMode, LIVE_RESYNCED_NOTICE_MS, LiveLinkState, LiveTransportError, settle } from '@dems/shared/live'
 import { rateLimited } from '@dems/shared/live/testing'
-import { AuthStatus, OperatorRole, selectAuth, type AudioSlice, type SimState } from '@dems/shared/sim'
+import { AuthStatus, OperatorRole, SEAL_UNSEALABLE_EXAMPLE_ALERT, selectAuth, type AudioSlice, type SimAlert, type SimState } from '@dems/shared/sim'
 import { getMissingI18nKeys, i18n, resetMissingI18nKeys } from '@/i18n'
 import { presentCoreError, resetCoreErrorPresenter } from '@/lib/core-errors'
-import type { CoreModeControl } from '@/runtime'
+import { webErrorSink, type CoreModeControl } from '@/runtime'
 import { createLiveTestBed, INVESTIGATOR_SESSION, SUPERVISOR_SESSION, type LivePage, type LiveTestBed } from '@/runtime/testing/live-harness'
 
 const coreHealth: HealthResponse = {
@@ -118,6 +118,115 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
+// Fix wave J round three, driver J3-W: the bell's "Acknowledge all". Lane 2's bell read "84 new alerts"
+// after the counting rule of round one; an operator clears a backlog with ONE press, a confirmation
+// that NAMES THE COUNT, and one request per alert through the existing operation 70.
+describe('the bell: "Acknowledge all" (operation 70, one request per alert)', () => {
+  const alertOf = (n: number, over: Partial<SimAlert> = {}): SimAlert => ({ id: `ALR-${String(n).padStart(6, '0')}`, at: 1_790_000_000_000 + n * 1_000, severity: 'WARNING', kind: 'SYSTEM', message: `Backlog alert ${n}`, active: true, acknowledged: false, resolvedAt: null, ...over })
+  const NOTICE: SimAlert = { ...SEAL_UNSEALABLE_EXAMPLE_ALERT, id: 'ALR-000090', at: 1_790_000_090_000 }
+  /** Three open alerts (one the Core resolved), one acknowledged, and the open notice of a recording that could not be sealed. */
+  const BACKLOG = [alertOf(1), alertOf(2, { active: false, resolvedAt: 1_790_000_002_500 }), alertOf(3), alertOf(4, { acknowledged: true }), NOTICE]
+  const LEFT_ONE = '1 notice of a recording that could not be sealed (kept in quarantine) is not included. It is left for individual acknowledgement on its own row.'
+
+  async function withAlerts(session: Pick<AuthSessionInfo, 'operator' | 'permissions'>, alerts: SimAlert[]) {
+    const created = createLiveTestBed({ session })
+    bed = created
+    created.core.served = { ...created.core.served, alerts }
+    // Operation 70 answers 204 in every case; the acknowledged alert comes back with the next delta, which these cases do not need.
+    created.fake.answer('acknowledgeAlert', () => ({ status: 204 }))
+    const page = await created.load()
+    await created.mount(page, '/dashboard')
+    await screen.findByTestId('page-dashboard')
+    return created
+  }
+  const sentIds = () => bedOrThrow().fake.log.requestsOf('acknowledgeAlert').map((request) => /alerts\/(ALR-\d+)\/acknowledge$/.exec(request.path ?? '')?.[1])
+  const bedOrThrow = (): LiveTestBed => {
+    if (bed === undefined) throw new Error('no bed')
+    return bed
+  }
+  const openBell = async () => {
+    fireEvent.click(screen.getByTestId('notifications-bell'))
+    return screen.findByTestId('acknowledge-all-bell')
+  }
+
+  it('an investigator: one press asks first and NAMES THE COUNT; the confirmation sends ONE request per alert, oldest first, the resolved one included - and leaves the unsealable notice for individual acknowledgement', async () => {
+    await withAlerts(INVESTIGATOR_SESSION, BACKLOG)
+    const all = await openBell()
+    expect(all).toHaveAttribute('data-count', '3')
+    expect(all).toHaveTextContent('Acknowledge all (3)')
+    fireEvent.click(all)
+    const dialog = await screen.findByTestId('acknowledge-all-confirm')
+    // Nothing was sent by the press.
+    expect(sentIds()).toEqual([])
+    expect(dialog).toHaveTextContent('Acknowledge 3 alerts?')
+    expect(within(dialog).getByTestId('acknowledge-all-confirm-body')).toHaveTextContent('3 alerts are marked as acknowledged for every console of this Core, one after the other. The faults behind them are not cleared by this.')
+    expect(within(dialog).getByTestId('acknowledge-all-confirm-left')).toHaveTextContent(LEFT_ONE)
+    fireEvent.click(within(dialog).getByTestId('acknowledge-all-confirm-action'))
+    await waitFor(() => expect(sentIds()).toHaveLength(3))
+    expect(sentIds()).toEqual(['ALR-000001', 'ALR-000002', 'ALR-000003'])
+    for (const request of bedOrThrow().fake.log.requestsOf('acknowledgeAlert')) expect(request.method).toBe('POST')
+    expect(await screen.findByText('3 alerts acknowledged')).toBeInTheDocument()
+    // No other operation was invented for it.
+    expect(bedOrThrow().fake.violations).toEqual([])
+  })
+
+  // Fix wave J closing pass (J4, item 1; the controller's ruling REPLACES the case of round three, in which a supervisor's
+  // "all" closed the notice): no role sweeps up the notice of a recording in quarantine.
+  it('a supervisor (holds the review permission): the unsealable notice is NOT in "all" either - the same count, the same sentence, and the notice is not sent', async () => {
+    await withAlerts(SUPERVISOR_SESSION, BACKLOG)
+    const all = await openBell()
+    expect(all).toHaveAttribute('data-count', '3')
+    fireEvent.click(all)
+    const dialog = await screen.findByTestId('acknowledge-all-confirm')
+    expect(dialog).toHaveTextContent('Acknowledge 3 alerts?')
+    expect(within(dialog).getByTestId('acknowledge-all-confirm-left')).toHaveTextContent(LEFT_ONE)
+    expect(dialog).not.toHaveTextContent(/closes/)
+    fireEvent.click(within(dialog).getByTestId('acknowledge-all-confirm-action'))
+    await waitFor(() => expect(sentIds()).toHaveLength(3))
+    expect(await screen.findByText('3 alerts acknowledged')).toBeInTheDocument()
+    expect(sentIds()).toEqual(['ALR-000001', 'ALR-000002', 'ALR-000003'])
+    expect(sentIds()).not.toContain(NOTICE.id)
+    // Its own row keeps its own control: that is where it is acknowledged, knowingly.
+    fireEvent.click(screen.getByTestId('notifications-bell'))
+    expect(await screen.findByTestId(`alert-unsealable-acknowledge-${NOTICE.id}`)).toBeInTheDocument()
+  })
+
+  it('Cancel sends nothing; a refused acknowledgement STOPS the run and says how many were done - never "all"', async () => {
+    const created = await withAlerts(INVESTIGATOR_SESSION, BACKLOG)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    fireEvent.click(await openBell())
+    fireEvent.click(within(await screen.findByTestId('acknowledge-all-confirm')).getByTestId('acknowledge-all-cancel'))
+    await created.flush()
+    expect(sentIds()).toEqual([])
+
+    webErrorSink.clear()
+    // The second of the three is refused (the limit of the Core).
+    let asked = 0
+    created.fake.answer('acknowledgeAlert', () => {
+      asked += 1
+      return asked === 2 ? rateLimited(30) : { status: 204 }
+    })
+    fireEvent.click(await openBell())
+    fireEvent.click(within(await screen.findByTestId('acknowledge-all-confirm')).getByTestId('acknowledge-all-confirm-action'))
+    expect(await screen.findByText('1 of 3 alerts acknowledged. The rest is unchanged.')).toBeInTheDocument()
+    // The run stopped at the refusal: the third alert was not asked.
+    expect(sentIds()).toEqual(['ALR-000001', 'ALR-000002'])
+    expect(screen.queryByText('3 alerts acknowledged')).toBeNull()
+    const kept = webErrorSink.records().filter((record) => record.source === 'AcknowledgeAll.acknowledge')
+    expect(kept).toHaveLength(1)
+    expect(kept[0]?.context).toMatchObject({ surface: 'bell', done: 1, total: 3 })
+  })
+
+  it('CONTROL - one open alert: no "Acknowledge all" (its row has its own control); none on a quiet bell', async () => {
+    await withAlerts(INVESTIGATOR_SESSION, [alertOf(1), alertOf(4, { acknowledged: true }), NOTICE])
+    fireEvent.click(screen.getByTestId('notifications-bell'))
+    await screen.findByTestId('bell-open-alerts')
+    expect(screen.queryByTestId('acknowledge-all-bell')).toBeNull()
+    expect(screen.getByTestId('alert-acknowledge-ALR-000001')).toBeInTheDocument()
+  })
+})
+
 describe('the link notice (§3.5; AC-C-26, AC-C-59)', () => {
   it('AC-C-26: one persistent toast, the indicator LIVE · OFFLINE, meters at "no signal", a command rejected without a request', async () => {
     const { bed, page } = await signedIn('/dashboard')
@@ -200,7 +309,8 @@ describe('the link notice (§3.5; AC-C-26, AC-C-59)', () => {
     bed.core.back()
     await bed.elapse(RECONNECT_MS, 500)
     expect(page.live.link).toBe(LiveLinkState.ONLINE)
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
     expect(wire(page.live.store.getState())).toEqual(wire(bed.core.served))
     expect(await screen.findByText('Interview Room 9')).toBeInTheDocument()
 
@@ -328,7 +438,8 @@ describe('a socket the Core replaced (decision D120: close 1013 for the oldest o
     await bed.elapse(1_000, 250)
     expect(page.sockets.at(-1)).not.toBe(first)
     expect(page.live.link).toBe(LiveLinkState.ONLINE)
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
     expect(await screen.findByText(RESTORED)).toBeInTheDocument()
     await waitFor(() => expect(lostToasts()).toHaveLength(0))
     expect(bed.fake.log.requestsOf('signOut')).toHaveLength(0)
@@ -352,7 +463,8 @@ describe('a limit is not an outage (LB-10; SD-03; AC-C-110, the shell\'s part)',
     // Not an outage: the link did not move, no link notice, no "unreachable" sentence, the indicator as it was.
     await bed.elapse(3_000, 500)
     expect(page.live.link).toBe(LiveLinkState.ONLINE)
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
     expect(indicator()).toHaveAttribute('data-state', 'LIVE')
     expect(lostToasts()).toHaveLength(0)
     expect(screen.queryByText(OFFLINE_COMMAND)).not.toBeInTheDocument()
@@ -484,7 +596,9 @@ describe('a session that ended is not an outage (§6.4, §6.5; AC-C-45, the shel
       expect(sent).toHaveLength(1)
       expect(JSON.parse(sent[0]!.bodyText ?? '{}')).toEqual({ reason })
       await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
-      expect(router.state.location.search).toEqual({})
+      // Fix wave J (JT-18 / JW-19): after "Lock console" the next sign-in returns to the page that was locked; a
+      // sign-out carries nothing.
+      expect(router.state.location.search).toEqual(reason === 'LOCK' ? { redirect: '/evidence' } : {})
       await bed.elapse(2_000, 500)
       noLinkNotice(danger, success)
 
@@ -494,6 +608,48 @@ describe('a session that ended is not an outage (§6.4, §6.5; AC-C-45, the shel
       vi.restoreAllMocks()
     }
     bed = undefined
+  })
+
+  // Fix wave J round three (JT-18 / JW-19; ruling D244): "Lock console" ends the session. The Login then shows
+  // the DISTINCT notice "Console locked — sign in to continue" (not the sign-out notice), and the next
+  // sign-in returns to the page that was locked.
+  it('JW-19: after Lock console the Login shows "Console locked — sign in to continue", and signing in returns to the locked page', async () => {
+    const { bed, router } = await signedIn('/evidence?status=SEALED')
+    await screen.findByTestId('page-evidence')
+    fireEvent.click(screen.getByTestId('user-menu'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Lock console' }))
+    await bed.flush()
+    await bed.elapse(2_000, 500)
+    const login = await screen.findByTestId('page-login')
+    const notice = await within(login).findByTestId('login-alert')
+    expect(notice).toHaveAttribute('data-kind', 'console-locked')
+    // The SHARED key (closing pass J4, item 2): one sentence for the web console and the devices.
+    expect(notice.textContent).toBe(en.login.notices.consoleLocked)
+    expect(notice.textContent).not.toMatch(/signed out/i)
+    expect(router.state.location.search).toEqual({ redirect: '/evidence?status=SEALED' })
+
+    // The sign-in: the page that was locked comes back, filter and all.
+    fireEvent.change(within(login).getByLabelText(/username/i), { target: { value: SUPERVISOR_SESSION.operator.username } })
+    fireEvent.change(within(login).getByLabelText(/password/i), { target: { value: ['not', 'a', 'real', 'password'].join('-') } })
+    fireEvent.click(within(login).getByRole('button', { name: /sign in/i }))
+    await bed.elapse(3_000, 250)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/evidence'))
+    expect(router.state.location.search).toMatchObject({ status: 'SEALED' })
+    expect(await screen.findByTestId('page-evidence')).toBeInTheDocument()
+    expect(bed.fake.log.requestsOf('signIn')).toHaveLength(1)
+  })
+
+  it('CONTROL (JW-19) - "Sign out" shows the sign-out notice, not the lock notice, and carries no page', async () => {
+    const { bed, router } = await signedIn('/evidence')
+    await screen.findByTestId('page-evidence')
+    fireEvent.click(screen.getByTestId('user-menu'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
+    await bed.flush()
+    await bed.elapse(2_000, 500)
+    const notice = await within(await screen.findByTestId('page-login')).findByTestId('login-alert')
+    expect(notice).toHaveAttribute('data-kind', 'signed-out')
+    expect(notice.textContent).not.toMatch(/Console locked/)
+    expect(router.state.location.search).toEqual({})
   })
 
   it('Lock console with the Core unreachable: the session ends here at once, the link notice goes without "Reconnected"', async () => {

@@ -117,7 +117,7 @@ describe('E1: the Core restarts while a recording runs (01_specs §8.6)', () => 
     expect(entry.outcome).toBe('INCOMPLETE');
     expect(entry.evidenceId).not.toBeNull();
     expect(b.state().evidence.find((item) => item.id === entry.evidenceId)?.status).toBe('RECORDED');
-    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed (SYS-008).');
+    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed.');
     expect(within(screen.getByTestId('recovery-state-chip')).getByText('INCOMPLETE')).toBeTruthy();
     expect(within(screen.getByTestId('recovery-outcome-evidence')).getByText(`${entry.evidenceId} (recorded, unsealed)`)).toBeTruthy();
     // The track findings are the Core's faults of before the stop (derived on the device, said so).

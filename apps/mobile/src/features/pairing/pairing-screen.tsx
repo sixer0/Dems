@@ -82,7 +82,7 @@ export function PairingScreen() {
       ok: () => {
         setUnpairBusy(false);
         setUnpairAsked(false);
-        // LIVE mode: the notice above the code card says it ("This tablet was unpaired.").
+        // LIVE mode: the notice above the code card says it ("This device was unpaired.").
         if (!flow.live) toast.show({ variant: 'success', label: t('features.pairing.unpair.done') });
       },
       fail: (error) => {
@@ -111,7 +111,8 @@ export function PairingScreen() {
         )}
         <View style={styles.headerText}>
           <Text accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.2} style={tablet ? styles.titleLarge : styles.title}>
-            {t('mobile.pairing.title')}
+            {/* Fix wave J (N-05, JA2-N3): a PAIRED device shows its pairing details; the title says so. */}
+            {t(flow.view === 'paired' ? 'mobile.pairing.titlePaired' : 'mobile.pairing.title')}
           </Text>
           <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.subtitle}>
             {t(flow.live ? 'features.pairing.live.header.subtitle' : 'features.pairing.header.subtitle')}

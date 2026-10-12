@@ -23,15 +23,18 @@ import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EvidenceVerifyResultBody } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
+import { HOST_CLOCK_TIME, isOwnCaptureCoreState } from '@dems/shared/sim'
 import { rateLimited, type FakeCommandOptions } from '@dems/shared/live/testing'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { webErrorSink } from '@/runtime'
+import { EXPORT_MANIFEST_NOTICE_DEMO_PACKAGE, EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_PACKAGE } from '@/features/evidence/export-download'
 import { INVESTIGATOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
 import {
   auditWith,
   clearToasts,
+  demoPackage,
   EV,
   findDetailBody,
   installJsdomStubs,
@@ -106,8 +109,13 @@ function enterReason(text: string) {
 /** Reason, Authorise (granted: no request), the Core's source verification, then the Export step. */
 async function toExportStep(evidenceId: string): Promise<void> {
   enterReason(REASON)
-  await screen.findByTestId('export-step-authorise')
+  const roleStep = await screen.findByTestId('export-step-authorise')
+  // Fix wave J round three (N-07): the step is a check of the operator's OWN role and is worded so - not "Request
+  // authorisation" / "Authorised", which read as somebody's approval.
+  expect(screen.getByTestId('export-authorise')).toHaveTextContent(/^Check my role$/)
+  expect(roleStep.textContent).not.toMatch(/Request authorisation/)
   fireEvent.click(screen.getByTestId('export-authorise'))
+  expect(await screen.findByTestId('export-role-permits')).toHaveTextContent('Your role may export')
   fireEvent.click(await screen.findByTestId('export-next'))
   const source = await screen.findByTestId(`export-source-${evidenceId}`)
   await waitFor(() => expect(source).toHaveAttribute('data-verdict', 'PASS'), UI)
@@ -156,6 +164,63 @@ describe('A5 success (§8.2; C-5)', () => {
     expect(result).toHaveTextContent(newest.hash.slice(0, 6))
     await waitFor(() => expect(toastWith(W.successToast.replace('{{id}}', EV.exported))).toHaveLength(1))
     expect(getMissingI18nKeys()).toEqual([])
+  })
+})
+
+// Fix wave J, pass J5 (truth rule 3f; note 174 decision 2). A v1 demonstration item has no archive on any Core: the file
+// the CONSOLE writes is all there is, also on a Core in its own capture - where it said `demo: true`, "the DEMS demo
+// console". (That no such file is offered for a recording of the Core: `export-job.test.tsx`, `item-exports.test.tsx`.)
+describe('pass J5: the export file the console writes for a demonstration item', () => {
+  /** Exports the packaged v1 item EV 0001 and presses its download; returns the file the browser was handed. */
+  async function downloadedFile(ownCapture: boolean): Promise<{ name: string; file: Record<string, unknown> }> {
+    const blobs: Blob[] = []
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: (blob: Blob) => (blobs.push(blob), 'blob:evidence-export') })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: () => undefined })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    opened = await openLiveEvidence(`/evidence/${EV.sealed}`, {
+      media: { [EV.sealed]: demoPackage('0001') },
+      before: (bed) => {
+        if (ownCapture) bed.core.served = { ...bed.core.served, time: { ...HOST_CLOCK_TIME } }
+      },
+    })
+    const { bed, page } = opened
+    expect(isOwnCaptureCoreState(page.live.store.getState())).toBe(ownCapture)
+    bed.fake.answer('verifyEvidence', (call) => ({ status: 200, body: passed(bed, call.params.id ?? '') }))
+    await findDetailBody()
+    fireEvent.click(screen.getByTestId('evidence-export'))
+    await screen.findByTestId('export-wizard', {}, UI)
+    await toExportStep(EV.sealed)
+    const audit = auditWith(bed, { type: 'EVIDENCE_EXPORTED', evidenceId: EV.sealed, actorId: 'OPR-002', details: { exportId: 'EXP-000031', reason: REASON } })
+    bed.fake.scriptCommand('exportEvidence', { ops: [{ op: 'replace', slice: 'audit', value: audit }] as FakeCommandOptions['ops'], order: 'delta-first' })
+    fireEvent.click(screen.getByTestId('export-submit'))
+    await screen.findByTestId('export-results', {}, UI)
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId(`export-download-${EV.sealed}`, {}, UI))
+    })
+    await waitFor(() => expect(blobs).toHaveLength(1), UI)
+    const anchor = click.mock.contexts.at(-1) as HTMLAnchorElement
+    const blob = blobs[0]!
+    const text = typeof blob.text === 'function' ? await blob.text() : await new Response(blob).text()
+    return { name: anchor.download, file: JSON.parse(text) as Record<string, unknown> }
+  }
+
+  it('a Core in its own capture: no `demo` member, the notice says it is the console\'s summary of a demonstration item this Core holds', async () => {
+    const { file } = await downloadedFile(true)
+    expect('demo' in file).toBe(false)
+    expect(file.demonstrationItem).toBe(true)
+    expect(file.notice).toBe(EXPORT_MANIFEST_NOTICE_OWN_CAPTURE_PACKAGE)
+    expect(String(file.notice)).not.toMatch(/^DEMO|demo console|simulat|synthetic/i)
+    expect(file.source).toMatchObject({ evidenceId: EV.sealed })
+    expect(file.authorization).toMatchObject({ purpose: REASON })
+  })
+
+  it('CONTROL - a Core in simulated capture: `demo: true` and the old sentence, word for word', async () => {
+    const { name, file } = await downloadedFile(false)
+    expect(file.demo).toBe(true)
+    expect('demonstrationItem' in file).toBe(false)
+    expect(file.notice).toBe(EXPORT_MANIFEST_NOTICE_DEMO_PACKAGE)
+    expect(EXPORT_MANIFEST_NOTICE_DEMO_PACKAGE).toBe('DEMO export manifest built in the browser by the DEMS demo console from the sealed DEMO package. Not evidence.')
+    expect(name).toMatch(new RegExp(`^EXP-\\d{6}-${EV.sealed}-export-manifest\\.demo\\.json$`))
   })
 })
 
@@ -250,62 +315,34 @@ describe('A5 pending (LB-1, LB-2)', () => {
 
 const SELECTED = ['EV-20261001-0013', 'EV-20261001-0012', 'EV-20261001-0011'] as const
 
-/** An INVESTIGATOR on the list, three rows selected, the bulk wizard on the Authorise step. */
-async function deniedPath(script: (bed: LiveTestBed) => void): Promise<LiveEvidence> {
-  opened = await openLiveEvidence('/evidence', { session: INVESTIGATOR_SESSION, before: script })
-  await screen.findByTestId('evidence-list-body', {}, UI)
-  for (const id of SELECTED) {
-    // The row's checkbox is named by its own label and the row header together: match its start.
-    fireEvent.click(await screen.findByRole('checkbox', { name: new RegExp(`^${en.evidence.table.selectRow.replace('{{id}}', id)}\\b`) }, UI))
-  }
-  fireEvent.click(await screen.findByTestId('evidence-bulk-export'))
-  await screen.findByTestId('export-wizard', {}, UI)
-  enterReason(REASON)
-  await screen.findByTestId('export-step-authorise')
-  return opened
-}
-
-describe('D-6 (§8.4): one export per selected row on the denied path', () => {
-  it('three POSTs to operation 42 in row order, each refused by the Core (one EXPORT_DENIED each); then the denied Alert', async () => {
-    await deniedPath((bed) => bed.fake.answer('exportEvidence', bed.fake.example('exportEvidence', 403, 'forbidden')))
-    fireEvent.click(screen.getByTestId('export-authorise'))
-    const denied = await screen.findByTestId('export-denied', {}, UI)
-    expect(within(denied).getByTestId('lock-shackle')).toBeInTheDocument()
-    expect(requests('exportEvidence').map((call) => call.params.id)).toEqual([...SELECTED])
-    for (const call of requests('exportEvidence')) expect(call.body).toEqual({ reason: REASON, destination: DESTINATION })
-    expect(screen.queryByTestId('export-next')).not.toBeInTheDocument()
+// Fix wave J (JW-14 (c)): the four cases of "D-6: one export per selected row on the denied path" are REPLACED. They drove
+// the wizard as an INVESTIGATOR up to "Authorise", where the Core refused each row - the judge's "enabled, then refused two
+// steps later, with the raw permission name". ONE rule now: a control the role may not use is disabled WITH its visible
+// reason, so the denied path cannot be entered from the page and no request is sent for a role that may not export.
+describe('JW-14 (wave J): a role that may not export gets no export control to press - and the reason beside it', () => {
+  it('an INVESTIGATOR with three rows selected: the bulk Export is disabled, names the Supervisor role, opens no wizard and sends nothing', async () => {
+    opened = await openLiveEvidence('/evidence', { session: INVESTIGATOR_SESSION, before: (bed) => bed.fake.answer('exportEvidence', bed.fake.example('exportEvidence', 403, 'forbidden')) })
+    await screen.findByTestId('evidence-list-body', {}, UI)
+    for (const id of SELECTED) {
+      // The row's checkbox is named by its own label and the row header together: match its start.
+      fireEvent.click(await screen.findByRole('checkbox', { name: new RegExp(`^${en.evidence.table.selectRow.replace('{{id}}', id)}\\b`) }, UI))
+    }
+    const bulk = await screen.findByTestId('evidence-bulk-export')
+    expect(bulk).toBeDisabled()
+    const reason = within(screen.getByTestId('evidence-bulk')).getByTestId('role-reason')
+    expect(reason).toHaveTextContent('Requires the Supervisor role')
+    expect(bulk).toHaveAttribute('aria-describedby', reason.id)
+    fireEvent.click(bulk)
+    expect(screen.queryByTestId('export-wizard')).not.toBeInTheDocument()
+    expect(requests('exportEvidence')).toHaveLength(0)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('LB-10: past the denial budget the Core answers 429; the limit toast shows once and the denied Alert follows', async () => {
-    await deniedPath((bed) => {
-      bed.fake.answerOnce('exportEvidence', bed.fake.example('exportEvidence', 403, 'forbidden'))
-      bed.fake.answer('exportEvidence', rateLimited(42))
-    })
-    fireEvent.click(screen.getByTestId('export-authorise'))
-    await screen.findByTestId('export-denied', {}, UI)
-    expect(requests('exportEvidence')).toHaveLength(3)
-    await waitFor(() => expect(toastWith(en.common.coreErrors.limited.replace('{{seconds}}', '42'))).toHaveLength(1))
-    expect(toastWith(OFFLINE)).toHaveLength(0)
-  })
-
-  it('an outage on the first call: one offline toast, the other calls still go out, the denied Alert follows', async () => {
-    await deniedPath((bed) => {
-      bed.fake.failOnce('exportEvidence')
-      bed.fake.answer('exportEvidence', bed.fake.example('exportEvidence', 403, 'forbidden'))
-    })
-    fireEvent.click(screen.getByTestId('export-authorise'))
-    await screen.findByTestId('export-denied', {}, UI)
-    await waitFor(() => expect(toastWith(OFFLINE)).toHaveLength(1))
-    expect(requests('exportEvidence').length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('the server is the judge: when the Core accepts (the console\'s permission hint was out of date), its answers are the result', async () => {
-    await deniedPath((bed) => bed.fake.answerFromExample('exportEvidence'))
-    fireEvent.click(screen.getByTestId('export-authorise'))
-    const results = await screen.findByTestId('export-results', {}, UI)
-    expect(results.querySelectorAll('[data-export-id]')).toHaveLength(3)
-    expect(screen.queryByTestId('export-denied')).not.toBeInTheDocument()
-    await waitFor(() => expect(toastWith(W.successToast.replace('{{id}}', W.itemCount_other.replace('{{count}}', '3')))).toHaveLength(1))
+  it('NEGATIVE CONTROL: a SUPERVISOR with the same rows selected has the bulk Export enabled and no reason line', async () => {
+    opened = await openLiveEvidence('/evidence', {})
+    await screen.findByTestId('evidence-list-body', {}, UI)
+    fireEvent.click(await screen.findByRole('checkbox', { name: new RegExp(`^${en.evidence.table.selectRow.replace('{{id}}', SELECTED[0])}\\b`) }, UI))
+    expect(await screen.findByTestId('evidence-bulk-export')).not.toBeDisabled()
+    expect(within(screen.getByTestId('evidence-bulk')).queryByTestId('role-reason')).toBeNull()
   })
 })

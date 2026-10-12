@@ -371,3 +371,57 @@ describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
     expect(inputOfChannel('AUDIO-02')).toBe('MIC-02');
   });
 });
+
+// Fix wave J round two (JA2-06): the ACTIVE microphone without a signal was easy to miss on the monitor - only its
+// small meter said so. The fault is stated above the switch, by name, with the same confirmed switch.
+describe('JA2-06: a microphone the Core reports without a signal is said on the monitor', () => {
+  it('the active input: a danger notice names it, offers "Switch to MIC 2" through the SAME confirmation, and sends nothing by itself', async () => {
+    const h = await open();
+    expect(screen.queryByTestId('monitor-mic-no-signal')).toBeNull();
+    act(() => {
+      h.sim.actions.inject('MIC_NO_SIGNAL');
+    });
+    const notice = within(screen.getByTestId('monitor-mic-no-signal'));
+    expect(notice.getByText('MIC 1: no signal')).toBeTruthy();
+    expect(notice.getByText(/The active microphone delivers no audio\./)).toBeTruthy();
+    expect(switches(h.sim.store.getState())).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('monitor-mic-no-signal-switch'));
+    expect(within(screen.getByTestId('monitor-mic-switch-dialog')).getByText('Switch the active microphone to MIC 2?')).toBeTruthy();
+    expect(switches(h.sim.store.getState())).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('monitor-mic-switch-confirm'));
+    expect(switches(h.sim.store.getState())).toHaveLength(1);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('CONTROL - no such fault, no notice; the presentation alone: a standby input without a signal offers no switch', () => {
+    const props: MicSourcePanelProps = {
+      recording: true,
+      activeInputId: MicInputId.MIC_01,
+      standbyInputId: MicInputId.MIC_02,
+      block: null,
+      silentInputId: null,
+      noSignalInputId: MicInputId.MIC_02,
+      confirmOpen: false,
+      busy: false,
+      pending: false,
+      refusal: null,
+      onAsk: () => undefined,
+      onCancel: () => undefined,
+      onConfirm: () => undefined,
+    };
+    const test = createTestSim();
+    const view = render(
+      <RuntimeTestProviders sim={test.sim}>
+        <MicSourcePanel {...props} />
+      </RuntimeTestProviders>,
+    );
+    expect(within(screen.getByTestId('monitor-mic-no-signal')).getByText('MIC 2: no signal')).toBeTruthy();
+    expect(screen.queryByTestId('monitor-mic-no-signal-switch')).toBeNull();
+    view.rerender(
+      <RuntimeTestProviders sim={test.sim}>
+        <MicSourcePanel {...props} noSignalInputId={null} />
+      </RuntimeTestProviders>,
+    );
+    expect(screen.queryByTestId('monitor-mic-no-signal')).toBeNull();
+  });
+});

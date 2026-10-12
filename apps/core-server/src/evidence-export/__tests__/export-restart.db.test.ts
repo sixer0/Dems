@@ -38,7 +38,7 @@ import { sealDoorsOf } from '../../engine/seal-doors';
 import { sessionPackageDir } from '../../evidence-verify';
 import { buildPackage, removeScratch } from '../../evidence-verify/__tests__/support';
 import { SEALING_STEP_ORDER, loadSealingSigner } from '../../sealing';
-import { coreExportDirectory, evidenceExport, parseExportManifest, parseExportSignature } from '../index';
+import { coreExportDirectory, evidenceExport, parseExportManifest, parseExportSignature, replaceExportServicePartsForTest } from '../index';
 import { readStoredExportFailure, readStoredExportRequest } from '../stored-trail';
 
 vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
@@ -163,6 +163,9 @@ describe('R93-11: operation 87 after a restart answers from the STORED rows, not
     const jobs = evidenceExport(first).current();
     expect(jobs).not.toBeNull();
     const supervisor = await signedIn(first, 'andi.pratama');
+    // Fix wave J: a COMPOSITE is refused before any job by this build; the FAILED job this test needs is admitted through a test part
+    // ("this Core says it can") and then fails in the job, which still finds no encoder.
+    replaceExportServicePartsForTest(first, { compositeAvailable: () => true });
     const failed = (await first.inject({ method: 'POST', url: exportUrl, headers: supervisor, payload: { reason: 'Prosecutor request', kind: 'COMPOSITE' } })).json() as { exportId: string; jobId: string };
     await jobs?.idle();
     await first.pipeline.drain();

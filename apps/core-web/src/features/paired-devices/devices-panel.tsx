@@ -254,6 +254,10 @@ function DevicesTable({ rows, added, revoked, linkUp, onRevoke }: DevicesTablePr
                         role="img"
                         aria-label={device.online ? t('pairedDevices.devices.online') : t('pairedDevices.devices.offline')}
                       />
+                      {/* Fix wave J round three (N-15): the online state was a small dot with no word. The dot keeps its name for assistive technology; the word is for the eye. */}
+                      <span className="pd-online-word" aria-hidden="true" data-testid={`pd-online-word-${device.id}`}>
+                        {device.online ? t('pairedDevices.devices.online') : t('pairedDevices.devices.offline')}
+                      </span>
                     </span>
                   </Table.Cell>
                   <Table.Cell>

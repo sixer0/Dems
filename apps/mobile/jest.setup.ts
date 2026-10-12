@@ -1,6 +1,6 @@
 // Mobile Jest setup: masterplan/01_specs.md §8 (adjusted, M18-7) plus the 04_mobile_specs.md §10.1
 // additions (step 67). Loaded through jest.config.js `setupFilesAfterEnv`.
-import { beforeEach, jest } from '@jest/globals';
+import { afterEach, beforeEach, jest } from '@jest/globals';
 import 'react-native-gesture-handler/jestSetup';
 
 // Reanimated 4.5 + Worklets 0.10: the native Worklets module cannot load in Jest, so it is replaced
@@ -11,6 +11,95 @@ jest.mock('react-native-worklets', () => jest.requireActual('react-native-workle
 jest
   .requireActual<{ setUpTests: () => void }>('react-native-reanimated')
   .setUpTests();
+
+// Fix wave J (JM-01, `src/motion/testing/worklet-closure.ts`): a worklet that CALLS a function which is not a
+// worklet throws on a device's UI runtime and stops every animation of the process; Jest runs both on one
+// runtime and would never notice. So every worklet the suite hands to one of Reanimated's hooks is checked by
+// what the Worklets Babel plugin wrote on it, and a test that mounted an offending worklet fails in `afterEach`
+// with its name. The hooks themselves are Reanimated's own: the proxy only looks at their first arguments.
+const mockWorkletViolations = new Set<string>();
+jest.mock('react-native-reanimated', () => {
+  const actual = jest.requireActual<Record<string, unknown>>('react-native-reanimated');
+  const closure = jest.requireActual<typeof import('./src/motion/testing/worklet-closure')>('./src/motion/testing/worklet-closure');
+  const optional = (name: string): unknown => {
+    try {
+      return jest.requireActual(name);
+    } catch {
+      return null;
+    }
+  };
+  // The libraries' own entry points are plain functions under their Jest mocks (and native, or worklets, on a
+  // device): they are allowed by identity. They are taken from the module instances THIS test file's code gets
+  // (`require` at the time of the check: a test may mock a library itself), and collected once per instance.
+  const LIBRARIES = ['react-native-worklets', '@shopify/react-native-skia'];
+  const collected = new Map<unknown, Set<unknown>>();
+  const functionsOf = (module: unknown): Set<unknown> => {
+    let found = collected.get(module);
+    if (!found) {
+      found = closure.exportedFunctionsOf(module);
+      collected.set(module, found);
+    }
+    return found;
+  };
+  const allowedNow = (): Set<unknown> => {
+    const allowed = new Set<unknown>(functionsOf(actual));
+    for (const name of LIBRARIES) {
+      let module: unknown = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        module = require(name) as unknown;
+      } catch {
+        module = optional(name);
+      }
+      for (const entry of functionsOf(module)) allowed.add(entry);
+    }
+    return allowed;
+  };
+  const inspect = (hook: string, candidates: readonly unknown[]): void => {
+    let allowed: Set<unknown> | null = null;
+    for (const candidate of candidates) {
+      // Cheap first: most worklets call nothing that is not a worklet, whatever is allowed.
+      if (closure.nonWorkletCallees(candidate).length === 0) continue;
+      allowed ??= allowedNow();
+      for (const finding of closure.nonWorkletCallees(candidate, allowed)) mockWorkletViolations.add(`${hook}: ${finding}`);
+    }
+  };
+  /** How many leading arguments of each hook are worklets. */
+  const WORKLET_ARGUMENTS: Readonly<Record<string, number>> = {
+    useAnimatedStyle: 1,
+    useAnimatedProps: 1,
+    useDerivedValue: 1,
+    useAnimatedReaction: 2,
+    useFrameCallback: 1,
+    useAnimatedScrollHandler: 1,
+  };
+  const wrapped = new Map<string, unknown>();
+  return new Proxy(actual, {
+    get(target, key, receiver) {
+      const value: unknown = Reflect.get(target, key, receiver);
+      if (typeof key !== 'string' || typeof value !== 'function' || !(key in WORKLET_ARGUMENTS)) return value;
+      let hook = wrapped.get(key);
+      if (!hook) {
+        const original = value as (...args: unknown[]) => unknown;
+        hook = (...args: unknown[]) => {
+          inspect(key, args.slice(0, WORKLET_ARGUMENTS[key]));
+          return original(...args);
+        };
+        wrapped.set(key, hook);
+      }
+      return hook;
+    },
+  });
+});
+
+afterEach(() => {
+  if (mockWorkletViolations.size === 0) return;
+  const findings = [...mockWorkletViolations];
+  mockWorkletViolations.clear();
+  throw new Error(
+    `A worklet calls a function that is not a worklet (it throws on a device's UI runtime; add the 'worklet' directive to the callee or inline it): ${findings.join('; ')}`,
+  );
+});
 
 // §10.1: AsyncStorage 2.2.0 through the in-memory mock the package ships (VM-16).
 jest.mock('@react-native-async-storage/async-storage', () =>

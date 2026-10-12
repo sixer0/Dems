@@ -12,6 +12,7 @@
 import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
+import { EXPORT_KINDS_EXAMPLE } from '@dems/shared/api';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, screen, act } from '@testing-library/react-native';
 import { en } from '@dems/shared/i18n';
@@ -251,12 +252,50 @@ describe('S1-6: the export — the request starts with the build step; the resul
     expect(b.state().evidence.find((item) => item.id === id)?.status).toBe(EvidenceStatus.SEALED);
   });
 
-  it('pass D5 — Composite chosen on the Destination step: the request names `kind: COMPOSITE`, and the job is read by the `jobId` of the 202', async () => {
-    const { b, id } = await openExport('0001');
+  // Fix wave J, JA2-03 (truth rule 3d; contract_wave_j.md J-S 3): REPLACES "pass D5 - Composite chosen ...: the request
+  // names `kind: COMPOSITE`" - that request was accepted and then failed (real lane) or was delivered as a Package
+  // (simulated lane). A thing the build cannot do is not offered as if it could: the Core states its outputs in
+  // `exportKinds` of operation 40, an unavailable one is drawn disabled with its reason, and it is never asked for.
+  const openExportWith = async (extras: Readonly<Record<string, unknown>> | null): Promise<{ b: LiveEvidenceBed; id: string }> => {
+    const b = await renderLiveEvidence();
+    bed = b;
+    if (extras !== null) b.detailExtras = () => extras;
+    const id = b.idOf('0001');
+    await b.navigate(`/evidence/${id}`);
+    fireEvent.press(screen.getByTestId('evidence-action-export'));
+    await b.flush();
     await throughSource(b);
     await b.elapse(VERIFY_ASK_MS + 100);
     fireEvent.press(screen.getByTestId('evidence-export-next'));
     await b.flush();
+    return { b, id };
+  };
+  const ACCESS = { access: { play: true, readTranscript: true, export: true } };
+
+  const UNAVAILABLE: readonly [string, Readonly<Record<string, unknown>> | null][] = [
+    ['the Core states COMPOSITE as not available (the contract example)', { ...ACCESS, exportKinds: [...EXPORT_KINDS_EXAMPLE] }],
+    ['the Core states no `exportKinds` at all (an older Core)', null],
+  ];
+  it.each(UNAVAILABLE)('JA2-03 - %s: Composite is disabled with its reason, a press changes nothing, and the request names no kind', async (_name, extras) => {
+    const { b } = await openExportWith(extras);
+    expect(isDisabled('evidence-export-kind-COMPOSITE')).toBe(true);
+    expect(isDisabled('evidence-export-kind-PACKAGE')).toBe(false);
+    expect(screen.getByTestId('evidence-export-kind-unavailable')).toHaveTextContent('Composite video is not available in this build.');
+    fireEvent.press(screen.getByTestId('evidence-export-kind-COMPOSITE'));
+    fireEvent.press(screen.getByTestId('evidence-export-next'));
+    await b.flush();
+    fireEvent.changeText(screen.getByTestId('evidence-export-reason'), REASON);
+    await b.flush();
+    fireEvent.press(screen.getByTestId('evidence-export-submit'));
+    await b.flush();
+    expect(b.requests('exportEvidence')).toHaveLength(1);
+    expect(b.requests('exportEvidence')[0]!.body).not.toHaveProperty('kind');
+  });
+
+  it('JA2-03 CONTROL - a Core that states COMPOSITE as available: it can be chosen, the request names `kind: COMPOSITE`, and no reason line is drawn', async () => {
+    const { b, id } = await openExportWith({ ...ACCESS, exportKinds: [{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: true }] });
+    expect(isDisabled('evidence-export-kind-COMPOSITE')).toBe(false);
+    expect(screen.queryByTestId('evidence-export-kind-unavailable')).toBeNull();
     fireEvent.press(screen.getByTestId('evidence-export-kind-COMPOSITE'));
     fireEvent.press(screen.getByTestId('evidence-export-next'));
     await b.flush();
@@ -265,18 +304,14 @@ describe('S1-6: the export — the request starts with the build step; the resul
     b.fake.answerOnce('exportEvidence', { status: 202, body: { exportId: 'EXP-000032', evidenceId: id, status: 'QUEUED', jobId: 'EXPJ-000777' } });
     b.fake.answer('getEvidenceExportJob', () => ({
       status: 200,
-      body: { jobId: 'EXPJ-000777', evidenceId: id, kind: 'COMPOSITE', status: 'FAILED', progressPct: 0, etaMs: null, derived: true, createdAt: 1_790_824_500_000, failureReason: 'COMPOSITE_ENCODER_NOT_SELECTED' },
+      body: { jobId: 'EXPJ-000777', evidenceId: id, kind: 'COMPOSITE', status: 'RUNNING', progressPct: 10, etaMs: null, derived: true, createdAt: 1_790_824_500_000 },
     }));
     fireEvent.press(screen.getByTestId('evidence-export-submit'));
     await b.flush();
-    expect(b.requests('exportEvidence')).toHaveLength(1);
     expect(b.requests('exportEvidence')[0]!.body).toMatchObject({ reason: REASON, kind: 'COMPOSITE' });
     await b.elapse(EXPORT_BUILD_MS + 100);
     await b.flush();
-    expect(screen.getByTestId('evidence-export-done')).toBeTruthy();
-    for (let turn = 0; turn < 20 && screen.queryByTestId('evidence-export-job-FAILED') === null; turn += 1) await b.elapse(100);
     expect(b.requests('getEvidenceExportJob')[0]!.url).toMatch(/\/api\/v1\/evidence\/exports\/EXPJ-000777$/);
-    expect(screen.getByTestId('evidence-export-job-FAILED')).toHaveTextContent(/Composite video is not available in this build\./);
   });
 
   it('pass D5 — no kind chosen: the request names none; 409 EXPORT_IN_PROGRESS reads its own sentence, never "Only sealed evidence can be exported"', async () => {

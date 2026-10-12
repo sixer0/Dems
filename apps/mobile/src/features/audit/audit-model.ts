@@ -236,9 +236,24 @@ export interface KeyedText {
  * Core's own numbers, nothing computed on the tablet. A broken answer without `firstBadSeq` (not in
  * the contract's examples) names the row after the last verified one, which is where the check stopped.
  */
-export function storedChainLine(stored: StoredChainCheck): KeyedText {
+export function storedChainLine(stored: StoredChainCheck, verdictOk = true): KeyedText {
+  // Fix wave J (JA2-31): the verdict above failed while the stored log verifies. The sentence says
+  // where the break is (the chain the Core holds) and that the stored log was checked separately.
+  if (stored.ok && !verdictOk) return { key: 'features.audit.live.storedVerifiedAfterBreak', values: { seq: stored.checked } };
   if (stored.ok) return { key: 'features.audit.live.storedVerified', values: { seq: stored.checked } };
   return { key: 'features.audit.live.storedBroken', values: { seq: stored.firstBadSeq ?? stored.checked + 1 } };
+}
+
+/**
+ * Fix wave J (JA2-31): whether a stored verification verdict is still a statement about the chain as
+ * it is now. The verdict keeps the chain's break state of the moment it was given (`breakSeqAtVerdict`,
+ * the header chip's own fact); it is stale once that state has changed: the break was cleared, a break
+ * appeared, or the break is at another entry. The rule compares the chain with ITSELF over time, never
+ * the verdict with the chip: a Core verdict that disagrees with the chip at once is a finding, not an
+ * old one. New entries alone do not make a verdict stale: its sentence carries its count and its time.
+ */
+export function verdictStale(breakSeqAtVerdict: number | null, breakSeqNow: number | null): boolean {
+  return breakSeqAtVerdict !== breakSeqNow;
 }
 
 /**

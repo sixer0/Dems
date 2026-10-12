@@ -122,6 +122,9 @@ export function SessionInfoStep({ form, investigators, arrangement, onScan, crea
           <InputGroup>
             <InputGroup.Input
               testID="session-new-subject-name"
+              // Round two (JA2-36): a person's name is taken as typed - no autocorrect, no spelling underline.
+              autoCorrect={false}
+              spellCheck={false}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}

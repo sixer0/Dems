@@ -18,6 +18,7 @@ import {
 import { SessionState } from '../domain';
 import type { AudioRuntime } from './audio';
 import { requirePermission } from './auth';
+import { DIAGNOSTIC_NOT_REPORTED_CHECKS, DIAGNOSTIC_NOT_REPORTED_DETAIL, DIAGNOSTIC_NOT_REPORTED_RULE, isDiagnosticNotReported, isPlatformNotReported, isUpdaterNotAvailable, UPDATER_NOT_AVAILABLE_REASON } from './core-facts';
 import { DEVICE_ID, PRODUCT_NAME } from './dataset';
 import { PLATFORM_DEVICE_NAMES } from './devices';
 import type { EngineContext } from './engine';
@@ -48,6 +49,11 @@ export const DIAGNOSTIC_CHECKS = [
  * carries its values so a UI renders its own copy (step 54, review 40 m4).
  */
 export function evaluateDiagnostic(state: SimState, id: string): { status: DiagnosticStatus; detail: string; params: Details } {
+  // Fix wave J (truth rule 3c; JW-04 / JT-03): a Core in its own capture reads no SMART value, no fan, no PoE
+  // switch and no TPM. Its rows over that hardware say so and never PASS (`isDiagnosticNotReported`).
+  if (isPlatformNotReported(state.security) && DIAGNOSTIC_NOT_REPORTED_CHECKS.includes(id)) {
+    return { status: 'WARN', detail: DIAGNOSTIC_NOT_REPORTED_DETAIL, params: { rule: DIAGNOSTIC_NOT_REPORTED_RULE } };
+  }
   const poe = state.network.poe;
   switch (id) {
     case 'CPU': {
@@ -163,7 +169,9 @@ export function advanceDiagnostics(state: SimState, now: EpochMs): SimState {
   if (!done) return { ...state, diagnostics: { ...run, checks } };
   const completedAt = checks[checks.length - 1]?.resolvesAt ?? now;
   const fail = checks.filter((check) => check.status === 'FAIL').length;
-  const warn = checks.filter((check) => check.status === 'WARN').length;
+  // Fix wave J: a row that states nothing is no warning and no pass.
+  const notReported = checks.filter((check) => isDiagnosticNotReported(check)).length;
+  const warn = checks.filter((check) => check.status === 'WARN').length - notReported;
   const next: SimState = { ...state, diagnostics: { ...run, checks, completedAt } };
   return {
     ...next,
@@ -171,9 +179,15 @@ export function advanceDiagnostics(state: SimState, now: EpochMs): SimState {
       event: {
         type: 'DIAGNOSTICS_COMPLETED',
         message:
-          fail > 0 ? `Diagnostics completed · ${fail} failed` : warn > 0 ? `Diagnostics completed · ${warn} warning(s)` : 'Diagnostics completed · all passed',
-        severity: fail > 0 ? 'CRITICAL' : warn > 0 ? 'WARNING' : 'SUCCESS',
-        params: { runId: run.id, pass: checks.length - fail - warn, warn, fail },
+          fail > 0
+            ? `Diagnostics completed · ${fail} failed`
+            : warn > 0
+              ? `Diagnostics completed · ${warn} warning(s)`
+              : notReported > 0
+                ? `Diagnostics completed · ${checks.length - notReported} passed, ${notReported} not reported`
+                : 'Diagnostics completed · all passed',
+        severity: fail > 0 ? 'CRITICAL' : warn > 0 ? 'WARNING' : notReported > 0 ? 'INFO' : 'SUCCESS',
+        params: { runId: run.id, pass: checks.length - fail - warn - notReported, warn, fail, ...(notReported > 0 ? { notReported } : {}) },
       },
     }),
   };
@@ -335,6 +349,10 @@ export function setStoragePolicyTransition(state: SimState, now: EpochMs, policy
 export function startSoftwareUpdateTransition(state: SimState, now: EpochMs, rng: RngStreams): SimState {
   const operator = requirePermission(state, 'startSoftwareUpdate', Permission.MAINTENANCE);
   const { update } = state;
+  // Fix wave J (JT-06 / JW-06): a Core in its own capture has no updater - the demonstration update is not run there.
+  if (isUpdaterNotAvailable(update)) {
+    throw new SimTransitionError(state.session?.state ?? null, 'startSoftwareUpdate', 'this Core has no software updater', SimErrorCode.COMMAND_UNSUPPORTED, UPDATER_NOT_AVAILABLE_REASON);
+  }
   if (update.state === 'RUNNING' || !update.availableVersion) return state;
   if (isSessionActive(state.session)) {
     throw new SimTransitionError(state.session?.state ?? null, 'startSoftwareUpdate', 'a session is active', SimErrorCode.SESSION_ACTIVE);

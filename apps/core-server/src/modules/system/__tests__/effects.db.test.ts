@@ -53,6 +53,7 @@ import { useTestDatabase } from '../../../../test/helpers/db';
 import { linkProblems, readEvents, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
 import { createHost, withoutNegativeZeros, type Host } from '../../../../test/support/seed';
 import { actorAuth } from '../../../engine';
+import { CORE_SERVER_VERSION } from '../../../version';
 import { storedSlices } from '../../../../test/support/engine';
 import { DIAGNOSTICS, SERVICES_RESTART, SYSTEM_STATUS, TICK_MS, UPDATE, bodyOf, bootedServer, content, servicesAsRead, whole, type BootedServer } from './support';
 
@@ -369,7 +370,8 @@ describe('startSoftwareUpdate: the six steps resolve on the engine\'s ticks, as 
     // The read shows it; a further call starts nothing, because no version is available.
     const read = await server.get('SUPERVISOR', SYSTEM_STATUS);
     const committedNow = server.engine.state();
-    expect(read.json()).toEqual(wire({ device: committedNow.device, services: servicesAsRead(committedNow.services, server.app), update: committedNow.update, diagnostics: committedNow.diagnostics, settings: committedNow.settings }));
+    expect(read.json()).toEqual(wire({ device: committedNow.device, services: servicesAsRead(committedNow.services, server.app), update: committedNow.update, diagnostics: committedNow.diagnostics, settings: committedNow.settings, components: (read.json() as { components: unknown }).components }));
+    expect((read.json() as { components: { core: { version: string } } }).components.core.version).toBe(CORE_SERVER_VERSION);
     expect((read.json() as { update: unknown }).update).toMatchObject({ state: 'PASS', currentVersion: '2.5.0', availableVersion: null, activeSlot: 'B' });
     expect((read.json() as { device: unknown }).device).toMatchObject({ softwareVersion: '2.5.0' });
     expect(validateCoreApiResponse('getSystemStatus', 200, read.json())).toEqual({ ok: true });

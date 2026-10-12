@@ -200,10 +200,12 @@ describe.each(WIDTHS)('AC-C-24: the indicator at three widths, %i px', (width, t
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-shell-tier', tier)
     expect(page.live.link).toBe(LiveLinkState.ONLINE)
     expect(within(screen.getByRole('banner')).getByTestId('shell-mode')).toBe(indicator())
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
     expect(indicator()).toHaveAttribute('data-state', 'LIVE')
-    expect(indicator()).toHaveAttribute('aria-label', 'Data mode: LIVE')
-    expect(tone()).toEqual(['chip--success'])
+    expect(indicator()).toHaveAttribute('aria-label', 'Data mode: LIVE · DEMO CORE')
+    expect(indicator()).toHaveAttribute('data-demo-core', 'true')
+    expect(tone()).toEqual(['chip--warning'])
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-core-mode', 'LIVE')
     expect(getMissingI18nKeys()).toEqual([])
   })
@@ -236,7 +238,8 @@ describe.each(WIDTHS)('AC-C-24: the indicator at three widths, %i px', (width, t
     bed.core.back()
     await bed.elapse(40_000, 1_000)
     expect(page.live.link).toBe(LiveLinkState.ONLINE)
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
     expect(indicator()).toHaveAttribute('data-state', 'LIVE')
   })
 })
@@ -339,7 +342,8 @@ describe('the mode switch of the shell (§3.3 step 1; MD-4)', () => {
     await bed.mount(page, '/storage', { coreMode: control(CoreMode.LIVE, switchTo) })
     await screen.findByTestId('page-storage')
     expect(indicator().tagName).toBe('BUTTON')
-    expect(indicator()).toHaveTextContent(/^LIVE$/)
+    // Wave J (JW-07): the bed's Core runs the demonstration, so the chip names it; a bare "LIVE" read as "this is live".
+    expect(indicator()).toHaveTextContent(/^LIVE · DEMO CORE$/)
 
     fireEvent.click(indicator())
     const dialog = await screen.findByTestId('mode-switch-dialog')

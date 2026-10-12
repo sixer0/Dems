@@ -95,7 +95,9 @@ describe("Network & Time on the Core's data (LIVE)", () => {
     // N4: the Live clock follows the Core's time (held to the minute under the `motion=off` test switch, D43).
     const live = b.state();
     expect(Math.abs(live.clock.now - b.fake.clock.now())).toBeLessThan(1_000);
-    const shown = wib(Math.floor(live.clock.now / 60_000) * 60_000);
+    // Fix wave J (JA2-34): the readout is the true SECOND in every motion mode (this bed runs under the test switch,
+    // where it used to hold hh:mm:00 for the whole minute).
+    const shown = wib(Math.floor(live.clock.now / 1_000) * 1_000);
     expect(screen.getByTestId('network-time-clock').props.accessibilityLabel).toBe(`System time ${shown.time}, UTC+07:00, ${shown.weekdayDate}`);
     // The LAN sheet: the Core's address and network name.
     fireEvent.press(screen.getByTestId('network-time-lan'));
@@ -111,14 +113,15 @@ describe("Network & Time on the Core's data (LIVE)", () => {
     expect(b.operations().filter((operationId) => !RUNTIME_OPERATIONS.has(operationId))).toEqual([]);
   });
 
-  it('follows the Core by delta: GNSS lost (NTP fallback, one warning toast), then restored', async () => {
+  it('follows the Core by delta: GNSS lost (NTP fallback; its toast is the app-wide alert toast, not this screen\'s), then restored', async () => {
     const b = await openNetworkTime();
     expect(tierSelected('GNSS')).toBe(true);
     await b.runCore(1_000, (engine) => engine.sim.actions.inject('GNSS_LOSS'));
     expect(tierSelected('NTP')).toBe(true);
     expect(within(screen.getByTestId('network-time-sync-chip')).getByText('NTP fallback')).toBeTruthy();
     expect(textOf('network-time-source-value')).toMatch(/^NTP Server \(Stratum-\d\)$/);
-    expect(toastShown('GNSS signal lost')).toBe(true);
+    // Fix wave J (JA2-05): the loss is toasted once by the app's alert-toast consumer (`features/alerts`, not in this bed).
+    expect(toastShown('GNSS signal lost')).toBe(false);
     await b.runCore(1_000, (engine) => engine.sim.actions.clearFault('GNSS_LOSS'));
     expect(tierSelected('GNSS')).toBe(true);
     expect(toastShown('GNSS lock restored')).toBe(true);

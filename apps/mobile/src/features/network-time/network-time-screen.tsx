@@ -40,7 +40,7 @@ import { LAN_TONE, TIME_TONE, lanLevel, timeLevel } from './network-time-model';
 import { NetworkStatusCard } from './network-status-card';
 import { SystemTimeCard } from './system-time-card';
 import { TimeSyncCard } from './time-sync-card';
-import { useNetworkTimeAlerts, useNetworkView, useTimeEscalationKey, useTimeView } from './use-network-time';
+import { useNetworkNotReported, useNetworkTimeAlerts, useNetworkView, useTimeEscalationKey, useTimeView } from './use-network-time';
 
 /** Enter order (§7.3): system time, then the time card, then the network card. */
 const ENTER = { systemTime: 0, time: 1, network: 2 } as const;
@@ -53,6 +53,8 @@ export function NetworkTimeScreen() {
   const level = timeLevel(time.source);
   const escalationKey = useTimeEscalationKey(level);
   const [lanOpen, setLanOpen] = useState(false);
+  // Fix wave J (JT-03): on a Core in its own capture the network model is not drawn as the Core's facts.
+  const networkNotReported = useNetworkNotReported();
   useNetworkTimeAlerts();
 
   const systemTime = (
@@ -78,7 +80,7 @@ export function NetworkTimeScreen() {
   const networkCard = (
     <Animated.View entering={enterRise(ENTER.network, m)}>
       <CardBoundary name="network">
-        <NetworkStatusCard network={network} onOpenLan={() => setLanOpen(true)} />
+        <NetworkStatusCard network={network} onOpenLan={() => setLanOpen(true)} notReported={networkNotReported} />
       </CardBoundary>
     </Animated.View>
   );
@@ -89,7 +91,8 @@ export function NetworkTimeScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="network-time-scroll">
         <Body layoutClass={layoutClass} systemTime={systemTime} timeCard={timeCard} networkCard={networkCard} />
       </ScrollView>
-      <LanSheet isOpen={lanOpen} onClose={() => setLanOpen(false)} network={network} />
+      {/* The LAN sheet holds model values only: it is not mounted where they are not the Core's. */}
+      {networkNotReported ? null : <LanSheet isOpen={lanOpen} onClose={() => setLanOpen(false)} network={network} />}
     </SafeScreen>
   );
 }
@@ -153,6 +156,7 @@ function Header({ layoutClass }: { layoutClass: LayoutClass }) {
   const router = useRouter();
   const time = useTimeView();
   const network = useNetworkView();
+  const networkNotReported = useNetworkNotReported();
   const title = (
     <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.headerTitle}>
       {t('features.network-time.header.title')}
@@ -166,7 +170,11 @@ function Header({ layoutClass }: { layoutClass: LayoutClass }) {
         <View style={styles.flex}>{title}</View>
         <View style={styles.headerChips}>
           <StatusChip testID="network-time-header-time" size="sm" tone={time.hostClock ? 'default' : TIME_TONE[level]} label={time.hostClock ? t('common.hostClockTime.value') : t(`networkTime.bannerState.time.${level}`)} icon="Circle" iconFilled />
-          <StatusChip testID="network-time-header-lan" size="sm" tone={LAN_TONE[lan]} label={t(`networkTime.bannerState.network.${lan}`)} icon="Circle" iconFilled />
+          {networkNotReported ? (
+            <StatusChip testID="network-time-header-lan" size="sm" tone="default" label={t('features.network-time.network.headerNotReported')} icon={null} />
+          ) : (
+            <StatusChip testID="network-time-header-lan" size="sm" tone={LAN_TONE[lan]} label={t(`networkTime.bannerState.network.${lan}`)} icon="Circle" iconFilled />
+          )}
         </View>
       </View>
     );

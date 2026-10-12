@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { formatWibTime, type SimEvent } from '@dems/shared/sim';
+import { exportPhaseOfEvent, formatWibTime, type SimEvent } from '@dems/shared/sim';
 import { derived, fontFamily, palette, typography } from '@dems/shared/tokens';
 import { SectionCard } from '@/components/kit';
 import { listInsert, rowReveal, useMotionSettings } from '@/motion';
@@ -25,6 +25,8 @@ export function useActivityText(): (event: SimEvent) => string {
   const { t } = useTranslation();
   return (event) => {
     const fault = storageFaultKind(event);
+    // Fix wave J (JW-03, contract J-S 3): an export that was only REQUESTED is not "Evidence exported".
+    if (exportPhaseOfEvent(event) === 'REQUESTED') return t('common.truth.exportRequested');
     const title = fault ? `${t(`common.eventType.${event.type}`)} · ${t(`common.faultKind.${fault}`)}` : t(`common.eventType.${event.type}`);
     const detail = activityDetail(event);
     if (!detail) return title;
@@ -79,7 +81,8 @@ export function StorageActivity() {
                 <Text maxFontSizeMultiplier={1.2} style={styles.time}>
                   {time}
                 </Text>
-                <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.text}>
+                {/* Fix wave J (JA2-27): two lines - "Storage policy changed · 365 days · ..." was cut on the phone. */}
+                <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.text} testID="storage-activity-text">
                   {text}
                 </Text>
               </Animated.View>
@@ -93,9 +96,9 @@ export function StorageActivity() {
 
 const styles = StyleSheet.create({
   list: { gap: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: derived.border },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  dot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
   time: {
     fontFamily: fontFamily.native.mono,
     fontSize: typography.data.size,

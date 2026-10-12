@@ -134,6 +134,8 @@ describe('the list (§10.3; PG-6; RESIDUAL-W70-1)', () => {
     expect(within(online).getByText('android · 0.2.0')).toBeInTheDocument()
     expect(within(online).getByTestId('pd-state-DEV-0003')).toHaveTextContent(D.state.PAIRED)
     expect(within(online).getByTestId('pd-online-DEV-0003')).toHaveAttribute('data-online', 'true')
+    // Fix wave J round three (N-15): the state is also a WORD beside the dot, not a colour alone.
+    expect(within(online).getByTestId('pd-online-word-DEV-0003')).toHaveTextContent(/^Online$/)
     expect(within(online).getByTestId('pd-operator-DEV-0003')).toHaveTextContent('AKP Budi Santoso')
     expect(within(online).getByText('code issued by AKP Andi Pratama')).toBeInTheDocument()
     expect(within(online).getByTestId('pd-last-seen-DEV-0003')).toHaveTextContent(D.lastSeen.justNow)
@@ -141,6 +143,7 @@ describe('the list (§10.3; PG-6; RESIDUAL-W70-1)', () => {
 
     const offline = screen.getByTestId('pd-device-DEV-0002')
     expect(within(offline).getByTestId('pd-online-DEV-0002')).toHaveAttribute('data-online', 'false')
+    expect(within(offline).getByTestId('pd-online-word-DEV-0002')).toHaveTextContent(/^Offline$/)
     expect(within(offline).getByTestId('pd-operator-DEV-0002')).toHaveTextContent('—')
     expect(within(offline).getByTestId('pd-last-seen-DEV-0002')).toHaveTextContent('5 min ago')
 

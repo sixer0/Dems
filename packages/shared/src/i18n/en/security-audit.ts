@@ -282,7 +282,7 @@ export const securityAudit = {
 
   custody: {
     title: 'Export & Chain of Custody',
-    rule: 'Every export writes an immutable audit event and never changes the sealed source (§19.3).',
+    rule: 'Every export writes an immutable audit event and never changes the sealed source.',
     empty: 'No exports yet',
     listLabel: 'Export events',
     exported: 'Exported',

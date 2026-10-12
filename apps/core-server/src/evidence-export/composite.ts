@@ -67,3 +67,16 @@ export function compositeEncoderAllowed(name: string): boolean {
 export function selectedCompositeEncoder(): CompositeEncoder | null {
   return null;
 }
+
+/**
+ * WHAT THIS CORE CAN EXPORT, as operation 40 states it (`exportKinds`; fix wave J, truth rule 3d,
+ * findings JA2-03 / JW-03). A PACKAGE always; a COMPOSITE only with a selected encoder - and while
+ * none is selected the entry carries the code the export job itself fails with, so that a client
+ * disables the choice with its reason and operation 42 refuses the request before any job.
+ */
+export function exportKindsOf(compositeAvailable: boolean): { kind: 'PACKAGE' | 'COMPOSITE'; available: boolean; reason?: string }[] {
+  return [
+    { kind: 'PACKAGE', available: true },
+    compositeAvailable ? { kind: 'COMPOSITE', available: true } : { kind: 'COMPOSITE', available: false, reason: 'COMPOSITE_ENCODER_NOT_SELECTED' },
+  ];
+}

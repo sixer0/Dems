@@ -61,8 +61,13 @@ export function canRetryBlockedSeal(role: OperatorRole | null | undefined): bool
  */
 export const SEAL_RETRY_CONTROL_NAME = 'Retry sealing';
 
-/** Where the retry is offered and who may press it: the tail of every "what restores the seal" sentence of the Core. */
-export const SEAL_RETRY_HOW_SENTENCE = `an investigator or a supervisor presses "${SEAL_RETRY_CONTROL_NAME}" on the Session Monitor of the web console, or the Core is restarted.`;
+/**
+ * Where the retry is offered and who may press it: the tail of every "what restores the seal" sentence of the Core.
+ * Fix wave J closing pass (J4, item 4; D243 reversed D228 (1)): the devices have the control too (the Finalizing
+ * screen, the Session entry of Home and the Sessions hub - "the session's screen"), so the sentence names them.
+ * A running Core keeps the sentence it booted with until its next start.
+ */
+export const SEAL_RETRY_HOW_SENTENCE = `an investigator or a supervisor presses "${SEAL_RETRY_CONTROL_NAME}" on the Session Monitor of the web console or on the session's screen of the tablet or phone, or the Core is restarted.`;
 
 /**
  * What the Core did by itself before it stopped, and that it WAITS now: the end of the failed step's
@@ -220,7 +225,7 @@ export const SEAL_BLOCKED_EXAMPLE_ALERT: SimAlert = Object.freeze({
   severity: 'CRITICAL',
   kind: 'SYSTEM',
   message:
-    "Sealing of this session is blocked. The Core's key store cannot be used: the seal stopped and can be tried again. Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then retry the seal: an investigator or a supervisor presses \"Retry sealing\" on the Session Monitor of the web console, or the Core is restarted. The Core records no new session until this one is sealed.",
+    "Sealing of this session is blocked. The Core's key store cannot be used: the seal stopped and can be tried again. Check the Core's key store (the credential store folder of the data directory: a private folder the server user can write), then retry the seal: an investigator or a supervisor presses \"Retry sealing\" on the Session Monitor of the web console or on the session's screen of the tablet or phone, or the Core is restarted. The Core records no new session until this one is sealed.",
   active: true,
   acknowledged: false,
   resolvedAt: null,

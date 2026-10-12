@@ -203,8 +203,13 @@ export const SessionNoteSchema = z
     at: epochMs(),
     authorId: operatorId().nullable(),
     text: text(),
+    // Fix wave J round two (JT-11 / JW-13 / JA2-08): the session form's "Notes", kept on the item.
+    origin: z
+      .literal('SESSION_FORM')
+      .optional()
+      .describe('Present on the one note of an EVIDENCE ITEM that carries the text of the session form\'s "Notes" field (`id: NOTE-FORM`, `at` = the creation of the session, `authorId` = who created it): written before the recording, copied onto the item when the item was made. Absent on a note written during the recording, and on every note of an open session.'),
   })
-  .describe('A note an investigator wrote during the recording.');
+  .describe('A note an investigator wrote during the recording - or, on an evidence item, the session form\'s note (`origin`).');
 export type SessionNoteBody = z.output<typeof SessionNoteSchema>;
 
 const PrecheckItemStateSchema = z.strictObject({
@@ -227,8 +232,10 @@ export const CaptureConfigCameraSchema = z
     trackId: videoTrackId(),
     deviceId: label().describe('The capture device feeding this track (`CAM-01`/`CAM-02`).'),
     profile: label().describe('Media profile code; an open set (OD-05/OD-06).'),
-    online: z.boolean(),
-    streamState: z.enum(CaptureStreamState).describe('A lost stream is what makes a PoE cycle legal (OD-22).'),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
+    streamState: z
+      .enum(CaptureStreamState)
+      .describe('A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23).'),
   })
   .describe('One video slot of the device selector.');
 export type CaptureConfigCameraBody = z.output<typeof CaptureConfigCameraSchema>;
@@ -240,7 +247,7 @@ export const CaptureConfigMicSchema = z
     deviceId: label().describe('The microphone behind the input: the device of the same ID (D106 (4)).'),
     role: z.enum(MicRole),
     transport: label().describe('Open set (`CODE`): USB, embedded RTSP, ... (OD-06).'),
-    online: z.boolean(),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
   })
   .describe('One microphone slot of the device selector.');
 export type CaptureConfigMicBody = z.output<typeof CaptureConfigMicSchema>;
@@ -263,6 +270,38 @@ export const SESSION_PRECHECK_SENDING_DEVICE_EXAMPLE = Object.freeze({ sendingDe
  * fault of a Core in its own capture (kind `POWER_FAIL`), worded "the Core was not running".
  */
 export const SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE = Object.freeze({ platformNotReported: true } as const);
+
+/**
+ * Contract examples of fix wave J (decision D243; `delegation_progress/contract_wave_j.md`); a client test IMPORTS them.
+ * `PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE`: the SECURITY row of a pre-check on a Core that states
+ * `platformNotReported` - a NOTE at WARN level (`isPrecheckNote`), never READY / PASS (JW-04).
+ * `DIAGNOSTIC_NOT_REPORTED_EXAMPLE`: a diagnostics row over hardware such a Core does not read
+ * (`STORAGE`, `FAN`, `NETWORK`, `SECURITY`) - `isDiagnosticNotReported`.
+ * `AUDIO_FRAME_NOT_MEASURED_EXAMPLE`: a frame of `audio.inputs` while no capture is open (JW-08).
+ * `UPDATE_NOT_AVAILABLE_EXAMPLE`: spread into an `update` slice - the Core has no updater (JT-06 / JW-06).
+ */
+export const PRECHECK_SECURITY_NOT_REPORTED_RULE = 'SECURITY_PLATFORM_NOT_REPORTED';
+export const PRECHECK_SECURITY_NOT_REPORTED_EXAMPLE = Object.freeze({
+  id: 'SECURITY',
+  status: 'WARN',
+  value: 'NOT_REPORTED',
+  reason: 'Platform security: not reported (this Core reads no TPM and no Secure Boot state)',
+  reasonCode: null,
+  params: Object.freeze({ rule: PRECHECK_SECURITY_NOT_REPORTED_RULE }),
+  resolvesAt: 1_790_823_600_000,
+} as const);
+export const DIAGNOSTIC_NOT_REPORTED_RULE = 'NOT_REPORTED';
+export const DIAGNOSTIC_NOT_REPORTED_EXAMPLE = Object.freeze({
+  id: 'SECURITY',
+  label: 'Security (TPM, Secure Boot)',
+  status: 'WARN',
+  detail: 'Not reported by this Core',
+  params: Object.freeze({ rule: DIAGNOSTIC_NOT_REPORTED_RULE }),
+  resolvesAt: 1_790_823_600_000,
+} as const);
+export const AUDIO_FRAME_NOT_MEASURED_EXAMPLE = Object.freeze({ seq: 12, at: 1_790_823_600_000, dbfs: -90, peak: -90, clip: false, noSignal: false, notMeasured: true } as const);
+export const UPDATE_NOT_AVAILABLE_EXAMPLE = Object.freeze({ updaterNotAvailable: true } as const);
+export const UPDATE_NOT_AVAILABLE_REASON = 'UPDATER_NOT_AVAILABLE';
 export const CORE_NOT_RUNNING_FAULT_EXAMPLE = Object.freeze({ coreNotRunning: true } as const);
 
 /**
@@ -452,6 +491,14 @@ export const SessionHistoryEntrySchema = z
     faultKind: z.enum(FaultKind).nullable().describe('INCOMPLETE only: the fault that ended it.'),
     startTimeSource: timeSource().nullable().optional(),
     endTimeSource: timeSource().nullable().optional(),
+    // Fix wave J round two (JW-22 remainder): why the seal of a recorded session was not possible.
+    unsealableCause: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]{1,63}$/)
+      .optional()
+      .describe(
+        'Operation 38 only, on an INCOMPLETE entry that recorded and has no evidence item (its recordings are in the quarantine folder): the cause the Core recorded when it gave the seal up, as a code - `details.cause` of the audit row `SESSION_INCOMPLETE` (`details.reason: UNSEALABLE`) of that session, e.g. `SIGNING_KEY_UNAVAILABLE`. An open set. Read from the audit trail at each call, never reconstructed; absent when the trail holds no such row, on every other entry, and in the replicated `sessionHistory` slice (there the active alert of the session carries the same code: `params.cause` of the alert whose `target` is the session and whose `params.reason` is `UNSEALABLE`).',
+      ),
   })
   .describe('A finished session.');
 export type SessionHistoryEntryBody = z.output<typeof SessionHistoryEntrySchema>;
@@ -515,7 +562,12 @@ const AudioFrameSchema = z
     dbfs: z.number().min(-90).max(0).describe('Ballistic level in dBFS; -90 means no signal.'),
     peak: z.number().min(-90).max(0).describe('Peak-hold level in dBFS.'),
     clip: z.boolean(),
-    noSignal: z.boolean(),
+    noSignal: z.boolean().describe('An input that should deliver samples delivers none (a fault word). Never set for a level that is simply not measured: see `notMeasured`.'),
+    // Fix wave J (JW-08): a Core in its own capture measures a level only while a capture is open.
+    notMeasured: z
+      .literal(true)
+      .optional()
+      .describe('Present and true when the Core does not measure this input now: no capture is open on a Core in its own capture. `dbfs` / `peak` then hold the floor as placeholders and `noSignal` is false; a client draws "Not measured" - no bars, no number, no "NO SIGNAL". Absent: the frame is a measured (or, on a simulated Core, generated) level.'),
   })
   .describe('One 20 Hz audio frame: numbers and booleans only.');
 
@@ -1030,6 +1082,11 @@ export const UpdateSliceSchema = z
     steps: z.array(z.strictObject({ id: z.enum(UpdateStep), status: z.enum(StepStatus), resolvesAt: nullableEpochMs().optional() })),
     startedAt: nullableEpochMs(),
     completedAt: nullableEpochMs(),
+    // Fix wave J (JT-06 / JW-06): a Core in its own capture has no updater.
+    updaterNotAvailable: z
+      .literal(true)
+      .optional()
+      .describe('Present and true on a Core in its own capture: it has no software updater. The other members are then not readings, a client offers no Install control, and operation 67 answers `409 COMMAND_UNSUPPORTED` (`details.reason: UPDATER_NOT_AVAILABLE`). Absent: the simulated A/B update of the demonstration device.'),
   })
   .describe('Slice `update`: the simulated A/B software update.');
 export type UpdateSliceBody = z.output<typeof UpdateSliceSchema>;
@@ -1076,8 +1133,8 @@ export const CaptureDeviceStatusSchema = z
     firmware: text().nullable(),
     host: text().nullable().describe('Host or address only; never a credential URL (C-N8).'),
     poePort: text().nullable(),
-    online: z.boolean(),
-    streamState: z.enum(CaptureStreamState).nullable().describe('Null for a device with no stream (a mic, the PoE switch).'),
+    online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
+    streamState: z.enum(CaptureStreamState).nullable().describe('Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23).'),
     capabilities: z.array(label()).describe('Capability codes the adapters reported; an open set.'),
     adapter: z
       .string()

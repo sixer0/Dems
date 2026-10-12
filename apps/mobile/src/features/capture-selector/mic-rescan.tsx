@@ -150,7 +150,8 @@ export function MicRescanControl({ testID = 'mic-rescan', compact = false, gateS
         </Button>
       </View>
       {compact ? null : (
-        <Text maxFontSizeMultiplier={1.2} style={styles.muted} testID={`${testID}-description`}>
+        // Fix wave J (JA2-27): its own inset - the first letter was cut at the card's edge on the phone.
+        <Text maxFontSizeMultiplier={1.2} style={[styles.muted, styles.inset]} testID={`${testID}-description`}>
           {t(`${K}.description`)}
         </Text>
       )}
@@ -221,6 +222,7 @@ export function MicRescanControl({ testID = 'mic-rescan', compact = false, gateS
 
 const styles = StyleSheet.create({
   block: { gap: spacing[1] },
+  inset: { paddingHorizontal: spacing[0] },
   actionRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing[1] },
   name: { fontFamily: fontFamily.native.medium, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },
   line: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.foreground },

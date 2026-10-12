@@ -30,7 +30,7 @@ import { failedStartWords } from '@/features/capture-selector/capture-notices-mo
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { useFailedStart } from '@/features/session-live/capture-start-notice';
 import { useConnectingCameras } from '@/features/session-live/rec-indicator';
-import { useSealBlocked, useSealBlockedOf } from '@/features/session-finalizing/seal-attention';
+import { SealRetryControl, useSealBlocked, useSealBlockedOf } from '@/features/session-finalizing/seal-attention';
 import { RecDot } from './rec-dot';
 import { SessionStatusChip } from './session-status-chip';
 import { activeRow, type SessionRow } from './sessions-model';
@@ -210,6 +210,8 @@ function StartButton() {
           {hint}
         </Text>
       ) : null}
+      {/* Fix wave J (JT-02): the blocked seal can be retried from here by the roles operation 33 allows. */}
+      {sealBlocked !== null ? <SealRetryControl sessionId={sealBlocked.sessionId} compact testID="sessions-seal-retry" /> : null}
     </View>
   );
 }

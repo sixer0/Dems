@@ -2,6 +2,7 @@
 // Each test builds the real router (route tree, guard, providers, shell) around its own simulator
 // with in-memory storage and no engine ticks, like src/test/routes.test.tsx (D54(a)). FAST LANE
 // (D75): render and key states only.
+import { en } from '@dems/shared/i18n'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
@@ -209,7 +210,8 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
     await waitFor(() => expect(screen.getByTestId('network-time-tablet-state')).toHaveTextContent('Offline'))
     expect(screen.getByTestId('network-time-tablet-alert')).toHaveTextContent('Recording continues on the Core')
     expect(screen.getByTestId('network-time-domain-MANAGEMENT')).toHaveTextContent('Degraded')
-    expect(await screen.findByText('Tablet link lost')).toBeInTheDocument()
+    // Wave J (J-S, contract J-S 12): the shared sentence names the operator device, not "the tablet" (a phone may be paired).
+    expect(await screen.findByText(en.networkTime.toast.tabletOffline)).toBeInTheDocument()
 
     act(() => sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' }))
     await waitFor(() => expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Degraded'))

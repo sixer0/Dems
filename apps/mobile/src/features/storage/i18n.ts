@@ -20,6 +20,9 @@ export const storageEn = {
     freeHeadline: '{{free}} Free',
     ringA11y: 'Evidence storage {{percent}}% used, {{state}}',
     legendA11y: '{{label}}: {{value}}',
+    // Fix wave J (JA2-38 / JT-21): the two counts are named for what they are (not the size of the Evidence list).
+    sealedToday: 'Sealed today',
+    notSealed: 'Recorded, not sealed',
   },
   kpi: {
     groupLabel: 'Storage indicators',
@@ -43,7 +46,7 @@ export const storageEn = {
     readOnlyTitle: 'View only',
     readOnlyReason: 'Your role ({{role}}) can view the storage policy. A Supervisor or Technician changes it.',
     signedOutReason: 'Sign in as a Supervisor or Technician to change the storage policy.',
-    thresholdsNote: 'Set by the Core. Read-only on this tablet.',
+    thresholdsNote: 'Set by the Core. Read-only on this device.',
     close: 'Close',
     current: 'Current: {{policy}} · auto-archive {{autoArchive}}',
   },

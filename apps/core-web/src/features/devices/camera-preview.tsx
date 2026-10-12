@@ -74,7 +74,7 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
       >
         <VideoOff aria-hidden="true" size={small || variant === 'tile' ? 14 : 24} strokeWidth={1.75} />
         <span className={cn('font-semibold', small ? 'text-[11px] leading-4' : variant === 'tile' ? 'text-xs leading-4' : 'text-sm')}>{t('devices.noPreview.title')}</span>
-        <span data-part="name" className={cn('max-w-full truncate text-[11px] leading-4', small && 'sr-only')}>
+        <span data-part="name" className={cn('max-w-full break-words text-[11px] leading-4', small && 'sr-only')}>
           {name}
         </span>
         <span data-part="state" className={cn('text-[11px] leading-4 text-neutral-400', small && 'sr-only')}>

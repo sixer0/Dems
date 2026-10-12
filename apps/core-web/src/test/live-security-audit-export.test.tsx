@@ -229,6 +229,11 @@ describe('A7 success and the file (§8.2 A7; AC-C-60)', () => {
     expect(result).toHaveTextContent(EXPORT_ID)
     expect(result).toHaveTextContent(LX.reasonNote)
     expect(within(result).getByTestId('export-audit-file')).toHaveAttribute('data-rows', '450')
+    // Fix wave J (JW-24; "by code only" in round one, proven here): the file has the rows and the chain head, no
+    // signature and no seal - the result says so, and no step of the dialog is called "seal".
+    expect(within(result).getByTestId('export-audit-not-signed')).toHaveTextContent('The file holds the audit rows and the head of the hash chain. It is not signed and not sealed: its proof is the chain itself, which the Core can verify.')
+    expect(screen.getByTestId('export-audit-dialog')).toHaveTextContent('Add the chain head')
+    expect(screen.getByTestId('export-audit-dialog').textContent).not.toMatch(/Hash and seal/i)
     expect(toastTexts().join(' ')).not.toMatch(/simulat/i)
 
     // Download again hands the same file to the browser once more.

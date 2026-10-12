@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { LayoutAnimationConfig } from 'react-native-reanimated';
 import { SessionFinalizingScreen } from '@/features/session-finalizing/session-finalizing-screen';
+import { MonitorLeavingNotice } from '@/features/session-live/monitor-leaving-notice';
 import { SessionLiveScreen } from '@/features/session-live/session-live-screen';
 import { useSessionLiveRedirect } from '@/navigation';
 import { useLateStopHandoverMark } from '@/runtime';
@@ -41,7 +42,18 @@ export default function SessionLiveRoute() {
       </>
     );
   }
-  if (redirect !== null) return <Redirect href={redirect} />;
+  // Round two (JA2-19): a recording ended from OUTSIDE (a fault that opens recovery, a session that is gone) left
+  // this route with a redirect only, which draws nothing - a black screen for 1.5 s or more on the phone. The
+  // route says in one plain sentence what happened until the next screen has mounted (no motion, no ghost: the
+  // same rule as the Finalizing hand-over above).
+  if (redirect !== null) {
+    return (
+      <>
+        <MonitorLeavingNotice to={redirect} />
+        <Redirect href={redirect} />
+      </>
+    );
+  }
   return (
     <LayoutAnimationConfig skipExiting>
       <View collapsable={false} style={styles.monitor} testID="session-live-exit-boundary">

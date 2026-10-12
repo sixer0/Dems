@@ -429,6 +429,11 @@ export const AudioChannelStatusSchema = z
     peak: dbfs().describe('Peak hold in dBFS (1.5 s, then 20 dB/s decay).'),
     clip: z.boolean().describe('CLIP latch (EVT-07), kept until reset.'),
     noSignal: z.boolean(),
+    // Fix wave J (JW-08): the member of the audio frame, on the answers of operations 44 and 45 too.
+    notMeasured: z
+      .literal(true)
+      .optional()
+      .describe('Present and true when the Core does not measure this input now (a Core in its own capture with no capture open): `dbfs` / `peak` are the floor as placeholders, `noSignal` is false, and a client draws "Not measured". Absent: a measured (or generated) level.'),
     gainDb: z.number().describe('Read-only in the UI (G13).'),
     phantom: z.boolean(),
   })
@@ -506,6 +511,11 @@ export const DeviceHealthResponseSchema = z
       tpmOk: z.boolean().describe('TPM 2.0 present and healthy.'),
       secureBoot: z.boolean(),
       tamper: z.boolean().describe('Enclosure tamper switch tripped (EVT-12).'),
+      // Fix wave J (truth rule 3c; JW-04 / JT-03): the statement of the `security` slice, on this answer too.
+      platformNotReported: z
+        .literal(true)
+        .optional()
+        .describe('Present and true on a Core in its own capture: it reads no TPM, no Secure Boot state and computes no posture - `tpmOk`, `secureBoot` and `posture` are then placeholders of the required members, never readings. A client shows "Not reported". Absent: the simulated device.'),
     }),
     services: z
       .array(z.object({ id: z.string().min(1), name: z.string().min(1), status: z.enum(ServiceStatus) }))
@@ -1014,7 +1024,7 @@ const OPERATION_TABLE = [
       404: { description: 'Unknown evidence ID (NOT_FOUND).', schema: 'ApiError' },
       409: {
         description:
-          'The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED.',
+          'The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED. Fix wave J: `kind: COMPOSITE` on a Core that cannot produce one (COMMAND_UNSUPPORTED, `details.reason: COMPOSITE_ENCODER_NOT_SELECTED`) - decided after the 404 and before anything is recorded: no export id, no job, no row. Operation 40 states the available kinds (`exportKinds`).',
         schema: 'ApiError',
       },
       422: {

@@ -11,6 +11,7 @@ import { Feed, type FeedItem } from './feed'
 import { isTamperRow, newestMatching } from './model'
 import { Panel } from './panel'
 import { coreVerifyOutcomes, itemsWithoutVerifyRow } from './core-verify-rows'
+import { useEvidenceVerificationCounts } from './evidence-verification'
 import { packageIntegrity } from './sim-adapter'
 import { SEVERITY_TONE, toneClass } from './tones'
 import { useNewestArrival, useStableRows } from './use-newest'
@@ -42,6 +43,9 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
   const integrity = useMemo(() => packageIntegrity(evidence), [evidence])
   // Fix wave M (G89d-02): the tile counts verify RUNS; one sentence says how many of the Core's items have none.
   const coverage = useMemo(() => (selfCapture ? itemsWithoutVerifyRow(rows, evidence.map((item) => item.id)) : null), [rows, evidence, selfCapture])
+  // Fix wave J (GM-02; contract J-S 9): where the Core states `evidenceVerification` the tile and its sentence read THE
+  // CORE'S count over every sealed item by its verification of record - not the verify rows of the newest 1,000 audit rows.
+  const counts = useEvidenceVerificationCounts(selfCapture)
   const recent = useStableRows(useMemo(() => newestMatching(rows, isTamperRow, FEED_SIZE), [rows]))
   const highlight = useNewestArrival(recent[0]?.id ?? null)
 
@@ -73,14 +77,18 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
         </div>
         {verified !== null ? (
           <div
-            className={cn('sa-kpi', verified.fail > 0 ? 'sa-tone-danger' : verified.pass > 0 ? 'sa-tone-success' : 'sa-tone-default')}
+            className={cn('sa-kpi', (counts?.failed ?? verified.fail) > 0 ? 'sa-tone-danger' : (counts?.passed ?? verified.pass) > 0 ? 'sa-tone-success' : 'sa-tone-default')}
             data-testid="tamper-packages"
-            data-source="core-verify-rows"
-            data-reported={verified.pass + verified.fail > 0 ? 'true' : 'false'}
+            data-source={counts !== null ? 'core-evidence-verification' : 'core-verify-rows'}
+            data-reported={(counts !== null ? counts.passed + counts.failed : verified.pass + verified.fail) > 0 ? 'true' : 'false'}
           >
             <span className="sa-stat-label">{t('web.waveL.tamper.verifyLabel')}</span>
             <span className="sa-kpi-value" data-tone>
-              {verified.pass + verified.fail > 0 ? t('securityAudit.tamper.packagesSummary', { pass: verified.pass, fail: verified.fail }) : t('web.waveL.tamper.noVerifyRows')}
+              {counts !== null
+                ? t('securityAudit.tamper.packagesSummary', { pass: counts.passed, fail: counts.failed })
+                : verified.pass + verified.fail > 0
+                  ? t('securityAudit.tamper.packagesSummary', { pass: verified.pass, fail: verified.fail })
+                  : t('web.waveL.tamper.noVerifyRows')}
             </span>
           </div>
         ) : (
@@ -105,9 +113,13 @@ export const TamperPanel = memo(function TamperPanel({ chainOk, className }: Tam
             </Chip>
           ))}
           <Chip size="sm" variant="soft" color="default">
-            {verified.pass + verified.fail > 0 ? t('web.waveL.tamper.fromRows') : t('web.waveL.tamper.noVerifyRowsHint')}
+            {counts !== null ? t('web.waveJ.tamper.fromItems') : verified.pass + verified.fail > 0 ? t('web.waveL.tamper.fromRows') : t('web.waveL.tamper.noVerifyRowsHint')}
           </Chip>
-          {coverage !== null && coverage.total > 0 ? (
+          {counts !== null ? (
+            <p className="w-full text-caption text-foreground-2" data-testid="tamper-not-verified" data-source="core-evidence-verification" data-total={counts.sealed} data-not-verified={counts.neverVerified}>
+              {counts.neverVerified > 0 ? t('web.waveJ.tamper.neverVerified', { count: counts.neverVerified, total: counts.sealed }) : t('web.waveJ.tamper.allVerified', { total: counts.sealed })}
+            </p>
+          ) : coverage !== null && coverage.total > 0 ? (
             <p className="w-full text-caption text-foreground-2" data-testid="tamper-not-verified" data-total={coverage.total} data-not-verified={coverage.notVerified}>
               {coverage.notVerified > 0 ? t('web.waveM.tamper.notVerified', { count: coverage.notVerified, total: coverage.total }) : t('web.waveM.tamper.allVerified', { total: coverage.total })}
             </p>

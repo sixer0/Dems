@@ -72,6 +72,7 @@ import { notSignedIn, type Principal } from '../plugins/authenticate';
 import { ApiFailure } from '../plugins/error-envelope';
 import { principalReference } from '../plugins/logger';
 import { EVIDENCE_EXPORT_DOWNLOAD_URL } from '../plugins/permission-guard';
+import { exportKindsOf, selectedCompositeEncoder } from './composite';
 import { evidenceExport } from './control';
 import { archiveFactsOf, listFinishedExports } from './finished';
 import { DOWNLOAD_TOKEN_NONCE_BYTES, DOWNLOAD_TOKEN_PATTERN, DownloadTokenRefusal, issueDownloadToken, readDownloadToken, type DownloadMac } from './download-token';
@@ -97,6 +98,8 @@ const DOWNLOAD_NOT_FOUND_TEXT = 'No finished export is available for download.';
 const NOT_PERMITTED_TEXT = 'Your role does not allow this action. The attempt was audited.';
 const DOWNLOAD_REFUSED_TEXT = 'This download link cannot be used. Open the export again.';
 const STORE_NOT_READY_TEXT = 'The server cannot open a download yet. Try again shortly.';
+/** The text of the refusal of an export output this Core cannot produce (fix wave J; the contract's example text). */
+export const COMPOSITE_UNAVAILABLE_TEXT = 'Composite video is not available in this build.';
 const JOBS_NOT_AVAILABLE_TEXT = 'This server cannot export this evidence item: its export jobs are not available.';
 const DENIED = 'Export refused';
 /** The form the contract gives a signature and a hash in a job answer. */
@@ -118,6 +121,8 @@ export interface ExportServiceParts {
   nonce(): Uint8Array;
   /** The folder of a session's sealed package. */
   packageDirOf(sessionId: string): string;
+  /** Fix wave J: whether this Core can produce a COMPOSITE - an encoder is selected (`composite.ts`: none in this build). */
+  compositeAvailable(): boolean;
 }
 
 export interface ExportService {
@@ -126,7 +131,14 @@ export interface ExportService {
    * job of this Core (the request is then committed DEFERRED), `job: false` for every other item.
    * Refuses - audited where it is a refusal of access - and then nothing was changed.
    */
-  admitRequest(request: FastifyRequest, evidenceId: string): Promise<{ readonly job: boolean }>;
+  admitRequest(request: FastifyRequest, evidenceId: string, kind?: 'PACKAGE' | 'COMPOSITE'): Promise<{ readonly job: boolean }>;
+  /**
+   * Fix wave J (truth rule 3d; findings JA2-03 / JW-03): the export outputs of operation 42 and whether this
+   * Core can produce each, as operation 40 states them (`exportKinds`).
+   */
+  kinds(): { kind: 'PACKAGE' | 'COMPOSITE'; available: boolean; reason?: string }[];
+  /** Whether a COMPOSITE can be produced by this Core. */
+  compositeAvailable(): boolean;
   /** Operation 87. */
   job(request: FastifyRequest, jobId: string): Promise<EvidenceExportJobBody>;
   /** `GET /exports/:token`. */
@@ -154,6 +166,7 @@ export function createExportService(app: FastifyInstance): ExportService {
     mac: () => mediaSessionMacOf(app),
     nonce: () => randomBytes(DOWNLOAD_TOKEN_NONCE_BYTES),
     packageDirOf: (sessionId) => sessionPackageDir(app.config.mediaStoreDir, sessionId),
+    compositeAvailable: () => selectedCompositeEncoder() !== null,
   };
   const parts = (): ExportServiceParts => ({ ...own, ...controls.get(app.stages)?.parts });
 
@@ -196,13 +209,27 @@ export function createExportService(app: FastifyInstance): ExportService {
   }
 
   return {
-    async admitRequest(request, evidenceId) {
+    kinds: () => exportKindsOf(parts().compositeAvailable()),
+    compositeAvailable: () => parts().compositeAvailable(),
+
+    async admitRequest(request, evidenceId, kind = 'PACKAGE') {
       const item = directory.itemOf(evidenceId);
-      // An unknown item, and every item without a sealed package here: the hosted action decides (404, 409, 422, 202).
-      if (item === null || !item.sealedHere) return { job: false };
+      // An unknown item: the hosted action decides (404).
+      if (item === null) return { job: false };
       const principal = request.principal;
-      if (principal.kind !== 'OPERATOR') throw notSignedIn();
-      await holdScope(request, principal, EXPORT_REQUEST_OPERATION, item);
+      if (item.sealedHere) {
+        if (principal.kind !== 'OPERATOR') throw notSignedIn();
+        await holdScope(request, principal, EXPORT_REQUEST_OPERATION, item);
+      }
+      // Fix wave J (truth rule 3d; findings JA2-03 / JW-03). An output this Core cannot produce is REFUSED here - after
+      // the refusals of access, before the ticket, the hosted action and any job: no export id, no request row, no event,
+      // nothing in the activity lists. Until wave J a real-capture Core accepted it (an export id, an `EVIDENCE_EXPORTED`
+      // row, "Evidence exported" in Storage) and its job then FAILED; a Core in simulated capture delivered "Package".
+      if (kind === 'COMPOSITE' && !parts().compositeAvailable()) {
+        throw new ApiFailure(409, ApiErrorCode.COMMAND_UNSUPPORTED, COMPOSITE_UNAVAILABLE_TEXT, { details: { simCode: 'COMMAND_UNSUPPORTED', reason: ExportFailureCode.COMPOSITE_ENCODER_NOT_SELECTED } });
+      }
+      // Every item without a sealed package here: the hosted action decides (409, 422, 202).
+      if (!item.sealedHere) return { job: false };
       if (evidenceExport(app).current() === null) {
         // R93-01: never the simulated export for an item whose package lies in this store.
         request.log.error({ code: EXPORT_JOBS_NOT_AVAILABLE_REASON, source: SOURCE, evidenceId }, 'an export of a sealed package was asked for and no export jobs are composed');

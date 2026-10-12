@@ -101,6 +101,7 @@ describe('Recovery Status (04 §4.8)', () => {
     expect(screen.getByText('Recovery marker found')).toBeTruthy();
     expect(stepLabel(1)).toBe('Step 2 of 5, Track integrity, in progress');
     expect(within(screen.getByTestId('recovery-track-VIDEO-01')).getByText('Checking…')).toBeTruthy();
+    expect(String(screen.getByTestId('recovery-track-VIDEO-01').props.accessibilityLabel)).toMatch(/Checking…$/);
 
     h.run(1_000); // 1.6 s: RECOVERY_SCAN is over, the four tracks are resolved
     expect(h.sim.store.getState().session?.recovery?.stage).toBe('INCOMPLETE_SESSION_ANALYSIS');
@@ -108,6 +109,10 @@ describe('Recovery Status (04 §4.8)', () => {
     expect(stepLabel(1)).toBe('Step 2 of 5, Track integrity, needs attention');
     expect(screen.getByText('2 tracks need attention')).toBeTruthy();
     expect(trackResult('VIDEO-01').getByText('INTACT')).toBeTruthy();
+    // Fix wave J round two (JA2-17): the row SPEAKS what it shows - it was announced "..., Waiting" beside INTACT.
+    expect(String(screen.getByTestId('recovery-track-VIDEO-01').props.accessibilityLabel)).toMatch(/INTACT/);
+    expect(String(screen.getByTestId('recovery-track-VIDEO-01').props.accessibilityLabel)).not.toMatch(/Waiting/);
+    expect(String(screen.getByTestId('recovery-track-VIDEO-02').props.accessibilityLabel)).toMatch(/GAP\. Signal lost at/);
     expect(trackResult('VIDEO-02').getByText('GAP')).toBeTruthy();
     expect(trackResult('VIDEO-02').getByText(`Signal lost at ${formatClock(camLoss.since)}`)).toBeTruthy();
     expect(trackResult('AUDIO-01').getByText('INTACT')).toBeTruthy();
@@ -122,7 +127,7 @@ describe('Recovery Status (04 §4.8)', () => {
     expect(entry.outcome).toBe('INCOMPLETE');
     expect(h.app.getPathname()).toBe('/session/recovery');
     expect(screen.getByTestId('recovery-outcome')).toBeTruthy();
-    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed (SYS-008).');
+    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed.');
     expect(within(screen.getByTestId('recovery-state-chip')).getByText('INCOMPLETE')).toBeTruthy();
     expect(within(screen.getByTestId('recovery-outcome-evidence')).getByText(`${entry.evidenceId} (recorded, unsealed)`)).toBeTruthy();
     expect(after.evidence.find((e) => e.id === entry.evidenceId)?.status).toBe('RECORDED');

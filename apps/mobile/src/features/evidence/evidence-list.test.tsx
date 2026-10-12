@@ -8,8 +8,9 @@ import './testing/evidence-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
-import { EvidenceStatus } from '@dems/shared/sim';
+import { EvidenceStatus, verificationOfRecordFailed } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
+import { FlashList } from '@shopify/flash-list';
 import { renderEvidenceApp, settle } from './testing/evidence-harness';
 
 function visibleRowIds(): string[] {
@@ -23,6 +24,37 @@ describe('T-M15 Evidence list', () => {
   beforeEach(() => resetMissingKeys());
   // MA-21: every string the list renders comes from an i18n key.
   afterEach(() => expect(getMissingKeys()).toEqual([]));
+
+  // Fix wave J, JM-03 (reproduced on the tablet, normal launch: EV-20261012-0067, sealed on the tablet, was in the
+  // view tree ONE ROW ABOVE the viewport of the list; the list showed -0066 first until it was pulled down).
+  // jsdom has no scroll position, so the rule held here is the cause's: the list does not hold the visible
+  // content in place when a row is inserted before it.
+  it('JM-03 - the list does not keep its place when a newer item is inserted at the top (the new item is the first row to see)', async () => {
+    renderEvidenceApp({ window: 'phonePortrait' });
+    await settle();
+    const list = screen.UNSAFE_getByType(FlashList);
+    expect(list.props.testID).toBe('evidence-rows');
+    expect(list.props.maintainVisibleContentPosition).toEqual({ disabled: true });
+  });
+
+  // Fix wave J, JT-04 (truth rule 3b; contract_wave_j.md J-S 8): the tampered item, with a FAIL of record on the Core,
+  // read plain "Sealed" in the list. The verification of record is the status the row states.
+  it('JT-04 - an item whose verification of record FAILED reads "Sealed · verification FAILED" in its row (chip and spoken label); the others keep "Sealed"', async () => {
+    const h = renderEvidenceApp({ window: 'phonePortrait' });
+    await settle();
+    const sealed = h.sim.store.getState().evidence.filter((item) => item.status === 'SEALED');
+    const [failed, control] = [sealed[0]!, sealed[1]!];
+    act(() => {
+      h.sim.store.setState((state) => ({
+        evidence: state.evidence.map((item) => (item.id === failed.id ? { ...item, verification: { status: 'FAIL' as const, at: item.sealedAt } } : item)),
+      }));
+    });
+    await settle();
+    expect(verificationOfRecordFailed(h.sim.store.getState().evidence.find((item) => item.id === failed.id))).toBe(true);
+    expect(screen.getByTestId(`evidence-row-status-${failed.id}`)).toHaveTextContent('Sealed · verification FAILED');
+    expect(String(screen.getByTestId(`evidence-row-${failed.id}`).props.accessibilityLabel)).toContain('Sealed · verification FAILED');
+    expect(screen.getByTestId(`evidence-row-status-${control.id}`)).toHaveTextContent(/^Sealed$/);
+  });
 
   it('lists every dataset item newest first, with violet Sealed chips', async () => {
     const h = renderEvidenceApp({ window: 'phonePortrait' });
@@ -122,14 +154,35 @@ describe('T-M15 Evidence list', () => {
     expect(within(chips).queryByTestId(`evidence-row-menu-${id}`)).toBeNull();
   });
 
-  it('tablet landscape: a filter keeps the selection in the detail pane', async () => {
+  // Fix wave J round two (JT-20) REPLACES "a filter keeps the selection in the detail pane": the pane kept an item
+  // the filter had removed from the list. It now follows the list.
+  it('JT-20 tablet landscape: a filter that removes the selected item empties the pane and says so; "Clear filters" brings it back', async () => {
     const h = renderEvidenceApp({ window: 'tabletLandscape' });
     await settle();
     const id = h.idOf('0001');
     fireEvent.press(screen.getByTestId(`evidence-row-${id}`));
     await settle();
+    expect(within(screen.getByTestId('pane-detail')).getByTestId('evidence-detail-id')).toHaveTextContent(id);
     fireEvent.press(screen.getByTestId('evidence-filter-RECORDED'));
     await settle();
+    expect(screen.queryByTestId(`evidence-row-${id}`)).toBeNull();
+    const pane = within(screen.getByTestId('pane-detail'));
+    expect(pane.queryByTestId('evidence-detail-id')).toBeNull();
+    expect(pane.getByTestId('evidence-detail-filtered-out')).toHaveTextContent(new RegExp(`${id} is not in this list`));
+    fireEvent.press(pane.getByTestId('evidence-detail-filtered-out-clear'));
+    await settle();
+    expect(within(screen.getByTestId('pane-detail')).getByTestId('evidence-detail-id')).toHaveTextContent(id);
+  });
+
+  it('JT-20 CONTROL: a filter that still holds the selected item keeps it in the pane', async () => {
+    const h = renderEvidenceApp({ window: 'tabletLandscape' });
+    await settle();
+    const id = h.idOf('0001');
+    fireEvent.press(screen.getByTestId(`evidence-row-${id}`));
+    await settle();
+    fireEvent.press(screen.getByTestId('evidence-filter-SEALED'));
+    await settle();
+    expect(screen.getByTestId(`evidence-row-${id}`)).toBeTruthy();
     expect(within(screen.getByTestId('pane-detail')).getByTestId('evidence-detail-id')).toHaveTextContent(id);
   });
 

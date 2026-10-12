@@ -5,6 +5,7 @@ import type { VideoTrackId } from '@dems/shared/domain'
 import { selectCameraById, selectIsRecording, useSim } from '@dems/shared/sim'
 import { useMotionPolicy } from '@/motion'
 import { CameraPreview } from './camera-preview'
+import { useTrackReach } from './track-reach'
 import { TrackUnreachableMark } from './capture-notices'
 import { useDeviceActions, useDevicePending } from './context'
 import { DeviceMenu, IdentifyRing } from './device-menu'
@@ -56,6 +57,8 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
   const realCapture = useRealCaptureCore()
   const recording = useSim(selectIsRecording)
   const figures = measuredFiguresShown({ realCapture, recording })
+  const reach = useTrackReach(cameraId)
+  const notChecked = reach === 'NOT_CHECKED' && status === 'READY'
 
   return (
     <motion.article
@@ -65,7 +68,7 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
       variants={m.variants.row}
     >
       <header className="dev-tile-head" aria-busy={busy || undefined}>
-        <StatusDot tone={tone} />
+        <StatusDot tone={notChecked ? 'default' : tone} />
         <div className="dev-tile-titles">
           <span className="dev-tile-name">{name}</span>
           <span className="dev-tile-sub">
@@ -85,7 +88,12 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
               <Chip.Label>{t(`common.enums.trackRecState.${recState}`)}</Chip.Label>
             </Chip>
           ) : null}
-          <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`camera-status-${cameraId}`} />
+          {/* Fix wave J (JW-23 (4)): "READY" of a source the Core never checked (a camera on a dead port) reads "Not checked". */}
+          {notChecked ? (
+            <StatusChip tone="default" label={t('web.source.notChecked')} severity={STATUS_SEVERITY[status]} testId={`camera-status-${cameraId}`} />
+          ) : (
+            <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`camera-status-${cameraId}`} />
+          )}
           {/* Task 3 R-10 / R-11 (blueprint row 137): "Not reachable" from the Core's alert; the development-source badge from the Core's `sourceClass`. */}
           <TrackUnreachableMark trackId={cameraId} />
           <TrackSourceMarks trackId={cameraId} place={cameraId} />

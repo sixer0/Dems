@@ -14,11 +14,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@j
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react-native';
 import { refusal, OUTAGE } from '@dems/shared/live/testing';
-import { DEMO_OPERATOR_PASSWORD, selectSealedToday } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, PLATFORM_NOT_REPORTED, isOwnCaptureCoreState, selectSealedToday, type SimAlert } from '@dems/shared/sim';
 import { HERO_STILL } from '@/components/media/brand-assets';
 import { demoMediaForEvidence } from '@/components/media/demo-media';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
-import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
+import { MOBILE_PREFS_KEY, resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
+import { AlertToasts } from '@/features/alerts/alert-toasts';
+import { resetSettingsPrefsForTests, setSettingsPrefs } from '@/features/settings/settings-prefs';
 import { initialsFor, resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebugLaunchForTests, setCoreLinkSource } from '@/runtime';
 import { FakeHeartbeatSocket, createTestSim, flushAsync, renderWithRuntime } from '@/runtime/testing/test-sim';
 import { MoreScreen } from '@/features/more/more-screen';
@@ -41,6 +43,14 @@ import {
   type HomeBed,
   type WindowName,
 } from './testing/live-home-bed';
+
+// Fix wave J round two (ruling (a), JA2-16): on the phone the bell and the account menu are bottom sheets. The real
+// sheet library cannot run under jest (its worklet closes over the whole `react-native` module); the package's own
+// mock renders sheet content inline (`session-live/testing/monitor-test-setup.ts` has the long form of this note).
+jest.mock('@gorhom/bottom-sheet', () => ({
+  __esModule: true,
+  ...jest.requireActual<Record<string, unknown>>('@gorhom/bottom-sheet/mock'),
+}));
 
 jest.mock('@shopify/react-native-skia', () =>
   jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock(),
@@ -99,16 +109,34 @@ afterEach(() => {
 });
 
 describe('Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30)', () => {
-  it('reads "Core Live" in the header of every layout class, and nothing on the screen claims a simulation', async () => {
+  // Fix wave J (truth rule 3f; JA2-N1; contract_wave_j.md J-S 7): the Core of this bed is a SIMULATED Core (it states
+  // neither a host clock nor `platformNotReported`). Home says so ONCE, on the status card - and nowhere else; the
+  // link chip stays "Core Live". (Before: "nothing on the screen claims a simulation", so a demonstration read as real.)
+  it('reads "Core Live" in the header of every layout class; a SIMULATED Core is named once, on the status card', async () => {
     const home = await signedInHome();
+    expect(isOwnCaptureCoreState(home.state)).toBe(false);
     for (const window of LAYOUTS) {
       home.setWindow(window);
       await flush();
       expect([window, chip()]).toEqual([window, { text: 'Core Live', label: 'Core link: Live (Live)', tone: 'success' }]);
       const claims = wordsUnder('screen-home').filter((word) => SIMULATION_WORDING.test(word));
-      expect([window, claims]).toEqual([window, []]);
+      expect([window, [...new Set(claims)]]).toEqual([window, ['Simulated Core · demonstration']]);
+      expect([window, label('home-status-simulated')]).toEqual([window, 'Simulated Core · demonstration']);
     }
     expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('CONTROL - a Core in its own capture (it states `platformNotReported`): no simulation mark, and the ring never says "SECURE" (J-S 5)', async () => {
+    bed = createHomeBed();
+    bed.state = { ...bed.state, security: { ...bed.state.security, ...PLATFORM_NOT_REPORTED } };
+    bed.mount(<DashboardScreen />, 'tabletLandscape');
+    await bed.signIn();
+    expect(isOwnCaptureCoreState(bed.state)).toBe(true);
+    expect(shows('home-status-simulated')).toBe(false);
+    expect(wordsUnder('screen-home').filter((word) => SIMULATION_WORDING.test(word))).toEqual([]);
+    expect(textOf('home-status-ring-sub')).toBe('SECURITY NOT REPORTED');
+    expect(textOf('home-status-subtitle')).toBe('No fault is reported by the Core');
+    expect(wordsUnder('home-status').join(' ')).not.toMatch(/SECURE •|All systems operational/);
   });
 
   it('shows the Core\'s data: the operator of the session, the Core\'s recent sessions, and a brand still where no poster was named (RESIDUAL-W66-1)', async () => {
@@ -121,7 +149,8 @@ describe('Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30)', () => {
     expect(screen.getByTestId('bed-probe').props.children).toContain(`auth=${OPERATOR.id} `);
     expect(textOf('home-avatar')).toBe(initialsFor(OPERATOR.displayName));
     const newest = [...home.state.sessionHistory].sort((a, b) => b.endedAt - a.endedAt)[0]!;
-    expect(textOf('home-recent-row-0-id')).toBe(newest.evidenceId ?? newest.id);
+    // Fix wave J (JA2-28): the row reads the session id it opens.
+    expect(textOf('home-recent-row-0-id')).toBe(newest.id);
     // The Simulated screen joins a bundled poster on the evidence number, and this row's number has
     // one (the control); in LIVE no row gets one, because the Core named none.
     expect(demoMediaForEvidence(idSuffix(newest.evidenceId)!)?.poster['VIDEO-01']).toBeDefined();
@@ -159,6 +188,165 @@ describe('Home in LIVE mode: the Core link chip (MD-8, MD-9, AC-C-30)', () => {
     expect(outage.every((entry) => entry.chip === 'Core Offline')).toBe(true);
     const changes = words.filter((word, index) => index > 0 && word !== words[index - 1]);
     expect(changes).toEqual(['Core Live']);
+  });
+});
+
+// Fix wave J (JA2-04; truth rule 3c): the phone said "Ready for Recording - All systems operational" with
+// live-looking tiles for 140 s after the Core link was cut. Home's status is one function of the Core's
+// facts (`homeStatusOf`), and the link is one of them.
+describe('JA2-04: Home while the Core link is down - "Core offline - state unknown", in every layout', () => {
+  it.each(LAYOUTS)('%s: the card, the tiles and Start say offline at the first down state, and the Core\'s state again at the first heartbeat', async (window) => {
+    const home = await signedInHome(window);
+    const tablet = window === 'tabletPortrait' || window === 'tabletLandscape';
+    expect(textOf('home-status-title')).toBe('Ready for Recording');
+    expect(screen.getByTestId('home-action-primary').props.accessibilityState?.disabled ?? false).toBe(false);
+
+    home.goDown();
+    await flush();
+    expect(chip().text).toBe('Core Offline');
+    expect(textOf('home-status-title')).toBe('Core offline — state unknown');
+    expect(textOf('home-status-subtitle')).toBe('This device has no link to the Core server. What is shown is the last known state.');
+    expect(wordsUnder('home-status').join(' ')).not.toMatch(/Ready for Recording|All systems operational|OPERATIONAL/);
+    expect(label('home-status-ring')).toBe('System status: OFFLINE');
+    if (tablet) expect(textOf('home-header-state')).toBe('OFFLINE');
+    if (window === 'tabletLandscape') {
+      // The expanded layout draws the four device tiles: no feed, no meter, no state word of the Core.
+      for (const track of ['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']) {
+        expect([track, shows(`home-device-${track}-unknown`), textOf(`home-device-${track}-state-chip`)]).toEqual([track, true, 'Not known']);
+      }
+    } else {
+      for (const id of ['camera', 'microphone', 'storage']) {
+        expect([id, textOf(`home-tile-${id}-value`), textOf(`home-tile-${id}-state`)]).toEqual([id, '—', 'Not known']);
+      }
+      expect(label('home-tile-camera')).toBe('Camera: state not known. The Core is offline.');
+    }
+    // The wizard's entry is disabled WITH its reason - not a press that fails.
+    expect(screen.getByTestId('home-action-primary').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(textOf('home-action-primary-offline')).toBe('Core offline. A session cannot be started from this device until the link returns.');
+    fireEvent.press(screen.getByTestId('home-action-primary'));
+    expect(mockPush).not.toHaveBeenCalled();
+    // It stays so through the reconnect attempts (the judges read "Ready" for 140 s).
+    await home.elapse(12_000, 500, () => expect(textOf('home-status-title')).toBe('Core offline — state unknown'));
+
+    home.comeBack();
+    await home.elapse(10_000, 250);
+    expect(chip().text).toBe('Core Live');
+    expect(textOf('home-status-title')).toBe('Ready for Recording');
+    expect(shows('home-action-primary-offline')).toBe(false);
+    expect(screen.getByTestId('home-action-primary').props.accessibilityState?.disabled ?? false).toBe(false);
+    if (window !== 'tabletLandscape') expect(textOf('home-tile-camera-state')).not.toBe('Not known');
+  });
+});
+
+// Fix wave J (JA2-05): the alert toasts Settings → Notifications promises did not exist - no code read the
+// switches. `<AlertToasts />` (mounted in the signed-in layout) is their consumer; here it runs beside Home on
+// the Live source, in both motion modes and on the phone and the tablet layout.
+describe('JA2-05: alert toasts on the Live source', () => {
+  const at = Date.UTC(2026, 9, 12, 1, 0, 0);
+  const alertOf = (id: string, kind: SimAlert['kind'], severity: SimAlert['severity'], over: Partial<SimAlert> = {}): SimAlert => ({
+    id,
+    at,
+    severity,
+    kind,
+    message: kind,
+    active: true,
+    acknowledged: false,
+    resolvedAt: null,
+    target: null,
+    params: { kind },
+    ...over,
+  });
+  const CRITICAL = alertOf('ALR-000101', 'STORAGE_FULL', 'CRITICAL');
+  const WARNING = alertOf('ALR-000102', 'STORAGE_LOW', 'WARNING');
+  const MODES: readonly (readonly [WindowName, 'default' | 'off'])[] = [
+    ['phonePortrait', 'default'],
+    ['phonePortrait', 'off'],
+    ['tabletLandscape', 'default'],
+    ['tabletLandscape', 'off'],
+  ];
+
+  async function homeWithToasts(window: WindowName, linkMotion: 'default' | 'off', alerts: readonly SimAlert[] = []): Promise<HomeBed> {
+    resetMotionStateForTests({ linkMotion });
+    resetSettingsPrefsForTests();
+    bed = createHomeBed({ alerts });
+    bed.mount(
+      <>
+        <DashboardScreen />
+        <AlertToasts />
+      </>,
+      window,
+    );
+    await bed.signIn();
+    await flush();
+    return bed;
+  }
+  const raise = async (home: HomeBed, ...alerts: SimAlert[]) => {
+    await home.pushState({ ...home.state, alerts: [...home.state.alerts.filter((held) => !alerts.some((next) => next.id === held.id)), ...alerts] });
+    await flush();
+  };
+  const toastTexts = (text: string) => screen.queryAllByText(text).length;
+  /** How many nodes carry the persistent toast's sentence (the kit draws a toast's text in more than one node). */
+  const persistentNodes = () => screen.queryAllByText(/It stays until it is acknowledged\.$/).length;
+  const warningNodes = () => screen.queryAllByText(/The bell lists it\.$/).length;
+
+  it.each(MODES)('%s, motion %s: a NEW critical alert shows a toast that STAYS, and leaves when the Core says it is acknowledged', async (window, linkMotion) => {
+    const home = await homeWithToasts(window, linkMotion);
+    expect(toastTexts(i18n.t('common.faultKind.STORAGE_FULL'))).toBe(0);
+    await raise(home, CRITICAL);
+    expect(toastTexts(i18n.t('common.faultKind.STORAGE_FULL'))).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/^Critical alert at \d\d:\d\d:\d\d\. It stays until it is acknowledged\.$/).length).toBeGreaterThan(0);
+    const one = persistentNodes();
+    // It does not time out: far beyond the kit's default duration it is still there.
+    await home.elapse(60_000, 5_000);
+    expect(toastTexts(i18n.t('common.faultKind.STORAGE_FULL'))).toBeGreaterThan(0);
+    // The same alert replicated again (a delta, a reconnect) raises no second toast.
+    await raise(home, { ...CRITICAL, message: 'again' });
+    expect(persistentNodes()).toBe(one);
+
+    // Its action is operation 70. A refused call leaves the toast where it is (the alert is NOT acknowledged) ...
+    home.fake.answerOnce('acknowledgeAlert', refusal(403, 'NOT_PERMITTED', 'Not permitted.'));
+    fireEvent.press(screen.getAllByText('Acknowledge')[0]!);
+    await home.elapse(1_000, 250);
+    expect(home.requestsOf('acknowledgeAlert').map((call) => [call.method, call.params['id']])).toEqual([['POST', CRITICAL.id]]);
+    expect(persistentNodes()).toBe(one);
+    // ... and it leaves when the CORE reports the acknowledgement (the bed's Core answers 204 and replicates it).
+    fireEvent.press(screen.getAllByText('Acknowledge')[0]!);
+    await home.elapse(1_000, 250);
+    expect(home.requestsOf('acknowledgeAlert')).toHaveLength(2);
+    expect(home.state.alerts.find((held) => held.id === CRITICAL.id)?.acknowledged).toBe(true);
+    expect(persistentNodes()).toBe(0);
+  });
+
+  it('a critical alert the Core RESOLVES leaves without an acknowledgement; one that is already active at sign-in is shown at once', async () => {
+    const home = await homeWithToasts('phonePortrait', 'default', [CRITICAL]);
+    expect(persistentNodes()).toBeGreaterThan(0);
+    await raise(home, { ...CRITICAL, active: false, resolvedAt: at + 5_000 });
+    await home.elapse(1_000, 250);
+    expect(persistentNodes()).toBe(0);
+  });
+
+  it('a warning: a toast while its switch is on, NO toast while it is off - and a critical alert shows whatever the switches say', async () => {
+    await AsyncStorage.setItem(MOBILE_PREFS_KEY, JSON.stringify({ notifications: { devices: false, storage: false, time: false, system: false } }));
+    const home = await homeWithToasts('phonePortrait', 'default');
+    await raise(home, WARNING);
+    expect(warningNodes()).toBe(0);
+    // The bell still counts it: the switch silences the toast, not the alert.
+    expect(textOf('home-bell-count')).toBe('1');
+    await raise(home, CRITICAL);
+    expect(persistentNodes()).toBeGreaterThan(0);
+
+    // CONTROL: the storage switch on - a new warning of that category is announced once.
+    act(() => setSettingsPrefs({ notifications: { devices: false, storage: true, time: false, system: false } }));
+    await raise(home, alertOf('ALR-000103', 'STORAGE_LOW', 'WARNING'), alertOf('ALR-000104', 'MIC_CLIP', 'WARNING'));
+    expect(warningNodes()).toBeGreaterThan(0);
+    expect(toastTexts(i18n.t('common.faultKind.STORAGE_LOW'))).toBeGreaterThan(0);
+    // The microphone warning (its switch is off) raised none: every warning toast on screen is the storage one.
+    expect(toastTexts(i18n.t('common.faultKind.MIC_CLIP'))).toBe(0);
+  });
+
+  it('a warning that was already there at sign-in is not announced: only what changes while the operator watches', async () => {
+    await homeWithToasts('phonePortrait', 'default', [WARNING]);
+    expect(warningNodes()).toBe(0);
   });
 });
 
@@ -248,8 +436,9 @@ describe('Home in SIMULATED and HEARTBEAT mode: the chip says "Simulated" and ke
       else expect([window, shows('home-core-link')]).toEqual([window, false]);
     }
     // The recent rows still join the bundled poster on the evidence number (D61), as before.
-    const evidenceId = textOf('home-recent-row-0-id');
-    const poster = demoMediaForEvidence(idSuffix(evidenceId)!)?.poster['VIDEO-01'];
+    const newest = [...test.sim.store.getState().sessionHistory].sort((a, b) => b.endedAt - a.endedAt)[0]!;
+    expect(textOf('home-recent-row-0-id')).toBe(newest.id);
+    const poster = demoMediaForEvidence(idSuffix(newest.evidenceId)!)?.poster['VIDEO-01'];
     expect(poster).toBeDefined();
     expect([screen.getByTestId('home-recent-row-0-thumb').props.source].flat()).toEqual([poster]);
   });

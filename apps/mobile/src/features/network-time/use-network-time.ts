@@ -9,12 +9,12 @@
 import { useToast } from 'heroui-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isHostClockTime, selectClockSecond, useSim } from '@dems/shared/sim';
+import { isHostClockTime, isOwnCaptureCoreState, selectClockSecond, useSim } from '@dems/shared/sim';
+import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { useMotionState } from '@/motion';
 import { reportRuntimeIssue } from '@/runtime';
 import {
   bandwidthWindow,
-  heldSecond,
   isTimeEscalation,
   selectNetworkView,
   selectTimeView,
@@ -38,10 +38,32 @@ export function useNetworkView(): NetworkView {
   return useSim(selectNetworkView);
 }
 
-/** The sim-clock epoch second shown by the screen (held to the minute under the test switch). */
+/**
+ * Fix wave J (JT-03 / JW-04; truth rules 3c, 3f; THE ONE RULE): the Core this client shows is in its own
+ * capture, so the simulator's network model (LAN name and address, gateway, PoE ports and watts, the
+ * bandwidth figure) is no fact of it. Live data AND (a Core that states a source class on a capture device,
+ * the mark of real capture, D91 R-2) OR the Core's own statement of itself,
+ * `isOwnCaptureCoreState` (contract_wave_j.md J-S 7: `time.hostClock` or `security.platformNotReported`).
+ * False in Simulated client mode and for a simulated Core: unchanged there.
+ */
+export function networkNotReported(state: Parameters<typeof isOwnCaptureCoreState>[0] & { readonly captureDevices: { readonly devices: readonly { readonly sourceClass?: string | null | undefined }[] } }, live: boolean): boolean {
+  if (!live) return false;
+  // A Core whose device list is not there yet states nothing either way: its card is not rewritten on that alone.
+  return state.captureDevices.devices.some((device) => device.sourceClass !== undefined && device.sourceClass !== null) || isOwnCaptureCoreState(state);
+}
+
+export function useNetworkNotReported(): boolean {
+  const { live } = useSourceBadgeMode();
+  return useSim((s) => networkNotReported(s, live));
+}
+
+/**
+ * The sim-clock epoch second shown by the screen. Fix wave J (JA2-34): the READOUT is the true second in
+ * every motion mode - under the D43 test switch only the digit animation is held (the card passes the
+ * reduced policy to its digits), never the value. It read hh:mm:00 for the whole minute.
+ */
 export function useDisplaySecond(): number {
-  const testSwitch = useTestSwitch();
-  return useSim((s) => heldSecond(selectClockSecond(s), testSwitch));
+  return useSim((s) => selectClockSecond(s));
 }
 
 /** The 12 bandwidth bars plus the newest down/up rates (the streaming N2 row). */
@@ -78,7 +100,6 @@ export function useNetworkTimeAlerts(): void {
   const { t } = useTranslation();
   const { toast } = useToast();
   const level = useSim((s) => timeLevel(s.time.source));
-  const server = useSim((s) => s.time.ntp.server);
   // Closing pass J (G75b-06): a host system clock is no fall of a time service - no "RTC holdover" toast.
   const hostClock = useSim((s) => isHostClockTime(s.time));
   const previous = useRef<TimeLevel>(level);
@@ -88,16 +109,16 @@ export function useNetworkTimeAlerts(): void {
     previous.current = level;
     if (from === level || hostClock) return;
     try {
-      if (level === 'FALLBACK' && from === 'LOCKED') {
-        toast.show({ variant: 'warning', label: t('networkTime.toast.gnssLost'), description: t('networkTime.toast.gnssLostDetail', { server }) });
-      } else if (level === 'HOLDOVER') {
-        toast.show({ variant: 'warning', label: t('networkTime.toast.rtcHoldover'), description: t('networkTime.toast.rtcHoldoverDetail') });
-      } else if (level === 'LOCKED') {
+      // Fix wave J (JA2-05, J-P's app-wide alert toasts; truth rule 3c - ONE statement per fact): the GNSS loss and
+      // the RTC fallback are active alerts, and the app's alert-toast consumer (`features/alerts`) raises their one
+      // toast on EVERY screen. This screen raised a second one for the same fact, so it no longer does. The quiet
+      // "GNSS lock restored" stays: no alert covers a recovery.
+      if (level === 'LOCKED') {
         toast.show({ variant: 'success', label: t('networkTime.toast.restored'), description: t('networkTime.toast.restoredDetail') });
       }
     } catch (error) {
       // The toast is feedback only; the tier row and chips already show the new level.
       reportRuntimeIssue('warn', 'network-time.alerts.toast', error, { from, to: level });
     }
-  }, [level, server, hostClock, t, toast]);
+  }, [level, hostClock, t, toast]);
 }

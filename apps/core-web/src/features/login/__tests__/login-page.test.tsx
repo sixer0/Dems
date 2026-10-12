@@ -24,6 +24,7 @@ import {
   type ControllableClock,
   type Sim,
 } from '@dems/shared/sim'
+import { en } from '@dems/shared/i18n'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { PRESENTATION_MODE_STORAGE_KEY, resetPresentationModeForTests, setPresentationMode } from '@/lib/presentation-mode'
@@ -253,6 +254,27 @@ describe('Login: Validating, Error and the fields (M-C-22)', () => {
     expect(passwordInput()).not.toHaveAttribute('aria-invalid', 'true')
   })
 
+  // Fix wave J round three (note N-01): the typed password is never in the markup - the field has no `value`
+  // attribute, typed, revealed or filled, while the field's own value is what was typed.
+  it('N-01: the password field carries no `value` attribute, and the page\'s HTML never holds what was typed', async () => {
+    mount('/login')
+    await screen.findByTestId('page-login')
+    const typed = ['typed', 'into', 'the', 'field'].join('-')
+    typeCredentials('budi.santoso', typed)
+    expect(passwordInput().value).toBe(typed)
+    // The observer answers in the same task (a microtask after React wrote the attribute).
+    await waitFor(() => expect(passwordInput().hasAttribute('value')).toBe(false))
+    expect(document.body.innerHTML).not.toContain(typed)
+    // Revealed: still the property only.
+    fireEvent.click(within(page()).getByRole('button', { name: 'Show password' }))
+    expect(passwordInput()).toHaveAttribute('type', 'text')
+    await waitFor(() => expect(passwordInput().hasAttribute('value')).toBe(false))
+    expect(document.body.innerHTML).not.toContain(typed)
+    expect(passwordInput().value).toBe(typed)
+    // CONTROL - the user name is an ordinary field: React mirrors it, which is what the password field no longer does.
+    expect(usernameInput().getAttribute('value')).toBe('budi.santoso')
+  })
+
   it('toggles the password visibility and fills the form from a demo operator', async () => {
     mount('/login')
     await screen.findByTestId('page-login')
@@ -366,7 +388,7 @@ describe('Login: Signed out / expired (M-APP-02)', () => {
     act(() => sim.actions.signOut(SignOutReason.LOCK))
     await screen.findByTestId('page-login')
     await expectState('signed-out')
-    expect(screen.getByTestId('login-alert')).toHaveTextContent('Console locked. Sign in again to continue.')
+    expect(screen.getByTestId('login-alert')).toHaveTextContent(en.login.notices.consoleLocked)
   })
 
   it('after 15 min idle: the expiry notice, and sign-in returns to the same page', async () => {

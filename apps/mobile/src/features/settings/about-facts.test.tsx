@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, screen } from '@testing-library/react-native';
 import { Dimensions } from 'react-native';
 import type { ReactTestInstance } from 'react-test-renderer';
-import { DEMO_OPERATOR_PASSWORD, PLATFORM_NOT_REPORTED } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, PLATFORM_NOT_REPORTED, SOFTWARE_VERSION } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { createTestSim, flushAsync, renderWithRuntime } from '@/runtime/testing/test-sim';
@@ -69,3 +69,22 @@ describe('Settings > About on a Core that states `security.platformNotReported`'
     expect(textOf('settings-about-identity')).not.toMatch(/TPM 2\.0 \(|fw \d/);
   });
 });
+
+// Fix wave J round two (JW-26 mobile half; contract J2-S 2, client rule 3): on a Core in its OWN capture the
+// demonstration model's "Software release" / "Device app" versions are versions of nothing real.
+describe('Settings > About: the model\'s versions are not shown as versions of a Core in its own capture', () => {
+  it('the simulated device keeps "Software release v2.4.1" (pinned); a Core that states its own capture draws neither model version', async () => {
+    const test = createTestSim();
+    expect(test.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    renderWithRuntime(<AboutSection />, { sim: test.sim });
+    await flushAsync();
+    expect(textOf('settings-about-product-card')).toContain(`v${SOFTWARE_VERSION}`);
+    expect(screen.getByTestId('settings-about-version')).toBeTruthy();
+
+    act(() => test.sim.store.setState((s) => ({ security: { ...s.security, ...PLATFORM_NOT_REPORTED } })));
+    expect(screen.queryByTestId('settings-about-version')).toBeNull();
+    expect(textOf('settings-about-product-card')).not.toContain(SOFTWARE_VERSION);
+    expect(textOf('settings-about-product-card')).not.toMatch(/Software release|Device app/);
+  });
+});
+

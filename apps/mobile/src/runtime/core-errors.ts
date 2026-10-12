@@ -11,7 +11,7 @@
  * | `LiveTransportError`, status 429 (LB-10) | `LIMIT` | warning: "… is limiting requests …" / "Try again in N s." | yes |
  * | `LiveTransportError` `CORE_OFFLINE`, code `TIMEOUT` (LB-7) | `TIMEOUT` | danger: "Core server unreachable" / "The command may or may not have been applied; …" | yes |
  * | `LiveTransportError` `CORE_OFFLINE`, code `SNAPSHOT_TIMEOUT` | `SNAPSHOT_TIMEOUT` | danger: "Core server unreachable" / "The Core did not send its data in time. …" | yes |
- * | `LiveTransportError`, code `CREDENTIALS_UNAVAILABLE` or `CREDENTIALS_TIMEOUT` | `CREDENTIALS` | danger: "This tablet could not read its credential" / "Nothing was sent. …" | yes |
+ * | `LiveTransportError`, code `CREDENTIALS_UNAVAILABLE` or `CREDENTIALS_TIMEOUT` | `CREDENTIALS` | danger: "This device could not read its credential" / "Nothing was sent. …" | yes |
  * | `LiveTransportError`, code `STOPPED` | `STOPPED` | none: the screen that sent the command is gone | — |
  * | `LiveTransportError` `CORE_OFFLINE`, anything else (LB-6) | `OFFLINE` | danger: "Core server unreachable" / "Nothing was changed." | yes |
  * | `LiveTransportError` `UNAVAILABLE`, anything else (500, a contract violation) | `FAILED` | danger: "The Core server could not complete the request" | yes |
@@ -71,6 +71,12 @@ export interface CoreErrorPresentation {
   readonly description: CoreErrorText | null;
   /** The role the denied toast names, or `null` (no role holds the permission, or another kind). */
   readonly role: OperatorRole | null;
+  /**
+   * Fix wave J (JT-16; ruling: "the sentence names both roles where both may act"): EVERY role that holds the
+   * permission, least privileged first. The sentence names them all ("Requires the Investigator or Supervisor
+   * role"): a supervisor read "Requires the Investigator role" under a control a supervisor may use.
+   */
+  readonly roles: readonly OperatorRole[];
   /** `retry-after` of a 429 in whole seconds, or `null`. */
   readonly retryAfterSeconds: number | null;
   /** True when the Core server gave no answer: the only kinds a "link lost" notice may follow. Never true for a 429 (LB-10). */
@@ -95,6 +101,23 @@ export function requiredRoleFor(label: string): OperatorRole | null {
     .filter((part) => part !== '');
   if (wanted.length === 0) return null;
   return ROLE_ORDER.find((role) => (ROLE_PERMISSIONS[role] as readonly string[]).some((held) => wanted.includes(held))) ?? null;
+}
+
+/** Every role that holds the permission a refusal names (`requiredRoleFor` names the first of them). */
+export function requiredRolesFor(label: string): OperatorRole[] {
+  const wanted = label
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+  if (wanted.length === 0) return [];
+  return ROLE_ORDER.filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).some((held) => wanted.includes(held)));
+}
+
+/** The roles' names as one phrase: "Investigator", "Investigator or Supervisor", "A, B or C" (JT-16). */
+export function roleNamesText(t: (key: string) => string, roles: readonly OperatorRole[]): string {
+  const names = roles.map((role) => t(`common.roles.${role}`));
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} ${t('mobile.rbac.or')} ${names[names.length - 1]}`;
 }
 
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -123,7 +146,7 @@ function presentation(
   variant: CoreErrorPresentation['variant'],
   label: CoreErrorText | null,
   description: CoreErrorText | null,
-  rest: Partial<Pick<CoreErrorPresentation, 'role' | 'retryAfterSeconds' | 'outage' | 'coalesced' | 'haptic'>> = {},
+  rest: Partial<Pick<CoreErrorPresentation, 'role' | 'roles' | 'retryAfterSeconds' | 'outage' | 'coalesced' | 'haptic'>> = {},
 ): CoreErrorPresentation {
   return {
     kind,
@@ -131,6 +154,7 @@ function presentation(
     label,
     description,
     role: rest.role ?? null,
+    roles: rest.roles ?? (rest.role ? [rest.role] : []),
     retryAfterSeconds: rest.retryAfterSeconds ?? null,
     outage: rest.outage ?? false,
     coalesced: rest.coalesced ?? false,
@@ -186,7 +210,7 @@ export function describeCoreError(error: unknown): CoreErrorPresentation | null 
       { key: 'common.rbac.deniedTitle' },
       // The role's own name is filled in by the hook: it is a translated word, not a value of the error.
       role === null ? null : { key: 'common.rbac.requiresRole' },
-      { role, haptic: 'gateBlock' },
+      { role, roles: requiredRolesFor(error.permission), haptic: 'gateBlock' },
     );
   }
   if (error instanceof LiveTransportError) return describeTransport(error);
@@ -265,7 +289,7 @@ export function useCoreErrorPresenter(coalescer: CoreErrorCoalescer = appCoalesc
       if (shown === null) return 'unhandled';
       if (shown.label === null) return 'silent';
       if (shown.coalesced && !coalescer.admit(shown.kind)) return 'coalesced';
-      const values = shown.role === null ? shown.description?.values : { role: t(`common.roles.${shown.role}`) };
+      const values = shown.role === null ? shown.description?.values : { role: roleNamesText(t, shown.roles.length > 0 ? shown.roles : [shown.role]) };
       try {
         toast.show({
           variant: shown.variant,

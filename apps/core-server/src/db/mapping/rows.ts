@@ -32,7 +32,7 @@
  * The shared code reads every one of these with `?? null` or `?? []`, so the two empty forms
  * behave alike; the table only decides which one a rehydrated state holds.
  */
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, eventCategory } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, eventCategory, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -631,7 +631,11 @@ export function evidenceItemFromRows(
             sha256: track.sha256Plain as string,
             fragmentCount: track.fragmentCount as number,
           }));
-  return {
+  // Fix wave J (truth rule 3a; JA2-01 / JW-01): a row with `sealed_at` NULL is a recording that was never sealed.
+  // The table needs a manifest hash and a signature in every row, and rows written before wave J hold the
+  // integrity block of a seal (some a stored PASS): the item that leaves the store carries none of it
+  // (`neverSealedShape`: no track, the null digest, verification NOT_RUN). A sealed row passes as it is.
+  return neverSealedShape({
     id: row.id,
     sessionId: row.sessionId,
     caseNumber: row.caseNumber,
@@ -667,7 +671,7 @@ export function evidenceItemFromRows(
     ...(files === null ? {} : { files, fragmentChainHead: fileRows[0]?.fragmentChainHead ?? null }),
     startTimeSource: row.startTimeSource,
     endTimeSource: row.endTimeSource,
-  };
+  });
 }
 
 /**

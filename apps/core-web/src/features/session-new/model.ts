@@ -12,7 +12,7 @@
  */
 import { SessionState } from '@dems/shared/domain'
 import { SESSION_CREATE_MESSAGES } from '@dems/shared/api'
-import { isPrecheckNote, SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
+import { isPrecheckNote, SECURITY_NOT_REPORTED_PRECHECK_RULE, SubjectType, type PrecheckCheckId, type PrecheckItem, type PrecheckSlice } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
 import { PRECHECK_UNREACHABLE_VALUE } from '@/lib/capture-notices'
 
@@ -159,11 +159,21 @@ export function reasonKeyFor(item: Pick<PrecheckItem, 'id' | 'status' | 'value'>
 }
 
 /**
- * The sentence of a pre-check NOTE (`isPrecheckNote`), or null for an item that is none. Today one:
- * the TIME item of a Core in its own capture - the host system clock.
+ * The sentence of a pre-check NOTE (`isPrecheckNote`), or null for an item that is none. Two exist:
+ * the TIME item of a Core in its own capture - the host system clock - and (fix wave J, JW-04;
+ * `contract_wave_j.md` J-S 5) its SECURITY item: a Core that states `platformNotReported` checked no
+ * TPM, Secure Boot or enclosure state, so the row is "Not reported", never "READY - PASS".
  */
-export function precheckNoteKey(item: Pick<PrecheckItem, 'status' | 'params'>): 'sessionNew.precheckNote.timeHostClock' | null {
-  return isPrecheckNote(item) ? 'sessionNew.precheckNote.timeHostClock' : null
+export type PrecheckNoteKey = 'sessionNew.precheckNote.timeHostClock' | 'web.waveJ.precheck.securityNotReported'
+
+export function precheckNoteKey(item: Pick<PrecheckItem, 'status' | 'params'>): PrecheckNoteKey | null {
+  if (!isPrecheckNote(item)) return null
+  return item.params?.['rule'] === SECURITY_NOT_REPORTED_PRECHECK_RULE ? 'web.waveJ.precheck.securityNotReported' : 'sessionNew.precheckNote.timeHostClock'
+}
+
+/** True for the SECURITY note of a Core that reports no platform: its chip reads "Not reported", not "NOTE". */
+export function isSecurityNotReportedNote(item: Pick<PrecheckItem, 'status' | 'params'>): boolean {
+  return precheckNoteKey(item) === 'web.waveJ.precheck.securityNotReported'
 }
 
 /** The device named inside a lens or MIC reason. */

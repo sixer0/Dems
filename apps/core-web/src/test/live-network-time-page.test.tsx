@@ -16,6 +16,7 @@
 // | The page follows a delta of the Core (GNSS loss, tablet link loss) with its own data moments | "the Core's deltas" |
 // | An outage: the page keeps the last data and shows no notice of its own (§21.2 of row W54) | "an outage" |
 // | CLG (c), AC-C-53: no production file imports `useSimActions` or reads `.actions` of a `Sim` | "static rules of the folder" |
+import { demoMarkBlocks, withoutDemoMarks } from './demo-words'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, screen, waitFor, within } from '@testing-library/react'
@@ -156,7 +157,9 @@ describe('the page on the Core\'s data (G9; §3.2)', () => {
     // The offset history the Core keeps is drawn as it is.
     expect(await screen.findByTestId('network-time-offset-chart')).toHaveAttribute('data-points', String(served.time.history.length))
     // §3.2: nothing on the screen speaks of a simulation.
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
     // G9: no operation of its own — the two Core operations of the area stay unused.
     expect(bed.fake.log.requestsOf('getTimeStatus')).toHaveLength(0)
     expect(bed.fake.log.requestsOf('getNetworkStatus')).toHaveLength(0)
@@ -181,7 +184,9 @@ describe('the Core\'s deltas (M-PG-NET in Live mode)', () => {
     await bed.flush()
     await waitFor(() => expect(screen.getByTestId('network-time-tiers')).toHaveAttribute('data-active', 'GNSS'))
     await waitFor(() => expect(toastWith(N.toast.restored)).toHaveLength(1))
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
   })
 
   it('a tablet link the Core reports offline degrades the Management domain and reminds that recording continues on the Core', async () => {
@@ -207,7 +212,9 @@ describe('an outage (§21.2 of row W54: the shell speaks, the page does not)', (
     expect(screen.getByTestId('network-time-row-lan')).toHaveTextContent('192.168.10.77 · Core LAN B')
     expect(screen.getByTestId('network-time-orbit-caption')).toHaveTextContent('9 SV')
     expect(within(networkTimePage).queryByText(new RegExp(en.common.coreErrors.offline.split('.')[0]!))).not.toBeInTheDocument()
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
   })
 })
 

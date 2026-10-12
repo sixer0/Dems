@@ -48,7 +48,7 @@ You do not need this repository's toolchain. Use the packages in `release/` (git
 
 | Other demo value | Value |
 |---|---|
-| "Use security key (simulated)" button | Signs in as the Supervisor (`andi.pratama`) |
+| "Use security key (simulated)" button | Simulated data mode only: signs in as the Supervisor (`andi.pratama`). In Live data mode (a console connected to a Core server, both lanes) the Login has no such button — the Core has no security-key sign-in; use the user name and password |
 | Tablet pairing code | `482913` |
 | Emulator screen-lock PIN (fingerprint enrolment) | `1234` |
 | Correction (2026-10-04): emulators in use, `dems2_*` | The PIN above belongs to the old `dems_*` AVDs only. The user set the lock of `dems2_phone` and `dems2_tablet` with `apps/mobile/scripts/emulator-user-lock.sh`; the value is not printed here. `dems2_phone2` has no lock |

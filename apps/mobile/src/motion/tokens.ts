@@ -28,6 +28,13 @@ export type MotionPolicy = 'full' | 'reduced';
 export interface MotionSettings {
   readonly policy: MotionPolicy;
   readonly slow: boolean;
+  /**
+   * True once the animation runtime of this process has stopped (fix wave J, JM-01 d;
+   * `./ui-runtime-watch`). The policy is then `reduced`, and the layout builders return NO animation at all:
+   * even the short reduced fade is played by the runtime that no longer runs, and a view entered with it
+   * would stay at its first, hidden frame.
+   */
+  readonly still?: boolean;
 }
 
 export const FULL_MOTION: MotionSettings = { policy: 'full', slow: false };

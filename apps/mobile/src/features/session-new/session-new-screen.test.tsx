@@ -385,3 +385,34 @@ describe('tablet layouts (§2.4)', () => {
     expect(screen.getByTestId('session-new-previews')).toBeTruthy();
   });
 });
+
+// Fix wave J round two (JT-22, JA2-22 / JT-13, JA2-09).
+describe('round two: New Session says what is true at each step', () => {
+  it('JT-22: the countdown caption follows the switch; JA2-22: at Ready only "Devices Check" is a button, "Session Info" is text', async () => {
+    const h = await openFlow();
+    await goToReady(h);
+    expect(screen.getByTestId('session-new-step-3')).toBeTruthy();
+    expect(screen.getByText('Recording starts after a 3-2-1 countdown.')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('session-new-countdown'));
+    expect(screen.queryByText('Recording starts after a 3-2-1 countdown.')).toBeNull();
+    expect(screen.getByText('Recording starts at once, without a countdown.')).toBeTruthy();
+
+    const info = screen.getByTestId('session-new-stepper-step-0');
+    const checks = screen.getByTestId('session-new-stepper-step-1');
+    expect(info.props.accessibilityRole).toBe('text');
+    expect(checks.props.accessibilityRole).toBe('button');
+    fireEvent.press(checks);
+    expect(screen.getByTestId('session-new-step-2')).toBeTruthy();
+  });
+
+  it('JA2-09: a long subject name is drawn whole on Ready (two lines), never cut to one', async () => {
+    const h = await openFlow();
+    const name = 'Judge A2 Wijayakusuma Hadiningrat';
+    await fillStep1(name);
+    await pressNextAsync();
+    h.tick(PRECHECK_TOTAL_MAX_MS);
+    fireEvent.press(next());
+    const shown = within(screen.getByTestId('session-new-summary-subject')).getByText(name);
+    expect(shown.props.numberOfLines).toBe(2);
+  });
+});

@@ -1,3 +1,4 @@
+import { eventTitle } from '@/lib/event-words'
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { AnimatePresence } from 'motion/react'
@@ -35,7 +36,7 @@ export function ActivityPanel() {
   const fresh = useNewRowIds(events.map((event) => event.id))
 
   const titleOf = (event: SimEvent) => {
-    const title = t(`common.eventType.${event.type}`)
+    const title = eventTitle(t, event)
     if (event.type !== 'FAULT_RAISED' && event.type !== 'FAULT_CLEARED') return title
     // Only the two storage fault kinds pass the storage-activity filter.
     const kind = event.params.kind === 'STORAGE_FULL' ? 'STORAGE_FULL' : 'STORAGE_LOW'

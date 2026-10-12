@@ -90,7 +90,7 @@ import { SEALING_NOTICE_DOOR_LABEL, noteSealRetryOnDemandTransition, noteSealedP
 // Sealed-facts block (wave H C1, decision D200): what the sealed manifest of an item says and no stored column holds.
 import { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, type EngineSealedFactsDoors, type SealedItemFacts } from './sealed-facts-doors';
 // Capture-checkpoint block and time block (wave H closing pass Z1): what the Core holds of a running recording; the host clock as the time of a Core in its own capture.
-import { hostClockTimeTransition, platformNotReportedTransition } from '@dems/shared/sim';
+import { hostClockTimeTransition, platformNotReportedTransition, updaterNotAvailableTransition } from '@dems/shared/sim';
 import { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -1001,6 +1001,14 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         // `tpm.ok: true` / `secureBoot: true` / `SECURE`: it says `platformNotReported` before anything reads it.
         if (dependencies.captureLevels === 'external') {
           const stated = platformNotReportedTransition(sim.store.getState());
+          if (stated !== sim.store.getState()) sim.store.setState(stated, true);
+        }
+
+        // Updater block (fix wave J; findings JT-06 / JW-06): a Core in its own capture has no software updater.
+        // The slice this start read may hold the simulator's demonstration ("Installed v2.5.0 - slot B" after a
+        // press on a real-capture Core): it says `updaterNotAvailable` before anything reads it.
+        if (dependencies.captureLevels === 'external') {
+          const stated = updaterNotAvailableTransition(sim.store.getState());
           if (stated !== sim.store.getState()) sim.store.setState(stated, true);
         }
 

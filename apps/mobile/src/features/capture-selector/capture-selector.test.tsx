@@ -3,15 +3,17 @@
  * M4-RG-MOB; the software half of M4-SEL-T / M4-SEL-P). Real route files, real simulator, real
  * providers, as `devices-screen.test.tsx`.
  */
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import '@/features/devices/testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { BackHandler } from 'react-native';
 import { ScenarioName } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { selectionGlowOpacity } from '@/components/composed/selection-glow';
 import { renderDevicesApp, settle, type DevicesHarness } from '@/features/devices/testing/devices-harness';
+import { refusalCauseOf } from './use-capture-selector';
 
 beforeEach(() => resetMissingKeys());
 // MA-21: every string the card renders comes from an i18n key.
@@ -165,7 +167,8 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     fireEvent.press(screen.getByTestId('capture-source-option-CAM-01'));
     fireEvent.press(screen.getByTestId('capture-source-save'));
     await settle();
-    expect(screen.getByTestId('capture-selector-notice-invalid')).toHaveTextContent(/The Core did not accept this choice\. Nothing was changed\./);
+    // Fix wave J (JA2-24): the refusal says WHY (it read "Choice not accepted - Nothing was changed" alone).
+    expect(screen.getByTestId('capture-selector-notice-body')).toHaveTextContent(/CAM-01 already feeds Video track 1\. One camera can feed both tracks only with a different profile on each\. Nothing was changed\./);
     expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-02 · Dual-lens IP camera DL-2');
     expect(configAudit(h)).toHaveLength(0);
     expect(h.sim.store.getState().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId).toBe('CAM-02');
@@ -189,3 +192,86 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     expect(h.sim.store.getState().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.role).toBe('PRIMARY');
   });
 });
+
+// ── Fix wave J (judging session; sub-driver J-P3) ─────────────────────────────────────────────────────────
+describe('fix wave J - the picker and the selector rows', () => {
+  it('JA2-24 `refusalCauseOf`: the camera that feeds the other track is named; else the Core\'s reason; else none', () => {
+    const lines = [
+      { trackId: 'VIDEO-01', deviceId: 'CAM-01' },
+      { trackId: 'VIDEO-02', deviceId: 'CAM-02' },
+    ];
+    expect(refusalCauseOf({ kind: 'camera', trackId: 'VIDEO-01', deviceId: 'CAM-02' }, 'invalid', lines, null)).toEqual({ kind: 'cameraOnOtherTrack', deviceId: 'CAM-02', trackId: 'VIDEO-02' });
+    expect(refusalCauseOf({ kind: 'camera', trackId: 'VIDEO-01', deviceId: 'CAM-04' }, 'invalid', lines, 'PROFILE_NOT_SUPPORTED')).toEqual({ kind: 'core', reason: 'PROFILE_NOT_SUPPORTED' });
+    expect(refusalCauseOf({ kind: 'camera', trackId: 'VIDEO-01', deviceId: 'CAM-04' }, 'invalid', lines, null)).toBeNull();
+    // Only an `invalid` answer has such a cause: a lock or a denial keeps its own sentence.
+    expect(refusalCauseOf({ kind: 'camera', trackId: 'VIDEO-01', deviceId: 'CAM-02' }, 'locked', lines, null)).toBeNull();
+  });
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('JA2-24 / JA2-16 on %s: the camera of the other track says "In use by …" BEFORE it is chosen; the radio rows expose their checked state; the sheet is modal; Android Back closes it and stays on Devices', async (window) => {
+    const pressBack = captureBack();
+    renderDevicesApp({ user: 'andi.pratama', window });
+    await settle();
+    // Nothing is open: the selector consumes no Back.
+    expect(pressBack()).toBe(false);
+    fireEvent.press(screen.getByTestId('capture-selector-edit-VIDEO-01'));
+    await settle();
+    expect(screen.getByTestId('capture-source-warning-CAM-02')).toHaveTextContent(/In use by Video track 2\. The Core accepts one camera on both tracks only with a different profile on each/);
+    expect(screen.queryByTestId('capture-source-warning-CAM-01')).toBeNull();
+    expect(screen.getByTestId('capture-source-option-CAM-02').props.accessibilityHint).toMatch(/In use by Video track 2/);
+    expect(screen.getByTestId('capture-source-option-CAM-01').props.accessibilityState).toMatchObject({ checked: true, selected: true });
+    expect(screen.getByTestId('capture-source-option-CAM-02').props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.getByTestId('capture-source-option-CAM-02').props.accessibilityRole).toBe('radio');
+    expect(screen.getByTestId('capture-source-sheet').props.accessibilityViewIsModal).toBe(true);
+    // Android Back: consumed by the sheet (the screen under it stays), and the sheet closes.
+    let consumed = false;
+    act(() => {
+      consumed = pressBack();
+    });
+    await settle();
+    expect(consumed).toBe(true);
+    expect(screen.getByTestId('capture-selector')).toBeTruthy();
+    expect(glowOpacity('capture-selector-glow-VIDEO-01')).toBe(selectionGlowOpacity(false));
+    jest.restoreAllMocks();
+  });
+
+  it('JT-13 / JT-12: a selector row does what its "Change" control does (it is no dead button); for a role that may not change it the row is DISABLED with the role sentence; the track name may take two lines', async () => {
+    const h = renderDevicesApp({ user: 'andi.pratama' });
+    await settle();
+    const row = screen.getByTestId('capture-selector-row-VIDEO-02');
+    expect(row.props.accessibilityState).toMatchObject({ disabled: false });
+    expect(row.props.accessibilityHint).toBe('Change the camera of Video track 2');
+    expect(screen.getByTestId('capture-selector-title-VIDEO-02').props.numberOfLines).toBe(2);
+    fireEvent.press(row);
+    await settle();
+    expect(screen.getByTestId('capture-source-sheet')).toBeTruthy();
+    expect(screen.getByText('Camera for Video track 2')).toBeTruthy();
+    h.app.unmount();
+
+    renderDevicesApp({ user: 'budi.santoso' });
+    await settle();
+    const locked = screen.getByTestId('capture-selector-row-VIDEO-02');
+    expect(locked.props.accessibilityState).toMatchObject({ disabled: true });
+    expect(locked.props.accessibilityHint).toBe('Requires the Supervisor or Technician role');
+    fireEvent.press(locked);
+    await settle();
+    expect(screen.queryByTestId('capture-source-sheet')).toBeNull();
+  });
+
+  it('JA2-33 / JA2-29: one wording of the picture - "This build shows no live picture of the cameras."; no specification language', async () => {
+    renderDevicesApp({ user: 'andi.pratama' });
+    await settle();
+    expect(screen.getByTestId('capture-selector-no-preview')).toHaveTextContent('Status only. This build shows no live picture of the cameras.');
+    expect(screen.queryByText(/this phase|Searching connects to nothing|\(SYS-|§/)).toBeNull();
+  });
+});
+
+/** Captures the hardware-Back listeners (Android's BackHandler) so a test can press Back; newest first, true = consumed. */
+type BackListener = Parameters<typeof BackHandler.addEventListener>[1];
+function captureBack(): () => boolean {
+  const listeners: BackListener[] = [];
+  jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+    listeners.push(handler);
+    return { remove: () => void listeners.splice(listeners.indexOf(handler), 1) };
+  });
+  return () => [...listeners].reverse().some((listener) => (listener as unknown as () => boolean | null | undefined)() === true);
+}

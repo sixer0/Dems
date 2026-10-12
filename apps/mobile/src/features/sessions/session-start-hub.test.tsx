@@ -12,6 +12,7 @@ import './testing/sessions-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, screen, within } from '@testing-library/react-native';
+import { SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE } from '@dems/shared/api';
 import { SessionOutcome, type SessionHistoryEntry, type SimAlert } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderSessionsApp, settle, type SessionsHarness } from './testing/sessions-harness';
@@ -112,7 +113,37 @@ describe('session start on the Sessions hub (pass D7 item 3)', () => {
     // CONTROL: an interrupted recording keeps the ordinary incomplete text.
     h.navigate(`/sessions/${demo.id}`);
     await settle();
-    expect(screen.getByTestId('session-detail-incomplete')).toHaveTextContent(/SYS-008/);
+    // Round two (JA2-29): the sentence carries no specification id any more.
+    expect(screen.getByTestId('session-detail-incomplete')).toHaveTextContent(/It will never be sealed\./);
+    expect(screen.getByTestId('session-detail-incomplete')).not.toHaveTextContent(/SYS-008/);
     expect(screen.getByTestId('session-detail-incomplete')).not.toHaveTextContent(/Nothing was recorded/);
   });
 });
+
+// Fix wave J round two (JW-22 remainder on the devices; contract_wave_j.md J2-S 4; note N-08): a session that
+// recorded and could not be sealed said only "It will never be sealed." - no place, no cause.
+describe('J2-S 4: a quarantined session says where its recordings are and why the seal was given up', () => {
+  it('the contract\'s example, fed unmodified: the quarantine sentence and the cause in words', async () => {
+    const h = renderSessionsApp();
+    await settle();
+    act(() => h.sim.store.setState((s) => ({ sessionHistory: [...s.sessionHistory.filter((entry) => entry.id !== SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE.id), SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE as unknown as SessionHistoryEntry] })));
+    await settle();
+    h.navigate(`/sessions/${SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE.id}`);
+    await settle();
+    const expectedCause = String(SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE.unsealableCause).toLowerCase().replace(/_/g, ' ');
+    expect(screen.getByTestId('session-detail-quarantined')).toHaveTextContent(new RegExp(`the recordings are kept in the quarantine folder of the Core\\. Why the seal was given up: ${expectedCause}\\.`));
+    // The code itself is not operator copy.
+    expect(screen.getByTestId('session-detail-incomplete')).not.toHaveTextContent(String(SESSION_HISTORY_UNSEALABLE_ENTRY_EXAMPLE.unsealableCause));
+  });
+
+  it('CONTROL - an interrupted session that has an evidence item is not a quarantined one: no such line', async () => {
+    const h = renderSessionsApp();
+    await settle();
+    const demo = h.history().find((entry) => entry.outcome === SessionOutcome.INCOMPLETE && entry.evidenceId)!;
+    h.navigate(`/sessions/${demo.id}`);
+    await settle();
+    expect(screen.getByTestId('session-detail-incomplete')).toBeTruthy();
+    expect(screen.queryByTestId('session-detail-quarantined')).toBeNull();
+  });
+});
+

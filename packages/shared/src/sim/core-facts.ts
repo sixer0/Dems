@@ -19,7 +19,7 @@
  * of a revision are operation 85's, and a volume figure is a measurement, not an act of an operator.
  */
 import { storageStateFor } from './selectors';
-import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SecuritySlice, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote } from './types';
+import type { CaptureDeviceStatus, CaptureSourceFact, EvidenceTranscriptSummary, PrecheckItem, SecuritySlice, SimState, StorageVolumeInput, TimeSlice, TranscriptRevisionNote, UpdateSlice } from './types';
 
 const wholeBytes = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 
@@ -190,9 +190,45 @@ export function platformNotReportedTransition(state: SimState): SimState {
   return { ...state, security: { ...state.security, ...PLATFORM_NOT_REPORTED } };
 }
 
-/** What a Core in its own capture states of itself outside a session: the host clock and no platform reading. One call for a host. */
+// ── No updater (fix wave J; findings JT-06 / JW-06) ────────────────────────────────────────────────
+
+/**
+ * A CORE IN ITS OWN CAPTURE HAS NO SOFTWARE UPDATER. The simulator's `update` slice is the
+ * demonstration of an A/B update of a hardened device; on a real-capture Core a press of "Install
+ * update" ran that demonstration and left "Installed v2.5.0 - slot B" on the page. The statement
+ * is one optional member, `update.updaterNotAvailable: true` (the pattern of
+ * `platformNotReported`): the required members stay as placeholders, the member says they are not
+ * readings, and `startSoftwareUpdate` refuses (`COMMAND_UNSUPPORTED`). Absent = the simulated device.
+ */
+export const UPDATER_NOT_AVAILABLE: Pick<UpdateSlice, 'updaterNotAvailable'> = Object.freeze({ updaterNotAvailable: true } as const);
+/** `details.reason` of the refusal of operation 67 on such a Core. */
+export const UPDATER_NOT_AVAILABLE_REASON = 'UPDATER_NOT_AVAILABLE';
+
+/** True for the `update` slice of a Core that has no updater. */
+export function isUpdaterNotAvailable(update: Pick<UpdateSlice, 'updaterNotAvailable'> | null | undefined): boolean {
+  return update?.updaterNotAvailable === true;
+}
+
+/** The slice says "no updater". The same state when it already does (no write, no row, no event). A run that was in flight is ended: nothing is installing. */
+export function updaterNotAvailableTransition(state: SimState): SimState {
+  if (isUpdaterNotAvailable(state.update) && state.update.state !== 'RUNNING') return state;
+  return { ...state, update: { ...state.update, ...(state.update.state === 'RUNNING' ? { state: 'IDLE' as const, startedAt: null, completedAt: null } : {}), ...UPDATER_NOT_AVAILABLE } };
+}
+
+/** What a Core in its own capture states of itself outside a session: the host clock, no platform reading and no updater. One call for a host. */
 export function ownCaptureCoreFactsTransition(state: SimState): SimState {
-  return platformNotReportedTransition(hostClockTimeTransition(state));
+  return updaterNotAvailableTransition(platformNotReportedTransition(hostClockTimeTransition(state)));
+}
+
+/**
+ * THE ONE READER OF "IS THIS A CORE IN ITS OWN CAPTURE" (fix wave J; truth rule 3f; finding JW-07).
+ * Such a Core states `time.hostClock` and `security.platformNotReported` at every start and at
+ * every health tick; a Core in SIMULATED capture and the in-app simulator state neither. So for a
+ * client in Live mode `false` means: the Core it talks to is SIMULATED - every feed, recording
+ * state, integrity statement and platform card it shows is a DEMONSTRATION and says so.
+ */
+export function isOwnCaptureCoreState(state: { readonly time?: Pick<TimeSlice, 'hostClock'> | null; readonly security?: Pick<SecuritySlice, 'platformNotReported'> | null } | null | undefined): boolean {
+  return state?.time?.hostClock === true || state?.security?.platformNotReported === true;
 }
 
 /** The sentence of the pre-check TIME item of a Core in its own capture (English fallback; a client words it from the rule). */
@@ -209,5 +245,35 @@ export const HOST_CLOCK_PRECHECK_VALUE = 'HOST_SYSTEM_CLOCK';
  * is PASS). Today there is one: the host-clock time item.
  */
 export function isPrecheckNote(item: Pick<PrecheckItem, 'status' | 'params'>): boolean {
-  return item.status === 'WARN' && item.params?.['rule'] === HOST_CLOCK_PRECHECK_RULE;
+  const rule = item.params?.['rule'];
+  return item.status === 'WARN' && (rule === HOST_CLOCK_PRECHECK_RULE || rule === SECURITY_NOT_REPORTED_PRECHECK_RULE);
+}
+
+// Fix wave J (truth rule 3c; findings JW-04 / JT-03): the SECURITY item of a Core that reads no platform.
+/** `params.rule` of the pre-check SECURITY item of a Core that states `platformNotReported`: a NOTE, never READY / PASS. */
+export const SECURITY_NOT_REPORTED_PRECHECK_RULE = 'SECURITY_PLATFORM_NOT_REPORTED';
+/** `value` of that item. */
+export const SECURITY_NOT_REPORTED_PRECHECK_VALUE = 'NOT_REPORTED';
+/** Its sentence (English fallback; a client words it from the rule). */
+export const SECURITY_NOT_REPORTED_PRECHECK_REASON = 'Platform security: not reported (this Core reads no TPM and no Secure Boot state)';
+
+/** `params.rule` of a diagnostics row over hardware a Core in its own capture does not read. */
+export const DIAGNOSTIC_NOT_REPORTED_RULE = 'NOT_REPORTED';
+/** Its detail text (English fallback). */
+export const DIAGNOSTIC_NOT_REPORTED_DETAIL = 'Not reported by this Core';
+/** The diagnostics rows such a Core cannot answer: SMART, the fan, the LAN / PoE readings and the platform. */
+export const DIAGNOSTIC_NOT_REPORTED_CHECKS: readonly string[] = Object.freeze(['STORAGE', 'FAN', 'NETWORK', 'SECURITY']);
+
+/**
+ * A diagnostics row that states NOTHING (fix wave J): the Core does not read that hardware. The
+ * row vocabulary has no such status, so it is carried at WARN level with `params.rule` (the idiom
+ * of the pre-check note) - a client draws "Not reported" and does not count it with the warnings.
+ */
+export function isDiagnosticNotReported(check: { readonly status?: unknown; readonly params?: Readonly<Record<string, unknown>> | undefined } | null | undefined): boolean {
+  return check?.status === 'WARN' && check.params?.['rule'] === DIAGNOSTIC_NOT_REPORTED_RULE;
+}
+
+/** True for an audio frame the Core did not measure (fix wave J, JW-08): draw "Not measured", never "NO SIGNAL". */
+export function isLevelNotMeasured(frame: { readonly notMeasured?: unknown } | null | undefined): boolean {
+  return frame?.notMeasured === true;
 }

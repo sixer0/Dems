@@ -30,7 +30,7 @@ import { Button, Spinner } from 'heroui-native';
 import { FileText, Lock, PencilLine, RotateCcw } from 'lucide-react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DATE_PATTERNS, formatDate } from '@dems/shared/realtime';
 import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
@@ -39,6 +39,7 @@ import { useOperatorId } from '@/lib/operator-query-scope';
 import { useMobileLive } from '@/runtime';
 import type { ItemTranscriptModel, ItemV2 } from './item-v2';
 import { formatMediaTime, permissionGate, type GateState } from './sealed-playback';
+import { activeSegmentIndex, requestPlaybackSeek, usePlaybackPosition } from './playback-link';
 import { TranscriptReadError, transcriptQueryKey, transcriptRevisionsQueryKey, useTranscript, useTranscriptFollowsRevision, useTranscriptRevisions } from './transcript';
 import {
   TRANSCRIPT_REASON_SIMULATED_ITEM,
@@ -101,6 +102,10 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
   const deniedKind = deniedReadKindOf(transcript.error instanceof TranscriptReadError ? transcript.error.reason : null);
   const loading = !disabled && transcript.isPending && transcript.fetchStatus !== 'idle';
   const nameOf = (operatorId: string): string => operatorNames[operatorId] ?? operatorId;
+  // Round two (JT-10): the segment at the playhead of this item's player, and whether a seek found no player.
+  const playbackMs = usePlaybackPosition(evidenceId);
+  const activeIndex = activeSegmentIndex(derivedSegments.map((entry) => entry.segment), playbackMs);
+  const [seekRefused, setSeekRefused] = useState(false);
   const revisingSegment = revising === null ? null : (derivedSegments.find((entry) => entry.segment.index === revising.index) ?? null);
 
   const coreNow = sim.store.getState().clock.now;
@@ -210,6 +215,11 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
             </Text>
           ) : (
             <View style={styles.list} testID="evidence-transcript-segments">
+              {seekRefused ? (
+                <Text maxFontSizeMultiplier={1.2} style={styles.caption} accessibilityLiveRegion="polite" testID="evidence-transcript-seek-no-player">
+                  {t('features.evidence.transcriptLink.noPlayer')}
+                </Text>
+              ) : null}
               {derivedSegments.map((entry) => (
                 <SegmentRow
                   key={entry.segment.index}
@@ -217,6 +227,8 @@ export function TranscriptPane({ evidenceId, item, operatorNames, access = null 
                   gate={gate}
                   authorName={entry.revised ? nameOf(entry.revised.authorId) : ''}
                   onRevise={() => setRevising((previous) => ({ key: (previous?.key ?? 0) + 1, index: entry.segment.index }))}
+                  active={activeIndex === entry.segment.index}
+                  onSeek={() => setSeekRefused(!requestPlaybackSeek(evidenceId, entry.segment.startMs))}
                 />
               ))}
             </View>
@@ -270,21 +282,30 @@ function TranscriptModelLines({ model }: { model: ItemTranscriptModel }) {
   );
 }
 
-function SegmentRow({ entry, gate, authorName, onRevise }: { entry: DerivedSegment; gate: GateState; authorName: string; onRevise: () => void }) {
+function SegmentRow({ entry, gate, authorName, onRevise, active, onSeek }: { entry: DerivedSegment; gate: GateState; authorName: string; onRevise: () => void; active: boolean; onSeek: () => void }) {
   const { t } = useTranslation();
   const { segment, revised } = entry;
   const start = formatMediaTime(segment.startMs);
   const end = formatMediaTime(segment.endMs);
   return (
     <View
-      style={[styles.segment, revised ? styles.segmentRevised : null]}
+      style={[styles.segment, revised ? styles.segmentRevised : null, active ? styles.segmentActive : null]}
       accessibilityLabel={t('evidence.transcript.segmentLabel', { index: segment.index, start, end })}
+      accessibilityState={{ selected: active }}
       testID={`evidence-transcript-segment-${segment.index}`}
     >
       <View style={styles.segmentHead}>
-        <Text maxFontSizeMultiplier={1.2} style={styles.time}>
-          {start}–{end}
-        </Text>
+        {/* Round two (JT-10): the time is the control that takes the playback there. */}
+        <Pressable onPress={onSeek} accessibilityRole="button" accessibilityLabel={t('features.evidence.transcriptLink.seek', { start })} hitSlop={8} testID={`evidence-transcript-seek-${segment.index}`}>
+          <Text maxFontSizeMultiplier={1.2} style={[styles.time, styles.timeLink]}>
+            {start}–{end}
+          </Text>
+        </Pressable>
+        {active ? (
+          <Text maxFontSizeMultiplier={1.2} style={styles.nowPlaying} testID={`evidence-transcript-active-${segment.index}`}>
+            {t('features.evidence.transcriptLink.now')}
+          </Text>
+        ) : null}
         {segment.speaker !== null ? (
           <Text maxFontSizeMultiplier={1.2} style={styles.speaker} testID={`evidence-transcript-speaker-${segment.index}`}>
             {segment.speaker}
@@ -380,6 +401,9 @@ const styles = StyleSheet.create({
     borderColor: derived.separator,
   },
   segmentRevised: { borderColor: statusText.sealed },
+  segmentActive: { borderColor: palette.gold },
+  timeLink: { textDecorationLine: 'underline' },
+  nowPlaying: { fontFamily: fontFamily.native.medium, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gold },
   segmentHead: { flexDirection: 'row', alignItems: 'center', gap: spacing[1] },
   derived: { gap: 2, padding: spacing[1], borderRadius: radius.px.lg, borderWidth: 1, borderColor: statusText.sealed, borderStyle: 'dashed' },
   derivedLabel: { fontFamily: fontFamily.native.semibold, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: statusText.sealed },

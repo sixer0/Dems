@@ -49,9 +49,12 @@
   }
 
   /* lg (1280–1599): the 1440 rows. */
+  /* Fix wave J (JW-18, headline 11): at 1440 x 900 and 1280 x 800 the four fixed rows did not hold their content - the
+     ring was clipped, the tiles and the Recent Events list were cut, labels overlapped. The rows keep their 1440 heights
+     as a MINIMUM and grow with their content; <main> scrolls where the page is taller than the window. */
   .dems-shell[data-shell-tier='lg'] .dems-page.dems-dash {
-    grid-template-rows: minmax(0, 280fr) minmax(0, 216fr) minmax(0, 156fr) minmax(0, 128fr);
-    height: max(700px, calc(100dvh - var(--shell-topbar-h) - 2 * var(--shell-pad)));
+    grid-template-rows: minmax(280px, auto) minmax(236px, auto) minmax(176px, auto) minmax(150px, auto);
+    min-height: max(700px, calc(100dvh - var(--shell-topbar-h) - 2 * var(--shell-pad)));
   }
 
   /* md (1024–1279, rail): stacked rows that size to content; the page scrolls. */
@@ -143,9 +146,8 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .dems-dash-head-action {
     margin-left: auto;
@@ -443,9 +445,8 @@
     font-size: clamp(0.65rem, 1.26cqw, 0.8125rem);
     line-height: 1.25;
     color: rgb(249 250 251 / 0.92);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .dems-strip-value {
     display: flex;
@@ -521,9 +522,8 @@
     font-size: 0.8125rem;
     line-height: 1.15rem;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   /* ── E: device tiles ───────────────────────────────────────────────────────────────── */
@@ -566,13 +566,26 @@
   }
   .dems-tile .dev-source-kind {
     min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
+  /* Fix wave J (JW-18): the role chip, the ring and the meter stood in one row that was wider than the tile - the chips
+     read "rimary" / "andby" and the level "-51 dB" was cut. The row wraps, and below 1600 px the decorative ring goes. */
   .dems-tile .dems-mic-body {
     gap: 6px;
-    overflow: hidden;
+    flex-wrap: wrap;
+    align-content: center;
+  }
+  .dems-shell:not([data-shell-tier='xl']) .dems-tile .dems-mic-ring {
+    display: none;
+  }
+  .dems-ring-demo,
+  .dems-strip-demo {
+    align-self: center;
+    margin-top: 4px;
+  }
+  .dems-dash-demo {
+    flex: none;
   }
   /* The ring is decoration (`aria-hidden`); beside a badge the role chip and the meter need its place. */
   .dems-tile:has(.dev-source-badge) .dems-mic-ring {
@@ -588,9 +601,8 @@
     font-size: 0.8125rem;
     line-height: 1.1rem;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .dems-tile-state {
     font-size: 0.6875rem;
@@ -716,18 +728,16 @@
     font-size: 0.75rem;
     line-height: 1rem;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
     max-width: 100%;
   }
   .dems-stn-line {
     font-size: 0.6875rem;
     line-height: 0.95rem;
     color: rgb(216 206 198 / 0.8);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
     max-width: 100%;
   }
   @container dash-card (max-width: 560px) {
@@ -791,15 +801,13 @@
   }
   .dems-event-title {
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .dems-event-detail {
     color: rgb(216 206 198 / 0.72);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
     text-align: right;
   }
 
@@ -886,9 +894,8 @@
     line-height: 1.15rem;
     font-weight: 500;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .dems-qa-subtitle {
     font-size: 0.6875rem;

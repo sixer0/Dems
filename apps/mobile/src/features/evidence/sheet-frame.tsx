@@ -12,18 +12,23 @@
  * Runtime-contract hooks (`useAuth`, …) do not reach portalled content either: sheets take what
  * they need as props.
  *
- * Under reduced motion the frame renders a kit `Dialog` instead of the sheet (see the reduced
- * branch below); the testIDs (`<testID>`, `<testID>-close`) are the same in both forms.
+ * Under reduced motion the frame is the SAME sheet with a short fade (fix wave J round two, JM-08 ruling); it
+ * used to be a kit `Dialog` there.
  */
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import { BottomSheet, CloseButton, Dialog } from 'heroui-native';
-import { useEffect, useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BottomSheet } from 'heroui-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { ReduceMotion } from 'react-native-reanimated';
+import { putKeyboardAway } from '@/lib/keyboard';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 import { SimContext, useSimInstance } from '@dems/shared/sim';
-import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
-import { useMotionPolicy } from '@/motion';
+import { spacing } from '@dems/shared/tokens';
+import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 
 export const SHEET_EXIT_MS = 450;
+// Fix wave J, JM-02: the confirmed open. Round two moved the rule to `@/lib/sheet-open` (every sheet of the app uses it).
+export { SHEET_OPEN_CHECK_MS, SHEET_OPEN_RETRIES, useConfirmedOpen } from '@/lib/sheet-open';
 
 export interface SheetPresence {
   /** Render the sheet at all. */
@@ -70,6 +75,11 @@ export interface SheetFrameProps {
   scroll?: boolean;
   /** Keep a drag inside the body from moving the sheet (the player's scrubber). */
   lockContentPan?: boolean;
+  /**
+   * Round two (JM-08 / JA2-20): false for a surface that holds typed input (the export wizard and its reason) - a
+   * tap outside or a drag down does not discard it; its Close button and Android Back do. Default true.
+   */
+  dismissOnOutsidePress?: boolean;
   children: ReactNode;
 }
 
@@ -83,6 +93,7 @@ export function SheetFrame({
   testID,
   scroll = false,
   lockContentPan = false,
+  dismissOnOutsidePress = true,
   children,
 }: SheetFrameProps) {
   const sim = useSimInstance();
@@ -93,50 +104,34 @@ export function SheetFrame({
   // The sheet therefore opens only once its body has reported a layout.
   const [laidOut, setLaidOut] = useState(false);
   if (!presence.mounted && laidOut) setLaidOut(false);
+  // JT-23 / JM-04: a sheet that closes takes the keyboard of its own field with it.
+  const wasOpen = useRef(isOpen);
+  useEffect(() => {
+    const closed = wasOpen.current && !isOpen;
+    wasOpen.current = isOpen;
+    return closed ? putKeyboardAway() : undefined;
+  }, [isOpen]);
+  // JM-02: the open is confirmed by the library's own report of a slide, and asked again when none came.
+  // Round two (JM-08 ruling: a multi-step or scrolling surface is a SHEET in both motion modes - it was a centred
+  // Dialog under reduced motion, a different thing with a different way out). The reduced form is the sheet with
+  // the short fade the app's other sheets use (`overrideReduceMotion`: a gorhom sheet never snapped open under
+  // the reduced-motion config), and its open is confirmed like every other.
+  const confirmed = useConfirmedOpen(presence.open && laidOut, onClose, { testID });
   if (!presence.mounted) return null;
   const body = (
     <SimContext.Provider value={sim}>
       <View onLayout={() => setLaidOut(true)}>{children}</View>
     </SimContext.Provider>
   );
-  if (reduced) {
-    // Reduced motion (OS setting, the in-app override or `?motion=off`): a kit Dialog, which
-    // cross-fades in place of the slide-up (03M §8). Device finding (step 83): under the kit's
-    // 'disable-all' the gorhom sheet's snap did not always run on a fresh start, leaving the sheet
-    // parked below the screen while its content (the player) was already running.
-    return (
-      <Dialog isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
-        <Dialog.Portal>
-          <Dialog.Overlay />
-          <Dialog.Content isSwipeable={false} testID={`${testID}-dialog`}>
-            <View style={styles.header} testID={testID}>
-              <View style={styles.headerText}>
-                <Text maxFontSizeMultiplier={1.2} accessibilityRole="header" style={styles.dialogTitle}>
-                  {title}
-                </Text>
-                {description ? (
-                  <Text maxFontSizeMultiplier={1.2} style={styles.dialogDescription}>
-                    {description}
-                  </Text>
-                ) : null}
-                {badges ? <View style={styles.badges}>{badges}</View> : null}
-              </View>
-              <CloseButton accessibilityLabel={closeLabel} testID={`${testID}-close`} onPress={onClose} />
-            </View>
-            <ScrollView style={styles.dialogScroll} keyboardShouldPersistTaps="handled">
-              <SimContext.Provider value={sim}>{children}</SimContext.Provider>
-            </ScrollView>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog>
-    );
-  }
-
   return (
-    <BottomSheet isOpen={presence.open && laidOut} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
-        <BottomSheet.Overlay />
+        <BottomSheet.Overlay isCloseOnPress={dismissOnOutsidePress} />
         <BottomSheet.Content
+          onAnimate={confirmed.onAnimate}
+          overrideReduceMotion={ReduceMotion.Never}
+          {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}
+          {...(dismissOnOutsidePress ? {} : { enablePanDownToClose: false })}
           {...(scroll
             ? {
                 snapPoints: ['92%'],
@@ -173,7 +168,4 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, gap: spacing[0] },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[1], marginTop: spacing[1] },
   scrollBody: { paddingBottom: spacing[5] },
-  dialogScroll: { maxHeight: 640 },
-  dialogTitle: { fontFamily: fontFamily.native.semibold, fontSize: typography.h3.size, lineHeight: typography.h3.lineHeight, color: palette.foreground },
-  dialogDescription: { fontFamily: fontFamily.native.normal, fontSize: typography.body.size, lineHeight: typography.body.lineHeight, color: palette.gray },
 });

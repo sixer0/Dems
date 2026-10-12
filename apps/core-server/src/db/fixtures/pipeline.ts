@@ -669,8 +669,12 @@ export function buildPipeline(world: World, identity: IdentityRows, recordings: 
     .sort((a, b) => a.startedAt - b.startedAt || a.sessionId.localeCompare(b.sessionId));
 
   // The 40 newest fixture recordings get the full chains whose head equals the track's column.
+  // Fix wave J (truth rule 3a): of the SEALED ones - the head lives on the item's track rows, and an item that was
+  // never sealed has no track row (it carries no hash at all).
+  const sealedSessions = new Set(recordings.recordings.filter((plan) => plan.sealed).map((plan) => plan.sessionId));
   const fullChains = new Set(
     [...recorded]
+      .filter((session) => sealedSessions.has(session.sessionId))
       .sort((a, b) => b.endedAt - a.endedAt || b.sessionId.localeCompare(a.sessionId))
       .slice(0, BULK_MIX.recordingFragments.fullChainSessions)
       .map((session) => session.sessionId),

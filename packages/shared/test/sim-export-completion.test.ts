@@ -12,6 +12,8 @@ import {
   exportEvidenceTransition,
   noteEvidenceExportDownloadTransition,
   type SimState,
+  EXPORT_COMPOSITE_UNAVAILABLE_REASON,
+  exportPhaseOfEvent,
 } from '../src/sim';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0);
@@ -31,12 +33,45 @@ describe('R93-03: the request and the completion of an export', () => {
   it('a DEFERRED request writes the request row and leaves the item as it was: no status, no custody entry', () => {
     const { state, evidenceId } = supervisorState();
     const before = itemOf(state, evidenceId);
-    const { state: requested, result } = exportEvidenceTransition(state, START + 1_000, evidenceId, { ...REQUEST, kind: 'COMPOSITE', completion: 'DEFERRED' });
+    // `compositeAvailable`: a Core that CAN produce a composite says so with the request (fix wave J) - the row then carries the kind.
+    const { state: requested, result } = exportEvidenceTransition(state, START + 1_000, evidenceId, { ...REQUEST, kind: 'COMPOSITE', completion: 'DEFERRED', compositeAvailable: true });
     expect(result).toEqual({ ok: true, status: 202, exportId: 'EXP-000032' });
     expect(itemOf(requested, evidenceId)).toEqual(before);
     const row = requested.audit.rows.at(-1);
     expect(row).toMatchObject({ type: 'EVIDENCE_EXPORTED', evidenceId, actorId: 'OPR-002', details: { exportId: 'EXP-000032', destination: 'Case file transfer', reason: 'Prosecutor request', kind: 'COMPOSITE' } });
     expect(row?.message).toContain('requested');
+    // Fix wave J (JW-03): the event of a request that only queued a job says REQUESTED - no client words it "Evidence exported".
+    expect(exportPhaseOfEvent(requested.events.at(-1))).toBe('REQUESTED');
+  });
+
+  it('fix wave J (truth rule 3d; JA2-03 / JW-03): a COMPOSITE the build cannot produce is refused before anything is recorded', () => {
+    const { state, evidenceId } = supervisorState();
+    for (const request of [{ ...REQUEST, kind: 'COMPOSITE' as const }, { ...REQUEST, kind: 'COMPOSITE' as const, completion: 'DEFERRED' as const }, { ...REQUEST, kind: 'COMPOSITE' as const, compositeAvailable: false }]) {
+      let thrown: unknown = null;
+      try {
+        exportEvidenceTransition(state, START + 1_000, evidenceId, request);
+      } catch (error) {
+        thrown = error;
+      }
+      // The refusal is thrown: no next state exists, so no export id was taken, no row and no event were written.
+      expect(thrown).toMatchObject({ name: 'SimTransitionError', code: 'COMMAND_UNSUPPORTED', reason: EXPORT_COMPOSITE_UNAVAILABLE_REASON, event: 'exportEvidence' });
+    }
+    expect(EXPORT_COMPOSITE_UNAVAILABLE_REASON).toBe('COMPOSITE_ENCODER_NOT_SELECTED');
+    // Control: the same request as a PACKAGE is accepted, and an unknown item is still 404 before the kind is looked at.
+    expect(exportEvidenceTransition(state, START + 1_000, evidenceId, { ...REQUEST, kind: 'PACKAGE' }).result).toMatchObject({ ok: true, status: 202 });
+    expect(exportEvidenceTransition(state, START + 1_000, 'EV-20260101-9999', { ...REQUEST, kind: 'COMPOSITE' }).result).toEqual({ ok: false, status: 404, reason: 'NOT_FOUND' });
+  });
+
+  it('fix wave J (JW-03): a request completed inside the request and the completion of a job both say COMPLETED; other events say nothing', () => {
+    const { state, evidenceId } = supervisorState();
+    const done = exportEvidenceTransition(state, START + 1_000, evidenceId, { ...REQUEST }).state;
+    expect(exportPhaseOfEvent(done.events.at(-1))).toBe('COMPLETED');
+    const requested = exportEvidenceTransition(state, START + 1_000, evidenceId, { ...REQUEST, completion: 'DEFERRED' }).state;
+    const completed = completeEvidenceExportTransition(requested, START + 9_000, { evidenceId, exportId: 'EXP-000032', operatorId: 'OPR-002', destination: 'Case file transfer' });
+    expect(exportPhaseOfEvent(completed.events.at(-1))).toBe('COMPLETED');
+    expect(exportPhaseOfEvent({ type: 'EVIDENCE_EXPORTED', params: { evidenceId } })).toBeNull();
+    expect(exportPhaseOfEvent({ type: 'EVIDENCE_SEALED', params: { exportPhase: 'REQUESTED' } })).toBeNull();
+    expect(exportPhaseOfEvent(null)).toBeNull();
   });
 
   it('the completion marks the item EXPORTED with ONE custody entry at the instant of the completion; nothing but the completion does', () => {

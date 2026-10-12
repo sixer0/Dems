@@ -36,11 +36,14 @@ import {
   OPERATORS,
   selectAuth,
   selectIsSignedIn,
+  SOFTWARE_VERSION,
   type Sim,
   type SimState,
 } from '@dems/shared/sim'
+import { en } from '@dems/shared/i18n'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
+import { WEB_CONSOLE_VERSION } from '@/lib/product-versions'
 import { getPresentationMode, PRESENTATION_MODE_STORAGE_KEY, resetPresentationModeForTests, setPresentationMode } from '@/lib/presentation-mode'
 import { REDUCED_MOTION_MEDIA_QUERY } from '@/motion'
 import { createAppRouter } from '@/router'
@@ -402,6 +405,19 @@ describe('the device strip (WS-5): what the Core server makes public', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 
+  // Fix wave J round three (JW-26; contract J2-S 2, client rule 5): before a sign-in a Live console
+  // states its OWN version by name; the Core states its own in the strip. The model's "v2.4.1" is the
+  // in-app simulator's (pinned by `features/login/__tests__/login-page.test.tsx`).
+  it('JW-26: the footer names the web console and its own version; the Core\'s version is the strip\'s; no model version', async () => {
+    await livePage()
+    await screen.findByTestId('page-login')
+    expect(screen.getByTestId('login-footer-version')).toHaveTextContent(`Web console ${WEB_CONSOLE_VERSION}`)
+    await waitFor(() => expect(screen.getByTestId('login-core-service')).toHaveTextContent('dems-core-server 0.2.0'))
+    expect(page().textContent).not.toContain(SOFTWARE_VERSION)
+    expect(page().textContent).not.toMatch(/v\d+\.\d+\.\d+/)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
   it('a health answer that failed says nothing: the cells read "Unknown", and sign-in is not blocked by it', async () => {
     // CPW1-3: an unreachable Core is the fake's OUTAGE, scripted before the page mounts, because the
     // bed answers the health reader while it lives.
@@ -572,7 +588,7 @@ describe('why the operator is on the page (WS-6, WS-14; §6.4, §6.5; AC-C-45)',
     await locked.bed.elapse(2_000, 500)
     await screen.findByTestId('page-login')
     await waitFor(() => expect(alertKind()).toBe('console-locked'))
-    expect(screen.getByTestId('login-alert')).toHaveTextContent('Console locked. Sign in again to continue.')
+    expect(screen.getByTestId('login-alert')).toHaveTextContent(en.login.notices.consoleLocked)
     expect(locked.live.live.lastSessionEnd).toMatchObject({ signOut: 'LOCK' })
     // `auth.status` has no value LOCKED: the store alone could not have said this.
     expect(selectAuth(locked.live.live.store.getState()).status).toBe(AuthStatus.SIGNED_OUT)

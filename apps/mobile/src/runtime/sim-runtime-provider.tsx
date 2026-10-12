@@ -50,6 +50,9 @@ import {
   type Sim,
   type SimErrorReport,
   type SimState,
+  Permission,
+  selectCan,
+  selectOperator,
 } from '@dems/shared/sim';
 import { bannerKindAfterResync, ConnectionBannerContext, connectionBannerFor, nextBannerKind, RESYNCED_BANNER_MS, type ConnectionBannerKind } from './connection-banner';
 import {
@@ -109,7 +112,12 @@ export function selectActiveSessionInfo(s: SimState): Required<ActiveSessionInfo
     state: session?.state ?? null,
     sessionId,
     startedAtMs: session?.startedAt ?? null,
-    summaryAcknowledged: pending === null || pending !== sessionId,
+    // Fix wave J (found on the tablet while proving JT-06; the hard form of JM-09): a TECHNICIAN who signed in
+    // while another operator's Summary was unacknowledged was HELD on it - Back was routed back, and "Done" is
+    // the acknowledgement, which needs SESSION_START. An operator who may not acknowledge is never routed to a
+    // Summary: for the route it counts as acknowledged (the Summary stays open to them from Sessions).
+    // (An unknown role - nobody signed in yet - is not such an operator: the rule below is about a KNOWN role.)
+    summaryAcknowledged: pending === null || pending !== sessionId || (selectOperator(s) !== null && !selectCan(s, Permission.SESSION_START)),
   };
 }
 

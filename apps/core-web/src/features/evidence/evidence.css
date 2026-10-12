@@ -209,7 +209,10 @@
     gap: var(--shell-gutter, 16px);
     align-items: start;
   }
-  @media (min-width: 1280px) {
+  /* Fix wave J (JW-10): beside the preview pane the table had 776 px at 1440 x 900 (669 px at 1280 x 800) for 908 px of
+     columns: the Status column was cut and the row menu lay outside the view. The pane stands beside the table only
+     where both fit (from 1600 px); below that the table has the whole width and a row opens the item. */
+  @media (min-width: 1600px) {
     .evi-list-grid {
       grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
     }
@@ -488,6 +491,16 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  /* Fix wave J (JW-14): the visible reasons of the disabled header actions. */
+  .evi-detail-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--color-foreground-2);
   }
 
   /* ── Detail ──────────────────────────────────────────────────────────────────── */
@@ -1282,6 +1295,24 @@
     /* Long transcripts: the browser skips the layout and paint of segments outside the viewport. */
     content-visibility: auto;
     contain-intrinsic-size: auto 56px;
+  }
+  /* Fix wave J (JW-12): the segment the playback is in, and the pressable time of a segment. */
+  .evi-transcript-segment[data-active='true'] {
+    background: rgb(255 200 107 / 0.1);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .evi-transcript-seek {
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .evi-transcript-seek:hover,
+  .evi-transcript-seek:focus-visible {
+    color: var(--accent);
   }
   .evi-transcript-segment[data-revised='true'] {
     box-shadow: inset 2px 0 0 var(--evi-violet);

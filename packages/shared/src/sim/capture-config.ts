@@ -49,7 +49,16 @@ const PROFILE_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 type AuditDetails = Record<string, string>;
 
-const invalid = (detail: string): SimTransitionError => new SimTransitionError(null, SET_CAPTURE_CONFIG_ACTION, detail, SimErrorCode.INVALID_INPUT);
+/**
+ * `reason`: the NAMED reason of the two refusals an operator can run into from a picker (fix wave J,
+ * finding JA2-24: "Choice not accepted - Nothing was changed" said no why). It travels as
+ * `details.reason` of the Core's `422 INVALID_INPUT` and as `SimTransitionError.reason`.
+ */
+const invalid = (detail: string, reason: string | null = null): SimTransitionError => new SimTransitionError(null, SET_CAPTURE_CONFIG_ACTION, detail, SimErrorCode.INVALID_INPUT, reason);
+/** The camera chosen for a track already feeds the other track with the same profile. */
+export const CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS = 'CAMERA_ON_BOTH_TRACKS';
+/** The microphone chosen for an input already is the other input's. */
+export const CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS = 'MIC_ON_BOTH_INPUTS';
 
 function deviceOf(state: SimState, deviceId: string, kind: CaptureDeviceStatus['kind']): CaptureDeviceStatus | null {
   const device = state.captureDevices.devices.find((candidate) => candidate.id === deviceId);
@@ -66,11 +75,11 @@ function inInputOrder(mics: CaptureConfigMic[]): CaptureConfigMic[] {
 function assertSelector(cameras: readonly CaptureConfigCamera[], mics: readonly CaptureConfigMic[]): void {
   const [first, second] = cameras;
   if (first !== undefined && second !== undefined && first.deviceId === second.deviceId && first.profile === second.profile) {
-    throw invalid('one camera on both tracks needs two profiles');
+    throw invalid('one camera on both tracks needs two profiles', CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS);
   }
   const [one, other] = mics;
   if (one !== undefined && other !== undefined && one.deviceId === other.deviceId) {
-    throw invalid('the two mic inputs need two devices');
+    throw invalid('the two mic inputs need two devices', CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS);
   }
 }
 

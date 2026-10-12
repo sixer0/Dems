@@ -1,8 +1,10 @@
+import { RoleReason } from '@/components/role-reason'
+import { publishPlaybackPosition, usePlaybackSeekRequests } from './playback-link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Slider, Spinner } from '@heroui/react'
 import { Pause, Play, RotateCcw, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Permission, selectCan, selectOperator, useSim, useSimInstance } from '@dems/shared/sim'
+import { Permission, selectCan, selectOperator, selectRole, useSim, useSimInstance } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { deferEffectStart } from '@/lib/effect-start'
 import { useWebLive } from '@/runtime'
@@ -132,6 +134,9 @@ function playSafely(element: HTMLMediaElement | null, source: string, context: R
   }
 }
 
+/** The roles the Core lets play sealed media (operation 88): the reason beside a refused player names them. */
+const PLAY_ROLES = ['INVESTIGATOR', 'SUPERVISOR'] as const
+
 /**
  * Playback of the sealed camera files of a schema-v2 item (blueprint row 92, M8-W3; UX spec flow 5;
  * R-3, R-4; WB-04): one HTML media element per camera file, fed by a signed media session of
@@ -190,6 +195,8 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const canView = useSim((s) => selectCan(s, Permission.EVIDENCE_VIEW))
   // The Core's own word for this caller and this item wins over the role hint (a case scope is not a role).
   const gate = mayPlay === false ? 'REFUSED' : permissionGate({ operatorKnown, permitted: canView })
+  // Wave J (JW-14): a role that plays in general but may not play THIS item (the Core's case scope) is not told "requires the role".
+  const rolePlays = useSim((s) => { const role = selectRole(s); return role === 'INVESTIGATOR' || role === 'SUPERVISOR' })
   const [phase, setPhase] = useState<Phase>(IDLE)
   const [playing, setPlaying] = useState(false)
   const [positionMs, setPositionMs] = useState(0)
@@ -230,6 +237,12 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   /** The open files that play: a file stopped at a fragment that does not authenticate is not one of them. */
   const playable = opened.filter((fileId) => integrityStops[fileId] === undefined)
   const leading = playable[0] ?? null
+  // Fix wave J (JT-10 / JW-12): the transcript of this item follows the playback and a press on a segment seeks
+  // (`playback-link.ts`). The position is published while a playback is open; a request before that opens it there.
+  const linkPhase = phase.kind
+  useEffect(() => {
+    publishPlaybackPosition(evidenceId, linkPhase === 'ready' ? positionMs : null)
+  }, [evidenceId, linkPhase, positionMs])
   // What the handlers that outlive a render (the stall watch, the Core's answer) read: kept after each commit.
   useEffect(() => {
     sessionsRef.current = sessions
@@ -560,6 +573,11 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
       if (element) setTime(element, target)
     }
   }
+  usePlaybackSeekRequests(evidenceId, (ms) => {
+    if (gate !== 'ALLOWED') return
+    if (linkPhase === 'ready') seekTo(ms / 1000)
+    else void open({ seconds: ms / 1000, play: true }, false)
+  })
 
   const onMediaError = (fileId: CameraFileId) => {
     // A file this player stopped itself holds no path: nothing it reports is a new fact.
@@ -644,6 +662,13 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
         <span className="evi-strong">{t('evidence.playback.title')}</span>
         <p className="evi-caption" data-testid={gate === 'REFUSED' ? 'evidence-playback-not-permitted' : undefined}>
           {mayPlay === false ? t('evidence.itemFacts.media.mayNotPlay') : gate === 'REFUSED' ? t('evidence.playback.notPermitted') : t('evidence.playback.note')}
+          {/* Fix wave J (JW-14): the disabled "Open playback" names the role that may play. */}
+          {gate === 'REFUSED' && !rolePlays ? (
+            <>
+              {' '}
+              <RoleReason permission={PLAY_ROLES} />
+            </>
+          ) : null}
         </p>
         <div>
           <Button variant="primary" onPress={() => void open(null, false)} isDisabled={gate !== 'ALLOWED' || opening} isPending={opening} data-testid="evidence-playback-open" data-gate={gate}>

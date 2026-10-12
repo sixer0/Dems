@@ -19,7 +19,9 @@ import {
   isFiltered,
   menuFilterCount,
   shortHash,
+  storedChainLine,
   stripEntries,
+  verdictStale,
 } from './audit-model';
 
 const textOf = () => '';
@@ -97,6 +99,27 @@ describe('audit model', () => {
     expect(inStrip.olderBreakSeq).toBeNull(); // the default target is 5 from the end
     const short = stripEntries(state.audit.rows, breakSeq, 3);
     expect(short.olderBreakSeq).toBe(breakSeq);
+  });
+
+  it('JA2-31: a verdict is stale once the break state of the chain changed, and only then', () => {
+    // FAIL at #176, the fault is cleared: the FAIL must not stand beside "Chain OK".
+    expect(verdictStale(176, null)).toBe(true);
+    // PASS, then a break appears.
+    expect(verdictStale(null, 12)).toBe(true);
+    // The break moved to another entry.
+    expect(verdictStale(176, 180)).toBe(true);
+    // Unchanged state (new entries alone do not change it): the verdict stands, with its time.
+    expect(verdictStale(176, 176)).toBe(false);
+    expect(verdictStale(null, null)).toBe(false);
+  });
+
+  it('JA2-31: under a FAIL the verified stored log names which chain broke; alone it keeps its own line', () => {
+    const ok = { ok: true, checked: 181, firstBadSeq: null };
+    expect(storedChainLine(ok)).toEqual({ key: 'features.audit.live.storedVerified', values: { seq: 181 } });
+    expect(storedChainLine(ok, true)).toEqual({ key: 'features.audit.live.storedVerified', values: { seq: 181 } });
+    expect(storedChainLine(ok, false)).toEqual({ key: 'features.audit.live.storedVerifiedAfterBreak', values: { seq: 181 } });
+    // A stored log that does not verify says so whatever the verdict above is.
+    expect(storedChainLine({ ok: false, checked: 41, firstBadSeq: 42 }, false)).toEqual({ key: 'features.audit.live.storedBroken', values: { seq: 42 } });
   });
 
   it('shows the hashed record without the English message fallback', () => {

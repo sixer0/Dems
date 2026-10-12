@@ -46,7 +46,7 @@ describe('a limit is not an outage (LB-10)', () => {
   it('a 429 is worded as a limit, with the seconds of `retry-after`', () => {
     const shown = describeCoreError(new LiveTransportError('UNAVAILABLE', { status: 429, code: 'RATE_LIMITED', retryAfterSeconds: 42, requestId: 'req-000022' }));
     expect(shown).toMatchObject({ kind: 'LIMIT', variant: 'warning', retryAfterSeconds: 42, outage: false, coalesced: true });
-    expect(text(shown!.label)).toBe('The Core server is limiting requests from this tablet');
+    expect(text(shown!.label)).toBe('The Core server is limiting requests from this device');
     expect(text(shown!.description)).toBe('Try again in 42 s.');
   });
 
@@ -108,7 +108,7 @@ describe('no answer from the Core server (LB-6, LB-7)', () => {
       const credentials = describeCoreError(new LiveTransportError('CORE_OFFLINE', { code }));
       // Nothing was sent: it is not the Core that is unreachable.
       expect(credentials).toMatchObject({ kind: 'CREDENTIALS', outage: false, variant: 'danger' });
-      expect(text(credentials!.label)).toBe('This tablet could not read its credential');
+      expect(text(credentials!.label)).toBe('This device could not read its credential');
       expect(text(credentials!.description)).toBe('Nothing was sent. Try again.');
     }
 

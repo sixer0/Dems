@@ -85,8 +85,19 @@ describe('operation 58 getSecurityStatus', () => {
     const body: SecurityStatus = response.json();
     expect(validateCoreApiResponse('getSecurityStatus', 200, body)).toEqual({ ok: true });
     const head = await storedHead(owner);
-    expect(body).toStrictEqual({ security: onTheWire(host.engine.slice('security')), auditHead: head.hash, auditTotal: head.seq });
-    expect(Object.keys(body)).toEqual(['security', 'auditHead', 'auditTotal']);
+    // Fix wave J (GM-02): the Core's own count of sealed items with / without a verification of record, over the whole evidence slice.
+    const items = host.engine.slice('evidence');
+    const sealed = items.filter((item) => item.sealedAt !== null);
+    const evidenceVerification = {
+      sealed: sealed.length,
+      passed: sealed.filter((item) => item.verification.status === 'PASS').length,
+      failed: sealed.filter((item) => item.verification.status === 'FAIL').length,
+      neverVerified: sealed.filter((item) => item.verification.status === 'NOT_RUN').length,
+    };
+    expect(evidenceVerification.sealed).toBeGreaterThan(0);
+    expect(evidenceVerification.sealed).toBeLessThan(items.length);
+    expect(body).toStrictEqual({ security: onTheWire(host.engine.slice('security')), auditHead: head.hash, auditTotal: head.seq, evidenceVerification });
+    expect(Object.keys(body)).toEqual(['security', 'auditHead', 'auditTotal', 'evidenceVerification']);
     // The head is the hash of the newest stored row, and the total its sequence.
     const newest = (await stored()).at(-1);
     expect([body.auditTotal, body.auditHead]).toEqual([newest?.seq, newest?.hash]);

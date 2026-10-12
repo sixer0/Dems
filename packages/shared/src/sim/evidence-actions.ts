@@ -32,7 +32,7 @@ import { exportIdFor } from './dataset';
 import { DATASET_EXPORT_SEQ } from './demo-alignment';
 import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from './errors';
 import { recordActivity, verifyAuditChain } from './events';
-import { EVIDENCE_STATUS_STAGE, verifyEvidenceItem } from './evidence';
+import { EVIDENCE_STATUS_STAGE, hasSealedValues, verifyEvidenceItem } from './evidence';
 import { signedInOperatorId } from './session-machine';
 import { cutText } from './text-cut';
 import type {
@@ -82,6 +82,12 @@ export function verifyEvidenceTransition(
   evidenceId: string,
 ): { state: SimState; result: EvidenceVerifyResult } {
   const item = findItem(state, evidenceId);
+  // Fix wave J (truth rule 3a; JA2-01 / JW-01): a never-sealed item has nothing a verification could
+  // compare. Refused as operations 42 and 43 refuse it (409 NOT_SEALED on a Core): no verdict, no
+  // custody entry, no audit row - the item is unchanged.
+  if (!hasSealedValues(item)) {
+    throw new SimTransitionError(null, 'verify', 'the item was never sealed: there is nothing sealed to verify', SimErrorCode.UNSEALED_EVIDENCE);
+  }
   const result = verifyEvidenceItem(item, now);
   const actorId = signedInOperatorId(state);
   const failed = result.tracks.filter((track) => !track.ok).map((track) => track.trackId);
@@ -142,6 +148,12 @@ const EXPORTABLE: readonly EvidenceStatus[] = [
 export interface DeferrableExportRequest extends ExportRequest {
   /** `DEFERRED`: the request row only. The completion is applied later by `completeEvidenceExportTransition`. */
   readonly completion?: 'DEFERRED' | undefined;
+  /**
+   * Fix wave J (truth rule 3d): true only when the Core that hands the request in CAN produce a
+   * composite (an encoder is selected). Absent - the in-app simulator, every Core of this build -
+   * a request of `kind: 'COMPOSITE'` is refused before anything is recorded.
+   */
+  readonly compositeAvailable?: boolean | undefined;
 }
 
 /** What a completed export job says of itself (the engine's export door hands it in). */
@@ -153,6 +165,28 @@ export interface EvidenceExportCompletion {
   readonly operatorId: string | null;
   /** The destination of the request, as its row holds it. */
   readonly destination: string;
+}
+
+/** `details.reason` of the refusal of a COMPOSITE export a build cannot produce (the export job's own failure code since row 91). */
+export const EXPORT_COMPOSITE_UNAVAILABLE_REASON = 'COMPOSITE_ENCODER_NOT_SELECTED';
+
+/** `params.exportPhase` of an `EVIDENCE_EXPORTED` event (fix wave J, JW-03): the request of a job, or an export that completed. */
+export const EXPORT_PHASE_REQUESTED = 'REQUESTED';
+export const EXPORT_PHASE_COMPLETED = 'COMPLETED';
+export type ExportPhase = typeof EXPORT_PHASE_REQUESTED | typeof EXPORT_PHASE_COMPLETED;
+
+/**
+ * What an `EVIDENCE_EXPORTED` event says of its export: `REQUESTED` (a job was queued; nothing is
+ * exported yet - a client words it "Export requested"), `COMPLETED`, or null when the event does
+ * not say (an event written before wave J, another event type): then it reads as before.
+ */
+export function exportPhaseOfEvent(event: unknown): ExportPhase | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const record = event as Record<string, unknown>;
+  if (record['type'] !== 'EVIDENCE_EXPORTED') return null;
+  const params = record['params'];
+  const phase = typeof params === 'object' && params !== null ? (params as Record<string, unknown>)['exportPhase'] : undefined;
+  return phase === EXPORT_PHASE_REQUESTED || phase === EXPORT_PHASE_COMPLETED ? phase : null;
 }
 
 /** A download of a finished export archive (the engine's export door hands it in). */
@@ -219,6 +253,11 @@ export function exportEvidenceTransition(
   }
   const item = state.evidence.find((existing) => existing.id === evidenceId);
   if (!item) return { state, result: { ok: false, status: 404, reason: 'NOT_FOUND' } };
+  // Fix wave J (truth rule 3d; JA2-03 / JW-03): an output this build cannot produce is refused before
+  // anything is recorded - unless the caller says the kind IS available (a Core with a selected encoder).
+  if (request?.kind === 'COMPOSITE' && request.compositeAvailable !== true) {
+    throw new SimTransitionError(null, 'exportEvidence', 'composite video is not available in this build', SimErrorCode.COMMAND_UNSUPPORTED, EXPORT_COMPOSITE_UNAVAILABLE_REASON);
+  }
   if (!EXPORTABLE.includes(item.status)) return { state, result: { ok: false, status: 409, reason: 'NOT_SEALED' } };
   if (state.security.state === 'FAULT') return { state, result: { ok: false, status: 409, reason: 'SECURITY_FAULT' } };
   const reason = typeof request?.reason === 'string' ? request.reason.trim() : '';
@@ -252,7 +291,8 @@ export function exportEvidenceTransition(
           type: 'EVIDENCE_EXPORTED',
           message: deferred ? `Evidence export requested · ${evidenceId}` : `Evidence exported · ${evidenceId}`,
           severity: deferred ? 'INFO' : 'SUCCESS',
-          params: { evidenceId, exportId },
+          // Fix wave J (JW-03): a request that only QUEUED a job is not "exported" yet - the event says which it is.
+          params: { evidenceId, exportId, exportPhase: deferred ? EXPORT_PHASE_REQUESTED : EXPORT_PHASE_COMPLETED },
         },
       }),
     },
@@ -279,7 +319,7 @@ export function completeEvidenceExportTransition(state: SimState, now: EpochMs, 
         type: 'EVIDENCE_EXPORTED',
         message: `Evidence exported · ${completion.evidenceId}`,
         severity: 'SUCCESS',
-        params: { evidenceId: completion.evidenceId, exportId: completion.exportId },
+        params: { evidenceId: completion.evidenceId, exportId: completion.exportId, exportPhase: EXPORT_PHASE_COMPLETED },
       },
     }),
   };

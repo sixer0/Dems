@@ -114,6 +114,23 @@ describe('the meters come from the socket (I8; CL-11b; [CS:S4-9])', () => {
     expect(b.fake.calls.length).toBe(calls);
   });
 
+  // Fix wave J, JM-05 (tablet, normal launch: the microphone cards were EMPTY for the first seconds of a recording -
+  // no meter, no number, no word - reproduced at 00:00:04). The canvas may paint late; the card's state line is
+  // React's and is there from the card's first render.
+  it('JM-05 - each microphone card states its input in words from its first render, before the meter has drawn anything', async () => {
+    const b = await openMonitor();
+    const WORDS = ['Waiting for the first level reading', 'Receiving audio', 'No signal', 'Not measured'];
+    for (const channel of [1, 2]) {
+      const line = screen.getByTestId(`monitor-mic-level-state-${channel}`);
+      expect(WORDS).toContain(String(line.props.children));
+    }
+    const at = b.fake.clock.now();
+    b.sendMeters({ 'AUDIO-01': meterFrame(-18, at, 1), 'AUDIO-02': meterFrame(-42, at, 1) });
+    await b.flush();
+    expect(screen.getByTestId('monitor-mic-level-state-1')).toHaveTextContent('Receiving audio');
+    expect(screen.getByTestId('monitor-mic-level-state-2')).toHaveTextContent('Receiving audio');
+  });
+
   it('20 frames cost no React render (the shared-value path; MA-16 in LIVE)', async () => {
     let commits = 0;
     const b = await openMonitor({ onRender: () => (commits += 1) });
@@ -342,7 +359,7 @@ describe('Simulated mode is unchanged', () => {
     expect(feed()).toEqual({ shutterSignal: before.shutterSignal + 1, snapshotSignal: before.snapshotSignal + 1 });
     // DELIBERATE PIN CHANGE (wave H closing pass Z2, G70-04): an idle control now STATES `busy: false` (`busyState`); it is never marked busy.
     expect(screen.getByTestId('monitor-action-snapshot').props.accessibilityState?.busy).toBe(false);
-    expect(toastShown('Snapshot captured')).toBe(true);
+    expect(toastShown('Snapshot marked on the timeline. No image is stored.')).toBe(true);
 
     // The bed's reset switches motion off (the device test switch): the Dialog opens on a tap.
     fireEvent.press(screen.getByTestId('monitor-end-session'));

@@ -17,6 +17,7 @@ import { settingsEn } from '@/features/settings/i18n';
 import { storageEn } from '@/features/storage/i18n';
 import { transcriptionEn } from '@/features/transcription/i18n';
 import { navigationEn } from '@/navigation/i18n';
+import { alertsEn } from '@/features/alerts/i18n';
 import type { ResourceTree } from './resources';
 
 /**
@@ -28,6 +29,7 @@ import type { ResourceTree } from './resources';
  * navigation shell's own copy (`src/navigation/i18n.ts`: not-found, stubs, the session-busy toast).
  */
 export const FEATURE_RESOURCES: Readonly<Record<string, ResourceTree>> = {
+  alerts: alertsEn,
   audit: auditEn,
   'capture-selector': captureSelectorEn,
   dashboard: dashboardEn,

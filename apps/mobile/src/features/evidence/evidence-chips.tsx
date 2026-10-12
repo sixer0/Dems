@@ -6,7 +6,7 @@
  * Both are the kit recipes (`StatusChip`, `SubjectTypeChip`).
  */
 import type { ChipProps } from 'heroui-native';
-import { Archive, Circle, Eye, Lock, Upload, type LucideIcon } from 'lucide-react-native';
+import { Archive, Circle, Eye, Lock, ShieldAlert, Upload, type LucideIcon } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import type { EvidenceStatus, SubjectType } from '@dems/shared/sim';
 import { StatusChip, SubjectTypeChip } from '@/components/kit';
@@ -22,11 +22,26 @@ const STATUS_ICONS: Record<EvidenceStatusIcon, LucideIcon> = {
 
 export interface EvidenceStatusChipProps extends Omit<ChipProps, 'color' | 'children'> {
   status: EvidenceStatus;
+  /**
+   * Fix wave J (JT-04, truth rule 3b; contract J-S 8): `verificationOfRecordFailed(item)`. An item whose
+   * verification of record FAILED never reads plain "Sealed": the chip says "Sealed · verification FAILED" in
+   * the danger tone, wherever the status is drawn (list row, item header, Status fact).
+   */
+  verificationFailed?: boolean;
 }
 
-export function EvidenceStatusChip({ status, size = 'sm', ...chipProps }: EvidenceStatusChipProps) {
+/** The words of an item's status: the status, or the failed verification of record (JT-04). */
+export function useEvidenceStatusLabel(): (status: EvidenceStatus, verificationFailed: boolean) => string {
+  const { t } = useTranslation();
+  return (status, verificationFailed) => (verificationFailed ? t('common.truth.sealedVerificationFailed') : t(`common.evidenceStatus.${status}`));
+}
+
+export function EvidenceStatusChip({ status, verificationFailed = false, size = 'sm', ...chipProps }: EvidenceStatusChipProps) {
   const { t } = useTranslation();
   const spec = EVIDENCE_STATUS_SPEC[status];
+  if (verificationFailed) {
+    return <StatusChip {...chipProps} size={size} tone="danger" icon={ShieldAlert} label={t('common.truth.sealedVerificationFailed')} />;
+  }
   return (
     <StatusChip
       {...chipProps}

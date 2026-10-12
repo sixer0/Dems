@@ -11,7 +11,10 @@
  *   `transition_animation_scale == 0`, VM-06);
  * - the in-app override (Settings → App Preferences → Reduce motion, persisted);
  * - the D43 test switch `?motion=off` on any deep link (pauses every ambient loop so uiautomator
- *   and Maestro can reach idle).
+ *   and Maestro can reach idle);
+ * - the animation runtime of this process has stopped answering (`uiRuntimeStalled`, fix wave J,
+ *   JM-01; `./ui-runtime-watch`): for the rest of the process the app draws every state still, so
+ *   that one failed animation can never take a screen away.
  *
  * Proof mode `?motion=slow` (§7.1, M-PX-02) multiplies durations ×10 while the policy is full.
  * `?debug=1` shows the performance overlay (§3.5, §7.8). Deep-link switches are sticky for the
@@ -27,7 +30,7 @@ import type { MotionPolicy, MotionSettings } from './tokens';
 export type LinkMotionMode = 'default' | 'slow' | 'off';
 
 /** Why the policy is reduced (for the debug overlay and logs). */
-export type ReducedReason = 'os' | 'override' | 'test';
+export type ReducedReason = 'os' | 'override' | 'test' | 'runtime';
 
 export interface MotionStateData {
   /** Live OS reduce-motion setting. */
@@ -42,6 +45,18 @@ export interface MotionStateData {
   readonly debugOverlay: boolean;
   /** False while the app is in the background: ambient loops pause (§7.1 Loops). */
   readonly appActive: boolean;
+  /**
+   * True once the animation runtime stopped answering its heartbeat or reported an error
+   * (`./ui-runtime-watch`, JM-01). After a reported error it is never set back in a running process (only a new
+   * process has a new runtime); a mere missed heartbeat is taken back when the heartbeat answers again.
+   */
+  readonly uiRuntimeStalled: boolean;
+  /**
+   * Set when the runtime REPORTED an error (certain, unlike a missed heartbeat): `restarting` while the app
+   * starts itself again, `held` when it did so less than a minute ago and now waits for the operator.
+   * `UiRuntimeBoundary` shows a plain notice instead of the screens while this is set.
+   */
+  readonly uiRuntimeFault: 'restarting' | 'held' | null;
   /** True once the persisted prefs were read (or the read failed). */
   readonly prefsHydrated: boolean;
   /** Last persistence failure, for Settings to show a toast; `null` when fine. */
@@ -57,6 +72,10 @@ export interface MotionActions {
   /** Settings → Performance overlay (debug builds). Session only. */
   setDebugOverlay(enabled: boolean): void;
   setAppActive(active: boolean): void;
+  /** The animation runtime stopped answering (JM-01): reduced policy for the rest of the process. */
+  markUiRuntimeStalled(fault?: 'restarting' | 'held'): void;
+  /** The heartbeat answered again after a mere suspicion (no reported error): back to the normal policy. */
+  clearUiRuntimeSuspicion(): void;
   /** Applies the `motion` and `debug` query parameters of a deep link, if present. */
   applyLinkingUrl(url: string | null | undefined): void;
   /** Applies persisted prefs, except fields the user changed before hydration finished. */
@@ -72,6 +91,8 @@ export const INITIAL_MOTION_STATE: MotionStateData = {
   linkMotion: 'default',
   debugOverlay: false,
   appActive: true,
+  uiRuntimeStalled: false,
+  uiRuntimeFault: null,
   prefsHydrated: false,
   prefsError: null,
 };
@@ -80,26 +101,30 @@ export const INITIAL_MOTION_STATE: MotionStateData = {
 // Pure functions
 // ---------------------------------------------------------------------------------------------
 
-export function reducedReasons(s: Pick<MotionStateData, 'osReduceMotion' | 'reduceMotionOverride' | 'linkMotion'>): ReducedReason[] {
+/** `uiRuntimeStalled` is optional for callers that hold the three switches only (absent = false). */
+export type PolicyInputs = Pick<MotionStateData, 'osReduceMotion' | 'reduceMotionOverride' | 'linkMotion'> & Partial<Pick<MotionStateData, 'uiRuntimeStalled'>>;
+
+export function reducedReasons(s: PolicyInputs): ReducedReason[] {
   const reasons: ReducedReason[] = [];
   if (s.osReduceMotion) reasons.push('os');
   if (s.reduceMotionOverride) reasons.push('override');
   if (s.linkMotion === 'off') reasons.push('test');
+  if (s.uiRuntimeStalled) reasons.push('runtime');
   return reasons;
 }
 
 /** `'reduced'` when the OS setting, the override or the D43 test switch is on (§7.7). */
-export function resolvePolicy(s: Pick<MotionStateData, 'osReduceMotion' | 'reduceMotionOverride' | 'linkMotion'>): MotionPolicy {
+export function resolvePolicy(s: PolicyInputs): MotionPolicy {
   return reducedReasons(s).length > 0 ? 'reduced' : 'full';
 }
 
 /** Proof mode applies only under full motion. */
-export function resolveSlow(s: Pick<MotionStateData, 'osReduceMotion' | 'reduceMotionOverride' | 'linkMotion'>): boolean {
+export function resolveSlow(s: PolicyInputs): boolean {
   return s.linkMotion === 'slow' && resolvePolicy(s) === 'full';
 }
 
-export function resolveSettings(s: Pick<MotionStateData, 'osReduceMotion' | 'reduceMotionOverride' | 'linkMotion'>): MotionSettings {
-  return { policy: resolvePolicy(s), slow: resolveSlow(s) };
+export function resolveSettings(s: PolicyInputs): MotionSettings {
+  return s.uiRuntimeStalled ? { policy: 'reduced', slow: false, still: true } : { policy: resolvePolicy(s), slow: resolveSlow(s) };
 }
 
 /** HeroUI Native global animation switch for a policy (§3.2 item 7, VM-04). */
@@ -200,6 +225,16 @@ export const motionStore = createStore<MotionState>()((set, get) => ({
 
   setAppActive(active) {
     if (get().appActive !== active) set({ appActive: active });
+  },
+
+  markUiRuntimeStalled(fault) {
+    const s = get();
+    if (!s.uiRuntimeStalled || (fault !== undefined && s.uiRuntimeFault !== fault)) set({ uiRuntimeStalled: true, uiRuntimeFault: fault ?? s.uiRuntimeFault });
+  },
+
+  clearUiRuntimeSuspicion() {
+    const s = get();
+    if (s.uiRuntimeStalled && s.uiRuntimeFault === null) set({ uiRuntimeStalled: false });
   },
 
   applyLinkingUrl(url) {

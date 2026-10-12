@@ -11,7 +11,8 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-
 import { FaultKind, selectAuditChainBreak } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { renderAuditApp, runSessionFlow, settle } from './testing/audit-harness';
-import { pressMenuItem } from './testing/kit-helpers';
+import type { ReactTestInstance } from 'react-test-renderer';
+import { layoutAncestors, pressMenuItem, stubMeasure } from './testing/kit-helpers';
 
 /** Rendered row numbers in DOM order (FlashList keeps data order on a fresh mount; a recycled cell may sit anywhere). */
 function visibleSeqs(): number[] {
@@ -113,6 +114,23 @@ describe('Operator Audit View', () => {
 
     pressMenuItem('audit-filter-menu', 'audit-severity-ALL');
     await settle();
+    // Fix wave J (JA2-16): the "More filters" menu is a kit Menu: a modal `menu`, its two groups named by
+    // their labels, and every choice a `menuitem` that states whether it is the checked one.
+    stubMeasure('audit-filter-menu');
+    fireEvent.press(screen.getByTestId('audit-filter-menu'));
+    layoutAncestors('audit-severity-ALL');
+    const all = screen.getByTestId('audit-severity-ALL', { includeHiddenElements: true });
+    const warning = screen.getByTestId('audit-severity-WARNING', { includeHiddenElements: true });
+    expect(all.props.role).toBe('menuitem');
+    expect(all.props.accessibilityState).toMatchObject({ checked: true });
+    expect(warning.props.accessibilityState).toMatchObject({ checked: false });
+    let menu: ReactTestInstance | null = all;
+    while (menu !== null && menu.props.role !== 'menu') menu = menu.parent;
+    expect(menu?.props['aria-modal']).toBe(true);
+    expect(within(menu!).getByText('Severity', { includeHiddenElements: true }).props.accessibilityRole).toBe('header');
+    expect(within(menu!).getByText('Operator', { includeHiddenElements: true }).props.accessibilityRole).toBe('header');
+    fireEvent.press(all);
+    await settle();
     await search('no-such-entry');
     expect(screen.getByTestId('audit-empty')).toBeTruthy();
     fireEvent.press(screen.getByTestId('audit-clear-filters'));
@@ -128,6 +146,15 @@ describe('Operator Audit View', () => {
     await settle();
     fireEvent(screen.getByTestId('sheet-content-signal'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 600 } } });
     await settle();
+    // Fix wave J (JA2-16): the sheet library wraps a sheet in ONE accessible node named "Bottom Sheet"
+    // by default, which hides the content from a screen reader. The frame turns that off, marks its
+    // content as a modal view, and every control keeps its own name.
+    const chain: ReactTestInstance[] = [];
+    for (let node: ReactTestInstance | null = screen.getByTestId('audit-sheet'); node !== null; node = node.parent) chain.push(node);
+    expect(chain.some((node) => node.props.accessibilityViewIsModal === true)).toBe(true);
+    expect(chain.some((node) => node.props.accessible === false && node.props.accessibilityRole === 'none')).toBe(true);
+    expect(chain.some((node) => node.props.accessibilityLabel === 'Bottom Sheet')).toBe(false);
+    expect(screen.getByTestId('audit-sheet-close').props.accessibilityLabel).toBe('Close');
     const detail = screen.getByTestId(`audit-detail-${row.seq}`);
     expect(within(detail).getByTestId('audit-detail-time')).toHaveTextContent(/UTC\+07:00$/);
     expect(within(detail).getByTestId('audit-detail-prev-hash')).toHaveTextContent(row.prevHash);
@@ -160,7 +187,9 @@ describe('Operator Audit View', () => {
     await waitFor(() => expect(screen.getByTestId('audit-verify-FAIL')).toBeTruthy());
     const verify = h.sim.actions.verifyAuditChain();
     expect(verify.ok ? null : verify.seq).toBe(breakSeq);
-    expect(screen.getByTestId('audit-verify-text')).toHaveTextContent(`Breaks at entry #${breakSeq}: Hash mismatch`);
+    // A fresh verdict agrees with the chain: it is drawn as the verdict, and it carries its time (JA2-31).
+    expect(screen.queryByTestId('audit-verify-stale')).toBeNull();
+    expect(screen.getByTestId('audit-verify-text')).toHaveTextContent(new RegExp(`^Breaks at entry #${breakSeq}: Hash mismatch \\(checked at \\d\\d:\\d\\d:\\d\\d\\)$`));
 
     // "Show entry" opens the broken entry; its hash no longer matches its content.
     fireEvent.press(screen.getByTestId('audit-tamper-show'));
@@ -180,8 +209,23 @@ describe('Operator Audit View', () => {
     await settle();
     expect(screen.getByTestId('audit-chain-chip-ok')).toBeTruthy();
     expect(screen.queryByTestId('audit-tamper-alert')).toBeNull();
+    // Fix wave J (JA2-31): the chain's state changed after the verdict. No FAIL stands beside "Chain OK":
+    // the verdict is an earlier check, with its time, what it found, and "Verify again".
+    expect(screen.queryByTestId('audit-verify-FAIL')).toBeNull();
+    expect(within(screen.getByTestId('audit-verify-stale')).getByText('Earlier check')).toBeTruthy();
+    expect(screen.getByTestId('audit-verify-text')).toHaveTextContent(
+      new RegExp(`^At \\d\\d:\\d\\d:\\d\\d the check found a break at entry #${breakSeq}\\. The chain has changed since then\\. Verify again\\.$`),
+    );
     fireEvent.press(screen.getByTestId('audit-verify'));
     await waitFor(() => expect(screen.getByTestId('audit-verify-PASS')).toBeTruthy());
+    expect(screen.queryByTestId('audit-verify-stale')).toBeNull();
+
+    // The other direction: a PASS, then a break appears. The PASS does not stand beside "Discontinuity".
+    act(() => h.sim.actions.inject(FaultKind.AUDIT_TAMPER));
+    await settle();
+    expect(screen.getByTestId('audit-chain-chip-broken')).toBeTruthy();
+    expect(screen.queryByTestId('audit-verify-PASS')).toBeNull();
+    expect(screen.getByTestId('audit-verify-text')).toHaveTextContent(/the check passed over \d+ entries\. The chain has changed since then\. Verify again\.$/);
   });
 
   it('Live inserts new entries with the fresh highlight; Live off holds them back until Resume', async () => {

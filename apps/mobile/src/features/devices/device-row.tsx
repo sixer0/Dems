@@ -27,7 +27,7 @@ import { useSim } from '@dems/shared/sim';
 import { PreviewThumb, useRealCaptureView } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
-import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, type DeviceId, type DeviceStatus } from './devices-model';
+import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, relayWords, type DeviceId, type DeviceStatus } from './devices-model';
 import { useBookPoe, useCamera, useIsRecording, useMic, useSourceRow } from './use-devices-data';
 
 export interface DeviceRowProps {
@@ -116,7 +116,6 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
             mic={mic}
             variant="compact"
             paused={!focused || testSwitch}
-            holdReadout={testSwitch}
             style={styles.inlineMeter}
             testID={`device-row-meter-${deviceId}`}
           />
@@ -156,15 +155,17 @@ function PoeRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
 function RelayRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const { t } = useTranslation();
   const recording = useIsRecording();
+  // Fix wave J (JA2-33): one statement from the Core's session fact - "Lamp off" at rest, never "Active" beside a red beacon.
+  const words = relayWords(status, recording);
   return (
     <RowFrame
       deviceId={deviceId}
       selected={selected}
       onPress={onPress}
       name={t(DEVICE_NAME_KEY[deviceId])}
-      statusText={recording ? t('devices.other.recordingLamp') : t(STATUS_LABEL_KEY[status])}
-      prefix={<RecLamp lit={recording} />}
-      suffix={<DeviceStatusDot status={status} testID={`device-status-${deviceId}`} />}
+      statusText={t(words.key)}
+      prefix={<RecLamp lit={words.lit} fault={words.fault} />}
+      suffix={words.fault || words.lit ? <DeviceStatusDot status={status} label={t(words.key)} testID={`device-status-${deviceId}`} /> : <NeutralWord text={t(words.key)} testID={`device-status-${deviceId}`} />}
     />
   );
 }
@@ -204,7 +205,8 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
         testID={`device-row-${deviceId}`}
         accessibilityRole="button"
         accessibilityState={{ selected }}
-        accessibilityLabel={t('features.devices.list.rowLabel', { name, detail: detail ?? '', status: statusText })}
+        // Fix wave J (JA2-27): a row without a detail line has no empty middle ("PoE Switch, , 1 active").
+        accessibilityLabel={detail ? t('features.devices.list.rowLabel', { name, detail, status: statusText }) : `${name}, ${statusText}`}
         accessibilityHint={t('features.devices.list.rowHint')}
         onPress={() => onPress(deviceId)}
         style={[styles.item, selected ? styles.itemSelected : null]}
@@ -216,15 +218,19 @@ function RowFrame({ deviceId, selected, onPress, name, detail, statusText, prefi
             {name}
           </Text>
           {detail ? (
-            <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.detail}>
+            <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.detail}>
               {detail}
             </Text>
           ) : null}
           {extra}
-          {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class. */}
-          <DevelopmentSourceBadge deviceId={deviceId} testID={`device-row-source-${deviceId}`} />
+          {/* Task 3 row 138 (ux §8f.2 "Devices rows"): the one "Development source" badge; no node when the Core sent no class.
+              Fix wave J (JT-14): the badge and the state chip are pressables of the kit - inside the row they take no
+              touch, so a tap anywhere on the row opens the detail. */}
+          <View pointerEvents="none" testID={`device-row-source-wrap-${deviceId}`}>
+            <DevelopmentSourceBadge deviceId={deviceId} testID={`device-row-source-${deviceId}`} />
+          </View>
         </ListGroup.ItemContent>
-        <ListGroup.ItemSuffix style={styles.suffix}>
+        <ListGroup.ItemSuffix style={styles.suffix} pointerEvents="none">
           {suffix}
           <ChevronRight size={20} color={palette.gold} />
         </ListGroup.ItemSuffix>
@@ -244,7 +250,15 @@ function IconTile({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
 }
 
 /** V4: the room lamp. Lit while recording; the halo breathes (`glowBreath`, ≤ 0.42 Hz). */
-function RecLamp({ lit }: { lit: boolean }) {
+function NeutralWord({ text, testID }: { text: string; testID: string }) {
+  return (
+    <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.muted} testID={testID} accessibilityLabel={text}>
+      {text}
+    </Text>
+  );
+}
+
+function RecLamp({ lit, fault = false }: { lit: boolean; fault?: boolean }) {
   const m = useMotionSettings();
   const focused = useIsFocused();
   const running = useAmbientLoop('devices-rec-lamp', { active: lit, paused: !focused });
@@ -258,7 +272,8 @@ function RecLamp({ lit }: { lit: boolean }) {
   return (
     <View style={styles.iconTile} testID="device-rec-lamp" accessibilityState={{ checked: lit }}>
       <Animated.View pointerEvents="none" style={[styles.lampHalo, haloStyle]} testID={lit ? 'device-rec-lamp-lit' : undefined} />
-      <Siren size={24} color={palette.danger} fill={lit ? withAlpha(palette.danger, 0.35) : 'none'} />
+      {/* Fix wave J (JA2-33): red only while it is lit or faulty; an unlit lamp is grey. */}
+      <Siren size={24} color={lit || fault ? palette.danger : palette.gray} fill={lit ? withAlpha(palette.danger, 0.35) : 'none'} />
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
@@ -48,6 +49,8 @@ export function StoragePanel({ id, icon: Icon, title, action, className, bodyCla
           <Icon className="stor-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="stor-card-title">{title}</h2>
           {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
+          {/* Fix wave J (JW-07): the demonstration Core's storage values are marked on every panel. */}
+          <DemoMark block={`storage-${id}`} />
           {action ? <div className="stor-card-action">{action}</div> : null}
         </div>
         <div className={cn('stor-card-body', bodyClassName)}>

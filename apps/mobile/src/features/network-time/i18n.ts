@@ -19,6 +19,10 @@ export const networkTimeEn = {
     bandwidthUp: '↑ {{value}} Mbps',
     bandwidthLabel: 'Bandwidth {{down}} Mbps down, {{up}} Mbps up',
     poeLabel: 'PoE Network, {{state}}, {{active}} of {{total}} ports',
+    // Fix wave J (JT-03 / JW-04): a Core in its own capture reads no LAN, PoE or bandwidth figure.
+    notReportedLabel: '{{name}}, Not reported',
+    headerNotReported: 'Network: Not reported',
+    notReportedNote: 'This Core does not report its network. Only the link of this device to the Core is known.',
   },
   time: {
     title: 'Time Synchronization',
@@ -53,7 +57,9 @@ export const networkTimeEn = {
     gateway: 'Gateway',
     poePorts: 'PoE ports',
     poeBudget: 'PoE power',
-    tablet: 'Tablet link',
+    tablet: 'Device link',
+    // Fix wave J (JT-03): the chip's label of this device's own link, device-neutral.
+    deviceState: { CONNECTED: 'Connected', OFFLINE: 'Offline' },
   },
   errors: {
     panel: 'This card could not be displayed. The rest of the screen keeps working.',

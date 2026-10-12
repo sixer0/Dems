@@ -16,6 +16,7 @@
 import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterEach, beforeEach, describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
+import { expectPressOutsideDismisses, pressOutside } from '@/test/press-outside'
 import { en } from '@dems/shared/i18n'
 import type { EvidenceItem } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
@@ -34,7 +35,11 @@ import {
   revisionRequestOf,
   validateRevisionText,
   REVISION_TEXT_MAX,
+  segmentNumberOf,
+  TRANSCRIPT_TAIL_NOTICE_MS,
+  transcriptTailOf,
 } from '../transcript-model'
+import { enWeb } from '@/i18n-web'
 import { clearToasts, EV, evidenceWith, findDetailBody, installJsdomStubs, openLiveEvidence, toastWith, type LiveEvidence } from './live-evidence-bed'
 import { asReal, H, openItem, setupPage, teardownPage, UI } from './real-item-bed'
 
@@ -248,6 +253,62 @@ describe("the transcript of an item: the document, its revisions, the pane (row 
       // The typed text is in no record of the page.
       expect(JSON.stringify(webErrorSink.records())).not.toContain('Fausi')
       expect(getMissingI18nKeys()).toEqual([])
+    })
+  })
+
+  // Fix wave J round three (notes N-13 and N-19 of `report/judging_b1_web.md`).
+  describe('N-13 / N-19: what the operator reads of a segment and of the transcript\'s reach', () => {
+    it('N-13: the operator counts segments from 1 - the dialog of the second segment (index 1) is "Revise segment 2"; the request keeps index 1', async () => {
+      expect([0, 1, 3].map(segmentNumberOf)).toEqual([1, 2, 4])
+      await openPane()
+      await screen.findByTestId('evidence-transcript-segments', {}, UI)
+      expect(screen.getByTestId('evidence-transcript-segment-1').getAttribute('aria-label')).toMatch(/^Segment 2, /)
+      fireEvent.click(screen.getByTestId('evidence-transcript-revise-1'))
+      const dialog = await screen.findByTestId('transcript-revise-dialog')
+      expect(dialog).toHaveTextContent('Revise segment 2')
+      expect(dialog.getAttribute('aria-label')).toBe('Revise segment 2')
+      fireEvent.change(screen.getByTestId('transcript-revise-text'), { target: { value: 'Baik, saya Ahmad Fausi.' } })
+      fireEvent.change(screen.getByTestId('transcript-revise-note'), { target: { value: 'Koreksi nama' } })
+      fireEvent.click(screen.getByTestId('transcript-revise-save'))
+      await waitFor(() => expect(requests('createTranscriptRevision')).toHaveLength(1))
+      expect(requests('createTranscriptRevision')[0]?.body).toMatchObject({ changes: [{ segmentIndex: 1 }] })
+    })
+
+    it('N-19: a transcript that ends well before the recording does is said to, with both times; one that reaches the end, an empty one and an unknown length say nothing', () => {
+      // The judge's item: four segments to 0:16 of a 2:02 recording.
+      const segments = [{ endMs: 4_000 }, { endMs: 9_000 }, { endMs: 16_000 }, { endMs: 12_000 }]
+      expect(transcriptTailOf(segments, 122_000)).toEqual({ lastEndMs: 16_000, durationMs: 122_000 })
+      expect(enWeb.web.waveJ3.transcript.tail.replaceAll('{{last}}', '0:16').replace('{{duration}}', '2:02')).toBe('The last transcribed segment ends at 0:16. The recording runs 2:02: this transcript has no text after 0:16.')
+      // CONTROLS
+      expect(transcriptTailOf(segments, 16_000 + TRANSCRIPT_TAIL_NOTICE_MS - 1)).toBeNull()
+      expect(transcriptTailOf(segments, 16_000 + TRANSCRIPT_TAIL_NOTICE_MS)).not.toBeNull()
+      expect(transcriptTailOf([], 122_000)).toBeNull()
+      expect(transcriptTailOf(segments, null)).toBeNull()
+      expect(transcriptTailOf(segments, 0)).toBeNull()
+    })
+  })
+
+  // Fix wave J (JW-16; "by code only" in round one, proven here): a press outside the Revise dialog closed it and
+  // discarded the typed correction and its reason without a question.
+  describe('JW-16: the Revise dialog keeps what was typed', () => {
+    it('a press outside does not close it and loses nothing; Escape and Cancel close it; nothing is sent', async () => {
+      // THE CONTROL of the helper: the same press closes a kit dialog that is dismissable.
+      await expectPressOutsideDismisses()
+      await openPane()
+      await screen.findByTestId('evidence-transcript-segments', {}, UI)
+      fireEvent.click(screen.getByTestId('evidence-transcript-revise-1'))
+      await screen.findByTestId('transcript-revise-dialog')
+      fireEvent.change(screen.getByTestId('transcript-revise-text'), { target: { value: 'Baik, saya Ahmad Fawzi.' } })
+      fireEvent.change(screen.getByTestId('transcript-revise-note'), { target: { value: 'Ejaan nama' } })
+      await pressOutside()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(screen.getByTestId('transcript-revise-dialog')).toBeInTheDocument()
+      expect((screen.getByTestId('transcript-revise-text') as HTMLTextAreaElement).value).toBe('Baik, saya Ahmad Fawzi.')
+      expect((screen.getByTestId('transcript-revise-note') as HTMLTextAreaElement).value).toBe('Ejaan nama')
+      // Escape is the keyboard's way out.
+      fireEvent.keyDown(screen.getByTestId('transcript-revise-dialog'), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByTestId('transcript-revise-dialog')).toBeNull())
+      expect(requests('createTranscriptRevision')).toHaveLength(0)
     })
   })
 

@@ -25,7 +25,7 @@ import {
   DEMO_TAMPERED_EVIDENCE_SEQ,
   DEMO_TAMPERED_TRACK,
 } from './demo-alignment';
-import { buildItemIntegrity, EVIDENCE_STATUS_STAGE } from './evidence';
+import { buildItemIntegrity, EVIDENCE_STATUS_STAGE, neverSealedShape } from './evidence';
 import type {
   CustodyEntry,
   DeviceIdentity,
@@ -770,7 +770,9 @@ export function buildHistory(now: EpochMs): HistoryBuild {
       });
     }
 
-    evidence.push({
+    // Fix wave J (truth rule 3a): the seed's one RECORDED item (the INCOMPLETE session) was never sealed -
+    // `neverSealedShape` leaves it without a track hash, a manifest or a signature; a sealed item passes unchanged.
+    evidence.push(neverSealedShape({
       id: evidenceId,
       sessionId,
       caseNumber,
@@ -800,7 +802,7 @@ export function buildHistory(now: EpochMs): HistoryBuild {
       // The dataset's recordings all ran on GNSS time (the packages' manifests say so).
       startTimeSource: 'GNSS',
       endTimeSource: 'GNSS',
-    });
+    }));
 
     sessionHistory.push({
       id: sessionId,

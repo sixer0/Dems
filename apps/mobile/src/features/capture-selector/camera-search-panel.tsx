@@ -12,7 +12,7 @@
  * | S5 Empty | the title, the body and "Search again" |
  * | S7 Truncated | a warning line above the list |
  * | S8 Error, S12 expired | an `Alert` / a line + "Search again" |
- * | S9, S10, S11 | "not available on this Core yet" + Retry (one call per press); the inline "another operator" note; the shared rate-limit sentence with the fixed seconds |
+ * | S9, S10, S11 | "not available on this Core right now" + Retry (one call per press) - on a SIMULATED Core the sentence that it has no camera search, with no Retry (fix wave J, JA2-N10); the inline "another operator" note; the shared rate-limit sentence with the fixed seconds |
  * | S13, S14 | the button stays in place, disabled, with the role sentence / the recording sentence; no list is requested for S13 |
  * | §8c.3 | address in monospace as plain text; make and model; the name; every announced text is a text node on ONE line with the full text in the accessible label; one trust caption per list |
  * | §8d.10 | a NEW row draws **Connect DISABLED** with "Connect this camera from the web console." and the panel carries the one note. There is no connect flow here: no dialog, no field, no handler on the button (D80(3)) |
@@ -26,6 +26,7 @@ import { Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { formatClock } from '@dems/shared/realtime';
+import { useSim } from '@dems/shared/sim';
 import { fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { SectionCard, StatusChip } from '@/components/kit';
@@ -35,6 +36,7 @@ import { PendingSpinner } from '@/runtime';
 import { SEARCH_MAX_CANDIDATES, searchWindowSeconds, type CandidateRow } from './camera-search-model';
 import { candidateSourceOf, deviceNameKey } from './capture-notices-model';
 import { SourceBadge } from './development-source-badge';
+import { realCaptureSources } from './source-state';
 import { useCameraSearch, type CameraSearch } from './use-camera-search';
 
 export interface CameraSearchPanelProps {
@@ -50,11 +52,24 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 const K = 'features.capture-selector.search';
 
+/**
+ * Fix wave J (JA2-N10): the Core this client shows is a SIMULATED one - Live data, a device list, and no
+ * device that states a source class (D91 R-2; the complement of `realCaptureSources`). Such a Core has no
+ * camera search: its 503 is not "not yet", and a Retry leads nowhere.
+ */
+export function isSimulatedCoreSearch(devices: readonly { readonly sourceClass?: string | null | undefined }[], live: boolean): boolean {
+  return live && devices.length > 0 && !realCaptureSources(devices, live);
+}
+
 export function CameraSearchPanel({ testID = 'camera-search', viewDevice }: CameraSearchPanelProps) {
   const { t } = useTranslation();
   const search = useCameraSearch();
+  const simulatedCore = useSim((s) => isSimulatedCoreSearch(s.captureDevices.devices, search?.live === true));
   if (search === null) return null;
   const { state, view } = search;
+  // The Core answered "unavailable" AND it is a simulated Core: the sentence for what it is; no Retry, and the
+  // search control is disabled with that sentence (nothing is offered that leads nowhere).
+  const noSearchHere = search.note === 'unavailable' && simulatedCore;
   const found = view?.search ?? null;
   const badges = candidateSourceOf({ development: true, live: search.live }) !== null;
   // Simulated mode (no group, D91): every row in the Core's order.
@@ -151,7 +166,9 @@ export function CameraSearchPanel({ testID = 'camera-search', viewDevice }: Came
       ) : null}
 
       {search.note === 'busy' ? <Line testID={`${testID}-busy`}>{t(`${K}.busy`)}</Line> : null}
-      {search.note === 'unavailable' ? (
+      {noSearchHere ? (
+        <Line testID={`${testID}-simulated-core`}>{t(`${K}.simulatedCore`)}</Line>
+      ) : search.note === 'unavailable' ? (
         <Alert status="warning" testID={`${testID}-unavailable`}>
           <Alert.Indicator />
           <Alert.Content>
@@ -170,7 +187,11 @@ export function CameraSearchPanel({ testID = 'camera-search', viewDevice }: Came
         </Line>
       ) : null}
 
-      <SearchButton search={search} label={everSearched ? t(`${K}.again`) : t(`${K}.action`)} testID={`${testID}-action`} />
+      <SearchButton
+        search={noSearchHere ? { ...search, canSearch: false, gateHint: t(`${K}.simulatedCore`) } : search}
+        label={everSearched && !noSearchHere ? t(`${K}.again`) : t(`${K}.action`)}
+        testID={`${testID}-action`}
+      />
       {search.gateHint !== null ? (
         <Muted testID={`${testID}-gate`} live>
           {search.gateHint}

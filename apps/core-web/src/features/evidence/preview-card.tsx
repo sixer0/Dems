@@ -4,11 +4,13 @@ import { ArrowRight, FileVideo, MousePointerClick, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import { formatUtcOffset } from '@dems/shared/realtime'
+import { Permission, hasSealedValues, selectCan, useSim } from '@dems/shared/sim'
+import { RoleReason } from '@/components/role-reason'
 import { useMotionPolicy } from '@/motion'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { useEvidenceAssets } from './demo-assets'
 import { isDemoItem } from './item-facts'
-import { InterruptedMark } from './item-marks'
+import { InterruptedMark, NotSealedMark } from './item-marks'
 import {
   byteSize,
   EXPORTABLE_STATUSES,
@@ -37,6 +39,9 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
   const m = useMotionPolicy()
   const live = useCoreMode() === CoreMode.LIVE
   const { urlFor } = useEvidenceAssets()
+  // Fix wave J (JW-14 (c)): Export is disabled with its reason for a role that may not export.
+  const roleMayExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
+  const sealed = row ? hasSealedValues(row.item) : false
 
   return (
     <Card className="evi-preview-card" data-testid="evidence-preview">
@@ -63,13 +68,14 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
               )}
             </div>
             <div className="evi-still-meta">
-              <EvidenceStatusChip status={row.item.status} />
+              <EvidenceStatusChip status={row.item.status} item={row.item} />
               {row.pkg ? (
                 <Chip size="sm" variant="secondary" className="evi-demo-chip">
                   <Chip.Label>{t('evidence.demo.chip')}</Chip.Label>
                 </Chip>
               ) : null}
               <InterruptedMark item={row.item} testId="evidence-preview-interrupted" />
+              <NotSealedMark item={row.item} testId="evidence-preview-not-sealed" />
             </div>
 
             <div className="evi-preview-heading" data-header-origin={row.id}>
@@ -108,7 +114,8 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
               </div>
               <div>
                 <dt>{t('evidence.preview.lastVerification')}</dt>
-                <dd>{t(`common.verificationStatus.${row.item.verification.status}`)}</dd>
+                {/* Wave J (JW-01): a never-sealed item has no verification - not even "Not verified". */}
+                <dd data-testid="evidence-preview-verification">{sealed ? t(`common.verificationStatus.${row.item.verification.status}`) : t('web.waveJ.evidence.notSealedChip')}</dd>
               </div>
             </dl>
 
@@ -124,11 +131,16 @@ export function EvidencePreview({ row, onOpen, onExport }: EvidencePreviewProps)
                 {t('evidence.preview.open')}
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="outline" size="sm" isDisabled={!EXPORTABLE_STATUSES.includes(row.item.status)} onPress={() => onExport(row)}>
+              <Button variant="outline" size="sm" isDisabled={!EXPORTABLE_STATUSES.includes(row.item.status) || !sealed || !roleMayExport} aria-describedby={roleMayExport ? undefined : 'evidence-preview-export-reason'} onPress={() => onExport(row)} data-testid="evidence-preview-export">
                 <Share2 className="size-4" aria-hidden="true" />
                 {t('evidence.detail.actions.export')}
               </Button>
             </div>
+            {roleMayExport ? null : (
+              <p className="evi-caption">
+                {t('evidence.detail.actions.export')}: <RoleReason id="evidence-preview-export-reason" permission={Permission.EVIDENCE_EXPORT} />
+              </p>
+            )}
           </motion.div>
         ) : (
           <motion.div

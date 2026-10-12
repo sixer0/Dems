@@ -100,7 +100,8 @@ describe('the write order of the seed is the contract\'s (§9.5)', () => {
     // plus the 6 rows of the v2 RBAC vocabulary (14 permissions + 22 grants, dbc-3 §E.3; row 49),
     // the one `stt_config` row of row 114, and the six site-config rows of CS-21 (five built-in
     // devices and the one selector, dbc-3 §E.3).
-    expect(log.filter((entry) => entry.statement === 'insert').reduce((sum, entry) => sum + entry.rows, 0)).toBe(312);
+    // Fix wave J (truth rule 3a): 308 since the seed's one never-sealed item writes no track row (4 fewer).
+    expect(log.filter((entry) => entry.statement === 'insert').reduce((sum, entry) => sum + entry.rows, 0)).toBe(308);
   });
 
   it('the chain lock is the first statement (AP-2), before the "not seeded yet" check and before any write (AP-7)', async () => {

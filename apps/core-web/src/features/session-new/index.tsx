@@ -173,6 +173,19 @@ export function SessionNewPage() {
     defaultValues: defaults,
   })
   const { isValid, isDirty, isSubmitted } = form.formState
+  /** The case number the Core handed to THIS form (JW-17): not asked for twice. */
+  const takenCase = useRef<string | null>(null)
+  // Fix wave J (JW-17): a reload at step 1 emptied a filled form without a word. While the form holds unsent input the
+  // browser asks before the page is left (the standard question; the console cannot word it).
+  useEffect(() => {
+    // (Only step 1 holds unsent input: from step 2 on the session exists on the Core and its form is closed.)
+    if (!isDirty || sessionState !== null) return undefined
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [isDirty, sessionState])
 
   const step = effectiveStep(search.step, sessionState)
   const [view, setView] = useState<{ step: FlowStep; direction: 1 | -1 }>({ step, direction: 1 })
@@ -330,6 +343,9 @@ export function SessionNewPage() {
 
   // A4: the field is written when the scan settled; the result never rejects (the adapter's fallback).
   const scan = () => {
+    // Fix wave J (JW-17): every press took a number from the Core, so a second press (or one after a reload) burnt one.
+    // A number this form already took is kept; the Core is asked again only when the field was emptied or edited.
+    if (takenCase.current !== null && form.getValues('caseNumber') === takenCase.current) return
     runScan((release) => {
       settle(
         () =>
@@ -338,7 +354,10 @@ export function SessionNewPage() {
             presentCoreError(error)
           }),
         {
-          ok: (caseNumber) => form.setValue('caseNumber', caseNumber, { shouldValidate: true, shouldDirty: true, shouldTouch: true }),
+          ok: (caseNumber) => {
+            takenCase.current = caseNumber
+            form.setValue('caseNumber', caseNumber, { shouldValidate: true, shouldDirty: true, shouldTouch: true })
+          },
           fail: (error) => logSessionNew('error', 'scanCaseNumber', error, { correlationId: correlation.current }),
           done: release,
         },
@@ -593,6 +612,12 @@ export function SessionNewPage() {
                 {t('common.actions.back')}
               </Button>
             ) : null}
+            {/* Fix wave J (JW-17): the disabled Next says why. */}
+            {step < 3 && !nextEnabled && !creating ? (
+              <span id="sn-next-reason" className="dems-role-reason" data-testid="sn-next-reason">
+                {step === 1 ? (localGate.checking ? t('web.waveJ.sessionNew.nextChecking') : t('web.waveJ.sessionNew.nextForm')) : gate.phase === 'block' ? t('web.waveJ.sessionNew.nextBlocked') : gate.needsAck ? t('web.waveJ.sessionNew.nextAck') : t('web.waveJ.sessionNew.nextRunning')}
+              </span>
+            ) : null}
             {step < 3 ? (
               <span className="sn-next-wrap">
                 <GlowLayer level={nextEnabled ? 2 : 0} />
@@ -601,7 +626,7 @@ export function SessionNewPage() {
                   variant="primary"
                   onPress={step === 1 ? () => void submitInfo() : proceedFromDevices}
                   isDisabled={!nextEnabled}
-                  aria-describedby={step === 1 && localGate.checking ? LOCAL_SOURCE_CHECKING_ID : undefined}
+                  aria-describedby={step === 1 && localGate.checking ? LOCAL_SOURCE_CHECKING_ID : !nextEnabled ? 'sn-next-reason' : undefined}
                   isPending={creating || ackPending}
                   className="sn-next"
                   data-testid="sn-next"

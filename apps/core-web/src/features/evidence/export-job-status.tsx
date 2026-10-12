@@ -1,7 +1,7 @@
 import { Alert, Button, Chip, ProgressBar } from '@heroui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Download, RotateCcw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Permission } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
@@ -25,6 +25,8 @@ export interface ExportJobStatusProps {
   jobId?: string | null
   /** `archiveOnCore` of the accepted request (operation 42); null / absent: the Core did not say. */
   archiveOnCore?: boolean | null
+  /** Fix wave J (JW-03): told once when the job reaches its end, so the wizard's last step never reads "Done" for a job that FAILED. */
+  onEnd?: (exportId: string, status: 'COMPLETE' | 'FAILED') => void
 }
 
 /**
@@ -43,7 +45,7 @@ export interface ExportJobStatusProps {
  * a download says "The export is stored on the Core" only when the 202 stated `archiveOnCore: true`; an export the Core only recorded
  * (`false`) says a demonstration writes no archive; no statement says no archive is stated. It draws no control.
  */
-export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = null, archiveOnCore = null }: ExportJobStatusProps) {
+export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = null, archiveOnCore = null, onEnd }: ExportJobStatusProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const presentCoreError = useCoreErrorPresenter()
@@ -88,6 +90,10 @@ export function ExportJobStatus({ exportId, evidenceId, jobId: answeredJobId = n
       void queryClient.invalidateQueries({ queryKey: evidenceMediaQueryKey(evidenceId) })
     })
   }, [endState, evidenceId, queryClient])
+  const reportEnd = useEffectEvent((status: 'COMPLETE' | 'FAILED') => onEnd?.(exportId, status))
+  useEffect(() => {
+    if (endState !== null) reportEnd(endState)
+  }, [endState])
   const unknown = jobId === null || (query.error instanceof ExportJobReadError && query.error.unknownJob)
   const readFailed = query.isError && !unknown
 

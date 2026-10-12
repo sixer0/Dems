@@ -5,7 +5,11 @@
  * and is not edited; the root stays `SafeScreen id="login"` (testID `screen-login`, T-M02).
  *
  * Layouts (§2.4, D17), from the window size class:
- * - compact (phone portrait, the mockup): full-bleed backdrop, one centred scrolling stack;
+ * - compact (phone portrait, the mockup): full-bleed backdrop, one centred scrolling stack (brand, card,
+ *   demo operators) above a PINNED footer (Core trust line, version). Fix wave J (JA2-14): the footer
+ *   used to be the end of the scrolling stack, where the version line was cut to 3 px on a clean Login
+ *   and a notice pushed the trust line under the gesture bar and "Pairing details" off the screen. The
+ *   footer now has its own row above the bottom safe area; whatever grows, grows in the scroll area;
  * - compact-landscape (phone landscape): brand 40 % | auth card 60 %, scrollable;
  * - medium (tablet portrait): a 360 dp brand band above the card;
  * - expanded (tablet landscape): split 7 | 5, a 340 dp ring on the brand side | the 440 dp card.
@@ -30,7 +34,7 @@ import { SafeScreen, useLayoutClass } from '@/layout';
 import { useAmbientLoop, useMotionSettings } from '@/motion';
 import { GoldDust } from './login-ambient';
 import { LoginBrand } from './login-brand';
-import { LoginCard } from './login-card';
+import { LoginCard, LoginFooter } from './login-card';
 import { coreChipFor, ringSizeFor, ringStateFor } from './login-model';
 import { useLoginChoreography } from './use-login-choreography';
 import { useLoginController } from './use-login-controller';
@@ -41,6 +45,13 @@ const CARD_MAX_WIDTH = 440;
 const BRAND_BAND_HEIGHT = 360;
 /** The phone stack's width cap (MB 1 fields span ≈ 368 of 411 dp). */
 const PHONE_MAX_WIDTH = 400;
+/**
+ * Room kept under the focused field while the keyboard is up (dp): the card's gap, the Sign In button
+ * and a margin. The Pair screen's pattern (`KEYBOARD_CLEARANCE`): keep the ACTION above the keyboard,
+ * not just the field. Fix wave J (JA2-14): after a failed sign-in the password field takes focus
+ * again and the keyboard reopened over "Sign In".
+ */
+export const LOGIN_SUBMIT_CLEARANCE = spacing[2] + 56 + spacing[2];
 
 export function LoginScreen() {
   const { t } = useTranslation();
@@ -88,9 +99,11 @@ export function LoginScreen() {
     />
   );
 
+  const compact = layoutClass === 'compact';
   const card = (
     <LoginCard
       controller={controller}
+      footer={compact ? 'detached' : 'inline'}
       layoutClass={layoutClass}
       policy={policy}
       settings={settings}
@@ -131,9 +144,10 @@ export function LoginScreen() {
               style={StyleSheet.absoluteFill}
             />
             <KeyboardAwareScrollView
-              bottomOffset={spacing[4]}
+              bottomOffset={LOGIN_SUBMIT_CLEARANCE}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[styles.scrollCentre, padding]}
+              testID="login-scroll"
             >
               <View style={styles.cardSlot}>{card}</View>
             </KeyboardAwareScrollView>
@@ -149,9 +163,10 @@ export function LoginScreen() {
           </View>
           <View style={{ flex: 6 }} testID="pane-auth">
             <KeyboardAwareScrollView
-              bottomOffset={spacing[4]}
+              bottomOffset={LOGIN_SUBMIT_CLEARANCE}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[styles.scrollCentre, padding, { paddingLeft: spacing[3] }]}
+              testID="login-scroll"
             >
               <View style={styles.cardSlot}>{card}</View>
             </KeyboardAwareScrollView>
@@ -161,7 +176,7 @@ export function LoginScreen() {
       break;
     case 'medium':
       body = (
-        <KeyboardAwareScrollView bottomOffset={spacing[4]} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollCentre, padding]}>
+        <KeyboardAwareScrollView bottomOffset={LOGIN_SUBMIT_CLEARANCE} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollCentre, padding]} testID="login-scroll">
           <View style={[styles.band, { height: BRAND_BAND_HEIGHT }]} testID="pane-brand">
             {brand}
           </View>
@@ -173,12 +188,34 @@ export function LoginScreen() {
       break;
     default:
       body = (
-        <KeyboardAwareScrollView bottomOffset={spacing[4]} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollCentre, padding]}>
-          <View style={[styles.phoneStack, { maxWidth: PHONE_MAX_WIDTH }]} testID="pane-auth">
-            {brand}
-            {card}
-          </View>
-        </KeyboardAwareScrollView>
+        <View style={styles.phone}>
+          <KeyboardAwareScrollView
+            style={styles.phoneScroll}
+            bottomOffset={LOGIN_SUBMIT_CLEARANCE}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[
+              styles.scrollCentre,
+              { paddingTop: insets.top + spacing[2], paddingBottom: spacing[2], paddingLeft: padding.paddingLeft, paddingRight: padding.paddingRight },
+            ]}
+            testID="login-scroll"
+          >
+            <View style={[styles.phoneStack, { maxWidth: PHONE_MAX_WIDTH }]} testID="pane-auth">
+              {brand}
+              {card}
+            </View>
+          </KeyboardAwareScrollView>
+          {/* JA2-14: L11 and L8 in their own row, above the bottom safe area, entering with the card. */}
+          <Animated.View
+            style={[
+              styles.phoneFooter,
+              { paddingBottom: insets.bottom + spacing[1], paddingLeft: padding.paddingLeft, paddingRight: padding.paddingRight },
+              choreography.companionStyle,
+            ]}
+            testID="login-footer"
+          >
+            <LoginFooter controller={controller} settings={settings} loopsAllowed={focused} compact />
+          </Animated.View>
+        </View>
       );
   }
 
@@ -201,7 +238,10 @@ const styles = StyleSheet.create({
   band: { justifyContent: 'center', alignItems: 'center', alignSelf: 'stretch' },
   scrollCentre: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
   cardSlot: { width: '100%', maxWidth: CARD_MAX_WIDTH },
-  phoneStack: { width: '100%', alignItems: 'center', gap: spacing[4] },
+  phoneStack: { width: '100%', alignItems: 'center', gap: spacing[3] },
+  phone: { flex: 1 },
+  phoneScroll: { flex: 1 },
+  phoneFooter: { paddingTop: spacing[1], alignItems: 'center' },
   triplet: {
     fontFamily: fontFamily.native.medium,
     fontSize: typography.label.size,

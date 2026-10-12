@@ -2266,7 +2266,7 @@
             }
           },
           "409": {
-            "description": "The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED.",
+            "description": "The evidence is not sealed, or security is in FAULT (NOT_SEALED, SECURITY_FAULT). Core server, schema v2: an export job of this item is still QUEUED or RUNNING (EXPORT_IN_PROGRESS) - nothing is recorded and no audit row is written; poll operation 87 and ask again when it is COMPLETE or FAILED. Fix wave J: `kind: COMPOSITE` on a Core that cannot produce one (COMMAND_UNSUPPORTED, `details.reason: COMPOSITE_ENCODER_NOT_SELECTED`) - decided after the 404 and before anything is recorded: no export id, no job, no row. Operation 40 states the available kinds (`exportKinds`).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -2293,6 +2293,18 @@
                       "error": {
                         "code": "EXPORT_IN_PROGRESS",
                         "message": "An export job is already running for this evidence item."
+                      }
+                    }
+                  },
+                  "compositeUnavailable": {
+                    "summary": "kind COMPOSITE on a Core without a selected encoder: refused before any job, export id or row",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Composite video is not available in this build.",
+                        "details": {
+                          "reason": "COMPOSITE_ENCODER_NOT_SELECTED"
+                        }
                       }
                     }
                   }
@@ -9717,6 +9729,32 @@
                       "items": [],
                       "nextCursor": null
                     }
+                  },
+                  "unsealable": {
+                    "summary": "A recorded session whose seal was given up: no evidence item, its recordings in the quarantine folder, and the cause the Core recorded",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "SES-20261001-0024",
+                          "outcome": "INCOMPLETE",
+                          "caseNumber": "LP/2026/1001-0002",
+                          "subjectName": "Wahyu Saputra",
+                          "subjectType": "TERSANGKA",
+                          "investigatorId": "OPR-001",
+                          "room": "Interview Room 1",
+                          "profileId": "STANDARD_1080P25",
+                          "createdAt": 1790820000000,
+                          "startedAt": 1790820060000,
+                          "endedAt": 1790820120000,
+                          "durationMs": 60000,
+                          "sizeBytes": 0,
+                          "evidenceId": null,
+                          "faultKind": null,
+                          "unsealableCause": "SIGNING_KEY_UNAVAILABLE"
+                        }
+                      ],
+                      "nextCursor": null
+                    }
                   }
                 }
               }
@@ -10307,6 +10345,181 @@
                       }
                     }
                   },
+                  "neverSealed": {
+                    "summary": "A recording that was never sealed (the item of an INCOMPLETE session): no track, no manifest, no signature - the two required members hold the null digest - and nothing to verify",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0006",
+                        "sessionId": "SES-20260930-0016",
+                        "caseNumber": "LP/2026/0930-0006",
+                        "subjectName": "Hendra Wijaya",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": null,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "RECORDED",
+                        "lifecycleStage": "RECORDING",
+                        "tracks": [],
+                        "manifestHash": "0000000000000000000000000000000000000000000000000000000000000000",
+                        "signature": {
+                          "value": "0000000000000000000000000000000000000000000000000000000000000000",
+                          "keyId": "NOT-SEALED",
+                          "algorithm": "SIMULATED-SHA256",
+                          "simulated": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790758800000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790760240000,
+                            "action": "SESSION_INCOMPLETE",
+                            "actorId": null,
+                            "detail": "POWER_FAIL; recovered"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "SIMULATED",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS"
+                      },
+                      "media": {
+                        "source": "NONE",
+                        "packageSuffix": null,
+                        "reason": "NOT_SEALED"
+                      },
+                      "exportKinds": [
+                        {
+                          "kind": "PACKAGE",
+                          "available": true
+                        },
+                        {
+                          "kind": "COMPOSITE",
+                          "available": false,
+                          "reason": "COMPOSITE_ENCODER_NOT_SELECTED"
+                        }
+                      ]
+                    }
+                  },
+                  "simulatedSealed": {
+                    "summary": "An item a Core in SIMULATED capture sealed: a demonstration record without media",
+                    "value": {
+                      "evidence": {
+                        "id": "EV-20260930-0004",
+                        "sessionId": "SES-20260930-0014",
+                        "caseNumber": "LP/2026/0930-0004",
+                        "subjectName": "Maya Lestari",
+                        "subjectType": "SAKSI",
+                        "investigatorId": "OPR-001",
+                        "room": "Interview Room 1",
+                        "profileId": "STANDARD_1080P25",
+                        "recordedAt": 1790739420000,
+                        "endedAt": 1790741640000,
+                        "sealedAt": 1790741649000,
+                        "durationMs": 2220000,
+                        "sizeBytes": 5056666667,
+                        "status": "SEALED",
+                        "lifecycleStage": "SEALED_LOCAL_EVIDENCE",
+                        "tracks": [
+                          {
+                            "trackId": "VIDEO-01",
+                            "label": "Camera 1",
+                            "sizeBytes": 2477766667,
+                            "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
+                          },
+                          {
+                            "trackId": "VIDEO-02",
+                            "label": "Camera 2",
+                            "sizeBytes": 2477766667,
+                            "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
+                          },
+                          {
+                            "trackId": "AUDIO-01",
+                            "label": "MIC 1 – Interviewer",
+                            "sizeBytes": 50566667,
+                            "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
+                          },
+                          {
+                            "trackId": "AUDIO-02",
+                            "label": "MIC 2 – Subject",
+                            "sizeBytes": 50566667,
+                            "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
+                          }
+                        ],
+                        "manifestHash": "403909dc0ed7d1e91bd6bf07ec3bb3c8c6a02c0bc236b465fb93dd780239dee1",
+                        "signature": {
+                          "value": "ab37d6e1a00eba1699e211dacde76a8aa7912b6027a4e7324662b304e5f730f9",
+                          "keyId": "KEY-EVSIGN-01",
+                          "algorithm": "SIMULATED-SHA256",
+                          "simulated": true
+                        },
+                        "custody": [
+                          {
+                            "at": 1790739420000,
+                            "action": "RECORDING_STARTED",
+                            "actorId": "OPR-001",
+                            "detail": null
+                          },
+                          {
+                            "at": 1790741649000,
+                            "action": "SEALED",
+                            "actorId": null,
+                            "detail": null
+                          },
+                          {
+                            "at": 1790759640000,
+                            "action": "EXPORTED",
+                            "actorId": "OPR-002",
+                            "detail": "Case file transfer (simulated)"
+                          }
+                        ],
+                        "verification": {
+                          "status": "NOT_RUN",
+                          "at": null
+                        },
+                        "tampered": false,
+                        "tamperedTrackId": null,
+                        "caseType": "SAKSI",
+                        "markers": [],
+                        "notes": [],
+                        "integritySource": "SIMULATED",
+                        "startTimeSource": "GNSS",
+                        "endTimeSource": "GNSS"
+                      },
+                      "media": {
+                        "source": "NONE",
+                        "packageSuffix": null,
+                        "reason": "DEMONSTRATION_RECORD"
+                      },
+                      "exportKinds": [
+                        {
+                          "kind": "PACKAGE",
+                          "available": true
+                        },
+                        {
+                          "kind": "COMPOSITE",
+                          "available": false,
+                          "reason": "COMPOSITE_ENCODER_NOT_SELECTED"
+                        }
+                      ]
+                    }
+                  },
                   "productSealed": {
                     "summary": "A product-sealed item on a Core server: its sealed camera files play through a media session (operation 88); the sealed facts, what this caller may do and the finished exports are stated",
                     "value": {
@@ -10467,7 +10680,18 @@
                           "archiveSha256": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
                         }
                       ],
-                      "exportDestinationDefault": "Case file transfer"
+                      "exportDestinationDefault": "Case file transfer",
+                      "exportKinds": [
+                        {
+                          "kind": "PACKAGE",
+                          "available": true
+                        },
+                        {
+                          "kind": "COMPOSITE",
+                          "available": false,
+                          "reason": "COMPOSITE_ENCODER_NOT_SELECTED"
+                        }
+                      ]
                     }
                   },
                   "productSealedInterrupted": {
@@ -11343,7 +11567,7 @@
           "Evidence"
         ],
         "summary": "Verify integrity",
-        "description": "Runs the integrity verification of an item and returns the verdict of record. Schema v2 (C3 §3 op 41; OD-02/OD-03/OD-21): per-FILE fragment-chain verify — both hashes of every camera file and every checkpoint of its chain — plus the transcript hash and the real Ed25519 signature; one tampered fragment answers `ok: false` (OD-02 L2). A failed verification is an answer, not an error: `200` with `ok: false`.\n\nWrites EVIDENCE_VERIFIED or EVIDENCE_VERIFY_FAILED, by the verdict, and adds a custody entry. The files, the hashes, the manifest hash and the signature are not changed (I11).\n\nCore server only: the server runs the shared simulator action `verify` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Runs the integrity verification of an item and returns the verdict of record. Schema v2 (C3 §3 op 41; OD-02/OD-03/OD-21): per-FILE fragment-chain verify — both hashes of every camera file and every checkpoint of its chain — plus the transcript hash and the real Ed25519 signature; one tampered fragment answers `ok: false` (OD-02 L2). A failed verification is an answer, not an error: `200` with `ok: false`.\n\nWrites EVIDENCE_VERIFIED or EVIDENCE_VERIFY_FAILED, by the verdict, and adds a custody entry. The files, the hashes, the manifest hash and the signature are not changed (I11).\n\nAn item that was never sealed (`sealedAt: null`, status RECORDED: the record of an interrupted session) is refused `409 NOT_SEALED`: it has no track hash, no manifest and no signature. A verdict the simulator computed over a demonstration record carries `demonstration: true`.\n\nCore server only: the server runs the shared simulator action `verify` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "200": {
             "description": "The verdict, passed or failed.",
@@ -11397,7 +11621,8 @@
                         }
                       ],
                       "manifestOk": true,
-                      "signatureOk": true
+                      "signatureOk": true,
+                      "demonstration": true
                     }
                   },
                   "failed": {
@@ -11433,7 +11658,8 @@
                         }
                       ],
                       "manifestOk": true,
-                      "signatureOk": true
+                      "signatureOk": true,
+                      "demonstration": true
                     }
                   },
                   "passedDevelopmentSources": {
@@ -11725,6 +11951,38 @@
                         "message": "Evidence not found.",
                         "details": {
                           "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The item is RECORDED: it was never sealed, so there is nothing sealed to verify (NOT_SEALED). Nothing is written.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSealed": {
+                    "summary": "EV-20260930-0006: incomplete session, never sealed",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SEALED",
+                        "message": "This item was never sealed: there is nothing sealed to verify.",
+                        "details": {
+                          "simCode": "UNSEALED_EVIDENCE",
+                          "from": null,
+                          "event": "verify"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -14376,7 +14634,13 @@
                         ]
                       },
                       "auditHead": "90d3ec6022f945ef50e78aa01db2c3e9f50e4f04ded7adef292f3013295a180c",
-                      "auditTotal": 82
+                      "auditTotal": 82,
+                      "evidenceVerification": {
+                        "sealed": 50,
+                        "passed": 31,
+                        "failed": 1,
+                        "neverVerified": 18
+                      }
                     }
                   }
                 }
@@ -16014,6 +16278,191 @@
                         "notifySound": false
                       }
                     }
+                  },
+                  "ownCapture": {
+                    "summary": "A Core in its own capture: the same five slices and the versions of its components (the update and identity values are the demonstration model's, not versions of this Core)",
+                    "value": {
+                      "device": {
+                        "id": "DEMS-IR-01",
+                        "name": "Interview Room 1",
+                        "room": "Interview Room 1",
+                        "productName": "DEMS Edge Client",
+                        "softwareVersion": "2.4.1",
+                        "identity": {
+                          "serialNumber": "DEC-2026-IR01-000117",
+                          "hardwareUuid": "157db69a-cc30-5125-a739-14c9bc62a4fd",
+                          "chassisRevision": "CH-B",
+                          "somPartRevision": "SOM-A1 rev 1.2",
+                          "audioBoardRevision": "AUD-2 rev C",
+                          "poeBoardRevision": "POE-4 rev B",
+                          "powerBoardRevision": "PWR-1 rev D",
+                          "bspVersion": "BSP 6.1.57 / DT r3",
+                          "coreSoftwareVersion": "2.4.1",
+                          "tabletAppVersion": "2.4.1",
+                          "tpmModelFirmware": "TPM 2.0 (fw 7.2.3.1)",
+                          "cameraModelFirmware": "Dual-lens IP camera DL-2 (fw 3.8.14)",
+                          "provisioningRecordId": "PRV-2026-0117",
+                          "deviceCertificateId": "CN=DEMS-IR-01, O=DEMS Demo (synthetic)"
+                        }
+                      },
+                      "services": [
+                        {
+                          "id": "SVC-01",
+                          "name": "API Gateway",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-02",
+                          "name": "Authentication Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-03",
+                          "name": "Session Manager",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-04",
+                          "name": "Video Management Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-05",
+                          "name": "Recording Engine",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-06",
+                          "name": "Audio Capture Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-07",
+                          "name": "AV Synchronization",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-08",
+                          "name": "Metadata Manager",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-09",
+                          "name": "Time Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-10",
+                          "name": "Storage Manager",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-11",
+                          "name": "Security Manager",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-12",
+                          "name": "Evidence Manager",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-13",
+                          "name": "Relay/GPIO Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-14",
+                          "name": "LCD Display Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-15",
+                          "name": "Health Monitor",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-16",
+                          "name": "Audit Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        },
+                        {
+                          "id": "SVC-17",
+                          "name": "Transcription Service",
+                          "status": "RUNNING",
+                          "startedAt": 1790811162000
+                        }
+                      ],
+                      "update": {
+                        "currentVersion": "2.4.1",
+                        "availableVersion": "2.5.0",
+                        "activeSlot": "A",
+                        "state": "IDLE",
+                        "steps": [
+                          {
+                            "id": "SIGNATURE_VERIFICATION",
+                            "status": "pending"
+                          },
+                          {
+                            "id": "COMPATIBILITY_CHECK",
+                            "status": "pending"
+                          },
+                          {
+                            "id": "ANTI_ROLLBACK_POLICY",
+                            "status": "pending"
+                          },
+                          {
+                            "id": "INSTALL_INACTIVE_SLOT",
+                            "status": "pending"
+                          },
+                          {
+                            "id": "REBOOT",
+                            "status": "pending"
+                          },
+                          {
+                            "id": "POST_BOOT_HEALTH_CHECK",
+                            "status": "pending"
+                          }
+                        ],
+                        "startedAt": null,
+                        "completedAt": null
+                      },
+                      "diagnostics": null,
+                      "settings": {
+                        "presentationMode": false,
+                        "timeFormat": "24",
+                        "notifyWarnings": true,
+                        "notifySound": false
+                      },
+                      "components": {
+                        "core": {
+                          "name": "dems-core-server",
+                          "version": "0.2.0"
+                        },
+                        "captureWorker": {
+                          "version": "capture-worker/0.5.0"
+                        },
+                        "apiContract": {
+                          "version": "0.3.0"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -16453,7 +16902,7 @@
           "System"
         ],
         "summary": "Start the software update",
-        "description": "Starts the simulated A/B software update and answers `202` without a body. Its six steps resolve on the Core, in the `update` slice. It is refused while a session is open. No software is installed: the server and the apps keep their version.\n\nWrites UPDATE_STARTED. When an update is already running, or no version is available, nothing changes, nothing is written, and the answer is still `202`.\n\nCore server only: the server runs the shared simulator action `startSoftwareUpdate` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Starts the simulated A/B software update and answers `202` without a body. Its six steps resolve on the Core, in the `update` slice. It is refused while a session is open. No software is installed: the server and the apps keep their version.\n\nWrites UPDATE_STARTED. When an update is already running, or no version is available, nothing changes, nothing is written, and the answer is still `202`.\n\nFix wave J: a Core in its own capture has no updater - the `update` slice states `updaterNotAvailable: true` and this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: UPDATER_NOT_AVAILABLE`; nothing is started and nothing is written.\n\nCore server only: the server runs the shared simulator action `startSoftwareUpdate` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "202": {
             "description": "The update is running, or nothing changed.",
@@ -16552,7 +17001,7 @@
             }
           },
           "409": {
-            "description": "A session is open: maintenance waits until it is closed (SESSION_ACTIVE).",
+            "description": "A session is open: maintenance waits until it is closed (SESSION_ACTIVE). Or the Core has no software updater (COMMAND_UNSUPPORTED, `details.reason: UPDATER_NOT_AVAILABLE`: a Core in its own capture).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -16574,6 +17023,20 @@
                           "simCode": "SESSION_ACTIVE",
                           "from": "RECORDING",
                           "event": "startSoftwareUpdate"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "updaterNotAvailable": {
+                    "summary": "A Core in its own capture: it has no software updater",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Software update is not available on this Core.",
+                        "details": {
+                          "simCode": "COMMAND_UNSUPPORTED",
+                          "reason": "UPDATER_NOT_AVAILABLE"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -18761,7 +19224,7 @@
           "Device"
         ],
         "summary": "Capture devices",
-        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nFix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source only in a pre-check, at a session start and in a microphone re-scan; a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Clients show such a device as \"Not checked\" at rest.\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The capture-devices slice.",
@@ -24784,7 +25247,8 @@
                       "description": "Media profile code; an open set (OD-05/OD-06)."
                     },
                     "online": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                     },
                     "streamState": {
                       "type": "string",
@@ -24792,7 +25256,7 @@
                         "LIVE",
                         "LOST"
                       ],
-                      "description": "A lost stream is what makes a PoE cycle legal (OD-22)."
+                      "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
                     }
                   },
                   "required": [
@@ -24834,7 +25298,8 @@
                       "description": "Open set (`CODE`): USB, embedded RTSP, ... (OD-06)."
                     },
                     "online": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                     }
                   },
                   "required": [
@@ -25256,6 +25721,11 @@
           "noSignal": {
             "type": "boolean"
           },
+          "notMeasured": {
+            "description": "Present and true when the Core does not measure this input now (a Core in its own capture with no capture open): `dbfs` / `peak` are the floor as placeholders, `noSignal` is false, and a client draws \"Not measured\". Absent: a measured (or generated) level.",
+            "type": "boolean",
+            "const": true
+          },
           "gainDb": {
             "type": "number",
             "description": "Read-only in the UI (G13)."
@@ -25604,6 +26074,11 @@
               "tamper": {
                 "type": "boolean",
                 "description": "Enclosure tamper switch tripped (EVT-12)."
+              },
+              "platformNotReported": {
+                "description": "Present and true on a Core in its own capture: it reads no TPM, no Secure Boot state and computes no posture - `tpmOk`, `secureBoot` and `posture` are then placeholders of the required members, never readings. A client shows \"Not reported\". Absent: the simulated device.",
+                "type": "boolean",
+                "const": true
               }
             },
             "required": [
@@ -28654,6 +29129,11 @@
                 "type": "null"
               }
             ]
+          },
+          "updaterNotAvailable": {
+            "description": "Present and true on a Core in its own capture: it has no software updater. The other members are then not readings, a client offers no Install control, and operation 67 answers `409 COMMAND_UNSUPPORTED` (`details.reason: UPDATER_NOT_AVAILABLE`). Absent: the simulated A/B update of the demonstration device.",
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -28723,7 +29203,8 @@
                   "description": "Media profile code; an open set (OD-05/OD-06)."
                 },
                 "online": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 },
                 "streamState": {
                   "type": "string",
@@ -28731,7 +29212,7 @@
                     "LIVE",
                     "LOST"
                   ],
-                  "description": "A lost stream is what makes a PoE cycle legal (OD-22)."
+                  "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
                 }
               },
               "required": [
@@ -28774,7 +29255,8 @@
                   "description": "Open set (`CODE`): USB, embedded RTSP, ... (OD-06)."
                 },
                 "online": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 }
               },
               "required": [
@@ -28855,7 +29337,8 @@
                   ]
                 },
                 "online": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 },
                 "streamState": {
                   "anyOf": [
@@ -28870,7 +29353,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "Null for a device with no stream (a mic, the PoE switch)."
+                  "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
                 },
                 "capabilities": {
                   "type": "array",
@@ -28956,7 +29439,13 @@
                   "type": "boolean"
                 },
                 "noSignal": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "An input that should deliver samples delivers none (a fault word). Never set for a level that is simply not measured: see `notMeasured`."
+                },
+                "notMeasured": {
+                  "description": "Present and true when the Core does not measure this input now: no capture is open on a Core in its own capture. `dbfs` / `peak` then hold the floor as placeholders and `noSignal` is false; a client draws \"Not measured\" - no bars, no number, no \"NO SIGNAL\". Absent: the frame is a measured (or, on a simulated Core, generated) level.",
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [
@@ -29807,7 +30296,8 @@
                           "description": "Media profile code; an open set (OD-05/OD-06)."
                         },
                         "online": {
-                          "type": "boolean"
+                          "type": "boolean",
+                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                         },
                         "streamState": {
                           "type": "string",
@@ -29815,7 +30305,7 @@
                             "LIVE",
                             "LOST"
                           ],
-                          "description": "A lost stream is what makes a PoE cycle legal (OD-22)."
+                          "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
                         }
                       },
                       "required": [
@@ -29857,7 +30347,8 @@
                           "description": "Open set (`CODE`): USB, embedded RTSP, ... (OD-06)."
                         },
                         "online": {
-                          "type": "boolean"
+                          "type": "boolean",
+                          "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                         }
                       },
                       "required": [
@@ -30104,6 +30595,11 @@
           },
           "text": {
             "type": "string"
+          },
+          "origin": {
+            "description": "Present on the one note of an EVIDENCE ITEM that carries the text of the session form's \"Notes\" field (`id: NOTE-FORM`, `at` = the creation of the session, `authorId` = who created it): written before the recording, copied onto the item when the item was made. Absent on a note written during the recording, and on every note of an open session.",
+            "type": "string",
+            "const": "SESSION_FORM"
           }
         },
         "required": [
@@ -30113,7 +30609,7 @@
           "text"
         ],
         "additionalProperties": false,
-        "description": "A note an investigator wrote during the recording."
+        "description": "A note an investigator wrote during the recording - or, on an evidence item, the session form's note (`origin`)."
       },
       "SessionHistoryEntry": {
         "type": "object",
@@ -30250,6 +30746,11 @@
                 "type": "null"
               }
             ]
+          },
+          "unsealableCause": {
+            "description": "Operation 38 only, on an INCOMPLETE entry that recorded and has no evidence item (its recordings are in the quarantine folder): the cause the Core recorded when it gave the seal up, as a code - `details.cause` of the audit row `SESSION_INCOMPLETE` (`details.reason: UNSEALABLE`) of that session, e.g. `SIGNING_KEY_UNAVAILABLE`. An open set. Read from the audit trail at each call, never reconstructed; absent when the trail holds no such row, on every other entry, and in the replicated `sessionHistory` slice (there the active alert of the session carries the same code: `params.cause` of the alert whose `target` is the session and whose `params.reason` is `UNSEALABLE`).",
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
           }
         },
         "required": [
@@ -32869,7 +33370,7 @@
             }
           },
           "reason": {
-            "description": "Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core's store and no bundled demo package belongs to it), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.",
+            "description": "Core server only, with NONE: why no media can be played, as a code. `NOT_SEALED` (the item was never sealed: an interrupted or unsealable recording), `NOT_A_SEALED_PACKAGE` (no sealed package of this item lies in the Core's store and no bundled demo package belongs to it), `DEMONSTRATION_RECORD` (fix wave J: the item is the record of a session of a Core in SIMULATED capture - a demonstration that recorded no media; a client says so and never \"no sealed package in the evidence store\"), or a code of the package itself: `PACKAGE_MISSING` (the folder is gone, e.g. quarantined), `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`. An open set.",
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
           }
@@ -32978,6 +33479,37 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 120
+          },
+          "exportKinds": {
+            "description": "Core server only: the export outputs of operation 42 and whether this Core can produce each. A client offers a kind ENABLED only when its entry says `available: true`, and draws an unavailable kind disabled with its reason. Absent (Simulated mode, an older Core): only PACKAGE is offered.",
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "PACKAGE",
+                    "COMPOSITE"
+                  ]
+                },
+                "available": {
+                  "type": "boolean",
+                  "description": "True: a request of this kind is accepted. False: it is refused (`409 COMMAND_UNSUPPORTED`) before any job."
+                },
+                "reason": {
+                  "description": "Present exactly when `available` is false: why, as a code - `COMPOSITE_ENCODER_NOT_SELECTED` (no encoder is selected in this build).",
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+                }
+              },
+              "required": [
+                "kind",
+                "available"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -33112,6 +33644,11 @@
           "signatureOk": {
             "type": "boolean",
             "description": "Schema v2: a real Ed25519 signature is verified with the Core public key (OD-02)."
+          },
+          "demonstration": {
+            "description": "Present and true on every verdict the SIMULATOR computed (a `SIMULATED` item, a v1 `DEMO_PACKAGE` item): the hashes of a demonstration record were compared and no stored media was read. A client words such a verdict as a demonstration, never as a bare \"verified by the Core\". Absent on the verdict of a real sealed package.",
+            "type": "boolean",
+            "const": true
           },
           "overall": {
             "description": "Schema v2: PASS, or the gravest failure class among the findings.",
@@ -33849,6 +34386,39 @@
             "type": "integer",
             "minimum": 0,
             "description": "Rows of the stored chain: the `seq` of its newest row."
+          },
+          "evidenceVerification": {
+            "description": "Core server only: how many sealed items have / have no verification of record, counted over the whole evidence list by each item's `verification.status`. `passed + failed + neverVerified = sealed`. Absent: not stated (Simulated mode, an older Core).",
+            "type": "object",
+            "properties": {
+              "sealed": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Items that are sealed (`sealedAt` set). Never-sealed records are not counted."
+              },
+              "passed": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Sealed items whose verification of record is PASS."
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Sealed items whose verification of record is FAIL."
+              },
+              "neverVerified": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Sealed items with no verification of record (NOT_RUN)."
+              }
+            },
+            "required": [
+              "sealed",
+              "passed",
+              "failed",
+              "neverVerified"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -34427,6 +34997,68 @@
           },
           "settings": {
             "$ref": "#/components/schemas/SettingsSlice"
+          },
+          "components": {
+            "description": "Core server only: the versions of the components of THIS Core, each defined in one place. They are the only version statements about the real system: `device.softwareVersion`, `device.identity.coreSoftwareVersion`, `device.identity.tabletAppVersion` and the versions of the `update` slice are values of the hosted demonstration model and are never shown as the version of a Core in its own capture. The web console and the mobile app each state their OWN build version; the app version of a paired device is `appVersion` of the paired-devices list. Absent: Simulated mode, or an older Core.",
+            "type": "object",
+            "properties": {
+              "core": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$",
+                    "description": "The service name of the Core, as operation 1 states it (`service`)."
+                  },
+                  "version": {
+                    "type": "string",
+                    "pattern": "^\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}$",
+                    "description": "The version of the Core server: the value operation 1 answers as `version` and a sealed manifest states as `device.softwareVersion`."
+                  }
+                },
+                "required": [
+                  "name",
+                  "version"
+                ],
+                "additionalProperties": false,
+                "description": "The Core server itself."
+              },
+              "captureWorker": {
+                "description": "The capture worker. Present on a Core in its own capture; absent on a Core in SIMULATED capture, which starts none.",
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "pattern": "^capture-worker\\/\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}$",
+                    "description": "The release word of the capture worker this Core starts, `capture-worker/<major>.<minor>.<patch>`: the one version it accepts at the handshake."
+                  }
+                },
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false
+              },
+              "apiContract": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "pattern": "^\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}$",
+                    "description": "The version of the API contract document this Core serves (`info.version` of its OpenAPI document)."
+                  }
+                },
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false,
+                "description": "The API contract."
+              }
+            },
+            "required": [
+              "core",
+              "apiContract"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -34437,7 +35069,7 @@
           "settings"
         ],
         "additionalProperties": false,
-        "description": "The system page of the Core: five slices of the Core state, each in its wire form."
+        "description": "The system page of the Core: five slices of the Core state, each in its wire form, and the versions of its components."
       },
       "DiagnosticsRunStarted": {
         "type": "object",
@@ -36219,7 +36851,8 @@
                 ]
               },
               "online": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
               },
               "streamState": {
                 "anyOf": [
@@ -36234,7 +36867,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Null for a device with no stream (a mic, the PoE switch)."
+                "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
               },
               "capabilities": {
                 "type": "array",

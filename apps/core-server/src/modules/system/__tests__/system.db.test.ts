@@ -32,6 +32,7 @@ import { useTestDatabase } from '../../../../test/helpers/db';
 import { linkProblems, readEvents, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { actorAuth } from '../../../engine';
+import { CORE_SERVER_VERSION } from '../../../version';
 import { countChanges, storedSlices, tableCounts } from '../../../../test/support/engine';
 import { FOREIGN_ORIGIN } from '../../../../test/support/identity';
 import { SETTINGS_CHANGED_MESSAGE } from '../index';
@@ -136,7 +137,8 @@ describe('operation 64 getSystemStatus', () => {
     // The expectation is the five slices themselves, picked here: not the module's own projection.
     const { device, services, update, diagnostics, settings } = server.engine.state();
     // Row 62 (CS-10): two entries of `services` stand for real processes and are laid over the slice by the read.
-    expect(response.json()).toEqual(wire({ device, services: servicesAsRead(services, server.app), update, diagnostics, settings }));
+    expect(response.json()).toEqual(wire({ device, services: servicesAsRead(services, server.app), update, diagnostics, settings, components: (response.json() as { components: unknown }).components }));
+    expect((response.json() as { components: { core: { version: string } } }).components.core.version).toBe(CORE_SERVER_VERSION);
     expect(validateCoreApiResponse('getSystemStatus', 200, response.json())).toEqual({ ok: true });
     expect(response.headers['set-cookie']).toBeUndefined();
   });

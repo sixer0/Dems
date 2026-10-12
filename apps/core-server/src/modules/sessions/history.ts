@@ -19,16 +19,17 @@
  * A cursor that is not a position of this list answers `422 INVALID_INPUT`. Each item is the
  * mapping module's `SessionHistoryEntry` of its row (`sessionHistoryFromRow`): the one mapping
  * between rows and slices. `evidenceId` is no column: it is the evidence item of the session,
- * which a unique key allows at most once (MR-5).
+ * which a unique key allows at most once (MR-5). `unsealableCause` is no column either: it is the
+ * cause the audit trail holds for a session whose seal was given up (`readUnsealableCauses`).
  */
 import { API_PAGE_LIMIT_DEFAULT, SESSION_ID_PATTERN, type PageQuery, type SessionHistoryPage } from '@dems/shared/api';
 import type { SessionHistoryEntry } from '@dems/shared/sim';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import { sessionHistoryFromRow } from '../../db/mapping';
-import { evidenceItems, sessionHistory } from '../../db/schema';
+import { auditLog, evidenceItems, sessionHistory } from '../../db/schema';
 import { invalidInput } from '../../plugins/error-envelope';
 
 /** A position in the list: the keyset of one item. */
@@ -57,6 +58,39 @@ export function positionOf(cursor: string): HistoryPosition | null {
   return Number.isSafeInteger(endedAt) ? { endedAt, id } : null;
 }
 
+/** The audit type and the reason of the row the engine writes when it gives a seal up (`endUnsealableTransition`). */
+const UNSEALABLE_AUDIT_TYPE = 'SESSION_INCOMPLETE';
+const UNSEALABLE_REASON = 'UNSEALABLE';
+/** The form of a cause code (`SEAL_UNSEALABLE_CAUSE_CODE` of the shared simulator): anything else in a row is not answered. */
+const UNSEALABLE_CAUSE_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+/** A session that recorded, ended INCOMPLETE and has no evidence item: the only entries a given-up seal writes. */
+const isQuarantinedEntry = (entry: SessionHistoryEntry): boolean => entry.outcome === 'INCOMPLETE' && entry.startedAt !== null && entry.evidenceId === null;
+
+/**
+ * WHY THE SEAL OF EACH OF THESE SESSIONS WAS GIVEN UP (fix wave J round two; finding JW-22, remainder): the
+ * `details.cause` of the audit row `SESSION_INCOMPLETE` with `details.reason: UNSEALABLE` of the session -
+ * the record the Core stored when it ended the session, read as it is. `session_history` has no column for
+ * it and gets none: the trail is append-only and keeps every row, so the cause of the oldest session is
+ * still there. One statement, and none at all for a page without such a session; the index
+ * `(session_id, seq)` serves it. A session whose trail holds no such row gets no member (nothing is guessed
+ * from the fault kind). The first row of a session wins: a session ends once.
+ */
+export async function readUnsealableCauses(pool: Pool, sessionIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  const causes = new Map<string, string>();
+  if (sessionIds.length === 0) return causes;
+  const rows = await drizzle(pool)
+    .select({ sessionId: auditLog.sessionId, cause: sql<string | null>`${auditLog.details} ->> 'cause'` })
+    .from(auditLog)
+    .where(and(inArray(auditLog.sessionId, [...sessionIds]), eq(auditLog.type, UNSEALABLE_AUDIT_TYPE), sql`${auditLog.details} ->> 'reason' = ${UNSEALABLE_REASON}`))
+    .orderBy(asc(auditLog.seq));
+  for (const row of rows) {
+    if (row.sessionId === null || causes.has(row.sessionId)) continue;
+    if (typeof row.cause === 'string' && UNSEALABLE_CAUSE_CODE.test(row.cause)) causes.set(row.sessionId, row.cause);
+  }
+  return causes;
+}
+
 /** One page of the stored history after `after` (null: from the newest), `limit` items at most. */
 export async function readHistoryPage(pool: Pool, after: HistoryPosition | null, limit: number): Promise<SessionHistoryPage> {
   // One row more than the page: it tells whether another page follows, without a count.
@@ -67,7 +101,12 @@ export async function readHistoryPage(pool: Pool, after: HistoryPosition | null,
     .where(after === null ? undefined : sql`(${sessionHistory.endedAt}, ${sessionHistory.id}) < (${after.endedAt}, ${after.id})`)
     .orderBy(desc(sessionHistory.endedAt), desc(sessionHistory.id))
     .limit(limit + 1);
-  const items = rows.slice(0, limit).map((row) => sessionHistoryFromRow(row.entry, row.evidenceId));
+  const entries = rows.slice(0, limit).map((row) => sessionHistoryFromRow(row.entry, row.evidenceId));
+  const causes = await readUnsealableCauses(pool, entries.filter(isQuarantinedEntry).map((entry) => entry.id));
+  const items = entries.map((entry) => {
+    const cause = causes.get(entry.id);
+    return cause === undefined ? entry : { ...entry, unsealableCause: cause };
+  });
   const last = items[items.length - 1];
   return { items, nextCursor: rows.length > limit && last !== undefined ? cursorOf(last) : null };
 }

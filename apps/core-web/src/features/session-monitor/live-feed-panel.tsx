@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { Maximize2, Minimize2, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { VideoTrackId } from '@dems/shared/domain'
+import { SessionState, type VideoTrackId } from '@dems/shared/domain'
 import { formatDuration } from '@dems/shared/realtime'
 import { useCoreActions } from '@dems/shared/live'
 import { selectSystemState, useSim } from '@dems/shared/sim'
@@ -287,6 +287,7 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
   // Fix wave M (G75e-05): the Core is sealing the interrupted recording by itself - nothing is offered to start.
   const coreSealing = useSim(selectCoreSealsInterrupted) && phase === 'FAULT'
   // Row 139 (ux §8e.2): "Connecting cameras…" and the failed start come first; neither words a recording or evidence.
+  const armed = useSim((s) => s.session?.state === SessionState.ARMED)
   const situationC = connecting
     ? { title: t('common.session.connectingCameras'), body: t('session.audioSource.connecting.detail') }
     : failed !== null
@@ -295,7 +296,8 @@ function Invitation({ phase, connecting, failedStart, evidenceId, canStart, onRe
   const copy =
     situationC ??
     (phase === 'SETUP'
-      ? { title: t('session.idle.setupTitle'), body: t('session.idle.setupBody') }
+      ? // Fix wave J (JW-17): "Finish the pre-recording checks" was said of a session that is ARMED with every check done.
+        { title: t('session.idle.setupTitle'), body: armed ? t('web.waveJ.sessionNew.armedBody') : t('session.idle.setupBody') }
       : phase === 'SEALED'
         ? interrupted !== null
           ? { title: interrupted.title, body: `${evidenceId ?? '—'} · ${interrupted.cause} ${interrupted.kept}` }

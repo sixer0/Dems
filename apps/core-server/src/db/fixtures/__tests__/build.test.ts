@@ -14,6 +14,7 @@ import {
   DEMO_OPERATOR_PASSWORD,
   DEMO_PAIRING_CODE,
   EVIDENCE_HISTORY,
+  EVIDENCE_NOT_SEALED_DIGEST,
   GENESIS_HASH,
   OPERATORS,
   TODAY_HISTORY,
@@ -265,7 +266,14 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
     expect(evidenceItems.filter((row) => row.tampered).length + base.slices.evidence.filter((item) => item.tampered).length).toBeGreaterThanOrEqual(mix.tampered);
     expect(Object.keys(countBy(evidenceItems, (row) => row.caseType))).toHaveLength(mix.caseTypes);
     expect(evidenceItems.every((row) => row.integritySource === 'SIMULATED')).toBe(true);
-    expect(evidenceTracks).toHaveLength(evidenceItems.length * BULK_MIX.evidenceTracks.perItem);
+    // Fix wave J (truth rule 3a): four tracks per SEALED item; an item that was never sealed has none, holds the null digest and no verdict.
+    const neverSealed = evidenceItems.filter((row) => row.sealedAt === null);
+    expect(neverSealed.length).toBeGreaterThan(0);
+    expect(neverSealed.length).toBe(evidenceItems.filter((row) => row.status === 'RECORDED').length);
+    expect(neverSealed.every((row) => row.status === 'RECORDED' && row.manifestHash === EVIDENCE_NOT_SEALED_DIGEST && row.signatureValue === EVIDENCE_NOT_SEALED_DIGEST && row.verificationStatus === 'NOT_RUN' && !row.tampered)).toBe(true);
+    expect(evidenceTracks.filter((track) => neverSealed.some((row) => row.id === track.evidenceId))).toEqual([]);
+    expect(evidenceItems.filter((row) => row.sealedAt !== null).every((row) => row.manifestHash !== EVIDENCE_NOT_SEALED_DIGEST)).toBe(true);
+    expect(evidenceTracks).toHaveLength((evidenceItems.length - neverSealed.length) * BULK_MIX.evidenceTracks.perItem);
     const custody = countBy(evidenceCustody, (row) => row.evidenceId);
     expect(Math.min(...Object.values(custody))).toBeGreaterThanOrEqual(BULK_MIX.evidenceCustody.perItem);
     expect(new Set(Object.values(custody)).size).toBeGreaterThanOrEqual(3);
@@ -301,9 +309,14 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
       expect(['NOT_RUN', 'FAIL']).toContain(row.verificationStatus);
     }
     expect(tampered.filter((row) => row.verificationStatus === 'FAIL').length).toBeGreaterThanOrEqual(5);
-    for (const row of evidenceItems.filter((candidate) => !candidate.tampered).slice(0, 60)) {
+    for (const row of evidenceItems.filter((candidate) => !candidate.tampered && candidate.sealedAt !== null).slice(0, 60)) {
       expect(verifyEvidenceItem(itemOf(row.id), FIXED_NOW).ok, row.id).toBe(true);
       expect(['NOT_RUN', 'PASS']).toContain(row.verificationStatus);
+    }
+    // Fix wave J (truth rule 3a; JA2-01 / JW-01): a never-sealed item holds nothing a comparison could confirm - the shared check cannot say PASS for it.
+    for (const row of evidenceItems.filter((candidate) => candidate.sealedAt === null).slice(0, 20)) {
+      expect(verifyEvidenceItem(itemOf(row.id), FIXED_NOW).ok, row.id).toBe(false);
+      expect(row.verificationStatus).toBe('NOT_RUN');
     }
     expect(evidenceItems.filter((row) => row.verificationStatus === 'PASS').length).toBeGreaterThanOrEqual(50);
   });

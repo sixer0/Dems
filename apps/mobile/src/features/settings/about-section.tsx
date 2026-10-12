@@ -2,7 +2,8 @@
  * Settings → About DEMS (04_mobile_specs §4.15 `about`): product and device identity (a §24.1
  * subset from the simulator, labelled DEMO / synthetic), the native app build (expo-constants),
  * licences and credits (fonts OFL-1.1; the hero photo credit of THIRD_PARTY_NOTICES.md) in a
- * sheet, and "Stack diagnostics" → `/stack-check`. No URLs in app copy (MA-25).
+ * sheet, and "Stack diagnostics" → `/stack-check` (a developer page: development build, presentation
+ * mode off; fix wave J, JA2-29). No URLs in app copy (MA-25).
  */
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
@@ -10,9 +11,13 @@ import { Chip, LinkButton } from 'heroui-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { isPlatformNotReported, useSim, type SimState } from '@dems/shared/sim';
+import { isOwnCaptureCoreState, isPlatformNotReported, useSim, type SimState } from '@dems/shared/sim';
+import { useCoreLink } from '@/runtime';
+import { useCoreComponents } from '@/lib/core-components';
 import { spacing } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, type KeyValueItem } from '@/components/kit';
+import { developerControlsShown } from './settings-model';
+import { useSettingsPrefs } from './settings-prefs';
 import { SheetFrame } from './sheet-frame';
 import { SectionStack, settingsStyles } from './settings-controls';
 
@@ -24,13 +29,32 @@ export function AboutSection() {
   const device = useSim(selectDevice);
   const platformNotReported = useSim((state) => isPlatformNotReported(state.security));
   const [licencesOpen, setLicencesOpen] = useState(false);
+  // Fix wave J (JA2-29): the stack diagnostics page is a developer page, not an operator's.
+  const developer = developerControlsShown({ dev: __DEV__, presentationMode: useSettingsPrefs().presentationMode });
   const appBuild = Constants.expoConfig?.version ?? t('common.states.notAvailable');
 
+  // Round two (JW-26 mobile half; contract J2-S 2). On a Core in its OWN capture the model's "Software release"
+  // and "Device app" versions are versions of nothing real: they are not drawn. The versions of the real
+  // components are a card of their own: the Core's from operation 64 `components` (by name), the app's own build.
+  const ownCapture = useSim(isOwnCaptureCoreState);
+  const live = useCoreLink().source === 'LIVE';
+  const components = useCoreComponents();
+  const notReported = t('common.platformNotReported.value');
   const product: KeyValueItem[] = [
     { id: 'product', label: t('features.settings.about.product'), value: device.productName, testID: 'settings-about-product' },
-    { id: 'release', label: t('features.settings.about.softwareRelease'), value: `v${device.softwareVersion}`, mono: true, testID: 'settings-about-version' },
-    { id: 'tablet', label: t('features.settings.about.tabletApp'), value: `v${device.identity.tabletAppVersion}`, mono: true },
-    { id: 'build', label: t('features.settings.about.appBuild'), value: appBuild, mono: true, testID: 'settings-about-build' },
+    ...(ownCapture
+      ? []
+      : [
+          { id: 'release', label: t('features.settings.about.softwareRelease'), value: `v${device.softwareVersion}`, mono: true, testID: 'settings-about-version' },
+          { id: 'tablet', label: t('features.settings.about.tabletApp'), value: `v${device.identity.tabletAppVersion}`, mono: true },
+        ]),
+    ...(live ? [] : [{ id: 'build', label: t('features.settings.about.appBuild'), value: appBuild, mono: true, testID: 'settings-about-build' }]),
+  ];
+  const versions: KeyValueItem[] = [
+    { id: 'core', label: t('features.settings.about.versions.core'), value: components?.core ?? notReported, mono: components?.core != null, testID: 'settings-about-core-version' },
+    ...(components?.captureWorker != null ? [{ id: 'worker', label: t('features.settings.about.versions.captureWorker'), value: components.captureWorker, mono: true, testID: 'settings-about-worker-version' }] : []),
+    ...(components?.apiContract != null ? [{ id: 'contract', label: t('features.settings.about.versions.apiContract'), value: components.apiContract, mono: true, testID: 'settings-about-contract-version' }] : []),
+    { id: 'app', label: t('features.settings.about.versions.mobileApp'), value: appBuild, mono: true, testID: 'settings-about-build' },
   ];
   const identity: KeyValueItem[] = [
     { id: 'device', label: t('system.about.deviceId'), value: device.id, mono: true, testID: 'settings-about-device' },
@@ -52,7 +76,12 @@ export function AboutSection() {
       <SectionCard title={t('features.settings.about.productTitle')} action={demoChip} testID="settings-about-product-card">
         <KeyValueList items={product} />
       </SectionCard>
-      <SectionCard title={t('system.about.identityTitle')} description={t('system.about.synthetic')} action={demoChip} testID="settings-about-identity">
+      {live ? (
+        <SectionCard title={t('features.settings.about.versions.title')} description={t('features.settings.about.versions.note')} testID="settings-about-versions">
+          <KeyValueList items={versions} />
+        </SectionCard>
+      ) : null}
+      <SectionCard title={t('features.settings.about.identityTitle')} description={t('system.about.synthetic')} action={demoChip} testID="settings-about-identity">
         <KeyValueList items={identity} />
       </SectionCard>
       <SectionCard title={t('features.settings.about.licences')} testID="settings-about-licences">
@@ -60,9 +89,11 @@ export function AboutSection() {
           <LinkButton size="sm" onPress={() => setLicencesOpen(true)} testID="settings-about-licences-open">
             <LinkButton.Label>{t('features.settings.about.licencesOpen')}</LinkButton.Label>
           </LinkButton>
-          <LinkButton size="sm" onPress={() => router.push('/stack-check')} testID="settings-about-stack-check">
-            <LinkButton.Label>{t('features.settings.about.stackDiagnostics')}</LinkButton.Label>
-          </LinkButton>
+          {developer ? (
+            <LinkButton size="sm" onPress={() => router.push('/stack-check')} testID="settings-about-stack-check">
+              <LinkButton.Label>{t('features.settings.about.stackDiagnostics')}</LinkButton.Label>
+            </LinkButton>
+          ) : null}
         </View>
       </SectionCard>
       <SheetFrame isOpen={licencesOpen} onClose={() => setLicencesOpen(false)} title={t('features.settings.about.licences')} testID="settings-licences-sheet">

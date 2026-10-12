@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { captureMicLines, micInputOfChannel, type Sim } from '@dems/shared/sim'
 import { drainMeterFrames, setDebugMetricsEnabled } from '@/motion'
+import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE } from '@dems/shared/api'
 import { DbfsMeter } from '../dbfs-meter'
 import {
   ariaValueNow,
@@ -189,5 +190,37 @@ describe('DbfsMeter', () => {
     countFrames()
     pushAudioFrame(sim, 'AUDIO-01', { at: t0 + 60, dbfs: -20 })
     expect(drainMeterFrames()['AUDIO-01']).toBe(1)
+  })
+})
+
+// Fix wave J (JW-08; contract J-S 6): a level the Core did not measure (no capture is open) is "Not measured" - never
+// "NO SIGNAL", the product's own fault word, which stood beside "READY - PASS". The contract's example is fed unmodified.
+describe('a level that was not measured (wave J, JW-08)', () => {
+  it('draws "Not measured", no number and no NO SIGNAL; a measured frame brings the meter back', () => {
+    const sim = createTestSim()
+    pushAudioFrame(sim, 'AUDIO-01', AUDIO_FRAME_NOT_MEASURED_EXAMPLE)
+    render(withProviders(<DbfsMeter channel="AUDIO-01" variant="panel" />, { sim }))
+    const meter = screen.getByTestId('dbfs-meter')
+    expect(meter).toHaveAttribute('data-not-measured', 'true')
+    expect(meter).not.toHaveAttribute('data-no-signal')
+    expect(screen.getByTestId('dbfs-not-measured')).toHaveTextContent('Not measured')
+    expect(meter.textContent ?? '').not.toMatch(/no signal/i)
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuetext', 'Not measured')
+    // A measured frame carries no `notMeasured` member at all (the helper merges frames, so the member is dropped by hand).
+    act(() => {
+      sim.store.setState((state) => {
+        const input = micInputOfChannel(captureMicLines(state), 'AUDIO-01')
+        return { audio: { ...state.audio, inputs: { ...state.audio.inputs, [input]: { seq: 99, at: 1_790_823_601_000, dbfs: -18, peak: -18, clip: false, noSignal: false } } } }
+      })
+    })
+    expect(screen.getByTestId('dbfs-meter')).not.toHaveAttribute('data-not-measured')
+  })
+
+  it('NEGATIVE CONTROL: an open capture that delivers no samples is still NO SIGNAL', () => {
+    const sim = createTestSim()
+    pushAudioFrame(sim, 'AUDIO-01', { dbfs: -90, peak: -90, noSignal: true })
+    render(withProviders(<DbfsMeter channel="AUDIO-01" variant="panel" />, { sim }))
+    expect(screen.getByTestId('dbfs-meter')).toHaveAttribute('data-no-signal', 'true')
+    expect(screen.queryByTestId('dbfs-not-measured')).toBeNull()
   })
 })

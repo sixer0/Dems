@@ -12,7 +12,8 @@ import { StyleSheet, View } from 'react-native';
 import { spacing } from '@dems/shared/tokens';
 import { KeyValueList, StatusChip, type KeyValueItem } from '@/components/kit';
 import { LAN_TONE, POE_TONE, fixed1, lanLevel, poeLevel, type NetworkView } from './network-time-model';
-import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { SheetContentSignal, useSheetBack, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 export interface LanSheetProps {
   isOpen: boolean;
@@ -23,6 +24,10 @@ export interface LanSheetProps {
 export function LanSheet({ isOpen, onClose, network }: LanSheetProps) {
   const { t } = useTranslation();
   const presence = useSheetPresence(isOpen);
+  // Fix wave J (JA2-16): Android Back closes the sheet and stays on Network & Time.
+  useSheetBack(isOpen, onClose);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: 'network-time-lan-sheet' });
   if (!presence.mounted) return null;
 
   const lan = lanLevel(network.linkUp);
@@ -57,16 +62,16 @@ export function LanSheet({ isOpen, onClose, network }: LanSheetProps) {
       id: 'tablet',
       label: t('features.network-time.lan.tablet'),
       value: (
-        <StatusChip size="sm" tone={tabletTone} label={t(`networkTime.network.tabletState.${network.tabletLink}`)} />
+        <StatusChip size="sm" tone={tabletTone} label={t(`features.network-time.lan.deviceState.${network.tabletLink === 'CONNECTED' ? 'CONNECTED' : 'OFFLINE'}`)} />
       ),
     },
   ];
 
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content>
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}>
           <SheetContentSignal onChange={presence.setContentMounted}>
             <View style={styles.header} testID="network-time-lan-sheet">
               <View style={styles.headerText}>

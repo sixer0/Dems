@@ -671,7 +671,8 @@ describe('the shell\'s call sites (CLG (c); AC-C-53; brief list row 18)', () => 
   // Fix wave L (G75d-01), by delta: the bell is a third call site - the acknowledgement that closes an unsealable notice (operation 70).
   it('the call sites take them from `useCoreActions()` and consume the result through `settle`', () => {
     const using = production.filter(({ text }) => /\buseCoreActions\(\)/.test(code(text))).map(({ name }) => name)
-    expect(using.sort()).toEqual(['app-shell.tsx', 'notifications-bell.tsx', 'user-menu.tsx'])
+    // Fix wave J round three, by delta: `use-acknowledge-all.ts` is a fourth - the run of "Acknowledge all" (operation 70, one call per alert).
+    expect(using.sort()).toEqual(['app-shell.tsx', 'notifications-bell.tsx', 'use-acknowledge-all.ts', 'user-menu.tsx'])
     for (const name of using) {
       const text = code(production.find((file) => file.name === name)!.text)
       const calls = [...text.matchAll(/\bactions\.(\w+)\(/g)]

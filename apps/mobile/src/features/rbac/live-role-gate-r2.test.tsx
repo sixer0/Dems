@@ -128,9 +128,9 @@ describe('R2 in LIVE mode: a role change pushed by the Core re-gates the control
     await changeRole(b, 'TECHNICIAN');
     expect(screen.getByTestId('bed-probe').props.children).toMatch(/^auth=\S+ link=LIVE\/ONLINE\/LIVE$/);
     expect(disabled('home-action-primary')).toBe(true);
-    expect(screen.getByTestId('home-action-primary-locked')).toHaveTextContent('Requires the Investigator role');
+    expect(screen.getByTestId('home-action-primary-locked')).toHaveTextContent('Requires the Investigator or Supervisor role');
     expect(disabled('sessions-start')).toBe(true);
-    expect(screen.getByTestId('sessions-start-locked')).toHaveTextContent('Requires the Investigator role');
+    expect(screen.getByTestId('sessions-start-locked')).toHaveTextContent('Requires the Investigator or Supervisor role');
     expect(disabled('settings-update-install')).toBe(false);
     expect(screen.queryByTestId('settings-update-install-locked')).toBeNull();
     fireEvent.press(screen.getByTestId('home-action-primary'));

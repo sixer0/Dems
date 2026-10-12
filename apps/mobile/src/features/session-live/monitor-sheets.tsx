@@ -13,6 +13,7 @@
 import { BottomSheet, Description, Label, Switch, Tabs } from 'heroui-native';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useOwnCapture } from './own-capture';
 import { StyleSheet, Text, View } from 'react-native';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { SimContext, useSimInstance, type CameraStatus, type MicStatus } from '@dems/shared/sim';
@@ -23,6 +24,7 @@ import { triggerHaptic, useMotionPolicy } from '@/motion';
 import { MicMeter } from './mic-card';
 import { cameraIndexOf } from './session-live.math';
 import { SheetContentSignal, useSheetPresence } from './use-sheet-presence';
+import { useConfirmedOpen } from '@/lib/sheet-open';
 
 interface SheetFrameProps {
   isOpen: boolean;
@@ -39,13 +41,15 @@ function SheetFrame({ isOpen, onClose, title, description, testID, children }: S
   // simulator's provider (04 §3.2 slots 7 and 9): re-provide the simulator for the meters inside.
   const sim = useSimInstance();
   const presence = useSheetPresence(isOpen);
+  // Fix wave J round two (JM-02 is the app's, not only the Evidence sheets'): the open is confirmed, and asked again when the sheet library dropped it.
+  const confirmed = useConfirmedOpen(presence.open, onClose, { testID: testID });
   if (!presence.mounted) return null;
   const body = <SimContext.Provider value={sim}>{children}</SimContext.Provider>;
   return (
-    <BottomSheet isOpen={presence.open} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <BottomSheet isOpen={confirmed.kitOpen} onOpenChange={(open) => (open ? undefined : onClose())}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
-        <BottomSheet.Content>
+        <BottomSheet.Content onAnimate={confirmed.onAnimate}>
           <SheetContentSignal onChange={presence.setContentMounted}>
             <View style={styles.header} testID={testID}>
               <View style={styles.headerText}>
@@ -102,19 +106,21 @@ export interface AudioMonitorSheetProps {
 
 export function AudioMonitorSheet({ isOpen, onClose, mics, monitoringPaused, onClipReset }: AudioMonitorSheetProps) {
   const { t } = useTranslation();
+  // JT-07: a Core in its own capture records one audio track from the active microphone (i18n note).
+  const ownCapture = useOwnCapture();
   return (
     <SheetFrame
       isOpen={isOpen}
       onClose={onClose}
       title={t('features.session-live.sheets.audioTitle')}
-      description={t('features.session-live.sheets.audioDescription')}
+      description={t(ownCapture ? 'features.session-live.sheets.audioDescriptionOwnCapture' : 'features.session-live.sheets.audioDescription')}
       testID="monitor-audio-sheet"
     >
       <View style={styles.meters}>
         {mics.map((mic) => (
           <View key={mic.id} style={styles.largeMeter}>
             <Text maxFontSizeMultiplier={1.2} style={styles.meterTitle}>
-              {t(`common.tracks.${mic.id}`)}
+              {ownCapture ? (mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1')) : t(`common.tracks.${mic.id}`)}
             </Text>
             <MicMeter
               mic={mic}

@@ -15,6 +15,7 @@
 // | An outage: the page keeps the last data and shows no notice of its own (§21.2 of row W54) | "an outage" |
 // | CLG (c), AC-C-53: no production file imports `useSimActions` or reads `.actions` of a `Sim`; the one action runs through `settle` | "static rules of the folder" |
 // | Error logging: the page's own record goes to the sink by a fixed sentence, without the error's text | "static rules of the folder", "the page's own record" |
+import { demoMarkBlocks, withoutDemoMarks } from './demo-words'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
@@ -144,7 +145,9 @@ describe('the page on the Core\'s data (G13; §3.2)', () => {
     expect(screen.getByTestId('storage-panel-volumes')).toHaveTextContent(S.volumes.live.derivedNote)
     expect(screen.getByTestId('storage-panel-volumes')).not.toHaveTextContent(S.volumes.derivedNote)
     // §3.2: nothing on the screen speaks of a simulation.
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
     // The page asked the Core for nothing of its own: the replica is its source (G13: one operation, 55, on a press).
     for (const operationId of ['getStorageStatus', 'getStorageDetail', 'setStoragePolicy']) expect(bed.fake.log.requestsOf(operationId), operationId).toHaveLength(0)
     expect(getMissingI18nKeys()).toEqual([])
@@ -179,7 +182,9 @@ describe('an outage (§21.2 of row W54: the shell speaks, the page does not)', (
     expect(screen.getByTestId('storage-banner')).toHaveAttribute('data-state', 'LOW')
     expect(within(storagePage).queryByText(new RegExp(en.common.coreErrors.offline.split('.')[0]!))).not.toBeInTheDocument()
     expect(within(storagePage).queryAllByRole('alert')).toHaveLength(0)
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
   })
 })
 

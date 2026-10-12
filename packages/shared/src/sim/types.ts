@@ -458,6 +458,11 @@ export interface SessionNote {
   at: EpochMs;
   authorId: string | null;
   text: string;
+  /**
+   * Fix wave J round two (JW-13): present on the ONE note of an evidence item that carries the session
+   * form's "Notes" field (`SESSION_FORM`). Absent on a note written during the recording.
+   */
+  origin?: 'SESSION_FORM';
 }
 
 export interface SessionFault {
@@ -556,6 +561,11 @@ export interface SessionHistoryEntry {
   startTimeSource?: TimeSource | null;
   /** Time source at the end of the recording (step 54, SIM-GAP-M80-1). */
   endTimeSource?: TimeSource | null;
+  /**
+   * Operation 38 only (fix wave J round two, JW-22): why the seal of a recorded session was given up, as the
+   * code of its `SESSION_INCOMPLETE` audit row. Never in the replicated slice (no column): read `unsealableCauseOf`.
+   */
+  unsealableCause?: string;
 }
 
 export interface CameraStatus {
@@ -612,6 +622,12 @@ export interface AudioFrame {
   clip: boolean;
   /** NO SIGNAL: a flat −90. */
   noSignal: boolean;
+  /**
+   * Fix wave J (JW-08): present and true when the Core does not MEASURE this input now - a Core in
+   * its own capture with no capture open. `dbfs` / `peak` hold the floor as placeholders and
+   * `noSignal` is false: "not measured" is not the fault word. Reader: `isLevelNotMeasured`.
+   */
+  notMeasured?: true;
 }
 
 /** High-frequency slice: never persisted; read through `useAudioChannel`. */
@@ -1357,6 +1373,11 @@ export interface UpdateSlice {
   steps: { id: UpdateStep; status: StepStatus; resolvesAt?: EpochMs | null }[];
   startedAt: EpochMs | null;
   completedAt: EpochMs | null;
+  /**
+   * Fix wave J (JT-06 / JW-06): present and true on a Core in its own capture - it has no software
+   * updater. The other members are then not readings. Reader: `isUpdaterNotAvailable`.
+   */
+  updaterNotAvailable?: true;
 }
 
 /**
@@ -1470,6 +1491,12 @@ export interface EvidenceVerifyResult {
   tracks: TrackVerifyResult[];
   manifestOk: boolean;
   signatureOk: boolean;
+  /**
+   * Fix wave J (JA2-02): present and true on every verdict the SIMULATOR computed - the hashes of a
+   * demonstration record were compared and no stored media was read. Absent on the verdict of a
+   * real sealed package (the Core's own verification).
+   */
+  demonstration?: true;
 }
 
 export interface ExportRequest {

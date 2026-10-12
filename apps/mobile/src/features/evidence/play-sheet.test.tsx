@@ -122,17 +122,20 @@ describe('Play sheet', () => {
     expect(mic2.pause).toHaveBeenCalled();
   });
 
-  it('reduced motion: the player opens in a kit Dialog (no slide-up) and still plays (device finding)', async () => {
+  // Fix wave J round two (JM-08 ruling) REPLACES "the player opens in a kit Dialog": a scrolling surface is a sheet in
+  // BOTH motion modes - one form, one way out.
+  it('JM-08 reduced motion: the player is the same sheet as in full motion (no Dialog form) and still plays', async () => {
     resetMotionStateForTests({ reduceMotionOverride: true });
     try {
       await openPlayer('0002');
-      expect(screen.getByTestId('evidence-play-sheet-dialog')).toBeTruthy();
+      expect(screen.queryByTestId('evidence-play-sheet-dialog')).toBeNull();
+      expect(screen.getByTestId('evidence-play-sheet')).toBeTruthy();
       expect(screen.getByTestId('evidence-player')).toBeTruthy();
       const [video, mic1, mic2] = createdPlayers(spy) as [MockPlayer, MockPlayer, MockPlayer];
       expect([video, mic1, mic2].every((p) => p.play.mock.calls.length > 0)).toBe(true);
-      // Closing unmounts the dialog body; expo-video releases its players with it.
+      // Closing pauses every player at once (the full-motion case above asserts the same; when the body leaves is the frame's exit time).
       fireEvent.press(screen.getByTestId('evidence-play-sheet-close'));
-      await waitFor(() => expect(screen.queryByTestId('evidence-player')).toBeNull());
+      await waitFor(() => expect(video.pause).toHaveBeenCalled());
     } finally {
       resetMotionStateForTests();
     }

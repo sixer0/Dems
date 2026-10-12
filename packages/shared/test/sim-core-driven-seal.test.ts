@@ -24,8 +24,11 @@ import {
   interruptedSealOfSession,
   selectElapsedMs,
   toApiSession,
+  SESSION_FORM_NOTE_ID,
+  itemNotesOf,
 } from '../src/sim';
-import { EvidenceItemSchema } from '../src/api/state-slices';
+import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE } from '../src/api';
+import { EvidenceItemSchema, SessionNoteSchema } from '../src/api/state-slices';
 import { en } from '../src/i18n';
 import * as sessionFaultBed from './support/session-fault-bed';
 
@@ -202,6 +205,50 @@ describe('completeSeal: the item of the real package', () => {
     const sealedRows = h.state().audit.rows.filter((row) => row.type === 'EVIDENCE_SEALED' && row.sessionId === sessionId);
     expect(sealedRows).toHaveLength(1);
     expect(Object.keys(sealedRows[0]?.details ?? {}).sort()).toEqual(['manifestHash', 'sizeBytes', 'tracks']);
+  });
+
+  it('fix wave J round two (JW-13): what the operator added is ON the sealed item - every marker, every note, and the session form\'s note; a snapshot is a timeline mark only', () => {
+    const h = harness();
+    const sessionId = h.toRecording();
+    const formNote = h.state().session?.input.notes ?? '';
+    h.sim.actions.addMarker('Key statement');
+    h.clock.advance(1_000);
+    h.sim.actions.addNote('Subject asked for a break.');
+    h.sim.actions.snapshot();
+    h.sim.actions.addMarker();
+    const recording = h.state().session;
+    h.sim.actions.stopRecording('Interview complete');
+    h.apply(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps: report(5, 90) }));
+    const at = h.clock.now();
+    h.apply(completeSealTransition(h.state(), at, sealInput(sessionId, at, { transcriptSha256: hex('7a'), labelsStatus: 'LABELLED' })));
+    const item = h.state().evidence.at(-1);
+    expect(item?.integritySource).toBe('REAL');
+    // The markers are the session's own timeline items: same ids, instants and labels (never rebuilt from the audit trail).
+    const timeline = recording?.timeline.filter((entry) => entry.kind === 'MARKER') ?? [];
+    expect(item?.markers).toEqual(timeline.map((entry, index) => ({ id: entry.id, at: entry.at, index: index + 1, label: entry.label })));
+    expect(item?.markers?.map((marker) => marker.label)).toEqual(['Key statement', 'Marker 2']);
+    // The notes written during the recording are the session's notes, whole.
+    const during = item?.notes?.filter((note) => note.origin === undefined);
+    expect(during).toEqual(recording?.notes);
+    expect(during?.map((note) => note.text)).toEqual(['Subject asked for a break.']);
+    // The form's note: on the item exactly when the form held one, as the first note, marked by its origin.
+    expect(item?.notes).toEqual(itemNotesOf(recording as NonNullable<typeof recording>));
+    if (formNote.trim() === '') expect(item?.notes?.some((note) => note.origin !== undefined)).toBe(false);
+    else expect(item?.notes?.[0]).toEqual({ id: SESSION_FORM_NOTE_ID, at: recording?.createdAt, authorId: recording?.createdBy, text: formNote.trim(), origin: 'SESSION_FORM' });
+    // A snapshot leaves a count and an audit row; the item has no member for it.
+    expect(recording?.snapshotCount).toBe(1);
+    expect(Object.keys(item ?? {}).filter((key) => /snapshot/i.test(key))).toEqual([]);
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true);
+    expect(EvidenceItemSchema.safeParse({ ...item, ...EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE }).success).toBe(true);
+  });
+
+  it('JW-13: the form\'s note - a session created WITH "Notes" seals an item whose first note is that text; CONTROL: an empty field adds no note; an unknown origin is refused by the contract', () => {
+    const base = { id: 'SES-20261001-0030', createdAt: 1_790_819_040_000, createdBy: 'OPR-001', notes: [{ id: 'NOTE-000413', at: 1_790_819_220_000, authorId: 'OPR-001', text: 'During.' }] };
+    const withForm = itemNotesOf({ ...base, input: { notes: '  Second interview; counsel present.  ' } } as unknown as Parameters<typeof itemNotesOf>[0]);
+    expect(withForm).toEqual([{ id: 'NOTE-FORM', at: base.createdAt, authorId: 'OPR-001', text: 'Second interview; counsel present.', origin: 'SESSION_FORM' }, ...base.notes]);
+    for (const empty of ['', '   ']) expect(itemNotesOf({ ...base, input: { notes: empty } } as unknown as Parameters<typeof itemNotesOf>[0])).toBe(base.notes);
+    expect(SessionNoteSchema.safeParse(withForm[0]).success).toBe(true);
+    expect(SessionNoteSchema.safeParse({ ...withForm[0], origin: 'OTHER' }).success).toBe(false);
   });
 
   it('an interrupted seal ends where the durable media ends, says so in the custody, and closes the recovery', () => {

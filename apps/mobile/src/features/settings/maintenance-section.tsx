@@ -40,7 +40,7 @@
  * modes; a role change pushed by the Core re-gates it in place.
  */
 import { settle, useCoreActions, useCorePermission, useLiveSelector } from '@dems/shared/live';
-import { Accordion, Button, Chip, Spinner, TagGroup, useToast } from 'heroui-native';
+import { Accordion, Button, Chip, Dialog, Spinner, TagGroup, useToast } from 'heroui-native';
 import { Activity, Download, FlaskConical, LifeBuoy, Play, RotateCcw } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -57,12 +57,15 @@ import {
   useSim,
   type DiagnosticStatus,
   type SimState,
+  isPlatformNotReported,
+  isUpdaterNotAvailable,
 } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { Stepper } from '@/components/composed/stepper';
 import { SectionCard } from '@/components/kit';
 import { useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink, usePendingPress, type MobileLiveSim } from '@/runtime';
+import { diagnosticNotReported, summaryOf } from '@/features/devices/diagnostics-sheet';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import {
   DEMO_FAULTS,
@@ -168,6 +171,8 @@ function DiagnosticsCard() {
   const diagnostics = useSim(selectDiagnostics);
   const [open, setOpen] = useState(false);
   const summary = summarizeDiagnostics(diagnostics);
+  const platformNotReported = useSim((s) => isPlatformNotReported(s.security));
+  const notReported = diagnostics ? diagnostics.checks.filter((check) => diagnosticNotReported(check, platformNotReported)).length : 0;
   const subtitle = t(live ? 'system.live.diagnosticsSubtitle' : 'system.diagnostics.subtitle');
 
   // S2-7: the sheet opens in `ok`, once the simulator or the Core accepted the run.
@@ -186,12 +191,15 @@ function DiagnosticsCard() {
     <SectionCard title={t('features.settings.maintenance.diagnosticsTitle')} description={subtitle} testID="settings-diagnostics">
       {summary?.complete && diagnostics?.completedAt != null ? (
         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted} testID="settings-diagnostics-last">
-          {t('features.settings.maintenance.lastRun', {
-            time: formatWibTime(diagnostics.completedAt),
-            pass: summary.pass,
-            warn: summary.warn,
-            fail: summary.fail,
-          })}
+          {notReported > 0
+            ? // JT-03: rows the Core does not read are neither passed nor "attention" - the Devices sheet's headline.
+              t('features.settings.maintenance.lastRunNotReported', { time: formatWibTime(diagnostics.completedAt), summary: summaryOf(diagnostics, 'system.diagnostics.subtitle', t, platformNotReported) })
+            : t('features.settings.maintenance.lastRun', {
+                time: formatWibTime(diagnostics.completedAt),
+                pass: summary.pass,
+                warn: summary.warn,
+                fail: summary.fail,
+              })}
         </Text>
       ) : null}
       <Button testID="settings-run-diagnostics" variant="secondary" size="lg" onPress={start} accessibilityLabel={t('features.settings.maintenance.runDiagnostics')} {...busyState(press.busy)}>
@@ -225,8 +233,15 @@ function DiagnosticsBody() {
   const { t } = useTranslation();
   const diagnostics = useSim(selectDiagnostics);
   const summary = summarizeDiagnostics(diagnostics);
+  // Fix wave J (JT-03, the Settings half J-P handed over): the SAME rule and the SAME headline as the Devices
+  // sheet (`diagnosticNotReported`, `summaryOf`). A row over hardware the Core does not read is "Not reported",
+  // never PASS, and such a run is never "all passed".
+  const platformNotReported = useSim((s) => isPlatformNotReported(s.security));
   if (!diagnostics || !summary) return null;
-  const headline = !summary.complete
+  const anyNotReported = diagnostics.checks.some((check) => diagnosticNotReported(check, platformNotReported));
+  const headline = summary.complete && anyNotReported
+    ? summaryOf(diagnostics, 'system.diagnostics.subtitle', t, platformNotReported)
+    : !summary.complete
     ? t('system.diagnostics.progress', { done: summary.done, total: summary.total })
     : summary.fail > 0
       ? t('system.diagnostics.failed', { count: summary.fail })
@@ -244,9 +259,15 @@ function DiagnosticsBody() {
             {t(`system.diagnostics.checks.${check.id}`, { defaultValue: check.label })}
           </Text>
           {check.status === 'RUNNING' ? <Spinner size="sm" /> : null}
-          <Chip size="sm" variant="soft" color={DIAGNOSTIC_TONE[check.status]}>
-            <Chip.Label>{t(`common.diagnosticStatus.${check.status}`)}</Chip.Label>
-          </Chip>
+          {diagnosticNotReported(check, platformNotReported) ? (
+            <Chip size="sm" variant="soft" color="default" testID={`settings-diagnostics-check-${check.id}-not-reported`}>
+              <Chip.Label>{t('common.platformNotReported.value')}</Chip.Label>
+            </Chip>
+          ) : (
+            <Chip size="sm" variant="soft" color={DIAGNOSTIC_TONE[check.status]}>
+              <Chip.Label>{t(`common.diagnosticStatus.${check.status}`)}</Chip.Label>
+            </Chip>
+          )}
         </View>
       ))}
     </View>
@@ -271,8 +292,12 @@ function UpdateCard() {
   const slot = targetSlotOf(update);
 
   // S2-7: the started toast in `ok`, once the simulator or the Core accepted the update.
+  // Fix wave J (JT-06, truth rule 3e): "Install update" started at one press - a sequence that names an install
+  // to the inactive system slot and a reboot. The press now asks first, saying what will happen.
+  const [confirming, setConfirming] = useState(false);
   const install = () => {
     if (locked) return;
+    setConfirming(false);
     press.run((release) =>
       run(() => actions.startSoftwareUpdate(), {
         source: 'settings.maintenance.startSoftwareUpdate',
@@ -293,6 +318,18 @@ function UpdateCard() {
       : update.availableVersion
         ? t('features.settings.maintenance.updateAvailable', { version: update.availableVersion })
         : t('system.update.upToDateBody', { version: update.currentVersion, slot: update.activeSlot });
+
+  // JT-06 (contract_wave_j.md J-S 11): a Core in its own capture has no updater. Its versions and steps are no
+  // readings: none is drawn, and no Install control is offered.
+  if (isUpdaterNotAvailable(update)) {
+    return (
+      <SectionCard title={t('common.quickActions.softwareUpdate.title')} testID="settings-update">
+        <Text maxFontSizeMultiplier={1.2} style={settingsStyles.body} testID="settings-update-not-available">
+          {t('common.truth.updaterNotAvailable')}
+        </Text>
+      </SectionCard>
+    );
+  }
 
   return (
     <SectionCard
@@ -330,7 +367,7 @@ function UpdateCard() {
             variant="primary"
             size="lg"
             isDisabled={locked}
-            onPress={install}
+            onPress={() => (locked ? undefined : setConfirming(true))}
             accessibilityLabel={t(live ? 'system.live.install' : 'system.update.install')}
             {...(locked && maintenance.hint ? { accessibilityHint: maintenance.hint } : {})}
             {...busyState(press.busy, locked)}
@@ -345,6 +382,24 @@ function UpdateCard() {
           ) : null}
         </>
       ) : null}
+      <Dialog isOpen={confirming} onOpenChange={(open) => (open ? undefined : setConfirming(false))}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content testID="settings-update-confirm-dialog">
+            <Dialog.Title>{t('features.settings.maintenance.installConfirmTitle', { version: update.availableVersion ?? '' })}</Dialog.Title>
+            <Dialog.Description>{t('features.settings.maintenance.installConfirmBody', { slot })}</Dialog.Description>
+            <Dialog.Description>{t(live ? 'features.settings.live.updateNote' : 'features.settings.maintenance.installConfirmSimulated')}</Dialog.Description>
+            <View style={styles.confirmActions}>
+              <Button testID="settings-update-confirm" variant="primary" onPress={install}>
+                <Button.Label>{t('features.settings.maintenance.installConfirm')}</Button.Label>
+              </Button>
+              <Button testID="settings-update-cancel" variant="outline" onPress={() => setConfirming(false)}>
+                <Button.Label>{t('features.settings.maintenance.installCancel')}</Button.Label>
+              </Button>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
       {running ? (
         <Text maxFontSizeMultiplier={1.2} style={settingsStyles.muted}>
           {t('system.update.installing')} {t('system.update.slot', { slot })}
@@ -563,6 +618,7 @@ function DemoFaultButton({ spec, on, onToggle }: { spec: DemoFaultSpec; on: bool
 }
 
 const styles = StyleSheet.create({
+  confirmActions: { gap: spacing[1], marginTop: spacing[3] },
   checks: { gap: spacing[2] },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[2], minHeight: 32 },
   checkLabel: { flex: 1 },

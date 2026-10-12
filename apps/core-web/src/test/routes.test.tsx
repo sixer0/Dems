@@ -3,6 +3,7 @@
 // its own simulator with in-memory storage (D54(a): Node 26 and jsdom expose a global
 // sessionStorage) and a heartbeat socket that never connects.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { toast } from '@heroui/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,7 +19,9 @@ import {
   type Sim,
 } from '@dems/shared/sim'
 import { SHELL_RAIL_STORAGE_KEY } from '@/components/shell'
+import { BOTTOM_TABS, NAV_ITEMS } from '@/components/shell/nav-items'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
+import { installRestoredPageGuard } from '@/lib/restored-page'
 import { createAppRouter, type AppRouter } from '@/router'
 
 /** §14.2 page paths → the stub test IDs (AC-48; `/login` is covered signed-out, see below). */
@@ -195,10 +198,22 @@ describe('guard (AC-49)', () => {
     expect(router.state.location.href).toBe('/login')
   })
 
-  it('sends an operator without SESSION_START (TECHNICIAN) from /session/new to /dashboard', async () => {
+  // Fix wave J (JW-14 (d)): the leave stays (the guard), and it is no longer silent - the shell says which page was
+  // refused and which roles open it. This case REPLACES the one that pinned the redirect alone.
+  it('sends an operator without SESSION_START (TECHNICIAN) from /session/new to /dashboard AND says why, naming the roles', async () => {
+    const warning = vi.spyOn(toast, 'warning')
     const { router } = mount('/session/new', OPERATOR_IDS.RINA)
     expect(await screen.findByTestId('page-dashboard')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/dashboard')
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(1))
+    expect(warning).toHaveBeenCalledWith('Start New Session: not available to your role', { description: 'Requires the Investigator or Supervisor role' })
+  })
+
+  it('NEGATIVE CONTROL: an investigator opens /session/new and nothing is said', async () => {
+    const warning = vi.spyOn(toast, 'warning')
+    mount('/session/new', OPERATOR_IDS.BUDI)
+    expect(await screen.findByTestId('page-session-new')).toBeInTheDocument()
+    expect(warning).not.toHaveBeenCalled()
   })
 })
 
@@ -258,6 +273,64 @@ describe('AppShell (§14.3–§14.4)', () => {
     expect(within(header).getByTestId('secure-pill')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content')
     expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  // Fix wave J rounds one and three (JW-20): `/stack-check` stays reachable by address for every role
+  // (01_specs §14.2: a URL-only diagnostic) - and it is NOT part of the operator's navigation: no entry of
+  // the sidebar, the bottom tabs or any page links to it, and the page says what it is.
+  it('JW-20: /stack-check is linked from no operator navigation, on no role, and names itself a developer diagnostic', async () => {
+    expect([...NAV_ITEMS, ...BOTTOM_TABS].map((item) => item.to as string)).not.toContain('/stack-check')
+    for (const operatorId of [OPERATOR_IDS.BUDI, OPERATOR_IDS.ANDI, OPERATOR_IDS.RINA]) {
+      useViewportWidth(1920)
+      mount('/dashboard', operatorId)
+      await screen.findByTestId('page-dashboard')
+      const hrefs = Array.from(document.querySelectorAll('a[href]')).map((link) => link.getAttribute('href') ?? '')
+      expect(hrefs.length).toBeGreaterThan(8)
+      expect(hrefs.filter((href) => href.includes('stack-check')), operatorId).toEqual([])
+      cleanup()
+    }
+    // The page itself, opened by address: it says what it is.
+    mount('/stack-check', OPERATOR_IDS.BUDI)
+    const page = await screen.findByTestId('page-stack-check')
+    expect(page).toHaveTextContent('Developer diagnostic of this console build. It is not an operator page and shows no evidence.')
+    // Static: no production file outside the page and its route names the path in code.
+    const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const sources = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../**/__tests__/**', '!../test/**', '!../runtime/testing/**', '!../routeTree.gen.ts', '!../routes/_app/stack-check.tsx', '!../features/stack-check/**'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+    expect(Object.keys(sources).length).toBeGreaterThan(200)
+    expect(Object.entries(sources).filter(([, text]) => /['"`]\/stack-check/.test(code(text))).map(([name]) => name)).toEqual([])
+  })
+
+  // Fix wave J (JW-15; "by code only" in round one, proven here): after "Sign out" the browser's Back could
+  // restore a page from its back / forward cache with the operator still shown as signed in. A restored
+  // document (`pageshow`, `persisted: true`) is loaded again, so the start-up asks the Core for the session.
+  it('JW-15: a page restored from the back / forward cache is reloaded; an ordinary page show is not; the shell installs the guard and removes it', async () => {
+    const listeners = new Map<string, EventListener>()
+    const reload = vi.fn()
+    const target = {
+      addEventListener: (type: string, listener: EventListener) => void listeners.set(type, listener),
+      removeEventListener: (type: string, listener: EventListener) => void (listeners.get(type) === listener ? listeners.delete(type) : undefined),
+      location: { reload },
+    }
+    const remove = installRestoredPageGuard(target as never)
+    const show = (persisted: boolean) => listeners.get('pageshow')?.(Object.assign(new Event('pageshow'), { persisted }))
+    // CONTROL - the first show of a page load is not a restore.
+    show(false)
+    expect(reload).not.toHaveBeenCalled()
+    show(true)
+    expect(reload).toHaveBeenCalledTimes(1)
+    remove()
+    expect(listeners.has('pageshow')).toBe(false)
+
+    // The shell: the guard is on the window while a signed-in page is mounted, and gone after it.
+    const added = vi.spyOn(window, 'addEventListener')
+    const removed = vi.spyOn(window, 'removeEventListener')
+    mount('/developer/api')
+    await screen.findByTestId('app-shell')
+    const installed = added.mock.calls.filter(([type]) => type === 'pageshow')
+    expect(installed.length).toBeGreaterThan(0)
+    cleanup()
+    const guard = installed.at(-1)![1]
+    expect(removed.mock.calls.some(([type, listener]) => type === 'pageshow' && listener === guard)).toBe(true)
   })
 
   it('reads SECURE once the simulator is ready', async () => {

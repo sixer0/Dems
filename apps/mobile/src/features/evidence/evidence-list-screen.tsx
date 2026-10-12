@@ -74,6 +74,10 @@ export function EvidenceListScreen({ selectedId }: EvidenceListScreenProps) {
   const [exportId, setExportId] = useState<string | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
 
+  // JT-20: only a FILTERED list can hide the selection (an unfiltered one that does not hold the id yet is still loading).
+  const paneRows = useEvidenceRows(query);
+  const selectedHidden = isMultiPane && selectedId !== null && isFiltered(query) && !paneRows.some((row) => row.id === selectedId);
+
   const select = useCallback(
     (id: string) => {
       if (isMultiPane) router.setParams({ selected: id });
@@ -127,7 +131,14 @@ export function EvidenceListScreen({ selectedId }: EvidenceListScreenProps) {
             {list}
           </Pane>
           <Pane name="detail" flex={3} style={styles.flexBasisZero}>
-            {selectedId ? <EvidenceDetail key={selectedId} evidenceId={selectedId} variant="pane" /> : <DetailPlaceholder />}
+            {/* Round two (JT-20): the pane follows the list - an item the filter or the search removed is not kept open. */}
+            {selectedId && !selectedHidden ? (
+              <EvidenceDetail key={selectedId} evidenceId={selectedId} variant="pane" />
+            ) : selectedId ? (
+              <FilteredOutPlaceholder id={selectedId} onClear={() => setQuery(DEFAULT_EVIDENCE_QUERY)} />
+            ) : (
+              <DetailPlaceholder />
+            )}
           </Pane>
         </PaneLayout>
       ) : (
@@ -254,6 +265,13 @@ function EvidenceListColumn({ query, onQueryChange, density, onDensityChange, se
             data={rows}
             numColumns={columns}
             keyExtractor={(item) => item.id}
+            // Fix wave J (JM-03: "a just-sealed item is missing from the Evidence list until the list is pulled
+            // down"; reproduced on the tablet, normal launch, with a session recorded on the tablet). The item WAS in
+            // the list's data and in the view tree - one row ABOVE the viewport. This list keeps the visible content
+            // in place when rows are inserted before it (`maintainVisibleContentPosition`, on by default in this
+            // version): with the list at its top, the new first row was put above the top edge and the old first
+            // row stayed where it was. The newest item is the first thing an operator looks for: no such hold.
+            maintainVisibleContentPosition={{ disabled: true }}
             extraData={selectedId}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
@@ -338,6 +356,19 @@ function ListHeader({ sort, density, onSort, onDensity }: ListHeaderProps) {
           </Menu.Content>
         </Menu.Portal>
       </Menu>
+    </View>
+  );
+}
+
+function FilteredOutPlaceholder({ id, onClear }: { id: string; onClear: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.placeholder} testID="evidence-detail-filtered-out">
+      <SectionCard title={t('features.evidence.paneFiltered.title', { id })} description={t('features.evidence.paneFiltered.body')}>
+        <Button variant="outline" onPress={onClear} testID="evidence-detail-filtered-out-clear">
+          <Button.Label>{t('features.evidence.paneFiltered.clear')}</Button.Label>
+        </Button>
+      </SectionCard>
     </View>
   );
 }

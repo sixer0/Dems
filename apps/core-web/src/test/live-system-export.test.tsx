@@ -34,6 +34,8 @@ import {
   createMemoryAuthStorage,
   createSim,
   emptyAuditLog,
+  HOST_CLOCK_TIME,
+  isOwnCaptureCoreState,
   OPERATOR_IDS,
   type AuditLogSlice,
   type AuditRow,
@@ -43,6 +45,7 @@ import {
 } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
+import { buildLogExportFile, LOG_EXPORT_NOTICE_DEMO, LOG_EXPORT_NOTICE_OWN_CAPTURE } from '@/features/system/live-log-export'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { createAppRouter } from '@/router'
 import { webErrorSink } from '@/runtime'
@@ -275,12 +278,51 @@ describe('A8 success (§8.2 A8; AC-C-60)', () => {
     expect((file.events as SimEvent[]).map((event) => event.seq)).toEqual(Array.from({ length: 450 }, (_, index) => index + 1))
     expect(file).toMatchObject({ kind: 'dems-log-export', source: 'core-server', exportId: EXPORT_ID, scope: 'LOGS', reason: REASON, exportedAt: new Date(accepted.exportRow.at).toISOString() })
     expect(Array.isArray(file.services)).toBe(true)
+    // Closing pass J4, item 3 (CONTROL of the case below): this Core is the SIMULATED lane - the file keeps its demo flag and wording.
+    expect(file).toMatchObject({ demo: true, notice: LOG_EXPORT_NOTICE_DEMO })
+    expect(LOG_EXPORT_NOTICE_DEMO).toBe('DEMO - log export of the DEMS Core server (synthetic demo data). Built from every page of its audit chain and events.')
 
     await waitFor(() => expect(toastWith(DONE)).toHaveLength(1))
     expect(toastWith(DONE)[0]).toContain(X.doneBody.replace('{{rows}}', '450').replace('{{events}}', '450'))
     await waitFor(() => expect(screen.queryByTestId('system-export-dialog')).toBeNull())
     expect(toastTexts().join(' ')).not.toMatch(/simulat/i)
     expect(getMissingI18nKeys()).toEqual([])
+  })
+})
+
+// Fix wave J closing pass (J4, item 3; note 173 "seen, not changed"): the file of a Core in its own capture said
+// `demo: true` and "synthetic demo data" - a statement about that Core's records that is not true there.
+describe('A8 on a Core in its own capture: the file states what it is', () => {
+  it('no `demo` member and no word of demo, simulated or synthetic data in the notice; the rows and events are the Core\'s; the Core\'s components are named', async () => {
+    const core = coreWith(3, 3, 2)
+    const ownCore = { ...core, served: (idle: SimState): SimState => ({ ...core.served(idle), time: { ...HOST_CLOCK_TIME } }) }
+    const { bed, page } = await liveSystem(ownCore)
+    expect(isOwnCaptureCoreState(page.live.store.getState())).toBe(true)
+    const accepted = core.accept()
+    bed.fake.scriptCommand('exportLogs', { ops: accepted.ops, order: 'delta-first', answer: { status: 202, body: { exportId: EXPORT_ID, scope: 'LOGS', rows: 3, head: accepted.head } } })
+    submit(await openDialog())
+    await waitFor(() => expect(blobs).toHaveLength(1), { timeout: 15_000 })
+    const file = await fileOf(blobs[0]!)
+    expect(file).toMatchObject({ kind: 'dems-log-export', source: 'core-server', exportId: EXPORT_ID, notice: LOG_EXPORT_NOTICE_OWN_CAPTURE })
+    expect('demo' in file).toBe(false)
+    expect(String(file.notice)).not.toMatch(/demo|simulat|synthetic/i)
+    expect((file.audit as { rows: AuditRow[] }).rows.map((row) => row.seq)).toEqual([1, 2, 3])
+    expect((file.events as SimEvent[]).map((event) => event.seq)).toEqual([1, 2])
+    expect(Array.isArray(file.components)).toBe(true)
+  })
+
+  it('the builder: `ownCapture` decides the flag and the notice, and nothing else of the file', () => {
+    const input = { exportId: EXPORT_ID, reason: REASON, deviceId: 'DEV-0001', softwareVersion: '0.1.0', at: T0, rows: [], events: [], services: [], diagnostics: null }
+    const demo = buildLogExportFile(input)
+    const own = buildLogExportFile({ ...input, ownCapture: true })
+    expect(demo).toMatchObject({ demo: true, notice: LOG_EXPORT_NOTICE_DEMO })
+    expect(buildLogExportFile({ ...input, ownCapture: false })).toEqual(demo)
+    expect(Object.keys(own)).not.toContain('demo')
+    expect(own.notice).toBe(LOG_EXPORT_NOTICE_OWN_CAPTURE)
+    expect(LOG_EXPORT_NOTICE_OWN_CAPTURE).not.toMatch(/demo|simulat|synthetic/i)
+    const { demo: _flag, notice: _demoNotice, ...demoRest } = demo
+    const { notice: _ownNotice, ...ownRest } = own
+    expect(ownRest).toEqual(demoRest)
   })
 })
 

@@ -56,7 +56,9 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   events: 59,
   evidence_custody: 28,
   evidence_items: 13,
-  evidence_tracks: 52,
+  // Fix wave J (truth rule 3a): 48 = 12 sealed items x 4 tracks. The one never-sealed item (EV ...-0006, the
+  // INCOMPLETE session) has no track row: it carries no track hash (was 52 while it was built like a seal).
+  evidence_tracks: 48,
   exports: 1,
   hardware_snapshot: 1,
   health_snapshots: 0,

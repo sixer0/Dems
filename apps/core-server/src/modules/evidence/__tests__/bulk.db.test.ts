@@ -86,9 +86,10 @@ beforeEach(() => {
 });
 
 describe('the bulk template: what is stored and what the engine holds', () => {
-  it('515 items, 2,060 tracks and 1,220 custody entries are stored, and the engine rehydrated EVERY item: evidence is a slice without a ring', async () => {
+  it('515 items, 2,000 tracks and 1,220 custody entries are stored, and the engine rehydrated EVERY item: evidence is a slice without a ring', async () => {
     expect(await countOf(owner, 'evidence_items')).toBe(TOTAL);
-    expect(await countOf(owner, 'evidence_tracks')).toBe(2_060);
+    // Fix wave J (truth rule 3a): 2,000 = four tracks for each of the 500 SEALED items; the 15 never-sealed items have none (was 2,060).
+    expect(await countOf(owner, 'evidence_tracks')).toBe(2_000);
     expect(await countOf(owner, 'evidence_custody')).toBe(1_220);
     expect(host.engine.slice('evidence')).toHaveLength(TOTAL);
     // The rings ARE cut: the engine holds 1,000 of the 5,000 audit rows. Evidence is not one of them.
@@ -148,8 +149,13 @@ describe('operation 39 listEvidence at volume', () => {
     const { pages } = await walk('?limit=200');
     const lists = pages.flatMap((page) => trackListsOf(page));
     expect(lists).toHaveLength(TOTAL);
-    expect(lists.every((tracks) => tracks.length === 4 && tracks.every((trackId, index) => trackId === FOUR_TRACKS[index]))).toBe(true);
-    for (const item of pages.flatMap((page) => page.items)) {
+    // Fix wave J (truth rule 3a): every SEALED item lists the four; an item that was never sealed lists none - never a part of them.
+    expect(lists.every((tracks) => tracks.length === 0 || (tracks.length === 4 && tracks.every((trackId, index) => trackId === FOUR_TRACKS[index])))).toBe(true);
+    const everyItem = pages.flatMap((page) => page.items);
+    expect(everyItem.filter((item) => item.tracks.length === 0).every((item) => item.sealedAt === null)).toBe(true);
+    expect(everyItem.filter((item) => item.sealedAt === null).every((item) => item.tracks.length === 0)).toBe(true);
+    expect(everyItem.filter((item) => item.sealedAt === null).length).toBeGreaterThan(0);
+    for (const item of everyItem.filter((entry) => entry.sealedAt !== null)) {
       const audio = item.tracks.filter((track) => track.trackId === 'AUDIO-01' || track.trackId === 'AUDIO-02');
       if (audio.length !== 2 || audio[0]?.sha256 === audio[1]?.sha256) throw new Error(`${item.id} does not hold two separate audio tracks`);
     }
@@ -254,11 +260,14 @@ describe('operation 40 getEvidence at volume', () => {
       expect(detail.evidence, item.id).toStrictEqual(onTheWire(item));
       // Wave H C1 (G94-01): an item with no package in the Core's store and no bundled one answers NONE WITH ITS REASON.
       const bundled = mediaRefOf(item);
-      expect(detail.media, item.id).toEqual(bundled.source === 'NONE' ? { ...bundled, reason: 'NOT_A_SEALED_PACKAGE' } : bundled);
-      expect(trackListsOf(response.json()), item.id).toEqual([FOUR_TRACKS]);
+      // Fix wave J: the reason says WHICH - never sealed (truth rule 3a), the demonstration record of a simulated session (JA2-02), or no package.
+      const reason = item.sealedAt === null ? 'NOT_SEALED' : item.integritySource === 'SIMULATED' ? 'DEMONSTRATION_RECORD' : 'NOT_A_SEALED_PACKAGE';
+      expect(detail.media, item.id).toEqual(bundled.source === 'NONE' ? { ...bundled, reason } : bundled);
+      // A sealed item lists its four tracks; a never-sealed one lists none.
+      expect(trackListsOf(response.json()), item.id).toEqual([item.sealedAt === null ? [] : FOUR_TRACKS]);
     }
     const detail14 = EvidenceDetailSchema.parse((await host.get(itemUrl(numbered14.id), investigator)).json());
-    expect(detail14.media).toEqual({ source: 'NONE', packageSuffix: null, reason: 'NOT_A_SEALED_PACKAGE' });
+    expect(detail14.media).toEqual({ source: 'NONE', packageSuffix: null, reason: numbered14.sealedAt === null ? 'NOT_SEALED' : numbered14.integritySource === 'SIMULATED' ? 'DEMONSTRATION_RECORD' : 'NOT_A_SEALED_PACKAGE' });
   });
 
   it('text outside ASCII comes back as it was stored: a subject, a note and a marker label with the Unicode sample', async () => {
@@ -305,7 +314,7 @@ describe('the three commands on fixture items', () => {
     const archived = fixture((item) => item.status === 'ARCHIVED');
     const recorded = fixture((item) => item.status === 'RECORDED');
     const whole = await allSealedDigest(owner);
-    expect(whole.rows).toBe(TOTAL + 2_060);
+    expect(whole.rows).toBe(TOTAL + 2_000);
     const exportsBefore = await countOf(owner, 'exports');
     const trailBefore = await trailLength(owner);
 

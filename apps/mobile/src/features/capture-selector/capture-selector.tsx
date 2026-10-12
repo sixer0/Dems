@@ -315,8 +315,14 @@ const NOTICE_STATUS: Readonly<Record<Exclude<AnswerClass, 'ok'>, 'warning' | 'da
 
 function NoticeAlert({ notice, selector }: { notice: SelectorNotice; selector: CaptureSelectorData }) {
   const { t } = useTranslation();
+  // Fix wave J (JA2-24): a refused choice says why - the cause the client knows, else the Core's reason, else the plain sentence.
+  const cause = notice.cause ?? null;
   const body =
-    notice.result === 'denied'
+    cause !== null && cause.kind === 'cameraOnOtherTrack'
+      ? t('features.capture-selector.selector.notice.cameraOnOtherTrack', { device: cause.deviceId, track: t(`features.capture-selector.selector.track.${cause.trackId}`) })
+      : cause !== null && cause.kind === 'core'
+        ? t('features.capture-selector.selector.notice.coreReason', { reason: cause.reason.toLowerCase().replace(/_/g, ' ') })
+        : notice.result === 'denied'
       ? t('features.capture-selector.selector.gate.denied', { first: t('common.roles.SUPERVISOR'), second: t('common.roles.TECHNICIAN') })
       : notice.result === 'locked'
         ? t('features.capture-selector.selector.gate.locked')
@@ -327,7 +333,7 @@ function NoticeAlert({ notice, selector }: { notice: SelectorNotice; selector: C
       <Alert.Indicator />
       <Alert.Content>
         <Alert.Title>{t(`features.capture-selector.selector.noticeTitle.${notice.result}`)}</Alert.Title>
-        <Alert.Description>{body}</Alert.Description>
+        <Alert.Description testID="capture-selector-notice-body">{body}</Alert.Description>
         <View style={styles.noticeActions}>
           {notice.result === 'notReady' ? (
             <Button variant="outline" size="sm" isDisabled={!retry.canRetry} onPress={retry.run} testID="capture-selector-retry">
@@ -377,10 +383,15 @@ function SelectorRow({ rowKey, icon, title, detail, chip, stateLabel, selected, 
   const rowLabel = [title, shownDetail, stateLabel].filter((part) => part !== '').join(', ');
   return (
     <View style={styles.wrap} testID={`capture-selector-row-wrap-${rowKey}`}>
+      {/* Fix wave J (JT-13): the row reported clickable and did nothing. It now does what its "Change" control does
+          while that is allowed; otherwise it is disabled and says why (never a dead button). */}
       <ListGroup.Item
         testID={`capture-selector-row-${rowKey}`}
         accessibilityLabel={rowLabel}
-        accessibilityState={{ selected, busy: pending }}
+        accessibilityState={{ selected, busy: pending, disabled: !editable || pending }}
+        {...(gateHint === null ? { accessibilityHint: editLabel } : { accessibilityHint: gateHint })}
+        disabled={!editable || pending}
+        onPress={onEdit}
         style={[styles.item, selected ? styles.itemSelected : null]}
       >
         <ListGroup.ItemPrefix>
@@ -389,15 +400,17 @@ function SelectorRow({ rowKey, icon, title, detail, chip, stateLabel, selected, 
           </View>
         </ListGroup.ItemPrefix>
         <ListGroup.ItemContent style={styles.content}>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.title}>
+          {/* Fix wave J (JT-12): two lines - "Video trac…" hid which track the row is. */}
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.title} testID={`capture-selector-title-${rowKey}`}>
             {title}
           </Text>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={styles.detail} testID={`capture-selector-detail-${rowKey}`}>
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={3} style={styles.detail} testID={`capture-selector-detail-${rowKey}`}>
             {shownDetail}
           </Text>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix style={styles.suffix}>
-          {chip}
+          {/* The chip is a kit pressable: inside the row it takes no touch (the row and "Change" are the targets). */}
+          <View pointerEvents="none">{chip}</View>
           <Button
             variant="outline"
             size="sm"

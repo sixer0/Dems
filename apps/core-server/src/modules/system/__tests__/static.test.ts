@@ -46,10 +46,15 @@ describe('rule 1: no clock, no timer, nothing of the host', () => {
     expect(rules.importSources(code)).toEqual([
       // Blueprint row 62 (CS-10): the TYPE of the capture supervisor's status, for the capture worker's entry.
       '../../capture',
+      // Fix wave J round two (JW-26): the ONE constant of each component's version - the capture operation (is a worker started at all),
+      // the service name and the Core's version. Constants and one pure function: no clock, no host call.
+      '../../capture/fence',
+      '../../config',
       '../../plugins/authenticate',
       '../../plugins/permission-guard',
       // Integration pass A (D109): the default source of the transcriber's state (`transcriptionServiceSource`), read at each request.
       '../../transcription',
+      '../../version',
       './operations',
       './settings',
       './status',

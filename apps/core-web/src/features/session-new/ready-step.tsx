@@ -78,7 +78,8 @@ export function ReadyStep({ summary, warnings, countdownOn, onCountdownChange, c
             />
             <div className="sn-ready-heading">
               <h2 className="sn-ready-title">{t('sessionNew.ready.title')}</h2>
-              <p className="sn-caption">{t('sessionNew.ready.startHint')}</p>
+              {/* Fix wave J (JW-17 / JT-22): "Recording starts at once" stood beside a 3-2-1 countdown that was switched on. */}
+              <p className="sn-caption" data-testid="sn-start-hint">{countdownOn ? t('web.waveJ.sessionNew.startHintCountdown') : t('sessionNew.ready.startHint')}</p>
               {summary.sessionId ? (
                 <span className="sn-session-id" data-testid="sn-session-id">
                   <span className="sn-muted">{t('sessionNew.ready.summary.sessionId')}</span>

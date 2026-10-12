@@ -24,7 +24,9 @@
     min-width: 0;
   }
 
-  @media (min-width: 1280px) {
+  /* Fix wave J (JW-10): in 7 of 12 columns the device table lost its Action column ("Revoke") at 1440 x 900 and the
+     "Paired" cell wrapped to seven lines. The two panels stand side by side only from 1600 px. */
+  @media (min-width: 1600px) {
     .pd-grid > .pd-panel-issue { grid-column: span 5 / span 5; }
     .pd-grid > .pd-panel-devices { grid-column: span 7 / span 7; }
   }
@@ -93,9 +95,8 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .pd-card-action {
@@ -327,6 +328,8 @@
   }
 
   .pd-online-on { background: var(--success); }
+  /* Fix wave J round three (N-15): the state in a word beside the dot. */
+  .pd-online-word { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .pd-online-off { background: var(--muted); opacity: 0.6; }
 
   /* R1 / M-C-11: rows enter in reading order (opacity and transform only). */

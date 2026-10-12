@@ -48,7 +48,8 @@ const SEED_COUNTS: Readonly<Record<string, number>> = {
   events: 59,
   evidence_custody: 28,
   evidence_items: 13,
-  evidence_tracks: 52,
+  // Fix wave J: the never-sealed item of the seed has no track row (12 sealed items x 4).
+  evidence_tracks: 48,
   exports: 1,
   hardware_snapshot: 1,
   health_snapshots: 0,
@@ -119,7 +120,7 @@ describe('db:reset --database <a name that does not exist yet>: how a lane datab
     expect(out[0]).toBe(`db:reset: ${name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:reset: dataset as of 2026-10-04T04:00:00.000Z (1791086400000); scenario idle; reason RESET; actor none (command line)');
     expect(out[2]).toBe(`db:reset: first build: ${name} did not exist. Nothing was carried over and no chain was discarded; epoch 0.`);
-    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 314 row\(s\) in 24 of 43 table\(s\)$/);
+    expect(out[3]).toMatch(/^db:reset: done in \d+ ms \(R-0 \d+, R-1 \d+, R-2 \d+, R-3 \d+, R-4 \d+, R-5 \d+, R-6 \d+, R-7 \d+, R-8 \d+, R-9 \d+\); the database now holds 310 row\(s\) in 24 of 43 table\(s\)$/);
     for (const [table, rows] of Object.entries(SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-3)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-2)).toBe('lineage          0 row(s); 0 carried over, 0 appended');

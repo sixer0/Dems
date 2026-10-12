@@ -223,7 +223,8 @@ export interface EnterOptions {
  * 25 px default; confirmed in Reanimated 4.5.1 `resolveTransformSlot`).
  * Proof mode: timing `slower × 10` and stagger ×10. Reduced: a 160 ms opacity fade, no stagger.
  */
-export function enterRise(index: number, m: MotionSettings, options: EnterOptions = {}): EntryOrExitLayoutType {
+export function enterRise(index: number, m: MotionSettings, options: EnterOptions = {}): EntryOrExitLayoutType | undefined {
+  if (m.still) return undefined;
   if (m.policy === 'reduced') {
     return FadeIn.duration(REDUCED_FADE_MS).reduceMotion(ReduceMotion.Never);
   }
@@ -245,7 +246,8 @@ export function enterRise(index: number, m: MotionSettings, options: EnterOption
  * R2 exit (§7.1): `FadeOutUp.duration(160).easing(exit)`, no stagger, lifting `exitDrop` (8 px).
  * Exits are always faster than enters (P2). Reduced: a 160 ms opacity fade.
  */
-export function exitUp(m: MotionSettings): EntryOrExitLayoutType {
+export function exitUp(m: MotionSettings): EntryOrExitLayoutType | undefined {
+  if (m.still) return undefined;
   if (m.policy === 'reduced') {
     return FadeOut.duration(REDUCED_FADE_MS).reduceMotion(ReduceMotion.Never);
   }
@@ -308,14 +310,16 @@ export function rowReveal(index: number, m: MotionSettings): EntryOrExitLayoutTy
  * Cross-fade in (tab switches 160 ms, M-APP-04; the cross-screen replacement for shared elements,
  * App. A). Reduced keeps the 160 ms cross-fade (03M §8 route transitions).
  */
-export function crossFadeIn(m: MotionSettings): EntryOrExitLayoutType {
+export function crossFadeIn(m: MotionSettings): EntryOrExitLayoutType | undefined {
+  if (m.still) return undefined;
   return FadeIn.duration(m.policy === 'reduced' ? REDUCED_FADE_MS : durationMs('fast', m))
     .easing(EASING.standard)
     .reduceMotion(ReduceMotion.Never);
 }
 
 /** Cross-fade out, the pair of `crossFadeIn`. */
-export function crossFadeOut(m: MotionSettings): EntryOrExitLayoutType {
+export function crossFadeOut(m: MotionSettings): EntryOrExitLayoutType | undefined {
+  if (m.still) return undefined;
   return FadeOut.duration(m.policy === 'reduced' ? REDUCED_FADE_MS : durationMs('fast', m))
     .easing(EASING.exit)
     .reduceMotion(ReduceMotion.Never);

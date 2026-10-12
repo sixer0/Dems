@@ -43,9 +43,11 @@ export const SETTINGS_ROWS: readonly SettingsRowDef[] = [
   { id: 'preferences', group: 'application', labelKey: 'system.settings.appPreferences', icon: 'preferences', target: { kind: 'section', section: 'preferences' } },
   { id: 'notifications', group: 'application', labelKey: 'system.settings.notifications', icon: 'notifications', target: { kind: 'section', section: 'notifications' } },
   { id: 'security', group: 'application', labelKey: 'system.settings.securityPrivacy', icon: 'security', target: { kind: 'section', section: 'security' } },
-  { id: 'devices', group: 'system', labelKey: 'system.settings.deviceSettings', icon: 'devices', target: { kind: 'route', href: '/devices' } },
-  { id: 'storage', group: 'system', labelKey: 'system.settings.storageManagement', icon: 'storage', target: { kind: 'route', href: '/storage' } },
-  { id: 'network-time', group: 'system', labelKey: 'system.settings.networkTime', icon: 'network', target: { kind: 'route', href: '/network-time' } },
+  // Fix wave J (JA2-35, JT-18): a row that opens another screen carries THAT screen's name (the tab's
+  // `mobile.nav.*` word), not a second name for it ("Device Settings" opened the Devices tab).
+  { id: 'devices', group: 'system', labelKey: 'mobile.nav.devices', icon: 'devices', target: { kind: 'route', href: '/devices' } },
+  { id: 'storage', group: 'system', labelKey: 'mobile.nav.storage', icon: 'storage', target: { kind: 'route', href: '/storage' } },
+  { id: 'network-time', group: 'system', labelKey: 'mobile.nav.networkTime', icon: 'network', target: { kind: 'route', href: '/network-time' } },
   // Task 3 row 68 (MB-09; ux §2.6): the device selector. The row above it opens the Devices screen, which holds it too.
   { id: 'capture', group: 'system', labelKey: 'features.capture-selector.settings.title', icon: 'capture', target: { kind: 'section', section: 'capture' } },
   { id: 'transcription', group: 'system', labelKey: 'features.transcription.title', icon: 'transcription', target: { kind: 'section', section: 'transcription' } },
@@ -55,6 +57,26 @@ export const SETTINGS_ROWS: readonly SettingsRowDef[] = [
 
 export function rowsOf(group: SettingsGroup): readonly SettingsRowDef[] {
   return SETTINGS_ROWS.filter((row) => row.group === group);
+}
+
+/**
+ * Fix wave J (JA2-35): how many rows the Settings list shows under Application and System. The More
+ * tile states this number, so the tile and the list cannot disagree (it said "7 sections" over 10
+ * rows: it counted the `/settings/<section>` routes, not the rows). No row is hidden by role today;
+ * a rule that hides one belongs HERE, so both readers follow it.
+ */
+export function settingsRowCount(): number {
+  return rowsOf('application').length + rowsOf('system').length;
+}
+
+/**
+ * Fix wave J (JA2-29, N-03): developer controls and pages (Core link source, Performance overlay,
+ * the stack diagnostics page, the developer gallery) are not part of an operator's product menu.
+ * They show only in a development build AND only while presentation mode is off (the existing rule
+ * that already hides the demo operators and the Demo controls, D88).
+ */
+export function developerControlsShown(input: { readonly dev: boolean; readonly presentationMode: boolean }): boolean {
+  return input.dev && !input.presentationMode;
 }
 
 /** The pane title of each section (same shared keys as its row). */

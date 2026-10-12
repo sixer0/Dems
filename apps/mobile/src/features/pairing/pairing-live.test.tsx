@@ -391,14 +391,14 @@ describe('LIVE mode, unpaired: the screen says what is true (decision D124, item
     expect(screenText()).not.toMatch(/pair with \./);
     expect(textOf('pairing-state-chip')).toBe('Not paired');
     // The identity list holds what the tablet does know.
-    expect(label('pairing-identity-server')).toBe('Core server, This computer, through adb reverse');
+    expect(label('pairing-identity-server')).toBe('Core server, Local connection');
     expect(label('pairing-identity-link')).toBe('Link, Connected');
-    expect(label('pairing-identity-tablet')).toBe('This tablet, Not paired');
+    expect(label('pairing-identity-tablet')).toBe('This device, Not paired');
     expect(screen.queryByTestId('pairing-identity-device')).toBeNull();
     expect(screen.queryByTestId('pairing-identity-room')).toBeNull();
     expect(screen.queryByTestId('pairing-identity-last-audit')).toBeNull();
     expect(label('pairing-fingerprint')).toBe('Certificate fingerprint · SHA-256 (DEMO), Shown after pairing');
-    expect(screen.getByText('Enter the 6-digit pairing code that a supervisor issued for this tablet in the web console.')).toBeTruthy();
+    expect(screen.getByText('Enter the 6-digit pairing code that a supervisor issued for this device in the web console.')).toBeTruthy();
     expect(screen.queryByText('Enter the 6-digit pairing code issued by the Core.')).toBeNull();
     // The gate holds: no back button, and "Use Simulated mode" in place of Cancel.
     expect(screen.queryByTestId('pairing-back')).toBeNull();
@@ -482,11 +482,11 @@ describe('a correct code (AC-C-75, MP-5, MP-6)', () => {
     expect(textOf('pairing-status-line')).toBe(`Paired with ${REDEEMED.core.deviceId} as ${REDEEMED.deviceId}.`);
     expect(label('pairing-identity-device')).toBe(`Core device, ${REDEEMED.core.deviceId}`);
     expect(label('pairing-identity-room')).toBe(`Core name, ${REDEEMED.core.name}`);
-    expect(label('pairing-identity-tablet')).toBe(`This tablet, ${REDEEMED.deviceId}`);
+    expect(label('pairing-identity-tablet')).toBe(`This device, ${REDEEMED.deviceId}`);
     // Nobody is signed in, so the replica holds no audit row: the line is left out, not filled with "No pairing event yet".
     expect(screen.queryByTestId('pairing-identity-last-audit')).toBeNull();
     expect(label('pairing-fingerprint')).toBe(`Certificate fingerprint · SHA-256 (DEMO), ${REDEEMED.core.certificateFingerprint}`);
-    expect(textOf('pairing-paired-body')).toBe(`This tablet is registered with ${REDEEMED.core.deviceId} as ${REDEEMED.deviceId}. An operator can now sign in on it.`);
+    expect(textOf('pairing-paired-body')).toBe(`This device is registered with ${REDEEMED.core.deviceId} as ${REDEEMED.deviceId}. An operator can now sign in on it.`);
     expect(textOf('pairing-simulated-chip')).toBe('LIVE');
     expect(screenClaims()).not.toMatch(/simulat/i);
     // Nobody is signed in: the hand-off goes on to sign-in.
@@ -581,7 +581,7 @@ describe('the credential is written before the action settles (MP-6)', () => {
     const second = await mount({ live: next });
     expect(next.getPairing()).toMatchObject({ state: 'PAIRED', deviceId: REDEEMED.deviceId });
     expect(screen.getByTestId('pairing-paired-card')).toBeTruthy();
-    expect(label('pairing-identity-tablet')).toBe(`This tablet, ${REDEEMED.deviceId}`);
+    expect(label('pairing-identity-tablet')).toBe(`This device, ${REDEEMED.deviceId}`);
     expect(bearerOf(lastSocket().headers)).toBe(REDEEMED.deviceCredential);
     expect(requests('redeemPairingCode')).toHaveLength(1);
     second.unmount();
@@ -594,7 +594,7 @@ describe('the credential is written before the action settles (MP-6)', () => {
     await attempt(MARKER_CODE);
     await flush();
     expect(screen.getByTestId('pairing-alert-unavailable')).toBeTruthy();
-    expect(textOf('pairing-alert-body')).toBe('This tablet could not store its credential and asked the Core to remove the registration. Ask a supervisor for a new pairing code.');
+    expect(textOf('pairing-alert-body')).toBe('This device could not store its credential and asked the Core to remove the registration. Ask a supervisor for a new pairing code.');
     // The code is used up on the Core: it is not kept for a retry, and no Retry is offered for it.
     expect(typedCode()).toBe('');
     expect(screen.queryByTestId('pairing-retry')).toBeNull();
@@ -979,10 +979,10 @@ describe('unpair on the device (AC-C-80, MP-7)', () => {
     expect(mockRouter.replace).not.toHaveBeenCalled();
     expect(screen.getByTestId('pairing-code-card')).toBeTruthy();
     expect(screen.getByTestId('pairing-notice-unpaired')).toBeTruthy();
-    expect(textOf('pairing-notice-body')).toBe('This tablet was unpaired.');
-    // The notice says it; no toast repeats it (the notice's title is the only "Tablet unpaired" on screen).
-    expect(screen.getAllByText('Tablet unpaired')).toHaveLength(1);
-    expect(label('pairing-identity-tablet')).toBe('This tablet, Not paired');
+    expect(textOf('pairing-notice-body')).toBe('This device was unpaired.');
+    // The notice says it; no toast repeats it (the notice's title is the only "Device unpaired" on screen).
+    expect(screen.getAllByText('Device unpaired')).toHaveLength(1);
+    expect(label('pairing-identity-tablet')).toBe('This device, Not paired');
     expect(screen.queryByTestId('pairing-back')).toBeNull();
     // The socket that was reopened presents nothing.
     expect(bearerOf(lastSocket().headers)).toBeNull();
@@ -1008,7 +1008,7 @@ describe('unpair on the device (AC-C-80, MP-7)', () => {
     // LB-6: the app's one wording for a dead link.
     expect(screen.getAllByText('Core server unreachable').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Nothing was changed.').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Tablet unpaired')).toBeNull();
+    expect(screen.queryByText('Device unpaired')).toBeNull();
     // No local-only unpair: the registry never keeps a device the tablet has forgotten.
     expect(requests('unpairDevice')).toHaveLength(0);
     expect(fake.calls.filter((call) => call.method === 'POST').length).toBe(0);
@@ -1027,7 +1027,7 @@ describe('re-pairing after a reinstall (AC-C-81, MP-8, E7)', () => {
     core.redeem = accepting(REDEEMED);
     const first = await mount();
     await attempt(MARKER_CODE);
-    expect(label('pairing-identity-tablet')).toBe(`This tablet, ${REDEEMED.deviceId}`);
+    expect(label('pairing-identity-tablet')).toBe(`This device, ${REDEEMED.deviceId}`);
     first.unmount();
     first.live.stop();
 
@@ -1048,7 +1048,7 @@ describe('re-pairing after a reinstall (AC-C-81, MP-8, E7)', () => {
     expect(requests('redeemPairingCode')).toHaveLength(2);
     expect(second.live.getPairing()).toMatchObject({ state: 'PAIRED', deviceId: REDEEMED_AGAIN.deviceId });
     expect(REDEEMED_AGAIN.deviceId).not.toBe(REDEEMED.deviceId);
-    expect(label('pairing-identity-tablet')).toBe(`This tablet, ${REDEEMED_AGAIN.deviceId}`);
+    expect(label('pairing-identity-tablet')).toBe(`This device, ${REDEEMED_AGAIN.deviceId}`);
     expect(JSON.parse(store().peek(SECURE_ITEM_KEYS.deviceCredential)!)).toEqual(REDEEMED_AGAIN);
     // The old device stays in the registry until a supervisor revokes it; the app does not rotate a credential (MP-8a).
     expect(core.devices.size).toBe(2);
@@ -1066,7 +1066,7 @@ describe('the notices of the gate (§9.4, §6.6)', () => {
     await elapse(500);
     expect(live.getPairing()).toMatchObject({ state: 'UNPAIRED', notice: 'unknown' });
     expect(screen.getByTestId('pairing-notice-unknown')).toBeTruthy();
-    expect(textOf('pairing-notice-body')).toBe('This tablet is not registered with this Core. Ask a supervisor for a new pairing code.');
+    expect(textOf('pairing-notice-body')).toBe('This device is not registered with this Core. Ask a supervisor for a new pairing code.');
     expect(store().keys()).toEqual([]);
     typeCode(WRONG_CODE);
     pressPair();
@@ -1092,7 +1092,7 @@ describe('the notices of the gate (§9.4, §6.6)', () => {
     expect(screen.getByTestId('pairing-code-card')).toBeTruthy();
     expect(screen.getByTestId('pairing-notice-revoked')).toBeTruthy();
     // Nobody was signed in and nothing recorded: the sentence about a recording is not added.
-    expect(textOf('pairing-notice-body')).toBe("This tablet's pairing was revoked on the Core. Ask a supervisor for a new pairing code.");
+    expect(textOf('pairing-notice-body')).toBe("This device's pairing was revoked on the Core. Ask a supervisor for a new pairing code.");
     expect(getMissingKeys()).toEqual([]);
     unmount();
   });
@@ -1171,7 +1171,7 @@ describe('`revoked` while a recording ran (§6.6)', () => {
     await elapse(500);
     expect(live.live.lastSessionEnd).toMatchObject({ kind: 'DEVICE_REVOKED', reason: 'REVOKED', sessionState: 'RECORDING' });
     expect(screen.getByTestId('pairing-notice-revoked')).toBeTruthy();
-    expect(textOf('pairing-notice-body')).toBe("This tablet's pairing was revoked on the Core. Ask a supervisor for a new pairing code. The recording continues on the Core.");
+    expect(textOf('pairing-notice-body')).toBe("This device's pairing was revoked on the Core. Ask a supervisor for a new pairing code. The recording continues on the Core.");
     expect(store().keys()).toEqual([]);
     // Nothing more is sent with the retired credential or the ended session (decision D116).
     const sentBefore = fake.calls.length;
@@ -1291,7 +1291,7 @@ describe('SIMULATED mode, where the existing tests do not reach: a simulator tha
     fireEvent.press(screen.getByTestId('pairing-unpair'));
     await settleUi();
     // The dialog of Simulated mode, with its own text.
-    expect(screen.getByText('The tablet will no longer be bound to DEMS-IR-01. You can pair it again with a new code. The action is written to the audit log.')).toBeTruthy();
+    expect(screen.getByText('This device will no longer be bound to DEMS-IR-01. You can pair it again with a new code. The action is written to the audit log.')).toBeTruthy();
     fireEvent.press(screen.getByTestId('pairing-unpair-confirm'));
     await settleUi(350);
     expect(thrown).toHaveBeenCalledTimes(1);

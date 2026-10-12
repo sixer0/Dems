@@ -26,6 +26,7 @@
  * socket, which the Live source writes into the store's `audio` slice (the DbfsMeter reads that
  * slice; nothing here polls). The shell owns the outage notice and the role notice (W54 §21.2).
  */
+import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { toast } from '@heroui/react'
 import { createPortal } from 'react-dom'
@@ -134,6 +135,12 @@ export function SessionMonitorPage() {
           />
         </div>
         <TitleShimmer rootRef={rootRef} title={t('session.title')} />
+        {/* Fix wave J (JW-22): the finished sessions of this Core - INCOMPLETE and quarantined ones included. */}
+        <p className="sm-history-link">
+          <Link to="/session/history" className="dems-popover-link" data-testid="sm-sessions-link">
+            {t('web.waveJ.sessions.link')}
+          </Link>
+        </p>
 
         <div className="sm-grid" data-testid="sm-grid">
           <PanelErrorBoundary panel="L" areaClassName="sm-area-feed">

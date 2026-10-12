@@ -1,3 +1,4 @@
+import { DemoMark } from '@/components/demo-mark'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { SyntheticValuesChip } from '@/components/synthetic-values-chip'
 import { Button, Card } from '@heroui/react'
@@ -71,6 +72,8 @@ export function DevicesPanel({
             {subtitle ? <p className="dev-card-subtitle">{subtitle}</p> : null}
           </div>
           {SYNTHETIC_BLOCKS.has(id) ? <SyntheticValuesChip block={id} /> : null}
+          {/* Fix wave J (JW-07): the demonstration Core's values are marked on every panel. */}
+          <DemoMark block={`devices-${id}`} />
           {action ? <div className="dev-card-action">{action}</div> : null}
         </header>
         <div className={cn('dev-card-body', bodyClassName)}>

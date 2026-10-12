@@ -123,6 +123,8 @@ export function TrackRows({ phase, milestone, tracks }: TrackRowsProps) {
     const resolved = phase === 'complete' || (phase === 'analysing' && trackResolved(finding.track, milestone));
     const checking = trackChecking(finding.track, milestone, phase);
     let value;
+    // JA2-17: the row's spoken state follows what it shows.
+    let spokenValue: string | undefined;
     if (resolved) {
       const detail =
         finding.integrity === 'gap'
@@ -132,6 +134,7 @@ export function TrackRows({ phase, milestone, tracks }: TrackRowsProps) {
             : finding.integrity === 'noMedia'
               ? t('features.session-recovery.track.noMediaDetail')
               : t('features.session-recovery.track.intactDetail');
+      spokenValue = `${t(`features.session-recovery.track.${finding.integrity}`)}. ${detail}`;
       value = (
         <View style={styles.result} testID={`recovery-track-${finding.track}-result`}>
           <StatusChip
@@ -146,6 +149,7 @@ export function TrackRows({ phase, milestone, tracks }: TrackRowsProps) {
         </View>
       );
     } else if (checking) {
+      spokenValue = t('features.session-recovery.track.checking');
       value = (
         <View style={styles.checking}>
           <Spinner size="sm" color={palette.gold} />
@@ -161,6 +165,7 @@ export function TrackRows({ phase, milestone, tracks }: TrackRowsProps) {
       id: finding.track,
       label: `${t(`common.tracks.${finding.track}`)} · ${finding.track}`,
       value,
+      ...(spokenValue === undefined ? {} : { spokenValue }),
       testID: `recovery-track-${finding.track}`,
     };
   });

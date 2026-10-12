@@ -41,7 +41,8 @@ export function SessionNewHeader({ onBack, showMenu, hasLastProfile, onLastProfi
       >
         <ArrowLeft size={ICON} color={palette.gold} />
       </Button>
-      <Text accessibilityRole="header" numberOfLines={1} className={large ? 'text-h2 font-semibold text-foreground' : 'text-h3 font-semibold text-foreground'} style={styles.title}>
+      {/* Round two (JA2-10): beside "Cancel session" the title shrinks to fit - it read "Start New Sessi..." on the phone. */}
+      <Text accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} className={large ? 'text-h2 font-semibold text-foreground' : 'text-h3 font-semibold text-foreground'} style={styles.title}>
         {t('common.actions.startNewSession')}
       </Text>
       {onCancelSession ? (
@@ -79,7 +80,7 @@ export function SessionNewHeader({ onBack, showMenu, hasLastProfile, onLastProfi
             </Menu.Content>
           </Menu.Portal>
         </Menu>
-      ) : (
+      ) : onCancelSession ? null : (
         <View style={styles.spacer} />
       )}
     </View>

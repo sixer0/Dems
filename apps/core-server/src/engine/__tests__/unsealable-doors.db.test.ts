@@ -2,9 +2,11 @@
 // `engine.endSessionUnsealable`, as `dems_app`, with the stored rows read as `dems_owner`.
 // A session whose seal failed is ENDED: the session row is gone, the history says INCOMPLETE, ONE
 // audit row and ONE alert say UNSEALABLE with the cause, and a new session can be created.
+import { validateCoreApiResponse } from '@dems/shared/api';
 import { passCaptureStart } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../test/helpers/db';
+import { readHistoryPage, readUnsealableCauses } from '../../modules/sessions/history';
 import { sealDoorsOf } from '../seal-doors';
 import { unsealableDoorsOf } from '../unsealable-doors';
 import { engineApp } from './support';
@@ -54,6 +56,21 @@ describe('the unsealable door', () => {
     const alerts = (await owner.query<{ kind: string; severity: string; reason: string | null; target: string | null; active: boolean }>("SELECT kind, severity, reason, target, active FROM public.alerts WHERE reason = 'UNSEALABLE'")).rows;
     expect(alerts).toEqual([{ kind: 'SYSTEM', severity: 'CRITICAL', reason: 'UNSEALABLE', target: sessionId, active: true }]);
     expect((await owner.query('SELECT 1 FROM public.evidence_items')).rows).toHaveLength(itemsBefore);
+
+    // Fix wave J round two (JW-22, remainder): operation 38's entry of THIS session states the stored cause -
+    // read from the audit row above as `dems_app`, no column - and the entry validates against the contract.
+    const auditAfterEnd = (await owner.query('SELECT 1 FROM public.audit_log')).rows.length;
+    const page = await host.app.db.read('test.listSessionHistory', (pool) => readHistoryPage(pool, null, 50));
+    const entry = page.items.find((item) => item.id === sessionId);
+    expect(entry).toMatchObject({ outcome: 'INCOMPLETE', evidenceId: null, unsealableCause: 'NOTHING_SEALABLE' });
+    expect(validateCoreApiResponse('listSessionHistory', 200, JSON.parse(JSON.stringify(page)))).toEqual({ ok: true });
+    // CONTROLS: no other entry of the page has the member (a sealed session, an interrupted one with an item), ...
+    expect(page.items.filter((item) => item.id !== sessionId && 'unsealableCause' in item)).toEqual([]);
+    expect(page.items.length).toBeGreaterThan(1);
+    // ... a session the trail holds no such row for gets none, a row that names no code is not answered, and the read wrote nothing.
+    expect([...(await host.app.db.read('test.readUnsealableCauses', (pool) => readUnsealableCauses(pool, [sessionId, 'SES-20990101-0001'])))]).toEqual([[sessionId, 'NOTHING_SEALABLE']]);
+    expect((await host.app.db.read('test.readUnsealableCauses', (pool) => readUnsealableCauses(pool, []))).size).toBe(0);
+    expect((await owner.query('SELECT 1 FROM public.audit_log')).rows).toHaveLength(auditAfterEnd);
 
     // A second call finds no session: the mapped refusal, nothing more is written.
     await expect(unsealableDoorsOf(host.engine).endSessionUnsealable({ sessionId, cause: 'NOTHING_SEALABLE' })).rejects.toMatchObject({ statusCode: 409 });

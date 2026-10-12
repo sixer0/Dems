@@ -4,12 +4,14 @@ import type { Key, Selection, SortDescriptor } from '@heroui/react'
 import { Archive, Eye, FileVideo, FilterX, MoreVertical, Share2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatUtcOffset } from '@dems/shared/realtime'
+import { Permission, hasSealedValues, selectCan, useSim } from '@dems/shared/sim'
+import { RoleReason } from '@/components/role-reason'
 import { useRouteEnterDelay } from '@/components/shell/shell-motion-context'
 import { EvidenceStatusChip, SubjectTypeChip } from './chips'
 import { ROW_REVEAL_DELAY_MS } from './choreography'
 import { useEvidenceAssets } from './demo-assets'
 import { ItemDevelopmentBadge } from './development-source'
-import { InterruptedMark } from './item-marks'
+import { InterruptedMark, NotSealedMark } from './item-marks'
 import {
   ARCHIVABLE_STATUSES,
   byteSize,
@@ -57,6 +59,8 @@ export function EvidenceTable(props: EvidenceTableProps) {
   const { model, loading, previewId, selectedIds, canArchive, busyId = null, pendingId = null, onSelectionChange, onRowAction, onView, onVerify, onExport, onArchive, onPageChange, onClearFilters } = props
   const { t } = useTranslation()
   const { urlFor } = useEvidenceAssets()
+  // Fix wave J (JW-14 (c)): the role's own permission; Export is disabled with its reason instead of refused two steps later.
+  const roleMayExport = useSim((s) => selectCan(s, Permission.EVIDENCE_EXPORT))
   const routeDelay = useRouteEnterDelay()
   const containerRef = useRef<HTMLDivElement>(null)
   useRowMotion(containerRef, { revealDelayMs: routeDelay + ROW_REVEAL_DELAY_MS })
@@ -178,7 +182,9 @@ export function EvidenceTable(props: EvidenceTableProps) {
                     </Table.Row>
                   ))
                 : model.pageRows.map((row) => {
-                    const exportable = EXPORTABLE_STATUSES.includes(row.item.status)
+                    // Wave J (JW-01): a never-sealed item has nothing to verify and nothing to export.
+                    const sealed = hasSealedValues(row.item)
+                    const exportable = EXPORTABLE_STATUSES.includes(row.item.status) && sealed && roleMayExport
                     const archivable = canArchive && ARCHIVABLE_STATUSES.includes(row.item.status) && busyId === null
                     const rowPending = pendingId === row.id
                     const size = byteSize(row.item.sizeBytes)
@@ -237,11 +243,13 @@ export function EvidenceTable(props: EvidenceTableProps) {
                           </span>
                         </Table.Cell>
                         <Table.Cell>
-                          <EvidenceStatusChip status={row.item.status} />
+                          <EvidenceStatusChip status={row.item.status} item={row.item} />
                           {/* Row 92 (R-11): drawn only for an item the Core recorded from development sources, in Live mode. */}
                           <ItemDevelopmentBadge item={row.item} testId={`evidence-row-development-${row.id}`} />
                           {/* Wave H C2 (G75-03): drawn only for an item that says `interrupted: true`. */}
                           <InterruptedMark item={row.item} testId={`evidence-row-interrupted-${row.id}`} />
+                          {/* Fix wave J (JW-01 / JW-27): a never-sealed item says so on its row. */}
+                          <NotSealedMark item={row.item} testId={`evidence-row-not-sealed-${row.id}`} />
                         </Table.Cell>
                         <Table.Cell className="evi-col-actions">
                           <Dropdown>
@@ -259,7 +267,7 @@ export function EvidenceTable(props: EvidenceTableProps) {
                             <Dropdown.Popover placement="bottom end" className="min-w-[200px]">
                               <Dropdown.Menu
                                 aria-label={t('evidence.table.rowActions.label', { id: row.id })}
-                                disabledKeys={[...(exportable ? [] : ['export']), ...(archivable ? [] : ['archive'])]}
+                                disabledKeys={[...(exportable ? [] : ['export']), ...(archivable ? [] : ['archive']), ...(sealed ? [] : ['verify'])]}
                                 onAction={(key) => onMenuAction(row, key)}
                               >
                                 <Dropdown.Item id="view" textValue={t('evidence.table.rowActions.view')}>
@@ -268,11 +276,17 @@ export function EvidenceTable(props: EvidenceTableProps) {
                                 </Dropdown.Item>
                                 <Dropdown.Item id="verify" textValue={t('evidence.table.rowActions.verify')}>
                                   <ShieldCheck className="size-4" aria-hidden="true" />
-                                  <Label>{t('evidence.table.rowActions.verify')}</Label>
+                                  <span className="flex min-w-0 flex-col">
+                                    <Label>{t('evidence.table.rowActions.verify')}</Label>
+                                    {sealed ? null : <span className="evi-caption whitespace-normal">{t('web.waveJ.evidence.notSealedChip')}</span>}
+                                  </span>
                                 </Dropdown.Item>
                                 <Dropdown.Item id="export" textValue={t('evidence.table.rowActions.export')}>
                                   <Share2 className="size-4" aria-hidden="true" />
-                                  <Label>{t('evidence.table.rowActions.export')}</Label>
+                                  <span className="flex min-w-0 flex-col">
+                                    <Label>{t('evidence.table.rowActions.export')}</Label>
+                                    {roleMayExport ? null : <RoleReason permission={Permission.EVIDENCE_EXPORT} className="whitespace-normal" />}
+                                  </span>
                                 </Dropdown.Item>
                                 <Dropdown.Item id="archive" textValue={t('evidence.table.rowActions.archive')}>
                                   <Archive className="size-4" aria-hidden="true" />

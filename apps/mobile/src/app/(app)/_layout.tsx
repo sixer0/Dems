@@ -1,3 +1,4 @@
+import { AlertToasts } from '@/features/alerts/alert-toasts';
 import { AppStack } from '@/navigation';
 import { KeepAwakeController, SessionDiagnostics, SessionRouteSync } from '@/runtime';
 
@@ -17,6 +18,8 @@ export default function AppLayout() {
       {/* W93-28 (FXR-M): quiet session-window measurements for W98 (runtime log only, no console). */}
       <SessionDiagnostics />
       <KeepAwakeController />
+      {/* Fix wave J (JA2-05): the alert toasts Settings → Notifications promises, on every signed-in screen. */}
+      <AlertToasts />
     </>
   );
 }

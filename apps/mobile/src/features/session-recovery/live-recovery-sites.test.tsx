@@ -36,10 +36,10 @@ afterEach(() => {
 });
 
 const DENIED = 'Not permitted';
-const DENIED_ROLE = 'Requires the Investigator role';
+const DENIED_ROLE = 'Requires the Investigator or Supervisor role';
 const OFFLINE = 'Core server unreachable';
 const OFFLINE_HINT = 'Nothing was changed.';
-const LIMIT = 'The Core server is limiting requests from this tablet';
+const LIMIT = 'The Core server is limiting requests from this device';
 const READ_ONLY = 'Recovery is paused while the Core link is offline.';
 const DERIVED = "The Core reports the recovery stage and the outcome. The check results shown here are derived on this device from the Core's data.";
 const isBusy = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.busy === true;
@@ -98,7 +98,7 @@ describe('S2-3: Start recovery — recoverSession (operation 33), the screen fol
     const entry = b.state().sessionHistory.find((candidate) => candidate.id === sessionId)!;
     expect(entry.outcome).toBe('INCOMPLETE');
     expect(b.app.getPathname()).toBe('/session/recovery');
-    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed (SYS-008).');
+    expect(screen.getByTestId('recovery-outcome-line')).toHaveTextContent('Session marked INCOMPLETE. It will never be sealed.');
     expect(within(screen.getByTestId('recovery-outcome-evidence')).getByText(`${entry.evidenceId} (recorded, unsealed)`)).toBeTruthy();
     expect(b.state().evidence.find((item) => item.id === entry.evidenceId)?.status).toBe('RECORDED');
     expect(toastShown(DENIED)).toBe(false);

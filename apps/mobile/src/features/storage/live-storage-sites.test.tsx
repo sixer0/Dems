@@ -41,7 +41,7 @@ const OFFLINE_HINT = 'Nothing was changed.';
 const FAILED = 'The storage policy could not be updated. Please try again.';
 const APPLIED_LIVE = 'Storage policy updated';
 const APPLIED_SIMULATED = 'Storage policy updated (simulated)';
-const LIMIT = 'The Core server is limiting requests from this tablet';
+const LIMIT = 'The Core server is limiting requests from this device';
 
 const toastShown = (text: string | RegExp) => screen.queryAllByText(text).length > 0;
 /** No text on screen says "simulated" (rule 8, MD-8: a screen with the Core's data says nothing about a simulation). */
@@ -186,7 +186,7 @@ describe('S2-6: Apply in the Manage Storage sheet (operation 55)', () => {
     // Changed by design (W83, ruling R-D1 of decision D184; finding F64): the Live source hands the
     // presenter the any-of as `EVIDENCE_REVIEW | MAINTENANCE`, so the toast names the first role that
     // holds one of them — and never a wrong one.
-    expect(toastShown(/^Requires the Supervisor role/)).toBe(true);
+    expect(toastShown(/^Requires the Supervisor or Technician role/)).toBe(true); // JT-16: both roles that may act are named
     expect(toastShown(/^Requires the (Investigator|Technician)/)).toBe(false);
     expect(toastShown(APPLIED_LIVE)).toBe(false);
     expect(toastShown(FAILED)).toBe(false);
@@ -217,7 +217,7 @@ describe('S2-6: Apply in the Manage Storage sheet (operation 55)', () => {
     await b.elapse(200);
     expect(toastShown(DENIED)).toBe(true);
     // Changed by design (W83, ruling R-D1): the same role as for the contract's example.
-    expect(toastShown(/^Requires the Supervisor role/)).toBe(true);
+    expect(toastShown(/^Requires the Supervisor or Technician role/)).toBe(true); // JT-16: both roles that may act are named
     expect(toastShown(/^Requires the (Investigator|Technician)/)).toBe(false);
     expect(toastShown(APPLIED_LIVE)).toBe(false);
     await wallClock(600);

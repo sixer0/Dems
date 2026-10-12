@@ -45,11 +45,13 @@ export function CapacityCard({ ringSize, withKpiStrip }: CapacityCardProps) {
   const free = formatShortBytes(capacity.freeBytes);
   const total = formatShortBytes(capacity.totalBytes);
 
+  // Fix wave J (JA2-38 / JT-21): the two counts are named for what the Core's evidence list says they are -
+  // items sealed TODAY and items recorded but not sealed - so they are not read as the size of the Evidence list.
   const legend = [
     { id: 'used', color: RING_COLOR[capacity.state], label: t('common.storage.used'), value: formatShortBytes(capacity.usedBytes) },
     { id: 'free', color: withAlpha(palette.gray, 0.55), label: t('common.storage.free'), value: free },
-    { id: 'sealed', color: palette.sealed, label: t('common.storage.sealedEvidence'), value: String(counts.sealedToday) },
-    { id: 'pending', color: palette.warning, label: t('common.storage.pending'), value: String(counts.pending) },
+    { id: 'sealed', color: palette.sealed, label: t('features.storage.capacity.sealedToday'), value: String(counts.sealedToday) },
+    { id: 'pending', color: palette.warning, label: t('features.storage.capacity.notSealed'), value: String(counts.pending) },
   ] as const;
 
   return (
@@ -109,7 +111,7 @@ export function CapacityCard({ ringSize, withKpiStrip }: CapacityCardProps) {
                 style={styles.legendRow}
               >
                 <View style={[styles.dot, { backgroundColor: row.color }]} />
-                <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={styles.legendLabel}>
+                <Text numberOfLines={2} maxFontSizeMultiplier={1.2} style={styles.legendLabel}>
                   {row.label}
                 </Text>
                 <Text testID={`storage-legend-${row.id}-value`} maxFontSizeMultiplier={1.2} style={styles.legendValue}>

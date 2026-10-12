@@ -972,6 +972,12 @@
     line-height: 16px;
   }
 
+  /* Fix wave J round three (JW-26): one line per named component on a Core in its own capture. */
+  .dems-brand-footer .dems-brand-footer-version--components {
+    display: flex;
+    flex-direction: column;
+  }
+
   .dems-brand-footer-triplet {
     display: flex;
     flex-direction: column;
@@ -1462,4 +1468,40 @@
   to {
     opacity: 0.55;
   }
+}
+
+/* Fix wave J (JW-14): the visible reason beside a control the role may not use. */
+.dems-role-reason {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-foreground-2, #d8cec6);
+  overflow-wrap: anywhere;
+}
+
+/* Fix wave J (JA2-25 / JW-21): the bell lists up to twenty open alerts in a scroll; a resolved one is tagged. */
+.dems-alert-scroll {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+.dems-alert-row {
+  flex-wrap: wrap;
+}
+.dems-alert-resolved {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--color-foreground-2, #d8cec6);
+}
+.dems-alert-ack {
+  margin-left: auto;
+}
+/* Fix wave J round three: "Acknowledge all" stands between the heading and the list. */
+.dems-alert-ack-all {
+  align-self: flex-start;
+  margin: 0 0 8px;
+}
+
+/* Fix wave J (JW-08; contract J-S 6): a level that was not measured draws NO bars and no number - only its words. */
+[data-testid='dbfs-meter'][data-not-measured='true'] [role='meter'] {
+  display: none;
 }

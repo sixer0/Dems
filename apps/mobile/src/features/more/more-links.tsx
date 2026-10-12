@@ -19,7 +19,8 @@ import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { SOFTWARE_VERSION, useSim } from '@dems/shared/sim';
+import { useSim } from '@dems/shared/sim';
+import { useShownVersion } from '@/lib/app-version';
 import { derived, fontFamily, palette, typography, type StatusTone } from '@dems/shared/tokens';
 import { SectionCard, StatusChip } from '@/components/kit';
 import { Emblem } from '@/components/media/emblem';
@@ -116,6 +117,7 @@ function LinkRow({ name }: { name: LinkDestination }) {
 
 function useRowView(name: LinkDestination): RowView {
   const { t } = useTranslation();
+  const shownVersion = useShownVersion().version;
   const pairingState = useSim(selectPairingState);
   const coreName = useSim(selectCoreName);
   const sessionState = useSim(selectSessionStateFlat);
@@ -138,7 +140,7 @@ function useRowView(name: LinkDestination): RowView {
     case 'about':
       return {
         title: t('features.more.links.about.title'),
-        description: t('features.more.links.about.detail', { version: SOFTWARE_VERSION }),
+        description: t('features.more.links.about.detail', { version: shownVersion }),
         chip: null,
       };
     case 'dev-gallery':
@@ -153,6 +155,7 @@ function useRowView(name: LinkDestination): RowView {
 /** Footer: emblem, "DEMS EDGE CLIENT · v2.4.1", the DEMO label and the Core link chip (§4.17). */
 export function MoreFooter() {
   const { t } = useTranslation();
+  const shown = useShownVersion();
   const chip = useCoreLinkChip();
   const word = t(`common.status.${chip.word}`);
 
@@ -160,7 +163,7 @@ export function MoreFooter() {
     <View testID="more-footer" style={styles.footer}>
       <Emblem size={28} accessibilityLabel={t('common.brand.name')} />
       <Text testID="more-version" maxFontSizeMultiplier={1.2} style={styles.version}>
-        {t('mobile.app.versionFooter', { version: SOFTWARE_VERSION })}
+        {t('mobile.app.versionFooter', { version: shown.version })}
       </Text>
       <View style={styles.chips}>
         <StatusChip testID="more-demo" tone="accent" label={t('features.more.footer.demo')} icon={null} size="sm" />

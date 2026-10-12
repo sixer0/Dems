@@ -13,6 +13,7 @@
 // | §3.2: a Live screen says nothing of a simulation; the sealed hash that is not the package's says "NO MEDIA PACKAGE" | "the page on the Core's data", "the sealed hash" |
 // | Simulated mode keeps "SIMULATED" after the hash (pure rule) | "the sealed hash" |
 // | CLG (c), AC-C-53: no production file of the folder imports `useSimActions` or reads `.actions` of a `Sim`; the one action is called through `settle` | "static rules of the folder" |
+import { demoMarkBlocks, withoutDemoMarks } from './demo-words'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
@@ -121,7 +122,9 @@ describe('the page on the Core\'s data (G5; §3.2)', () => {
     for (const tile of ['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02']) expect(screen.getByTestId(`device-tile-${tile}`)).toBeInTheDocument()
     expect(screen.getByTestId('shell-mode')).toHaveTextContent('LIVE')
     await waitFor(() => expect(within(screen.getByTestId('panel-i')).getAllByTestId('recent-event').length).toBeGreaterThan(0))
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
@@ -147,7 +150,9 @@ describe('the sealed hash (§3.2; 01_specs §11)', () => {
     const manifest = within(sealed).getByTestId('sealed-manifest')
     expect(manifest).toHaveAttribute('data-source', 'package')
     expect(manifest.parentElement?.querySelector('dt')?.textContent).toBe(en.dashboard.activeSession.sealed.manifestHash)
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
   })
 
   it('a session the Core sealed has no media package: the hash says "NO MEDIA PACKAGE", never "SIMULATED"', async () => {
@@ -162,7 +167,9 @@ describe('the sealed hash (§3.2; 01_specs §11)', () => {
     expect(term).toHaveTextContent(`${en.dashboard.activeSession.sealed.manifestHash} · ${en.dashboard.activeSession.sealed.noPackage}`)
     expect(sealed).not.toHaveTextContent(en.common.simulated.chip)
     expect(within(sealed).getByText(evidenceId)).toBeInTheDocument()
-    expect(pageWords()).not.toMatch(/simulat/i)
+    // Wave J (rule 3f): the bed's Core is a SIMULATED one - its demonstration marks say so, and nothing else on the page does.
+    expect(withoutDemoMarks(pageWords())).not.toMatch(/simulat/i)
+    expect(demoMarkBlocks().length).toBeGreaterThan(0)
     expect(getMissingI18nKeys()).toEqual([])
   })
 

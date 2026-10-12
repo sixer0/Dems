@@ -60,10 +60,17 @@ export function bandwidthInlineMinWidth(fontScale: number): number {
 export interface NetworkStatusCardProps {
   network: NetworkView;
   onOpenLan: () => void;
+  /**
+   * Fix wave J (JT-03 / JW-04; THE ONE RULE): the Core is in its own capture - it reports no LAN, PoE or
+   * bandwidth fact. The three rows read "Not reported" (no chip of the model, no bars, no moving figure, no
+   * sheet of model values); the one thing known, this device's own link to the Core, is stated.
+   */
+  notReported?: boolean;
 }
 
-export function NetworkStatusCard({ network, onOpenLan }: NetworkStatusCardProps) {
+export function NetworkStatusCard({ network, onOpenLan, notReported = false }: NetworkStatusCardProps) {
   const { t } = useTranslation();
+  if (notReported) return <NetworkNotReportedCard network={network} />;
   const lan = lanLevel(network.linkUp);
   const poe = poeLevel(network.activePorts, network.totalPorts);
   const lanLabel = t(`networkTime.network.lanState.${lan}`);
@@ -119,6 +126,49 @@ export function NetworkStatusCard({ network, onOpenLan }: NetworkStatusCardProps
         <Separator />
         <BandwidthRow />
       </ListGroup>
+    </SectionCard>
+  );
+}
+
+const NOT_REPORTED_ROWS = [
+  { id: 'lan', icon: Network, nameKey: 'networkTime.network.lanConnection' },
+  { id: 'poe', icon: PlugZap, nameKey: 'networkTime.network.poe' },
+  { id: 'bandwidth', icon: Gauge, nameKey: 'networkTime.network.bandwidth' },
+] as const;
+
+function NetworkNotReportedCard({ network }: { network: NetworkView }) {
+  const { t } = useTranslation();
+  const word = t('common.platformNotReported.value');
+  const linked = network.tabletLink === 'CONNECTED';
+  const linkLabel = t(`features.network-time.lan.deviceState.${linked ? 'CONNECTED' : 'OFFLINE'}`);
+  return (
+    <SectionCard testID="network-time-network" title={t('networkTime.network.title')}>
+      <View testID="network-time-not-reported">
+        {NOT_REPORTED_ROWS.map((row, index) => (
+          <View key={row.id}>
+            {index > 0 ? <Separator /> : null}
+            {/* Plain rows: nothing to open, so nothing is announced as a button. */}
+            <View style={styles.plainRow} testID={`network-time-${row.id}`} accessible accessibilityRole="text" accessibilityLabel={t('features.network-time.network.notReportedLabel', { name: t(row.nameKey) })}>
+              <IconTile icon={row.icon} tone="default" />
+              <Text maxFontSizeMultiplier={1.2} style={[styles.rowTitle, styles.plainTitle]}>
+                {t(row.nameKey)}
+              </Text>
+              <StatusChip testID={`network-time-${row.id}-chip`} tone="default" label={word} icon={null} size="sm" />
+            </View>
+          </View>
+        ))}
+        <Separator />
+        <View style={styles.plainRow} testID="network-time-device-link" accessible accessibilityRole="text" accessibilityLabel={`${t('features.network-time.lan.tablet')}, ${linkLabel}`}>
+          <IconTile icon={Network} tone={linked ? 'success' : 'warning'} />
+          <Text maxFontSizeMultiplier={1.2} style={[styles.rowTitle, styles.plainTitle]}>
+            {t('features.network-time.lan.tablet')}
+          </Text>
+          <StatusChip testID="network-time-device-link-chip" tone={linked ? 'success' : 'warning'} label={linkLabel} icon="Circle" iconFilled size="sm" />
+        </View>
+        <Text maxFontSizeMultiplier={1.2} style={styles.note} testID="network-time-not-reported-note">
+          {t('features.network-time.network.notReportedNote')}
+        </Text>
+      </View>
     </SectionCard>
   );
 }
@@ -202,6 +252,9 @@ const styles = StyleSheet.create({
     color: palette.foreground,
   },
   suffixRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  plainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 16 },
+  plainTitle: { flex: 1 },
+  note: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray, paddingHorizontal: 16, paddingTop: 8 },
   // Device finding (tablet 3-pane, ~290 dp card): the content slot collapsed to one letter per
   // line, so the label keeps its width and the bars flex instead (BANDWIDTH_CHART_SIZE bounds).
   // A plain View, not ListGroup.ItemContent: the kit's `.list-group__item-content { flex: 1 }`

@@ -453,7 +453,10 @@ describe('LIVE → SIMULATED (§3.3; CPM1-2)', () => {
 });
 
 describe('a release build offers no LIVE (MD-3, AC-C-83)', () => {
-  it('the LIVE segment is disabled: a press opens no dialog, signs nobody out and stores nothing', async () => {
+  // Fix wave J (JA2-29, N-03; replaces "the LIVE segment is disabled: a press opens no dialog ..."): a
+  // release build shows no Core link control at all, so there is no LIVE segment to press. What the row
+  // is about is unchanged: no way to LIVE, nobody signed out, nothing stored, nothing sent.
+  it('the Core link source is not shown: no LIVE segment, no dialog, nobody signed out, nothing stored', async () => {
     const engine = createTestSim().sim;
     scriptCore(engine);
     devGlobal.__DEV__ = false;
@@ -461,9 +464,10 @@ describe('a release build offers no LIVE (MD-3, AC-C-83)', () => {
     await until(() => probe.actions !== null, 'the simulator runtime');
     await signInWith(DEMO_OPERATOR_PASSWORD);
     await openPreferences(app);
-    expect(screen.getByTestId('settings-core-link-LIVE').props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByText(/Live is a developer setup as well/)).toBeTruthy();
-    fireEvent.press(screen.getByTestId('settings-core-link-LIVE'));
+    expect(screen.getByTestId('settings-reduce-motion')).toBeTruthy();
+    expect(screen.queryByTestId('settings-core-link-LIVE')).toBeNull();
+    expect(screen.queryByTestId('settings-core-link-SIMULATED')).toBeNull();
+    expect(screen.queryByText(/Core link source|developer setup/i)).toBeNull();
     await wait(100);
     expect(screen.queryByTestId('settings-core-mode-dialog')).toBeNull();
     expect(probe.signedIn).toBe(true);

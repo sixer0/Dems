@@ -337,9 +337,15 @@ function MarkerAction({ enabled, timelineRef }: { enabled: boolean; timelineRef:
                   <Input placeholder={t('session.actions.addMarker.placeholder')} data-testid="sm-marker-input" />
                   <Description>{t('session.actions.addMarker.optional')}</Description>
                 </TextField>
-                <Button type="submit" variant="primary" size="sm" data-testid="sm-marker-submit">
-                  {t('session.actions.addMarker.submit')}
-                </Button>
+                <div className="flex justify-end gap-2">
+                  {/* Fix wave J (JW-16): the marker dialog had no Cancel, only the X. */}
+                  <Button type="button" variant="ghost" size="sm" onPress={() => setOpen(false)} data-testid="sm-marker-cancel">
+                    {t('common.actions.cancel')}
+                  </Button>
+                  <Button type="submit" variant="primary" size="sm" data-testid="sm-marker-submit">
+                    {t('session.actions.addMarker.submit')}
+                  </Button>
+                </div>
               </Form>
             </Popover.Dialog>
           </Popover.Content>
@@ -717,8 +723,9 @@ function EndSessionDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenCha
     })
   }
 
+  // Fix wave J (JW-16): a click outside discarded the typed reason without a question; Escape and Cancel close it.
   return (
-    <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={(open) => (open ? onOpenChange(true) : close())}>
+    <AlertDialog.Backdrop isOpen={isOpen} onOpenChange={(open) => (open ? onOpenChange(true) : close())} isDismissable={false} isKeyboardDismissDisabled={false}>
       <AlertDialog.Container size="md">
         <AlertDialog.Dialog aria-label={t('session.actions.endSession.dialogTitle')} data-testid="sm-end-dialog">
           <AlertDialog.Header>

@@ -58,7 +58,8 @@ describe('phone portrait (MB 7)', () => {
     expect(screen.getByTestId('device-status-MIC-02').props.accessibilityLabel).toBe('Online');
     // V4: PoE in the design book's 2-port view (D79), lamp relay Active, tablet Connected.
     expect(within(screen.getByTestId('device-status-POE-SWITCH')).getByText('1 active · 1 spare')).toBeTruthy();
-    expect(screen.getByTestId('device-status-REC-INDICATOR').props.accessibilityLabel).toBe('Active');
+    // Fix wave J (JA2-33): at rest the indicator's ONE statement is "Lamp off" (it read "Active" beside a red beacon).
+    expect(screen.getByTestId('device-status-REC-INDICATOR').props.accessibilityLabel).toBe('Lamp off');
     expect(screen.getByTestId('device-status-TABLET').props.accessibilityLabel).toBe('Connected');
     expect(screen.queryByText(/4\/4/)).toBeNull();
     // Phone rows carry no inline meters; nothing needs attention; the lamp is unlit.
@@ -212,7 +213,8 @@ describe('faults escalate calmly (03M P7)', () => {
     expect(within(screen.getByTestId('devices-attention')).getByText('2 devices need attention')).toBeTruthy();
     await openDetail(h, 'TABLET');
     expect(screen.getByTestId('device-tablet-offline')).toBeTruthy();
-    expect(screen.getByText('Recording continues on the Core. Reconnect the tablet to regain control.')).toBeTruthy();
+    // Fix wave J (JA2-13): device-neutral - the row stands for this phone or tablet.
+    expect(screen.getByText('Recording continues on the Core. Reconnect this device to regain control.')).toBeTruthy();
   });
 
   it('while recording the lamp is lit in the list and the relay detail reads SEDANG MEREKAM', async () => {

@@ -5,43 +5,82 @@
  * (MA-16); the accessibility value refreshes at 1 Hz. This feature keeps its own copy of the
  * session monitor's wiring (P6: another feature's files are not shared code).
  *
- * NO SIGNAL is bridged from the per-frame shared value on the UI thread and crosses to JS only when
- * it flips (review 74 F74-08, D73); the simulator's mic state is honoured too. The CLIP latch locks
- * the top segment red; tapping the CLIP chip resets it through `onClipReset` (`resetClip`).
+ * Fix wave J (JW-08, JA2-34): "No signal" is said only when the Core states that state of the
+ * microphone (`deviceMicLevelKind`); a flat or absent frame at rest is "— dBFS", "Not measured". The
+ * number follows the input in every motion mode. The CLIP latch locks the top segment red; tapping
+ * the CLIP chip resets it through `onClipReset` (`resetClip`).
  */
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { StyleProp, ViewStyle } from 'react-native';
-import { useAnimatedReaction } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
-import type { MicStatus } from '@dems/shared/sim';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { isLevelNotMeasured, micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
+import { fontFamily, palette, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
+import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
+import { MIC_NO_LEVEL_TEXT } from '@/features/dashboard/home-model';
 import { useMotionPolicy } from '@/motion';
-import { useAudioAccessibilityValue, useAudioSharedValues, type AudioSharedValues } from '@/runtime';
+import { useAudioAccessibilityValue, useAudioSharedValues } from '@/runtime';
 
-/** Under the D43 test switch the readout refreshes once an hour, i.e. it holds still for uiautomator. */
-const TEST_SWITCH_READOUT_MS = 3_600_000;
+/**
+ * WHAT A MICROPHONE'S LEVEL READS (fix wave J, JW-08 mobile half; the Home rule `micReadoutKind` with the
+ * contract's member in front, contract_wave_j.md J-S 6):
+ *
+ * | The Core's facts of the input | Kind | Drawn |
+ * |---|---|---|
+ * | the microphone's state is `NO_SIGNAL` (the Core STATES the fault) | `NO_SIGNAL` | "No signal" |
+ * | the frame says `notMeasured: true`, or it is flat / absent and the Core states no fault | `NOT_MEASURED` | "— dBFS", "Not measured": no bars, no number, never the fault word |
+ * | a frame with a level | `LEVEL` | the bars and the number |
+ *
+ * At rest a Core in its own capture measures nothing: its frames are flat. That is no fault, so it is
+ * never "No signal" beside "Ready". Pure.
+ */
+export type DeviceMicLevelKind = 'LEVEL' | 'NO_SIGNAL' | 'NOT_MEASURED';
+
+export function deviceMicLevelKind(input: { readonly state: string; readonly frameFlat: boolean; readonly notMeasured: boolean }): DeviceMicLevelKind {
+  if (input.state === 'NO_SIGNAL') return 'NO_SIGNAL';
+  return input.notMeasured || input.frameFlat ? 'NOT_MEASURED' : 'LEVEL';
+}
 
 export interface DeviceMicMeterProps {
   mic: MicStatus;
   variant: MeterVariant;
-  /** Screen unfocused, backgrounded or the D43 test switch: the meter's UI-thread clock stops (§7.8). */
+  /** Screen unfocused or backgrounded (and, for a meter without a number, the D43 test switch): the meter's UI-thread clock stops (§7.8). Only the ANIMATION is held: the readout below stays true (JA2-34). */
   paused: boolean;
-  /** Hold the 1 Hz readout still (the D43 test switch). */
-  holdReadout?: boolean;
   onClipReset?: () => void;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-export function DeviceMicMeter({ mic, variant, paused, holdReadout = false, onClipReset, style, testID }: DeviceMicMeterProps) {
+export function DeviceMicMeter({ mic, variant, paused, onClipReset, style, testID }: DeviceMicMeterProps) {
   const { t } = useTranslation();
   const policy = useMotionPolicy();
   const values = useAudioSharedValues(mic.id);
-  const flat = useNoSignal(values);
-  const noSignalText = t('common.status.noSignal');
-  const a11y = useAudioAccessibilityValue(mic.id, { noSignalText, ...(holdReadout ? { intervalMs: TEST_SWITCH_READOUT_MS } : {}) });
+  // Ruling D137: the input is the microphone line at the channel's position. Change-only selectors: a
+  // flag flip re-renders the meter, a 20 Hz frame never does (F74-13).
+  const input = useSim((s) => micInputOfChannel(micLinesInForce(s), mic.id));
+  const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
+  // The Core's own statement (J-S 6, `notMeasured`): an older Core and the simulator never send it.
+  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[input]));
+  const kind = deviceMicLevelKind({ state: mic.state, frameFlat, notMeasured });
+  // JA2-34: the number is the runtime's 1 Hz readout in EVERY motion mode; the test switch holds animation only.
+  const ticking = useAudioAccessibilityValue(mic.id);
+  const text = kind === 'LEVEL' ? `${ticking.now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
+  const a11y = { min: ticking.min, max: ticking.max, now: ticking.now, text };
   const name = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  const label = t('features.devices.mic.meterLabel', { name });
+  // The large meter draws its own number; with nothing measured it would read the floor as if it were a
+  // level. The plate says what is true. The CLIP latch keeps the meter (its chip is the reset control).
+  if (kind === 'NOT_MEASURED' && variant !== 'compact' && !mic.clipLatched) {
+    return (
+      <View style={[styles.plate, style]} testID={testID} accessible accessibilityRole="text" accessibilityLabel={label} accessibilityValue={a11y}>
+        <Text maxFontSizeMultiplier={1.2} style={styles.plateValue} testID={testID ? `${testID}-readout` : undefined}>
+          {MIC_NO_LEVEL_TEXT}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.plateNote} testID={testID ? `${testID}-not-measured` : undefined}>
+          {`${t('features.devices.level.notMeasured')} · ${t('features.devices.level.notMeasuredNote')}`}
+        </Text>
+      </View>
+    );
+  }
   return (
     <DbfsMeter
       level={values.level}
@@ -50,15 +89,15 @@ export function DeviceMicMeter({ mic, variant, paused, holdReadout = false, onCl
       variant={variant}
       motion={policy}
       paused={paused}
-      signal={flat || mic.state === 'NO_SIGNAL' ? 'no-signal' : 'ok'}
+      signal={kind === 'NO_SIGNAL' ? 'no-signal' : 'ok'}
       {...(onClipReset ? { onClipReset } : {})}
       labels={{
         unit: 'dBFS',
         clip: t('common.enums.micState.CLIP'),
-        noSignal: noSignalText,
+        noSignal: t('common.status.noSignal'),
         clipResetHint: t('devices.audio.resetClip'),
       }}
-      accessibilityLabel={t('features.devices.mic.meterLabel', { name })}
+      accessibilityLabel={label}
       accessibilityValue={a11y}
       style={style}
       testID={testID}
@@ -66,15 +105,8 @@ export function DeviceMicMeter({ mic, variant, paused, holdReadout = false, onCl
   );
 }
 
-/** NO SIGNAL from the frame flag, crossing to JS only when it flips (D73 F74-08). */
-function useNoSignal(values: AudioSharedValues): boolean {
-  const [flat, setFlat] = useState(false);
-  useAnimatedReaction(
-    () => values.noSignal.get() > 0.5,
-    (now, previous) => {
-      if (now !== previous) scheduleOnRN(setFlat, now);
-    },
-    [values],
-  );
-  return flat;
-}
+const styles = StyleSheet.create({
+  plate: { alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 64 },
+  plateValue: { fontFamily: fontFamily.native.mono, fontSize: typography.h2.size, lineHeight: typography.h2.lineHeight, color: palette.foreground },
+  plateNote: { fontFamily: fontFamily.native.normal, fontSize: typography.caption.size, lineHeight: typography.caption.lineHeight, color: palette.gray, textAlign: 'center' },
+});

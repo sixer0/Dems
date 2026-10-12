@@ -244,4 +244,50 @@ describe('Storage screen', () => {
     expect(label('storage-ring')).toBe('Evidence storage 20% used, READY');
     expect(getMissingKeys()).toEqual([]);
   });
+
+  // ── Fix wave J (JA2-38 / JT-21, JA2-27, JA2-13, JA2-16; sub-driver J-P3) ──────────────────────────────────
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('JA2-38 / JT-21 on %s: the two counts are named for what they are - "Sealed today" and "Recorded, not sealed" - not "Sealed Evidence" / "Pending"', async (window) => {
+    await mount({ window });
+    expect(label('storage-legend-sealed')).toBe('Sealed today: 7');
+    expect(label('storage-legend-pending')).toBe('Recorded, not sealed: 1');
+    expect(textOf('storage-legend')).not.toMatch(/Sealed Evidence|Pending/);
+    // The values are the Core's evidence list, counted: unchanged.
+    expect(textOf('storage-legend-sealed-value')).toBe('7');
+    expect(textOf('storage-legend-pending-value')).toBe('1');
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('JA2-27: an activity row may take two lines ("Storage policy changed · 365 days · …" was cut on the phone)', async () => {
+    await mount();
+    const texts = screen.getAllByTestId('storage-activity-text');
+    expect(texts.length).toBeGreaterThan(0);
+    for (const node of texts) expect(node.props.numberOfLines).toBe(2);
+  });
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('JA2-13 / JA2-16 on %s: Manage storage says "this device" (never "tablet") and is a modal sheet', async (window) => {
+    await mount({ window });
+    await openManage();
+    expect(textOf('storage-manage-thresholds')).toContain('Read-only on this device.');
+    expect(textOf('storage-manage-thresholds')).not.toMatch(/tablet/i);
+    expect(screen.getByTestId('sheet-content-signal').props.accessibilityViewIsModal).toBe(true);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('RBAC (one rule): an investigator gets the policy read-only WITH the reason naming the roles, and a disabled Apply (never a failing press)', async () => {
+    await mount();
+    await openManage();
+    expect(textOf('storage-manage-readonly')).toContain('A Supervisor or Technician changes it.');
+    expect(screen.getByTestId('storage-manage-retention').props.accessibilityState?.disabled ?? screen.getByTestId('storage-manage-apply').props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('JW-03 mobile half (contract J-S 3): an export that was only REQUESTED reads "Export requested" in the activity list; a completed one keeps "Evidence exported"', async () => {
+    const test = await mount();
+    const event = (id: string, exportPhase: string) => ({ id, seq: 9_000 + Number(id.slice(-1)), at: test.sim.store.getState().clock.now, type: 'EVIDENCE_EXPORTED', severity: 'INFO', message: 'export', params: { exportPhase }, sessionId: null, deviceId: null });
+    act(() => test.sim.store.setState((s) => ({ events: [...s.events, event('EVT-J-1', 'REQUESTED'), event('EVT-J-2', 'COMPLETED')] }) as Partial<typeof s>));
+    await flushAsync();
+    const rows = rowLabels();
+    expect(rows.filter((row) => /, Export requested$/.test(row))).toHaveLength(1);
+    expect(rows.filter((row) => /Evidence exported/i.test(row)).length).toBeGreaterThan(0);
+    expect(getMissingKeys()).toEqual([]);
+  });
 });

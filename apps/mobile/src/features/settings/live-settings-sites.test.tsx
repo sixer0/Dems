@@ -53,6 +53,13 @@ async function press(testID: string, b: LiveSettingsBed): Promise<void> {
   await b.flush();
 }
 
+/** Fix wave J (JT-06): "Install update" asks first; the request goes out at the confirmation. */
+async function install(b: LiveSettingsBed): Promise<void> {
+  await press('settings-update-install', b);
+  expect(b.requests('startSoftwareUpdate')).toHaveLength(0);
+  await press('settings-update-confirm', b);
+}
+
 async function openDemo(b: LiveSettingsBed): Promise<void> {
   await press('settings-demo-trigger', b);
   expect(screen.getByTestId('settings-demo-body')).toBeTruthy();
@@ -115,7 +122,7 @@ describe('S2-7: Run diagnostics (operation 65)', () => {
     b.fake.answerOnce('runDiagnostics', rateLimited(12));
     await press('settings-run-diagnostics', b);
     await b.elapse(200);
-    expect(shown('The Core server is limiting requests from this tablet')).toBe(true);
+    expect(shown('The Core server is limiting requests from this device')).toBe(true);
     expect(shown('Try again in 12 s.')).toBe(true);
     expect(shown(OFFLINE)).toBe(false);
     expect(screen.queryByTestId('settings-diagnostics-sheet')).toBeNull();
@@ -129,7 +136,7 @@ describe('S2-7: Install update (operation 67)', () => {
     expect(screen.getByTestId('settings-update-live-note')).toHaveTextContent('The Core server runs a demonstration update: no software is installed.');
     expect(within(screen.getByTestId('settings-update-install')).getByText('Install update')).toBeTruthy();
     expect(saysSimulated()).toBe(false);
-    await press('settings-update-install', b);
+    await install(b);
     expect(isBusy('settings-update-install')).toBe(true);
     expect(shown(/^Installing v/)).toBe(false);
     await b.elapse(1_200);
@@ -155,7 +162,7 @@ describe('S2-7: Install update (operation 67)', () => {
   it('refusal: the Core\'s 403 (its `notPermitted` example, a role lost on the Core before the push) is still the denied toast naming the Technician role', async () => {
     const b = await openSection('maintenance', { user: 'rina.wijaya' });
     b.fake.answerOnce('startSoftwareUpdate', notPermitted('startSoftwareUpdate', 'MAINTENANCE', 'SUPERVISOR'));
-    await press('settings-update-install', b);
+    await install(b);
     await b.elapse(200);
     expect(b.requests('startSoftwareUpdate')).toHaveLength(1);
     expect(shown(DENIED)).toBe(true);
@@ -166,7 +173,7 @@ describe('S2-7: Install update (operation 67)', () => {
 
   it('a session is open: the Core\'s 409 is the warning the simulator\'s refusal shows', async () => {
     const b = await openSection('maintenance', { user: 'rina.wijaya', setup: (engine) => engine.sim.actions.loadScenario(ScenarioName.RECORDING) });
-    await press('settings-update-install', b);
+    await install(b);
     await b.elapse(200);
     expect(shown('Finish the active session before installing an update.')).toBe(true);
     expect(isBusy('settings-update-install')).toBe(false);
@@ -175,7 +182,7 @@ describe('S2-7: Install update (operation 67)', () => {
   it('outage: the offline toast; nothing changes', async () => {
     const b = await openSection('maintenance', { user: 'rina.wijaya' });
     b.fake.failOnce('startSoftwareUpdate');
-    await press('settings-update-install', b);
+    await install(b);
     await b.elapse(200);
     expect(shown(OFFLINE)).toBe(true);
     expect(b.state().update.state).toBe('IDLE');
@@ -303,7 +310,7 @@ describe('AC-C-52: the Demo controls show in LIVE mode only with DEMO_CONTROL an
   it('INVESTIGATOR (no DEMO_CONTROL): no panel, one true line; no demo request can be sent', async () => {
     const b = await openSection('maintenance', { user: 'budi.santoso' });
     expect(screen.queryByTestId('settings-demo')).toBeNull();
-    expect(screen.getByTestId('settings-demo-not-permitted')).toHaveTextContent('Your role does not include the demo controls.');
+    expect(screen.getByTestId('settings-demo-not-permitted')).toHaveTextContent('The demo controls require the Supervisor role.');
     for (const operationId of ['injectFault', 'clearFault', 'loadScenario', 'resetDemo']) expect(b.requests(operationId)).toHaveLength(0);
   });
 

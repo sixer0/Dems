@@ -44,7 +44,7 @@ export const sessionSummaryEn = {
   },
   incomplete: {
     chip: 'INCOMPLETE',
-    body: 'This session ended with a fault and was never sealed (SYS-008).',
+    body: 'This session ended with a fault and was never sealed.',
   },
   notFound: {
     title: 'Session not found',

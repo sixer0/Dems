@@ -9,6 +9,13 @@ export interface KeyValueItem {
   label: string;
   /** Text renders right-aligned; any other node renders as is (a chip, a copy button). */
   value: ReactNode;
+  /**
+   * Fix wave J round two (JA2-17): what a screen reader says for a value that is a NODE (a chip, a spinner).
+   * With it the row is one unit "label, spoken" in every state. Without it a row whose value changes from
+   * text to a node kept the accessible name of its text state on Android (the recovery rows were announced
+   * "..., Waiting" while they showed INTACT).
+   */
+  spokenValue?: string;
   /** Monospace value (IDs, hashes, timestamps; 01S §2.7 `data`). */
   mono?: boolean;
   testID?: string;
@@ -30,13 +37,14 @@ export function KeyValueList({ items, separators = true, className, variant = 't
     <ListGroup {...listProps} variant={variant} className={cn('rounded-xl', className)}>
       {items.map((item, index) => {
         const isText = typeof item.value === 'string' || typeof item.value === 'number';
+        const spoken = isText ? String(item.value) : item.spokenValue;
         return (
           <Fragment key={item.id}>
             {separators && index > 0 ? <Separator /> : null}
             <ListGroup.Item
               testID={item.testID}
-              accessible={isText}
-              accessibilityLabel={isText ? `${item.label}, ${String(item.value)}` : undefined}
+              accessible={spoken !== undefined}
+              accessibilityLabel={spoken !== undefined ? `${item.label}, ${spoken}` : undefined}
               className="gap-3"
             >
               <ListGroup.ItemContent>

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { PipelineFailure } from '../../core';
 import { notSignedIn } from '../../plugins/authenticate';
 import { ApiFailure, NOT_SIGNED_IN_TEXT } from '../../plugins/error-envelope';
-import { EngineError, SIM_REFUSAL_RULES, engineNotReady, operatorRequired, simCodeOf, simRefusal } from '../errors';
+import { EngineError, SIM_REFUSAL_REASON_TEXT, SIM_REFUSAL_RULES, engineNotReady, operatorRequired, simCodeOf, simRefusal } from '../errors';
 
 /** Spec §7.2, "How a thrown simulator error becomes an answer": simulator code, status, code of the answer. */
 const SPEC_TABLE: ReadonlyArray<readonly [simCode: SimErrorCode, status: number, code: string]> = [
@@ -85,6 +85,19 @@ describe('simRefusal: the table of spec §7.2', () => {
   it('a module may give its own wording; the status, the code and the details stay', () => {
     const refusal = simRefusal(new SimTransitionError('CREATE', 'startRecording'), 'Session SES-1 is CREATE.');
     expect(refusal).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', message: 'Session SES-1 is CREATE.', details: { simCode: 'ILLEGAL_STATE' } });
+  });
+
+  it('fix wave J: a refusal that NAMES its reason is answered with the sentence of that reason - no updater, no composite - and keeps status, code and details', () => {
+    const update = simRefusal(new SimTransitionError(null, 'startSoftwareUpdate', 'this Core has no software updater', SimErrorCode.COMMAND_UNSUPPORTED, 'UPDATER_NOT_AVAILABLE'));
+    expect([update?.statusCode, update?.code, update?.message]).toEqual([409, 'COMMAND_UNSUPPORTED', 'Software update is not available on this Core.']);
+    expect(update?.details).toMatchObject({ simCode: 'COMMAND_UNSUPPORTED', event: 'startSoftwareUpdate', reason: 'UPDATER_NOT_AVAILABLE' });
+    const composite = simRefusal(new SimTransitionError(null, 'exportEvidence', 'composite video is not available in this build', SimErrorCode.COMMAND_UNSUPPORTED, 'COMPOSITE_ENCODER_NOT_SELECTED'));
+    expect([composite?.statusCode, composite?.code, composite?.message]).toEqual([409, 'COMMAND_UNSUPPORTED', 'Composite video is not available in this build.']);
+    expect(composite?.details).toMatchObject({ reason: 'COMPOSITE_ENCODER_NOT_SELECTED' });
+    expect(Object.keys(SIM_REFUSAL_REASON_TEXT).sort()).toEqual(['COMPOSITE_ENCODER_NOT_SELECTED', 'UPDATER_NOT_AVAILABLE']);
+    // CONTROL: the same code without such a reason keeps the sentence of the table, and a module's own wording still wins.
+    expect(simRefusal(new SimTransitionError(null, 'deviceCommand', 'GNSS accepts IDENTIFY only', SimErrorCode.COMMAND_UNSUPPORTED))?.message).toBe(SIM_REFUSAL_RULES.COMMAND_UNSUPPORTED.message);
+    expect(simRefusal(new SimTransitionError(null, 'x', 'y', SimErrorCode.COMMAND_UNSUPPORTED, 'UPDATER_NOT_AVAILABLE'), 'own words')?.message).toBe('own words');
   });
 
   it('anything else is not a refusal: the caller lets it propagate and the request answers 500', () => {

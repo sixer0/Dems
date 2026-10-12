@@ -112,7 +112,8 @@ function SessionRowImpl({ row, selected, isMultiPane, onPress }: SessionRowProps
               ) : null}
             </View>
             <View style={styles.body}>
-              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.id} testID={`session-row-id-${row.id}`}>
+              {/* Round two (JT-12): the id is never cut at its number - it shrinks to fit, and a cut would take the head. */}
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="head" style={styles.id} testID={`session-row-id-${row.id}`}>
                 {row.id}
               </Text>
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.meta}>

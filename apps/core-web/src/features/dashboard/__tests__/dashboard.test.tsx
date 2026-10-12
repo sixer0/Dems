@@ -266,9 +266,12 @@ describe('Dashboard RBAC (S20; review rule R4)', () => {
     mount({ operatorId: OPERATOR_IDS.RINA }) // TECHNICIAN
     const panel = await findPanel('d')
     expect(within(panel).getByTestId('start-new-session')).toBeDisabled()
-    expect(within(panel).getByTestId('start-new-session-locked')).toHaveAccessibleName(
-      'Start New Session: Requires the Investigator role',
-    )
+    // Fix wave J (JW-14): the reason is VISIBLE beside the disabled control (it lived in a tooltip), and it names every
+    // role that may start a session.
+    const locked = within(panel).getByTestId('start-new-session-locked')
+    expect(locked).toHaveAttribute('aria-label', 'Start New Session: Requires the Investigator or Supervisor role')
+    expect(within(locked).getByTestId('role-reason')).toHaveTextContent('Requires the Investigator or Supervisor role')
+    expect(within(locked).getByTestId('role-reason')).toBeVisible()
   })
 
   it('disables Export Evidence for an investigator and keeps the page shortcuts enabled', async () => {
@@ -384,5 +387,55 @@ describe('Dashboard motion (§9.4 cap, §8 reduced motion, M-C-07, §7 new seal)
     expect(await screen.findByText(`Evidence ${recorded?.id} sealed`)).toBeInTheDocument()
     expect(selectSealedToday(sim.store.getState())).toBe(before + 1)
     await waitFor(() => expect(within(h).getByTestId('sealed-today-count')).toHaveTextContent(String(before + 1)), HELD_BEAT_WAIT)
+  })
+})
+
+// Fix wave J, driver J-W - JW-07 (truth rule 3f) and JW-04 / JW-05 (rule 3c). The demonstration says DEMO on its ring, its
+// strip and every card that shows a feed, a recording state or an integrity statement; a Core in its own capture draws no
+// such mark, and its pill never reads "SECURE".
+describe('wave J: the demonstration is marked, a real-capture Core is not, and the pill reads the one statement', () => {
+  it('JW-07: the simulated Dashboard carries the DEMO marks (ring, strip, the cards), and the feeds say DEMO', async () => {
+    mount()
+    await findPanel('a')
+    const blocks = Array.from(document.querySelectorAll<HTMLElement>('[data-demo-block]'), (element) => element.dataset.demoBlock)
+    for (const block of ['dashboard-ring', 'dashboard-strip', 'dashboard-d', 'dashboard-e', 'dashboard-f', 'dashboard-g', 'dashboard-h']) expect(blocks).toContain(block)
+    // Recent Events and Quick Actions show no feed, recording state or integrity statement: no mark.
+    expect(blocks).not.toContain('dashboard-i')
+    expect(blocks).not.toContain('dashboard-j')
+    expect(screen.getByTestId('demo-mark-dashboard-ring')).toHaveTextContent('DEMO · SIMULATED')
+    expect(within(await findPanel('e')).getAllByTestId('demo-mark-feed').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('secure-pill')).toHaveAttribute('data-statement', 'SECURE')
+  })
+
+  it('JW-07 NEGATIVE CONTROL / JW-04: a Core that states its own capture draws no DEMO mark, and its pill is "NO FAULT REPORTED", never SECURE', async () => {
+    const { sim } = mount()
+    await findPanel('a')
+    act(() => {
+      sim.store.setState((state) => ({ security: { ...state.security, platformNotReported: true }, time: { ...state.time, hostClock: true } }))
+    })
+    await waitFor(() => expect(document.querySelectorAll('[data-demo-block]')).toHaveLength(0))
+    const pill = screen.getByTestId('secure-pill')
+    expect(pill).toHaveAttribute('data-statement', 'NO_FAULT_REPORTED')
+    expect(pill).toHaveTextContent('NO FAULT REPORTED')
+    expect(pill).toHaveTextContent('Platform security: not reported')
+    expect(pill).not.toHaveTextContent(/SECURE|All systems operational/)
+  })
+
+  it('JW-05 / JT-01: an active unreachable-camera alert takes "SECURE" off the pill AND the ring at once', async () => {
+    const { sim } = mount()
+    await findPanel('a')
+    act(() => {
+      sim.store.setState((state) => ({
+        alerts: [{ id: 'ALR-000900', at: state.clock.now, severity: 'WARNING', kind: 'SYSTEM', message: 'Camera 2 (CAM-02) is not reachable.', active: true, acknowledged: false, resolvedAt: null, params: { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'CAM-02', deviceKind: 'CAMERA', phase: 'PRECHECK', cause: 'UNREACHABLE' } }],
+      }))
+    })
+    await waitFor(() => expect(screen.getByTestId('secure-pill')).toHaveAttribute('data-statement', 'ALERT_ACTIVE'))
+    expect(screen.getByTestId('secure-pill')).toHaveTextContent('ALERT ACTIVE')
+    expect(screen.getByTestId('secure-pill')).toHaveTextContent('1 active alert')
+    expect(screen.getByTestId('secure-pill')).not.toHaveTextContent('All systems operational')
+    const ring = within(await findPanel('a'))
+    expect(ring.getByTestId('ring-status-line')).toHaveTextContent('1 ACTIVE ALERT')
+    expect(ring.getByTestId('glow-ring')).toHaveAttribute('data-state', 'ATTENTION')
+    expect(document.querySelector('.dems-dash-ring-cell')).toHaveAttribute('data-statement', 'ALERT_ACTIVE')
   })
 })

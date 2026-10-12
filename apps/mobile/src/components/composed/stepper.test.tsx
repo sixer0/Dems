@@ -93,6 +93,41 @@ describe('Stepper component', () => {
     expect(onStepPress).toHaveBeenCalledWith(0);
   });
 
+  // Fix wave J round two (JA2-22 / JT-13): a completed step that a press does not open is text, not a button.
+  it.each(['horizontal', 'vertical'] as const)('JA2-22 (%s): only the steps `canPressStep` allows are buttons; the others are text and take no press', (orientation) => {
+    const onStepPress = jest.fn();
+    render(wrap(<Stepper steps={WIZARD} current={2} orientation={orientation} motion="reduced" testID="wiz" onStepPress={onStepPress} canPressStep={(index) => index === 1} />));
+    const info = screen.getByLabelText('Step 1 of 3, Session Info, completed');
+    const checks = screen.getByLabelText('Step 2 of 3, Devices Check, completed');
+    expect(info.props.accessibilityRole).toBe('text');
+    expect(info.props.accessibilityState).toMatchObject({ disabled: true });
+    expect(checks.props.accessibilityRole).toBe('button');
+    fireEvent.press(info);
+    expect(onStepPress).not.toHaveBeenCalled();
+    fireEvent.press(checks);
+    expect(onStepPress).toHaveBeenCalledWith(1);
+  });
+
+  // Fix wave J round two (JA2-20): six labels do not fit a phone's columns ("Authoriz-e", "Destinati-on").
+  it('JA2-20: `labels="current"` draws ONE label under the badges; every step keeps its accessible name', () => {
+    const SIX = ['Authorize', 'Verify source', 'Options', 'Destination', 'Reason', 'Result'].map((label, index) => ({ key: `s${index}`, label }));
+    render(wrap(<Stepper steps={SIX} current={3} labels="current" motion="reduced" testID="exp" />));
+    // Decorative for a screen reader (each step has its own name), so it is read with the hidden elements.
+    expect(screen.getByTestId('exp-current-label', { includeHiddenElements: true })).toHaveTextContent('Step 4 of 6 · Destination');
+    // The words are drawn once: no visible label of another step.
+    expect(screen.queryByText('Authorize')).toBeNull();
+    expect(screen.queryByText('Result')).toBeNull();
+    expect(screen.getByLabelText('Step 1 of 6, Authorize, completed')).toBeTruthy();
+    expect(screen.getByLabelText('Step 6 of 6, Result, not started')).toBeTruthy();
+  });
+
+  it('JA2-20 CONTROL: the default draws every label', () => {
+    render(wrap(<Stepper steps={WIZARD} current={1} motion="reduced" testID="wiz" />));
+    expect(screen.queryByTestId('wiz-current-label')).toBeNull();
+    expect(screen.getByText('Session Info')).toBeTruthy();
+    expect(screen.getByText('Ready')).toBeTruthy();
+  });
+
   it('renders a vertical pipeline with running and failed steps', () => {
     render(
       wrap(
@@ -182,3 +217,62 @@ describe.each(['reduced', 'full'] as const)('G94b-13 - a badge whose look change
   });
 });
 });
+
+// Fix wave J, JM-01 (the BLOCKER of the motion-on judging; reproduced on the tablet, normal launch, export
+// wizard "Next": "[Worklets] Tried to synchronously call a Remote Function. Called "scaleFor" on the UI
+// Runtime." with "Encountered two children with the same key, `1`").
+//
+// 1. The remote call: a plain function called from the fill overlay's `useAnimatedStyle`. Jest runs worklets on
+//    the JS runtime, so the call itself cannot fail here; the guard of `jest.setup.ts`
+//    (`@/motion/testing/worklet-closure`) reads what the Worklets plugin wrote on every worklet handed to
+//    Reanimated and fails the test that mounted an offender. Without the fix the three full-motion cases below
+//    fail with "useAnimatedStyle: stepperTsx1 calls scaleFor" - the name the device printed.
+// 2. The keys: the ring fade and the halo pulse are siblings and both counted their runs from 1.
+describe.each(['full', 'reduced'] as const)('JM-01 - a step change of the shared stepper (%s motion)', (motion) => {
+  unmountBeforeTheHooksOfThisGroup();
+  const wrap = (node: ReactNode) => <HeroUINativeProvider>{node}</HeroUINativeProvider>;
+  const EXPORT = ['Authorize', 'Verify source', 'Destination', 'Reason', 'Build and hash', 'Done'].map((label, i) => ({ key: `s${i}`, label }));
+  let errors: jest.SpiedFunction<typeof console.error>;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    cleanup();
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    errors.mockRestore();
+    jest.useRealTimers();
+  });
+
+  const keyWarnings = (): unknown[][] => errors.mock.calls.filter((call) => String(call[0]).includes('same key'));
+
+  it.each(['horizontal', 'vertical'] as const)('%s: the wizard walks all six steps and React reports no two children with the same key', (orientation) => {
+    const view = render(wrap(<Stepper steps={EXPORT} current={0} orientation={orientation} motion={motion} testID="x" />));
+    for (let current = 1; current <= EXPORT.length; current += 1) {
+      view.rerender(wrap(<Stepper steps={EXPORT} current={current} orientation={orientation} motion={motion} testID="x" />));
+      // Half-way through the overlays' budgets, so ring, halo, check and fill overlays are all mounted together.
+      act(() => {
+        jest.advanceTimersByTime(120);
+      });
+    }
+    expect(keyWarnings()).toEqual([]);
+    act(() => {
+      jest.advanceTimersByTime(2_000);
+    });
+    expect(keyWarnings()).toEqual([]);
+    expect(screen.getByLabelText('Step 6 of 6, Done, completed')).toBeTruthy();
+  });
+
+  it(motion === 'full' ? 'the fill, ring and halo overlays ARE mounted for the change (so the worklet guard has read them)' : 'no overlay is mounted at all: the change is drawn by React', () => {
+    const view = render(wrap(<Stepper steps={EXPORT} current={0} motion={motion} testID="x" />));
+    view.rerender(wrap(<Stepper steps={EXPORT} current={1} motion={motion} testID="x" />));
+    const mounted = (testID: string): boolean => screen.queryAllByTestId(testID, { includeHiddenElements: true }).length > 0;
+    expect(mounted('x-fill-left-1-motion')).toBe(motion === 'full');
+    expect(mounted('x-badge-1-ring-motion')).toBe(motion === 'full');
+    expect(mounted('x-badge-1-halo-motion')).toBe(motion === 'full');
+  });
+});
+

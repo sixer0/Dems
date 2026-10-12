@@ -198,10 +198,15 @@ describe('the bulk template: the minimums of contract ยง11 as revised by dbc-3 ย
     expect(status['RECORDED']).toBeGreaterThanOrEqual(evidence.recorded);
     expect(await count(pool, 'SELECT count(*) FROM evidence_items WHERE tampered')).toBeGreaterThanOrEqual(evidence.tampered);
     expect(await count(pool, 'SELECT count(DISTINCT case_type) FROM evidence_items')).toBe(evidence.caseTypes);
-    // Exactly four tracks per item, both audio tracks among them; at least two custody entries per item.
-    expect(await count(pool, 'SELECT count(*) FROM evidence_items e WHERE (SELECT count(*) FROM evidence_tracks t WHERE t.evidence_id = e.id) <> 4')).toBe(0);
+    // Exactly four tracks per SEALED item, both audio tracks among them; at least two custody entries per item.
+    // Fix wave J (truth rule 3a): an item that was never sealed (`sealed_at` NULL) has NO track row, the null digest and no verdict.
+    expect(await count(pool, 'SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NOT NULL AND (SELECT count(*) FROM evidence_tracks t WHERE t.evidence_id = e.id) <> 4')).toBe(0);
+    expect(await count(pool, 'SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NULL AND (SELECT count(*) FROM evidence_tracks t WHERE t.evidence_id = e.id) <> 0')).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NULL AND (e.manifest_hash <> repeat('0', 64) OR e.signature_value <> repeat('0', 64) OR e.verification_status <> 'NOT_RUN')")).toBe(0);
+    expect(await count(pool, "SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NULL")).toBeGreaterThan(0);
+    expect(await count(pool, "SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NOT NULL AND e.manifest_hash = repeat('0', 64)")).toBe(0);
     expect(
-      await count(pool, "SELECT count(*) FROM evidence_items e WHERE (SELECT count(*) FROM evidence_tracks t WHERE t.evidence_id = e.id AND t.track_id IN ('AUDIO-01', 'AUDIO-02')) <> 2"),
+      await count(pool, "SELECT count(*) FROM evidence_items e WHERE e.sealed_at IS NOT NULL AND (SELECT count(*) FROM evidence_tracks t WHERE t.evidence_id = e.id AND t.track_id IN ('AUDIO-01', 'AUDIO-02')) <> 2"),
     ).toBe(0);
     expect(await count(pool, 'SELECT count(*) FROM evidence_items e WHERE (SELECT count(*) FROM evidence_custody c WHERE c.evidence_id = e.id) < 2')).toBe(0);
     expect(await count(pool, 'SELECT count(DISTINCT rows) FROM (SELECT count(*) AS rows FROM evidence_custody GROUP BY evidence_id) AS c')).toBeGreaterThanOrEqual(3);

@@ -366,7 +366,8 @@ describe('item 2: the Core\'s blocked-seal sentences and the web\'s control agre
   const R = enWeb.web.waveL.sealRetry
   it('the button is called what the Core\'s alert calls it; both say who may press it', () => {
     expect(R.action).toBe(SEAL_RETRY_CONTROL_NAME)
-    expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain(`presses "${R.action}" on the Session Monitor of the web console`)
+    // Closing pass J4, item 4: the sentence names the devices' control too (the web's place in it is unchanged).
+    expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain(`presses "${R.action}" on the Session Monitor of the web console or on the session's screen of the tablet or phone, or the Core is restarted.`)
     expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain('an investigator or a supervisor')
     expect(R.whoCan).toBe('An investigator or a supervisor can retry.')
   })

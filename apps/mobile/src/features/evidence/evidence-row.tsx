@@ -27,7 +27,9 @@ import { useMobileLive } from '@/runtime';
 import { ItemDevelopmentBadge } from './development-source';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { posterForEvidence } from './evidence-media';
-import { InterruptedLine } from './interrupted-line';
+import { InterruptedLine, NeverSealedLine } from './interrupted-line';
+import { Permission, hasSealedValues, verificationOfRecordFailed } from '@dems/shared/sim';
+import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { isDemoItem, readItemFacts } from './item-facts';
 import { isArchivable, isExportable, type EvidenceDensity } from './evidence-model';
 import { MenuItemText } from './menu-item-text';
@@ -49,7 +51,9 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
   const compact = density === 'compact';
   const date = formatDate(item.recordedAt, DATE_PATTERNS.dateTimeMinutes);
   const duration = formatDuration(item.durationMs);
-  const status = t(`common.evidenceStatus.${item.status}`);
+  // JT-04: the failed verification of record is the status the row states (chip and spoken label).
+  const verificationFailed = verificationOfRecordFailed(item);
+  const status = verificationFailed ? t('common.truth.sealedVerificationFailed') : t(`common.evidenceStatus.${item.status}`);
   const live = useMobileLive() !== null;
   const facts = readItemFacts(item);
   const bundledPoster = !live || isDemoItem(facts);
@@ -60,7 +64,7 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
         testID={`evidence-row-${item.id}`}
         accessibilityRole="button"
         accessibilityState={{ selected }}
-        accessibilityLabel={t('features.evidence.list.rowLabel', { id: item.id, subject: item.subjectName, status: facts.interrupted === true ? t('evidence.itemFacts.interrupted.status') : status, date, duration })}
+        accessibilityLabel={t('features.evidence.list.rowLabel', { id: item.id, subject: item.subjectName, status: facts.interrupted === true ? t('evidence.itemFacts.interrupted.status') : !hasSealedValues(item) ? t('features.evidence.neverSealed.status') : status, date, duration })}
         onPress={() => onPress(item.id)}
         style={styles.pressable}
       >
@@ -79,7 +83,8 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
               />
             )}
             <View style={styles.body}>
-              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.id}>
+              {/* Round two (JT-12): the id is never cut at its number - it shrinks to fit, and a cut would take the head. */}
+              <Text maxFontSizeMultiplier={1.2} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} ellipsizeMode="head" style={styles.id}>
                 {item.id}
               </Text>
               <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.meta}>
@@ -97,9 +102,10 @@ function EvidenceRowImpl({ item, selected, density, canArchive, onPress, onActio
                 </Text>
               </View>
               <InterruptedLine facts={facts} testID={`evidence-row-interrupted-${item.id}`} />
+              <NeverSealedLine item={item} testID={`evidence-row-never-sealed-${item.id}`} />
             </View>
             <View style={styles.trailing}>
-              <EvidenceStatusChip status={item.status} testID={`evidence-row-status-${item.id}`} />
+              <EvidenceStatusChip status={item.status} verificationFailed={verificationFailed} testID={`evidence-row-status-${item.id}`} />
               <RowMenu item={item} canArchive={canArchive} onAction={onAction} />
             </View>
           </View>
@@ -117,6 +123,10 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
   const { t } = useTranslation();
   const exportable = isExportable(item.status);
   const archivable = canArchive && isArchivable(item.status);
+  // Round two (JT-16; phone report section 5 "one slip"): the row menu states the role rule BEFORE the press, as the
+  // item's own Export button does - it used to offer Export to an investigator and refuse at the wizard's first step.
+  const exportGate = useRoleGate(Permission.EVIDENCE_EXPORT);
+  const exportReason = !exportable ? t('features.evidence.actions.exportDisabled') : exportGate.allowed ? null : exportGate.hint;
   return (
     <Menu>
       <Menu.Trigger asChild>
@@ -141,13 +151,13 @@ function RowMenu({ item, canArchive, onAction }: { item: EvidenceItem; canArchiv
           </Menu.Item>
           <Menu.Item
             testID={`evidence-row-export-${item.id}`}
-            isDisabled={!exportable}
+            isDisabled={exportReason !== null}
             onPress={() => onAction(item.id, 'export')}
           >
             {/* CF-M2 (R-T-1): title and reason stacked, so a disabled item keeps its visible title. */}
             <MenuItemText
               title={t('features.evidence.actions.export')}
-              description={exportable ? null : t('features.evidence.actions.exportDisabled')}
+              description={exportReason}
               testID={`evidence-row-export-text-${item.id}`}
             />
           </Menu.Item>

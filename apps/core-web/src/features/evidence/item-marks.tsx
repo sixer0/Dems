@@ -1,4 +1,6 @@
-import { Chip, EmptyState } from '@heroui/react'
+import { Alert, Chip, EmptyState } from '@heroui/react'
+import { causeWords } from './cause-words'
+import { hasSealedValues } from '@dems/shared/sim'
 import { Film, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { mediaReasonOf, readItemFacts, type DetailFacts } from './item-facts'
@@ -17,7 +19,8 @@ import { mediaReasonOf, readItemFacts, type DetailFacts } from './item-facts'
 export function InterruptedMark({ item, testId }: { item: unknown; testId: string }) {
   const { t } = useTranslation()
   const facts = readItemFacts(item)
-  if (facts.interrupted !== true) return null
+  // Wave J: "Sealed - recording was interrupted" is said of a SEALED item only; a never-sealed one carries `NotSealedMark`.
+  if (facts.interrupted !== true || !hasSealedValues(item)) return null
   return (
     <span className="evi-cell-stack" data-testid={testId} data-cause={facts.interruptedCause ?? undefined}>
       <Chip size="sm" variant="soft" color="warning">
@@ -25,9 +28,50 @@ export function InterruptedMark({ item, testId }: { item: unknown; testId: strin
         <Chip.Label>{t('evidence.itemFacts.interrupted.status')}</Chip.Label>
       </Chip>
       <span className="evi-caption">
-        {facts.interruptedCause !== null ? t('evidence.itemFacts.interrupted.cause', { cause: facts.interruptedCause }) : t('evidence.itemFacts.interrupted.causeNotReported')}
+        {/* Fix wave J (JW-13 / JW-27): the cause by its name ("Storage full"), not the raw code. */}
+        {facts.interruptedCause !== null ? t('evidence.itemFacts.interrupted.cause', { cause: causeWords(t, facts.interruptedCause) }) : t('evidence.itemFacts.interrupted.causeNotReported')}
       </span>
     </span>
+  )
+}
+
+/**
+ * Fix wave J (JW-01 / JW-27; truth rule 3a; contract J-S 1): THE MARK OF AN ITEM THAT WAS NEVER SEALED
+ * (`hasSealedValues` is false: `sealedAt` is null). The list row and the header say what the item is -
+ * "Not sealed" with the cause that interrupted the recording where the item states one - so an
+ * INCOMPLETE recording never reads as a plain "Recorded" among sealed evidence.
+ */
+export function NotSealedMark({ item, testId }: { item: unknown; testId: string }) {
+  const { t } = useTranslation()
+  if (hasSealedValues(item)) return null
+  const facts = readItemFacts(item)
+  return (
+    <span className="evi-cell-stack" data-testid={testId} data-not-sealed="true" data-cause={facts.interruptedCause ?? undefined}>
+      <Chip size="sm" variant="soft" color="warning">
+        <TriangleAlert className="size-3.5" aria-hidden="true" />
+        <Chip.Label>{t('web.waveJ.evidence.notSealedChip')}</Chip.Label>
+      </Chip>
+      {facts.interruptedCause !== null ? <span className="evi-caption">{t('evidence.itemFacts.interrupted.cause', { cause: causeWords(t, facts.interruptedCause) })}</span> : null}
+    </span>
+  )
+}
+
+/**
+ * JW-01: what the Hash & Integrity tab shows INSTEAD of sealed values, a manifest, a signature and a
+ * Verify control for an item that was never sealed. Nothing here can turn green.
+ */
+export function NotSealedStatement({ item }: { item: unknown }) {
+  const { t } = useTranslation()
+  const facts = readItemFacts(item)
+  return (
+    <Alert status="warning" data-testid="evidence-not-sealed" role="status">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>{t('web.waveJ.evidence.notSealedTitle')}</Alert.Title>
+        <Alert.Description>{t('web.waveJ.evidence.notSealedBody')}</Alert.Description>
+        {facts.interruptedCause !== null ? <Alert.Description data-testid="evidence-not-sealed-cause">{t('evidence.itemFacts.interrupted.cause', { cause: causeWords(t, facts.interruptedCause) })}</Alert.Description> : null}
+      </Alert.Content>
+    </Alert>
   )
 }
 
@@ -46,7 +90,10 @@ export function MediaNone({ facts }: { facts: DetailFacts | null }) {
       <p className="evi-empty-body">{t('evidence.itemFacts.media.none')}</p>
       {reason !== null ? (
         <p className="evi-empty-body" data-testid="evidence-media-none-reason">
-          {reason.kind === 'WORDED'
+          {/* Fix wave J (JA2-02; contract J-S 2): a freshly sealed SIMULATED session is a demonstration record without media - said as that. */}
+          {reason.kind === 'CODE' && reason.reason === 'DEMONSTRATION_RECORD'
+            ? t('web.waveJ.evidence.demonstrationRecord')
+            : reason.kind === 'WORDED'
             ? t(`evidence.itemFacts.media.reason.${reason.reason}`)
             : reason.kind === 'CODE'
               ? t('evidence.itemFacts.media.reasonOther', { reason: reason.reason })

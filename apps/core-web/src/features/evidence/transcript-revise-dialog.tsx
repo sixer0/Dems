@@ -6,7 +6,7 @@ import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import { logEvidence, newCorrelationId } from './log'
 import { useReviseTranscript } from './transcript'
-import { REVISION_NOTE_MAX, REVISION_NOTE_MIN, REVISION_TEXT_MAX, revisionNoteOk, revisionRequestOf, validateRevisionText, type DerivedSegment, type ReviseRefusal, type RevisionFieldError } from './transcript-model'
+import { REVISION_NOTE_MAX, REVISION_NOTE_MIN, REVISION_TEXT_MAX, revisionNoteOk, revisionRequestOf, segmentNumberOf, validateRevisionText, type DerivedSegment, type ReviseRefusal, type RevisionFieldError } from './transcript-model'
 
 export interface TranscriptReviseDialogProps {
   evidenceId: string
@@ -86,12 +86,14 @@ export function TranscriptReviseDialog({ evidenceId, segment, baseRevision, isOp
             ? t('evidence.transcript.revise.failed')
             : null
 
+  // Fix wave J (JW-16): a click outside discarded the typed correction and its reason without a question.
+  // Round three (N-13): the operator counts segments from 1 (`segmentNumberOf`); the request keeps the index.
   return (
-    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange} variant="blur">
+    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange} variant="blur" isDismissable={false}>
       <Modal.Container size="lg" placement="center" scroll="inside">
-        <Modal.Dialog aria-label={t('evidence.transcript.revise.title', { index: segment.segment.index })} data-testid="transcript-revise-dialog">
+        <Modal.Dialog aria-label={t('evidence.transcript.revise.title', { index: segmentNumberOf(segment.segment.index) })} data-testid="transcript-revise-dialog">
           <Modal.Header>
-            <Modal.Heading>{t('evidence.transcript.revise.title', { index: segment.segment.index })}</Modal.Heading>
+            <Modal.Heading>{t('evidence.transcript.revise.title', { index: segmentNumberOf(segment.segment.index) })}</Modal.Heading>
           </Modal.Header>
           <Modal.Body className="flex flex-col gap-3" aria-busy={saving.busy || undefined}>
             <p className="evi-caption">{t('evidence.transcript.revise.lead')}</p>

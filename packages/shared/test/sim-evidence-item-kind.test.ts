@@ -7,8 +7,41 @@
 // | The contract's own `getEvidence` examples classify as their names say | "the contract's examples" |
 // | The Core's `interrupted` (sealed manifest) answers when stated; else the custody entry; the manifest wins a disagreement | "the mapping table", "interruptedSealOfItem agrees" |
 import { describe, expect, it } from 'vitest';
-import { CORE_API_EXAMPLES, EvidenceDetailSchema, EXAMPLE_EVIDENCE_ITEM, EvidenceItemSchema } from '../src/api';
-import { EVIDENCE_ITEM_KIND_VECTORS, evidenceItemKindOf, interruptedFactOf, interruptedSealOfItem, isBundledDemoItem, isSealedOnThisCore, sealedPackageOf } from '../src/sim';
+import {
+  CORE_API_EXAMPLES,
+  EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE,
+  EVIDENCE_NOT_SEALED_DIGEST_EXAMPLE,
+  EVIDENCE_NOT_SEALED_ITEM_EXAMPLE,
+  EXPORT_COMPOSITE_UNAVAILABLE_REASON as API_COMPOSITE_REASON,
+  EXPORT_KINDS_EXAMPLE,
+  EvidenceDetailSchema,
+  EvidenceMediaRefSchema,
+  EvidenceVerifyResultSchema,
+  EXAMPLE_EVIDENCE_ITEM,
+  EvidenceItemSchema,
+  SECURITY_STATUS_EVIDENCE_VERIFICATION_EXAMPLE,
+  SecurityStatusSchema,
+  VERIFY_DEMONSTRATION_EXAMPLE,
+  VERIFY_NOT_SEALED_EXAMPLE,
+  VERIFY_NOT_SEALED_TEXT,
+} from '../src/api';
+import {
+  EVIDENCE_ITEM_KIND_VECTORS,
+  EVIDENCE_NOT_SEALED_DIGEST,
+  EVIDENCE_NOT_SEALED_SIGNATURE,
+  EXPORT_COMPOSITE_UNAVAILABLE_REASON,
+  evidenceItemKindOf,
+  hasSealedValues,
+  incompleteSessionFactOf,
+  interruptedFactOf,
+  interruptedSealOfItem,
+  isBundledDemoItem,
+  isSealedOnThisCore,
+  neverSealedShape,
+  sealedPackageOf,
+  verificationOfRecordFailed,
+  type EvidenceItem,
+} from '../src/sim';
 import * as micPairBed from './support/mic-pair-bed';
 
 describe('the kind of an evidence item, by the Core\'s own members', () => {
@@ -29,6 +62,9 @@ describe('the kind of an evidence item, by the Core\'s own members', () => {
     const kinds = Object.fromEntries(Object.entries(examples).map(([name, example]) => [name, [evidenceItemKindOf(example.value.evidence), sealedPackageOf(example.value.evidence), example.value.media.source, interruptedFactOf(example.value.evidence).interrupted]]));
     expect(kinds).toEqual({
       withPackage: ['DEMO', null, 'DEMO_PACKAGE', null],
+      // Fix wave J: a never-sealed record and the demonstration record of a simulated session - no media, no package of the Core.
+      neverSealed: ['DEMO', null, 'NONE', null],
+      simulatedSealed: ['DEMO', null, 'NONE', null],
       productSealed: ['SEALED_HERE', 'PRESENT', 'LIVE_STREAM', false],
       productSealedInterrupted: ['SEALED_HERE', 'PRESENT', 'LIVE_STREAM', true],
       productSealedOneCamera: ['SEALED_HERE', 'PRESENT', 'LIVE_STREAM', false],
@@ -116,3 +152,94 @@ describe('developmentSources', () => {
     });
   });
 });
+
+// Fix wave J (decision D243; `delegation_progress/contract_wave_j.md`): the readers both clients use, the
+// shape of a never-sealed item, and the contract examples of the new optional members.
+describe('fix wave J: the never-sealed shape, the readers and the contract examples', () => {
+  const sealed = EXAMPLE_EVIDENCE_ITEM as unknown as EvidenceItem;
+
+  it('JA2-01 / JW-01: `hasSealedValues` is the fact `sealedAt` - never the presence of a hash', () => {
+    expect(hasSealedValues(sealed)).toBe(true);
+    // A row written before wave J: `sealedAt` null with the full integrity block of a seal and a stored PASS.
+    const old = { ...sealed, sealedAt: null, status: 'RECORDED', lifecycleStage: 'RECORDING', verification: { status: 'PASS', at: 5 } } as unknown as EvidenceItem;
+    expect(hasSealedValues(old)).toBe(false);
+    expect(hasSealedValues(EVIDENCE_NOT_SEALED_ITEM_EXAMPLE)).toBe(false);
+    for (const nothing of [null, undefined, 'x', [], {}, { sealedAt: '1790741649000' }]) expect(hasSealedValues(nothing)).toBe(false);
+  });
+
+  it('JA2-01 / JW-01: `neverSealedShape` takes every sealed value off an unsealed item - also one stored with them - and leaves a sealed item alone', () => {
+    const old = { ...sealed, sealedAt: null, status: 'RECORDED', lifecycleStage: 'RECORDING', verification: { status: 'PASS', at: 5 }, tampered: true, tamperedTrackId: 'AUDIO-02', files: [], fragmentChainHead: 'a'.repeat(64), transcriptSha256: 'b'.repeat(64) } as unknown as EvidenceItem;
+    const shaped = neverSealedShape(old);
+    expect(shaped).toMatchObject({ tracks: [], manifestHash: EVIDENCE_NOT_SEALED_DIGEST, signature: EVIDENCE_NOT_SEALED_SIGNATURE, verification: { status: 'NOT_RUN', at: null }, tampered: false, tamperedTrackId: null });
+    for (const member of ['files', 'fragmentChainHead', 'transcriptSha256', 'transcript']) expect(shaped).not.toHaveProperty(member);
+    // Nothing of the stored integrity block is left in the answer.
+    expect((JSON.stringify(shaped).match(/[0-9a-f]{64}/g) ?? []).filter((hex) => hex !== EVIDENCE_NOT_SEALED_DIGEST)).toEqual([]);
+    // What is NOT a sealed value stays: the identity, the custody, the times.
+    expect(shaped).toMatchObject({ id: old.id, sessionId: old.sessionId, custody: old.custody, recordedAt: old.recordedAt, sizeBytes: old.sizeBytes });
+    expect(EvidenceItemSchema.safeParse(JSON.parse(JSON.stringify(shaped))).success).toBe(true);
+    // The identity for an item that already has the shape, and for a sealed item.
+    expect(neverSealedShape(shaped)).toBe(shaped);
+    expect(neverSealedShape(sealed)).toBe(sealed);
+  });
+
+  it('the contract example of a never-sealed item IS that shape, and the placeholder constants of the two packages are one value', () => {
+    expect(EVIDENCE_NOT_SEALED_DIGEST_EXAMPLE).toBe(EVIDENCE_NOT_SEALED_DIGEST);
+    expect(EVIDENCE_NOT_SEALED_DIGEST).toBe('0'.repeat(64));
+    expect(EVIDENCE_NOT_SEALED_ITEM_EXAMPLE.signature).toEqual(EVIDENCE_NOT_SEALED_SIGNATURE);
+    expect(neverSealedShape(EVIDENCE_NOT_SEALED_ITEM_EXAMPLE as unknown as EvidenceItem)).toBe(EVIDENCE_NOT_SEALED_ITEM_EXAMPLE);
+    expect(EvidenceItemSchema.safeParse(EVIDENCE_NOT_SEALED_ITEM_EXAMPLE).success).toBe(true);
+    const refusal = VERIFY_NOT_SEALED_EXAMPLE.value;
+    expect(refusal.error).toMatchObject({ code: 'NOT_SEALED', message: VERIFY_NOT_SEALED_TEXT, details: { simCode: 'UNSEALED_EVIDENCE' } });
+    expect(CORE_API_EXAMPLES.verifyEvidence?.responses[409]).toEqual({ notSealed: VERIFY_NOT_SEALED_EXAMPLE });
+  });
+
+  it('JT-04 / JW-09: `verificationOfRecordFailed` reads the member every list entry and item carries', () => {
+    expect(verificationOfRecordFailed({ ...sealed, verification: { status: 'FAIL', at: 5 } })).toBe(true);
+    expect(verificationOfRecordFailed({ ...sealed, verification: { status: 'PASS', at: 5 } })).toBe(false);
+    expect(verificationOfRecordFailed(sealed)).toBe(false);
+    for (const nothing of [null, undefined, {}, { verification: null }, { verification: 'FAIL' }]) expect(verificationOfRecordFailed(nothing)).toBe(false);
+  });
+
+  it('JA2-02: the demonstration record and the demonstration verdict - new value, new optional member, both strict shapes of the contract', () => {
+    expect(EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE).toEqual({ source: 'NONE', packageSuffix: null, reason: 'DEMONSTRATION_RECORD' });
+    expect(EvidenceMediaRefSchema.safeParse(EVIDENCE_MEDIA_DEMONSTRATION_RECORD_EXAMPLE).success).toBe(true);
+    expect(VERIFY_DEMONSTRATION_EXAMPLE).toMatchObject({ ok: true, demonstration: true });
+    expect(EvidenceVerifyResultSchema.safeParse(VERIFY_DEMONSTRATION_EXAMPLE).success).toBe(true);
+    expect(EvidenceVerifyResultSchema.safeParse({ ...VERIFY_DEMONSTRATION_EXAMPLE, demonstration: false }).success).toBe(false);
+    const examples = CORE_API_EXAMPLES.verifyEvidence?.responses[200] as Record<string, { value: { demonstration?: true; files?: unknown[] } }>;
+    // The simulator's two verdicts say it; the verdict of a real package does not.
+    expect([examples['passed']?.value.demonstration, examples['failed']?.value.demonstration, examples['passedDevelopmentSources']?.value.demonstration]).toEqual([true, true, undefined]);
+  });
+
+  it('JA2-03 / JW-03: `exportKinds` - a PACKAGE is available, a COMPOSITE is not and says why', () => {
+    expect(EXPORT_KINDS_EXAMPLE).toEqual([{ kind: 'PACKAGE', available: true }, { kind: 'COMPOSITE', available: false, reason: 'COMPOSITE_ENCODER_NOT_SELECTED' }]);
+    expect(API_COMPOSITE_REASON).toBe(EXPORT_COMPOSITE_UNAVAILABLE_REASON);
+    const detail = (CORE_API_EXAMPLES['getEvidence']!.responses[200] as Record<string, { value: unknown }>)['productSealed']!.value;
+    expect(detail).toMatchObject({ exportKinds: EXPORT_KINDS_EXAMPLE });
+    expect(EvidenceDetailSchema.safeParse(detail).success).toBe(true);
+    expect(EvidenceDetailSchema.safeParse({ ...(detail as object), exportKinds: [{ kind: 'ARCHIVE', available: true }] }).success).toBe(false);
+    const refusal = (CORE_API_EXAMPLES['exportEvidence']!.responses[409] as Record<string, { value: { error: { code: string; details?: Record<string, unknown> } } }>)['compositeUnavailable']!.value;
+    expect(refusal.error).toMatchObject({ code: 'COMMAND_UNSUPPORTED', details: { reason: 'COMPOSITE_ENCODER_NOT_SELECTED' } });
+  });
+
+  it('GM-02: `evidenceVerification` of operation getSecurityStatus adds up, and is optional', () => {
+    const counts = SECURITY_STATUS_EVIDENCE_VERIFICATION_EXAMPLE;
+    expect(counts.passed + counts.failed + counts.neverVerified).toBe(counts.sealed);
+    const example = (CORE_API_EXAMPLES['getSecurityStatus']!.responses[200] as Record<string, { value: Record<string, unknown> }>)['secure']!.value;
+    expect(example['evidenceVerification']).toEqual(counts);
+    expect(SecurityStatusSchema.safeParse(example).success).toBe(true);
+    const { evidenceVerification: _left, ...without } = example;
+    expect(SecurityStatusSchema.safeParse(without).success).toBe(true);
+    expect(SecurityStatusSchema.safeParse({ ...example, evidenceVerification: { sealed: 1 } }).success).toBe(false);
+  });
+
+  it('JW-22: `incompleteSessionFactOf` - quarantined, a never-sealed record, never recorded - from the members of a history entry', () => {
+    const entry = { id: 'SES-20261011-0041', outcome: 'INCOMPLETE', startedAt: 5, endedAt: 9, evidenceId: null, faultKind: 'CAPTURE_FAULT' };
+    expect(incompleteSessionFactOf(entry)).toEqual({ kind: 'QUARANTINED', cause: 'CAPTURE_FAULT', evidenceId: null });
+    expect(incompleteSessionFactOf({ ...entry, evidenceId: 'EV-20261011-0015', faultKind: 'POWER_FAIL' })).toEqual({ kind: 'RECORDED_NOT_SEALED', cause: 'POWER_FAIL', evidenceId: 'EV-20261011-0015' });
+    expect(incompleteSessionFactOf({ ...entry, startedAt: null, faultKind: null })).toEqual({ kind: 'NEVER_RECORDED', cause: null, evidenceId: null });
+    expect(incompleteSessionFactOf({ ...entry, outcome: 'SEALED', evidenceId: 'EV-20261011-0015' })).toBeNull();
+    for (const nothing of [null, undefined, 'x', []]) expect(incompleteSessionFactOf(nothing)).toBeNull();
+  });
+});
+

@@ -21,7 +21,7 @@ import { selectorOfSession } from './selector-in-force';
 import { captureReachabilityOf } from './capture-notices';
 import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
 import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_RESTART_SENTENCE } from './core-not-running';
-import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, isHostClockTime, isPrecheckNote } from './core-facts';
+import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, SECURITY_NOT_REPORTED_PRECHECK_REASON, SECURITY_NOT_REPORTED_PRECHECK_RULE, SECURITY_NOT_REPORTED_PRECHECK_VALUE, isHostClockTime, isPlatformNotReported, isPrecheckNote } from './core-facts';
 import {
   ALERT_RING_SIZE,
   FINALIZATION_STEP_MAX_MS,
@@ -70,6 +70,7 @@ import type {
   PrecheckSlice,
   SessionCreateInput,
   SessionHistoryEntry,
+  SessionNote,
   SimAlert,
   SimState,
   TimelineEvent,
@@ -562,6 +563,12 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
       }
       if (state.security.tamper) {
         return { status: 'WARN', value: 'READY', reason: 'Enclosure tamper detected', reasonCode: R.ENCLOSURE_TAMPER, params: {} };
+      }
+      // Fix wave J (truth rule 3c; JW-04 / JT-03): a Core in its own capture reads no TPM, no Secure Boot state and
+      // computes no posture. Its SECURITY item says so as a NOTE (`isPrecheckNote`), as the host-clock TIME item does:
+      // WARN level, no reason code, never counted, never acknowledged - and never "READY PASS".
+      if (isPlatformNotReported(state.security)) {
+        return { status: 'WARN', value: SECURITY_NOT_REPORTED_PRECHECK_VALUE, reason: SECURITY_NOT_REPORTED_PRECHECK_REASON, reasonCode: null, params: { rule: SECURITY_NOT_REPORTED_PRECHECK_RULE } };
       }
       return { status: 'PASS', value: 'READY', ...PASSED };
     default:
@@ -1093,6 +1100,26 @@ function historyEntry(
   };
 }
 
+/** `id` of the item note that carries the session form's "Notes" (one per item at most). */
+export const SESSION_FORM_NOTE_ID = 'NOTE-FORM';
+/** `origin` of that note: it was written on the session form before the recording, not during it. */
+export const SESSION_FORM_NOTE_ORIGIN = 'SESSION_FORM';
+
+/**
+ * THE NOTES AN ITEM KEEPS (fix wave J round two; findings JT-11 / JW-13 / JA2-08). The notes written
+ * during the recording, and BEFORE them the text of the session form's "Notes" field when it holds
+ * one: that text lived in the open session only (`input.notes`), and the open session is gone once
+ * the next one is created - so what the operator wrote was on no item and in no other record. It is
+ * carried as one note of the item's existing list (no column): `id: NOTE-FORM`, `at` the creation
+ * of the session, `authorId` who created it, `origin: SESSION_FORM`. Copied from the session at the
+ * moment the item is made, never reconstructed later. An empty field adds nothing.
+ */
+export function itemNotesOf(session: Pick<ActiveSession, 'input' | 'notes' | 'createdAt' | 'createdBy'>): SessionNote[] {
+  const form = typeof session.input.notes === 'string' ? session.input.notes.trim() : '';
+  if (form === '') return session.notes;
+  return [{ id: SESSION_FORM_NOTE_ID, at: session.createdAt, authorId: session.createdBy, text: form, origin: SESSION_FORM_NOTE_ORIGIN }, ...session.notes];
+}
+
 /** The session's markers, from its timeline (step 54, SIM-GAP-W47-3). */
 function sessionMarkers(session: ActiveSession): EvidenceMarker[] {
   const markers: EvidenceMarker[] = [];
@@ -1157,7 +1184,7 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
       { at, action: 'SEALED', actorId: null, detail: null },
     ],
     markers: sessionMarkers(session),
-    notes: session.notes,
+    notes: itemNotesOf(session),
     startTimeSource: session.startTimeSource ?? null,
     endTimeSource: session.stopTimeSource ?? null,
     // Schema v2 (SH-07): a live seal carries the file list, the fragment-chain head and the transcript
@@ -1494,7 +1521,7 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
     tamperedTrackId: null,
     caseType: session.input.subjectType,
     markers: sessionMarkers(session),
-    notes: session.notes,
+    notes: itemNotesOf(session),
     integritySource: IntegritySource.REAL,
     startTimeSource: session.startTimeSource ?? null,
     endTimeSource: session.stopTimeSource ?? null,
@@ -1785,7 +1812,7 @@ function finishIncomplete(state: SimState, session: ActiveSession, at: EpochMs):
       sealedAt: null,
       status: 'RECORDED',
       markers: sessionMarkers(session),
-      notes: session.notes,
+      notes: itemNotesOf(session),
       startTimeSource: session.startTimeSource ?? null,
       endTimeSource: session.stopTimeSource ?? null,
       custody: [

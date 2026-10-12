@@ -22,6 +22,7 @@ import {
   EXPORT_REASON_MIN_LENGTH,
   OperatorRole,
   Permission,
+  isOwnCaptureCoreState,
   selectCan,
   selectOperator,
   useSim,
@@ -39,6 +40,7 @@ import { VerdictChip } from './chips'
 import { useEvidenceAssets } from './demo-assets'
 import {
   buildDemoExportManifest,
+  consoleWritesExportFile,
   exportDownloadPlan,
   prepareZipDownload,
   saveBytes,
@@ -52,6 +54,7 @@ import {
   type ExportOutcome,
 } from './export-outcome'
 import { answeredArchiveOnCoreOf, answeredJobIdOf, type ExportJobKind } from './export-job-model'
+import { exportKindOffer, type ExportKindFact } from './item-facts'
 import { isDemoItem } from './item-facts'
 import { ExportJobStatus } from './export-job-status'
 import { LockShackle } from './lock-shackle'
@@ -70,6 +73,11 @@ export interface ExportWizardProps {
    * pre-selected; null / absent (a list of items, the simulator, an older Core): the first option.
    */
   destinationDefault?: string | null
+  /**
+   * `exportKinds` of operation 40 (fix wave J, JW-03; truth rule 3d): the outputs this Core can make. null /
+   * absent (a list of items, the simulator, an older Core): only Package is offered.
+   */
+  exportKinds?: readonly ExportKindFact[] | null
 }
 
 type StepIndex = 0 | 1 | 2 | 3
@@ -107,7 +115,7 @@ const REASON_MAX = 500
  *   after `LIVE_PENDING_REVEAL_MS` the button shows the kit's spinner (LB-1).
  * In Simulated mode every `settle` runs before it returns, so the wizard behaves as before.
  */
-export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = null }: ExportWizardProps) {
+export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = null, exportKinds = null }: ExportWizardProps) {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const sim = useSimInstance()
@@ -127,10 +135,19 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
   const [reasonRejected, setReasonRejected] = useState(false)
   /** The operator's own choice; null until one is made - the Core's default (or the first option) stands until then. */
   const [chosenDestination, setChosenDestination] = useState<Destination | null>(null)
-  const [kind, setKind] = useState<ExportJobKind>('PACKAGE')
+  const [chosenKind, setKind] = useState<ExportJobKind>('PACKAGE')
+  // Fix wave J (JW-03; truth rule 3d): Composite could be chosen on both lanes - lane 1 delivered "Package" for it without
+  // a word, lane 2 accepted it, wrote an export id and an audit row, then the job failed. The choice now follows the
+  // Core's own statement (`exportKinds`): drawn disabled with its reason where the Core says it is not available, not
+  // offered where the Core says nothing, and NEVER sent unless the Core said `available: true`.
+  const compositeOffer = exportKindOffer(exportKinds, 'COMPOSITE')
+  const kind: ExportJobKind = chosenKind === 'COMPOSITE' && compositeOffer !== 'ENABLED' ? 'PACKAGE' : chosenKind
   const [auth, setAuth] = useState<'idle' | 'granted' | 'denied'>('idle')
   const [verification, setVerification] = useState<Record<string, VerifyState>>({})
   const [outcomes, setOutcomes] = useState<ExportOutcome[] | null>(null)
+  /** Live mode: how each accepted export's job ended (`ExportJobStatus` reports it once). */
+  const [jobEnds, setJobEnds] = useState<Record<string, 'COMPLETE' | 'FAILED'>>({})
+  const onJobEnd = useCallback((exportId: string, status: 'COMPLETE' | 'FAILED') => setJobEnds((previous) => (previous[exportId] === status ? previous : { ...previous, [exportId]: status })), [])
   const [downloads, setDownloads] = useState<Record<string, 'idle' | 'busy' | 'done' | 'error'>>({})
   const [zipChecks, setZipChecks] = useState<Record<string, { ok: boolean; actual: string | null; expected: string | null }>>({})
 
@@ -157,12 +174,20 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
   const stepStatus = (index: number): StepperStep['status'] => {
     if (index === 1 && auth === 'denied') return 'error'
     if (index === 2 && allVerified && !sourcesOk) return 'error'
+    // Fix wave J (JW-03): "Export 4/4: Done" stood over a job that FAILED. In Live mode an accepted request is only
+    // queued: the step is done when every job the Core started reports COMPLETE, and reads the error state when one FAILED.
+    if (index === 3 && outcomes !== null && live) {
+      const accepted = outcomes.filter((outcome) => outcome.result?.ok === true)
+      if (accepted.some((outcome) => outcome.result?.ok === true && jobEnds[outcome.result.exportId] === 'FAILED') || accepted.length < outcomes.length) return 'error'
+      return accepted.every((outcome) => outcome.result?.ok === true && jobEnds[outcome.result.exportId] === 'COMPLETE') ? 'done' : 'active'
+    }
     if (index < step || (index === 3 && outcomes?.every((outcome) => outcome.result?.ok === true))) return 'done'
     return index === step ? 'active' : 'pending'
   }
   const steps: StepperStep[] = [
     { id: 'reason', label: t('evidence.exportWizard.steps.reason'), status: stepStatus(0) },
-    { id: 'authorise', label: t('evidence.exportWizard.steps.authorise'), status: stepStatus(1) },
+    // Fix wave J round three (N-07): the step is a check of the operator's own role, not somebody's approval - it is named so.
+    { id: 'authorise', label: t('web.waveJ3.exportRole.step'), status: stepStatus(1) },
     { id: 'verify', label: t('evidence.exportWizard.steps.verify'), status: stepStatus(2) },
     { id: 'export', label: t('evidence.exportWizard.steps.export'), status: stepStatus(3) },
   ]
@@ -310,6 +335,10 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
           authorizationRef: outcome.auditRowId,
           device: state.device,
           verification: { report: verification[row.id]?.report ?? null, simulated: null },
+          // Pass J5 (truth rule 3f): never for an item whose export is the Core's archive; on a Core in its own
+          // capture the file of a demonstration item states what it is - no `demo` flag, no "SIMULATED data".
+          live,
+          ownCapture: live && isOwnCaptureCoreState(state),
         })
         saveBytes(json, plan.fileName, 'application/json')
       }
@@ -392,14 +421,20 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {EXPORT_KINDS.map((key) => (
-                <ListBox.Item key={key} id={key} textValue={t(`evidence.exportJob.kind.${key}`)}>
+              {EXPORT_KINDS.filter((key) => key === 'PACKAGE' || compositeOffer !== 'NOT_OFFERED').map((key) => (
+                <ListBox.Item key={key} id={key} textValue={t(`evidence.exportJob.kind.${key}`)} isDisabled={key === 'COMPOSITE' && compositeOffer === 'DISABLED'} data-testid={`export-kind-${key}`}>
                   {t(`evidence.exportJob.kind.${key}`)}
+                  {key === 'COMPOSITE' && compositeOffer === 'DISABLED' ? <span className="evi-caption"> · {t('evidence.exportJob.compositeUnavailable')}</span> : null}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
               ))}
             </ListBox>
           </Select.Popover>
+          {compositeOffer === 'DISABLED' ? (
+            <Description data-testid="export-kind-composite-unavailable">
+              {t('evidence.exportJob.kind.COMPOSITE')}: {t('evidence.exportJob.compositeUnavailable')}
+            </Description>
+          ) : null}
         </Select>
       ) : null}
     </div>,
@@ -410,13 +445,14 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
         <div className="flex flex-col">
           <span className="evi-strong">{operator?.displayName ?? '—'}</span>
           <span className="evi-caption">
-            {operator ? t(`common.roles.${operator.role}`) : ''} · {t('evidence.exportWizard.requiredPermission')}
+            {/* Fix wave J (JW-14): the role by its name, never the raw permission name `EVIDENCE_EXPORT`. */}
+            {operator ? t(`common.roles.${operator.role}`) : ''} · {t('web.waveJ.rbac.exportStep')}
           </span>
         </div>
         {auth === 'granted' ? (
           <Chip color="success" variant="soft" size="sm" className="ml-auto">
             <ShieldCheck className="size-3.5" aria-hidden="true" />
-            <Chip.Label>{t('evidence.exportWizard.authorised')}</Chip.Label>
+            <Chip.Label data-testid="export-role-permits">{t('web.waveJ3.exportRole.permits')}</Chip.Label>
           </Chip>
         ) : null}
       </div>
@@ -480,6 +516,13 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
               <dt>{t(coreOnly ? 'evidence.itemFacts.exportReal.destinationLabel' : 'evidence.exportWizard.destinationLabel')}</dt>
               <dd>{destinationText}</dd>
             </div>
+            {/* Fix wave J (JW-03): the review step states the chosen output. */}
+            {live ? (
+              <div data-testid="export-review-kind">
+                <dt>{t('evidence.exportJob.kindLabel')}</dt>
+                <dd>{t(`evidence.exportJob.kind.${kind}`)}</dd>
+              </div>
+            ) : null}
           </dl>
           <p className="evi-caption">{t('evidence.exportWizard.custodyNote')}</p>
         </>
@@ -511,7 +554,8 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
             // Row 92: a Core-sealed (schema-v2) item has no bundled DEMO file to hand over, and the
             // contract sends no export archive to a client: its result is the Core's job, below.
             // Wave H C2 (G94-09): also for a REAL item whose replicated copy names no `files[]` (`isV2Item`), and for any item that is not a demo item.
-            const coreArchiveOnly = live && (isV2Item(row) || !isDemoItem(row.item))
+            // Pass J5: the rule lives with the file it guards (`consoleWritesExportFile`); `isV2Item` stays as the second reader.
+            const coreArchiveOnly = !consoleWritesExportFile(row, live) || (live && isV2Item(row))
             return (
               <li key={row.id} className="evi-export-result" data-export-id={outcome.result.exportId} data-plan={plan.kind}>
                 <div className="evi-export-result-head">
@@ -524,7 +568,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
                   {t('evidence.exportWizard.auditRecorded', { audit: outcome.auditRowId ?? '—', hash: outcome.auditHash ? shortHash(outcome.auditHash) : '—' })}
                 </p>
                 {/* Operation 42 only queued the export: operation 87 says when it is done, or that it FAILED. */}
-                {live ? <ExportJobStatus exportId={outcome.result.exportId} evidenceId={row.id} jobId={answeredJobIdOf(outcome.result)} archiveOnCore={answeredArchiveOnCoreOf(outcome.result)} /> : null}
+                {live ? <ExportJobStatus exportId={outcome.result.exportId} evidenceId={row.id} jobId={answeredJobIdOf(outcome.result)} archiveOnCore={answeredArchiveOnCoreOf(outcome.result)} onEnd={onJobEnd} /> : null}
                 {coreArchiveOnly ? null : (
                   <div className="evi-export-download">
                     {plan.kind === 'zip' ? <FileArchive className="size-5 text-accent" aria-hidden="true" /> : <FileJson className="size-5 text-accent" aria-hidden="true" />}
@@ -607,7 +651,7 @@ export function ExportWizard({ rows, isOpen, onOpenChange, destinationDefault = 
             data-testid="export-authorise"
           >
             {authorising.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
-            {t('evidence.exportWizard.requestAuthorisation')}
+            {t('web.waveJ3.exportRole.check')}
           </Button>
         ) : null
     } else if (step === 2) {

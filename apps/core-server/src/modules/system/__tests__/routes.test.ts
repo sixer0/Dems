@@ -14,8 +14,11 @@ import {
   CoreApiTag,
   DIAGNOSTICS_RUN_ID_PATTERN,
   EPOCH_HEADER_NAME,
+  EXAMPLE_SLICES,
+  OPENAPI_CORE_SERVER_DOCUMENT_VERSION,
   REVISION_HEADER_NAME,
   SIM_ACTION_OPERATIONS,
+  SYSTEM_COMPONENTS_EXAMPLE,
   findCoreApiOperation,
   matchCoreApiOperation,
   validateCoreApiResponse,
@@ -25,7 +28,9 @@ import { DEFAULT_SETTINGS, Permission, SERVICES_RESTART_SCOPE, type OperatorRole
 import Fastify, { type FastifyInstance } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { CapturePhase } from '../../../capture';
+import { CAPTURE_WORKER_VERSION, CapturePhase } from '../../../capture';
+import { CORE_SERVER_VERSION } from '../../../version';
+import { unitTestConfig } from '../../../../test/support/config';
 import { hostedActionsOfOperation } from '../../../engine';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { permissionGuard } from '../../../plugins/permission-guard';
@@ -41,6 +46,7 @@ import {
   TRANSCRIBER_SERVICE,
   serviceReportsOf,
   servicesWithProcesses,
+  systemComponentsOf,
   systemModule,
   systemStatusOf,
   type TranscriberServiceReport,
@@ -111,6 +117,9 @@ const state = (built: ModuleApp) => built.engine.state();
 const lastAudit = (built: ModuleApp) => state(built).audit.rows.at(-1);
 const auditTotal = (built: ModuleApp): number => state(built).audit.total;
 const wire = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value)) as Value;
+/** What the unit-test Core (SIMULATED capture) states as `components` (JW-26). */
+const SIMULATED_CORE_COMPONENTS = { core: { name: 'dems-core-server', version: CORE_SERVER_VERSION }, apiContract: { version: OPENAPI_CORE_SERVER_DOCUMENT_VERSION } } as const;
+const EXAMPLE_SLICES_OF_STATUS = { device: EXAMPLE_SLICES.device, services: EXAMPLE_SLICES.services, update: EXAMPLE_SLICES.update, diagnostics: EXAMPLE_SLICES.diagnostics, settings: EXAMPLE_SLICES.settings } as Parameters<typeof systemStatusOf>[0];
 
 /**
  * Blueprint row 62 (CS-10): what read 64 lays over the engine's `services` slice, written out by
@@ -257,8 +266,8 @@ describe('64 getSystemStatus', () => {
     const response = await built.app.inject({ method: 'GET', url: SYSTEM_STATUS });
     expect(response.statusCode).toBe(200);
     const { device, services, update, diagnostics, settings } = state(built);
-    expect(response.json()).toEqual(wire({ device, services: withProcesses(services), update, diagnostics, settings }));
-    expect(Object.keys(response.json() as object)).toEqual(['device', 'services', 'update', 'diagnostics', 'settings']);
+    expect(response.json()).toEqual(wire({ device, services: withProcesses(services), update, diagnostics, settings, components: SIMULATED_CORE_COMPONENTS }));
+    expect(Object.keys(response.json() as object)).toEqual(['device', 'services', 'update', 'diagnostics', 'settings', 'components']);
     expect(validateCoreApiResponse('getSystemStatus', 200, response.json())).toEqual({ ok: true });
     expect(response.headers[EPOCH_HEADER_NAME]).toBeUndefined();
     expect(response.headers[REVISION_HEADER_NAME]).toBeUndefined();
@@ -306,7 +315,7 @@ describe('64 getSystemStatus', () => {
     expect(body.update.state).toBe('RUNNING');
     expect(body.settings.timeFormat).toBe('12');
     const now = state(built);
-    expect(body).toEqual(wire({ device: now.device, services: withProcesses(now.services), update: now.update, diagnostics: now.diagnostics, settings: now.settings }));
+    expect(body).toEqual(wire({ device: now.device, services: withProcesses(now.services), update: now.update, diagnostics: now.diagnostics, settings: now.settings, components: SIMULATED_CORE_COMPONENTS }));
     expect(validateCoreApiResponse('getSystemStatus', 200, body)).toEqual({ ok: true });
   });
 
@@ -342,6 +351,34 @@ describe('64 getSystemStatus', () => {
 // Blueprint row 62 (register CS-10; API contract row 64): two entries of the `services` slice stand for
 // real processes. The capture worker's comes from the capture supervisor, the transcriber's from the
 // module's seam (row 115 mounts it; until then it is not configured).
+describe('64 getSystemStatus: ONE version per component, each from its one constant (fix wave J round two, JW-26)', () => {
+  it('the Core states its own version (the health answer\'s, the manifest\'s) and the contract\'s - never the demonstration model\'s `device.softwareVersion`', async () => {
+    const built = await build();
+    built.actAs(operatorOf('TECHNICIAN'));
+    const body = (await built.app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>;
+    const health = (await built.app.inject({ method: 'GET', url: '/api/v1/health' })).json() as { service: string; version: string };
+    expect(body.components?.core).toEqual({ name: health.service, version: health.version });
+    expect(body.components?.core.version).toBe(CORE_SERVER_VERSION);
+    expect(body.components?.apiContract).toEqual({ version: OPENAPI_CORE_SERVER_DOCUMENT_VERSION });
+    // The demonstration model's version is another value and stays where it was: the member does not copy it.
+    expect(body.device.softwareVersion).not.toBe(body.components?.core.version);
+    // A Core in SIMULATED capture starts no capture worker and names none.
+    expect(body.components).not.toHaveProperty('captureWorker');
+  });
+
+  it('a Core in its own capture names the ONE worker version its handshake accepts; the exported example is that answer', () => {
+    const own = systemComponentsOf({ service: 'dems-core-server', coreVersion: CORE_SERVER_VERSION, captureWorkerVersion: CAPTURE_WORKER_VERSION, apiContractVersion: OPENAPI_CORE_SERVER_DOCUMENT_VERSION });
+    expect(own).toEqual(SYSTEM_COMPONENTS_EXAMPLE);
+    const answer = systemStatusOf(EXAMPLE_SLICES_OF_STATUS, undefined, own);
+    expect(validateCoreApiResponse('getSystemStatus', 200, wire(answer))).toEqual({ ok: true });
+    // CONTROL: a version that is no release word, and a model value under the Core's name, do not pass the contract.
+    expect(validateCoreApiResponse('getSystemStatus', 200, wire({ ...answer, components: { ...own, captureWorker: { version: 'capture-worker/0.5.0-PROOF' } } })).ok).toBe(false);
+    expect(validateCoreApiResponse('getSystemStatus', 200, wire({ ...answer, components: { ...own, core: { name: 'dems-core-server', version: 'v2.4.1' } } })).ok).toBe(false);
+    // Without the third argument the answer is the five slices (the pure reader of older callers).
+    expect(Object.keys(systemStatusOf(EXAMPLE_SLICES_OF_STATUS))).toEqual(['device', 'services', 'update', 'diagnostics', 'settings']);
+  });
+});
+
 describe('64 getSystemStatus: the capture worker and the transcriber as services (CS-10)', () => {
   const entryOf = (body: { services: ReadonlyArray<{ name: string; status: string; startedAt?: number | null }> }, name: string) => body.services.find((service) => service.name === name);
   const read = async (built: ModuleApp) => {
@@ -414,6 +451,7 @@ describe('64 getSystemStatus: the capture worker and the transcriber as services
     app.setSerializerCompiler(serializerCompiler);
     app.decorate('engine', { state: () => whole } as never);
     app.decorate('capture', { status: () => ({ phase: 'IDLE' }) } as never);
+    app.decorate('config', unitTestConfig() as never);
     await app.register(systemModule, { transcriber: () => report });
     const get = async () => entryOf((await app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>, TRANSCRIBER_SERVICE);
     expect(await get()).toMatchObject({ status: 'RUNNING', startedAt: 1_760_000_000_000 });
@@ -457,6 +495,7 @@ describe('64 getSystemStatus: the capture worker and the transcriber as services
       app.decorate('stages', stages as never);
       app.decorate('engine', { state: () => whole } as never);
       app.decorate('capture', { status: () => ({ phase: 'IDLE' }) } as never);
+      app.decorate('config', unitTestConfig() as never);
       await (options === undefined ? app.register(systemModule) : app.register(systemModule, options));
       return async () => entryOf((await app.inject({ method: 'GET', url: SYSTEM_STATUS })).json() as ReturnType<typeof systemStatusOf>, TRANSCRIBER_SERVICE);
     };

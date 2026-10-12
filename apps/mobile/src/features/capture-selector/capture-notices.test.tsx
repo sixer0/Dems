@@ -169,7 +169,7 @@ describe('microphones: "Search again" re-reads the local inputs (§8g; M4-MIC-RE
     h.navigate('/devices');
     await settle();
     const control = screen.getByTestId('capture-selector-mic-rescan');
-    expect(within(control).getByText('Re-reads the microphones connected to the Core. Microphones are not searched on the network.')).toBeTruthy();
+    expect(within(control).getByText('Reads again the microphones connected to the Core. The network is not searched for microphones.')).toBeTruthy();
     expect(screen.getByTestId('capture-selector-mic-rescan-action').props.accessibilityLabel).toBe('Search again for microphones');
     expect(requests.count(`POST ${RESCAN}`)).toBe(0);
     fireEvent.press(screen.getByTestId('capture-selector-mic-rescan-action'));

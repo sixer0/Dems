@@ -7,7 +7,7 @@
  *
  * | Point | SIMULATED and HEARTBEAT (unchanged) | LIVE |
  * |---|---|---|
- * | Trust line (L11) | "Core: DEMS-IR-01 • paired (simulated)"; "Pair this tablet" | "Core: DEMS-IR-01 • paired as DEV-0003"; "Pairing details" |
+ * | Trust line (L11) | "Core: DEMS-IR-01 • paired (simulated)"; "Pair this device" | "Core: DEMS-IR-01 • paired as DEV-0003"; "Pairing details" |
  * | Demo operators (L10) | Role chips, the password hint, the simulator's pairing code | The plain sentence of condition C1, the password hint; no role chip (a role is the Core's data), no pairing-code hint (the simulator's code means nothing to the Core server) |
  * | Core offline (L9) | HEARTBEAT: the Alert follows the link at once and names mock-core's address | The Alert follows the link without flicker and names no address; Retry asks the Live socket; "Use Simulated mode" |
  * | A refusal the sign-in result cannot say | Does not exist | The auth layer's `signInFailure`: a limit (no Alert, the form stays filled), no answer (the presenter's two sentences, in place) |
@@ -54,7 +54,7 @@ export interface LiveTrustText {
   readonly linkKey: string;
 }
 
-/** "Core: DEMS-IR-01 • paired as DEV-0003" with "Pairing details"; "Core server • not paired" with "Pair this tablet". */
+/** "Core: DEMS-IR-01 • paired as DEV-0003" with "Pairing details"; "Core server • not paired" with "Pair this device". */
 export function liveTrustTextFor(line: LiveTrustLine): LiveTrustText {
   if (line.kind === 'unpaired') return { textKey: 'features.login.live.trust.unpaired', values: {}, linkKey: 'mobile.pairing.link' };
   if (line.core === null) {

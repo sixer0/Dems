@@ -13,7 +13,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
-import { captureMicLines, micInputOfChannel, noInputFrame, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
+import { captureMicLines, isLevelNotMeasured, micInputOfChannel, noInputFrame, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { reportMeterFrame, tween, useMotionPolicy } from '@/motion'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
@@ -198,10 +198,15 @@ export function DbfsMeter({
     const frame: AudioFrame | undefined = state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)]
     return frame ?? noInputFrame(state.clock.now)
   }, [sim, channel])
-  const initialDb = initial.noSignal ? NO_SIGNAL_DB : initial.dbfs
+  // Fix wave J (JW-08; `contract_wave_j.md` J-S 6): a frame the Core did not MEASURE (`notMeasured: true` - no capture
+  // is open on a Core in its own capture) is not "NO SIGNAL", the product's own fault word, which stood beside
+  // "READY - PASS" on the screen that gates recording. It draws no bars, no number and the words "Not measured".
+  const initialRest = isLevelNotMeasured(initial)
+  const initialSilent = initial.noSignal || initialRest
+  const initialDb = initialSilent ? NO_SIGNAL_DB : initial.dbfs
 
   const level = useMotionValue(initialDb)
-  const peak = useMotionValue(initial.noSignal ? NO_SIGNAL_DB : initial.peak)
+  const peak = useMotionValue(initialSilent ? NO_SIGNAL_DB : initial.peak)
   const clipLatch = useMotionValue(initial.clip ? 1 : 0)
   const springOptions = m.flags.meterSpring ?? m.springOptions('meter')
   const smoothed = useSpring(level, springOptions)
@@ -212,8 +217,9 @@ export function DbfsMeter({
   const peakOpacity = useTransform(peakPos, (p) => (p < 0 ? 0 : 0.9))
 
   const [clip, setClip] = useState(initial.clip)
-  const [noSignal, setNoSignal] = useState(initial.noSignal)
-  const flags = useRef({ clip: initial.clip, noSignal: initial.noSignal })
+  const [noSignal, setNoSignal] = useState(initial.noSignal && !initialRest)
+  const [notMeasured, setNotMeasured] = useState(initialRest)
+  const flags = useRef({ clip: initial.clip, noSignal: initial.noSignal && !initialRest, notMeasured: initialRest })
 
   const meterRef = useRef<HTMLDivElement>(null)
   const readoutRef = useRef<HTMLSpanElement>(null)
@@ -237,17 +243,20 @@ export function DbfsMeter({
     if (force || gates.readout.take(frame.at)) {
       const readout = readoutRef.current
       if (readout) {
-        setText(readout, frame.noSignal ? '—' : translate('common.units.dbfs', { value: formatDbfsValue(frame.dbfs) }))
+        setText(readout, frame.noSignal || isLevelNotMeasured(frame) ? '—' : translate('common.units.dbfs', { value: formatDbfsValue(frame.dbfs) }))
       }
     }
     if (force || gates.aria.take(frame.at)) {
       const meter = meterRef.current
       if (meter) {
-        const db = frame.noSignal ? METER_MIN_DB : frame.dbfs
+        const rest = isLevelNotMeasured(frame)
+        const db = frame.noSignal || rest ? METER_MIN_DB : frame.dbfs
         meter.setAttribute('aria-valuenow', String(ariaValueNow(db)))
         meter.setAttribute(
           'aria-valuetext',
-          frame.noSignal
+          rest
+            ? translate('web.waveJ.meter.notMeasured')
+            : frame.noSignal
             ? translate('common.status.noSignal')
             : translate('common.units.dbfs', { value: formatDbfsValue(frame.dbfs) }),
         )
@@ -257,10 +266,12 @@ export function DbfsMeter({
 
   const onFrame = useCallback(
     (frame: AudioFrame) => {
-      const flipped = frame.clip !== flags.current.clip || frame.noSignal !== flags.current.noSignal
+      const rest = isLevelNotMeasured(frame)
+      const silentSignal = frame.noSignal && !rest
+      const flipped = frame.clip !== flags.current.clip || silentSignal !== flags.current.noSignal || rest !== flags.current.notMeasured
       if (!flipped && !gates.visual.take(frame.at)) return
-      level.set(frame.noSignal ? NO_SIGNAL_DB : frame.dbfs)
-      peak.set(frame.noSignal ? NO_SIGNAL_DB : frame.peak)
+      level.set(frame.noSignal || rest ? NO_SIGNAL_DB : frame.dbfs)
+      peak.set(frame.noSignal || rest ? NO_SIGNAL_DB : frame.peak)
       clipLatch.set(frame.clip ? 1 : 0)
       reportMeterFrame(channel)
       writeText(frame, flipped)
@@ -268,9 +279,13 @@ export function DbfsMeter({
         flags.current.clip = frame.clip
         setClip(frame.clip)
       }
-      if (frame.noSignal !== flags.current.noSignal) {
-        flags.current.noSignal = frame.noSignal
-        setNoSignal(frame.noSignal)
+      if (silentSignal !== flags.current.noSignal) {
+        flags.current.noSignal = silentSignal
+        setNoSignal(silentSignal)
+      }
+      if (rest !== flags.current.notMeasured) {
+        flags.current.notMeasured = rest
+        setNotMeasured(rest)
       }
     },
     [channel, clipLatch, gates, level, peak, writeText],
@@ -278,10 +293,12 @@ export function DbfsMeter({
   useAudioChannel(channel, onFrame)
 
   const accessibleName = label ?? t(`common.tracks.${channel}`)
-  const initialText = initial.noSignal
+  const initialText = initialRest
+    ? t('web.waveJ.meter.notMeasured')
+    : initial.noSignal
     ? t('common.status.noSignal')
     : t('common.units.dbfs', { value: formatDbfsValue(initial.dbfs) })
-  const initialReadout = initial.noSignal ? '—' : initialText
+  const initialReadout = initialSilent ? '—' : initialText
   const clipTransition: Transition = m.flags.flashes
     ? { scale: m.transitions.completion, opacity: tween(CLIP_FLASH_MS, 'standard', m.timeScale) }
     : m.transitions.crossFade
@@ -296,6 +313,7 @@ export function DbfsMeter({
       data-motion={m.policy}
       data-clip={clip ? 'latched' : undefined}
       data-no-signal={noSignal ? 'true' : undefined}
+      data-not-measured={notMeasured ? 'true' : undefined}
       className={cn('relative inline-flex', layout.stack, className)}
     >
       <motion.div
@@ -310,7 +328,7 @@ export function DbfsMeter({
           aria-label={accessibleName}
           aria-valuemin={METER_MIN_DB}
           aria-valuemax={METER_MAX_DB}
-          aria-valuenow={ariaValueNow(initial.noSignal ? METER_MIN_DB : initialDb)}
+          aria-valuenow={ariaValueNow(initialSilent ? METER_MIN_DB : initialDb)}
           aria-valuetext={initialText}
           className={cn(
             'relative flex',
@@ -369,7 +387,19 @@ export function DbfsMeter({
         {showReadout ? (
           <span className="relative inline-flex items-center">
             <AnimatePresence initial={false} mode="popLayout">
-              {noSignal ? (
+              {notMeasured ? (
+                <motion.span
+                  key="not-measured"
+                  data-testid="dbfs-not-measured"
+                  className={cn('font-mono text-muted', layout.readout)}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={fade}
+                >
+                  {t('web.waveJ.meter.notMeasured')}
+                </motion.span>
+              ) : noSignal ? (
                 <motion.span
                   key="no-signal"
                   className={cn('font-mono uppercase text-muted', layout.readout)}
@@ -386,7 +416,7 @@ export function DbfsMeter({
               ref={readoutRef}
               aria-hidden="true"
               data-meter-readout=""
-              className={cn('font-mono tabular-nums text-foreground', layout.readout, noSignal && 'sr-only')}
+              className={cn('font-mono tabular-nums text-foreground', layout.readout, (noSignal || notMeasured) && 'sr-only')}
             >
               {initialReadout}
             </span>

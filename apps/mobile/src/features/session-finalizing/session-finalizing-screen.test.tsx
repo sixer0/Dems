@@ -14,6 +14,8 @@ import { resetStampedForTests } from '@/features/session-summary/stamp-once';
 import { SEALED_HANDOFF_MS } from './finalizing.model';
 import { advanceUntilSealed, renderFlowApp, settle, type FlowHarness } from './testing/flow-harness';
 import {
+  DEMO_OPERATOR_PASSWORD,
+  OPERATORS,
   SEAL_BLOCKED_DETAIL_SENTENCE,
   SEAL_BLOCKED_EXAMPLE_ALERT,
   SEAL_BLOCKED_EXAMPLE_FINALIZATION,
@@ -410,37 +412,74 @@ describe('the contract of the retry (contract_wave_l.md section 2), read by name
   });
 });
 
-describe.each(['tabletLandscape', 'phonePortrait'] as const)('G75d-02 on %s: a BLOCKED seal says who retries, and where', (window) => {
-  it('what the Core does by itself, who resolves the cause, who retries on the web console - and no retry control on the device', async () => {
+// Fix wave J, JT-02 (decision D243 reverses ruling D228 (1)): REPLACES the wave L case "... and no retry control on
+// the device". A tablet-only operator was stuck at a blocked seal; the devices now offer "Retry sealing" to the
+// roles operation 33 allows, with a confirmation, and every other role reads who can.
+describe.each(['tabletLandscape', 'phonePortrait'] as const)('JT-02 on %s: a BLOCKED seal can be retried from the device', (window) => {
+  const blocked = async () => {
     const h = renderFlowApp({ window, routeSync: false });
     await settle();
     coreSays(h, SEAL_BLOCKED_EXAMPLE_SESSION_ID, SEAL_BLOCKED_EXAMPLE_FINALIZATION, [SEAL_BLOCKED_EXAMPLE_ALERT]);
     await settle();
-    expect(screen.getByTestId('finalizing-seal-blocked')).toBeTruthy();
-    // Closing pass L-Z (decision 3 of note 155): the same MEANING, now in the Core's OWN sentence (the alert of the contract
-    // example, drawn as the Core wrote it) - the device no longer maps "start recovery" to the web control.
+    return h;
+  };
+
+  it('an investigator: what the Core does by itself, who resolves the cause, and "Retry sealing" - a confirmation that names the session, then operation 33', async () => {
+    const h = await blocked();
+    const recover = jest.spyOn(h.sim.actions, 'recover');
     const core = screen.getByTestId('finalizing-seal-blocked');
     expect(core).toHaveTextContent(SEAL_RETRY_HOW_SENTENCE, { exact: false });
-    expect(core).toHaveTextContent(/an investigator or a supervisor presses "Retry sealing" on the Session Monitor of the web console/);
+    // Closing pass J4, item 4: the Core's sentence names THIS device's control too - it no longer sends the operator to the web console alone.
+    expect(core).toHaveTextContent("on the session's screen of the tablet or phone", { exact: false });
     expect(texts()).not.toMatch(/start recovery|recovery named above|recovery action/i);
-    // What the Core does by itself: the sentence of the Core's failed step, from the ONE shared function.
     expect(screen.getByTestId('finalizing-seal-stopped')).toHaveTextContent(sealStoppedSentence(SEAL_AUTOMATIC_RETRIES));
-    expect(screen.getByTestId('finalizing-seal-stopped')).toHaveTextContent(`Sealing stopped after ${SEAL_AUTOMATIC_RETRIES} automatic retries: the Core now waits and does not run it again by itself.`);
     expect(SEAL_BLOCKED_EXAMPLE_FINALIZATION!.steps[0]?.detail).toContain(sealStoppedSentence(SEAL_AUTOMATIC_RETRIES));
     expect(screen.getByTestId('finalizing-seal-who')).toHaveTextContent(/technician or the administrator of the Core/);
-    expect(screen.getByTestId('finalizing-seal-retry-where')).toHaveTextContent('This device has no retry control: the retry is pressed on the web console.');
-    // The device offers exactly one control here: the way out.
+    // The sentence of wave L is gone, on every role.
+    expect(texts()).not.toMatch(/no retry control/i);
+    expect(screen.getByTestId('finalizing-seal-retry-who')).toHaveTextContent('You can retry the seal from this device once the cause is resolved.');
+    // The press asks first: nothing is sent yet.
+    fireEvent.press(screen.getByTestId('finalizing-seal-retry-button'));
+    await settle();
+    expect(recover).not.toHaveBeenCalled();
+    expect(screen.getByText(`Retry sealing of session ${SEAL_BLOCKED_EXAMPLE_SESSION_ID}?`)).toBeTruthy();
+    expect(screen.getByText(/The Core runs the seal of this session once more, now\./)).toBeTruthy();
+    // "Not now" sends nothing.
+    fireEvent.press(screen.getByTestId('finalizing-seal-retry-cancel'));
+    await settle();
+    expect(recover).not.toHaveBeenCalled();
+    // Confirmed: operation 33, once.
+    fireEvent.press(screen.getByTestId('finalizing-seal-retry-button'));
+    await settle();
+    fireEvent.press(screen.getByTestId('finalizing-seal-retry-confirm'));
+    await settle();
+    expect(recover).toHaveBeenCalledTimes(1);
+    // The way out is still there.
     expect(screen.getByTestId('finalizing-seal-home')).toBeTruthy();
-    expect(screen.queryByText('Retry sealing')).toBeNull();
-    expect(screen.queryByText('Start recovery')).toBeNull();
     expect(screen.queryByTestId('recovery-start')).toBeNull();
+  });
+
+  it('a technician (operation 33 is not theirs): no button, the sentence says who can', async () => {
+    const h = await blocked();
+    const recover = jest.spyOn(h.sim.actions, 'recover');
+    const technician = OPERATORS.find((operator) => operator.role === OperatorRole.TECHNICIAN)!;
+    act(() => {
+      h.sim.actions.signOut();
+      h.sim.actions.signIn(technician.username, DEMO_OPERATOR_PASSWORD);
+    });
+    coreSays(h, SEAL_BLOCKED_EXAMPLE_SESSION_ID, SEAL_BLOCKED_EXAMPLE_FINALIZATION, [SEAL_BLOCKED_EXAMPLE_ALERT]);
+    await settle();
+    expect(screen.queryByTestId('finalizing-seal-retry-button')).toBeNull();
+    expect(screen.getByTestId('finalizing-seal-retry-who')).toHaveTextContent('An investigator or a supervisor can retry the seal, from a device or from the web console. Your role (Technician) cannot.');
+    expect(texts()).not.toMatch(/no retry control/i);
+    expect(recover).not.toHaveBeenCalled();
   });
 
   it('CONTROL - a seal that simply runs says none of it', async () => {
     renderFlowApp({ window, routeSync: false });
     await settle();
     expect(screen.queryByTestId('finalizing-seal-stopped')).toBeNull();
-    expect(screen.queryByTestId('finalizing-seal-retry-where')).toBeNull();
+    expect(screen.queryByTestId('finalizing-seal-retry')).toBeNull();
     expect(texts()).not.toMatch(/Retry sealing|automatic retries/);
   });
 });

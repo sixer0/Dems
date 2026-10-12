@@ -6,6 +6,8 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion as tokens } from '@dems/shared/tokens'
 import { SOFTWARE_VERSION } from '@dems/shared/sim'
+import { useComponentVersionText } from '@/components/component-version-text'
+import { useProductVersions } from '@/lib/product-versions'
 import topoUrl from '@/assets/brand/topo.svg'
 import { AnimatedBackground } from '@/components/ui/animated-background'
 import { cn } from '@/lib/utils'
@@ -279,12 +281,28 @@ export function SidebarFooter() {
   const { t } = useTranslation()
   const m = useMotionPolicy()
   const lines = t('common.brand.triplet').split(' / ')
+  // Fix wave J round three (JW-26): on a Core in its own capture the footer names the console's own
+  // version and the Core's (operation 64), never the demonstration model's "v2.4.1".
+  const versions = useProductVersions(SOFTWARE_VERSION)
+  const versionText = useComponentVersionText()
   return (
     <motion.div className="dems-sidebar-foot" layout={m.flags.sharedLayout ? 'position' : false} transition={m.transitions.layout}>
       <TopoTexture />
       <footer className="dems-brand-footer">
         <p className="dems-brand-footer-product">{t('shell.footer.product')}</p>
-        <p className="dems-brand-footer-version">{t('shell.footer.version', { version: SOFTWARE_VERSION })}</p>
+        {versions.modelVersion !== null ? (
+          <p className="dems-brand-footer-version" data-testid="shell-footer-version">{t('shell.footer.version', { version: versions.modelVersion })}</p>
+        ) : (
+          <p className="dems-brand-footer-version dems-brand-footer-version--components" data-testid="shell-footer-components">
+            {versions.rows
+              .filter((row) => row.id === 'webConsole' || row.id === 'core')
+              .map((row) => (
+                <span key={row.id} data-testid={`shell-footer-version-${row.id}`}>
+                  {versionText(row).line}
+                </span>
+              ))}
+          </p>
+        )}
         <p className="dems-brand-footer-triplet">
           {lines.map((line) => (
             <span key={line}>{line}</span>

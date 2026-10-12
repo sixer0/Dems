@@ -1,3 +1,4 @@
+import { useDemonstrationCore } from '@/components/demonstration-core'
 import { Button, Chip, Tooltip } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { CoreMode, useCoreMode, useLiveLink } from '@dems/shared/live'
@@ -29,8 +30,12 @@ export function ModeIndicator() {
   const { selectable, request, dialog } = useModeSwitch()
   const state = modeIndicatorState(mode, link)
   const other = mode === CoreMode.LIVE ? CoreMode.SIMULATED : CoreMode.LIVE
-  const text =
-    state === 'OFFLINE'
+  // Fix wave J (JW-07): "LIVE" is the console's data mode; on a Core that runs the demonstration it read as "this is
+  // live". The chip names the demonstration Core (the rule of `useDemonstrationCore`).
+  const demoCore = useDemonstrationCore() && state === 'LIVE'
+  const text = demoCore
+    ? t('web.waveJ.demo.modeChip')
+    : state === 'OFFLINE'
       ? t('common.coreMode.chipOffline')
       : state === 'RECONNECTING'
         ? t('common.coreMode.chipReconnecting')
@@ -40,12 +45,13 @@ export function ModeIndicator() {
   // not an outage, and reads `warning`, the tone of the notice's own "the link is up" sentence. A
   // socket that is being opened (CONNECTING) keeps `danger`: during an outage the chip and the sticky
   // notice then say the same thing, with no amber/red alternation.
-  const tone = state === 'RECONNECTING' && isLinkUp(link) ? 'warning' : CHIP_COLOR[state]
+  const tone = demoCore ? 'warning' : state === 'RECONNECTING' && isLinkUp(link) ? 'warning' : CHIP_COLOR[state]
   // The same element in both forms: its name, its state and its test ID.
   const shared = {
     className: 'dems-mode-indicator',
     'aria-label': `${t('common.coreMode.label')}: ${text}`,
     'data-state': state,
+    'data-demo-core': demoCore ? 'true' : undefined,
     'data-testid': 'shell-mode',
   }
   const chip = (
@@ -64,6 +70,7 @@ export function ModeIndicator() {
           <Tooltip.Trigger {...shared}>{chip}</Tooltip.Trigger>
         )}
         <Tooltip.Content placement="bottom" offset={8}>
+          {demoCore ? `${t('web.waveJ.demo.modeTooltip')} ` : ''}
           {selectable ? `${t(`shell.mode.tooltip.${state}`)} ${t(`shell.mode.switchHint.${other}`)}` : t(`shell.mode.tooltip.${state}`)}
         </Tooltip.Content>
       </Tooltip>

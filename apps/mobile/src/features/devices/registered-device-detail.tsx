@@ -14,8 +14,9 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { KeyValueList, SectionCard, StatusChip, type KeyValueItem } from '@/components/kit';
-import { LOCAL_STATE_TONE, localDeviceSentenceKey } from '@/features/capture-selector/capture-notices-model';
+import { localDeviceSentenceKey } from '@/features/capture-selector/capture-notices-model';
 import { DevelopmentSourceBadge, useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
+import { registeredStateTone } from './registered-device-rows';
 import { rosterDeviceState, rosterLimitKey, rosterOnKey, rosterSourceKey, rosterSourceKind, sourceChecked, sourceStateLabelKey, type RegisteredDevice } from './registered-devices-model';
 
 export function RegisteredDeviceDetail({ device, header }: { device: RegisteredDevice; header: ReactNode }) {
@@ -44,7 +45,7 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
       {header}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.statusRow}>
-          <StatusChip tone={state === 'READY' && !sourceChecked(device) ? 'default' : LOCAL_STATE_TONE[state]} label={t(sourceStateLabelKey(state, local, sourceChecked(device)))} testID="registered-detail-state" />
+          <StatusChip tone={registeredStateTone(state, sourceChecked(device))} label={t(sourceStateLabelKey(state, local, sourceChecked(device)))} testID="registered-detail-state" />
           <Text maxFontSizeMultiplier={1.2} style={styles.deviceId}>
             {device.id}
           </Text>

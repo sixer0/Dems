@@ -48,6 +48,8 @@ export * from './generator';
 export * from './maintenance';
 export * from './evidence-actions';
 export * from './seal-unsealable';
+// Fix wave J (truth rule 3c): the ONE statement of system state - flags, the Core's alerts, a retried seal, a lost link.
+export * from './system-truth';
 export * from './seal-blocked';
 export * from './selector-in-force';
 export * from './pairing';

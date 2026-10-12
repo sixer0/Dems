@@ -10,7 +10,8 @@
  * - `meterSize: 'card' | 'compact'`: the session monitor's default meter size (brief; hand-over
  *   H-S88-2: the monitor keeps its own local choice until it reads this field);
  * - `notifications: { devices, storage, time, system }`: the alert-toast switches (§4.15
- *   `notifications`; hand-over H-S88-3: no alert-toast consumer reads them yet).
+ *   `notifications`). Their consumer is `<AlertToasts />` of `@/features/alerts` (fix wave J, JA2-05):
+ *   a warning alert of a category whose switch is off raises no toast; a CRITICAL alert always does.
  *
  * Every write goes through `AsyncStorage.mergeItem` with only these fields, so no other owner's
  * field is ever dropped (D57: never `setItem` the whole object).

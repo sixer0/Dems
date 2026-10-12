@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
 import {
   Button,
   Card,
@@ -87,6 +87,23 @@ export function AuthCard({
   const frameRef = useRef<HTMLDivElement>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
+  // Fix wave J round three (note N-01 of `report/judging_b1_web.md`): React mirrors the value of a controlled
+  // input into its `value` ATTRIBUTE (at a commit and again after each input event), so what was typed into the
+  // password field could be read from the markup. An observer on that one attribute takes it off as soon as it
+  // is written (the same task, before the browser paints); the field's own value - what the form reads and
+  // submits - is the property and is untouched.
+  useLayoutEffect(() => {
+    const field = passwordRef.current
+    if (field === null) return undefined
+    const strip = () => {
+      if (field.hasAttribute('value')) field.removeAttribute('value')
+    }
+    strip()
+    if (typeof MutationObserver !== 'function') return undefined
+    const observer = new MutationObserver(strip)
+    observer.observe(field, { attributes: true, attributeFilter: ['value'] })
+    return () => observer.disconnect()
+  }, [passwordRef])
   const [beamDone, setBeamDone] = useState(false)
   const {
     username,

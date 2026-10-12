@@ -32,10 +32,10 @@ afterEach(() => {
 });
 
 const DENIED = 'Not permitted';
-const DENIED_ROLE = 'Requires the Investigator role';
+const DENIED_ROLE = 'Requires the Investigator or Supervisor role';
 const OFFLINE = 'Core server unreachable';
 const OFFLINE_HINT = 'Nothing was changed.';
-const CAPTURED = 'Snapshot captured';
+const CAPTURED = 'Snapshot marked on the timeline. No image is stored.';
 const REASON = 'Interview complete';
 const isBusy = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.busy === true;
 const toastShown = (text: string) => screen.queryAllByText(text).length > 0;
@@ -294,7 +294,7 @@ describe('S2-1 End Session (operation 26): the Dialog is busy, closes on the 202
     openEndDialog();
     typeReason(REASON);
     await pressAndSettle('monitor-end-confirm', b);
-    expect(toastShown('The Core server is limiting requests from this tablet')).toBe(true);
+    expect(toastShown('The Core server is limiting requests from this device')).toBe(true);
     expect(toastShown('Try again in 30 s.')).toBe(true);
     expect(toastShown(OFFLINE)).toBe(false);
     expect(screen.queryByTestId('monitor-banner-offline')).toBeNull();

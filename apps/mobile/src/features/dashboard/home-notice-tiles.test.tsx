@@ -27,7 +27,15 @@ import { resetCoreErrorPresenterForTests, resetCoreLinkPrefsForTests, resetDebug
 import { DashboardScreen } from './dashboard-screen';
 import { realCaptureCameraTileFor, realCaptureMicTileFor, micTileFor } from './home-model';
 import { tileStatement } from './status-tiles';
-import { OPERATOR, createHomeBed, flush, label, layoutAncestors, stubMeasure, textOf, type HomeBed } from './testing/live-home-bed';
+import { OPERATOR, createHomeBed, flush, label, layoutAncestors, shows, stubMeasure, textOf, wordsUnder, type HomeBed } from './testing/live-home-bed';
+
+// Fix wave J round two (ruling (a), JA2-16): on the phone the bell and the account menu are bottom sheets. The real
+// sheet library cannot run under jest (its worklet closes over the whole `react-native` module); the package's own
+// mock renders sheet content inline (`session-live/testing/monitor-test-setup.ts` has the long form of this note).
+jest.mock('@gorhom/bottom-sheet', () => ({
+  __esModule: true,
+  ...jest.requireActual<Record<string, unknown>>('@gorhom/bottom-sheet/mock'),
+}));
 
 jest.mock('@shopify/react-native-skia', () =>
   jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock(),
@@ -163,6 +171,22 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
     await home('phonePortrait', [], { ...REAL_CAPTURE, 'CAM-02': { ...FAKE, online: false } });
     expect(textOf('home-tile-camera-state')).toBe('1 not reachable');
     expect(label('home-tile-camera')).toBe('Cameras: 1 of 2. 1 not reachable');
+  });
+
+  // Fix wave J (JT-01 (b); truth rule 3c): "SYSTEM READY / All systems operational" stood beside a camera tile "Not reachable".
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('JT-01 (b) %s: a camera on a line the Core reports gone - Home says "Attention Needed" and names it, never "Ready"', async (window) => {
+    await home(window, [], { ...REAL_CAPTURE, 'CAM-02': { ...FAKE, online: false } });
+    expect(textOf('home-status-title')).toBe('Attention Needed');
+    expect(textOf('home-flag-UNREACHABLE_VIDEO-02')).toBe('• Camera 2 (CAM-02): not reachable');
+    expect(wordsUnder('home-status').join(' ')).not.toMatch(/Ready for Recording|All systems operational|OPERATIONAL/);
+    expect(label('home-status-ring')).toBe('System status: ATTENTION');
+    if (window === 'tabletLandscape') expect(textOf('home-header-state')).toBe('ATTENTION');
+  });
+
+  it('JT-01 (b) CONTROL: every source on the lines reachable - "Ready for Recording"', async () => {
+    await home('phonePortrait', []);
+    expect(textOf('home-status-title')).toBe('Ready for Recording');
+    expect(shows('home-flag-UNREACHABLE_VIDEO-02')).toBe(false);
   });
 
   // "Not checked" (`checkedAt: null`) is held by the pure rule below: the member is not in the shared schema, so the

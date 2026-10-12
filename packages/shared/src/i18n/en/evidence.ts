@@ -183,7 +183,7 @@ export const evidence = {
   },
 
   metadata: {
-    manifestTitle: 'Manifest fields (design book §11.3)',
+    manifestTitle: 'Manifest fields',
     packageTitle: 'Package contents · {{folder}}',
     kb: '{{value}} KB',
     stopReason: 'Reason for ending',
@@ -381,7 +381,7 @@ export const evidence = {
     requestAuthorisation: 'Request authorisation',
     authoriseHint: 'Authorisation is checked against your role. Every attempt is recorded in the audit log.',
     authorised: 'Authorised',
-    verifyLead: 'The sealed source is verified before export (design book §19.3).',
+    verifyLead: 'The sealed source is verified before export.',
     blockedTitle: 'Export blocked',
     blockedBody: 'Source verification failed for {{ids}}. Tampered evidence cannot be exported.',
     summary: 'Export {{id}} to {{destination}}',

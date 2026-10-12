@@ -619,9 +619,9 @@ describe('G89-04 / G89-09 / G89-05 - the sealed values of an item, before a veri
     expect(screen.queryByText(/manifest\.json \(DEMO\)/)).toBeNull();
   }, 30_000);
 
-  it('G89-05: a v1 item says "Sources: not recorded (v1 package)" and keeps its four track rows', async () => {
+  it('G89-05: a v1 item says "Sources: not recorded for this demonstration item" and keeps its four track rows', async () => {
     await integrityOf('0002', null, 'phonePortrait', 'default');
-    expect(screen.getByTestId('evidence-sources-v1')).toHaveTextContent('Sources: not recorded (v1 package)');
+    expect(screen.getByTestId('evidence-sources-v1')).toHaveTextContent('Sources: not recorded for this demonstration item');
     expect(screen.getByTestId('evidence-track-AUDIO-02')).toBeTruthy();
   }, 30_000);
 
@@ -802,6 +802,9 @@ describe("the contract's examples of `getEvidence` (packages/shared/src/api/evid
     productSealedInterrupted: { kind: 'SEALED', files: ['VIDEO-01', 'VIDEO-02'], interrupted: 'CAPTURE_FAULT', mayPlay: true },
     productSealedOneCamera: { kind: 'SEALED', files: ['VIDEO-01'], mayPlay: true },
     noMedia: { kind: 'NONE', reason: 'PACKAGE_MISSING' },
+    // Fix wave J (contract_wave_j.md J-S 1, J-S 2): the two new examples of the contract.
+    neverSealed: { kind: 'NONE', reason: 'NOT_SEALED' },
+    simulatedSealed: { kind: 'NONE', reason: 'DEMONSTRATION_RECORD' },
     outsideCaseScope: { kind: 'SEALED', files: ['VIDEO-01', 'VIDEO-02'], mayPlay: false },
     seedSealedDemo: { kind: 'SEALED', files: ['VIDEO-01', 'VIDEO-02'], mayPlay: true },
   };
@@ -833,7 +836,8 @@ describe("the contract's examples of `getEvidence` (packages/shared/src/api/evid
     expect(mediaKindOf(detail.media, item)).toBe(want.kind);
 
     // The Core's own item and body, as the example states them, on the Live bed.
-    const { b } = await bedWith('0004', () => body.evidence as unknown as EvidenceItem);
+    // The dataset item with the example's own number is replaced by it (the never-sealed example is the seed's RECORDED item).
+    const { b } = await bedWith(body.evidence.id.slice(-4), () => body.evidence as unknown as EvidenceItem);
     bed = b;
     const { evidence: _evidence, media, ...extras } = body as unknown as Record<string, unknown>;
     b.mediaRef = () => media as never;
@@ -856,6 +860,31 @@ describe("the contract's examples of `getEvidence` (packages/shared/src/api/evid
       expect(screen.queryByTestId('evidence-media-demo-label')).toBeNull();
       expect(allText()).not.toMatch(/DEMO media|DEMO package|DEMO excerpt|Simulated playback|Bundled demo/);
     }
+    if (name === 'simulatedSealed') {
+      // JA2-02: a demonstration record says what it is - never "no sealed package ... in the evidence store".
+      expect(screen.getByTestId('evidence-media-none-reason')).toHaveTextContent('Demonstration record of a simulated session: no media was recorded.');
+      expect(allText()).not.toMatch(/No sealed package of this item is in the evidence store/);
+    }
+    if (name === 'neverSealed') {
+      // JA2-01 (truth rule 3a): a never-sealed item shows no sealed value, no Verify control and no verdict.
+      expect(screen.getByTestId('evidence-media-none-reason')).toHaveTextContent('The recording is not sealed.');
+      // Round two (JA2-07): the item of an interrupted session says so in its header - not only the Sessions hub.
+      expect(screen.getByTestId('evidence-detail-never-sealed')).toHaveTextContent(/Incomplete session — not sealed.*never sealed/);
+      fireEvent.press(screen.getByTestId('evidence-tab-integrity'));
+      await b.flush();
+      expect(screen.getByTestId('evidence-integrity-not-sealed')).toHaveTextContent(/Not sealed.*It has no sealed hash, no manifest and no signature, and there is nothing to verify\./);
+      expect(screen.queryByTestId('evidence-verify')).toBeNull();
+      expect(screen.queryByTestId('evidence-integrity')).toBeNull();
+      expect(allText()).not.toMatch(/Verified by the Core|PASS|0{64}|NOT-SEALED/);
+      expect(b.requests('verifyEvidence')).toHaveLength(0);
+      fireEvent.press(screen.getByTestId('evidence-tab-media'));
+      await b.flush();
+    }
+    // Round two (JT-16; JM-N7): a disabled Play says why beside the button - never a grey button alone.
+    if (want.kind === 'NONE') expect(screen.getByTestId('evidence-action-play-reason')).toHaveTextContent(String(screen.getByTestId('evidence-media-none-reason').props.children));
+    else if (want.mayPlay === false) expect(screen.getByTestId('evidence-action-play-reason')).toHaveTextContent('You are not permitted to play this recording.');
+    else expect(screen.queryByTestId('evidence-action-play-reason')).toBeNull();
+    if (name !== 'neverSealed') expect(screen.queryByTestId('evidence-detail-never-sealed')).toBeNull();
     if (want.kind === 'NONE') {
       expect(screen.getByTestId('evidence-media-none')).toBeTruthy();
       expect(allText()).toContain(NONE_SENTENCE);

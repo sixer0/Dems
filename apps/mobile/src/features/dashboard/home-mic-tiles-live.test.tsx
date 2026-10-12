@@ -12,6 +12,7 @@ import 'react-native-gesture-handler/jestSetup';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, screen, within } from '@testing-library/react-native';
+import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE } from '@dems/shared/api';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, ScenarioName, type AudioFrame, type SimState, hostClockTimeTransition } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetLoopRegistryForTests, resetMotionStateForTests } from '@/motion';
@@ -154,6 +155,34 @@ describe('B15: the tablet Home MIC tiles never read "No signal" beside a READY c
     await b.pushState({ ...b.state, mics: b.state.mics.map((mic) => (mic.id === 'AUDIO-01' ? { ...mic, state: 'READY' as const } : mic)) });
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, READY');
     expect(line('AUDIO-01')).toBe('— dBFS');
+  });
+});
+
+describe('JW-08 mobile half, round two: a frame the Core marks `notMeasured` is no level (contract_wave_j.md J-S 6)', () => {
+  // Seen on the tablet's Home at rest after the lanes' restart: "-60 dBFS" and a bar meter under "Not checked".
+  // The frame's `dbfs` is the floor as a PLACEHOLDER of the required member and `noSignal` is false.
+  it.each([[true], [false]])('at rest (test switch %s): "— dBFS" and "Not measured", no meter canvas, never a number', async (testSwitch) => {
+    const b = await tabletHome(testSwitch);
+    const now = b.fake.clock.now();
+    b.sendMeters({ 'MIC-01': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE, at: now }, 'MIC-02': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE, at: now } });
+    await flush();
+    expect(lines()).toEqual(['— dBFS', '— dBFS']);
+    expect(shows('home-device-AUDIO-01-meter')).toBe(false);
+    expect(within(screen.getByTestId('home-device-AUDIO-01-not-measured')).getByText('Not measured')).toBeTruthy();
+    expect(lines().some((text) => /\d/.test(text) || /no signal/i.test(text))).toBe(false);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('CONTROL - the same microphones once a capture is open: frames without the member read as levels again', async () => {
+    const b = await tabletHome(true);
+    const now = b.fake.clock.now();
+    b.sendMeters({ 'MIC-01': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE, at: now }, 'MIC-02': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE, at: now } });
+    await flush();
+    await b.pushState({ ...b.state, session: recordingSession(now) });
+    b.sendMeters({ 'MIC-01': frame(-18, now + 100, 2), 'MIC-02': frame(-42, now + 100, 2) });
+    await flush();
+    expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
+    expect(shows('home-device-AUDIO-01-meter')).toBe(true);
   });
 });
 

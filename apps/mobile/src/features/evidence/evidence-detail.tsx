@@ -55,7 +55,7 @@ import Animated from 'react-native-reanimated';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { DATE_PATTERNS, formatClock, formatDate, formatDuration } from '@dems/shared/realtime';
 import { useCoreActions } from '@dems/shared/live';
-import { useSimInstance } from '@dems/shared/sim';
+import { hasSealedValues, isSealedOnThisCore, verificationOfRecordFailed, useSimInstance } from '@dems/shared/sim';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { withAlpha } from '@/components/media';
 import { useLayoutClass } from '@/layout';
@@ -66,7 +66,7 @@ import { ItemDevelopmentBadge } from './development-source';
 import { consumeDetailIntent, useDetailIntent, type DetailTab } from './detail-intent';
 import { EvidenceStatusChip, EvidenceSubjectChip } from './evidence-chips';
 import { FinishedExports } from './finished-exports';
-import { InterruptedLine } from './interrupted-line';
+import { InterruptedLine, NeverSealedLine } from './interrupted-line';
 import { NO_DETAIL_FACTS, cameraFilesFor, isDemoItem, mediaKindOf, mediaReasonLine, readItemFacts, readSealedProfiles, type MediaKind } from './item-facts';
 import { clipMsFor, mediaForEvidence, posterOf } from './evidence-media';
 import { fileSizeParts, integrityFor, isArchivable, isExportable, packageFor, packageTimeSource } from './evidence-model';
@@ -80,6 +80,7 @@ import { MetadataTab } from './metadata-tab';
 import { PlaySheet } from './play-sheet';
 import { SealedFormat } from './sealed-format';
 import { SealedPlayer } from './sealed-player';
+import { SessionAnnotations } from './session-annotations';
 import { TranscriptPane } from './transcript-pane';
 import { useCanArchive, useEvidenceItem, useOperatorNames } from './use-evidence-data';
 import { useEvidenceMediaRef } from './use-evidence-media-ref';
@@ -252,7 +253,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
     { id: 'location', icon: MapPin, label: t('evidence.detail.fields.location'), value: item.room },
     { id: 'duration', icon: Clock, label: t('evidence.detail.fields.duration'), value: formatDuration(item.durationMs), mono: true },
     { id: 'fileSize', icon: HardDrive, label: t('evidence.detail.fields.fileSize'), value: t(`common.units.${size.unit}`, { value: size.value }) },
-    { id: 'status', icon: ShieldCheck, label: t('evidence.detail.fields.status'), value: <EvidenceStatusChip status={item.status} /> },
+    { id: 'status', icon: ShieldCheck, label: t('evidence.detail.fields.status'), value: <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} testID="evidence-fact-status-chip" /> },
   ];
 
   const hero = (
@@ -270,7 +271,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         ) : null}
         <LinearGradient colors={[withAlpha(palette.black, 0), withAlpha(palette.black, 0.9)]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
         <View style={styles.heroChip}>
-          <EvidenceStatusChip status={item.status} size="md" testID="evidence-detail-status" />
+          <EvidenceStatusChip status={item.status} verificationFailed={verificationOfRecordFailed(item)} size="md" testID="evidence-detail-status" />
         </View>
         <View style={styles.heroBadge}>
           <ItemDevelopmentBadge item={item} testID="evidence-detail-development" />
@@ -296,6 +297,7 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             </Text>
           </View>
           <InterruptedLine facts={facts} withCause testID="evidence-detail-interrupted" />
+          <NeverSealedLine item={item} withDetail testID="evidence-detail-never-sealed" />
         </View>
       </View>
       <Animated.View entering={enterRise(1, m)}>
@@ -400,6 +402,8 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
                 onOpenMic={(mic) => setPlay({ camera: 'VIDEO-01', mic })}
               />
             )}
+            {/* Round two (JT-11 / JA2-08): what the operator added during the recording - nothing when the item states none. */}
+            <SessionAnnotations item={item} recordedAt={item.recordedAt} />
             {hasTranscript ? <TranscriptPane evidenceId={item.id} item={v2} operatorNames={operatorNames} access={detail.access.transcript} /> : null}
           </View>
         ) : tab === 'metadata' ? (
@@ -412,6 +416,17 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
             mediaStatus={mediaRef.status === 'loading' || mediaRef.status === 'unavailable' ? mediaRef.status : 'ready'}
             demoItem={isDemoItem(facts)}
           />
+        ) : !hasSealedValues(item) ? (
+          // Fix wave J (JA2-01, truth rule 3a; contract_wave_j.md J-S 1): `sealedAt === null` = never sealed. No track
+          // hash, no manifest, no signature, no key, no "Sealed" label, no Verify control and no verdict - on ANY lane.
+          <View style={styles.noMedia} testID="evidence-integrity-not-sealed" accessibilityRole="text">
+            <Text maxFontSizeMultiplier={1.2} style={styles.noMediaTitle}>
+              {t('common.truth.notSealed')}
+            </Text>
+            <Text maxFontSizeMultiplier={1.2} style={styles.note}>
+              {t('common.truth.notSealedDetail')}
+            </Text>
+          </View>
         ) : live || !integrity ? (
           <LiveIntegrityTab
             key={`integrity-${verifySeq ?? 0}`}
@@ -436,13 +451,24 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
 
   /** Live: Play has something to open - the sealed player, or bundled demo media of a demo item. Simulated: as before. */
   const playable = !live || sealedPlayback || (mediaKind === 'DEMO' && media !== null);
+  // The reason of a disabled Play, as one sentence: the Core refuses this caller, or the item has nothing to play
+  // (then the Core's own reason, the sentence of the Media tab). Simulated mode never disables Play.
+  const playDisabledReason = playable
+    ? null
+    : mediaKind === 'SEALED'
+      ? t('evidence.itemFacts.media.mayNotPlay')
+      : mediaRef.status === 'loading'
+        ? null
+        : mediaRef.status === 'unavailable'
+          ? t('evidence.itemFacts.media.reason.NOT_REPORTED')
+          : t(noMediaReason.key, noMediaReason.options);
   const actionBar = (
     <View style={styles.actions} testID="evidence-detail-actions">
       <Button
         variant="tertiary"
         style={styles.action}
         isDisabled={!playable}
-        accessibilityHint={playable ? undefined : t(mediaKind === 'SEALED' ? 'evidence.itemFacts.media.mayNotPlay' : 'evidence.itemFacts.media.noneTitle')}
+        accessibilityHint={playable ? undefined : (playDisabledReason ?? t('evidence.itemFacts.media.noneTitle'))}
         onPress={() => {
           // G94-02: without media of this item nothing opens - never a placeholder player.
           if (!playable) return;
@@ -502,14 +528,22 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
                 testID="evidence-more-archive-text"
               />
             </Menu.Item>
-            <Menu.Item
-              testID="evidence-more-manifest"
-              onPress={() =>
-                toast.show({ variant: 'default', label: t(live ? 'features.evidence.actions.manifestToastLive' : 'features.evidence.actions.manifestToast') })
-              }
-            >
-              <Menu.ItemTitle>{t('features.evidence.actions.downloadManifest')}</Menu.ItemTitle>
-            </Menu.Item>
+            {/* Round two (JT-15 / JA2-21; contract_wave_j.md J-S 4): no control that only answers "not available".
+                A never-sealed item has no manifest at all: no entry. In Live mode the signed manifest leaves the
+                Core only inside the export package: the entry is disabled and says so (as Archive says its reason). */}
+            {!hasSealedValues(item) ? null : live ? (
+              <Menu.Item testID="evidence-more-manifest" isDisabled>
+                <MenuItemText
+                  title={t('features.evidence.actions.downloadManifest')}
+                  description={t(isSealedOnThisCore(item) ? 'common.truth.manifestInExport' : 'features.evidence.actions.manifestToastLive')}
+                  testID="evidence-more-manifest-text"
+                />
+              </Menu.Item>
+            ) : (
+              <Menu.Item testID="evidence-more-manifest" onPress={() => toast.show({ variant: 'default', label: t('features.evidence.actions.manifestToast') })}>
+                <Menu.ItemTitle>{t('features.evidence.actions.downloadManifest')}</Menu.ItemTitle>
+              </Menu.Item>
+            )}
           </Menu.Content>
         </Menu.Portal>
       </Menu>
@@ -543,6 +577,12 @@ export function EvidenceDetail({ evidenceId, variant }: EvidenceDetailProps) {
         </ScrollView>
         </>
       )}
+      {/* Round two (JT-16; JM-N7): a disabled Play says why, where Export says its reason - never a grey button alone. */}
+      {playDisabledReason !== null ? (
+        <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-play-reason">
+          {playDisabledReason}
+        </Text>
+      ) : null}
       {exportRefused ? (
         <Text maxFontSizeMultiplier={1.2} style={[styles.note, styles.actionNote]} accessibilityRole="text" testID="evidence-action-export-requires-role">
           {t('features.evidence.waveK.export.controlRequiresRole', { role: t('common.roles.SUPERVISOR') })}

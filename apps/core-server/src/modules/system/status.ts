@@ -134,12 +134,32 @@ export function servicesWithProcesses(services: Services, probes: ServiceProbes)
   });
 }
 
-export function systemStatusOf(state: SystemStatusSource, probes?: ServiceProbes): SystemStatus {
+/** The versions of the components of this Core (fix wave J round two, JW-26): what `components` of the answer says. */
+export type SystemComponents = NonNullable<SystemStatus['components']>;
+
+/**
+ * THE VERSIONS OF THIS CORE'S COMPONENTS, EACH FROM ITS ONE CONSTANT (JW-26; truth rule 3f). Nothing is
+ * read from the engine's state: `device.softwareVersion` and the `update` slice are the hosted
+ * demonstration model's. The Core's version is `CORE_SERVER_VERSION` (what operation 1 and a sealed
+ * manifest state), the worker's is `CAPTURE_WORKER_VERSION` (the one word the handshake accepts) and
+ * the contract's is `OPENAPI_CORE_SERVER_DOCUMENT_VERSION`. A Core in SIMULATED capture starts no
+ * worker and names none. Pure.
+ */
+export function systemComponentsOf(input: { readonly service: string; readonly coreVersion: string; readonly captureWorkerVersion: string | null; readonly apiContractVersion: string }): SystemComponents {
+  return {
+    core: { name: input.service, version: input.coreVersion },
+    ...(input.captureWorkerVersion === null ? {} : { captureWorker: { version: input.captureWorkerVersion } }),
+    apiContract: { version: input.apiContractVersion },
+  };
+}
+
+export function systemStatusOf(state: SystemStatusSource, probes?: ServiceProbes, components?: SystemComponents): SystemStatus {
   return {
     device: state.device,
     services: probes === undefined ? state.services : servicesWithProcesses(state.services, probes),
     update: state.update,
     diagnostics: state.diagnostics,
     settings: state.settings,
+    ...(components === undefined ? {} : { components }),
   };
 }

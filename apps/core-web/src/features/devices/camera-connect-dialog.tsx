@@ -99,7 +99,9 @@ export function CameraConnectDialog({ candidate, locked, deviceLabel, onAnswered
       onOpenChange={(open) => {
         if (!open && !busy) onExit({ kind: 'CLOSED' })
       }}
-      isDismissable={!busy}
+      // Fix wave J (JW-16): a click outside discarded a typed account without a question. The dialog closes by its own
+      // Close / X and by Escape only.
+      isDismissable={false}
       isKeyboardDismissDisabled={busy}
       variant="blur"
     >

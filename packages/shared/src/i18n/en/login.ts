@@ -40,7 +40,7 @@ export const login = {
   trustLine: 'Console: {{deviceId}} • paired (simulated)',
   /** Step 43 (additive): the trust line when the simulator reports the console as not paired. */
   trustLineUnpaired: 'Console: {{deviceId}} • not paired (simulated)',
-  trustTooltip: 'Certificate-bound console pairing (design book §20.1), simulated in this demo.',
+  trustTooltip: 'Certificate-bound console pairing, simulated in this demo.',
 
   deviceStrip: {
     label: 'Appliance status',
@@ -78,8 +78,11 @@ export const login = {
   notices: {
     signedOut: 'You have been signed out.',
     sessionExpired: 'Your session expired after {{minutes}} minutes without activity. Sign in again.',
-    /** Step 43 (additive): the operator used "Lock console" in the user menu. */
-    consoleLocked: 'Console locked. Sign in again to continue.',
+    /**
+     * Step 43 (additive): the operator used "Lock console" in the user menu. ONE sentence for the web
+     * console and the devices (ruling D244; fix wave J closing pass, item 2): both clients read THIS key.
+     */
+    consoleLocked: 'Console locked — sign in to continue',
   },
 
   success: 'Signed in',

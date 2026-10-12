@@ -191,7 +191,7 @@ export const sessionNew = {
    */
   live: {
     coreLinkHint:
-      'No paired tablet is connected to the Core server. Open the DEMS app on the paired tablet so that it connects, then re-run the checks.',
+      'No paired device is connected to the Core server. Open the DEMS app on the paired tablet or phone so that it connects, then re-run the checks.',
     /**
      * Closing copy round (decision D164 DN-5; W83 ledger #89): one pair of Live words for both
      * clients, in place of `devices.speakToTest` and `info.caseNumber.scan`, which say "(simulated)"

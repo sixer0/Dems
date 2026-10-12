@@ -664,9 +664,12 @@ describe('G75d-02: the sentences of a blocked seal (wave L, closing pass L-Z)', 
   const NOT_FOR_AN_OPERATOR = /start recovery|recovery action|recovery operation|recoverSession|operation 33|SESSION_START|SEAL_RETRY|[A-Z]{3,}_[A-Z_]{3,}/;
 
   describe('G75d-02 (closing pass L-Z): the Core names the retry by the name its screen has', () => {
-    it('1. every restore hint ends with "Retry sealing" on the Session Monitor of the web console, an investigator or a supervisor, or a restart', () => {
+    // Fix wave J closing pass (J4, item 4): the devices have the control too (D243), so the sentence names the tablet and the phone.
+    it('1. every restore hint ends with "Retry sealing" on the Session Monitor of the web console or on the session\'s screen of the tablet or phone, an investigator or a supervisor, or a restart', () => {
       expect(SEAL_RETRY_CONTROL_NAME).toBe('Retry sealing');
-      expect(SEAL_RETRY_HOW_SENTENCE).toBe('an investigator or a supervisor presses "Retry sealing" on the Session Monitor of the web console, or the Core is restarted.');
+      expect(SEAL_RETRY_HOW_SENTENCE).toBe('an investigator or a supervisor presses "Retry sealing" on the Session Monitor of the web console or on the session\'s screen of the tablet or phone, or the Core is restarted.');
+      // CONTROL: the sentence of before named the web console alone.
+      expect(SEAL_RETRY_HOW_SENTENCE).not.toContain('web console, or the Core');
       // The sentence says who; the contract says the same two roles and not the technician.
       expect([OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN].map(canRetryBlockedSeal)).toEqual([true, true, false]);
       let hints = 0;
@@ -702,7 +705,7 @@ describe('G75d-02: the sentences of a blocked seal (wave L, closing pass L-Z)', 
       const cause = { cause: SealerCause.SESSION_KEY_STORE_UNAVAILABLE };
       expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toBe(sealBlockedNotice(SealingFailure.SEALER_FAILED, cause));
       expect(SEAL_BLOCKED_EXAMPLE_FINALIZATION?.steps[0]?.detail).toBe(sealWaitingNotice(sealingFailureReason(SealingFailure.SEALER_FAILED, cause)));
-      expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain('presses "Retry sealing" on the Session Monitor of the web console');
+      expect(SEAL_BLOCKED_EXAMPLE_ALERT.message).toContain('presses "Retry sealing" on the Session Monitor of the web console or on the session\'s screen of the tablet or phone, or the Core is restarted.');
     });
 
     it('4. the number is the bound of the settings in force, and the default IS the shared constant', () => {

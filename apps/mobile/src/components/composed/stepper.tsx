@@ -63,6 +63,17 @@ export interface StepperProps {
   /** Optional: lets the operator jump back to a completed step. */
   onStepPress?: (index: number) => void;
   /**
+   * Round two (JA2-22 / JT-13): which completed steps a press really opens. A step this refuses is drawn and
+   * announced as text - never as a button that does nothing. Default: every completed step (as before).
+   */
+  canPressStep?: (index: number) => boolean;
+  /**
+   * Round two (JA2-20): `'current'` draws ONE label under a horizontal row of badges - "Step 3 of 6 · Options" -
+   * instead of a label under every badge. For rows whose columns are too narrow for their words (six steps on a
+   * phone broke "Authoriz-e", "Destinati-on" inside the word). Every step keeps its accessible name. Default `'all'`.
+   */
+  labels?: 'all' | 'current';
+  /**
    * False for a copy drawn in place for a moment (a hand-over): no motion is started (W93-7). Default true.
    */
   animate?: boolean;
@@ -85,6 +96,8 @@ export function Stepper({
   motion,
   statusWords = DEFAULT_STATUS_WORDS,
   onStepPress,
+  canPressStep,
+  labels = 'all',
   animate = true,
   style,
   testID,
@@ -128,7 +141,7 @@ export function Stepper({
                 status={status}
                 a11y={stepA11yLabel(i, steps.length, step.label, status, statusWords)}
                 style={{ flex: 1, paddingTop: 5, paddingBottom: i < last ? 18 : 0 }}
-                onPress={onStepPress && status === 'done' ? () => onStepPress(i) : undefined}
+                onPress={onStepPress && status === 'done' && (canPressStep?.(i) ?? true) ? () => onStepPress(i) : undefined}
               />
             </Animated.View>
           );
@@ -137,8 +150,11 @@ export function Stepper({
     );
   }
 
-  return (
-    <View testID={testID} style={[{ flexDirection: 'row' }, style]}>
+  const oneLabel = labels === 'current';
+  const shownIndex = Math.max(0, statuses.findIndex((status) => status === 'active' || status === 'running' || status === 'warn' || status === 'error'));
+  const shown = statuses.every((status) => status === 'done') ? last : shownIndex;
+  const row = (
+    <View testID={oneLabel ? undefined : testID} style={oneLabel ? { flexDirection: 'row' } : [{ flexDirection: 'row' }, style]}>
       {steps.map((step, i) => {
         const status = statuses[i] ?? 'pending';
         const leftFilled = i === 0 ? leadFilled(statuses[0]) : connectorFill(statuses[i - 1] ?? 'pending') >= 1;
@@ -179,11 +195,21 @@ export function Stepper({
               status={status}
               a11y={stepA11yLabel(i, steps.length, step.label, status, statusWords)}
               align="center"
-              onPress={onStepPress && status === 'done' ? () => onStepPress(i) : undefined}
+              hidden={oneLabel}
+              onPress={onStepPress && status === 'done' && (canPressStep?.(i) ?? true) ? () => onStepPress(i) : undefined}
             />
           </Animated.View>
         );
       })}
+    </View>
+  );
+  if (!oneLabel) return row;
+  return (
+    <View testID={testID} style={[{ gap: 6 }, style]}>
+      {row}
+      <Typography type="body-xs" align="center" weight="semibold" testID={testID ? `${testID}-current-label` : undefined} accessibilityElementsHidden importantForAccessibility="no">
+        {`${statusWords.step} ${shown + 1} ${statusWords.of} ${steps.length} · ${steps[shown]?.label ?? ''}`}
+      </Typography>
     </View>
   );
 }
@@ -197,10 +223,15 @@ interface StepTextProps {
   align?: 'start' | 'center';
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
+  /** `labels="current"`: the step keeps its accessible name and its press; its words are drawn once, under the row. */
+  hidden?: boolean;
 }
 
-function StepText({ testID, label, description, status, a11y, align = 'start', style, onPress }: StepTextProps) {
+function StepText({ testID, label, description, status, a11y, align = 'start', style, onPress, hidden = false }: StepTextProps) {
   const current = status === 'active' || status === 'running';
+  if (hidden) {
+    return <Pressable testID={testID} disabled={!onPress} onPress={onPress} accessibilityRole={onPress ? 'button' : 'text'} accessibilityLabel={a11y} accessibilityState={{ selected: current, disabled: !onPress }} style={[{ height: 1, alignSelf: 'stretch' }, style]} />;
+  }
   return (
     <Pressable
       testID={testID}
@@ -260,7 +291,19 @@ interface ConnectorHalfProps {
   testID?: string;
 }
 
-const scaleFor = (horizontal: boolean, value: number) => (horizontal ? { scaleX: value } : { scaleY: value });
+/**
+ * Fix wave J (JM-01, the BLOCKER of the motion-on judging): this function is called from `FillMotion`'s
+ * `useAnimatedStyle`, i.e. on the UI runtime, and it was a plain function: "[Worklets] Tried to synchronously
+ * call a Remote Function. Called "scaleFor" on the UI Runtime." at every connector that animated (the export
+ * wizard's "Next", the update pipeline, a pipeline whose step finished) - and one such error stops every
+ * animation of the process (`@/motion/ui-runtime-watch`). It is a worklet now; the React render calls it too.
+ * The suite-wide guard of `jest.setup.ts` (`@/motion/testing/worklet-closure`) fails any test that mounts a
+ * worklet which calls a function that is not one.
+ */
+function scaleFor(horizontal: boolean, value: number): { scaleX: number } | { scaleY: number } {
+  'worklet';
+  return horizontal ? { scaleX: value } : { scaleY: value };
+}
 
 /** A kit Separator track with a gold fill that grows from its start edge; React holds the rest fill (W93-7). */
 function ConnectorHalf({ orientation, filled, still, duration, delay = 0, easing, style, testID }: ConnectorHalfProps) {
@@ -274,7 +317,7 @@ function ConnectorHalf({ orientation, filled, still, duration, delay = 0, easing
       <View testID={testID} style={[StyleSheet.absoluteFill, fillLook, { transform: [scaleFor(horizontal, run || !filled ? 0 : 1)] }]} />
       {run ? (
         <FillMotion
-          key={run.id}
+          key={`fill-${run.id}`}
           testID={testID ? `${testID}-motion` : undefined}
           horizontal={horizontal}
           from={run.from ? 1 : 0}
@@ -355,9 +398,12 @@ function StepBadge({ index, status, still, testID }: StepBadgeProps) {
   return (
     <View style={{ width: BADGE, height: BADGE, alignItems: 'center', justifyContent: 'center' }}>
       <View testID={part('ring')} pointerEvents="none" style={[styles.circle, ringLook, { opacity: ringRun || !lit ? 0 : 1 }]} />
-      {ringRun ? <FadeMotion key={ringRun.id} testID={part('ring-motion')} from={ringRun.from ? 1 : 0} to={lit ? 1 : 0} look={ringLook} /> : null}
+      {/* JM-01: the three overlays are siblings and each counts its own runs from 1 - a bare `key={run.id}` gave
+          two children the key `1` ("Encountered two children with the same key"), so React could hand one
+          overlay's view to the other. Every key names its overlay. */}
+      {ringRun ? <FadeMotion key={`ring-${ringRun.id}`} testID={part('ring-motion')} from={ringRun.from ? 1 : 0} to={lit ? 1 : 0} look={ringLook} /> : null}
       {haloRun && pulses(status) ? (
-        <HaloMotion key={haloRun.id} testID={part('halo-motion')} look={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: withAlpha(toneColor, 0.45) }} />
+        <HaloMotion key={`halo-${haloRun.id}`} testID={part('halo-motion')} look={{ width: BADGE, height: BADGE, borderRadius: BADGE / 2, backgroundColor: withAlpha(toneColor, 0.45) }} />
       ) : null}
       {/* Wave K Z1 (G94b-13), seen on the tablet: a kit Chip that was mounted as a PENDING badge and then
           changes its variant in place stops painting what is inside it - the number of the step that became
@@ -366,7 +412,7 @@ function StepBadge({ index, status, still, testID }: StepBadgeProps) {
           chip: React mounts it anew with its content. Nothing else of the badge is inside it (the ring and
           the overlays are siblings). */}
       <Chip
-        key={`${chip.variant}-${chip.color}`}
+        key={`chip-${chip.variant}-${chip.color}`}
         testID={part('chip')}
         variant={chip.variant}
         color={chip.color}
@@ -388,7 +434,7 @@ function StepBadge({ index, status, still, testID }: StepBadgeProps) {
         ) : done ? (
           <Svg width={18} height={18} viewBox="0 0 24 24">
             {drawCheck ? (
-              <CheckDrawMotion key={checkRun.id} />
+              <CheckDrawMotion key={`check-${checkRun.id}`} />
             ) : (
               <Path testID={part('check')} d={CHECK_PATH} stroke={palette.gold} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
             )}

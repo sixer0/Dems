@@ -7,6 +7,7 @@ import { faultKindLabelKey, isCoreNotRunningKind, useSim } from '@dems/shared/si
 import { motion as tokens } from '@dems/shared/tokens'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
+import { DemoMark } from '@/components/demo-mark'
 import { captureFailedStartText, captureNoticeLine, captureNoticeOf } from '@/lib/capture-notices'
 import { useOwnCapture } from '@/lib/own-capture'
 import { sealAttentionLine, useOpenSealAttention } from '@/lib/seal-attention'
@@ -215,6 +216,8 @@ export function StatusBanner({ canStart, onRecover, recoverBusy = false, recover
         <span className={cn('sm-banner-detail')} data-testid="sm-banner-detail">
           {detail}
         </span>
+        {/* Fix wave J (JW-07): "SESSION ACTIVE & SECURE - All integrity checks passing" of the demonstration is marked as that. */}
+        <DemoMark block="monitor-banner" className="sm-banner-demo" long />
         {coveredNotice !== null ? (
           <span className={cn('sm-banner-detail')} data-testid="sm-banner-degraded">
             {captureNoticeLine(t, coveredNotice)}

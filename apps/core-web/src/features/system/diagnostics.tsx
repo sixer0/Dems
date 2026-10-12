@@ -1,10 +1,11 @@
 import { useState, type ReactNode, type RefObject } from 'react'
-import { Alert, Button, Chip, Modal, ProgressBar, Spinner, toast, Tooltip } from '@heroui/react'
+import { Alert, Button, Chip, Modal, ProgressBar, Spinner, toast } from '@heroui/react'
 import { CircleCheck, Download, RefreshCw, RotateCw, Stethoscope, TriangleAlert, Wrench, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCoreActions } from '@dems/shared/live'
 import {
   formatWibTime,
+  isDiagnosticNotReported,
   Permission,
   selectCan,
   useSim,
@@ -15,6 +16,7 @@ import {
 } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
 import { usePlatformNotReported } from '@/lib/own-capture'
+import { RoleReason } from '@/components/role-reason'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { DIAG_BAR_FILL_MS } from './choreography'
 import { ExportLogsDialog } from './export-logs-dialog'
@@ -49,18 +51,17 @@ function useSummaryText(): (summary: DiagnosticsSummary) => string {
   }
 }
 
-function RbacGate({ allowed, permission, label, children }: { allowed: boolean; permission: Permission; label: string; children: ReactNode }) {
-  const { t } = useTranslation()
+/**
+ * Fix wave J (JW-14): ONE rule - a control the role may not use is disabled WITH its visible reason ("Requires
+ * the Technician role"). The reason used to live in a tooltip only, which the judge (and a keyboard user) never saw.
+ */
+function RbacGate({ allowed, permission, children }: { allowed: boolean; permission: Permission; label: string; children: ReactNode }) {
   if (allowed) return <>{children}</>
-  const role = requiredRoleFor(permission)
-  const reason = t('common.rbac.requiresRole', { role: role ? t(`common.roles.${role}`) : '' })
   return (
-    <Tooltip delay={200}>
-      <Tooltip.Trigger className="rounded-lg" aria-label={`${label}: ${reason}`}>
-        {children}
-      </Tooltip.Trigger>
-      <Tooltip.Content placement="top">{reason}</Tooltip.Content>
-    </Tooltip>
+    <span className="flex flex-col items-end gap-1" data-testid="system-rbac-gate" data-permission={permission}>
+      {children}
+      <RoleReason permission={permission} />
+    </span>
   )
 }
 
@@ -263,7 +264,9 @@ function CheckRow({ check }: { check: DiagnosticCheck }) {
   const label = t(`system.diagnostics.checks.${check.id}` as 'system.diagnostics.checks.CPU', { defaultValue: check.label })
   // Fix wave K (C-2): "Security (TPM, Secure Boot): PASS" is the self-test of the device model on a Core that reads neither. A FAIL / WARN stays.
   const platformNotReported = usePlatformNotReported()
-  const notReported = platformNotReported && check.id === 'SECURITY' && check.status === 'PASS'
+  // Wave J: the Core says it itself (`isDiagnosticNotReported`: SMART, fan, network / PoE, platform) - drawn "Not reported",
+  // in no warning tone and with no figure of the appliance model beside it.
+  const notReported = isDiagnosticNotReported(check) || (platformNotReported && check.id === 'SECURITY' && check.status === 'PASS')
   return (
     <li className="sys-diag-row" data-status={check.status} data-testid={`system-diag-${check.id}`} data-reported={notReported ? 'false' : undefined}>
       <div className="sys-diag-head">
@@ -272,7 +275,7 @@ function CheckRow({ check }: { check: DiagnosticCheck }) {
           <Chip.Label>{notReported ? t('common.platformNotReported.value') : t(`common.diagnosticStatus.${check.status}`)}</Chip.Label>
         </Chip>
       </div>
-      <ProgressBar aria-label={label} value={resolved ? 100 : check.status === 'RUNNING' ? 50 : 0} size="sm" className="sys-bar" data-tone={STATUS_COLOR[check.status]}>
+      <ProgressBar aria-label={label} value={resolved ? 100 : check.status === 'RUNNING' ? 50 : 0} size="sm" className="sys-bar" data-tone={notReported ? 'default' : STATUS_COLOR[check.status]}>
         <ProgressBar.Track className="sys-bar-track">
           <ProgressBar.Fill
             className="sys-bar-fill"
@@ -283,7 +286,7 @@ function CheckRow({ check }: { check: DiagnosticCheck }) {
           />
         </ProgressBar.Track>
       </ProgressBar>
-      {check.detail ? <span className="sys-diag-detail sys-mono">{check.detail}</span> : null}
+      {check.detail && !notReported ? <span className="sys-diag-detail sys-mono">{check.detail}</span> : null}
     </li>
   )
 }

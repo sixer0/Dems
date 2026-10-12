@@ -417,7 +417,8 @@ function SessionCard({ enter, session }: { enter: boolean; session: FinalizingSe
       label: t('session.details.subject'),
       value: (
         <View style={styles.subject}>
-          <Text maxFontSizeMultiplier={1.2} numberOfLines={1} style={styles.value}>
+          {/* Round two (JA2-09 / JT-12): the name is whole - two lines, the chip under it. */}
+          <Text maxFontSizeMultiplier={1.2} numberOfLines={2} style={[styles.value, styles.subjectName]}>
             {session.subjectName ?? '—'}
           </Text>
           {session.subjectType ? <SubjectTypeChip type={session.subjectType} size="sm" /> : null}
@@ -534,7 +535,8 @@ const styles = StyleSheet.create({
   },
   sealedBlock: { gap: spacing[1], flex: 1 },
   sealedFooter: { gap: spacing[1] },
-  subject: { flexDirection: 'row', alignItems: 'center', gap: spacing[1], flexShrink: 1 },
+  subject: { alignItems: 'flex-end', gap: spacing[1], flexShrink: 1 },
+  subjectName: { textAlign: 'right' },
   value: {
     flexShrink: 1,
     fontFamily: fontFamily.native.normal,

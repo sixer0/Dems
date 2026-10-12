@@ -21,7 +21,7 @@ export const H = (char: string) => char.repeat(64)
  * `getEvidence` 200 examples of `packages/shared/src/api/evidence.ts`, each checked against the strict
  * schema of operation 40 and handed out as a fresh copy.
  */
-export type ContractItemName = 'withPackage' | 'productSealed' | 'productSealedInterrupted' | 'productSealedOneCamera' | 'noMedia' | 'outsideCaseScope' | 'seedSealedDemo'
+export type ContractItemName = 'withPackage' | 'productSealed' | 'productSealedInterrupted' | 'productSealedOneCamera' | 'noMedia' | 'outsideCaseScope' | 'seedSealedDemo' | 'neverSealed' | 'simulatedSealed'
 export function contractDetail(name: ContractItemName): EvidenceDetail {
   const example = (CORE_API_EXAMPLES.getEvidence?.responses[200] as Record<string, { value: unknown }> | undefined)?.[name]
   if (example === undefined) throw new Error(`the contract has no getEvidence 200 example "${name}"`)

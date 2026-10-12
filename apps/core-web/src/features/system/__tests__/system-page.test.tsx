@@ -227,7 +227,8 @@ describe('System & Maintenance page (01_specs §14.5.8)', { timeout: 30_000 }, (
     })
     fireEvent.click(demo.getByTestId('system-demo-fault-FAN_STALL'))
     expect(await screen.findByText('Not permitted')).toBeInTheDocument()
-    expect(screen.getByText('Requires the Technician role')).toBeInTheDocument()
+    // The toast's description (wave J: the same sentence also stands, visibly, beside the page's disabled controls).
+    expect(screen.getAllByText('Requires the Technician role').some((node) => node.closest('.dems-role-reason') === null)).toBe(true)
     expect(screen.queryByText(/needs permission/)).toBeNull()
     expect(sim.store.getState().faults.active).toEqual([])
   })
@@ -256,9 +257,13 @@ describe('System & Maintenance page (01_specs §14.5.8)', { timeout: 30_000 }, (
     mount()
     const page = await screen.findByTestId('page-system', {}, PAGE_WAIT)
     expect(within(page).getByTestId('system-update-install')).toBeDisabled()
-    expect(within(page).getByTestId('system-update-locked')).toHaveAccessibleName(/Requires the Technician role/)
+    // Fix wave J (JW-14): the reason of each disabled control is VISIBLE beside it (it lived in a tooltip).
+    expect(within(within(page).getByTestId('system-update-locked')).getByTestId('role-reason')).toHaveTextContent('Requires the Technician role')
     expect(within(page).getByTestId('system-restart-services')).toBeDisabled()
     expect(within(page).getByTestId('system-export-logs')).toBeDisabled()
+    const gates = within(page).getAllByTestId('system-rbac-gate')
+    expect(gates.map((gate) => gate.getAttribute('data-permission')).sort()).toEqual(['AUDIT_EXPORT', 'MAINTENANCE'])
+    expect(gates.map((gate) => within(gate).getByTestId('role-reason').textContent).sort()).toEqual(['Requires the Supervisor role', 'Requires the Technician role'])
     expect(within(page).getByTestId('system-run-diagnostics')).toBeEnabled()
   })
 
@@ -274,7 +279,19 @@ describe('System & Maintenance page (01_specs §14.5.8)', { timeout: 30_000 }, (
     expect(await screen.findByText('Core services restarted (simulated)')).toBeInTheDocument()
     expect(within(page).getByTestId('system-uptime-SVC-01')).toHaveTextContent('00:00:00')
 
+    // Fix wave J (JT-06 / JW-06; truth rule 3e): "Install update" asks first, naming the version, the slot and the restart.
     fireEvent.click(within(page).getByTestId('system-update-install'))
+    expect(sim.store.getState().update.state).not.toBe('RUNNING')
+    const confirm = await screen.findByTestId('system-update-confirm')
+    expect(confirm).toHaveTextContent('Install v2.5.0?')
+    expect(within(confirm).getByTestId('system-update-confirm-body')).toHaveTextContent('inactive slot B')
+    expect(confirm).toHaveTextContent(/restarts into the new slot/)
+    // Cancel starts nothing.
+    fireEvent.click(within(confirm).getByTestId('system-update-confirm-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('system-update-confirm')).toBeNull())
+    expect(sim.store.getState().update.state).not.toBe('RUNNING')
+    fireEvent.click(within(page).getByTestId('system-update-install'))
+    fireEvent.click(within(await screen.findByTestId('system-update-confirm')).getByTestId('system-update-confirm-install'))
     expect(sim.store.getState().update.state).toBe('RUNNING')
     expect(await screen.findByText('Installing v2.5.0 (simulated)')).toBeInTheDocument()
     expect(within(page).getByTestId('system-slot-B')).toHaveAttribute('data-target', 'true')

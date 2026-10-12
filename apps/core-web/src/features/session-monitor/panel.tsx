@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useRetryCooldown } from '@dems/shared/realtime'
 import { cn } from '@/lib/utils'
+import { DemoMark } from '@/components/demo-mark'
 import { PANEL_BEAT_MS, usePanelVariants, type PanelId } from './choreography'
 import { logSessionMonitorError } from './log'
 
@@ -45,6 +46,8 @@ export function Panel({ id, icon: Icon, title, action, actionBusy = false, bodyC
         <header className="sm-card-header">
           <Icon className="sm-card-icon" aria-hidden="true" strokeWidth={1.75} />
           <h2 className="sm-card-title">{title}</h2>
+          {/* Fix wave J (JW-07; truth rule 3f): on the demonstration Core every panel that shows a feed, a recording state or an integrity statement says DEMO. */}
+          <DemoMark block={`monitor-${id}`} className="sm-card-demo" />
           {action ? (
             <div className="sm-card-action" aria-busy={actionBusy || undefined}>
               {action}

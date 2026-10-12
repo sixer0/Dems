@@ -105,3 +105,29 @@ describe('R-T-1: a disabled menu item keeps its visible title above its reason',
     expect(screen.getByText(evidenceEn.actions.archiveTitle.replace('{{id}}', id), HIDDEN)).toBeTruthy();
   });
 });
+
+// Fix wave J round two (JT-16; phone report section 5): the row menu offered Export to an investigator as an
+// ordinary entry and refused at the wizard's first step. The role rule is stated BEFORE the press.
+describe('JT-16: the row menu\'s Export says the role rule before the press', () => {
+  it('INVESTIGATOR: Export is disabled over "Requires the Supervisor role"; a press opens no wizard', async () => {
+    const h = renderEvidenceApp({ user: 'budi.santoso' });
+    await settle();
+    const id = h.idOf('0001');
+    const item = openMenu(`evidence-row-menu-${id}`, `evidence-row-export-${id}`);
+    expectStacked(item, evidenceEn.actions.export, 'Requires the Supervisor role');
+    expect(item.props.accessibilityState?.disabled ?? item.props['aria-disabled'] ?? item.props.disabled).toBe(true);
+    fireEvent.press(item);
+    await settle();
+    expect(screen.queryByTestId('evidence-export-wizard', HIDDEN)).toBeNull();
+  });
+
+  it('CONTROL - SUPERVISOR: Export is enabled and carries no reason', async () => {
+    const h = renderEvidenceApp({ user: 'andi.pratama' });
+    await settle();
+    const id = h.idOf('0001');
+    const item = openMenu(`evidence-row-menu-${id}`, `evidence-row-export-${id}`);
+    expect(within(item).getByText(evidenceEn.actions.export, HIDDEN)).toBeTruthy();
+    expect(within(item).queryByText('Requires the Supervisor role', HIDDEN)).toBeNull();
+  });
+});
+
