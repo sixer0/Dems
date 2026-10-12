@@ -1,0 +1,750 @@
+---
+task_id: 2026-10-12_input_av_core_adapter_plan
+task_slug: input_av_core_adapter_plan
+date: 2026-10-12
+agent: task-architect
+type: implementation blueprint, track D (autonomous development on this Mac, no hardware)
+scale_category: Migration (port of logic into the Core adapters), implementation pass
+tiering: paid
+professional_document: false
+review_mode: gate (pair programming is off in this project)
+branch: task4/input-av-core-port (baseline cf2f8008)
+governed_by: masterplan/04_design_addendum.md (where it differs from 01_specs, 02_plan, 03_db_schema_extension, it governs: its section 11); decisions/decisions.md U1-U14, P1-P9, C1-C14
+does_not_edit: identification/02_structured.md (the planning blueprint, executed), any masterplan or verification file
+status: proposed - the controller validates (PRE-HIL V1-V12) and delegates from it under U14
+---
+
+# Implementation blueprint, track D: port of the input-av input logic into the Core adapters
+
+## 0. Summary
+
+- **What this is.** The delegation plan for track D: everything that is built and closed on doubles on this Mac. 160 rows: 150 unconditional delegable rows, 9 conditional on an experiment (7, 9, 23, 34, 56, 57, 58, 59, 142), and row 1, which is done in this document and not delegated. Rows 141 to 160 carry the requirements AD-01 to AD-14 of `verification/04_security_addendum.md` (CAUTION, 0 FAIL); step numbers are stable identifiers, so they follow row 140 in the table and sit in their milestone by their `[Mx]` prefix and their dependencies. No row needs a device, a Linux host, `sudo`, a real camera credential or the user.
+- **What it is not.** Track H (the run of the hardware acceptance test package, WP-15; the legacy data guard, WP-21) and stage 2 of the class-C lift ("fit to record") are not in this blueprint. They wait for the user and for the result of the package that rows 124 to 132 build.
+- **Order.** The addendum's order: experiments first (E-11 before the relay), schema set A alone, adapters built in new files and proven at adapter level (T-1 to T-4), the lift in three parts with the first full session on doubles in WP-13c, commissioning behind its security review, the hardware package closed last.
+- **Honesty of this document.** Sizes, models, token figures and durations are estimates. Paths marked `EXISTS:` were verified by Glob in this pass (list in section 14). New files are named only by their verified parent. Names of files that do not exist yet are the addendum's proposed names and are the executor's to change.
+
+## 1. Prior continuity and memory screening
+
+| Item | Source | Effect on this blueprint |
+|---|---|---|
+| The planning blueprint is executed (rows 1 to 13, the addendum, the git preparation) | `identification/02_structured.md`; `initialization/02_git_preparation.md`; `decisions/decisions.md` C6, C12 | Phase 0 of the plan is met except four small items, which are rows 2 to 5 |
+| Full autonomy, with a decision log; stop only for a scope change, a security FAIL, a hard-to-reverse action | U12 B2, U14; memory `feedback-autonomy-with-decision-log` | No approval row between milestones. Three stop conditions are named in section 9 |
+| Maximum parallelism with a mediating controller; the heavy-host lock | CLAUDE.md section 6; memory `feedback-parallelism-push-to-limit`; `package.json:54-55` | Waves from build edges only; one heavy job at a time |
+| Tests: one run if it passes, a second only after a failure; long runs go to a separate runner; fix waves extend existing test files | memory `feedback-test-depth-2-plus-1`, `feedback-test-suite-consolidation` | Row conventions, section 6 |
+| Pair programming is off | memory `feedback-pair-programming-rows` | Review column = `gate` in every row |
+| Ready-made frameworks | memory `feedback-ready-made-frameworks` | The relay links the pinned FFmpeg libraries; the ONVIF calls use the `onvif` package already present |
+| No device security changes by an agent | memory `feedback-no-device-security-changes` | Row 12 uses the emulator only as task 3 did; it sets no lock |
+
+## 2. Architecture challenge and refinement
+
+| Dimension | Challenge | Resolution |
+|---|---|---|
+| Intent | "Implement the plan" could be read as including the hardware run | Track D only. Every package closes as "done on doubles" with its unproven list (section 12) |
+| Scale category | The planning task was Migration with a research gap analysis | Unchanged. This pass adds execution rows; research, specification and impact are the masterplan and verification documents already written |
+| Source | Four masterplan documents that disagree in eleven places | One governing package table, section 4. The addendum governs (its section 11) |
+| Spec | 61 requirement identifiers (addendum section 9) | Each is carried by a row; table in section 11; count 61, missing 0 |
+| Impact | Single-writer files, pins, the capture fence | Section 7 names every single-writer resource; the fence files `boot.ts`, `operation.ts`, `checks.ts` have no writer in any row |
+| Assumption AS-1 (risky) | A Linux container can be run on this Mac. The addendum makes the container build required (P12-F12); nobody has checked that a runtime is installed | Row 78 states the runtime as its first check. If none is present the row returns `blocked: NO_CONTAINER_RUNTIME` and the controller decides (section 13, decision 1). No other row depends on the container by build except row 79 |
+| Assumption AS-2, now a fact | `verification/04_security_addendum.md` exists: CAUTION, 0 FAIL, 14 requirements, gates AD-01, AD-02, AD-04, AD-08 | Adopted in this document (row 1 is a record, not a delegation). Each AD-nn is attached to its row (section 11.2); the gate ones are written into the Verification cell of their rows as GATE CONDITION |
+| Assumption AS-3 | Experiment E-11 selects branch A or B | Rows 41 to 48 are drawn for A and B. Branch C makes row 9 run: a refinement of this blueprint for "the worker pulls" before any relay row starts |
+| Edge case | Three screens the plan's phase 10 goal needs have no part in the addendum's split (commissioning settings and scan; installation acceptance form) | Rows 112 and 118 are marked `[derived]`. The controller confirms or drops them (section 13, decision 3) |
+| Edge case | S13-17 asks for a change to section H.5 of the evidence specification, which lives in the closed task-3 folder | Row 87 drafts the text as an erratum in this task folder; whether the task-3 document is edited is the controller's (section 13, decision 4) |
+
+## 3. Source, spec and impact coverage
+
+| Triad part | Where it is | Row that re-checks it |
+|---|---|---|
+| Source | `research/01` to `03`; the code lines cited in the addendum at `cf2f8008` | 2 (pins re-measured at the branch head), 27 (the three facts the addendum marks NOT VERIFIED for WP-13a) |
+| Spec | `masterplan/01_specs.md`, `03_db_schema_extension.md`, `04_design_addendum.md` | 1 (security requirements attached), 3 (amending rows), 87 (AM-1), 103 (helper privilege form) |
+| Impact | `verification/01` to `03`; addendum sections 8.2, 8.3 | Every gate row; 136 to 139 |
+
+## 4. Governing package table (verification finding F-01: one definition per package)
+
+| Package | Governing definition | Rows |
+|---|---|---|
+| WP-01 (rest) | plan phase 1; addendum 5.1, 5.2 | 6-12, 14 |
+| WP-09 | plan phase 1 | 13 |
+| WP-24 | schema design; addendum 1.4 #1, 7.2 | 17, 18 |
+| WP-23a, b, c | addendum 8.1, 8.2 | 19; 102; 100 |
+| WP-02 | addendum 8.1 last row, 2.3 step 4 | 21-25 |
+| WP-04 | plan phase 2; addendum 7.2 (mints no code), 2.3 | 26 |
+| WP-13a, b, c | addendum 1.4, 6.4 | 27-33; 85; 88, 89 |
+| WP-11, WP-11b | plan phase 2; addendum 5.3 branch B | 34; 58 |
+| WP-03a, b, c, d | addendum 8.1 | 41; 39, 40; 42, 43; 44 |
+| WP-05 | addendum 7.2 | 38, 50, 51 |
+| WP-06a, b, c | addendum 2.3, 3, 5.3, 8.1 | 45; 20, 46, 47, 48; 49 |
+| WP-10a, WP-10b | addendum 7.3 | 56, 57; 52-55 |
+| WP-07a, b, c, d | addendum 4.2, 8.1 | 64; 63; 70, 71; 72 |
+| WP-08 | plan phase 4; addendum 6.3 T-2, T-4, 8.3 G-R12 | 65-69 |
+| WP-14 | plan phase 5; addendum 9.2 P12-F12 | 76-79 |
+| WP-20 | plan phase 5; addendum 2.5 (e), 9.4 | 80, 81 |
+| WP-12 | plan phase 8; C10 | 94, 96-98 |
+| WP-25 | schema design; addendum 8.2 | 99, 101 |
+| WP-19a, b, c, d | addendum 8.1; security review 5.3 | 104; 105, 106; 95, 107; 108 |
+| WP-22a, b, c | addendum 8.1, 2.5 | 109, 110; 111; 113 |
+| WP-26a, b | addendum 8.1; C2 | 114, 115; 116, 117 |
+| WP-27 | plan phase 7, section 9A; addendum 9.6; security review 5.4 | 124-132 |
+
+### 4.1 Packages not built in this blueprint
+
+| Package | State | Ruling that parks it | What track D does |
+|---|---|---|---|
+| WP-16 lossless track per microphone | not planned | U12 A1 (stored form = the Core's) | one closure line, in row 3's document |
+| WP-17 several rooms per Core | not planned | U12 A8 (one room per Core) | one closure line, row 3 |
+| WP-18 gain setting, schema set D | deferred | U12 A10; U11 on OQ-3 | one closure line, row 3 |
+| WP-15 run of the hardware package | track H | U13 | nothing: built by rows 124-132, run by the user |
+| WP-21 legacy data guard | track H, the user in person | U12 A9; C12 | nothing: no agent opens `apps/input-av/data/` |
+
+## 5. Scale-adjusted design
+
+| Element | Choice |
+|---|---|
+| Research posture | None new: the research phase is closed. Three measuring rows (2, 27, and the first step of 89) settle what the addendum marks NOT VERIFIED |
+| Specification depth | The addendum is the specification. Contract-landing rows go first and alone: 19 (audit vocabulary), 20 (adapter contract), 28 (selector contract), 38, 52, 63, 94, 102, 116 |
+| Verification strategy | Unit and static checks in the row; one heavy scripted session per test row; a review and a gate per milestone; the full regression once (row 138) |
+| Rollback | Each schema set is its own commit (C9) and is applied and rolled back once on the local database; every other milestone is one commit that reverts alone |
+
+## 6. Row conventions (valid in every row)
+
+- **Standing rules.** Nothing under `apps/input-av/data/` is opened. `apps/input-av/` is a read-only reference. Never `git clean`, `git stash`, `git add -A`, `git add .`; paths are staged by name; no push. No `sudo`, no host address change, no real camera, no real credential. Migrations only on this Mac's local PostgreSQL (the demo database and the throw-away databases of the suites), under `.locks/db-migrate.lock`. The capture fence files `boot.ts`, `operation.ts` and `checks.ts` under `apps/core-server/src/capture/` are not edited by any row except rows 80 and 81, which add host checks to `capture/boot/checks.ts`, and row 58, which moves the worker version line there; none may change an existing refusal. Where `verification/04_security_addendum.md` corrects the addendum, the security check governs (section 11.3).
+- **First act of every driver.** Declare the exact paths it will write (a claims file the controller reads). The Ownership Area of the profile is the bound; a path outside it is a request to the controller.
+- **Tests in a row.** Targeted files only, `--maxWorkers=2`, one run if it passes and a second only after a failure. The unit suites (`npm test`) and `npm run test:db` are run once per commit by the controller, not by each row. `npm run test:db`, anything that binds a loopback port and anything that starts the capture worker need the command sandbox off. Anything that starts the capture worker, the relay or a scenario suite takes `.locks/heavy-host.lock`: one heavy job at a time on this host. New tests extend the test file of their subject; no per-wave test files.
+- **Output paths.** Relative to this task folder. `implementation/NNN_*.md`, `test/NNN_*.md`, `gateway_check/NNN_*.md`, `verification/NNN_*.md`, `decisions/NNN_*.md`, `research/NNN_*.md` with NNN = the step number. The record names the change set; the code lives in the Ownership Area.
+- **Prefixes.** `[Mx|WP-nn]` milestone and package; `[cond: ...]` runs only when the named outcome occurs, otherwise the controller marks it skipped with the outcome as evidence; `[derived]` not a part of the addendum's split, derived from the plan's phase goal.
+- **Dependency kinds.** `B` = the code or the result of that row must exist. `C` = its specification, contract or decision text is enough. Waves are computed from `B` only. A milestone gate is never a `B` dependency of an implementation row, with two exceptions that are real security gates: row 8 (RC-1: E-11 before the relay) and row 86 (the security acceptance before the lift).
+- **Narrative tiers.** T1 = full 5W1H (reviews, gates, decision drafts, procedure chapters); T2 = finding, why, how verified, source (experiments, measurements); T3 = statement plus evidence (change-set records, commits).
+- **Hardware checks** are written `9A/H-nn` (finding F-10), because `H-nn` also names the 38 logic items of the research.
+
+## Structured Task Breakdown
+
+> **PRIMARY OUTPUT - controller-executable table.** Each row is one delegation unit. If narrative text conflicts with this table, the table governs. The `## Execution Profile` below carries the same step numbers.
+
+| Step | Task Description | Agent_to_Invoke | Expected Output | Depends On | Verification | Phase |
+|------|------------------|-----------------|-----------------|------------|--------------|-------|
+| 1 | [M0] [done in this blueprint, not delegated] The addendum security check is adopted: `verification/04_security_addendum.md` (CAUTION, 0 FAIL) was read, its requirements AD-01 to AD-14 are attached to their rows (section 11.2), rows 141 to 160 were added for them. The number is kept so that the `1:C` dependencies stay valid | task-architect | section 11.2 of this document (T1) | - | requirements attached: 14 of 14; unattached 0 | masterplan |
+| 2 | [M0] Re-measure the pins at the branch head: operations 97, audit types 67, permissions 14, value sets 44, migration files 15, schema version 6, contract revision `dbc-7`, tables 43, each with file and line | data-analyst | `research/002_baseline_pins.md` (T3) | - | 8 pins of 8 each with the search that produced it; every difference from the plan's figure is listed | research |
+| 3 | [M0] Draft the amending decision rows the packages need: AM-2 to AM-8 in the register's wording, the four static-rule amendments of addendum 8.3 (G-R2 with G-R8, G-R9, G-R10 with G-R11, G-R12 with the sentence of AD-07 (2) that the device argument is built from two integers only), the closure lines of WP-16, WP-17, WP-18 | data-analyst | `decisions/003_amendment_rows.md` (T1) | - | AM rows 7 of 7; static-rule rows 4 of 4 each naming its package; closure lines 3 of 3 each citing its ruling | decisions |
+| 4 | [M0] Check the legacy data guard before any git write of track D | git-specialist | `initialization/004_legacy_guard_check.md` (T3) | - | `git check-ignore -v apps/input-av/data` names `.git/info/exclude`; branch is `task4/input-av-core-port`; pushes 0 | initialization |
+| 5 | [M0] Add the two search needles of S13-16 (3) to the count-only secret scan: the camera-credential form, the form of the ingest secret of RC-2 | coder-execution | `implementation/005_secret_scan_needles.md` (T3) | - | the scan run on a file planted with each form counts 1 for each; on the tree it counts 0 | implementation |
+| 6 | [M1\|WP-01] Experiment E-11 on the release worker with two pushers: O-1 (push to another path), O-2 (second client on the right path), O-3 (right path after a refused wrong-path push). By AD-01 (1) to (3): every REFUSED run is paired in the same run with an ACCEPTED control push to the right path by the same pusher; O-1 is run for the seven near-miss paths (last character, strict prefix, one more component, letter case, trailing slash, query string, one percent-encoded character), 3 runs each; REFUSED means an RTSP error status with no `ingest_connected` and 0 bytes | test-expert | `test/006_e11_listener_path.md` (T2) | 1:C | GATE CONDITION AD-01: every run recorded as REFUSED, ACCEPTED or INCONCLUSIVE (a run without its control, a timeout or a refused connection is INCONCLUSIVE); near-miss runs 21 of 21 recorded; product source files changed: 0 | test |
+| 7 | [M1\|WP-01] [cond: O-1 or O-2 ACCEPTED in any run] Step E-11b: read the public headers of the installed libavformat and run a probe program of a few lines: can the announced path be read before the stream is probed | test-expert | `test/007_e11b_announced_path.md` (T2) | 6:B | GATE CONDITION AD-01 (5): READABLE only if, for a push to a wrong path, the program prints a value equal to that wrong path and different from the address the listener was opened with; anything else is NOT READABLE | test |
+| 8 | [M1] Gate RC-1: select the branch of addendum 5.3 (A, B or C) from the recorded observations | verifier | `gateway_check/008_rc1_branch_gate.md` (T1) | 6:B, 7:B, 1:C | GATE CONDITION AD-01 (4): the branch follows from the completed rule table of section 9.1 with no judgment added (INCONCLUSIVE or disagreeing runs: not A); a selection of A is recorded as provisional until row 141; the residual of O-3 is recorded; branch C is reported as "row 9 runs before any relay row" | gateway_check |
+| 9 | [M1] [cond: branch C] Refine this blueprint for "the worker pulls" (addendum 5.4): replace rows 41 to 48 and 58, make WP-11 mandatory, add the security review of the changed worker before the lift | task-architect | `identification/03_implementation_blueprint.md` refined (T1) | 8:B | every item of the cost table of addendum 5.4 has a row; AD-14 has a row (which parts of RC-6 the pulling worker keeps, which it cannot, what stands in their place); rows of size L: 0; the controller classifies the change | masterplan |
+| 10 | [M1\|WP-01] Experiment E-10 extended: a push that pauses and resumes with a time jump and does not begin on a keyframe at the camera side | test-expert | `test/010_e10_resumed_push.md` (T2) | - | outcome recorded as "one file with a gap, 0 decode errors" or as the named failure; WP-11 triggered: yes or no | test |
+| 11 | [M1\|WP-01] Experiment E-8, reader half: the Core's reader on the HEVC file of E-1 | test-expert | `test/011_e8_reader.md` (T2) | - | codec reported HEVC: yes or no; frame rate value or null; WP-10a (reader) needed: yes or no | test |
+| 12 | [M1\|WP-01] Experiment E-8, playback half: one sealed development session with a generated HEVC source opened in the web console, the tablet emulator and an export, in one scripted session; test fixtures only | test-expert | `test/012_e8_playback.md` (T2) | - | per client "plays" or "states that it cannot" (a silent failure is a fail); sample-entry name recorded; if no such session can be made without product code the row records NOT RUN and names row 89 as its carrier | test |
+| 13 | [M1\|WP-09] Unit check E-6: every 24-bit value survives the conversion to 32-bit float; the transport statement for production | coder-execution | `implementation/013_wp09_transport.md` (T3) | - | 16,777,216 of 16,777,216 values equal after the round trip | implementation |
+| 14 | [M1\|WP-01] Written verdict over E-1, E-2, E-8, E-10, E-11: one outcome per run, E-1 recorded as "worker part" (F-05), the three consequences (WP-10a, WP-11, the home of SA-2) | test-expert | `test/014_wp01_verdict.md` (T1) | 6:B, 7:B, 10:B, 11:B, 12:B | five results each "pass", "fail" or a named outcome; three consequences each yes or no with its evidence row | test |
+| 15 | [M1] Gate M1 | verifier | `gateway_check/015_m1_gate.md` (T1) | 8:B, 13:B, 14:B | verdict complete; branch logged; change set = fixtures, tests, documents only | gateway_check |
+| 16 | [M1] Commit phase 1, paths staged by name | git-specialist | `implementation/016_commit_phase_1.md` (T3) | 15:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 17 | [M2\|WP-24] Schema set A: `capture_device_streams` (plain index on device, lens, role), `capture_audio_inputs`, `session_capture_sources.source_facts` with its bound on device text, the six slot columns of `capture_config` nullable with the slot-pair CHECK, a CHECK holding each element of `capture_devices.profiles` to the code pattern (AD-06 (4)); generated migration, hand-written privileges file, version step, moved pins re-measured, per-set test | database-specialist | `implementation/017_schema_set_a.md` (T2) | 2:C, 1:C | `npm run test:db` green with every moved pin at its re-measured value; on a seeded clone of the version before: six columns unchanged in content, a video slot with a device and no profile refused; applied then rolled back once on the demo database | implementation |
+| 18 | [M2\|WP-24] Commit schema set A alone | git-specialist | `implementation/018_commit_set_a.md` (T3) | 17:B | 1 commit holding only the paths of row 17; staged paths under `apps/input-av/`: 0 | implementation |
+| 19 | [M2\|WP-23a] Audit vocabulary of the whole plan in one change set: the ten new types (67 to 77) with categories and closed detail keys, the third discovery scope value for sound cards, the reveal reason held to the closed set of three (AD-03 (1)) | coder-execution | `implementation/019_audit_vocabulary.md` (T3) | 2:C | the writer accepts each of the 10 types and rejects a foreign detail key; every count pin of the file set passes at 77 | implementation |
+| 20 | [M2\|WP-06b, WP-07a] Adapter contract, both members at once: `profile` on the camera source target, the declared optional `start` on the audio stream handle, the named error for an input beyond the card; fake and local adapters ignore them | coder-execution | `implementation/020_adapter_contract.md` (T3) | - | typecheck green; the adapter unit suites show 0 changed results | implementation |
+| 21 | [M2\|WP-02] Production process door as a second pinned file: the start message taken as the Buffer of row 147, written to standard input and zero-filled, the pipe kept open as the liveness channel, errors that carry a code and no member of the message; the relay and guard path keys; the local door is not edited | coder-execution | `implementation/021_production_door.md` (T3) | 147:B, 1:C, 3:C | static test: every argument is a literal and no string of the message is made; the door's unit tests pass; the rule lists G-R2, G-R8 pass in their amended state | implementation |
+| 22 | [M2\|WP-02] Experiment E-7 without a guard: does the FFmpeg helper end when its standard input ends (HA-11) | test-expert | `test/022_e7_without_guard.md` (T2) | 21:B | surviving children after an abrupt end of the parent: a count; guard needed: yes or no | test |
+| 23 | [M2\|WP-02] [cond: guard needed] Guard program: ends its child when its own standard input ends | coder-execution | `implementation/023_guard_program.md` (T3) | 22:B | `npm run test:capture-worker` green; the guard's unit check passes | implementation |
+| 24 | [M2\|WP-02] Leftover-process detection for the production programs, reading the program path behind a platform seam (HA-12) | coder-execution | `implementation/024_leftover_detection.md` (T3) | 21:C | fixture process listings in the macOS form and in the Linux short-name form: a planted leftover is named in both | implementation |
+| 25 | [M2\|WP-02] Experiment E-7 final, on macOS: no child survives an abrupt end of the Core | test-expert | `test/025_e7_no_survivor.md` (T2) | 21:B, 23:B, 24:B | surviving child processes: 0 for the helper path; the relay half is named as carried by row 44 | test |
+| 26 | [M2\|WP-04] ONVIF session: one profile per video source with the larger pixel area first, tokens and sizes read, a credential-free locator read (a locator with a user part is refused); no profile code is formed here | coder-execution | `implementation/026_onvif_profiles_locator.md` (T3) | 20:C | fake device with two video sources: 2 profiles, larger first; a token with lower-case letters, a dot, a colon and a hyphen is returned unchanged; a locator with a user part is refused | implementation |
+| 27 | [M2\|WP-13a] Measure the three facts the addendum left unverified: the simulator's session-start action, which client files assume two selector lines, the pre-check of the capture notices | data-analyst | `research/027_selector_assumptions.md` (T2) | - | each of the three answered with file and line; the files that must change are listed per workspace | research |
+| 28 | [M2\|WP-13a] Shared contract: the optional `unassign` member on the body of operation 78, its schema and generated description (a body that unassigns and assigns the same slot is 422), the simulator's hosted action `setCaptureConfig` rewritten so that an unassigned slot can be assigned again and no line is found by position (AD-04 (1), (2)), the simulator's refusal of a session start on an incomplete selector, the "not assigned" strings | coder-execution | `implementation/028_selector_contract.md` (T3) | 27:B, 1:C | the operation count stays 97; the simulator answers 409 on an incomplete selector; the body pins pass | implementation |
+| 29 | [M2\|WP-13a] Server: a NULL slot is an absent line in both directions, in the row mapping (reader and the writer `captureConfigToRow`), in the capture-config store's raw read (`store.ts:46-53,85-108`, the reader that stops the boot today) and in the slices; a camera line is found by track, a microphone line by role, never by position; the hosted action unassigns (same permission, lock and audit type; the only writer of an empty slot; one audit row per cleared slot, none for an empty one) | coder-execution | `implementation/029_selector_server.md` (T3) | 17:B, 27:B, 28:C, 1:C | GATE CONDITION AD-04: a selector with only `VIDEO-02` and only a STANDBY microphone is written and read back with `video_01_*` and `mic_primary_id` NULL; the boot step `capture.config` passes on an all-unassigned selector; an unassign of two slots writes 2 `CAPTURE_CONFIG_CHANGED` entries | implementation |
+| 30 | [M2\|WP-13a] Server pre-check: an unassigned slot is a BLOCK item worded "source not assigned" | coder-execution | `implementation/030_precheck_unassigned.md` (T3) | 29:B, 1:C | one BLOCK item per unassigned slot with the stated code; an assigned selector shows 0 such items | implementation |
+| 31 | [M2\|WP-13a] Web console: an absent selector line is drawn as "not assigned" with the offer to assign | coder-execution | `implementation/031_selector_web.md` (T3) | 28:B, 1:C | component test with 0, 1 and 2 lines per kind passes; the core-web selector tests show 0 other changed results | implementation |
+| 32 | [M2\|WP-13a] Mobile client: an absent selector line is drawn as "not assigned" | coder-execution | `implementation/032_selector_mobile.md` (T3) | 28:B, 1:C | component test with 0, 1 and 2 lines per kind passes | implementation |
+| 33 | [M2\|WP-13a] Tests of addendum 1.7: the 21-state table (7 selector categories by 3 operations), "the remedy is executable" on a seeded clone, "no recording without sources" | test-expert | `test/033_selector_21_states.md` (T2) | 28:B, 29:B, 30:B, 1:C | 21 of 21 outcomes as stated; development boot, unassign four, production boot passes the fence and (GATE CONDITION AD-04 (3)) the step `capture.config` by name, with 1 `SYSTEM_BOOT` row, and a session start answers 409; `git diff` of the three fence files is empty | test |
+| 34 | [M2\|WP-11] [cond: E-10 failed] The worker's ingest accepts a resumed push; a foreign client in the gap is a fault (RC-4) | coder-execution | `implementation/034_wp11_resumed_push.md` (T3) | 10:B | E-10 passes; `npm run test:capture-worker` green; the foreign-client case raises a fault | implementation |
+| 35 | [M2] Code review of phase 2 (rows 19 to 33) | senior-code-reviewer | `verification/035_m2_review.md` (T1) | 19:B, 20:B, 21:B, 24:B, 25:B, 26:B, 29:B, 30:B, 31:B, 32:B, 33:B, 147:B, 149:B, 150:B, 158:B | blocking findings 0, or each routed to its producing row and re-checked | verification |
+| 36 | [M2] Gate M2 | verifier | `gateway_check/036_m2_gate.md` (T1) | 35:B, 18:B | evidence of section 9, gate M2; GATE CONDITION AD-04: rows 29, 33, 149 and 150 passed, else WP-13a is not closed | gateway_check |
+| 37 | [M2] Commit phase 2 (set A is already committed) | git-specialist | `implementation/037_commit_phase_2.md` (T3) | 36:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 38 | [M3\|WP-05] Shared contract of the connection test: outcome vocabulary extended additively, `NOT_H264` kept, wording "usable profile", generated description | coder-execution | `implementation/038_discovery_contract.md` (T3) | - | the existing outcomes are all still members; contract tests pass | implementation |
+| 39 | [M3\|WP-03b] Test camera, base: a pull-side RTSP server on loopback with Digest authentication, H.264 and HEVC, parameter sets in the description or in band; one synthetic account constant in one file | coder-execution | `implementation/039_rtsp_fixture_base.md` (T3) | - | each of the 4 codec and parameter-set modes answers a reference client as stated; it binds `127.0.0.1` only and no port of 8554 to 8564 | implementation |
+| 40 | [M3\|WP-03b] Test camera, fault modes: a Basic challenge, a delay before the first keyframe, a drop and a resume in mid group, an account with `@ : / %` and a space | coder-execution | `implementation/040_rtsp_fixture_faults.md` (T3) | 39:B | each of the 4 modes answers a reference client as stated | implementation |
+| 41 | [M3\|WP-03a] Relay, record mode: start message on standard input, pull over RTSP/TCP, video only, push to the ingest address; Digest only; own log callback, core-dump limit 0, no echo of the message; the library pin at build and at start | coder-execution | `implementation/041_relay_record_mode.md` (T3) | 8:B, 39:B, 21:C, 1:C | adapter-level run for one camera: a decodable file with the expected frames; `Authorization: Basic` requests received in 2 runs: 0; socket snapshot of the relay: 0 listening, 0 datagram. If Digest-only cannot be held the row returns `blocked` (stop for the user, addendum section 10 item 4) | implementation |
+| 42 | [M3\|WP-03c] Relay, probe mode with the "push established" report; the probe report is a frame of fixed shape and bounded size with a stated maximum for the parameter-set bytes (AD-06 (3)) | coder-execution | `implementation/042_relay_probe_mode.md` (T3) | 41:B | the probe reports codec, picture size and parameter-set bytes for the H.264 and the HEVC fixture; `Authorization: Basic` requests in 2 probe runs: 0 | implementation |
+| 43 | [M3\|WP-03c] Relay, reconnect by the retry rule with keyframe gating after every open; it ends after 2 authentication refusals and on a missing stream path, each with its code | coder-execution | `implementation/043_relay_reconnect_gating.md` (T3) | 42:B, 40:B, 1:C | the fixture drops and resumes in mid group: one file, 0 decode errors after the gap; after 2 refusals: requests carrying a credential 0 | implementation |
+| 44 | [M3\|WP-03d] Experiment E-12 extended: search for the fixture secret in the argument lists, the environments, both output streams, the log sink, in a good run and three failure runs; the special-character account; relay survivors after a killed parent | test-expert | `test/044_e12_credential_search.md` (T2) | 43:B | occurrences in every place named: 0; the special-character account authenticates; surviving relay processes: 0, also for a relay stopped at the 25 s bound and one left by an aborted open (AD-09 (3)) | test |
+| 45 | [M3\|WP-06a] The reveal module (the one file that names the reveal function) and the credential reader (reveal plus `CAPTURE_CREDENTIAL_REVEALED` in one unit, envelope opened outside it), with their static rules | coder-execution | `implementation/045_credential_reader.md` (T3) | 1:C | one call: 1 credential and 1 audit entry with exactly two detail keys; audit append made to fail: 0 credentials, 0 entries; callers of the reveal function: 1 file | implementation |
+| 46 | [M3\|WP-06b] Production camera adapter in a new file beside the stub: `openSource` (reader, one authenticated `GetStreamUri`, injection, door) bounded at 25,000 ms with the relay killed and reaped at the bound and after an aborted open, keyed by device and profile; `pullUrl` refuses by a named code; registered nowhere | coder-execution | `implementation/046_camera_adapter.md` (T3) | 45:B, 41:B, 26:B, 21:B, 20:B, 1:C | T-1 unit (order, bound, codes) passes; T-2 adapter level with the real relay and the worker's harness gives a decodable file; T-3 the adapter handed to a real registry is refused `CAPTURE_ADAPTER_INVALID` | implementation |
+| 47 | [M3\|WP-06b] Session start: the plan's profile passed to the open, both cameras opened in the same turn, the production ingest window 30,000 ms as a constant of the operation in code that no environment variable, configuration key or operation changes (AD-11; development unchanged), the per-attempt and per-track random element of SA-2 in the ingest address for the selected branch | coder-execution | `implementation/047_session_start_cameras.md` (T3) | 20:B, 8:B, 1:C | with adapter doubles: a first camera delayed 20 s does not delay the second; the random element is 128 bits; static test (AD-05 (1)): the ingest address is built in one function and reaches the plan frame and the start message only | implementation |
+| 48 | [M3\|WP-06b] Measure SA-3: a camera counts as open only when its relay's report and the worker's connect report for that port arrive within 5,000 ms, in either order; one without the other, or a second connect report on a port (the rule for the cell "O-1 REFUSED with O-2 ACCEPTED", AD-01 (4)), is a capture fault with an audit entry that ends the capture | coder-execution | `implementation/048_sa3_pairing.md` (T3) | 47:B, 42:C, 1:C | with doubles: report without connect is a fault; connect without report is a fault; both inside the bound, in both orders, open the camera | implementation |
+| 49 | [M3\|WP-06c] Camera loss callback, presence and clock offset by the unauthenticated ONVIF time read, audit writers for camera loss and camera unreachable | coder-execution | `implementation/049_camera_loss_presence.md` (T3) | 46:B, 43:C, 19:C | a killed fixture raises 1 fault and clears 1; reveal entries for presence: 0; no socket module is imported under the capture folder | implementation |
+| 50 | [M3\|WP-05] Stream-level half of the connection test: the relay probe after the ONVIF half authenticated, the probe frame checked by a schema, the profile code formed by the seal's own function with the codec taken from a closed set by the Core's own parse of the parameter-set bytes, width and height as bounded integers, the code held to the profile pattern before it is stored or shown (AD-06 (1) to (3)), the ONVIF answer as advice only, a refused RTSP authentication counted by the lock-out guard, a stored-credential test of an adopted camera through the reader | coder-execution | `implementation/050_stream_test.md` (T3) | 42:B, 26:B, 38:B, 45:B, 40:C, 1:C | a fixture that reports H264 and delivers HEVC is reported HEVC with code `HEVC_1080P`; the whole test stays inside 15,000 ms on a fake clock; the development connection test shows 0 changed results on the H.264 fixtures | implementation |
+| 51 | [M3\|WP-05] Adoption writes the stream rows: the minted code with the ONVIF token in `capture_device_streams`, the selector and the profile list carry the Core code, each element of the profile list held to the code pattern at the write (AD-06 (4)) | coder-execution | `implementation/051_adoption_stream_rows.md` (T3) | 50:B, 17:B | a profile whose token has a lower-case letter is adopted and assigned to a slot; for the H.264 and the HEVC fixture the minted code equals the statement of the recorded file, `STREAM_PROFILE_DIFFERS` not due | implementation |
+| 52 | [M3\|WP-10b] Shared contract: the camera slice states the stream's resolution, rate and codec in place of the three literals; simulator types and answers follow | coder-execution | `implementation/052_camera_slice_contract.md` (T3) | - | slice schema tests pass; the simulator states the same facts as before for its cameras | implementation |
+| 53 | [M3\|WP-10b] Server: the camera slice is filled from the stored stream facts | coder-execution | `implementation/053_camera_slice_server.md` (T3) | 52:B, 51:B | an HEVC fixture camera is stated HEVC with no rate; an H.264 one as before | implementation |
+| 54 | [M3\|WP-10b] Web console: camera tile and live overlay show the slice's facts, with no "H.264" fallback | coder-execution | `implementation/054_camera_facts_web.md` (T3) | 52:B | the tile test states HEVC for an HEVC slice; literal fallbacks in the two files: 0 | implementation |
+| 55 | [M3\|WP-10b] Mobile client: the camera displays show the slice's facts | coder-execution | `implementation/055_camera_facts_mobile.md` (T3) | 52:B | the device tests state HEVC for an HEVC slice | implementation |
+| 56 | [M3\|WP-10a] [cond: the verdict says the reader needs it] The Core reader reads the frame rate of an HEVC stream | coder-execution | `implementation/056_reader_hevc_rate.md` (T3) | 14:B | E-1's file: the reader reports the rate of the generated source; H.264 results unchanged; every HEVC code minted so far is listed for a new test | implementation |
+| 57 | [M3\|WP-10a] [cond: a client refuses the sample entry] The worker writes the HEVC sample-entry name the clients play | coder-execution | `implementation/057_worker_sample_entry.md` (T3) | 14:B | E-1 repeated: the new name in the file; `npm run test:capture-worker` green | implementation |
+| 58 | [M3\|WP-11b] [cond: branch B] The worker compares the announced path with the plan's before it probes; worker version step | coder-execution | `implementation/058_wp11b_path_compare.md` (T3) | 8:B, 1:C | a wrong-path push never reaches `ingest_connected`; `npm run test:capture-worker` green; the version check of the Core passes at the new number | implementation |
+| 59 | [M3] [cond: row 34, 57 or 58 ran] Worker re-verification: the worker's end-to-end series and the kill matrix, once, in one session | test-expert | `test/059_worker_reverification.md` (T2) | 34:B, 57:B, 58:B | the series passes; kill matrix 35 of 35 | test |
+| 60 | [M3] Code review of phase 3 (rows 38 to 58) | senior-code-reviewer | `verification/060_m3_review.md` (T1) | 43:B, 44:B, 46:B, 48:B, 49:B, 51:B, 53:B, 54:B, 55:B, 143:B, 145:B, 146:B, 153:B, 154:B, 159:B | blocking findings 0, or each routed and re-checked | verification |
+| 61 | [M3] Gate M3 | verifier | `gateway_check/061_m3_gate.md` (T1) | 60:B, 59:B, 142:B | evidence of section 9, gate M3 | gateway_check |
+| 62 | [M3] Commit phase 3 | git-specialist | `implementation/062_commit_phase_3.md` (T3) | 61:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 63 | [M4\|WP-07b] Contract package of the two microphone operations (list the sound cards, register an input): registry entries, schemas, the stated answers in `SIMULATED` and `REAL_DEVELOPMENT`, generated description, the operation-count pins | coder-execution | `implementation/063_audio_ops_contract.md` (T3) | 19:C, 2:C | every count pin passes at 99; both operations have a stated simulator answer; no live path exists yet | implementation |
+| 64 | [M4\|WP-07a] Card listing parser behind an injected enumerator: native channel count, formats, stable card identity, the one-room allocation rules, the refusal of an input beyond the card; no automatic choice | coder-execution | `implementation/064_card_listing.md` (T3) | 20:B, 3:C | fixed listings give the expected cards and inputs; an input beyond the card is refused by name; a search of the area for an automatic card choice finds 0 | implementation |
+| 65 | [M4\|WP-08] Generator of the shared-capture configuration (`dsnoop` plus `plug`) per card into the Core's run directory, with its configuration key | coder-execution | `implementation/065_alsa_config_generator.md` (T3) | 3:C | the generated text equals the values quoted from the input-av source (`masterplan/01_specs.md:177-179`); the file is written under the run directory only; the rule lists pass in their amended state | implementation |
+| 66 | [M4\|WP-08] Linux helper argument table beside the macOS one: format `alsa`, the channel selection text made by one table function from an integer 0 to 63, the device argument made by one table function from two integers (card index, device index) with no descriptor string and no card id in any argument (AD-07 (2)) | coder-execution | `implementation/066_linux_helper_args.md` (T3) | 3:C | the argument list equals the quoted input-av values as text; an integer outside 0 to 63 is refused; the macOS table's tests show 0 changed results | implementation |
+| 67 | [M4\|WP-08] Production microphone adapter in a new file beside the stub: at open it enumerates, matches the stored row to a live card, builds the arguments from the live listing, implements `start`, `level()` and the pre-check short open; registered nowhere | coder-execution | `implementation/067_usb_audio_adapter.md` (T3) | 64:B, 65:B, 66:B, 21:B, 20:B | T-1 unit with a door double passes; no value read from the database and no string of a live listing reaches an argument (static test); T-3 the adapter handed to a real registry is refused | implementation |
+| 68 | [M4\|WP-07a] Microphone loss: hot-plug detection, the loss callback, audit writers for the microphone fault types | coder-execution | `implementation/068_mic_loss.md` (T3) | 67:B, 19:C | a card removed from the fixture listing raises 1 fault with 1 audit entry; its return clears it | implementation |
+| 69 | [M4\|WP-08] Real-code check T-2 for audio on macOS: the real helper with a generated multi-channel source in place of the device, through the channel selection, the pipe and the release worker | test-expert | `test/069_t2_audio.md` (T2) | 67:B, 23:B | a decodable audio file whose content is the selected channel of the source, checked for 2 different channels | test |
+| 70 | [M4\|WP-07c] Live path of the two microphone operations: listing through the enumerator, the registration unit (device row plus input row in one unit, re-enable instead of duplicate), the audit entry, admission to a registry handed in | coder-execution | `implementation/070_mic_registration.md` (T3) | 63:B, 64:B, 17:B, 19:B | registering one input twice yields 1 device; the unit rolls back as a whole on a failed second write; each change writes 1 `CAPTURE_AUDIO_INPUT_CHANGED` entry with no device text | implementation |
+| 71 | [M4\|WP-07c] Session source facts: the card facts of a session's microphones written to `source_facts`, device text bounded and stripped of control characters | coder-execution | `implementation/071_session_source_facts.md` (T3) | 48:B, 17:B, 67:C | a session start with doubles writes the card facts for both microphones; an oversized product name is cut to the bound | implementation |
+| 72 | [M4\|WP-07d] Web console: the list of sound cards and the registration of an input | coder-execution | `implementation/072_audio_cards_web.md` (T3) | 63:B | the screen lists the fixture cards and registers one input (component test) | implementation |
+| 73 | [M4] Code review of phase 4 (rows 63 to 72) | senior-code-reviewer | `verification/073_m4_review.md` (T1) | 68:B, 69:B, 70:B, 71:B, 72:B, 155:B, 156:B | blocking findings 0, or each routed and re-checked | verification |
+| 74 | [M4] Gate M4 | verifier | `gateway_check/074_m4_gate.md` (T1) | 73:B | evidence of section 9, gate M4 | gateway_check |
+| 75 | [M4] Commit phase 4 | git-specialist | `implementation/075_commit_phase_4.md` (T3) | 74:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 76 | [M5\|WP-14] Linux host profile for Ubuntu 24.04 as a document: one line per item with its command or file and the check that shows it took effect (pinned FFmpeg built from source with the ALSA input, the named `arping` package, the dedicated camera port with forwarding off, the loopback rule of RC-5, run directory 0700 with pipes 0600, firewall rule for probe answers, audio access, sleep, time sync, the Core's service unit with a core-file limit of 0 and no diagnostic-report or heap-snapshot switch (AD-09 (1))), and the list of what it cannot settle without the host | document-writer | `implementation/076_host_profile.md` (T1) | 3:C | items without a check line: 0; lines an agent would have to run with `sudo`: 0 (all are steps for the user) | implementation |
+| 77 | [M5\|WP-14] The profile's scripts, each with a print-only mode that changes nothing | coder-execution | `implementation/077_profile_scripts.md` (T3) | 76:C | every script completes in print-only mode on this Mac; files changed outside the temporary folder of the run: 0 | implementation |
+| 78 | [M5\|WP-14] Ubuntu 24.04 container definition for check T-4: the worker, the relay and the guard built against the pinned library | coder-execution | `implementation/078_linux_container_build.md` (T3) | 41:B, 23:B, 76:C | a container runtime is present on this Mac (else `blocked: NO_CONTAINER_RUNTIME`); the three programs build; the worker's own check script passes; all recorded as container results | implementation |
+| 79 | [M5\|WP-14] Container checks: survivors after a killed parent with and without the guard (HA-11), the short process name in the process table (HA-12), the FFmpeg and `arping` packages (HA-13), the Linux helper argument list parsed against an ALSA `null` or `file` device | test-expert | `test/079_linux_container_checks.md` (T2) | 78:B, 66:B, 25:C | survivors 0 with the delivered liveness rule; the leftover check names a planted process; the argument list is accepted by the option parser. Stated as container results, not the host's | test |
+| 80 | [M5\|WP-20] Host checks in the boot checks and diagnostics behind an injected command runner: each prerequisite of the profile named when missing, among them the loopback rule, forwarding off on the camera port, the `arping` variant, a core-file limit above 0 in `REAL_PRODUCTION` (AD-09 (1)) | coder-execution | `implementation/080_host_checks.md` (T3) | 76:C | per prerequisite 2 tests (present, missing), all passing; with a "missing" fixture the boot names that prerequisite; no existing refusal text changed | implementation |
+| 81 | [M5\|WP-20] Boot checks of the delivered programs: the relay's path rule and stated library version, helper and grant root-owned and not writable by the service user, the interface file agreeing with the database row; all on fixture outputs | coder-execution | `implementation/081_program_boot_checks.md` (T3) | 80:B, 41:C, 104:C, 103:C | each of the 4 checks has a passing and a failing fixture, 8 tests passing; a mismatch of file and row is a named refusal | implementation |
+| 82 | [M5] Code review of phase 5 (rows 76 to 81) | senior-code-reviewer | `verification/082_m5_review.md` (T1) | 77:B, 79:B, 80:B, 81:B, 141:B | blocking findings 0, or each routed and re-checked | verification |
+| 83 | [M5] Gate M5 | verifier | `gateway_check/083_m5_gate.md` (T1) | 82:B | evidence of section 9, gate M5 | gateway_check |
+| 84 | [M5] Commit phase 5 | git-specialist | `implementation/084_commit_phase_5.md` (T3) | 83:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 85 | [M6\|WP-13b] Production registry builder with the new loader signature (operation, devices, dependencies): it reads the stored devices itself, supplies open sources, probe adapters, admission after boot, close and the card listing, registers the search and test half; the permissive address rule a test needs is a member of the dependencies whose value is defined under `apps/core-server/test/` only (AD-02 (2)); not called by the boot | coder-execution | `implementation/085_production_registry_builder.md` (T3) | 46:B, 49:B, 67:B, 68:B, 45:B, 64:B | built against a clone with production rows it lists the expected devices; a call for another operation is refused before any import; static rule: non-test files call the builder without a seam argument | implementation |
+| 86 | [M6] Security review before the lift (conditions L-2, L-3): the relay, the credential read path, SA-2 and SA-3 as built, the E-12 result, the adapters behind the opener rule | security-review | `verification/086_pre_lift_security.md` (T1) | 44:B, 48:B, 49:B, 51:B, 69:B, 85:B, 141:B, 143:B, 145:B, 153:B, 157:B | verdict PASS or CAUTION with each caution routed to a row; a FAIL stops the work for the user; GATE CONDITIONS AD-01 (6), AD-02, AD-08: the branch selection is confirmed by row 141, the stored-address rule of rows 143 and 144 is built, the static rule of row 157 is green, else the lift does not start | verification |
+| 87 | [M6\|WP-13c] Draft the texts the lift cites: decision row AM-1, the statement of the new guard for section H.5 of the evidence specification (S13-17, the word "declared" kept), erratum E-A2 for the credential comment, the erratum to addendum 1.6 #3 (the runtime role can insert an `ONVIF_RTSP` row and update its address: the three grants of AD-02 (4)) | data-analyst | `decisions/087_lift_texts.md` (T1) | 86:C | four texts present; none withdraws a limit of the task-3 README or specification (that is stage 2) | decisions |
+| 88 | [M6\|WP-13c] The lift, one change set: both production kinds on the opener list, the two stubs replaced by the built adapters, the boot calls the builder, the new registration rule (an adapter with an opener is refused unless its class is the one the operation records), every pin of the specification's pin table in its end state, rule A-1 rewritten, the code-comment errata | coder-execution | `implementation/088_class_c_lift.md` (T3) | 85:B, 86:B, 33:B, 87:C, 1:C | each of the 21 pin rows in its end state, checked row by row; the `REAL_DEVELOPMENT` suites show 0 changed results; refusals 2 of 2 (`SNMP_POE` with an opener; `ONVIF_RTSP` with an opener in a development registry) | implementation |
+| 89 | [M6\|WP-13c] First full session on doubles: `REAL_PRODUCTION`, four production-kind sources on a clone database, one camera HEVC, recorded, sealed and verified; the real boot checks are passed by real means: a signing key without the development mark made by test support under `apps/core-server/test/`, fixture operators without the demonstration password, no injected check, no new key, variable or flag in `src/` (AD-08) | test-expert | `test/089_first_full_session.md` (T2) | 88:B, 71:B, 51:B, 53:C, 1:C | GATE CONDITION AD-08: sessions recorded, sealed and verified: 1, one source HEVC, with neither boot-check seam injected; reveal entries carrying that session: 2, with 1 authenticated `GetStreamUri` per camera; never on the demo database, and the key and data directory do not exist after the test | test |
+| 90 | [M6\|WP-06b] Session scenarios on doubles, one scripted session: the three timing cases of addendum section 3, a foreign push in both orders, a dropped camera leg and a refused credential on re-open | test-expert | `test/090_session_scenarios.md` (T2) | 89:B, 40:B | timing 3 of 3 as stated (both record; one bound then a degraded session; `FAILED_START` with 0 evidence files); foreign push 2 of 2 a fault and nothing sealed as that camera; reveal entries stay 2 across the drop | test |
+| 91 | [M6] Code review of the lift (rows 85, 88 to 90) | senior-code-reviewer | `verification/091_m6_review.md` (T1) | 88:B, 89:B, 90:B, 148:B, 151:B | blocking findings 0, or each routed and re-checked | verification |
+| 92 | [M6] Gate M6: stage 1 of the class-C lift, in code | verifier | `gateway_check/092_m6_stage1_gate.md` (T1) | 91:B | the exit conditions of section 9.2, each with its evidence; GATE CONDITIONS AD-02 and AD-08: rows 148, 157 and 89 passed; the gate states that nothing is declared fit to record | gateway_check |
+| 93 | [M6] Commit phase 6 | git-specialist | `implementation/093_commit_phase_6.md` (T3) | 92:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 94 | [M8\|WP-12] Shared contract: the optional typed address on the body of the camera search, schema, simulator answer, generated description | coder-execution | `implementation/094_typed_address_contract.md` (T3) | - | the operation count is unchanged; the body pins pass; the search without a body answers as before in the simulator | implementation |
+| 95 | [M8\|WP-19c] The one destination rule function of S13-11: private ranges only, the camera interface only, no loopback, port and rate bounds; no DHCP mode | coder-execution | `implementation/095_destination_rule.md` (T3) | 3:C | the target table test passes; every refused case is refused before any packet is built | implementation |
+| 96 | [M8\|WP-12] Live typed-address probe: the unicast probe to a validated address in the one datagram file, under the search's permission, web console only, with its limits | coder-execution | `implementation/096_typed_address_probe.md` (T3) | 94:B, 95:B, 3:C | against the fake ONVIF device a typed address yields 1 candidate from the probe answer alone; a refused address sends 0 packets; the search without a typed address shows 0 changed results | implementation |
+| 97 | [M8\|WP-12] Operator-confirmed re-address of a registered camera with its audit entry; never automatic | coder-execution | `implementation/097_confirmed_readdress.md` (T3) | 94:B, 19:B | a confirmed re-address writes 1 entry; re-addresses without a confirmation: 0 | implementation |
+| 98 | [M8\|WP-12] Web console: the typed address on the search, the confirmation of a re-address | coder-execution | `implementation/098_typed_address_web.md` (T3) | 94:B | component tests: an address outside the allowed form is refused in the form; the confirmation dialog must be answered before the request is sent | implementation |
+| 99 | [M10\|WP-25] Schema set B: `capture_network_config` (one row, interface nullable, defaults described as input-av's defaults, untested), `host_network_aliases` (one alias in place per address), the two stored rows of the commissioning permission in the hand-written file; version step, moved pins re-measured, per-set test | database-specialist | `implementation/099_schema_set_b.md` (T2) | 17:B, 2:C | `npm run test:db` green with every moved pin at its re-measured value; a second open alias on one address is refused by the database; applied then rolled back once on the demo database | implementation |
+| 100 | [M10\|WP-23c] The commissioning permission in the vocabulary: the shared role table and the permission matrix, held by TECHNICIAN only | coder-execution | `implementation/100_commissioning_permission.md` (T3) | 99:B | a migrated demo database boots; the permission is held by 1 role; the permission-count pins pass at 15 | implementation |
+| 101 | [M10\|WP-25, WP-23c] Commit schema set B together with the permission vocabulary, alone | git-specialist | `implementation/101_commit_set_b.md` (T3) | 100:B | 1 commit holding only the paths of rows 99 and 100; staged paths under `apps/input-av/`: 0 | implementation |
+| 102 | [M10\|WP-23b] Contract package of the commissioning operations (configuration read and write, scan, alias removal, set camera network, job state): entries, schemas, simulator answers, the list of credential-carrying operations, the operation-count pins | coder-execution | `implementation/102_commissioning_contract.md` (T3) | 63:B, 100:B | every count pin passes at the new number; every operation has a stated simulator answer; no live path exists yet | implementation |
+| 103 | [M10] Draft the decision row of S13-09: the form of the privilege grant (a root service on a local socket as first choice; `sudo -n` only with a written reason) | data-analyst | `decisions/103_helper_privilege_form.md` (T1) | - | one form chosen with its reason; the effect on rows 104, 105, 81 and 127 stated per row | decisions |
+| 104 | [M10\|WP-19a] The alias helper as a file for the user to install, with the nine self-enforced bounds of S13-08, tool paths as constants, the test copy made by a build step so that the delivered file has no injection point | coder-execution | `implementation/104_alias_helper.md` (T3) | 103:C | refusals 9 of 9 with stand-ins for the tools; one journal line per call; the delivered file's hash test passes and its hash is recorded | implementation |
+| 105 | [M10\|WP-19b] The Core's one caller of the helper behind a platform seam (on this Mac the real operation answers "not available on this host"), the wrong-network guard, the interface-file mismatch refusal, the intent and the result audit entry around each call; with its configuration key | coder-execution | `implementation/105_helper_caller.md` (T3) | 99:B, 19:B, 102:C, 103:C, 104:C | against a helper double: 1 intent and 1 result entry per action; a target subnet held by another interface is refused; a mismatch of file and row is refused by name | implementation |
+| 106 | [M10\|WP-19b] Alias lifecycle: removal at the end of a job, at shutdown and at boot, the boot sweep of every marked address with or without a row, refusal while a session is open | coder-execution | `implementation/106_alias_lifecycle.md` (T3) | 105:B | a marked address without a row is swept with a `BOOT_SWEEP` entry; an open row is closed after a restart; with a session open every action is refused and writes 0 | implementation |
+| 107 | [M10\|WP-19c] The commissioning scan as an operation of its own: the stored list plus one typed address from a temporary alias, its own probe call, the result in memory only, device text kept out of logs, audit details and errors | coder-execution | `implementation/107_commissioning_scan.md` (T3) | 106:B, 96:B, 95:B, 102:B | against the stub a listed address is found with 1 scan entry; rows stored for a device that is not adopted: 0; a reply with oversized or control-character text reaches no log, detail or error | implementation |
+| 108 | [M10\|WP-19d] Read and write of `capture_network_config` with the audit entry `CAPTURE_NETWORK_CONFIG_CHANGED`; no automatic choice of the interface | coder-execution | `implementation/108_network_config_ops.md` (T3) | 99:B, 102:B, 19:B | a change writes 1 entry naming the changed fields; with no interface chosen the commissioning operations answer "not configured" | implementation |
+| 109 | [M10\|WP-22a] Test support: the fake ONVIF stub answers the four network calls, with modes for malformed, oversized and markup-token replies and for two endpoints on one address | coder-execution | `implementation/109_onvif_stub_network_calls.md` (T3) | - | the stub's own tests pass for the 4 calls and the 4 modes; it is still refused in production by the launcher | implementation |
+| 110 | [M10\|WP-22a] The set-network file: the four ONVIF calls with parse and exception guards and the type declaration; it imports neither the credential reader nor the reveal module | coder-execution | `implementation/110_set_network_file.md` (T3) | 109:B, 1:C, 3:C | malformed, oversized and markup-token replies: the Core stays up and the request is well-formed; importers of the reader in this file: 0; the rule lists G-R10, G-R11 pass in their amended state | implementation |
+| 111 | [M10\|WP-22b] The set-IP job: the typed credential held in the job's closure for one operation on one camera (C1, C7), unauthenticated poll first, wait by MAC, next free address, refusal on the conflict flag and on an address that answers, the lock-out guard counting this fourth operation | coder-execution | `implementation/111_set_ip_job.md` (T3) | 110:B, 107:B, 95:B, 1:C | against the stub the same MAC is found at the new address inside 180 s on a fake clock; authenticated reads per job at most 3; occurrences of the credential in logs, audit details, arguments, environment and files on every exit path: 0 | implementation |
+| 112 | [M10] [derived] Web console: commissioning settings (camera interface, subnet, factory list) and the scan screen with the alias state, TECHNICIAN only | coder-execution | `implementation/112_commissioning_web.md` (T3) | 102:B | component tests: the screen is absent for a role without the permission; a scan result lists the stub's device; the text says that a camera outside the list is found only by a typed address | implementation |
+| 113 | [M10\|WP-22c] Web console: the set-IP screens showing the target address, the MAC from the neighbour table and the MAC after authentication | coder-execution | `implementation/113_set_ip_web.md` (T3) | 102:B, 112:B | a MAC mismatch stops the job on the screen; the credential field is never pre-filled and is cleared when the job ends | implementation |
+| 114 | [M10\|WP-26a] Schema set C: `installation_acceptances`, one acceptance in force enforced by the database; version step, moved pins re-measured, per-set test | database-specialist | `implementation/114_schema_set_c.md` (T2) | 99:B | `npm run test:db` green with every moved pin at its re-measured value; a second acceptance in force is refused by the database; applied then rolled back once on the demo database | implementation |
+| 115 | [M10\|WP-26a] Commit schema set C alone | git-specialist | `implementation/115_commit_set_c.md` (T3) | 114:B | 1 commit holding only the paths of row 114; staged paths under `apps/input-av/`: 0 | implementation |
+| 116 | [M10\|WP-26b] Contract package of the acceptance and the revocation operation: entries, schemas with the key list and size bound for `steps` and `diagnostics`, simulator answers, the operation-count pins | coder-execution | `implementation/116_acceptance_contract.md` (T3) | 102:B | every count pin passes at the new number; both operations have a stated simulator answer | implementation |
+| 117 | [M10\|WP-26b] Live acceptance and revocation with one audit entry each, under the commissioning permission, web console, idle; recording is not gated on an acceptance | coder-execution | `implementation/117_acceptance_ops.md` (T3) | 114:B, 116:B, 19:B | a second acceptance in force is refused; a forbidden key and an oversized body are refused; accept and revoke write 1 entry each | implementation |
+| 118 | [M10] [derived] Web console: the form that records an installation acceptance and its revocation | coder-execution | `implementation/118_acceptance_web.md` (T3) | 116:B, 113:B | component tests: the form sends only keys of the key list; it is absent for a role without the permission | implementation |
+| 119 | [M10] Security review of the commissioning functions as built: the helper as delivered against S13-08 to S13-10, the destination rule, the credential in the set-IP job, device text handling, the acceptance record | security-review | `verification/119_commissioning_security.md` (T1) | 104:B, 106:B, 107:B, 111:B, 117:B | verdict PASS or CAUTION with each caution routed to a row; a FAIL stops the work for the user; the statement "S13-08 to S13-10 are closed in the helper as delivered" is made or refused | verification |
+| 120 | [M10] Code review of phases 8 and 10 (rows 94 to 118) | senior-code-reviewer | `verification/120_m10_review.md` (T1) | 97:B, 98:B, 108:B, 111:B, 113:B, 117:B, 118:B | blocking findings 0, or each routed and re-checked | verification |
+| 121 | [M10] Gate M10 (phases 8 and 10) | verifier | `gateway_check/121_m10_gate.md` (T1) | 119:B, 120:B, 101:B, 115:B | evidence of section 9, gate M10 | gateway_check |
+| 122 | [M8] Commit phase 8 (rows 94, 96 to 98) | git-specialist | `implementation/122_commit_phase_8.md` (T3) | 121:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 123 | [M10] Commit phase 10 (sets B and C are already committed) | git-specialist | `implementation/123_commit_phase_10.md` (T3) | 122:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 124 | [M7\|WP-27] Procedure, frame chapter: the new order of the checks (addendum 9.6), the capture operation each check needs, the first-boot step in `SIMULATED` done on a loopback listener before the host joins the room network with no session started in it (AD-13), the user actions UA-1 to UA-6 with X-1 and X-2, the step in which the user migrates the acceptance host's database, the password rule and the per-camera "password changed before adoption" record, the bounds to be set before the run, the result record form, the stage 2 rule | document-writer | `implementation/124_hw_procedure_frame.md` (T1) | - | 27 checks placed in the order with their capture operation; steps an agent would perform with a credential, `sudo` or a real camera: 0; a pass criterion that only says "works": 0 | implementation |
+| 125 | [M7\|WP-27] Procedure, chapter host, helper and audio: `9A/H-27`, H-01 to H-08, H-16, H-24, H-25 (H-01 carries the repeat of the E-11 observations on the host's build, AD-01 (6)), each with what it proves, precondition, numbered steps with their performer, expected result, pass criterion, what to record | document-writer | `implementation/125_hw_procedure_host_audio.md` (T1) | 124:C, 76:C | checks 12 of 12 each with all six parts; missing parts 0 | implementation |
+| 126 | [M7\|WP-27] Procedure, chapter network, cameras and session: H-09 folded into H-17, H-10 to H-15, H-17 to H-23, H-26, each with the six parts | document-writer | `implementation/126_hw_procedure_camera_session.md` (T1) | 124:C | checks 15 of 15 each with all six parts; missing parts 0 | implementation |
+| 127 | [M7\|WP-27] Procedure, chapter helper installation: the ten steps of `verification/02_security.md` section 5.4 as steps for the user, each with its command and the line that shows it took effect, the file's hash printed | document-writer | `implementation/127_hw_procedure_helper_install.md` (T1) | 104:B, 103:C, 81:C | steps 10 of 10; the printed hash equals the hash recorded by row 104; steps run by an agent: 0 | implementation |
+| 128 | [M7\|WP-27] Scripts, host group: read-only collectors of evidence for the checks of row 125 | coder-execution | `implementation/128_hw_scripts_host.md` (T3) | 125:C, 80:C | each script has a dry mode; commands that type a credential, call `sudo` or change an address in the scripts: 0 | implementation |
+| 129 | [M7\|WP-27] Scripts, camera and session group: read-only collectors and wrappers of existing operations for the checks of row 126, with the writer of the result record | coder-execution | `implementation/129_hw_scripts_camera_session.md` (T3) | 126:C | each script has a dry mode; commands that type a credential, call `sudo` or change a camera in the scripts: 0; the record writer emits one line per check | implementation |
+| 130 | [M7\|WP-27] Dry run of every script against the doubles of the package it checks, with the coverage check of the plan's "stays unproven" cells | test-expert | `test/130_hw_package_dry_run.md` (T2) | 128:B, 129:B, 89:B, 111:B, 106:B, 127:B | every script runs to its end and writes a record in the stated form; unproven items of plan section 8 without a covering check and without a stated reason: 0; points (4), (5), (6) of S13-16 each checked against the scripts: 3 of 3 | test |
+| 131 | [M7] Gate M7: the hardware acceptance test package is complete as a procedure | verifier | `gateway_check/131_m7_gate.md` (T1) | 130:B | evidence of section 9, gate M7; the gate states that the package is a procedure, not a test result | gateway_check |
+| 132 | [M7] Commit phase 7 | git-specialist | `implementation/132_commit_phase_7.md` (T3) | 131:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0 | implementation |
+| 133 | [close] Add the new scenario suites and the relay checks to the regression script, each strictly after the step it needs | coder-execution | `implementation/133_regression_script.md` (T3) | 89:B, 90:B | the script lists its steps with the new ones named; a syntax check of the script passes | implementation |
+| 134 | [close] Root README: the sections on the capture operation (production adapters at stage 1, done on doubles), the commissioning functions, the unassigned selector with the first production boot sequence, the limits LA-1 to LA-3, the Tests section with the new suites | document-writer | `implementation/134_readme_update.md` (T1) | 92:B, 121:B, 133:C | every statement of "tested" names its double; the limits of task 3 on production recording are not withdrawn; the unproven list of section 12 is present | implementation |
+| 135 | [close] Installer note: the path from a seeded database to a first production boot, where the host profile, the helper installation and the hardware procedure are, active scan only, the password change before adoption | document-writer | `implementation/135_installer_note.md` (T1) | 124:C, 76:C, 127:C | every step names who performs it; steps performed by an agent: 0; it contains no credential, key or address of the user's network | implementation |
+| 136 | [close] Final verification of track D against the 75 requirement identifiers (61 of the addendum, 14 of its security check) and the "done on doubles" rule | verifier | `verification/136_track_d_verification.md` (T1) | 15:B, 36:B, 61:B, 74:B, 83:B, 92:B, 121:B, 131:B, 134:B, 135:C, 160:B | identifiers with fresh evidence: 75 of 75; packages reported as tested on hardware: 0; every package carries its unproven list | verification |
+| 137 | [close] Final security review of track D as built | security-review | `verification/137_track_d_security.md` (T1) | 92:B, 121:B, 131:B | each of S13-01 to S13-17 and RC-1 to RC-6 rated against the built code; FAIL items 0, or a stop for the user | verification |
+| 138 | [close] Full regression as the repository defines it, once: `npm run test:regression` | test-expert | `test/138_full_regression.md` (T2) | 133:B, 93:B, 123:B, 132:B | every step of the script green with its count; skipped tests listed with their reason; the kill matrix complete | test |
+| 139 | [close] Final code review of the track-D change set against the baseline | senior-code-reviewer | `verification/139_track_d_review.md` (T1) | 136:B, 137:B, 138:B | blocking findings 0, or each routed to its producing row and re-checked | verification |
+| 140 | [close] Final commit of track D: documentation, records and any routed fix | git-specialist | `implementation/140_commit_track_d_close.md` (T3) | 139:B | 1 commit; staged paths under `apps/input-av/`: 0; pushes 0; `git status` shows only `apps/input-av/` untracked | implementation |
+| 141 | [M5\|AD-01, AD-09] Container session 2: the branch-selecting E-11 observations repeated against the pinned library in the Ubuntu 24.04 container; the relay's process state read from the process table during a run | test-expert | `test/141_container_e11_relay_state.md` (T2) | 78:B, 6:B, 153:B | GATE CONDITION AD-01 (6): the observations select the same branch as row 8, else the selection is reopened; the relay's core-file limit reads 0; its "no new privileges" state reads set | test |
+| 142 | [M3\|AD-01] [cond: branch A or B] Permanent test in the worker's suite: a push to a near-miss path with a live session's secret in force | coder-execution | `implementation/142_near_miss_regression_test.md` (T3) | 8:B, 58:B | the test is part of the worker's own series; no `ingest_connected` and 0 bytes in any file for the near-miss push | implementation |
+| 143 | [M3\|AD-02] Production camera adapter: the destination rule of row 95 applied to the stored address at every open and every presence read, before the reader is called; loopback, unspecified, link-local, multicast and the host's own addresses refused by a named code; `src/` holds no permissive value | coder-execution | `implementation/143_stored_address_rule.md` (T3) | 49:B, 95:B | GATE CONDITION AD-02: each of the five refused address classes gives the named code with 0 reveal entries and 0 relay starts; a search of `src/` for a permissive rule value finds 0 | implementation |
+| 144 | [M3\|AD-03] Credential reader, holders: the importers of the reader module are a closed list, each of the two holders receives a reader bound to its own reasons, the reader refuses a device that is not a production-kind camera and a device whose stored address fails the destination rule, before the reveal | coder-execution | `implementation/144_reader_holders.md` (T3) | 45:B, 95:B, 19:B | static rule: importers of the reader equal the stated list; no holder passes a reason; a refused device gives 0 reveal entries | implementation |
+| 145 | [M3\|AD-03] Credential reader, commit: a credential is returned only after the unit's commit is acknowledged; a reveal for a session writes the session into the audit row | coder-execution | `implementation/145_reader_commit_session.md` (T3) | 144:B | commit made to fail: 0 credentials, 0 entries; the store fails to open after the commit: 0 credentials, 1 entry, 1 error-log code; a session reveal carries its session id | implementation |
+| 146 | [M3\|AD-03, AD-12] Connection test of an adopted camera with the stored credential: the stored address only, the existing single-flight and spacing bounds, the lock-out guard counting refused RTSP authentications (S13-04 (d)) | coder-execution | `implementation/146_stored_credential_test_bounds.md` (T3) | 50:B, 144:B, 40:C | the fixture refuses the RTSP credential twice: the guard's count for that host rises by 2 and a third attempt is not sent; a fourth refused attempt of the stored-credential test is not sent | implementation |
+| 147 | [M2\|AD-03] Start-message serialisation: one function in the credential file turns the message into a Buffer; the injection result prints as the mark | coder-execution | `implementation/147_start_message_bytes.md` (T3) | - | `JSON.stringify`, `util.inspect`, `String()` and an `Error` whose cause holds the injection result give 0 occurrences of a fixture secret; the function is the only place that reads both members | implementation |
+| 148 | [M6\|AD-02] Check on a clone: an `ONVIF_RTSP` row at `127.0.0.1`, assigned, on a Core built without the test value | test-expert | `test/148_loopback_production_row.md` (T2) | 88:B | GATE CONDITION AD-02 (3): session start answers 409; reveal entries 0; relay starts 0 | test |
+| 149 | [M2\|AD-04] The reader inventory as a test: a search for the six column names and the six row members over the server and shared sources equals a stated file list | coder-execution | `implementation/149_selector_reader_inventory_test.md` (T3) | 28:B, 29:B, 150:B | GATE CONDITION AD-04 (4): the test passes on the stated list and fails when a reader is added to a file outside it | implementation |
+| 150 | [M2\|AD-04] The other selector readers of the server (device status, capture inputs, sessions routes, engine capture session, sealing reader) find a line by track or role and answer "absent", never by position | coder-execution | `implementation/150_selector_readers_by_role.md` (T3) | 29:B | each listed reader has a test with a missing line that passes; positional fallbacks left in the listed files: 0 | implementation |
+| 151 | [M6\|AD-05, AD-11] Session-level security checks on doubles, one scripted session: the search for a test session's ingest secret, the seal after an SA-3 fault, the reveals of a parallel open with one open aborted | test-expert | `test/151_session_security_checks.md` (T2) | 90:B | hits for the secret in the log sink, the error log, the audit table, the session tables, the worker's log file, the boot-probe log, the facts file and the relay's outputs, in a good run and a run with a foreign wrong-path push: 0; after the fault in both orders the package holds 0 fragments and no manifest entry for that track; reveal entries for two cameras opened in one turn: exactly 2 | test |
+| 152 | [M3\|AD-05, AD-06] Test camera, hostile modes: a redirect to a second loopback port, a description whose control address names another host, a description that names a codec with lower-case letters, markup characters and 300 characters | coder-execution | `implementation/152_rtsp_fixture_hostile.md` (T3) | 40:B | each of the 3 modes answers a reference client as stated | implementation |
+| 153 | [M3\|AD-05] Relay confinement (RC-6): it dials only the host of its locator, opens no file after its start, gives up the right to gain privileges before the first camera byte | coder-execution | `implementation/153_relay_confinement.md` (T3) | 43:B, 152:B | connections and credential-bearing requests received at the redirect port and at the foreign control host: 0; static check: the relay's source opens no file after start | implementation |
+| 154 | [M3\|AD-06] Check of the minted code against a hostile description | coder-execution | `implementation/154_minted_code_hostile_description.md` (T3) | 50:B, 51:B, 152:B | the minted code is of the closed set or the test fails by name; occurrences of the fixture text in the log sink, the audit table and the device rows: 0 | implementation |
+| 155 | [M4\|AD-07] Card text rule: every string of a card listing passes one function before it leaves the adapter (printable ASCII, a stated length, the USB id form, the kernel's card id form); a failing string is replaced by a fixed word | coder-execution | `implementation/155_card_text_rule.md` (T3) | 64:B | listings with control, bidirectional and zero-width characters and an oversized name: the fixed word in the answer and in the stored row; a malformed USB id is replaced | implementation |
+| 156 | [M4\|AD-07] Card search single-flight and spaced like the camera search; the match of a stored row to a live card by USB id and port path | coder-execution | `implementation/156_card_search_match.md` (T3) | 70:B, 155:B | two concurrent searches start 1 process; a card of the same product on another port is `CARD_CHANGED` with 1 audit entry and no silent match | implementation |
+| 157 | [M6\|AD-08] Static rule: the two mounts of the boot checks and of the fence keep today's argument members; `src/` has no importer of the test key maker and no configuration key, environment variable or command-line word added for the full-session test | coder-execution | `implementation/157_no_test_seam_rule.md` (T3) | 85:B | GATE CONDITION AD-08 (2), (3): the rule passes on the tree and fails on a planted extra argument member | implementation |
+| 158 | [M2\|AD-10] Tests of the `unassign` rules | test-expert | `test/158_unassign_rules.md` (T2) | 28:B, 29:B | refused `409 CAPTURE_CONFIG_LOCKED` in every session state except none and SEALED (a table test, the sealing states included); a body that unassigns and assigns one slot is 422; three slots assigned with the STANDBY microphone unassigned is refused `SELECTOR_SHAPE` | test |
+| 159 | [M3\|AD-12] Relay hygiene observed, points (a), (b), (d) of S13-02 | test-expert | `test/159_relay_hygiene.md` (T2) | 43:B | library text in the relay's outputs in three failure runs: 0 (codes and counters only); both outputs stay inside their stated bound; a failed start-message write names no part of the message | test |
+| 160 | [M0\|AD-12] Read-only finding for S13-14 (e): can the release packager reach `apps/input-av` | data-analyst | `research/160_release_packager_reach.md` (T3) | - | one answer, yes or no, with the packager's include and exclude lines cited; if yes, a row is proposed to the controller | research |
+
+## Execution Profile
+
+> One line per step, same numbers. Abbreviations: `CS` = `apps/core-server/src`, `SH` = `packages/shared/src`, `WRK` = `apps/capture-worker`, `WEB` = `apps/core-web/src`, `MOB` = `apps/mobile/src`. `EXISTS:` = verified by Glob in this pass (section 14). `NEW under` = new files under a verified parent, names left to the executor. `UNKNOWN` = the executor declares. Sizes and models are estimates. Shared-resource tokens are defined in section 7. Review is `gate` in every row.
+
+| Step | Ownership Area | Deps (kind) | Size | Model | Shared Resources | Checks | Review |
+|------|----------------|-------------|------|-------|------------------|--------|--------|
+| 1 | docs only (this document; not delegated) | - | S | - | - | 14 of 14 attached | gate |
+| 2 | docs only | - | S | sonnet (inventory, search-verifiable) | - | 8 pins with evidence | gate |
+| 3 | docs only | - | S | opus | - | AM rows; static-rule rows; closure lines | gate |
+| 4 | docs only (reads git state) | - | S | sonnet (command and report) | git | check-ignore; branch; pushes | gate |
+| 5 | UNKNOWN - executor declares (the count-only scan described at EXISTS: `.gitignore`, per `verification/02_security.md:296`) | - | S | opus | - | planted forms counted; tree count 0 | gate |
+| 6 | NEW under EXISTS: `WRK/test-fixtures/`: E-11 pushers and run script | 1:C | M | opus | heavy, worker-build (read) | controls paired; 21 near-miss runs; 0 product files | gate |
+| 7 | NEW under EXISTS: `WRK/test-fixtures/`: probe program | 6:B | S | opus | heavy | READABLE rule | gate |
+| 8 | docs only | 6:B, 7:B, 1:C | S | opus | - | rule table applied; provisional A; O-3 residual | gate |
+| 9 | docs only (this document) | 8:B | M | opus | - | 5.4 items rowed; AD-14 rowed; L = 0 | gate |
+| 10 | NEW under EXISTS: `WRK/test-fixtures/`: resume pusher | - | S | opus | heavy | outcome; WP-11 yes or no | gate |
+| 11 | docs only (runs the reader on a `.cache` file) | - | S | opus | - | codec; rate; WP-10a yes or no | gate |
+| 12 | UNKNOWN - executor declares (test fixtures only, no product file) | - | M | opus | heavy, db, emulator | per-client outcome; sample entry; NOT RUN rule | gate |
+| 13 | UNKNOWN - executor declares (one unit test in the capture area of `CS`) | - | S | sonnet (exhaustive loop, one outcome) | - | 16,777,216 equal | gate |
+| 14 | docs only | 6:B, 7:B, 10:B, 11:B, 12:B | S | opus | - | five results; three consequences | gate |
+| 15 | docs only | 8:B, 13:B, 14:B | S | opus | - | gate M1 evidence | gate |
+| 16 | git index | 15:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 17 | EXISTS: `CS/db/schema/capture.ts`, `CS/db/schema/meta.ts`, `CS/db/schema/value-sets.ts`; NEW under EXISTS: `CS/db/migrations/`; pins in EXISTS: `apps/core-server/test/db/contract-inventory.test.ts` | 2:C, 1:C | M | opus | db, migr, vset | db suite with moved pins; seeded clone; apply and rollback | gate |
+| 18 | git index | 17:B | S | sonnet (stage named paths, commit) | git | set A alone | gate |
+| 19 | single-writer file set "audit vocabulary" (crosses two workspaces): EXISTS: `SH/sim/vocabulary.ts`, `CS/core/audit-details.ts`, `CS/db/fixtures/operations.ts` with their pin tests | 2:C | S | opus | audit-voc | 10 types accepted; foreign key rejected; pins at 77 | gate |
+| 20 | EXISTS: `CS/capture/adapters/types.ts` | - | S | opus | - | typecheck; 0 changed results | gate |
+| 21 | NEW under EXISTS: `CS/capture/adapters/`: production door | 147:B, 1:C, 3:C | M | opus | static-capture, config | literals and no string; unit tests; G-R2, G-R8 | gate |
+| 22 | docs only (runs existing programs) | 21:B | S | opus | heavy | survivor count; guard yes or no | gate |
+| 23 | NEW under EXISTS: `WRK/src/`: guard program; EXISTS: `WRK/Makefile` | 22:B | S | opus | worker-build | worker checks green; guard unit check | gate |
+| 24 | EXISTS: `CS/capture/adapters/local/leftover.ts` or NEW beside it (executor declares) | 21:C | S | opus | - | two listing forms | gate |
+| 25 | docs only (runs built programs) | 21:B, 23:B, 24:B | S | opus | heavy | 0 survivors | gate |
+| 26 | EXISTS: `CS/capture/adapters/camera/onvif-session.ts` | 20:C | M | opus | static-capture | 2 profiles; odd token; user-part refused | gate |
+| 27 | docs only | - | S | opus | - | three answers with lines | gate |
+| 28 | EXISTS: `SH/api/devices.ts`, `SH/i18n/`; UNKNOWN under EXISTS: `SH/sim/` (the hosted action's file) | 27:B, 1:C | M | opus | i18n | count 97; 409; body pins | gate |
+| 29 | EXISTS: `CS/db/mapping/rows.ts`, `CS/modules/capture-config/` (store, slices, routes) | 17:B, 27:B, 28:C, 1:C | M | opus | db | by-role read-back; `capture.config` step; 2 entries | gate |
+| 30 | EXISTS: `CS/capture-notices/` | 29:B, 1:C | S | opus | - | BLOCK item per slot | gate |
+| 31 | EXISTS: `WEB/features/devices/` | 28:B, 1:C | S | opus | - | 0, 1, 2 lines | gate |
+| 32 | EXISTS: `MOB/features/devices/` | 28:B, 1:C | S | opus | - | 0, 1, 2 lines | gate |
+| 33 | EXISTS: `CS/capture/fence/__tests__/` (fence.test.ts, fence.db.test.ts) | 28:B, 29:B, 30:B, 1:C | M | opus | db | 21 of 21; remedy with `capture.config`; fence diff empty | gate |
+| 34 | EXISTS: `WRK/src/ingest.c` | 10:B | M | opus | worker-build, heavy | E-10; worker checks; RC-4 fault | gate |
+| 35 | docs only | 19:B, 20:B, 21:B, 24:B, 25:B, 26:B, 29:B, 30:B, 31:B, 32:B, 33:B, 147:B, 149:B, 150:B, 158:B | M | opus | - | blocking findings 0 | gate |
+| 36 | docs only | 35:B, 18:B | S | opus | - | gate M2 evidence; AD-04 | gate |
+| 37 | git index | 36:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 38 | EXISTS: `SH/api/capture-discovery.ts` | - | S | opus | - | outcomes kept; contract tests | gate |
+| 39 | NEW under EXISTS: `WRK/test-fixtures/` or `apps/core-server/test/support/` (executor declares one) : RTSP test camera | - | M | opus | heavy | 4 modes; loopback only | gate |
+| 40 | the same test camera area as 39 | 39:B | M | opus | heavy | 4 fault modes | gate |
+| 41 | NEW under EXISTS: `WRK/src/`: relay; EXISTS: `WRK/Makefile` | 8:B, 39:B, 21:C, 1:C | M | opus | worker-build, heavy | decodable file; 0 Basic; socket snapshot | gate |
+| 42 | relay source of 41 | 41:B | M | opus | worker-build, heavy | probe facts; 0 Basic | gate |
+| 43 | relay source of 41 | 42:B, 40:B, 1:C | M | opus | worker-build, heavy | mid-group resume; 2 refusals | gate |
+| 44 | docs only (test run; the E-12 test file in the relay's test area) | 43:B | M | opus | heavy | 0 occurrences; special account; 0 survivors | gate |
+| 45 | NEW under EXISTS: `CS/modules/capture-config/`: reveal module, credential reader | 1:C | S | opus | db, static-adapters | 1 and 1; 0 and 0; 1 caller file | gate |
+| 46 | NEW under EXISTS: `CS/capture/adapters/camera/`: production camera adapter, relay start | 45:B, 41:B, 26:B, 21:B, 20:B, 1:C | M | opus | heavy, static-adapters | T-1; T-2; T-3 | gate |
+| 47 | EXISTS: `CS/capture-session/index.ts`, `CS/capture/worker-arguments.ts` | 20:B, 8:B, 1:C | M | opus | session-file | delay isolation; 128 bits; one-function static test | gate |
+| 48 | EXISTS: `CS/capture-session/index.ts` | 47:B, 42:C, 1:C | S | opus | session-file | three pairing cases | gate |
+| 49 | production camera adapter area of 46 | 46:B, 43:C, 19:C | M | opus | static-capture | 1 fault 1 clear; 0 reveals; no socket module | gate |
+| 50 | EXISTS: `CS/modules/capture-discovery/connect/service.ts`, `CS/capture/adapters/camera/onvif-session.ts` | 42:B, 26:B, 38:B, 45:B, 40:C, 1:C | M | opus | heavy | HEVC judged; 15,000 ms; 0 changed results | gate |
+| 51 | EXISTS: `CS/modules/capture-discovery/adoption.ts` and its store | 50:B, 17:B | S | opus | db | odd token assigned; code equals statement | gate |
+| 52 | EXISTS: `SH/api/state-slices.ts`, `SH/sim/types.ts` | - | S | opus | - | schema tests; simulator facts | gate |
+| 53 | UNKNOWN - executor declares (the camera slice producer under `CS`) | 52:B, 51:B | S | opus | - | HEVC without rate; H.264 as before | gate |
+| 54 | EXISTS: `WEB/features/devices/camera-tile.tsx`, `WEB/features/session-monitor/model.ts` | 52:B | S | opus | - | tile states HEVC; 0 fallbacks | gate |
+| 55 | EXISTS: `MOB/features/devices/` | 52:B | S | opus | - | device tests state HEVC | gate |
+| 56 | EXISTS: `CS/capture/fragments.ts` | 14:B | S | opus | - | rate read; H.264 unchanged; codes listed | gate |
+| 57 | EXISTS: `WRK/src/ingest.c` | 14:B | S | opus | worker-build, heavy | name in file; worker checks | gate |
+| 58 | EXISTS: `WRK/src/ingest.c`; version line in EXISTS: `CS/capture/boot/checks.ts` | 8:B, 1:C | M | opus | worker-build, heavy | wrong path refused; worker checks; version check | gate |
+| 59 | docs only (runs the worker series and the kill matrix) | 34:B, 57:B, 58:B | M | opus | heavy, db | series; 35 of 35 | gate |
+| 60 | docs only | 43:B, 44:B, 46:B, 48:B, 49:B, 51:B, 53:B, 54:B, 55:B, 143:B, 145:B, 146:B, 153:B, 154:B, 159:B | M | opus | - | blocking findings 0 | gate |
+| 61 | docs only | 60:B, 59:B, 142:B | S | opus | - | gate M3 evidence | gate |
+| 62 | git index | 61:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 63 | single-writer file set "operation pins" (crosses three workspaces): EXISTS: `SH/sim/api.ts`, `CS/plugins/permission-guard/__tests__/guard.test.ts`, `apps/core-web/src/test/live-api-reference-page.test.tsx`; new entries under EXISTS: `SH/api/` | 19:C, 2:C | S | opus | op-pins | pins at 99; simulator answers; no live path | gate |
+| 64 | NEW under EXISTS: `CS/capture/adapters/audio/`: card listing, enumerator seam | 20:B, 3:C | M | opus | static-capture | listings; beyond-card refusal; no automatic choice | gate |
+| 65 | NEW under EXISTS: `CS/capture/adapters/audio/`: configuration generator | 3:C | S | opus | static-capture, config | text equality; run directory only; rule lists | gate |
+| 66 | EXISTS: `CS/capture/adapters/local/mic-helper-args.ts` or NEW beside it (executor declares) | 3:C | S | opus | static-capture | text equality; integer bounds; macOS unchanged | gate |
+| 67 | NEW under EXISTS: `CS/capture/adapters/audio/`: production microphone adapter | 64:B, 65:B, 66:B, 21:B, 20:B | M | opus | static-adapters | T-1; argument origin static test; T-3 | gate |
+| 68 | production microphone adapter area of 67 | 67:B, 19:C | S | opus | - | 1 fault 1 entry; cleared on return | gate |
+| 69 | docs only (test run with the built helper and worker) | 67:B, 23:B | M | opus | heavy | selected channel, 2 channels | gate |
+| 70 | NEW under EXISTS: `CS/modules/`: microphone registration module; EXISTS: `CS/app.ts` (unit list) | 63:B, 64:B, 17:B, 19:B | M | opus | db, app-units | 1 device; whole rollback; 1 entry | gate |
+| 71 | EXISTS: `CS/capture-session/index.ts` or the fence's source builder (executor declares one) | 48:B, 17:B, 67:C | S | opus | session-file, db | facts written; name cut | gate |
+| 72 | EXISTS: `WEB/features/devices/` | 63:B | S | opus | i18n | lists and registers | gate |
+| 73 | docs only | 68:B, 69:B, 70:B, 71:B, 72:B, 155:B, 156:B | M | opus | - | blocking findings 0 | gate |
+| 74 | docs only | 73:B | S | opus | - | gate M4 evidence | gate |
+| 75 | git index | 74:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 76 | UNKNOWN - executor declares (the host profile document; not under this task folder if it ships with the product) | 3:C | M | opus | - | 0 items without check; 0 agent sudo lines | gate |
+| 77 | NEW under EXISTS: `scripts/`: host profile scripts | 76:C | S | opus | - | print-only passes; 0 files changed | gate |
+| 78 | UNKNOWN - executor declares (container definition) | 41:B, 23:B, 76:C | M | opus | container, heavy | runtime present; 3 builds; worker check script | gate |
+| 79 | docs only (runs in the container) | 78:B, 66:B, 25:C | M | opus | container, heavy | survivors; leftover named; arguments parsed | gate |
+| 80 | EXISTS: `CS/capture/boot/checks.ts`; NEW under EXISTS: `CS/capture/boot/`: command runner | 76:C | M | opus | static-capture | 2 tests per prerequisite; named at boot; no refusal changed | gate |
+| 81 | EXISTS: `CS/capture/boot/checks.ts` | 80:B, 41:C, 104:C, 103:C | S | opus | - | 8 fixture tests; named mismatch | gate |
+| 82 | docs only | 77:B, 79:B, 80:B, 81:B, 141:B | S | opus | - | blocking findings 0 | gate |
+| 83 | docs only | 82:B | S | opus | - | gate M5 evidence | gate |
+| 84 | git index | 83:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 85 | EXISTS: `CS/capture/adapters/real.ts`, `CS/capture/fence/index.ts` | 46:B, 49:B, 67:B, 68:B, 45:B, 64:B | M | opus | fence-wiring, db | devices listed; other operation refused; no-seam static rule | gate |
+| 86 | docs only | 44:B, 48:B, 49:B, 51:B, 69:B, 85:B, 141:B, 143:B, 145:B, 153:B, 157:B | M | opus | - | verdict; cautions routed; AD-01 (6), AD-02, AD-08 | gate |
+| 87 | docs only | 86:C | S | opus | - | four texts; no limit withdrawn | gate |
+| 88 | EXISTS: `CS/capture/adapters/registry.ts`, `CS/capture/adapters/camera/onvif-rtsp.ts`, `CS/capture/adapters/audio/usb-audio.ts`, `CS/capture/fence/index.ts`, `CS/capture/adapters/__tests__/static.test.ts`, `CS/capture-session/index.ts` (the one lift change set of addendum 6.4) | 85:B, 86:B, 33:B, 87:C, 1:C | M | opus | fence-wiring, session-file, static-adapters, db | 21 pin rows; 0 changed development results; 2 refusals | gate |
+| 89 | NEW under EXISTS: `apps/core-server/test/support/` (key maker) and the fence's e2e test folder (executor declares) | 88:B, 71:B, 51:B, 53:C, 1:C | M | opus | heavy, db | 1 sealed session with HEVC, no seam; 2 reveals with session; nothing left behind | gate |
+| 90 | the e2e test area of 89 | 89:B, 40:B | M | opus | heavy, db | timing 3 of 3; foreign push 2 of 2; reveals stay 2 | gate |
+| 91 | docs only | 88:B, 89:B, 90:B, 148:B, 151:B | M | opus | - | blocking findings 0 | gate |
+| 92 | docs only | 91:B | S | opus | - | stage 1 exit conditions; AD-02; AD-08 | gate |
+| 93 | git index | 92:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 94 | EXISTS: `SH/api/capture-discovery.ts`, `SH/sim/api.ts` | - | S | opus | op-pins (body only) | count unchanged; body pins; simulator as before | gate |
+| 95 | NEW under EXISTS: `CS/capture/`: destination rule | 3:C | S | opus | - | target table; refused before a packet | gate |
+| 96 | UNKNOWN - executor declares (the one datagram file of rule G-R9 under EXISTS: `CS/capture/adapters/camera/`); the search service under EXISTS: `CS/modules/capture-discovery/` | 94:B, 95:B, 3:C | M | opus | static-capture, heavy | 1 candidate; 0 packets; 0 changed results | gate |
+| 97 | EXISTS: `CS/modules/capture-discovery/` (registered devices) | 94:B, 19:B | S | opus | db | 1 entry; 0 unconfirmed | gate |
+| 98 | EXISTS: `WEB/features/devices/` | 94:B | S | opus | i18n | form refusal; confirmation first | gate |
+| 99 | EXISTS: `CS/db/schema/` (new table file or capture.ts, executor declares), `CS/db/schema/meta.ts`, `CS/db/schema/value-sets.ts`; NEW under EXISTS: `CS/db/migrations/` | 17:B, 2:C | M | opus | db, migr, vset, perm-pins | db suite with moved pins; second alias refused; apply and rollback | gate |
+| 100 | EXISTS: `CS/plugins/permission-guard/matrix.ts`; the shared role table under EXISTS: `SH/sim/vocabulary.ts` | 99:B | S | opus | perm-pins, db | boots; 1 role; pins at 15 | gate |
+| 101 | git index | 100:B | S | sonnet (stage named paths, commit) | git | set B with the permission, alone | gate |
+| 102 | single-writer file set "operation pins" (as 63) | 63:B, 100:B | M | opus | op-pins | pins at the new number; simulator answers; no live path | gate |
+| 103 | docs only | - | S | opus | - | one form with reason; effect per row | gate |
+| 104 | UNKNOWN - executor declares (the helper file and its build step; suggested parent EXISTS: `scripts/`) | 103:C | M | opus | - | 9 of 9; journal line; hash test | gate |
+| 105 | NEW under EXISTS: `CS/capture/`: commissioning door, helper caller, guard | 99:B, 19:B, 102:C, 103:C, 104:C | M | opus | static-capture, config, db | intent and result; other-interface refusal; mismatch refusal | gate |
+| 106 | commissioning area of 105 | 105:B | M | opus | db | boot sweep; row closed; refused while open | gate |
+| 107 | commissioning area of 105; routes under NEW under EXISTS: `CS/modules/` | 106:B, 96:B, 95:B, 102:B | M | opus | static-capture, app-units, db | found with 1 entry; 0 stored rows; device text nowhere | gate |
+| 108 | commissioning routes of 107 (configuration part) | 99:B, 102:B, 19:B | S | opus | db | 1 entry with fields; "not configured" | gate |
+| 109 | EXISTS: `apps/core-server/test/support/fake-onvif-stub.ts` | - | S | opus | - | 4 calls; 4 modes; refused in production | gate |
+| 110 | NEW under EXISTS: `CS/capture/adapters/camera/`: set-network file; EXISTS: `CS/capture/adapters/camera/onvif-cam.d.ts` | 109:B, 1:C, 3:C | M | opus | static-capture | malformed replies; 0 reader imports; G-R10, G-R11 | gate |
+| 111 | commissioning area of 105: set-IP job | 110:B, 107:B, 95:B, 1:C | M | opus | db | same MAC inside 180 s; at most 3 reads; 0 occurrences | gate |
+| 112 | NEW under EXISTS: `WEB/features/`: commissioning feature | 102:B | S | opus | i18n | absent without permission; lists device; text on typed address | gate |
+| 113 | commissioning feature of 112 | 102:B, 112:B | M | opus | i18n | mismatch stops; field cleared | gate |
+| 114 | EXISTS: `CS/db/schema/`, `CS/db/schema/meta.ts`; NEW under EXISTS: `CS/db/migrations/` | 99:B | S | opus | db, migr | db suite with moved pins; second acceptance refused; apply and rollback | gate |
+| 115 | git index | 114:B | S | sonnet (stage named paths, commit) | git | set C alone | gate |
+| 116 | single-writer file set "operation pins" (as 63) | 102:B | S | opus | op-pins | pins at the new number; simulator answers | gate |
+| 117 | NEW under EXISTS: `CS/modules/`: acceptance routes | 114:B, 116:B, 19:B | M | opus | db, app-units | second refused; forbidden key and size; 1 entry each | gate |
+| 118 | commissioning feature of 112 | 116:B, 113:B | S | opus | i18n | key list only; absent without permission | gate |
+| 119 | docs only | 104:B, 106:B, 107:B, 111:B, 117:B | M | opus | - | verdict; cautions routed; helper statement | gate |
+| 120 | docs only | 97:B, 98:B, 108:B, 111:B, 113:B, 117:B, 118:B | M | opus | - | blocking findings 0 | gate |
+| 121 | docs only | 119:B, 120:B, 101:B, 115:B | S | opus | - | gate M10 evidence | gate |
+| 122 | git index | 121:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 123 | git index | 122:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 124 | UNKNOWN - executor declares (hardware procedure, frame chapter; a product document, own file) | - | M | opus | - | 27 placed; 0 agent steps; 0 vague criteria | gate |
+| 125 | hardware procedure, chapter file 2 (own file) | 124:C, 76:C | M | opus | - | 12 of 12 with six parts | gate |
+| 126 | hardware procedure, chapter file 3 (own file) | 124:C | M | opus | - | 15 of 15 with six parts | gate |
+| 127 | hardware procedure, chapter file 4 (own file) | 104:B, 103:C, 81:C | S | opus | - | 10 of 10; hash equal; 0 agent steps | gate |
+| 128 | NEW under EXISTS: `scripts/`: hardware acceptance, host group | 125:C, 80:C | M | opus | - | dry mode; 0 forbidden commands | gate |
+| 129 | NEW under EXISTS: `scripts/`: hardware acceptance, camera and session group | 126:C | M | opus | - | dry mode; 0 forbidden commands; one line per check | gate |
+| 130 | docs only (runs the scripts on doubles) | 128:B, 129:B, 89:B, 111:B, 106:B, 127:B | M | opus | heavy, db | all scripts end with a record; coverage 0 gaps; S13-16 (4) to (6) | gate |
+| 131 | docs only | 130:B | S | opus | - | gate M7 evidence | gate |
+| 132 | git index | 131:B | S | sonnet (stage named paths, commit) | git | 1 commit; 0 input-av paths | gate |
+| 133 | EXISTS: `scripts/test/regression.sh`, `package.json` (scripts block) | 89:B, 90:B | S | opus | lockfile (read only) | steps listed; syntax check | gate |
+| 134 | EXISTS: `README.md` | 92:B, 121:B, 133:C | M | opus | - | doubles named; limits kept; unproven list | gate |
+| 135 | UNKNOWN - executor declares (installer note; a product document) | 124:C, 76:C, 127:C | S | opus | - | performer per step; 0 agent steps; 0 secrets | gate |
+| 136 | docs only | 15:B, 36:B, 61:B, 74:B, 83:B, 92:B, 121:B, 131:B, 134:B, 135:C, 160:B | M | opus | - | 75 of 75; 0 hardware claims; unproven lists | gate |
+| 137 | docs only | 92:B, 121:B, 131:B | M | opus | - | S13 and RC rated; FAIL 0 | gate |
+| 138 | docs only (runs `npm run test:regression`) | 133:B, 93:B, 123:B, 132:B | M | opus | heavy, db, worker-build | every step green; skips listed; kill matrix | gate |
+| 139 | docs only | 136:B, 137:B, 138:B | M | opus | - | blocking findings 0 | gate |
+| 140 | git index | 139:B | S | sonnet (stage named paths, commit) | git | 1 commit; clean status | gate |
+| 141 | docs only (runs in the container) | 78:B, 6:B, 153:B | M | opus | container, heavy | same branch; core limit 0; no new privileges | gate |
+| 142 | NEW under EXISTS: `WRK/test-fixtures/` and the worker's own series (executor declares) | 8:B, 58:B | S | opus | worker-build, heavy | in the series; no connect, 0 bytes | gate |
+| 143 | production camera adapter area of 46 | 49:B, 95:B | S | opus | static-adapters | five classes refused; 0 permissive values | gate |
+| 144 | credential reader area of 45 | 45:B, 95:B, 19:B | M | opus | db, static-adapters | importer list; no reason passed; refused device | gate |
+| 145 | credential reader area of 45 | 144:B | S | opus | db | commit fails; store fails; session id | gate |
+| 146 | EXISTS: `CS/modules/capture-discovery/connect/service.ts` | 50:B, 144:B, 40:C | S | opus | heavy | count rises by 2; fourth not sent | gate |
+| 147 | EXISTS: `CS/capture/adapters/credential.ts` | - | S | opus | static-adapters | four print forms; one reader of both members | gate |
+| 148 | the e2e test area of 89 | 88:B | S | opus | heavy, db | 409; 0 reveals; 0 relay starts | gate |
+| 149 | NEW under EXISTS: `CS/modules/capture-config/` tests (executor declares) | 28:B, 29:B, 150:B | S | opus | - | list equality; fails on a planted reader | gate |
+| 150 | UNKNOWN - executor declares (the listed readers under `CS/modules/`, `CS/engine/`, EXISTS: `CS/sealing-host/session-reader.ts`) | 29:B | S | opus | - | missing-line tests; 0 positional fallbacks | gate |
+| 151 | the e2e test area of 89 | 90:B | M | opus | heavy, db | secret in 8 places; seal after fault; exactly 2 reveals | gate |
+| 152 | the test camera area of 39 | 40:B | S | opus | heavy | 3 hostile modes | gate |
+| 153 | relay source of 41 | 43:B, 152:B | M | opus | worker-build, heavy | 0 foreign connections; no file after start | gate |
+| 154 | EXISTS: `CS/modules/capture-discovery/connect/` tests | 50:B, 51:B, 152:B | S | opus | heavy, db | closed set; 0 fixture text | gate |
+| 155 | card listing area of 64 | 64:B | S | opus | - | fixed word; USB id form | gate |
+| 156 | microphone registration module of 70 | 70:B, 155:B | S | opus | db | 1 process; `CARD_CHANGED` | gate |
+| 157 | EXISTS: `CS/capture/__tests__/static.test.ts` | 85:B | S | opus | static-capture | passes; fails on a planted member | gate |
+| 158 | EXISTS: `CS/modules/capture-config/` tests (executor declares the file) | 28:B, 29:B | S | opus | db | state table; 422; `SELECTOR_SHAPE` | gate |
+| 159 | docs only (test run; the hygiene test in the relay's test area) | 43:B | S | opus | heavy | 0 library text; bounded outputs; silent failed write | gate |
+| 160 | docs only | - | S | sonnet (read and cite, one answer) | - | yes or no with lines | gate |
+
+**Honesty of the profile.** Sizes, models and budgets are estimates from scope, not measurements. Ownership areas: with at least one `EXISTS:` path 62 rows; `NEW under` a verified parent or "area of row n" with no existing file named 37 rows; `UNKNOWN - executor declares` 12 rows (5, 12, 13, 53, 76, 78, 96 in part, 104, 124, 135, 150, and the chapter files 125 to 127 that follow 124); `docs only` or `git index` 49 rows. Distinct `EXISTS:` paths cited: 58, all verified by Glob in this pass (section 14). Five rows own a single-writer file set that crosses a workspace boundary (19, 63, 100, 102, 116): each is one concern whose pins must move in one change set, so it is one ownership area with one writer; they are named here so that the controller's collision check sees them.
+
+## 7. Single-writer resources (Shared Resources column)
+
+| Token | Resource | Rule | Rows, in their order |
+|---|---|---|---|
+| `heavy` | `.locks/heavy-host.lock` (EXISTS) | anything that starts the capture worker, the relay, a scenario suite, a container build or binds loopback ports: one at a time on this host; sandbox off | 35 rows carry it; the controller queues them |
+| `db` | this Mac's PostgreSQL with `.locks/db-migrate.lock` (EXISTS) | the database suite and every migration run take the lock; never another database (C8) | 17, 99, 114 as migration writers; the others as readers of throw-away databases |
+| `migr` | schema version, the migrations folder with its tag list, the schema pins | one migration writer, strictly A, B, C; each set its own commit (C9) | 17, 99, 114 |
+| `vset` | the value-set count pin (44) | the migration writer's | 17, 99 |
+| `audit-voc` | the audit vocabulary file set (addendum 8.2 row 1) | one writer for the whole plan; no later row adds a type | 19 |
+| `op-pins` | the operation count pins (97) and the frozen operation list | never two in one wave; each before its live path | 63, 102, 116 (94 and 28 change a body, not the count) |
+| `perm-pins` | the permission count (14) with the stored rows | vocabulary and rows in one commit | 99 with 100, commit 101 |
+| `i18n` | `packages/shared/src/i18n/` | one writer at a time; a row that needs strings while another holds it requests them | 28, 72, 98, 112, 113, 118 |
+| `static-capture` | `CS/capture/__tests__/static.test.ts` and the rule lists it holds | one writer at a time, row 21 first; each row names its rule as "amended by row 3's decision text" or "kept" | 21, 26, 49, 64, 65, 66, 80, 96, 105, 107, 110, 157 |
+| `static-adapters` | `CS/capture/adapters/__tests__/static.test.ts` | 147, then 45, 144, 46, 143, 67; rule A-1 only by 88 | as listed |
+| `config` | `CS/config.ts` with its hash pin | one writer at a time: 21, then 65, then 105 | 21, 65, 105 |
+| `app-units` | the frozen unit list of `CS/app.ts` | one writer at a time | 70, 107, 117 |
+| `session-file` | `CS/capture-session/index.ts` | one writer at a time, enforced by build edges: 47, 48, 71, then 88 | 47, 48, 71, 88 |
+| `fence-wiring` | `CS/capture/fence/index.ts` | 85, then 88; `boot.ts` and `operation.ts` have no writer | 85, 88 |
+| `worker-build` | `WRK/Makefile` and the worker build | one builder at a time; a changed worker source triggers row 59 | 23, 34, 41, 42, 43, 57, 58, 142, 153 |
+| `lockfile` | `package-lock.json` with `.locks/npm.lock` | no row adds a dependency; a row that finds it needs one returns `needs-review` | none planned |
+| `git` | the git index | one git writer; paths staged by name; never `clean`, `stash`, `add -A` | 4 and the 13 commit rows |
+| `emulator`, `container` | the tablet emulator; the Linux container runtime | one user at a time | 12; 78, 79, 141 |
+
+## 8. Waves, critical path, cost, duration
+
+**Waves (build edges only).** 19 levels, 0 to 18. Level 0 holds 39 rows that have no build dependency: 2, 3, 4, 5, 6, 10, 11, 12, 13, 17, 19, 20, 24, 26, 27, 38, 39, 45, 52, 63, 65, 66, 76, 77, 80, 87, 94, 95, 103, 104, 109, 124, 125, 126, 128, 129, 135, 147, 160. That is the widest wave by dependencies. It will not run 39 wide. What limits it:
+
+- the heavy-host lock: rows 6, 10, 12 and 39 of that level are heavy and run one after another;
+- single writers: `static-capture` (26, 65, 66, 80 queue behind 21), `op-pins` (63 alone), the migration writer (17 alone), `static-adapters` (147 before 45);
+- the controller's mediation: the width measured on this host in task 3 was 12 to 14 drivers with targeted tests (CLAUDE.md section 6). Expected practical width of the first waves: about 10 to 14.
+
+**Rows that may start before the previous gate.** Every implementation row. Gates block sign-off and commits, not coding, except row 8 (before rows 41, 47, 58, 142) and row 86 (before row 88).
+
+**Critical path** (longest chain of build edges): 6 -> 7 -> 8 -> 41 -> 42 -> 43 -> 153 -> 141 -> 86 -> 88 -> 89 -> 90 -> 151 -> 91 -> 92 -> 93 -> 138 -> 139 -> 140. In sizes: M S S M M M M M M M M M M M S S M M S. It is the camera path, as in the plan, lengthened by the security gates (AD-01 (6) puts the container repeat of E-11 before the lift). The commissioning chain (17 -> 99 -> 100 -> 102 -> 105 -> 106 -> 107 -> 111 -> 119 -> 121) ends at level 8 and is no longer co-critical.
+
+What would shorten it: (1) E-11 is the first heavy job of the run, with the test camera (39, 40, 152) queued directly behind it, so the relay rows wait for nothing but the gate; (2) if no observation is ACCEPTED, row 7 is skipped; (3) row 141 could be cut in two so that the E-11 repeat needs only row 78 and not the relay confinement of row 153: one level less, at the cost of a second container session; (4) row 85 and the audio rows run beside the relay rows, so the lift waits only for row 86.
+
+**The three most expensive rows (estimate).** By tokens: 88 (the lift change set with 21 pin rows across six files), 41 (the relay in C with Digest-only and the library pin), 89 (the first full session with a real key maker and four doubles). By wall-clock: 138 (the full regression, about 75 minutes by the README, plus the new suites), 59 if it runs (the worker series, about 35 minutes, plus the kill matrix, about 10), 12 (browser, emulator and export in one session).
+
+**Cost statement (estimate, not a measurement).**
+
+| Measure | Count |
+|---|---|
+| Rows | 160 (150 unconditional delegable, 9 conditional, 1 not delegated) |
+| By size | S 93, M 67, L 0 |
+| By model | opus 142, sonnet 17 (rows 2, 4, 13, 160 and the 13 commit rows), not delegated 1 |
+| By agent | coder-execution 86, test-expert 22, git-specialist 14, verifier 10, document-writer 7, senior-code-reviewer 7, data-analyst 6, database-specialist 3, security-review 3, task-architect 2 |
+| Waves | 19; widest by dependencies 39, practical width about 10 to 14 |
+| Token budget | S at 60 to 150 thousand, M at 200 to 350 thousand: about 19 to 37 million tokens for all 160 rows; fix waves are not in it |
+
+**Revised duration of track D (estimate, not a commitment, no calendar date).** The plan's figure was 11 to 16.5 working days before the splits (`masterplan/02_plan.md` section 21.3); the addendum added 3 to 4 (its section 11), which gives 14 to 20.5 by the package rate. Two bases from this blueprint:
+
+| Basis | Derivation | Working days |
+|---|---|---|
+| Row pace | P8's measured pace of task 3: more than 100 rows in 6 days, about 17 rows a day with parallel work. 150 unconditional rows / 17 | about 9 |
+| Wave count | 19 levels; task 3 closed 2 to 3 levels a day; the 35 heavy rows are serialised by one lock | 6.5 to 9.5 |
+| Package rate (ceiling) | the plan's unit rate with the addendum's additions, plus the 20 security rows (16 S, 4 M) at the same rate | 15 to 22 |
+
+Taken together: **about 10 to 16 working days before gates and fix waves; about 14 to 24 with the 40 to 50 % that P8 allows for them.** Branch C of E-11 adds the 3 to 5 days of addendum 5.4 and a refinement pass. The lower end rests on the row pace of task 3 carrying over to rows that are, on average, smaller than the plan's packages; that is an assumption.
+
+## 9. Milestone gates
+
+A gate row (verifier) closes a milestone by reading the evidence files, not the executors' statements. A failed item is routed to the row that produced it with the issue, the artifact and the expected correction, and the gate is run again; no gate blocks without a route.
+
+| Gate | Row | Closes | Evidence that closes it |
+|---|---|---|---|
+| RC-1 | 8 | the choice of the SA-2 home | the observations of rows 6 and 7 with their controls; the branch by the table of 9.1; a log entry by the controller. GATE AD-01 |
+| M1 | 15 | plan phase 1 | the verdict of row 14 with five results; E-6 passed; 0 product source files changed |
+| M2 | 36 | plan phase 2 and WP-13a | set A committed alone (18); pins of 19 at 77; E-7 0 survivors (25); 21 of 21 states (33); fence files unchanged; review 35 clean. GATE AD-04: rows 29, 33, 149, 150 |
+| M3 | 61 | plan phase 3 | T-1 to T-3 for the camera adapter (46); E-12 0 occurrences (44); minted code equals the statement (51); slice facts in both clients (54, 55); relay confinement (153); reader rules (144, 145); row 59 if a worker source changed; review 60 clean |
+| M4 | 74 | plan phase 4 | text equality (65, 66); T-1 and T-3 for the microphone adapter (67); the real-code check (69); registration rules (70, 156); card text rule (155); review 73 clean. WP-08 is recorded "done on doubles, confirmation pending `9A/H-08`" |
+| M5 | 83 | plan phase 5 | profile with 0 items without a check (76); scripts in print-only mode (77); container results stated as container results (78, 79, 141) or the controller's logged decision on `NO_CONTAINER_RUNTIME`; host checks on fixtures (80, 81); review 82 clean |
+| M6 | 92 | plan phase 6: stage 1 of the lift | section 9.2 |
+| M10 | 121 | plan phases 8 and 10 | sets B and C each committed alone (101, 115); 9 refusals of 9 (104); 1 intent and 1 result entry per action (105); the scan and the job on the stub (107, 111); 0 credential occurrences; security review 119 not a FAIL; review 120 clean. The phase is recorded "done on doubles; not to be used on an installation before `9A/H-05`, `H-06`" |
+| M7 | 131 | plan phase 7: the hardware package as a procedure | 27 checks each with six parts (125, 126); the frame chapter (124); the helper installation in 10 steps (127); every script run dry (130); 0 uncovered unproven items |
+| Track D | 136 to 139 | the autonomous run | 75 of 75 identifiers with evidence; security FAIL 0; the full regression green; review clean. Then the controller reports track D as "done on doubles" and stops (U12 B1) |
+
+### 9.1 The decision table of E-11, completed (addendum 5.3 with AD-01 (4))
+
+| O-1 (all near misses) | O-2 | E-11b | Branch | Rows that build it |
+|---|---|---|---|---|
+| REFUSED in every run, each with its control | REFUSED | not run | **A**, provisional until row 141 repeats it in the container | 47 (secret), 48, 142 |
+| REFUSED in every run | ACCEPTED | run (either result) | **A with the second-connect rule**: the secret of branch A plus "a second connect report on a port is a capture fault" under SA-3. Chosen here because it needs no worker change; reversible by the controller (decision 5 of section 13) | 47, 48, 142 |
+| ACCEPTED in any run | any | READABLE | **B** | 47, 48, 58, 59, 142 |
+| ACCEPTED in any run | any | NOT READABLE | **C** | 9, then the refined rows |
+| INCONCLUSIVE or disagreeing runs | any | any | **not A**; the runs are repeated once; if still inconclusive, B when E-11b is READABLE, else C | as above |
+
+### 9.2 The class-C lift: stage 1 in code (this blueprint), stage 2 not here
+
+**Entry conditions of row 88 (all must hold):**
+
+1. L-1: the text of decision row AM-1 exists (row 87) and the controller has recorded it in `decisions/decisions.md`.
+2. L-2: the branch that E-11 selected is built and its checks pass (rows 47, 48; 58 in branch B), the selection is confirmed in the container (row 141, AD-01 (6)), and the security review of row 86 is not a FAIL.
+3. L-3: the credential search E-12 extended passed with 0 occurrences (row 44).
+4. L-4: an HEVC outcome exists: E-1 and E-2 passed for the worker part; the sealing and verification half is a check of row 89, inside the lift.
+5. L-5: both adapters exist in new files and pass T-1 to T-3 (rows 46, 67), which includes that a real registry still refuses them; the production registry builder exists and is not called by the boot (row 85).
+6. AD-02: the stored-address rule is built (rows 143, 144). AD-08: the static rule of row 157 is green. AD-04: gate M2 has passed.
+
+**Exit conditions (gate 92):**
+
+1. each of the 21 rows of the pin table (`masterplan/01_specs.md:207-227`) is in its stated end state; rule A-1 is rewritten; both kinds were lifted in the one change set;
+2. 1 session from four production-kind sources on doubles is recorded, sealed and verified, one of them HEVC, with no injected boot-check seam (row 89);
+3. the `REAL_DEVELOPMENT` suites show 0 changed results; `SNMP_POE` with an opener is still refused; an `ONVIF_RTSP` adapter with an opener is refused in a development registry;
+4. a production-kind row at a loopback address cannot record (row 148); the session-level security checks pass (row 151);
+5. `boot.ts` and `operation.ts` of the fence have an empty diff against the baseline; `capture/boot/checks.ts` differs only by the added host checks and, in branch B, the worker version line;
+6. no limit of the task-3 README or specification is withdrawn, and no document says "fit to record".
+
+**Stage 2 ("declared fit to record") is not a row of this blueprint.** It is the user's ruling on the result record of the hardware acceptance test package (WP-15), with the user's acceptance of digest authentication on the production camera LAN (S13-03) and the per-camera password change (S13-15) as its conditions.
+
+## 10. Verification and testing strategy
+
+- **Unit and static tests:** in the producing row, targeted files, written by the row's agent; coverage goal: every acceptance check of the row is a test that fails without the change.
+- **Integration (adapter level):** T-1 to T-3 in rows 46 and 67; T-2 for audio in row 69; T-4 in rows 78, 79, 141. No registry, fence or session before the lift.
+- **Functional (full session on doubles):** rows 89, 90, 148, 151 after the lift, on clone databases of the suite that hold the seeded bulk data plus the production rows the test writes; never on the demo database.
+- **Database:** `npm run test:db` after each schema set, with pins re-measured from the generated file; each set applied and rolled back once on the demo database.
+- **Security:** row 86 before the lift, row 119 on the commissioning functions, row 137 at the end; E-12 extended (44), the hygiene run (159), the secret search (151).
+- **Performance and risk:** the connection test inside 15,000 ms (50), the open bound of 25,000 ms and the window of 30,000 ms on fake clocks (46, 47, 90); real figures are `9A/H-21`.
+- **Rollback and recovery:** per schema set its rollback run (17, 99, 114); per milestone one commit that reverts alone; the lift reverts as one change set and leaves sealed sessions valid.
+- **UAT:** not in track D. It is the hardware package, run by the user.
+- **Bulk data seeding:** the existing seed of the Core; no new seed script. The demo database keeps its seeded content through each apply and rollback.
+- **Regression:** the suites named in the README once per commit by the controller; `npm run test:regression` once in row 138 (it does not run the real-engine transcriber tests and opens no device).
+- **Acceptance of track D:** rows 136 to 139 pass and the controller's report says "done on doubles" with the list of section 12.
+
+## 11. Traceability
+
+### 11.1 The 61 identifiers of addendum section 9
+
+| Id | Carried by step(s) | Id | Carried by step(s) |
+|---|---|---|---|
+| P12-B1 | 17, 28-33, 88, 89, 124 | P12-B2 | 45, 46, 21, 41 |
+| P12-F01 | 46, 67, 89 | P12-F02 | 28-33, 85, 88, 89 |
+| P12-F03 | 47, 90; 126 (`9A/H-21`, `H-22`) | P12-F04 | 3; 21, 26, 64, 65, 66, 96, 105, 107, 110; 88 (A-1) |
+| P12-F05 | 20, 46, 47 (a, e); 85 (b); 63, 70 (c); 67 (d) | P12-F06 | 63, 102, 116 |
+| P12-F07 | 99, 100, 101 | P12-F08 | 50, 51, 17, 56, 52-55 |
+| P12-F09 | every row is S or M (section 16); checked by 136 | P12-F10 | 41 (b, c, d), 43 (a) |
+| P12-F11 | 6, 7, 8; then 47, 58 or 9 | P12-F12 | 78, 79; 24; 76, 80; 125 (`9A/H-24`, `H-25`) |
+| P12-F13 | 69, 79 | P12-F14 | 124, 125, 126 |
+| P12-F15 | 19 | P12-F16 | 2, 17, 99 |
+| F-01 | section 4 of this document; checked by 136 | F-02 | 116, 117 |
+| F-03 | 111 | F-04 | 19; 108, 70 |
+| F-05 | 14, 89 | F-06 | 125 (`9A/H-27`) |
+| F-07 | 105, 81; 125 (`9A/H-05`) | F-08 | 124; 17, 99, 114 |
+| F-09 | 18, 101, 115 | F-10 | section 6 of this document; 124 |
+| F-11 | 94, 96 | F-12 | 99 |
+| S13-01 | 41, 42 | S13-02 | 21, 41, 44, 81, 87, 141, 159 |
+| S13-03 | 76, 80; 124 | S13-04 | 111; 50, 146 |
+| S13-05 | 6, 8; 47 | S13-06 | 48; 34 if built |
+| S13-07 | 76, 80, 41 | S13-08 | 104 |
+| S13-09 | 103; 105, 127 | S13-10 | 105, 106, 19 |
+| S13-11 | 95; 96, 107, 111 | S13-12 | 107, 110, 113; 154, 155 |
+| S13-13 | 117; 17, 71 | S13-14 | 4; every commit row; 160 |
+| S13-15 | 124 | S13-16 | 104 (1), 39 (2), 5 (3), 128, 129, 130 (4 to 6) |
+| S13-17 | 87, 88 | RC-1 | 6, 8, 141, 142 |
+| RC-2 | 47, 151 | RC-3 | 48, 90, 151 |
+| RC-4 | 34 (only if built) | RC-5 | 76, 80; 125 (`9A/H-01`) |
+| RC-6 | 41, 153, 141; 76, 80 | C1 | 111, 110 |
+| C7 | 111 | C2 | 114, 116, 117 |
+| C8 | 17, 99, 114; 124 | C9 | 18, 101, 115 |
+| C10 | 96 | C11 | 6, 8 |
+| C12 | 4; every git row | | |
+
+Count: blocking gaps 2 + technical review 16 + verification 12 + security findings 17 + relay conditions 6 + controller readings 8 = **61 identifiers, 61 carried, 0 missing.**
+
+### 11.2 The 14 requirements of the addendum security check
+
+| Id | Gate | Carried by step(s) | Where the condition is written |
+|---|---|---|---|
+| AD-01 | yes: before WP-03a | 6 (controls, near misses, kind of refusal), 7 (READABLE rule), 8 (completed table, section 9.1), 48 (second-connect rule), 141 (container repeat), 142 (permanent test), 125 (line in `9A/H-01`) | Verification of 6, 7, 8, 141; entry condition 2 of the lift |
+| AD-02 | yes: before the lift | 143 (rule in the adapter), 144 (reader refuses), 85 (permissive value under `test/` only), 148 (check), 87 (erratum to addendum 1.6 #3) | Verification of 143, 148, 86, 92 |
+| AD-03 | no | 144 (holders, bound reasons), 145 (commit, session id), 146 (stored-credential test), 147 and 21 (bytes by one function, mark, zero-fill), 19 (closed reason set), 89 (reveals carry the session) | rows named |
+| AD-04 | yes: before WP-13a closes | 28 (hosted action rewritten), 29 (`store.ts`, the writer, by role), 150 (other readers), 149 (inventory as a test), 33 (`capture.config` by name) | Verification of 29, 33, 149, 36 |
+| AD-05 | no | 47 (static test of RC-2), 151 (search in 8 places; seal after the fault), 152 and 153 (redirect and foreign control address; no file after start), 141 (no new privileges); 58 in branch B | rows named |
+| AD-06 | no | 50 (closed set, bounds, pattern, schema-checked frame), 42 (fixed frame), 51 (pattern at the write), 17 (CHECK), 154 (hostile description) | rows named |
+| AD-07 | no | 155 (text rule), 66 and 67 (argument from two integers), 3 (G-R12 text), 156 (single flight; match by USB id and port) | rows named |
+| AD-08 | yes: before the lift | 89 (real means, nothing left behind), 157 (static rule on the two mounts; no key, variable or flag) | Verification of 89, 157, 86, 92 |
+| AD-09 | no | 76 and 80 (core-file limit of the Core), 141 (the relay's limits observed), 46 and 44 (a stopped relay is killed and reaped) | rows named |
+| AD-10 | no | 29 (one audit row per cleared slot), 28 (422), 158 (state table, 422, S-5); client kinds of operation 78: decision 2 of section 13 | rows named |
+| AD-11 | no | 47 (the window is a constant), 151 (exactly 2 reveals with an aborted open) | rows named |
+| AD-12 | no | S13-02 per point: (a), (b), (d) 159; (c) 141; (e) 81; (f) 87; (g) 44. S13-04 (d): 146. S13-12 (b): 154, 155. S13-14 (e): 160. S13-16: six lines in 11.1 | rows named |
+| AD-13 | no | 124, 135 | rows named |
+| AD-14 | only in branch C | 9 | Verification of 9 |
+
+Count: **14 of 14 attached. Total identifiers carried: 61 + 14 = 75, missing 0.**
+
+### 11.3 Where the security check governs over the addendum
+
+| Addendum | Corrected to | Rows |
+|---|---|---|
+| 1.6 #3: a loopback production row "can be written only by the database owner" | Wrong. The runtime role can insert an `ONVIF_RTSP` row and update its address and the selector. The adapter therefore holds the stored address to the destination rule at every open | 143, 144, 148, 87 |
+| 1.4 change list | It lacks `store.ts:46-53,85-108` (stops the boot on a NULL slot), the writer `rows.ts:782-804` (positional fallback) and the hosted action as a rewrite | 28, 29, 149, 150 |
+| 5.3 decision rule | No control, one wrong path only, one cell without a branch, READABLE not defined | 6, 7, 8, section 9.1 |
+| 7.2 minting "from what the relay's probe reports" | The codec comes from the Core's own parse, from a closed set | 50, 154 |
+| 4.2 "arguments from the live listing" | The device argument is built from two integers; no descriptor text | 66, 67, 155 |
+| 9.4 checks of RC-1, RC-2, RC-3, RC-6, S13-02, S13-04 (d), S13-12 (b), S13-14 (e), S13-16 | Restored as checks of rows, not pointers | 142, 151, 153, 141, 159, 146, 154, 155, 160 |
+
+## 12. What stays unproven at the end of track D
+
+| Unproven | Why track D cannot show it | Hardware check(s) |
+|---|---|---|
+| Linux as the production host: the worker, the relay and the guard on the real kernel and service manager; no child outlives the Core; leftover detection; the sync level on the evidence disk; the E-11 observations on the host's build | a container is not the host, and its file system is not the evidence disk | `9A/H-01`, `H-02`, `H-03`, `H-04`, `H-24` |
+| ALSA on a real interface: the real card listing, a stable identity across a re-plug, shared capture opening, rate, the first-second sample, audible levels | ALSA does not exist on macOS; text equality and an ALSA `null` device prove the arguments, not the device | `9A/H-07`, `H-08` |
+| A real camera: RTSP authentication variants, real profile tokens, an account with special characters, reconnect after a link loss, the time to connect inside the 30 s window, a camera absent at start, discovery on the real network | the test camera is hand-written | `9A/H-10`, `H-11`, `H-12`, `H-21`, `H-22`, `H-23` |
+| H.265 from a real camera through seal and playback: packetisation, long groups, B-frames, late parameter sets, the notice not raised, playback in the operator's browser | E-1, E-2 and row 89 use generated sources | `9A/H-09` folded into `H-17`, `H-26`, `H-20` |
+| The privileged helper installed: ownership and mode, the bounds on a real interface, the conflict check with the real `arping`, expiry of an alias with the Core killed, the scan and set-IP on a factory-new camera, two cameras on one address | no `sudo`, no host address change and no camera in track D; the helper runs on stand-ins | `9A/H-05`, `H-06`, `H-25`, `H-13`, `H-14`, `H-15` |
+| Audio and video in step, and drift over a long session | needs a person, real microphones and real cameras | `9A/H-18`, `H-19` |
+| A production boot with the user's key and operators, and the first session from four production sources | X-1 and X-2 are the user's; row 89 uses a key made for the test | `9A/H-16`, `H-17` |
+| The acceptance host carries no input-av installation | no host | `9A/H-27` |
+
+## 13. Risk assessment, recommendation and next plan
+
+### Risks
+
+| Risk | Mitigation |
+|---|---|
+| The lift's critical path is long and serialised by one heavy-host lock | E-11 first; fixtures queued behind it; option (3) of section 8 if the container session becomes the bottleneck |
+| No container runtime on this Mac | row 78 reports it as its first check; decision 1 |
+| Digest-only cannot be held by the pinned library | row 41 returns `blocked`; a stop for the user (addendum section 10 item 4) |
+| A row grows beyond its size during execution | the driver returns `needs-review` with what is not built; the finding becomes a new S or M row, never a clause |
+| The worker's log file shows the ingest secret (HX-3) | row 151 finds it; then the worker's callback changes, row 59 runs, and "unchanged worker" no longer holds: a logged decision |
+| Linux-only code is developed on macOS (plan R-22) | seams, text equality, the container rows; everything else is section 12 |
+
+Assumptions and caveats: the three stop conditions of U12 B2 are the only stops; rows 112 and 118 are derived; the sizes are estimates.
+
+### Key findings
+
+| # | Finding | Confidence | Evidence | Implication |
+|---|---|---|---|---|
+| 1 | The security check of the addendum is CAUTION with 0 FAIL and four gates | High | `verification/04_security_addendum.md:18-32` | 20 rows added; the lift has two more entry conditions |
+| 2 | A production Core with an unassigned slot would not boot as the addendum is written | High | the same, section 3.2, reader 1 | row 29 names `store.ts`; gate condition on rows 29, 33, 36 |
+| 3 | The widest wave is 39 by dependencies and about 10 to 14 in practice | Medium | section 8; CLAUDE.md section 6 | the heavy-host lock sets the pace of the camera path |
+| 4 | Whether a container runtime exists on this Mac is not known | High that it is unknown | plan section 18, gap 6 | decision 1 |
+
+### Priority recommendations
+
+| Priority | Recommendation | Rationale | Risk if ignored | Target |
+|---|---|---|---|---|
+| P0 | Run row 6 as the first heavy job and decide the branch (row 8) before anything of the relay | RC-1 is a security gate; branch C replaces eight rows | relay work thrown away | rows 6-8 |
+| P0 | Land the contract rows alone and early: 17, 19, 20, 28, 147 | they unblock three parallel tracks | collisions in pinned files | wave 0 and 1 |
+| P1 | Check for a container runtime before wave 0 ends | rows 78, 79, 141 and the lift wait for it | the lift blocked late | row 78 |
+| P2 | Split row 141 if the container session queues behind the relay confinement | one level off the critical path | about half a day | row 141 |
+
+### Pending decisions (none stops track D; the controller decides and logs, U12 B2)
+
+| # | Decision | Options | Recommended | Impact |
+|---|---|---|---|---|
+| 1 | If no container runtime is on this Mac | install one (a host change, logged) / record T-4 and AD-01 (6) as unproven and move them to `9A/H-01` | install; if the user must be asked, ask once. Without it the selection of branch A stays provisional and row 86 cannot confirm AD-01 (6): the lift then needs the user's word | rows 78, 79, 141, 86 |
+| 2 | Client kinds of operation 78 with `unassign` (AD-10 (5)) | unchanged (any client with the permission) / web console only through the existing condition | unchanged; the first-boot procedure uses the web console | row 28 |
+| 3 | The derived rows 112 and 118 | build / drop | build: without them the commissioning settings, the scan and the acceptance have no screen | rows 112, 118 |
+| 4 | Section H.5 of the evidence specification (S13-17) | an erratum in this task folder / an edit of the task-3 document | erratum here, as task 3 did with its own errata | row 87 |
+| 5 | The cell "O-1 REFUSED, O-2 ACCEPTED" of the E-11 table | branch A with the second-connect rule / branch C | A with the rule | section 9.1 |
+| For the user, unchanged from addendum section 10 | moving `apps/input-av/data/` out of the repository; digest on the production camera LAN; the bench input-av after stage 2; the helper installation; X-1, X-2; the per-camera password change | - | asked once; none stops track D | - |
+
+### Next plan
+
+- **Immediate next step:** the controller validates this blueprint (PRE-HIL V1 to V12) and launches wave 0 with row 6 as the first heavy job.
+- **Subsequent:** row 8; the relay rows; the audio rows and the commissioning rows beside them; row 86; the lift; the hardware package; the closing chain.
+- **Parallelizable:** the camera, audio, selector, host and commissioning tracks have no build edge between them before row 85, except through the contract rows 17, 19, 20.
+- **Continuity:** track D ends with "done on doubles" and the list of section 12; stage 2 and track H wait for the user.
+
+## 14. EXISTS paths, with their evidence
+
+All by Glob in this pass, under `/Users/gsp-budi/Documents/DEMS/`: `apps/core-server/src/` with `config.ts`, `app.ts`, `capture-session/index.ts`, `capture-notices/index.ts`, `core/audit-details.ts`, `sealing-host/session-reader.ts`, `db/schema/` (`capture.ts`, `meta.ts`, `value-sets.ts`), `db/migrations/` (files 0000 to 0014), `db/fixtures/operations.ts`, `db/mapping/rows.ts`, `modules/capture-config/` (`store.ts`, `slices.ts`, `routes.ts`, `plan.ts`), `modules/capture-discovery/` (`adoption.ts`, `store.ts`, `connect/service.ts`), `modules/capture-inputs/`, `plugins/permission-guard/matrix.ts` and `__tests__/guard.test.ts`, `capture/fragments.ts`, `capture/worker-arguments.ts`, `capture/__tests__/static.test.ts`, `capture/boot/checks.ts`, `capture/fence/index.ts`, `capture/fence/__tests__/fence.test.ts` and `fence.db.test.ts`, `capture/adapters/` (`types.ts`, `registry.ts`, `real.ts`, `credential.ts`, `__tests__/static.test.ts`, `camera/onvif-session.ts`, `camera/onvif-rtsp.ts`, `camera/onvif-cam.d.ts`, `audio/usb-audio.ts`, `local/leftover.ts`, `local/mic-helper-args.ts`, `local/process-door.ts`); `apps/core-server/test/support/fake-onvif-stub.ts`; `apps/core-server/test/db/contract-inventory.test.ts`; `packages/shared/src/` with `sim/vocabulary.ts`, `sim/api.ts`, `sim/types.ts`, `api/devices.ts`, `api/state-slices.ts`, `api/capture-discovery.ts`, `i18n/`; `apps/capture-worker/` with `Makefile`, `src/ingest.c`, `src/capture_worker.c`, `test-fixtures/`; `apps/core-web/src/features/devices/` (`index.tsx`, `camera-tile.tsx`), `features/session-monitor/model.ts`, `test/live-api-reference-page.test.tsx`; `apps/mobile/src/features/devices/`; `scripts/test/regression.sh`; `README.md`; `package.json`; `.gitignore`; `.locks/heavy-host.lock`; `.locks/db-migrate.lock`. Not verified and therefore written as UNKNOWN: the secret scan's location, the one datagram file, the camera slice producer, the other selector readers named by the security check, `scripts/release/`, the simulator's hosted-action file, and the homes of the host profile, the helper, the container definition, the hardware procedure and the installer note.
+
+## 15. Agent mapping rationale
+
+- **coder-execution:** every change to product or test-support code. Opus throughout except row 13: the rows carry security, concurrency or evidence-integrity judgment.
+- **database-specialist:** the three schema sets, each with its migration, pins and rollback as one unit.
+- **test-expert:** experiments, heavy scripted sessions and the full regression; it writes the test files of its own rows. Never downgraded.
+- **verifier, security-review, senior-code-reviewer:** gates, the three security reviews, the per-milestone and final code reviews. Never downgraded.
+- **document-writer:** the host profile, the four chapters of the hardware procedure, the README, the installer note.
+- **data-analyst:** measurements and decision-row drafts that the controller then records.
+- **git-specialist:** the guard check and the 13 commits, mechanical, sonnet.
+- **task-architect:** this document; row 9 only in branch C.
+
+## 16. Atomicity and format self-check (manual, row by row; this agent has no shell)
+
+| Check | Count |
+|---|---|
+| Rows in the breakdown | 160 |
+| Rows in the profile, same numbers | 160 |
+| Size S / M / L | 93 / 67 / 0 |
+| Rows with more than 3 checks | 0 (rows 17, 29, 33, 41, 44, 46, 88, 90, 124, 141 and 151 are at 3; the `blocked` clauses of rows 41 and 78 are stop rules, not checks) |
+| Rows spanning more than one ownership area | 0; five rows own one single-writer file set that crosses a workspace (19, 63, 100, 102, 116), disclosed under the profile |
+| Rows with more than one expected output | 0 |
+| Agents outside the allowed ten | 0 |
+| Phases outside the standard folders | 0 (implementation, test, verification, gateway_check, masterplan, decisions, initialization, research) |
+| Rows that need a device, a Linux host, `sudo`, a real credential or the user | 0 (row 12 uses the emulator as task 3 did; rows 78, 79, 141 use a container on this Mac) |
+| Dependency cycles | 0 (levels computed for all 160 rows; a dependency may name a higher step number, as 21 -> 147 and 35 -> 149) |
+| `EXISTS:` paths cited / verified | 58 / 58 |
+| Requirement identifiers carried | 75 of 75 (61 + 14) |
+| Table format | single-line cells, 7 columns and 8 columns, no merged or nested cells: PASS |
+
+Limits of this self-check: it was done by reading, not by a script; the counts of ownership-area kinds under the profile are a hand count and may be off by one or two rows. The controller's PRE-HIL validation is the mechanical check.
+
+---
+*Generated: 2026-10-12*
+*Last Updated: 2026-10-12 (security check of the addendum adopted: AD-01 to AD-14, rows 141 to 160)*
