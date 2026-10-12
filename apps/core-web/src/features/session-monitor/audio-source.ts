@@ -28,7 +28,7 @@ import { SessionState } from '@dems/shared/domain'
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   captureMicLines,
-  micInputOfChannel,
+  meterInputOfChannel,
   OperatorRole,
   Permission,
   ROLE_PERMISSIONS,
@@ -39,10 +39,12 @@ import {
   SimTransitionError,
   useSim,
   useSimInstance,
+  type RoleMicLine,
   type SimState,
   audioPairInForce,
   openSessionAudioSource,
   selectorInForce,
+  sessionIsOpen,
 } from '@dems/shared/sim'
 import { useMicInputName } from '@/features/devices/source-class'
 import { isMicInputId, otherMicInput } from '@/lib/capture-notices'
@@ -130,54 +132,76 @@ export function switchFailureFacts(error: unknown): Record<string, unknown> {
 // ── The view ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The other input of the built-in pair: the last resort when neither the session nor the selector
- * names a standby. Integration pass D2 (D133 (1)): a mic input id is the Core's `MIC-NN` text, so the
- * ids of this file are typed `string` and nothing but this table knows the two built-in ids.
+ * An OPEN session that states no pair yet (before its recording starts): `audioPairInForce` names
+ * nothing for it, and this file reads the meters' member and the lines of the selector in force.
+ * Not this state: no session, a sealed one, or a selector without a line for a role - there the
+ * pair in force is the whole answer and a `null` of it is "no such input".
  */
-const BUILT_IN_OTHER: Readonly<Record<string, string>> = { 'MIC-01': 'MIC-02', 'MIC-02': 'MIC-01' }
+const openSessionWithoutPair = (s: SimState): boolean => sessionIsOpen(s.session) && openSessionAudioSource(s.session) === null
+
+/** The microphone lines of the selector the session records under (its snapshot WHILE IT IS OPEN, else the stored one). */
+const linesInForce = (s: SimState): readonly { readonly inputId: string }[] => selectorInForce(s)?.mics ?? []
 
 /**
- * The input inside `AUDIO-01` now: the pair of the OPEN session; with no open session the PRIMARY line of
- * the current selector (`audioPairInForce`, fix 157: a SEALED session's pair names nothing any more); the
- * meters' member behind both.
+ * The input inside `AUDIO-01` now, or `null` when there is none: the pair of the OPEN session; with
+ * no open session the PRIMARY line of the current selector (`audioPairInForce`, fix 157: a SEALED
+ * session's pair names nothing any more); under an open session that states no pair yet, the meters'
+ * member.
+ *
+ * Task 4 row 168 (site W6; decision C18 (2); names register file 12): the answer is nullable and no
+ * input stands in. A selector without a PRIMARY line has no active input, whatever the meters' member
+ * still says; and the meters' member is answered only when the selector in force holds that input.
  */
-export const selectActiveInputId = (s: SimState): string => audioPairInForce(s).activeInputId ?? s.audio.activeInputId
-
-/**
- * The hot standby: the pair in force (the OPEN session's; with no open session the current selector's STANDBY
- * line); else the other microphone line of the selector the session
- * records under (its snapshot WHILE IT IS OPEN, else the stored one: `selectorInForce`), whatever its number; else the other input of
- * the built-in pair.
- */
-export const selectStandbyInputId = (s: SimState): string => {
-  const named = audioPairInForce(s).standbyInputId
+export const selectActiveInputId = (s: SimState): string | null => {
+  const named = audioPairInForce(s).activeInputId
   if (named !== null) return named
-  const active = selectActiveInputId(s)
-  const lines: readonly { readonly inputId: string }[] = selectorInForce(s)?.mics ?? []
-  return otherMicInput(lines, active) ?? BUILT_IN_OTHER[active] ?? active
+  if (!openSessionWithoutPair(s)) return null
+  // Typed as the slice states it on the wire (`string | null`); the state's own type is behind the seam of row 28.
+  const held: string | null = s.audio.activeInputId
+  return held !== null && linesInForce(s).some((line) => line.inputId === held) ? held : null
 }
 
 /**
- * The input an active `MIC_SILENT` warning names, or `null` when none is active. The fault's target
- * is the channel of the input; a warning without a readable target is about the active input.
- * `mics`: the microphone lines of the capture configuration (`captureMicLines`) — a channel is the
- * line at its position (ruling D137, integration pass D5); without lines, the built-in pair.
+ * The hot standby, or `null` when there is none: the pair in force (the OPEN session's; with no open
+ * session the current selector's STANDBY line); under an open session that states no pair yet, the
+ * other microphone line of the selector it records under, whatever its number.
+ *
+ * Task 4 row 168: no built-in input is answered (the table `MIC-01` <-> `MIC-02` is gone) and the
+ * active input never stands in for its own standby.
  */
-export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string, mics: readonly { readonly inputId: string }[] = []): string | null {
+export const selectStandbyInputId = (s: SimState): string | null => {
+  const named = audioPairInForce(s).standbyInputId
+  if (named !== null) return named
+  if (!openSessionWithoutPair(s)) return null
+  const active = selectActiveInputId(s)
+  return active === null ? null : otherMicInput(linesInForce(s), active)
+}
+
+/**
+ * The input an active `MIC_SILENT` warning names, or `null` when none is active or it names no
+ * input. The fault's target is the channel of the input; a warning without a readable target is
+ * about the active input. `mics`: the microphone lines of the capture configuration
+ * (`captureMicLines`).
+ *
+ * Task 4 row 168 (site W6): the input of a channel is `meterInputOfChannel` - the line at the
+ * channel's place of a COMPLETE pair (ruling D137, kept by C21 (7)), never a built-in input. A
+ * channel without an input names none, and so does a fault without a target when no input is active.
+ */
+export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string | null, mics: readonly RoleMicLine[]): string | null {
   const fault = faults.find((entry) => entry.kind === 'MIC_SILENT')
   if (!fault) return null
   // The input itself, by the id the Core sent (`MIC-NN`, any number).
   if (isMicInputId(fault.target)) return fault.target
-  const input = fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02' ? micInputOfChannel(mics, fault.target) : undefined
-  return input ?? activeInputId
+  if (fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02') return meterInputOfChannel(mics, fault.target)
+  return activeInputId
 }
 
 export interface AudioSourceView {
   readonly sessionId: string | null
   readonly recording: boolean
-  /** The pair as the Core holds it. */
-  readonly activeInputId: string
-  readonly standbyInputId: string
+  /** The pair as the Core holds it; `null`: no input is active / no standby is held (task 4 row 168). */
+  readonly activeInputId: string | null
+  readonly standbyInputId: string | null
   /** Core instant of the last switch; `null` before the first. */
   readonly switchedAt: number | null
   /** G4 / G5: why the toggle is not offered; `null` when it is. */
@@ -255,7 +279,8 @@ export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchCo
   const { block, activeInputId, standbyInputId } = view
 
   const ask = () => {
-    if (block !== null) return
+    // Without a standby input there is nothing to switch to (task 4 row 168).
+    if (block !== null || standbyInputId === null) return
     setRefusal(null)
     setConfirmOpen(true)
   }
@@ -263,7 +288,7 @@ export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchCo
     if (!press.busy) setConfirmOpen(false)
   }
   const confirm = () => {
-    if (block !== null) return
+    if (block !== null || standbyInputId === null) return
     const from = activeInputId
     const to = standbyInputId
     // The id is the Core's own text (`MIC-NN`); the cast holds before and after the contract's id is widened.
@@ -271,7 +296,7 @@ export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchCo
       ok: () => {
         setConfirmOpen(false)
         // Read on the settle: the input the Core's state names, not the one that was asked for.
-        const active = selectActiveInputId(sim.store.getState())
+        const active = selectActiveInputId(sim.store.getState()) ?? to
         toast.success(t('session.audioSource.switched', { mic: micName(active) }))
       },
       fail: (error) => {

@@ -772,25 +772,12 @@ const BUILT_IN_CAPABILITIES: ReadonlyMap<string, readonly string[]> = new Map(
   DEFAULT_CAPTURE_DEVICES.devices.map((device) => [device.id, device.capabilities] as const),
 );
 
-/**
- * The six slot columns of the selector row AS THE DATABASE HOLDS THEM since schema set A (task 4
- * row 17): each may be NULL, an UNASSIGNED slot. LOCAL TYPE of task 4 row 166 (WP-13a): the typed
- * schema still states them as `string` behind its seam `slotColumn()` (`db/schema/capture.ts`),
- * which this row does not remove. When that seam goes, `CaptureConfigRow` states the same thing
- * and this type becomes `Pick<CaptureConfigRow, ...>` of the six members; `seamedSelectorRow`
- * below then returns its argument without a cast.
+/*
+ * The six slot columns of the selector row may each be NULL, an UNASSIGNED slot (schema set A,
+ * task 4 row 17). `CaptureConfigRow` states it since integration pass I-6 removed the type seam of
+ * `db/schema/capture.ts`; the local slot type and the one cast task 4 row 166 kept here until then
+ * are gone with it.
  */
-interface StoredSelectorSlots {
-  readonly video01DeviceId: string | null;
-  readonly video01Profile: string | null;
-  readonly video02DeviceId: string | null;
-  readonly video02Profile: string | null;
-  readonly micPrimaryId: string | null;
-  readonly micStandbyId: string | null;
-}
-
-/** THE ONE CAST of row 166: a row whose slots may be NULL, under the row type the seam still states. */
-const seamedSelectorRow = (row: Omit<CaptureConfigRow, keyof StoredSelectorSlots> & StoredSelectorSlots): CaptureConfigRow => row as CaptureConfigRow;
 
 /**
  * Slice 29 to its one row (T-31). Only the selector travels: `online`/`streamState` of the camera
@@ -821,7 +808,7 @@ export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow 
     camera === undefined ? [null, null] : [storableText(camera.deviceId, place(device)), profileToCode(camera.profile, place(profile))];
   const [video01DeviceId, video01Profile] = video(camera01[0], 'video_01_device_id', 'video_01_profile');
   const [video02DeviceId, video02Profile] = video(camera02[0], 'video_02_device_id', 'video_02_profile');
-  return seamedSelectorRow({
+  return {
     singleton: true,
     video01DeviceId,
     video01Profile,
@@ -834,7 +821,7 @@ export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow 
     // The selector's instant is the slice's own `updated_at`; `revision` and `updated_by` belong
     // to operation 77 and the module, never to an engine write (dbc-3 §B.1).
     updatedAt: safeInteger(slice.updatedAt, place('updated_at')),
-  });
+  };
 }
 
 /**
@@ -953,8 +940,8 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     }
     return device;
   };
-  // The row as the database holds it: a slot may be NULL (the row type states `string` behind the schema's seam).
-  const slots: StoredSelectorSlots = row;
+  // The row as the database holds it: a slot may be NULL, and the row type says so.
+  const slots: Pick<CaptureConfigRow, 'video01DeviceId' | 'video01Profile' | 'video02DeviceId' | 'video02Profile' | 'micPrimaryId' | 'micStandbyId'> = row;
   const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string | null, code: string | null): CaptureConfigSlice['cameras'] => {
     const columns = trackId === 'VIDEO-01' ? (['video_01_device_id', 'video_01_profile'] as const) : (['video_02_device_id', 'video_02_profile'] as const);
     if (deviceId === null && code === null) return [];
@@ -1004,8 +991,7 @@ const NO_DEVICE_IDS: ReadonlySet<string> = new Set();
 
 /** The device ids the selector row names: its four slots, an UNASSIGNED (NULL) slot names none (task 4 row 166, site A5). */
 export function selectorDeviceIds(row: Pick<CaptureConfigRow, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'>): ReadonlySet<string> {
-  const slots: Pick<StoredSelectorSlots, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'> = row;
-  return new Set([slots.video01DeviceId, slots.video02DeviceId, slots.micPrimaryId, slots.micStandbyId].filter((deviceId): deviceId is string => deviceId !== null));
+  return new Set([row.video01DeviceId, row.video02DeviceId, row.micPrimaryId, row.micStandbyId].filter((deviceId): deviceId is string => deviceId !== null));
 }
 
 function compareIds(a: string, b: string): number {

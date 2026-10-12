@@ -17,7 +17,7 @@
  * New, and the alert centre of the shell.
  */
 import type { TFunction } from 'i18next'
-import type { SimAlert } from '@dems/shared/sim'
+import type { CaptureSelectorSlot, SimAlert } from '@dems/shared/sim'
 
 export const CAPTURE_NOTICE_REASON = {
   DISCOVERY_EMPTY: 'CAPTURE_DISCOVERY_EMPTY',
@@ -213,15 +213,21 @@ export function captureNoticeLine(t: Translate, notice: CaptureNotice): string {
 
 // ── The start rule at pre-check (ux §8g.3; D83, D114) ────────────────────────────────────
 
-/** `params.rule` of an unreachable pre-check item: the suffix of `common.captureNotice.start.*`. */
-export const CAPTURE_START_RULES = ['noCamera', 'oneCamera', 'noMicrophone', 'activeMicrophone', 'noStandby', 'oneMicrophone', 'notRecordable'] as const
+/**
+ * `params.rule` of a pre-check item of the start rule: the suffix of `common.captureNotice.start.*`.
+ * Task 4 row 167 (names register E34): the eighth member, `sourceNotAssigned`, is the rule of an
+ * unassigned selector slot. Its item names NO device, so it is not found by `unreachablePrecheckOf`
+ * (which needs a device id) but by `unassignedSlotOfPrecheckItem` of `@dems/shared/sim`.
+ */
+export const CAPTURE_START_RULES = ['noCamera', 'oneCamera', 'noMicrophone', 'activeMicrophone', 'noStandby', 'oneMicrophone', 'notRecordable', 'sourceNotAssigned'] as const
 export type CaptureStartRule = (typeof CAPTURE_START_RULES)[number]
 
 /** The value a pre-check item carries when its source did not answer (D114: `reasonCode` is null then). */
 export const PRECHECK_UNREACHABLE_VALUE = 'UNREACHABLE'
 
 export interface UnreachablePrecheck {
-  readonly rule: CaptureStartRule
+  /** A rule of a source that did not answer: never `sourceNotAssigned`, whose item names no device. */
+  readonly rule: Exclude<CaptureStartRule, 'sourceNotAssigned'>
   readonly deviceId: string
   readonly deviceKind: CaptureNoticeDeviceKind
   /** The other microphone, for the sentence that names it; `null` otherwise. */
@@ -239,7 +245,7 @@ export function unreachablePrecheckOf(item: { readonly value?: string | null; re
   const rule = CAPTURE_START_RULES.find((known) => known === params['rule'])
   const deviceId = params['deviceId']
   const deviceKind = params['deviceKind']
-  if (rule === undefined || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId) || (deviceKind !== 'CAMERA' && deviceKind !== 'MIC')) return null
+  if (rule === undefined || rule === 'sourceNotAssigned' || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId) || (deviceKind !== 'CAMERA' && deviceKind !== 'MIC')) return null
   const other = params['other']
   return { rule, deviceId, deviceKind, otherDeviceId: typeof other === 'string' && DEVICE_ID.test(other) ? other : null }
 }
@@ -251,6 +257,18 @@ export function unreachablePrecheckText(t: Translate, source: UnreachablePrechec
   // The active microphone without a second one to name: the rule still blocks; the sentence says what cannot start.
   if (source.rule === 'activeMicrophone' && source.otherDeviceId === null) return t('common.captureNotice.start.noMicrophone')
   return t(`common.captureNotice.start.${source.rule}`, { device, other })
+}
+
+// ── An unassigned selector slot at pre-check (task 4 row 167; decisions C18 (1), C25; names register 5.2) ──
+
+/**
+ * "Camera 1 has no source assigned. Assign one on Devices." - the slot by its label (names register
+ * N13, N14). The item is `{ value: 'NOT_ASSIGNED', reasonCode: null, params { rule:
+ * 'sourceNotAssigned', slot } }` with no `deviceId`, because there is no device; the slot is found
+ * by the ONE recogniser of both clients, `unassignedSlotOfPrecheckItem` of `@dems/shared/sim` (N12).
+ */
+export function unassignedPrecheckText(t: Translate, slot: CaptureSelectorSlot): string {
+  return t('common.captureNotice.start.sourceNotAssigned', { slot: t(`common.captureSlot.${slot}`) })
 }
 
 // ── Situation C: a session start with no camera (blueprint row 139; ux §8e.2; D72(k), D84, D91) ──

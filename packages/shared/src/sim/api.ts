@@ -73,7 +73,7 @@ import {
   type SttLastTest,
 } from '../api/transcription';
 import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, type MicInputId, type VideoTrackId } from '../domain';
-import { captureMicLines, micInputOfChannel } from './audio';
+import { captureMicLines, meterInputOfChannel } from './audio';
 import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
@@ -93,6 +93,7 @@ import type {
   CaptureConfigSlice,
   CaptureDevicesSlice,
   CaptureMicInputId,
+  CaptureSelectorSlot,
   EpochMs,
   EvidenceItem,
   ExportResult,
@@ -220,8 +221,11 @@ export interface ApiSessionCommandBody {
 export interface ApiVideoTrack {
   trackId: VideoTrackId;
   deviceId: string;
-  /** Schema v2 (SH-05; C3 §3 ops 44/46): the capture device the selector assigns to this track. */
-  sourceDeviceId: string;
+  /**
+   * Schema v2 (SH-05; C3 §3 ops 44/46): the capture device the selector assigns to this track.
+   * `null`: the track holds no source - its selector slot is unassigned (task 4 row 165; register E39).
+   */
+  sourceDeviceId: string | null;
   /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST. */
   streamState: CaptureStreamState;
   name: string;
@@ -258,10 +262,15 @@ export interface ApiAudioChannel {
   phantom: boolean;
 }
 
-/** Response of `GET /api/v1/audio/status` (schema v2: the two inputs plus the active one). */
+/**
+ * Response of `GET /api/v1/audio/status` (schema v2: the inputs plus the active one).
+ * `channels`: one entry per meter channel that HAS an input - two on a complete selector, none
+ * while the selector holds no complete microphone pair (an entry IS an input; register E40, D-2).
+ * `activeInputId`: `null` when no microphone line in force is the active input.
+ */
 export interface ApiAudioStatus {
   channels: ApiAudioChannel[];
-  activeInputId: CaptureMicInputId;
+  activeInputId: CaptureMicInputId | null;
 }
 
 
@@ -284,8 +293,8 @@ export interface ApiDeviceHealth {
   flags: { id: string; severity: string; message: string }[];
   cameras: ApiVideoTrack[];
   audio: ApiAudioChannel[];
-  /** Schema v2 (C3 §3 op 44): the input feeding `AUDIO-01` right now. */
-  activeInputId: CaptureMicInputId;
+  /** Schema v2 (C3 §3 op 44): the input feeding `AUDIO-01` right now. `null`: no microphone line in force is the active input. */
+  activeInputId: CaptureMicInputId | null;
   storage: ApiStorageStatus;
   time: { source: string; locked: boolean; stratum: number; offsetMs: number; lastSyncAt: string };
   security: { state: string; posture: string; tpmOk: boolean; secureBoot: boolean; tamper: boolean; platformNotReported?: true };
@@ -358,11 +367,13 @@ function videoTracks(state: SimState): ApiVideoTrack[] {
   return state.cameras.map((camera) => {
     // Schema v2 (SH-05/SH-12): the selector names the device behind each track and carries its
     // stream state; a fault that drops the stream flips it to LOST (OD-22 makes op 48 legal then).
+    // The line is found BY ITS TRACK. A track without a line has NO source (task 4 row 165; site
+    // C23): `null`, never the built-in camera of that track.
     const slot = state.captureConfig.cameras.find((entry) => entry.trackId === camera.id);
     return {
       trackId: camera.id,
       deviceId: camera.deviceId,
-      sourceDeviceId: slot?.deviceId ?? camera.deviceId,
+      sourceDeviceId: slot?.deviceId ?? null,
       streamState: slot?.streamState ?? (camera.online ? CaptureStreamState.LIVE : CaptureStreamState.LOST),
       name: camera.name,
       lens: camera.lens,
@@ -378,20 +389,23 @@ function videoTracks(state: SimState): ApiVideoTrack[] {
 
 function audioInputs(state: SimState): ApiAudioChannel[] {
   const lines = captureMicLines(state);
-  return state.mics.map((mic) => {
+  return state.mics.flatMap((mic): ApiAudioChannel[] => {
     // Schema v2 (SH-15/SH-17): the read is keyed by the microphone INPUT, never by a track, and
     // names the PRIMARY/STANDBY role the selector holds inside AUDIO-01 (OD-01 T1). The input of a
     // meter channel is its microphone line of the capture configuration (ruling D137).
-    const inputId = micInputOfChannel(lines, mic.id);
-    const line = lines.find((entry) => entry.inputId === inputId);
+    // A channel WITHOUT an input gives NO entry (task 4 row 165; site C24; register E40, D-2): an
+    // entry IS an input, so nothing states an input, a device or a role for a role without a line -
+    // never a built-in input, never the role of the hardware slice.
+    const inputId = meterInputOfChannel(lines, mic.id);
+    const line = inputId === null ? undefined : lines.find((entry) => entry.inputId === inputId);
+    if (inputId === null || line === undefined) return [];
     // An input without a frame yet reads NO SIGNAL.
     const frame = state.audio.inputs[inputId] ?? noSignalFrame(0);
-    const role = line?.role ?? mic.micRole;
-    return {
+    return [{
       inputId,
-      deviceId: line?.deviceId ?? mic.deviceId,
+      deviceId: line.deviceId,
       name: mic.name,
-      role,
+      role: line.role,
       state: mic.state,
       recState: mic.recState,
       dbfs: frame.dbfs,
@@ -401,8 +415,21 @@ function audioInputs(state: SimState): ApiAudioChannel[] {
       ...(frame.notMeasured === true ? { notMeasured: true as const } : {}),
       gainDb: mic.gainDb,
       phantom: mic.phantom,
-    };
+    }];
   });
+}
+
+/**
+ * The input feeding `AUDIO-01`, as operations 44 and 45 answer it (task 4 row 165; seam readers 5
+ * and 6 of row 28): the meters' active input while it IS a microphone line in force, else `null`.
+ * An input no line holds is not answered as active - behind the seam `AudioSliceInState` the state
+ * keeps the input it held when the selector lost its PRIMARY line (row 149 removes the seam; the
+ * answer is then null from the state itself, and this reader is correct either way).
+ */
+function activeInputOf(state: SimState): CaptureMicInputId | null {
+  const active: CaptureMicInputId | null = state.audio.activeInputId;
+  if (active === null) return null;
+  return captureMicLines(state).some((line) => line.inputId === active) ? active : null;
 }
 
 
@@ -440,7 +467,7 @@ function deviceHealth(state: SimState, now: EpochMs): ApiDeviceHealth {
     flags: system.flags.map((flag) => ({ id: flag.id, severity: flag.severity, message: flag.message })),
     cameras: videoTracks(state),
     audio: audioInputs(state),
-    activeInputId: state.audio.activeInputId,
+    activeInputId: activeInputOf(state),
     storage: storageStatus(state),
     time: {
       source: state.time.source,
@@ -687,12 +714,34 @@ interface CaptureMicLine {
 
 type BodyCheck = { ok: true } | { ok: false; path: string; message: string };
 
-/** Validates the op 78 body against `CaptureConfigUpdateRequest` (C3 §2.3): partial, strict, bounded. */
-function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { cameras?: CaptureCameraLine[]; mics?: CaptureMicLine[] } {
-  const unknownKey = Object.keys(body).find((key) => key !== 'cameras' && key !== 'mics');
-  if (unknownKey !== undefined) return { ok: false, path: unknownKey, message: 'Unknown member: only `cameras` and `mics` may be sent.' };
+/** The four slots `unassign` may name: the two video tracks and the two microphone roles (the contract's `CAPTURE_SELECTOR_SLOTS`; held equal by a test). */
+const UNASSIGNABLE_SLOTS: readonly CaptureSelectorSlot[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, MicRole.PRIMARY, MicRole.STANDBY];
+
+/**
+ * Validates the op 78 body against `CaptureConfigUpdateRequest` (C3 §2.3): partial, strict, bounded.
+ *
+ * `unassign` (task 4 row 165; site C25 of row 27; names register N1 and section 4.3; AD-10 (3)):
+ * the slots the edit clears - a list of one to four of the four slot names, no slot twice, and no
+ * slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line). Every
+ * refusal of the member is on the path `unassign`, as the contract's schema has it.
+ */
+function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { cameras?: CaptureCameraLine[]; mics?: CaptureMicLine[]; unassign?: CaptureSelectorSlot[] } {
+  const unknownKey = Object.keys(body).find((key) => key !== 'cameras' && key !== 'mics' && key !== 'unassign');
+  if (unknownKey !== undefined) return { ok: false, path: unknownKey, message: 'Unknown member: only `cameras`, `mics` and `unassign` may be sent.' };
   const cameras: CaptureCameraLine[] = [];
   const mics: CaptureMicLine[] = [];
+  const unassign: CaptureSelectorSlot[] = [];
+  if (body.unassign !== undefined) {
+    if (!Array.isArray(body.unassign) || body.unassign.length < 1 || body.unassign.length > 4) {
+      return { ok: false, path: 'unassign', message: 'Expected 1 to 4 selector slots.' };
+    }
+    for (const entry of body.unassign) {
+      const slot = UNASSIGNABLE_SLOTS.find((candidate) => candidate === entry);
+      if (slot === undefined) return { ok: false, path: 'unassign', message: 'Expected VIDEO-01, VIDEO-02, PRIMARY or STANDBY.' };
+      if (unassign.includes(slot)) return { ok: false, path: 'unassign', message: 'A slot is named at most once.' };
+      unassign.push(slot);
+    }
+  }
   if (body.cameras !== undefined) {
     if (!Array.isArray(body.cameras) || body.cameras.length < 1 || body.cameras.length > 2) {
       return { ok: false, path: 'cameras', message: 'Expected 1 or 2 camera lines.' };
@@ -743,7 +792,13 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       });
     }
   }
-  return { ok: true, ...(cameras.length > 0 ? { cameras } : {}), ...(mics.length > 0 ? { mics } : {}) };
+  // AD-10 (3): a slot is not cleared and assigned by one body. (A mic line WITHOUT `role` names an
+  // input, not a slot: which role holds it is the hosted action's to know, and it refuses it.)
+  const assigned: readonly CaptureSelectorSlot[] = [...cameras.map((line) => line.trackId), ...mics.flatMap((line) => (line.role === undefined ? [] : [line.role]))];
+  if (unassign.some((slot) => assigned.includes(slot))) {
+    return { ok: false, path: 'unassign', message: 'A slot is not unassigned and assigned by the same request.' };
+  }
+  return { ok: true, ...(cameras.length > 0 ? { cameras } : {}), ...(mics.length > 0 ? { mics } : {}), ...(unassign.length > 0 ? { unassign } : {}) };
 }
 
 /** The telemetry of one capture device, or null when the registry does not hold it. */
@@ -1664,6 +1719,7 @@ const CAPTURE_ROUTES: readonly Route[] = [
         kind: 'UPDATE',
         ...(update.cameras === undefined ? {} : { cameras: update.cameras }),
         ...(update.mics === undefined ? {} : { mics: update.mics }),
+        ...(update.unassign === undefined ? {} : { unassign: update.unassign }),
       });
     },
   },
@@ -1971,7 +2027,7 @@ const ROUTES: readonly Route[] = [
       const state = store.getState();
       return respond(200, {
         channels: audioInputs(state),
-        activeInputId: state.audio.activeInputId,
+        activeInputId: activeInputOf(state),
       } satisfies ApiAudioStatus);
     },
   },

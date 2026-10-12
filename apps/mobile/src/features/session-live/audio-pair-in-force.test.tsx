@@ -54,8 +54,8 @@ function Probe() {
   const role1 = useMicSourceRole('AUDIO-01');
   return (
     <>
-      <Text testID="pair-active">{`${view.activeInputId}|${micName(view.activeInputId)}`}</Text>
-      <Text testID="pair-standby">{`${view.standbyInputId}|${micName(view.standbyInputId)}`}</Text>
+      <Text testID="pair-active">{`${view.activeInputId}|${view.activeInputId === null ? '' : micName(view.activeInputId)}`}</Text>
+      <Text testID="pair-standby">{`${view.standbyInputId}|${view.standbyInputId === null ? '' : micName(view.standbyInputId)}`}</Text>
       <Text testID="card-1-role">{role1 ?? 'none'}</Text>
     </>
   );
@@ -95,5 +95,44 @@ describe('fix 157 - the pair a mobile screen names after a sealed session and a 
     expect(textOf('pair-standby').split('|')[0]).toBe('MIC-01');
     expect(textOf('card-1-role')).toBe('STANDBY');
     expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-02', 'MIC-01']);
+  });
+});
+
+// Task 4 row 170 (site M4; decision C18 (2)): the hook every screen reads (`useMicSource`, `useMicSourceRole`)
+// states "absent" for a role without a line. The double: the recording scenario with the selector's lines cut
+// down through the store and no pair stated by the session.
+describe('task 4 row 170 - the hook states "absent" (null) for a role without a line', () => {
+  function drawWithRoles(roles: readonly string[]): SimState {
+    const test = createTestSim({ scenario: 'recording' });
+    const base = test.sim.store.getState();
+    const mics = base.captureConfig.mics.filter((line) => roles.includes(line.role));
+    const session = base.session as Session;
+    test.sim.store.setState({
+      captureConfig: { ...base.captureConfig, mics } as SimState['captureConfig'],
+      session: { ...session, audioSource: null, captureConfig: session.captureConfig ? { ...session.captureConfig, mics } : session.captureConfig } as unknown as Session,
+    });
+    render(
+      <RuntimeTestProviders sim={test.sim}>
+        <Probe />
+      </RuntimeTestProviders>,
+    );
+    return test.sim.store.getState();
+  }
+
+  it('a lone PRIMARY line: the active input is that line, the standby is ABSENT (never MIC-02), and card 1 says no role (no meter channel has an input)', () => {
+    const state = drawWithRoles(['PRIMARY']);
+    expect(state.session?.state).toBe('RECORDING');
+    expect(textOf('pair-active').split('|')[0]).toBe('MIC-01');
+    expect(textOf('pair-standby')).toBe('null|');
+    expect(textOf('card-1-role')).toBe('none');
+    expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-01', null]);
+  });
+
+  it('CONTROL - both lines, no pair stated by the session: the pair is read from the selector by role, as before', () => {
+    const state = drawWithRoles(['PRIMARY', 'STANDBY']);
+    expect(textOf('pair-active').split('|')[0]).toBe('MIC-01');
+    expect(textOf('pair-standby').split('|')[0]).toBe('MIC-02');
+    expect(textOf('card-1-role')).toBe('ACTIVE');
+    expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-01', 'MIC-02']);
   });
 });

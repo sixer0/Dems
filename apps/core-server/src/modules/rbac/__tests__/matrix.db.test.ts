@@ -136,7 +136,7 @@ describe('the boot step rbac.matrix on a seeded database', () => {
   });
 });
 
-describe('AC-B-16, unit form: the decision for all 97 operations with a principal of each role, against the STORED matrix', () => {
+describe('AC-B-16, unit form: the decision for all 99 operations with a principal of each role, against the STORED matrix', () => {
   let stored: StoredMatrix;
   const ruleOf = (operationId: string): AccessRule => {
     const resolved = permissionGuard(guard.app).rules.ruleOf(operationId);

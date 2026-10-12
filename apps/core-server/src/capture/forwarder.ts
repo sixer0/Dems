@@ -90,6 +90,24 @@
  * (`src/capture-notices/session-start.ts`). When none connects the session is a failed start with
  * ONE critical alert, the capture-wide one. So this reason raises no fault here in either case.
  *
+ * THE THREE CAUSES THE WORKER NAMES SINCE TASK 4 ROW 182 (controller ruling C35; `types.ts`
+ * `CAMERA_ABSENT_REASONS`, `CAMERA_INTEGRITY_REASONS`). Until then all three arrived as
+ * `CAMERA_NOT_CONNECTED`:
+ *
+ *   reason                         side of C35                    here
+ *   CAMERA_NO_PICTURE              (a) a missing camera: its own  no fault, like `CAMERA_NOT_CONNECTED`: the degraded
+ *                                  push passed the gate and       start's WARNING is the notices unit's. The cause
+ *                                  brought no picture             itself is kept by the supervisor (`cameraEnds`)
+ *   CAMERA_ANNOUNCE_NOT_MATCHED    (b) integrity: a client        a `CAPTURE_FAULT` of the camera with THIS reason:
+ *                                  reached the listener without   one critical alert and one `FAULT_RAISED` row whose
+ *                                  the session's address          `reason` is the member, so the two read apart
+ *   CAMERA_ANNOUNCE_NOT_SEEN       (b) integrity: no announce     the same, under its own reason
+ *                                  line was seen; whose push it
+ *                                  was cannot be told
+ *
+ * A reason is the worker's fixed word and nothing else travels with it (no address, no path: BR-04).
+ * The worker never clears a camera condition, so such a fault ends when the next session records.
+ *
  * NOTICES (level `warn`, written by the capture unit to the log and the persistent error log):
  *   the keyframe interval above the bound (the record), a camera clock near the AV bound (the
  *   `nearBound` flag of the telemetry, decision D58-7: a flag, never a warning code), and a
@@ -112,7 +130,7 @@
  */
 import { ADVISORY_WARNING_REASONS, CaptureRecordKind, CaptureWarningCode, CaptureWarningReason, CaptureWarningState, DURABLE_RECORD_KINDS, FINAL_CRASH_CODES } from '@dems/capture-protocol';
 import { CaptureAdvisoryReason, type CaptureAdvisoryNotice, type CaptureFaultWarningInput, type CaptureTelemetryInput } from '@dems/shared/sim';
-import { SupervisorRefusal, type CaptureReport, type CaptureSupervisor } from './types';
+import { SupervisorRefusal, isCameraAbsentReason, type CaptureReport, type CaptureSupervisor } from './types';
 
 /**
  * The two keys of a failed start on the raise of its fault (C3 §5.3, §5.4 row C): the worker's
@@ -394,7 +412,9 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
       return;
     }
     // R74-03: a camera that did not connect is the WARNING of a degraded start (the notices unit), never a critical fault of the camera.
-    if (event.reason === CaptureWarningReason.CAMERA_NOT_CONNECTED) return;
+    // Row 182 / C35 (a): so is a camera whose own push brought no picture (`CAMERA_NO_PICTURE`) - a missing camera, by either reason.
+    // C35 (b): the two refusals of the worker's gate are NOT of this set; they go on and are raised below, each under its own reason.
+    if (isCameraAbsentReason(event.reason)) return;
     if (host === null) return;
     // Pass D9: the rate-limit condition of a microphone is advice with its own named alert, never a fault.
     if (event.reason === CaptureWarningReason.MIC_RATE_AT_LIMIT) {

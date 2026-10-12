@@ -23,10 +23,12 @@ import {
   type SimStore,
   ownCaptureCoreFactsTransition,
 } from '@dems/shared/sim';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DURABLE_SLICE_KEYS, UNMAPPED_SLICES } from '../../../db/mapping';
 import { SCENARIOS, createHost } from '../../../../test/support/seed';
-import { audioStatusOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, type CommittedState } from '../index';
+import { activeInputOf, audioStatusOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, type CommittedState } from '../index';
 import { AUDIO, FIXED_NOW, HEALTH, VIDEO, committedOf, scenarioState } from './support';
 
 /** The read is a little later than the state: `serverTime` is the clock's, not the state's. */
@@ -429,5 +431,166 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
     const builtin = { cameras: scenarioState('idle').captureConfig.cameras, mics: scenarioState('idle').captureConfig.mics };
     expect(videoStatusOf(committedOf(state), builtin).tracks.map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02']);
     expect(audioStatusOf(committedOf(state), NOW, null, builtin).channels.map((channel) => channel.inputId)).toEqual(['MIC-01', 'MIC-02']);
+  });
+});
+
+// Task 4 row 150 (AD-04 (2); sites B11, B12, B13 of research/027; names register N4, N5, E39, E40).
+// Until this row the three readers answered a selector line that is NOT THERE: the built-in camera
+// as the source of a track, a built-in input with the hardware slice's device and role for a meter
+// channel, and - for the active input - the hardware slice's PRIMARY microphone, then its first
+// microphone, then a constant. The states below are hand-built: the idle seed with selector lines
+// taken away. The hardware slices (`cameras`, `mics`) stay complete in every one of them, which is
+// what makes a stand-in possible and its absence a finding.
+describe('row 150: a selector line that is not there is answered "absent", never a built-in device, a default input or the first microphone', () => {
+  type Selector = SimState['captureConfig'];
+  const withSelector = (change: (selector: Selector) => Pick<Selector, 'cameras' | 'mics'>): SimState => {
+    const state = scenarioState('idle');
+    return { ...state, captureConfig: { ...state.captureConfig, ...change(state.captureConfig) } } as SimState;
+  };
+  const primaryOf = (selector: Selector) => selector.mics.find((line) => line.role === 'PRIMARY')!;
+  const standbyOf = (selector: Selector) => selector.mics.find((line) => line.role === 'STANDBY')!;
+  /** Every identifier of a microphone the hardware slice or the built-in table could lend. */
+  const BUILTIN_INPUTS = ['MIC-01', 'MIC-02'];
+
+  it('CONTROL: the hardware slices of the seed hold what a stand-in would answer - two cameras with a device, a PRIMARY microphone first', () => {
+    const state = scenarioState('idle');
+    expect(state.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(state.mics.map((mic) => mic.micRole)).toEqual(['PRIMARY', 'STANDBY']);
+    expect(state.mics.every((mic) => mic.deviceId.length > 0)).toBe(true);
+  });
+
+  it('B11, the video tracks: a selector with only VIDEO-02 answers two tracks, VIDEO-01 with NO source - not its built-in camera', () => {
+    const state = withSelector((selector) => ({ cameras: selector.cameras.filter((line) => line.trackId === 'VIDEO-02'), mics: selector.mics }));
+    const video = videoStatusOf(committedOf(state));
+    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    // The unit's own port fact is still stated, as a fact of the port: it is not the track's source.
+    expect(video.tracks[0]?.deviceId).toBe('CAM-01');
+    expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+    const health = deviceHealthOf(committedOf(state), NOW);
+    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual([null, 'CAM-02']);
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+  });
+
+  it('B11: the line is found by its TRACK, not by its place - the one line of VIDEO-02 standing first does not become the source of VIDEO-01; no line at all: no source at all', () => {
+    const swapped = withSelector((selector) => ({ cameras: [...selector.cameras].reverse().map((line) => ({ ...line, deviceId: `SRC-OF-${line.trackId}` })), mics: selector.mics }));
+    expect(videoStatusOf(committedOf(swapped)).tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'SRC-OF-VIDEO-01'], ['VIDEO-02', 'SRC-OF-VIDEO-02']]);
+    const none = withSelector((selector) => ({ cameras: [], mics: selector.mics }));
+    expect(videoStatusOf(committedOf(none)).tracks.map((track) => track.sourceDeviceId)).toEqual([null, null]);
+  });
+
+  it('B12, the audio channels: with only a STANDBY line no meter channel has an input, so there is NO entry - no built-in input, no device and no role of the hardware slice', () => {
+    for (const mics of [
+      (selector: Selector) => [standbyOf(selector)],
+      (selector: Selector) => [primaryOf(selector)],
+      () => [],
+      // Two lines that are not one of each role are no pair either.
+      (selector: Selector) => [primaryOf(selector), { ...standbyOf(selector), role: 'PRIMARY' as const }],
+    ]) {
+      const state = withSelector((selector) => ({ cameras: selector.cameras, mics: mics(selector) }));
+      const audio = audioStatusOf(committedOf(state), NOW);
+      expect(audio.channels).toEqual([]);
+      expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
+      const health = deviceHealthOf(committedOf(state), NOW);
+      expect(health.audio).toEqual([]);
+      expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+    }
+  });
+
+  it('B12: a frame of the engine does not bring an entry back - a level without a selector line belongs to no input of the answer', () => {
+    const state = withSelector((selector) => ({ cameras: selector.cameras, mics: [standbyOf(selector)] }));
+    const frame = {
+      at: NOW,
+      seq: 3,
+      audio: {
+        inputs: { 'MIC-01': { seq: 3, at: NOW, dbfs: -20, peak: -18, clip: false, noSignal: false }, 'MIC-02': { seq: 3, at: NOW, dbfs: -21, peak: -19, clip: false, noSignal: false } },
+        activeInputId: null,
+      },
+    } as const;
+    expect(audioStatusOf(committedOf(state), NOW, frame)).toEqual({ channels: [], activeInputId: null });
+  });
+
+  it('B12: on a complete pair the device and the role of an entry are its LINE\'s, in both role arrangements - never the hardware slice\'s own', () => {
+    const state = withSelector((selector) => ({
+      cameras: selector.cameras,
+      // The STANDBY line stands first: meter channel 1 is a STANDBY input (D137: input order), while the hardware slice's first microphone calls itself PRIMARY.
+      mics: [
+        { ...standbyOf(selector), inputId: 'MIC-07', deviceId: 'USB-CARD-B' },
+        { ...primaryOf(selector), inputId: 'MIC-04', deviceId: 'USB-CARD-A' },
+      ],
+    }));
+    const audio = audioStatusOf(committedOf(state), NOW);
+    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.role])).toEqual([['MIC-07', 'USB-CARD-B', 'STANDBY'], ['MIC-04', 'USB-CARD-A', 'PRIMARY']]);
+    expect(audio.activeInputId).toBe('MIC-04');
+    expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
+  });
+
+  it('B13, the active input: without a PRIMARY line the answer is null - not the hardware slice\'s PRIMARY microphone, not its first microphone, not MIC-01', () => {
+    for (const mics of [(selector: Selector) => [standbyOf(selector)], () => []]) {
+      const state = withSelector((selector) => ({ cameras: selector.cameras, mics: mics(selector) }));
+      expect(audioStatusOf(committedOf(state), NOW).activeInputId).toBeNull();
+      expect(deviceHealthOf(committedOf(state), NOW).activeInputId).toBeNull();
+      expect(activeInputOf(null, { cameras: state.captureConfig.cameras, mics: state.captureConfig.mics })).toBeNull();
+    }
+  });
+
+  it('B13: the PRIMARY line is found by its ROLE wherever it stands, also alone (a role is assignable alone, C21 (8)); a frame that names an input is the engine\'s word', () => {
+    const alone = withSelector((selector) => ({ cameras: selector.cameras, mics: [{ ...primaryOf(selector), inputId: 'MIC-09', deviceId: 'USB-CARD-C' }] }));
+    const answer = audioStatusOf(committedOf(alone), NOW);
+    expect(answer.activeInputId).toBe('MIC-09');
+    // ... and it has no meter channel until the pair is complete (register section 3.2).
+    expect(answer.channels).toEqual([]);
+    const second = withSelector((selector) => ({ cameras: selector.cameras, mics: [standbyOf(selector), { ...primaryOf(selector), inputId: 'MIC-05' }] }));
+    expect(audioStatusOf(committedOf(second), NOW).activeInputId).toBe('MIC-05');
+    const slots = { cameras: second.captureConfig.cameras, mics: second.captureConfig.mics };
+    const frameOf = (activeInputId: string | null) => ({ at: NOW, seq: 1, audio: { inputs: {}, activeInputId } }) as unknown as Parameters<typeof activeInputOf>[0];
+    expect(activeInputOf(frameOf('MIC-02'), slots)).toBe('MIC-02');
+    // A frame that names NO input does not hide the PRIMARY line, and with no line either the answer stays null.
+    expect(activeInputOf(frameOf(null), slots)).toBe('MIC-05');
+    expect(activeInputOf(frameOf(null), { cameras: slots.cameras, mics: [] })).toBeNull();
+  });
+
+  it('an input or device answered for a slot without a line: 0 - over every way of taking lines away, no answer names what the selector does not hold', () => {
+    const seed = scenarioState('idle').captureConfig;
+    let invented = 0;
+    let states = 0;
+    for (const cameras of [seed.cameras, seed.cameras.slice(0, 1), seed.cameras.slice(1), []]) {
+      for (const mics of [seed.mics, [primaryOf(seed)], [standbyOf(seed)], []]) {
+        states += 1;
+        // The lines carry identifiers no hardware slice and no built-in table holds, so a stand-in shows.
+        const state = withSelector(() => ({
+          cameras: cameras.map((line) => ({ ...line, deviceId: `LINE-${line.trackId}` })),
+          mics: mics.map((line, index) => ({ ...line, inputId: `MIC-${31 + index}` as typeof line.inputId, deviceId: `LINE-${line.role}` })),
+        }));
+        const health = deviceHealthOf(committedOf(state), NOW);
+        expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+        const heldDevices = new Set([...state.captureConfig.cameras.map((line) => line.deviceId), ...state.captureConfig.mics.map((line) => line.deviceId)]);
+        const heldInputs = new Set<string>(state.captureConfig.mics.map((line) => line.inputId));
+        for (const camera of health.cameras) if (camera.sourceDeviceId !== null && !heldDevices.has(camera.sourceDeviceId)) invented += 1;
+        for (const channel of health.audio) if (!heldInputs.has(channel.inputId) || !heldDevices.has(channel.deviceId) || BUILTIN_INPUTS.includes(channel.inputId)) invented += 1;
+        if (health.activeInputId !== null && !heldInputs.has(health.activeInputId)) invented += 1;
+        // The count of what IS answered follows the lines: a source per camera line, two channels only for the pair, an active input only with a PRIMARY.
+        expect(health.cameras.filter((camera) => camera.sourceDeviceId !== null)).toHaveLength(cameras.length);
+        expect(health.audio).toHaveLength(mics.length === 2 ? 2 : 0);
+        expect(health.activeInputId === null).toBe(!mics.some((line) => line.role === 'PRIMARY'));
+      }
+    }
+    expect(states).toBe(16);
+    expect(invented).toBe(0);
+  });
+
+  it('names of the positional function left in the file: 0 - and none of the three stand-ins it served (the source of status.ts, read as text)', () => {
+    const source = readFileSync(fileURLToPath(new URL('../status.ts', import.meta.url)), 'utf8');
+    const count = (pattern: RegExp): number => (source.match(pattern) ?? []).length;
+    expect(count(new RegExp(`micInputOf${'Channel'}`, 'g'))).toBe(0);
+    // The built-in table of the positional function and a literal built-in input.
+    expect(count(/DEFAULT_MIC_INPUT_OF_CHANNEL/g)).toBe(0);
+    // A literal built-in input, and the hardware slice's own device, role and first microphone as an answer: in the CODE (the comments name them).
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code.match(/['"`]MIC-\d+['"`]/g)).toBeNull();
+    expect(count(/micInputOfRole\(|meterInputOfChannel\(/g)).toBe(2);
+    expect(/\bmic\.deviceId\b|\bmicRole\b|\bmics\[0\]|\?\?\s*camera\.deviceId/.test(code)).toBe(false);
+    // POSITIVE CONTROL: the same search finds each of them in the text this row replaced.
+    const before = "sourceDeviceId: slot?.deviceId ?? camera.deviceId, deviceId: slotDeviceOf.get(inputId) ?? mic.deviceId, const mic = mics.find((candidate) => candidate.micRole === 'PRIMARY') ?? mics[0];";
+    expect(before.match(/\bmic\.deviceId\b|\bmicRole\b|\bmics\[0\]|\?\?\s*camera\.deviceId/g)).toHaveLength(4);
   });
 });

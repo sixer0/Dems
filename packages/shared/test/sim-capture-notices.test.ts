@@ -21,7 +21,17 @@ import {
   type CaptureWarningInput,
   type SessionCreateInput,
   type SimState,
+  CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
+  CAPTURE_START_REQUIRED_SLOTS,
+  SOURCE_NOT_ASSIGNED_PRECHECK_VALUE,
+  isOwnCaptureCoreState,
+  unassignedSlotOfPrecheckItem,
+  unassignedSlotsOf,
 } from '../src/sim';
+import { CAPTURE_SELECTOR_SLOTS } from '../src/api';
+import { en } from '../src/i18n';
+import * as ownCaptureBed from './support/own-capture-bed';
+import * as selectorBed from './support/selector-category-bed';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0);
 
@@ -349,5 +359,128 @@ describe('the start rule of the pre-check (M4-PRECHK-RULE-1; D80(6), D83)', () =
     expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY')).toMatchObject({ status: 'PASS' });
     // The channel-keyed ids still answer (stored items of older runs name them).
     expect(evaluatePrecheck(h.state(), 'MIC_2')).toMatchObject({ status: 'WARN', value: 'CLIP' });
+  });
+});
+
+// Task 4 row 163 (WP-13a; decisions C18 (1), C21 (6), C25; names register of row 161, section 5;
+// sites C4, C5 of row 27): a selector slot WITHOUT a source. In a state of REAL capture (a Core in
+// its own capture: the simulator created with `capture: 'external'`, the form the Core hosts) the
+// slot's pre-check item is BLOCK "source not assigned" - all four slots, the STANDBY too (C25
+// corrects C21 (8)). In Simulated mode the SAME selector is answered as before (C21 (6)).
+// The doubles: the bed of WP-13a (seven selector categories of addendum 1.5) put into the state.
+describe('a selector slot without a source: the pre-check item (task 4 row 163)', () => {
+  const { CATEGORIES, SLOTS, SEEDED_CATEGORY, emptySlotsOf, selectorPatch, cam, mic } = selectorBed;
+  const CHECK_OF = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', PRIMARY: 'MIC_PRIMARY', STANDBY: 'MIC_STANDBY' } as const;
+  /** A simulator in the capture given, holding the lines given (its registry and meters agree with them). */
+  const bedOn = (capture: 'simulated' | 'external', lines: selectorBed.SelectorLines) => {
+    const h = ownCaptureBed.bed({ capture });
+    h.sim.store.setState(selectorPatch(h.state(), lines));
+    return h;
+  };
+  const notAssigned = (slot: string) => ({ status: 'BLOCK' as const, value: 'NOT_ASSIGNED', reason: `${slot}: source not assigned`, reasonCode: null, params: { rule: 'sourceNotAssigned', slot } });
+
+  it('the names of the register: the rule, the value, the reason, the four required slots, the two readers', () => {
+    expect(Object.values(CaptureStartRule)).toEqual(['noCamera', 'oneCamera', 'noMicrophone', 'activeMicrophone', 'noStandby', 'sourceNotAssigned']);
+    expect(CaptureStartRule.SOURCE_NOT_ASSIGNED).toBe('sourceNotAssigned');
+    expect(SOURCE_NOT_ASSIGNED_PRECHECK_VALUE).toBe('NOT_ASSIGNED');
+    expect(CAPTURE_SOURCE_NOT_ASSIGNED_REASON).toBe('CAPTURE_SOURCE_NOT_ASSIGNED');
+    // C25: all FOUR slots are required - the STANDBY too - in the order of the contract's list.
+    expect(CAPTURE_START_REQUIRED_SLOTS).toEqual(['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']);
+    expect(CAPTURE_START_REQUIRED_SLOTS).toEqual(CAPTURE_SELECTOR_SLOTS);
+    // The sentence of the rule exists under its suffix (row 28 wrote the key).
+    expect(en.common.captureNotice.start[CaptureStartRule.SOURCE_NOT_ASSIGNED]).toContain('{{slot}}');
+
+    // `unassignedSlotsOf`: by track and by role, in the contract's order, whatever the order of the lines.
+    for (const [name, lines] of Object.entries(CATEGORIES)) expect(unassignedSlotsOf(lines), name).toEqual(emptySlotsOf(lines));
+    expect(unassignedSlotsOf({ cameras: [], mics: [] })).toEqual(['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']);
+    // A lone VIDEO-02 line is not "the first track", a lone STANDBY line not "the first role".
+    expect(unassignedSlotsOf({ cameras: [cam('VIDEO-02', 'CAM-02')], mics: [mic('MIC-02', 'STANDBY')] })).toEqual(['VIDEO-01', 'PRIMARY']);
+    expect(unassignedSlotsOf({ cameras: [cam('VIDEO-02', 'CAM-02'), cam('VIDEO-01', 'CAM-01')], mics: [mic('MIC-02', 'STANDBY'), mic('MIC-01', 'PRIMARY')] })).toEqual([]);
+
+    // `unassignedSlotOfPrecheckItem`: the one recogniser of the item.
+    for (const slot of SLOTS) {
+      expect(unassignedSlotOfPrecheckItem(notAssigned(slot)), slot).toBe(slot);
+      expect(unassignedSlotOfPrecheckItem({ ...notAssigned(slot), status: 'WARN' }), slot).toBe(slot);
+    }
+    const item = notAssigned('VIDEO-01');
+    expect(unassignedSlotOfPrecheckItem({ ...item, value: 'UNREACHABLE' })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ ...item, params: { rule: 'noCamera', slot: 'VIDEO-01' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ ...item, params: { rule: 'sourceNotAssigned', slot: 'MIC-PRIMARY' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ ...item, params: { rule: 'sourceNotAssigned' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'NOT_ASSIGNED' })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ ...item, status: 'PASS' })).toBeNull();
+    // The unreachable item is not it.
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'UNREACHABLE', params: { deviceId: 'CAM-01', deviceKind: 'CAMERA', rule: 'noCamera' } })).toBeNull();
+  });
+
+  it.each(Object.entries(CATEGORIES))('REAL capture, category %s: one BLOCK item per unassigned slot and none for an assigned one; Simulated on the same selector answers as before', (name, lines) => {
+    const empty = emptySlotsOf(lines);
+    const real = bedOn('external', lines);
+    expect(isOwnCaptureCoreState(real.state()), name).toBe(true);
+    for (const slot of SLOTS) {
+      const item = evaluatePrecheck(real.state(), CHECK_OF[slot]);
+      if (empty.includes(slot)) {
+        // Exactly the item of the register: no device, no device kind, no reason code of the closed set.
+        expect(item, `${name} / ${slot}`).toEqual(notAssigned(slot));
+        expect(unassignedSlotOfPrecheckItem(item), `${name} / ${slot}`).toBe(slot);
+      } else {
+        expect(item.value, `${name} / ${slot}`).not.toBe('NOT_ASSIGNED');
+        expect(unassignedSlotOfPrecheckItem(item), `${name} / ${slot}`).toBeNull();
+      }
+    }
+    const blocked = SLOTS.filter((slot) => unassignedSlotOfPrecheckItem(evaluatePrecheck(real.state(), CHECK_OF[slot])) !== null);
+    expect(blocked, name).toEqual(empty);
+
+    // SIMULATED, the same selector (C21 (6)): no such item. An empty video slot passes, an empty role warns "no signal" - as before.
+    const simulated = bedOn('simulated', lines);
+    expect(isOwnCaptureCoreState(simulated.state()), name).toBe(false);
+    for (const slot of SLOTS) {
+      const item = evaluatePrecheck(simulated.state(), CHECK_OF[slot]);
+      expect(unassignedSlotOfPrecheckItem(item), `${name} / ${slot}`).toBeNull();
+      if (!empty.includes(slot)) continue;
+      if (slot === 'VIDEO-01' || slot === 'VIDEO-02') expect(item, `${name} / ${slot}`).toMatchObject({ status: 'PASS', value: 'READY' });
+      else expect(item, `${name} / ${slot}`).toMatchObject({ status: 'WARN', value: 'NO_SIGNAL', reasonCode: 'MIC_NO_SIGNAL' });
+    }
+  });
+
+  it('four of four with all unassigned - the STANDBY blocks too (C25) - and 0 on the seeded selector', () => {
+    const none = bedOn('external', CATEGORIES['1. all four U']!);
+    expect(SLOTS.map((slot) => evaluatePrecheck(none.state(), CHECK_OF[slot]).status)).toEqual(['BLOCK', 'BLOCK', 'BLOCK', 'BLOCK']);
+    // Only the STANDBY empty: it is a BLOCK item, not a warning an operator could acknowledge.
+    const seededLines = CATEGORIES[SEEDED_CATEGORY]!;
+    const noStandby = bedOn('external', { cameras: seededLines.cameras, mics: seededLines.mics.filter((line) => line.role !== 'STANDBY') });
+    expect(evaluatePrecheck(noStandby.state(), 'MIC_STANDBY')).toEqual(notAssigned('STANDBY'));
+    expect(SLOTS.filter((slot) => unassignedSlotOfPrecheckItem(evaluatePrecheck(noStandby.state(), CHECK_OF[slot])) !== null)).toEqual(['STANDBY']);
+    // The seeded selector, untouched by the bed: a Core in its own capture has no such item.
+    const seeded = ownCaptureBed.bed({ capture: 'external' });
+    expect(unassignedSlotsOf(seeded.state().captureConfig)).toEqual([]);
+    expect(SLOTS.filter((slot) => unassignedSlotOfPrecheckItem(evaluatePrecheck(seeded.state(), CHECK_OF[slot])) !== null)).toEqual([]);
+  });
+
+  it('the item comes BEFORE every other rule of its check, and through a whole run it blocks the session', () => {
+    // The lens of an unassigned track also reads faulty: the item says "not assigned", not "lens fault".
+    const real = bedOn('external', CATEGORIES['1. all four U']!);
+    real.sim.store.setState({ cameras: real.state().cameras.map((camera) => ({ ...camera, online: false })) });
+    expect(evaluatePrecheck(real.state(), 'LENS_1')).toEqual(notAssigned('VIDEO-01'));
+    // CONTROL: in Simulated the same state is the lens fault it always was.
+    const simulated = bedOn('simulated', CATEGORIES['1. all four U']!);
+    simulated.sim.store.setState({ cameras: simulated.state().cameras.map((camera) => ({ ...camera, online: false })) });
+    expect(evaluatePrecheck(simulated.state(), 'LENS_1')).toMatchObject({ status: 'BLOCK', value: 'FAULT', reasonCode: 'LENS_FAULT' });
+
+    // A whole pre-check run of a Core in its own capture on the empty selector: BLOCK, four items, not ARMED.
+    const h = bedOn('external', CATEGORIES['1. all four U']!);
+    h.armed();
+    const session = h.state().session;
+    expect(session?.state).toBe('PRECHECK');
+    expect(session?.precheck.outcome).toBe('BLOCK');
+    const items = (session?.precheck.items ?? []).filter((item) => unassignedSlotOfPrecheckItem(item) !== null);
+    expect(items.map((item) => [item.id, item.status, item.params?.['slot']])).toEqual([
+      ['LENS_1', 'BLOCK', 'VIDEO-01'],
+      ['LENS_2', 'BLOCK', 'VIDEO-02'],
+      ['MIC_PRIMARY', 'BLOCK', 'PRIMARY'],
+      ['MIC_STANDBY', 'BLOCK', 'STANDBY'],
+    ]);
+    expect(h.state().audit.rows.filter((row) => row.type === 'PRECHECK_BLOCKED')).toHaveLength(1);
+    expect(() => h.sim.actions.startRecording()).toThrow(SimTransitionError);
   });
 });

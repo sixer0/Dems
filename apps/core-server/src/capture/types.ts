@@ -22,6 +22,7 @@ import type {
   TelemetryMessage,
   WorkerMessage,
 } from '@dems/capture-protocol';
+import type { CaptureIngestChance } from './ingest-address';
 
 /** Where the supervisor stands. One session at most is open (R-6). */
 export const CapturePhase = {
@@ -225,8 +226,35 @@ export interface CaptureCameraEnd {
   readonly lastDurableMediaEndMs: number | null;
 }
 /** The reasons of the protocol's `CAPTURE_FAULT` warning that END a camera for its session. */
-export const CAMERA_END_REASONS = ['CAMERA_NOT_CONNECTED', 'CAMERA_STREAM_ENDED', 'CAMERA_CLOCK_OUT_OF_BOUND'] as const satisfies readonly CaptureWarningReason[];
+export const CAMERA_END_REASONS = [
+  'CAMERA_NOT_CONNECTED',
+  'CAMERA_ANNOUNCE_NOT_MATCHED',
+  'CAMERA_ANNOUNCE_NOT_SEEN',
+  'CAMERA_NO_PICTURE',
+  'CAMERA_STREAM_ENDED',
+  'CAMERA_CLOCK_OUT_OF_BOUND',
+] as const satisfies readonly CaptureWarningReason[];
 export type CaptureCameraEndReason = (typeof CAMERA_END_REASONS)[number];
+/**
+ * A CAMERA THAT NEVER DELIVERED, BY WHAT IT MEANS FOR THE SESSION (task 4 row 182; controller ruling
+ * C35, which keeps ruling D72(k) of task 3). The worker ends such a camera with one of four reasons;
+ * no file exists for it. The two sets below are disjoint and together are those four.
+ *
+ * (a) `CAMERA_ABSENT_REASONS` - a MISSING camera: nothing arrived within the ingest-open window, or
+ *     its own push announced the session's address, completed the handshake and brought no picture
+ *     (a camera or relay that stalled or died). The degraded start stays: the session records with
+ *     the other camera and a WARNING names the missing one. No critical fault of the camera.
+ * (b) `CAMERA_INTEGRITY_REASONS` - a client reached the camera's listener WITHOUT the session's
+ *     address (it announced another, or twice), or the worker could not see an announce line at
+ *     all and so cannot tell whose push it was. Nothing of that arrival is a recording of that
+ *     camera. A critical capture fault of the camera states the cause, with its audit entry.
+ */
+export const CAMERA_ABSENT_REASONS = ['CAMERA_NOT_CONNECTED', 'CAMERA_NO_PICTURE'] as const satisfies readonly CaptureCameraEndReason[];
+export const CAMERA_INTEGRITY_REASONS = ['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN'] as const satisfies readonly CaptureCameraEndReason[];
+/** True for a worker reason of set (a). */
+export const isCameraAbsentReason = (reason: string | null): boolean => reason !== null && (CAMERA_ABSENT_REASONS as readonly string[]).includes(reason);
+/** True for a worker reason of set (b). */
+export const isCameraIntegrityReason = (reason: string | null): boolean => reason !== null && (CAMERA_INTEGRITY_REASONS as readonly string[]).includes(reason);
 
 export interface CaptureStatus {
   readonly phase: CapturePhase;
@@ -309,6 +337,26 @@ export type CaptureEventOf<Name extends CaptureEventName> = Extract<CaptureEvent
 export type CaptureListener<Name extends CaptureEventName = CaptureEventName> = (event: CaptureEventOf<Name>) => void | Promise<void>;
 
 /**
+ * WHAT A SESSION HANDS TO `start` BESIDE ITS PLAN (task 4 row 179; security requirement BR-07 (2)).
+ * A worker that is started again inside a session is never sent the addresses of an earlier worker:
+ * before it is started, the supervisor builds a new ingest address for every camera of the plan
+ * with the one function of the capture unit (`captureIngestAddress`) and tells the session, which
+ * hands the same strings to whatever pushes to that worker. The supervisor may import no source of
+ * chance (static rule G-R8), so the session hands its own in.
+ */
+export interface CaptureAttemptIngest {
+  /** The source of chance of the address function: asked once per camera and attempt, for 16 bytes. */
+  readonly chance: CaptureIngestChance;
+  /**
+   * Called ONCE per attempt after the first, BEFORE the worker of that attempt is started, in the
+   * same turn: the address of each camera of the plan for that attempt, by device. The strings are
+   * a secret of the session: the receiver keeps them for the camera opens of that attempt and
+   * writes them nowhere. A call that throws starts no worker (the capture ends with its fault).
+   */
+  renewed(attempt: number, addresses: ReadonlyMap<string, string>): void;
+}
+
+/**
  * The `capture` seam (spec §A.3). `boot` and `shutdown` are the two calls of the entry point
  * (spec §B.2 "the supervisor is started at boot and stopped at shutdown"; §I edits 11 and 12).
  */
@@ -317,8 +365,12 @@ export interface CaptureSupervisor {
   boot(): Promise<void>;
   /** Stops the open session's worker (reason `SHUTDOWN`), waits for it to exit, and closes. Safe to call twice. */
   shutdown(): Promise<void>;
-  /** One session = one worker process and one file per camera. Resolves when the worker acknowledged `START`. */
-  start(sessionId: string, plan: CapturePlan): Promise<void>;
+  /**
+   * One session = one worker process and one file per camera. Resolves when the worker acknowledged `START`.
+   * `attempts` (task 4 row 179; BR-07 (2)): what gives every LATER worker of the session ingest addresses of
+   * its own. Left out, a later worker is sent the plan as it was given (a double, a plan without a secret).
+   */
+  start(sessionId: string, plan: CapturePlan, attempts?: CaptureAttemptIngest): Promise<void>;
   /**
    * Stops the session's worker and waits for it to exit. Resolves at once when no session is open.
    * Resolves with HOW the stop ended (`CaptureStopOutcome`): a caller that seals the recording must

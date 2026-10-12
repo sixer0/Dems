@@ -55,9 +55,110 @@ HDR   := src/worker.h src/anchor.h src/micwatch.h src/announce.h
 
 FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic
 
-.PHONY: all clean check selftest versions proof unit fixtures e2e
+# THE CAPTURE RELAY (task 4 blueprint row 41, WP-03a): a SEPARATE PROGRAM with source and rules of its own.
+#   make relay         its static rules and their self-test (relay-check.sh), its unit checks, then
+#                      build/capture-relay and the import net over what the binary imports
+#   make relay-check   the relay's static rules over src/relay/ and their self-test (planted lines: each MUST fail)
+#   make relay-unit    the pure part (src/relay/relay_core.c) against test/relay_unit_test.c
+# HOW THE TWO PROGRAMS ARE KEPT APART. The worker listens on loopback and never dials out; the relay dials the
+# camera and the loopback ingest and never listens. So: (1) the worker's sources are the explicit list SRC / HDR
+# above and `check.sh src` reads src/*.c and src/*.h - a glob that does not reach src/relay/; (2) the relay's
+# sources are the explicit list below, all under src/relay/, read by relay-check.sh and by nothing of the
+# worker; (3) the relay includes no header of the worker and links no object of it (it links three libraries,
+# not the worker's five); (4) its binary is build/capture-relay - not a `capture-worker-<name>`, which is the
+# name of a proof build. relay-check.sh holds (1), (2) and (4) on this file.
+#
+# ROW 186 (security review verification/06_security_relay_client.md, H-1; fixes F-1, F-2). The relay reads bytes a
+# camera chose, in the process that holds the camera account. So, every time `make` runs:
+#   make relay-asan    the unit checks again, built with AddressSanitizer and UndefinedBehaviorSanitizer (warnings
+#                      are errors, no recovery): the 34 named malformed-input cases on heap copies of exact length,
+#                      and the real camera leg on a socket pair. Then three NEGATIVE CONTROLS: copies of the
+#                      source with ONE bound removed each must make that build fail (one of them by a report of
+#                      the sanitizer itself). And build/capture-relay-san, the whole relay with the sanitizers,
+#                      for the fixture runs (test-fixtures/row186_bounds.py takes it with ROW186_RELAY).
+#   make relay-fuzz    the fuzz build (test/relay_fuzz.c: seven entry points, a deterministic mutation driver of
+#                      its own - the installed clang has no libFuzzer runtime) with the same sanitizers, run for
+#                      RELAY_FUZZ_SECONDS per entry point with the seed RELAY_FUZZ_SEED. A longer run:
+#                      make relay-fuzz RELAY_FUZZ_SECONDS=40
+# THE HARDENING OF THE RELEASE BUILD of the relay (the worker's flags are not touched):
+#   -D_FORTIFY_SOURCE=2 (after -U: a toolchain that sets it by default must not make the build fail on a
+#   redefinition), -fstack-protector-strong, -fPIE: accepted by the clang of this Mac (measured) and stated for the
+#   clang of Ubuntu 24.04. NOT set here, because this Mac's toolchain refuses them: `-pie` (Apple clang: "argument
+#   unused", an error under -Werror; its executables are position independent without it) and
+#   `-Wl,-z,relro,-z,now` (a flag of the ELF linkers only). Both are set on Linux alone and are UNPROVEN until the
+#   Linux build (row 79). relay-check.sh --imports holds the BINARY to what the flags are for: it imports the stack
+#   check and a checked copy function, and it is position independent.
+RELAY_BIN    := $(BUILD)/capture-relay
+RELAY_SRC    := src/relay/relay.c src/relay/relay_rtsp.c src/relay/relay_core.c
+RELAY_HDR    := src/relay/relay.h
+RELAY_PC     := libavformat libavcodec libavutil
+RELAY_HARDEN := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE
+RELAY_HARDEN_LD :=
+ifeq ($(shell uname -s),Linux)
+RELAY_HARDEN_LD += -pie -Wl,-z,relro,-z,now
+endif
+RELAY_CFLAGS := -std=c11 -D_DEFAULT_SOURCE -O2 -g -Wall -Wextra -Werror $(RELAY_HARDEN) $(shell $(PKG_CONFIG) --cflags $(RELAY_PC))
+RELAY_LDLIBS := $(shell $(PKG_CONFIG) --libs $(RELAY_PC))
+# Test builds of the relay's sources. RELAY_TEST_HOOKS (the camera leg on a descriptor the test made) is named
+# HERE ONLY: relay-check.sh refuses it in RELAY_CFLAGS and refuses a relay binary that holds the hook.
+RELAY_TEST_CFLAGS := -std=c11 -D_DEFAULT_SOURCE -g -Wall -Wextra -Werror -DRELAY_TEST_HOOKS $(shell $(PKG_CONFIG) --cflags $(RELAY_PC))
+RELAY_SAN    := -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+RELAY_UNIT_SRC := test/relay_unit_test.c src/relay/relay_core.c src/relay/relay_rtsp.c
+RELAY_UNIT_LIBS := $(shell $(PKG_CONFIG) --libs libavutil)
+RELAY_FUZZ_SECONDS ?= 2
+RELAY_FUZZ_SEED ?= 186
 
-all: check selftest unit $(BIN)
+.PHONY: all clean check selftest versions proof unit fixtures e2e relay relay-check relay-unit relay-asan relay-fuzz relay-fuzz-controls
+
+all: check selftest unit $(BIN) relay
+
+relay: relay-check relay-unit relay-asan relay-fuzz $(RELAY_BIN)
+
+relay-check:
+	@sh relay-check.sh src/relay
+	@sh relay-check.sh --selftest
+
+relay-unit:
+	@mkdir -p $(BUILD)
+	@$(CC) $(RELAY_TEST_CFLAGS) -O2 -o $(BUILD)/relay_unit_test $(RELAY_UNIT_SRC) $(RELAY_UNIT_LIBS) && $(BUILD)/relay_unit_test
+
+# The unit checks under the sanitizers, then their negative controls: `file|sed script|what`. A control that
+# changes nothing (the line it removes is gone) is stale and fails the build; one that still passes shows a check
+# that cannot fail.
+relay-asan:
+	@mkdir -p $(BUILD)
+	@$(CC) $(RELAY_TEST_CFLAGS) $(RELAY_SAN) -o $(BUILD)/relay_unit_test_san $(RELAY_UNIT_SRC) $(RELAY_UNIT_LIBS)
+	@echo "relay-asan: the unit checks built with AddressSanitizer and UndefinedBehaviorSanitizer:" && $(BUILD)/relay_unit_test_san
+	@for control in 'relay_core.c~s/if (!one || one > n) { p->damaged = 1; return 0; }/if (!one) { p->damaged = 1; return 0; }/~the size of a unit among several is not held to the packet (review case 32: the sanitizer must report the read)' \
+	                'relay_core.c~s/if (lengths++) return -1;/if (lengths++) body = 0;/~a second Content-Length is taken (review case 9)' \
+	                'relay_core.c~s/if (codes == p->units) return 1;/if (codes) return 1;/~a start code inside a unit is handed on (review case 34, M-2)'; do \
+	  file=$${control%%~*}; rest=$${control#*~}; script=$${rest%%~*}; what=$${rest#*~}; \
+	  rm -rf $(BUILD)/relay-control; mkdir -p $(BUILD)/relay-control/src/relay $(BUILD)/relay-control/test; \
+	  cp src/relay/*.c src/relay/*.h $(BUILD)/relay-control/src/relay/; cp test/relay_unit_test.c $(BUILD)/relay-control/test/; \
+	  sed "$$script" src/relay/$$file > $(BUILD)/relay-control/src/relay/$$file; \
+	  if cmp -s src/relay/$$file $(BUILD)/relay-control/src/relay/$$file; then echo "relay_unit_test: the control '$$what' changed nothing: it is stale"; exit 1; fi; \
+	  ( cd $(BUILD)/relay-control && $(CC) $(RELAY_TEST_CFLAGS) $(RELAY_SAN) -o unit $(RELAY_UNIT_SRC) $(RELAY_UNIT_LIBS) ) || exit 1; \
+	  if { $(BUILD)/relay-control/unit > $(BUILD)/relay-control/out 2>&1; } 2>/dev/null; then echo "relay_unit_test: with this bound removed the sanitizer build still passes - the check cannot fail: $$what"; exit 1; \
+	  else echo "relay_unit_test: fails as required when $$what (negative control; $$(grep -c 'ERROR: AddressSanitizer' $(BUILD)/relay-control/out) sanitizer report, $$(grep -c 'FAILED: ' $(BUILD)/relay-control/out) failed check line(s))"; fi; \
+	done; rm -rf $(BUILD)/relay-control
+	@$(CC) $(RELAY_TEST_CFLAGS) -URELAY_TEST_HOOKS $(RELAY_SAN) -o $(BUILD)/capture-relay-san $(RELAY_SRC) $(RELAY_LDLIBS)
+
+relay-fuzz:
+	@mkdir -p $(BUILD)
+	@$(CC) $(RELAY_TEST_CFLAGS) $(RELAY_SAN) -o $(BUILD)/relay_fuzz test/relay_fuzz.c src/relay/relay_core.c src/relay/relay_rtsp.c $(RELAY_UNIT_LIBS)
+	@$(BUILD)/relay_fuzz --seconds $(RELAY_FUZZ_SECONDS) --seed $(RELAY_FUZZ_SEED)
+
+# NOT part of `make` (16 sanitizer builds, about 2 minutes): does the fuzz build FIND a planted flaw? One bound
+# removed per copy of the sources; every one must be found (test/relay_fuzz_controls.sh).
+relay-fuzz-controls:
+	@CC="$(CC)" PKG_CONFIG="$(PKG_CONFIG)" sh test/relay_fuzz_controls.sh $(RELAY_FUZZ_CONTROL_SECONDS)
+
+# The version pin of check.sh (test/static/libavformat.pin) holds for this build as well: relay-check.sh compares
+# the relay's own pin with that file, and `make` runs `check` before it comes here.
+$(RELAY_BIN): $(RELAY_SRC) $(RELAY_HDR) Makefile relay-check.sh
+	@mkdir -p $(BUILD)
+	$(CC) $(RELAY_CFLAGS) -o $@ $(RELAY_SRC) $(RELAY_HARDEN_LD) $(RELAY_LDLIBS)
+	@sh relay-check.sh --imports $@ || { rm -f $@; exit 1; }
 
 # The worker itself. After the link, THE IMPORT NET (review R63-08): the file-making functions the BINARY imports
 # are exactly the pinned ones (test/static/imports.pin) - whatever the spelling in the sources was (an alias through

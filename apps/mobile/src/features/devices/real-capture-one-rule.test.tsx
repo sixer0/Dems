@@ -496,6 +496,24 @@ describe.each(WINDOWS)('fix wave J CONTROL - the simulated lane on %s is what it
     expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toMatch(/^-\d+ dBFS$/);
   });
 
+  // Task 4 row 171 (site M6; decision C18 (2)): the input of the meter's channel is found by the lookup of row 164.
+  it('task 4 row 171: a microphone whose channel has NO input (the selector holds a lone line) - the meter reads no frame: "— dBFS" and "Not measured", never the level of MIC-01', async () => {
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+    act(() =>
+      m.sim.store.setState((s) => ({
+        audio: { ...s.audio, inputs: { ...s.audio.inputs, 'MIC-01': { seq: 1, at: 1, dbfs: -18, peak: -18, clip: false, noSignal: false } } } as SimState['audio'],
+        captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.filter((line) => line.role === 'PRIMARY') } as SimState['captureConfig'],
+      })),
+    );
+    await settle();
+    // The frame of MIC-01 with a level is still in the slice; the lone PRIMARY line gives no meter channel an input.
+    expect(m.sim.store.getState().audio.inputs['MIC-01']?.dbfs).toBe(-18);
+    expect(screen.getByTestId('device-detail-meter-readout')).toHaveTextContent('— dBFS');
+    expect(text('device-detail-meter-not-measured')).toMatch(/Not measured/);
+    expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toBe('— dBFS');
+    expect(text('device-detail-meter-plate')).not.toMatch(/-18|no signal/i);
+  });
+
   it('JA2-26: a latched clip with NO session says "No session is recording." and names "Reset clip" with a way to it; while a session records it says "Recording continues on the Core."', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window });
     act(() => h.sim.store.setState((s) => ({ mics: s.mics.map((mic) => (mic.deviceId === 'MIC-02' ? { ...mic, clipLatched: true } : mic)) } as Pick<SimState, 'mics'>)));

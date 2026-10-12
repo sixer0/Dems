@@ -16,12 +16,19 @@
 import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, type FinalizationStep, type TimeSource } from '../domain';
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
-import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
-import { selectorOfSession } from './selector-in-force';
-import { captureReachabilityOf } from './capture-notices';
+import { captureMicLines, channelOfMicLine, micInputOfRole } from './audio';
+import { selectorInForce, selectorOfSession } from './selector-in-force';
+import {
+  CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
+  CAPTURE_START_REQUIRED_SLOTS,
+  CaptureStartRule,
+  SOURCE_NOT_ASSIGNED_PRECHECK_VALUE,
+  captureReachabilityOf,
+  unassignedSlotsOf,
+} from './capture-notices';
 import { advanceCaptureEnd, advanceCaptureStart, endCaptureFaultAtSeal } from './capture-session';
 import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_RESTART_SENTENCE } from './core-not-running';
-import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, SECURITY_NOT_REPORTED_PRECHECK_REASON, SECURITY_NOT_REPORTED_PRECHECK_RULE, SECURITY_NOT_REPORTED_PRECHECK_VALUE, isHostClockTime, isPlatformNotReported, isPrecheckNote } from './core-facts';
+import { HOST_CLOCK_PRECHECK_REASON, HOST_CLOCK_PRECHECK_RULE, HOST_CLOCK_PRECHECK_VALUE, SECURITY_NOT_REPORTED_PRECHECK_REASON, SECURITY_NOT_REPORTED_PRECHECK_RULE, SECURITY_NOT_REPORTED_PRECHECK_VALUE, isHostClockTime, isOwnCaptureCoreState, isPlatformNotReported, isPrecheckNote } from './core-facts';
 import {
   ALERT_RING_SIZE,
   FINALIZATION_STEP_MAX_MS,
@@ -58,6 +65,7 @@ import type {
   ActiveSession,
   CaptureLevelSource,
   CaptureMicInputId,
+  CaptureSelectorSlot,
   CreateSessionResult,
   EpochMs,
   CustodyEntry,
@@ -480,6 +488,33 @@ function unreachableSource(state: SimState, slot: string): PrecheckEvaluation | 
 }
 
 /**
+ * The check result of a selector slot that holds NO source, or null (task 4 row 163, WP-13a;
+ * decisions C18 (1), C21 (6), C25; names register 5.2; sites C4, C5 of row 27).
+ *
+ * Only in a state of REAL capture (`isOwnCaptureCoreState`: the one reader of "is this a Core in
+ * its own capture"): there the slot's item is BLOCK "source not assigned" - for each of the four
+ * slots, the STANDBY too (`CAPTURE_START_REQUIRED_SLOTS`, C25) - where it was PASS READY for a
+ * video slot and an acknowledgeable WARN NO_SIGNAL for a microphone role. In Simulated mode and in
+ * the in-app simulator the answer is null and the item is computed as before (C21 (6)).
+ *
+ * The slot is found by its track or its role in the selector in force. The item carries no
+ * `deviceId` and no `deviceKind`: there is no device. No reason code of the closed set fits, so
+ * `reasonCode` is null and the row is read from `value` and `params.rule` / `params.slot`
+ * (`unassignedSlotOfPrecheckItem`).
+ */
+function unassignedSource(state: SimState, slot: CaptureSelectorSlot): PrecheckEvaluation | null {
+  if (!isOwnCaptureCoreState(state)) return null;
+  if (!unassignedSlotsOf(selectorInForce(state)).includes(slot)) return null;
+  return {
+    status: CAPTURE_START_REQUIRED_SLOTS.includes(slot) ? 'BLOCK' : 'WARN',
+    value: SOURCE_NOT_ASSIGNED_PRECHECK_VALUE,
+    reason: `${slot}: source not assigned`,
+    reasonCode: null,
+    params: { rule: CaptureStartRule.SOURCE_NOT_ASSIGNED, slot },
+  };
+}
+
+/**
  * One gate check against the live device state:
  * - BLOCK: Core OFFLINE (the tablet link is the Core link, MA-10), lens FAULT, storage FULL,
  *   security FAULT.
@@ -496,6 +531,9 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
     case 'LENS_1':
     case 'LENS_2': {
       const track = id === 'LENS_1' ? 'VIDEO-01' : 'VIDEO-02';
+      // Real capture only: a track without a source blocks, before every other rule of the item (C18 (1)).
+      const unassigned = unassignedSource(state, track);
+      if (unassigned !== null) return unassigned;
       const camera = state.cameras.find((c) => c.id === track);
       if (!camera || camera.lens === 'FAULT' || !camera.online) {
         return { status: 'BLOCK', value: 'FAULT', reason: `${camera?.name ?? id} lens fault`, reasonCode: R.LENS_FAULT, params: { track } };
@@ -507,6 +545,9 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
     case 'MIC_STANDBY': {
       // Role-keyed (D101(2)): the input that holds the role, whichever channel it is.
       const role = id === 'MIC_PRIMARY' ? 'PRIMARY' : 'STANDBY';
+      // Real capture only: a role without a source blocks - the STANDBY too (C25) - before every other rule of the item.
+      const unassigned = unassignedSource(state, role);
+      if (unassigned !== null) return unassigned;
       // An unreachable PRIMARY blocks, an unreachable STANDBY warns (D83: no switch at pre-check).
       const unreachable = unreachableSource(state, role);
       if (unreachable !== null) return unreachable;
@@ -748,17 +789,23 @@ export function captureConfigSnapshot(state: SimState): ActiveSession['captureCo
 /**
  * The active/standby pair at recording start (SH-05/SH-06; OD-09). The PRIMARY input feeds
  * `AUDIO-01`; the STANDBY is hot. `intervalFromMs` is the media-pts origin of the first interval
- * (0 at the start of the recording — never an operator wall clock, S2 §6). Falls back to the two
- * seeded inputs when the selector names no roles (a hand-built state).
+ * (0 at the start of the recording — never an operator wall clock, S2 §6).
+ *
+ * BY ROLE, WITH NO STAND-IN (task 4 row 163; decisions C18 (2), AD-04 (2); names register 5.3;
+ * site C2 of row 27): the pair is the PRIMARY line and the STANDBY line of the selector, each found
+ * by its role (`micInputOfRole`). Where EITHER role has no line the selector names no pair and the
+ * answer is `null`: the session then states no `audioSource` (the member is nullable and optional
+ * on the wire). No line of another role, no line by its place and no built-in input stands in - a
+ * lone STANDBY line is never the active input. Reached with `null` only in Simulated mode: a Core
+ * in its own capture refuses the start before this is read (`startRecordingTransition`).
  */
-export function audioSourceAtStart(state: SimState, sessionId: string): NonNullable<ActiveSession['audioSource']> {
+export function audioSourceAtStart(state: SimState, sessionId: string): NonNullable<ActiveSession['audioSource']> | null {
   const mics = state.captureConfig.mics;
   // The pair of the session is the selector's pair, by role, whatever its inputs are named: any
-  // registered `MIC-NN` (D133 (1), ruling D137; request of pass D1b). Where a role is not assigned,
-  // the line of that channel in selector input order stands in.
-  const sourceOf = (role: 'PRIMARY' | 'STANDBY'): CaptureMicInputId | undefined => mics.find((mic) => mic.role === role)?.inputId;
-  const primary = sourceOf('PRIMARY') ?? micInputOfChannel(mics, 'AUDIO-01');
-  const standby = sourceOf('STANDBY') ?? mics.find((mic) => mic.inputId !== primary)?.inputId ?? micInputOfChannel(mics, 'AUDIO-02');
+  // registered `MIC-NN` (D133 (1), ruling D137; request of pass D1b).
+  const primary = micInputOfRole(mics, 'PRIMARY');
+  const standby = micInputOfRole(mics, 'STANDBY');
+  if (primary === null || standby === null) return null;
   return {
     sessionId,
     activeInputId: primary,
@@ -784,13 +831,27 @@ export function audioSourceAtStart(state: SimState, sessionId: string): NonNulla
 export function startRecordingTransition(state: SimState, now: EpochMs, capture: CaptureLevelSource = 'simulated'): SimState {
   const actorId = requireSessionOperator(state, 'startRecording');
   const session = requireSession(state, 'startRecording', [SessionState.ARMED]);
+  // THE SELECTOR MUST BE COMPLETE IN REAL CAPTURE (task 4 row 163; decisions C18 (1), C25; names
+  // register 5.3; site C1 of row 27). A Core in its own capture refuses the start while any of the
+  // four slots holds no source - the STANDBY too - before the audio pair is read: no state change,
+  // no audit row, and the refused state names no input the selector does not hold. The Core
+  // answers `409 INVALID_STATE` with `details.reason: CAPTURE_SOURCE_NOT_ASSIGNED`. In Simulated
+  // mode and in the in-app simulator the start is NOT refused: it behaves as before (C21 (6)).
+  if (isOwnCaptureCoreState(state)) {
+    const unassigned = unassignedSlotsOf(state.captureConfig);
+    if (CAPTURE_START_REQUIRED_SLOTS.some((slot) => unassigned.includes(slot))) {
+      throw new SimTransitionError(session.state, 'startRecording', 'a capture source is not assigned', SimErrorCode.ILLEGAL_STATE, CAPTURE_SOURCE_NOT_ASSIGNED_REASON);
+    }
+  }
   // Schema v2 (register SH-06; OD-10): the selector is copied into the session the instant
   // recording starts, so a later edit never changes a running session. `audioSource` records which
   // mic input feeds `AUDIO-01` (PRIMARY) and which is the hot standby (STANDBY); op 81 moves the
-  // active one through `switchAudioSourceTransition`.
+  // active one through `switchAudioSourceTransition`. `null`: the selector names no pair (a role
+  // without a line; Simulated mode only) and the session states no audio source.
   const audioSource = audioSourceAtStart(state, session.id);
   // The input whose level is inside `AUDIO-01` from the first sample on is the session's primary.
-  const armed: SimState = state.audio.activeInputId === audioSource.activeInputId ? state : { ...state, audio: { ...state.audio, activeInputId: audioSource.activeInputId } };
+  const armed: SimState =
+    audioSource === null || state.audio.activeInputId === audioSource.activeInputId ? state : { ...state, audio: { ...state.audio, activeInputId: audioSource.activeInputId } };
   const next = addTimelineItem(
     withSession(armed, {
       ...session,
@@ -798,7 +859,7 @@ export function startRecordingTransition(state: SimState, now: EpochMs, capture:
       startedAt: now,
       startTimeSource: state.time.source,
       captureConfig: captureConfigSnapshot(state),
-      audioSource,
+      ...(audioSource === null ? {} : { audioSource }),
       ...(capture === 'simulated' ? { captureDurable: false } : {}),
     }),
     {
@@ -972,11 +1033,24 @@ export interface AudioSourceSwitchFacts {
  */
 export function applyAudioSourceSwitch(state: SimState, now: EpochMs, session: ActiveSession, toInputId: CaptureMicInputId, atMediaMs: number): { readonly state: SimState; readonly switched: AudioSourceSwitchFacts | null } {
   const source = session.audioSource ?? null;
-  const fromInputId = source?.activeInputId ?? state.audio.activeInputId;
+  const lines = selectorOfSession(session, state.captureConfig).mics;
+  // THE INPUT THE SWITCH LEAVES (task 4 row 163; seam readers 3 and 4 of row 28). The session's own
+  // pair says which input is active. Where the session states none (it was started in Simulated
+  // mode on a selector without a complete pair), the meters' active input stands - but only while
+  // it is a line of the session: an input the session does not hold is nothing to switch from.
+  // `held` is typed as the meters slice will hold it once the seam `AudioSliceInState` is out (row
+  // 149 removes it): `null` when the selector holds no PRIMARY.
+  const held: CaptureMicInputId | null = state.audio.activeInputId;
+  const fromInputId: CaptureMicInputId | null = source !== null ? source.activeInputId : held !== null && lines.some((entry) => entry.inputId === held) ? held : null;
   if (fromInputId === toInputId) return { state, switched: null };
+  // NO ACTIVE INPUT, NO SWITCH. A switch moves the source FROM one input TO another: its interval,
+  // its audit row (`fromInput`) and the new standby all name the input it leaves. No input is
+  // invented for the three. Refused as a refusal of the state; nothing is written.
+  if (fromInputId === null) {
+    throw new SimTransitionError(session.state, 'switchAudioSource', 'the session states no active microphone input', SimErrorCode.ILLEGAL_STATE);
+  }
   const fromMs = source?.intervalFromMs ?? 0;
   const toMs = Math.max(fromMs, Math.round(atMediaMs));
-  const lines = selectorOfSession(session, state.captureConfig).mics;
   const switched: ActiveSession = {
     ...session,
     audioSource: { sessionId: session.id, activeInputId: toInputId, standbyInputId: fromInputId, switchedAt: now, intervalFromMs: toMs },

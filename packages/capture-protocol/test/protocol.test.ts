@@ -237,6 +237,24 @@ describe('the messages', () => {
     expect(ADVISORY_WARNING_REASONS).toEqual(['KEYFRAME_INTERVAL_ABOVE_BOUND', 'FRAGMENT_SIZE_BOUND_REACHED']);
     expect(WARNING_REASONS_OF.CAPTURE_FAULT).toContain('FRAGMENT_SIZE_BOUND_REACHED');
     expect(WARNING_REASONS_OF.MIC_SILENT).not.toContain('FRAGMENT_SIZE_BOUND_REACHED');
+    // Task 4 row 182 (BR-04 (3)): the three causes of a camera that never delivered are members of their own, added
+    // inside version 4. Each is a fault of a CAMERA under the existing code - no microphone reason, no advice - and
+    // a fixed word: a member-like word that is not of the list (a path, a lower-case form, a suffix) is no message.
+    const added = ['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN', 'CAMERA_NO_PICTURE'] as const;
+    expect(v).toBe(4);
+    expect(Object.values(CaptureWarningReason)).toHaveLength(11);
+    for (const reason of added) {
+      expect(CaptureWarningReason[reason], reason).toBe(reason);
+      expect(ok({ code: 'CAPTURE_FAULT', reason, state: 'ACTIVE', subject: 'CAM-01' }), reason).toBe(true);
+      expect(ok({ code: 'MIC_SILENT', reason, state: 'ACTIVE', subject: 'MIC-01' }), reason).toBe(false);
+      expect(ok({ code: 'CAPTURE_FAULT', reason, state: 'ACTIVE', subject: null }), reason).toBe(false);
+      expect(ok({ code: 'CAPTURE_FAULT', reason: `${reason}:s-1/video-01`, state: 'ACTIVE', subject: 'CAM-01' }), reason).toBe(false);
+      expect(ok({ code: 'CAPTURE_FAULT', reason: reason.toLowerCase(), state: 'ACTIVE', subject: 'CAM-01' }), reason).toBe(false);
+      expect(MIC_WARNING_REASONS, reason).not.toContain(reason);
+      expect(ADVISORY_WARNING_REASONS, reason).not.toContain(reason);
+    }
+    // The member a worker before them said for all three is still one.
+    expect(ok({ code: 'CAPTURE_FAULT', reason: 'CAMERA_NOT_CONNECTED', state: 'ACTIVE', subject: 'CAM-01' })).toBe(true);
     // There is no code and no reason for an automatic switch (OD-11).
     expect(Object.values(CaptureWarningReason).some((reason) => /SWITCH/.test(reason))).toBe(false);
   });

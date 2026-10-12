@@ -13,6 +13,7 @@ import {
   poeCycleGate,
   selectorEditGate,
   selectorRefusal,
+  selectorSlotRows,
   useCaptureSelector,
   useCaptureSelectorCommands,
   type CaptureCameraLine,
@@ -112,7 +113,27 @@ interface RowShared {
   commands: CaptureSelectorCommands
 }
 
-function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { line: CaptureCameraLine; cameras: readonly CaptureDevice[]; poe: (busy: boolean) => PoeCycleGate }) {
+/**
+ * The key of the option "Not assigned" in a source select (task 4 row 31; decision C18 (3)). It is
+ * the value of a row whose slot holds no line, and the choice that clears a held slot (operation
+ * 78, member `unassign`). Not a device id: the registry's ids carry no colon.
+ */
+const NOT_ASSIGNED_KEY = 'slot:not-assigned'
+
+/**
+ * One VIDEO slot of the selector (task 4 row 31, site W1). `line: null` is the slot not assigned:
+ * the row is drawn all the same, says so, and offers the registered cameras with "Assign" - the
+ * camera command of an assigned row (operation 79). A held slot offers "Not assigned" among its
+ * sources; saving that choice is `unassign`.
+ */
+function CameraSourceRow({
+  slot: trackId,
+  line,
+  cameras,
+  block,
+  commands,
+  poe,
+}: RowShared & { slot: VideoTrackId; line: CaptureCameraLine | null; cameras: readonly CaptureDevice[]; poe: (busy: boolean) => PoeCycleGate }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
   const notice = useFailureNotice()
@@ -125,18 +146,18 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
   const [choice, setChoice] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const trackId = line.trackId as VideoTrackId
   const track = t(`common.tracks.${trackId}`)
-  const selected = choice ?? line.deviceId
+  const held = line?.deviceId ?? NOT_ASSIGNED_KEY
+  const selected = choice ?? held
   const realCapture = useRealCapture()
   const deviceText = useDeviceText()
   // An option of a development source says so in its own text (ux §8f.2 "each option of the source selects").
   const optionText = (device: CaptureDevice): string =>
     realCapture && isDevelopmentSource(device) ? `${deviceText(device)} · ${t('common.sourceClass.badge')}` : deviceText(device)
-  const current = cameras.find((device) => device.id === line.deviceId)
-  const name = current ? deviceText(current) : line.deviceId
+  const current = line === null ? undefined : cameras.find((device) => device.id === line.deviceId)
+  const name = current ? deviceText(current) : (line?.deviceId ?? '')
   const reason = reasonOf(block)
-  const dirty = selected !== line.deviceId
+  const dirty = selected !== held
   const poeGate = poe(cycle.busy)
 
   const settled = (answer: SelectorAnswer, ok: string) => {
@@ -151,14 +172,14 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
 
   const onSave = () => {
     save.run((release) => {
-      void commands
-        .setCameraSource(selected, trackId)
+      void (selected === NOT_ASSIGNED_KEY ? commands.unassign(trackId) : commands.setCameraSource(selected, trackId))
         .then((answer) => settled(answer, t('devices.selector.saved')))
         .finally(release)
     })
   }
 
   const onCycle = () => {
+    if (line === null) return
     setConfirmOpen(false)
     cycle.run((release) => {
       void commands
@@ -180,36 +201,55 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
       : null
 
   return (
-    <li className="dev-sel-row" data-testid={`selector-camera-${trackId}`} data-device={line.deviceId} data-stream={line.streamState} aria-busy={save.busy || cycle.busy || undefined}>
+    <li
+      className="dev-sel-row"
+      data-testid={`selector-camera-${trackId}`}
+      data-selector-slot={trackId}
+      data-state={line === null ? 'NOT_ASSIGNED' : 'ASSIGNED'}
+      data-device={line?.deviceId}
+      data-stream={line?.streamState}
+      aria-busy={save.busy || cycle.busy || undefined}
+    >
       <div className="dev-sel-head">
         <Camera className="dev-sel-icon" aria-hidden="true" strokeWidth={1.75} />
         <div className="dev-sel-titles">
           <span className="dev-tile-name">{track}</span>
-          <span className="dev-tile-sub">
-            {trackId} · {name} · {t('devices.selector.profile', { profile: line.profile })}
-          </span>
+          {line === null ? (
+            <span className="dev-tile-sub" data-testid={`selector-not-assigned-${trackId}`}>
+              {trackId} · {t('common.captureSlot.notAssigned')}
+            </span>
+          ) : (
+            <span className="dev-tile-sub">
+              {trackId} · {name} · {t('devices.selector.profile', { profile: line.profile })}
+            </span>
+          )}
         </div>
-        <StateChips online={line.online} streamState={line.streamState} device={current} />
+        {/* An empty slot has no device: no state is said of it and no badge is drawn. */}
+        {line === null ? null : <StateChips online={line.online} streamState={line.streamState} device={current} />}
         {/* Flow 12 (R-11): the one badge, from the `sourceClass` the Core sent for the device of this line. */}
-        <DeviceSourceBadge device={current} testId={`selector-badge-${trackId}`} />
+        {line === null ? null : <DeviceSourceBadge device={current} testId={`selector-badge-${trackId}`} />}
       </div>
       <div className="dev-sel-edit">
         <Select
           value={selected}
           onChange={(key) => {
-            if (typeof key === 'string') setChoice(key === line.deviceId ? null : key)
+            if (typeof key === 'string') setChoice(key === held ? null : key)
           }}
           isDisabled={block !== null || save.busy}
           className="dev-sel-select"
           data-testid={`selector-source-${trackId}`}
         >
-          <Label>{t('devices.selector.sourceLabel', { track })}</Label>
+          <Label>{line === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${trackId}`) }) : t('devices.selector.sourceLabel', { track })}</Label>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
+              <ListBox.Item key={NOT_ASSIGNED_KEY} id={NOT_ASSIGNED_KEY} textValue={t('common.captureSlot.notAssigned')}>
+                {t('common.captureSlot.notAssigned')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
               {cameras.map((device) => (
                 <ListBox.Item key={device.id} id={device.id} textValue={optionText(device)}>
                   {optionText(device)}
@@ -221,7 +261,7 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
         </Select>
         <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || !dirty} isPending={save.pending} onPress={onSave} data-testid={`selector-save-${trackId}`}>
           {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
-          {t('devices.selector.save')}
+          {line === null ? t('common.captureSlot.assign') : t('devices.selector.save')}
         </Button>
         {poeGate.offered ? (
           <Button
@@ -284,15 +324,21 @@ function CameraSourceRow({ line, cameras, block, commands, poe }: RowShared & { 
  * operation 78 in its pair-replacement form (`micPairFor`). The other line's microphone is a
  * disabled option that says where it is (the contract refuses one microphone on both lines).
  * "Make primary" (operation 80) stays as it was. Both controls keep the selector's gates.
+ *
+ * Task 4 row 31 (sites W1, W2; rule MIC-ASSIGN, ruling C21 (8)): the row is a SLOT (a role).
+ * `line: null` is the role not assigned: the row is drawn, says so, and its Save is "Assign" - one
+ * line by role when the other role is empty too, the pair when it is held (`micPairFor`). A held
+ * slot offers "Not assigned" among its microphones; saving that choice is `unassign`.
  */
 function MicRow({
+  slot: role,
   line,
   device,
   mics,
   lines,
   block,
   commands,
-}: RowShared & { line: CaptureMicLine; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
+}: RowShared & { slot: CaptureMicLine['role']; line: CaptureMicLine | null; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
   const notice = useFailureNotice()
@@ -305,12 +351,16 @@ function MicRow({
   // `null`: the control follows the Core's line. Nothing is optimistic (ux §2.2 step 4).
   const [choice, setChoice] = useState<string | null>(null)
   const [pairMessage, setPairMessage] = useState<string | null>(null)
-  const primary = line.role === 'PRIMARY'
+  const primary = role === 'PRIMARY'
   const reason = reasonOf(block)
-  const other = lines.find((entry) => entry.role !== line.role)
-  const selected = choice ?? line.deviceId
-  const pair = choice === null ? null : micPairFor(lines, line.role, choice)
-  const lineLabel = t(`devices.micLines.label.${line.role}`)
+  const other = lines.find((entry) => entry.role !== role)
+  const held = line?.deviceId ?? NOT_ASSIGNED_KEY
+  const selected = choice ?? held
+  const clears = choice === NOT_ASSIGNED_KEY
+  const pair = choice === null || clears ? null : micPairFor(lines, role, choice)
+  // The id of the row's marks: the input of the line, or the role of an empty slot.
+  const rowId = line?.inputId ?? role
+  const lineLabel = line === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${role}`) }) : t(`devices.micLines.label.${role}`)
   const deviceText = useDeviceText()
   const transportShown = micTransportShown(useRealCaptureCore(), device)
   // An option says what the Core says of the microphone (the development class, this Mac's microphone) and where it already is.
@@ -325,10 +375,9 @@ function MicRow({
   }
 
   const onSavePair = () => {
-    if (pair === null) return
+    if (pair === null && !clears) return
     save.run((release) => {
-      void commands
-        .setMicPair(pair)
+      void (pair === null ? commands.unassign(role) : commands.setMicPair(pair))
         .then((answer) => {
           if (answer.ok) {
             setChoice(null)
@@ -341,6 +390,7 @@ function MicRow({
   }
 
   const onMakePrimary = () => {
+    if (line === null) return
     control.run((release) => {
       void commands
         .setPrimaryMic(line.inputId)
@@ -355,37 +405,54 @@ function MicRow({
   }
 
   return (
-    <li className="dev-sel-row" data-testid={`selector-mic-${line.inputId}`} data-role={line.role} aria-busy={control.busy || save.busy || undefined}>
+    <li
+      className="dev-sel-row"
+      data-testid={`selector-mic-${rowId}`}
+      data-selector-slot={role}
+      data-state={line === null ? 'NOT_ASSIGNED' : 'ASSIGNED'}
+      data-role={role}
+      aria-busy={control.busy || save.busy || undefined}
+    >
       <div className="dev-sel-head">
         <Mic className="dev-sel-icon" aria-hidden="true" strokeWidth={1.75} />
-        <div className="dev-sel-titles">
-          <span className="dev-tile-name">{line.inputId}</span>
-          <span className="dev-tile-sub">
-            {deviceText(device ?? { id: line.deviceId, model: null })}
-            {/* Closing pass L-Z (the ONE RULE; remainder R-4 of note 154): "USB input" is the dataset's word for the built-in
-                microphones - a GENERATED source of a Core in real capture has no USB input, so the word is not drawn (as on the devices). */}
-            {transportShown ? ` · ${t('devices.selector.transport', { transport: line.transport })}` : null}
-          </span>
-        </div>
+        {line === null ? (
+          <div className="dev-sel-titles">
+            <span className="dev-tile-name">{t(`common.captureSlot.${role}`)}</span>
+            <span className="dev-tile-sub" data-testid={`selector-not-assigned-${role}`}>
+              {t('common.captureSlot.notAssigned')}
+            </span>
+          </div>
+        ) : (
+          <div className="dev-sel-titles">
+            <span className="dev-tile-name">{line.inputId}</span>
+            <span className="dev-tile-sub">
+              {deviceText(device ?? { id: line.deviceId, model: null })}
+              {/* Closing pass L-Z (the ONE RULE; remainder R-4 of note 154): "USB input" is the dataset's word for the built-in
+                  microphones - a GENERATED source of a Core in real capture has no USB input, so the word is not drawn (as on the devices). */}
+              {transportShown ? ` · ${t('devices.selector.transport', { transport: line.transport })}` : null}
+            </span>
+          </div>
+        )}
         <span className="dev-sel-chips">
-          <Chip size="sm" variant="soft" color={primary ? 'accent' : 'default'} data-testid={`selector-role-${line.inputId}`}>
-            <Chip.Label>{t(`devices.selector.role.${line.role}`)}</Chip.Label>
+          <Chip size="sm" variant="soft" color={primary ? 'accent' : 'default'} data-testid={`selector-role-${rowId}`}>
+            <Chip.Label>{t(`devices.selector.role.${role}`)}</Chip.Label>
           </Chip>
         </span>
-        <StateChips online={line.online} device={device} />
-        <DeviceSourceBadge device={device} testId={`selector-badge-${line.inputId}`} />
+        {/* An empty slot has no device: no state is said of it and no badge is drawn. */}
+        {line === null ? null : <StateChips online={line.online} device={device} />}
+        {line === null ? null : <DeviceSourceBadge device={device} testId={`selector-badge-${line.inputId}`} />}
       </div>
       {/* R69-07 (D161): the limit of this Mac's microphone, on the line where it is chosen. */}
-      <LocalMicrophoneLimit device={device} place={`selector-${line.inputId}`} className="dev-sel-reason" />
+      {line === null ? null : <LocalMicrophoneLimit device={device} place={`selector-${line.inputId}`} className="dev-sel-reason" />}
       <div className="dev-sel-edit">
         <Select
           value={selected}
           onChange={(key) => {
-            if (typeof key === 'string') setChoice(key === line.deviceId ? null : key)
+            if (typeof key === 'string') setChoice(key === held ? null : key)
           }}
           isDisabled={block !== null || save.busy}
           className="dev-sel-select"
-          data-testid={`selector-mic-source-${line.role}`}
+          data-testid={`selector-mic-source-${role}`}
         >
           <Label>{lineLabel}</Label>
           <Select.Trigger>
@@ -394,6 +461,10 @@ function MicRow({
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
+              <ListBox.Item key={NOT_ASSIGNED_KEY} id={NOT_ASSIGNED_KEY} textValue={t('common.captureSlot.notAssigned')}>
+                {t('common.captureSlot.notAssigned')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
               {mics.map((entry) => (
                 <ListBox.Item key={entry.id} id={entry.id} textValue={optionText(entry)} isDisabled={other !== undefined && entry.id === other.deviceId}>
                   {optionText(entry)}
@@ -403,11 +474,11 @@ function MicRow({
             </ListBox>
           </Select.Popover>
         </Select>
-        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || pair === null} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${line.role}`}>
+        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || (pair === null && !clears)} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${role}`}>
           {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
-          {t('devices.selector.save')}
+          {line === null ? t('common.captureSlot.assign') : t('devices.selector.save')}
         </Button>
-        {primary ? null : (
+        {primary || line === null ? null : (
           <Button
             ref={controlRef}
             size="sm"
@@ -423,19 +494,19 @@ function MicRow({
         )}
       </div>
       {/* The limit of this Mac's microphone at the moment it is chosen, before the Save (R69-07, D161). */}
-      {choice === null ? null : <LocalMicrophoneLimit device={mics.find((entry) => entry.id === choice)} place={`choice-${line.role}`} className="dev-sel-reason" />}
+      {choice === null ? null : <LocalMicrophoneLimit device={mics.find((entry) => entry.id === choice)} place={`choice-${role}`} className="dev-sel-reason" />}
       {reason ? (
-        <p className="dev-sel-reason" data-testid={`selector-reason-${line.inputId}`} data-block={block?.kind}>
+        <p className="dev-sel-reason" data-testid={`selector-reason-${rowId}`} data-block={block?.kind}>
           {reason}
         </p>
       ) : null}
       {message ? (
-        <p className="dev-sel-message" role="alert" data-testid={`selector-message-${line.inputId}`}>
+        <p className="dev-sel-message" role="alert" data-testid={`selector-message-${rowId}`}>
           {message}
         </p>
       ) : null}
       {pairMessage ? (
-        <p className="dev-sel-message" role="alert" data-testid={`selector-mic-message-${line.role}`}>
+        <p className="dev-sel-message" role="alert" data-testid={`selector-mic-message-${role}`}>
           {pairMessage}
         </p>
       ) : null}
@@ -495,6 +566,8 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
   const microphones = devices.devices.filter((device) => device.kind === 'MIC')
   const block = selectorEditGate({ resolved: view.resolved, can: view.canConfigure, locked: config.locked })
   const empty = devices.devices.length === 0 && config.cameras.length === 0 && config.mics.length === 0
+  // Task 4 row 31 (decision C18 (3)): one row per SLOT - a slot no line names is drawn too.
+  const rows = selectorSlotRows(config)
 
   if (empty) {
     return (
@@ -522,15 +595,16 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
       <section aria-label={t('devices.selector.cameras')}>
         <h3 className="dev-sel-group">{t('devices.selector.cameras')}</h3>
         <ul className="dev-sel-list">
-          {config.cameras.map((line) => (
+          {rows.cameras.map(({ slot, line }) => (
             <CameraSourceRow
-              key={line.trackId}
+              key={slot}
+              slot={slot}
               line={line}
               cameras={cameras}
               block={block}
               commands={commands}
               poe={(busy) =>
-                poeCycleGate({ lost: line.streamState === 'LOST', resolved: view.resolved, canManage: view.canManageDevices, recording: view.recording, busy })
+                poeCycleGate({ lost: line?.streamState === 'LOST', resolved: view.resolved, canManage: view.canManageDevices, recording: view.recording, busy })
               }
             />
           ))}
@@ -543,11 +617,12 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
       <section aria-label={t('devices.selector.mics')}>
         <h3 className="dev-sel-group">{t('devices.selector.mics')}</h3>
         <ul className="dev-sel-list">
-          {config.mics.map((line) => (
+          {rows.mics.map(({ slot, line }) => (
             <MicRow
-              key={line.inputId}
+              key={line?.inputId ?? slot}
+              slot={slot}
               line={line}
-              device={devices.devices.find((device) => device.id === line.deviceId)}
+              device={line === null ? undefined : devices.devices.find((device) => device.id === line.deviceId)}
               mics={microphones}
               lines={config.mics}
               block={block}

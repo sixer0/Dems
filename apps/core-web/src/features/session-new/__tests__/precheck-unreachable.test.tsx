@@ -7,17 +7,18 @@
 // | M4-NODEV-B-W (component half): one camera unreachable is a warning row; the blocked alert lists the device when both rules block | "one camera", "the active microphone" |
 // | M4-MIC-ACTIVE-W (component half): the active microphone unreachable is BLOCK with the cancel → Devices → start again sentence; NO control at pre-check switches a microphone (D83) | "the active microphone" |
 // | ux §8e.3: without CAPTURE_CONFIG "Search again" is drawn disabled with the role sentence | "the active microphone" |
-import { cleanup, render, screen, within, configure } from '@testing-library/react'
+import { act, cleanup, render, screen, within, configure } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeAll, describe, expect, it, vi, afterAll } from 'vitest'
 import { en } from '@dems/shared/i18n'
-import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, SimProvider, type PrecheckItem, type Sim, type SimAlert } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, CaptureStartRule, createMemoryAuthStorage, createSim, OPERATOR_IDS, SimProvider, unassignedSlotOfPrecheckItem, type PrecheckItem, type Sim, type SimAlert } from '@dems/shared/sim'
 import { i18n, getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { MotionPolicyProvider } from '@/motion'
 import { DevicesStep } from '../devices-step'
 import type { GateView } from '../model'
 import { gateView, reasonKeyFor } from '../model'
+import { CAPTURE_START_RULES, unreachablePrecheckOf } from '@/lib/capture-notices'
 
 describe("the pre-check row of a source that did not answer (D114)", () => {
   const sims: Sim[] = []
@@ -119,6 +120,103 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
       expect(again).toBeDisabled()
       expect(screen.getByTestId('precheck-search-microphone')).toHaveTextContent(en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN'))
       expect(screen.queryByTestId('precheck-search-camera')).not.toBeInTheDocument()
+    })
+  })
+
+  // Task 4 row 167 (WP-13a; row 27 site W3; decisions C18 (1), (2), C25; names register 5.2, 5.5).
+  // The double is a hand-built pre-check item list and selector slice in the simulator's store.
+  //
+  // | Rule | Case |
+  // |------|------|
+  // | The item of an unassigned slot carries NO device id and is still drawn: BLOCK, the slot by its label, the sentence of row 28 - never "lens fault", "no signal" or the raw value | "all four slots" |
+  // | All four slots block, the standby microphone too (C25); the blocked alert lists each | "all four slots" |
+  // | It is no unreachable source: no "Search again", and `unreachablePrecheckOf` does not claim it | "all four slots", "the rules" |
+  // | No meter is labelled with an input the selector does not hold: with no microphone line the screen shows neither MIC-01 nor MIC-02 | "the meters" |
+  // | CONTROL: on the seeded selector a Core in its own capture names MIC-01 and MIC-02 as before | "the meters" |
+  describe('task 4 row 167: the pre-check row of a selector slot with no source', () => {
+    const SLOT = en.common.captureSlot
+    const sentenceOf = (slot: 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY') => en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', SLOT[slot])
+    const unassigned = (id: PrecheckItem['id'], slot: string, status: 'WARN' | 'BLOCK' = 'BLOCK'): PrecheckItem =>
+      ({ id, status, value: 'NOT_ASSIGNED', reason: `${slot}: source not assigned`, reasonCode: null, params: { rule: 'sourceNotAssigned', slot } }) as unknown as PrecheckItem
+    const ROWS = [
+      ['LENS_1', 'VIDEO-01'],
+      ['LENS_2', 'VIDEO-02'],
+      ['MIC_PRIMARY', 'PRIMARY'],
+      ['MIC_STANDBY', 'STANDBY'],
+    ] as const
+    const BLOCKED = { phase: 'block', done: 8, total: 8, warnings: 0, needsAck: false, canRetry: true } as GateView
+    /** A Core in its own capture (the state says `security.platformNotReported`) with only the microphone lines of `roles`. */
+    const ownCore = (sim: Sim, roles: readonly ('PRIMARY' | 'STANDBY')[]) => {
+      const state = sim.store.getState()
+      sim.store.setState({
+        security: { ...state.security, platformNotReported: true } as typeof state.security,
+        captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((mic) => roles.includes(mic.role)) },
+        // No session copy of the selector: the selector in force is the slice.
+        session: null,
+      })
+    }
+
+    it('all four slots: each item is drawn as a BLOCK row with the sentence of its slot although it carries no device id; the alert lists them', () => {
+      resetMissingI18nKeys()
+      mountStep(OPERATOR_IDS.ANDI, [pass('CORE'), ...ROWS.map(([id, slot]) => unassigned(id, slot)), pass('STORAGE'), pass('TIME'), pass('SECURITY')], BLOCKED)
+      for (const [id, slot] of ROWS) {
+        const row = screen.getByTestId(`sn-check-${id}`)
+        expect(row).toHaveAttribute('data-status', 'BLOCK')
+        expect(row).toHaveAttribute('data-rule', 'sourceNotAssigned')
+        expect(row).toHaveAttribute('data-slot', slot)
+        expect(row).toHaveTextContent(sentenceOf(slot))
+        expect(within(row).getByTestId('sn-check-chip')).toHaveTextContent(en.common.precheckStatus.BLOCK)
+        expect(row.textContent ?? '').not.toMatch(/lens fault|no signal|not reachable|NOT_ASSIGNED|: source not assigned/i)
+        expect(screen.getByTestId('sn-gate-blocked')).toHaveTextContent(sentenceOf(slot))
+      }
+      expect(sentenceOf('STANDBY')).toBe('Standby microphone has no source assigned. Assign one on Devices.')
+      // Not an unreachable source: nothing to search for.
+      expect(screen.queryByTestId('precheck-search-camera')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('precheck-search-microphone')).not.toBeInTheDocument()
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    it('the rules (pure): the closed list holds the rule; the shared recogniser finds the item by rule and slot; the unreachable form does not claim it', () => {
+      expect(CAPTURE_START_RULES).toHaveLength(8)
+      expect(CAPTURE_START_RULES).toContain(CaptureStartRule.SOURCE_NOT_ASSIGNED)
+      expect(unassignedSlotOfPrecheckItem(unassigned('MIC_STANDBY', 'STANDBY'))).toBe('STANDBY')
+      expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-01'))).toBe('VIDEO-01')
+      // An unknown slot, a passing item: not this item.
+      expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-03'))).toBeNull()
+      expect(unassignedSlotOfPrecheckItem(pass('LENS_1'))).toBeNull()
+      // The unreachable form does not claim it (it needs a device id) - also not when the value were UNREACHABLE - and the unreachable item is not this one.
+      expect(unreachablePrecheckOf(unassigned('LENS_1', 'VIDEO-01'))).toBeNull()
+      expect(unreachablePrecheckOf(unreachable('LENS_1', 'BLOCK', { deviceId: 'CAM-01', deviceKind: 'CAMERA', rule: 'sourceNotAssigned' }))).toBeNull()
+      expect(unassignedSlotOfPrecheckItem(unreachable('LENS_2', 'WARN', { deviceId: 'CAM-02', deviceKind: 'CAMERA', rule: 'oneCamera' }))).toBeNull()
+    })
+
+    it.each([
+      ['no microphone line', [] as const],
+      ['the PRIMARY line alone', ['PRIMARY'] as const],
+      ['the STANDBY line alone', ['STANDBY'] as const],
+    ])('the meters with %s: no meter names an input - the screen shows neither MIC-01 nor MIC-02', (_name, roles) => {
+      resetMissingI18nKeys()
+      const items = [pass('CORE'), pass('LENS_1'), pass('LENS_2'), ...(['PRIMARY', 'STANDBY'] as const).map((role) => (roles as readonly string[]).includes(role) ? pass(`MIC_${role}`) : unassigned(`MIC_${role}`, role)), pass('STORAGE'), pass('TIME'), pass('SECURITY')]
+      const sim = mountStep(OPERATOR_IDS.ANDI, items, BLOCKED)
+      act(() => ownCore(sim, roles))
+      for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+        const meter = screen.getByTestId(`sn-meter-${channel}`)
+        expect(meter).not.toHaveAttribute('data-input')
+        expect(meter).not.toHaveAttribute('data-role')
+        expect(meter.querySelector('.sn-meter-label')).toHaveTextContent(SLOT.notAssigned)
+      }
+      expect(screen.getByTestId('sn-step-devices').textContent ?? '').not.toMatch(/MIC-01|MIC-02/)
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    it('CONTROL - the seeded pair on a Core in its own capture: each meter names its line as before', () => {
+      const sim = mountStep(OPERATOR_IDS.ANDI, [...OTHERS, pass('LENS_2'), pass('MIC_PRIMARY'), pass('MIC_STANDBY')], { phase: 'pass', done: 8, total: 8, warnings: 0, needsAck: false, canRetry: false } as GateView)
+      act(() => ownCore(sim, ['PRIMARY', 'STANDBY']))
+      expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-input', 'MIC-01')
+      expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-role', 'PRIMARY')
+      expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-input', 'MIC-02')
+      expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-role', 'STANDBY')
+      expect(screen.getByTestId('sn-meter-AUDIO-01').querySelector('.sn-meter-label')).toHaveTextContent('MIC-01')
     })
   })
 })

@@ -35,7 +35,25 @@
  *        `role`, decision D133 (1)) that is not one PRIMARY and one STANDBY line; a device the adapter registry refuses
  *        for the running operation carries the reason of THAT refusal in `details.reason`
  *        (`CaptureAssignmentRefusal`; fix wave I - it was `DEVELOPMENT_SOURCE_NOT_ALLOWED` for all of them).
+ *        A body of operation 78 that clears a slot (`unassign`) and fills the same slot: by the
+ *        schema where it can see it (path `unassign`), by the action otherwise
+ *        (`details.reason: SLOT_UNASSIGNED_AND_ASSIGNED`).
  *   503  the engine is not running, or the unit did not commit.
+ *
+ * `unassign` OF OPERATION 78 (task 4 row 29; decisions C14, C18, C25; security requirement AD-10).
+ * The member names the slots the edit CLEARS (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`); the
+ * route hands it to the hosted action unchanged and adds no rule of its own:
+ *   - the SAME permission (`CAPTURE_CONFIG`) and the same client kinds as every body of
+ *     operation 78: the registry entry is not changed;
+ *   - the SAME lock, read in the same unit BEFORE the action: while a session is open (any state
+ *     but SEALED) the answer is `409 CAPTURE_CONFIG_LOCKED` with no row and no change, so a clear
+ *     can never take a source from a running or a sealing session;
+ *   - the SAME audit type: one `CAPTURE_CONFIG_CHANGED` row per slot that held a source (`scope`,
+ *     `field: SOURCE`, `trackId` or `inputId`, `from`; no `to`, no `deviceId`), none for a slot
+ *     that was empty already - that edit changes nothing and answers the selector as it is;
+ *   - it ASSIGNS nothing, so rule RG-3 of the adapter registry has no device to ask about.
+ * The answer is the selector WITHOUT the line of a cleared slot (an unassigned slot is an absent
+ * line, never a line with an empty device); the stored row holds NULL in the columns of that slot.
  *
  * ERRORS. The module catches nothing it cannot answer: an unexpected failure reaches the error
  * envelope, which writes it to the log and to the persistent error log; a unit that fails is
@@ -284,6 +302,9 @@ export function registerCaptureConfigRoutes(app: FastifyInstance, seams: Capture
         kind: 'UPDATE',
         ...(request.body.cameras === undefined ? {} : { cameras: request.body.cameras }),
         ...(request.body.mics === undefined ? {} : { mics: request.body.mics }),
+        // Task 4 row 29 (decision C14; AD-10): the slots the body CLEARS go to the hosted action.
+        // Until this line the schema accepted the member and the Core answered 200 with nothing changed.
+        ...(request.body.unassign === undefined ? {} : { unassign: request.body.unassign }),
       }),
   });
 

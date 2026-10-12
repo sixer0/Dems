@@ -6,6 +6,7 @@ import { useRetryCooldown } from '@dems/shared/realtime'
 import { recordingEndOf, useSim } from '@dems/shared/sim'
 import { AudioSourceBand } from '@/components/composed'
 import { useMicInputName } from '@/features/devices/source-class'
+import { unassignedPrecheckText } from '@/lib/capture-notices'
 import type { AudioSourceIntervalsView, AudioSourceSwitchControl, AudioSourceToggleBlock, AudioSourceView } from './audio-source'
 
 /** The band's end moves in steps of this many ms of media time: the panel renders at most at 0.2 Hz (§9.3). */
@@ -51,7 +52,9 @@ export function AudioSourceRoleChip({ inputId, view }: { inputId: string; view: 
 export function AudioSourceToggle({ view, control }: { view: AudioSourceView; control: AudioSourceSwitchControl }) {
   const { t } = useTranslation()
   const micName = useMicInputName()
-  if (view.block?.kind === 'NOT_RECORDING') return null
+  // Task 4 row 168: without a standby input there is no microphone to switch to - the toggle is not
+  // drawn and the footer says why (`AudioSourceFooter`).
+  if (view.block?.kind === 'NOT_RECORDING' || view.standbyInputId === null) return null
   return (
     <Button
       size="sm"
@@ -79,7 +82,8 @@ export function AudioSilentWarning({ view, control }: { view: AudioSourceView; c
   const micName = useMicInputName()
   const reasonOf = useBlockReason()
   if (view.silentInputId === null) return null
-  const offered = view.silentInputId === view.activeInputId
+  // Offered for the active input, and only when a standby input exists to switch to (task 4 row 168).
+  const offered = view.silentInputId === view.activeInputId && view.standbyInputId !== null
   return (
     <Alert status="warning" className="sm-audio-warning" data-testid="sm-audio-silent" data-input={view.silentInputId}>
       <Alert.Indicator />
@@ -141,7 +145,10 @@ export function AudioSourceFooter({
   const { t } = useTranslation()
   const micName = useMicInputName()
   const reasonOf = useBlockReason()
-  const reason = reasonOf(view.block)
+  // Task 4 row 168: a recording with no standby input has no toggle; its reason is the sentence of the
+  // unassigned slot (`common.captureNotice.start.sourceNotAssigned`, names register N13).
+  const noStandby = view.block === null && view.standbyInputId === null
+  const reason = noStandby ? unassignedPrecheckText(t, 'STANDBY') : reasonOf(view.block)
   // Media time of "now", in coarse steps; 0 without a started session.
   const elapsedMs = useSim((s) => {
     const startedAt = s.session?.startedAt ?? null
@@ -165,7 +172,7 @@ export function AudioSourceFooter({
         </p>
       ) : null}
       {reason !== null ? (
-        <p className="sm-audio-reason" data-testid="sm-audio-switch-reason" data-block={view.block?.kind} title={reason}>
+        <p className="sm-audio-reason" data-testid="sm-audio-switch-reason" data-block={noStandby ? 'NO_STANDBY' : view.block?.kind} title={reason}>
           {reason}
         </p>
       ) : null}
@@ -177,8 +184,9 @@ export function AudioSourceFooter({
 export function AudioSourceConfirm({ view, control }: { view: AudioSourceView; control: AudioSourceSwitchControl }) {
   const { t } = useTranslation()
   const micName = useMicInputName()
-  const to = micName(view.standbyInputId)
-  const from = micName(view.activeInputId)
+  // The dialog opens only with a standby input (`useAudioSourceSwitch.ask`); an absent input is named by nothing.
+  const to = view.standbyInputId === null ? '' : micName(view.standbyInputId)
+  const from = view.activeInputId === null ? '' : micName(view.activeInputId)
   const title = t('session.audioSource.confirm.title', { mic: to })
   const { ref: confirmRef } = control
   return (

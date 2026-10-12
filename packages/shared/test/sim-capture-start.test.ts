@@ -17,6 +17,9 @@ import {
   CAPTURE_CONNECT_MS,
   NO_CAMERA_CONNECTED_REASON,
   SimTransitionError,
+  CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
+  applyAudioSourceSwitch,
+  audioSourceAtStart,
   advanceCaptureStart,
   captureDurableOf,
   captureStartDueAt,
@@ -33,6 +36,7 @@ import {
 import * as sessionFaultBed from './support/session-fault-bed';
 import { en } from '../src/i18n';
 import * as ownCaptureBed from './support/own-capture-bed';
+import * as selectorBed from './support/selector-category-bed';
 import { SessionResourceSchema } from '../src/api';
 import * as micIdBed from './support/mic-id-bed';
 
@@ -553,5 +557,142 @@ describe('the contract member of the connecting part', () => {
       expect(captureDurableOf(null)).toBe(true);
       expect(captureDurableOf(undefined)).toBe(true);
     });
+  });
+});
+
+// Task 4 row 163 (WP-13a; decisions C18 (1), (2), C21 (6), C25; requirement AD-04 (2); names
+// register of row 161, section 5.3; sites C1, C2, C7 of row 27): the start on an INCOMPLETE
+// selector. A Core in its own capture (`capture: 'external'`) refuses it while any of the four
+// slots holds no source - the STANDBY too; Simulated mode on the same selector starts as before.
+// The audio pair is read by role with no stand-in. The session is armed on the seeded selector and
+// the lines are then put into the state by hand (the selector is locked while a session is open).
+describe('the start on an incomplete selector (task 4 row 163)', () => {
+  const { CATEGORIES, SEEDED_CATEGORY, emptySlotsOf, selectorPatch, cam, mic } = selectorBed;
+  const armedOn = (capture: 'simulated' | 'external', lines: selectorBed.SelectorLines) => {
+    const h = ownCaptureBed.bed({ capture });
+    h.armed();
+    expect(h.state().session?.state, capture).toBe('ARMED');
+    h.sim.store.setState(selectorPatch(h.state(), lines));
+    return h;
+  };
+  const start = (h: ReturnType<typeof armedOn>): unknown => {
+    try {
+      h.sim.actions.startRecording();
+      return null;
+    } catch (error) {
+      return error;
+    }
+  };
+  const inputsOf = (lines: selectorBed.SelectorLines): string[] => lines.mics.map((line) => line.inputId);
+  const roleInput = (lines: selectorBed.SelectorLines, role: 'PRIMARY' | 'STANDBY'): string | undefined => lines.mics.find((line) => line.role === role)?.inputId;
+  /** Each selector that lacks exactly ONE slot of the seeded four. */
+  const seeded = CATEGORIES[SEEDED_CATEGORY]!;
+  const ONE_SLOT_MISSING: Record<string, selectorBed.SelectorLines> = {
+    'only VIDEO-01 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-01'), mics: seeded.mics },
+    'only VIDEO-02 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-02'), mics: seeded.mics },
+    'only PRIMARY unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'PRIMARY') },
+    'only STANDBY unassigned (C25: it blocks too)': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'STANDBY') },
+  };
+
+  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('REAL capture, %s: refused while a slot is unassigned, started when all four are assigned', (name, lines) => {
+    const h = armedOn('external', lines);
+    const before = h.state();
+    const refused = start(h);
+    if (emptySlotsOf(lines).length > 0) {
+      expect(refused, name).toBeInstanceOf(SimTransitionError);
+      // The 409 form: a refusal of the state with the reason of the register.
+      expect(refused, name).toMatchObject({ code: 'ILLEGAL_STATE', from: 'ARMED', event: 'startRecording', reason: CAPTURE_SOURCE_NOT_ASSIGNED_REASON });
+      // Nothing moved: no state change, no audit row - and the refused state names no input at all,
+      // so none the selector does not hold (it was refused BEFORE the audio pair was read).
+      expect(h.state(), name).toBe(before);
+      expect(h.state().session?.state, name).toBe('ARMED');
+      expect(h.state().session?.audioSource ?? null, name).toBeNull();
+      expect(h.state().session?.captureConfig ?? null, name).toBeNull();
+    } else {
+      expect(refused, name).toBeNull();
+      expect(h.state().session?.state, name).toBe('RECORDING');
+      expect(h.state().session?.audioSource, name).toMatchObject({ activeInputId: roleInput(lines, 'PRIMARY'), standbyInputId: roleInput(lines, 'STANDBY') });
+    }
+  });
+
+  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('SIMULATED, %s: the start is accepted as before (C21 (6)), and the session names no input the selector does not hold', (name, lines) => {
+    const h = armedOn('simulated', lines);
+    expect(start(h), name).toBeNull();
+    const session = h.state().session;
+    expect(session, name).toMatchObject({ state: 'RECORDING', captureDurable: false });
+    expect(h.state().audit.rows.filter((row) => row.type === 'RECORDING_STARTED' && row.sessionId === session?.id), name).toHaveLength(1);
+    // The snapshot is the selector as it stood: the lines given, nothing added.
+    expect(session?.captureConfig?.cameras.map((line) => [line.trackId, line.deviceId]), name).toEqual(lines.cameras.map((line) => [line.trackId, line.deviceId]));
+    expect(session?.captureConfig?.mics.map((line) => [line.inputId, line.role]), name).toEqual(lines.mics.map((line) => [line.inputId, line.role]));
+    const primary = roleInput(lines, 'PRIMARY');
+    const standby = roleInput(lines, 'STANDBY');
+    if (primary !== undefined && standby !== undefined) {
+      expect(session?.audioSource, name).toEqual({ sessionId: session?.id, activeInputId: primary, standbyInputId: standby, switchedAt: null, intervalFromMs: 0 });
+      expect(h.state().audio.activeInputId, name).toBe(primary);
+    } else {
+      // A role without a line: the session states NO pair. Before this row it stated `MIC-01` /
+      // `MIC-02` for an empty selector and made a lone STANDBY line the ACTIVE input.
+      expect(session?.audioSource ?? null, name).toBeNull();
+      expect(session !== null && 'audioSource' in session && session.audioSource !== null && session.audioSource !== undefined, name).toBe(false);
+    }
+    for (const named of [session?.audioSource?.activeInputId, session?.audioSource?.standbyInputId]) if (named !== undefined) expect(inputsOf(lines), name).toContain(named);
+    expect(ActiveSessionSchema.safeParse(session).success, name).toBe(true);
+
+    // THE DECISION OF THE CONNECTING START (site C7): with a camera line it turns durable as before;
+    // with ZERO camera lines it never does - it ends as the existing "no camera connected" failure.
+    h.run(CAPTURE_CONNECT_MS);
+    if (lines.cameras.length === 0) {
+      expect(h.state().session, name).toMatchObject({ state: 'FAULT', captureDurable: false, startedAt: null, bytesWritten: 0, fault: { kind: 'CAPTURE_FAULT', fromState: 'RECORDING' } });
+      expect(h.state().session?.timeline.at(-1), name).toMatchObject({ kind: 'FAULT', params: { reason: NO_CAMERA_CONNECTED_REASON, evidenceFiles: 0, durable: false } });
+    } else {
+      expect(h.state().session?.state, name).toBe('RECORDING');
+      expect(captureDurableOf(h.state().session), name).toBe(true);
+    }
+  });
+
+  it('`audioSourceAtStart` reads the pair by role with no stand-in: a role without a line gives no pair (AD-04 (2))', () => {
+    const state = ownCaptureBed.bed().state();
+    const on = (lines: selectorBed.SelectorLines): SimState => ({ ...state, ...selectorPatch(state, lines) });
+    const pair = (lines: selectorBed.SelectorLines) => audioSourceAtStart(on(lines), 'SES-20261001-0001');
+    // Complete, in both arrangements: by role, whichever line is first.
+    expect(pair({ cameras: [], mics: [mic('MIC-01', 'PRIMARY'), mic('MIC-02', 'STANDBY')] })).toEqual({ sessionId: 'SES-20261001-0001', activeInputId: 'MIC-01', standbyInputId: 'MIC-02', switchedAt: null, intervalFromMs: 0 });
+    expect(pair({ cameras: [], mics: [mic('MIC-02', 'STANDBY'), mic('MIC-03', 'PRIMARY')] })).toMatchObject({ activeInputId: 'MIC-03', standbyInputId: 'MIC-02' });
+    // No line: no pair - not `MIC-01` / `MIC-02`.
+    expect(pair({ cameras: [cam('VIDEO-01', 'CAM-01')], mics: [] })).toBeNull();
+    // A lone STANDBY line is never the active input; a lone PRIMARY has no standby invented beside it.
+    expect(pair({ cameras: [], mics: [mic('MIC-04', 'STANDBY')] })).toBeNull();
+    expect(pair({ cameras: [], mics: [mic('MIC-03', 'PRIMARY')] })).toBeNull();
+    // Two lines of ONE role are no pair either (a hand-built state): the other role has no line.
+    expect(pair({ cameras: [], mics: [mic('MIC-01', 'STANDBY'), mic('MIC-02', 'STANDBY')] })).toBeNull();
+  });
+
+  it('a switch of the audio source needs an input to switch FROM: a session without a pair and without an active line refuses it, writing nothing', () => {
+    // Simulated, a lone STANDBY line (category 3): the session started and states no pair.
+    const h = armedOn('simulated', CATEGORIES['3. some U, the rest P (VIDEO-01 and a lone STANDBY held)']!);
+    expect(start(h)).toBeNull();
+    const before = h.state();
+    expect(before.session?.audioSource ?? null).toBeNull();
+    // The meters' active input (`MIC-01`, kept behind the seam `AudioSliceInState`) is no line of
+    // this session: it is not an input to switch from, and it is not written as the new standby.
+    expect(before.captureConfig.mics.map((line) => line.inputId)).toEqual(['MIC-04']);
+    let refused: unknown = null;
+    try {
+      h.sim.actions.switchAudioSource('MIC-04');
+    } catch (error) {
+      refused = error;
+    }
+    expect(refused).toBeInstanceOf(SimTransitionError);
+    expect(refused).toMatchObject({ code: 'ILLEGAL_STATE', event: 'switchAudioSource' });
+    expect(h.state()).toBe(before);
+    // The same with the meters holding NO active input (the state once the seam is out; PENDING-ROW-28-SEAM: the cast goes with it).
+    const session = before.session;
+    if (session === null) throw new Error('no session');
+    const noActive = { ...before, audio: { ...before.audio, activeInputId: null } } as unknown as SimState;
+    expect(() => applyAudioSourceSwitch(noActive, START, session, 'MIC-04', 1_000)).toThrow(SimTransitionError);
+    // CONTROL: a session with its pair switches as before.
+    const complete = armedOn('simulated', seeded);
+    expect(start(complete)).toBeNull();
+    complete.sim.actions.switchAudioSource('MIC-02');
+    expect(complete.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
   });
 });

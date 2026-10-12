@@ -19197,6 +19197,14 @@
                       }
                     ]
                   }
+                },
+                "unassign": {
+                  "summary": "Clear the standby microphone slot",
+                  "value": {
+                    "unassign": [
+                      "STANDBY"
+                    ]
+                  }
                 }
               }
             }

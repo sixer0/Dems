@@ -49,6 +49,8 @@ export const sessionLiveEn = {
       OK: 'Receiving audio',
       NO_SIGNAL: 'No signal',
       NOT_MEASURED: 'Not measured',
+      // Task 4 row 170 (site M4): the meter channel of the card has no input - the selector in force holds no complete pair.
+      ABSENT: 'No microphone input',
     },
   },
 
@@ -126,6 +128,11 @@ export const sessionLiveEn = {
     activeBody: 'The active microphone delivers no audio. The recording continues without sound from it until the signal returns or you switch.',
     standbyBody: 'The standby microphone delivers no audio. The active microphone is not affected.',
   },
+
+  // Task 4 row 170 (site M4): the selector in force holds no complete microphone pair, so there is nothing to
+  // switch from or to. Said where the toggle would be; reachable only in Simulated mode (a Core in its own
+  // capture refuses the start of a session while a slot is unassigned, decision C25).
+  micPairIncomplete: 'The microphone pair is not complete. There is nothing to switch.',
 
   // Toasts for refused simulator actions (SimTransitionError, D61).
   errors: {

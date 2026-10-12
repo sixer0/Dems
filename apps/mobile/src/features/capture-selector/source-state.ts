@@ -23,7 +23,7 @@
  */
 import { micLinesInForce, selectorInForce } from '@/features/capture-selector/selector-in-force';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { micInputOfChannel, type SimState } from '@dems/shared/sim';
+import { meterInputOfChannel, type SimState } from '@dems/shared/sim';
 import type { StatusTone } from '@dems/shared/tokens';
 import { NOT_CHECKED_KEY, rosterDeviceState, rosterStateLabelKey, sourceChecked, sourceOnKeyOf } from '@/features/devices/registered-devices-model';
 import { captureNoticesOf, developmentSourceOf } from './capture-notices-model';
@@ -75,12 +75,16 @@ export function deviceReportOf(state: Pick<ReportState, 'captureDevices' | 'aler
   return reportOfDevice(state as ReportState, deviceId, kind);
 }
 
-/** The microphone ON the line of a meter channel (the open session's selector snapshot, else the current selector). */
+/**
+ * The microphone ON the line of a meter channel (the open session's selector snapshot, else the current selector).
+ *
+ * Task 4 row 171 (site M5; decision C18 (2)): the input of the channel is found by the lookup of row 164
+ * (`meterInputOfChannel`). A channel WITHOUT an input - the selector holds no complete microphone pair -
+ * names no device: the report is the unknown source (`deviceId: null`), never the device behind
+ * `MIC-01` / `MIC-02`.
+ */
 export function micLineReportOf(state: ReportState, channel: AudioTrackId): SourceReport {
-  const lines = micLinesInForce(state);
-  const inputId = micInputOfChannel(lines, channel);
-  const line = lines.find((candidate) => candidate.inputId === inputId);
-  return reportOfDevice(state, line?.deviceId ?? null, 'MIC');
+  return reportOfDevice(state, micLineDeviceIdOf(state, channel), 'MIC');
 }
 
 /** The camera behind a video track (the open session's selector snapshot, else the current selector). */
@@ -95,10 +99,11 @@ export function primaryMicReportOf(state: ReportState): SourceReport {
   return reportOfDevice(state, line?.deviceId ?? null, 'MIC');
 }
 
-/** The registered device id of the microphone on a meter channel's line, or null. */
+/** The registered device id of the microphone on a meter channel's line, or null: no line, or a channel without an input (`meterInputOfChannel`). */
 export function micLineDeviceIdOf(state: Pick<SimState, 'captureConfig' | 'session'>, channel: AudioTrackId): string | null {
   const lines = micLinesInForce(state);
-  const inputId = micInputOfChannel(lines, channel);
+  const inputId = meterInputOfChannel(lines, channel);
+  if (inputId === null) return null;
   return lines.find((candidate) => candidate.inputId === inputId)?.deviceId ?? null;
 }
 

@@ -6,7 +6,7 @@
  *
  * | What | Function | Spec |
  * |---|---|---|
- * | The two camera rows and the two microphone rows | `cameraRows`, `micRows` | §2.2 step 2 |
+ * | The two camera rows and the two microphone rows: one row per SLOT, an empty slot included (task 4 row 32; decision C18 (3)) | `cameraRows`, `micRows` | §2.2 step 2 |
  * | The cameras an operator may assign to a track | `cameraOptions` | §2.6 "Source options" (PE-125-04): every registered camera of op 77, never a search candidate |
  * | The state of the edit controls G1-G3 | `selectorGate` | §2.4; §11 (E-16): checking, waiting, denied, locked, allowed |
  * | What a refused operation 79 / 80 means | `classifyAnswer` | §2.5: 403, 404, 409 `CAPTURE_CONFIG_LOCKED`, 422, 503 `CAPTURE_NOT_READY`, no answer |
@@ -21,12 +21,16 @@ import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type Ca
 
 export interface CameraSelectorRow {
   readonly trackId: VideoTrackId;
-  /** The capture device behind the track (`CAM-01`, or a camera added later: `CAM-NN`). */
-  readonly deviceId: string;
+  /**
+   * The capture device behind the track (`CAM-01`, or a camera added later: `CAM-NN`). `null`: the
+   * slot is NOT ASSIGNED - the selector holds no line for this track (task 4 row 32).
+   */
+  readonly deviceId: string | null;
   /** The model the registry names for that device, or null when the registry does not hold it. */
   readonly model: string | null;
   readonly online: boolean;
-  readonly streamState: CaptureStreamState;
+  /** The line's stream state; null for a slot that is not assigned (there is no line to state one). */
+  readonly streamState: CaptureStreamState | null;
   /** `sourceClass` as the Core sent it on the device (flow 12); null when the device carries none. */
   readonly sourceClass: string | null;
   /** `adapter` as the Core sent it on the device; null when the device carries none. */
@@ -34,9 +38,13 @@ export interface CameraSelectorRow {
 }
 
 export interface MicSelectorRow {
-  /** The mic input (`MIC-01`, `MIC-02`, or an input added later): the shared contract's open id (D115, pass C1). */
-  readonly inputId: string;
-  readonly deviceId: string;
+  /**
+   * The mic input (`MIC-01`, `MIC-02`, or an input added later): the shared contract's open id (D115, pass C1).
+   * `null`: the slot of `role` is NOT ASSIGNED - the selector holds no line with this role (task 4 row 32).
+   */
+  readonly inputId: string | null;
+  /** The registered microphone on the line; null with `inputId` for a slot that is not assigned. */
+  readonly deviceId: string | null;
   readonly model: string | null;
   readonly role: MicRole;
   /** The line's transport word; null for a GENERATED source (`statedTransportOf`). */
@@ -87,33 +95,54 @@ function sourceOf(devices: readonly CaptureDeviceStatus[], deviceId: string): { 
 
 const TRACK_ORDER: readonly VideoTrackId[] = [TrackId.VIDEO_01, TrackId.VIDEO_02];
 
-/** VIDEO-01 first, then VIDEO-02, whatever order the slice carries. */
+const ROLE_ORDER: readonly MicRole[] = ['PRIMARY', 'STANDBY'];
+
+/**
+ * One row per VIDEO SLOT, always two: VIDEO-01 first, then VIDEO-02, whatever order the slice carries
+ * (task 4 row 32; decision C18 (3); names register E38). A track the selector holds no line for is a
+ * row with `deviceId: null`: the screen draws it "Not assigned" with the offer to assign. A line is
+ * found by its track, never by its place in the list.
+ */
 export function cameraRows(config: Pick<CaptureConfigSlice, 'cameras'>, registry: CaptureDevicesSlice): CameraSelectorRow[] {
-  return [...config.cameras]
-    .sort((a, b) => TRACK_ORDER.indexOf(a.trackId) - TRACK_ORDER.indexOf(b.trackId))
-    .map((line) => ({
-      trackId: line.trackId,
+  return TRACK_ORDER.map((trackId) => {
+    const line = config.cameras.find((candidate) => candidate.trackId === trackId);
+    if (line === undefined) return { trackId, deviceId: null, model: null, online: false, streamState: null, sourceClass: null, adapter: null };
+    return {
+      trackId,
       deviceId: line.deviceId,
       model: modelOf(registry.devices, line.deviceId),
       online: line.online,
       streamState: line.streamState,
       ...sourceOf(registry.devices, line.deviceId),
-    }));
+    };
+  });
 }
 
-/** The PRIMARY input first, then the STANDBY; inside a role by input id. */
+/**
+ * One row per MICROPHONE SLOT, always two: the PRIMARY role first, then the STANDBY (task 4 row 32;
+ * decision C18 (3); names register E38). A role no line holds is a row with `inputId: null`. A line
+ * is found by its role, never by its place in the list; should a slice carry one role twice, the
+ * row is the line with the lowest input id.
+ */
 export function micRows(config: Pick<CaptureConfigSlice, 'mics'>, registry: CaptureDevicesSlice): MicSelectorRow[] {
-  return [...config.mics]
-    .sort((a, b) => (a.role === b.role ? a.inputId.localeCompare(b.inputId) : a.role === 'PRIMARY' ? -1 : 1))
-    .map((line) => ({
+  return ROLE_ORDER.map((role) => {
+    const [line] = config.mics.filter((candidate) => candidate.role === role).sort((a, b) => a.inputId.localeCompare(b.inputId));
+    if (line === undefined) return { inputId: null, deviceId: null, model: null, role, transport: null, online: false, sourceClass: null, adapter: null };
+    return {
       inputId: line.inputId,
       deviceId: line.deviceId,
       model: modelOf(registry.devices, line.deviceId),
-      role: line.role,
+      role,
       transport: statedTransportOf(line.transport, sourceOf(registry.devices, line.deviceId).adapter),
       online: line.online,
       ...sourceOf(registry.devices, line.deviceId),
-    }));
+    };
+  });
+}
+
+/** True for the row of a slot that is not assigned (camera or microphone). */
+export function isEmptySlotRow(row: Pick<CameraSelectorRow, 'deviceId'>): boolean {
+  return row.deviceId === null;
 }
 
 export interface CameraOption {
@@ -199,14 +228,21 @@ export function micOptionRefusal(role: MicRole, option: Pick<MicOption, 'role'>)
 
 /**
  * The command that puts microphone `chosenId` on the `role` line, or null when nothing is to send
- * (the line already holds it, the choice is refused, or the selector holds no pair to replace).
+ * (the line already holds it, or the choice is refused).
  *
  * | Line | Choice | Command |
  * |---|---|---|
  * | PRIMARY | the standby microphone | operation 80 `setPrimaryMic`: the two trade roles (as before) |
- * | PRIMARY | a microphone on no line | operation 78, pair replacement (D133 (1)): it becomes PRIMARY, the standby stays |
- * | STANDBY | a microphone on no line | operation 78, pair replacement: it becomes STANDBY, the primary stays |
+ * | PRIMARY | a microphone on no line, the standby slot held | operation 78, pair replacement (D133 (1)): it becomes PRIMARY, the standby stays |
+ * | PRIMARY | a microphone on no line, the standby slot EMPTY | operation 78, ONE line by role (`micRole`) |
+ * | STANDBY | a microphone on no line, the primary slot held | operation 78, pair replacement: it becomes STANDBY, the primary stays |
+ * | STANDBY | a microphone on no line, the primary slot EMPTY | operation 78, ONE line by role (`micRole`) |
  * | STANDBY | the primary microphone | none (`micOptionRefusal`) |
+ *
+ * Task 4 row 32 (decisions C18 (3), C21 (8); names register E37, N16, rule MIC-ASSIGN): a role is
+ * assignable ALONE. The two cases with an empty other slot answered null before, so a microphone
+ * could not be put into an empty selector at all. While the other role holds a line the command is
+ * the two-line pair of before, so nothing changes on a complete selector.
  */
 export function micLineCommand(role: MicRole, chosenId: string, config: { readonly mics: readonly { readonly inputId: string; readonly role: MicRole }[] }): SelectorCommand | null {
   const primary = config.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? null;
@@ -214,10 +250,10 @@ export function micLineCommand(role: MicRole, chosenId: string, config: { readon
   if (role === 'PRIMARY') {
     if (chosenId === primary) return null;
     if (chosenId === standby) return { kind: 'primaryMic', inputId: chosenId };
-    return standby === null ? null : { kind: 'micPair', primaryId: chosenId, standbyId: standby };
+    return standby === null ? { kind: 'micRole', role, inputId: chosenId } : { kind: 'micPair', primaryId: chosenId, standbyId: standby };
   }
   if (chosenId === standby || chosenId === primary) return null;
-  return primary === null ? null : { kind: 'micPair', primaryId: primary, standbyId: chosenId };
+  return primary === null ? { kind: 'micRole', role, inputId: chosenId } : { kind: 'micPair', primaryId: primary, standbyId: chosenId };
 }
 
 /** True when the Core holds no selector line and no capture device at all (§2.5 "Empty device list"). */
@@ -277,7 +313,12 @@ export type SelectorCommand =
   | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly deviceId: string }
   | { readonly kind: 'primaryMic'; readonly inputId: string }
   /** Operation 78, pair replacement (D133 (1); fix wave H, G70-02): the two microphones of the selector, by role. */
-  | { readonly kind: 'micPair'; readonly primaryId: string; readonly standbyId: string };
+  | { readonly kind: 'micPair'; readonly primaryId: string; readonly standbyId: string }
+  /**
+   * Operation 78, ONE line by role (task 4 row 32; names register N16; rule MIC-ASSIGN, C21 (8)):
+   * `mics: [{ inputId, deviceId: inputId, role }]`. Built only while the OTHER role's slot is empty.
+   */
+  | { readonly kind: 'micRole'; readonly role: MicRole; readonly inputId: string };
 
 /** What an operation answered, reduced to the three members both sources carry. */
 export interface AnswerFacts {
@@ -361,5 +402,6 @@ export function isNoChange(command: SelectorCommand, config: Pick<CaptureConfigS
       config.mics.some((line) => line.inputId === command.standbyId && line.role === 'STANDBY')
     );
   }
+  if (command.kind === 'micRole') return config.mics.some((line) => line.inputId === command.inputId && line.role === command.role);
   return config.mics.some((line) => line.inputId === command.inputId && line.role === 'PRIMARY');
 }

@@ -27,11 +27,12 @@ import {
   SimTransitionError,
   type ScenarioName,
   type Sim,
+  type SimState,
 } from '@dems/shared/sim'
 import { audioSourceBandSegments, formatMediaMs } from '@/components/composed'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
-import { audioSourceToggleGate, isSessionHolder, sessionStartRoles, silentInputOf, switchRefusal } from '../audio-source'
+import { audioSourceToggleGate, isSessionHolder, selectActiveInputId, selectStandbyInputId, sessionStartRoles, silentInputOf, switchRefusal } from '../audio-source'
 import { captureDurableOf, selectBanner, selectFeed } from '../model'
 
 vi.setConfig({ testTimeout: 30_000 })
@@ -63,6 +64,12 @@ function mount(operatorId: string, { scenario = 'recording', path = '/session', 
   render(<RouterProvider router={router} />)
   return sim
 }
+
+/** The microphone lines of the seeded selector, as far as the lookups by role read them. */
+const SEEDED_PAIR = [
+  { inputId: 'MIC-01', role: 'PRIMARY' },
+  { inputId: 'MIC-02', role: 'STANDBY' },
+] as const
 
 const switchRows = (sim: Sim) => sim.store.getState().audit.rows.filter((row) => row.type === SWITCHED)
 const activeOf = (sim: Sim) => sim.store.getState().audio.activeInputId
@@ -141,11 +148,24 @@ describe('refusals of operation 81 (ux §3.5)', () => {
 describe('the silence warning: which input it names', () => {
   it('reads the channel or the input of the fault, and falls back to the active input', () => {
     const fault = (target: string | null) => [{ kind: 'MIC_SILENT' as const, since: 1, target }]
-    expect(silentInputOf([], 'MIC-01')).toBeNull()
-    expect(silentInputOf(fault('AUDIO-02'), 'MIC-01')).toBe('MIC-02')
-    expect(silentInputOf(fault('MIC-01'), 'MIC-02')).toBe('MIC-01')
-    expect(silentInputOf(fault(null), 'MIC-02')).toBe('MIC-02')
-    expect(silentInputOf([{ kind: 'CAMERA_LOST' as never, since: 1, target: 'VIDEO-01' }], 'MIC-01')).toBeNull()
+    // Task 4 row 168: the lines are given (the seeded pair) - a channel is a line of the selector, never a built-in input.
+    expect(silentInputOf([], 'MIC-01', SEEDED_PAIR)).toBeNull()
+    expect(silentInputOf(fault('AUDIO-02'), 'MIC-01', SEEDED_PAIR)).toBe('MIC-02')
+    expect(silentInputOf(fault('MIC-01'), 'MIC-02', SEEDED_PAIR)).toBe('MIC-01')
+    expect(silentInputOf(fault(null), 'MIC-02', SEEDED_PAIR)).toBe('MIC-02')
+    expect(silentInputOf([{ kind: 'CAMERA_LOST' as never, since: 1, target: 'VIDEO-01' }], 'MIC-01', SEEDED_PAIR)).toBeNull()
+  })
+
+  it('task 4 row 168: a channel without a line names no input, and a fault without a target names none when no input is active', () => {
+    const fault = (target: string | null) => [{ kind: 'MIC_SILENT' as const, since: 1, target }]
+    // No line, a lone line (either role): no meter channel has an input - never MIC-01 / MIC-02 by a table.
+    for (const lines of [[], [SEEDED_PAIR[0]], [SEEDED_PAIR[1]]]) {
+      expect(silentInputOf(fault('AUDIO-01'), null, lines)).toBeNull()
+      expect(silentInputOf(fault('AUDIO-02'), 'MIC-01', lines)).toBeNull()
+    }
+    expect(silentInputOf(fault(null), null, [])).toBeNull()
+    // The input the Core names itself is still the answer.
+    expect(silentInputOf(fault('MIC-03'), null, [])).toBe('MIC-03')
   })
 })
 
@@ -419,7 +439,90 @@ describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
     expect(second).not.toHaveAttribute('data-no-signal')
     expect(second?.querySelector('[role="meter"]')).toHaveAttribute('aria-valuenow', '-30')
     // A silence warning that names channel 2 is about the second line.
-    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toBe('MIC-01')
-    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-01')).toBe('MIC-02')
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03', role: 'PRIMARY' }, { inputId: 'MIC-01', role: 'STANDBY' }])).toBe('MIC-01')
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-01', SEEDED_PAIR)).toBe('MIC-02')
+  })
+})
+
+// Task 4 row 168 (WP-13a; row 27 sites W4, W6; decisions C18 (2), C21 (6), (7)). The double is a hand-built
+// selector slice in the simulator's store: a session that records on an incomplete microphone pair (possible
+// in Simulated mode only, C21 (6)) states no audio pair (names register 5.3).
+//
+// | Rule | Case |
+// |------|------|
+// | The audio panel: a meter channel without an input is neither ACTIVE nor STANDBY, has no role chip and no source mark, and its meter draws no level | "the audio panel" |
+// | The audio source: with no PRIMARY line no input is active; with no STANDBY line there is no standby - no built-in input stands in | "the audio panel", "the pair (pure)" |
+// | Without a standby the toggle is not drawn and the footer says why | "the audio panel" |
+// | CONTROL: the seeded pair reads as before | "the audio panel" (last block), every case above this describe |
+describe('task 4 row 168: the audio panel and the audio source when an input is absent', () => {
+  type Role = 'PRIMARY' | 'STANDBY'
+  /** A recording session whose selector (stored and snapshot) holds only the microphone lines of `roles`, and which states no pair. */
+  const recordingWith = (roles: readonly Role[]) => (sim: Sim) => {
+    const state = sim.store.getState()
+    const mics = state.captureConfig.mics.filter((line) => roles.includes(line.role))
+    sim.store.setState({
+      captureConfig: { ...state.captureConfig, mics },
+      session: state.session === null ? null : { ...state.session, captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics } : state.session.captureConfig, audioSource: null },
+    } as never)
+  }
+
+  it.each([
+    ['no microphone line', [] as readonly Role[], null],
+    ['the PRIMARY line alone', ['PRIMARY'] as readonly Role[], 'MIC-01'],
+    ['the STANDBY line alone', ['STANDBY'] as readonly Role[], null],
+  ])('the audio panel with %s: both halves are empty, no built-in input is named, and there is no toggle', async (_name, roles, active) => {
+    mount(OPERATOR_IDS.BUDI, { prepare: recordingWith(roles) })
+    const audio = await panel()
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) {
+      const half = audio.querySelector(`[data-channel="${channel}"].sm-audio-half`)!
+      expect(half).toHaveAttribute('data-no-input', 'true')
+      expect(half).not.toHaveAttribute('data-source')
+      // The meter of a channel without an input draws no level, although the slice still holds frames of the built-in inputs.
+      const meter = half.querySelector('[data-testid="dbfs-meter"]')!
+      expect(meter).toHaveAttribute('data-no-signal', 'true')
+    }
+    expect(audio.querySelector('[data-testid^="sm-audio-role-"]')).toBeNull()
+    const body = audio.querySelector('.sm-audio-body')!
+    if (active === null) expect(body).not.toHaveAttribute('data-active-input')
+    else expect(body).toHaveAttribute('data-active-input', active)
+    // No standby: nothing to switch to. The toggle is not drawn and the footer says why.
+    expect(screen.queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
+    const reason = within(audio).getByTestId('sm-audio-switch-reason')
+    expect(reason).toHaveAttribute('data-block', 'NO_STANDBY')
+    expect(reason).toHaveTextContent(en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', en.common.captureSlot.STANDBY))
+    expect(audio.textContent ?? '').not.toMatch(/MIC-01|MIC-02/)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('CONTROL - the seeded pair on a session that states none yet: the halves, the chips and the toggle read as before', async () => {
+    mount(OPERATOR_IDS.BUDI, { prepare: recordingWith(['PRIMARY', 'STANDBY']) })
+    const audio = await panel()
+    expect(audio.querySelector('[data-channel="AUDIO-01"].sm-audio-half')).toHaveAttribute('data-source', 'ACTIVE')
+    expect(audio.querySelector('[data-channel="AUDIO-02"].sm-audio-half')).toHaveAttribute('data-source', 'STANDBY')
+    expect(audio.querySelector('[data-no-input]')).toBeNull()
+    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
+    expect(role('MIC-02')).toHaveAttribute('data-role', 'STANDBY')
+    expect(screen.getByTestId('sm-audio-switch')).toBeEnabled()
+    expect(within(audio).queryByTestId('sm-audio-switch-reason')).not.toBeInTheDocument()
+  })
+
+  it('the pair (pure): by role, with `null` for an absent input - never the meters\' stale member, never the built-in pair', () => {
+    const lines = [
+      { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' },
+      { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
+    ]
+    const state = (over: Record<string, unknown>): SimState => ({ session: null, audio: { activeInputId: 'MIC-01' }, captureConfig: { cameras: [], mics: [] }, ...over }) as unknown as SimState
+    const selector = (mics: readonly unknown[]) => ({ captureConfig: { cameras: [], mics } })
+    // No session: the selector's lines by role.
+    expect([selectActiveInputId(state(selector([]))), selectStandbyInputId(state(selector([])))]).toEqual([null, null])
+    expect([selectActiveInputId(state(selector([lines[0]]))), selectStandbyInputId(state(selector([lines[0]])))]).toEqual(['MIC-01', null])
+    // A lone STANDBY line is never the active input - also when the meters' member still names it.
+    expect([selectActiveInputId(state({ ...selector([lines[1]]), audio: { activeInputId: 'MIC-02' } })), selectStandbyInputId(state(selector([lines[1]])))]).toEqual([null, 'MIC-02'])
+    // An open session that states no pair yet: the meters' member, only when the selector in force holds it; the standby is the other line.
+    const open = (mics: readonly unknown[], activeInputId: string) => state({ session: { state: 'RECORDING', audioSource: null, captureConfig: { cameras: [], mics } }, audio: { activeInputId } })
+    expect([selectActiveInputId(open(lines, 'MIC-02')), selectStandbyInputId(open(lines, 'MIC-02'))]).toEqual(['MIC-02', 'MIC-01'])
+    expect([selectActiveInputId(open([], 'MIC-01')), selectStandbyInputId(open([], 'MIC-01'))]).toEqual([null, null])
+    expect([selectActiveInputId(open([lines[1]], 'MIC-01')), selectStandbyInputId(open([lines[1]], 'MIC-01'))]).toEqual([null, null])
+    expect([selectActiveInputId(open([lines[0]], 'MIC-01')), selectStandbyInputId(open([lines[0]], 'MIC-01'))]).toEqual(['MIC-01', null])
   })
 })

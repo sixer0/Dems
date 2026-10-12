@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Button, Chip, Spinner, Tooltip, toast } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Lock, RotateCcw } from 'lucide-react'
@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { EMPTY_DATE_TEXT } from '@dems/shared/realtime'
-import { captureMicLines, DEFAULT_MIC_INPUT_OF_CHANNEL, micInputOfChannel, selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
+import { captureMicLines, DEFAULT_MIC_INPUT_OF_CHANNEL, meterInputOfChannel, selectMicById, useAudioChannel, useSim, type AudioFrame } from '@dems/shared/sim'
 import { DbfsMeter, formatDbfsValue, METER_THRESHOLDS } from '@/components/composed'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
@@ -58,10 +58,13 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   // Wave H closing pass Z2 (note 124 section 4 item 2; ruling D137): the card is a LINE. The microphone
   // that is on it is the selector's (the session's snapshot while one is open) - channel 1 is the first
   // line, whatever its id. `deviceId` above stays the line's own identity (status, menu, identify).
-  const inputId = useSim((s) => micInputOfChannel(captureMicLines(s), channel))
+  // Task 4 row 168 (site W5; decision C18 (2)): the input is `meterInputOfChannel` - `null` when the selector
+  // holds no complete microphone pair. The card then draws its empty state: it says "Not assigned", names
+  // no input, and carries no mark of a microphone.
+  const inputId = useSim((s) => meterInputOfChannel(captureMicLines(s), channel))
   const inputName = useMicInputName()
   // Named only when it is not the line's built-in microphone: the title already says "MIC 1" / "MIC 2".
-  const otherInput = inputId !== DEFAULT_MIC_INPUT_OF_CHANNEL[channel]
+  const otherInput = inputId !== null && inputId !== DEFAULT_MIC_INPUT_OF_CHANNEL[channel]
   // LB-1: the kebab's Button drops `aria-busy`, so the head that holds it carries it.
   const commandBusy = useDevicePending(deviceId)
   // LB-1: the shared pending control (`@/lib/pending-control`, plan row W0).
@@ -74,7 +77,8 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const ownCore = useSelfCaptureCore()
   const name = labels.name(deviceId)
   const fullName = ownCore ? name : labels.fullName(deviceId)
-  const port = ownCore ? inputId : labels.port(MIC_PORT[channel])
+  // (An absent input on a Core in its own capture: the line's own name stands where the input was named.)
+  const port = ownCore ? (inputId ?? name) : labels.port(MIC_PORT[channel])
   const tone = STATUS_TONE[status]
   const latched = mic?.clipLatched ?? false
   const noSignal = status === 'NO_SIGNAL'
@@ -103,7 +107,8 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
       data-testid={`audio-input-${channel}`}
       data-status={status}
       data-tone={tone}
-      data-mic-input={inputId}
+      data-mic-input={inputId ?? undefined}
+      data-input-state={inputId === null ? 'NOT_ASSIGNED' : undefined}
       variants={m.variants.row}
     >
       <header className="dev-tile-head" aria-busy={commandBusy || undefined}>
@@ -113,7 +118,8 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
           <span className="dev-tile-name dev-tile-name-wrap">{fullName}</span>
           <span className="dev-tile-sub">
             {port} · {channel}
-            {otherInput ? <span data-testid={`audio-line-input-${channel}`}>{` · ${inputName(inputId)}`}</span> : null}
+            {inputId !== null && otherInput ? <span data-testid={`audio-line-input-${channel}`}>{` · ${inputName(inputId)}`}</span> : null}
+            {inputId === null ? <span data-testid={`audio-line-empty-${channel}`}>{` · ${t('common.captureSlot.notAssigned')}`}</span> : null}
           </span>
         </div>
         <div className="dev-tile-chips">
@@ -124,13 +130,13 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
           ) : null}
           <StatusChip tone={tone} label={t(`devices.status.${status}`)} severity={STATUS_SEVERITY[status]} testId={`audio-status-${channel}`} />
           {/* Task 3 R-10 / R-11 (blueprint row 137): the input's device is the one the selector names for it. */}
-          <MicUnreachableMark inputId={inputId} />
+          {inputId === null ? null : <MicUnreachableMark inputId={inputId} />}
         </div>
         <DeviceMenu deviceId={deviceId} name={name} />
       </header>
       {/* G70-07 (wave H): the development badge and the 'is on' line on their own line, so they take no width from the title. */}
       <div className="dev-tile-marks">
-        <MicSourceMarks inputId={inputId} place={channel} />
+        {inputId === null ? null : <MicSourceMarks inputId={inputId} place={channel} />}
       </div>
 
       <div className="dev-audio-body">
@@ -149,7 +155,7 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
           <div className="dev-fact" data-fact="peak">
             <dt>{t('devices.audio.peakHold')}</dt>
             <dd className="font-mono tabular-nums">
-              <PeakReadout channel={channel} />
+              <PeakReadout channel={channel} hasInput={inputId !== null} />
             </dd>
           </div>
           {ownCore ? null : (<>
@@ -242,21 +248,27 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
  * The peak-hold level as text, written straight into the DOM at ≤ 4 Hz from the transient audio
  * channel (P8; §9.3: no React render per audio frame).
  */
-function PeakReadout({ channel }: { channel: AudioTrackId }) {
+function PeakReadout({ channel, hasInput }: { channel: AudioTrackId; hasInput: boolean }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLSpanElement>(null)
   const last = useRef(Number.NEGATIVE_INFINITY)
   const onFrame = useCallback(
     (frame: AudioFrame) => {
+      // Task 4 row 168: a channel without an input states no peak, whatever frame reaches it.
+      if (!hasInput) return
       if (frame.at - last.current < PEAK_TEXT_INTERVAL_MS) return
       last.current = frame.at
       const node = ref.current
       if (!node) return
       node.textContent = frame.noSignal || frame.peak <= -90 ? EMPTY_DATE_TEXT : t('common.units.dbfs', { value: formatDbfsValue(frame.peak) })
     },
-    [t],
+    [t, hasInput],
   )
   useAudioChannel(channel, onFrame)
+  // The input left the channel while the card is on screen: the last peak is no fact of it any more.
+  useEffect(() => {
+    if (!hasInput && ref.current) ref.current.textContent = EMPTY_DATE_TEXT
+  }, [hasInput])
   return (
     <span ref={ref} data-testid={`peak-${channel}`}>
       {EMPTY_DATE_TEXT}

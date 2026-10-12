@@ -21,6 +21,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { captureNotices, registerCaptureNotices } from '../../capture-notices';
+import { captureAudioCardsModule } from './audio-cards';
 import { registerCaptureInputsRoutes } from './routes';
 
 export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, captureInputsOperation, type CaptureInputsModuleOperation, type CaptureInputsRouteSeams } from './routes';
@@ -36,4 +37,9 @@ export const captureInputsModule: FastifyPluginAsync = async (app) => {
   // The boot registration of the notices unit (integration pass D8): its session-start listener is attached when the app is ready.
   registerCaptureNotices(app);
   registerCaptureInputsRoutes(app, { notices: () => captureNotices(app), nextSearchId: rescanSearchId });
+  // Task 4, blueprint row 70 (WP-07c): the two sound-card operations 98 and 99 are the other half of the
+  // microphone inputs. Their folder (`./audio-cards`, as `capture-discovery/connect`) is mounted here, at the same
+  // root scope: the unit list of `app.ts` is frozen (static rule P25) and a module imports no other module (rule 5
+  // of `test/static/imports.test.ts`). One call, no option; nothing else of it is used here.
+  await captureAudioCardsModule(app, {});
 };

@@ -48,15 +48,30 @@
  * pool, OUTSIDE the unit of step 2; a refusal is one error-log code, never an audit entry: the
  * reveal function was not called.
  *
- * NOT HERE (their rows): the session id in the audit row (AD-03 (3), row 145); the set-IP job
- * never calls this reader - its credential is the one typed for that operation (decisions C1, C7).
+ * THE SESSION IN THE AUDIT ROW (AD-03 (3); row 145). The two reasons of the camera adapter are said
+ * FOR a session, so its two methods take the session beside the device and the entry carries it in
+ * the audit row's own `session_id` member - never as a third detail key: the details stay the device
+ * and the reason. Per session, the reveal entries with that session are then the cameras of its plan
+ * plus its relay restarts. A session that does not have the form of a session id is refused before
+ * any statement, like a device id that is none. The connection test is no session's: its entry has
+ * no session, and its reader has no parameter for one.
+ *
+ * "COMMITTED" IS THE SERVER'S ACKNOWLEDGEMENT, NOT THE END OF THE WORK (AD-03 (2); row 145). While a
+ * COMMIT is sent and not answered the read is pending and the opener has not been asked; a COMMIT
+ * that is refused, a connection that is lost under it and a unit the pipeline's watchdog abandons
+ * all end in `CAPTURE_CREDENTIAL_AUDIT_NOT_COMMITTED` with no credential. In the last two the
+ * reader cannot know what the server did with the transaction: it answers as if nothing was
+ * committed, which errs to an entry without a credential and never to a credential without an entry.
+ *
+ * NOT HERE: the set-IP job never calls this reader - its credential is the one typed for that
+ * operation (decisions C1, C7).
  *
  * Nothing here logs a value. A failure is a `CaptureCredentialReadError`: a code, a device id and
  * a fixed sentence, no cause. The persistent error log gets the code and the name and code of
  * what was thrown (`describeError` reads no message).
  */
 import { AuditType } from '@dems/shared/sim';
-import { HARDWARE_DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN } from '@dems/shared/api';
+import { HARDWARE_DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN, SESSION_ID_PATTERN } from '@dems/shared/api';
 import { CAPTURE_ADAPTER_KINDS, CaptureSourceClass, sealCredential, sourceClassOf, type CaptureAdapterKind, type SealedCredential } from '../../capture/adapters';
 import type { AuditEntry, UnitContext } from '../../core';
 import { describeError, type ErrorLog } from '../../plugins/logger';
@@ -83,12 +98,16 @@ export const CAPTURE_CREDENTIAL_HOLDERS = Object.freeze({
 }) satisfies Readonly<Record<CaptureCredentialHolder, readonly string[]>>;
 export type CaptureCredentialRevealReasonOf<Holder extends CaptureCredentialHolder> = (typeof CAPTURE_CREDENTIAL_HOLDERS)[Holder][number];
 
-/** The reader of the production camera adapter: one call inside `openSource`, at the injection (addendum 2.3 step 3). */
+/**
+ * The reader of the production camera adapter: one call inside `openSource`, at the injection
+ * (addendum 2.3 step 3). Both reasons are said for a session: `sessionId` is the session the plan
+ * was built for, never a request field, and it is written into the audit row (AD-03 (3)).
+ */
 export interface CameraAdapterCredentialReader {
   /** Session start, per camera line of the plan. Actor: none (the start itself is audited with its operator). */
-  sessionOpen(deviceId: string): Promise<SealedCredential>;
+  sessionOpen(deviceId: string, sessionId: string): Promise<SealedCredential>;
   /** A relay started again inside a session (addendum 2.4, only with WP-11). Actor: none. */
-  relayRestart(deviceId: string): Promise<SealedCredential>;
+  relayRestart(deviceId: string, sessionId: string): Promise<SealedCredential>;
 }
 
 /** The reader of the connection test of an ADOPTED camera for which the operator types no credential. */
@@ -115,7 +134,7 @@ export const CaptureCredentialReadFailure = {
   HOLDER_REFUSED: 'CAPTURE_CREDENTIAL_HOLDER_REFUSED',
   /** The holder cannot say this reason. Nothing was sent. */
   REASON_REFUSED: 'CAPTURE_CREDENTIAL_REASON_REFUSED',
-  /** The device id or the actor does not have the form of one. Nothing was sent. */
+  /** The device id, the session or the actor does not have the form of one (or a session is missing where the reason is a session's). Nothing was sent. */
   REQUEST_INVALID: 'CAPTURE_CREDENTIAL_REQUEST_INVALID',
   /** Not a registered camera of a production adapter kind (or its stored facts could not be read). The reveal function was not called. */
   DEVICE_REFUSED: 'CAPTURE_CREDENTIAL_DEVICE_REFUSED',
@@ -137,7 +156,7 @@ export type CaptureCredentialReadFailure = (typeof CaptureCredentialReadFailure)
 const SENTENCES: Readonly<Record<CaptureCredentialReadFailure, string>> = Object.freeze({
   CAPTURE_CREDENTIAL_HOLDER_REFUSED: 'the credential reader is handed to the holders of its closed list, once each',
   CAPTURE_CREDENTIAL_REASON_REFUSED: 'this holder of the credential reader cannot say that reason',
-  CAPTURE_CREDENTIAL_REQUEST_INVALID: 'the credential reader takes a registered device id and, for an operator, an operator id',
+  CAPTURE_CREDENTIAL_REQUEST_INVALID: 'the credential reader takes a registered device id, for a session its session id and, for an operator, an operator id',
   CAPTURE_CREDENTIAL_DEVICE_REFUSED: 'the credential reader serves a registered camera of a production kind and no other device',
   CAPTURE_CREDENTIAL_ADDRESS_REFUSED: 'the stored address of this camera is not one the Core may dial: its credential is not read',
   CAPTURE_CREDENTIAL_REVEAL_FAILED: 'the stored camera credential could not be read',
@@ -212,12 +231,23 @@ function isProductionCamera(device: CaptureCredentialDevice): boolean {
 
 type AnyReason = CaptureCredentialRevealReasonOf<CaptureCredentialHolder>;
 
-/** The fact of one reveal: the device and the reason, and nothing else (SEC35-02; `core/audit-details.ts`). */
-const revealedEntry = (deviceId: string, reason: AnyReason, actorId: string | null): AuditEntry => ({
+/**
+ * The reasons that are said FOR a session (AD-03 (3)): a read with one of them names its session,
+ * a read with any other reason names none. Frozen; the two are the camera adapter's.
+ */
+export const CAPTURE_CREDENTIAL_SESSION_REASONS: readonly AnyReason[] = Object.freeze(['SESSION_OPEN', 'RELAY_RESTART'] as const);
+
+/**
+ * The fact of one reveal: the device and the reason as its details, and nothing else there (SEC35-02;
+ * `core/audit-details.ts`). A reveal for a session carries the session as a member of the ROW
+ * (`session_id`); an entry of the connection test has no such member at all.
+ */
+const revealedEntry = (deviceId: string, reason: AnyReason, actorId: string | null, sessionId: string | null): AuditEntry => ({
   type: AuditType.CAPTURE_CREDENTIAL_REVEALED,
   message: 'Camera credential revealed',
   actorId,
   deviceId,
+  ...(sessionId === null ? {} : { sessionId }),
   details: { deviceId, reason },
 });
 
@@ -273,11 +303,14 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
   }
 
   /** The one path. Closure-private: a holder reaches it through its bound methods only. */
-  async function read(holder: CaptureCredentialHolder, reason: AnyReason, deviceId: string, actorId: string | null): Promise<SealedCredential> {
+  async function read(holder: CaptureCredentialHolder, reason: AnyReason, deviceId: string, actorId: string | null, sessionId: string | null): Promise<SealedCredential> {
     // 1. Before any statement.
     if (!(CAPTURE_CREDENTIAL_HOLDERS[holder] as readonly string[]).includes(reason)) throw new CaptureCredentialReadError(CaptureCredentialReadFailure.REASON_REFUSED);
     if (typeof deviceId !== 'string' || !HARDWARE_DEVICE_ID_PATTERN.test(deviceId)) throw new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID);
     if (actorId !== null && (typeof actorId !== 'string' || !OPERATOR_ID_PATTERN.test(actorId))) throw new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID, deviceId);
+    // AD-03 (3): a session's reason names its session, in the form of one; any other reason names none.
+    const forSession = CAPTURE_CREDENTIAL_SESSION_REASONS.includes(reason);
+    if (forSession ? typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId) : sessionId !== null) throw new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID, deviceId);
 
     // 1b. The device gate, on what is stored: before the reveal, outside the unit.
     await admit(deviceId, reason);
@@ -289,8 +322,9 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
       revealed = await runUnit(CAPTURE_CREDENTIAL_REVEAL_UNIT, async (unit) => {
         const answer = await revealCaptureCredential(unit, deviceId);
         progress.stage = 'audit';
-        await unit.audit.append(revealedEntry(deviceId, reason, actorId));
-        // Runs after the commit of THIS unit and before the runner resolves; never after a rollback.
+        await unit.audit.append(revealedEntry(deviceId, reason, actorId, sessionId));
+        // Runs after the server ACKNOWLEDGED the commit of THIS unit and before the runner resolves;
+        // never after a rollback, a refused COMMIT, a lost connection or an abandoned unit.
         unit.afterCommit(() => {
           progress.committed = true;
         });
@@ -314,13 +348,14 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
 
   const readers: { readonly [Holder in CaptureCredentialHolder]: CaptureCredentialReaderOf[Holder] } = Object.freeze({
     CAMERA_ADAPTER: Object.freeze({
-      sessionOpen: (deviceId: string) => read(CaptureCredentialHolder.CAMERA_ADAPTER, 'SESSION_OPEN', deviceId, null),
-      relayRestart: (deviceId: string) => read(CaptureCredentialHolder.CAMERA_ADAPTER, 'RELAY_RESTART', deviceId, null),
+      // A session is required: `read` refuses anything that is not a session id for these two reasons.
+      sessionOpen: (deviceId: string, sessionId: string) => read(CaptureCredentialHolder.CAMERA_ADAPTER, 'SESSION_OPEN', deviceId, null, sessionId),
+      relayRestart: (deviceId: string, sessionId: string) => read(CaptureCredentialHolder.CAMERA_ADAPTER, 'RELAY_RESTART', deviceId, null, sessionId),
     }),
     CONNECTION_TEST: Object.freeze({
-      // An operator is required: a connection test without one is not this reason.
+      // An operator is required: a connection test without one is not this reason. No session: it is no session's read.
       connectionTest: (deviceId: string, operatorId: string) =>
-        typeof operatorId === 'string' ? read(CaptureCredentialHolder.CONNECTION_TEST, 'CONNECTION_TEST', deviceId, operatorId) : Promise.reject(new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID)),
+        typeof operatorId === 'string' ? read(CaptureCredentialHolder.CONNECTION_TEST, 'CONNECTION_TEST', deviceId, operatorId, null) : Promise.reject(new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID)),
     }),
   });
 

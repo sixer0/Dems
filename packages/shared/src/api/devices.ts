@@ -771,6 +771,12 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           ],
         } satisfies CaptureConfigUpdateRequest,
       },
+      // Task 4 rows 28, 162, 29 (decision C14; AD-10): a slot is cleared by naming it. The in-app
+      // answerer and the Core both honour the member; the answer is the selector without that line.
+      unassign: {
+        summary: 'Clear the standby microphone slot',
+        value: { unassign: ['STANDBY'] } satisfies CaptureConfigUpdateRequest,
+      },
     },
     responses: {
       200: { updated: { summary: 'The new capture-config slice', value: EXAMPLE_SLICES.captureConfig } },

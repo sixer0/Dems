@@ -70,7 +70,11 @@ export * from './signer';
 // The camera file read again (row 59): box walk, fragment chain, tail validation of RECOVERY.
 export * from './fragments';
 export {
+  CAMERA_ABSENT_REASONS,
   CAMERA_END_REASONS,
+  CAMERA_INTEGRITY_REASONS,
+  isCameraAbsentReason,
+  isCameraIntegrityReason,
   CaptureDownReason,
   CapturePhase,
   CaptureRefusal,

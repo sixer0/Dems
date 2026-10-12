@@ -25,6 +25,7 @@ import { captureFenceControl } from '../../../capture/fence';
 import type { ConfigInput } from '../../../config';
 import { engineControl } from '../../../engine';
 import { BootError } from '../../../plugins/readiness';
+import { hashPassword } from '../../identity/password-hash';
 
 const db = useTestDatabase({ template: 'seed' });
 let server: DevicesApp;
@@ -642,8 +643,11 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       expect(await storedSlices(owner)).not.toStrictEqual(withoutNegativeZeros(server.app.engine.state()));
 
       // REFUSED on the same server, nothing written: a pair that is not a pair, a microphone that is not registered.
+      // (Task 4 row 29: until decision C21 (8) this list began with ONE line by role,
+      // `{ mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] }`. A microphone role is assignable
+      // alone since the contract of row 28 and the hosted action of row 162 (rule MIC-ASSIGN of the names register,
+      // "one line: was 422, now valid"), so that body is no refusal any more; the block "task 4 row 29" below holds it.)
       for (const body of [
-        { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] },
         { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02' }] },
         { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] },
         { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] },
@@ -705,6 +709,332 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       await server.app.pipeline.drain();
       expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' });
       expect(await changedRows(owner)).toHaveLength(rowsBefore);
+    });
+  });
+});
+
+// ═══ Task 4 row 29 (WP-13a; decisions C14, C18, C21, C25; security requirements AD-04, AD-10). ═══
+// AN UNASSIGNED SELECTOR SLOT AT A BOOTED CORE, on PostgreSQL, AS THE RUNTIME ROLE, on throw-away
+// clones of the seed. The seed itself stays fully assigned: every NULL below is written into a clone,
+// by the owner as a fixture or by the product through operation 78.
+//
+//   1. A stored selector with NULL slots BOOTS in each capture operation. Two readers stopped that
+//      boot until WP-13a: the module's own load (step `capture.config`, sites A1 and A2 - this row)
+//      and the engine rehydration (step `engine.rehydrate`, site A4 - row 166). Both pass, by name.
+//   2. Operation 78 `unassign` REALLY clears a slot: the answer has no line for it, the stored
+//      columns are NULL, one CAPTURE_CONFIG_CHANGED row per cleared slot states the track or input
+//      and `from`; a slot is assigned again by the same operation; a restarted Core holds what the
+//      product wrote. (Until this row the schema accepted the member and the Core answered 200
+//      with nothing changed.)
+//   3. The lock: with a session open - created, and RECORDING - an unassign is `409
+//      CAPTURE_CONFIG_LOCKED` with no row and no change. In Simulated mode a session on a selector
+//      with an unassigned slot starts as before (decision C21 (6)); the refusal of a start is a
+//      rule of real capture (`plan.ts`, held in `plan.test.ts`; the 21 states are row 33's).
+//
+// The fence files are not touched and no case here asks them for a new answer: the boots below are
+// the categories of design addendum 1.5 that boot (1: all unassigned; 2 in REAL_DEVELOPMENT; 3 in
+// REAL_PRODUCTION).
+describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `unassign`, the lock', () => {
+  const HELPER = '/bin/echo';
+  const realBoot = realBootFixture('row29');
+  realBoot.provisionKey();
+  afterAll(() => realBoot.remove());
+  const PRODUCTION = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0') } as const;
+  const DEVELOPMENT = { ...PRODUCTION, captureDevSources: true, captureHelperFfmpegPath: HELPER } as const;
+  const SIMULATED = { demoControls: true } as const;
+
+  type Clone = Awaited<ReturnType<typeof db.another>>;
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+  type Slot = (typeof SLOTS)[number];
+  const SEEDED = { video_01_device_id: 'CAM-01', video_01_profile: 'H264_1080P25', video_02_device_id: 'CAM-02', video_02_profile: 'H264_1080P25', mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' } as const;
+  const COLUMNS_OF: Readonly<Record<Slot, readonly (keyof typeof SEEDED)[]>> = {
+    'VIDEO-01': ['video_01_device_id', 'video_01_profile'],
+    'VIDEO-02': ['video_02_device_id', 'video_02_profile'],
+    PRIMARY: ['mic_primary_id'],
+    STANDBY: ['mic_standby_id'],
+  };
+  const HELD: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+  /** The seeded row with the columns of the named slots NULL. */
+  const rowWithout = (unassigned: readonly Slot[]): Record<string, string | null> => {
+    const row: Record<string, string | null> = { ...SEEDED };
+    for (const slot of unassigned) for (const column of COLUMNS_OF[slot]) row[column] = null;
+    return row;
+  };
+  /** The row of a cleared slot (names register of row 161, 4.4): the track or the input, and `from`; no `to`, no `deviceId`. */
+  const clearedRow = (slot: Slot, from: string = HELD[slot]) =>
+    slot === 'VIDEO-01' || slot === 'VIDEO-02'
+      ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, from, permission: 'CAPTURE_CONFIG' }
+      : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: from, from, permission: 'CAPTURE_CONFIG' };
+
+  const storedSlots = async (owner: Pool): Promise<Record<string, unknown> | undefined> =>
+    (await owner.query('SELECT video_01_device_id, video_01_profile, video_02_device_id, video_02_profile, mic_primary_id, mic_standby_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined;
+  const changedRows = async (owner: Pool): Promise<Record<string, unknown>[]> =>
+    (await owner.query("SELECT details FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED' ORDER BY seq")).rows.map((row: { details: Record<string, unknown> }) => row.details);
+  /** The fixture of a stored unassigned slot: the owner writes NULL into the columns of the named slots. */
+  const unassignStored = (owner: Pool, unassigned: readonly Slot[]): Promise<unknown> =>
+    owner.query(`UPDATE public.capture_config SET ${unassigned.flatMap((slot) => COLUMNS_OF[slot]).map((column) => `${column} = NULL`).join(', ')}`);
+
+  /**
+   * A password of the operators' own (a `REAL_PRODUCTION` Core does not start while one still has
+   * the published demonstration password; ruling D241). Built at run time and kept nowhere; every
+   * stored hash set is replaced by one the product's hasher derived from it.
+   */
+  const OWN_PASSWORD = ['own', 'row29', String(process.pid), 'x7Kq'].join('-');
+  async function ownCredentials(owner: Pool): Promise<void> {
+    const operators = (await owner.query<{ operator_id: string }>('SELECT operator_id FROM public.operator_credentials ORDER BY operator_id')).rows;
+    const record = await hashPassword(OWN_PASSWORD);
+    for (const { operator_id } of operators) {
+      await owner.query('UPDATE public.operator_credentials SET algorithm = $2, memory_kib = $3, passes = $4, parallelism = $5, salt = $6, hash = $7 WHERE operator_id = $1', [operator_id, record.algorithm, record.memoryKib, record.passes, record.parallelism, record.salt, record.hash]);
+    }
+  }
+
+  /** A clone with speech-to-text off (a real-capture boot resolves the stored selection first), prepared by the owner. */
+  async function clone(slug: string, prepare?: (owner: Pool) => Promise<unknown>): Promise<Clone> {
+    const target = await db.another({ template: 'seed', slug });
+    await target.ownerPool().query('UPDATE public.stt_config SET enabled = false');
+    await prepare?.(target.ownerPool());
+    return target;
+  }
+
+  /** The real app on a clone, as `dems_app`, booted on a manual timer, with the TECHNICIAN signed in on the web console. */
+  async function booted(target: Clone, overrides: Partial<ConfigInput>, password?: string) {
+    const log = captureLog();
+    const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...overrides }), logStream: log.stream });
+    target.onCleanup(() => app.close());
+    await app.ready();
+    engineControl(app).useTimer(manualTimer().timer);
+    await app.readiness.boot();
+    /** The boot steps that passed, in order. */
+    const steps = log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => String(line['step']));
+    const signedIn = password === undefined ? await webSignIn(app, 'rina.wijaya') : await webSignIn(app, 'rina.wijaya', password);
+    expect(signedIn.statusCode, signedIn.body).toBe(200);
+    const token = cookieValue(signedIn, app.config.sessionCookieName);
+    if (token === null) throw new Error('the web sign-in set no session cookie');
+    const headers = { cookie: `${app.config.sessionCookieName}=${token}`, origin: WEB_ORIGIN };
+    return {
+      app,
+      log,
+      steps,
+      get: (url: string) => app.inject({ method: 'GET', url, headers }),
+      post: (url: string, payload: object) => app.inject({ method: 'POST', url, headers, payload }),
+    };
+  }
+  const linesOf = (selector: Pick<Selector, 'cameras' | 'mics'>): string[] => [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.role} ${mic.deviceId}`)].sort();
+  const ALL_LINES = SLOTS.map((slot) => `${slot} ${HELD[slot]}`).sort();
+
+  describe('1. a stored selector with NULL slots boots: the steps `capture.config` and `engine.rehydrate` pass, by name', () => {
+    const OPERATIONS = [
+      ['SIMULATED', SIMULATED, false],
+      ['REAL_DEVELOPMENT', DEVELOPMENT, false],
+      ['REAL_PRODUCTION', PRODUCTION, true],
+    ] as const;
+
+    it.each(OPERATIONS)('GATE CONDITION AD-04, %s: a selector row of six NULLs - the Core starts, the selector is two empty lists, operation 76 answers it', async (operation, config, production) => {
+      const target = await clone(`r29-six-${operation.toLowerCase().replace('_', '-')}`, async (owner) => {
+        await unassignStored(owner, SLOTS);
+        if (production) await ownCredentials(owner);
+      });
+      const owner = target.ownerPool();
+      expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
+      const core = await booted(target, config, production ? OWN_PASSWORD : undefined);
+      expect(captureFenceControl(core.app).operation).toBe(operation);
+      // The two former boot-stoppers, each by its step: the module's load (this row) and the engine rehydration (row 166).
+      expect(core.steps).toEqual(expect.arrayContaining(['capture.config', 'engine.rehydrate']));
+      // No reader read "no row" for "no source": the load is the stored row, not the built-in baseline.
+      const snapshot = captureConfigControl(core.app).snapshot();
+      expect([snapshot.builtInBaseline, snapshot.captureConfig.cameras, snapshot.captureConfig.mics]).toEqual([false, [], []]);
+      expect(core.log.lines().filter((line) => line['code'] === 'CAPTURE_CONFIG_BASELINE' || line['code'] === 'CAPTURE_ROW_INVALID')).toEqual([]);
+      const committed = core.app.engine.slice('captureConfig');
+      expect([committed.cameras, committed.mics]).toEqual([[], []]);
+      const answer = await core.get(CONFIG);
+      expect(answer.statusCode, answer.body).toBe(200);
+      expect(validateCoreApiResponse('getCaptureConfig', 200, bodyOf(answer))).toEqual({ ok: true });
+      expect(selectorOf(answer)).toMatchObject({ cameras: [], mics: [], locked: false });
+      // Nothing was assigned by the boot: the stored row is still six NULLs.
+      await core.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
+    });
+
+    it.each([OPERATIONS[0], OPERATIONS[1]])('AD-04 (2), %s: only VIDEO-02 and only a STANDBY microphone stored - those two lines and no other, in the load and in the engine (nothing by position)', async (operation, config) => {
+      const target = await clone(`r29-two-${operation.toLowerCase().replace('_', '-')}`, (owner) => unassignStored(owner, ['VIDEO-01', 'PRIMARY']));
+      const core = await booted(target, config);
+      expect(captureFenceControl(core.app).operation).toBe(operation);
+      expect(core.steps).toEqual(expect.arrayContaining(['capture.config', 'engine.rehydrate']));
+      const expected = ['STANDBY MIC-02', 'VIDEO-02 CAM-02'];
+      expect(linesOf(captureConfigControl(core.app).snapshot().captureConfig)).toEqual(expected);
+      expect(linesOf(core.app.engine.slice('captureConfig'))).toEqual(expected);
+      expect(linesOf(selectorOf(await core.get(CONFIG)))).toEqual(expected);
+      expect(core.app.engine.slice('captureConfig').mics.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-02', 'STANDBY']]);
+    });
+  });
+
+  describe('2. operation 78 `unassign` clears a slot for real, and the slot is assigned again', () => {
+    it('SIMULATED on the seed: each of the four slots - the answer without the line, NULL stored, ONE row with `from`; stored = committed; a restarted Core boots on the six NULLs the product wrote; all four are assigned again', async () => {
+      const target = await clone('r29-unassign-sim');
+      const owner = target.ownerPool();
+      const first = await booted(target, SIMULATED);
+      expect(await storedSlots(owner)).toEqual(SEEDED);
+      const rowsBefore = (await changedRows(owner)).length;
+
+      const cleared: Slot[] = [];
+      for (const slot of SLOTS) {
+        const answer = await first.post(CONFIG, { unassign: [slot] });
+        expect(answer.statusCode, `${slot} ${answer.body}`).toBe(200);
+        expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(answer)), slot).toEqual({ ok: true });
+        cleared.push(slot);
+        // The slice with the ABSENT line: no line of the slot, every other line as it was.
+        expect(linesOf(selectorOf(answer)), slot).toEqual(ALL_LINES.filter((line) => !cleared.some((gone) => line.startsWith(`${gone} `))));
+        await first.app.pipeline.drain();
+        // PERSISTED: NULL in the columns of that slot (device and profile of a video slot together), nothing else moved.
+        expect(await storedSlots(owner), slot).toEqual(rowWithout(cleared));
+      }
+      // AD-10 (1): one stored row per cleared slot, with the closed keys the trail accepts (the engine refuses any other).
+      expect((await changedRows(owner)).slice(rowsBefore)).toEqual(SLOTS.map((slot) => clearedRow(slot)));
+      // Clearing empty slots: 200, the same selector, 0 rows, nothing written.
+      const again = await first.post(CONFIG, { unassign: [...SLOTS] });
+      expect(again.statusCode, again.body).toBe(200);
+      expect(selectorOf(again)).toMatchObject({ cameras: [], mics: [] });
+      await first.app.pipeline.drain();
+      expect(await changedRows(owner)).toHaveLength(rowsBefore + 4);
+      expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(first.app.engine.state()));
+      const trail = await readTrail(owner);
+      expect(linkProblems(trail)).toEqual([]);
+      await first.app.close();
+
+      // A RESTART on what the product itself wrote: the Core boots, and holds the empty selector.
+      const second = await booted(target, SIMULATED);
+      expect(second.steps).toEqual(expect.arrayContaining(['capture.config', 'engine.rehydrate']));
+      expect(linesOf(second.app.engine.slice('captureConfig'))).toEqual([]);
+      expect(linesOf(captureConfigControl(second.app).snapshot().captureConfig)).toEqual([]);
+
+      // RE-ASSIGNING: each slot by its track or its role; a microphone role alone (C21 (8)).
+      const camera1 = await second.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] });
+      expect(camera1.statusCode, camera1.body).toBe(200);
+      expect(linesOf(selectorOf(camera1))).toEqual(['VIDEO-01 CAM-01']);
+      const standby = await second.post(CONFIG, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] });
+      expect(standby.statusCode, standby.body).toBe(200);
+      expect(linesOf(selectorOf(standby))).toEqual(['STANDBY MIC-02', 'VIDEO-01 CAM-01']);
+      await second.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual(rowWithout(['VIDEO-02', 'PRIMARY']));
+      const rest = await second.post(CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] });
+      expect(rest.statusCode, rest.body).toBe(200);
+      expect(linesOf(selectorOf(rest))).toEqual(ALL_LINES);
+      expect(selectorOf(rest).mics.map((mic) => [mic.inputId, mic.role, mic.transport])).toEqual([
+        ['MIC-01', 'PRIMARY', 'USB'],
+        ['MIC-02', 'STANDBY', 'USB'],
+      ]);
+      await second.app.pipeline.drain();
+      // The stored row is the seeded one again, column for column.
+      expect(await storedSlots(owner)).toEqual(SEEDED);
+      // Four assignments into empty slots: four rows, none of them states a `from` (nothing was there).
+      const assigned = (await changedRows(owner)).slice(rowsBefore + 4);
+      expect(assigned.map((row) => [row['scope'], row['field'], row['to'], Object.hasOwn(row, 'from')])).toEqual([
+        ['CAMERA', 'SOURCE', 'CAM-01', false],
+        ['MIC', 'SOURCE', 'MIC-02', false],
+        ['CAMERA', 'SOURCE', 'CAM-02', false],
+        ['MIC', 'SOURCE', 'MIC-01', false],
+      ]);
+      expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(second.app.engine.state()));
+      const after = await readTrail(owner);
+      expect(linkProblems(after)).toEqual([]);
+      expect(verifyTrail(after, await readHead(owner))).toMatchObject({ ok: true });
+    });
+
+    it('REAL_PRODUCTION: a Core with one production camera assigned and three slots unassigned boots; the camera is unassigned through operation 78 (one row), a development source is still refused, and the restarted Core boots on six NULLs', async () => {
+      const target = await clone('r29-unassign-prod', async (owner) => {
+        await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP')");
+        await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11'");
+        await unassignStored(owner, ['VIDEO-02', 'PRIMARY', 'STANDBY']);
+        await ownCredentials(owner);
+      });
+      const owner = target.ownerPool();
+      const first = await booted(target, PRODUCTION, OWN_PASSWORD);
+      expect(captureFenceControl(first.app).operation).toBe('REAL_PRODUCTION');
+      expect(first.steps).toEqual(expect.arrayContaining(['capture.fence', 'capture.config', 'engine.rehydrate']));
+      expect(linesOf(first.app.engine.slice('captureConfig'))).toEqual(['VIDEO-01 CAM-11']);
+      const rowsBefore = (await changedRows(owner)).length;
+
+      const answer = await first.post(CONFIG, { unassign: ['VIDEO-01', 'STANDBY'] });
+      expect(answer.statusCode, answer.body).toBe(200);
+      expect(selectorOf(answer)).toMatchObject({ cameras: [], mics: [] });
+      await first.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
+      // One slot held a source, one was empty: ONE row.
+      expect((await changedRows(owner)).slice(rowsBefore)).toEqual([clearedRow('VIDEO-01', 'CAM-11')]);
+
+      // What `unassign` does NOT open: a development source is refused for a production Core as before, nothing is stored.
+      const refused = await first.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] });
+      expect([refused.statusCode, (refused.json() as { error: { code: string } }).error.code], refused.body).toEqual([422, 'INVALID_INPUT']);
+      await first.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
+      expect(await changedRows(owner)).toHaveLength(rowsBefore + 1);
+      await first.app.close();
+
+      const second = await booted(target, PRODUCTION, OWN_PASSWORD);
+      expect(captureFenceControl(second.app).operation).toBe('REAL_PRODUCTION');
+      expect(second.steps).toEqual(expect.arrayContaining(['capture.fence', 'capture.config', 'engine.rehydrate']));
+      expect(linesOf(second.app.engine.slice('captureConfig'))).toEqual([]);
+    });
+  });
+
+  describe('3. the lock, and a session on an incomplete selector in Simulated mode', () => {
+    const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0029', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
+
+    it('SIMULATED: the STANDBY slot is unassigned; a session is created and STARTS as before (C21 (6)); created and RECORDING, every unassign is 409 CAPTURE_CONFIG_LOCKED with 0 rows and nothing stored (AD-10 (2))', async () => {
+      const target = await clone('r29-lock-sim');
+      const owner = target.ownerPool();
+      const core = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000, logLevel: 'info', config: SIMULATED });
+      await core.app.readiness.boot();
+      await core.engine.idle();
+      const signedIn = await webSignIn(core.app, 'rina.wijaya');
+      expect(signedIn.statusCode, signedIn.body).toBe(200);
+      const token = cookieValue(signedIn, core.app.config.sessionCookieName);
+      if (token === null) throw new Error('the web sign-in set no session cookie');
+      const headers = { cookie: `${core.app.config.sessionCookieName}=${token}`, origin: WEB_ORIGIN };
+      const post = (payload: object) => core.app.inject({ method: 'POST', url: CONFIG, headers, payload });
+
+      expect((await post({ unassign: ['STANDBY'] })).statusCode).toBe(200);
+      await core.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual(rowWithout(['STANDBY']));
+      const rows = (await changedRows(owner)).length;
+      const held = core.engine.slice('captureConfig');
+
+      const bodies = [...SLOTS.map((slot) => ({ unassign: [slot] })), { unassign: [...SLOTS] }];
+      const expectLocked = async (label: string): Promise<void> => {
+        const trail = (await readTrail(owner)).length;
+        for (const body of bodies) {
+          const refused = await post(body);
+          expect(outcome(refused), `${label} ${JSON.stringify(body)}`).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
+          expect(validateCoreApiResponse('updateCaptureConfig', 409, refused.json()), label).toEqual({ ok: true });
+        }
+        await core.app.pipeline.drain();
+        // SEC35-19: no CAPTURE_CONFIG_CHANGED row and no other row; the selector and its stored row as they were.
+        expect((await readTrail(owner)).length, label).toBe(trail);
+        expect(await changedRows(owner), label).toHaveLength(rows);
+        expect(core.engine.slice('captureConfig'), label).toBe(held);
+        expect(await storedSlots(owner), label).toEqual(rowWithout(['STANDBY']));
+      };
+
+      const investigator = core.principal('INVESTIGATOR');
+      const created = await core.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
+      expect(created.value).toMatchObject({ ok: true, created: true });
+      await expectLocked('CREATE');
+
+      // The session starts on the selector with the unassigned STANDBY slot, as it did before WP-13a in Simulated mode.
+      // (A tablet is "connected" by the engine's own door, as the session tests do: the pre-check item CORE needs the link.)
+      await core.engine.setTabletLink('CONNECTED');
+      await core.engine.command(investigator, 'beginPrecheck');
+      await core.drive(5_000);
+      // The pre-check of a Simulated Core says of the unassigned role what it said before WP-13a: a WARN, never the BLOCK of real capture.
+      const items = core.engine.slice('session')?.precheck?.items ?? [];
+      expect(items.filter((item) => item.status === 'BLOCK')).toEqual([]);
+      expect(items.filter((item) => item.value === 'NOT_ASSIGNED')).toEqual([]);
+      expect(items.find((item) => item.id === 'MIC_STANDBY')?.status).toBe('WARN');
+      if (core.engine.slice('session')?.state === 'PRECHECK') await core.engine.command(investigator, 'acknowledgePrecheckWarnings');
+      expect(core.engine.slice('session')?.state).toBe('ARMED');
+      await core.engine.command(investigator, 'startRecording');
+      expect(core.engine.slice('session')?.state).toBe('RECORDING');
+      await expectLocked('RECORDING');
     });
   });
 });

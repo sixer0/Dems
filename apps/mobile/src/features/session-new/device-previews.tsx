@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
-import { isLevelNotMeasured, micInputOfChannel, useSim, type SimState } from '@dems/shared/sim';
+import { isLevelNotMeasured, meterInputOfChannel, useSim, type SimState } from '@dems/shared/sim';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
@@ -115,7 +115,13 @@ function PreviewTile({ cameraId, poster, onMakeLive, cameraLabel, channel, micLa
   const values = useAudioSharedValues(channel);
   const noSignalText = t('session.feed.noSignal');
   const a11y = useAudioAccessibilityValue(channel, { noSignalText });
-  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[micInputOfChannel(micLinesInForce(s), channel)]));
+  // Task 4 row 169 (site M3; decision C18 (2)): the input of a meter channel is found by the lookup of row 164 - `null`
+  // when the selector holds no complete microphone pair. No level is then read (never the level of `MIC-01` /
+  // `MIC-02`, which the selector does not hold): the tile draws its "Not measured" words, no bars and no number.
+  const notMeasured = useSim((s) => {
+    const input = meterInputOfChannel(micLinesInForce(s), channel);
+    return input === null || isLevelNotMeasured(s.audio.inputs[input]);
+  });
   // Fire and forget (operation 52 in Live mode): nothing waits for the answer, as before. A
   // rejection is logged; in Live mode the presenter also words it (a denial, an outage, a limit).
   const resetClip = () => {

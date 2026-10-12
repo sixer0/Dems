@@ -21,7 +21,7 @@
  *   every role (every seeded role holds DIAGNOSTICS_RUN), as on the web page.
  */
 import { SessionState, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
-import { channelOfMicLine, FaultKind, type AudioFrame, type AuditRow, type BandwidthPoint, type EpochMs, type SimState } from '@dems/shared/sim';
+import { channelOfMicLine, FaultKind, type AudioFrame, type AuditRow, type BandwidthPoint, type EpochMs, type RoleMicLine, type SimState } from '@dems/shared/sim';
 import { DEVICE_CAMERA, isDeviceId, type DeviceId } from './device-ids';
 
 // ── SIM-GAP-M84-1: PoE, book view ────────────────────────────────────────────────────────
@@ -234,9 +234,13 @@ export function deviceLog(rows: readonly AuditRow[], deviceId: DeviceId, limit =
 
 /**
  * Microphone channel of a mic device: the position of its line in the capture configuration
- * (`captureMicLines(state)`, input order; ruling D137, integration pass D5). Without lines, the
- * built-in pair; a device that is neither line has no meter channel.
+ * (`captureMicLines(state)`, input order; ruling D137, integration pass D5, kept by C21 (7)) - for a
+ * COMPLETE pair. A device that is neither line has no meter channel, and neither has any device
+ * while the selector holds no complete pair (no line, a lone line): `null`.
+ *
+ * Task 4 row 171 (site M6; row 164's request): the lines STATE their role (`RoleMicLine`) and there is
+ * no default list - "without lines, the built-in pair" is gone. The caller hands `micLinesInForce(state)`.
  */
-export function channelOf(deviceId: DeviceId, mics: readonly { readonly inputId: string }[] = []): AudioTrackId | null {
+export function channelOf(deviceId: DeviceId, mics: readonly RoleMicLine[]): AudioTrackId | null {
   return channelOfMicLine(mics, deviceId);
 }

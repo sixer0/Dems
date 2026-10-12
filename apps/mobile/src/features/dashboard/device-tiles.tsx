@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { isLevelNotMeasured, micInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
+import { isLevelNotMeasured, meterInputOfChannel, useSim, useSimInstance } from '@dems/shared/sim';
 import { fontFamily, palette, toneHex, typography, type StatusTone } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { StatusChip } from '@/components/kit';
@@ -164,23 +164,26 @@ function FeedThumb({ tile, name }: { tile: DeviceTileInfo; name: string }) {
 function useMicReadout(channel: AudioTrackId, state: string, frozen: boolean): AudioAccessibilityValue & { readonly notMeasured: boolean } {
   const { t } = useTranslation();
   const sim = useSimInstance();
-  // Ruling D137: the input is the microphone line at the channel's position (a primitive selector).
-  const input = useSim((s) => micInputOfChannel(micLinesInForce(s), channel));
+  // Ruling D137, kept by C21 (7): the input is the microphone line at the channel's position of a COMPLETE pair (a
+  // primitive selector). Task 4 row 171 (site M5): `null` when the channel has no input - the lookup of row 164,
+  // never `MIC-01` / `MIC-02`. No frame is then read: the tile draws its empty state ("— dBFS", "Not measured").
+  const input = useSim((s) => meterInputOfChannel(micLinesInForce(s), channel));
   // Change-only: a boolean selector re-renders the tile when the flag flips, never per frame.
-  const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
+  const frameFlat = useSim((s) => (input === null ? true : (s.audio.inputs[input]?.noSignal ?? true)));
   // J-S 6: the Core's own statement that it measures no level now (no capture is open). Change-only.
-  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[input]));
+  const notMeasured = useSim((s) => input === null || isLevelNotMeasured(s.audio.inputs[input]));
   const ticking = useAudioAccessibilityValue(channel, frozen ? { intervalMs: TEST_SWITCH_READOUT_MS } : {});
   // Render-time "adjust state when an input changed" (no effect, no timer): the level at the flip.
   // The flip that makes the held number stale: the no-signal flag, or (J-S 6) the Core starting / ending to measure.
   const flip = `${frameFlat}|${notMeasured}`;
   const [held, setHeld] = useState({ flip, now: ticking.now });
   if (held.flip !== flip) {
-    const frame = sim.store.getState().audio.inputs[input];
+    const frame = input === null ? undefined : sim.store.getState().audio.inputs[input];
     setHeld({ flip, now: audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS).now });
   }
   const now = frozen ? held.now : ticking.now;
-  const kind = micReadoutKind({ frameFlat, state, notMeasured });
+  // A channel without an input has no level and no fault of an input: the empty state, whatever the channel record says.
+  const kind = input === null ? 'NO_LEVEL' : micReadoutKind({ frameFlat, state, notMeasured });
   const text = kind === 'LEVEL' ? `${now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
   return { min: ticking.min, max: ticking.max, now, text, notMeasured: notMeasured && kind === 'NO_LEVEL' };
 }

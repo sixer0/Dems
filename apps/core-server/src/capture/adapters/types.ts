@@ -126,8 +126,8 @@ export interface CameraSourceTarget {
    * from a device keys an open source by device AND profile. The fake, generated and local
    * adapters ignore the member: their source has one stream.
    *
-   * Optional in this row only so that the contract lands alone: the session start passes the
-   * plan's value from task 4 row 47 on. An adapter that needs a profile refuses an open without
+   * Optional: the session start passes the plan's value (since task 4 row 47), and it is absent
+   * when the plan's line states none. An adapter that needs a profile refuses an open without
    * one by a named code (`CaptureAdapterRefusal.PROFILE_UNKNOWN`); it never chooses one itself.
    */
   readonly profile?: string;

@@ -96,7 +96,8 @@ def scan():
             texts = texts_of(list(r.get("paths_used", [])) + list(r.get("right_paths", {}).values()))
             case = str(r.get("case", ""))
             n_matched, n_seen = sum(l.get("message") == MATCHED for l in log), sum(l.get("message") == SEEN for l in log)
-            row = {"run": name, "of": os.path.basename(root), "case": case, "texts_searched": len(texts), "path_text_in_log": sum(raw.count(t) for t in texts),
+            frames = json.dumps(r.get("worker_frames_other", []))          # row 182: the frames the worker wrote (warnings, a crash), searched for the same texts
+            row = {"run": name, "of": os.path.basename(root), "case": case, "texts_searched": len(texts), "path_text_in_log": sum(raw.count(t) for t in texts) + sum(frames.count(t) for t in texts) + frames.count("://"),
                    "path_text_in_log_and_stdout_as_recorded": sum(r.get("path_text_in_worker_output", {}).values()), "address_marks_in_log": raw.count("://"),
                    "library_lines": sum(l.get("message") == "LIBAV_MESSAGE" for l in log), "library_lines_above_level_16": sum(l.get("message") == "LIBAV_MESSAGE" and int(l.get("av_level", 0)) > 16 for l in log),
                    "library_lines_withheld": sum(l.get("message") == "LIBAV_MESSAGE" and "withheld" in str(l.get("text", "")) for l in log), "not_matched": int(n_matched), "not_seen": int(n_seen)}

@@ -60,7 +60,7 @@ import {
   type CoreApiRegistryOperation,
   type OpenApiDocument,
 } from '@dems/shared/api';
-import { CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS } from '@dems/shared/api';
+import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS } from '@dems/shared/api';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, ROLE_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
@@ -73,6 +73,8 @@ import { createOnvifDiscoveryAdapter, type OnvifDiscoveryAdapter, type WsDiscove
 import { delay, installLoopbackGuard, type LoopbackGuard } from '../../src/capture/adapters/camera/__tests__/support';
 import { engineControl } from '../../src/engine';
 import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
+import { captureAudioCardsControl } from '../../src/modules/capture-inputs/audio-cards';
+import { DUO, SIX, TWO_CARDS, fakeHost, standInRegistrar } from '../../src/modules/capture-inputs/audio-cards/__tests__/fixtures';
 import { testRoutine, useRoutine } from '../../src/modules/demo/__tests__/support';
 import { identityControl } from '../../src/modules/identity';
 import { pairingControl } from '../../src/modules/pairing';
@@ -170,10 +172,10 @@ const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_D
 // operations 98 and 99 landed before their routes. Row 70 (the live path) routes them and takes both
 // entries out again. In the order `compareRoutes` reports (sorted):
 //   99 registerCaptureAudioInput, 98 searchCaptureAudioCards      task 4 row 70
-const LANDED_UNROUTED: readonly string[] = [
-  'POST /api/v1/capture/audio-cards/inputs',
-  'POST /api/v1/capture/audio-cards/search',
-];
+// Task 4 row 70 (decision C31, the condition on DD-2 of pass I-2): both routes landed
+// (`modules/capture-inputs/audio-cards`) and both entries left the list. Nothing is unrouted: every
+// walk of this file calls all 99 operations, and the coverage block holds 98 and 99 like any other.
+const LANDED_UNROUTED: readonly string[] = [];
 /**
  * The operations of `LANDED_UNROUTED` and the rest. A walk of this file that CALLS every operation
  * calls the routed ones: an unrouted path answers the router's 404, which is no answer of the
@@ -473,7 +475,8 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(new Set(REGISTRY_ROUTES).size).toBe(99);
     expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(36);
     expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(63);
-    expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual(['searchCaptureAudioCards', 'registerCaptureAudioInput']);
+    // Task 4 row 70: the named deferral of operations 98 and 99 is gone; no operation is unrouted.
+    expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual([]);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -506,8 +509,9 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // Task 4 row 63: the registry holds 99; its two unrouted operations are not in the router, so 100 stays.
     expect(router).toHaveLength(REGISTRY_ROUTES.length - LANDED_UNROUTED.length + EXTERNAL_ROUTES.length);
     // Fix pass F-M8 (ruling D178): and the export download route - three routes outside the registry, 100 in all.
-    expect(router).toHaveLength(100);
-    expect(new Set(router).size).toBe(100);
+    // Task 4 row 70: the two sound-card routes landed, 100 + 2 = 102 (99 of the registry and the three outside it).
+    expect(router).toHaveLength(102);
+    expect(new Set(router).size).toBe(102);
     expect(router.filter((route) => !REGISTRY_ROUTES.includes(route)).sort()).toEqual([...EXTERNAL_ROUTES].sort());
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
@@ -968,6 +972,60 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       await stub.stop();
       stub = null;
     }
+    settle();
+  });
+
+  it('the sound cards (operations 98 and 99; task 4 row 70, decision C31): one listing, one registration, its repeat and their refusals, on fixed listing texts', async () => {
+    fresh(main);
+    const supervisor = web.SUPERVISOR;
+    const technician = web.TECHNICIAN;
+    // THIS CORE IS SIMULATED: of itself the module has no enumerator and answers the envelope's 503.
+    // Its place is taken, once, by the real enumerator of row 64 over a table of fixed texts (no
+    // host is read, no process starts), and by the stand-in registrar of the module's own tests
+    // (the registry row with the unit's own connection; the engine has no action that adds a
+    // microphone yet). The 503, the roles, the rollback and the audit keys are the module's tests.
+    const host = fakeHost(TWO_CARDS);
+    captureAudioCardsControl(main.app).replaceForTest({ enumerator: host.enumerator, registrar: standInRegistrar });
+    /** Past the spacing of the search (the server clock decides): this file produces no 429 of the operation. */
+    const spaced = (): void => main.clock.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
+    interface Search { cards: { cardId: string; channelCount: number; registered: { inputNumber: number; deviceId: string }[] }[]; truncated: boolean }
+    interface Registration { deviceId: string; change: string; inputNumber: number; channelCount: number }
+
+    // 98: the listing, for each holder of CAPTURE_CONFIG on the web console.
+    for (const caller of [supervisor, technician]) {
+      spaced();
+      const listed = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', caller, 'a holder of CAPTURE_CONFIG lists the sound cards', {}, 200));
+      expect(listed.cards.map((card) => [card.cardId, card.channelCount, card.registered])).toEqual([[DUO.cardId, 2, []], [SIX.cardId, 6, []]]);
+    }
+    // 98: a second call while a listing runs (409), then the first one answers.
+    spaced();
+    const before = host.listings();
+    const release = host.holdOnce();
+    const running = expectCall(main, 'searchCaptureAudioCards', technician, 'a listing that is held by the host', {}, 200);
+    for (let turn = 0; turn < 200 && host.listings() === before; turn += 1) await delay(5);
+    const busy = await expectCall(main, 'searchCaptureAudioCards', supervisor, 'another call while that listing runs', {}, 409, 'INVALID_STATE');
+    expect(detailsOf(busy)['reason']).toBe('AUDIO_CARD_SEARCH_IN_PROGRESS');
+    release();
+    await running;
+
+    // 99: a new microphone (201), the same input again (200, no second device), and the refusals.
+    const payload = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 3 };
+    const registered = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the third input of the six-input interface', { payload }, 201));
+    expect(registered).toMatchObject({ change: 'REGISTERED', inputNumber: 3, channelCount: 6 });
+    const again = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', supervisor, 'the same input again', { payload }, 200));
+    expect(again).toEqual({ ...registered, change: 'REENABLED' });
+    await expectCall(main, 'registerCaptureAudioInput', technician, 'a card the listing does not hold', { payload: { ...payload, cardId: 'NoSuchCard' } }, 404, 'NOT_FOUND');
+    const beyond = await expectCall(main, 'registerCaptureAudioInput', technician, 'an input beyond the card', { payload: { ...payload, inputNumber: 7 } }, 409, 'INVALID_STATE');
+    expect(detailsOf(beyond)['reason']).toBe('AUDIO_INPUT_BEYOND_CARD');
+    await expectCall(main, 'registerCaptureAudioInput', technician, 'a member the body does not have', { payload: { ...payload, product: 'x' } }, 422, 'INVALID_INPUT');
+    spaced();
+    const after = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input', {}, 200));
+    expect(after.cards.map((card) => card.registered)).toEqual([[], [{ inputNumber: 3, deviceId: registered.deviceId }]]);
+
+    // Without a session: both.
+    await expectCall(main, 'searchCaptureAudioCards', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'registerCaptureAudioInput', CONSOLE, 'the web console without a session', { payload }, 401, 'NOT_SIGNED_IN');
+    await main.app.pipeline.drain();
     settle();
   });
 

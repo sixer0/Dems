@@ -18,7 +18,7 @@ import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { micInputOfChannel, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
+import { meterInputOfChannel, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim';
 import { reportMeterFrame } from '@/motion/debug-metrics';
 
 /** Level of a silent or absent channel (the simulator's floor, SCR-01). */
@@ -47,8 +47,29 @@ export function writeAudioFrame(values: AudioSharedValues, frame: AudioFrame): v
   values.noSignal.value = frame.noSignal ? 1 : 0;
 }
 
-/** Shared values for one channel, fed at 20 Hz by the simulator. Must sit under `SimRuntimeProvider`. */
+/**
+ * The values of a channel that has NO input: what a meter holds before its first frame (the floor,
+ * no clip, no flag). Task 4 row 171 (site M6): the empty state of the meter.
+ */
+export function clearAudioValues(values: AudioSharedValues): void {
+  values.level.value = AUDIO_FLOOR_DBFS;
+  values.peak.value = AUDIO_FLOOR_DBFS;
+  values.clip.value = 0;
+  values.noSignal.value = 0;
+}
+
+/**
+ * Shared values for one channel, fed at 20 Hz by the simulator. Must sit under `SimRuntimeProvider`.
+ *
+ * Task 4 row 171 (site M6; decision C18 (2)): a channel whose input is ABSENT (`meterInputOfChannel`
+ * answers `null`: the selector in force holds no complete microphone pair) gets no frame - the
+ * shared `useAudioChannel` calls nothing for it. So that a meter does not keep the last level of an
+ * input the selector no longer holds, the values are put back to their empty state when the channel
+ * loses its input. A change-only store subscription (a boolean), never a render and never per
+ * frame; on a complete pair it writes nothing.
+ */
 export function useAudioSharedValues(channel: AudioTrackId): AudioSharedValues {
+  const sim = useSimInstance();
   const level = useSharedValue(AUDIO_FLOOR_DBFS);
   const peak = useSharedValue(AUDIO_FLOOR_DBFS);
   const clip = useSharedValue(0);
@@ -63,6 +84,18 @@ export function useAudioSharedValues(channel: AudioTrackId): AudioSharedValues {
     [values, channel],
   );
   useAudioChannel(channel, onFrame);
+
+  useEffect(
+    () =>
+      sim.store.subscribe(
+        (state) => meterInputOfChannel(micLinesInForce(state), channel) === null,
+        (absent) => {
+          if (absent) clearAudioValues(values);
+        },
+        { fireImmediately: true },
+      ),
+    [sim, channel, values],
+  );
 
   return values;
 }
@@ -94,8 +127,11 @@ export function useAudioAccessibilityValue(
   const read = useCallback(() => {
     // The meters slice is keyed by mic input since schema v2 (SH-17); the channel maps to the microphone
     // line at its position in the capture configuration (ruling D137), the input `useAudioChannel` reads.
+    // Task 4 row 171: by the lookup of row 164 - a channel without an input has NO frame (the floor is
+    // read, as for an input that has delivered none), never the frame of `MIC-01` / `MIC-02`.
     const state = sim.store.getState();
-    const frame = state.audio.inputs[micInputOfChannel(micLinesInForce(state), channel)];
+    const input = meterInputOfChannel(micLinesInForce(state), channel);
+    const frame = input === null ? undefined : state.audio.inputs[input];
     return audioAccessibilityValue(frame?.dbfs ?? AUDIO_FLOOR_DBFS, noSignalText, frame?.noSignal ?? false);
   }, [sim, channel, noSignalText]);
   const [value, setValue] = useState(read);

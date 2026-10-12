@@ -56,7 +56,10 @@ import {
   feedCaptureLevels,
   micInputOfChannel,
   CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS,
+  CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS,
+  CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED,
 } from '../src/sim';
+import * as selectorBed from './support/selector-category-bed';
 import * as failedStartBed from './support/failed-start-bed';
 import * as micIdBed from './support/mic-id-bed';
 import * as micPairBed from './support/mic-pair-bed';
@@ -617,7 +620,10 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       const before = h.state();
       const line = (inputId: string, role?: string, deviceId = inputId) => ({ inputId, deviceId, ...(role === undefined ? {} : { role }) });
       const bodies: Record<string, unknown> = {
-        'a single line with a role': { mics: [line('MIC-03', 'PRIMARY')] },
+        // Task 4 row 162 (rule MIC-ASSIGN, C21 (8)): a single line with a role is VALID now - a role is
+        // assignable alone (it was refused here before; its acceptance is the block of row 162 below).
+        // What stays refused of the single line: the input the other role holds.
+        'a single line with a role, naming the other role\'s input': { mics: [line('MIC-02', 'PRIMARY')] },
         'the two forms mixed': { mics: [line('MIC-03', 'PRIMARY'), line('MIC-02')] },
         'two PRIMARY lines': { mics: [line('MIC-03', 'PRIMARY'), line('MIC-02', 'PRIMARY')] },
         'two STANDBY lines': { mics: [line('MIC-03', 'STANDBY'), line('MIC-02', 'STANDBY')] },
@@ -646,8 +652,9 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       registerLocalMic(h);
       const state = h.state();
       const change = (mics: NonNullable<Extract<CaptureConfigChange, { kind: 'UPDATE' }>['mics']>): CaptureConfigChange => ({ kind: 'UPDATE', mics });
-      expect(() => setCaptureConfigTransition(state, START, change([{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }]))).toThrow(SimTransitionError);
-      expect(() => setCaptureConfigTransition(state, START, change([{ inputId: 'MIC-03', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }]))).toThrow(/microphone of the same ID/);
+      // Task 4 row 162: one line by role is refused only when it names the other role's input (it was refused whatever it named).
+      expect(() => setCaptureConfigTransition(state, START, change([{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }]))).toThrow(SimTransitionError);
+      expect(() => setCaptureConfigTransition(state, START, change([{ inputId: 'MIC-03', deviceId: 'MIC-01', role: 'PRIMARY' },{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }]))).toThrow(/microphone of the same ID/);
       const replaced = setCaptureConfigTransition(state, START, change([{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }, { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }]));
       expect(replaced.captureConfig.mics.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-02', 'STANDBY'], ['MIC-03', 'PRIMARY']]);
       // The earlier form on the replaced selector: a transport edit of an input it holds.
@@ -892,5 +899,231 @@ describe('operation 78: the member `unassign` of the body (task 4 row 28; the co
     expect(CaptureConfigUpdateRequestSchema.description).toContain('{ cameras?[], mics?[], unassign?[] }');
     // One line by role is a body the schema has always taken (the 422 of today is the hosted action's).
     expect(accepts({ mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] })).toBe(true);
+  });
+});
+
+// Task 4 row 162 (WP-13a; decisions C14, C18, C21 (8), C25; requirements AD-04, AD-10 (1), (3);
+// names register of row 161, section 4; sites C9 to C12 of row 27): the hosted action itself.
+// `unassign` really unassigns, a cleared slot can be assigned again, and NOTHING is found by its
+// place: a camera line by its track, a microphone line by its role. The doubles are hand-built
+// simulator states, one per selector category of the design addendum 1.5 (each slot is U =
+// unassigned, D = a development kind, P = a production kind; the action itself is blind to the class).
+describe('setCaptureConfig: a selector slot may be unassigned and assigned again (task 4 row 162)', () => {
+  // The registry (4 development and 4 production devices), the line builders and the seven
+  // categories are the bed of WP-13a (`support/selector-category-bed.ts`), shared with rows 163 and 165.
+  const { PROFILE, REGISTRY, CATEGORIES, cam, mic, selectorPatch } = selectorBed;
+  type Lines = selectorBed.SelectorLines;
+  const SLOTS: readonly CaptureSelectorSlot[] = CAPTURE_SELECTOR_SLOTS;
+  const isTrack = (slot: CaptureSelectorSlot): slot is 'VIDEO-01' | 'VIDEO-02' => slot === 'VIDEO-01' || slot === 'VIDEO-02';
+
+  /** A signed-in simulator state (TECHNICIAN, no session) with the bed's registry and the lines given; its meters agree with its selector. */
+  const stateOf = (lines: Lines): SimState => {
+    const state = harness('TECHNICIAN').state();
+    return { ...state, ...selectorPatch(state, lines) };
+  };
+  const rowsOf = (state: SimState): AuditRow[] => state.audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');
+  const newRows = (before: SimState, after: SimState): Record<string, string>[] => rowsOf(after).slice(rowsOf(before).length).map((row) => (row.details ?? {}) as Record<string, string>);
+  const update = (state: SimState, change: Omit<Extract<CaptureConfigChange, { kind: 'UPDATE' }>, 'kind'>, at = START + 1): SimState => setCaptureConfigTransition(state, at, { kind: 'UPDATE', ...change });
+  const heldOf = (state: SimState, slot: CaptureSelectorSlot): string | null =>
+    (isTrack(slot) ? state.captureConfig.cameras.find((line) => line.trackId === slot)?.deviceId : state.captureConfig.mics.find((line) => line.role === slot)?.deviceId) ?? null;
+  const linesOf = (state: SimState) => ({
+    cameras: state.captureConfig.cameras.map((line) => [line.trackId, line.deviceId, line.profile]),
+    mics: state.captureConfig.mics.map((line) => [line.inputId, line.deviceId, line.role]),
+  });
+  /** What every result must be: a selector slice of the contract, and meters keyed by exactly the inputs the selector holds. */
+  const expectSound = (state: SimState, name: string): void => {
+    expect(CaptureConfigSliceSchema.safeParse(state.captureConfig).success, name).toBe(true);
+    expect(AudioSliceSchema.safeParse(state.audio).success, name).toBe(true);
+    expect(Object.keys(state.audio.inputs).sort(), name).toEqual(state.captureConfig.mics.map((line) => line.inputId).sort());
+    // The lists as held: cameras in track order, microphones in input order.
+    expect(state.captureConfig.cameras.map((line) => line.trackId), name).toEqual(state.captureConfig.cameras.map((line) => line.trackId).sort());
+    expect(state.captureConfig.mics.map((line) => line.inputId), name).toEqual(state.captureConfig.mics.map((line) => line.inputId).sort());
+  };
+  /** A registered device of the slot's kind that no line of the selector names. */
+  const freeDeviceFor = (state: SimState, slot: CaptureSelectorSlot): string => {
+    const used = new Set([...state.captureConfig.cameras, ...state.captureConfig.mics].map((line) => line.deviceId));
+    const free = REGISTRY.find((entry) => entry.kind === (isTrack(slot) ? 'CAMERA' : 'MIC') && !used.has(entry.id));
+    if (free === undefined) throw new Error(`no free device for ${slot}`);
+    return free.id;
+  };
+  const assignment = (slot: CaptureSelectorSlot, deviceId: string): Omit<Extract<CaptureConfigChange, { kind: 'UPDATE' }>, 'kind'> =>
+    isTrack(slot) ? { cameras: [{ trackId: slot, deviceId }] } : { mics: [{ inputId: deviceId, deviceId, role: slot }] };
+
+  it.each(Object.entries(CATEGORIES))('category %s: every slot can be unassigned and assigned again, by its track or its role', (name, lines) => {
+    for (const slot of SLOTS) {
+      const label = `${name} / ${slot}`;
+      const start = stateOf(lines);
+      const held = heldOf(start, slot);
+
+      // UNASSIGN. One row for a slot that holds a source; an empty slot changes nothing at all.
+      const cleared = update(start, { unassign: [slot] });
+      if (held === null) {
+        expect(cleared, label).toBe(start);
+      } else {
+        const heldInput = isTrack(slot) ? null : (start.captureConfig.mics.find((line) => line.role === slot)?.inputId ?? null);
+        expect(newRows(start, cleared), label).toEqual([
+          isTrack(slot)
+            ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, from: held, permission: 'CAPTURE_CONFIG' }
+            : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: heldInput, from: held, permission: 'CAPTURE_CONFIG' },
+        ]);
+        expect(cleared.captureConfig.updatedAt, label).toBe(START + 1);
+        if (!isTrack(slot)) expectSound(cleared, label);
+      }
+      expect(heldOf(cleared, slot), label).toBeNull();
+      // No OTHER slot moved: each still holds what it held, under its own track or role.
+      for (const other of SLOTS) if (other !== slot) expect(heldOf(cleared, other), `${label}: ${other}`).toBe(heldOf(start, other));
+      // Clearing it a second time is clearing an empty slot.
+      expect(update(cleared, { unassign: [slot] }), label).toBe(cleared);
+
+      // ASSIGN AGAIN: the device it held, or a free one where it held none.
+      const deviceId = held ?? freeDeviceFor(cleared, slot);
+      const assigned = update(cleared, assignment(slot, deviceId), START + 2);
+      const [row, ...more] = newRows(cleared, assigned);
+      expect(more, label).toEqual([]);
+      // The audit row of an assignment into an EMPTY slot: `from` is ABSENT - never the new device.
+      expect(row, label).toEqual(
+        isTrack(slot)
+          ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, deviceId, to: deviceId, permission: 'CAPTURE_CONFIG' }
+          : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: deviceId, deviceId, to: deviceId, permission: 'CAPTURE_CONFIG' },
+      );
+      expect(heldOf(assigned, slot), label).toBe(deviceId);
+      for (const other of SLOTS) if (other !== slot) expect(heldOf(assigned, other), `${label}: ${other}`).toBe(heldOf(start, other));
+      // A slot that was held is back exactly as it was: same lines, same order.
+      if (held !== null) expect(linesOf(assigned), label).toEqual(linesOf(start));
+      expectSound(assigned, label);
+      for (const details of [...newRows(start, cleared), ...newRows(cleared, assigned)]) {
+        expect(Object.keys(details).filter((key) => !DETAIL_KEYS.includes(key)), label).toEqual([]);
+        expect(Object.values(details).every((value) => typeof value === 'string'), label).toBe(true);
+        if ('from' in details) expect(details['from'], label).not.toBe(details['to']);
+      }
+    }
+  });
+
+  it('AD-10 (1): two cleared slots are two rows, an empty slot is none; all four, then nothing is left to clear', () => {
+    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+    const two = update(seeded, { unassign: ['VIDEO-02', 'STANDBY'] });
+    expect(newRows(seeded, two)).toEqual([
+      { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', from: 'CAM-02', permission: 'CAPTURE_CONFIG' },
+      { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-02', from: 'MIC-02', permission: 'CAPTURE_CONFIG' },
+    ]);
+    expect(linesOf(two)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY']] });
+    // The same two again, with the two still held: only the held ones give a row.
+    const rest = update(two, { unassign: ['VIDEO-02', 'STANDBY', 'VIDEO-01', 'PRIMARY'] }, START + 2);
+    expect(newRows(two, rest).map((details) => [details['trackId'] ?? details['inputId'], details['from'], details['to'], details['deviceId']])).toEqual([
+      ['VIDEO-01', 'CAM-01', undefined, undefined],
+      ['MIC-01', 'MIC-01', undefined, undefined],
+    ]);
+    expect(linesOf(rest)).toEqual({ cameras: [], mics: [] });
+    expect(rest.audio.inputs).toEqual({});
+    // PENDING-ROW-28-SEAM (`AudioSliceInState`, row 149): the state cannot hold `null` yet, so the
+    // member keeps the input it held. It is NOT a line by its place and no meter is keyed by it.
+    // With the seam out this line reads `toBeNull()`.
+    expect(rest.audio.activeInputId).toBe('MIC-01');
+    // All four on the empty selector: the SAME state - no row, no new `updatedAt`.
+    expect(update(rest, { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] }, START + 3)).toBe(rest);
+    expect(rowsOf(rest)).toHaveLength(rowsOf(seeded).length + 4);
+  });
+
+  it('the order inside one change is unassign, cameras, mics; an assignment over a HELD slot still says what was there', () => {
+    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+    // VIDEO-01 is cleared, then CAM-01 (which it held) may feed VIDEO-02 with the same profile:
+    // the rule "one camera on both tracks" is held on the RESULT, where it is on one track only.
+    const moved = update(seeded, { unassign: ['VIDEO-01', 'STANDBY'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01' }], mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] });
+    expect(linesOf(moved)).toEqual({ cameras: [['VIDEO-02', 'CAM-01', PROFILE]], mics: [['MIC-03', 'MIC-03', 'PRIMARY']] });
+    expect(newRows(seeded, moved).map((details) => [details['scope'], details['trackId'] ?? details['inputId'], details['from'], details['to']])).toEqual([
+      ['CAMERA', 'VIDEO-01', 'CAM-01', undefined],
+      ['MIC', 'MIC-02', 'MIC-02', undefined],
+      ['CAMERA', 'VIDEO-02', 'CAM-02', 'CAM-01'],
+      ['MIC', 'MIC-03', 'MIC-01', 'MIC-03'],
+    ]);
+    expect(Object.keys(moved.audio.inputs)).toEqual(['MIC-03']);
+    expect(moved.audio.activeInputId).toBe('MIC-03');
+  });
+
+  it('AD-04: a lone VIDEO-02 line and a lone STANDBY line stay what they are - nothing takes the place of the empty slot', () => {
+    const lone = stateOf({ cameras: [cam('VIDEO-02', 'CAM-02')], mics: [mic('MIC-02', 'STANDBY')] });
+    // A camera for the empty VIDEO-01: the VIDEO-02 line is not read as "the first track".
+    const video = update(lone, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P25' }] });
+    expect(linesOf(video).cameras).toEqual([['VIDEO-01', 'CAM-01', 'H264_720P25'], ['VIDEO-02', 'CAM-02', PROFILE]]);
+    expect(newRows(lone, video)).toEqual([{ operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-01', to: 'CAM-01', permission: 'CAPTURE_CONFIG' }]);
+    // Operation 79 fills an empty track too (it names no profile: the seeded one).
+    const byOp79 = setCaptureConfigTransition(lone, START + 1, { kind: 'CAMERA_SOURCE', deviceId: 'CAM-03', trackId: 'VIDEO-01' });
+    expect(linesOf(byOp79).cameras).toEqual([['VIDEO-01', 'CAM-03', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE]]);
+    expect(newRows(lone, byOp79)).toEqual([{ operationId: 'setCaptureCameraSource', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-03', to: 'CAM-03', permission: 'CAPTURE_CONFIG' }]);
+    // The camera of the other track with the same profile is still refused, with its reason.
+    expect(() => setCaptureConfigTransition(lone, START + 1, { kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' })).toThrow(expect.objectContaining({ code: 'INVALID_INPUT', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS }));
+
+    // The lone STANDBY: the meters have ONE key, and no channel moved a role (a lone line has no meter channel).
+    const cleared = update(stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!), { unassign: ['PRIMARY'] });
+    expect(linesOf(cleared).mics).toEqual([['MIC-02', 'MIC-02', 'STANDBY']]);
+    expect(Object.keys(cleared.audio.inputs)).toEqual(['MIC-02']);
+    expect(cleared.mics.map((entry) => [entry.id, entry.micRole])).toEqual([['AUDIO-01', 'PRIMARY'], ['AUDIO-02', 'STANDBY']]);
+    // A PRIMARY alone beside it (rule MIC-ASSIGN): the STANDBY keeps its line; the pair is complete again.
+    const paired = update(cleared, { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] }, START + 2);
+    expect(linesOf(paired).mics).toEqual([['MIC-02', 'MIC-02', 'STANDBY'], ['MIC-03', 'MIC-03', 'PRIMARY']]);
+    expect(newRows(cleared, paired)).toEqual([{ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', deviceId: 'MIC-03', to: 'MIC-03', permission: 'CAPTURE_CONFIG' }]);
+    expect(Object.keys(paired.audio.inputs).sort()).toEqual(['MIC-02', 'MIC-03']);
+    expect(paired.audio.activeInputId).toBe('MIC-03');
+    // The meter channels follow the complete pair (D137): channel 1 the first line (the STANDBY), channel 2 the PRIMARY.
+    expect(paired.mics.map((entry) => [entry.id, entry.micRole])).toEqual([['AUDIO-01', 'STANDBY'], ['AUDIO-02', 'PRIMARY']]);
+    // A role replaced ALONE on a complete selector: `from` is the device that held the role.
+    const replaced = update(paired, { mics: [{ inputId: 'MIC-04', deviceId: 'MIC-04', role: 'STANDBY' }] }, START + 3);
+    expect(linesOf(replaced).mics).toEqual([['MIC-03', 'MIC-03', 'PRIMARY'], ['MIC-04', 'MIC-04', 'STANDBY']]);
+    expect(newRows(paired, replaced)).toEqual([{ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-04', deviceId: 'MIC-04', from: 'MIC-02', to: 'MIC-04', permission: 'CAPTURE_CONFIG' }]);
+    // Operation 80 on a lone STANDBY line makes it the PRIMARY; the STANDBY slot is then the empty one.
+    const promoted = setCaptureConfigTransition(cleared, START + 2, { kind: 'PRIMARY_MIC', inputId: 'MIC-02' });
+    expect(linesOf(promoted).mics).toEqual([['MIC-02', 'MIC-02', 'PRIMARY']]);
+  });
+
+  it('AD-10 (3): a change that clears a slot and fills the same slot is refused with its reason, in all three forms, and changes nothing', () => {
+    expect(CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED).toBe('SLOT_UNASSIGNED_AND_ASSIGNED');
+    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+    const refused: Record<string, Omit<Extract<CaptureConfigChange, { kind: 'UPDATE' }>, 'kind'>> = {
+      'a camera line of the cleared track': { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03' }] },
+      'a mic line of the cleared role': { unassign: ['STANDBY'], mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' }] },
+      // The form the schema cannot see: a line WITHOUT `role` edits the input the cleared slot held.
+      'a mic line without a role on the input the cleared slot held': { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', transport: 'AVFOUNDATION' }] },
+    };
+    for (const [name, change] of Object.entries(refused)) {
+      let thrown: unknown = null;
+      try {
+        update(seeded, change);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, name).toBeInstanceOf(SimTransitionError);
+      expect(thrown, name).toMatchObject({ code: 'INVALID_INPUT', reason: CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED });
+    }
+    // CONTROLS: the line without a role on the OTHER input passes; an input the selector never held is the plain refusal, without that reason.
+    const other = update(seeded, { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', transport: 'AVFOUNDATION' }] });
+    expect(other.captureConfig.mics.map((line) => [line.inputId, line.role, line.transport])).toEqual([['MIC-02', 'STANDBY', 'AVFOUNDATION']]);
+    let plain: unknown = null;
+    try {
+      update(seeded, { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03' }] });
+    } catch (error) {
+      plain = error;
+    }
+    expect(plain).toMatchObject({ code: 'INVALID_INPUT', reason: null });
+    // A slot that is no slot of the selector (the action is also called without the schema in front of it).
+    expect(() => update(seeded, { unassign: ['MIC-PRIMARY' as unknown as CaptureSelectorSlot] })).toThrow(expect.objectContaining({ code: 'INVALID_INPUT' }));
+    // A single line by role that names the other role's input: the reason of the picker (register D-3).
+    expect(() => update(seeded, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] })).toThrow(expect.objectContaining({ code: 'INVALID_INPUT', reason: CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS }));
+  });
+
+  it.each(['recording', 'finalizing'] as const)('AD-10 (2) at the action: `unassign` is refused while a session is open (%s), with no row and no change', (scenario) => {
+    const h = harness('SUPERVISOR', scenario);
+    const before = h.state();
+    expect(() => h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['STANDBY'] })).toThrow(expect.objectContaining({ code: 'ILLEGAL_STATE', event: 'setCaptureConfig' }));
+    expect(h.state()).toBe(before);
+  });
+
+  it('CONTROL: the seeded selector of the simulator is complete, and the simulator action clears and fills it through the same transition', () => {
+    const h = harness('TECHNICIAN');
+    expect(selector(h)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']] });
+    h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
+    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE]]);
+    h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-02' });
+    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE]]);
+    expect(h.changes().map((row) => [row.details?.['from'], row.details?.['to']])).toEqual([['CAM-02', undefined], [undefined, 'CAM-02']]);
   });
 });

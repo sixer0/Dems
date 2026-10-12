@@ -162,7 +162,14 @@ export function useCaptureSelector(): CaptureSelector {
       if (answer.result !== 'ok') {
         reportRuntimeIssue(isExpectedRefusal(answer.result) ? 'warn' : 'error', 'devices.captureSelector', `selector command -> ${answer.result}`, {
           kind: command.kind,
-          target: command.kind === 'camera' ? command.trackId : command.kind === 'micPair' ? `${command.primaryId}+${command.standbyId}` : command.inputId,
+          target:
+            command.kind === 'camera'
+              ? command.trackId
+              : command.kind === 'micPair'
+                ? `${command.primaryId}+${command.standbyId}`
+                : command.kind === 'micRole'
+                  ? `${command.role}:${command.inputId}`
+                  : command.inputId,
           deviceId: command.kind === 'camera' ? command.deviceId : null,
           result: answer.result,
           status: answer.facts.status,

@@ -14,14 +14,14 @@
  * A catch-up tick after a hidden period advances the byte counters exactly (they are derived
  * from the recording time) and appends one series point.
  */
-import { SessionState } from '../domain';
+import { SessionState, type AudioTrackId } from '../domain';
 import {
   HEALTH_TICK_MS,
   RECORDING_BYTES_PER_HOUR,
   SERIES_POINTS,
   STORAGE_HISTORY_POINTS,
 } from './constants';
-import { captureMicLines, micInputOfChannel } from './audio';
+import { captureMicLines, meterInputOfChannel } from './audio';
 import { recordingBytes } from './dataset';
 import type { EngineContext } from './engine';
 import { pushRing } from './events';
@@ -162,7 +162,13 @@ function micLevelPoint(state: SimState, at: EpochMs): MicLevelPoint {
   // An input without a frame yet reads the floor (the slice is keyed by the two inputs of the capture configuration).
   const level = (frame: AudioFrame | undefined) => (frame === undefined || frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
   const lines = captureMicLines(state);
-  return { at, 'AUDIO-01': level(state.audio.inputs[micInputOfChannel(lines, 'AUDIO-01')]), 'AUDIO-02': level(state.audio.inputs[micInputOfChannel(lines, 'AUDIO-02')]) };
+  // A channel without an input (task 4 row 165; site C17: no complete microphone pair in force) has
+  // no frame: it reads the floor, as an input without a frame does. Never the frame of a built-in input.
+  const frameOf = (channel: AudioTrackId): AudioFrame | undefined => {
+    const input = meterInputOfChannel(lines, channel);
+    return input === null ? undefined : state.audio.inputs[input];
+  };
+  return { at, 'AUDIO-01': level(frameOf('AUDIO-01')), 'AUDIO-02': level(frameOf('AUDIO-02')) };
 }
 
 /** One 1 Hz health step at the whole second `at` (pure apart from the RNG draws). */

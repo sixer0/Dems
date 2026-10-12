@@ -141,6 +141,9 @@ def run(name, kind, test_index, make_test, expect, binary=None):
     recorded = lambda x: x["ingest_connected"] == 1 and x["bytes"] > 0 and x["frames"] >= FRAMES // 2 and x["gate_code_lines"] == 0
     f["gate_code"], f["other_gate_code_lines"] = code, sum(1 for l in log if l.get("message") == other_code)
     crit = {"no_path_text_in_worker_output": f["path_text_occurrences"] == 0, "no_leftover": f["leftovers"] == 0, "never_the_other_gate_code": f["other_gate_code_lines"] == 0}
+    # Row 182: the FRAME says the same judgement as the log code, for exactly the cameras the gate refused, and never the other member.
+    f["refusal_frames"] = sorted([w.get("subject"), w.get("reason")] for w in r["worker_frames_other"] if w.get("type") == "WARNING" and str(w.get("reason", "")).startswith("CAMERA_ANNOUNCE_"))
+    crit["frame_member_of_its_case_only"] = f["refusal_frames"] == sorted(["CAM-0%d" % (H.PORTS.index(p) + 1), code.replace("INGEST_", "CAMERA_")] for p in gate)
     if binary:
         crit["both_cameras_refused_0_bytes"] = refused(f["test"]) and refused(f["control"])
         crit["gate_code_for_both"] = f["test"]["gate_code_lines"] == 1 and f["control"]["gate_code_lines"] == 1

@@ -8,6 +8,7 @@
  * |---|---|---|
  * | The notifications of situations A and B | `captureNoticesOf` | one per ACTIVE alert of the `alerts` slice, told apart by `params.reason` — never by a fault kind, never counted or stored by the client (§8e.1) |
  * | The sentence of an unreachable pre-check row | `precheckUnreachableOf` | from `params.rule` of the item (D114), never "lens fault" / "no signal" |
+ * | The slot of a "source not assigned" pre-check row (task 4 row 169) | `unassignedSlotOfPrecheckItem` of `@dems/shared/sim` (names register N12; not in this file) | from `value`, `status`, `params.rule` and `params.slot`; the item carries no device id |
  * | Whether a device carries the badge | `developmentSourceOf` | only from a `sourceClass` the Core sent (D131); absent = no badge, whatever the Core's demo flag says |
  * | The state of a local device | `localDeviceStateOf` | §8f.3: the row keeps its name and its badge; nothing replaces it |
  * | What an answer of operation 97 means | `classifyRescanAnswer` | §8g.1 states 4, 6, 7, 8 |
@@ -17,7 +18,7 @@
  * here from the id; no address, no user name and no URL is read from an alert.
  */
 import { CaptureInputScanSchema, type CaptureInputScan } from '@dems/shared/api';
-import { captureFaultSentence, type PrecheckItem, type SimAlert } from '@dems/shared/sim';
+import { CaptureStartRule, captureFaultSentence, type PrecheckItem, type SimAlert } from '@dems/shared/sim';
 import { micInputName, micInputNumber } from './mic-input-name';
 
 // ── Flow 11: situations A and B ──────────────────────────────────────────────────────────
@@ -137,12 +138,22 @@ export function captureNoticeTitle(t: NoticeTranslate, alert: SimAlert): string 
 
 // ── Flow 13 / flow 11 B: the unreachable row of the pre-check (D114) ─────────────────────
 
-/** The suffixes of `notice.start.*` the Core may send as `params.rule` (C3 §3.1; row 133). */
-export const START_RULES = ['noCamera', 'oneCamera', 'noMicrophone', 'activeMicrophone', 'noStandby', 'oneMicrophone', 'notRecordable'] as const;
+/**
+ * The suffixes of `notice.start.*` the Core may send as `params.rule` (C3 §3.1; row 133). Task 4 row 169
+ * (names register E35): the eighth member, `sourceNotAssigned`, is the rule of an UNASSIGNED selector
+ * slot. Its item names no device, so it is found by the shared `unassignedSlotOfPrecheckItem`
+ * (names register N12), never by `precheckUnreachableOf` (which needs a device id). The rule's name
+ * is the shared `CaptureStartRule.SOURCE_NOT_ASSIGNED` (N7) and the item's value the shared
+ * `SOURCE_NOT_ASSIGNED_PRECHECK_VALUE` (N8): this file states neither again.
+ */
+export const START_RULES = ['noCamera', 'oneCamera', 'noMicrophone', 'activeMicrophone', 'noStandby', 'oneMicrophone', 'notRecordable', CaptureStartRule.SOURCE_NOT_ASSIGNED] as const;
 export type StartRule = (typeof START_RULES)[number];
 
+/** A rule of an UNREACHABLE device: every start rule but the one of an unassigned slot (that item names no device). */
+export type UnreachableRule = Exclude<StartRule, typeof CaptureStartRule.SOURCE_NOT_ASSIGNED>;
+
 export interface PrecheckUnreachable {
-  readonly rule: StartRule;
+  readonly rule: UnreachableRule;
   readonly deviceId: string;
   readonly deviceKind: 'CAMERA' | 'MIC';
   /** The other microphone of an `activeMicrophone` row, or null. */
@@ -161,14 +172,27 @@ export function precheckUnreachableOf(item: Pick<PrecheckItem, 'value' | 'params
   const deviceId = text(params['deviceId']);
   const deviceKind = params['deviceKind'];
   if (deviceId === null || (deviceKind !== 'CAMERA' && deviceKind !== 'MIC')) return null;
-  if (!(START_RULES as readonly unknown[]).includes(rule)) return null;
-  return { rule: rule as StartRule, deviceId, deviceKind, otherDeviceId: text(params['other']) };
+  // The rule of an unassigned slot is not a rule of a DEVICE: an unreachable item that carried it is not guessed either.
+  if (!(START_RULES as readonly unknown[]).includes(rule) || rule === CaptureStartRule.SOURCE_NOT_ASSIGNED) return null;
+  return { rule: rule as UnreachableRule, deviceId, deviceKind, otherDeviceId: text(params['other']) };
 }
 
 /** True for an item whose value is the unreachable word, whatever its rule. */
 export function isUnreachableItem(item: Pick<PrecheckItem, 'value'> | null): boolean {
   return item?.value === 'UNREACHABLE';
 }
+
+// ── An unassigned selector slot at pre-check (task 4 row 169; decisions C18 (1), C25; names register 5.2) ──
+
+/*
+ * The selector slot a pre-check item says is NOT ASSIGNED (names register 5.2): `value:
+ * 'NOT_ASSIGNED'`, `reasonCode: null`, `params { rule: 'sourceNotAssigned', slot }` - and NO
+ * `deviceId`, because there is no device. The status is the Core's (BLOCK for all four slots in
+ * real capture, the standby microphone too: decision C25). It is recognised by the ONE recogniser
+ * of both clients, `unassignedSlotOfPrecheckItem` of `@dems/shared/sim` (N12; integration pass I-6
+ * removed the local form this file held until the shared one landed). Its caller here is
+ * `precheckSentence` of `capture-notices.tsx`, which keeps the guard for "no item".
+ */
 
 // ── Flow 12: the badge ───────────────────────────────────────────────────────────────────
 

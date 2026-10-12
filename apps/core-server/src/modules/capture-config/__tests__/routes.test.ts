@@ -6,8 +6,11 @@
 // database test's (`capture-config.db.test.ts`); this file holds the route list, the order of the
 // refusals, the lock, and the seam of the adapter registry.
 import { CAPTURE_CONFIG_CHANGE_OPERATIONS, CAPTURE_CONFIG_OPERATIONS, CoreApiAccessKind, CoreApiAuditNone, SIM_ACTION_OPERATIONS, matchCoreApiOperation, validateCoreApiResponse } from '@dems/shared/api';
+import { SessionState } from '@dems/shared/domain';
+import { CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+import { detailRulesOf, type DetailRule } from '../../../core/audit-details';
 import { WEB_ORIGIN } from '../../../../test/support/identity';
 import { CaptureOperation, createFakeRegistry, type CaptureDeviceRegistry, CaptureAdapterRefusal } from '../../../capture/adapters';
 import { hostedActionsOfOperation } from '../../../engine/hosted-actions';
@@ -51,6 +54,9 @@ describe('MODG: the route list of the module', () => {
       'POST /api/v1/capture/discovery/candidates/:id/test testCaptureCandidateConnection',
       'POST /api/v1/capture/discovery/candidates/:id/adopt adoptCaptureCandidate',
       'POST /api/v1/capture/devices/:id/credential setCaptureDeviceCredential',
+      // Task 4 row 70: the sound-card routes, mounted by `modules/capture-inputs` from its sub-folder `audio-cards` (operations 98 and 99).
+      'POST /api/v1/capture/audio-cards/search searchCaptureAudioCards',
+      'POST /api/v1/capture/audio-cards/inputs registerCaptureAudioInput',
     ];
     const under = registered.filter((route) => route.url.startsWith('/api/v1/capture/')).map((route) => signature(String(route.method), route.url, String(route.config?.operationId)));
     expect(under.filter((route) => OTHER_UNITS.includes(route)).sort()).toEqual([...OTHER_UNITS].sort());
@@ -327,6 +333,223 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
     expect((await post(built, CREDENTIAL, { username: 'a', secret: 'b' })).statusCode).toBe(503);
     expect(built.engine.state().captureConfig).toBe(before);
     expect(changes(built)).toEqual([]);
+  });
+});
+
+// Task 4 row 29 (WP-13a; decisions C14, C18, C25; security requirement AD-10; names register of row
+// 161, section 4). Until this row the contract's schema accepted `unassign` and the Core answered
+// 200 with NOTHING changed: the route forwarded `cameras` and `mics` only. The route now hands the
+// member to the hosted action (`setCaptureConfig`, row 162), under the rules every body of
+// operation 78 has: the permission, the lock read before the action, the audit type.
+describe('operation 78 `unassign`: a selector slot is cleared - same permission, same lock, same audit type (task 4 row 29, AD-10)', () => {
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+  const HELD = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
+  /** The row of a cleared slot (names register 4.4): the track or the input, and `from`; no `to`, no `deviceId`. */
+  const clearedRow = (slot: (typeof SLOTS)[number]) =>
+    slot === 'VIDEO-01' || slot === 'VIDEO-02'
+      ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, from: HELD[slot], permission: 'CAPTURE_CONFIG' }
+      : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: HELD[slot], from: HELD[slot], permission: 'CAPTURE_CONFIG' };
+  /** The lines a selector holds, as `slot device`. */
+  const linesOf = (selector: Selector): string[] => [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.role} ${mic.deviceId}`)].sort();
+  const allLines = SLOTS.map((slot) => `${slot} ${HELD[slot]}`).sort();
+  /** Every detail key of a row is a key of the closed list of its type, in the form the list holds it to (implementation/019). */
+  const expectClosedKeys = (details: Readonly<Record<string, Parameters<DetailRule['accepts']>[0]>>): void => {
+    const rules = detailRulesOf('CAPTURE_CONFIG_CHANGED') ?? {};
+    for (const [key, value] of Object.entries(details)) {
+      expect(Object.hasOwn(rules, key), key).toBe(true);
+      expect(rules[key]?.accepts(value), `${key}=${String(value)}`).toBe(true);
+    }
+    for (const [key, rule] of Object.entries(rules)) if (rule.required) expect(Object.hasOwn(details, key), key).toBe(true);
+  };
+
+  it.each(SLOTS)('THE INTERIM STATE IS ENDED - %s: the slot is cleared, the answer is the selector WITHOUT its line, ONE row with the track or input and `from`; assigned again, the line is back', async (slot) => {
+    const built = await build();
+    const principal = operatorOf('TECHNICIAN');
+    built.actAs(principal);
+    const cleared = await post(built, CONFIG, { unassign: [slot] });
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(cleared))).toEqual({ ok: true });
+    // An unassigned slot is an ABSENT line: three lines are left, and no member of the answer is empty.
+    expect(linesOf(selectorOf(cleared))).toEqual(allLines.filter((line) => !line.startsWith(`${slot} `)));
+    expect(cleared.body).not.toMatch(/null|""/);
+    expect(selectorOf(cleared).locked).toBe(false);
+    // The action received the member as the body named it, in ONE unit; the engine holds the same selector; the read answers it.
+    expect(built.engine.units).toEqual(['captureConfig.updateCaptureConfig']);
+    expect(built.engine.commands.map((command) => [command.action, command.args])).toEqual([['setCaptureConfig', [{ kind: 'UPDATE', unassign: [slot] }]]]);
+    expect(linesOf(built.engine.state().captureConfig)).toEqual(linesOf(selectorOf(cleared)));
+    expect(selectorOf(await get(built, CONFIG))).toEqual(selectorOf(cleared));
+    // AD-10 (1): one row, of the one audit type, by the caller, with the closed keys.
+    const rows = changes(built);
+    expect(rows.map((row) => [row.actorId, row.details])).toEqual([[principal.kind === 'OPERATOR' ? principal.operatorId : null, clearedRow(slot)]]);
+    expectClosedKeys(rows[0]?.details ?? {});
+    expect(built.log.lines().filter((line) => line['code'] === 'CAPTURE_CONFIG_CHANGED').map((line) => [line['operationId'], line['kind']])).toEqual([['updateCaptureConfig', 'UPDATE']]);
+
+    // Clearing it AGAIN changes nothing: 200, the same selector, no row, no log line (AD-10 (1), second half).
+    const held = built.engine.state().captureConfig;
+    const again = await post(built, CONFIG, { unassign: [slot] });
+    expect(again.statusCode).toBe(200);
+    expect(selectorOf(again)).toEqual(selectorOf(cleared));
+    expect(built.engine.state().captureConfig).toBe(held);
+    expect(changes(built)).toHaveLength(1);
+
+    // RE-ASSIGNING WORKS (the hosted action finds the slot by its track or its role): the line is back, its row states no `from`.
+    const device = HELD[slot];
+    const body = slot === 'VIDEO-01' || slot === 'VIDEO-02' ? { cameras: [{ trackId: slot, deviceId: device, profile: 'H264_1080P25' }] } : { mics: [{ inputId: device, deviceId: device, role: slot }] };
+    const assigned = await post(built, CONFIG, body);
+    expect(assigned.statusCode, assigned.body).toBe(200);
+    expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(assigned))).toEqual({ ok: true });
+    expect(linesOf(selectorOf(assigned))).toEqual(allLines);
+    const back = changes(built)[1]?.details ?? {};
+    expect([back['scope'], back['field'], back['to'], back['deviceId'], Object.hasOwn(back, 'from')]).toEqual([slot.startsWith('VIDEO') ? 'CAMERA' : 'MIC', 'SOURCE', device, device, false]);
+    expectClosedKeys(back);
+    expect(changes(built)).toHaveLength(2);
+  });
+
+  it('GATE CONDITION: an unassign of two slots writes 2 rows and an unassign of an empty slot writes 0; all four in one body leave an empty selector the contract accepts, and all four come back', async () => {
+    const built = await build();
+    built.actAs(operatorOf('SUPERVISOR'));
+    const two = await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] });
+    expect(two.statusCode, two.body).toBe(200);
+    expect(linesOf(selectorOf(two))).toEqual(['PRIMARY MIC-01', 'VIDEO-01 CAM-01']);
+    expect(changes(built).map((row) => row.details)).toEqual([clearedRow('VIDEO-02'), clearedRow('STANDBY')]);
+    // The same two again, both empty now: 0 rows, the same state.
+    const held = built.engine.state().captureConfig;
+    expect((await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] })).statusCode).toBe(200);
+    expect(changes(built)).toHaveLength(2);
+    expect(built.engine.state().captureConfig).toBe(held);
+    // One empty and one held: only the held one is a row.
+    const rest = await post(built, CONFIG, { unassign: [...SLOTS] });
+    expect(rest.statusCode, rest.body).toBe(200);
+    expect(changes(built).slice(2).map((row) => row.details)).toEqual([clearedRow('VIDEO-01'), clearedRow('PRIMARY')]);
+    expect(selectorOf(rest)).toMatchObject({ cameras: [], mics: [], locked: false });
+    expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(rest))).toEqual({ ok: true });
+    expect(validateCoreApiResponse('getCaptureConfig', 200, bodyOf(await get(built, CONFIG)))).toEqual({ ok: true });
+    for (const row of changes(built)) expectClosedKeys(row.details ?? {});
+
+    // A clear and an assignment of ANOTHER slot in one body are one edit; a microphone role is assignable alone (C21 (8)).
+    const refill = await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] });
+    expect(refill.statusCode, refill.body).toBe(200);
+    expect(linesOf(selectorOf(refill))).toEqual(['STANDBY MIC-02', 'VIDEO-02 CAM-02']);
+    const mixed = await post(built, CONFIG, { unassign: ['VIDEO-02'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] });
+    expect(mixed.statusCode, mixed.body).toBe(200);
+    expect(linesOf(selectorOf(mixed))).toEqual(['PRIMARY MIC-01', 'STANDBY MIC-02', 'VIDEO-01 CAM-01']);
+    expect((await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-02' })).statusCode).toBe(200);
+    expect(linesOf(selectorOf(await get(built, CONFIG)))).toEqual(allLines);
+  });
+
+  it('AD-10 (2), the lock table: in EVERY session state but SEALED an unassign is 409 CAPTURE_CONFIG_LOCKED - the action is never called, 0 rows, no change; with a SEALED session and with none it is accepted', async () => {
+    const built = await build('recording');
+    built.actAs(operatorOf('SUPERVISOR'));
+    const open = built.engine.state().session;
+    if (open === null) throw new Error('the scenario holds no session');
+    const states = Object.values(SessionState);
+    expect([...states].sort()).toEqual(['ARMED', 'CREATE', 'FAULT', 'FINALIZING', 'PRECHECK', 'RECORDING', 'RECOVERY', 'SEALED', 'STOPPING']);
+    const table: [string, number, string | null][] = [];
+    for (const state of states.filter((candidate) => candidate !== SessionState.SEALED)) {
+      built.engine.sim.store.setState({ session: { ...open, state } });
+      const before = built.engine.state();
+      for (const body of [{ unassign: ['VIDEO-01'] }, { unassign: ['VIDEO-02'] }, { unassign: ['PRIMARY'] }, { unassign: ['STANDBY'] }, { unassign: [...SLOTS] }]) {
+        const refused = await post(built, CONFIG, body);
+        table.push([state, refused.statusCode, errorOf(refused).code]);
+        expect(validateCoreApiResponse('updateCaptureConfig', 409, bodyOf(refused)), state).toEqual({ ok: true });
+      }
+      // SEC35-19: a state refusal - no CAPTURE_CONFIG_CHANGED row, no other row, the selector untouched, the lock said by the read.
+      expect(built.engine.state().audit.rows, state).toBe(before.audit.rows);
+      expect(built.engine.state().captureConfig, state).toBe(before.captureConfig);
+      expect(selectorOf(await get(built, CONFIG)).locked, state).toBe(true);
+    }
+    expect(table).toHaveLength(8 * 5);
+    expect(table.filter(([, status, code]) => status !== 409 || code !== 'CAPTURE_CONFIG_LOCKED')).toEqual([]);
+    // The sealing states are in the table by name: a clear cannot take a source from a session that is being sealed.
+    expect([...new Set(table.map(([state]) => state))]).toEqual(expect.arrayContaining(['RECORDING', 'STOPPING', 'FINALIZING', 'FAULT', 'RECOVERY']));
+    expect(built.engine.commands).toEqual([]);
+    expect(linesOf(built.engine.state().captureConfig)).toEqual(allLines);
+
+    // CONTROL 1: the same body once the session is SEALED - accepted, four rows.
+    built.engine.sim.store.setState({ session: { ...open, state: SessionState.SEALED } });
+    const rowsBefore = changes(built).length;
+    const sealed = await post(built, CONFIG, { unassign: [...SLOTS] });
+    expect(sealed.statusCode, sealed.body).toBe(200);
+    expect(linesOf(selectorOf(sealed))).toEqual([]);
+    expect(changes(built).slice(rowsBefore).map((row) => row.details)).toEqual(SLOTS.map((slot) => clearedRow(slot)));
+    // CONTROL 2: with no session at all.
+    const idle = await build('idle');
+    idle.actAs(operatorOf('SUPERVISOR'));
+    expect(idle.engine.state().session).toBeNull();
+    expect((await post(idle, CONFIG, { unassign: ['PRIMARY'] })).statusCode).toBe(200);
+  });
+
+  it('AD-10 (3): a body that clears and fills ONE slot is 422 - by the schema where it sees it, by the action (details.reason SLOT_UNASSIGNED_AND_ASSIGNED) otherwise; nothing is kept', async () => {
+    const built = await build();
+    built.actAs(operatorOf('TECHNICIAN'));
+    const before = built.engine.state().captureConfig;
+    const bySchema: object[] = [
+      { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] },
+      { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }, { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] },
+      { unassign: ['STANDBY', 'STANDBY'] },
+      { unassign: [] },
+      { unassign: ['VIDEO-03'] },
+      { unassign: ['MIC-01'] },
+      { unassign: 'VIDEO-01' },
+      { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY', 'VIDEO-01'] },
+    ];
+    for (const body of bySchema) expect(outcome(await post(built, CONFIG, body)), JSON.stringify(body)).toEqual([422, 'INVALID_INPUT']);
+    // The schema stage answered: no unit was run.
+    expect(built.engine.units).toEqual([]);
+    // The form the schema cannot see: a mic line WITHOUT `role` edits the input the cleared role holds.
+    const byAction = await post(built, CONFIG, { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] });
+    expect(outcome(byAction)).toEqual([422, 'INVALID_INPUT']);
+    expect(errorOf(byAction).details).toMatchObject({ reason: CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED });
+    expect(built.engine.units).toEqual(['captureConfig.updateCaptureConfig']);
+    // ENG-5: the refused unit left nothing - not the cleared slot either.
+    expect(built.engine.state().captureConfig).toBe(before);
+    expect(changes(built)).toEqual([]);
+  });
+
+  it('AD-10 (5), who may call it: the registry entry of operation 78 is unchanged (CAPTURE_CONFIG, no client-kind condition); INVESTIGATOR never reaches the handler; an unassign assigns nothing, so the adapter registry is not asked', async () => {
+    const built = await build();
+    // The guard's rule of operation 78 is the permission and nothing else, and it is the rule of operations 79 and 80 to the letter.
+    const rules = permissionGuard(built.app).registeredRules();
+    const ruleOf = (operationId: string) => {
+      const found = rules.find((candidate) => candidate.operationId === operationId);
+      if (found === undefined) throw new Error(`the guard holds no rule for ${operationId}`);
+      // What a rule says beside the route it is for (its ID, method, path and path-ID pattern).
+      const { operationId: _own, method: _method, url: _url, idPattern: _pattern, ...rest } = found;
+      return rest;
+    };
+    expect([ruleOf('updateCaptureConfig').kind, ruleOf('updateCaptureConfig').permissions]).toEqual([CoreApiAccessKind.PERMISSION, ['CAPTURE_CONFIG']]);
+    expect(ruleOf('updateCaptureConfig')).toEqual(ruleOf('setCaptureCameraSource'));
+    expect(ruleOf('updateCaptureConfig')).toEqual(ruleOf('setPrimaryMic'));
+    expect(captureConfigOperation('updateCaptureConfig').audit).toEqual({ success: 'CAPTURE_CONFIG_CHANGED', denial: 'ACCESS_DENIED' });
+
+    built.actAs(operatorOf('INVESTIGATOR'));
+    const before = built.engine.state();
+    expect((await post(built, CONFIG, { unassign: ['VIDEO-01'] })).statusCode).toBeGreaterThanOrEqual(400);
+    expect(built.engine.units).toEqual([]);
+    expect(built.engine.state()).toBe(before);
+    built.actAs({ kind: 'ANONYMOUS', retiredDeviceId: null });
+    expect(outcome(await post(built, CONFIG, { unassign: ['VIDEO-01'] }))).toEqual([401, 'NOT_SIGNED_IN']);
+    expect(built.engine.units).toEqual([]);
+
+    // A registry that refuses EVERY device: an unassign still passes, because it names none (rule RG-3 has nothing to ask).
+    const asked: string[] = [];
+    captureConfigControl(built.app).provideDeviceRegistry({
+      assertAssignable(deviceClass, deviceId) {
+        asked.push(`${deviceClass} ${deviceId}`);
+        return createFakeRegistry({ runDir: '/nonexistent/dems-run/capture' }).registry.assertAssignable(deviceClass, 'CAM-99');
+      },
+    });
+    for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
+      built.actAs(operatorOf(role));
+      const cleared = await post(built, CONFIG, { unassign: role === 'SUPERVISOR' ? ['VIDEO-01', 'PRIMARY'] : ['VIDEO-02', 'STANDBY'] });
+      expect(cleared.statusCode, `${role} ${cleared.body}`).toBe(200);
+    }
+    expect(asked).toEqual([]);
+    expect(changes(built)).toHaveLength(4);
+    // CONTROL: the same registry IS asked for an assignment, and refuses it - the slot stays empty.
+    expect(outcome(await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] }))).toEqual([422, 'INVALID_INPUT']);
+    expect(asked).toEqual(['CAMERA CAM-01']);
+    expect(built.engine.state().captureConfig.cameras).toEqual([]);
   });
 });
 

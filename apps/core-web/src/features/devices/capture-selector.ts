@@ -10,8 +10,9 @@
  * | `selectorEditGate` | G1-G3 (ux §2.4): Checking → allowed, or refused with its reason (role, open session) |
  * | `poeCycleGate` | G9 (ux §2.4): offered only for a LOST stream; the role and recording rules are the one gate of `lib/device-command-gate.ts` |
  * | `useCaptureSelector` | The read in both data modes |
- * | `useCaptureSelectorCommands` | Operations 78 (the microphone pair), 79, 80 and the camera PoE cycle (48) in both data modes |
- * | `micPairFor` | Wave H (G70-02): the two lines of operation 78's pair replacement (D133 (1)) for "this microphone on this line" |
+ * | `useCaptureSelectorCommands` | Operations 78 (the microphone lines by role; `unassign`), 79, 80 and the camera PoE cycle (48) in both data modes |
+ * | `micPairFor` | Wave H (G70-02): the lines of operation 78 for "this microphone on this line" - the pair replacement (D133 (1)), or ONE line by role beside an empty slot (task 4 row 31) |
+ * | `selectorSlotRows` | Task 4 row 31 (decision C18 (3)): one row per SLOT of the selector - an absent line is a row too |
  *
  * **Two data modes, one shape.** In Live mode the read is operations 76 and 77 through the two
  * query factories of `lib/core-queries.ts` (WB-11, E-17), kept current by the republished slices
@@ -25,7 +26,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiErrorCode, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api'
 import type { CoreCallFailure } from '@dems/shared/client'
-import type { VideoTrackId } from '@dems/shared/domain'
+import { MicRole, TrackId, type VideoTrackId } from '@dems/shared/domain'
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   DeviceCommand,
@@ -37,6 +38,7 @@ import {
   selectIsRecording,
   useSim,
   useSimInstance,
+  type CaptureSelectorSlot,
 } from '@dems/shared/sim'
 import {
   captureConfigQueryOptions,
@@ -213,19 +215,60 @@ export interface MicPairLine {
 }
 
 /**
- * Wave H (G70-02): the body of "microphone `deviceId` on the line of `role`" - the PAIR REPLACEMENT
- * of operation 78 (C3 §2.3; decision D133 (1)): exactly two lines, one PRIMARY and one STANDBY,
- * each `deviceId == inputId`. The other line keeps the microphone it holds. `null` when the choice
- * cannot be a pair: the selector does not hold two lines, or `deviceId` is the other line's
- * microphone (the contract refuses one microphone on both lines) - nothing is sent then.
+ * Wave H (G70-02): the body of "microphone `deviceId` on the line of `role`" for operation 78
+ * (C3 §2.3), each line `deviceId == inputId`. Task 4 row 31 (site W2; names register E36, rule
+ * MIC-ASSIGN, ruling C21 (8)): the answer no longer needs both roles to be held.
+ *
+ * | The OTHER role | Answer |
+ * |----------------|--------|
+ * | holds a line | the PAIR REPLACEMENT (decision D133 (1)): two lines, PRIMARY first; the other line keeps its microphone. This is the body a complete selector always sent |
+ * | is empty | ONE line by role: the slot of the other role keeps what it holds, which is nothing |
+ * | holds `deviceId` itself | `null`: the contract refuses one microphone on both lines - nothing is sent |
+ *
+ * The line of `role` itself may be absent: that is the assignment of an empty slot.
  */
-export function micPairFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): readonly [MicPairLine, MicPairLine] | null {
-  if (mics.length !== 2) return null
+export function micPairFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): readonly MicPairLine[] | null {
   const other = mics.find((line) => line.role !== role)
-  if (other === undefined || !mics.some((line) => line.role === role) || other.deviceId === deviceId) return null
   const chosen: MicPairLine = { inputId: deviceId, deviceId, role }
+  if (other === undefined) return [chosen]
+  if (other.deviceId === deviceId) return null
   const kept: MicPairLine = { inputId: other.deviceId, deviceId: other.deviceId, role: other.role }
   return role === 'PRIMARY' ? [chosen, kept] : [kept, chosen]
+}
+
+// ── One row per slot (task 4 row 31; site W1; decision C18 (3)) ──────────────────────────
+
+/** A video slot of the selector with the line that holds it; `line: null` is the slot NOT ASSIGNED. */
+export interface CameraSlotRow {
+  readonly slot: VideoTrackId
+  readonly line: CaptureCameraLine | null
+}
+
+/** A microphone slot of the selector (a ROLE) with the line that holds it; `line: null` is the slot NOT ASSIGNED. */
+export interface MicSlotRow {
+  readonly slot: CaptureMicLine['role']
+  readonly line: CaptureMicLine | null
+}
+
+const VIDEO_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02] as const
+const MIC_SLOTS = [MicRole.PRIMARY, MicRole.STANDBY] as const
+
+/**
+ * The rows of the selector panel: ALWAYS two video rows and two microphone rows, found by track and
+ * by role and never by position (decision C18 (2), (3)). A slot no line names is a row with
+ * `line: null`.
+ *
+ * Order: a kind whose two slots are both held is drawn in the order the Core sent its lines - what
+ * the panel drew before this row, so a complete selector reads as it did (the microphone lines are
+ * in input order, ruling D137). A kind with an empty slot is drawn in the order of the contract's
+ * slot list (`CAPTURE_SELECTOR_SLOTS`: VIDEO-01, VIDEO-02, PRIMARY, STANDBY).
+ */
+export function selectorSlotRows(config: Pick<CaptureConfig, 'cameras' | 'mics'>): { readonly cameras: readonly CameraSlotRow[]; readonly mics: readonly MicSlotRow[] } {
+  const cameras = VIDEO_SLOTS.map((slot): CameraSlotRow => ({ slot, line: config.cameras.find((line) => line.trackId === slot) ?? null }))
+  const mics = MIC_SLOTS.map((slot): MicSlotRow => ({ slot, line: config.mics.find((line) => line.role === slot) ?? null }))
+  const asHeld = <Row extends { readonly line: object | null }>(rows: readonly Row[], lines: readonly object[]): readonly Row[] =>
+    rows.every((row) => row.line !== null) ? [...rows].sort((a, b) => lines.indexOf(a.line!) - lines.indexOf(b.line!)) : rows
+  return { cameras: asHeld(cameras, config.cameras), mics: asHeld(mics, config.mics) }
 }
 
 /** A command that was refused or not answered: the status and the code, never the answer's text. */
@@ -302,8 +345,10 @@ export interface CaptureSelectorCommands {
   readonly setCameraSource: (deviceId: string, trackId: VideoTrackId) => Promise<SelectorAnswer>
   /** Operation 80: `inputId` becomes PRIMARY, the other input STANDBY. */
   readonly setPrimaryMic: (inputId: string) => Promise<SelectorAnswer>
-  /** Operation 78, pair replacement (wave H, G70-02): `pair` (of `micPairFor`) is the new pair of microphone inputs. */
-  readonly setMicPair: (pair: readonly [MicPairLine, MicPairLine]) => Promise<SelectorAnswer>
+  /** Operation 78 by role (wave H, G70-02; task 4 row 31): `pair` (of `micPairFor`) is the new pair of microphone inputs, or the one line of a role beside an empty slot. */
+  readonly setMicPair: (pair: readonly MicPairLine[]) => Promise<SelectorAnswer>
+  /** Operation 78, member `unassign` (task 4 row 31; names register N1): the slot holds no source afterwards. */
+  readonly unassign: (slot: CaptureSelectorSlot) => Promise<SelectorAnswer>
   /** Operation 48 for a camera: the confirmed PoE cycle (`{ confirm: true }`, OD-22). */
   readonly poeCycle: (deviceId: string) => Promise<SelectorAnswer>
 }
@@ -357,6 +402,13 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
       setMicPair: (pair) =>
         guarded('updateCaptureConfig', () => {
           const body = { mics: pair.map((line) => ({ inputId: line.inputId, deviceId: line.deviceId, role: line.role })) }
+          return live === null
+            ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
+            : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))
+        }),
+      unassign: (slot) =>
+        guarded('updateCaptureConfig', () => {
+          const body = { unassign: [slot] }
           return live === null
             ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
             : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))

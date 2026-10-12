@@ -12,7 +12,7 @@
 import { CaptureMicRole, CaptureWarningCode, CaptureWarningReason } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
-import { ForwarderReportCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureReport } from '../index';
+import { CAMERA_ABSENT_REASONS, CAMERA_END_REASONS, CAMERA_INTEGRITY_REASONS, ForwarderReportCode, createCaptureSupervisor, forwardCaptureEvents, isCameraAbsentReason, isCameraIntegrityReason, type CaptureReport } from '../index';
 
 const FIRST = 'S-TEST-0001';
 const SECOND = 'S-TEST-0002';
@@ -21,6 +21,8 @@ async function rig(engineFails = false) {
   const clock = manualCaptureTimers();
   const fake = fakeLauncher({});
   const calls: string[] = [];
+  /** Every raise as the engine was handed it, whole (task 4 row 182: the reason and that nothing else travels). */
+  const raised: object[] = [];
   const reports: CaptureReport[] = [];
   const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher, limits: {} });
   forwardCaptureEvents({
@@ -28,6 +30,7 @@ async function rig(engineFails = false) {
     engine: () => ({
       applyCaptureTelemetry: async () => {},
       raiseCaptureWarning: async (warning) => {
+        raised.push({ ...warning });
         calls.push(`raise ${warning.code}:${String(warning.subject)}`);
         if (engineFails) throw new Error('the engine refused');
       },
@@ -52,7 +55,7 @@ async function rig(engineFails = false) {
     await flush();
     calls.length = 0;
   };
-  return { clock, fake, supervisor, calls, reports, frame, start };
+  return { clock, fake, supervisor, calls, raised, reports, frame, start };
 }
 
 const keyframeWarning = (h: Awaited<ReturnType<typeof rig>>, deviceId: string): void => h.fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, deviceId, 'ACTIVE', CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND);
@@ -161,5 +164,64 @@ describe('R74-03: a camera that did not connect at a degraded start is not a cri
     h.fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, 'CAM-02', 'ACTIVE', CaptureWarningReason.CAMERA_STREAM_ENDED);
     await flush();
     expect(h.calls).toEqual(['raise CAPTURE_FAULT:CAM-02']);
+  });
+});
+
+// Task 4 row 182 (decision C30 (3); security requirement BR-04 (3); controller ruling C35). The worker names three
+// causes it said as CAMERA_NOT_CONNECTED before. Which side of C35 each is on, and that each reaches the Core apart.
+describe('row 182 / C35: the three causes of a camera that never delivered are told apart', () => {
+  const warn = (h: Awaited<ReturnType<typeof rig>>, deviceId: string, reason: CaptureWarningReason): void => h.fake.last().warning(CaptureWarningCode.CAPTURE_FAULT, deviceId, 'ACTIVE', reason);
+
+  it('the two sets of C35 are disjoint, are the four reasons of a camera that never delivered, and each ends its camera for the session', () => {
+    expect([...CAMERA_ABSENT_REASONS]).toEqual(['CAMERA_NOT_CONNECTED', 'CAMERA_NO_PICTURE']);
+    expect([...CAMERA_INTEGRITY_REASONS]).toEqual(['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN']);
+    for (const reason of [...CAMERA_ABSENT_REASONS, ...CAMERA_INTEGRITY_REASONS]) {
+      expect(CAMERA_END_REASONS, reason).toContain(reason);
+      expect(isCameraAbsentReason(reason), reason).toBe(!isCameraIntegrityReason(reason));
+    }
+    // CONTROL: a camera that had delivered, an advice, a microphone, no reason - of neither set.
+    for (const other of [CaptureWarningReason.CAMERA_STREAM_ENDED, CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND, CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND, CaptureWarningReason.MIC_DISCONNECTED, null]) {
+      expect([isCameraAbsentReason(other), isCameraIntegrityReason(other)], String(other)).toEqual([false, false]);
+    }
+  });
+
+  it('CAMERA_NO_PICTURE is a MISSING camera (C35 a): no fault, as CAMERA_NOT_CONNECTED; the supervisor keeps the cause by its own word; the session records on', async () => {
+    const h = await rig();
+    await h.start(FIRST);
+    warn(h, 'CAM-02', CaptureWarningReason.CAMERA_NO_PICTURE);
+    await flush();
+    expect(h.raised).toEqual([]);
+    expect(h.reports).toEqual([]);
+    expect(h.supervisor.status()).toMatchObject({ phase: 'RECORDING', cameraEnds: [{ deviceId: 'CAM-02', reason: 'CAMERA_NO_PICTURE', lastDurableFragmentIndex: null }] });
+  });
+
+  it.each([CaptureWarningReason.CAMERA_ANNOUNCE_NOT_MATCHED, CaptureWarningReason.CAMERA_ANNOUNCE_NOT_SEEN])(
+    '%s is an INTEGRITY fault (C35 b): ONE capture fault of that camera under that reason - the code, the device and the reason, nothing else',
+    async (reason) => {
+      const h = await rig();
+      await h.start(FIRST);
+      warn(h, 'CAM-01', reason);
+      await flush();
+      // Said again (a frame repeated): still raised in the engine, nothing more is written.
+      warn(h, 'CAM-01', reason);
+      await flush();
+      expect(h.raised).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-01', reason }]);
+      expect(h.supervisor.status().cameraEnds).toMatchObject([{ deviceId: 'CAM-01', reason }]);
+      expect(h.reports).toEqual([]);
+    },
+  );
+
+  it('the two refusals are two faults with two reasons, also on one camera of two sessions; never the generic word in their place', async () => {
+    const h = await rig();
+    await h.start(FIRST);
+    warn(h, 'CAM-01', CaptureWarningReason.CAMERA_ANNOUNCE_NOT_MATCHED);
+    warn(h, 'CAM-02', CaptureWarningReason.CAMERA_ANNOUNCE_NOT_SEEN);
+    await flush();
+    expect(h.raised).toEqual([
+      { code: 'CAPTURE_FAULT', subject: 'CAM-01', reason: 'CAMERA_ANNOUNCE_NOT_MATCHED' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_ANNOUNCE_NOT_SEEN' },
+    ]);
+    expect(JSON.stringify(h.raised)).not.toContain('CAMERA_NOT_CONNECTED');
+    expect((h.supervisor.status().cameraEnds ?? []).map((end) => `${end.deviceId}/${end.reason}`).sort()).toEqual(['CAM-01/CAMERA_ANNOUNCE_NOT_MATCHED', 'CAM-02/CAMERA_ANNOUNCE_NOT_SEEN']);
   });
 });

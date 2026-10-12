@@ -196,6 +196,12 @@ describe('H3 tiles', () => {
     expect(micTileSourceRole({ recording: true, inputId: undefined, activeInputId: 'MIC-01' })).toBeNull();
   });
 
+  it('task 4 row 171: a tile whose channel has no input says no role, and nothing is "Standby" to an absent active input', () => {
+    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: 'MIC-01' })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: null })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: null })).toBeNull();
+  });
+
   it('storage: USED percent (D28/Q1) with READY / LOW / FULL tones', () => {
     expect(storageTileFor({ usedPercent: 20, state: 'READY' })).toMatchObject({ value: 20, total: null, tone: 'success', stateKey: 'healthy', href: '/storage' });
     expect(storageTileFor({ usedPercent: 91, state: 'LOW' })).toMatchObject({ tone: 'warning', stateKey: 'low' });

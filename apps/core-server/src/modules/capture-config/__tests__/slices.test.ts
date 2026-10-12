@@ -252,3 +252,107 @@ describe('M2-MT-7 seed-count clause, read at the seed source (in-memory)', () =>
     expect(REPLICATED_SLICE_NAMES[29]).toBe('captureDevices');
   });
 });
+
+// Task 4 row 29 (WP-13a; sites A1 and A2 of research/027; decisions C14, C18; security requirement
+// AD-04). The six slot columns are nullable since schema set A. Until this row `recordOf` threw
+// `CAPTURE_ROW_INVALID` for a NULL slot and the slice builder threw for a device it could not find,
+// each of which stopped the boot at the step `capture.config`. No seed writes a NULL: the rows
+// below are written by hand, as the aggregate of the load statement gives them (a JSON null).
+describe('an unassigned selector slot is an absent line, and the boot step passes on it (task 4 row 29)', () => {
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+  type Slot = (typeof SLOTS)[number];
+  /** The seeded row with the columns of the named slots NULL. */
+  const rowWithout = (unassigned: readonly Slot[]) => ({
+    ...seededConfig,
+    ...(unassigned.includes('VIDEO-01') ? { video01DeviceId: null, video01Profile: null } : {}),
+    ...(unassigned.includes('VIDEO-02') ? { video02DeviceId: null, video02Profile: null } : {}),
+    ...(unassigned.includes('PRIMARY') ? { micPrimaryId: null } : {}),
+    ...(unassigned.includes('STANDBY') ? { micStandbyId: null } : {}),
+  });
+  /** Every set of unassigned slots: 16, the complete selector (none) included. */
+  const SUBSETS: Slot[][] = Array.from({ length: 16 }, (_unused, bits) => SLOTS.filter((_slot, index) => (bits & (1 << index)) !== 0));
+  const SEEDED_DEVICE_OF: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+
+  it('each of the 16 selectors of four slots: exactly the lines of the assigned slots, each on ITS track or role, and the slice is the contract\'s', () => {
+    for (const unassigned of SUBSETS) {
+      const slice = captureConfigSliceOf(rowWithout(unassigned), seededDevices, false);
+      const assigned = SLOTS.filter((slot) => !unassigned.includes(slot));
+      expect(slice.cameras.map((camera) => [camera.trackId, camera.deviceId]), unassigned.join('+')).toEqual(assigned.filter((slot) => slot.startsWith('VIDEO')).map((slot) => [slot, SEEDED_DEVICE_OF[slot]]));
+      expect(slice.mics.map((mic) => [mic.role, mic.deviceId, mic.inputId]), unassigned.join('+')).toEqual(assigned.filter((slot) => !slot.startsWith('VIDEO')).map((slot) => [slot, SEEDED_DEVICE_OF[slot], SEEDED_DEVICE_OF[slot]]));
+      expect(slice.updatedAt).toBe(seededConfig.updatedAt);
+      // No line with an empty device, and no member that reads "null": an unassigned slot is ABSENT.
+      expect(JSON.stringify(slice)).not.toMatch(/null|""/);
+    }
+    // CONTROL: the complete row is the first of the 16 and answers what it answered before this row.
+    expect(SUBSETS[0]).toEqual([]);
+    expect(captureConfigSliceOf(rowWithout([]), seededDevices, false)).toEqual(captureConfigSliceOf(seededConfig, seededDevices, false));
+  });
+
+  it('AD-04 (2), nothing by position: only VIDEO-02 and only a STANDBY microphone answer those two lines - VIDEO-02 is not read as the first track, the standby not as the primary', () => {
+    const slice = captureConfigSliceOf(rowWithout(['VIDEO-01', 'PRIMARY']), seededDevices, true);
+    expect(slice.cameras).toEqual([{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' }]);
+    expect(slice.mics).toEqual([{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true }]);
+    expect(slice.locked).toBe(true);
+    // The mirror image, and a lone PRIMARY that is the SECOND input: the role is the column's, never the input's place.
+    const mirror = captureConfigSliceOf({ ...rowWithout(['VIDEO-02', 'STANDBY']), micPrimaryId: 'MIC-02' }, seededDevices, false);
+    expect(mirror.cameras.map((camera) => camera.trackId)).toEqual(['VIDEO-01']);
+    expect(mirror.mics.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-02', 'PRIMARY']]);
+  });
+
+  it('a row of six NULLs is two empty lists: NOT the built-in baseline (that is a table without a row), and it invents no device', () => {
+    const empty = captureConfigSliceOf(rowWithout(SLOTS), seededDevices, false);
+    expect(empty).toEqual({ cameras: [], mics: [], locked: false, updatedAt: seededConfig.updatedAt });
+    expect(empty).not.toEqual(baselineCaptureConfig(false));
+    // An empty registry beside it changes nothing: no line is made up from the built-in five.
+    expect(captureConfigSliceOf(rowWithout(SLOTS), [], false)).toEqual(empty);
+  });
+
+  it('GATE CONDITION AD-04: the store loads, and the boot step `capture.config` passes, on a selector row of six NULLs - in the form the load statement gives it (JSON nulls)', async () => {
+    const sixNulls = JSON.parse(JSON.stringify(rowWithout(SLOTS))) as Record<string, unknown>;
+    expect(Object.entries(sixNulls).filter(([, value]) => value === null).map(([member]) => member).sort()).toEqual(['micPrimaryId', 'micStandbyId', 'video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile']);
+    const store = createCaptureConfigStore();
+    const sinks = silentSinks();
+    await runCaptureConfigBoot(store, readerReturning({ config: sixNulls, devices: seededDevices, session_open: false }), sinks);
+    // No warn, no error, nothing in the persistent error log: an unassigned selector is not a fault of the boot.
+    expect(sinks.lines).toEqual([]);
+    const snapshot = store.snapshot();
+    expect(snapshot.captureConfig).toEqual({ cameras: [], mics: [], locked: false, updatedAt: seededConfig.updatedAt });
+    expect([snapshot.builtInBaseline, snapshot.revision, snapshot.locked]).toEqual([false, 1, false]);
+    expect(snapshot.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+
+    // Every one of the 16 loads, and a member the aggregate left out reads as the same "nothing assigned".
+    for (const unassigned of SUBSETS) {
+      const loaded = await createCaptureConfigStore().load(readerReturning({ config: rowWithout(unassigned), devices: seededDevices, session_open: false }));
+      expect(loaded.captureConfig.cameras.length + loaded.captureConfig.mics.length, unassigned.join('+')).toBe(4 - unassigned.length);
+    }
+    const { micStandbyId: _left, ...withoutMember } = seededConfig;
+    expect((await createCaptureConfigStore().load(readerReturning({ config: withoutMember, devices: seededDevices, session_open: false }))).captureConfig.mics.map((mic) => mic.role)).toEqual(['PRIMARY']);
+  });
+
+  it('FAIL CLOSED stays: a slot member that is neither text nor null, half a video pair, and a device the registry lacks beside an empty slot still stop the start, by name', async () => {
+    const refusalOfLoad = async (config: Record<string, unknown>): Promise<[string, Record<string, unknown>]> => {
+      try {
+        await createCaptureConfigStore().load(readerReturning({ config, devices: seededDevices, session_open: false }));
+      } catch (error) {
+        if (error instanceof CaptureSliceError) return [error.code, { ...error.context }];
+        throw error;
+      }
+      return ['no refusal', {}];
+    };
+    for (const value of [7, false, ['CAM-01'], { id: 'CAM-01' }]) {
+      expect(await refusalOfLoad({ ...seededConfig, video02DeviceId: value }), JSON.stringify(value)).toEqual(['CAPTURE_ROW_INVALID', { member: 'video02DeviceId' }]);
+    }
+    // Half a pair: the CHECK `capture_config_slot_pair_check` cannot hold it; read by hand it is refused by the member that is missing.
+    expect(await refusalOfLoad({ ...seededConfig, video01Profile: null })).toEqual(['CAPTURE_ROW_INVALID', { trackId: 'VIDEO-01', member: 'video01Profile' }]);
+    expect(await refusalOfLoad({ ...seededConfig, video02DeviceId: null })).toEqual(['CAPTURE_ROW_INVALID', { trackId: 'VIDEO-02', member: 'video02DeviceId' }]);
+    // An empty slot does not excuse the others: an unknown camera and a mic outside the input form are refused as before.
+    expect(await refusalOfLoad({ ...rowWithout(['VIDEO-01']), video02DeviceId: 'CAM-09' })).toEqual(['CAPTURE_DEVICE_UNKNOWN', { trackId: 'VIDEO-02', deviceId: 'CAM-09' }]);
+    expect(await refusalOfLoad({ ...rowWithout(['PRIMARY']), micStandbyId: 'POE-SWITCH' })).toEqual(['CAPTURE_MIC_INPUT_UNKNOWN', { deviceId: 'POE-SWITCH' }]);
+    // An empty text is no "nothing assigned": only NULL is. It names no device, and is refused as one.
+    expect(await refusalOfLoad({ ...seededConfig, video01DeviceId: '' })).toEqual(['CAPTURE_DEVICE_UNKNOWN', { trackId: 'VIDEO-01', deviceId: '' }]);
+    // The boot step turns such a refusal into a stopped start with its code in both sinks (unchanged).
+    const sinks = silentSinks();
+    await expect(runCaptureConfigBoot(createCaptureConfigStore(), readerReturning({ config: { ...seededConfig, video01Profile: null }, devices: seededDevices, session_open: false }), sinks)).rejects.toThrowError(CaptureSliceError);
+    expect(sinks.lines.filter((line) => line.level === 'error')).toHaveLength(2);
+  });
+});

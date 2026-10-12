@@ -74,3 +74,17 @@
 | 2026-10-13 01:34 | I-3 | landed; I-4 BERJALAN; juga berjalan: 128+129 |
 | 2026-10-13 01:37 | I-4 | SELESAI; uji penuh c03 BERJALAN; juga berjalan: 128+129 |
 | 2026-10-13 01:53 | uji penuh c03 | 3 gagal (masing-masing diatribusikan); I-5 (perbaikan) BERJALAN; 128+129 masih berjalan |
+| 2026-10-13 01:58 | commit 6e6707dd | batch 6 (10 agen, 20 baris) BERJALAN; 128+129 masih berjalan |
+| 2026-10-13 02:18 | baris 65, 66 | SELESAI. Batch 6 berjalan: A, B, C, D, E, F, G, I, J; juga 128+129 |
+| 2026-10-13 02:24 | baris 40 | SELESAI; temuan Basic disiarkan ke agen relay. Berjalan: A, B, C, D, E, G, I, J; 128+129 |
+| 2026-10-13 02:27 | baris 179 | SELESAI; baris 48 dikembalikan untuk C34/C35. Berjalan: A, B, C, D, E, G(48), I, J; 128+129 |
+| 2026-10-13 02:28 | baris 150, 145, 155 | SELESAI. Berjalan: A, B, C, E, G(48), I, J; 128+129 |
+| 2026-10-13 02:32 | baris 31, 167, 168, 70 | landed (70: perlu baris 185 - registrar MIC). Berjalan: A, C, E, G(48), J; 128+129 |
+| 2026-10-13 02:34 | baris 162, 163, 165 | SELESAI; C36. Baris 29 BERJALAN. Juga berjalan: C, E, G(48), J; 128+129 |
+| 2026-10-13 02:35 | baris 48 | SELESAI (antarmuka); C37. Berjalan: 29, C, E, J; 128+129 |
+| 2026-10-13 02:50 | baris 41 (relay) | landed sebagai KANDIDAT; C38: keputusan pengguna diperlukan (klien RTSP buatan sendiri vs pustaka). Tinjauan keamanan+kode atas klien itu BERJALAN |
+| 2026-10-13 02:51 | baris 29, 32, 169, 170, 171 | SELESAI. Berjalan: J (eksperimen), 128+129, tinjauan keamanan klien relay |
+| 2026-10-13 02:58 | tinjauan keamanan klien relay | (a) DAPAT DITERIMA DENGAN PERBAIKAN (2 High); C39: baris 186 (pengerasan + fuzz) diluncurkan sambil menunggu keputusan pengguna |
+| 2026-10-13 04:47 | baris 186 | SELESAI (fuzz menemukan 1 crash, diperbaiki). I-6 dan baris 182 BERJALAN; 128+129 dan J masih hidup (menunggu kunci tadi) |
+| 2026-10-13 05:06 | I-6 | SELESAI, tanpa merah tersisa. Berjalan: 182, 128+129, J |
+| 2026-10-13 05:13 | baris 182 | SELESAI; C40. Uji penuh c04 BERJALAN. Masih berjalan: 128+129, J |

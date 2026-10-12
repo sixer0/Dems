@@ -6,7 +6,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { createIdleState, DEFAULT_SEED, type SimState } from '@dems/shared/sim';
 import { realCaptureView } from '@/features/devices/camera-preview';
-import { cameraStreamWordApplies, checkedFactOf, micLineReportOf, primaryMicReportOf, realCaptureSources, sourceStateWord } from './source-state';
+import { cameraStreamWordApplies, checkedFactOf, micLineDeviceIdOf, micLineReportOf, primaryMicReportOf, realCaptureSources, sourceStateWord } from './source-state';
 
 jest.mock('@shopify/react-native-skia', () =>
   jest.requireActual<typeof import('@/components/media/testing/skia-mock')>('@/components/media/testing/skia-mock').createSkiaMock(),
@@ -65,6 +65,39 @@ describe('sourceStateWord: what the Core reported for the microphone on a line',
     const channel = state.captureConfig.mics[0]?.role === 'PRIMARY' ? 'AUDIO-01' : 'AUDIO-02';
     expect(word(state, channel)).toMatchObject({ kind: 'UNKNOWN', key: 'features.capture-selector.preview.stateUnknown' });
     expect(primaryMicReportOf(base).deviceId).toBe(base.captureConfig.mics.find((line) => line.role === 'PRIMARY')?.deviceId);
+  });
+});
+
+// Task 4 row 171 (site M5; decision C18 (2)): the microphone of a meter channel is found by the lookup of row 164.
+describe('task 4 row 171: a meter channel WITHOUT an input names no device (never the device behind MIC-01 / MIC-02)', () => {
+  const base = marked(idle(), { 'MIC-01': { ...FAKE, checkedAt: 1_791_636_968_000 }, 'MIC-02': { ...FAKE, checkedAt: 1_791_636_968_000 } });
+  const withRoles = (roles: readonly string[]): SimState => ({ ...base, captureConfig: { ...base.captureConfig, mics: base.captureConfig.mics.filter((line) => roles.includes(line.role)) } });
+
+  it.each([
+    ['no microphone line', []],
+    ['a lone PRIMARY line', ['PRIMARY']],
+    ['a lone STANDBY line', ['STANDBY']],
+  ])('%s: both channels report the unknown source - no device id, "State not known"', (_name, roles) => {
+    const state = withRoles(roles);
+    for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+      expect(micLineDeviceIdOf(state, channel)).toBeNull();
+      expect(micLineReportOf(state, channel)).toMatchObject({ deviceId: null, kind: 'MIC', online: false, sourceOpen: false, checked: null });
+      expect(word(state, channel)).toMatchObject({ kind: 'UNKNOWN', key: 'features.capture-selector.preview.stateUnknown' });
+    }
+    // The registry still HOLDS both microphones, reachable: the channel does not read them.
+    expect(state.captureDevices.devices.filter((device) => device.id === 'MIC-01' || device.id === 'MIC-02')).toHaveLength(2);
+  });
+
+  it('a lone line keeps its ROLE: the primary report still names the PRIMARY line\'s microphone', () => {
+    expect(primaryMicReportOf(withRoles(['PRIMARY'])).deviceId).toBe('MIC-01');
+    expect(primaryMicReportOf(withRoles(['STANDBY'])).deviceId).toBeNull();
+  });
+
+  it('CONTROL - the seeded, complete pair: each channel names the microphone of its line, as before', () => {
+    expect(micLineDeviceIdOf(base, 'AUDIO-01')).toBe('MIC-01');
+    expect(micLineDeviceIdOf(base, 'AUDIO-02')).toBe('MIC-02');
+    expect(word(base, 'AUDIO-01').kind).toBe('REACHABLE');
+    expect(word(base, 'AUDIO-02').kind).toBe('REACHABLE');
   });
 });
 

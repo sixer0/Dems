@@ -44,6 +44,21 @@
  * A refusal that another try cannot change (`FINAL_START_REFUSALS`) and a crash a new worker would
  * repeat (`FINAL_CRASH_CODES`: no camera connected) are not retried either.
  *
+ * A LATER WORKER OF A SESSION GETS INGEST ADDRESSES OF ITS OWN (task 4 row 179; security requirement
+ * BR-07 (2); design addendum section 5.3). The last element of a camera's ingest address is the
+ * secret a pusher must announce. Until row 179 a restart sent the stored plan again, so the secret
+ * of a worker that had gone down - for a reason nobody knows yet - opened the listener of the next
+ * one. Now `launch` builds, for every worker after the first, a new address per camera with the
+ * ONE function of the capture unit (`captureIngestAddress`), puts them into the plan of that
+ * attempt and tells the session (`CaptureAttemptIngest.renewed`) BEFORE the worker is started: the
+ * session opens the cameras of that attempt with the same strings. The source of chance is handed
+ * in with `start` (this folder may import none, static rule G-R8). No element is used twice inside
+ * a session: one that an earlier plan of the session held starts no worker. A plan that cannot be
+ * renewed (the source failed, the element repeats, the session's receiver threw) starts NO worker
+ * and is not tried again: the capture ends with its fault, never with an address of an earlier
+ * attempt. The addresses are in the plan frame and in that one call, and in no event, report,
+ * status or message of this file. A `start` without that source sends the plan as given, as before.
+ *
  * THE SUPERVISOR'S OWN FAULT ENDS when a later session reaches `RECORDING`: the `CAPTURE_FAULT`
  * it raised is then said again with state `CLEARED`, so that the next failure is a new fault.
  * Each session that fails says its own `ACTIVE` with its own correlation ID, and the fault held is
@@ -191,6 +206,7 @@ import {
   WorkerDownCode,
   WorkerLaunchError,
   type CaptureCameraEnd,
+  type CaptureAttemptIngest,
   type CaptureCameraEndReason,
   type CaptureEvent,
   type CaptureEventName,
@@ -203,6 +219,7 @@ import {
   type WorkerDown,
 } from './types';
 import { CaptureBootRefusal, workerVersionRefusalOf } from './boot/checks';
+import { CAPTURE_INGEST_PORT, captureIngestAddress, type CaptureIngestTrackId } from './ingest-address';
 
 /** Longest session ID the supervisor takes: a correlation ID built from it must fit the protocol's 128 characters. */
 export const MAX_SESSION_ID_CHARS = 80;
@@ -275,6 +292,10 @@ interface Session {
   readonly lastFragment: Map<string, { readonly index: number; readonly mediaEndMs: number }>;
   /** The cameras the worker gave up while the session went on, by camera, in the order it said so. */
   readonly cameraEnds: Map<string, CaptureCameraEnd>;
+  /** Row 179: what renews the ingest addresses for a later worker of the session; null: the plan is sent as given. */
+  readonly ingest: CaptureAttemptIngest | null;
+  /** Row 179: the last element of every ingest address a plan of this session held. None is used twice. */
+  readonly ingestElements: Set<string>;
 }
 
 interface DownCause {
@@ -304,6 +325,14 @@ const CLEAN_STOP: CaptureStopOutcome = Object.freeze({ clean: true, down: null }
 export const STOP_NOT_ACKNOWLEDGED = 'STOP_NOT_ACKNOWLEDGED';
 /** A stop: the worker left without the record that ends the audio timeline it had begun (`WorkerDown.detail`). */
 export const TIMELINE_END_MISSING = 'TIMELINE_END_MISSING';
+/** Row 179: the code of the report of a later worker that was not started because its plan got no new ingest addresses. */
+export const CAPTURE_INGEST_NOT_RENEWED = 'CAPTURE_INGEST_NOT_RENEWED';
+/** Why (`detail` of that report's error): a closed list, never a text of the failure and never an address. */
+export const IngestRenewalFailure = { TRACK_UNKNOWN: 'TRACK_UNKNOWN', SOURCE_FAILED: 'SOURCE_FAILED', ELEMENT_REPEATED: 'ELEMENT_REPEATED', PLAN_INVALID: 'PLAN_INVALID', RECEIVER_FAILED: 'RECEIVER_FAILED' } as const;
+export type IngestRenewalFailure = (typeof IngestRenewalFailure)[keyof typeof IngestRenewalFailure];
+/** The last path element of an ingest address: what a pusher must announce beyond what anyone can know. Read to compare, never to rebuild. */
+const ingestElementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
+const isIngestTrack = (trackId: string): trackId is CaptureIngestTrackId => Object.hasOwn(CAPTURE_INGEST_PORT, trackId);
 const PROOF_BUILD_DETAIL = 'PROOF_BUILD';
 const VERSION_UNKNOWN_DETAIL = 'VERSION_UNKNOWN';
 
@@ -943,11 +972,56 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     emit({ name: 'record', sessionId: current.id, correlationId: current.correlationId, attempt: from.attempt, seq: message.seq, record });
   }
 
+  /**
+   * Row 179 (BR-07 (2)): the plan of a worker AFTER the first of a session. Every camera of the
+   * plan gets a new ingest address from the one function; the session is told; only then is the
+   * plan of the session replaced. Null when all of that held, else why not - and then the plan is
+   * left as it was and the caller starts no worker with it.
+   */
+  function renewIngest(current: Session, source: CaptureAttemptIngest, attempt: number): IngestRenewalFailure | null {
+    const addresses = new Map<string, string>();
+    const elements: string[] = [];
+    for (const camera of current.plan.cameras) {
+      if (!isIngestTrack(camera.trackId)) return IngestRenewalFailure.TRACK_UNKNOWN;
+      let address: string;
+      try {
+        address = captureIngestAddress(current.id, camera.trackId, source.chance);
+      } catch {
+        return IngestRenewalFailure.SOURCE_FAILED;
+      }
+      const element = ingestElementOf(address);
+      if (current.ingestElements.has(element) || elements.includes(element)) return IngestRenewalFailure.ELEMENT_REPEATED;
+      elements.push(element);
+      addresses.set(camera.deviceId, address);
+    }
+    // The same schema as the plan of the start: an address the protocol would refuse is never sent.
+    const renewed = CapturePlanSchema.safeParse({ ...current.plan, cameras: current.plan.cameras.map((camera) => ({ ...camera, ingestUrl: addresses.get(camera.deviceId) })) });
+    if (!renewed.success) return IngestRenewalFailure.PLAN_INVALID;
+    // Drawn is used: an element that was built is never built into a later plan, whatever follows.
+    for (const element of elements) current.ingestElements.add(element);
+    try {
+      source.renewed(attempt, addresses);
+    } catch {
+      return IngestRenewalFailure.RECEIVER_FAILED;
+    }
+    current.plan = renewed.data;
+    return null;
+  }
+
   function launch(): void {
     whenReaped(() => {
       const current = session;
       if (current === null || current.stopping !== null || worker !== null) return;
       current.attempt += 1;
+      if (current.attempt > 1 && current.ingest !== null) {
+        const failure = renewIngest(current, current.ingest, current.attempt);
+        if (failure !== null) {
+          // No worker is started with the addresses of an earlier one, and another try has the same source: final.
+          report({ source: 'capture.supervisor.launch', code: CAPTURE_INGEST_NOT_RENEWED, sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.FAULT, 'the ingest of a later capture worker could not be renewed: no worker was started', failure) });
+          afterDown(current.attempt, { code: WorkerDownCode.SPAWN_FAILED, retryable: false });
+          return;
+        }
+      }
       // A worker counts its own records from 1. A session gets a second worker only while it holds
       // no durable fragment, so every record of a fragment of one session is in ONE sequence.
       current.recordSeq = 0;
@@ -1024,8 +1098,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
       phase = CapturePhase.CLOSED;
     },
 
-    start(sessionId, plan) {
-      return step(() => startSession(sessionId, plan));
+    start(sessionId, plan, attempts) {
+      return step(() => startSession(sessionId, plan, attempts ?? null));
     },
 
     stop(sessionId, reason) {
@@ -1069,7 +1143,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
   };
   return supervisor;
 
-  function startSession(sessionId: string, plan: CapturePlan): Promise<void> {
+  function startSession(sessionId: string, plan: CapturePlan, ingest: CaptureAttemptIngest | null): Promise<void> {
     if (phase === CapturePhase.CLOSED) {
       return Promise.reject(new CaptureSupervisorError(CaptureRefusal.CLOSED, 'the capture supervisor is not running'));
     }
@@ -1107,6 +1181,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         stopOutcome: null,
         lastFragment: new Map(),
         cameraEnds: new Map(),
+        ingest,
+        ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),
       };
       setPhase(CapturePhase.STARTING);
       launch();

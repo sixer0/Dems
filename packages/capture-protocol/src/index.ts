@@ -134,6 +134,13 @@
  * ADDED INSIDE VERSION 4 (fix pass F-M3; ruling D179 - additive: a frame of the worker before it
  * still decodes): the warning reason `FRAGMENT_SIZE_BOUND_REACHED`, the named setting
  * `maxFragmentBytes`, and the OPTIONAL member `FIRST_DURABLE_FRAGMENT.syncLevel`.
+ *
+ * ALSO ADDED INSIDE VERSION 4, by the same rule (task 4 row 182; decision C30 (3)): the warning
+ * reasons `CAMERA_ANNOUNCE_NOT_MATCHED`, `CAMERA_ANNOUNCE_NOT_SEEN` and `CAMERA_NO_PICTURE`. Until
+ * them a worker said `CAMERA_NOT_CONNECTED` for all three; a frame of that worker still decodes. A
+ * Core BEFORE them does not decode a frame that carries one, so the worker that writes them and the
+ * Core that reads them are built from one tree (the Core's `protocol-pins` test holds the worker's
+ * sources to this list).
  */
 import { z } from 'zod';
 
@@ -197,6 +204,13 @@ export type CaptureWarningCode = (typeof CaptureWarningCode)[keyof typeof Captur
  *                                                        `CLEARED` when the level is above it again. Never a switch.
  *   code CAPTURE_FAULT  CAMERA_NOT_CONNECTED             the camera's ingest never delivered video (refused, no connection
  *                                                        within the ingest-open window, no usable stream)
+ *                       CAMERA_ANNOUNCE_NOT_MATCHED      a client completed the handshake on the camera's listener and the
+ *                                                        address it announced was not the plan's, or it announced twice:
+ *                                                        refused before a byte of media was read; nothing of it is recorded
+ *                       CAMERA_ANNOUNCE_NOT_SEEN         a client completed the handshake and the worker saw no announce line
+ *                                                        at all (its media library no longer shows one): refused the same way
+ *                       CAMERA_NO_PICTURE                the push announced the plan's address, completed its handshake and
+ *                                                        delivered no picture before it ended: no file exists for that camera
  *                       CAMERA_STREAM_ENDED              a camera that delivered video stopped
  *                       CAMERA_CLOCK_OUT_OF_BOUND        the camera's wall clock is beyond any delay: not recorded at a wrong time
  *                       KEYFRAME_INTERVAL_ABOVE_BOUND    ADVISORY: the camera RECORDS; its keyframe interval is above the
@@ -215,10 +229,18 @@ export type CaptureWarningCode = (typeof CaptureWarningCode)[keyof typeof Captur
  * The camera conditions do not end inside a session (a listen ingest takes one connection), so the
  * worker writes no `CLEARED` for them; the three microphone conditions are raised and cleared, and
  * every later occurrence is a new `ACTIVE`.
+ *
+ * A REASON IS A FIXED WORD (task 4 row 182; security requirement BR-04 of branch B). The three
+ * members that tell the causes of a camera that never delivered apart carry NO address, no path and
+ * nothing derived from one: the frame says which of the worker's own judgements it was, and the
+ * subject is the camera's device ID of the plan, as for every other reason.
  */
 export const CaptureWarningReason = {
   MIC_LEVEL_BELOW_THRESHOLD: 'MIC_LEVEL_BELOW_THRESHOLD',
   CAMERA_NOT_CONNECTED: 'CAMERA_NOT_CONNECTED',
+  CAMERA_ANNOUNCE_NOT_MATCHED: 'CAMERA_ANNOUNCE_NOT_MATCHED',
+  CAMERA_ANNOUNCE_NOT_SEEN: 'CAMERA_ANNOUNCE_NOT_SEEN',
+  CAMERA_NO_PICTURE: 'CAMERA_NO_PICTURE',
   CAMERA_STREAM_ENDED: 'CAMERA_STREAM_ENDED',
   CAMERA_CLOCK_OUT_OF_BOUND: 'CAMERA_CLOCK_OUT_OF_BOUND',
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'KEYFRAME_INTERVAL_ABOVE_BOUND',
@@ -232,6 +254,9 @@ export const WARNING_REASONS_OF: { readonly [Code in CaptureWarningCode]: readon
   MIC_SILENT: [CaptureWarningReason.MIC_LEVEL_BELOW_THRESHOLD],
   CAPTURE_FAULT: [
     CaptureWarningReason.CAMERA_NOT_CONNECTED,
+    CaptureWarningReason.CAMERA_ANNOUNCE_NOT_MATCHED,
+    CaptureWarningReason.CAMERA_ANNOUNCE_NOT_SEEN,
+    CaptureWarningReason.CAMERA_NO_PICTURE,
     CaptureWarningReason.CAMERA_STREAM_ENDED,
     CaptureWarningReason.CAMERA_CLOCK_OUT_OF_BOUND,
     CaptureWarningReason.KEYFRAME_INTERVAL_ABOVE_BOUND,

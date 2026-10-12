@@ -64,6 +64,59 @@ describe('useAudioSharedValues', () => {
     act(() => sim.actions.inject('MIC_NO_SIGNAL', { channel: 'AUDIO-02' }));
     expect(renders).toBe(rendersAfterMount);
   });
+
+  // Task 4 row 171 (site M6; decision C18 (2)): the input of a channel is found by the lookup of row 164.
+  it('task 4 row 171: a channel that LOSES its input (the selector no longer holds a complete pair) is put back to the empty state and reads no frame of MIC-01 / MIC-02', async () => {
+    jest.useFakeTimers();
+    const { sim, advance } = createTestSim();
+    let renders = 0;
+    let values: AudioSharedValues | null = null;
+    let a11y = '';
+    function Meter() {
+      renders += 1;
+      values = useAudioSharedValues('AUDIO-01');
+      a11y = useAudioAccessibilityValue('AUDIO-01').text;
+      return <Text>meter</Text>;
+    }
+    render(
+      <RuntimeTestProviders sim={sim}>
+        <Meter />
+      </RuntimeTestProviders>,
+    );
+    await flushAsync();
+    act(() => {
+      sim.actions.loadScenario('recording');
+      advance(1_000, 50);
+    });
+    // The seeded, complete pair: the channel reads its input, as before.
+    expect(values!.level.value).toBe(sim.store.getState().audio.inputs['MIC-01'].dbfs);
+    expect(values!.level.value).toBeGreaterThan(AUDIO_FLOOR_DBFS);
+    const rendersBefore = renders;
+
+    // The selector keeps its PRIMARY line only (the open session's snapshot too): no meter channel has an input.
+    act(() => {
+      const state = sim.store.getState();
+      const mics = state.captureConfig.mics.filter((line) => line.role === 'PRIMARY');
+      sim.store.setState({
+        captureConfig: { ...state.captureConfig, mics },
+        session: state.session === null ? null : { ...state.session, captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics } : state.session.captureConfig },
+      } as never);
+    });
+    expect(values!.level.value).toBe(AUDIO_FLOOR_DBFS);
+    expect(values!.peak.value).toBe(AUDIO_FLOOR_DBFS);
+    expect(values!.clip.value).toBe(0);
+    expect(values!.noSignal.value).toBe(0);
+    // The meters slice still holds a frame under MIC-01 with a level: it is not read, now or on later ticks.
+    expect(sim.store.getState().audio.inputs['MIC-01'].dbfs).toBeGreaterThan(AUDIO_FLOOR_DBFS);
+    act(() => {
+      advance(1_000, 50);
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(values!.level.value).toBe(AUDIO_FLOOR_DBFS);
+    expect(a11y).toBe('-60 dBFS');
+    // Change-only: the loss of the input is a write of shared values, never a render per frame (at most the 1 s readout).
+    expect(renders).toBeLessThanOrEqual(rendersBefore + 1);
+  });
 });
 
 describe('accessible meter value (01_specs §14.6)', () => {

@@ -26,7 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { isLevelNotMeasured, micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
+import { isLevelNotMeasured, meterInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
 import { MicStateTone, fontFamily, palette, toneHex, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
@@ -122,7 +122,11 @@ function useNoSignal(values: AudioSharedValues): boolean {
   return flat;
 }
 
-export type MicLevelState = 'WAITING' | 'OK' | 'NO_SIGNAL' | 'NOT_MEASURED';
+/**
+ * `ABSENT` (task 4 row 170, site M4): the meter channel of the card has NO input - the selector in force holds
+ * no complete microphone pair. Nothing is waited for and no frame is read; the card says so in words.
+ */
+export type MicLevelState = 'WAITING' | 'OK' | 'NO_SIGNAL' | 'NOT_MEASURED' | 'ABSENT';
 
 /**
  * Fix wave J (JM-05; tablet, normal launch: "the two microphone cards are EMPTY for the first 12 s of a
@@ -136,7 +140,10 @@ export type MicLevelState = 'WAITING' | 'OK' | 'NO_SIGNAL' | 'NOT_MEASURED';
  */
 export function useMicLevelState(micId: MicStatus['id']): MicLevelState {
   return useSim((s) => {
-    const frame = s.audio.inputs[micInputOfChannel(micLinesInForce(s), micId)];
+    // The input by the lookup of row 164: `null` for a channel without one - never the frame of `MIC-01` / `MIC-02`.
+    const input = meterInputOfChannel(micLinesInForce(s), micId);
+    if (input === null) return 'ABSENT';
+    const frame = s.audio.inputs[input];
     if (frame === undefined) return 'WAITING';
     if (isLevelNotMeasured(frame)) return 'NOT_MEASURED';
     return frame.noSignal ? 'NO_SIGNAL' : 'OK';
@@ -165,7 +172,9 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
   // Wave H closing pass Z2 (ruling D137): the card is a LINE. The microphone on it is the one the capture
   // configuration names for this channel (the open session's snapshot first) - not `mic.deviceId`, the
   // channel record's constant `MIC-01` / `MIC-02`, which no selector edit moves.
-  const lineInput = useSim((s) => micInputOfChannel(micLinesInForce(s), mic.id));
+  // Task 4 row 170: `null` when the channel has no input (no complete pair) - the card then draws no badge of a
+  // device and its state line reads "No microphone input".
+  const lineInput = useSim((s) => meterInputOfChannel(micLinesInForce(s), mic.id));
   const active = sourceRole === 'ACTIVE';
   const levelState = useMicLevelState(mic.id);
   // While the cameras connect the meter's place says CONNECTING and nothing is recorded yet: no second word.
@@ -201,16 +210,17 @@ export function MicCard({ mic, style, ...meter }: MicCardProps) {
         ) : null}
       </View>
       {/* Pass D2 (ux §8f.2; row 138's request): the one badge; no node unless the Core sent the development class. */}
-      <MicInputSourceBadge inputId={lineInput} testID={`monitor-mic-source-${mic.channel}`} />
+      {lineInput === null ? null : <MicInputSourceBadge inputId={lineInput} testID={`monitor-mic-source-${mic.channel}`} />}
       <MicMeter mic={mic} testID={`monitor-meter-${mic.channel}`} {...meter} />
       {/* JM-05: the state of the input in words, by React, whatever the canvas above has painted so far. */}
       {connecting ? null : (
       <Text
         maxFontSizeMultiplier={1.2}
-        style={[styles.levelState, levelState === 'NO_SIGNAL' || mic.state === 'NO_SIGNAL' ? styles.levelStateAlarm : null]}
+        style={[styles.levelState, levelState !== 'ABSENT' && (levelState === 'NO_SIGNAL' || mic.state === 'NO_SIGNAL') ? styles.levelStateAlarm : null]}
         testID={`monitor-mic-level-state-${mic.channel}`}
       >
-        {t(`features.session-live.mic.levelState.${mic.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : levelState}`)}
+        {/* An absent input is said as absent: the channel record's own `NO_SIGNAL` is about no input of the selector. */}
+        {t(`features.session-live.mic.levelState.${levelState === 'ABSENT' ? 'ABSENT' : mic.state === 'NO_SIGNAL' ? 'NO_SIGNAL' : levelState}`)}
       </Text>
       )}
       {/* E-15 (W93-4): always mounted, last; React sets its opacity. */}

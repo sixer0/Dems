@@ -56,9 +56,12 @@ import {
 export interface MicSourceView {
   readonly sessionId: string | null;
   readonly recording: boolean;
-  /** The pair as the Core holds it. */
-  readonly activeInputId: string;
-  readonly standbyInputId: string;
+  /**
+   * The pair as the Core holds it. Task 4 row 170 (site M4): each member is `null` when it is ABSENT - the
+   * selector in force holds no line for it and the session states none. Nothing stands in for it.
+   */
+  readonly activeInputId: string | null;
+  readonly standbyInputId: string | null;
   /** G4 / G5: why the toggle is not offered; `null` when it is. */
   readonly block: MicSwitchBlock | null;
   /** The input of an active `MIC_SILENT` warning while recording, or `null`. */
@@ -146,8 +149,12 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
   // Render-time "adjust state when an input changed": no effect, no ref (React Compiler).
   if (confirmOpen && block !== null && !press.busy) setConfirmOpen(false);
 
+  // Task 4 row 170: a switch needs BOTH members of the pair. With one absent there is nothing to switch from or
+  // to: the confirmation is not opened and no command is sent (the panel does not draw the toggle then).
+  const pairComplete = activeInputId !== null && standbyInputId !== null;
+
   const ask = () => {
-    if (block !== null || press.busy) return;
+    if (block !== null || press.busy || !pairComplete) return;
     setRefusal(null);
     setConfirmOpen(true);
   };
@@ -155,7 +162,7 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
     if (!press.busy) setConfirmOpen(false);
   };
   const confirm = () => {
-    if (block !== null) return;
+    if (block !== null || activeInputId === null || standbyInputId === null) return;
     const from = activeInputId;
     const to = standbyInputId;
     const started = press.run((release) => {
@@ -164,7 +171,8 @@ export function useMicSwitch(view: MicSourceView): MicSwitchControl {
         ok: () => {
           setConfirmOpen(false);
           // Read on the settle: the input the store holds, not the one that was asked for.
-          const active = selectActiveInputId(sim.store.getState());
+          // (Should the store state none at that moment, the input that was asked for is named.)
+          const active = selectActiveInputId(sim.store.getState()) ?? to;
           toast.show({
             variant: 'success',
             label: t('session.audioSource.switched', { mic: micName(active) }),

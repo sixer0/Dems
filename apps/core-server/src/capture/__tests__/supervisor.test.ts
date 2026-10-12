@@ -869,3 +869,138 @@ describe('code review of M3 (row 63), the supervisor\'s findings: R63-01, R63-04
     });
   });
 });
+
+describe('task 4 row 179 (BR-07 (2)): a later worker of a session is sent ingest addresses of its own', () => {
+  const elementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
+  /** A source of chance that never repeats and can be told apart: draw n is 16 bytes of the value n. */
+  const counting = () => {
+    let draws = 0;
+    return { chance: (bytes: number): Uint8Array => new Uint8Array(bytes).fill((draws += 1)), draws: () => draws };
+  };
+  /** The session's side as a double: what it was told, per attempt (what it would hand to the relay of that attempt). */
+  const receiver = (chance: (bytes: number) => Uint8Array) => {
+    const told: Array<{ attempt: number; addresses: Record<string, string>; workersThen: number }> = [];
+    return { told, attempts: (fake: { workers: unknown[] }) => ({ chance, renewed: (attempt: number, addresses: ReadonlyMap<string, string>) => void told.push({ attempt, addresses: Object.fromEntries(addresses), workersThen: fake.workers.length }) }) };
+  };
+  const planOf = (worker: { commands(type: 'START'): Array<{ plan: ReturnType<typeof capturePlan> }> }) => worker.commands(SupervisorMessageType.START)[0]!.plan;
+  const addressesOf = (plan: ReturnType<typeof capturePlan>): Record<string, string> => Object.fromEntries(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl]));
+  async function restart(context: Awaited<ReturnType<typeof setup>>, delayMs: number): Promise<void> {
+    context.fake.last().exit(1);
+    context.clock.advance(delayMs);
+    await flush();
+  }
+
+  it('two attempts of one session: attempt 1 is sent the plan as given; attempt 2 a new element for BOTH tracks, built by the one function, and the receiver is told the same strings before that worker is started', async () => {
+    const context = await setup();
+    const source = counting();
+    const session = receiver(source.chance);
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, session.attempts(context.fake));
+    // Attempt 1: the plan of the start, byte for byte; the source was not asked and the receiver not told.
+    expect(planOf(context.fake.last())).toEqual(plan);
+    expect([source.draws(), session.told]).toEqual([0, []]);
+    await restart(context, LIMITS.backoffBaseMs);
+    expect(context.fake.workers).toHaveLength(2);
+    const second = planOf(context.fake.last());
+    // The form of the one function: the listener of the track, the session, the track in lower case, 16 bytes as URL-safe base64.
+    expect(addressesOf(second)).toEqual({
+      'CAM-01': `rtsp://127.0.0.1:8554/${SESSION}/video-01/${Buffer.from(new Uint8Array(16).fill(1)).toString('base64url')}`,
+      'CAM-02': `rtsp://127.0.0.1:8556/${SESSION}/video-02/${Buffer.from(new Uint8Array(16).fill(2)).toString('base64url')}`,
+    });
+    for (const camera of second.cameras) expect(elementOf(camera.ingestUrl) === elementOf(plan.cameras.find((first) => first.deviceId === camera.deviceId)!.ingestUrl)).toBe(false);
+    // Nothing else of the plan moved.
+    expect({ ...second, cameras: second.cameras.map((camera) => ({ ...camera, ingestUrl: '' })) }).toEqual({ ...plan, cameras: plan.cameras.map((camera) => ({ ...camera, ingestUrl: '' })) });
+    // The receiver (the session, for its relays): the strings of ITS attempt, told once, while only the first worker existed.
+    expect(session.told).toEqual([{ attempt: 2, addresses: addressesOf(second), workersThen: 1 }]);
+    expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2 });
+  });
+
+  it('no element of an earlier attempt or of an earlier session is in a later plan: three attempts, then a second session, with the runtime\'s random source', async () => {
+    const { randomBytes } = await import('node:crypto');
+    const context = await setup();
+    const session = receiver(randomBytes);
+    const seen: string[] = [];
+    const first = { ...capturePlan(SESSION), cameras: capturePlan(SESSION).cameras.map((camera, index) => ({ ...camera, ingestUrl: `rtsp://127.0.0.1:${index === 0 ? 8554 : 8556}/${SESSION}/video-0${index + 1}/${randomBytes(16).toString('base64url')}` })) };
+    await context.supervisor.start(SESSION, first, session.attempts(context.fake));
+    seen.push(...Object.values(addressesOf(planOf(context.fake.last()))));
+    await restart(context, LIMITS.backoffBaseMs);
+    seen.push(...Object.values(addressesOf(planOf(context.fake.last()))));
+    await restart(context, backoffDelayMs(1, LIMITS));
+    seen.push(...Object.values(addressesOf(planOf(context.fake.last()))));
+    expect(context.fake.workers).toHaveLength(3);
+    await context.supervisor.stop(SESSION, CaptureStopReason.STOPPED);
+    const other = 'S-TEST-0002';
+    await context.supervisor.start(other, capturePlan(other), session.attempts(context.fake));
+    await restart(context, LIMITS.backoffBaseMs);
+    seen.push(...Object.values(addressesOf(planOf(context.fake.last()))));
+    expect(seen).toHaveLength(8);
+    expect(new Set(seen.map(elementOf)).size).toBe(8);
+    for (const element of seen.map(elementOf)) expect(element).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(session.told.map((entry) => entry.attempt)).toEqual([2, 3, 2]);
+  });
+
+  it('the addresses are in the plan frame and in the receiver\'s call only: no event, no report, no status and no other frame holds an element', async () => {
+    const context = await setup();
+    const session = receiver(counting().chance);
+    const records: unknown[] = [];
+    context.supervisor.on('record', (event) => void records.push(event));
+    await context.supervisor.start(SESSION, capturePlan(SESSION), session.attempts(context.fake));
+    await restart(context, LIMITS.backoffBaseMs);
+    const elements = Object.values(session.told[0]!.addresses).map(elementOf);
+    expect(elements).toHaveLength(2);
+    const holds = (value: unknown): boolean => elements.some((element) => JSON.stringify(value).includes(element));
+    // CONTROL: the same search finds them in the START frame of the second worker.
+    expect(holds(context.fake.last().commands(SupervisorMessageType.START))).toBe(true);
+    expect([holds(context.events), holds(context.reports), holds(records), holds(context.supervisor.status()), holds(context.fake.workers[0]!.received)]).toEqual([false, false, false, false, false]);
+    expect(holds(context.fake.last().received.filter((frame) => frame.type !== SupervisorMessageType.START))).toBe(false);
+  });
+
+  it('a plan that cannot be renewed starts NO worker and is not tried again: a source that repeats, one that answers short, one that throws, a receiver that throws', async () => {
+    const stale = new Uint8Array(16).fill(9);
+    const cases: Array<[string, (bytes: number) => Uint8Array, (() => void) | null]> = [
+      ['ELEMENT_REPEATED', () => stale, null],
+      ['SOURCE_FAILED', () => new Uint8Array(8), null],
+      ['SOURCE_FAILED', () => { throw new Error('no entropy'); }, null],
+      ['RECEIVER_FAILED', counting().chance, () => { throw new Error('rtsp://127.0.0.1:8554/a-secret-the-receiver-put-in-its-error'); }],
+    ];
+    for (const [why, chance, renewed] of cases) {
+      const context = await setup();
+      const plan = { ...capturePlan(SESSION), cameras: capturePlan(SESSION).cameras.map((camera) => ({ ...camera, ingestUrl: `${camera.ingestUrl}/${Buffer.from(stale).toString('base64url')}` })) };
+      await context.supervisor.start(SESSION, plan, { chance, renewed: renewed ?? (() => undefined) });
+      await restart(context, LIMITS.backoffBaseMs);
+      // No second worker, the session FAULTED with one CAPTURE_FAULT, and no further timer would start one.
+      expect([why, context.fake.workers.length, context.fake.calls()]).toEqual([why, 1, 1]);
+      expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, attempt: 2, lastCrash: { code: WorkerDownCode.SPAWN_FAILED, attempt: 2 } });
+      expect(context.named('warning').filter((event) => event.code === CaptureWarningCode.CAPTURE_FAULT)).toHaveLength(1);
+      expect(context.named('workerDown').map((event) => event.restartInMs)).toEqual([LIMITS.backoffBaseMs, null]);
+      // Said once, by a closed code and a closed reason: never the text of the failure.
+      expect(context.reports.map((entry) => [entry.source, entry.code, (entry.err as CaptureSupervisorError).detail])).toEqual([['capture.supervisor.launch', 'CAPTURE_INGEST_NOT_RENEWED', why]]);
+      expect(JSON.stringify(context.reports.map((entry) => String((entry.err as Error).message)))).not.toMatch(/rtsp|a-secret|entropy/);
+      context.clock.advance(LIMITS.backoffMaxMs * 4);
+      await flush();
+      expect(context.fake.calls()).toBe(1);
+      await context.supervisor.stop(SESSION, CaptureStopReason.STOPPED);
+    }
+  });
+
+  it('CONTROL - a start WITHOUT the source (every caller before this row, every double): the later worker is sent the plan as given, as before', async () => {
+    const context = await setup();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan);
+    await restart(context, LIMITS.backoffBaseMs);
+    expect(context.fake.workers).toHaveLength(2);
+    expect(planOf(context.fake.last())).toEqual(plan);
+    expect(context.reports).toEqual([]);
+  });
+
+  it('a switch of the audio source survives the renewal: the later plan holds the chosen source AND new addresses', async () => {
+    const context = await setup();
+    const session = receiver(counting().chance);
+    await context.supervisor.start(SESSION, capturePlan(SESSION), session.attempts(context.fake));
+    await context.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY);
+    await restart(context, LIMITS.backoffBaseMs);
+    const second = planOf(context.fake.last());
+    expect(second.activeMic).toBe('STANDBY');
+    expect(addressesOf(second)).toEqual(session.told[0]!.addresses);
+  });
+});

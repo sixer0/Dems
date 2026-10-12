@@ -114,9 +114,13 @@ export const MIC_NO_LEVEL_TEXT = '— dBFS';
  * What a MIC tile says about its input while a session records: the one inside `AUDIO-01`
  * ("Active") or the hot standby ("Standby"); `null` without a recording (ux §3.6 MB-01; D105: the
  * session's pair, not the configured Primary). Pure.
+ *
+ * Task 4 row 171 (site M5): also `null` when the tile's channel has NO input (`inputId` null: the
+ * selector in force holds no complete microphone pair) and when no input is active - an absent
+ * input has no role, and nothing is "Standby" to an active input that is absent.
  */
-export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | undefined; readonly activeInputId: string }): 'ACTIVE' | 'STANDBY' | null {
-  if (!input.recording || input.inputId === undefined) return null;
+export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | null | undefined; readonly activeInputId: string | null }): 'ACTIVE' | 'STANDBY' | null {
+  if (!input.recording || input.inputId === undefined || input.inputId === null || input.activeInputId === null) return null;
   return input.inputId === input.activeInputId ? 'ACTIVE' : 'STANDBY';
 }
 

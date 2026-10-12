@@ -172,7 +172,10 @@ describe('the audio pair in force (sealed session THEN the microphone changed; f
     expect(openSessionAudioSource(sealed.session)).toBeNull();
     expect(audioPairInForce(sealed)).toEqual({ activeInputId: 'MIC-04', standbyInputId: 'MIC-02' });
     // It is the pair the NEXT recording starts with.
-    expect(audioPairInForce(sealed)).toMatchObject({ activeInputId: audioSourceAtStart(sealed, 'SES-NEXT').activeInputId, standbyInputId: audioSourceAtStart(sealed, 'SES-NEXT').standbyInputId });
+    // (`audioSourceAtStart` answers null for a selector without a complete pair since task 4 row 163; this one is complete.)
+    const next = audioSourceAtStart(sealed, 'SES-NEXT');
+    expect(next).not.toBeNull();
+    expect(audioPairInForce(sealed)).toMatchObject({ activeInputId: next?.activeInputId, standbyInputId: next?.standbyInputId });
   });
 
   it('CONTROL - the same state with the session still OPEN: its own pair, in every open state', () => {

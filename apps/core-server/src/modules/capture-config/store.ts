@@ -19,6 +19,11 @@
  * FAIL CLOSED. A row set that cannot form a valid slice raises `CaptureSliceError` naming codes
  * and identifiers only - never a value beyond an id or a code. The boot step turns such a refusal
  * into a stopped start (the same rule the engine's rehydration states for a stored state).
+ *
+ * AN UNASSIGNED SLOT IS NOT SUCH A ROW SET (task 4 row 29; decisions C14, C18; AD-04). A selector
+ * slot whose column is NULL is a valid state: the load answers a selector WITHOUT that line, down
+ * to a row of six NULLs (two empty lists). A production Core with unassigned slots boots; what
+ * refuses a session start on it is the session start, not this step.
  */
 import { CaptureSliceError, captureConfigSliceOf, captureDevicesSliceOf, type CaptureConfigRecord, type CaptureDeviceRecord } from './slices';
 
@@ -85,23 +90,30 @@ export interface CaptureConfigStore {
 function recordOf(value: unknown): CaptureConfigRecord | null {
   if (value === null || value === undefined) return null;
   const row = value as Record<string, unknown>;
-  const text = (member: string): string => {
-    const found = row[member];
-    if (typeof found !== 'string') throw new CaptureSliceError('CAPTURE_ROW_INVALID', 'the selector row carries a non-text member', { member });
-    return found;
-  };
-  const count = (member: string): number => {
+  const count =(member: string): number => {
     const found = row[member];
     if (typeof found !== 'number' || !Number.isInteger(found)) throw new CaptureSliceError('CAPTURE_ROW_INVALID', 'the selector row carries a non-integer member', { member });
     return found;
   };
+  // AN UNASSIGNED SLOT (task 4 row 29, site A1; decisions C14, C18; security requirement AD-04).
+  // The six slot columns are nullable since schema set A, and `json_build_object` writes a NULL
+  // column as a JSON null. A null (or a member the aggregate left out) is the slot's "nothing
+  // assigned": it is handed on as `null` and the slice builder makes an ABSENT line of it. Until
+  // this row `text()` threw for it, which stopped the boot at the step `capture.config`. Anything
+  // else that is not text is still refused, by member name: fail closed, never read as empty.
+  const slot = (member: string): string | null => {
+    const found = row[member];
+    if (found === null || found === undefined) return null;
+    if (typeof found !== 'string') throw new CaptureSliceError('CAPTURE_ROW_INVALID', 'the selector row carries a non-text member', { member });
+    return found;
+  };
   return {
-    video01DeviceId: text('video01DeviceId'),
-    video01Profile: text('video01Profile'),
-    video02DeviceId: text('video02DeviceId'),
-    video02Profile: text('video02Profile'),
-    micPrimaryId: text('micPrimaryId'),
-    micStandbyId: text('micStandbyId'),
+    video01DeviceId: slot('video01DeviceId'),
+    video01Profile: slot('video01Profile'),
+    video02DeviceId: slot('video02DeviceId'),
+    video02Profile: slot('video02Profile'),
+    micPrimaryId: slot('micPrimaryId'),
+    micStandbyId: slot('micStandbyId'),
     revision: count('revision'),
     updatedAt: count('updatedAt'),
   };

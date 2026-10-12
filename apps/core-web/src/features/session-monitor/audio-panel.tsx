@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Mic, Volume2 } from 'lucide-react'
 import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
-import { captureMicLines, micInputOfChannel, noLiveLevelsOf, useSim } from '@dems/shared/sim'
+import { captureMicLines, meterInputOfChannel, noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
 import { MicSourceMarks } from '@/features/devices/source-badge'
 import { cn } from '@/lib/utils'
@@ -28,8 +28,9 @@ export function AudioPanel({ paused }: { paused: boolean }) {
   const { t } = useTranslation()
   const store = useSim((s) => s.mics)
   const mics = useMemo(() => micTiles(store), [store])
-  // Ruling D137 (integration pass D5): the input behind a meter channel is the microphone line at its
-  // position in the capture configuration (input order), whatever its id — `MIC-03` / `MIC-01` included.
+  // Ruling D137 (integration pass D5; kept for a COMPLETE pair by C21 (7)): the input behind a meter channel
+  // is the microphone line at its place in the capture configuration (input order), whatever its id —
+  // `MIC-03` / `MIC-01` included. Without a complete pair no channel has an input (`meterInputOfChannel`).
   const micLines = useSim(captureMicLines)
   // Integration pass D7 item 4 (row 139's leftover; ux §8e.2 "no meter presented as recording", D84): before the
   // first durable fragment no live level is drawn — the connecting state stands in the meter's place.
@@ -51,24 +52,29 @@ export function AudioPanel({ paused }: { paused: boolean }) {
       actionBusy={control.busy}
     >
       <AudioSilentWarning view={source} control={control} />
-      <div className="sm-audio-body" data-active-input={source.activeInputId}>
+      <div className="sm-audio-body" data-active-input={source.activeInputId ?? undefined}>
       {mics.map((mic) => {
         // Fix wave L (G75d-06): "Interviewer" / "Subject" are roles of the dataset's microphones; a Core in its own capture names the line only.
         const name = ownCore ? t(mic.id === 'AUDIO-01' ? 'common.devices.mic1' : 'common.devices.mic2') : mic.name
+        // Task 4 row 168 (site W4; decision C18 (2)): the input behind this meter channel, or `null` when the
+        // selector holds no complete microphone pair. An absent input is the half's empty state: it is neither
+        // the active source nor the standby, and it carries no role chip and no source marks.
+        const inputId = meterInputOfChannel(micLines, mic.id)
         return (
           <div
             key={mic.id}
             className="sm-audio-half"
             data-channel={mic.id}
             data-state={mic.state}
-            data-source={source.activeInputId === micInputOfChannel(micLines, mic.id) ? 'ACTIVE' : 'STANDBY'}
+            data-source={inputId === null ? undefined : source.activeInputId === inputId ? 'ACTIVE' : 'STANDBY'}
+            data-no-input={inputId === null ? 'true' : undefined}
           >
             <p className="sm-audio-name" title={name}>
               <span className={cn('sm-dot', `sm-dot-${micTone(mic)}`)} aria-hidden="true" />
               <span className="sm-audio-name-text" data-testid={`sm-track-label-${mic.id}`}>{name}</span>
-              <AudioSourceRoleChip inputId={micInputOfChannel(micLines, mic.id)} view={source} />
+              {inputId === null ? null : <AudioSourceRoleChip inputId={inputId} view={source} />}
               {/* Pass D2 (ux §8f.2, WB-01): the one badge of the microphone behind this meter; nothing unless the Core sent the development class. */}
-              <MicSourceMarks inputId={micInputOfChannel(micLines, mic.id)} place={`monitor-${mic.id}`} />
+              {inputId === null ? null : <MicSourceMarks inputId={inputId} place={`monitor-${mic.id}`} />}
             </p>
             <div className="sm-audio-meter">
               <span className="sm-mic-ring" aria-hidden="true" title={t('session.audio.micIcon', { mic: name })}>

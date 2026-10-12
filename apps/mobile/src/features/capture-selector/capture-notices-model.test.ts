@@ -2,7 +2,7 @@
 // development-source badge and the microphone re-read (ux spec §8e, §8f, §8g; checks M4-DEVSRC-LOCAL,
 // M4-UX-UNIT; the software half of M4-NODEV-B-T / -P, M4-MIC-ACTIVE-T / -P, M4-DEVSRC-LABEL-T / -P).
 import { describe, expect, it } from '@jest/globals';
-import type { SimAlert } from '@dems/shared/sim';
+import { unassignedSlotOfPrecheckItem, type SimAlert } from '@dems/shared/sim';
 import {
   START_RULES,
   candidateSourceOf,
@@ -18,6 +18,7 @@ import {
   precheckUnreachableOf,
 } from './capture-notices-model';
 import { captureSelectorEn } from './i18n';
+import { en } from '@dems/shared/i18n';
 
 const alert = (over: Partial<SimAlert>): SimAlert => ({ id: 'ALR-000001', at: 1, severity: 'WARNING', kind: 'SYSTEM', message: 'x', active: true, acknowledged: false, resolvedAt: null, ...over });
 /** A translate stand-in that shows the key and its values, so a test reads which key was asked for. */
@@ -82,6 +83,40 @@ describe('an unreachable pre-check row is read from `params.rule` (D114)', () =>
   it('every rule has its sentence in the copy, and the active-microphone sentence tells the operator to cancel (no switch at pre-check, D83)', () => {
     for (const rule of START_RULES) expect(typeof captureSelectorEn.notice.start[rule]).toBe('string');
     expect(captureSelectorEn.notice.start.activeMicrophone).toMatch(/Cancel this session, make \{\{other\}\} the primary microphone on Devices, then start again\./);
+  });
+});
+
+describe('task 4 row 169: the pre-check item of an UNASSIGNED selector slot (names register 5.2; decisions C18 (1), C25)', () => {
+  // Integration pass I-6: the recogniser is the shared one of both clients (names register N12); this file holds
+  // the mobile client to it. The item is the register's (5.2), status included: the shared recogniser reads it.
+  const item = (slot: string) => ({ status: 'BLOCK' as const, value: 'NOT_ASSIGNED', params: { rule: 'sourceNotAssigned', slot } });
+
+  it('the closed rule list holds the eighth rule, and its mobile sentence is the shared one, word for word (N15 = N13)', () => {
+    expect(START_RULES).toHaveLength(8);
+    expect(START_RULES).toContain('sourceNotAssigned');
+    expect(captureSelectorEn.notice.start.sourceNotAssigned).toBe(en.common.captureNotice.start.sourceNotAssigned);
+    expect(captureSelectorEn.notice.start.sourceNotAssigned).toBe('{{slot}} has no source assigned. Assign one on Devices.');
+  });
+
+  it('is recognised for each of the four slots - the standby microphone too - although it carries NO device id', () => {
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']) expect(unassignedSlotOfPrecheckItem(item(slot))).toBe(slot);
+    // A blocking item or a warning one: the status is the Core's, the slot is read from value, rule and slot.
+    expect(unassignedSlotOfPrecheckItem({ ...item('STANDBY'), status: 'WARN' })).toBe('STANDBY');
+  });
+
+  it('nothing is guessed: another value, another rule, an unknown or missing slot, no params', () => {
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'UNREACHABLE', params: { rule: 'sourceNotAssigned', slot: 'VIDEO-01' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'NOT_ASSIGNED', params: { rule: 'notRecordable', slot: 'VIDEO-01' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem(item('MIC-PRIMARY'))).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'NOT_ASSIGNED', params: { rule: 'sourceNotAssigned' } })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ status: 'BLOCK', value: 'NOT_ASSIGNED' })).toBeNull();
+    expect(unassignedSlotOfPrecheckItem({ status: 'PASS', value: 'READY', params: { track: 'VIDEO-01' } })).toBeNull();
+    // "No item" is answered by the caller, `precheckSentence` of capture-notices.tsx (its guard; the shared recogniser takes an item).
+  });
+
+  it('it is not an unreachable DEVICE: `precheckUnreachableOf` answers null for it, and for an unreachable item that named this rule', () => {
+    expect(precheckUnreachableOf(item('VIDEO-01'))).toBeNull();
+    expect(precheckUnreachableOf({ value: 'UNREACHABLE', params: { deviceId: 'CAM-01', deviceKind: 'CAMERA', rule: 'sourceNotAssigned' } })).toBeNull();
   });
 });
 

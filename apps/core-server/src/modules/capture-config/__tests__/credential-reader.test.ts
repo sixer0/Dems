@@ -67,6 +67,8 @@ const HOST: DestinationContext = {
 const realRule: CaptureCredentialReaderDependencies['storedAddress'] = (address, port) =>
   decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address, ...(port === undefined ? {} : { port }) }, HOST);
 const PRODUCTION_CAMERA: CaptureCredentialDevice = { kind: 'CAMERA', adapterKind: 'ONVIF_RTSP', address: '192.168.50.21' };
+/** Row 145: the session the camera adapter's two reasons are said for (the form of a session id; no such session exists anywhere). */
+const SESSION = 'SES-20261013-0145';
 
 interface Rig {
   readonly dependencies: CaptureCredentialReaderDependencies;
@@ -163,8 +165,8 @@ describe('AD-03 (1): a closed list of holders, each bound to its reasons', () =>
     // What a holder has: its own methods and nothing that names another holder's reason.
     expect([Object.keys(adapter), Object.keys(test)]).toEqual([['sessionOpen', 'relayRestart'], ['connectionTest']]);
     expect([Object.isFrozen(adapter), Object.isFrozen(test)]).toEqual([true, true]);
-    // No method has a reason parameter: the device, and for the connection test the operator.
-    expect([adapter.sessionOpen.length, adapter.relayRestart.length, test.connectionTest.length]).toEqual([1, 1, 2]);
+    // No method has a reason parameter: the device, then the session (row 145) and for the connection test the operator.
+    expect([adapter.sessionOpen.length, adapter.relayRestart.length, test.connectionTest.length]).toEqual([2, 2, 2]);
   });
 
   it('every method writes its own reason and no other, whatever further arguments a caller adds', async () => {
@@ -172,12 +174,12 @@ describe('AD-03 (1): a closed list of holders, each bound to its reasons', () =>
     const handout = createCaptureCredentialReaders(built.dependencies);
     const adapter = handout.take(CaptureCredentialHolder.CAMERA_ADAPTER);
     const test = handout.take(CaptureCredentialHolder.CONNECTION_TEST);
-    await adapter.sessionOpen('CAM-01');
-    await adapter.relayRestart('CAM-01');
+    await adapter.sessionOpen('CAM-01', SESSION);
+    await adapter.relayRestart('CAM-01', SESSION);
     await test.connectionTest('CAM-01', 'OPR-002');
     // A caller that passes a reason anyway is not heard.
-    await (adapter.sessionOpen as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-02', 'CONNECTION_TEST', 'OPR-001');
-    await (test.connectionTest as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-02', 'OPR-003', 'SESSION_OPEN');
+    await (adapter.sessionOpen as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-02', SESSION, 'CONNECTION_TEST', 'OPR-001');
+    await (test.connectionTest as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-02', 'OPR-003', 'SESSION_OPEN', SESSION);
     expect(built.entries.map((entry) => [entry.type, entry.actorId, entry.deviceId, entry.details])).toEqual([
       ['CAPTURE_CREDENTIAL_REVEALED', null, 'CAM-01', { deviceId: 'CAM-01', reason: 'SESSION_OPEN' }],
       ['CAPTURE_CREDENTIAL_REVEALED', null, 'CAM-01', { deviceId: 'CAM-01', reason: 'RELAY_RESTART' }],
@@ -185,8 +187,18 @@ describe('AD-03 (1): a closed list of holders, each bound to its reasons', () =>
       ['CAPTURE_CREDENTIAL_REVEALED', null, 'CAM-02', { deviceId: 'CAM-02', reason: 'SESSION_OPEN' }],
       ['CAPTURE_CREDENTIAL_REVEALED', 'OPR-003', 'CAM-02', { deviceId: 'CAM-02', reason: 'CONNECTION_TEST' }],
     ]);
-    // An entry has the members of an audit entry and no other (no time, no session here: row 145).
-    for (const entry of built.entries) expect(Object.keys(entry).sort()).toEqual(['actorId', 'details', 'deviceId', 'message', 'type']);
+    // An entry has the members of an audit entry and no other (no time). Row 145: a session's reveal
+    // has the session as a member of the ROW; the connection test's entry has no such member at all,
+    // also when a caller adds a session after the operator. The details are two keys in every entry.
+    expect(built.entries.map((entry) => Object.keys(entry).sort().join())).toEqual([
+      'actorId,details,deviceId,message,sessionId,type',
+      'actorId,details,deviceId,message,sessionId,type',
+      'actorId,details,deviceId,message,type',
+      'actorId,details,deviceId,message,sessionId,type',
+      'actorId,details,deviceId,message,type',
+    ]);
+    expect(built.entries.map((entry) => entry.sessionId)).toEqual([SESSION, SESSION, undefined, SESSION, undefined]);
+    for (const entry of built.entries) expect(Object.keys(entry.details).sort()).toEqual(['deviceId', 'reason']);
     expect(new Set(built.labels)).toEqual(new Set([CAPTURE_CREDENTIAL_REVEAL_UNIT]));
     // One statement per read, the constant text, the device as its one bind parameter.
     expect(built.statements).toEqual(['CAM-01', 'CAM-01', 'CAM-01', 'CAM-02', 'CAM-02'].map((deviceId) => ({ text: REVEAL_CAPTURE_CREDENTIAL, values: [deviceId] })));
@@ -198,8 +210,13 @@ describe('AD-03 (1): a closed list of holders, each bound to its reasons', () =>
     const adapter = handout.take(CaptureCredentialHolder.CAMERA_ADAPTER);
     const test = handout.take(CaptureCredentialHolder.CONNECTION_TEST);
     for (const deviceId of ['', 'cam-01', "CAM-01'; --", 'CAM 01', 'DSC-0001/..', `A${'1'.repeat(40)}`, null, undefined, 7, { toString: () => 'CAM-01' }]) {
-      expect(await codeOf(adapter.sessionOpen(deviceId as never)), String(deviceId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
-      expect(await codeOf(adapter.relayRestart(deviceId as never)), String(deviceId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+      expect(await codeOf(adapter.sessionOpen(deviceId as never, SESSION)), String(deviceId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+      expect(await codeOf(adapter.relayRestart(deviceId as never, SESSION)), String(deviceId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+    }
+    // Row 145 (AD-03 (3)): a session's reason without a session, or with a text that is no session id, sends nothing either.
+    for (const sessionId of [undefined, null, '', 'SESSION_OPEN', 'ses-20261013-0145', 'SES-20261013-145', 'SES-20261013-0145 ', "SES-20261013-0145'; --", 'OPR-001', 20261013, { toString: () => SESSION }]) {
+      expect(await codeOf(adapter.sessionOpen('CAM-01', sessionId as never)), String(sessionId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+      expect(await codeOf(adapter.relayRestart('CAM-01', sessionId as never)), String(sessionId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
     }
     for (const operatorId of ['', 'operator', 'OPR-1', 'opr-001', null, undefined, 3]) {
       expect(await codeOf(test.connectionTest('CAM-01', operatorId as never)), String(operatorId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
@@ -212,7 +229,7 @@ describe('AD-03 (2): a credential only after the commit of its entry', () => {
   it('a runner that commits: the opaque credential, opened once, after the entry', async () => {
     const built = rig({ commits: true });
     const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
-    const credential = await adapter.sessionOpen('CAM-01');
+    const credential = await adapter.sessionOpen('CAM-01', SESSION);
     expect(credential).toBeInstanceOf(SealedCredential);
     expect(usingCredential(credential, (inner) => inner.username === PLACEHOLDER.username && inner.secret === PLACEHOLDER.secret)).toBe(true);
     expect([built.entries.length, built.opened, built.errorLog.entries.length]).toEqual([1, 1, 0]);
@@ -225,12 +242,64 @@ describe('AD-03 (2): a credential only after the commit of its entry', () => {
   it('a runner that resolves WITHOUT a commit: no credential, the envelope is never opened, one error-log code', async () => {
     const built = rig({ commits: false });
     const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
-    const error = await refusal(adapter.sessionOpen('CAM-01'));
+    const error = await refusal(adapter.sessionOpen('CAM-01', SESSION));
     expect(error).toBeInstanceOf(CaptureCredentialReadError);
     expect((error as CaptureCredentialReadError).code).toBe('CAPTURE_CREDENTIAL_AUDIT_NOT_COMMITTED');
     expect(built.opened).toBe(0);
     expect(built.errorLog.entries.map((entry) => [entry.level, entry.source, entry.code, entry.context])).toEqual([['error', 'captureConfig.credentialReader', 'CAPTURE_CREDENTIAL_AUDIT_NOT_COMMITTED', { deviceId: 'CAM-01', reason: 'SESSION_OPEN' }]]);
     expect(leaks(everything(error))).toEqual([]);
+  });
+
+  // Row 145: "after the commit is acknowledged" on a runner whose commit can be held, refused or lost.
+  // The same on PostgreSQL, with a COMMIT that really waits, is in `credential-reader.db.test.ts`.
+  it('row 145: while the commit is not acknowledged nothing leaves the reader - the read is pending and the envelope is not opened; acknowledged: 1 credential', async () => {
+    const built = rig({ commits: true });
+    const runUnit = built.dependencies.unit;
+    let acknowledge: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (acknowledge = resolve));
+    let workReturned = false;
+    const adapter = createCaptureCredentialReaders({
+      ...built.dependencies,
+      // The work has returned (the statement and the append are done); the commit waits for `held`.
+      unit: async (label, work) => {
+        const tasks: (() => void)[] = [];
+        const value = await runUnit(label, (unit) => work({ ...unit, afterCommit: (task: () => void) => void tasks.push(task) } as UnitContext));
+        workReturned = true;
+        await held;
+        for (const task of tasks) task();
+        return value;
+      },
+    }).take(CaptureCredentialHolder.CAMERA_ADAPTER);
+    let settled: unknown = 'pending';
+    const pending = adapter.sessionOpen('CAM-01', SESSION).then((credential) => (settled = credential), (error: unknown) => (settled = error));
+    for (let turn = 0; turn < 50 && !workReturned; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    expect([workReturned, settled, built.entries.length, built.statements.length, built.opened]).toEqual([true, 'pending', 1, 1, 0]);
+    acknowledge();
+    await pending;
+    expect(settled).toBeInstanceOf(SealedCredential);
+    expect([built.opened, built.errorLog.entries.length]).toEqual([1, 0]);
+  });
+
+  it('row 145: a commit that is refused, lost or abandoned after the work returned - the runner rejects - gives no credential, whatever the runner did before', async () => {
+    for (const [name, ranTasks] of [['the commit is refused: no task ran', false], ['the acknowledgement is lost: the tasks ran, then the runner rejected', true]] as const) {
+      const built = rig({ commits: ranTasks });
+      const runUnit = built.dependencies.unit;
+      const adapter = createCaptureCredentialReaders({
+        ...built.dependencies,
+        unit: async (label, work) => {
+          await runUnit(label, work);
+          // What the pipeline rejects with carries a code; nothing of it travels with the reader's error.
+          throw Object.assign(new Error(`commit of ${PLACEHOLDER.secret} not acknowledged`), { code: 'COMMIT_FAILED' });
+        },
+      }).take(CaptureCredentialHolder.CAMERA_ADAPTER);
+      const error = await refusal(adapter.relayRestart('CAM-01', SESSION));
+      expect(error instanceof CaptureCredentialReadError ? [error.code, error.deviceId, error.cause] : error, name).toEqual(['CAPTURE_CREDENTIAL_AUDIT_NOT_COMMITTED', 'CAM-01', undefined]);
+      expect(built.opened, name).toBe(0);
+      expect(built.errorLog.entries.map((entry) => [entry.code, entry.context]), name).toEqual([['CAPTURE_CREDENTIAL_AUDIT_NOT_COMMITTED', { deviceId: 'CAM-01', reason: 'RELAY_RESTART', causeCode: 'COMMIT_FAILED' }]]);
+      expect(leaks(everything(error)), name).toEqual([]);
+      expect(leaks(JSON.stringify(built.errorLog.entries)), name).toEqual([]);
+    }
   });
 
   it('the answers after a commit that are no credential: not stored, a row of an unknown form, an envelope that does not open', async () => {
@@ -253,7 +322,7 @@ describe('AD-03 (2): a credential only after the commit of its entry', () => {
     for (const [name, options, code, opened] of cases) {
       const built = rig(options);
       const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
-      const error = await refusal(adapter.sessionOpen('CAM-01'));
+      const error = await refusal(adapter.sessionOpen('CAM-01', SESSION));
       expect(error instanceof CaptureCredentialReadError ? [error.code, error.deviceId, error.cause] : error, name).toEqual([code, 'CAM-01', undefined]);
       // The entry was written before the answer was looked at: 1 entry, 0 credentials, 1 error-log code.
       expect([built.entries.length, built.opened, built.errorLog.entries.map((entry) => entry.code)], name).toEqual([1, opened, [code]]);
@@ -274,7 +343,7 @@ describe('AD-03 (4): the reader refuses a device before the reveal (row 144)', (
       const handout = createCaptureCredentialReaders(built.dependencies);
       const adapter = handout.take(CaptureCredentialHolder.CAMERA_ADAPTER);
       const test = handout.take(CaptureCredentialHolder.CONNECTION_TEST);
-      const error = await refusal(call === 'connectionTest' ? test.connectionTest('CAM-01', 'OPR-002') : adapter[call]('CAM-01'));
+      const error = await refusal(call === 'connectionTest' ? test.connectionTest('CAM-01', 'OPR-002') : adapter[call]('CAM-01', SESSION));
       expect(error instanceof CaptureCredentialReadError ? [error.code, error.deviceId, error.cause] : error, `${name} / ${call}`).toEqual([code, 'CAM-01', undefined]);
       expect([built.labels.length, built.statements.length, built.entries.length, built.opened], `${name} / ${call}`).toEqual([0, 0, 0, 0]);
       const reason = { sessionOpen: 'SESSION_OPEN', relayRestart: 'RELAY_RESTART', connectionTest: 'CONNECTION_TEST' }[call];
@@ -291,7 +360,7 @@ describe('AD-03 (4): the reader refuses a device before the reveal (row 144)', (
       storedAddress: (host, port) => (ruled.push([host, port]), realRule(host, port)),
     });
     const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
-    expect(await adapter.sessionOpen('CAM-01')).toBeInstanceOf(SealedCredential);
+    expect(await adapter.sessionOpen('CAM-01', SESSION)).toBeInstanceOf(SealedCredential);
     expect([asked, ruled, built.entries.length, built.opened, built.errorLog.entries.length]).toEqual([['CAM-01'], [['192.168.50.21', 80]], 1, 1, 0]);
   });
 
@@ -362,7 +431,9 @@ describe('AD-03 (4): the reader refuses a device before the reveal (row 144)', (
     let asked = 0;
     const built = rig({ commits: true, device: async () => ((asked += 1), PRODUCTION_CAMERA) });
     const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
-    expect(await codeOf(adapter.sessionOpen("CAM-01'; --"))).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+    expect(await codeOf(adapter.sessionOpen("CAM-01'; --", SESSION))).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+    // Row 145: so is the session - a production camera with a text that is no session id is not even looked up.
+    expect(await codeOf(adapter.sessionOpen('CAM-01', 'SES-1'))).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
     expect(asked).toBe(0);
   });
 });
@@ -389,27 +460,31 @@ describe('AD-03 (1): the wiring hands each holder its reader, and no holder pass
     expect(Object.keys(holders)).toEqual(['cameraAdapter', 'connectionTest']);
     expect(Object.isFrozen(holders)).toBe(true);
     expect([Object.keys(holders.cameraAdapter), Object.keys(holders.connectionTest)]).toEqual([['sessionOpen', 'relayRestart'], ['connectionTest']]);
-    expect([holders.cameraAdapter.sessionOpen.length, holders.cameraAdapter.relayRestart.length, holders.connectionTest.connectionTest.length]).toEqual([1, 1, 2]);
-    // The types say the same: a holder cannot be written with a reason argument.
-    const adapterTakesTheDeviceOnly: Parameters<CameraAdapterCredentialReader['sessionOpen']> extends [string] ? ([string] extends Parameters<CameraAdapterCredentialReader['relayRestart']> ? true : false) : false = true;
+    expect([holders.cameraAdapter.sessionOpen.length, holders.cameraAdapter.relayRestart.length, holders.connectionTest.connectionTest.length]).toEqual([2, 2, 2]);
+    // The types say the same: a holder cannot be written with a reason argument. Row 145: the camera
+    // adapter's two methods take the device and the session, exactly; neither can be written without the session.
+    const adapterTakesDeviceAndSession: Parameters<CameraAdapterCredentialReader['sessionOpen']> extends [string, string] ? ([string, string] extends Parameters<CameraAdapterCredentialReader['relayRestart']> ? true : false) : false = true;
+    const adapterNeedsTheSession: [string] extends Parameters<CameraAdapterCredentialReader['sessionOpen']> ? false : [string] extends Parameters<CameraAdapterCredentialReader['relayRestart']> ? false : true = true;
     const testTakesDeviceAndOperator: Parameters<ConnectionTestCredentialReader['connectionTest']> extends [string, string] ? true : false = true;
-    expect([adapterTakesTheDeviceOnly, testTakesDeviceAndOperator]).toEqual([true, true]);
+    expect([adapterTakesDeviceAndSession, adapterNeedsTheSession, testTakesDeviceAndOperator]).toEqual([true, true, true]);
     // Two apps are two independent pairs: the handout of one is not reachable from the other.
     expect(wired({}).holders.cameraAdapter).not.toBe(holders.cameraAdapter);
   });
 
   it('each holder writes its own reasons through the wiring; the device facts are read by one constant statement with one bind parameter', async () => {
     const { built, queries, holders } = wired({ 'CAM-01': [CAMERA_ROW] });
-    await holders.cameraAdapter.sessionOpen('CAM-01');
-    await holders.cameraAdapter.relayRestart('CAM-01');
+    await holders.cameraAdapter.sessionOpen('CAM-01', SESSION);
+    await holders.cameraAdapter.relayRestart('CAM-01', SESSION);
     await holders.connectionTest.connectionTest('CAM-01', 'OPR-002');
-    await (holders.cameraAdapter.sessionOpen as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-01', 'CONNECTION_TEST', 'OPR-001');
+    await (holders.cameraAdapter.sessionOpen as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-01', SESSION, 'CONNECTION_TEST', 'OPR-001');
     expect(built.entries.map((entry) => [entry.actorId, entry.details])).toEqual([
       [null, { deviceId: 'CAM-01', reason: 'SESSION_OPEN' }],
       [null, { deviceId: 'CAM-01', reason: 'RELAY_RESTART' }],
       ['OPR-002', { deviceId: 'CAM-01', reason: 'CONNECTION_TEST' }],
       [null, { deviceId: 'CAM-01', reason: 'SESSION_OPEN' }],
     ]);
+    // Row 145: through the wiring too, the session is in the row of the adapter's entries and in no other.
+    expect(built.entries.map((entry) => entry.sessionId ?? null)).toEqual([SESSION, SESSION, null, SESSION]);
     expect(queries).toEqual(Array(4).fill({ text: READ_CAPTURE_CREDENTIAL_DEVICE, values: ['CAM-01'] }));
     expect(READ_CAPTURE_CREDENTIAL_DEVICE).toBe('SELECT kind, adapter_kind, address FROM public.capture_devices WHERE id = $1');
   });
@@ -424,7 +499,7 @@ describe('AD-03 (1): the wiring hands each holder its reader, and no holder pass
       'MIC-01': [{ kind: 'MIC', adapter_kind: 'USB_AUDIO', address: null }],
     };
     const { built, holders } = wired(rows);
-    for (const deviceId of Object.keys(rows)) expect(await codeOf(holders.cameraAdapter.sessionOpen(deviceId)), deviceId).toBe('CAPTURE_CREDENTIAL_DEVICE_REFUSED');
+    for (const deviceId of Object.keys(rows)) expect(await codeOf(holders.cameraAdapter.sessionOpen(deviceId, SESSION)), deviceId).toBe('CAPTURE_CREDENTIAL_DEVICE_REFUSED');
     // A camera row without an address: the address refusal, the rule not asked.
     const { built: noAddress, holders: second } = wired({ 'CAM-01': [{ ...CAMERA_ROW, address: null }] });
     expect(await codeOf(second.connectionTest.connectionTest('CAM-01', 'OPR-002'))).toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');

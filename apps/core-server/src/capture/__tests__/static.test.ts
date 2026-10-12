@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
 import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, under, type SourceFile } from '../../../test/static/scan';
 import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';
+import { MIC_LINUX_HELPER_TABLE, linuxChannelSelection, linuxMicDeviceArgument, linuxMicPrecheckArguments, linuxMicPushArguments } from '../adapters/local/mic-helper-args';
 
 const tree = readTree(WORKSPACE);
 const production = codeOnly(tree.filter((file) => isProductionSource(file.path) && file.path.endsWith('.ts')));
@@ -77,6 +78,8 @@ const BOOT_EVIDENCE_VOLUME = 'src/capture/boot/evidence-volume.ts';
 const PRODUCTION_DOOR = 'src/capture/adapters/production-door.ts';
 /** Task 4 row 64 (WP-07a; amended by row 3's decision text SR-1, entry 3): the ONE file of the card listing that touches the file system, FOR READING ONLY (pinned; G-R2). */
 const CARD_LISTING_READER = 'src/capture/adapters/audio/card-listing-reader.ts';
+/** Task 4 row 65 (WP-08; amended by row 3's decision text SR-1, entry 2): the ONE file of the sound configuration that touches the file system, FOR WRITING UNDER THE CORE'S RUN DIRECTORY ONLY (pinned; G-R2). */
+const ALSA_CONFIG_WRITER = 'src/capture/adapters/audio/alsa-config-writer.ts';
 
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
@@ -151,7 +154,7 @@ describe('G-R1: the host units open no door of their own', () => {
 
 describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   /** The files that own the spawn and the handshake (spec §G G-R2). */
-  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME, PRODUCTION_DOOR, CARD_LISTING_READER];
+  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME, PRODUCTION_DOOR, CARD_LISTING_READER, ALSA_CONFIG_WRITER];
 
   it('the process module and the file system are imported by files of the allowlist only', () => {
     const importers = [...new Set([...places(capture, PROCESS_MODULE), ...places(capture, FILE_SYSTEM)])];
@@ -163,7 +166,29 @@ describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
     // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else).
     // Row 61: the probe of the evidence store (`boot/evidence-volume.ts`: one exclusive create, a sync, a link and the removal of its own two names).
     // Task 4 row 64 (SR-1, entry 3): the reader of the card listing (`audio/card-listing-reader.ts`: open for reading, read, close and nothing else).
-    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY, CARD_LISTING_READER].sort());
+    // Task 4 row 65 (SR-1, entry 2): the writer of the shared-capture configuration (`audio/alsa-config-writer.ts`: one file below the run directory, made whole by a rename).
+    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY, CARD_LISTING_READER, ALSA_CONFIG_WRITER].sort());
+  });
+
+  // Task 4 row 65 (SR-1, entry 2: "for writing under the Core's run directory only"). The generator beside it imports no module of the host at all.
+  it('the sound configuration writer: one import of the file system, one exclusive create with the owner-only mode, one rename onto the one path below the run directory; it reads and starts nothing', () => {
+    const writer = capture.find((file) => file.path === ALSA_CONFIG_WRITER)?.text ?? '';
+    expect(writer.match(FILE_SYSTEM)).toEqual([`'node:${'fs'}/promises'`]);
+    expect(writer).toMatch(new RegExp(`^import \\{ lstat, mkdir, open, rename, rm \\} from 'node:${'fs'}/promises';$`, 'm'));
+    // Integration pass I-6: the local name of the scratch file is `staging` (the search-path rule of `test/static` refuses the other word in production code).
+    expect(writer.match(/\bopen\([^)]*\)/g)).toEqual(["open(staging, 'wx', OWNER_ONLY_FILE)"]);
+    expect(writer.match(/\b(?:mkdir|rename|rm)\([^)]*\)/g)).toEqual(['mkdir(directory, { recursive: true, mode: OWNER_ONLY_DIRECTORY })', 'rm(staging, { force: true })', 'rename(staging, target)', 'rm(staging, { force: true })']);
+    expect(writer).toMatch(/^const OWNER_ONLY_DIRECTORY = 0o700;$/m);
+    expect(writer).toMatch(/^const OWNER_ONLY_FILE = 0o600;$/m);
+    // The three names are made from the path function of the generator and literals: no other path exists in the file.
+    expect(writer).toMatch(/^ {2}const target = alsaConfigPath\(runDir\);$/m);
+    expect(writer).toMatch(/^ {2}const directory = target\.slice\(0, target\.lastIndexOf\('\/'\)\);$/m);
+    expect(writer).toMatch(/^ {2}const staging = `\$\{directory\}\/dems-alsa\.tmp`;$/m);
+    expect(writer).toMatch(/if \(path !== target\) throw new AlsaConfigWriteError\(AlsaConfigWriteRefusal\.PATH\);/);
+    expect(writer.match(/\b(?:readFile|read|readdir|readlink|createReadStream|appendFile|copyFile|link|symlink|chmod|chown|truncate|unlink|rmdir|mkdtemp|utimes)\s*\(/g)).toBeNull();
+    expect([...writer.matchAll(PROCESS_MODULE), ...writer.matchAll(PROCESS_START), ...writer.matchAll(ENVIRONMENT)]).toEqual([]);
+    const generator = capture.find((file) => file.path === 'src/capture/adapters/audio/alsa-config.ts')?.text ?? '';
+    expect(generator.match(/from\s+'[^']+'/g)).toEqual(["from './card-listing'"]);
   });
 
   // Task 4 row 64 (SR-1, entry 3: "for reading only"). The parser beside it imports no module of the host at all.
@@ -794,20 +819,46 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     ...Object.values(MicGeneratedTone).map((tone) => micPushArguments({ source: { kind: 'GENERATED', tone }, pipePath: PIPE })),
     micPrecheckArguments(LOCAL_MIC_DEVICE_NAME),
   ];
+  /**
+   * Task 4 row 66 (WP-08; amended by row 3's decision text SR-4, places 1 to 3): the lists of the Linux microphone table.
+   * A card with two inputs, an interface with eight (input 3), and the pre-check. The count of all lists moves by this delta.
+   */
+  const linuxLists: readonly (readonly string[])[] = [
+    linuxMicPushArguments({ cardIndex: 1, deviceIndex: 0, channelCount: 2, inputNumber: 2, pipePath: PIPE }),
+    linuxMicPushArguments({ cardIndex: 2, deviceIndex: 0, channelCount: 8, inputNumber: 3, pipePath: PIPE }),
+    linuxMicPrecheckArguments({ cardIndex: 2, deviceIndex: 0, channelCount: 8 }),
+  ];
   const literals = new Set<string>([...CAMERA_HELPER_TABLE.literals, ...MIC_HELPER_TABLE.literals]);
+  /** The literals of the Linux table are its own: they are not lent to the lists above (its channel counts are 64 words). */
+  const linuxLiterals = new Set<string>(MIC_LINUX_HELPER_TABLE.literals);
   /** The computed values (spec §A.6.4 HL-3): the plan's listener, the two forms of `S`, the pipe, and the device named exactly. */
   const computed = new Set<string>([INGEST, PIPE, `-${(START_MS / 1000).toFixed(3)}`, String(START_MS * 1000), `${LOCAL_CAMERA_DEVICE_NAME}:none`, `none:${LOCAL_MIC_DEVICE_NAME}`]);
-  const FORMATS = ['avfoundation', 'lavfi', join('rt', 'sp'), 'f32le', 'null'];
+  /** SR-4 (2): the ONE kind of argument that may hold a vertical bar, the channel selection made by one table function from an integer 0 to 63. */
+  const CHANNEL_SELECTIONS = new Set<string>(Array.from({ length: 64 }, (_unused, index) => linuxChannelSelection(index)));
+  /** SR-4 (3): the device argument of the Linux table, made by one table function from two integers (card index, device index), 0 to 31 each. */
+  const LINUX_DEVICES = new Set<string>(Array.from({ length: 32 * 32 }, (_unused, index) => linuxMicDeviceArgument(Math.floor(index / 32), index % 32)));
+  /** SR-4 (1): five formats become six, `alsa` the sixth. */
+  const FORMATS = ['avfoundation', 'lavfi', join('rt', 'sp'), 'f32le', 'null', 'alsa'];
   const FORBIDDEN = new RegExp(['0\\.0\\.0\\.0', '::', '\\budp\\b', 'listen', '@', '[;&|`$<>\\\\]', 'movie=', 'capture screen', 'desk view'].join('|'), 'i');
   const LOOPBACK = new RegExp(`^${join('rt', 'sp')}://127\\.0\\.0\\.1:\\d{4,5}/[A-Za-z0-9/_-]+$`);
 
-  /** The rule over one argument list. */
-  const violations = (args: readonly string[]): string[] => [
-    ...args.filter((arg) => !literals.has(arg) && !computed.has(arg)).map((arg) => `not of the table: ${arg}`),
-    ...args.filter((arg) => FORBIDDEN.test(arg)).map((arg) => `forbidden: ${arg}`),
-    ...args.filter((arg) => arg.includes('://') && !LOOPBACK.test(arg)).map((arg) => `not the loopback listener: ${arg}`),
-    ...args.flatMap((arg, index) => (arg === '-f' && !FORMATS.includes(args[index + 1] ?? '') ? [`format: ${args[index + 1] ?? ''}`] : [])),
-  ];
+  /**
+   * The rule over one argument list. `linux` says the list is of the Linux microphone table: only then is a channel
+   * selection admitted (after `-af`, once) and a device of two integers (after `-i`). In such an argument every other
+   * forbidden mark stays forbidden: the selection is tested again with its bars taken out.
+   */
+  const violations = (args: readonly string[], linux = false): string[] => {
+    const selection = (arg: string, index: number): boolean => linux && CHANNEL_SELECTIONS.has(arg) && args[index - 1] === '-af';
+    const device = (arg: string, index: number): boolean => linux && LINUX_DEVICES.has(arg) && args[index - 1] === '-i';
+    const table = linux ? linuxLiterals : literals;
+    return [
+      ...args.filter((arg, index) => !table.has(arg) && !(linux ? arg === PIPE : computed.has(arg)) && !selection(arg, index) && !device(arg, index)).map((arg) => `not of the table: ${arg}`),
+      ...args.filter((arg, index) => FORBIDDEN.test(selection(arg, index) ? arg.replaceAll('|', '') : arg)).map((arg) => `forbidden: ${arg}`),
+      ...(args.filter((arg) => arg.includes('|')).length > 1 ? ['more than one argument holds a bar'] : []),
+      ...args.filter((arg) => arg.includes('://') && !LOOPBACK.test(arg)).map((arg) => `not the loopback listener: ${arg}`),
+      ...args.flatMap((arg, index) => (arg === '-f' && !FORMATS.includes(args[index + 1] ?? '') ? [`format: ${args[index + 1] ?? ''}`] : [])),
+    ];
+  };
 
   it('finds a wildcard address, a datagram transport, a listen flag, a user part, a shell mark, a file filter, another format and a screen capture (control)', () => {
     const planted = ['-f', 'x11grab', '-i', 'Capture screen 0:none', '-i', `a${'movie'}=/etc/hosts`, '-listen', '1', 'udp://0.0.0.0:9000', `${join('rt', 'sp')}://user:pw@127.0.0.1:8555/x`, `${join('rt', 'sp')}://10.0.0.9:8555/live`, 'x; rm -rf /'];
@@ -818,11 +869,55 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
   });
 
   it('every argument of every helper is a literal of its table or a computed value; none is forbidden; every address is the loopback listener', () => {
+    // Ten lists before task 4; row 66 (SR-4) adds the three of the Linux microphone table: thirteen.
     expect(lists).toHaveLength(10);
+    expect([...lists, ...linuxLists]).toHaveLength(13);
     for (const args of lists) expect(violations(args), args.join(' ')).toEqual([]);
+    for (const args of linuxLists) expect(violations(args, true), args.join(' ')).toEqual([]);
     // SEC35-43 (e): the inputs are the two devices by exact name and the generated ones of the table, and nothing else.
     const inputs = new Set(lists.flatMap((args) => args.flatMap((arg, index) => (arg === '-i' ? [args[index + 1] ?? ''] : []))));
     expect([...inputs].filter((input) => !literals.has(input) && input !== `${LOCAL_CAMERA_DEVICE_NAME}:none` && input !== `none:${LOCAL_MIC_DEVICE_NAME}`)).toEqual([]);
+  });
+
+  // Task 4 row 66: G-R12 as amended by row 3's decision text SR-4 (places 1 to 3) with the sentence of AD-07 (2). Kept: every rule above.
+  it('SR-4: the bar is admitted in the one channel selection of a Linux list and nowhere else; the Linux device is two integers; a card named by text is seen (control)', () => {
+    const [duo, octo, precheck] = linuxLists;
+    // (1) the format, (2) the one bar argument, (3) the device argument, as text.
+    expect((duo ?? []).slice((duo ?? []).indexOf('-thread_queue_size'), (duo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '2', '-sample_rate', '48000', '-i', 'dems_1_0', '-af', 'pan=mono|c0=c1']);
+    expect((octo ?? []).slice((octo ?? []).indexOf('-thread_queue_size'), (octo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '8', '-sample_rate', '48000', '-i', 'dems_2_0', '-af', 'pan=mono|c0=c2']);
+    expect(linuxLists.map((args) => args.filter((arg) => arg.includes('|')))).toEqual([['pan=mono|c0=c1'], ['pan=mono|c0=c2'], []]);
+    expect((precheck ?? []).filter((arg) => arg === '-af')).toEqual([]);
+    // The selection is of an integer 0 to 63; outside it nothing is made.
+    expect([...CHANNEL_SELECTIONS].every((text, index) => text === `pan=mono|c0=c${String(index)}`)).toBe(true);
+    for (const outside of [-1, 64, 1.5, Number.NaN]) expect(() => linuxChannelSelection(outside)).toThrow('a value of the Linux microphone helper is not of its shape');
+    // The device is of two integers 0 to 31; text in their place makes nothing.
+    expect([...LINUX_DEVICES].every((text) => /^dems_\d{1,2}_\d{1,2}$/.test(text))).toBe(true);
+    expect(LINUX_DEVICES.size).toBe(1_024);
+    for (const outside of [[32, 0], [0, 32], [-1, 0], ['EVO8', 0], [0, '0']] as const) expect(() => linuxMicDeviceArgument(outside[0] as number, outside[1] as number)).toThrow('a value of the Linux microphone helper is not of its shape');
+    // No literal of the Linux table holds a bar or names a card.
+    expect(MIC_LINUX_HELPER_TABLE.literals.filter((literal) => /[|:=,]|hw|CARD|DEV/.test(literal) && literal !== '-c:a' && literal !== 'pipe:1')).toEqual([]);
+
+    // Controls. The bar stays forbidden in every list that is not of the Linux table, the selection included.
+    const local = lists[6] ?? [];
+    expect(violations([...local, '-af', 'pan=mono|c0=c1'])).toEqual(['not of the table: -af', 'not of the table: pan=mono|c0=c1', 'forbidden: pan=mono|c0=c1']);
+    const swap = (args: readonly string[], from: string, to: string): string[] => args.map((arg) => (arg === from ? to : arg));
+    const good = octo ?? [];
+    // A selection that mixes, one beyond channel 63, one that is not after `-af`, and a second one.
+    expect(violations(swap(good, 'pan=mono|c0=c2', 'pan=mono|c0=c2+c3'), true)).toEqual(['not of the table: pan=mono|c0=c2+c3', 'forbidden: pan=mono|c0=c2+c3']);
+    expect(violations(swap(good, 'pan=mono|c0=c2', 'pan=mono|c0=c64'), true)).toEqual(['not of the table: pan=mono|c0=c64', 'forbidden: pan=mono|c0=c64']);
+    expect(violations([...good, 'pan=mono|c0=c2'], true)).toEqual(['not of the table: pan=mono|c0=c2', 'forbidden: pan=mono|c0=c2', 'more than one argument holds a bar']);
+    // A device made of a card name, of a descriptor, or of the hardware directly; a count that is no word of the table.
+    expect(violations(swap(good, 'dems_2_0', 'dems_EVO8_0'), true)).toEqual(['not of the table: dems_EVO8_0']);
+    expect(violations(swap(good, 'dems_2_0', 'hw:CARD=EVO8,DEV=0'), true)).toEqual(['not of the table: hw:CARD=EVO8,DEV=0']);
+    expect(violations(swap(good, 'dems_2_0', 'dems_2_0|x'), true)).toEqual(['not of the table: dems_2_0|x', 'forbidden: dems_2_0|x', 'more than one argument holds a bar']);
+    expect(violations(swap(good, '8', '65'), true)).toEqual(['not of the table: 65']);
+    // Every other mark stays forbidden in a Linux list too, and a format outside the six is seen.
+    expect(violations([...good, 'x; rm -rf /'], true)).toEqual(['not of the table: x; rm -rf /', 'forbidden: x; rm -rf /']);
+    expect(violations(swap(good, 'alsa', 'pulse'), true)).toEqual(['not of the table: pulse', 'format: pulse']);
+    // The 64 channel counts of the Linux table are not literals of the other lists.
+    expect(violations([...(lists[0] ?? []), '64'])).toEqual(['not of the table: 64']);
+    // The Linux table lives in the file of the microphone tables, and `alsa` is named by no other file of the folder.
+    expect(places(capture, /'alsa'/g)).toEqual([`${LOCAL}mic-helper-args.ts`]);
   });
 
   it('the door is the one file under adapters/local that starts a process: one spawn, no shell, the caller\'s environment only, nothing inherited', () => {

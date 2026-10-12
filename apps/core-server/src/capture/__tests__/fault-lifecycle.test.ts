@@ -582,7 +582,8 @@ describe('gates 64 / 75 / 89 (D194, D199, D200): the worker version, the reason 
       await flush();
       expect(h.supervisor.status().cameraEnds).toEqual([]);
       expect(await h.supervisor.stop(SESSION, CaptureStopReason.STOPPED)).toEqual({ clean: true, down: null });
-      expect([...CAMERA_END_REASONS].sort()).toEqual(['CAMERA_CLOCK_OUT_OF_BOUND', 'CAMERA_NOT_CONNECTED', 'CAMERA_STREAM_ENDED']);
+      // Task 4 row 182: +3, the causes the worker names of a camera that never delivered (until then all `CAMERA_NOT_CONNECTED`).
+      expect([...CAMERA_END_REASONS].sort()).toEqual(['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN', 'CAMERA_CLOCK_OUT_OF_BOUND', 'CAMERA_NOT_CONNECTED', 'CAMERA_NO_PICTURE', 'CAMERA_STREAM_ENDED']);
     });
   });
 

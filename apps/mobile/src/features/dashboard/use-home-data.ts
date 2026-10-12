@@ -19,7 +19,7 @@ import {
   systemTruthFactsOf,
   SYSTEM_FACT_SEAL_RETRYING,
   openUnsealableNoticesOf,
-  micInputOfChannel,
+  meterInputOfChannel,
   selectDeviceStats,
   selectElapsedMs,
   selectPendingSummaryId,
@@ -207,8 +207,10 @@ export function useHomeTiles(): readonly HomeTile[] {
     if (!realCapture) return [] as string[];
     const lines = micLinesInForce(s);
     return s.mics.map((m) => {
-      const inputId = micInputOfChannel(lines, m.id);
-      const primary = lines.find((line) => line.inputId === inputId)?.role === 'PRIMARY';
+      // Task 4 row 171 (site M5): the input of the channel by the lookup of row 164; `null` (no complete pair): the
+      // channel names no line, so it is not the primary one and its source reads as unknown (`micLineReportOf`).
+      const inputId = meterInputOfChannel(lines, m.id);
+      const primary = inputId !== null && lines.find((line) => line.inputId === inputId)?.role === 'PRIMARY';
       return `${sourceStateWord(micLineReportOf(s, m.id), live, s.session?.state === 'RECORDING').kind}|${primary ? 'P' : ''}`;
     });
   });
@@ -335,10 +337,14 @@ export function useDeviceTiles(): DeviceTileInfo[] {
   // the 20 Hz `audio` slice never re-renders the tiles.
   const mics = useSim((s) => {
     const recording = s.session?.state === 'RECORDING';
-    const activeInputId = audioPairInForce(s).activeInputId ?? s.audio.activeInputId;
+    // Task 4 row 171 (seam reader 9 of 9 of row 28): the meters' member is read as the slice states it once the seam
+    // `AudioSliceInState` is out - `null` when no input is active; compiles with the seam in and out.
+    const meters: string | null = s.audio.activeInputId;
+    const activeInputId = audioPairInForce(s).activeInputId ?? meters;
     const lines = micLinesInForce(s);
     return s.mics.map((m) => {
-      const role = micTileSourceRole({ recording, inputId: micInputOfChannel(lines, m.id), activeInputId });
+      // A channel without an input (`null`), or no active input: no role for the tile.
+      const role = micTileSourceRole({ recording, inputId: meterInputOfChannel(lines, m.id), activeInputId });
       const word = realCapture ? sourceStateWord(micLineReportOf(s, m.id), live, recording) : null;
       const line = word === null ? '' : `${micLineDeviceIdOf(s, m.id) ?? ''}~${word.key}~${word.tone}`;
       return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}|${line}`;

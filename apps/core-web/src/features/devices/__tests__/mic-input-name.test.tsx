@@ -59,15 +59,20 @@ describe('the pair of the session, by the ids the Core sends', () => {
     // stored selector's own - MIC-03 is its PRIMARY (active), MIC-01 its STANDBY.
     expect(selectActiveInputId(state({ captureConfig: { cameras: [], mics: lines } }))).toBe('MIC-03')
     expect(selectStandbyInputId(state({ captureConfig: { cameras: [], mics: lines } }))).toBe('MIC-01')
-    expect(selectStandbyInputId(state({ audio: { activeInputId: 'MIC-02' } }))).toBe('MIC-01')
+    // Moved by task 4 row 168 (was `'MIC-01'`, "the other input of the built-in pair"): a selector without a line
+    // has no standby - no built-in input stands in (decision C18 (2); site W6).
+    expect(selectStandbyInputId(state({ audio: { activeInputId: 'MIC-02' } }))).toBeNull()
+    expect(selectActiveInputId(state({ audio: { activeInputId: 'MIC-02' } }))).toBeNull()
     expect(otherMicInput([{ inputId: 'MIC-03' }], 'MIC-03')).toBeNull()
   })
 
   it('a silence warning that names MIC-03 is about MIC-03', () => {
     const fault = (target: string | null) => [{ kind: 'MIC_SILENT', since: 1, target }] as unknown as SimState['faults']['active']
-    expect(silentInputOf(fault('MIC-03'), 'MIC-01')).toBe('MIC-03')
-    expect(silentInputOf(fault('AUDIO-02'), 'MIC-03')).toBe('MIC-02')
-    expect(silentInputOf(fault(null), 'MIC-03')).toBe('MIC-03')
+    // Task 4 row 168: the lines are given - a channel is a line of the selector (here the built-in pair), never a table.
+    const builtIn = [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] as const
+    expect(silentInputOf(fault('MIC-03'), 'MIC-01', builtIn)).toBe('MIC-03')
+    expect(silentInputOf(fault('AUDIO-02'), 'MIC-03', builtIn)).toBe('MIC-02')
+    expect(silentInputOf(fault(null), 'MIC-03', builtIn)).toBe('MIC-03')
   })
 })
 

@@ -62,8 +62,9 @@ export function micSwitchBlockText(block: MicSwitchBlock | null, t: Translate): 
 
 export interface MicSourcePanelProps {
   recording: boolean;
-  activeInputId: string;
-  standbyInputId: string;
+  /** Task 4 row 170: `null` = absent (no line holds the role and the session states none). */
+  activeInputId: string | null;
+  standbyInputId: string | null;
   block: MicSwitchBlock | null;
   silentInputId: string | null;
   /** JA2-06: the input of an active `MIC_NO_SIGNAL` fault; drawn when no silence warning is. */
@@ -98,8 +99,11 @@ export function MicSourcePanel({
   const offered = block === null;
   // Integration pass D2: named from the id the Core sent ("MIC 1", "Microphone 3", "Core Mac's microphone").
   const micName = useMicInputName();
-  const standbyName = micName(standbyInputId);
-  const activeName = micName(activeInputId);
+  // Task 4 row 170 (site M4): a switch needs BOTH members of the pair. With one absent the toggle is not drawn
+  // (there is no input to name on it) and one sentence says why; the two warnings keep naming their input.
+  const pairComplete = activeInputId !== null && standbyInputId !== null;
+  const standbyName = standbyInputId === null ? '' : micName(standbyInputId);
+  const activeName = activeInputId === null ? '' : micName(activeInputId);
   const switchLabel = t('session.audioSource.switchTo', { mic: standbyName });
 
   return (
@@ -113,7 +117,7 @@ export function MicSourcePanel({
               {t('session.audioSource.silent.body', { dbfs: MIC_SILENCE_DBFS, seconds: MIC_SILENCE_DURATION_MS / 1000 })}
             </Alert.Description>
             {/* G5: offered only when the silent input is the one inside AUDIO-01; it opens the confirmation, it sends nothing. */}
-            {silentInputId === activeInputId ? (
+            {silentInputId === activeInputId && pairComplete ? (
               <View style={styles.alertActions}>
                 <Button
                   variant="outline"
@@ -140,7 +144,7 @@ export function MicSourcePanel({
           <Alert.Content>
             <Alert.Title>{t('features.session-live.micNoSignal.title', { mic: micName(noSignalInputId) })}</Alert.Title>
             <Alert.Description>{t(noSignalInputId === activeInputId ? 'features.session-live.micNoSignal.activeBody' : 'features.session-live.micNoSignal.standbyBody')}</Alert.Description>
-            {noSignalInputId === activeInputId ? (
+            {noSignalInputId === activeInputId && pairComplete ? (
               <View style={styles.alertActions}>
                 <Button variant="outline" size="sm" isDisabled={!offered || busy} onPress={onAsk} testID="monitor-mic-no-signal-switch" {...(reason === null ? {} : { accessibilityHint: reason })}>
                   <Button.Label>{switchLabel}</Button.Label>
@@ -152,7 +156,12 @@ export function MicSourcePanel({
       ) : null}
 
       {/* G4. ux §3.5: without a recording the toggle is not drawn; its reason (below) is. */}
-      {recording && block?.kind !== 'NOT_RECORDING' ? (
+      {recording && block?.kind !== 'NOT_RECORDING' && !pairComplete ? (
+        <Text maxFontSizeMultiplier={1.2} style={styles.reason} testID="monitor-mic-switch-no-pair" accessibilityLiveRegion="polite">
+          {t('features.session-live.micPairIncomplete')}
+        </Text>
+      ) : null}
+      {recording && block?.kind !== 'NOT_RECORDING' && pairComplete ? (
         <Button
           variant="outline"
           size="sm"

@@ -13,7 +13,7 @@
  *
  * | | Simulated mode (as before) | Live mode |
  * |-|----------------------------|-----------|
- * | Document | `offline` scope: 31 operations with the DEMO dataset's examples (D62, D67); "Show Core-server endpoints" adds the other 66 with the badge CORE SERVER (AR-2) | `all` scope: 97 operations, every one LIVE, served from the page's origin; identifiers from the replica (AR-1, AR-3, AR-5) |
+ * | Document | `offline` scope: 33 operations with the DEMO dataset's examples (D62, D67); "Show Core-server endpoints" adds the other 66 with the badge CORE SERVER (AR-2) | `all` scope: 99 operations, every one LIVE, served from the page's origin; identifiers from the replica (AR-1, AR-3, AR-5) |
  * | Try-it | `simAwareFetch`: LIVE health to mock-core, SIMULATED endpoints answered by the one in-browser simulator, anything else blocked (AC-58); a Core-server operation rejected before any request (AR-2) | `liveTryItFetch`: `{page origin}/api/v1/*` to the network with the session cookie, the six operations of AR-3a rejected before any request, anything else blocked; never `sim.request` |
  * | Realtime panel | its own heartbeat client against mock-core | the console's one socket, read through the Live source (AR-7; no second socket, AC-C-18) |
  * | Banner | mock-core | the Core server's name, version and readiness (AR-6) |

@@ -147,16 +147,25 @@ __attribute__((unused)) static void close_sockets_of_port(int port) {
     }
 }
 
-static void ingest_over(Cam *c, const char *source, const char *code, int averror) {
+/* THE END OF ONE CAMERA, with the frame reason its caller names (task 4 row 182; decision C30 (3)). `code` is the
+ * worker-log code, `reason` the member of the protocol's CAPTURE_FAULT the Core is told. A reason is one of the
+ * fixed words written in this file: it is chosen from the worker's own judgement (the gate's verdict, the missing
+ * picture size), never built from a text, and it carries no address and no path (BR-04 (2)). */
+static void ingest_over_as(Cam *c, const char *source, const char *code, const char *reason, int averror) {
     char b[128];
     atomic_store(&c->state, ING_ENDED);
     if (atomic_load(&g_stop_ingest)) return;                /* the session is stopping: not a fault */
     atomic_store(&c->failed, 1);
-    /* Which of the causes of CAPTURE_FAULT it is (protocol version 4): the camera's clock was refused, a camera
-     * that had connected stopped, or - every other code of this unit - its ingest never delivered a usable stream. */
-    const char *reason = !strcmp(code, "CAMERA_CLOCK_OUT_OF_BOUND") ? code : !strcmp(code, "INGEST_ENDED") ? "CAMERA_STREAM_ENDED" : "CAMERA_NOT_CONNECTED";
     logj("warn", source, code, "\"port\":%d,\"av_error\":\"%s\",\"video_packets\":%lld,\"reason\":\"%s\"", c->port, errstr(averror, b, sizeof b), (long long)atomic_load(&c->v_written), reason);
     send_warning("CAPTURE_FAULT", reason, 1, c->device_id);
+}
+
+static void ingest_over(Cam *c, const char *source, const char *code, int averror) {
+    /* Which of the causes of CAPTURE_FAULT it is (protocol version 4): the camera's clock was refused, a camera
+     * that had connected stopped, or - every other code that ends here - its ingest never delivered a usable stream.
+     * The three ends with a member of their own (a refusal of the gate by either name, no picture) say it themselves
+     * through ingest_over_as. */
+    ingest_over_as(c, source, code, !strcmp(code, "CAMERA_CLOCK_OUT_OF_BOUND") ? code : !strcmp(code, "INGEST_ENDED") ? "CAMERA_STREAM_ENDED" : "CAMERA_NOT_CONNECTED", averror);
 }
 
 /* libav's messages. Errors go to the worker's log without any address; the refusal of a
@@ -220,10 +229,14 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
 /* The name of a gate refusal in the worker's log (task 4 row 175; BR-04 (3)): TWO codes, so that "a client
  * announced something else, or twice" is told from "the library showed no line at all" (a library change: the
  * right push is refused too, and no camera of any session will connect until the pin is moved by decision).
- * Neither carries an address, a path or a text of the library; both end THAT camera with the same frame
- * (CAPTURE_FAULT, CAMERA_NOT_CONNECTED - the protocol has no member that tells them apart). */
+ * Neither carries an address, a path or a text of the library; both end THAT camera with a CAPTURE_FAULT frame
+ * whose reason is the member of the same judgement (task 4 row 182): the Core is told which of the two it was. */
 static const char *announce_refusal_code(const AnnounceGate *g) {
     return announce_gate_verdict(g) == ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_SEEN" : "INGEST_ANNOUNCE_NOT_MATCHED";
+}
+/* The same verdict as the frame reason: one judgement (announce.c), two vocabularies (the log, the protocol). */
+static const char *announce_refusal_reason(const AnnounceGate *g) {
+    return announce_gate_verdict(g) == ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_SEEN" : "CAMERA_ANNOUNCE_NOT_MATCHED";
 }
 
 /* ---------------------------------------------------------------- the camera file */
@@ -576,7 +589,11 @@ static void *ingest_body(Cam *c) {
     /* An open the gate itself ended early (a differing or a second ANNOUNCE line, another control address) is named
      * as the gate's refusal (by what the gate saw: announce_refusal_code; an early end always saw a line or an
      * adopted address, so it is INGEST_ANNOUNCE_NOT_MATCHED); every other failed open keeps its code. */
-    if (r < 0) { ingest_over(c, src, atomic_load(&c->announce_refused) ? announce_refusal_code(&c->announce) : "INGEST_OPEN_FAILED", r); return NULL; }
+    if (r < 0) {
+        if (atomic_load(&c->announce_refused)) ingest_over_as(c, src, announce_refusal_code(&c->announce), announce_refusal_reason(&c->announce), r);
+        else ingest_over(c, src, "INGEST_OPEN_FAILED", r);
+        return NULL;
+    }
     /* THE GATE (row 58; BR-01). The open returned: the handshake is over, nothing of the stream was read, no file
      * exists, `ingest_connected` was not said. From here the ingest goes on ONLY after the positive match of
      * announce.h, recorded during this open for this camera. No `if` of the preprocessor, no argument and no plan
@@ -586,7 +603,7 @@ static void *ingest_body(Cam *c) {
     if (!announce_gate_passed(&c->announce)) {
         atomic_store(&c->announce_refused, 1);
         avformat_close_input(&c->in);
-        ingest_over(c, src, announce_refusal_code(&c->announce), AVERROR(EACCES));
+        ingest_over_as(c, src, announce_refusal_code(&c->announce), announce_refusal_reason(&c->announce), AVERROR(EACCES));
         return NULL;
     }
     if (leftover) { fatal(src, "INGEST_OPTION_NOT_CONSUMED", AVERROR_OPTION_NOT_FOUND); atomic_store(&c->state, ING_ENDED); return NULL; }
@@ -616,7 +633,8 @@ static void *ingest_body(Cam *c) {
             atomic_store(&c->state, ING_ENDED);
             return NULL;
         }
-        ingest_over(c, src, "INGEST_NO_PICTURE_SIZE", AVERROR_INVALIDDATA);
+        /* The frame says this cause by its own member (row 182): a push that passed the gate and brought no picture. */
+        ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", "CAMERA_NO_PICTURE", AVERROR_INVALIDDATA);
         return NULL;
     }
 

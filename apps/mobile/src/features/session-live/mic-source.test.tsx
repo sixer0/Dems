@@ -304,6 +304,27 @@ describe('the panel alone: the states a signed-in monitor cannot hold still (E-1
     draw({ recording: false, block: { kind: 'NOT_RECORDING' } });
     expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
     expect(within(screen.getByTestId('monitor-mic-switch-reason')).getByText('The microphone can be switched while a session is recording.')).toBeTruthy();
+    // Task 4 row 170: the incomplete-pair sentence belongs to a recording; it is not drawn here.
+    expect(screen.queryByTestId('monitor-mic-switch-no-pair')).toBeNull();
+  });
+
+  it.each([
+    ['no standby', { standbyInputId: null }],
+    ['no active input', { activeInputId: null }],
+    ['neither', { activeInputId: null, standbyInputId: null }],
+  ] satisfies [string, Partial<MicSourcePanelProps>][])('task 4 row 170, an absent member of the pair (%s): no toggle and no dialog name an input; one sentence says why', (_name, props) => {
+    draw(props);
+    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
+    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toHaveTextContent('The microphone pair is not complete. There is nothing to switch.');
+    expect(screen.queryByText(/MIC 1|MIC 2|Switch to/)).toBeNull();
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('task 4 row 170: a warning still names its input when the pair is incomplete, and offers no switch', () => {
+    draw({ standbyInputId: null, silentInputId: MicInputId.MIC_01 });
+    expect(within(screen.getByTestId('monitor-mic-silent')).getByText(/MIC 1/)).toBeTruthy();
+    expect(screen.queryByTestId('monitor-mic-silent-switch')).toBeNull();
+    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
   });
 
   it('the command is out: the confirm is busy, shows the spinner late, and Cancel is disabled', () => {
@@ -367,8 +388,65 @@ describe('a replaced pair, MIC-03 / MIC-01 (ruling D137)', () => {
     expect(glowOf(2)).toBe(1);
     expect(screen.getByTestId('monitor-meter-1').props.accessibilityValue).toMatchObject({ now: -20 });
     expect(screen.getByTestId('monitor-meter-2').props.accessibilityValue).toMatchObject({ now: -30 });
-    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toBe('MIC-01');
-    expect(inputOfChannel('AUDIO-02')).toBe('MIC-02');
+    expect(silentInputOf([{ kind: 'MIC_SILENT', target: 'AUDIO-02' }] as never, 'MIC-03', [{ inputId: 'MIC-03', role: 'PRIMARY' }, { inputId: 'MIC-01', role: 'STANDBY' }])).toBe('MIC-01');
+    // MOVED by task 4 row 170 (was `inputOfChannel('AUDIO-02')` = `'MIC-02'`, "without lines, the built-in pair"):
+    // without lines a channel has no input.
+    expect(inputOfChannel('AUDIO-02', [])).toBeNull();
+  });
+});
+
+// Task 4 row 170 (site M4; decision C18 (2)): the card and the hook find an input by the lookup of row 164.
+describe('task 4 row 170: a microphone line is ABSENT - the cards and the switch say so, and name no built-in input', () => {
+  /** The recording monitor with only the PRIMARY line left in the selector the session records under, and no pair stated by the session. */
+  async function openWithLines(roles: readonly string[], window: MonitorHarnessOptions['window'] = 'phonePortrait') {
+    const h = renderMonitorApp({ window });
+    await settle();
+    act(() => {
+      const state = h.sim.store.getState();
+      const lines = state.captureConfig.mics.filter((line) => roles.includes(line.role));
+      h.sim.store.setState({
+        captureConfig: { ...state.captureConfig, mics: lines },
+        session:
+          state.session === null
+            ? null
+            : { ...state.session, captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics: lines } : state.session.captureConfig, audioSource: null },
+      } as never);
+    });
+    h.openMonitor();
+    expect(screen.getByTestId('screen-session-live')).toBeTruthy();
+    return h;
+  }
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, a lone PRIMARY line: no meter channel has an input - both cards read "No microphone input", say no role and draw no badge; the toggle is replaced by its sentence', async (window) => {
+    const h = await openWithLines(['PRIMARY'], window);
+    // The meters slice still holds frames under the built-in inputs: the cards do not read them.
+    expect(Object.keys(h.sim.store.getState().audio.inputs)).toEqual(expect.arrayContaining(['MIC-01', 'MIC-02']));
+    for (const channel of [1, 2] as const) {
+      expect(screen.getByTestId(`monitor-mic-level-state-${channel}`)).toHaveTextContent('No microphone input');
+      expect(chipText(channel)).toBeNull();
+      expect(screen.queryByTestId(`monitor-mic-role-${channel}`)).toBeNull();
+      expect(screen.queryByTestId(`monitor-mic-source-${channel}`)).toBeNull();
+      expect(glowOf(channel)).toBe(0);
+    }
+    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
+    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toHaveTextContent('The microphone pair is not complete. There is nothing to switch.');
+    expect(switches(h.sim.store.getState())).toHaveLength(0);
+    expect(getMissingKeys()).toEqual([]);
+  });
+
+  it('no microphone line at all: the same two cards, and nothing is sent', async () => {
+    const h = await openWithLines([]);
+    for (const channel of [1, 2] as const) expect(screen.getByTestId(`monitor-mic-level-state-${channel}`)).toHaveTextContent('No microphone input');
+    expect(screen.queryByTestId('monitor-mic-switch')).toBeNull();
+    expect(screen.getByTestId('monitor-mic-switch-no-pair')).toBeTruthy();
+    expect(switches(h.sim.store.getState())).toHaveLength(0);
+  });
+
+  it('CONTROL - the seeded selector: the cards read their inputs and the toggle is offered, as before', async () => {
+    await open();
+    for (const channel of [1, 2] as const) expect(screen.getByTestId(`monitor-mic-level-state-${channel}`)).not.toHaveTextContent('No microphone input');
+    expect(screen.getByTestId('monitor-mic-switch')).toBeTruthy();
+    expect(screen.queryByTestId('monitor-mic-switch-no-pair')).toBeNull();
   });
 });
 

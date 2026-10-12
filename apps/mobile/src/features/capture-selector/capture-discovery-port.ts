@@ -4,7 +4,7 @@
  *
  * | Operation | Call |
  * |---|---|
- * | 93 `startCaptureDiscovery` | `start()` — no request member exists: no address, subnet, port or filter |
+ * | 93 `startCaptureDiscovery` | `start()` — sent with no body: no address, subnet, port or filter. The contract's one optional member, `address` (task 4 row 94), is for the web console only and this port never sends it |
  * | 94 `getCaptureDiscovery` | `read()` — the caller's own search and list; it never probes |
  * | 97 `rescanCaptureInputs` | `rescan()` — one request, one answer; nothing on the network |
  *

@@ -32,7 +32,7 @@ import {
   captureMicLines,
   createMemoryAuthStorage,
   createSim,
-  micInputOfChannel,
+  meterInputOfChannel,
   SEAL_AUTOMATIC_RETRIES,
   SEAL_BLOCKED_EXAMPLE_ALERT,
   SEAL_BLOCKED_EXAMPLE_FINALIZATION,
@@ -221,7 +221,7 @@ describe('Session Monitor / the meters: the microphone lines', () => {
   it('the standby of the pair and the input of a meter channel follow the current selector after a sealed session', () => {
     const sealed = afterSelectorChange('SEALED')
     expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-04', 'MIC-02'])
-    expect(micInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04')
+    expect(meterInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04')
     // Moved by fix 157 (was `'MIC-04'`, read as "the other line than the meters' MIC-02"): with no open session the pair
     // is the current selector's - MIC-04 is its PRIMARY (active), MIC-02 its STANDBY - whatever the meters' member still says.
     const stale = { ...sealed, audio: { ...sealed.audio, activeInputId: 'MIC-02' } } as SimState

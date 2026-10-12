@@ -106,9 +106,28 @@
  *   outside      a camera is opened only in `begin`, after the unit of the start committed and
  *                outside every unit of work: an adapter of production reads the stored credential
  *                in a unit of its own, and a unit cannot submit a unit.
- * What is NOT here: a worker that is started again inside a session gets the plan it was first
- * given (the supervisor re-sends it; a new element per attempt is row 179's), and the pairing of
- * the relay's report with the worker's connect report is row 48's.
+ *   per attempt  (task 4 row 179; BR-07 (2)) a worker that is started again inside a session is
+ *                never sent the addresses of an earlier one. This unit hands the supervisor the
+ *                source of chance with `start`; the supervisor builds the addresses of every later
+ *                worker with the same function and says them here BEFORE it starts that worker
+ *                (`Live.ingest`, read at the one line that makes the target of an open). So a
+ *                camera is always opened with the address of the worker in force - also when the
+ *                first worker never came up and the cameras are opened for the second. When the
+ *                worker of a RECORDING is replaced, `REAL_PRODUCTION` closes the camera sources of
+ *                the earlier worker and opens every camera again, with the new addresses, once the
+ *                next worker listens (`cameraRoundOver`, `cameraRoundAgain`); the development
+ *                operation does neither, as before.
+ *   open, SA-3   (task 4 row 48; RC-3 / S13-06, AD-01 (4), BR-08) with relay reports here
+ *                (`ports.relayReports`) and in `REAL_PRODUCTION`, a camera counts as open only
+ *                when the report of its relay and the worker's connect report for the same camera
+ *                and attempt have both arrived within `INGEST_PAIRING_BOUND_MS`, in either order
+ *                (`ingest-pairing.ts`). An unpaired or contradictory arrival - one without the
+ *                other, a second connect report, a relay report for another attempt, a listener
+ *                the worker refused although its relay reported - ends the capture with the cause
+ *                `CAMERA_INGEST_NOT_PAIRED` (ruling C35 (b)). A camera that is simply absent is no
+ *                such fault: the degraded start of D72(k) stays (C35 (a)). The relay's side is an
+ *                injected source; without one a `REAL_PRODUCTION` start is refused
+ *                (`RELAY_REPORTS_NOT_WIRED`, ruling C34) and the development operation pairs nothing.
  *
  * IN CAPTURE MODE `simulated` NOTHING HERE RUNS: `recordingStartedIn` and the two `after...` calls
  * return at once, and operation 81 is the simulator's own hosted action.
@@ -123,12 +142,14 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { AudioSourceIntervalReason, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningReason, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
+import { AudioSourceIntervalReason, CaptureIngestState, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
+import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReports } from './ingest-pairing';
+export { INGEST_PAIRING_BOUND_MS, IngestPairingFault, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
 import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
-import { CapturePhase, CaptureSupervisorError, captureIngestAddress, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
+import { CapturePhase, CaptureSupervisorError, captureIngestAddress, isCameraAbsentReason, isCameraIntegrityReason, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
 import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { assertSessionSourcesOfOperation, buildSessionCaptureSources, captureFenceControl, captureOperationOf, type CaptureSourceSlot, type SessionCaptureSource } from '../capture/fence';
 import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
@@ -194,6 +215,18 @@ export const PRODUCTION_CAMERA_OPEN_BOUND_MS = 25_000;
 
 /** The `cause` of a camera that was not opened because its open was given up at the bound. */
 export const CAMERA_OPEN_BOUND = 'CAMERA_OPEN_BOUND';
+
+/**
+ * The `details.cause` of a start refused 409 `SOURCE_KIND_NOT_RECORDABLE` because the capture operation is
+ * `REAL_PRODUCTION` and no source of relay reports is handed to this unit (controller ruling C34: SA-3 fail-closed).
+ */
+export const RELAY_REPORTS_NOT_WIRED = 'RELAY_REPORTS_NOT_WIRED';
+
+/** The cause of a capture that was ended because a camera did not count as open by SA-3 (row 48; `ingest-pairing.ts`). */
+export const CAMERA_INGEST_NOT_PAIRED = 'CAMERA_INGEST_NOT_PAIRED';
+
+/** The `cause` of a camera that was not opened because the session holds no address for it (row 179: a camera is never opened toward a guessed or an earlier address). */
+export const INGEST_ADDRESS_UNKNOWN = 'INGEST_ADDRESS_UNKNOWN';
 
 /** The folder of a session below the media root, and its camera files (evidence spec §A: `SESSION-<id>/VIDEO-0n.mp4`). */
 export const sessionMediaFolder = (sessionId: string): string => `SESSION-${sessionId}`;
@@ -300,6 +333,17 @@ export interface SessionCapturePorts {
   micStartBoundMs: number;
   /** How long one camera open of a `REAL_PRODUCTION` start is waited for (`PRODUCTION_CAMERA_OPEN_BOUND_MS`). Not applied in another operation. */
   cameraOpenBoundMs: number;
+  /**
+   * SA-3 (task 4 row 48): where the relays of this Core report that the worker answered their record
+   * request. Null (the default, until the rows of the relay's report fill it): no relay reports
+   * here. In `REAL_PRODUCTION` a start is then REFUSED (`RELAY_REPORTS_NOT_WIRED`, ruling C34); a
+   * null source is admitted in the development operation only, where nothing is paired. With a
+   * source, in `REAL_PRODUCTION`, a camera counts as open only by the pairing of
+   * `ingest-pairing.ts`, and a pairing fault ends the capture.
+   */
+  relayReports: RelayIngestReports | null;
+  /** SA-3: the bound between the relay's report and the worker's connect report of one camera (`INGEST_PAIRING_BOUND_MS`). */
+  ingestPairingBoundMs: number;
   /** Above this size of the clock offset the worker measured (ms) a camera gets the advisory alert (`CAMERA_CLOCK_OFFSET_ADVISORY_MS`). */
   clockOffsetAdvisoryMs: number;
   /**
@@ -425,6 +469,19 @@ interface Live {
   readonly noticesRaised: Map<string, CaptureAdvisoryNotice | CaptureVolumeSyncNotice>;
   /** True for a capture whose sources are production's (`REAL_PRODUCTION`): a volume without the full sync is CRITICAL there. */
   readonly production: boolean;
+  /**
+   * Task 4 row 179 (BR-07 (2)): by camera, the address its source pushes to FOR THE WORKER IN FORCE.
+   * Filled from the plan of the start; replaced, all cameras at once, when the supervisor renews the
+   * addresses for a later worker of the session. Read at ONE line, the target of a camera open. A
+   * secret of the session: never logged, told, stored or put into an error.
+   */
+  readonly ingest: Map<string, string>;
+  /** The camera opens of the worker in force (row 179): null before the first open of the session. */
+  cameras: CameraRound | null;
+  /** SA-3 (row 48): the pairing of this capture; null when it is not applied (no relay reports here, or not `REAL_PRODUCTION`). */
+  pairing: IngestPairing | null;
+  /** SA-3: by camera, the attempt and the ingest state the worker last reported: a connect report is a CHANGE to `CONNECTED`. */
+  readonly ingestSaid: Map<string, string>;
   /** True once the tap path of the session was asked of the transcription unit: from then on its scratch folder may exist. */
   tapAsked: boolean;
   /** True once the transcriber session was asked for; true again once it was told the end. */
@@ -456,6 +513,34 @@ interface Live {
   checkpointsSaid: number;
   /** The calls of the door, one after the other: the call at the end of a capture runs after one that is in flight. */
   checkpointsSaying: Promise<void>;
+}
+
+/**
+ * THE CAMERA OPENS OF ONE WORKER OF A SESSION (task 4 row 179). A worker that is started again
+ * inside a session listens at new addresses (BR-07 (2)); what was opened toward the earlier worker
+ * pushes to nothing and announces a dead secret. So the opens belong to a round: the round of a
+ * worker that went down is over (its opens in flight are given up without a report, its sources
+ * are closed), and the next round opens every camera of the plan again with the addresses of the
+ * new worker, once that worker listens.
+ */
+interface CameraRound {
+  /** Aborted when the worker of this round went down and a later one replaces it. */
+  readonly over: AbortController;
+  /** The camera sources this round opened and the session still holds. */
+  readonly handles: SourceHandle[];
+  readonly opened: string[];
+  readonly notOpened: string[];
+  /** The sources of the round before this one are closed (resolved at once for the first round). */
+  closing: Promise<void>;
+  /** Resolves when every open of this round has an outcome. */
+  readonly settled: Promise<void>;
+  settle(): void;
+}
+
+function newCameraRound(): CameraRound {
+  let settle: () => void = () => undefined;
+  const settled = new Promise<void>((resolve) => (settle = resolve));
+  return { over: new AbortController(), handles: [], opened: [], notOpened: [], closing: Promise.resolve(), settled, settle: () => settle() };
 }
 
 /** The session payload hears the checkpoint figures at most this often (one engine unit per window, never one per fragment). */
@@ -508,6 +593,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     },
     micStartBoundMs: MIC_START_BOUND_MS,
     cameraOpenBoundMs: PRODUCTION_CAMERA_OPEN_BOUND_MS,
+    relayReports: null,
+    ingestPairingBoundMs: INGEST_PAIRING_BOUND_MS,
     clockOffsetAdvisoryMs: CAMERA_CLOCK_OFFSET_ADVISORY_MS,
     operationOf: (registry) => registry.operation,
     fileExists: (path) =>
@@ -581,6 +668,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
   /** Closes every source handle of a capture and ends its subscriptions. Safe to call twice. */
   async function release(of: Live): Promise<void> {
     of.abort.abort();
+    of.pairing?.end();
     for (const off of of.offs.splice(0)) off();
     for (const handle of of.handles.splice(0)) {
       try {
@@ -672,6 +760,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       if (cause instanceof CaptureAdapterError) throw notRecordable(cause, cause.deviceId, cause.code);
       throw cause;
     }
+    // Controller ruling C34: SA-3 is FAIL-CLOSED in production. A `REAL_PRODUCTION` start without a source of relay reports
+    // could pair nothing, so it is refused here, in the unit of the start and before anything is written: nothing is
+    // committed, no worker and no source is started. After the class rule above, so that a selector the operation cannot
+    // record keeps its own cause.
+    if (ports.operationOf(registry) === CaptureOperation.REAL_PRODUCTION && ports.relayReports === null) throw notRecordable(undefined, null, RELAY_REPORTS_NOT_WIRED);
     await markCaptureConnectingIn(scope, sessionId);
     const first = sources[0];
     if (first === undefined) throw notRecordable(undefined, null, 'SELECTOR_SHAPE');
@@ -870,6 +963,46 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
   }
 
   /**
+   * SA-3, THE WORKER'S SIDE (task 4 row 48). The worker's connect report of a camera is its ingest
+   * state in a telemetry frame CHANGING to `CONNECTED` (a level said many times a second is one
+   * report; `CONNECTED` again after another state, for the same worker, is a second connect and a
+   * fault of the pairing). The attempt is the supervisor's at the moment the frame is read.
+   */
+  function onIngest(of: Live, event: CaptureEventOf<'telemetry'>): void {
+    const pairing = of.pairing;
+    if (pairing === null || of.ended || event.frame.ingest.length === 0) return;
+    const attempt = of.supervisor.status().attempt;
+    for (const ingest of event.frame.ingest) {
+      const said = `${attempt}:${ingest.state}`;
+      if (of.ingestSaid.get(ingest.deviceId) === said) continue;
+      of.ingestSaid.set(ingest.deviceId, said);
+      if (ingest.state === CaptureIngestState.CONNECTED) pairing.workerConnected(ingest.deviceId, attempt);
+    }
+  }
+
+  /**
+   * SA-3, THE FAULT (RC-3, BR-08; design addendum 5.3): the protocol has no frame that drops one
+   * camera of a running session, so a pairing that failed ENDS THE CAPTURE of the session, by the
+   * door every end of a capture takes (`captureEnded`: the fault of the session with its audit
+   * entry, the worker stopped, every source closed). Said once: the pairing says one fault. The
+   * error-log entry names the camera, the attempt and the closed reason; the cause the session
+   * records is the one word `CAMERA_INGEST_NOT_PAIRED`.
+   */
+  function pairingFailed(of: Live, failure: IngestPairingFailure): void {
+    if (of.ended) return;
+    persist('error', 'CAPTURE_INGEST_NOT_PAIRED', 'a camera of the session did not count as open: the report of its relay and the connect report of the capture worker did not pair, and the capture is ended', null, { sessionId: of.sessionId, deviceId: failure.deviceId, attempt: failure.attempt, reason: failure.reason });
+    let durable = false;
+    try {
+      const status = of.supervisor.status();
+      durable = status.sessionId === of.sessionId && status.durable;
+    } catch {
+      // A supervisor that cannot say: the file on the disk decides in `captureEnded`.
+    }
+    of.leave();
+    inBackground(of.sessionId, 'captureEnded', () => captureEnded(of, CAMERA_INGEST_NOT_PAIRED, durable));
+  }
+
+  /**
    * C3 (fix wave H driver A; decision D202): what the supervisor says of cameras it gave up - its
    * status until the stop, the outcome of the stop after it - is kept by camera and written into
    * the facts file, so that the seal marks those tracks with their cause. A camera of another plan
@@ -1042,11 +1175,17 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
    * said by its device and a cause; the error-log entry of a failure holds the error's name, its
    * code and its stack frames, never its text (`describeError`).
    */
-  function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, opened: string[], notOpened: string[]): Promise<void> {
+  function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, round: CameraRound): Promise<void> {
     const { sessionId } = current;
+    const { opened, notOpened } = round;
     const opens: Promise<void>[] = [];
+    // Row 179: a round whose worker went down opens nothing more; what it has in flight ends without a report (a later round opens the camera again).
+    const over = new Promise<'OVER'>((resolve) => {
+      if (round.over.signal.aborted) resolve('OVER');
+      else round.over.signal.addEventListener('abort', () => resolve('OVER'), { once: true });
+    });
     for (const camera of plan.cameras) {
-      if (current.ended || current.leaving) break;
+      if (current.ended || current.leaving || round.over.signal.aborted) break;
       const { deviceId } = camera;
       const failed = (err: unknown, cause: string | null): void => {
         // One camera of two is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
@@ -1061,7 +1200,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         else current.abort.signal.addEventListener('abort', forward, { once: true });
       }
       const unlink = (): void => current.abort.signal.removeEventListener('abort', forward);
-      const target: CameraSourceTarget = { ingestUrl: camera.ingestUrl, ...(camera.profile === null ? {} : { profile: camera.profile }) };
+      // Row 179: the address of the worker IN FORCE at this open, which is the plan's only for the first worker of a session.
+      const address = current.ingest.get(deviceId);
+      if (address === undefined) {
+        unlink();
+        failed(null, INGEST_ADDRESS_UNKNOWN);
+        continue;
+      }
+      const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };
       let asked: Promise<SourceHandle>;
       try {
         asked = Promise.resolve(registry.resolve('CAMERA', deviceId).openSource(deviceId, target, own?.signal ?? current.abort.signal));
@@ -1071,8 +1217,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       let givenUp = false;
       const settled = asked.then(
         async (handle) => {
-          if (givenUp) {
-            // It came up after its bound: the camera was reported not opened, so its source feeds nothing and is closed.
+          if (givenUp || round.over.signal.aborted) {
+            // It came up after its bound (the camera was reported not opened), or for a worker that is gone (row 179): its source feeds nothing and is closed.
             try {
               await handle.close();
             } catch (err) {
@@ -1081,12 +1227,13 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
             return;
           }
           current.handles.push(handle);
+          round.handles.push(handle);
           // A source that came up although the session's signal was aborted meanwhile (a shutdown) is closed at once.
           if (current.abort.signal.aborted) await release(current);
           opened.push(deviceId);
         },
         (err: unknown) => {
-          if (!givenUp) failed(err, null);
+          if (!givenUp && !round.over.signal.aborted) failed(err, null);
         },
       );
       if (own === null) {
@@ -1099,17 +1246,62 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         bound.unref?.();
       });
       opens.push(
-        Promise.race([settled.then(() => 'SETTLED' as const), late]).then((outcome) => {
+        Promise.race([settled.then(() => 'SETTLED' as const), late, over]).then((outcome) => {
           clearTimeout(bound);
           unlink();
-          if (outcome !== 'BOUND') return;
+          if (outcome === 'SETTLED') return;
           givenUp = true;
           own.abort();
-          failed(null, CAMERA_OPEN_BOUND);
+          // Given up at the bound: said. Over with its worker (row 179): not a camera that failed, the next round opens it again.
+          if (outcome === 'BOUND') failed(null, CAMERA_OPEN_BOUND);
         }),
       );
     }
     return Promise.all(opens).then(() => undefined);
+  }
+
+  /**
+   * Task 4 row 179: THE WORKER OF A RECORDING WENT DOWN AND THE SUPERVISOR STARTS ANOTHER (phase
+   * `RESTARTING`: only while the session holds no durable fragment). In `REAL_PRODUCTION` the camera
+   * round of that worker is over: its opens in flight are given up, and its sources - relays that
+   * push to a listener that is gone, with an address no later worker accepts - are closed. A new
+   * round stands in its place and waits for the next worker.
+   *
+   * The development operation is left as it was (decision of the row): its camera sources are
+   * neither closed nor opened again when a worker is replaced, exactly as before row 179.
+   */
+  function cameraRoundOver(current: Live): void {
+    const earlier = current.cameras;
+    if (!current.production || earlier === null || earlier.over.signal.aborted || current.ended || current.leaving) return;
+    earlier.over.abort();
+    const next = newCameraRound();
+    current.cameras = next;
+    next.closing = earlier.closing.then(async () => {
+      for (const handle of earlier.handles.splice(0)) {
+        const held = current.handles.indexOf(handle);
+        // Not held any more: the end of the capture closed it meanwhile.
+        if (held === -1) continue;
+        current.handles.splice(held, 1);
+        try {
+          await handle.close();
+        } catch (err) {
+          persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', err, { sessionId: current.sessionId, deviceId: handle.deviceId });
+        }
+      }
+    });
+    track(next.closing);
+  }
+
+  /**
+   * Task 4 row 179: THE NEXT WORKER OF THE SESSION ACCEPTED ITS PLAN AND LISTENS (phase `RECORDING`
+   * after `RESTARTING`). The supervisor said the addresses of that worker before it started it
+   * (`current.ingest`); every camera of the plan is opened again toward them - one open per camera
+   * and attempt, each with the bound of a start - once the sources of the earlier round are closed.
+   */
+  function cameraRoundAgain(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan): void {
+    const round = current.cameras;
+    if (!current.production || round === null || round.over.signal.aborted) return;
+    track(round.closing.then(() => openCameras(current, registry, plan, round)).then(round.settle));
   }
 
   async function begin(ready: Prepared): Promise<void> {
@@ -1143,6 +1335,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       syncLevels: new Map(),
       noticesRaised: new Map(),
       production: registry !== null && ports.operationOf(registry) === CaptureOperation.REAL_PRODUCTION,
+      ingest: new Map(),
+      cameras: null,
+      pairing: null,
+      ingestSaid: new Map(),
       tapAsked: false,
       transcriberBegun: false,
       transcriberEnded: false,
@@ -1197,6 +1393,12 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         persist('warn', 'CAPTURE_TAP_PATH_UNKNOWN', 'the PCM tap of the session is not known: the session records without one', err, { sessionId });
       }
       const plan: CapturePlan = buildCapturePlan({ selector: ready.selector, registry, cameras, mics, pcmTapPath });
+      // Row 179: the addresses of the FIRST worker are the plan's; the supervisor replaces them, all at once, for every later worker.
+      const addressesInForce = (addresses: ReadonlyMap<string, string>): void => {
+        current.ingest.clear();
+        for (const [deviceId, address] of addresses) current.ingest.set(deviceId, address);
+      };
+      addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));
 
       // The recorder of row 59, one per recording session, fed from the supervisor's records.
       current.recorder = createFragmentRecorder({
@@ -1212,27 +1414,67 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         supervisor.on('telemetry', (event) => {
           if (event.sessionId !== sessionId) return;
           watchSession(current);
+          onIngest(current, event);
           onClocks(current, event);
         }),
       );
       current.offs.push(
         supervisor.on('warning', (event) => {
           // Review R74-03: a camera of the plan that did not connect is said to the listeners (the notices unit words the degraded start).
-          if (event.sessionId !== sessionId || event.source !== 'worker' || event.reason !== CaptureWarningReason.CAMERA_NOT_CONNECTED || event.state !== CaptureWarningState.ACTIVE || event.subject === null) return;
-          tell({ type: 'CAMERA_NOT_CONNECTED', sessionId, deviceId: event.subject });
+          // Task 4 row 182: the worker names four causes of a camera that never delivered (until then one word for all). Each is still
+          // "the worker refused, or gave up, this listener" for the pairing; which of them is a MISSING camera is ruling C35 (`../capture`).
+          const absent = isCameraAbsentReason(event.reason);
+          if (event.sessionId !== sessionId || event.source !== 'worker' || !(absent || isCameraIntegrityReason(event.reason)) || event.state !== CaptureWarningState.ACTIVE || event.subject === null) return;
+          // SA-3 / BR-08 (row 48): the worker refused, or gave up, the listener of this camera - with the pairing applied, a fault of the capture.
+          current.pairing?.workerRefused(event.subject, supervisor.status().attempt);
+          // C35 (a): only a missing camera is the degraded start the notices unit words as a WARNING. C35 (b): a refusal of the worker's
+          // gate is an integrity fault - the capture forwarder raises it as a critical fault of the camera under its own reason, so it is
+          // not ALSO said as "did not connect".
+          if (absent) tell({ type: 'CAMERA_NOT_CONNECTED', sessionId, deviceId: event.subject });
         }),
       );
       current.offs.push(
         supervisor.on('phase', (event) => {
-          if (event.sessionId !== sessionId || event.phase !== CapturePhase.FAULTED) return;
+          if (event.sessionId !== sessionId) return;
+          // SA-3 (row 48): the pairing is of ONE worker. A worker that listens begins its attempt; one that went down ends
+          // it at once (what a relay or a late frame of it still says is of an earlier attempt and pairs with nothing).
+          if (event.phase === CapturePhase.RECORDING) current.pairing?.begin(supervisor.status().attempt);
+          if (event.phase === CapturePhase.RESTARTING) current.pairing?.begin(supervisor.status().attempt + 1);
+          // Row 179: the worker of a recording went down and is replaced / the next worker listens (see `cameraRoundOver`).
+          if (event.phase === CapturePhase.RESTARTING) cameraRoundOver(current);
+          if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);
+          if (event.phase !== CapturePhase.FAULTED) return;
           const status = supervisor.status();
           current.leave();
           inBackground(sessionId, 'captureEnded', () => captureEnded(current, status.lastCrash?.detail ?? status.lastCrash?.code ?? null, status.sessionId === sessionId && status.durable));
         }),
       );
 
-      // ONCE (D72(l)): the supervisor restarts a worker by itself while nothing is durable.
-      await supervisor.start(sessionId, plan);
+      // SA-3 (row 48): with relay reports here, in REAL_PRODUCTION, a camera counts as open only by the pairing. Subscribed
+      // BEFORE the worker is started, so that no report of a relay of this session can come before its listener.
+      const relayReports = current.production ? ports.relayReports : null;
+      if (relayReports !== null) {
+        current.pairing = createIngestPairing({
+          cameras: plan.cameras.map((camera) => camera.deviceId),
+          boundMs: ports.ingestPairingBoundMs,
+          after(delayMs, callback) {
+            const timer = setTimeout(callback, delayMs);
+            timer.unref?.();
+            return () => clearTimeout(timer);
+          },
+          opened: (deviceId, attempt) => app.log.info({ code: 'CAPTURE_CAMERA_INGEST_PAIRED', sessionId, deviceId, attempt }, 'a camera of the session counts as open: the report of its relay and the connect report of the capture worker are paired'),
+          fault: (failure) => pairingFailed(current, failure),
+        });
+        current.offs.push(
+          relayReports.subscribe((report) => {
+            if (report.sessionId === sessionId) current.pairing?.relayReported(report.deviceId, report.attempt);
+          }),
+        );
+      }
+
+      // ONCE (D72(l)): the supervisor restarts a worker by itself while nothing is durable. Row 179 (BR-07 (2)): every
+      // such later worker gets addresses of its own, built by the same function from the same source, and says them here.
+      await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });
 
       // ML-5: `open` only PREPARED the pipe of a microphone; its helper is launched when the worker has
       // accepted the plan. BOTH ARE LAUNCHED NOW, TOGETHER, and nothing below waits for either
@@ -1259,8 +1501,16 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // (row 47): a camera that is slow to answer does not cost the other its window. Waited for until
       // each has an outcome ... unless the end of the capture was asked meanwhile (R74-08): an open
       // that is still in flight then ends by the session's signal, and a source it brings is closed.
-      const cameraOutcomes: { opened: string[]; notOpened: string[] } = { opened: [], notOpened: [] };
-      await Promise.race([openCameras(current, registry, plan, cameraOutcomes.opened, cameraOutcomes.notOpened), current.left]);
+      // Row 179: the opens are the round of the worker in force. When that worker goes down before it holds a fragment,
+      // the round is over and the next one opens the cameras again; what is said below is the outcome of the newest round.
+      const first = newCameraRound();
+      current.cameras = first;
+      void openCameras(current, registry, plan, first).then(first.settle);
+      let cameraOutcomes: CameraRound = first;
+      for (let waited: CameraRound | null = null; waited !== current.cameras && !current.leaving; ) {
+        waited = cameraOutcomes = current.cameras;
+        await Promise.race([waited.settled, current.left]);
+      }
       // Said in the order of the plan, whichever camera answered first.
       const inPlanOrder = (ids: readonly string[]): string[] => plan.cameras.map((camera) => camera.deviceId).filter((deviceId) => ids.includes(deviceId));
       // Field 40: the clock of each camera against the Core's, as its adapter reports it. A read; never a reason to end a capture.

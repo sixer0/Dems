@@ -34,6 +34,14 @@ export const CAPTURE_FAULT_SENTENCES = {
   MIC_RATE_AT_LIMIT: '{{device}} does not keep the sample rate it declares: the correction is at its limit. The recording continues.',
   /** A camera of the plan did not connect within the ingest-open window; another camera records (degraded start). */
   CAMERA_NOT_CONNECTED: '{{device}} did not connect. It is not being recorded.',
+  // The three causes the worker names apart since task 4 row 182 (decision C30 (3), ruling C35; integration pass I-6).
+  // Each is the worker's fixed word: no address and no path is part of a sentence (BR-04).
+  /** Integrity (C35 (b)): a client reached the camera's listener and announced another address than the session's, or announced twice. Refused before any media was read. */
+  CAMERA_ANNOUNCE_NOT_MATCHED: '{{device}} is not being recorded: a connection to its recording input did not announce the address of this session and was refused.',
+  /** Integrity (C35 (b)): the worker saw no announce line at all (its media library no longer shows one), so it cannot tell whose push it was. Refused the same way. */
+  CAMERA_ANNOUNCE_NOT_SEEN: '{{device}} is not being recorded: the capture worker could not read which address the connection to its recording input announced, and refused it.',
+  /** A missing camera (C35 (a)): its own push passed the gate and brought no picture before it ended. No file exists for it. */
+  CAMERA_NO_PICTURE: '{{device}} connected and sent no picture before its stream ended. It is not being recorded.',
   /** A camera that delivered video stopped delivering. */
   CAMERA_STREAM_ENDED: '{{device}} stopped delivering video. Its recording ended there.',
   /** The wall clock of the camera is beyond the bound against the Core. */
@@ -60,6 +68,19 @@ export const CAPTURE_FAULT_SENTENCES = {
   SESSION_LEFT_RECORDING: 'The session stopped recording because of a fault. The capture was stopped.',
   /** A stop at which the worker did not end cleanly (a crash while closing, a non-zero exit, the kill at the grace). */
   CAPTURE_STOP_NOT_CLEAN: 'The capture did not stop cleanly. The recording is kept and sealed as interrupted.',
+  /**
+   * Task 4 row 48 (SA-3; rulings C34, C35 (b); integration pass I-6): the capture of a session was
+   * ended because a camera did not count as open - the report of its relay and the connect report
+   * of the capture worker did not pair, or contradicted each other. About the capture as a whole:
+   * the camera and the closed reason are in the Core's error log, never in this sentence.
+   */
+  CAMERA_INGEST_NOT_PAIRED: 'The capture was stopped: the Core could not confirm that the stream it recorded came from the camera it had connected.',
+  /**
+   * Task 4 row 48 (ruling C34, fail-closed): `details.cause` of a start a Core in production capture
+   * refuses (409 `SOURCE_KIND_NOT_RECORDABLE`) because nothing is set up to report that a camera's
+   * relay reached the recorder. Nothing was started and nothing was recorded.
+   */
+  RELAY_REPORTS_NOT_WIRED: 'This Core is not set up to confirm which camera each recorded stream comes from. It does not record.',
   /**
    * The supervisor ended the worker because its telemetry named a device that is no device of the
    * session's plan (review R63-05; ruling D179; tidy pass F-Y: said by name, not as a bare crash).
@@ -144,6 +165,9 @@ export const CAPTURE_REASON_SEVERITY: Readonly<Record<CaptureFaultReason, Captur
   MIC_DISCONNECTED: 'CRITICAL',
   MIC_RATE_AT_LIMIT: 'INFO',
   CAMERA_NOT_CONNECTED: 'WARNING',
+  CAMERA_ANNOUNCE_NOT_MATCHED: 'CRITICAL',
+  CAMERA_ANNOUNCE_NOT_SEEN: 'CRITICAL',
+  CAMERA_NO_PICTURE: 'WARNING',
   CAMERA_STREAM_ENDED: 'CRITICAL',
   CAMERA_CLOCK_OUT_OF_BOUND: 'CRITICAL',
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'INFO',
@@ -154,6 +178,8 @@ export const CAPTURE_REASON_SEVERITY: Readonly<Record<CaptureFaultReason, Captur
   CAPTURE_START_FAILED: 'CRITICAL',
   SESSION_LEFT_RECORDING: 'CRITICAL',
   CAPTURE_STOP_NOT_CLEAN: 'CRITICAL',
+  CAMERA_INGEST_NOT_PAIRED: 'CRITICAL',
+  RELAY_REPORTS_NOT_WIRED: 'CRITICAL',
   TELEMETRY_SUBJECT_UNKNOWN: 'CRITICAL',
   SWITCH_NOT_COMMANDED: 'CRITICAL',
   SESSION_MISMATCH: 'CRITICAL',

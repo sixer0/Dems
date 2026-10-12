@@ -12,7 +12,7 @@
  */
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { isLevelNotMeasured, micInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
+import { isLevelNotMeasured, meterInputOfChannel, useSim, type MicStatus } from '@dems/shared/sim';
 import { fontFamily, palette, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
@@ -54,13 +54,16 @@ export function DeviceMicMeter({ mic, variant, paused, onClipReset, style, testI
   const { t } = useTranslation();
   const policy = useMotionPolicy();
   const values = useAudioSharedValues(mic.id);
-  // Ruling D137: the input is the microphone line at the channel's position. Change-only selectors: a
-  // flag flip re-renders the meter, a 20 Hz frame never does (F74-13).
-  const input = useSim((s) => micInputOfChannel(micLinesInForce(s), mic.id));
-  const frameFlat = useSim((s) => s.audio.inputs[input]?.noSignal ?? true);
+  // Ruling D137, kept by C21 (7): the input is the microphone line at the channel's position of a COMPLETE pair.
+  // Change-only selectors: a flag flip re-renders the meter, a 20 Hz frame never does (F74-13).
+  // Task 4 row 171 (site M6): `null` when the channel has no input (the lookup of row 164) - no frame is read,
+  // never the frame of `MIC-01` / `MIC-02`, and the meter draws its empty state ("— dBFS", "Not measured").
+  const input = useSim((s) => meterInputOfChannel(micLinesInForce(s), mic.id));
+  const frameFlat = useSim((s) => (input === null ? true : (s.audio.inputs[input]?.noSignal ?? true)));
   // The Core's own statement (J-S 6, `notMeasured`): an older Core and the simulator never send it.
-  const notMeasured = useSim((s) => isLevelNotMeasured(s.audio.inputs[input]));
-  const kind = deviceMicLevelKind({ state: mic.state, frameFlat, notMeasured });
+  const notMeasured = useSim((s) => input === null || isLevelNotMeasured(s.audio.inputs[input]));
+  // A channel without an input has no level and no fault of an input: the empty state, whatever the channel record says.
+  const kind = input === null ? 'NOT_MEASURED' : deviceMicLevelKind({ state: mic.state, frameFlat, notMeasured });
   // JA2-34: the number is the runtime's 1 Hz readout in EVERY motion mode; the test switch holds animation only.
   const ticking = useAudioAccessibilityValue(mic.id);
   const text = kind === 'LEVEL' ? `${ticking.now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;

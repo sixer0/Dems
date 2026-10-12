@@ -24,7 +24,7 @@ import { Alert, Button } from 'heroui-native';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import { Permission, useSim, type PrecheckItem } from '@dems/shared/sim';
+import { CaptureStartRule, Permission, unassignedSlotOfPrecheckItem, useSim, type PrecheckItem } from '@dems/shared/sim';
 import { fontFamily, palette, spacing, typography } from '@dems/shared/tokens';
 import { useRoleGate } from '@/features/rbac/use-role-gate';
 import { useOpenTabRoot } from '@/navigation/tab-root';
@@ -148,8 +148,17 @@ function OpenSearch({ testID, label }: { testID: string; label: string }) {
 /**
  * The sentence of an unreachable pre-check item, from `params.rule`; null for every other item.
  * An unreachable item whose rule this client does not know reads the plain "Not reachable".
+ *
+ * Task 4 row 169 (decisions C18 (1), C25; names register 5.2, N15): the item of an UNASSIGNED
+ * selector slot is worded here too - "Camera 1 has no source assigned. Assign one on Devices." It
+ * carries no device id (there is no device), so it is named by its SLOT; without this it read the
+ * raw value. One sentence for all four slots, the standby microphone included. The slot is read by
+ * the shared recogniser of both clients (`unassignedSlotOfPrecheckItem`, names register N12), which
+ * also reads the item's status; "no item" is answered here.
  */
-export function precheckSentence(t: Translate, item: Pick<PrecheckItem, 'value' | 'params'> | null): string | null {
+export function precheckSentence(t: Translate, item: Pick<PrecheckItem, 'value' | 'status' | 'params'> | null): string | null {
+  const slot = item === null ? null : unassignedSlotOfPrecheckItem(item);
+  if (slot !== null) return t(`${K}.start.${CaptureStartRule.SOURCE_NOT_ASSIGNED}`, { slot: t(`common.captureSlot.${slot}`) });
   if (!isUnreachableItem(item)) return null;
   const found = precheckUnreachableOf(item);
   if (found === null) return t(`${K}.unreachableValue`);
@@ -162,7 +171,7 @@ export function precheckSentence(t: Translate, item: Pick<PrecheckItem, 'value' 
   return t(`${K}.start.${found.rule}`, { device });
 }
 
-export function usePrecheckSentence(item: Pick<PrecheckItem, 'value' | 'params'> | null): string | null {
+export function usePrecheckSentence(item: Pick<PrecheckItem, 'value' | 'status' | 'params'> | null): string | null {
   const { t } = useTranslation();
   return precheckSentence(t, item);
 }

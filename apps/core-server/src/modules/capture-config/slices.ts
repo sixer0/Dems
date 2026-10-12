@@ -27,14 +27,18 @@
 import { CaptureConfigSliceSchema, CaptureDevicesSliceSchema, MIC_INPUT_ID_PATTERN, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api';
 import { DEFAULT_CAPTURE_CONFIG, DEFAULT_CAPTURE_DEVICES } from '@dems/shared/sim';
 
-/** The selector row as the store reads it (T-31, all runtime-relevant columns). */
+/**
+ * The selector row as the store reads it (T-31, all runtime-relevant columns). The six slot
+ * members are `null` for an UNASSIGNED slot (task 4 row 29, site A2; names register E15): the
+ * columns are nullable since schema set A.
+ */
 export interface CaptureConfigRecord {
-  readonly video01DeviceId: string;
-  readonly video01Profile: string;
-  readonly video02DeviceId: string;
-  readonly video02Profile: string;
-  readonly micPrimaryId: string;
-  readonly micStandbyId: string;
+  readonly video01DeviceId: string | null;
+  readonly video01Profile: string | null;
+  readonly video02DeviceId: string | null;
+  readonly video02Profile: string | null;
+  readonly micPrimaryId: string | null;
+  readonly micStandbyId: string | null;
   readonly revision: number;
   readonly updatedAt: number;
 }
@@ -93,27 +97,48 @@ function micInputOf(deviceId: string): string {
  * whose seed has not written the built-in row yet) answers the built-in baseline instead; the
  * boot step logs that case explicitly (store.ts). A named device missing from the registry is a
  * refusal: the FK makes it impossible in a migrated database, and a slice must never invent one.
+ *
+ * AN UNASSIGNED SLOT (task 4 row 29, site A2; decisions C14, C18 (2); AD-04). A slot whose member
+ * is `null` is an ABSENT line of the slice, never a line with an empty device and never the line
+ * of another slot: a camera line is made for ITS track from the columns of that track, a mic line
+ * for ITS role from the column of that role. Nothing is placed by position, so a row that holds
+ * only `VIDEO-02` and only a STANDBY microphone answers exactly those two lines, and a row of six
+ * NULLs answers two empty lists. This is not the built-in baseline: that one stands for a table
+ * WITHOUT a row (`config === null`). A video slot is a pair: a device without a profile, or a
+ * profile without a device, is refused by the member that is missing (the CHECK
+ * `capture_config_slot_pair_check` cannot hold it; the row mapping refuses it the same way).
  */
 export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices: readonly CaptureDeviceRecord[], locked: boolean): CaptureConfigSliceBody {
   if (config === null) return baselineCaptureConfig(locked);
   const byId = new Map(devices.map((device) => [device.id, device]));
-  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string, profile: string) => {
+  type CameraLine = CaptureConfigSliceBody['cameras'][number];
+  type MicLine = CaptureConfigSliceBody['mics'][number];
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string | null, profile: string | null, members: readonly [string, string]): CameraLine[] => {
+    if (deviceId === null && profile === null) return [];
+    if (deviceId === null || profile === null) {
+      throw new CaptureSliceError('CAPTURE_ROW_INVALID', 'a video slot of the selector row holds half a pair', { trackId, member: deviceId === null ? members[0] : members[1] });
+    }
     const device = byId.get(deviceId);
     if (device === undefined || device.kind !== 'CAMERA') {
       throw new CaptureSliceError('CAPTURE_DEVICE_UNKNOWN', 'the selector names a camera the registry does not hold', { trackId, deviceId });
     }
-    return { trackId, deviceId, profile, online: device.enabled, streamState: device.enabled ? ('LIVE' as const) : ('LOST' as const) };
+    return [{ trackId, deviceId, profile, online: device.enabled, streamState: device.enabled ? ('LIVE' as const) : ('LOST' as const) }];
   };
-  const mic = (inputId: string, deviceId: string, role: 'PRIMARY' | 'STANDBY') => {
+  const mic = (deviceId: string | null, role: 'PRIMARY' | 'STANDBY'): MicLine[] => {
+    if (deviceId === null) return [];
+    const inputId = micInputOf(deviceId);
     const device = byId.get(deviceId);
     if (device === undefined || device.kind !== 'MIC') {
       throw new CaptureSliceError('CAPTURE_DEVICE_UNKNOWN', 'the selector names a mic the registry does not hold', { inputId, deviceId });
     }
-    return { inputId, deviceId, role, transport: device.transport, online: device.enabled };
+    return [{ inputId, deviceId, role, transport: device.transport, online: device.enabled }];
   };
   const slice: CaptureConfigSliceBody = {
-    cameras: [camera('VIDEO-01', config.video01DeviceId, config.video01Profile), camera('VIDEO-02', config.video02DeviceId, config.video02Profile)],
-    mics: [mic(micInputOf(config.micPrimaryId), config.micPrimaryId, 'PRIMARY'), mic(micInputOf(config.micStandbyId), config.micStandbyId, 'STANDBY')].sort((left, right) =>
+    cameras: [
+      ...camera('VIDEO-01', config.video01DeviceId, config.video01Profile, ['video01DeviceId', 'video01Profile']),
+      ...camera('VIDEO-02', config.video02DeviceId, config.video02Profile, ['video02DeviceId', 'video02Profile']),
+    ],
+    mics: [...mic(config.micPrimaryId, 'PRIMARY'), ...mic(config.micStandbyId, 'STANDBY')].sort((left, right) =>
       left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0,
     ),
     locked,

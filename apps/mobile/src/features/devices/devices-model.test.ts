@@ -5,10 +5,35 @@
  * Real simulator state from `createTestSim` (manual clock); no React.
  */
 import { describe, expect, it } from '@jest/globals';
-import { DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, type AuditRow } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_CONFIG, DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, type AuditRow, type RoleMicLine } from '@dems/shared/sim';
 import { createTestSim } from '@/runtime/testing/test-sim';
 import { DEVICE_IDS, attentionDevices, deviceStatus, parseStatusLine, statusLine } from './devices-model';
-import { HEALTH_POINTS, MicLevelSampler, auditRowDevice, bookPoe, deviceLog, healthSeries, seriesInputOf } from './sim-adapter';
+import { HEALTH_POINTS, MicLevelSampler, auditRowDevice, bookPoe, channelOf, deviceLog, healthSeries, seriesInputOf } from './sim-adapter';
+
+// Task 4 row 171 (site M6; decision C18 (2); row 164's request): the meter channel of a microphone device is read
+// through the shared `channelOfMicLine` from lines that STATE their role; there is no default list.
+describe('task 4 row 171: `channelOf` - the meter channel of a microphone device', () => {
+  const SEEDED: RoleMicLine[] = DEFAULT_CAPTURE_CONFIG.mics.map((line) => ({ inputId: line.inputId, role: line.role }));
+
+  it('the seeded, complete pair: each microphone has the channel of its line, in both role arrangements (D137 kept)', () => {
+    expect(channelOf('MIC-01', SEEDED)).toBe('AUDIO-01');
+    expect(channelOf('MIC-02', SEEDED)).toBe('AUDIO-02');
+    const reversed = [...SEEDED].reverse();
+    expect(channelOf('MIC-01', reversed)).toBe('AUDIO-02');
+    expect(channelOf('MIC-02', reversed)).toBe('AUDIO-01');
+    // A device that is neither line (a camera) has no meter channel.
+    expect(channelOf('CAM-01', SEEDED)).toBeNull();
+  });
+
+  it('an ABSENT line: no microphone has a meter channel while the selector holds no complete pair - no line, a lone line', () => {
+    const lonePrimary = SEEDED.filter((line) => line.role === 'PRIMARY');
+    const loneStandby = SEEDED.filter((line) => line.role === 'STANDBY');
+    for (const lines of [[], lonePrimary, loneStandby]) {
+      expect(channelOf('MIC-01', lines)).toBeNull();
+      expect(channelOf('MIC-02', lines)).toBeNull();
+    }
+  });
+});
 
 describe('device status', () => {
   it('idle: every device is ready (Online / Active / Connected) and nothing needs attention', () => {

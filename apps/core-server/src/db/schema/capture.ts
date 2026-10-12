@@ -68,28 +68,6 @@ const CREDENTIAL_ENCRYPTION = "'AES-256-GCM'";
 const ONVIF_TOKEN = '^[A-Za-z0-9_.:-]{1,64}$';
 
 /**
- * A slot column of the selector: NULLABLE in the database since schema v7 (`0015`), and so at run
- * time here - `drizzle-kit`, the contract inventory and the catalog all read this column as
- * nullable, which is what it is.
- *
- * SEAM OF TASK 4 ROW 17, TO BE REMOVED BY WP-13a (rows 28-36 and 161-172; requirement AD-04).
- * The cast keeps the TypeScript row type at `string`, because the readers and writers of the
- * selector row are not null-safe yet and are not the migration writer's to edit: `db/store/
- * store.ts` (the load), `db/mapping/rows.ts` (`captureConfigFromRow`, `captureConfigToRow`,
- * `selectorDeviceIds`), `db/mapping/changes.ts`, and the raw-SQL reader `modules/capture-config/
- * store.ts`, which the compiler does not see at all. The type is TRUE only while nothing writes
- * an unassigned slot: no code does (operation 78 has no `unassign` member yet), the runtime role
- * cannot insert the row, and the seed assigns all four slots. The row that makes those readers
- * null-safe replaces each `slotColumn(name)` below by `text(name)` in the same change; the
- * compiler then names every reader still to fix. Until then a NULL slot written by hand is a
- * state the readers refuse by throwing, which stops the boot (decisions C18).
- */
-function slotColumn<TName extends string>(name: TName) {
-  const column = text(name);
-  return column as unknown as ReturnType<typeof column.notNull>;
-}
-
-/**
  * T-32. The real/fake capture-device registry — never the paired-client registry
  * (`AdminResource.DEVICES` is taken, E-04). The built-in IDs match the simulator's initial state:
  * `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`.
@@ -161,12 +139,12 @@ export const captureConfig = pgTable(
   'capture_config',
   {
     singleton: boolean('singleton').primaryKey().default(true),
-    video01DeviceId: slotColumn('video_01_device_id'),
-    video01Profile: slotColumn('video_01_profile'),
-    video02DeviceId: slotColumn('video_02_device_id'),
-    video02Profile: slotColumn('video_02_profile'),
-    micPrimaryId: slotColumn('mic_primary_id'),
-    micStandbyId: slotColumn('mic_standby_id'),
+    video01DeviceId: text('video_01_device_id'),
+    video01Profile: text('video_01_profile'),
+    video02DeviceId: text('video_02_device_id'),
+    video02Profile: text('video_02_profile'),
+    micPrimaryId: text('mic_primary_id'),
+    micStandbyId: text('mic_standby_id'),
     revision: bigint('revision', { mode: 'number' }).notNull().default(1),
     updatedBy: text('updated_by'),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
@@ -380,7 +358,7 @@ export const captureAudioInputs = pgTable(
   ],
 );
 
-/** Under the seam `slotColumn` (above) the six slot members still read as text; WP-13a makes them `string | null`. */
+/** The six slot members are `string | null`: an unassigned slot is NULL (schema v7; the type seam of task 4 row 17 was removed by integration pass I-6, no column changed). */
 export type CaptureConfigRow = typeof captureConfig.$inferSelect;
 export type NewCaptureConfigRow = typeof captureConfig.$inferInsert;
 export type CaptureDeviceRow = typeof captureDevices.$inferSelect;

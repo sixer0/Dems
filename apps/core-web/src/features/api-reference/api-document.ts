@@ -17,9 +17,9 @@
  *
  * | View | Document | Server | Examples |
  * |------|----------|--------|----------|
- * | Simulated (as before) | `offline` scope: 31 operations, LIVE health, 30 SIMULATED (one with "Show simulated endpoints" off) | mock-core, or the packaged page origin (`pointAtCoreOrigin`) | the DEMO dataset |
+ * | Simulated (as before) | `offline` scope: 33 operations, LIVE health, 32 SIMULATED (one with "Show simulated endpoints" off) | mock-core, or the packaged page origin (`pointAtCoreOrigin`) | the DEMO dataset |
  * | Simulated, "Show Core-server endpoints" on (AR-2) | the same, plus the 66 operations only the Core server answers, each with the neutral badge `CORE SERVER` (`withCoreServerOperations`) | as above | as above |
- * | Live (AR-1, AR-3, AR-5) | `all` scope: 97 operations, every one LIVE | the page's own origin only (`pointAtPageOrigin`) | the contract's, with the session and evidence identifiers taken from the replica (`applyReplicaIdentifiers`) |
+ * | Live (AR-1, AR-3, AR-5) | `all` scope: 99 operations, every one LIVE | the page's own origin only (`pointAtPageOrigin`) | the contract's, with the session and evidence identifiers taken from the replica (`applyReplicaIdentifiers`) |
  */
 import {
   API_BADGES,
@@ -272,7 +272,7 @@ export function applyReplicaIdentifiers(document: OpenApiDocument, ids: ReplicaI
   return document
 }
 
-/** The Live document (AR-1, AR-3, AR-5): 97 operations, every one LIVE, served from the page's origin. */
+/** The Live document (AR-1, AR-3, AR-5): 99 operations, every one LIVE, served from the page's origin. */
 export function buildLiveApiDocument(ids: ReplicaIdentifiers): OpenApiDocument {
   return applyReplicaIdentifiers(pointAtPageOrigin(createOpenApiDocument({ scope: CoreApiScope.ALL })), ids)
 }

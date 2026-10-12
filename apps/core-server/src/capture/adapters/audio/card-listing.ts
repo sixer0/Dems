@@ -18,8 +18,10 @@
  * last row; addendum 4.2 "nothing chooses a card").
  *
  * DEVICE TEXT IS UNTRUSTED (AD-07 (1)). A product name is text the USB device chose, and the
- * card's long name and bracket name are derived from it. Every string of a listing passes
- * `cardText`, `cardUsbId` or the card id rule before it is returned; a string that fails is
+ * card's long name and bracket name are derived from it. Every string of a listing passes ONE
+ * function, `cardListingText`, before it is returned (row 155): each of the four results that
+ * carry text is built by `passCardStrings` from the table `CARD_LISTING_STRING_FIELDS`, which names
+ * the kind of every string member and does not compile when one is missing. A string that fails is
  * replaced by a fixed word, never repaired and never passed on. INTEGERS AND TEXT ARE RETURNED
  * APART (AD-07 (2)): `cardIndex`, `deviceIndex` and the channel numbers are what a later row
  * builds a helper argument from; no text of a `CaptureCard` may reach an argument.
@@ -82,26 +84,146 @@ const MARKUP = /[<>]/;
 const USB_PORT = /^[A-Za-z0-9:._-]{1,64}$/;
 
 /**
- * The ONE function a product or card name passes before it leaves this file. Printable ASCII
- * (U+0020 to U+007E), 1 to 64 characters after the spaces at both ends are dropped, no `<` and no
- * `>`. Anything else (a control character, a bidirectional or zero-width mark, any character
- * beyond ASCII, an over-long or empty text, a value that is no string) gives the fixed word.
- * The text is never cut to fit and never cleaned: a cut name would be a name the device did not announce.
+ * What a string of a card listing IS (task 4 row 155; AD-07 (1)). A closed set: every string
+ * member of a result of this file names one of these kinds in `CARD_LISTING_STRING_FIELDS`, or the
+ * file does not compile, and its value has passed `cardListingText` with that kind.
  */
+export const CardStringKind = {
+  /** A product name, a card name, the description of the kernel's table: text a device chose. */
+  NAME: 'NAME',
+  /** Vendor and product id of a USB card. */
+  USB_ID: 'USB_ID',
+  /** The card's short name, in the kernel's own form. The key of a registration. */
+  CARD_ID: 'CARD_ID',
+  /** The port a USB card sits on. */
+  USB_PORT: 'USB_PORT',
+  /** A sample format: a word of this file's own closed list, never a format name of the device. */
+  FORMAT: 'FORMAT',
+  /** Where a channel count comes from: a word of this file's own closed list. */
+  FACTS_SOURCE: 'FACTS_SOURCE',
+} as const;
+export type CardStringKind = (typeof CardStringKind)[keyof typeof CardStringKind];
+
+interface CardStringRule {
+  /** The closed character set and the cap, as one test on the whole text. */
+  readonly passes: (text: string) => boolean;
+  /** True where the spaces at both ends are dropped before the test (a name); the text is otherwise never changed. */
+  readonly dropsOuterSpaces: boolean;
+  /**
+   * What stands in for a text that fails: a FIXED WORD where the member must say something (a name,
+   * the id of a card that IS a USB card), and `null` where a made-up word would be a claim: a card
+   * id is the key of a registration (the entry is then not listed), a port is "none offered", a
+   * format or a facts source outside this file's own lists does not exist.
+   */
+  readonly replacement: string | null;
+}
+
+/**
+ * The rule of each kind. This table is the ONLY place of the file where a character rule is
+ * applied to a text of a listing: the patterns of the contract (`@dems/shared/api`, the same the
+ * answer's schema and the stored row's CHECK hold) are named here and nowhere else.
+ *
+ *   NAME          printable ASCII (U+0020 to U+007E), 1 to 64 characters after the spaces at both
+ *                 ends are dropped, no `<` and no `>`; else the word `UNKNOWN`
+ *   USB_ID        four lower-case hexadecimal digits, a colon, four more (9 characters); else `0000:0000`
+ *   CARD_ID       letters, digits, the underscore, 1 to 32; else nothing
+ *   USB_PORT      letters, digits and `: . _ -`, 1 to 64; else nothing
+ *   FORMAT        one of the four words of `CARD_FORMAT_PREFERENCE`; else nothing
+ *   FACTS_SOURCE  one of the three words of `CardFactsSource`; else nothing
+ */
+const CARD_STRING_RULES: Readonly<Record<CardStringKind, CardStringRule>> = Object.freeze({
+  NAME: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_CARD_TEXT_PATTERN.test(text) && !MARKUP.test(text), dropsOuterSpaces: true, replacement: CARD_TEXT_REPLACEMENT }),
+  USB_ID: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_USB_ID_PATTERN.test(text), dropsOuterSpaces: false, replacement: CARD_USB_ID_REPLACEMENT }),
+  CARD_ID: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_CARD_ID_PATTERN.test(text), dropsOuterSpaces: false, replacement: null }),
+  USB_PORT: Object.freeze({ passes: (text: string) => USB_PORT.test(text), dropsOuterSpaces: false, replacement: null }),
+  FORMAT: Object.freeze({ passes: (text: string) => (CARD_FORMAT_PREFERENCE as readonly string[]).includes(text), dropsOuterSpaces: false, replacement: null }),
+  FACTS_SOURCE: Object.freeze({ passes: (text: string) => (Object.values(CardFactsSource) as readonly string[]).includes(text), dropsOuterSpaces: false, replacement: null }),
+});
+
+/**
+ * THE ONE FUNCTION every string of a card listing passes before it leaves this file (task 4 row
+ * 155; AD-07 (1); S13-12 (b)), for the screen and for the store alike. It answers the text itself
+ * when the text is inside the rule of its kind, and the kind's fixed replacement otherwise: for a
+ * control character, a bidirectional or zero-width mark, any character beyond ASCII, a tag mark in
+ * a name, an over-long or empty text, a value that is no string, a kind that is none.
+ *
+ * The text is never cut to fit and never cleaned: a cut name would be a name the device did not
+ * announce. A text longer than a line of a listing can be is refused before any pattern reads it.
+ * Passing twice is passing once: the answer of this function passes it unchanged.
+ */
+export function cardListingText(kind: CardStringKind, raw: unknown): string | null {
+  if (typeof kind !== 'string' || !Object.hasOwn(CARD_STRING_RULES, kind)) return null;
+  const rule = CARD_STRING_RULES[kind];
+  if (typeof raw !== 'string' || raw.length > CARD_LISTING_LIMITS.lineCharacters) return rule.replacement;
+  const text = rule.dropsOuterSpaces ? raw.replace(/^ +/, '').replace(/ +$/, '') : raw;
+  return rule.passes(text) ? text : rule.replacement;
+}
+
+/** A product or card name through the one function: the name, or the fixed word. */
 export function cardText(raw: unknown): string {
-  if (typeof raw !== 'string') return CARD_TEXT_REPLACEMENT;
-  const text = raw.replace(/^ +/, '').replace(/ +$/, '');
-  return CAPTURE_AUDIO_CARD_TEXT_PATTERN.test(text) && !MARKUP.test(text) ? text : CARD_TEXT_REPLACEMENT;
+  return cardListingText(CardStringKind.NAME, raw) ?? CARD_TEXT_REPLACEMENT;
 }
 
-/** Four lower-case hexadecimal digits, a colon, four more; anything else gives the fixed id. */
+/** A USB id through the one function: the id, or the fixed id. */
 export function cardUsbId(raw: unknown): string {
-  return typeof raw === 'string' && CAPTURE_AUDIO_USB_ID_PATTERN.test(raw) ? raw : CARD_USB_ID_REPLACEMENT;
+  return cardListingText(CardStringKind.USB_ID, raw) ?? CARD_USB_ID_REPLACEMENT;
 }
 
-/** True for a card id in the kernel's own form (letters, digits, the underscore; 1 to 32). */
+/** True for a card id in the kernel's own form (letters, digits, the underscore; 1 to 32): one the one function answers unchanged. */
 export function isKernelCardId(raw: unknown): raw is string {
-  return typeof raw === 'string' && CAPTURE_AUDIO_CARD_ID_PATTERN.test(raw);
+  return typeof raw === 'string' && cardListingText(CardStringKind.CARD_ID, raw) === raw;
+}
+
+/** The members of a type that hold a string, a string or null, or a list of strings. */
+type TextMembersOf<Result> = { [Member in keyof Result]-?: [Extract<Result[Member], string | readonly string[]>] extends [never] ? never : Member }[keyof Result];
+/** For a result type: the kind of EVERY string member, no member left out and none added. */
+export type CardStringFieldsOf<Result> = { readonly [Member in TextMembersOf<Result>]: CardStringKind };
+
+/**
+ * The kind of every string member of the four results of this file that carry text of a listing.
+ * EXHAUSTIVE BY TYPE: each entry `satisfies` the list of the string members of its interface, so a
+ * string member added to one of them without a kind here does not compile, and neither does an
+ * entry for a member that is none. `passCardStrings` applies the one function to exactly these
+ * members; nothing else builds one of the four results. (`CardListing` itself has no string member
+ * beside its cards; a registry id a CALLER hands in - `CardInputHolder.deviceId`, `heldBy` - is no
+ * text of a listing.)
+ */
+export const CARD_LISTING_STRING_FIELDS = Object.freeze({
+  ListedCaptureDevice: Object.freeze({ cardId: CardStringKind.CARD_ID, cardName: CardStringKind.NAME } as const satisfies CardStringFieldsOf<ListedCaptureDevice>),
+  PresentCard: Object.freeze({ cardId: CardStringKind.CARD_ID, description: CardStringKind.NAME } as const satisfies CardStringFieldsOf<PresentCard>),
+  CardUsbIdentity: Object.freeze({ usbId: CardStringKind.USB_ID, usbPort: CardStringKind.USB_PORT, product: CardStringKind.NAME } as const satisfies CardStringFieldsOf<CardUsbIdentity>),
+  CaptureCard: Object.freeze({
+    cardId: CardStringKind.CARD_ID,
+    usbId: CardStringKind.USB_ID,
+    usbPort: CardStringKind.USB_PORT,
+    product: CardStringKind.NAME,
+    factsSource: CardStringKind.FACTS_SOURCE,
+    formats: CardStringKind.FORMAT,
+    nativeFormat: CardStringKind.FORMAT,
+  } as const satisfies CardStringFieldsOf<CaptureCard>),
+});
+
+/**
+ * THE EXIT of a result: every string member named in `fields` is replaced by what the one function
+ * answers for it, and the result is frozen. `null` in a member stays `null` (a card that is not
+ * USB has no USB id). A text the function answers nothing for: a port becomes `null` (none
+ * offered), a word of a list is dropped from its list, and for any other member the WHOLE result is
+ * `null`: an entry without a valid card id, format or facts source is not listed.
+ */
+function passCardStrings<Result extends object>(fields: CardStringFieldsOf<Result>, result: Result): Result | null {
+  const out: Record<string, unknown> = { ...(result as Record<string, unknown>) };
+  for (const [member, kind] of Object.entries(fields) as [string, CardStringKind][]) {
+    const value = out[member];
+    if (value === null) continue;
+    if (Array.isArray(value)) {
+      out[member] = Object.freeze(value.map((item: unknown) => cardListingText(kind, item)).filter((item): item is string => item !== null));
+      continue;
+    }
+    const passed = cardListingText(kind, value);
+    if (passed === null && kind !== CardStringKind.USB_PORT) return null;
+    out[member] = passed;
+  }
+  return Object.freeze(out) as Result;
 }
 
 /**
@@ -124,7 +246,7 @@ const integerIn = (value: unknown, min: number, max: number): value is number =>
 
 // ── `arecord -l`: which capture devices exist (`audio.py:29-32`) ──────────────────────────────
 
-/** One capture device as the list names it. `cardName` is RAW device text: it goes through `cardText` before it is returned by `buildCaptureCard`. */
+/** One capture device as the list names it. `cardName` is device text: it has passed the one function as a NAME (row 155; until then it left this function raw). */
 export interface ListedCaptureDevice {
   readonly cardIndex: number;
   readonly deviceIndex: number;
@@ -167,7 +289,9 @@ export function parseCaptureDeviceList(text: string | null | undefined): ListedC
       skipped += 1;
       continue;
     }
-    entries.push(Object.freeze({ cardIndex, deviceIndex, cardId, cardName: line.slice(head[0].length, mark.index) }));
+    const entry = passCardStrings<ListedCaptureDevice>(CARD_LISTING_STRING_FIELDS.ListedCaptureDevice, { cardIndex, deviceIndex, cardId, cardName: line.slice(head[0].length, mark.index) });
+    if (entry === null) skipped += 1;
+    else entries.push(entry);
   }
   return Object.freeze({ entries: Object.freeze(entries), skipped });
 }
@@ -201,7 +325,9 @@ export function parsePresentCards(text: string | null | undefined): PresentCards
       skipped += 1;
       continue;
     }
-    cards.push(Object.freeze({ cardIndex, cardId, description: cardText(match[3]) }));
+    const card = passCardStrings<PresentCard>(CARD_LISTING_STRING_FIELDS.PresentCard, { cardIndex, cardId, description: match[3] ?? '' });
+    if (card === null) skipped += 1;
+    else cards.push(card);
   }
   return Object.freeze({ cards: Object.freeze(cards), skipped });
 }
@@ -233,12 +359,15 @@ export function parseUsbIdentity(usbIdText: string | null | undefined, firstStre
   const first = completeLines(firstStreamText)[0] ?? '';
   const at = first.lastIndexOf(AT_PORT);
   const port = at < 0 ? '' : (first.slice(at + AT_PORT.length).split(',')[0] ?? '');
-  return Object.freeze({
+  // Raw text in, the one function at the exit: a USB id of another form gives the fixed id, a port of another form none.
+  const identity = passCardStrings<CardUsbIdentity>(CARD_LISTING_STRING_FIELDS.CardUsbIdentity, {
     usb: true,
-    usbId: cardUsbId(completeLines(usbIdText)[0]),
-    usbPort: USB_PORT.test(port) ? port : null,
-    product: cardText(at < 0 ? first : first.slice(0, at)),
+    usbId: completeLines(usbIdText)[0] ?? '',
+    usbPort: port,
+    product: at < 0 ? first : first.slice(0, at),
   });
+  // No kind of an identity refuses the whole result; were one to, the card is not called a USB card.
+  return identity ?? NOT_USB;
 }
 
 // ── What a capture device can do (`audio.py:118-145`, `:401-414`, `:430-439`) ─────────────────
@@ -367,7 +496,8 @@ export function buildCaptureCard(listed: ListedCaptureDevice, identity: CardUsbI
   if (!integerIn(channelCount, 1, CARD_LISTING_LIMITS.channels) || !isKernelCardId(listed.cardId)) return null;
   const formats = stream?.formats ?? hwParams?.formats ?? [];
   const name = cardText(listed.cardName);
-  return Object.freeze({
+  // Every string member goes out through the one function, whatever a caller of this exported function handed in.
+  return passCardStrings<CaptureCard>(CARD_LISTING_STRING_FIELDS.CaptureCard, {
     cardIndex: listed.cardIndex,
     deviceIndex: listed.deviceIndex,
     cardId: listed.cardId,

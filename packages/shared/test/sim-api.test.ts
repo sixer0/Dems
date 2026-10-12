@@ -12,6 +12,15 @@ import {
   type ApiStorageStatus,
   type ScenarioName,
 } from '../src/sim';
+import {
+  AudioStatusResponseSchema,
+  CAPTURE_SELECTOR_SLOTS,
+  CaptureConfigSliceSchema,
+  CaptureConfigUpdateRequestSchema,
+  DeviceHealthResponseSchema,
+  VideoStatusResponseSchema,
+} from '../src/api';
+import * as selectorBed from './support/selector-category-bed';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0); // 10:00 WIB
 const ORIGIN = 'http://127.0.0.1:4400';
@@ -537,5 +546,179 @@ describe('transcript and export-job endpoints (ops 84/85/86/87)', () => {
     h.sim.actions.signOut();
     h.sim.actions.signIn('budi.santoso', 'demo-2026');
     expect(h.sim.request({ method: 'GET', path: `/api/v1/evidence/exports/${jobId}` }).status).toBe(403);
+  });
+});
+
+// Task 4 row 165 (WP-13a; decisions C14, C18 (2), C25 R-2; requirements AD-04, AD-10 (3); names
+// register of row 161, sections 4.3, 7 and 8; sites C17, C23, C24, C25 of row 27): the in-app
+// simulator's answers for a selector slot WITHOUT a source, and its body check of operation 78.
+// The doubles: the bed of WP-13a (seven selector categories of addendum 1.5) put into the state.
+describe('the simulator answers for an unassigned selector slot (task 4 row 165)', () => {
+  const { CATEGORIES, SEEDED_CATEGORY, selectorPatch, cam, mic } = selectorBed;
+  const CONFIG = '/api/v1/capture/config';
+  /** A simulator of the scenario, signed in as the TECHNICIAN (holds CAPTURE_CONFIG), holding the lines given. */
+  const on = (lines: selectorBed.SelectorLines | null, scenario: ScenarioName = 'idle', operator = 'rina.wijaya') => {
+    const h = harness(scenario);
+    expect(h.sim.actions.signIn(operator, 'demo-2026')).toMatchObject({ ok: true });
+    if (lines !== null) h.sim.store.setState(selectorPatch(h.state(), lines));
+    const get = (path: string) => h.sim.request({ method: 'GET', path }).body;
+    const post = (body: unknown) => h.sim.request({ method: 'POST', path: CONFIG, body });
+    const changes = () => h.state().audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');
+    return { ...h, get, post, changes };
+  };
+  type Track = { trackId: string; deviceId: string; sourceDeviceId: string | null };
+  type Channel = { inputId: string; deviceId: string; role: string };
+  const tracksOf = (h: ReturnType<typeof on>) => (h.get('/api/v1/video/status') as { tracks: Track[] }).tracks;
+  const audioOf = (h: ReturnType<typeof on>) => h.get('/api/v1/audio/status') as { channels: Channel[]; activeInputId: string | null };
+  const healthOf = (h: ReturnType<typeof on>) => h.get('/api/v1/device/health') as { cameras: Track[]; audio: Channel[]; activeInputId: string | null };
+
+  it('one video line and a lone STANDBY: no source device for the empty track; no input, device or role for the empty role', () => {
+    const h = on({ cameras: [cam('VIDEO-02', 'CAM-02')], mics: [mic('MIC-02', 'STANDBY')] });
+    // The empty track states NO source - not the built-in camera of that track (`CAM-01`).
+    expect(tracksOf(h).map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    expect(VideoStatusResponseSchema.safeParse(h.get('/api/v1/video/status')).success).toBe(true);
+    // No entry for the empty role - and none for the lone line either: an entry is a meter channel
+    // with an input, and a lone line has no meter channel (register 3.2). No active input: the
+    // selector holds no PRIMARY. Nowhere a `MIC-01`, nowhere a PRIMARY.
+    const audio = audioOf(h);
+    expect(audio).toEqual({ channels: [], activeInputId: null });
+    expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
+    expect(JSON.stringify(audio)).not.toMatch(/MIC-01|PRIMARY/);
+    // Operation 44 says the same three things.
+    const health = healthOf(h);
+    expect(health.cameras.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    expect(health.audio).toEqual([]);
+    expect(health.activeInputId).toBeNull();
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+    // The v1 member `deviceId` of a track is the hardware slice's and did not move.
+    expect(tracksOf(h).map((track) => track.deviceId)).toEqual(on(null).state().cameras.map((camera) => camera.deviceId));
+  });
+
+  it.each(Object.entries(CATEGORIES))('category %s: each track answers the device of ITS line or null; the channels are the complete pair or none; every answer is a body of the contract', (name, lines) => {
+    const h = on(lines);
+    expect(tracksOf(h).map((track) => [track.trackId, track.sourceDeviceId]), name).toEqual(
+      (['VIDEO-01', 'VIDEO-02'] as const).map((trackId) => [trackId, lines.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null]),
+    );
+    const complete = lines.mics.length === 2 && lines.mics.some((line) => line.role === 'PRIMARY') && lines.mics.some((line) => line.role === 'STANDBY');
+    const audio = audioOf(h);
+    // A complete pair: one entry per line, in input order, each with the role and the device of its line.
+    expect(audio.channels.map((entry) => [entry.inputId, entry.deviceId, entry.role]), name).toEqual(complete ? lines.mics.map((line) => [line.inputId, line.deviceId, line.role]) : []);
+    // The active input is a line in force or it is not answered.
+    expect(audio.activeInputId, name).toBe(lines.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? null);
+    expect(healthOf(h).activeInputId, name).toBe(audio.activeInputId);
+    expect(healthOf(h).audio, name).toEqual(audio.channels);
+    expect(VideoStatusResponseSchema.safeParse(h.get('/api/v1/video/status')).success, name).toBe(true);
+    expect(AudioStatusResponseSchema.safeParse(audio).success, name).toBe(true);
+    expect(DeviceHealthResponseSchema.safeParse(healthOf(h)).success, name).toBe(true);
+  });
+
+  it('CONTROL: the seeded selector of the simulator answers as before - two sources, two inputs with their roles, the PRIMARY active', () => {
+    const h = on(null);
+    expect(tracksOf(h).map((track) => [track.trackId, track.deviceId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-01', 'CAM-01'], ['VIDEO-02', 'CAM-02', 'CAM-02']]);
+    expect(audioOf(h).channels.map((entry) => [entry.inputId, entry.deviceId, entry.role])).toEqual([['MIC-01', 'MIC-01', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']]);
+    expect(audioOf(h).activeInputId).toBe('MIC-01');
+    expect(healthOf(h).activeInputId).toBe('MIC-01');
+    // During a recording after a switch the active input is the session's line, as before.
+    const recording = on(null, 'recording', 'budi.santoso');
+    const id = recording.state().session?.id;
+    expect(recording.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-02' } }).status).toBe(200);
+    expect(audioOf(recording).activeInputId).toBe('MIC-02');
+  });
+
+  it('operation 78: the in-app body check accepts `unassign`, the slot is cleared with its audit row, and it can be assigned again', () => {
+    const h = on(null);
+    // Each slot of the contract's list alone is a body of the contract AND passes the in-app check.
+    for (const slot of CAPTURE_SELECTOR_SLOTS) {
+      expect(CaptureConfigUpdateRequestSchema.safeParse({ unassign: [slot] }).success, slot).toBe(true);
+      const one = on(null);
+      expect(one.post({ unassign: [slot] }).status, slot).toBe(200);
+      expect(one.changes(), slot).toHaveLength(1);
+    }
+    const cleared = h.post({ unassign: ['STANDBY'] });
+    expect(cleared.status).toBe(200);
+    expect(CaptureConfigSliceSchema.safeParse(cleared.body).success).toBe(true);
+    expect((cleared.body as { mics: { inputId: string; role: string }[] }).mics.map((line) => [line.inputId, line.role])).toEqual([['MIC-01', 'PRIMARY']]);
+    expect(h.changes().map((row) => row.details)).toEqual([{ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-02', from: 'MIC-02', permission: 'CAPTURE_CONFIG' }]);
+    // The same body again clears an empty slot: 200, no row.
+    expect(h.post({ unassign: ['STANDBY'] }).status).toBe(200);
+    expect(h.changes()).toHaveLength(1);
+    // All four in one body, beside nothing else; then the selector is empty and the reads say so.
+    expect(h.post({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] }).status).toBe(200);
+    expect(h.state().captureConfig).toMatchObject({ cameras: [], mics: [] });
+    expect(h.changes()).toHaveLength(4);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, null]);
+    expect(audioOf(h)).toEqual({ channels: [], activeInputId: null });
+    // ASSIGNED AGAIN through the API: a track by operation 79, a role alone by operation 78, then the other.
+    expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/CAM-02/source', body: { trackId: 'VIDEO-02' } }).status).toBe(200);
+    expect(h.post({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }] }).status).toBe(200);
+    expect(h.post({ mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] }).status).toBe(200);
+    expect(h.post({ mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] }).status).toBe(200);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(audioOf(h).channels.map((entry) => [entry.inputId, entry.role])).toEqual([['MIC-01', 'STANDBY'], ['MIC-02', 'PRIMARY']]);
+    expect(audioOf(h).activeInputId).toBe('MIC-02');
+    // `unassign` beside an assignment of ANOTHER slot is one body.
+    expect(h.post({ unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01' }] }).status).toBe(200);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, 'CAM-01']);
+  });
+
+  it('operation 78: what the body check refuses of `unassign` is what the contract schema refuses, as 422 on the path `unassign`, with nothing changed', () => {
+    const h = on(null);
+    const before = h.state();
+    const refused: Record<string, unknown> = {
+      'an empty list': { unassign: [] },
+      'a slot twice': { unassign: ['VIDEO-01', 'VIDEO-01'] },
+      'five entries': { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY', 'VIDEO-01'] },
+      'a stored slot word': { unassign: ['MIC-PRIMARY'] },
+      'an input id': { unassign: ['MIC-01'] },
+      'a meter channel': { unassign: ['AUDIO-01'] },
+      'not a list': { unassign: 'VIDEO-01' },
+      'a number in the list': { unassign: [1] },
+      // AD-10 (3): cleared and assigned by the same body.
+      'a camera line of the cleared track': { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] },
+      'a mic line of the cleared role': { unassign: ['STANDBY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] },
+    };
+    for (const [name, body] of Object.entries(refused)) {
+      expect(CaptureConfigUpdateRequestSchema.safeParse(body).success, name).toBe(false);
+      const answer = h.post(body);
+      expect(answer.status, name).toBe(422);
+      expect(answer.body, name).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+      expect((answer.body as { error: { message: string } }).error.message, name).toMatch(/^unassign: /);
+    }
+    // The form no schema can see: a mic line WITHOUT `role` on the input the cleared slot held. The
+    // body passes the check (and the schema); the hosted action refuses it. 422 all the same.
+    const hidden = { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] };
+    expect(CaptureConfigUpdateRequestSchema.safeParse(hidden).success).toBe(true);
+    expect(h.post(hidden)).toMatchObject({ status: 422, body: { error: { code: 'INVALID_INPUT' } } });
+    // Still strict: another unknown member is named in its own refusal.
+    expect((h.post({ unassign: ['VIDEO-01'], assign: ['VIDEO-02'] }).body as { error: { message: string } }).error.message).toMatch(/^assign: /);
+    expect(h.state()).toBe(before);
+    // While a session is open the edit is locked BEFORE the body is looked at: 409, no audit row.
+    const locked = on(null, 'recording');
+    const rows = locked.state().audit.rows.length;
+    expect(locked.post({ unassign: ['STANDBY'] })).toMatchObject({ status: 409, body: { error: { code: 'CAPTURE_CONFIG_LOCKED' } } });
+    expect(locked.state().audit.rows).toHaveLength(rows);
+    // A role without CAPTURE_CONFIG is refused before that.
+    expect(on(null, 'idle', 'budi.santoso').post({ unassign: ['STANDBY'] }).status).toBe(403);
+  });
+
+  it('site C17: a fault, the health sample and the meters of a channel WITHOUT an input write and read no frame of a built-in input', () => {
+    // A lone STANDBY line (`MIC-04`): no complete pair, so no meter channel has an input.
+    const h = on(CATEGORIES['3. some U, the rest P (VIDEO-01 and a lone STANDBY held)']!);
+    expect(Object.keys(h.state().audio.inputs)).toEqual(['MIC-04']);
+    const frame = h.state().audio.inputs['MIC-04'];
+    h.sim.actions.inject('MIC_NO_SIGNAL', { channel: 'AUDIO-01' });
+    h.sim.actions.inject('MIC_CLIP', { channel: 'AUDIO-02' });
+    // Before this row each fault wrote a frame under `MIC-01` / `MIC-02`.
+    expect(Object.keys(h.state().audio.inputs).filter((key) => key !== 'MIC-04')).toEqual([]);
+    expect(h.state().audio.inputs['MIC-04']).toBe(frame);
+    h.run(2_000);
+    expect(Object.keys(h.state().audio.inputs).filter((key) => key === 'MIC-01' || key === 'MIC-02')).toEqual([]);
+    // The 1 Hz level sample of a channel without an input is the floor.
+    expect(h.state().health.micLevels?.at(-1)).toMatchObject({ 'AUDIO-01': -90, 'AUDIO-02': -90 });
+    // CONTROL: on the seeded selector the same fault writes the frame of the channel's input, as before.
+    const seeded = on(CATEGORIES[SEEDED_CATEGORY]!);
+    seeded.sim.actions.inject('MIC_NO_SIGNAL', { channel: 'AUDIO-02' });
+    expect(seeded.state().audio.inputs['MIC-02']).toMatchObject({ noSignal: true });
+    expect(seeded.state().audio.inputs['MIC-01']).toMatchObject({ noSignal: false });
   });
 });

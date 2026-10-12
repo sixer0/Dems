@@ -3,7 +3,7 @@ import '@/i18n'
 import { createElement, useLayoutEffect, type ReactNode } from 'react'
 import { act } from '@testing-library/react'
 import type { AudioTrackId } from '@dems/shared/domain'
-import { ALWAYS_VISIBLE, captureMicLines, createSim, micInputOfChannel, noInputFrame, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, captureMicLines, createSim, meterInputOfChannel, noInputFrame, SimProvider, type AudioFrame, type ScenarioName, type Sim } from '@dems/shared/sim'
 import {
   MotionPolicyProvider,
   useAmbientSnapshot,
@@ -29,7 +29,10 @@ export function pushAudioFrame(sim: Sim, channel: AudioTrackId, frame: Partial<A
     sim.store.setState((state) => {
       // The meters slice is keyed by mic input since schema v2 (SH-17); the channel a caller names
       // writes the input that feeds it. The rest of the slice (activeInputId) is preserved.
-      const input = micInputOfChannel(captureMicLines(state), channel)
+      // Task 4 row 168: the input is the selector's line (`meterInputOfChannel`); a channel without
+      // an input has no frame to write, and a test that asks for one is told so.
+      const input = meterInputOfChannel(captureMicLines(state), channel)
+      if (input === null) throw new Error(`pushAudioFrame: ${channel} has no input in the selector of this state`)
       const previous: AudioFrame = state.audio.inputs[input] ?? noInputFrame(state.clock.now)
       const next: AudioFrame = { ...previous, seq: previous.seq + 1, ...frame }
       return { audio: { ...state.audio, inputs: { ...state.audio.inputs, [input]: next } } }

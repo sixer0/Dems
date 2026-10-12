@@ -35,13 +35,13 @@
  *    "Reachable" is `online` of the device in `captureDevices`: the Core server writes it from its
  *    adapters before each pre-check run; the in-app simulator never changes it, so its checks pass.
  */
-import type { MicRole } from '../domain';
+import type { MicRole, VideoTrackId } from '../domain';
 import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
 import { selectorInForce } from './selector-in-force';
 import { cameraClockOffsetSentence, captureFaultSentence } from './capture-fault-wording';
-import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, EpochMs, SimAlert, SimState } from './types';
+import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, CaptureSelectorSlot, EpochMs, PrecheckItem, SimAlert, SimState } from './types';
 import { AuditType, CaptureStreamState } from './vocabulary';
 
 /** `params.reason` of the two notices (C3 §5.4). */
@@ -360,8 +360,63 @@ export const CaptureStartRule = {
   NO_MICROPHONE: 'noMicrophone',
   ACTIVE_MICROPHONE: 'activeMicrophone',
   NO_STANDBY: 'noStandby',
+  /**
+   * A slot of the selector holds no source (task 4 row 163, WP-13a; names register N7). NOT a row
+   * of `captureReachabilityOf`: that form states a device, and an unassigned slot has none. It is
+   * `params.rule` of the pre-check item below and the suffix of `common.captureNotice.start.sourceNotAssigned`.
+   */
+  SOURCE_NOT_ASSIGNED: 'sourceNotAssigned',
 } as const;
 export type CaptureStartRule = (typeof CaptureStartRule)[keyof typeof CaptureStartRule];
+
+// ── A selector slot without a source (task 4 row 163; decisions C18 (1), C21 (6), C25; register section 5) ──
+//
+// In a state of REAL capture (`isOwnCaptureCoreState`, `core-facts.ts`) an unassigned slot is a
+// BLOCK item of the pre-check and the shared start is refused. In Simulated mode and in the in-app
+// simulator neither applies: they behave as before (C21 (6)).
+
+/**
+ * The slots without which a Core in its own capture refuses the start, and whose pre-check item is
+ * BLOCK (names register N11). ALL FOUR, the STANDBY included (decision C25, which corrects C21 (8)):
+ * the pre-check and the Core's plan builder ("exactly four", `SELECTOR_SHAPE`) say the same thing,
+ * so an operator never acknowledges a warning only to meet a 409. In the order of the contract's
+ * `CAPTURE_SELECTOR_SLOTS` (held equal by a test; this file imports nothing of `api/`).
+ */
+export const CAPTURE_START_REQUIRED_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'];
+
+/** The four slots of the selector, in the contract's order: what `unassignedSlotsOf` walks. */
+const SELECTOR_SLOT_ORDER: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'];
+
+/**
+ * The slots of a selector that hold no source, in the contract's order (names register N10). A
+ * slot is unassigned when NO line names its track or its role: an unassigned slot is an absent
+ * line. Nothing is read by its place in a list.
+ */
+export function unassignedSlotsOf(selector: { readonly cameras: readonly { readonly trackId: VideoTrackId }[]; readonly mics: readonly { readonly role: MicRole }[] }): CaptureSelectorSlot[] {
+  const held = new Set<string>([...selector.cameras.map((line) => line.trackId), ...selector.mics.map((line) => line.role)]);
+  return SELECTOR_SLOT_ORDER.filter((slot) => !held.has(slot));
+}
+
+/** `value` of the pre-check item of an unassigned slot (names register N8). */
+export const SOURCE_NOT_ASSIGNED_PRECHECK_VALUE = 'NOT_ASSIGNED';
+
+/**
+ * `SimTransitionError.reason` of the start a Core in its own capture refuses for an unassigned
+ * slot (names register N9). The Core answers it as `details.reason` of `409 INVALID_STATE`.
+ */
+export const CAPTURE_SOURCE_NOT_ASSIGNED_REASON = 'CAPTURE_SOURCE_NOT_ASSIGNED';
+
+/**
+ * The slot a pre-check item says is not assigned, or null for every other item (names register
+ * N12): the ONE recogniser for both clients. The item is `{ value: 'NOT_ASSIGNED', reasonCode:
+ * null, params: { rule: 'sourceNotAssigned', slot } }`; it carries no device, because there is none.
+ */
+export function unassignedSlotOfPrecheckItem(item: Pick<PrecheckItem, 'value' | 'status' | 'params'>): CaptureSelectorSlot | null {
+  if (item.value !== SOURCE_NOT_ASSIGNED_PRECHECK_VALUE || item.params?.['rule'] !== CaptureStartRule.SOURCE_NOT_ASSIGNED) return null;
+  if (item.status !== 'BLOCK' && item.status !== 'WARN') return null;
+  const slot = item.params['slot'];
+  return SELECTOR_SLOT_ORDER.find((candidate) => candidate === slot) ?? null;
+}
 
 /** One configured source of the selector, as the start rule sees it. */
 export interface CaptureSourceReachability {

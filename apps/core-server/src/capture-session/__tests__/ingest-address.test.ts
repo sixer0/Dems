@@ -81,12 +81,18 @@ describe('row 47, BR-07 (1) and (3): the one function that builds the ingest add
   });
 
   it('the source of the element is the cryptographic random source of the runtime, and no other', () => {
-    // The session names the source and hands it in at the ONE call: `randomBytes` stands at its import and there, nowhere else.
+    // The session names the source and hands it in at TWO lines: the one call of the start, and the start of the worker
+    // (row 179: the supervisor builds the addresses of a later attempt from the SAME source). `randomBytes` stands at its import and there, nowhere else.
     const session = codeLines(read(SESSION_FILE)).map((line) => line.trim());
     expect(session.filter((line) => /\brandomBytes\b/.test(line))).toEqual([
       "import { randomBytes } from 'node:crypto';",
       'cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };',
+      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });',
     ]);
+    // The supervisor draws nothing itself and imports no source: its one call takes the source it was handed with `start`.
+    const supervisor = codeLines(read('capture/supervisor.ts')).map((line) => line.trim());
+    expect(supervisor.filter((line) => /node:crypto|randomBytes|Math\.random|randomUUID|getRandomValues/.test(line))).toEqual([]);
+    expect(supervisor.filter((line) => /\.chance\b/.test(line))).toEqual(['address = captureIngestAddress(current.id, camera.trackId, source.chance);']);
     // The unit of the function imports NOTHING (static rule G-R8 of the capture folder: no source of chance there) and asks its parameter once, for 16 bytes.
     const unit = codeLines(read(ADDRESS_FILE)).map((line) => line.trim());
     expect(unit.filter((line) => /^import\b|\brequire\(|\bimport\(/.test(line))).toEqual([]);
@@ -148,8 +154,10 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
    *   and the development exception.
    * An adapter of production that reads its target (row 46, the relay start) is added here with
    * the proof that it hands the address to the start message on standard input and nowhere else.
+   * Row 179: the supervisor, which writes the member into the plan of a LATER attempt (the proof is
+   * the case below: three lines, none of them an event, a report, a status or a message).
    */
-  const READERS = ['capture-session/index.ts', 'capture/adapters/types.ts', 'modules/capture-config/plan.ts', ...DEVELOPMENT_EXCEPTION].sort();
+  const READERS = ['capture-session/index.ts', 'capture/adapters/types.ts', 'capture/supervisor.ts', 'modules/capture-config/plan.ts', ...DEVELOPMENT_EXCEPTION].sort();
 
   it('ONE function builds an ingest address: one source of the server composes a loopback RTSP address, once, and that function is called at one place', () => {
     // No source writes an RTSP address as a text (the capture folder may not hold one at all: static rule G-R4).
@@ -165,34 +173,64 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
     expect(lines.filter((line) => line.startsWith('const INGEST_'))).toEqual(["const INGEST_SCHEME = 'rtsp:';", "const INGEST_HOST = '127.0.0.1';"]);
     expect(lines.filter((line) => FROM_SCHEME.test(line))).toHaveLength(1);
     expect(lines.filter((line) => FROM_SCHEME.test(line))[0]).toMatch(/^ {2}return `\$\{INGEST_SCHEME\}\/\/\$\{INGEST_HOST\}:\$\{CAPTURE_INGEST_PORT\[trackId\]\}\/\$\{sessionId\}\/\$\{trackId\.toLowerCase\(\)\}\//);
-    // Called once in the whole server: where the session start fills the cameras of the plan.
+    // Called at TWO places in the whole server: where the session start fills the cameras of the plan (the first worker),
+    // and where the supervisor renews them for a later worker of the session (row 179, BR-07 (2)).
     const calls = productionSources().flatMap((path) => codeLines(read(path)).filter((line) => /captureIngestAddress\(/.test(line) && !line.includes('export function')).map((line) => `${path}: ${line.trim()}`));
-    expect(calls).toEqual([`${SESSION_FILE}: cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };`]);
+    expect(calls).toEqual([
+      `${SESSION_FILE}: cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };`,
+      'capture/supervisor.ts: address = captureIngestAddress(current.id, camera.trackId, source.chance);',
+    ]);
+  });
+
+  it('row 179: in the supervisor the member stands at two lines - the renewed plan, and the plan of the start read for its elements - and nothing that says or reports holds an address', () => {
+    const lines = codeLines(read('capture/supervisor.ts')).map((line) => line.trim());
+    expect(lines.filter((line) => /\bingestUrl\b/.test(line))).toEqual([
+      'const renewed = CapturePlanSchema.safeParse({ ...current.plan, cameras: current.plan.cameras.map((camera) => ({ ...camera, ingestUrl: addresses.get(camera.deviceId) })) });',
+      'ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),',
+    ]);
+    // What holds an address or an element there: handed to the receiver of the session and to the plan, and to no event, report or error.
+    const holders = lines.filter((line) => /\baddress(?:es)?\b|\belements?\b|ingestElements/.test(line));
+    expect(holders.length).toBeGreaterThan(8);
+    expect(holders.filter((line) => /emit\(|emitFromWorker\(|report\(|new CaptureSupervisorError|new Error|console\.|JSON\.stringify|status\(/.test(line))).toEqual([]);
+    expect(lines.filter((line) => line.includes('source.renewed('))).toEqual(['source.renewed(attempt, addresses);']);
+    // The plan is put into ONE frame, the START, and into no message of an error (as before the row).
+    expect(lines.filter((line) => /\bplan: current\.plan\b/.test(line))).toEqual(['(envelope) => ({ ...envelope, type: SupervisorMessageType.START, attempt: from.attempt, plan: current.plan }),']);
   });
 
   it('the sources that name the address are a closed list; the session start names it at three lines: the type of the plan input, the build, and the target of the open', () => {
     expect(productionSources().filter((path) => /\bingestUrl\b/.test(codeLines(read(path)).join('\n')))).toEqual(READERS);
     const lines = codeLines(read(SESSION_FILE)).filter((line) => /\bingestUrl\b/.test(line)).map((line) => line.trim());
+    // Row 179 moved the target from the plan's member to the address of the worker IN FORCE, and added the line that fills it from the plan of the start.
     expect(lines).toEqual([
-      "const target: CameraSourceTarget = { ingestUrl: camera.ingestUrl, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
+      "const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
       "const cameras: Partial<Record<VideoTrackId, { ingestUrl: string; outputPath: string }>> = {};",
       'cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };',
+      'addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));',
     ]);
+    // The addresses in force (row 179): one map of the live capture, written by one function, read at one line.
+    const all = codeLines(read(SESSION_FILE)).map((line) => line.trim());
+    expect(all.filter((line) => /\bcurrent\.ingest\b/.test(line))).toEqual(['const address = current.ingest.get(deviceId);', 'current.ingest.clear();', 'for (const [deviceId, address] of addresses) current.ingest.set(deviceId, address);']);
+    expect(all.filter((line) => /\baddress(?:es)?\b/.test(line) && /persist\(|app\.log\.|errorLog|tell\(|audit\.append|\.query\(|writeFacts\(|JSON\.stringify|console\.|new \w*Error\(/.test(line))).toEqual([]);
   });
 
   it('the address reaches the plan frame and the open only: the plan goes to the plan builder\'s result, the worker start and the camera opens; the target goes to `openSource`; no line that logs, tells, audits or stores takes either', () => {
     const lines = codeLines(read(SESSION_FILE)).map((line) => line.trim());
     // The plan: built once, and named where its device IDs and tracks are read, where the worker is started, and where the cameras are opened.
     const planUses = lines.filter((line) => /\bplan\b/.test(line) && !/\bplan\.cameras\.map\(\(camera\) => (?:\[camera\.deviceId, camera\.trackId as VideoTrackId\]|camera\.deviceId)\)/.test(line) && !line.startsWith('for (const camera of plan.cameras)'));
+    // Row 179: also where the addresses in force are first filled, and where the cameras are opened AGAIN for a later worker.
     expect(planUses).toEqual([
-      'function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, opened: string[], notOpened: string[]): Promise<void> {',
+      'function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, round: CameraRound): Promise<void> {',
+      'function cameraRoundAgain(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan): void {',
+      'track(round.closing.then(() => openCameras(current, registry, plan, round)).then(round.settle));',
       'const plan: CapturePlan = buildCapturePlan({ selector: ready.selector, registry, cameras, mics, pcmTapPath });',
-      'await supervisor.start(sessionId, plan);',
-      'await Promise.race([openCameras(current, registry, plan, cameraOutcomes.opened, cameraOutcomes.notOpened), current.left]);',
+      'addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));',
+      'if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);',
+      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });',
+      'void openCameras(current, registry, plan, first).then(first.settle);',
     ]);
     // The target: made at one line, used at one line.
     expect(lines.filter((line) => /\btarget\b/.test(line))).toEqual([
-      "const target: CameraSourceTarget = { ingestUrl: camera.ingestUrl, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
+      "const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
       "asked = Promise.resolve(registry.resolve('CAMERA', deviceId).openSource(deviceId, target, own?.signal ?? current.abort.signal));",
     ]);
     // The map the plan builder is given: filled at one line, handed to the builder, nothing else.
@@ -209,7 +247,13 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
     const text = read(SESSION_FILE);
     const lines = codeLines(text).map((line) => line.trim());
     expect(lines.filter((line) => line.includes('.openSource('))).toHaveLength(1);
-    expect(lines.filter((line) => /\bopenCameras\(/.test(line) && !line.startsWith('function openCameras('))).toHaveLength(1);
+    // Two calls: in `begin` (the first worker of a session), and in `cameraRoundAgain` (row 179: a later worker), which runs
+    // from the supervisor's phase event - a worker's acknowledgement after a back-off, never the unit of a start.
+    expect(lines.filter((line) => /\bopenCameras\(/.test(line) && !line.startsWith('function openCameras('))).toEqual([
+      'track(round.closing.then(() => openCameras(current, registry, plan, round)).then(round.settle));',
+      'void openCameras(current, registry, plan, first).then(first.settle);',
+    ]);
+    expect(lines.filter((line) => /\bcameraRoundAgain\(/.test(line) && !line.startsWith('function cameraRoundAgain('))).toEqual(['if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);']);
     // (`begin(ready` is this unit's own function; the transcriber's `begin(sessionId)` is another one.)
     expect(lines.filter((line) => /\bbegin\(ready\b/.test(line) && !line.startsWith('async function begin('))).toEqual(["inBackground(sessionId, 'begin', () => begin(ready));"]);
     // The function that runs inside the unit of the start resolves no adapter and opens nothing.

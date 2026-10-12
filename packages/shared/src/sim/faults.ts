@@ -15,7 +15,7 @@
  * until `recover()`.
  */
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
-import { activeMeterChannel, captureMicLines, micInputOfChannel } from './audio';
+import { activeMeterChannel, captureMicLines, meterInputOfChannel } from './audio';
 import { DEMO_CAPTURE_FAULT_REASON, captureFaultSentence } from './capture-fault-wording';
 import { CORE_NOT_RUNNING_CLEARED_SENTENCE, CORE_NOT_RUNNING_SENTENCE } from './core-not-running';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
@@ -232,10 +232,13 @@ function resolveAlerts(state: SimState, at: EpochMs, kind: FaultKind, target: st
 /**
  * Writes one frame of the meters slice. The fault target is still a **channel** (the demo control
  * panel and `FaultTarget.channel` name one); the slice itself is keyed by mic input (SH-17), so the
- * write goes through `micInputOfChannel` (the input that channel is in the capture configuration).
+ * write goes through `meterInputOfChannel` (the input that channel is in the capture configuration).
+ * A channel WITHOUT an input (task 4 row 165; site C17: the selector in force holds no complete
+ * microphone pair) has no frame to write: the same state, and no frame under a built-in input.
  */
 function setAudioFrame(state: SimState, channel: AudioTrackId, patch: Partial<AudioFrame>): SimState {
-  const input = micInputOfChannel(captureMicLines(state), channel);
+  const input = meterInputOfChannel(captureMicLines(state), channel);
+  if (input === null) return state;
   const frame = state.audio.inputs[input] ?? noSignalFrame(patch.at ?? 0);
   return {
     ...state,
@@ -345,11 +348,9 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
     });
   } else if (kind === FaultKind.MIC_NO_SIGNAL && key) {
     const channel = key as AudioTrackId;
-    next = setAudioFrame(
-      next,
-      channel,
-      noSignalFrame(now, next.audio.inputs[micInputOfChannel(captureMicLines(next), channel)]?.seq ?? 0),
-    );
+    // The input of the channel, or none: then no frame is read and `setAudioFrame` writes none.
+    const input = meterInputOfChannel(captureMicLines(next), channel);
+    next = setAudioFrame(next, channel, noSignalFrame(now, (input === null ? undefined : next.audio.inputs[input])?.seq ?? 0));
   } else if (kind === FaultKind.AUDIT_TAMPER) {
     auditIndex = auditTamperIndex(next.audit, target);
     auditSeq = auditIndex === null ? null : (next.audit.rows[auditIndex]?.seq ?? null);
@@ -615,7 +616,9 @@ export function acknowledgeAlertTransition(state: SimState, alertId: string, now
 export function maybeRaiseMicSilentWarning(state: SimState, now: EpochMs, activeSilentSince: EpochMs): SimState {
   if (state.session?.state !== SessionState.RECORDING) return state;
   const activeChannel: AudioTrackId = activeMeterChannel(state);
-  const activeFrame = state.audio.inputs[micInputOfChannel(captureMicLines(state), activeChannel)];
+  // A channel without an input has no frame: nothing reads silent, no warning is raised.
+  const activeInput = meterInputOfChannel(captureMicLines(state), activeChannel);
+  const activeFrame = activeInput === null ? undefined : state.audio.inputs[activeInput];
   if (!activeFrame?.noSignal) return state;
   if (now - activeSilentSince < MIC_SILENCE_DURATION_MS) return state;
   // Never switch: assert the active input is unchanged before and after the inject below.

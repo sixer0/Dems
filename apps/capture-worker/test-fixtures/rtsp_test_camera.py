@@ -35,11 +35,46 @@ Output: one JSON object per line on standard output (`ready` first, with the por
 It ends on SIGTERM / SIGINT, after `--max-seconds`, or when its standard input closes
 (`--exit-on-stdin-eof`: a harness that dies takes the camera with it). No listener is left.
 
-Later rows extend this file (they are NOT built here): row 40 a Basic-only challenge, a delay before
-the first keyframe, a drop and a resume in mid group, an account with special characters; row 152 a
-redirect and hostile descriptions. Python standard library and the installed ffmpeg only.
+Later rows extend this file (they are NOT built here): row 152 a redirect and hostile descriptions.
+Python standard library and the installed ffmpeg only.
 
     python3 apps/capture-worker/test-fixtures/rtsp_test_camera.py --port 8565 --codec hevc --param-sets inband
+
+THE FAULT MODES (row 40). Every one is an opt-in switch; without them the camera is the base camera of
+row 39, line for line of its output.
+    --challenge digest|basic|both   `basic`: every request that needs an account gets 401 with a Basic
+                                    challenge ONLY and nothing is ever granted (security item S13-01: a
+                                    client that answers it has put the password on the wire; the camera
+                                    COUNTS such requests, `auth_basic`, and how many of them carried this
+                                    camera's account, `auth_basic_account_match`; it never keeps a value).
+                                    `both`: a Basic and a Digest challenge together; only Digest is granted.
+    --first-keyframe-delay-ms N     the first keyframe of every PLAY comes N ms late. Until then
+    --first-keyframe-fill inter|none    `inter`: pictures that are not keyframes, at the picture rate, with
+                                    no parameter set among them (a camera joined in mid group);
+                                    `none`: nothing at all. `--frames` counts from the first keyframe on.
+    --drop-after-frames N           the camera ends the connection after N pictures of a PLAY, with no
+    --drop-count C  --drop-style fin|reset    warning (`fin`: orderly close; `reset`: a reset). The NEXT
+                                    PLAY, on a new connection, goes on with the very next picture of the
+                                    clip, so it does NOT begin on a keyframe (plan review F10 a). The first
+                                    C streams that reach N pictures are dropped (default 1); every k x N
+                                    must fall inside a group, or the switch is refused.
+    --account plain|special         `special`: the camera's account is the second constant below, whose
+                                    two values hold `@ / %` and a space, the password a `:` as well.
+
+THE HOSTILE MODES (row 186; security review 06, finding H-2: "the time bounds are not bounds"). ONE opt-in
+switch, `--adversary`, default `none` (then nothing below exists: the camera is the camera of rows 39 and 40).
+A camera, or whoever answers at its address, that tries to HOLD its client:
+    trickle-answer    every answer is sent ONE BYTE every `--adversary-interval-ms` (99): no read of the client
+                      ever waits long, and no answer is ever whole inside its bound
+    flood-answer      DESCRIBE is never answered: interleaved frames (empty ones and ones of another channel)
+                      are sent instead, as fast as the connection takes them
+    slow-answers      every answer comes `--adversary-delay-ms` (4500) late: each inside a 5 s bound, their sum not
+    trickle-stream    after `--adversary-after-frames` pictures of a PLAY: one more video packet, one byte at a time
+    flood-stream      after those pictures: frames of another channel and empty frames of the video channel only
+    flood-foreign     after those pictures: whole RTP packets on the video channel with ANOTHER payload type
+    flood-unmarked    after those pictures: video units of ONE time stamp and never the mark (a picture that
+                      never ends: what a client collects must stay bounded)
+The camera states `hostile_start` (an event line) when the mode begins and counts `hostile_bytes_sent`.
 """
 import argparse
 import base64
@@ -66,6 +101,12 @@ import traceback
 ACCOUNT_USER = "testcam"
 ACCOUNT_PASSWORD = "synthetic-camera-pass-39f1c7"
 REALM = "DEMS test camera"
+# The same placeholder with the characters a locator cannot carry unescaped (row 40, `--account special`; review F10 c).
+# The user name holds no colon: the user part of a locator is split at its first colon, so a colon there is
+# not expressible to any client that takes the account from a locator. The password holds one, and a literal
+# "%40" that a client decoding twice would turn into another character.
+SPECIAL_ACCOUNT_USER = "test cam@bench/a%1"
+SPECIAL_ACCOUNT_PASSWORD = "synthetic p@ss:w/rd%40 40f2"
 # ---------------------------------------------------------------------------------------------------------------------
 
 BIND_HOST = "127.0.0.1"  # the only address; no option changes it
@@ -294,6 +335,8 @@ class Connection:
         self.session = None
         self.channels = None
         self.streamer = None
+        self.reset_on_close = False  # row 40, `--drop-style reset`: the socket is closed without an orderly end
+        self.hostile_started = False  # row 186: the `hostile_start` event is stated once per connection
 
     # -- bytes in
     def fill(self):
@@ -357,13 +400,101 @@ class Connection:
         lines += list(headers)
         if body:
             lines.append("Content-Length: %d" % len(body))
-        self.send(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1") + body)
+        data = ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1") + body
+        hostile = self.camera.hostile  # row 186; "none" unless the switch was given
+        if hostile == "slow-answers":
+            self.hostile_begins()
+            if self.gone.wait(self.camera.hostile_delay_ms / 1000.0) or self.camera.stop.is_set():
+                raise Closed()
+        if hostile == "trickle-answer":
+            self.hostile_begins()
+            sent = 0
+            try:
+                for at in range(len(data)):
+                    if self.gone.wait(self.camera.hostile_interval_ms / 1000.0) or self.camera.stop.is_set():
+                        raise Closed()
+                    self.send(data[at:at + 1])
+                    sent += 1
+            finally:
+                self.camera.journal.count("hostile_bytes_sent", sent)
+            return
+        self.send(data)
+
+    # -- row 186: the hostile modes (each reached only when `--adversary` names it)
+    def hostile_begins(self):
+        if not self.hostile_started:
+            self.hostile_started = True
+            self.camera.journal.count("hostile_starts")
+            self.camera.journal.emit("hostile_start", conn=self.number, mode=self.camera.hostile)
+
+    def hostile_flood(self, chunks):
+        """Sends what `chunks()` yields for as long as the client takes it; the bytes are counted."""
+        self.hostile_begins()
+        sent = 0
+        try:
+            while not (self.gone.is_set() or self.camera.stop.is_set()):
+                data = chunks()
+                self.send(data)
+                sent += len(data)
+        finally:
+            self.camera.journal.count("hostile_bytes_sent", sent)
+
+    def hostile_stream(self, seq, ts):
+        """After the pictures of `--adversary-after-frames`: the stream mode of `--adversary`, until the client is gone."""
+        camera, codec, mode = self.camera, self.camera.codec, self.camera.hostile
+        rtp_channel = self.channels[0]
+        other = (rtp_channel + 6) & 0xFF
+        frame = lambda channel, payload: struct.pack(">BBH", 0x24, channel, len(payload)) + payload
+        state = {"seq": seq}
+
+        def packet(payload_type, marker, payload):
+            header = struct.pack(">BBHII", 0x80, (0x80 if marker else 0) | payload_type, state["seq"] & 0xFFFF, ts, camera.ssrc)
+            state["seq"] += 1
+            return frame(rtp_channel, header + payload)
+
+        if mode == "trickle-stream":
+            self.hostile_begins()
+            data = packet(PAYLOAD_TYPE, True, camera.clip.unit(camera.inter_index(0), False)[0][:1200])
+            sent = 0
+            try:
+                for at in range(len(data)):
+                    if self.gone.wait(camera.hostile_interval_ms / 1000.0) or camera.stop.is_set():
+                        break
+                    self.send(data[at:at + 1])
+                    sent += 1
+            finally:
+                camera.journal.count("hostile_bytes_sent", sent)
+            return
+        if mode == "flood-stream":
+            block = (frame(other, b"") + frame(rtp_channel, b"") + frame(other, b"\x00" * 8)) * 2048
+            self.hostile_flood(lambda: block)
+        elif mode == "flood-foreign":
+            self.hostile_flood(lambda: b"".join(packet(PAYLOAD_TYPE + 1, True, b"\x41" + b"\xAB" * 31) for _ in range(512)))
+        else:  # flood-unmarked: whole units that are not keyframes, one time stamp, never the mark
+            unit = (b"\x41" if codec.name == "h264" else b"\x02\x01") + b"\xAB" * 1300
+            self.hostile_flood(lambda: b"".join(packet(PAYLOAD_TYPE, False, unit) for _ in range(32)))
 
     # -- authentication: Digest only (RFC 2617, MD5, no qop)
     def challenge(self):
-        self.nonce = secrets.token_hex(16)
+        """The challenge header lines of a 401 (one line; two in `--challenge both`, the Basic one first)."""
         self.camera.journal.count("challenges_sent")
-        return 'WWW-Authenticate: Digest realm="%s", nonce="%s"' % (REALM, self.nonce)
+        mode = self.camera.challenge_mode
+        lines = []
+        if mode != "digest":  # row 40: a Basic challenge (S13-01); in `basic` mode it is the only one
+            self.camera.journal.count("basic_challenges_sent")
+            lines.append('WWW-Authenticate: Basic realm="%s"' % REALM)
+        if mode != "basic":
+            self.nonce = secrets.token_hex(16)
+            lines.append('WWW-Authenticate: Digest realm="%s", nonce="%s"' % (REALM, self.nonce))
+        return lines
+
+    def basic_carries_account(self, rest):
+        """Whether a Basic header holds exactly this camera's account. Used for a COUNT; nothing of it is kept."""
+        try:
+            given = base64.b64decode(rest.strip(), validate=True)
+        except ValueError:
+            return False
+        return hmac.compare_digest(given, ("%s:%s" % (self.camera.user, self.camera.password)).encode("utf-8"))
 
     def auth_class(self, method, headers):
         value = headers.get("authorization")
@@ -371,6 +502,8 @@ class Connection:
             return "none"
         scheme, _, rest = value.partition(" ")
         if scheme.lower() == "basic":
+            if self.basic_carries_account(rest):
+                self.camera.journal.count("auth_basic_account_match")
             return "basic"
         if scheme.lower() != "digest":
             return "other"
@@ -378,9 +511,9 @@ class Connection:
                  for m in re.finditer(r'(\w+)\s*=\s*(?:"([^"]*)"|([^,\s]+))', rest)}
         md5 = lambda text: hashlib.md5(text.encode("utf-8")).hexdigest()
         expected = md5("%s:%s:%s" % (
-            md5("%s:%s:%s" % (ACCOUNT_USER, REALM, ACCOUNT_PASSWORD)), self.nonce or "", md5("%s:%s" % (method, given.get("uri", "")))))
+            md5("%s:%s:%s" % (self.camera.user, REALM, self.camera.password)), self.nonce or "", md5("%s:%s" % (method, given.get("uri", "")))))
         good = (self.nonce is not None
-                and hmac.compare_digest(given.get("username", ""), ACCOUNT_USER)
+                and hmac.compare_digest(given.get("username", "").encode("utf-8"), self.camera.user.encode("utf-8"))
                 and given.get("realm") == REALM
                 and given.get("nonce") == self.nonce
                 and hmac.compare_digest(given.get("response", "").lower(), expected))
@@ -402,11 +535,15 @@ class Connection:
         if method not in camera.METHODS:
             self.reply(cseq, 405, "Method Not Allowed", ["Allow: " + ", ".join(camera.METHODS)])
             return 405
+        if camera.hostile == "flood-answer" and method == "DESCRIBE":  # row 186: frames in the place of the answer
+            block = (struct.pack(">BBH", 0x24, 0, 0) + struct.pack(">BBH", 0x24, 7, 4) + b"\x00" * 4) * 4096
+            self.hostile_flood(lambda: block)
+            return 0
         if method == "OPTIONS":  # answered without an account, as common cameras do
             self.reply(cseq, 200, "OK", ["Public: " + ", ".join(camera.METHODS)])
             return 200
         if auth != "digest_ok":
-            self.reply(cseq, 401, "Unauthorized", [self.challenge()])
+            self.reply(cseq, 401, "Unauthorized", self.challenge())
             return 401
         path = re.sub(r"^rtsp://[^/]*", "", uri).split("?", 1)[0].rstrip("/")
         base = "rtsp://%s:%d%s/" % (BIND_HOST, camera.port, camera.path)
@@ -456,25 +593,46 @@ class Connection:
         sent = packets = octets = set_nals = keyframes = 0
         reason = "frames_complete"
         started, wall0 = time.monotonic(), time.time()
+        # Row 40. `origin`: the clip picture this PLAY begins with (0, or where a dropped stream ended).
+        # `held`: picture slots the first keyframe is held back by; `lead`: how many of them are sent as
+        # pictures that are not keyframes (`inter`), the rest of the time being silence (`none`).
+        origin = camera.position
+        held = -(-camera.first_keyframe_delay_ms * camera.fps // 1000)
+        lead = held if camera.first_keyframe_fill == "inter" else 0
+        fault_fields = camera.fault_fields(origin)
         journal.count("streams_started")
-        journal.emit("stream_start", conn=self.number)
+        journal.emit("stream_start", conn=self.number, **fault_fields)
         try:
-            while camera.frames == 0 or sent < camera.frames:
-                wait = started + sent / camera.fps - time.monotonic()
+            while camera.frames == 0 or sent < lead + camera.frames:
+                slot = sent if sent < lead else sent - lead + held  # the place of this picture on the time axis
+                wait = started + slot / camera.fps - time.monotonic()
                 if wait > 0 and (self.gone.wait(wait) or camera.stop.is_set()):
                     reason = "stopped"
                     break
                 if self.gone.is_set() or camera.stop.is_set():
                     reason = "stopped"
                     break
-                ts = (first_ts + sent * per_frame) & 0xFFFFFFFF
+                if camera.drop_after and sent - lead == camera.drop_after and camera.claim_drop(origin + sent - lead):
+                    reason = "fault_drop"  # in mid group, with no TEARDOWN and no warning
+                    self.reset_on_close = camera.drop_style == "reset"
+                    break
+                ts = (first_ts + slot * per_frame) & 0xFFFFFFFF
+                if camera.hostile in camera.HOSTILE_STREAM and sent - lead == camera.hostile_after:  # row 186
+                    reason = "hostile"
+                    self.hostile_stream(seq, ts)
+                    break
                 out = bytearray()
-                if sent % camera.fps == 0:  # a sender report every second, the first before the first picture
-                    ntp = wall0 + sent / camera.fps + NTP_EPOCH_S
+                if slot % camera.fps == 0 or sent == 0:  # a sender report every second, the first before the first picture
+                    ntp = wall0 + slot / camera.fps + NTP_EPOCH_S
                     report = struct.pack(">BBHIIIIII", 0x80, 200, 6, camera.ssrc, int(ntp) & 0xFFFFFFFF,
                                          int((ntp % 1) * (1 << 32)) & 0xFFFFFFFF, ts, packets & 0xFFFFFFFF, octets & 0xFFFFFFFF)
                     out += struct.pack(">BBH", 0x24, rtcp_channel, len(report)) + report
-                nals = camera.clip.unit(sent, with_sets)
+                if sent < lead:  # before the first keyframe: a picture that is not one, and no parameter set
+                    index = camera.inter_index(sent)
+                    nals = camera.clip.unit(index, False)
+                else:
+                    index = origin + sent - lead
+                    nals = camera.clip.unit(index, with_sets)
                 payloads = [p for nal in nals for p in rtp_payloads(codec, nal)]
                 for i, payload in enumerate(payloads):
                     marker = 0x80 if i == len(payloads) - 1 else 0
@@ -485,7 +643,7 @@ class Connection:
                 packets += len(payloads)
                 self.send(bytes(out))
                 set_nals += sum(1 for n in nals if codec.nal_type(n) in codec.set_types)
-                keyframes += 1 if camera.clip.keys[sent % len(camera.clip.units)] else 0
+                keyframes += 1 if camera.clip.keys[index % len(camera.clip.units)] else 0
                 sent += 1
         except OSError as exc:
             reason = "client_gone" if exc.errno in (errno.EPIPE, errno.ECONNRESET, errno.EBADF, errno.ENOTCONN) else "send_failed"
@@ -496,13 +654,25 @@ class Connection:
             journal.error("stream", exc)
         journal.count("frames_sent", sent)
         journal.count("parameter_set_nals_sent", set_nals)
+        if fault_fields:
+            fault_fields = dict(fault_fields, pre_keyframe_frames_sent=min(sent, lead))
+            journal.count("pre_keyframe_frames_sent", min(sent, lead))
+            if reason == "fault_drop":
+                journal.count("streams_dropped")
+                fault_fields.update(next_index=camera.position, drop_style=camera.drop_style)
         journal.emit("stream_end", conn=self.number, reason=reason, frames_sent=sent, keyframes_sent=keyframes,
-                     rtp_packets=packets, parameter_set_nals_sent=set_nals)
+                     rtp_packets=packets, parameter_set_nals_sent=set_nals, **fault_fields)
         if reason != "stopped":  # the stream is over: the camera ends the connection, the client sees its end
             self.close()
 
     def close(self):
         self.gone.set()
+        if self.reset_on_close:  # row 40: no orderly end; `run` closes the socket, which sends the reset
+            try:
+                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            except OSError:
+                pass
+            return
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -536,12 +706,27 @@ class Connection:
 
 class Camera:
     METHODS = ("OPTIONS", "DESCRIBE", "SETUP", "PLAY", "GET_PARAMETER", "TEARDOWN")
+    HOSTILE_STREAM = ("trickle-stream", "flood-stream", "flood-foreign", "flood-unmarked")  # row 186
+    HOSTILE = ("none", "trickle-answer", "flood-answer", "slow-answers") + HOSTILE_STREAM
 
     def __init__(self, args, clip, journal):
+        # Row 186, the hostile modes; "none" unless `--adversary` was given.
+        self.hostile, self.hostile_after = args.hostile, args.hostile_after_frames
+        self.hostile_interval_ms, self.hostile_delay_ms = args.hostile_interval_ms, args.hostile_delay_ms
         self.codec, self.clip, self.journal = clip.codec, clip, journal
         self.param_sets, self.path = args.param_sets, args.path
         self.width, self.height, self.fps, self.gop, self.frames = args.width, args.height, args.fps, args.gop, args.frames
         self.ssrc = secrets.randbits(32)
+        # Row 40, the fault modes; each is off unless its switch was given.
+        self.challenge_mode = args.challenge
+        special = args.account == "special"
+        self.user = SPECIAL_ACCOUNT_USER if special else ACCOUNT_USER
+        self.password = SPECIAL_ACCOUNT_PASSWORD if special else ACCOUNT_PASSWORD
+        self.first_keyframe_delay_ms, self.first_keyframe_fill = args.first_keyframe_delay_ms, args.first_keyframe_fill
+        self.drop_after, self.drop_style = args.drop_after_frames, args.drop_style
+        self.drops_left = args.drop_count if args.drop_after_frames else 0
+        self.position = 0  # the clip picture the next PLAY begins with; moved only by a drop
+        self.fault_lock = threading.Lock()
         self.stop = threading.Event()
         self.connections = []
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -550,6 +735,27 @@ class Camera:
         self.listener.listen(8)
         self.listener.settimeout(0.5)
         self.port = self.listener.getsockname()[1]
+
+    # -- row 40: the stream faults
+    def fault_fields(self, origin):
+        """What a stream event states about the stream faults; empty (no extra member) when none is switched on."""
+        if not self.first_keyframe_delay_ms and not self.drop_after:
+            return {}
+        return {"first_index": origin, "first_index_is_keyframe": origin % self.gop == 0,
+                "first_keyframe_delay_ms": self.first_keyframe_delay_ms}
+
+    def inter_index(self, count):
+        """The clip picture sent as the `count`-th picture before the first keyframe: never a keyframe."""
+        return 1 + count % (self.gop - 1)
+
+    def claim_drop(self, next_index):
+        """True when this stream is one of the streams to drop; the next PLAY then begins with `next_index`."""
+        with self.fault_lock:
+            if self.drops_left <= 0:
+                return False
+            self.drops_left -= 1
+            self.position = next_index
+            return True
 
     def description(self):
         lines = ["v=0", "o=- %d 1 IN IP4 %s" % (self.ssrc, BIND_HOST), "s=DEMS test camera", "c=IN IP4 0.0.0.0", "t=0 0",
@@ -611,6 +817,27 @@ def main():
     parser.add_argument("--cache", default=DEFAULT_CACHE, help="folder of the encoded clips (git-ignored)")
     parser.add_argument("--event-log", default=None, help="append the event lines to this file")
     parser.add_argument("--exit-on-stdin-eof", action="store_true", help="end when standard input closes")
+    faults = parser.add_argument_group("fault modes (row 40); each is off by default")
+    faults.add_argument("--challenge", choices=("digest", "basic", "both"), default="digest",
+                        help="basic: a Basic challenge only, nothing is ever granted; both: Basic and Digest offered, Digest granted")
+    faults.add_argument("--first-keyframe-delay-ms", type=int, default=0, help="the first keyframe of every PLAY comes this late")
+    faults.add_argument("--first-keyframe-fill", choices=("inter", "none"), default="inter",
+                        help="what is sent before the delayed keyframe: pictures that are not keyframes, or nothing")
+    faults.add_argument("--drop-after-frames", type=int, default=0,
+                        help="end the connection after this many pictures of a PLAY; the next PLAY goes on with the next picture")
+    faults.add_argument("--drop-count", type=int, default=1, help="how many streams are dropped (with --drop-after-frames)")
+    faults.add_argument("--drop-style", choices=("fin", "reset"), default="fin", help="how the dropped connection ends")
+    faults.add_argument("--account", choices=("plain", "special"), default="plain",
+                        help="special: the account whose values hold @ / %% and a space (the password a colon too)")
+    hostile = parser.add_argument_group("hostile modes (row 186); off by default")
+    # The names begin with `--adversary`, not `--host...`: no option of this camera may be a longer spelling of
+    # `--host` (the bind rule of rtsp_test_camera_check.py asks that `--host` is an option this program does not know).
+    hostile.add_argument("--adversary", dest="hostile", choices=Camera.HOSTILE, default="none",
+                         help="a camera that tries to hold its client: answers in single bytes, frames in the place of an answer, late answers, "
+                              "or after --adversary-after-frames pictures a trickle or a flood of what a client drops")
+    hostile.add_argument("--adversary-after-frames", dest="hostile_after_frames", type=int, default=0, help="pictures of a PLAY before a stream mode of --adversary begins")
+    hostile.add_argument("--adversary-interval-ms", dest="hostile_interval_ms", type=int, default=99, help="the pause between two bytes of a trickle")
+    hostile.add_argument("--adversary-delay-ms", dest="hostile_delay_ms", type=int, default=4500, help="how late every answer of slow-answers comes")
     args = parser.parse_args()
 
     def refuse(text):
@@ -630,6 +857,16 @@ def main():
         refuse("--clip-frames must be a multiple of --gop, at most 3000")
     if args.frames < 0 or not 1 <= args.max_seconds <= 86400:
         refuse("--frames or --max-seconds out of range")
+    if not 0 <= args.first_keyframe_delay_ms <= 120000:
+        refuse("--first-keyframe-delay-ms must be 0 to 120000")
+    if args.first_keyframe_delay_ms and args.first_keyframe_fill == "inter" and args.gop < 2:
+        refuse("--first-keyframe-fill inter needs a group of at least 2 pictures")
+    if args.drop_after_frames < 0 or not 1 <= args.drop_count <= 100:
+        refuse("--drop-after-frames or --drop-count out of range")
+    if any(k * args.drop_after_frames % args.gop == 0 for k in range(1, args.drop_count + 1)) and args.drop_after_frames:
+        refuse("every drop must fall inside a group: k x --drop-after-frames must not be a multiple of --gop")
+    if args.hostile_after_frames < 0 or not 1 <= args.hostile_interval_ms <= 10000 or not 1 <= args.hostile_delay_ms <= 60000:
+        refuse("--adversary-after-frames, --adversary-interval-ms or --adversary-delay-ms out of range")
 
     journal = Journal(args.event_log)
     codec = Codec(args.codec)
@@ -659,9 +896,23 @@ def main():
             camera.stop.set()
         threading.Thread(target=watch, daemon=True).start()
 
+    # The `ready` line of the base camera is unchanged; a camera with a fault switch adds ONE member, `faults`.
+    fault_state = {}
+    if args.challenge != "digest":
+        fault_state["challenge"] = args.challenge
+    if args.first_keyframe_delay_ms:
+        fault_state.update(first_keyframe_delay_ms=args.first_keyframe_delay_ms, first_keyframe_fill=args.first_keyframe_fill)
+    if args.drop_after_frames:
+        fault_state.update(drop_after_frames=args.drop_after_frames, drop_count=args.drop_count, drop_style=args.drop_style)
+    if args.account != "plain":
+        fault_state["account"] = args.account
+    if args.hostile != "none":  # row 186
+        fault_state.update(hostile=args.hostile, hostile_after_frames=args.hostile_after_frames)
     journal.emit("ready", pid=os.getpid(), host=BIND_HOST, port=camera.port, path=camera.path, codec=codec.name,
                  param_sets=args.param_sets, width=args.width, height=args.height, fps=args.fps, gop=args.gop,
-                 clip_frames=args.clip_frames, frames_per_play=args.frames, authentication="digest", transport="tcp-interleaved")
+                 clip_frames=args.clip_frames, frames_per_play=args.frames,
+                 authentication={"digest": "digest", "basic": "basic", "both": "basic+digest"}[args.challenge], transport="tcp-interleaved",
+                 **({"faults": fault_state} if fault_state else {}))
     camera.serve(time.monotonic() + args.max_seconds)
     journal.emit("exit", counters=dict(sorted(journal.counters.items())))
     return 0

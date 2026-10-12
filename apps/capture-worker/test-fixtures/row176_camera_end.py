@@ -150,8 +150,9 @@ def run(name, kind, test_index, make_test, binary=None, listen_s=E.LISTEN_S):
             "stop_acknowledged_and_exit_0": f["stop_ack"] is True and f["worker_rc"] == 0,
             "no_crash_frame_no_output_setup_failed": not f["crash_frames"] and f["output_setup_failed_lines"] == 0,
             "camera_under_test_no_connect_0_bytes": t["ingest_connected"] == 0 and t["bytes"] == 0,
-            "camera_under_test_one_fault_frame": t["fault_frames"] == [["CAPTURE_FAULT", "CAMERA_NOT_CONNECTED", "ACTIVE"]],
-            "control_connected_no_fault": c["ingest_connected"] == 1 and c["code_lines"] == 0 and not [x for x in c["fault_frames"] if x[1] in ("CAMERA_NOT_CONNECTED", "CAMERA_CLOCK_OUT_OF_BOUND")],
+            # Row 182: the frame names the cause. `close`: no picture. `hold`: the camera was given up first (its one frame), and the late end says nothing more.
+            "camera_under_test_one_fault_frame": t["fault_frames"] == [["CAPTURE_FAULT", "CAMERA_NO_PICTURE" if kind == "close" else "CAMERA_NOT_CONNECTED", "ACTIVE"]],
+            "control_connected_no_fault": c["ingest_connected"] == 1 and c["code_lines"] == 0 and not [x for x in c["fault_frames"] if x[1] in ("CAMERA_NOT_CONNECTED", "CAMERA_NO_PICTURE", "CAMERA_CLOCK_OUT_OF_BOUND")],
             "control_file_complete": c["video_frames"] >= COMPLETE_FRAMES and f["control_summary"]["fragments"] == f["control_summary"]["durable_fragments"] and f["control_summary"]["bytes"] == c["bytes"] > 0,
             "control_file_decodes": c["decode_rc"] == 0 and not c["decode_stderr"],
             "control_file_holds_the_audio": c["audio_codec"] == "aac" and audio_s >= video_s,

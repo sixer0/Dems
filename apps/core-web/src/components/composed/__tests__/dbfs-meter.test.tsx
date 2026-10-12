@@ -2,7 +2,7 @@
 import { Profiler } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { captureMicLines, micInputOfChannel, type Sim } from '@dems/shared/sim'
+import { captureMicLines, meterInputOfChannel, type Sim } from '@dems/shared/sim'
 import { drainMeterFrames, setDebugMetricsEnabled } from '@/motion'
 import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE } from '@dems/shared/api'
 import { DbfsMeter } from '../dbfs-meter'
@@ -25,7 +25,7 @@ let t0: number
 beforeEach(() => {
   sim = createTestSim()
   const state = sim.store.getState()
-  t0 = state.audio.inputs[micInputOfChannel(captureMicLines(state), 'AUDIO-01')].at
+  t0 = state.audio.inputs[meterInputOfChannel(captureMicLines(state), 'AUDIO-01')!]!.at
   // A known starting frame: −18 dBFS on MIC 1 (the mockup value).
   pushAudioFrame(sim, 'AUDIO-01', { at: t0, dbfs: -18, peak: -12, clip: false, noSignal: false })
 })
@@ -209,11 +209,50 @@ describe('a level that was not measured (wave J, JW-08)', () => {
     // A measured frame carries no `notMeasured` member at all (the helper merges frames, so the member is dropped by hand).
     act(() => {
       sim.store.setState((state) => {
-        const input = micInputOfChannel(captureMicLines(state), 'AUDIO-01')
+        const input = meterInputOfChannel(captureMicLines(state), 'AUDIO-01')!
         return { audio: { ...state.audio, inputs: { ...state.audio.inputs, [input]: { seq: 99, at: 1_790_823_601_000, dbfs: -18, peak: -18, clip: false, noSignal: false } } } }
       })
     })
     expect(screen.getByTestId('dbfs-meter')).not.toHaveAttribute('data-not-measured')
+  })
+
+  // Task 4 row 168 (WP-13a; row 27 site W5; decision C18 (2)): the input of a meter channel is the selector's line
+  // (`meterInputOfChannel`). The double is a hand-built selector slice: the frames of the built-in inputs stay in
+  // the slice, as they do on a client whose state still holds them.
+  it.each([
+    ['no microphone line', [] as readonly ('PRIMARY' | 'STANDBY')[]],
+    ['the PRIMARY line alone', ['PRIMARY'] as const],
+    ['the STANDBY line alone', ['STANDBY'] as const],
+  ])('task 4 row 168: with %s the meter draws no level of a built-in input - it is the no-input drawing', (_name, roles) => {
+    const sim = createTestSim()
+    pushAudioFrame(sim, 'AUDIO-01', { dbfs: -18, peak: -12, clip: false, noSignal: false })
+    act(() => {
+      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => (roles as readonly string[]).includes(line.role)) } }))
+    })
+    expect(meterInputOfChannel(captureMicLines(sim.store.getState()), 'AUDIO-01')).toBeNull()
+    // The slice still holds a level under the built-in id: it is not this channel's.
+    expect(sim.store.getState().audio.inputs['MIC-01']).toMatchObject({ dbfs: -18, noSignal: false })
+    render(withProviders(<DbfsMeter channel="AUDIO-01" variant="panel" />, { sim }))
+    const meter = screen.getByTestId('dbfs-meter')
+    expect(meter).toHaveAttribute('data-no-signal', 'true')
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuetext', 'No signal')
+    expect(meter.textContent ?? '').not.toMatch(/18/)
+    // A later frame of that built-in input changes nothing on this meter.
+    act(() => {
+      sim.store.setState((state) => ({ audio: { ...state.audio, inputs: { ...state.audio.inputs, 'MIC-01': { ...state.audio.inputs['MIC-01']!, seq: 500, at: state.audio.inputs['MIC-01']!.at + 5_000, dbfs: -6, peak: -3 } } } }))
+    })
+    expect(screen.getByTestId('dbfs-meter')).toHaveAttribute('data-no-signal', 'true')
+  })
+
+  it('task 4 row 168: the input leaves the channel while the meter is on screen - the level goes, the no-input drawing stays', () => {
+    const sim = createTestSim()
+    pushAudioFrame(sim, 'AUDIO-01', { dbfs: -18, peak: -12, clip: false, noSignal: false })
+    render(withProviders(<DbfsMeter channel="AUDIO-01" variant="panel" />, { sim }))
+    expect(screen.getByTestId('dbfs-meter')).not.toHaveAttribute('data-no-signal')
+    act(() => {
+      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => line.role === 'PRIMARY') } }))
+    })
+    expect(screen.getByTestId('dbfs-meter')).toHaveAttribute('data-no-signal', 'true')
   })
 
   it('NEGATIVE CONTROL: an open capture that delivers no samples is still NO SIGNAL', () => {

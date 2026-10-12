@@ -6,7 +6,7 @@
 // Pure: the fake registry of row 65 holds the seeded devices behind in-memory adapters; nothing is
 // opened except the fakes' own stream handles (a pipe NAME under a directory that does not exist).
 import { CapturePlanSchema, LOOPBACK_RTSP_URL, StartMessageSchema, CAPTURE_PROTOCOL_VERSION, type CapturePlanMic } from '@dems/capture-protocol';
-import { DEFAULT_CAPTURE_CONFIG } from '@dems/shared/sim';
+import { CAPTURE_START_REQUIRED_SLOTS, DEFAULT_CAPTURE_CONFIG, unassignedSlotsOf } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import {
   CaptureAdapterKind,
@@ -226,6 +226,51 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
       { cameras: [], mics: [] },
     ];
     for (const selector of shapes) expect(refusalOf(() => buildCapturePlan({ ...base, selector }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SELECTOR_SHAPE', deviceId: null });
+  });
+
+  // Task 4 row 29 (decisions C14, C18 (1), C25; security requirement AD-10 (4); addendum 1.5).
+  // `plan.ts` is NOT edited by that row: this case states what it already says about an unassigned
+  // slot (an ABSENT line of the selector), and holds it equal to the shared pre-check. C25: in real
+  // capture ALL FOUR slots must be assigned - the STANDBY included (state S-5 of the security
+  // check) - so the pre-check and the plan builder never disagree.
+  it('AD-10 (4), C25: any unassigned slot - each of the four alone, and every one of the 15 incomplete selectors - is refused SELECTOR_SHAPE before the registry is asked; the shared pre-check names the same selectors', async () => {
+    const base = await seededInput();
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+    const without = (unassigned: readonly string[]): CapturePlanSelector => ({
+      cameras: SEEDED.cameras.filter((camera) => !unassigned.includes(camera.trackId)),
+      mics: SEEDED.mics.filter((mic) => !unassigned.includes(mic.role)),
+    });
+    /** A registry that fails the case when it is asked: the shape rule answers first, for a selector with a hole. */
+    const asked: string[] = [];
+    const untouched: CapturePlanRegistry = { operation: CaptureOperation.REAL_PRODUCTION, assertRecordable: (deviceId) => (asked.push(deviceId), base.registry.assertRecordable(deviceId)) };
+    expect([...CAPTURE_START_REQUIRED_SLOTS]).toEqual([...SLOTS]);
+
+    const outcomes: [string, boolean, boolean][] = [];
+    for (let bits = 0; bits < 16; bits += 1) {
+      const unassigned = SLOTS.filter((_slot, index) => (bits & (1 << index)) !== 0);
+      const selector = without(unassigned);
+      // The shared rule (`startRecordingTransition`, `evaluatePrecheck`): a required slot that no line names.
+      expect(unassignedSlotsOf(selector)).toEqual(unassigned);
+      const sharedRefuses = unassignedSlotsOf(selector).some((slot) => CAPTURE_START_REQUIRED_SLOTS.includes(slot));
+      const refusal = refusalOf(() => assertRecordableSelector(selector, untouched));
+      const planRefusesByShape = refusal !== 'no refusal' && refusal.reason === 'SELECTOR_SHAPE';
+      if (unassigned.length > 0) {
+        expect(refusal, unassigned.join('+')).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SELECTOR_SHAPE', deviceId: null });
+        // And the builder itself, in each real operation and in SIMULATED: no plan, whatever sources were given.
+        for (const operation of [CaptureOperation.REAL_PRODUCTION, CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.SIMULATED]) {
+          expect(refusalOf(() => buildCapturePlan({ ...base, selector, registry: { ...untouched, operation } })), `${unassigned.join('+')} ${operation}`).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SELECTOR_SHAPE', deviceId: null });
+        }
+      }
+      outcomes.push([unassigned.join('+'), sharedRefuses, planRefusesByShape]);
+    }
+    // The two rules agree on all 16: 15 refused, the complete selector not.
+    expect(outcomes.filter(([, shared, plan]) => shared !== plan)).toEqual([]);
+    expect(outcomes.filter(([, shared]) => shared)).toHaveLength(15);
+    expect(outcomes[0]).toEqual(['', false, false]);
+    // Each slot alone, by name (S-5 is the last): four refusals.
+    expect(SLOTS.map((slot) => refusalOf(() => assertRecordableSelector(without([slot]), untouched))).map((refusal) => (refusal === 'no refusal' ? refusal : refusal.reason))).toEqual(['SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE']);
+    // No device was asked for an incomplete selector: only the complete one reached the registry (its four devices, once).
+    expect(asked).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
   });
 
   it('sources the protocol refuses: an address outside loopback, one path twice; and the text of a refusal holds none of them', async () => {

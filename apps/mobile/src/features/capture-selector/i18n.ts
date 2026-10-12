@@ -215,6 +215,9 @@ export const captureSelectorEn = {
       noStandby: '{{device}} is not reachable. The session will record with no standby microphone.',
       oneMicrophone: '{{device}} is not reachable. The session will record with one microphone and no standby.',
       notRecordable: '{{device}} cannot be recorded by this version of the system.',
+      // Task 4 row 169 (names register N15): the mobile copy of `common.captureNotice.start.sourceNotAssigned` (N13),
+      // word for word. The pre-check item of an unassigned selector slot; it names the slot, never a device.
+      sourceNotAssigned: '{{slot}} has no source assigned. Assign one on Devices.',
     },
     searchCount_one: 'A search found {{count}} camera.',
     searchCount_other: 'A search found {{count}} cameras.',

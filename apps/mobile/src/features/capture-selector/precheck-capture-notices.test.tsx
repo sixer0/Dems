@@ -52,10 +52,11 @@ function startGate(test: TestSim, operator = 0): void {
 }
 
 /** Opens the gate with `devices` unreachable, resolves the eight checks, then raises the run's alerts. */
-async function openGate(devices: readonly string[], options: { operator?: number; alerts?: readonly Warning[] } = {}) {
+async function openGate(devices: readonly string[], options: { operator?: number; alerts?: readonly Warning[]; window?: 'phonePortrait' | 'tabletLandscape' } = {}) {
   const seen: string[] = [];
   const h: SessionNewHarness = renderSessionNewApp({
     operator: options.operator ?? 1,
+    ...(options.window === undefined ? {} : { window: options.window }),
     setup: (test) => {
       const real = test.sim.request.bind(test.sim);
       (test.sim as { request: Sim['request'] }).request = (request) => {
@@ -193,5 +194,121 @@ describe('nothing unreachable: the step is as before', () => {
     expect(screen.queryByTestId('session-new-capture-notices')).toBeNull();
     expect(screen.queryByTestId(/-source$/)).toBeNull();
     expect(screen.UNSAFE_queryAllByType(TextInput)).toHaveLength(0);
+  });
+
+  it('task 4 row 169, the seeded selector: each preview meter reads the level of its input as before (no "Not measured")', async () => {
+    await openGate([]);
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) {
+      expect(screen.getByTestId(`session-new-meter-${channel}`)).toBeTruthy();
+      expect(screen.queryByTestId(`session-new-meter-${channel}-not-measured`)).toBeNull();
+    }
+    expect(screen.queryByText(/has no source assigned/)).toBeNull();
+  });
+});
+
+describe('task 4 row 169: an unassigned selector slot is a BLOCK item - all four slots, the standby microphone too (decisions C18 (1), C25)', () => {
+  const SLOT_OF = { LENS_1: 'VIDEO-01', LENS_2: 'VIDEO-02', MIC_PRIMARY: 'PRIMARY', MIC_STANDBY: 'STANDBY' } as const;
+  const SENTENCE = {
+    LENS_1: 'Camera 1 has no source assigned. Assign one on Devices.',
+    LENS_2: 'Camera 2 has no source assigned. Assign one on Devices.',
+    MIC_PRIMARY: 'Primary microphone has no source assigned. Assign one on Devices.',
+    MIC_STANDBY: 'Standby microphone has no source assigned. Assign one on Devices.',
+  } as const;
+  type SlotCheck = keyof typeof SLOT_OF;
+  const isSlotCheck = (id: string): id is SlotCheck => id in SLOT_OF;
+
+  /**
+   * The gate as a Core in its own capture answers it for an EMPTY selector (names register 5.2): the four
+   * items of the slots are `BLOCK`, `value: 'NOT_ASSIGNED'`, `reasonCode: null`, `params { rule, slot }` and
+   * NO device id. The double: the in-app simulator's blocked gate, with those four items and the selector's
+   * lines put in place through the store (the simulator itself keeps today's behaviour, decision C21 (6)).
+   */
+  async function openUnassigned(checks: readonly SlotCheck[] = ['LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY'], window?: 'phonePortrait' | 'tabletLandscape') {
+    const { h } = await openGate(['CAM-01', 'CAM-02'], window === undefined ? {} : { window });
+    act(() =>
+      h.sim.store.setState((s) => ({
+        captureConfig: {
+          ...s.captureConfig,
+          cameras: s.captureConfig.cameras.filter((line) => !checks.some((id) => SLOT_OF[id] === line.trackId)),
+          mics: s.captureConfig.mics.filter((line) => !checks.some((id) => SLOT_OF[id] === line.role)),
+        },
+        session:
+          s.session === null
+            ? null
+            : {
+                ...s.session,
+                precheck: {
+                  ...s.session.precheck,
+                  outcome: 'BLOCK' as const,
+                  items: s.session.precheck.items.map((item) =>
+                    isSlotCheck(item.id) && checks.includes(item.id)
+                      ? { ...item, status: 'BLOCK' as const, value: 'NOT_ASSIGNED', reason: `${SLOT_OF[item.id]}: source not assigned`, reasonCode: null, params: { rule: 'sourceNotAssigned', slot: SLOT_OF[item.id] } }
+                      : isSlotCheck(item.id)
+                        ? { ...item, status: 'PASS' as const, value: 'READY', reason: null, reasonCode: null, params: {} }
+                        : item,
+                  ),
+                },
+              },
+      })),
+    );
+    await settle();
+    return h;
+  }
+
+  it('each of the four rows is drawn as a blocking item with its sentence - by slot name, no device id, never the raw value', async () => {
+    const h = await openUnassigned();
+    expect(h.state().session!.precheck.items.filter((item) => item.status === 'BLOCK' && item.params?.['deviceId'] === undefined)).toHaveLength(4);
+    for (const id of ['LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY'] as const) {
+      expect(status(id)).toBe('BLOCK');
+      expect(value(id)).toHaveTextContent(SENTENCE[id]);
+      expect(value(id)).not.toHaveTextContent(/NOT_ASSIGNED|sourceNotAssigned|not reachable|no signal|fault/i);
+      // No role line and no badge of a device: the selector holds no line for the slot.
+      expect(screen.queryByTestId(`session-new-check-${id}-role`)).toBeNull();
+      expect(screen.queryByTestId(`session-new-check-${id}-source`)).toBeNull();
+    }
+    // The blocked text names the four slots; the start stays closed; a BLOCK is not acknowledged.
+    const block = screen.getByTestId('session-new-gate-block');
+    for (const id of ['LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY'] as const) expect(block).toHaveTextContent(new RegExp(SENTENCE[id].replace(/\./g, '\\.')));
+    expect(disabled('session-new-next')).toBe(true);
+    expect(screen.queryByTestId('session-new-acknowledge')).toBeNull();
+    // It is not an unreachable device: no notice block, no "Search again".
+    expect(screen.queryByTestId('session-new-capture-notices')).toBeNull();
+  });
+
+  it('with no microphone line no level of MIC-01 or MIC-02 is read: each preview meter says "Not measured", no bars and no number', async () => {
+    const h = await openUnassigned();
+    expect(h.state().captureConfig.mics).toHaveLength(0);
+    // The meters slice still holds frames under the built-in inputs: the screen does not read them.
+    expect(Object.keys(h.state().audio.inputs).length).toBeGreaterThan(0);
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) {
+      expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toHaveTextContent('Not measured');
+      expect(screen.queryByTestId(`session-new-meter-${channel}`)).toBeNull();
+    }
+  });
+
+  it('tablet landscape (the device column): the same four blocking rows and the same two meters without a level', async () => {
+    await openUnassigned(undefined, 'tabletLandscape');
+    for (const id of ['LENS_1', 'LENS_2', 'MIC_PRIMARY', 'MIC_STANDBY'] as const) {
+      expect(status(id)).toBe('BLOCK');
+      expect(value(id)).toHaveTextContent(SENTENCE[id]);
+    }
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) {
+      expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toHaveTextContent('Not measured');
+      expect(screen.queryByTestId(`session-new-meter-${channel}`)).toBeNull();
+    }
+    expect(disabled('session-new-next')).toBe(true);
+  });
+
+  it('the standby microphone ALONE unassigned blocks as the others do (C25): its row, its sentence, Next disabled, nothing to acknowledge', async () => {
+    await openUnassigned(['MIC_STANDBY']);
+    expect(status('MIC_STANDBY')).toBe('BLOCK');
+    expect(value('MIC_STANDBY')).toHaveTextContent(SENTENCE.MIC_STANDBY);
+    expect(status('MIC_PRIMARY')).toBe('PASS');
+    expect(status('LENS_1')).toBe('PASS');
+    expect(screen.getByTestId('session-new-gate-block')).toHaveTextContent(/Standby microphone has no source assigned\. Assign one on Devices\./);
+    expect(disabled('session-new-next')).toBe(true);
+    expect(screen.queryByTestId('session-new-acknowledge')).toBeNull();
+    // A lone PRIMARY line is no complete pair: no meter channel has an input, so no level is read either.
+    for (const channel of ['AUDIO-01', 'AUDIO-02']) expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toBeTruthy();
   });
 });

@@ -20,14 +20,24 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { audioPairOfSelector, micInputOfChannel, selectorInForce, useSim, type PrecheckCheckId, type PrecheckItem, type SimState } from '@dems/shared/sim'
+import {
+  audioPairOfSelector,
+  CaptureStartRule,
+  meterInputOfChannel,
+  selectorInForce,
+  unassignedSlotOfPrecheckItem,
+  useSim,
+  type PrecheckCheckId,
+  type PrecheckItem,
+  type SimState,
+} from '@dems/shared/sim'
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
 import { useMicInputName } from '@/features/devices/source-class'
-import { activeCaptureNotices, captureNoticeText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
+import { activeCaptureNotices, captureNoticeText, unassignedPrecheckText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
 import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { tween, useMotionPolicy } from '@/motion'
@@ -80,6 +90,10 @@ function useCheckReason() {
   // Flow 11, situation B: the Core's one alert per unreachable device carries the count of the one search the pre-check ran.
   const notices = activeCaptureNotices(useSim(selectAlerts))
   return (item: PrecheckItem): string | null => {
+    // Task 4 row 167 (decisions C18 (1), C25): a selector slot with no source. The item names no
+    // device; it is worded by its slot, before every other rule of the row.
+    const unassigned = unassignedSlotOfPrecheckItem(item)
+    if (unassigned !== null) return unassignedPrecheckText(t, unassigned)
     // Task 3 R-10 (blueprint row 137; D114; ux §8g.3): a source that did not answer is worded by the
     // start rule of `params.rule`, with the device named by label and id — never as a lens fault or "no signal".
     const unreachable = unreachablePrecheckOf(item)
@@ -306,6 +320,10 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
  * line is named from the SELECTOR IN FORCE: the input ("MIC 1"), the source on it ("MIC-01"), its role
  * (primary / standby - the selector's line, else the pair the selector gives), and "Generated test
  * source" for a generated one. The simulated lane keeps its labels.
+ *
+ * Task 4 row 167 (site W3; decision C18 (2)): the input of a meter channel is `meterInputOfChannel`
+ * - the selector's line, never a default. A channel with no input (no complete microphone pair)
+ * names none: on a Core in its own capture the meter reads "Not assigned".
  */
 function MicMeter({ channel }: { channel: AudioTrackId }) {
   const { t } = useTranslation()
@@ -314,7 +332,8 @@ function MicMeter({ channel }: { channel: AudioTrackId }) {
   // One flat string (input | device | role | generated): the selector's result compares by value.
   const line = useSim((s) => {
     const mics = selectorInForce(s).mics
-    const inputId = micInputOfChannel(mics, channel)
+    const inputId = meterInputOfChannel(mics, channel)
+    if (inputId === null) return '|||'
     const stated = mics.find((mic) => mic.inputId === inputId)
     const pair = audioPairOfSelector(mics)
     const role = stated?.role === 'PRIMARY' || stated?.role === 'STANDBY' ? stated.role : pair.activeInputId === inputId ? 'PRIMARY' : pair.standbyInputId === inputId ? 'STANDBY' : ''
@@ -323,13 +342,15 @@ function MicMeter({ channel }: { channel: AudioTrackId }) {
     return [inputId, deviceId, role, generated ? 'G' : ''].join('|')
   })
   const [inputId = '', deviceId = '', role = '', generated = ''] = line.split('|')
-  const label = ownCore
-    ? [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, role === 'PRIMARY' || role === 'STANDBY' ? t(`web.waveM.micLine.${role}`) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
-        .filter((part): part is string => part !== null && part !== '')
-        .join(' · ')
-    : t(`common.tracks.${channel}`)
+  const label = !ownCore
+    ? t(`common.tracks.${channel}`)
+    : inputId === ''
+      ? t('common.captureSlot.notAssigned')
+      : [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, role === 'PRIMARY' || role === 'STANDBY' ? t(`web.waveM.micLine.${role}`) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
+          .filter((part): part is string => part !== null && part !== '')
+          .join(' · ')
   return (
-    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore ? inputId : undefined} data-role={ownCore && role !== '' ? role : undefined}>
+    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore && inputId !== '' ? inputId : undefined} data-role={ownCore && role !== '' ? role : undefined}>
       <span className="sn-meter-label">{label}</span>
       <DbfsMeter channel={channel} variant="panel" label={label} />
     </div>
@@ -350,10 +371,22 @@ function CheckRow({ item, reason }: { item: PrecheckItem; reason: string | null 
   // that states `platformNotReported` reads the same.
   const platformNotReported = usePlatformNotReported()
   const notReported = isSecurityNotReportedNote(item) || (platformNotReported && item.id === 'SECURITY' && item.status === 'PASS')
-  const valueText = notReported ? t('web.waveJ.precheck.securityNotReported') : item.value && !note ? enumValueWords(t, enumKey, item.value) : null
+  // Task 4 row 167: the row of an unassigned selector slot carries its rule and its slot, and no device.
+  // Its `value` (`NOT_ASSIGNED`) is no member of a value enumeration - the row reads its sentence.
+  const unassigned = unassignedSlotOfPrecheckItem(item)
+  const valueText = notReported ? t('web.waveJ.precheck.securityNotReported') : item.value && !note && unassigned === null ? enumValueWords(t, enumKey, item.value) : null
   const resolved = item.status === 'PASS' || item.status === 'WARN' || item.status === 'BLOCK'
   return (
-    <div className="sn-check" data-check={item.id} data-status={item.status} data-note={note ? 'true' : undefined} data-not-reported={notReported ? 'true' : undefined} data-rule={unreachablePrecheckOf(item)?.rule} data-testid={`sn-check-${item.id}`}>
+    <div
+      className="sn-check"
+      data-check={item.id}
+      data-status={item.status}
+      data-note={note ? 'true' : undefined}
+      data-not-reported={notReported ? 'true' : undefined}
+      data-rule={unassigned !== null ? CaptureStartRule.SOURCE_NOT_ASSIGNED : unreachablePrecheckOf(item)?.rule}
+      data-slot={unassigned ?? undefined}
+      data-testid={`sn-check-${item.id}`}
+    >
       <span className="sn-check-icon" aria-hidden="true">
         <Icon className="size-4" strokeWidth={1.75} />
       </span>

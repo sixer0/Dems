@@ -24,7 +24,7 @@ import {
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { AudioTrackId } from '../domain';
-import { captureMicLines, micInputOfChannel } from './audio';
+import { captureMicLines, meterInputOfChannel } from './audio';
 import { createSim, type Sim } from './engine';
 import type { AudioFrame, CreateSimOptions, SimActions, SimState } from './types';
 
@@ -96,8 +96,10 @@ export function useSimReady(): boolean {
  * subscribe. Never causes a React render; the latest `onFrame` is used without resubscribing.
  *
  * The meters slice is keyed by mic input since schema v2 (SH-17), so the channel a caller names is
- * mapped to the input that channel is in the capture configuration (`micInputOfChannel`, ruling D137). Register SH-22 retypes this hook to
+ * mapped to the input that channel is in the capture configuration (`meterInputOfChannel`, ruling D137). Register SH-22 retypes this hook to
  * take the input ID directly; until then the five client call sites keep working unchanged.
+ * A channel WITHOUT an input (task 4 row 165; site C17: the selector in force holds no complete
+ * microphone pair) has no frame: `onFrame` is not called, and no built-in input is read in its place.
  */
 export function useAudioChannel(channel: AudioTrackId, onFrame: (frame: AudioFrame) => void): void {
   const sim = useSimInstance();
@@ -108,8 +110,11 @@ export function useAudioChannel(channel: AudioTrackId, onFrame: (frame: AudioFra
   useEffect(
     () =>
       sim.store.subscribe(
-        (state) => state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)],
-        // No frame of this input (a pair beyond the built-in inputs): nothing to draw.
+        (state) => {
+          const input = meterInputOfChannel(captureMicLines(state), channel);
+          return input === null ? undefined : state.audio.inputs[input];
+        },
+        // No frame of this input (a pair beyond the built-in inputs), or no input behind the channel: nothing to draw.
         (frame) => {
           if (frame !== undefined) callback.current(frame);
         },

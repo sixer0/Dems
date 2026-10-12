@@ -265,6 +265,116 @@ describe('fix wave J - the picker and the selector rows', () => {
   });
 });
 
+describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned" with the offer to assign (decision C18 (3))', () => {
+  const SLOT_NAME = { 'VIDEO-01': 'Camera 1', 'VIDEO-02': 'Camera 2', PRIMARY: 'Primary microphone', STANDBY: 'Standby microphone' } as const;
+  /** The selector with only the lines named: the registry keeps every device, so the slots can be assigned. */
+  function keepLines(h: DevicesHarness, tracks: readonly string[], roles: readonly string[]) {
+    act(() =>
+      h.sim.store.setState((s) => ({
+        captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.filter((line) => tracks.includes(line.trackId)), mics: s.captureConfig.mics.filter((line) => roles.includes(line.role)) },
+      })),
+    );
+  }
+  function expectEmptySlot(slot: keyof typeof SLOT_NAME) {
+    expect(screen.getByTestId(`capture-selector-detail-${slot}`)).toHaveTextContent('Not assigned');
+    const control = screen.getByTestId(`capture-selector-edit-${slot}`);
+    expect(within(control).getByText('Assign')).toBeTruthy();
+    expect(control.props.accessibilityLabel).toBe(`Assign a source to ${SLOT_NAME[slot]}`);
+    // The row is the same target as its control (JT-13), and no badge of a device is drawn for it.
+    expect(screen.getByTestId(`capture-selector-row-${slot}`).props.accessibilityHint).toBe(`Assign a source to ${SLOT_NAME[slot]}`);
+    expect(screen.queryByTestId(`capture-selector-source-${slot}`)).toBeNull();
+  }
+  const rowCount = () => screen.getAllByTestId(/^capture-selector-row-(?!wrap-)/).length;
+
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, 0 lines of each kind: four rows, each "Not assigned" with "Assign"; not the empty state', async (window) => {
+    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    await settle();
+    keepLines(h, [], []);
+    await settle();
+    expect(screen.queryByTestId('capture-selector-empty')).toBeNull();
+    expect(rowCount()).toBe(4);
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const) {
+      expectEmptySlot(slot);
+      expect(editDisabled(slot)).toBe(false);
+    }
+    expect(within(screen.getByTestId('capture-selector-row-VIDEO-02')).getByText('Video track 2')).toBeTruthy();
+    expect(within(screen.getByTestId('capture-selector-row-PRIMARY')).getByText('Primary microphone')).toBeTruthy();
+    expect(screen.getByTestId('capture-selector-role-STANDBY').props.accessibilityLabel).toBe('Standby');
+    // No stream word is said of a track without a camera.
+    expect(screen.queryByTestId('capture-selector-stream-VIDEO-01')).toBeNull();
+    h.app.unmount();
+  });
+
+  it('1 line of each kind: four rows - the held slots as before, the two empty ones with their offer', async () => {
+    const h = renderDevicesApp({ user: 'andi.pratama' });
+    await settle();
+    keepLines(h, ['VIDEO-01'], ['STANDBY']);
+    await settle();
+    expect(rowCount()).toBe(4);
+    expect(screen.getByTestId('capture-selector-detail-VIDEO-01')).toHaveTextContent('CAM-01 · Dual-lens IP camera DL-2');
+    expect(within(screen.getByTestId('capture-selector-edit-VIDEO-01')).getByText('Change')).toBeTruthy();
+    expectEmptySlot('VIDEO-02');
+    // A lone STANDBY line is the standby row; the primary row is the empty one (found by role, never by place).
+    expectEmptySlot('PRIMARY');
+    expect(screen.getByTestId('capture-selector-role-MIC-02').props.accessibilityLabel).toBe('Standby');
+    expect(within(screen.getByTestId('capture-selector-edit-MIC-02')).getByText('Change')).toBeTruthy();
+    expect(screen.queryByTestId('capture-selector-row-STANDBY')).toBeNull();
+    h.app.unmount();
+  });
+
+  it('2 lines of each kind (the seeded selector): four rows, no "Assign", no "Not assigned" - as before', async () => {
+    renderDevicesApp({ user: 'andi.pratama' });
+    await settle();
+    expect(rowCount()).toBe(4);
+    for (const id of EDIT_IDS) expect(within(screen.getByTestId(`capture-selector-edit-${id}`)).getByText('Change')).toBeTruthy();
+    const card = screen.getByTestId('capture-selector');
+    expect(within(card).queryByText('Assign')).toBeNull();
+    expect(within(card).queryByText('Not assigned')).toBeNull();
+  });
+
+  it('the offer opens the sheet of the slot with nothing chosen; a choice builds a command (Save is enabled)', async () => {
+    const h = renderDevicesApp({ user: 'andi.pratama' });
+    await settle();
+    keepLines(h, [], []);
+    await settle();
+    fireEvent.press(screen.getByTestId('capture-selector-edit-STANDBY'));
+    await settle();
+    expect(screen.getByTestId('capture-source-sheet')).toBeTruthy();
+    for (const id of ['MIC-01', 'MIC-02']) expect(screen.getByTestId(`capture-source-option-${id}`).props.accessibilityState).toMatchObject({ selected: false, disabled: false });
+    expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(screen.getByTestId('capture-source-option-MIC-02'));
+    await settle();
+    expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(false);
+    fireEvent.press(screen.getByTestId('capture-source-cancel'));
+    await settle();
+
+    fireEvent.press(screen.getByTestId('capture-selector-row-VIDEO-01'));
+    await settle();
+    expect(screen.getByText('Camera for Video track 1')).toBeTruthy();
+    expect(screen.getByTestId('capture-source-option-CAM-01').props.accessibilityState).toMatchObject({ selected: false });
+    expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(screen.getByTestId('capture-source-option-CAM-01'));
+    await settle();
+    expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(false);
+    h.app.unmount();
+  });
+
+  it('the gate holds for the offer: INVESTIGATOR sees the four rows, each "Assign" disabled with the role sentence', async () => {
+    const h = renderDevicesApp({ user: 'budi.santoso' });
+    await settle();
+    keepLines(h, [], []);
+    await settle();
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const) {
+      expect(editDisabled(slot)).toBe(true);
+      expect(screen.getByTestId(`capture-selector-edit-${slot}`).props.accessibilityHint).toBe('Requires the Supervisor or Technician role');
+    }
+    fireEvent.press(screen.getByTestId('capture-selector-edit-PRIMARY'));
+    await settle();
+    expect(screen.queryByTestId('capture-source-sheet')).toBeNull();
+    h.app.unmount();
+  });
+});
+
 /** Captures the hardware-Back listeners (Android's BackHandler) so a test can press Back; newest first, true = consumed. */
 type BackListener = Parameters<typeof BackHandler.addEventListener>[1];
 function captureBack(): () => boolean {

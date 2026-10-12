@@ -59,7 +59,8 @@ export type SourceSheetRequest =
   | {
       readonly kind: 'camera';
       readonly trackId: VideoTrackId;
-      readonly currentDeviceId: string;
+      /** The camera the track holds; null for a slot that is not assigned (task 4 row 32): no option is the current one. */
+      readonly currentDeviceId: string | null;
       readonly options: readonly CameraOption[];
       readonly badgeMode?: SourceBadgeMode;
       /**

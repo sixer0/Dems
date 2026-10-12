@@ -97,6 +97,7 @@ import { BULK_TEMPLATE_NOW } from '../../src/db/fixtures/__tests__/template-hook
 import { engineControl } from '../../src/engine';
 import type { OnvifDiscoveryAdapter, WsDiscoveryResult } from '../../src/capture/adapters';
 import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
+import { captureAudioCardsControl, createListingGate } from '../../src/modules/capture-inputs/audio-cards';
 import { sttConfigControl } from '../../src/modules/stt-config';
 import type { Principal } from '../../src/plugins/authenticate';
 import { throttleControl, type ThrottleKey } from '../../src/plugins/throttle';
@@ -171,10 +172,9 @@ function routedOperations(): CoreApiRegistryOperation[] {
 // Task 4 (blueprint row 63, integration pass I-2): the contract of the two sound-card operations 98
 // and 99 landed before their routes. Row 70 (the live path, milestone M4 / WP-07b) routes them and
 // takes both entries out again.
-const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
-  searchCaptureAudioCards: 'task 4 row 70 (M4 / WP-07b): the sound-card listing route',
-  registerCaptureAudioInput: 'task 4 row 70 (M4 / WP-07b): the microphone registration route',
-};
+// Task 4 row 70 (decision C31) routed operations 98 and 99 (`modules/capture-inputs/audio-cards`):
+// both entries left it. Every operation of the registry is routed again; the record is the named, empty set.
+const DEFERRED_ROUTE: Readonly<Record<string, string>> = {};
 
 /**
  * The answer the specification gives a caller on an operation: `expectationOf` with what it takes
@@ -346,6 +346,25 @@ async function startServer(target: ServerTarget, demoFlag: boolean): Promise<Ser
   // nothing and finds nothing: a permitted cell then gets its documented 202. The 503, the bounds
   // and the candidates are held by the module's own tests (`capture-discovery.db.test.ts`).
   captureDiscoveryControl(app).provideAdapter(() => ({ discover: async () => NOTHING_FOUND }) as unknown as OnvifDiscoveryAdapter);
+  // The same for operations 98 and 99 (task 4 row 70): a Core outside production capture has no
+  // enumerator of the sound cards, and a permitted caller is answered the envelope's 503
+  // `NOT_READY`. The matrix gives the module an enumerator that reads no host and lists no card, a
+  // registrar that is never reached (no card is listed, so nothing is registered) and a gate
+  // without the spacing of the search (the matrix calls 98 once per column): a permitted cell then
+  // gets its documented 200 (98) or 404 (99). The 503, the bounds, the registration and its audit
+  // row are held by the module's own tests (`capture-inputs/audio-cards/__tests__`).
+  captureAudioCardsControl(app).replaceForTest({
+    enumerator: { list: async () => ({ cards: [], truncated: false, skipped: 0 }) },
+    registrar: {
+      register: async () => {
+        throw new Error('the matrix registers no microphone');
+      },
+      reenable: async () => {
+        throw new Error('the matrix registers no microphone');
+      },
+    },
+    gate: createListingGate(() => app.clock.now(), 0),
+  });
   await app.readiness.boot();
   await settle(app);
 
@@ -1209,8 +1228,8 @@ describe('the matrix as a whole', () => {
     // 142 routed operation 89 and operations 93 to 97 (C3 §2.6), 83 + 6 = 89; rows 71b, 91 and 90
     // routed operations 81, 87 and 88 (wave D), 89 + 3 = 92; integration pass D4 routed operations
     // 82, 84, 85 and 86, 92 + 4 = 96; row 82b routed operation 83, 96 + 1 = 97. The registry holds
-    // 99 since task 4 row 63; operations 98 and 99 are routed by row 70 (DEFERRED_ROUTE), so 97 stays.
-    expect(routedOperations()).toHaveLength(97);
+    // 99 since task 4 row 63; row 70 routed operations 98 and 99 (decision C31), 97 + 2 = 99.
+    expect(routedOperations()).toHaveLength(99);
     expect(routedOperations()).toHaveLength(CORE_API_OPERATIONS.length - Object.keys(DEFERRED_ROUTE).length);
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
       const five = of(columns);
@@ -1256,7 +1275,9 @@ describe('the matrix as a whole', () => {
     //   82 listAudioSourceIntervals  AUTHENTICATED: no cell.
     //   84, 86, 88                   `EVIDENCE_VIEW`, which every role holds: no cell.
     // INVESTIGATOR 11 + 2 = 13; SUPERVISOR 0; TECHNICIAN 0 + 3 = 3.
-    expect(routedDelta).toEqual({ INVESTIGATOR: 13, SUPERVISOR: 0, TECHNICIAN: 3 });
+    // Task 4 row 70 routed operations 98 and 99, both on `CAPTURE_CONFIG` (SUPERVISOR, TECHNICIAN):
+    // two more cells an INVESTIGATOR is denied, 13 + 2 = 15.
+    expect(routedDelta).toEqual({ INVESTIGATOR: 15, SUPERVISOR: 0, TECHNICIAN: 3 });
     const cellsOf = (role: string): string[] =>
       spec.operations
         .filter((operation) => isApiContractSection(operation.section) && routedIds.has(operation.operationId))

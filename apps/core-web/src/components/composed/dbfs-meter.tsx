@@ -13,7 +13,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import type { AudioTrackId } from '@dems/shared/domain'
 import { settle, useCoreActions, type CoreActions } from '@dems/shared/live'
-import { captureMicLines, isLevelNotMeasured, micInputOfChannel, noInputFrame, useAudioChannel, useSimInstance, type AudioFrame } from '@dems/shared/sim'
+import { captureMicLines, isLevelNotMeasured, meterInputOfChannel, noInputFrame, useAudioChannel, useSim, useSimInstance, type AudioFrame } from '@dems/shared/sim'
 import { motion as tokens } from '@dems/shared/tokens'
 import { reportMeterFrame, tween, useMotionPolicy } from '@/motion'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
@@ -193,9 +193,13 @@ export function DbfsMeter({
   // to the input that feeds it, the same input `useAudioChannel` subscribes below.
   // Ruling D137: the input is the microphone line at the channel's position; an input that has
   // delivered no frame yet (a pair beyond the built-in inputs, just selected) starts at NO SIGNAL.
+  // Task 4 row 168 (site W5; decision C18 (2)): the input is `meterInputOfChannel` - a channel
+  // without an input (no complete microphone pair) reads NO frame, whatever the slice still holds
+  // under a built-in id, and is the same no-input drawing.
   const initial = useMemo((): AudioFrame => {
     const state = sim.store.getState()
-    const frame: AudioFrame | undefined = state.audio.inputs[micInputOfChannel(captureMicLines(state), channel)]
+    const input = meterInputOfChannel(captureMicLines(state), channel)
+    const frame: AudioFrame | undefined = input === null ? undefined : state.audio.inputs[input]
     return frame ?? noInputFrame(state.clock.now)
   }, [sim, channel])
   // Fix wave J (JW-08; `contract_wave_j.md` J-S 6): a frame the Core did not MEASURE (`notMeasured: true` - no capture
@@ -265,7 +269,10 @@ export function DbfsMeter({
   }, [gates])
 
   const onFrame = useCallback(
-    (frame: AudioFrame) => {
+    (delivered: AudioFrame) => {
+      // Task 4 row 168: a channel without an input draws no level - a frame that reaches this meter
+      // although no line is behind its channel is drawn as the no-input frame, never as a level.
+      const frame = meterInputOfChannel(captureMicLines(sim.store.getState()), channel) === null ? noInputFrame(delivered.at) : delivered
       const rest = isLevelNotMeasured(frame)
       const silentSignal = frame.noSignal && !rest
       const flipped = frame.clip !== flags.current.clip || silentSignal !== flags.current.noSignal || rest !== flags.current.notMeasured
@@ -288,9 +295,15 @@ export function DbfsMeter({
         setNotMeasured(rest)
       }
     },
-    [channel, clipLatch, gates, level, peak, writeText],
+    [channel, clipLatch, gates, level, peak, sim, writeText],
   )
   useAudioChannel(channel, onFrame)
+  // Task 4 row 168: the input left the channel while the meter is on screen (a slot was unassigned). No
+  // further frame arrives for it, so the meter is put into its no-input drawing here.
+  const hasInput = useSim((state) => meterInputOfChannel(captureMicLines(state), channel) !== null)
+  useEffect(() => {
+    if (!hasInput) onFrame(noInputFrame(sim.store.getState().clock.now))
+  }, [hasInput, onFrame, sim])
 
   const accessibleName = label ?? t(`common.tracks.${channel}`)
   const initialText = initialRest

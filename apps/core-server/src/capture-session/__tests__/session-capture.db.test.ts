@@ -29,7 +29,7 @@ import type { Principal } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { sessionTapPath, transcriptionControl } from '../../transcription';
 import { FIRST_DELIVERY_MS } from '../../capture/adapters/local/camera-helper';
-import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
+import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, RELAY_REPORTS_NOT_WIRED,SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
 /** The rigs of the running case: closed by the `afterEach` below (see `fixRig`). */
@@ -44,7 +44,13 @@ const SHA = (seed: string): string => seed.repeat(64).slice(0, 64);
 /** Task 4 row 47: the random element of an ingest address (16 bytes as URL-safe base64), and where it stands. */
 const INGEST_ELEMENT = /^[A-Za-z0-9_-]{22}$/;
 const elementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
-const GENESIS = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+/**
+ * Task 4 row 48, ruling C34: a `REAL_PRODUCTION` start is refused without a source of relay reports. The cases that put
+ * the production operation over the fake adapters for ANOTHER subject hand in this one, which never reports: under
+ * ruling C35 (a) a camera nobody reports for is no fault, so those cases run as before.
+ */
+const SILENT_RELAYS = { subscribe: () => () => undefined };
+const GENESIS ='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 interface Rig {
   readonly app: ReturnType<typeof buildApp>;
@@ -226,7 +232,7 @@ async function rig(
     async arm() {
       caseSeq += 1;
       await app.engine.setTabletLink('CONNECTED');
-      const created = await app.engine.command(investigator, 'createSession', { caseNumber: `LP/2026/1001-07${String(caseSeq).padStart(2, '0')}`, subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25', investigatorId: investigator.operatorId });
+      const created = await app.engine.command(investigator, 'createSession', { caseNumber: `LP/2026/1001-07${String(caseSeq % 100).padStart(2, '0')}`, subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25', investigatorId: investigator.operatorId });
       if (!created.value.ok) throw new Error(`the session was not created: ${created.value.reason}`);
       await app.engine.command(investigator, 'beginPrecheck');
       await drive(5_000);
@@ -1184,6 +1190,39 @@ describe('review R74-03: a camera the worker could not connect is told to the li
     expect(of.app.engine.slice('faults').active.filter((fault) => fault.kind === 'CAPTURE_FAULT')).toEqual([]);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
   });
+
+  // Task 4 row 182 (ruling C35): the worker names the cause. A push that brought no picture is a MISSING camera, exactly as above.
+  it('row 182, C35 (a): CAMERA_NO_PICTURE is the same degraded start - the event with the device, no critical fault of the camera, the session records', async () => {
+    const of = await fixRig('r182_no_picture');
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().warning('CAPTURE_FAULT', 'CAM-02', 'ACTIVE', 'CAMERA_NO_PICTURE');
+    of.fake.last().firstDurableFragment('CAM-01');
+    await of.settled();
+    expect(of.events.filter((event) => event.type === 'CAMERA_NOT_CONNECTED')).toEqual([{ type: 'CAMERA_NOT_CONNECTED', sessionId: id, deviceId: 'CAM-02' }]);
+    expect(of.app.engine.slice('faults').active.filter((fault) => fault.kind === 'CAPTURE_FAULT')).toEqual([]);
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+  });
+
+  it.each(['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN'] as const)(
+    'row 182, C35 (b): %s is an integrity fault - ONE critical capture fault of that camera whose reason is that word, NOT the "did not connect" event; the other camera records',
+    async (reason) => {
+      const of = await fixRig(`r182_${reason === 'CAMERA_ANNOUNCE_NOT_SEEN' ? 'not_seen' : 'not_matched'}`);
+      const id = await of.arm();
+      await of.start(id);
+      of.fake.last().warning('CAPTURE_FAULT', 'CAM-02', 'ACTIVE', reason);
+      of.fake.last().firstDurableFragment('CAM-01');
+      await of.settled();
+      expect(of.events.filter((event) => event.type === 'CAMERA_NOT_CONNECTED')).toEqual([]);
+      // The forwarder hands the raise to the engine apart from the supervisor's queue (it never holds it): waited for, not assumed.
+      await vi.waitFor(() => expect(of.app.engine.slice('faults').active.filter((fault) => fault.kind === 'CAPTURE_FAULT')).toMatchObject([{ kind: 'CAPTURE_FAULT', target: 'CAM-02', reason }]), { timeout: 5_000 });
+      const alerts = of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active);
+      expect(alerts.map((alert) => [alert.severity, alert.params?.['reason']])).toEqual([['CRITICAL', reason]]);
+      // The sentence names the camera (its words are the shared wording source's: the neutral sentence with the code until that table holds the member).
+      expect(alerts[0]?.message).toContain('CAM-02');
+      expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
+    },
+  );
 });
 
 // Review R74-04, ruling D177: no manifest field can say that a microphone stopped delivering (ev §B.5
@@ -1347,7 +1386,7 @@ describe('F-Y item 3: the sync level the worker achieved is kept with the sessio
 
   it('REAL_PRODUCTION sources: the same level is ONE CRITICAL alert on the session, and the session still records', async () => {
     const of = await fixRig('fy_sync_prod');
-    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS });
     const id = await of.arm();
     await of.start(id);
     of.fake.last().record(startInterval);
@@ -1637,7 +1676,7 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     const late = new Promise<SourceHandle>((resolve) => (bring = resolve));
     const seen = cameras((deviceId, pass) => (deviceId === 'CAM-01' ? late : pass()));
     const of = await rig('r47_bound', { registry: seen.registry });
-    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, cameraOpenBoundMs: 60 });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS, cameraOpenBoundMs: 60 });
     const id = await of.arm();
     await of.start(id);
     expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-02'], camerasNotOpened: ['CAM-01'] });
@@ -1692,5 +1731,316 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     expect(insideTheStart).toBe('PIPELINE_REENTRANT');
     expect(reads.sort()).toEqual(['CAM-01 COMMITTED', 'CAM-02 COMMITTED']);
     expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+  });
+
+  // ── Task 4 row 179 (BR-07 (2)): the address of a camera open is the one of the worker in force ──
+  // The "relay" of these cases is the camera adapter double: `seen.asked` is what a relay of production would be started with.
+  const planOfWorker = (of: Rig, index: number): Record<string, string> => Object.fromEntries((of.fake.workers[index]?.commands('START')[0]?.plan.cameras ?? []).map((camera) => [camera.deviceId, camera.ingestUrl]));
+  const askedOf = (asked: readonly Asked[]): Array<[string, string]> => asked.map((ask) => [ask.deviceId, ask.target.ingestUrl]);
+  const FAST_RESTART = { backoffBaseMs: 20, backoffMaxMs: 40 };
+
+  it('row 179: the first worker of a session never comes up - the cameras are opened ONCE, with the addresses of the worker that did (attempt 2), in the development operation as well', async () => {
+    const seen = cameras();
+    const of = await rig('r179_first_fails', { registry: seen.registry, limits: FAST_RESTART });
+    of.fake.failNext(1);
+    const id = await of.arm();
+    await of.start(id);
+    expect(of.fake.workers).toHaveLength(1);
+    expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]);
+    const second = planOfWorker(of, 0);
+    expect(askedOf(seen.asked)).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
+    expect(Object.values(second).map((address) => INGEST_ELEMENT.test(elementOf(address)))).toEqual([true, true]);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+  });
+
+  it('row 179, REAL_PRODUCTION: the worker of a recording is replaced before anything is durable - the sources of attempt 1 are closed, every camera is opened again, and each open is handed the string of ITS OWN attempt; no element is used twice; nothing of it is written', async () => {
+    const seen = cameras();
+    const of = await rig('r179_two_attempts', { registry: seen.registry, limits: FAST_RESTART });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS });
+    const id = await of.arm();
+    await of.start(id);
+    const first = planOfWorker(of, 0);
+    expect(askedOf(seen.asked)).toEqual([['CAM-01', first['CAM-01']], ['CAM-02', first['CAM-02']]]);
+    of.order.length = 0;
+
+    of.fake.last().exit(1);
+    await vi.waitFor(() => expect(seen.asked).toHaveLength(4), { timeout: 5_000 });
+    await of.settled();
+    expect(of.fake.workers).toHaveLength(2);
+    expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]);
+    const second = planOfWorker(of, 1);
+    // The relay double of each attempt received the string of its own attempt, byte for byte.
+    expect(askedOf(seen.asked.slice(2))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
+    // Four addresses, four elements: none of attempt 1 is in the plan or in an open of attempt 2.
+    const elements = [...Object.values(first), ...Object.values(second)].map(elementOf);
+    expect(elements.map((element) => INGEST_ELEMENT.test(element))).toEqual([true, true, true, true]);
+    expect(new Set(elements).size).toBe(4);
+    // The camera sources of the earlier worker were closed BEFORE the cameras were opened again; no microphone was touched.
+    const cameraSteps = of.order.filter((entry) => / CAM-/.test(entry));
+    expect(cameraSteps.slice(0, 2).sort()).toEqual(['close CAM-01', 'close CAM-02']);
+    expect(cameraSteps.slice(2).sort()).toEqual(['open CAM-01', 'open CAM-02']);
+    expect(of.order.filter((entry) => /close MIC-/.test(entry))).toEqual([]);
+    expect(of.log.lines().filter((line) => line.code === 'CAPTURE_CAMERA_NOT_OPENED' || line.code === 'CAPTURE_SOURCE_NOT_CLOSED')).toEqual([]);
+    expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
+    expect(sessionCapture(of.app).liveSessionId()).toBe(id);
+
+    // The session records with the second worker and stops cleanly: the sources of attempt 2 are closed once.
+    of.fake.last().record(startInterval);
+    of.fake.last().firstDurableFragment('CAM-01');
+    await of.settled();
+    const tables = await of.rows<{ text: string }>("SELECT row_to_json(a)::text AS text FROM public.audit_log a UNION ALL SELECT row_to_json(s)::text FROM public.session_capture_sources s");
+    const places = [of.log.text(), tables.map((row) => row.text).join('\n'), JSON.stringify(of.events), JSON.stringify(await readSessionCaptureFacts(of.app.config.mediaStoreDir, id))];
+    expect(places.map((text) => text.includes(id))).toEqual([true, true, true, true]);
+    expect(places.map((text) => elements.some((element) => text.includes(element)))).toEqual([false, false, false, false]);
+    await sessionCapture(of.app).shutdown();
+    expect(of.order.filter((entry) => /close CAM-/.test(entry)).sort()).toEqual(['close CAM-01', 'close CAM-01', 'close CAM-02', 'close CAM-02']);
+  });
+
+  it('row 179, REAL_PRODUCTION: an open of attempt 1 that is still in flight when its worker goes down is given up without a report - its signal is aborted, STARTED waits for the opens of attempt 2 and names them, a source that comes up late is closed', async () => {
+    let bring: (handle: SourceHandle) => void = () => undefined;
+    const late = new Promise<SourceHandle>((resolve) => (bring = resolve));
+    let asks = 0;
+    const seen = cameras((deviceId, pass) => (deviceId === 'CAM-01' && (asks += 1) === 1 ? late : pass()));
+    const of = await rig('r179_in_flight', { registry: seen.registry, limits: FAST_RESTART });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS, cameraOpenBoundMs: 30_000 });
+    const id = await of.arm();
+    await startAndReturn(of, id);
+    await vi.waitFor(() => expect(of.order).toContain('open CAM-02'), { timeout: 5_000 });
+    expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
+    of.fake.last().exit(1);
+    await vi.waitFor(() => expect(seen.asked).toHaveLength(4), { timeout: 5_000 });
+    await of.settled();
+    const second = planOfWorker(of, 1);
+    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false], ['CAM-01', false], ['CAM-02', false]]);
+    expect(askedOf(seen.asked.slice(2))).toEqual([['CAM-01', second['CAM-01']], ['CAM-02', second['CAM-02']]]);
+    expect(of.events.filter((event) => event.type === 'STARTED')).toEqual([{ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] }]);
+    expect(notOpenedLines(of)).toEqual([]);
+    let closed = 0;
+    bring({ deviceId: 'CAM-01', close: async () => void (closed += 1) });
+    await vi.waitFor(() => expect(closed).toBe(1), { timeout: 5_000 });
+    await sessionCapture(of.app).shutdown();
+    expect(closed).toBe(1);
+  });
+
+  it('row 179, CONTROL - the development operation is as before: a worker replaced during a recording gets its new plan, and no camera source is closed or opened again', async () => {
+    const seen = cameras();
+    const of = await rig('r179_development', { registry: seen.registry, limits: FAST_RESTART });
+    const id = await of.arm();
+    await of.start(id);
+    of.order.length = 0;
+    of.fake.last().exit(1);
+    await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(of.fake.last().commands('START')).toHaveLength(1), { timeout: 5_000 });
+    await of.settled();
+    expect(seen.asked).toHaveLength(2);
+    expect(of.order.filter((entry) => / CAM-/.test(entry))).toEqual([]);
+    // The plan of the later worker is renewed in every real operation (the supervisor does not know the operation).
+    expect(new Set([...Object.values(planOfWorker(of, 0)), ...Object.values(planOfWorker(of, 1))].map(elementOf)).size).toBe(4);
+    await sessionCapture(of.app).shutdown();
+  });
+});
+
+describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open only when the report of its relay and the connect report of the worker are paired', () => {
+  // THE DOUBLES: the relay's report is a fake of the injected source (its program is rows 43, 44); the worker's connect
+  // report is a telemetry frame of the fake worker; "production" is the port `operationOf` over the fake adapters.
+  const BOUND_MS = 120;
+  function relays() {
+    const listeners = new Set<(report: { sessionId: string; deviceId: string; attempt: number }) => void>();
+    return {
+      source: { subscribe: (listener: (report: { sessionId: string; deviceId: string; attempt: number }) => void) => (listeners.add(listener), () => void listeners.delete(listener)) },
+      report: (sessionId: string, deviceId: string, attempt = 1) => listeners.forEach((listener) => listener({ sessionId, deviceId, attempt })),
+      subscribed: () => listeners.size,
+    };
+  }
+  const ingest = (of: Rig, deviceId: string, state: 'WAITING' | 'CONNECTED' | 'ENDED'): void => of.fake.last().say({ type: 'TELEMETRY', levels: [], ingest: [{ deviceId, state }], fragments: [], clocks: [], tapActive: false });
+  const refused = (of: Rig, deviceId: string): void => of.fake.last().say({ type: 'WARNING', code: 'CAPTURE_FAULT', reason: 'CAMERA_NOT_CONNECTED', state: 'ACTIVE', subject: deviceId });
+  const linesOf = (of: Rig, code: string): Array<Record<string, unknown>> => of.log.lines().filter((line) => line.code === code);
+  const paired = (of: Rig): string[] => linesOf(of, 'CAPTURE_CAMERA_INGEST_PAIRED').map((line) => `${String(line.deviceId)}@${String(line.attempt)}`);
+  const notPaired = (of: Rig): string[] => linesOf(of, 'CAPTURE_INGEST_NOT_PAIRED').map((line) => `${String(line.deviceId)}@${String(line.attempt)} ${String(line.reason)}`);
+  const auditOfTheFault = async (of: Rig): Promise<number> => (await of.rows<{ text: string }>('SELECT row_to_json(a)::text AS text FROM public.audit_log a')).filter((row) => row.text.includes('CAMERA_INGEST_NOT_PAIRED')).length;
+  const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  async function production(slug: string, with_: { source?: boolean; operation?: CaptureOperation } = {}) {
+    const relay = relays();
+    const of = await rig(slug);
+    sessionCapture(of.app).replace({ operationOf: () => with_.operation ?? CaptureOperation.REAL_PRODUCTION, ingestPairingBoundMs: BOUND_MS, ...(with_.source === false ? {} : { relayReports: relay.source }) });
+    const id = await of.arm();
+    await of.start(id);
+    return { of, id, relay };
+  }
+  /** The capture of the session was ended by the pairing: one error line, one audit entry with the cause, the worker stopped, every source closed. */
+  async function endedByThePairing(of: Rig, id: string, why: string): Promise<void> {
+    await vi.waitFor(() => expect(notPaired(of)).toEqual([why]), { timeout: 5_000 });
+    await of.settled();
+    expect(sessionCapture(of.app).liveSessionId()).toBeNull();
+    expect(of.fake.last().commands('STOP')).toHaveLength(1);
+    expect(of.order.filter((entry) => entry.startsWith('close')).sort()).toEqual(['close CAM-01', 'close CAM-02', 'close MIC-01', 'close MIC-02']);
+    expect(await auditOfTheFault(of)).toBe(1);
+    expect(of.events.at(-1)).toMatchObject({ type: 'FAILED_START', sessionId: id, cause: 'CAMERA_INGEST_NOT_PAIRED' });
+    // C35 (b): the session is in FAULT by the capture, its fault row states the cause, and ONE critical notice is active for it.
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'FAULT', fault: { kind: 'CAPTURE_FAULT' } });
+    expect(of.app.engine.slice('session')?.timeline.at(-1)).toMatchObject({ kind: 'FAULT', params: { kind: 'CAPTURE_FAULT', reason: 'CAMERA_INGEST_NOT_PAIRED' } });
+    expect(of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active).map((alert) => alert.severity)).toEqual(['CRITICAL']);
+    expect((await faultRows(of)).filter((row) => row.startsWith('FAULT_RAISED CAPTURE_FAULT'))).toHaveLength(1);
+    // Said once, however long one waits.
+    await wait(BOUND_MS * 2);
+    expect([notPaired(of).length, await auditOfTheFault(of)]).toEqual([1, 1]);
+  }
+
+  it('both arrive inside the bound, in BOTH orders (relay first for CAM-01, worker first for CAM-02): both cameras count as open, the capture goes on past the bound; a report of another session is dropped', async () => {
+    const { of, id, relay } = await production('r48_both_orders');
+    expect(relay.subscribed()).toBe(1);
+    relay.report(id, 'CAM-01');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await flush();
+    expect(paired(of)).toEqual([]);
+    ingest(of, 'CAM-01', 'CONNECTED');
+    relay.report(id, 'CAM-02');
+    await vi.waitFor(() => expect(paired(of).sort()).toEqual(['CAM-01@1', 'CAM-02@1']), { timeout: 5_000 });
+    // The level said again and again is ONE connect report; a relay report of another session counts for nothing.
+    ingest(of, 'CAM-01', 'CONNECTED');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    relay.report('S-OTHER-SESSION', 'CAM-01');
+    await wait(BOUND_MS * 2);
+    expect([notPaired(of), sessionCapture(of.app).liveSessionId(), of.fake.last().commands('STOP').length, await auditOfTheFault(of)]).toEqual([[], id, 0, 0]);
+    await sessionCapture(of.app).shutdown();
+    expect(relay.subscribed()).toBe(0);
+  });
+
+  it('the relay reports and the worker\'s connect report does not come within the bound: a capture fault with ONE audit entry that ends the capture', async () => {
+    const { of, id, relay } = await production('r48_relay_only');
+    relay.report(id, 'CAM-01');
+    await endedByThePairing(of, id, 'CAM-01@1 WORKER_REPORT_MISSING');
+  });
+
+  it('the worker reports a connect and no relay of the session reports within the bound (a pusher that is not ours): the same fault, ONE audit entry', async () => {
+    const { of, id } = await production('r48_worker_only');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await endedByThePairing(of, id, 'CAM-02@1 RELAY_REPORT_MISSING');
+  });
+
+  it('a duplicate: a second connect report on the listener of a camera that already counted as open is a capture fault (AD-01 (4)); a second relay report as well', async () => {
+    const { of, id, relay } = await production('r48_second_connect');
+    relay.report(id, 'CAM-01');
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-01@1']), { timeout: 5_000 });
+    ingest(of, 'CAM-01', 'WAITING');
+    await flush();
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await endedByThePairing(of, id, 'CAM-01@1 WORKER_CONNECTED_TWICE');
+
+    const again = await production('r48_second_relay');
+    again.relay.report(again.id, 'CAM-02');
+    again.relay.report(again.id, 'CAM-02');
+    await endedByThePairing(again.of, again.id, 'CAM-02@1 RELAY_REPORTED_TWICE');
+  });
+
+  it('BR-08: the worker refuses the listener of a camera (the frame of both refusal codes of the worker\'s gate) although its relay reported - a capture fault with ONE audit entry and ONE critical notice', async () => {
+    const { of, id, relay } = await production('r48_refused');
+    relay.report(id, 'CAM-01');
+    refused(of, 'CAM-01');
+    await endedByThePairing(of, id, 'CAM-01@1 WORKER_REFUSED');
+  });
+
+  // Task 4 row 182: since the worker NAMES its gate's refusal in the frame, the same contradiction arrives under one of two new words.
+  it.each(['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN'] as const)(
+    'BR-08 with the frame member %s: the pairing still ends the capture ONCE (WORKER_REFUSED, one audit entry of the pairing); the camera\'s own fault states the member beside it',
+    async (reason) => {
+      const { of, id, relay } = await production(`r182_refused_${reason === 'CAMERA_ANNOUNCE_NOT_SEEN' ? 'not_seen' : 'not_matched'}`);
+      relay.report(id, 'CAM-01');
+      of.fake.last().say({ type: 'WARNING', code: 'CAPTURE_FAULT', reason, state: 'ACTIVE', subject: 'CAM-01' });
+      await vi.waitFor(() => expect(notPaired(of)).toEqual(['CAM-01@1 WORKER_REFUSED']), { timeout: 5_000 });
+      await of.settled();
+      expect(sessionCapture(of.app).liveSessionId()).toBeNull();
+      expect(of.fake.last().commands('STOP')).toHaveLength(1);
+      expect(await auditOfTheFault(of)).toBe(1);
+      expect(of.events.at(-1)).toMatchObject({ type: 'FAILED_START', sessionId: id, cause: 'CAMERA_INGEST_NOT_PAIRED' });
+      expect(of.events.some((event) => event.type === 'CAMERA_NOT_CONNECTED')).toBe(false);
+      expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'FAULT', fault: { kind: 'CAPTURE_FAULT' } });
+      // TWO facts, two critical notices: the capture's (the pairing) and the camera's (the worker's own word). Never the generic word.
+      const said = of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active).map((alert) => `${alert.severity} ${String(alert.params?.['reason'])}`).sort();
+      expect(said).toEqual([`CRITICAL ${reason}`, 'CRITICAL CAMERA_INGEST_NOT_PAIRED'].sort());
+    },
+  );
+
+  it('C35 (b), a relay report for another attempt than the one in force - a later one, and an earlier one - is a capture fault', async () => {
+    const later = await production('r48_later_attempt');
+    later.relay.report(later.id, 'CAM-02', 2);
+    await endedByThePairing(later.of, later.id, 'CAM-02@2 ATTEMPT_MISMATCH');
+    const earlier = await production('r48_earlier_attempt');
+    earlier.relay.report(earlier.id, 'CAM-01', 0);
+    await endedByThePairing(earlier.of, earlier.id, 'CAM-01@0 ATTEMPT_MISMATCH');
+  });
+
+  it('C35 (b), one camera UNPAIRED and the other PAIRED: the capture is ended - the paired camera does not save it', async () => {
+    const { of, id, relay } = await production('r48_one_unpaired');
+    relay.report(id, 'CAM-02');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-02@1']), { timeout: 5_000 });
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await endedByThePairing(of, id, 'CAM-01@1 RELAY_REPORT_MISSING');
+  });
+
+  it('C35 (a), the degraded start of D72(k): one camera ABSENT (nothing from either side, then the worker gives its listener up) and the other PAIRED - the session records with the other camera and the warning names the missing one; no fault, no audit entry', async () => {
+    const { of, id, relay } = await production('r48_one_absent');
+    relay.report(id, 'CAM-02');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-02@1']), { timeout: 5_000 });
+    // Nothing of CAM-01 for longer than the bound: no fault. Then the worker's own statement at the end of its window.
+    await wait(BOUND_MS * 2);
+    expect(notPaired(of)).toEqual([]);
+    refused(of, 'CAM-01');
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    expect(of.events.filter((event) => event.type === 'CAMERA_NOT_CONNECTED')).toEqual([{ type: 'CAMERA_NOT_CONNECTED', sessionId: id, deviceId: 'CAM-01' }]);
+    expect([notPaired(of), paired(of), sessionCapture(of.app).liveSessionId(), of.fake.last().commands('STOP').length, await auditOfTheFault(of)]).toEqual([[], ['CAM-02@1'], id, 0, 0]);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
+    // The recording goes on: its first durable fragment is taken, and it stops cleanly.
+    of.fake.last().record(startInterval);
+    of.fake.last().firstDurableFragment('CAM-02');
+    await of.settled();
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING', captureDurable: true });
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('C35 (a), no camera at all: the pairing says nothing; the worker ends the session itself and it is a failed start with the worker\'s cause, as before', async () => {
+    const { of, id } = await production('r48_none');
+    await wait(BOUND_MS * 2);
+    refused(of, 'CAM-01');
+    refused(of, 'CAM-02');
+    of.fake.last().say({ type: 'CRASH', code: 'NO_CAMERA_CONNECTED', signal: null, exitCode: null });
+    await of.settled();
+    expect([notPaired(of), await auditOfTheFault(of)]).toEqual([[], 0]);
+    expect(of.events.at(-1)).toEqual({ type: 'FAILED_START', sessionId: id, cause: 'NO_CAMERA_CONNECTED', reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 });
+  });
+
+  it('ruling C34, FAIL-CLOSED: a REAL_PRODUCTION start WITHOUT a source of relay reports is refused 409 with the cause RELAY_REPORTS_NOT_WIRED - the session stays ARMED, no row, no worker, no source', async () => {
+    const of = await rig('r48_not_wired');
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: null });
+    const id = await of.arm();
+    const refusedStart = await of.start(id).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(refusedStart).toBeInstanceOf(ApiFailure);
+    expect(refusedStart).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: SOURCE_KIND_NOT_RECORDABLE, cause: RELAY_REPORTS_NOT_WIRED } });
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'ARMED' });
+    expect(await of.rows('SELECT 1 FROM public.session_capture_sources WHERE session_id = $1', [id])).toEqual([]);
+    expect(await of.rows("SELECT 1 FROM public.audit_log WHERE type = 'RECORDING_STARTED' AND session_id = $1", [id])).toEqual([]);
+    expect([of.fake.calls(), of.order, of.events, sessionCapture(of.app).liveSessionId()]).toEqual([0, [], [], null]);
+  });
+
+  it.each([
+    ['the development operation WITHOUT a report source (admitted, ruling C34)', 'r48_dev_no_source', { source: false, operation: CaptureOperation.REAL_DEVELOPMENT }],
+    ['the development operation with a report source', 'r48_development', { operation: CaptureOperation.REAL_DEVELOPMENT }],
+  ] as const)('CONTROL - where the pairing is not applied nothing changes: %s takes the same lone connect report and the same refusal as before', async (_name, slug, with_) => {
+    const { of, id, relay } = await production(slug, with_);
+    expect(relay.subscribed()).toBe(0);
+    ingest(of, 'CAM-01', 'CONNECTED');
+    refused(of, 'CAM-02');
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    expect([notPaired(of), paired(of), sessionCapture(of.app).liveSessionId(), await auditOfTheFault(of)]).toEqual([[], [], id, 0]);
+    expect(of.events.some((event) => event.type === 'CAMERA_NOT_CONNECTED')).toBe(true);
+    await sessionCapture(of.app).shutdown();
   });
 });

@@ -205,6 +205,37 @@ describe('MB-01: the tiles say which input is active while a session records (ux
     expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual([null, null]);
     expect(getMissingKeys()).toEqual([]);
   });
+
+  // Task 4 row 171 (site M5; decision C18 (2)): the tiles and the Home data find the input of a channel by the
+  // lookup of row 164. The double: the Core's state as the bed replicates it, with a lone PRIMARY line.
+  it('task 4 row 171: the selector holds no complete microphone pair - both tiles show no level and no role, and read no frame of MIC-01 / MIC-02; the complete pair brings both back', async () => {
+    const b = await tabletHome(true);
+    const now = b.fake.clock.now();
+    const session = recordingSession(now);
+    const complete = b.state.captureConfig;
+    const lone = complete.mics.filter((entry) => entry.role === 'PRIMARY');
+    const snapshot = (mics: typeof lone) => (session.captureConfig ? { ...session.captureConfig, mics } : session.captureConfig);
+    // A session that states no pair, recording under a selector with the PRIMARY line only.
+    await b.pushState({
+      ...b.state,
+      captureConfig: { ...complete, mics: lone },
+      session: { ...session, audioSource: null, captureConfig: snapshot(lone) } as unknown as NonNullable<SimState['session']>,
+    });
+    b.sendMeters({ 'MIC-01': frame(-18, now, 1), 'MIC-02': frame(-42, now, 1) });
+    await flush();
+    // The frames are in the store under the built-in inputs; no meter channel has an input, so no tile reads them.
+    expect(lines()).toEqual(['— dBFS', '— dBFS']);
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual([null, null]);
+    expect(lines().some((text) => /no signal|-18|-42/i.test(text))).toBe(false);
+
+    // CONTROL - the same recording under the complete pair: the levels and the words, as before.
+    await b.pushState({ ...b.state, captureConfig: complete, session: { ...session, captureConfig: snapshot(complete.mics) } as NonNullable<SimState['session']> });
+    b.sendMeters({ 'MIC-01': frame(-18, now + 50, 2), 'MIC-02': frame(-42, now + 50, 2) });
+    await flush();
+    expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Active', 'Standby']);
+    expect(getMissingKeys()).toEqual([]);
+  });
 });
 });
 

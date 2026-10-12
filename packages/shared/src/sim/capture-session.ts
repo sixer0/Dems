@@ -304,7 +304,10 @@ export function advanceCaptureStart(state: SimState, now: EpochMs, connectMs: nu
   if (session === null || at === null || now < at) return state;
   const cameras = sessionCameras(state, session);
   const missing = camerasNotConnecting(state);
-  if (cameras.length > 0 && missing.length === cameras.length) return failedCaptureStartTransition(state, at, session.id, NO_CAMERA_CONNECTED_REASON);
+  // No camera connects: every camera of the session is missing - and a session WITHOUT a camera line
+  // has none to connect (task 4 row 163; site C7 of row 27; names register E31). The simulated start
+  // never turns durable with zero cameras: it ends as the existing "no camera connected" failure.
+  if (missing.length === cameras.length) return failedCaptureStartTransition(state, at, session.id, NO_CAMERA_CONNECTED_REASON);
 
   // Durable: the member goes (see the file header). Nothing else of the session moves.
   const { captureDurable: _connecting, ...durable } = session;
