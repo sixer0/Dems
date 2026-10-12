@@ -41,6 +41,9 @@ fixture.provisionKey();
 afterAll(() => fixture.remove());
 
 const SHA = (seed: string): string => seed.repeat(64).slice(0, 64);
+/** Task 4 row 47: the random element of an ingest address (16 bytes as URL-safe base64), and where it stands. */
+const INGEST_ELEMENT = /^[A-Za-z0-9_-]{22}$/;
+const elementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
 const GENESIS = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 interface Rig {
@@ -57,6 +60,8 @@ interface Rig {
   /** What the unit told the transcriber session of a recording, in order: `begin <id>`, `end <id> recorded`, `end <id> nothing`. */
   readonly transcriber: string[];
   readonly investigator: Extract<Principal, { kind: 'OPERATOR' }>;
+  /** Everything the app logged, as its lines (task 4 row 47: searched for the ingest address). */
+  readonly log: ReturnType<typeof captureLog>;
   drive(ms: number): Promise<void>;
   /** Idle -> ARMED through hosted commands; returns the session ID. */
   arm(): Promise<string>;
@@ -215,6 +220,7 @@ async function rig(
     handles,
     transcriber,
     investigator,
+    log,
     drive,
     settled,
     async arm() {
@@ -302,10 +308,12 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     const starts = of.fake.last().commands('START');
     expect(starts).toHaveLength(1);
     expect(starts[0]).toMatchObject({ v: CAPTURE_PROTOCOL_VERSION, sessionId: id, attempt: 1 });
-    expect(starts[0]?.plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.ingestUrl])).toEqual([
+    // Task 4 row 47: the address of a track is the listener of that track, the session, the track, and one random element after them.
+    expect(starts[0]?.plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.ingestUrl.slice(0, camera.ingestUrl.lastIndexOf('/'))])).toEqual([
       ['CAM-01', 'VIDEO-01', `rtsp://127.0.0.1:8554/${id}/video-01`],
       ['CAM-02', 'VIDEO-02', `rtsp://127.0.0.1:8556/${id}/video-02`],
     ]);
+    expect(starts[0]?.plan.cameras.map((camera) => INGEST_ELEMENT.test(elementOf(camera.ingestUrl)))).toEqual([true, true]);
     expect(starts[0]?.plan.cameras.every((camera) => camera.outputPath.startsWith(`${fixture.mediaStoreDir}/SESSION-${id}/`))).toBe(true);
     expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.role])).toEqual([['MIC-01', 'PRIMARY'], ['MIC-02', 'STANDBY']]);
     // The microphones are opened before the plan, the cameras only when the worker listens.
@@ -1513,4 +1521,176 @@ describe('Z1: what the Core holds of a running recording reaches the session pay
     expect(await of.rows("SELECT type FROM public.audit_log WHERE type ILIKE '%CHECKPOINT%'")).toEqual([]);
   });
 
+});
+
+// ── Task 4 row 47 (WP-06b): the cameras of a start ──────────────────────────────────────────────
+// The devices are the fake adapters of the rig behind a wrapper that records what each camera
+// adapter was asked and scripts when it answers. No relay, no worker process and no camera exists
+// here: that an adapter of production hands the address to its relay on standard input is row 46's
+// proof, the eight-place search and the reveal count are row 151's.
+describe('task 4 row 47: the cameras of a start - the address, the profile, the same turn, the bound, outside every unit', () => {
+  interface Asked {
+    readonly deviceId: string;
+    readonly target: { readonly ingestUrl: string; readonly profile?: string };
+    readonly signal: AbortSignal;
+  }
+  type Script = (deviceId: string, pass: () => Promise<SourceHandle>, signal: AbortSignal) => Promise<SourceHandle>;
+  function cameras(script: Script = (_deviceId, pass) => pass()): { readonly asked: Asked[]; readonly registry: (built: CaptureDeviceRegistry) => CaptureDeviceRegistry } {
+    const asked: Asked[] = [];
+    const registry = (built: CaptureDeviceRegistry): CaptureDeviceRegistry => ({
+      ...built,
+      resolve: ((deviceClass: 'CAMERA' | 'MIC', deviceId: string) => {
+        if (deviceClass === 'MIC') return built.resolve('MIC', deviceId);
+        const adapter = built.resolve('CAMERA', deviceId);
+        return {
+          ...adapter,
+          openSource: (id: string, to: Parameters<typeof adapter.openSource>[1], signal: AbortSignal) => {
+            asked.push({ deviceId: id, target: to, signal });
+            return script(id, () => adapter.openSource(id, to, signal), signal);
+          },
+        };
+      }) as CaptureDeviceRegistry['resolve'],
+    });
+    return { asked, registry };
+  }
+  /** The start as the route makes it, WITHOUT waiting for the background work: the case looks at a start that is still running. */
+  const startAndReturn = async (of: Rig, id: string): Promise<void> => {
+    await sessionCapture(of.app).beforeStart();
+    await of.app.engine.run('sessions.startSession', async (scope) => {
+      await scope.command(of.investigator, 'startRecording');
+      await sessionCapture(of.app).recordingStartedIn(scope, id);
+    });
+    sessionCapture(of.app).afterStartCommitted(id);
+  };
+  const notOpenedLines = (of: Rig): Array<Record<string, unknown>> => of.log.lines().filter((line) => line.code === 'CAPTURE_CAMERA_NOT_OPENED');
+
+  it('each camera adapter is asked ONCE, with the address of the plan frame byte for byte and the profile of the plan; the two tracks carry different 128-bit elements; the address is in no log line, audit row, session row, event or facts file', async () => {
+    const seen = cameras();
+    const of = await rig('r47_address', { registry: seen.registry });
+    const id = await of.arm();
+    await of.start(id);
+    const plan = of.fake.last().commands('START')[0]?.plan;
+    expect(plan?.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    const inPlan = (deviceId: string) => plan?.cameras.find((camera) => camera.deviceId === deviceId);
+
+    // One open per camera of the plan (AD-11: one credential read per camera per attempt), each told the plan's own string and profile.
+    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(seen.asked.map((ask) => ask.target.ingestUrl === inPlan(ask.deviceId)?.ingestUrl)).toEqual([true, true]);
+    expect(seen.asked.map((ask) => typeof ask.target.profile === 'string' && ask.target.profile === inPlan(ask.deviceId)?.profile)).toEqual([true, true]);
+
+    // BR-07 (1): 16 bytes of the random source per track, in the grammar; the two tracks differ.
+    const elements = (plan?.cameras ?? []).map((camera) => elementOf(camera.ingestUrl));
+    expect(elements.map((element) => INGEST_ELEMENT.test(element) && Buffer.from(element, 'base64url').length === 16)).toEqual([true, true]);
+    expect(new Set(elements).size).toBe(2);
+
+    // BR-07 (4), at the level of this unit: the element is in none of the places this unit writes.
+    of.fake.last().record(startInterval);
+    of.fake.last().firstDurableFragment('CAM-01');
+    await of.settled();
+    const tables = await of.rows<{ text: string }>(
+      "SELECT row_to_json(a)::text AS text FROM public.audit_log a UNION ALL SELECT row_to_json(s)::text FROM public.session_capture_sources s UNION ALL SELECT row_to_json(i)::text FROM public.session_audio_intervals i UNION ALL SELECT row_to_json(f)::text FROM public.recording_fragments f",
+    );
+    const places: Record<string, string> = {
+      log: of.log.text(),
+      tables: tables.map((row) => row.text).join('\n'),
+      events: JSON.stringify(of.events),
+      facts: JSON.stringify(await readSessionCaptureFacts(of.app.config.mediaStoreDir, id)),
+    };
+    // Each place holds something of this session (the search is not of an empty text) and none holds an element.
+    expect(Object.values(places).map((text) => text.includes(id))).toEqual([true, true, true, true]);
+    expect(Object.entries(places).filter(([, text]) => elements.some((element) => text.includes(element))).map(([place]) => place)).toEqual([]);
+    // CONTROL of the search: the same needle finds the element where it must be, in the frame the worker was sent.
+    expect(elements.every((element) => JSON.stringify(of.fake.last().commands('START')).includes(element))).toBe(true);
+  });
+
+  it('both cameras are opened in the same turn: a first camera that has not answered (a camera that needs 20 s) does not delay the second; the development operation gives no open up at a bound; STARTED names the cameras in the order of the plan', async () => {
+    let answer: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => (answer = resolve));
+    const seen = cameras(async (deviceId, pass) => {
+      if (deviceId === 'CAM-01') await slow;
+      return pass();
+    });
+    const of = await rig('r47_same_turn', { registry: seen.registry });
+    // A bound far below the time this case holds the camera: REAL_DEVELOPMENT must not apply it.
+    sessionCapture(of.app).replace({ cameraOpenBoundMs: 40 });
+    const id = await of.arm();
+    await startAndReturn(of, id);
+    // The second camera is open while the first has not answered: with one open after the other this never happens.
+    await vi.waitFor(() => expect(of.order).toContain('open CAM-02'), { timeout: 5_000 });
+    expect(seen.asked.map((ask) => ask.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(of.order).not.toContain('open CAM-01');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
+    expect(seen.asked.map((ask) => ask.signal.aborted)).toEqual([false, false]);
+    expect(notOpenedLines(of)).toEqual([]);
+
+    answer();
+    await of.settled();
+    expect(of.order.filter((entry) => entry.startsWith('open CAM'))).toEqual(['open CAM-02', 'open CAM-01']);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+    // Still one open per camera.
+    expect(seen.asked).toHaveLength(2);
+  });
+
+  it('REAL_PRODUCTION: an open with no outcome is given up at the bound - its own signal is aborted, the session and the other camera go on, the camera is said not opened with the cause, a source that comes up later is closed at once; each adapter was asked once', async () => {
+    let bring: (handle: SourceHandle) => void = () => undefined;
+    const late = new Promise<SourceHandle>((resolve) => (bring = resolve));
+    const seen = cameras((deviceId, pass) => (deviceId === 'CAM-01' ? late : pass()));
+    const of = await rig('r47_bound', { registry: seen.registry });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, cameraOpenBoundMs: 60 });
+    const id = await of.arm();
+    await of.start(id);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-02'], camerasNotOpened: ['CAM-01'] });
+    expect(seen.asked.map((ask) => [ask.deviceId, ask.signal.aborted])).toEqual([['CAM-01', true], ['CAM-02', false]]);
+    expect(notOpenedLines(of).map((line) => [line.deviceId, line.cause])).toEqual([['CAM-01', 'CAMERA_OPEN_BOUND']]);
+    // The session was not ended by the bound of one camera.
+    expect(sessionCapture(of.app).liveSessionId()).toBe(id);
+    expect(of.fake.last().commands('STOP')).toHaveLength(0);
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toEqual([]);
+
+    // The source of the camera that was given up comes up after all: closed at once, and it is no source of the session.
+    let closed = 0;
+    bring({ deviceId: 'CAM-01', close: async () => void (closed += 1) });
+    await vi.waitFor(() => expect(closed).toBe(1), { timeout: 5_000 });
+    await of.settled();
+    expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
+    expect(seen.asked).toHaveLength(2);
+    expect(notOpenedLines(of)).toHaveLength(1);
+    await sessionCapture(of.app).shutdown();
+    expect(closed).toBe(1);
+  });
+
+  it('a camera is opened OUTSIDE every unit of work: an adapter that submits a unit of its own inside `openSource` (as the credential read of production does) is served; CONTROL: the same call inside the unit of the start is refused PIPELINE_REENTRANT', async () => {
+    const holder: { app: Rig['app'] | null } = { app: null };
+    const reads: string[] = [];
+    const ownUnit = async (): Promise<string> => {
+      if (holder.app === null) throw new Error('the case did not hand the app over');
+      return holder.app.pipeline.run('captureConfig.credentialRead', async () => 'COMMITTED').then(
+        (value) => value,
+        (error: unknown) => String((error as { code?: unknown }).code ?? 'FAILED'),
+      );
+    };
+    const seen = cameras(async (deviceId, pass) => {
+      reads.push(`${deviceId} ${await ownUnit()}`);
+      return pass();
+    });
+    const of = await rig('r47_outside_unit', { registry: seen.registry });
+    holder.app = of.app;
+    const id = await of.arm();
+    let insideTheStart = 'NOT ASKED';
+    await sessionCapture(of.app).beforeStart();
+    await of.app.engine.run('sessions.startSession', async (scope) => {
+      await scope.command(of.investigator, 'startRecording');
+      await sessionCapture(of.app).recordingStartedIn(scope, id);
+      // CONTROL: this is what an open made here, in the unit of the start, would get.
+      insideTheStart = await ownUnit();
+      // Nothing was opened inside the unit.
+      expect(seen.asked).toEqual([]);
+    });
+    sessionCapture(of.app).afterStartCommitted(id);
+    await of.settled();
+    expect(insideTheStart).toBe('PIPELINE_REENTRANT');
+    expect(reads.sort()).toEqual(['CAM-01 COMMITTED', 'CAM-02 COMMITTED']);
+    expect(of.events.at(-1)).toEqual({ type: 'STARTED', sessionId: id, cameras: ['CAM-01', 'CAM-02'], camerasNotOpened: [] });
+  });
 });

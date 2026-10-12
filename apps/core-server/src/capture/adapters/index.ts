@@ -71,6 +71,40 @@ export {
   withinMicClockRange,
   type MicTransportStatement,
 } from './mic-transport';
+// The door of the production programs (task 4 row 21; exported by integration pass I-3 on row 21's request).
+// Importing the barrel loads the process module; nothing is started before `startProductionProcess()` is called.
+export {
+  PRODUCTION_ENVIRONMENT_KEYS,
+  PRODUCTION_OUTPUT_CAP_BYTES,
+  START_MESSAGE_WRITE_BOUND_MS,
+  ProductionDoorError,
+  ProductionDoorRefusal,
+  coreFileLimitOfThisProcess,
+  startProductionProcess,
+  type CoreFileLimitReader,
+  type ProductionDoor,
+  type ProductionEnvironment,
+  type ProductionExit,
+  type ProductionProcess,
+  type ProductionProcessOptions,
+} from './production-door';
+// The card listing of the audio interface (task 4 row 64; exported by integration pass I-3 on row 64's request:
+// rule A-5 lets a module name this index only). Importing the barrel loads the file system module; the
+// reader opens nothing before its enumerator is asked.
+export {
+  CardAllocationRefusal,
+  CardFactsSource,
+  allocateCardInput,
+  cardSampleRate,
+  createCardEnumerator,
+  findCaptureCard,
+  selectCardInputs,
+  type CaptureCard,
+  type CardEnumerator,
+  type CardListing,
+  type CardListingSource,
+} from './audio/card-listing';
+export { CardListingReadError, createCardListingReader } from './audio/card-listing-reader';
 export { OPENER_CAPABLE_KINDS, createCaptureDeviceRegistry, type CaptureDeviceRegistryOptions } from './registry';
 export {
   AUDIO_INPUT_BEYOND_CARD,

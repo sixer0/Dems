@@ -7,12 +7,20 @@ import {
   AUDIO_FRAME_MS,
   AUDIO_PEAK_HOLD_MS,
   DEFAULT_MIC_INPUT_OF_CHANNEL,
+  activeMeterChannel,
+  audioPairOfSelector,
+  channelOfMicLine,
   createManualClock,
   createSim,
   meterAt,
+  meterInputOfChannel,
+  micInputOfChannel,
+  micInputOfRole,
   stepMeter,
   type AudioFrame,
+  type RoleMicLine,
   type ScenarioName,
+  type SimState,
 } from '../src/sim';
 
 const START = Date.UTC(2026, 9, 1, 3, 0, 0); // 10:00 WIB
@@ -208,5 +216,161 @@ describe('CLIP latch (fault injection only) and NO SIGNAL', () => {
     h.run(3_000);
     expect(h.state().audio.inputs['MIC-01']!.dbfs).toBeLessThan(-45);
     expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', deviceId: 'MIC-01', details: { command: 'TEST_SIGNAL' } });
+  });
+});
+
+// Task 4 row 164 (WP-13a; decisions C18 (2), C21 (7), AD-04; names register 161 sections 3 and 7):
+// a microphone input is looked up BY ROLE. The double is a hand-built list of selector lines.
+describe('the lookup of a microphone input by role (task 4 row 164)', () => {
+  const line = (inputId: string, role: 'PRIMARY' | 'STANDBY'): RoleMicLine => ({ inputId, role });
+  type Answers = {
+    primary: string | null;
+    standby: string | null;
+    meter: readonly [string | null, string | null];
+    channelOf: Readonly<Record<string, 'AUDIO-01' | 'AUDIO-02' | null>>;
+  };
+  const table: readonly { name: string; lines: readonly RoleMicLine[]; complete: boolean; answers: Answers }[] = [
+    {
+      name: 'complete, MIC-01 PRIMARY (the seeded arrangement)',
+      lines: [line('MIC-01', 'PRIMARY'), line('MIC-02', 'STANDBY')],
+      complete: true,
+      answers: { primary: 'MIC-01', standby: 'MIC-02', meter: ['MIC-01', 'MIC-02'], channelOf: { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': null } },
+    },
+    {
+      name: 'complete, MIC-02 PRIMARY (the other arrangement, same input order)',
+      lines: [line('MIC-01', 'STANDBY'), line('MIC-02', 'PRIMARY')],
+      complete: true,
+      answers: { primary: 'MIC-02', standby: 'MIC-01', meter: ['MIC-01', 'MIC-02'], channelOf: { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': null } },
+    },
+    {
+      name: 'complete, inputs beyond the built-in pair',
+      lines: [line('MIC-04', 'STANDBY'), line('MIC-03', 'PRIMARY')],
+      complete: true,
+      answers: { primary: 'MIC-03', standby: 'MIC-04', meter: ['MIC-04', 'MIC-03'], channelOf: { 'MIC-04': 'AUDIO-01', 'MIC-03': 'AUDIO-02', 'MIC-01': null, 'MIC-02': null } },
+    },
+    {
+      name: 'a lone STANDBY line',
+      lines: [line('MIC-02', 'STANDBY')],
+      complete: false,
+      answers: { primary: null, standby: 'MIC-02', meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
+    },
+    {
+      name: 'a lone PRIMARY line',
+      lines: [line('MIC-03', 'PRIMARY')],
+      complete: false,
+      answers: { primary: 'MIC-03', standby: null, meter: [null, null], channelOf: { 'MIC-03': null, 'MIC-01': null } },
+    },
+    {
+      name: 'no microphone line',
+      lines: [],
+      complete: false,
+      answers: { primary: null, standby: null, meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
+    },
+    {
+      name: 'two lines of one role (a state put in place otherwise)',
+      lines: [line('MIC-01', 'PRIMARY'), line('MIC-02', 'PRIMARY')],
+      complete: false,
+      answers: { primary: 'MIC-01', standby: null, meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
+    },
+  ];
+
+  it.each(table)('$name: each reader answers as the register states', ({ lines, complete, answers }) => {
+    expect(micInputOfRole(lines, 'PRIMARY')).toBe(answers.primary);
+    expect(micInputOfRole(lines, 'STANDBY')).toBe(answers.standby);
+    expect([meterInputOfChannel(lines, 'AUDIO-01'), meterInputOfChannel(lines, 'AUDIO-02')]).toEqual(answers.meter);
+    for (const [inputId, channel] of Object.entries(answers.channelOf)) expect(channelOfMicLine(lines, inputId)).toBe(channel);
+    // The pair of `selector-in-force.ts` is the same rule (it imports nothing, so it spells it itself).
+    expect(audioPairOfSelector(lines)).toEqual({ activeInputId: answers.primary, standbyInputId: answers.standby });
+    // D137 is kept for a complete pair: the answer is the positional function's, in both arrangements.
+    if (complete) {
+      expect(meterInputOfChannel(lines, 'AUDIO-01')).toBe(micInputOfChannel(lines, 'AUDIO-01'));
+      expect(meterInputOfChannel(lines, 'AUDIO-02')).toBe(micInputOfChannel(lines, 'AUDIO-02'));
+    }
+  });
+
+  it('a lone STANDBY line is never the active input; without lines the answer is absent, neither MIC-01 nor MIC-02', () => {
+    const lone = [line('MIC-02', 'STANDBY')];
+    expect(micInputOfRole(lone, 'PRIMARY')).toBeNull();
+    expect(audioPairOfSelector(lone).activeInputId).toBeNull();
+    const answers = [
+      micInputOfRole([], 'PRIMARY'),
+      micInputOfRole([], 'STANDBY'),
+      meterInputOfChannel([], 'AUDIO-01'),
+      meterInputOfChannel([], 'AUDIO-02'),
+      audioPairOfSelector([]).activeInputId,
+      audioPairOfSelector([]).standbyInputId,
+    ];
+    // Absent is `null`: never undefined, an empty text or a built-in input.
+    expect(answers).toEqual([null, null, null, null, null, null]);
+    // The parameter seam of `channelOfMicLine` (PENDING-ROW-171): lines that state no role are no
+    // pair, so they have no channel - not channel 1 and 2 by their position.
+    expect([channelOfMicLine([{ inputId: 'MIC-01' }, { inputId: 'MIC-02' }], 'MIC-01'), channelOfMicLine([], 'MIC-01')]).toEqual([null, null]);
+    // CONTROL: the positional function, unchanged until row 172, still answers the constants.
+    expect([micInputOfChannel([], 'AUDIO-01'), micInputOfChannel([], 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
+  });
+
+  const withSelector = (h: ReturnType<typeof harness>, mics: SimState['captureConfig']['mics']) =>
+    h.sim.store.setState({ captureConfig: { ...h.state().captureConfig, mics } });
+  const seeded = (h: ReturnType<typeof harness>) => h.state().captureConfig.mics;
+
+  it('`activeMeterChannel`: the active input among the lines; the channel LABEL 1 when it has no channel or none is active', () => {
+    const h = harness('idle');
+    expect(activeMeterChannel(h.state())).toBe('AUDIO-01');
+    expect(activeMeterChannel({ ...h.state(), audio: { ...h.state().audio, activeInputId: 'MIC-02' } })).toBe('AUDIO-02');
+    // No active input (what the slice holds once the seam of row 28 is out): no lookup, the label.
+    const noneActive = { ...h.state(), audio: { ...h.state().audio, activeInputId: null } } as unknown as SimState;
+    expect(activeMeterChannel(noneActive)).toBe('AUDIO-01');
+    // A lone line has no channel: the label, and no input behind it.
+    const lone = { ...h.state(), captureConfig: { ...h.state().captureConfig, mics: seeded(h).slice(1) }, audio: { ...h.state().audio, activeInputId: 'MIC-02' } };
+    expect(activeMeterChannel(lone)).toBe('AUDIO-01');
+    expect(meterInputOfChannel(lone.captureConfig.mics, activeMeterChannel(lone))).toBeNull();
+  });
+
+  it('the subsystem: no frame for a channel without an input, and no frame under a built-in name', () => {
+    const h = harness('idle');
+    h.run(200);
+    expect(Object.keys(h.state().audio.inputs).sort()).toEqual(['MIC-01', 'MIC-02']);
+    expect(h.state().audio.activeInputId).toBe('MIC-01');
+
+    // A lone STANDBY line: no meter channel, hence no frame at all.
+    withSelector(h, seeded(h).filter((mic) => mic.role === 'STANDBY'));
+    h.run(200);
+    expect(h.state().audio.inputs).toEqual({});
+    // PENDING-ROW-28-SEAM: the register's answer is `null` (no PRIMARY line). While the state's
+    // member is typed as an input the subsystem keeps what it held; it is NOT moved to the lone
+    // STANDBY line and not to a line by position. Flip to `toBeNull()` with the seam's removal.
+    expect(h.state().audio.activeInputId).toBe('MIC-01');
+
+    // No microphone line: no frame either.
+    withSelector(h, []);
+    h.run(200);
+    expect(h.state().audio.inputs).toEqual({});
+  });
+
+  it('the subsystem: a pair that no longer holds the active input reads its PRIMARY line, by role', () => {
+    const h = harness('idle');
+    h.run(100);
+    // MIC-03 / MIC-04 with the PRIMARY role on the SECOND line: position 0 is the STANDBY.
+    withSelector(h, [
+      { ...seeded(h)[0]!, inputId: 'MIC-04', deviceId: 'MIC-04', role: 'STANDBY' },
+      { ...seeded(h)[1]!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
+    ]);
+    h.run(100);
+    expect(Object.keys(h.state().audio.inputs).sort()).toEqual(['MIC-03', 'MIC-04']);
+    expect(h.state().audio.activeInputId).toBe('MIC-03');
+  });
+
+  it('Simulated mode on the seeded selector: both lookups answer what the positional function answers', () => {
+    const h = harness('recording');
+    const lines = seeded(h);
+    expect(lines.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-01', 'PRIMARY'], ['MIC-02', 'STANDBY']]);
+    for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+      expect(meterInputOfChannel(lines, channel)).toBe(micInputOfChannel(lines, channel));
+      expect(meterInputOfChannel(lines, channel)).toBe(DEFAULT_MIC_INPUT_OF_CHANNEL[channel]);
+    }
+    h.run(1_000);
+    expect(h.frames['AUDIO-01']).toHaveLength(20);
+    expect(h.frames['AUDIO-02']).toHaveLength(20);
+    expect(h.state().audio.activeInputId).toBe(micInputOfRole(lines, 'PRIMARY'));
   });
 });

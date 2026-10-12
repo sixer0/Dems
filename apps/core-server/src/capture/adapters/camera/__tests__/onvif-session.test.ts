@@ -721,7 +721,9 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
       [`${STREAM}someone:something@${ODD_DEVICE_HOST}:554/main`, OnvifTestReason.STREAM_USER_PART],
       [`${STREAM}someone@${ODD_DEVICE_HOST}/main`, OnvifTestReason.STREAM_USER_PART],
       [`${STREAM}${ODD_DEVICE_HOST}/main?next=someone@elsewhere`, OnvifTestReason.STREAM_USER_PART],
-      [`${STREAM}${ODD_DEVICE_HOST}/main?channel=someone`, OnvifTestReason.STREAM_LOCATOR_FORM],
+      // Task 4 row 174 (C24): a query is no longer refused as such (`?channel=someone` is a locator now, see
+      // the block of row 174 below); the query of this line stays refused, by the name of its parameter.
+      [`${STREAM}${ODD_DEVICE_HOST}/main?token=someone`, OnvifTestReason.STREAM_LOCATOR_FORM],
       [`${STREAM}${ODD_DEVICE_HOST}/main#someone`, OnvifTestReason.STREAM_LOCATOR_FORM],
       [`${STREAM}${ODD_DEVICE_HOST}/someone/`, OnvifTestReason.STREAM_LOCATOR_FORM],
       [`${STREAM}${ODD_DEVICE_HOST}/someoné`, OnvifTestReason.STREAM_LOCATOR_FORM],
@@ -803,5 +805,146 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
     expect(await locator().locate(candidateAt(address), sealCredential(ACCOUNT), 'profile_1', never())).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_ADDRESS_MISSING, locator: null });
     expect(stub.violations()).toEqual([]);
     expect(stub.requestLog().filter((request) => request.channel !== 'device')).toEqual([]);
+  });
+
+  // Task 4 row 174 (decision C24): the stream locator may carry a QUERY, under a closed rule. Every
+  // device of this block is the scripted device (the fake stub names its streams without a query);
+  // each bound of the rule is a named case with its control on the allowed side.
+  describe('task 4 row 174 (C24): a stream locator with a query, under the closed rule', () => {
+    const BASE = `${STREAM}${ODD_DEVICE_HOST}:554/cam/realmonitor`;
+    /** The address as the device's XML answer carries it. */
+    const inXml = (address: string): string => address.replaceAll('&', '&amp;');
+    const located = async (address: string): Promise<OnvifLocatorResult> => {
+      const device = await camera([{ token: 'main' }], inXml(address));
+      const result = await locator().locate(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), 'main', never());
+      await device.stop();
+      return result;
+    };
+    const READS = ['GetSystemDateAndTime', 'GetServices', 'GetStreamUri'];
+    /** The whole answer of an allowed locator: the device's text, unchanged. */
+    const allowed = (address: string) => ({ outcome: ConnectionTestOutcome.REACHABLE, reason: null, locator: address, reads: READS, credentialRequests: 1, rejectedCredentialRequests: 0 });
+    /** The WHOLE answer of a refusal: a code and counts, so no part of the address can be in it. */
+    const refused = (reason: OnvifTestReason = OnvifTestReason.STREAM_LOCATOR_FORM) => ({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason, locator: null, reads: READS, credentialRequests: 1, rejectedCredentialRequests: 0 });
+    const expectAllowed = async (addresses: readonly string[]): Promise<void> => {
+      for (const address of addresses) expect(await located(address), address).toEqual(allowed(address));
+    };
+    const expectRefused = async (addresses: readonly string[], reason?: OnvifTestReason): Promise<void> => {
+      for (const address of addresses) expect(await located(address), address).toEqual(refused(reason));
+    };
+    const CREDENTIAL_LIKE = ['user', 'username', 'pass', 'password', 'pwd', 'auth', 'token', 'key', 'secret', 'session'] as const;
+
+    it('an allowed query is returned unchanged: the forms common cameras name their stream with', async () => {
+      await expectAllowed([
+        `${BASE}?channel=1&subtype=0`,
+        `${BASE}?channel=1&subtype=0&unicast=true&proto=Onvif`,
+        `${STREAM}${ODD_DEVICE_HOST}/Streaming/Channels/101?transportmode=unicast&profile=Profile_1`,
+        `${STREAM}${ODD_DEVICE_HOST}/onvif-media/media.amp?profile=profile_1_h264&sessiontimeout=60&streamtype=unicast`,
+        // A parameter without a value, and every character of the closed set.
+        `${BASE}?real_stream`,
+        `${BASE}?a.b_c~d-E9=F.g_h~i-0`,
+      ]);
+      // Control: the same path without a query is a locator as before.
+      await expectAllowed([BASE]);
+      // The connection test is untouched: it compares the address and drops it, query or not.
+      const device = await camera([{ token: 'main' }], inXml(`${BASE}?channel=1&subtype=0`));
+      const tested = await tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never());
+      expect(tested.outcome).toBe(ConnectionTestOutcome.REACHABLE);
+      expect(JSON.stringify(tested)).not.toMatch(/channel|subtype|realmonitor/);
+    });
+
+    it('over-length: the query at most 128 characters, the locator at most 256, at most 8 parameters, a name 32 and a value 64', async () => {
+      const pad = (length: number, lead = 'a='): string => `${lead}${'x'.repeat(length - lead.length)}`;
+      // The query: two parameters of 64 and 63 characters and the `&` are 128; one more character is refused.
+      const at128 = `${pad(64)}&${pad(63, 'b=')}`;
+      expect(at128).toHaveLength(128);
+      await expectAllowed([`${BASE}?${at128}`]);
+      await expectRefused([`${BASE}?${at128}x`]);
+      // The locator: a path that fills it to 256 with a short query is a locator; 257 is not.
+      const short = '?channel=1';
+      const fill = (total: number): string => `${STREAM}${ODD_DEVICE_HOST}/${'p'.repeat(total - `${STREAM}${ODD_DEVICE_HOST}/${short}`.length)}${short}`;
+      expect(fill(256)).toHaveLength(256);
+      await expectAllowed([fill(256)]);
+      await expectRefused([fill(257)]);
+      // The number of parameters, the length of a name and of a value.
+      const numbered = (count: number): string => Array.from({ length: count }, (_unused, index) => `p${index}=1`).join('&');
+      await expectAllowed([`${BASE}?${numbered(8)}`, `${BASE}?${'n'.repeat(32)}=1`, `${BASE}?v=${'1'.repeat(64)}`]);
+      await expectRefused([`${BASE}?${numbered(9)}`, `${BASE}?${'n'.repeat(33)}=1`, `${BASE}?v=${'1'.repeat(65)}`]);
+    });
+
+    it('a character outside the closed set is refused, in a name and in a value; so is every shape that is not name or name=value joined by &', async () => {
+      const outside = ['%', '+', ';', '/', ':', ',', '*', '!', '$', '(', ')', '[', ']', '{', '}', '|', '^', '`', "'", '?', '\\'];
+      await expectRefused(outside.map((character) => `${BASE}?channel=1${character}2`));
+      await expectRefused(outside.map((character) => `${BASE}?chan${character}nel=1`));
+      await expectRefused([
+        `${BASE}?channel=1&mode=café`, // not ASCII
+        `${BASE}?`, // an empty query
+        `${BASE}?=1`, // an empty name
+        `${BASE}?channel=1&&subtype=0`, // an empty parameter
+        `${BASE}?&channel=1`,
+        `${BASE}?channel=1&`,
+        `${BASE}?channel=1=2`, // a second `=`
+        `${BASE}/?channel=1`, // the path rule of the injection point still holds before the query
+      ]);
+      // Control: the same shapes with characters of the set are locators.
+      await expectAllowed([`${BASE}?channel=12`, `${BASE}?channel=1&subtype=0`]);
+    });
+
+    it('each of the 10 credential-like parameter names is refused, in lower case, in upper case and in mixed case, wherever it stands', async () => {
+      expect(CREDENTIAL_LIKE).toHaveLength(10);
+      for (const name of CREDENTIAL_LIKE) {
+        const mixed = `${name.slice(0, 1).toUpperCase()}${name.slice(1, 2)}${name.slice(2).toUpperCase()}`;
+        await expectRefused([
+          `${BASE}?${name}=1`,
+          `${BASE}?${name.toUpperCase()}=1`,
+          `${BASE}?${mixed}=1`,
+          `${BASE}?channel=1&${name}=1`, // not the first parameter
+          `${BASE}?channel=1&${name.toUpperCase()}=1&subtype=0`,
+          `${BASE}?${name}`, // without a value
+        ]);
+      }
+      // Control: the list is closed and compared with the WHOLE name - a longer name is another name.
+      await expectAllowed([`${BASE}?sessiontimeout=60&keyframe=1&authmode=digest&username2=a&tokens=2`]);
+    });
+
+    it('a percent-encoded parameter name is refused: no name hides behind an encoding, because no encoding is admitted', async () => {
+      await expectRefused([
+        `${BASE}?%70assword=1`, // "password", first letter encoded
+        `${BASE}?p%61ss=1`,
+        `${BASE}?%75%73%65%72=1`, // "user", every letter encoded
+        `${BASE}?%2570assword=1`, // encoded twice
+        `${BASE}?channel=1%26token=1`, // an encoded separator in front of a name
+        `${BASE}?channel=1%3Btoken%3D1`,
+        `${BASE}?channel=%31`, // an encoded value: refused too, the set has no `%`
+      ]);
+    });
+
+    it('a repeated parameter is refused, whatever the letter case of its two names', async () => {
+      await expectRefused([`${BASE}?channel=1&channel=2`, `${BASE}?channel=1&subtype=0&Channel=1`, `${BASE}?flag&flag`, `${BASE}?channel=1&token=1&channel=1`]);
+      // Control: two different names with the same value are a locator.
+      await expectAllowed([`${BASE}?channel=1&subtype=1`]);
+    });
+
+    it('an empty value is allowed for a plain name and changes nothing for a credential-like one', async () => {
+      await expectAllowed([`${BASE}?channel=`, `${BASE}?channel=&subtype=0`]);
+      await expectRefused([`${BASE}?password=`, `${BASE}?channel=&secret=`]);
+    });
+
+    it('a fragment is refused, with or without a query, also an empty one', async () => {
+      await expectRefused([`${BASE}?channel=1#part`, `${BASE}#part?channel=1`, `${BASE}#part`, `${BASE}?channel=1#`, `${BASE}#`]);
+    });
+
+    it('a query that looks like a credential only by a VALUE is a locator: values are not judged', async () => {
+      await expectAllowed([`${BASE}?mode=password&stream=token&profile=secret_key&name=user`, `${BASE}?kind=session&channel=auth`]);
+    });
+
+    it('a user part stays refused beside a query, wherever the @ stands, and by its own reason', async () => {
+      await expectRefused(
+        [`${STREAM}someone:something@${ODD_DEVICE_HOST}:554/cam/realmonitor?channel=1&subtype=0`, `${STREAM}someone@${ODD_DEVICE_HOST}/main?channel=1`, `${BASE}?channel=1&next=someone@elsewhere`],
+        OnvifTestReason.STREAM_USER_PART,
+      );
+      // A foreign host and another scheme keep their reasons beside an allowed query.
+      await expectRefused([`${STREAM}${ODD_DEVICE_FOREIGN_HOST}/main?channel=1`], OnvifTestReason.STREAM_HOST_MISMATCH);
+      await expectRefused([`http://${ODD_DEVICE_HOST}/main?channel=1`], OnvifTestReason.STREAM_SCHEME);
+    });
   });
 });

@@ -218,6 +218,24 @@ describe('Device drawer (Overview, Health, Log)', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 
+  // Task 4 row 54 / integration pass I-3 (P12-F08): the Overview's format fact of a slice that states no rate is its picture and codec.
+  it('the camera Overview states picture and codec without a rate for a slice that states none, never "Not reported" and never an empty rate', async () => {
+    const { sim } = await mountDevices()
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for Camera 1' }))
+    const drawer = await screen.findByTestId('device-drawer')
+    const formatFact = (): string | null | undefined =>
+      [...within(drawer).getByTestId('device-overview').querySelectorAll('.dev-facts-row')].find((row) => row.querySelector('dt')?.textContent === 'Format')?.querySelector('dd')?.textContent
+    // CONTROL: the rate the slice states is printed as stated.
+    expect(formatFact()).toBe('1080p • 25 fps • H.264')
+    act(() =>
+      sim.store.setState((state) => ({
+        cameras: state.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, resolution: '2160p', fps: null, codec: 'HEVC' as const } : camera)),
+      })),
+    )
+    await waitFor(() => expect(formatFact()).toBe('2160p • HEVC'))
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
   it('opens the GNSS receiver from its Other Devices row', async () => {
     await mountDevices()
     fireEvent.click(screen.getByTestId('other-GNSS'))
@@ -279,6 +297,35 @@ describe('Recording scenario', () => {
     expect(screen.getByTestId('camera-rec-VIDEO-02')).toHaveTextContent('REC')
     expect(screen.getByTestId('devices-banner')).toHaveAttribute('data-kind', 'RECORDING')
     expect(screen.getByTestId('front-lcd')).toHaveTextContent(/REC\s*00:18:4\d/)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})
+
+// Row 54 (P12-F08): the tile states the camera slice's picture, rate and codec - no "H.264" and no 25 of its own.
+describe('Camera tile: the format is the slice\'s statement', () => {
+  it('states HEVC for an HEVC slice, with the rate the slice states and with no rate when it states none', async () => {
+    const { sim } = await mountDevices()
+    act(() =>
+      sim.store.setState((state) => ({
+        cameras: state.cameras.map((camera) =>
+          camera.id === 'VIDEO-01'
+            ? { ...camera, resolution: '1080p', fps: null, codec: 'HEVC' as const }
+            : { ...camera, resolution: '2160p', fps: 30, codec: 'HEVC' as const },
+        ),
+      })),
+    )
+
+    // No rate stated: picture and codec only, on the line and on the picture's chip.
+    const first = screen.getByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(within(first).getByTestId('camera-format-VIDEO-01')).toHaveTextContent(/^Format\s*1080p • HEVC$/))
+    expect(within(first).getByTestId('camera-feed')).toHaveTextContent('1080p')
+    expect(first).not.toHaveTextContent(/fps|H\.264/)
+
+    // A stated rate is printed as stated.
+    const second = screen.getByTestId('camera-tile-VIDEO-02')
+    expect(within(second).getByText('2160p • 30 fps • HEVC')).toBeInTheDocument()
+    expect(within(second).getByText('2160p • 30 fps')).toBeInTheDocument()
+    expect(second).not.toHaveTextContent(/H\.264|25 fps|1080p/)
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

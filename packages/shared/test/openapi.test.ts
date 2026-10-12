@@ -111,6 +111,8 @@ const OFFLINE_SCHEMA_NAMES = [
   'SttConfigUpdateResult',
   'SttConnectionTest',
   // Task 3 R-9..R-11 (blueprint row 132, D106; C3 §2.6): the eight schemas of ops 93-97.
+  // Task 4 row 94 (WP-12; AM-3): + the optional body of op 93, first of the block (56 -> 57 components).
+  'CaptureDiscoveryStartRequest',
   'CaptureDiscoverySearch',
   'CaptureCandidate',
   'CaptureDiscoveryState',
@@ -269,7 +271,7 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('generates one component per contract schema of its scope, from the zod schemas', () => {
-    // Changed by design (W19; OD-17 M2; M6 row 113; task 4 row 63): the offline document holds the 56 schemas its 33 operations
+    // Changed by design (W19; OD-17 M2; M6 row 113; task 4 rows 63 and 94): the offline document holds the 57 schemas its 33 operations
     // use, in registry order (a subsequence of `CORE_API_SCHEMAS`); the `all` scope holds one component
     // per entry of `CORE_API_SCHEMAS`.
     expect(Object.keys(document.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
@@ -713,6 +715,11 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(n.call('getCaptureDiscovery', 'GET', DISC_PATH)).toEqual({ status: 200, body: { search: null, candidates: [], truncated: false } });
     expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, {}).status).toBe(404);
     expect(n.call('adoptCaptureCandidate', 'POST', `${FRESH}/adopt`, {}).status).toBe(404);
+    // Task 4 row 94: the optional body of the search. A body that is no JSON object 400; a typed
+    // address outside the form 422; neither starts a search. Then the search as before (202).
+    expect(n.call('startCaptureDiscovery', 'POST', DISC_PATH, '[1]').status).toBe(400);
+    expect(n.call('startCaptureDiscovery', 'POST', DISC_PATH, { address: 'camera-1.local' }).status).toBe(422);
+    expect(n.call('getCaptureDiscovery', 'GET', DISC_PATH)).toEqual({ status: 200, body: { search: null, candidates: [], truncated: false } });
     expect(n.call('startCaptureDiscovery', 'POST', DISC_PATH).status).toBe(202);
     expect(n.call('getCaptureDiscovery', 'GET', DISC_PATH).status).toBe(200);
     expect(n.call('testCaptureCandidateConnection', 'POST', `${FRESH}/test`, '[1]').status).toBe(400);

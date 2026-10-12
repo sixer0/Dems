@@ -21,6 +21,28 @@
  * The process also checks once a second that it owns no datagram socket and no socket outside
  * 127.0.0.1 (a fatal error otherwise).
  *
+ * THE ANNOUNCED ADDRESS (task 4 blueprint row 58, WP-11b; decisions C26, C27; BR-01 to BR-03 of
+ * verification/05_security_branch_b.md; the rule and its reasons: announce.h). The listener of this
+ * libavformat takes a push to ANY path. So an ingest goes on - to the probe, to the file, to
+ * `ingest_connected` - ONLY when during its open the library handed the log callback exactly one
+ * ANNOUNCE line and that message equals, as a whole, the one the plan's address gives ("the gate",
+ * in ingest_body between avformat_open_input and avformat_find_stream_info). This is the one place
+ * where the worker reads a message text of the library, and it reads it as a NECESSARY condition of
+ * recording: no such message, another wording, another level, a longer or a second line all end
+ * THAT camera as a fault before a byte of media is read. The gate has no switch: no argument, no
+ * plan member, no environment variable and no compile switch turns it off (a proof build can only
+ * make the callback see nothing, so that every push is refused: DEMS_PROOF_ANNOUNCE_UNSEEN).
+ * ATTRIBUTION: a message counts for a camera only on the thread that is opening that camera
+ * (`tls_opening`) AND when the library hands it over with that camera's input context; what it
+ * showed lives in the camera's own state (worker.h). An open that can no longer pass is ended early
+ * through THAT camera's interrupt callback; the early end is a courtesy, the gate is the check.
+ * No address and no path is written anywhere by this.
+ * LOG HYGIENE OF THE GATE (task 4 row 175; BR-04): no log level is ever set (a call of av_log_set_level
+ * does not compile, worker.h) and nothing above the error level is written; a message of the library that
+ * names an address or the path of a camera of this session is withheld whatever its level (av_log_cb);
+ * a refusal of the gate has one of two codes, INGEST_ANNOUNCE_NOT_MATCHED (a differing or repeated line)
+ * and INGEST_ANNOUNCE_NOT_SEEN (no line: a library change), neither with any text of an address.
+ *
  * VIDEO TIME (spec F, erratum PE-111-01). Each video packet is placed at
  *     camera wall clock of the packet - T0
  * where the camera wall clock comes from the packet's PRFT side data (libavformat attaches it
@@ -88,7 +110,13 @@ int lavf_runtime_mismatch(unsigned *running, unsigned *verified) {
 static _Thread_local Cam *tls_opening;      /* the camera whose ingest this thread is opening */
 static _Thread_local int tls_open_errors;   /* error-level reports of libav during that open */
 
-static int interrupt_cb(void *o) { (void)o; return atomic_load(&g_stop_ingest); }
+/* Ends a blocking call of libavformat for ONE camera: the session is stopping (read here, set by main only), or
+ * THIS camera's open can no longer pass the gate (BR-03: the camera is the callback's argument; a refusal of one
+ * camera sets its own flag and never the stop flag of the process, so the other camera goes on). */
+static int interrupt_cb(void *o) {
+    Cam *c = o;
+    return atomic_load(&g_stop_ingest) || (c && atomic_load(&c->announce_refused));
+}
 
 /* ---------------------------------------------------------------- sockets (W-1, SEC35-23) */
 /* 0 when every internet socket of the process is a stream socket on 127.0.0.1. */
@@ -149,13 +177,53 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
 #else
     (void)c;
 #endif
+    /* THE ANNOUNCED ADDRESS (row 58; BR-02, BR-03): what the library shows of the request lines it reads, at EVERY
+     * level (the callback is handed all of them; no level is set anywhere), counted for a camera only when this
+     * thread is opening that camera AND the message comes with that camera's input context. The message is formatted
+     * whole (one that does not fit can only count against the open) and judged by announce.c; nothing of it is kept,
+     * logged or sent. PROOF BUILD ONLY: with DEMS_PROOF_ANNOUNCE_UNSEEN the callback sees nothing - "the library no
+     * longer says the line" - and the gate, which no switch touches, must then refuse every push. */
+    int observed = 0;
+#ifndef DEMS_PROOF_ANNOUNCE_UNSEEN
+    observed = c && avcl && avcl == (void *)c->in;
+#endif
+    /* Nothing above the error level is ever written (BR-04 (1)); such a message is only formatted when the gate
+     * has to see it. No level is set anywhere: av_log_set_level cannot be called in this program (worker.h). */
+    if (!observed && level > AV_LOG_ERROR) return;
+    char whole[ANNOUNCE_MESSAGE_CHARS];
+    va_list seen;
+    va_copy(seen, vl);
+    int n = vsnprintf(whole, sizeof whole, fmt, seen);
+    va_end(seen);
+    if (n < 0) whole[0] = 0;
+    int fits = n >= 0 && (size_t)n < sizeof whole;
+    size_t have = n < 0 ? 0 : fits ? (size_t)n : sizeof whole - 1;
+    if (observed && announce_gate_observe(&c->announce, whole, have, fits)) atomic_store(&c->announce_refused, 1);
     if (level > AV_LOG_ERROR) return;
+    /* LOG HYGIENE (task 4 row 175; BR-04 (2)). What is written of a message of the library is judged on the WHOLE
+     * message as formatted above (up to 4,095 characters), not on the 255 that are written: an address or a path
+     * that the cut would leave in part is seen whole here. Withheld, and reduced to its class:
+     *   - a message that names an address (as before);
+     *   - a message that names the path of ANY camera of this session's plan - the whole path or one of its long
+     *     elements (announce.h) - whichever thread and whichever context it came from: the path of an ingest
+     *     address is the session's secret, and a bare path has no "://" to be caught by.
+     * The plan's addresses are written once, before any ingest thread exists, and only read here. */
+    const char *withheld = strstr(whole, "://") ? "(message with an address withheld)" : NULL;
+    for (int i = 0; i < NCAM && !withheld; i++)
+        if (S.cam[i].present && announce_names_path(S.cam[i].url, whole, have)) withheld = "(message naming a session path withheld)";
     char msg[256];
-    vsnprintf(msg, sizeof msg, fmt, vl);
+    snprintf(msg, sizeof msg, "%s", withheld ? withheld : whole);
     for (char *p = msg; *p; p++) if (*p == '"' || *p == '\\' || (unsigned char)*p < 0x20) *p = ' ';
-    /* No address in a log line: a message that names one is reduced to its class. */
-    if (strstr(msg, "://")) snprintf(msg, sizeof msg, "(message with an address withheld)");
     logj("warn", "libav", "LIBAV_MESSAGE", "\"av_level\":%d,\"text\":\"%s\"", level, msg);
+}
+
+/* The name of a gate refusal in the worker's log (task 4 row 175; BR-04 (3)): TWO codes, so that "a client
+ * announced something else, or twice" is told from "the library showed no line at all" (a library change: the
+ * right push is refused too, and no camera of any session will connect until the pin is moved by decision).
+ * Neither carries an address, a path or a text of the library; both end THAT camera with the same frame
+ * (CAPTURE_FAULT, CAMERA_NOT_CONNECTED - the protocol has no member that tells them apart). */
+static const char *announce_refusal_code(const AnnounceGate *g) {
+    return announce_gate_verdict(g) == ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_SEEN" : "INGEST_ANNOUNCE_NOT_MATCHED";
 }
 
 /* ---------------------------------------------------------------- the camera file */
@@ -485,6 +553,10 @@ static void *ingest_body(Cam *c) {
     c->in = avformat_alloc_context();
     if (!c->in) { av_dict_free(&o); fatal(src, "INGEST_ALLOC_FAILED", AVERROR(ENOMEM)); atomic_store(&c->state, ING_ENDED); return NULL; }
     c->in->interrupt_callback.callback = interrupt_cb;
+    c->in->interrupt_callback.opaque = c;
+    /* The gate's state of THIS open: nothing an earlier open showed counts (BR-03). */
+    atomic_store(&c->announce_refused, 0);
+    announce_gate_reset(&c->announce, c->url);
     tls_open_errors = 0;
     tls_opening = c;
     int r = avformat_open_input(&c->in, c->url, NULL, &o);
@@ -501,7 +573,22 @@ static void *ingest_body(Cam *c) {
     int leftover = av_dict_count(o);
     av_dict_free(&o);
     /* Two different failures, two codes (the skeleton reported every failed open as the second). */
-    if (r < 0) { ingest_over(c, src, "INGEST_OPEN_FAILED", r); return NULL; }
+    /* An open the gate itself ended early (a differing or a second ANNOUNCE line, another control address) is named
+     * as the gate's refusal (by what the gate saw: announce_refusal_code; an early end always saw a line or an
+     * adopted address, so it is INGEST_ANNOUNCE_NOT_MATCHED); every other failed open keeps its code. */
+    if (r < 0) { ingest_over(c, src, atomic_load(&c->announce_refused) ? announce_refusal_code(&c->announce) : "INGEST_OPEN_FAILED", r); return NULL; }
+    /* THE GATE (row 58; BR-01). The open returned: the handshake is over, nothing of the stream was read, no file
+     * exists, `ingest_connected` was not said. From here the ingest goes on ONLY after the positive match of
+     * announce.h, recorded during this open for this camera. No `if` of the preprocessor, no argument and no plan
+     * member stands around this test. Otherwise the input is closed (the flag first, so that the close cannot wait
+     * on the client) and THIS camera ends as a fault; the session and the other camera go on. The refusal has one
+     * of two names (row 175): a line that does not let the open pass, or no line at all. */
+    if (!announce_gate_passed(&c->announce)) {
+        atomic_store(&c->announce_refused, 1);
+        avformat_close_input(&c->in);
+        ingest_over(c, src, announce_refusal_code(&c->announce), AVERROR(EACCES));
+        return NULL;
+    }
     if (leftover) { fatal(src, "INGEST_OPTION_NOT_CONSUMED", AVERROR_OPTION_NOT_FOUND); atomic_store(&c->state, ING_ENDED); return NULL; }
     const char *what = NULL;
     if (sockets_violation(&what)) { fatal(src, what, AVERROR(EPERM)); atomic_store(&c->state, ING_ENDED); return NULL; }
@@ -510,6 +597,28 @@ static void *ingest_body(Cam *c) {
     if (c->vidx < 0) { ingest_over(c, src, "INGEST_NO_VIDEO", c->vidx); return NULL; }
     AVStream *is = c->in->streams[c->vidx];
     if (!is->codecpar->extradata_size) { ingest_over(c, src, "INGEST_NO_EXTRADATA", AVERROR_INVALIDDATA); return NULL; }   /* S1 SP-6: fail loudly */
+    /* NO PICTURE ARRIVED (task 4 row 176; BR-05 of verification/05_security_branch_b.md). A client that completed
+     * the handshake through RECORD with the parameter sets in its description and then sent no media (it closed, it
+     * died, the camera behind a relay stalled) leaves a stream that HAS extradata and has NO picture size: the size
+     * of a copied stream is only known from a picture the probe read. Until this row that stream went on to the
+     * muxer, whose header refused it ("dimensions not set"), and that refusal was a fatal error of the WORKER
+     * (OUTPUT_SETUP_FAILED, exit 70): one client without media ended the other camera's recording and the audio.
+     * It is a stream this camera never delivered, like the missing parameter sets one line above: THIS camera ends
+     * as a fault, under its own code, before any output exists (no context, no file, no byte); the session, the
+     * other camera and the audio go on. ONLY this condition was taken out of the fatal path: it is judged on the
+     * INPUT, before open_output is called. Whatever open_output itself refuses for a stream that HAS a picture
+     * size - the context, the header, a mux option, the audio that waited - is still OUTPUT_SETUP_FAILED and still
+     * ends the worker (below), and every error of the writer stays fatal where it was.
+     * A camera the session had already given up (INGEST_OPEN_STUCK, said once) is not reported a second time. */
+    if (is->codecpar->width <= 0 || is->codecpar->height <= 0) {
+        if (atomic_load(&c->abandoned)) {
+            logj("warn", src, "INGEST_NO_PICTURE_SIZE", "\"port\":%d,\"extradata\":%d,\"already_given_up\":true", c->port, is->codecpar->extradata_size);
+            atomic_store(&c->state, ING_ENDED);
+            return NULL;
+        }
+        ingest_over(c, src, "INGEST_NO_PICTURE_SIZE", AVERROR_INVALIDDATA);
+        return NULL;
+    }
 
     pthread_mutex_lock(&c->mx);
     r = open_output(c);

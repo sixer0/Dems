@@ -78,6 +78,7 @@ import {
   createSim,
   pushRing,
   verifyAuditChain,
+  type AudioSlice,
   type SimState,
 } from '../src/sim';
 
@@ -95,7 +96,8 @@ const tokenReuseIsAReason: 'TOKEN_REUSE' extends SessionEndedMessage['reason'] ?
 // (row 51, SH-07). The marker stops compiling when parity lands and forces the flip to `true`.
 type PendingM2W9<T extends boolean> = T extends true ? true : 'PENDING-M2W9';
 const snapshotStateIsThe28Slices: PendingM2W9<Exact<SnapshotMessage['state'], Pick<SimState, ReplicatedSliceName>>> = 'PENDING-M2W9';
-const metersCarryTheAudioSlice: Exact<MetersMessage['audio'], SimState['audio']> = true;
+// Task 4 row 28: against `AudioSlice` itself (nullable `activeInputId`); the state's own type is behind the seam pinned in `api-state-slices.test.ts`.
+const metersCarryTheAudioSlice: Exact<MetersMessage['audio'], AudioSlice> = true;
 /** A `replace` of a slice carries exactly the simulator's type of that slice. */
 const everyReplaceCarriesItsSlice: {
   [Name in ReplicatedSliceName]: Name extends 'evidence' ? PendingM2W9<Exact<Extract<DeltaReplaceOp, { slice: Name }>['value'], SimState[Name]>> : Exact<Extract<DeltaReplaceOp, { slice: Name }>['value'], SimState[Name]>;
@@ -607,7 +609,12 @@ describe('state: snapshot, then deltas of the real engine', () => {
     expect(WsServerMessageSchema.parse(frame)).toStrictEqual(frame);
     expect(audio.inputs['MIC-01']!.seq).toBeGreaterThan(10);
     expect(MetersMessageSchema.safeParse({ ...frame, revision: 3 }).success).toBe(false);
-    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': audio.inputs['MIC-01']! }, activeInputId: 'MIC-01' } }).success).toBe(false);
+    // Task 4 row 28 (register E41): a frame carries one frame per microphone line of the selector,
+    // so one input (and no active input) is a frame; three inputs are not.
+    const one = audio.inputs['MIC-01']!;
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one }, activeInputId: 'MIC-01' } }).success).toBe(true);
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: {}, activeInputId: null } }).success).toBe(true);
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one, 'MIC-02': one, 'MIC-03': one }, activeInputId: 'MIC-01' } }).success).toBe(false);
   });
 });
 

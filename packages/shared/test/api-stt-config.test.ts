@@ -305,7 +305,8 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Pass D1b (D140): the optional body of op 88 is one more schema, 166 -> 167; the operations stay 97.
     // Task 4 blueprint row 63 (design addendum 4.2): the four schemas and the two operations of the
     // sound cards, 167 -> 171 and 97 -> 99. Nothing of the STT configuration moved.
-    expect(Object.keys(document.components.schemas)).toHaveLength(171);
+    // Task 4 blueprint row 94: the optional body of op 93 is one more schema, 171 -> 172; the operations stay 99.
+    expect(Object.keys(document.components.schemas)).toHaveLength(172);
     expect(CORE_API_OPERATIONS).toHaveLength(99);
   });
 });

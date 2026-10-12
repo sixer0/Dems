@@ -16466,7 +16466,7 @@
                           "version": "0.2.0"
                         },
                         "captureWorker": {
-                          "version": "capture-worker/0.5.0"
+                          "version": "capture-worker/0.6.0"
                         },
                         "apiContract": {
                           "version": "0.3.0"
@@ -18932,7 +18932,7 @@
           "Device"
         ],
         "summary": "Replace the capture configuration",
-        "description": "Writes the whole selector at once (both camera lines and both mic lines are optional members of the body). Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (OD-10) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Writes the whole selector at once (both camera lines and both mic lines are optional members of the body). Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (OD-10) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nA selector slot may be unassigned. The optional member `unassign` names the slots to clear (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `role` fills the slot of that role, also alone. A Core in its own capture refuses a session start while a slot is unassigned.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new capture-config slice.",
@@ -23382,7 +23382,7 @@
           "Device"
         ],
         "summary": "Search for cameras",
-        "description": "Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **No body.** No address, subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.\n\nNeeds CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. Answers `202` with the new search; `200` with the same object and `created: false` when the caller's own search is still RUNNING (no second probe). The candidates are read with operation 94, by the session that started the search and by no other.\n\nA search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session's running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `DISCOVERY_RATE_LIMITED`: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator opens no socket and waits on no timer: it answers `202` with a search that is already COMPLETE (`windowMs: 0`) and two fixed candidates.",
+        "description": "Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **The body is optional**, and without it, or with `{}`, the search is what it always was. No subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.\n\n**One typed address (optional member `address`).** For a camera that does not answer the multicast probe, the operator may type its address: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. A host name, a port, a prefix, a URL and an IPv6 literal do not match the schema (`422 INVALID_INPUT`). The search then also sends **one** unicast WS-Discovery probe to that address. Before any packet is built the Core holds the address to its one destination rule: inside `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; reached from the camera interface and from no other; never loopback, link-local, multicast, broadcast, a network or broadcast address, or an address of the Core itself. An address the rule refuses answers `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`: 0 packets leave for it, no search is started, and the refusal never quotes the address or says which rule refused. A camera that answers is a candidate like any other, built from the probe answer only: no follow-up read of the device, no address sweep, no ping. Nothing is connected, authenticated or registered by it, and the address of a registered camera is never changed by a search.\n\nNeeds CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. **`address` is accepted on the web console only**: a session of a tablet or a phone that sends it is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row; the same session may search without it. Answers `202` with the new search; `200` with the same object and `created: false` when the caller's own search is still RUNNING (no second probe, and a typed address of that request is not probed). The candidates are read with operation 94, by the session that started the search and by no other.\n\nA search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session's running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `DISCOVERY_RATE_LIMITED` (a search, or a typed address, sooner than the minimum spacing after the last one): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator opens no socket and waits on no timer: it answers `202` with a search that is already COMPLETE (`windowMs: 0`) and two fixed candidates. With `address` it sends nothing either: it adds a third, synthetic candidate (`CND-000000000003`, adapter `FAKE`, class `DEVELOPMENT`, named \"Test camera at the typed address\") whose `host` is the typed address. It holds the address to the schema and to a stand-in of the rule (the three private ranges; not the first or the last address of its `/24`) and refuses any other with the same `422`; on a tablet or phone it refuses `address` with the same `403`.",
         "responses": {
           "200": {
             "description": "The caller's own search is still RUNNING: the same search, `created: false`. No second probe was sent.",
@@ -23463,6 +23463,52 @@
                       "failureReason": null,
                       "created": true
                     }
+                  },
+                  "typedAddress": {
+                    "summary": "The simulator's search with a typed address: a third, synthetic responder",
+                    "value": {
+                      "searchId": "DSC-000001",
+                      "scope": "CAMERA_NETWORK",
+                      "trigger": "MANUAL",
+                      "state": "COMPLETE",
+                      "startedAt": 1790823600000,
+                      "windowMs": 0,
+                      "completesAt": 1790823600000,
+                      "expiresAt": 1790824200000,
+                      "responderCount": 3,
+                      "newCount": 2,
+                      "registeredCount": 1,
+                      "interfaceCount": 0,
+                      "failureReason": null,
+                      "created": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
                   }
                 }
               }
@@ -23496,7 +23542,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks CAPTURE_CONFIG (NOT_PERMITTED; one ACCESS_DENIED audit row); the body holds `address` and the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; no probe is sent and no search is started); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -23542,6 +23588,23 @@
                       "error": {
                         "code": "ORIGIN_NOT_ALLOWED",
                         "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A typed address from a tablet or phone session",
+                    "description": "The caller holds CAPTURE_CONFIG and may search, but `address` is accepted on the web console only. One ACCESS_DENIED row is written; no probe is sent and no search is started.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "startCaptureDiscovery",
+                          "permission": "CAPTURE_CONFIG",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -23592,6 +23655,50 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "The body does not match its schema (INVALID_INPUT), or the typed address has the form and the Core may not dial it (INVALID_INPUT, `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`). The refusal never quotes the input. No probe is sent, no search is started and no audit row is written.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "addressNotAllowed": {
+                    "summary": "A typed address the Core may not dial",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "A camera search cannot use this address.",
+                        "details": {
+                          "in": "body",
+                          "reason": "DISCOVERY_ADDRESS_NOT_ALLOWED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "x-badges": [
@@ -23602,7 +23709,29 @@
           }
         ],
         "x-dems-mode": "simulated",
-        "x-dems-source": "Task 3 R-9, blueprint row 132; C3 §2.6 operation 93; decisions D80, D86 C-4, D91 (not in the design book)",
+        "x-dems-source": "Task 3 R-9, blueprint row 132; C3 §2.6 operation 93; decisions D80, D86 C-4, D91 (not in the design book). Task 4 row 94 (WP-12): the optional typed address; amendment AM-3 of D80(10), decisions U12 A7, C10, C17; security finding S13-11",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureDiscoveryStartRequest"
+              },
+              "examples": {
+                "search": {
+                  "summary": "A search: the multicast probe only",
+                  "value": {}
+                },
+                "typedAddress": {
+                  "summary": "A search that also probes one typed address (web console only)",
+                  "value": {
+                    "address": "192.168.10.20"
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
             "sessionCookie": []
@@ -26230,9 +26359,16 @@
             "description": "e.g. CAM-01."
           },
           "sourceDeviceId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The capture device assigned to this track by the selector (op 79 moves it)."
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The capture device assigned to this track by the selector (op 79 moves it). Null: the slot of this track is not assigned."
           },
           "streamState": {
             "type": "string",
@@ -26436,18 +26572,24 @@
         "type": "object",
         "properties": {
           "channels": {
-            "minItems": 2,
             "maxItems": 2,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "The two mic inputs of the capture (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), never merged (SYS-003)."
+            "description": "The mic inputs of the capture, one entry per meter channel that has an input: two on a complete selector (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), fewer while a microphone slot is not assigned. Never merged (SYS-003)."
           },
           "activeInputId": {
-            "type": "string",
-            "pattern": "^MIC-\\d{2,}$",
-            "description": "The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15)."
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^MIC-\\d{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15). Null: the selector holds no PRIMARY microphone."
           }
         },
         "required": [
@@ -26659,18 +26801,24 @@
             "description": "Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22)."
           },
           "audio": {
-            "minItems": 2,
             "maxItems": 2,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "Schema v2: keyed by the two mic inputs (`MIC-NN`) with their roles."
+            "description": "Schema v2: keyed by the mic inputs (`MIC-NN`) with their roles; two on a complete selector, fewer while a microphone slot is not assigned."
           },
           "activeInputId": {
-            "type": "string",
-            "pattern": "^MIC-\\d{2,}$",
-            "description": "Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now."
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^MIC-\\d{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now. Null: the selector holds no PRIMARY microphone."
           },
           "storage": {
             "$ref": "#/components/schemas/StorageStatusResponse"
@@ -30138,12 +30286,19 @@
               "additionalProperties": false,
               "description": "One 20 Hz audio frame: numbers and booleans only."
             },
-            "description": "The newest frame of each of the two mic inputs of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1))."
+            "description": "The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)). One frame per microphone line of the selector, so at most two; fewer while a microphone slot is not assigned."
           },
           "activeInputId": {
-            "type": "string",
-            "pattern": "^MIC-\\d{2,}$",
-            "description": "The input whose level is the one inside AUDIO-01 right now (op 81 moves it)."
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^MIC-\\d{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input whose level is the one inside AUDIO-01 right now (op 81 moves it). Null: the selector holds no PRIMARY microphone."
           }
         },
         "required": [
@@ -35884,7 +36039,7 @@
             "maxLength": 32
           },
           "role": {
-            "description": "PAIR REPLACEMENT (D133 (1)): when the lines carry `role`, the two lines ARE the new pair - exactly one PRIMARY and one STANDBY, each with `deviceId` equal to `inputId`, any registered `MIC-NN`. Absent on every line: the line edits the input it names (the earlier form).",
+            "description": "BY ROLE (D133 (1); a role is assignable alone): when every line carries `role`, each line puts its input on the slot of its role - one line or two, no role twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a role the body does not name keeps what it holds, and two lines are the replacing pair. Absent on every line: the line edits the input it names (the earlier form).",
             "type": "string",
             "enum": [
               "PRIMARY",
@@ -35897,7 +36052,7 @@
           "deviceId"
         ],
         "additionalProperties": false,
-        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, one line of the replacing pair."
+        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, the input that takes the slot of that role."
       },
       "CaptureConfigUpdateRequest": {
         "type": "object",
@@ -35917,10 +36072,25 @@
             "items": {
               "$ref": "#/components/schemas/CaptureConfigMicUpdate"
             }
+          },
+          "unassign": {
+            "description": "The selector slots this body clears: a video track (`VIDEO-01`, `VIDEO-02`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.",
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "VIDEO-01",
+                "VIDEO-02",
+                "PRIMARY",
+                "STANDBY"
+              ]
+            }
           }
         },
         "additionalProperties": false,
-        "description": "Request body of `POST /api/v1/capture/config` (C3 §2.3 op 78): a partial `{ cameras?[], mics?[] }`."
+        "description": "Request body of `POST /api/v1/capture/config` (C3 §2.3 op 78): a partial `{ cameras?[], mics?[], unassign?[] }`."
       },
       "CaptureCameraSourceRequest": {
         "type": "object",
@@ -37098,6 +37268,19 @@
         ],
         "additionalProperties": false,
         "description": "The result of `testSttConnection` (C3 §2.5 op 92). No audio is sent and no speed figure is reported (D230)."
+      },
+      "CaptureDiscoveryStartRequest": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "description": "One address the operator typed, e.g. `192.168.10.20`: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. Never a host name, a port, a prefix, a URL or an IPv6 literal. With it the search also sends ONE unicast probe to this address, when the Core lets the address pass. Web console only. Absent: the search probes the fixed multicast group and nothing else.",
+            "type": "string",
+            "maxLength": 15,
+            "pattern": "^(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]\\d|\\d)){3}$"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Request body of `POST /api/v1/capture/discovery` (C3 §2.6 op 93; task 4 AM-3). Optional, and `{}` is the search without a typed address. No host, port, URL, path, subnet, interface, timeout or filter member exists."
       },
       "CaptureDiscoverySearch": {
         "type": "object",

@@ -320,8 +320,8 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
       <CameraPreview
         cameraId={cameraId}
         variant="tile"
-        // No format chip for a stream that states no rate (`fps` null): the format words carry a rate.
-        label={camera.fps === null ? null : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+        // A stream that states no rate (`fps` null) reads its picture without one (task 4 row 54 / I-3, P12-F08): never nothing, never an empty rate.
+        label={camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
         noSignal={fault}
         ariaLabel={`${name} · ${state}`}
         className="aspect-auto min-h-0 flex-1"

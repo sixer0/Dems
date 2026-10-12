@@ -64,6 +64,11 @@
  *   WITHOUT a user part (`credentialFreeLocator`, the rule of the injection point). It is resolved
  *   at each start of a source and stored nowhere (H-11); it holds no credential, and this file
  *   still OPENS NO STREAM. The connection test goes on comparing and dropping the address (D82).
+ *
+ * TASK 4 ROW 174 (decision C24). The locator `locate` answers MAY CARRY A QUERY, under the closed
+ * rule stated at `queryAllowed`: bounded, of a closed character set, and with no parameter named
+ * like a credential. A user part stays refused wherever an `@` stands, a fragment stays refused,
+ * and the locator is still written to no log and stored nowhere by this file.
  */
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
@@ -113,7 +118,7 @@ export const OnvifTestReason = {
   STREAM_SCHEME: 'STREAM_SCHEME',
   STREAM_USER_PART: 'STREAM_USER_PART',
   STREAM_HOST_MISMATCH: 'STREAM_HOST_MISMATCH',
-  /** Only from `locate`: an address on the right host that is not the host-and-path form (a query, a fragment, a character outside the rule, too long). */
+  /** Only from `locate`: an address on the right host that is not the host-and-path form with, at most, a query inside the query rule (a fragment, a character outside the rule, too long, a query the rule refuses). */
   STREAM_LOCATOR_FORM: 'STREAM_LOCATOR_FORM',
   NO_H264_PROFILE: 'NO_H264_PROFILE',
 } as const;
@@ -183,7 +188,7 @@ export interface OnvifLocatorResult {
   readonly outcome: ConnectionTestOutcome;
   /** Null for `REACHABLE`. */
   readonly reason: OnvifTestReason | null;
-  /** The host-and-path stream locator of the profile, on the candidate's own host, without a user part. Null unless `REACHABLE`. */
+  /** The stream locator of the profile, on the candidate's own host, without a user part: host and path, and a query only inside the query rule (row 174). Null unless `REACHABLE`. */
   readonly locator: string | null;
   readonly reads: readonly OnvifSessionRead[];
   readonly credentialRequests: number;
@@ -355,21 +360,65 @@ function streamAddressFault(answer: unknown, host: string): OnvifTestReason | nu
 }
 
 /**
+ * THE QUERY RULE of a stream locator (task 4 row 174; decision C24). Common cameras name their
+ * stream with a query (a channel, a sub-stream, a transport word), so a query is admitted - under
+ * a CLOSED rule, judged on the device's own text with no decoding and no parser:
+ *
+ *   length      the whole locator at most `LOCATOR_MAX_CHARS`, the query (after its `?`) 1 to
+ *               `QUERY_MAX_CHARS` characters, at most `QUERY_MAX_PARAMETERS` parameters;
+ *   characters  a parameter is `name` or `name=value`, parameters are joined by `&`; a name is 1
+ *               to 32 and a value 0 to 64 characters of `A-Z a-z 0-9 . _ ~ -`. Nothing else: no
+ *               `%` (so no name can hide behind an encoding), no `+`, no `;`, no second `?`, no
+ *               second `=` in a parameter, no empty parameter;
+ *   names       no parameter may be named, in any letter case, by a word of
+ *               `CREDENTIAL_LIKE_PARAMETERS`; and no name may appear twice (two readers could
+ *               disagree on which one counts).
+ *
+ * A VALUE is not judged: `mode=password` names a mode. The list is closed and compared with the
+ * whole name: `sessiontimeout` is not `session`.
+ */
+const LOCATOR_MAX_CHARS = 256;
+const QUERY_MAX_CHARS = 128;
+const QUERY_MAX_PARAMETERS = 8;
+const QUERY_PARAMETER = /^([A-Za-z0-9._~-]{1,32})(?:=[A-Za-z0-9._~-]{0,64})?$/;
+// One text, split: these are names to REFUSE, not accounts (static rule G-R14 reads a quoted account word as a default account).
+const CREDENTIAL_LIKE_PARAMETERS: ReadonlySet<string> = new Set('user username pass password pwd auth token key secret session'.split(' '));
+
+/** True when the text after the `?` of a stream address is inside the query rule. It answers yes or no: no part of the text is kept. */
+function queryAllowed(query: string): boolean {
+  if (query.length === 0 || query.length > QUERY_MAX_CHARS) return false;
+  const parameters = query.split('&');
+  if (parameters.length > QUERY_MAX_PARAMETERS) return false;
+  const seen = new Set<string>();
+  for (const parameter of parameters) {
+    const name = QUERY_PARAMETER.exec(parameter)?.[1]?.toLowerCase();
+    if (name === undefined || CREDENTIAL_LIKE_PARAMETERS.has(name) || seen.has(name)) return false;
+    seen.add(name);
+  }
+  return true;
+}
+
+/**
  * The stream address of a profile as a locator that may leave this file (task 4 row 26; H-05):
- * first the comparison of the test (scheme, NO USER PART, the candidate's own host), then the rule
- * of the injection point - host and path, no query, no fragment, at most 256 characters - and
- * visible ASCII only. The text is the device's, unchanged; a refusal names no part of it.
+ * first the comparison of the test (scheme, NO USER PART anywhere in the text, the candidate's own
+ * host), then visible ASCII only, no fragment mark and the length bound; the part before a `?` is
+ * held to the rule of the injection point (`credentialFreeLocator`: host and path) and the part
+ * after it to the query rule above (row 174). The text is the device's, unchanged; a refusal names
+ * no part of it, and nothing here writes it anywhere.
  */
 function locatorOf(answer: unknown, host: string): { readonly locator: string } | { readonly reason: OnvifTestReason } {
   const fault = streamAddressFault(answer, host);
   if (fault !== null) return { reason: fault };
   const address = member(answer, 'uri');
-  if (typeof address !== 'string' || !LOCATOR_CHARS.test(address)) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
+  if (typeof address !== 'string' || address.length > LOCATOR_MAX_CHARS || !LOCATOR_CHARS.test(address) || address.includes('#')) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
+  const mark = address.indexOf('?');
+  if (mark !== -1 && !queryAllowed(address.slice(mark + 1))) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
   try {
-    return { locator: credentialFreeLocator(address) };
+    credentialFreeLocator(mark === -1 ? address : address.slice(0, mark));
   } catch {
     return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
   }
+  return { locator: address };
 }
 
 /** What the agent's sockets are to this file: a stream that can be watched and destroyed. No socket module is imported. */

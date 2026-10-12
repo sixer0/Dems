@@ -106,6 +106,35 @@ describe('the three environment values', () => {
     const error = failure(() => loadConfig({ env: { DEMS_CORE_PORT: '9999' }, dataDir: '/nonexistent/dir' }));
     expect(error.code).toBe('LISTEN_PORT_NOT_ALLOWED');
   });
+
+  // Task 4 row 21, read by integration pass I-3: the two program paths of production capture.
+  it('DEMS_CAPTURE_RELAY: null when unset or empty, the path as given when absolute; a relative path stops the boot before any file is opened', () => {
+    expect(loadConfig({ env: {}, dataDir: dataDir() })).toMatchObject({ captureRelayPath: null, captureGuardPath: null });
+    expect(loadConfig({ env: { DEMS_CAPTURE_RELAY: '' }, dataDir: dataDir() }).captureRelayPath).toBeNull();
+    const config = loadConfig({ env: { DEMS_CAPTURE_RELAY: '/opt/dems/bin/capture-relay' }, dataDir: dataDir() });
+    expect(config.captureRelayPath).toBe('/opt/dems/bin/capture-relay');
+    // The one key fills its own member and no other program path.
+    expect([config.captureGuardPath, config.captureWorkerPath, config.captureHelperFfmpegPath]).toEqual([null, null, null]);
+    for (const bad of ['bin/capture-relay', './capture-relay', 'capture-relay', '/opt/dems/bin/capture-relay\0x']) {
+      const error = failure(() => loadConfig({ env: { DEMS_CAPTURE_RELAY: bad }, dataDir: '/nonexistent/dir' }));
+      expect(error.code).toBe('CAPTURE_PATH_NOT_ABSOLUTE');
+      expect(error.message).toBe('DEMS_CAPTURE_RELAY must be an absolute path.');
+    }
+  });
+
+  it('DEMS_CAPTURE_GUARD: null when unset or empty, the path as given when absolute; a relative path stops the boot before any file is opened', () => {
+    expect(loadConfig({ env: { DEMS_CAPTURE_GUARD: '' }, dataDir: dataDir() }).captureGuardPath).toBeNull();
+    const config = loadConfig({ env: { DEMS_CAPTURE_GUARD: '/opt/dems/bin/capture-guard' }, dataDir: dataDir() });
+    expect(config.captureGuardPath).toBe('/opt/dems/bin/capture-guard');
+    expect([config.captureRelayPath, config.captureWorkerPath, config.captureHelperFfmpegPath]).toEqual([null, null, null]);
+    // Both together: each key reaches its own member.
+    expect(loadConfig({ env: { DEMS_CAPTURE_RELAY: '/a/relay', DEMS_CAPTURE_GUARD: '/b/guard' }, dataDir: dataDir() })).toMatchObject({ captureRelayPath: '/a/relay', captureGuardPath: '/b/guard' });
+    for (const bad of ['bin/capture-guard', './capture-guard', '/opt/dems/bin/capture-guard\0x']) {
+      const error = failure(() => loadConfig({ env: { DEMS_CAPTURE_GUARD: bad }, dataDir: '/nonexistent/dir' }));
+      expect(error.code).toBe('CAPTURE_PATH_NOT_ABSOLUTE');
+      expect(error.message).toBe('DEMS_CAPTURE_GUARD must be an absolute path.');
+    }
+  });
 });
 
 describe('the configuration object', () => {

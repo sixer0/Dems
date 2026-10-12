@@ -8,10 +8,11 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { ChildProcess } from 'node:child_process';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { ProgramFacts, ProgramInspector } from '../../../capture/adapters/local';
 import { helperProgramProblemOf } from '../../../capture/fence';
-import { SeedHelperProblem, seedHelperProblemOf } from '../demo-helper';
+import { SeedHelperProblem, runSeedHelper, seedHelperProblemOf } from '../demo-helper';
 
 const root = mkdtempSync(join(tmpdir(), 'dems-fm4-seed-helper-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -63,5 +64,36 @@ describe('question 5: the seed applies the boot\'s rule to the helper program', 
   it('CONTROL - the user\'s own program in private directories may be started', () => {
     expect(seedHelperProblemOf('/x/ffmpeg', facts(trusted()))).toBeNull();
     expect(seedHelperProblemOf('/x/ffmpeg', facts(trusted({ file: { ownerUid: 0, mode: 0o755 } })))).toBeNull();
+  });
+});
+
+// Task 4, integration pass I-3 (finding of row 21, request of row 180): a signal sent through the handle of a child
+// whose start failed goes to process ID 0, the caller's whole process group. THE REPRODUCTION IS SAFE: the signal
+// call of every child handle and the signal call of the process are replaced for this case, so nothing real is sent.
+describe('the seed helper is signalled only while it is a process', () => {
+  it('a helper that could not be started is never signalled: not by the exit handler in the turn of the start, not by the time limit; the run answers HELPER_NOT_STARTED', async () => {
+    const handleSignal = vi.spyOn(ChildProcess.prototype, 'kill').mockImplementation(() => true);
+    const processSignal = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const before = new Set(process.listeners('exit'));
+    const ownExitHandlers = () => process.listeners('exit').filter((listener) => !before.has(listener));
+    try {
+      // A time limit of 1 ms: were the limit to pass before the failure is reported, its signal is held by the same guard.
+      const run = runSeedHelper('/nonexistent/dems/ffmpeg', [], 1).catch((caught: unknown) => caught);
+      // The same turn as the start: the failure has not been reported yet, the exit handler is registered.
+      const atExit = ownExitHandlers();
+      expect(atExit).toHaveLength(1);
+      for (const handler of atExit) (handler as () => void)();
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+      // The helper's existing answer for a program that was not started, and this process is still here to read it.
+      expect(await run).toMatchObject({ name: 'SeedHelperError', code: 'HELPER_NOT_STARTED' });
+      expect(ownExitHandlers()).toEqual([]);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+    } finally {
+      handleSignal.mockRestore();
+      processSignal.mockRestore();
+    }
   });
 });

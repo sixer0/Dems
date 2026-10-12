@@ -196,5 +196,22 @@ describe('G89b-01 on the tablet and the phone - the picture format beside a reco
       expect(screen.queryAllByText(/1080p/)).toHaveLength(0);
     });
   }
+
+  // Task 4 row 55 / integration pass I-3 (P12-F08): a slice that states no rate reads its picture alone, never "1080p •  fps".
+  it('the format chip of a camera slice that states no rate is its picture without a rate', async () => {
+    const h = renderMonitorApp({ window: 'phonePortrait' });
+    await settle();
+    h.openMonitor();
+    const chips = (): string[] => screen.queryAllByTestId('monitor-feed-format').map((chip) => within(chip).queryAllByText(/./).map((node) => String(node.props.children)).join('|'));
+    // CONTROL: the rate the slice states is printed as stated.
+    expect(chips().length).toBeGreaterThan(0);
+    expect(new Set(chips())).toEqual(new Set(['1080p • 25 fps']));
+    act(() => h.sim.store.setState((s) => ({ cameras: s.cameras.map((camera) => ({ ...camera, resolution: '1080p', fps: null, codec: 'HEVC' as const })) })));
+    await settle();
+    expect(chips().length).toBeGreaterThan(0);
+    expect(new Set(chips())).toEqual(new Set(['1080p']));
+    expect(screen.queryAllByText(/fps|•/)).toHaveLength(0);
+    expect(getMissingKeys()).toEqual([]);
+  });
 });
 });

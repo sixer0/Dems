@@ -22,10 +22,21 @@
  * are the REQUEST member `credential` of 95 and 96 (and the body of operation 89): write-only,
  * alive for one request, never stored in the candidate state, never logged, never audited.
  *
- * NO CALLER-SUPPLIED TARGET. No request of this file has an address, a host, a port, a URL, a
- * path, a subnet, an interface, a timeout or a filter member. A search always probes the fixed
- * WS-Discovery group; a test and an adoption name a candidate id, and the Core takes the address
- * from its own search state (R-9 AC-10).
+ * NO CALLER-SUPPLIED TARGET, WITH ONE EXCEPTION. No request of this file has a host, a port, a
+ * URL, a path, a subnet, an interface, a timeout or a filter member. A search always probes the
+ * fixed WS-Discovery group; a test and an adoption name a candidate id, and the Core takes the
+ * address from its own search state (R-9 AC-10).
+ *
+ * THE EXCEPTION (task 4 row 94, work package WP-12; amendment AM-3 of ruling D80(10), adopted by
+ * C17; decisions U12 A7, C10; security finding S13-11). The body of operation 93 is OPTIONAL and
+ * has ONE optional member, `address`: one dotted IPv4 literal the operator typed. With it the
+ * search also sends ONE unicast WS-Discovery probe to that address, after the Core's one
+ * destination rule let it pass (`apps/core-server/src/capture/destination-rule.ts`). The schema
+ * here holds the FORM only, no looser than that rule's strict literal: no name, no leading zero,
+ * no port, no prefix, no IPv6. Whether the address may be dialled (private range, the camera
+ * interface, not the Core itself, the spacing) is the Core's rule, and its refusal is a code. A
+ * candidate found this way is built from the probe answer only, as every other candidate. The
+ * member is accepted on the web console only (C10). A search without it is what it was.
  */
 import { z } from 'zod';
 import { AuditType, Permission } from '../sim/vocabulary';
@@ -157,6 +168,8 @@ export const CaptureDiscoveryReason = {
   // 422 INVALID_INPUT
   CREDENTIAL_REQUIRED: 'CREDENTIAL_REQUIRED',
   CREDENTIAL_NOT_EXPECTED: 'CREDENTIAL_NOT_EXPECTED',
+  /** Operation 93 (task 4 row 94): the typed address has the form of the schema, and the Core's destination rule refuses it. One reason for every rule; never the address. */
+  DISCOVERY_ADDRESS_NOT_ALLOWED: 'DISCOVERY_ADDRESS_NOT_ALLOWED',
   // 429 RATE_LIMITED
   DISCOVERY_RATE_LIMITED: 'DISCOVERY_RATE_LIMITED',
   CONNECTION_TEST_RATE_LIMITED: 'CONNECTION_TEST_RATE_LIMITED',
@@ -182,6 +195,22 @@ export const CAPTURE_ADAPTER_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
  */
 export const CAPTURE_HOST_LITERAL_PATTERN = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f:]{2,39})$/;
 
+/**
+ * The form of the address an operator may type for a camera search (operation 93, member
+ * `address`; task 4 row 94; S13-11 point 1 "an IPv4 literal only, no name"): ONE strict dotted
+ * quad. Four decimal parts from 0 to 255, no leading zero, nothing before or after: no host name,
+ * no port, no prefix length, no hexadecimal or octal part, no bare integer, no IPv6 literal, no
+ * blank. It is no looser than the strict literal of the Core's destination rule
+ * (`DOTTED_QUAD` and its 0-255 check in `apps/core-server/src/capture/destination-rule.ts`): every
+ * text this pattern lets pass, that rule reads as one address, and nothing else passes.
+ *
+ * A FORM ONLY. `127.0.0.1`, `8.8.8.8` and `224.0.0.1` match it and are refused by the rule, which
+ * alone decides where the Core may dial.
+ */
+export const CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/;
+/** The longest text the pattern can match: `255.255.255.255`. */
+export const CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH = 15;
+
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Schemas
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -191,6 +220,25 @@ const candidateId = () => z.string().regex(CAPTURE_CANDIDATE_ID_PATTERN);
 const reasonCode = () => z.string().regex(CAPTURE_ADAPTER_CODE_PATTERN);
 /** Text a device announced: untrusted, bounded, under the text rule (API-13); a client draws it as text only. */
 const announcedText = () => apiText().min(1).max(CAPTURE_CANDIDATE_TEXT_MAX_LENGTH);
+
+/**
+ * Request body of operation 93 (task 4 row 94, WP-12; AM-3). The body is optional and so is its
+ * one member: `{}` and no body at all are the search as it was. A strict object: a host, a port, a
+ * URL, a subnet, an interface, a timeout or a filter is refused, as before.
+ */
+export const CaptureDiscoveryStartRequestSchema = z
+  .strictObject({
+    address: z
+      .string()
+      .max(CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH)
+      .regex(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN)
+      .optional()
+      .describe(
+        'One address the operator typed, e.g. `192.168.10.20`: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. Never a host name, a port, a prefix, a URL or an IPv6 literal. With it the search also sends ONE unicast probe to this address, when the Core lets the address pass. Web console only. Absent: the search probes the fixed multicast group and nothing else.',
+      ),
+  })
+  .describe('Request body of `POST /api/v1/capture/discovery` (C3 §2.6 op 93; task 4 AM-3). Optional, and `{}` is the search without a typed address. No host, port, URL, path, subnet, interface, timeout or filter member exists.');
+export type CaptureDiscoveryStartRequest = z.output<typeof CaptureDiscoveryStartRequestSchema>;
 
 /** Operation 93's answer, and the `search` member of operation 94. */
 export const CaptureDiscoverySearchSchema = z
@@ -335,6 +383,7 @@ export type CaptureInputScan = z.output<typeof CaptureInputScanSchema>;
 
 /** The schemas operations 93 to 97 add (merged into `CORE_API_SCHEMAS`). */
 export const CAPTURE_DISCOVERY_SCHEMAS = {
+  CaptureDiscoveryStartRequest: CaptureDiscoveryStartRequestSchema,
   CaptureDiscoverySearch: CaptureDiscoverySearchSchema,
   CaptureCandidate: CaptureCandidateSchema,
   CaptureDiscoveryState: CaptureDiscoveryStateSchema,
@@ -546,6 +595,18 @@ const DENIED = { denial: AuditType.ACCESS_DENIED } as const;
 /** The 403 part of an operation with the condition `WEB_CONSOLE_SESSION`: an `extra` of `notPermitted`. */
 export const WEB_CONSOLE_ONLY_REFUSED = `the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\`; one ACCESS_DENIED audit row; refused before the body is used)`;
 
+/**
+ * The 403 part of operation 93 for its member `address` (decision C10: the typed address is web
+ * console only, while the search itself stays open to a tablet and a phone). The body decides it,
+ * so, unlike `WEB_CONSOLE_ONLY_REFUSED`, it is refused after the body was read and before it is used.
+ */
+const TYPED_ADDRESS_WEB_CONSOLE_ONLY_REFUSED = `the body holds \`address\` and the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\`; one ACCESS_DENIED audit row; no probe is sent and no search is started)`;
+
+/** The third candidate of the in-app simulator: the answer to a search with a typed address (task 4 row 94). Synthetic; nothing was probed. */
+export const SIM_TYPED_ADDRESS_CANDIDATE_ID = 'CND-000000000003';
+/** Its name: what a client shows says by itself that this is no camera. */
+export const SIM_TYPED_ADDRESS_CANDIDATE_NAME = 'Test camera at the typed address';
+
 const CANDIDATE_PARAM = {
   name: 'id',
   description: 'A candidate of the caller\'s own live search, e.g. `CND-4F2A91C0D377`. Never an address and never a capture device id.',
@@ -571,19 +632,27 @@ export const CAPTURE_DISCOVERY_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Search for cameras',
     description: [
-      'Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **No body.** No address, subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.',
-      'Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. Answers `202` with the new search; `200` with the same object and `created: false` when the caller\'s own search is still RUNNING (no second probe). The candidates are read with operation 94, by the session that started the search and by no other.',
+      'Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **The body is optional**, and without it, or with `{}`, the search is what it always was. No subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.',
+      '**One typed address (optional member `address`).** For a camera that does not answer the multicast probe, the operator may type its address: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. A host name, a port, a prefix, a URL and an IPv6 literal do not match the schema (`422 INVALID_INPUT`). The search then also sends **one** unicast WS-Discovery probe to that address. Before any packet is built the Core holds the address to its one destination rule: inside `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; reached from the camera interface and from no other; never loopback, link-local, multicast, broadcast, a network or broadcast address, or an address of the Core itself. An address the rule refuses answers `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`: 0 packets leave for it, no search is started, and the refusal never quotes the address or says which rule refused. A camera that answers is a candidate like any other, built from the probe answer only: no follow-up read of the device, no address sweep, no ping. Nothing is connected, authenticated or registered by it, and the address of a registered camera is never changed by a search.',
+      'Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. **`address` is accepted on the web console only**: a session of a tablet or a phone that sends it is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row; the same session may search without it. Answers `202` with the new search; `200` with the same object and `created: false` when the caller\'s own search is still RUNNING (no second probe, and a typed address of that request is not probed). The candidates are read with operation 94, by the session that started the search and by no other.',
       'A search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session\'s running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.',
       'Writes one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.',
-      RATE_AND_READY('`DISCOVERY_RATE_LIMITED`', '`DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready'),
-      `${SIM_V2_NOTE} The simulator opens no socket and waits on no timer: it answers \`202\` with a search that is already COMPLETE (\`windowMs: 0\`) and two fixed candidates.`,
+      RATE_AND_READY('`DISCOVERY_RATE_LIMITED` (a search, or a typed address, sooner than the minimum spacing after the last one)', '`DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready'),
+      `${SIM_V2_NOTE} The simulator opens no socket and waits on no timer: it answers \`202\` with a search that is already COMPLETE (\`windowMs: 0\`) and two fixed candidates. With \`address\` it sends nothing either: it adds a third, synthetic candidate (\`${SIM_TYPED_ADDRESS_CANDIDATE_ID}\`, adapter \`FAKE\`, class \`DEVELOPMENT\`, named "${SIM_TYPED_ADDRESS_CANDIDATE_NAME}") whose \`host\` is the typed address. It holds the address to the schema and to a stand-in of the rule (the three private ranges; not the first or the last address of its \`/24\`) and refuses any other with the same \`422\`; on a tablet or phone it refuses \`address\` with the same \`403\`.`,
     ].join('\n\n'),
-    source: 'Task 3 R-9, blueprint row 132; C3 §2.6 operation 93; decisions D80, D86 C-4, D91 (not in the design book)',
+    source: 'Task 3 R-9, blueprint row 132; C3 §2.6 operation 93; decisions D80, D86 C-4, D91 (not in the design book). Task 4 row 94 (WP-12): the optional typed address; amendment AM-3 of D80(10), decisions U12 A7, C10, C17; security finding S13-11',
+    requestBody: { schema: 'CaptureDiscoveryStartRequest', required: false },
     responses: {
       200: { description: 'The caller\'s own search is still RUNNING: the same search, `created: false`. No second probe was sent.', schema: 'CaptureDiscoverySearch', services: CORE_SERVER_ONLY },
       202: { description: 'A new search. Read its candidates with operation 94.', schema: 'CaptureDiscoverySearch' },
+      400: INVALID_JSON,
       401: NOT_SIGNED_IN,
-      403: notPermitted(Permission.CAPTURE_CONFIG),
+      403: notPermitted(Permission.CAPTURE_CONFIG, TYPED_ADDRESS_WEB_CONSOLE_ONLY_REFUSED),
+      422: {
+        description:
+          'The body does not match its schema (INVALID_INPUT), or the typed address has the form and the Core may not dial it (INVALID_INPUT, `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`). The refusal never quotes the input. No probe is sent, no search is started and no audit row is written.',
+        schema: 'ApiError',
+      },
       409: {
         description:
           'Another operator session\'s search is running (INVALID_STATE, `details.reason: DISCOVERY_IN_PROGRESS`), or the session is RECORDING while searching during a recording is switched off (INVALID_STATE, `details.reason: DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`). No probe is sent, no audit row is written and no alert is raised.',
@@ -779,6 +848,50 @@ export function simCaptureCandidates(): CaptureCandidate[] {
   ];
 }
 
+/** The address of the examples of a search with a typed address: a private one, as the rule asks. */
+export const SIM_TYPED_ADDRESS_EXAMPLE = '192.168.10.20';
+
+/**
+ * The simulator's STAND-IN for the Core's destination rule (task 4 row 94; S13-11 point 1), so that
+ * a client can show the refusal `DISCOVERY_ADDRESS_NOT_ALLOWED` in Simulated mode: an address of
+ * the typed form inside `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16` that is not the first or
+ * the last address of its `/24`. It is NOT the rule: the simulator has no interface, no camera
+ * subnet and no address of its own, so the Core refuses more than this does (an address of the
+ * Core, the subnet of another interface, an address no camera-interface address reaches). The
+ * authority is `apps/core-server/src/capture/destination-rule.ts`.
+ */
+export function simTypedAddressAllowed(address: string): boolean {
+  if (address.length > CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH || !CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(address)) return false;
+  const [first = 0, second = 0, , last = 0] = address.split('.').map(Number);
+  const inPrivateRange = first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
+  return inPrivateRange && last !== 0 && last !== 255;
+}
+
+/**
+ * The simulator's answer to a typed address: one synthetic candidate. Nothing was probed; its
+ * `host` is the typed address, every other member is fixed and says "test". A candidate like any
+ * other: it can be tested and adopted in the simulator, and a demo reset removes what it left.
+ */
+export function simTypedAddressCandidate(address: string): CaptureCandidate {
+  return {
+    candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID,
+    adapter: SIM_CAPTURE_ADAPTER,
+    sourceClass: CaptureSourceClass.DEVELOPMENT,
+    host: address,
+    endpointRef: 'urn:uuid:00000000-0000-4000-8000-000000000003',
+    vendor: 'DEMS',
+    model: 'Test source',
+    name: SIM_TYPED_ADDRESS_CANDIDATE_NAME,
+    status: CaptureCandidateStatus.NEW,
+    deviceId: null,
+    testable: true,
+    conflict: false,
+    addressChanged: false,
+    lastTest: null,
+    adoptable: false,
+  };
+}
+
 /** The simulator's search at `at`: already COMPLETE, no window, two responders, no interface probed. */
 export function simCaptureDiscoverySearch(searchId: string, at: number, expiresAt: number, created: boolean): CaptureDiscoverySearch {
   return {
@@ -858,11 +971,46 @@ const ALREADY_REGISTERED = refusal('The candidate is a registered capture device
 
 export const CAPTURE_DISCOVERY_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   startCaptureDiscovery: {
+    // The FIRST request example is the search without a typed address: a caller that sends the
+    // first example of an operation (the acceptance suites of the Core do) searches as before.
+    request: {
+      search: { summary: 'A search: the multicast probe only', value: {} satisfies CaptureDiscoveryStartRequest },
+      typedAddress: {
+        summary: 'A search that also probes one typed address (web console only)',
+        value: { address: SIM_TYPED_ADDRESS_EXAMPLE } satisfies CaptureDiscoveryStartRequest,
+      },
+    },
     responses: {
       200: { running: { summary: 'The caller\'s own search is still running', value: EXAMPLE_RUNNING_SEARCH } },
-      202: { started: { summary: 'The simulator\'s search: complete at once, two responders', value: EXAMPLE_SEARCH } },
+      202: {
+        started: { summary: 'The simulator\'s search: complete at once, two responders', value: EXAMPLE_SEARCH },
+        typedAddress: {
+          summary: 'The simulator\'s search with a typed address: a third, synthetic responder',
+          value: { ...EXAMPLE_SEARCH, responderCount: 3, newCount: 2 } satisfies CaptureDiscoverySearch,
+        },
+      },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: SIGNED_OUT,
-      403: deniedExamples('startCaptureDiscovery', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+      403: {
+        ...deniedExamples('startCaptureDiscovery', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+        webConsoleOnly: {
+          summary: 'A typed address from a tablet or phone session',
+          description: 'The caller holds CAPTURE_CONFIG and may search, but `address` is accepted on the web console only. One ACCESS_DENIED row is written; no probe is sent and no search is started.',
+          value: apiErrorExample('NOT_PERMITTED', 'Your role does not allow this action. The attempt was audited.', {
+            operationId: 'startCaptureDiscovery',
+            permission: Permission.CAPTURE_CONFIG,
+            role: 'TECHNICIAN',
+            reason: WEB_CONSOLE_ONLY_REASON,
+          }),
+        },
+      },
+      422: {
+        invalidInput: ERROR_EXAMPLES.invalidInput,
+        addressNotAllowed: refusal('A typed address the Core may not dial', 'INVALID_INPUT', 'A camera search cannot use this address.', {
+          in: 'body',
+          reason: CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED,
+        }),
+      },
       409: {
         inProgress: refusal('Another session\'s search is running', 'INVALID_STATE', 'Another camera search is running. Try again shortly.', {
           reason: CaptureDiscoveryReason.DISCOVERY_IN_PROGRESS,

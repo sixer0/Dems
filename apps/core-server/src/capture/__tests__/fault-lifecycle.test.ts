@@ -412,7 +412,7 @@ describe('gates 64 / 75 / 89 (D194, D199, D200): the worker version, the reason 
     });
 
     it('a NEWER release word is refused the same way; CONTROL: the built version records', async () => {
-      const newer = await rig({ workerVersion: 'capture-worker/0.6.0' });
+      const newer = await rig({ workerVersion: 'capture-worker/0.7.0' });
       await expect(newer.supervisor.start(SESSION, capturePlan(SESSION))).rejects.toMatchObject({ detail: 'CAPTURE_WORKER_VERSION_MISMATCH' });
       const built = await rig({ workerVersion: CAPTURE_WORKER_VERSION });
       await built.supervisor.start(SESSION, capturePlan(SESSION));

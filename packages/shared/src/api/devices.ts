@@ -115,15 +115,18 @@ export const CaptureConfigCameraUpdateSchema = z
 export type CaptureConfigCameraUpdate = z.output<typeof CaptureConfigCameraUpdateSchema>;
 
 /**
- * One mic line of the whole-config update (op 78). Two forms (decision D133 (1)):
+ * One mic line of the whole-config update (op 78). Two forms (decision D133 (1); task 4 rule
+ * MIC-ASSIGN, decision C21 (8), names register of row 161 section 4.2):
  *
  *   - WITHOUT `role` (the form published first, still valid): the line edits the input it names,
- *     which must be one of the two inputs the selector holds; the PRIMARY role moves through op 80;
- *   - WITH `role` on both lines (pair replacement): the two lines are the new pair of inputs, one
- *     PRIMARY and one STANDBY, each `deviceId` equal to its `inputId`. It is the only way to put a
- *     microphone registered later (`MIC-03`) behind the capture.
+ *     which must be one of the inputs the selector holds; the PRIMARY role moves through op 80;
+ *   - WITH `role` on every line (by role): one line or two, no role twice, each `deviceId` equal to
+ *     its `inputId`. Each line puts its input on the slot of its role; the slot of a role the body
+ *     does not name keeps what it holds. Two lines are the pair replacement of D133 (1). It is the
+ *     only way to put a microphone registered later (`MIC-03`) behind the capture, and the only way
+ *     to fill a microphone slot that is not assigned.
  *
- * A body that mixes the two forms, or a single line with `role`, is `422 INVALID_INPUT`.
+ * A body that mixes the two forms is `422 INVALID_INPUT`.
  */
 export const CaptureConfigMicUpdateSchema = z
   .strictObject({
@@ -135,18 +138,65 @@ export const CaptureConfigMicUpdateSchema = z
     role: z
       .enum(MicRole)
       .optional()
-      .describe('PAIR REPLACEMENT (D133 (1)): when the lines carry `role`, the two lines ARE the new pair - exactly one PRIMARY and one STANDBY, each with `deviceId` equal to `inputId`, any registered `MIC-NN`. Absent on every line: the line edits the input it names (the earlier form).'),
+      .describe('BY ROLE (D133 (1); a role is assignable alone): when every line carries `role`, each line puts its input on the slot of its role - one line or two, no role twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a role the body does not name keeps what it holds, and two lines are the replacing pair. Absent on every line: the line edits the input it names (the earlier form).'),
   })
-  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, one line of the replacing pair.');
+  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, the input that takes the slot of that role.');
 export type CaptureConfigMicUpdate = z.output<typeof CaptureConfigMicUpdateSchema>;
 
-/** Request body of op 78: the whole selector at once; every member optional (partial update). */
+/**
+ * The four slots of the device selector, in their order (task 4 row 28; WP-13a; names register
+ * N2): the two video tracks, then the two microphone roles. They are the values the member
+ * `unassign` of operation 78 takes - the `trackId` of a camera line and the `role` of a mic line
+ * of the same body, never the stored value set of `session_capture_sources`.
+ */
+export const CAPTURE_SELECTOR_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02, MicRole.PRIMARY, MicRole.STANDBY] as const;
+
+/** The slots a body of operation 78 assigns: the `trackId` of each camera line and the `role` of each mic line that states one. */
+function slotsAssignedBy(body: {
+  readonly cameras?: readonly { readonly trackId: string }[] | undefined;
+  readonly mics?: readonly { readonly role?: string | undefined }[] | undefined;
+}): ReadonlySet<string> {
+  const slots = new Set<string>();
+  for (const camera of body.cameras ?? []) slots.add(camera.trackId);
+  for (const mic of body.mics ?? []) if (mic.role !== undefined) slots.add(mic.role);
+  return slots;
+}
+
+/**
+ * Request body of op 78: the whole selector at once; every member optional (partial update).
+ *
+ * `unassign` (task 4 row 28; decision C14; security requirement AD-10): the slots the body CLEARS.
+ * An unassigned slot is an absent line of the selector. Two rules of the body are held here
+ * (AD-10 (3); names register section 4.3), both `422 INVALID_INPUT` on the path `unassign`:
+ * no slot twice, and no slot that the same body assigns (the `trackId` of a camera line, the
+ * `role` of a mic line). A mic line WITHOUT `role` that edits the input a cleared slot holds is
+ * refused by the hosted action, which knows which role holds an input; the schema cannot.
+ */
 export const CaptureConfigUpdateRequestSchema = z
   .strictObject({
     cameras: z.array(CaptureConfigCameraUpdateSchema).min(1).max(2).optional(),
     mics: z.array(CaptureConfigMicUpdateSchema).min(1).max(2).optional(),
+    unassign: z
+      .array(z.enum(CAPTURE_SELECTOR_SLOTS))
+      .min(1)
+      .max(4)
+      .optional()
+      .describe('The selector slots this body clears: a video track (`VIDEO-01`, `VIDEO-02`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.'),
   })
-  .describe('Request body of `POST /api/v1/capture/config` (C3 §2.3 op 78): a partial `{ cameras?[], mics?[] }`.');
+  // Two refinements, like the text rule: the JSON Schema of the component does not change.
+  .refine((body) => body.unassign === undefined || new Set(body.unassign).size === body.unassign.length, {
+    error: 'A slot is named at most once in `unassign`.',
+    path: ['unassign'],
+  })
+  .refine(
+    (body) => {
+      if (body.unassign === undefined) return true;
+      const assigned = slotsAssignedBy(body);
+      return body.unassign.every((slot) => !assigned.has(slot));
+    },
+    { error: 'A slot is never cleared and assigned by the same body.', path: ['unassign'] },
+  )
+  .describe('Request body of `POST /api/v1/capture/config` (C3 §2.3 op 78): a partial `{ cameras?[], mics?[], unassign?[] }`.');
 export type CaptureConfigUpdateRequest = z.output<typeof CaptureConfigUpdateRequestSchema>;
 
 /** Request body of op 79: the video track the camera in the path is assigned to. */
@@ -470,6 +520,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     description: [
       'Writes the whole selector at once (both camera lines and both mic lines are optional members of the body). Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (OD-10) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).',
       'On success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.',
+      'A selector slot may be unassigned. The optional member `unassign` names the slots to clear (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `role` fills the slot of that role, also alone. A Core in its own capture refuses a session start while a slot is unassigned.',
       'Publishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).',
       SIM_V2_NOTE,
     ].join('\n\n'),

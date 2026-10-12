@@ -191,10 +191,13 @@ describe('the audio pair in force (sealed session THEN the microphone changed; f
     expect(audioPairInForce({ session: null })).toEqual({ activeInputId: null, standbyInputId: null });
   });
 
-  it('`audioPairOfSelector`: by role; without roles by position; one line has no standby', () => {
+  it('`audioPairOfSelector`: by role only; nothing by position (task 4 row 164, site C18); one line has no standby', () => {
     expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'STANDBY' }, { inputId: 'MIC-01', role: 'PRIMARY' }])).toEqual({ activeInputId: 'MIC-01', standbyInputId: 'MIC-03' });
-    expect(audioPairOfSelector([{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toEqual({ activeInputId: 'MIC-03', standbyInputId: 'MIC-01' });
+    // Lines without a role name no pair: before row 164 the first line stood in as the active input.
+    expect(audioPairOfSelector([{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toEqual({ activeInputId: null, standbyInputId: null });
     expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'PRIMARY' }])).toEqual({ activeInputId: 'MIC-03', standbyInputId: null });
+    // A lone STANDBY line is never the active input.
+    expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'STANDBY' }])).toEqual({ activeInputId: null, standbyInputId: 'MIC-03' });
     expect(audioPairOfSelector(undefined)).toEqual({ activeInputId: null, standbyInputId: null });
   });
 

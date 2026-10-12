@@ -14,6 +14,8 @@
 //        capture unit through its index only (row 61 closed the earlier "wired into nothing yet").
 //   A-7  the adapter kinds of this layer are the value set of `capture_devices.adapter_kind` in
 //        the typed schema, compared with each other directly (row 97; A-6 is the codec word).
+//   A-8  the start message is made into bytes by the production door only, which makes no text of
+//        them and hands them to nothing but the write and the zero-fill (task 4 row 21; AD-03 (6)).
 //
 // Each rule has a control on a planted source that must be found.
 import { existsSync, readFileSync } from 'node:fs';
@@ -312,5 +314,79 @@ describe('A-7: the adapter kinds of the layer are the value set of the schema', 
     expect([...CAPTURE_ADAPTER_KINDS, 'NEW_KIND']).not.toEqual(schema);
     expect(CAPTURE_ADAPTER_KINDS.slice(1)).not.toEqual(schema);
     expect([...CAPTURE_ADAPTER_KINDS].reverse()).not.toEqual(schema);
+  });
+});
+
+// Task 4 row 21 (WP-02; addendum 2.3 step 4; AD-03 point 6, BR-07 (4), S13-02 (d)). The bytes of a
+// start message hold a credential. They are made in ONE production file, the production door, and
+// in that file their name stands in a closed list of forms: made, tested for null, written, zero-filled,
+// dropped. Any other use - a text, a slice, a copy, an argument, a member of an error or of a log
+// call - is another form and fails here.
+describe('A-8: the bytes of a start message are made by the production door only, and no text of them is made', () => {
+  const DOOR = `${ADAPTERS}production-door.ts`;
+  /** A call of the serialiser (its declaration in `credential.ts` is not a call). */
+  const SERIALISER_CALL = /(?<!function\s)\bstartMessageBytes\s*\(/g;
+  /** Every form the name of the bytes may stand in. */
+  const BYTES_FORMS = [
+    /^let startBytes: Buffer \| null = null;$/,
+    /^startBytes = startMessageBytes\(options\.message\);$/,
+    /^startBytes\?\.fill\(0\);$/,
+    /^startBytes = null;$/,
+    /^\} else if \(startBytes === null\) \{$/,
+    /^input\.write\(startBytes, \(error\) => settle\(error \? ProductionDoorRefusal\.START_MESSAGE_NOT_TAKEN : null\)\);$/,
+  ];
+  /** What would make a text, a copy or a view of bytes, or print a value. */
+  const TEXT_MAKERS = /\bJSON\s*\.|\bString\s*\(|\binspect\b|\bTextDecoder\b|\.toString\s*\(|\.(?:slice|subarray|toJSON|toLocaleString|join)\s*\(|\bBuffer\s*\.\s*from\s*\(|\bstructuredClone\b|`[^`]*\$\{/g;
+  const violations = (text: string): string[] => {
+    const lines = text.split('\n').map((line) => line.trim());
+    return [
+      ...lines.filter((line) => /\bstartBytes\b/.test(line) && !BYTES_FORMS.some((form) => form.test(line))).map((line) => `another use of the bytes: ${line}`),
+      ...lines.filter((line) => /\boptions\s*\.\s*message\b/.test(line) && !/^(?:if \(options\.message !== null\) \{|startBytes = startMessageBytes\(options\.message\);)$/.test(line)).map((line) => `another use of the message: ${line}`),
+    ];
+  };
+
+  it('finds a text made of the bytes, a copy, an argument and a logged member (control)', () => {
+    const planted = [
+      'let startBytes: Buffer | null = null;',
+      'startBytes = startMessageBytes(options.message);',
+      'const text = startBytes.toString();',
+      'child = spawn(options.command, [...options.args, String(startBytes)], {});',
+      'const copy = Buffer.from(startBytes);',
+      'throw new ProductionDoorError(code, { cause: startBytes });',
+      'log.warn({ message: options.message }, text);',
+      'startBytes?.fill(0);',
+    ].join('\n');
+    expect(violations(planted)).toEqual([
+      'another use of the bytes: const text = startBytes.toString();',
+      'another use of the bytes: child = spawn(options.command, [...options.args, String(startBytes)], {});',
+      'another use of the bytes: const copy = Buffer.from(startBytes);',
+      'another use of the bytes: throw new ProductionDoorError(code, { cause: startBytes });',
+      'another use of the message: log.warn({ message: options.message }, text);',
+    ]);
+    expect(occurrences([{ path: 'x.ts', text: planted }], TEXT_MAKERS)).toEqual(['x.ts:3', 'x.ts:4', 'x.ts:5']);
+    expect(occurrences([{ path: 'x.ts', text: 'export function startMessageBytes(message: StartMessage): Buffer {\nconst bytes = startMessageBytes(message);' }], SERIALISER_CALL)).toEqual(['x.ts:2']);
+  });
+
+  it('the one caller of the serialiser in the product is the door; the bytes stand in the closed forms only; the argument list is the caller\'s, spread once', () => {
+    const production = tree.filter((file) => isProductionSource(file.path));
+    expect(occurrences(production, SERIALISER_CALL).map((place) => place.replace(/:\d+$/, ''))).toEqual([DOOR]);
+    const door = tree.find((file) => file.path === DOOR)?.text ?? '';
+    expect(door.length).toBeGreaterThan(1_000);
+    expect(violations(door)).toEqual([]);
+    // Each form is there: made once, written once, cleared on every path (a failed start, and the one end of a start).
+    expect(door.match(/\bstartBytes = startMessageBytes\(options\.message\);/g)).toHaveLength(1);
+    expect(door.match(/\binput\.write\(/g)).toHaveLength(1);
+    expect(door.match(/\bstartBytes\?\.fill\(0\);/g)).toHaveLength(2);
+    // The one text the file makes is the bounded copy of an OUTPUT stream, and it is blanked before it is handed on.
+    expect(occurrences([{ path: DOOR, text: door }], TEXT_MAKERS)).toHaveLength(2);
+    expect(door).toMatch(/const part = chunk\.subarray\(0, PRODUCTION_OUTPUT_CAP_BYTES - size\);/);
+    expect(door).toMatch(/text: \(\) => blankCredentialLocators\(Buffer\.concat\(kept\)\.toString\('utf8'\)\),/);
+    // Every argument of the start is the caller's list, spread once; the door adds none and computes none.
+    expect(door).toMatch(/child = spawn\(options\.command, \[\.\.\.options\.args\], \{/);
+    expect(door.match(/\boptions\s*\.\s*args\b/g)).toHaveLength(1);
+    // A refusal is built from its code alone: no cause, no second argument.
+    expect(door.match(/new ProductionDoorError\([^)]*\)/g)?.every((call) => /^new ProductionDoorError\((?:code|spawnFailed \? ProductionDoorRefusal\.PROGRAM_NOT_STARTED : refusal)\)$/.test(call))).toBe(true);
+    // The door logs nothing and names no log sink.
+    expect(door).not.toMatch(/\bconsole\b|\blog\s*\.|\.(?:warn|info|error|debug)\s*\(/);
   });
 });

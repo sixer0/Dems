@@ -268,15 +268,20 @@ export interface TranscriptRevision {
  * The persistent device selector (`dbc-3 §B.1`; ops 76-80). Snapshotted into
  * `active_session.capture_config` at session start (SH-06), which is why the config is locked
  * while a session is open (OD-10).
+ *
+ * Task 4 row 28 (WP-13a; schema set A; row 27 site A9): a slot may be UNASSIGNED. The six slot
+ * members are `null` then, as the six nullable columns of `capture_config` are; per video slot
+ * the device and its profile are both `null` or both set (CHECK `capture_config_slot_pair_check`).
+ * Only the `unassign` member of operation 78 clears a slot.
  */
 export interface CaptureConfig {
-  /** Device feeding `VIDEO-01`. */
-  video01DeviceId: string;
-  video01Profile: string;
-  video02DeviceId: string;
-  video02Profile: string;
-  micPrimaryId: MicInputId;
-  micStandbyId: MicInputId;
+  /** Device feeding `VIDEO-01`; `null`: the slot is not assigned. */
+  video01DeviceId: string | null;
+  video01Profile: string | null;
+  video02DeviceId: string | null;
+  video02Profile: string | null;
+  micPrimaryId: MicInputId | null;
+  micStandbyId: MicInputId | null;
   /** Optimistic-concurrency counter (`C3 §2.4`; `REVISION_CONFLICT`). */
   revision: number;
   updatedBy: EntityId<'Operator'> | null;

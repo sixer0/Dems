@@ -1949,9 +1949,22 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
  */
 // Task 4 (blueprint row 63): every documented status of the two unrouted operations, by the list
 // `LANDED_UNROUTED` itself - no entry is written by hand, and row 70 empties it with that list.
-const NOT_PRODUCED: Readonly<Record<string, string>> = Object.fromEntries(
-  UNROUTED_OPERATIONS.flatMap((operation) => listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, 'no route until task 4 row 70 (LANDED_UNROUTED)'])),
-);
+// Task 4 (blueprint row 94; fix pass I-5): a documented RESPONSE of a ROUTED operation that landed
+// in the contract before the Core can answer it, each waiting for a named row. Operation 93 documents
+// 422 for a typed `address` it refuses; the live Core accepts and ignores that optional member until
+// row 96 builds the typed-address probe. Row 96 produces the 422 in this file and takes the entry out:
+// the coverage block names the exact list, fails on an unproduced status that is not on it, and fails
+// when a listed one is produced, so no entry outlives its row silently.
+//   93 startCaptureDiscovery 422      task 4 row 96
+const LANDED_UNANSWERED: Readonly<Record<string, string>> = {
+  'startCaptureDiscovery 422': 'the Core ignores `address` until task 4 row 96 (LANDED_UNANSWERED)',
+};
+const NOT_PRODUCED: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    UNROUTED_OPERATIONS.flatMap((operation) => listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, 'no route until task 4 row 70 (LANDED_UNROUTED)'])),
+  ),
+  ...LANDED_UNANSWERED,
+};
 
 /**
  * Error codes the server answers that the registry does not name for that operation and status,
@@ -2073,6 +2086,14 @@ describe('SC6: what the whole file received', () => {
     const stale = cells.filter((cell) => cell.codes !== null && cell.reason !== null).map((cell) => `${cell.operationId} ${cell.status}`);
     expect(missing).toEqual([]);
     expect(stale).toEqual([]);
+    // The deferred responses (LANDED_UNANSWERED): the documented cells that are not produced and wait
+    // for a named row, by name. An entry added to the list, a listed entry that is no documented cell,
+    // or one of an unrouted operation moves this equality; a listed entry that IS produced is `stale` above.
+    const deferred = cells.filter((cell) => cell.codes === null && Object.hasOwn(LANDED_UNANSWERED, `${cell.operationId} ${cell.status}`)).map((cell) => `${cell.operationId} ${cell.status}`);
+    console.info(`[w52] documented responses deferred to a named row (LANDED_UNANSWERED): ${JSON.stringify(deferred.map((entry) => `${entry}: ${LANDED_UNANSWERED[entry]}`))}`);
+    expect(deferred).toEqual(['startCaptureDiscovery 422']);
+    expect(Object.keys(LANDED_UNANSWERED)).toEqual(deferred);
+    expect(UNROUTED_OPERATIONS.filter((operation) => deferred.some((entry) => entry.startsWith(`${operation.operationId} `))).map((operation) => operation.operationId)).toEqual([]);
     // The primary success status of each of the 97 routed operations (99 less the two of LANDED_UNROUTED).
     const withoutSuccess = ROUTED_OPERATIONS.filter((operation) => ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
     expect(withoutSuccess).toEqual([]);

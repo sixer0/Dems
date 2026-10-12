@@ -773,34 +773,68 @@ const BUILT_IN_CAPABILITIES: ReadonlyMap<string, readonly string[]> = new Map(
 );
 
 /**
+ * The six slot columns of the selector row AS THE DATABASE HOLDS THEM since schema set A (task 4
+ * row 17): each may be NULL, an UNASSIGNED slot. LOCAL TYPE of task 4 row 166 (WP-13a): the typed
+ * schema still states them as `string` behind its seam `slotColumn()` (`db/schema/capture.ts`),
+ * which this row does not remove. When that seam goes, `CaptureConfigRow` states the same thing
+ * and this type becomes `Pick<CaptureConfigRow, ...>` of the six members; `seamedSelectorRow`
+ * below then returns its argument without a cast.
+ */
+interface StoredSelectorSlots {
+  readonly video01DeviceId: string | null;
+  readonly video01Profile: string | null;
+  readonly video02DeviceId: string | null;
+  readonly video02Profile: string | null;
+  readonly micPrimaryId: string | null;
+  readonly micStandbyId: string | null;
+}
+
+/** THE ONE CAST of row 166: a row whose slots may be NULL, under the row type the seam still states. */
+const seamedSelectorRow = (row: Omit<CaptureConfigRow, keyof StoredSelectorSlots> & StoredSelectorSlots): CaptureConfigRow => row as CaptureConfigRow;
+
+/**
  * Slice 29 to its one row (T-31). Only the selector travels: `online`/`streamState` of the camera
  * slots and `transport`/`online` of the mic slots are facts of the registry (read back from the
  * T-32 rows), `locked` is a fact of the live session that the sim itself never stores in the slice
  * (op 76 recomputes it per answer, api.ts:550), and `revision`/`updated_by` belong to operation 77
  * and the module, not to the engine state - the row carries the seed's values unchanged.
+ *
+ * BY NAME, NEVER BY POSITION (task 4 row 166; AD-04 (2); decision C18 (2); register E17). A camera
+ * line goes into the columns of ITS track and a microphone line into the column of ITS role. A
+ * slot no line names is written as NULL - the device and the profile of a video slot together, as
+ * the CHECK `capture_config_slot_pair_check` asks. No line stands in for another: a lone
+ * `VIDEO-02` line leaves `video_01_*` NULL, a lone STANDBY leaves `mic_primary_id` NULL. A slice
+ * that names a track or a role twice, or a line of neither, is refused: no line is dropped silently.
  */
 export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow {
   const place = (column: string): string => `capture_config.${column}`;
-  const [camera01, camera02] = slice.cameras;
-  const primary = slice.mics.find((mic) => mic.role === 'PRIMARY') ?? slice.mics[0];
-  const standby = slice.mics.find((mic) => mic.role === 'STANDBY') ?? slice.mics[1];
-  if (camera01 === undefined || camera02 === undefined || primary === undefined || standby === undefined) {
-    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice must name two cameras and a PRIMARY and a STANDBY mic.');
+  const cameraOf = (trackId: 'VIDEO-01' | 'VIDEO-02') => slice.cameras.filter((camera) => camera.trackId === trackId);
+  const micOf = (role: 'PRIMARY' | 'STANDBY') => slice.mics.filter((mic) => mic.role === role);
+  const [camera01, camera02, primary, standby] = [cameraOf('VIDEO-01'), cameraOf('VIDEO-02'), micOf('PRIMARY'), micOf('STANDBY')];
+  if (camera01.length > 1 || camera02.length > 1 || camera01.length + camera02.length !== slice.cameras.length) {
+    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice names at most one camera line per track, VIDEO-01 and VIDEO-02, and no other line.');
   }
-  return {
+  if (primary.length > 1 || standby.length > 1 || primary.length + standby.length !== slice.mics.length) {
+    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice names at most one mic line per role, PRIMARY and STANDBY, and no other line.');
+  }
+  const video = (camera: CaptureConfigSlice['cameras'][number] | undefined, device: string, profile: string): readonly [string | null, string | null] =>
+    camera === undefined ? [null, null] : [storableText(camera.deviceId, place(device)), profileToCode(camera.profile, place(profile))];
+  const [video01DeviceId, video01Profile] = video(camera01[0], 'video_01_device_id', 'video_01_profile');
+  const [video02DeviceId, video02Profile] = video(camera02[0], 'video_02_device_id', 'video_02_profile');
+  return seamedSelectorRow({
     singleton: true,
-    video01DeviceId: storableText(camera01.deviceId, place('video_01_device_id')),
-    video01Profile: profileToCode(camera01.profile, place('video_01_profile')),
-    video02DeviceId: storableText(camera02.deviceId, place('video_02_device_id')),
-    video02Profile: profileToCode(camera02.profile, place('video_02_profile')),
-    micPrimaryId: storableText(primary.deviceId, place('mic_primary_id')),
-    micStandbyId: storableText(standby.deviceId, place('mic_standby_id')),
+    video01DeviceId,
+    video01Profile,
+    video02DeviceId,
+    video02Profile,
+    micPrimaryId: storableTextOrNull(primary[0]?.deviceId, place('mic_primary_id')),
+    micStandbyId: storableTextOrNull(standby[0]?.deviceId, place('mic_standby_id')),
     revision: 1,
     updatedBy: null,
     // The selector's instant is the slice's own `updated_at`; `revision` and `updated_by` belong
     // to operation 77 and the module, never to an engine write (dbc-3 §B.1).
     updatedAt: safeInteger(slice.updatedAt, place('updated_at')),
-  };
+  });
 }
 
 /**
@@ -898,6 +932,13 @@ const DEVELOPMENT_ADAPTER_KINDS: ReadonlySet<string> = new Set(['FAKE', 'LOCAL_D
  * is false because the sim never stores the lock in the slice (op 76 recomputes it per answer).
  * A named device the registry does not hold is a refusal, never an invented row (fail closed).
  *
+ * AN UNASSIGNED SLOT IS AN ABSENT LINE (task 4 row 166; AD-04 (2); register E13, E17): a NULL slot
+ * gives no line - never a line with an empty device, never another slot's line in its place - so a
+ * row of six NULLs comes back as two empty lists. This is the reader of the engine rehydration: it
+ * must not throw for a slot nobody assigned (decision C18). Each line is built from the columns of
+ * its own track or role. A video slot with a device and no profile, or a profile and no device, is
+ * a row the CHECK `capture_config_slot_pair_check` cannot hold: refused, never completed.
+ *
  * THE MICROPHONES COME BACK IN INPUT ORDER - `MIC-01`, then `MIC-02` - whichever of them is the
  * PRIMARY (decision D106 (1); AC-B-70; the simulator and the hosted action `setCaptureConfig` list
  * them so). The role is a member of the line, not its position: after `setPrimaryMic(MIC-02)` the
@@ -912,19 +953,27 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     }
     return device;
   };
-  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string, profile: string) => {
-    const device = named(trackId === 'VIDEO-01' ? 'video_01_device_id' : 'video_02_device_id', deviceId);
-    return { trackId, deviceId, profile, online: device.enabled, streamState: (device.enabled ? 'LIVE' : 'LOST') as CaptureConfigSlice['cameras'][number]['streamState'] };
+  // The row as the database holds it: a slot may be NULL (the row type states `string` behind the schema's seam).
+  const slots: StoredSelectorSlots = row;
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string | null, code: string | null): CaptureConfigSlice['cameras'] => {
+    const columns = trackId === 'VIDEO-01' ? (['video_01_device_id', 'video_01_profile'] as const) : (['video_02_device_id', 'video_02_profile'] as const);
+    if (deviceId === null && code === null) return [];
+    if (deviceId === null || code === null) {
+      throw new MappingError('ROW_SHAPE', `capture_config.${deviceId === null ? columns[0] : columns[1]}`, `the slot ${trackId} holds a device without a profile or a profile without a device.`);
+    }
+    const profile = codeToProfile(code, `capture_config.${columns[1]}`);
+    const device = named(columns[0], deviceId);
+    return [{ trackId, deviceId, profile, online: device.enabled, streamState: (device.enabled ? 'LIVE' : 'LOST') as CaptureConfigSlice['cameras'][number]['streamState'] }];
   };
-  const mic = (inputId: CaptureConfigSlice['mics'][number]['inputId'], deviceId: string, role: 'PRIMARY' | 'STANDBY') => {
+  const mic = (role: 'PRIMARY' | 'STANDBY', deviceId: string | null): CaptureConfigSlice['mics'] => {
+    if (deviceId === null) return [];
     const device = named(role === 'PRIMARY' ? 'mic_primary_id' : 'mic_standby_id', deviceId);
-    return { inputId, deviceId, role, transport: device.transport, online: device.enabled };
+    // A mic line's device IS its input (D106 (4)).
+    return [{ inputId: deviceId, deviceId, role, transport: device.transport, online: device.enabled }];
   };
   return {
-    cameras: [camera('VIDEO-01', row.video01DeviceId, codeToProfile(row.video01Profile, 'capture_config.video_01_profile')), camera('VIDEO-02', row.video02DeviceId, codeToProfile(row.video02Profile, 'capture_config.video_02_profile'))],
-    mics: [mic(row.micPrimaryId as 'MIC-01' | 'MIC-02', row.micPrimaryId, 'PRIMARY'), mic(row.micStandbyId as 'MIC-01' | 'MIC-02', row.micStandbyId, 'STANDBY')].sort((left, right) =>
-      compareIds(left.inputId, right.inputId),
-    ),
+    cameras: [...camera('VIDEO-01', slots.video01DeviceId, slots.video01Profile), ...camera('VIDEO-02', slots.video02DeviceId, slots.video02Profile)],
+    mics: [...mic('PRIMARY', slots.micPrimaryId), ...mic('STANDBY', slots.micStandbyId)].sort((left, right) => compareIds(left.inputId, right.inputId)),
     locked: false,
     updatedAt: row.updatedAt,
   };
@@ -953,9 +1002,10 @@ export function captureDevicesFromRows(rows: readonly CaptureDeviceRow[], listin
 
 const NO_DEVICE_IDS: ReadonlySet<string> = new Set();
 
-/** The device ids the selector row names (its four slots). */
+/** The device ids the selector row names: its four slots, an UNASSIGNED (NULL) slot names none (task 4 row 166, site A5). */
 export function selectorDeviceIds(row: Pick<CaptureConfigRow, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'>): ReadonlySet<string> {
-  return new Set([row.video01DeviceId, row.video02DeviceId, row.micPrimaryId, row.micStandbyId]);
+  const slots: Pick<StoredSelectorSlots, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'> = row;
+  return new Set([slots.video01DeviceId, slots.video02DeviceId, slots.micPrimaryId, slots.micStandbyId].filter((deviceId): deviceId is string => deviceId !== null));
 }
 
 function compareIds(a: string, b: string): number {

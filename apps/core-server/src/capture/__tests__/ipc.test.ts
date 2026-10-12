@@ -18,7 +18,7 @@
 // 1-minute load of about 100 was measured) a stand-in worker can miss its heartbeat and a case
 // fails; at a load below 8 the file passes. That is the host, not the supervisor: the allowances
 // are not raised, and a red of this file is read against the load of the run first.
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { CaptureWarningCode, type CaptureIpcLimits, type WorkerMessage } from '@dems/capture-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STUB_WORKER, capturePlan } from '../../../test/support/capture';
@@ -170,6 +170,41 @@ describe('a real worker process under the supervisor', () => {
     expect(error).toMatchObject({ code: CaptureRefusal.FAULT, detail: WorkerDownCode.SPAWN_FAILED });
     expect(downs().map((event) => event.down.code)).toEqual([WorkerDownCode.SPAWN_FAILED, WorkerDownCode.SPAWN_FAILED, WorkerDownCode.SPAWN_FAILED]);
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, sessionId: null, workerPid: null });
+  }, TEST_TIMEOUT_MS);
+
+  // Task 4 row 180 (the finding of row 21). A child whose start FAILED has no process ID; a signal through its handle
+  // in the same turn goes to process ID 0, the caller's whole process group. THE REPRODUCTION IS SAFE: the signal call
+  // of every child handle and the signal call of the process are replaced for this case, so nothing real is ever sent.
+  it('a worker that could not be started is never signalled: not by kill, not by the exit handler; the channel still reports spawnFailed', async () => {
+    const handleSignal = vi.spyOn(ChildProcess.prototype, 'kill').mockImplementation(() => true);
+    const processSignal = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const before = new Set(process.listeners('exit'));
+    const ownExitHandlers = () => process.listeners('exit').filter((listener) => !before.has(listener));
+    try {
+      let exit: WorkerExit | null = null;
+      const channel = createProcessLauncher({ command: '/nonexistent/dems/capture-worker', args: [] })(
+        { sessionId: SESSION, correlationId: 'raw', attempt: 1 },
+        { message: () => {}, violation: () => {}, exit: (ended) => (exit = ended) },
+      );
+      // The same turn as the start: the failure has not been reported yet, the channel still holds the child.
+      expect([channel.pid, exit]).toEqual([null, null]);
+      channel.kill('SIGKILL');
+      channel.kill('SIGTERM');
+      const atExit = ownExitHandlers();
+      expect(atExit).toHaveLength(1);
+      for (const handler of atExit) (handler as () => void)();
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+      // The channel's existing answer for a worker that was not started, and this process is still here to read it.
+      await vi.waitFor(() => expect(exit).toEqual({ exitCode: null, signal: null, spawnFailed: true }), WAIT);
+      channel.kill('SIGKILL');
+      expect(ownExitHandlers()).toEqual([]);
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+    } finally {
+      handleSignal.mockRestore();
+      processSignal.mockRestore();
+    }
   }, TEST_TIMEOUT_MS);
 
   it('a worker that writes a line that is no frame is ended (protocol violation)', async () => {

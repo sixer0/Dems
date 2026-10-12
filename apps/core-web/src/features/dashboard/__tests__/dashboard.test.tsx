@@ -166,6 +166,25 @@ describe('Dashboard, idle scenario (row 42; AC-60 panel IDs; AC-75)', () => {
     }
   })
 
+  // Task 4 row 54 / integration pass I-3 (P12-F08): a slice that states no rate keeps its format chip, with the picture alone.
+  it('the camera tile of a slice that states no rate shows its picture without a rate, never nothing and never an empty rate', { timeout: 15_000 }, async () => {
+    const { sim } = mount()
+    const devices = await findPanel('e')
+    const chipOf = (cameraId: string) => within(within(devices).getByTestId(`device-tile-${cameraId}`)).getByTestId('camera-feed-label')
+    // CONTROL: the rate the slice states is printed as stated.
+    expect(chipOf('VIDEO-01')).toHaveTextContent(/^1080p • 25 fps$/)
+    act(() =>
+      sim.store.setState((state) => ({
+        cameras: state.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, resolution: '2160p', fps: null, codec: 'HEVC' as const } : camera)),
+      })),
+    )
+    await waitFor(() => expect(chipOf('VIDEO-01')).toHaveTextContent(/^2160p$/))
+    expect(within(devices).getByTestId('device-tile-VIDEO-01')).not.toHaveTextContent(/fps|•/)
+    // The other camera still states its rate.
+    expect(chipOf('VIDEO-02')).toHaveTextContent(/^1080p • 25 fps$/)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
   it('reads 20% USED and "3.2 TB free of 4.0 TB" in the storage panel (AC-75 unit form)', { timeout: 15_000 }, async () => {
     mount()
     const storage = await findPanel('f')

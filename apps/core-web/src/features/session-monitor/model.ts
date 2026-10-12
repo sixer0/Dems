@@ -422,9 +422,14 @@ export interface FeedModel {
   cameraName: string
   room: string
   noSignal: boolean
-  resolution: string
-  fps: number
-  codec: string
+  /**
+   * Row 54 (P12-F08): the three facts as the camera slice states them. `resolution` and `codec` are null when
+   * the slice carries no camera for the active track (nothing is stated then); `fps` is also null for a stream
+   * that states no rate.
+   */
+  resolution: string | null
+  fps: number | null
+  codec: SimState['cameras'][number]['codec'] | null
   startedAt: number | null
   recording: boolean
   snapshotCount: number
@@ -452,9 +457,9 @@ export function selectFeed(s: SimState): FeedModel {
     room: camera?.room ?? '',
     // Row 139 ("C, degraded"): the camera the Core says did not connect at this session start reads NO SIGNAL.
     noSignal: (camera ? !camera.online || camera.lens === 'FAULT' : true) || trackNotConnected(s, s.activeCameraId),
-    resolution: camera?.resolution ?? '1080p',
-    fps: camera?.fps ?? 25,
-    codec: camera?.codec ?? 'H.264',
+    resolution: camera?.resolution ?? null,
+    fps: camera?.fps ?? null,
+    codec: camera?.codec ?? null,
     startedAt: s.session?.startedAt ?? null,
     recording,
     snapshotCount: s.session?.snapshotCount ?? 0,

@@ -61,7 +61,9 @@ export { CAPTURE_WORKER_VERSION } from './boot';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor } from './supervisor';
 // The arguments of a worker process: one set for a session start and for the boot probe (wave H driver F; gate 64 C7).
-export { CAPTURE_WORKER_PROCESS_SETTINGS, captureWorkerArguments } from './worker-arguments';
+export { CAPTURE_WORKER_PROCESS_SETTINGS, CAPTURE_WORKER_PRODUCTION_SETTINGS, PRODUCTION_INGEST_OPEN_WINDOW_MS, captureWorkerArguments } from './worker-arguments';
+// Where a camera track pushes to (task 4 row 47; integration pass I-3): one function, in a file that imports nothing.
+export * from './ingest-address';
 export { createSystemTimers } from './timers';
 // The evidence signer (row 83): reached through this index like the rest of the closed unit.
 export * from './signer';
@@ -145,7 +147,8 @@ export function writeSupervisorFaults(app: Pick<FastifyInstance, 'log' | 'errorL
 export const captureModule: FastifyPluginAsync = async (app) => {
   const { captureMode, captureWorkerPath, dataDir } = app.config;
   // The ONE reader of the capture mode (static rule G-R16): a refused combination answers SIMULATED.
-  const realOperation = captureOperationOf(app.config) !== CaptureOperation.SIMULATED;
+  const operation = captureOperationOf(app.config);
+  const realOperation = operation !== CaptureOperation.SIMULATED;
   const configured = realOperation && captureWorkerPath !== null;
   const report = (failure: CaptureReport): void => {
     const context = { sessionId: failure.sessionId, correlationId: failure.correlationId };
@@ -164,7 +167,8 @@ export const captureModule: FastifyPluginAsync = async (app) => {
     now: () => app.clock.now(),
     timers: createSystemTimers(),
     launcher: configured
-      ? createProcessLauncher({ command: captureWorkerPath, args: captureWorkerArguments(`${dataDir}/${WORKER_LOG_NAME}`) })
+      ? // AD-11 (task 4 row 47): the worker of REAL_PRODUCTION is started with that operation's ingest window; every other operation keeps today's.
+        createProcessLauncher({ command: captureWorkerPath, args: captureWorkerArguments(`${dataDir}/${WORKER_LOG_NAME}`, operation === CaptureOperation.REAL_PRODUCTION) })
       : unconfiguredLauncher,
     report,
   });

@@ -547,7 +547,12 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
           {
             id: 'format',
             label: label('format'),
-            value: t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
+            // Row 55 (P12-F08): the slice's picture, rate and codec; a stream that states no rate (`fps` null) reads without one.
+            value:
+              camera.fps === null
+                ? t('common.devices.cameraFormatCodecNoRate', { resolution: camera.resolution, codec: camera.codec })
+                : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
+            testID: 'device-fact-format',
           },
           { id: 'bitrate', label: label('bitrate'), value: t('features.devices.detail.mbps', { value: camera.bitrateMbps }) },
           { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },

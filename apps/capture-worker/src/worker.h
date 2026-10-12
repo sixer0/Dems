@@ -16,6 +16,8 @@
  *                     records. The only unit that names libavfilter.
  *   micwatch.c        the microphone warning raiser (silence, disconnect, rate limit): pure.
  *   anchor.c          video anchoring arithmetic and the camera-clock rules: pure.
+ *   announce.c        the announced address of an ingest: the expected message and its whole-message
+ *                     comparison (task 4 row 58): pure.
  *
  * Thread rules. The filtering thread is the only thread that touches the filter graph (erratum
  * AU2-07; `make check` holds it). Each output muxer is guarded by its camera's mutex. Everything
@@ -28,11 +30,18 @@
 #include <libavformat/avformat.h>
 
 #include "anchor.h"
+#include "announce.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
+
+/* NO LOG LEVEL IS EVER SET (task 4 row 175; BR-04 (1) of verification/05_security_branch_b.md). The callback of
+ * ingest.c is handed every level and writes the error level and below; the gate on the announced address reads
+ * the trace level without anyone asking the library for it. Naming the function that sets the level, in any unit
+ * of the worker (this header is their first include), is a compile error from here on. */
+#pragma GCC poison av_log_set_level
 
 /* The protocol this worker speaks: packages/capture-protocol/src/index.ts. A test of the Core
  * server holds these three numbers equal to the package's. */
@@ -40,7 +49,7 @@
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
-#define WORKER_VERSION "capture-worker/0.5.0"
+#define WORKER_VERSION "capture-worker/0.6.0"
 
 /* A PROOF BUILD IS ANY BUILD WITH ONE OF ITS SWITCHES (review R63-06; pair-58 F-10). Until fix pass
  * F-M3 the mark of HELLO hung on ONE macro (DEMS_PROOF_MUX_EXTRA): a build with any of the other
@@ -53,7 +62,8 @@
  * DEMS_VERIFIED_LAVF_VERSION_INT are defined later, in their units). */
 #if defined(DEMS_PROOF_MUX_EXTRA) || defined(DEMS_PROOF_KEEP_TORN_TAIL) || defined(DEMS_PROOF_NO_REFUSAL_EXIT) || defined(DEMS_PROOF_WRITE_FAULT) || \
     defined(DEMS_PROOF_INTERVAL_SKEW) || defined(DEMS_PROOF_NO_CLOCK_FLOOR) || defined(DEMS_PROOF_NO_FRAGMENT_BOUND) || defined(DEMS_PROOF_SILENT_SYNC_FALLBACK) || \
-    defined(DEMS_PROOF_RUNTIME_LAVF_VERSION_INT) || defined(MIC_MAX_PPM) || defined(DEMS_MOVFLAGS) || defined(DEMS_VERIFIED_LAVF_VERSION_INT)
+    defined(DEMS_PROOF_RUNTIME_LAVF_VERSION_INT) || defined(MIC_MAX_PPM) || defined(DEMS_MOVFLAGS) || defined(DEMS_VERIFIED_LAVF_VERSION_INT) || \
+    defined(DEMS_PROOF_ANNOUNCE_UNSEEN)
 #define DEMS_PROOF_BUILD 1
 #endif
 
@@ -230,6 +240,12 @@ typedef struct Cam {
     char url[257];
     Sink sink;
     AVFormatContext *in, *out;
+    /* THE ANNOUNCED ADDRESS (task 4 row 58; ingest.c "the gate"; announce.h). This camera's own state and nothing shared:
+     * what the library's messages showed during THIS camera's open (written by the log callback only on the thread that
+     * opens this camera and only for this camera's input context; reset before the open), and the flag by which THIS
+     * camera's interrupt callback ends an open that can no longer pass. The stop flag of the process is not involved. */
+    AnnounceGate announce;
+    atomic_int announce_refused;
     AVIOContext *pb;
     AVStream *ov, *oa;
     int vidx;

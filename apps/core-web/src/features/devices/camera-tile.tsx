@@ -49,8 +49,18 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
   const status = useSim((s) => deviceStatus(s, deviceId))
   const name = labels.name(deviceId)
   const tone = STATUS_TONE[status]
-  const resolution = camera?.resolution ?? '1080p'
-  const fps = camera?.fps ?? 25
+  // Row 54 (P12-F08): the format is what the camera slice states. A stream that states no rate (`fps` null)
+  // reads its picture and codec without one; a track the slice does not carry states no format at all.
+  const formatChip = !camera
+    ? ''
+    : camera.fps === null
+      ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution })
+      : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })
+  const formatLine = !camera
+    ? null
+    : camera.fps === null
+      ? t('common.devices.cameraFormatCodecNoRate', { resolution: camera.resolution, codec: camera.codec })
+      : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec })
   const recState = camera?.recState ?? null
   // Fix wave I (G70b-06; `source-state.ts`): on a Core in real capture the PoE port and the bitrate are
   // values of the simulator's camera slice - drawn only where the Core measures them.
@@ -112,7 +122,7 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           cameraId={cameraId}
           variant="tile"
           label={null}
-          formatLabel={realCapture ? '' : t('common.devices.cameraFormat', { resolution, fps })}
+          formatLabel={realCapture ? '' : formatChip}
           recordingSince={null}
           noSignal={status === 'FAULT'}
           // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
@@ -123,10 +133,10 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
 
       <dl className="dev-cam-meta">
         {/* Fix wave K (C-2, ruling D222 (2)): the format of the simulator's camera record is no fact of the source behind the track on a Core in real capture. */}
-        {realCapture ? null : (
+        {realCapture || formatLine === null ? null : (
           <div data-testid={`camera-format-${cameraId}`}>
             <dt>{t('devices.cameras.format')}</dt>
-            <dd>{t('common.devices.cameraFormatCodec', { resolution, fps, codec: camera?.codec ?? 'H.264' })}</dd>
+            <dd>{formatLine}</dd>
           </div>
         )}
         {figures.poePort ? (

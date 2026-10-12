@@ -62,7 +62,7 @@ import { createPipeline } from './pipeline';
 import type { AuditWriter, UnitContext, UnitOfWork } from './types';
 import { stateOf } from './unit-of-work';
 
-export { SERVER_AUDIT_DETAIL_RULES, PAIRING_CODE_CLOSE_REASONS, detailRulesOf, type DetailRule, type ServerAuditType } from './audit-details';
+export { CAPTURE_CREDENTIAL_REVEAL_REASONS, SERVER_AUDIT_DETAIL_RULES, PAIRING_CODE_CLOSE_REASONS, detailRulesOf, type CaptureCredentialRevealReason, type DetailRule, type ServerAuditType } from './audit-details';
 export { REPORTED_BOOT_CHECK, registerBootChecks, runDatabaseBootChecks } from './boot-checks';
 export { createSystemClock, followClock, raiseClockFloor, stampOf, type Clock, type FloorClock } from './clock';
 export {

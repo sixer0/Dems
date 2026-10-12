@@ -396,8 +396,15 @@ export const VideoTrackStatusSchema = z
      * Schema v2 (task 3 M2-W7; register SH-05; C3 §3 op 46): the capture-config device feeding
      * this track. It equals `deviceId` in the built-in topology and may differ once the selector
      * maps another device onto the track (OD-05).
+     *
+     * Task 4 row 28 (WP-13a; decision C25; names register E39): `null` for a track whose selector
+     * slot is not assigned. No device stands in for it; `tracks` stays two entries.
      */
-    sourceDeviceId: z.string().min(1).describe('The capture device assigned to this track by the selector (op 79 moves it).'),
+    sourceDeviceId: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe('The capture device assigned to this track by the selector (op 79 moves it). Null: the slot of this track is not assigned.'),
     /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST; a LOST stream is what makes op 48's PoE cycle legal. */
     streamState: z.enum(CaptureStreamState),
     name: z.string().min(1),
@@ -448,10 +455,23 @@ export const VideoStatusResponseSchema = z
   .describe('Per-track video status (VIDEO-01, VIDEO-02).');
 export type VideoStatusResponse = z.output<typeof VideoStatusResponseSchema>;
 
+/**
+ * Task 4 row 28 (WP-13a; decision C25; names register E40, driver decision D-2): an entry of
+ * `channels` IS a microphone input, so a meter channel without an input has NO entry (at most two,
+ * not exactly two), and `activeInputId` is `null` when the selector holds no PRIMARY line. On a
+ * complete selector the answer is what it was: two entries and an input.
+ */
 export const AudioStatusResponseSchema = z
   .object({
-    channels: z.array(AudioChannelStatusSchema).length(2).describe('The two mic inputs of the capture (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), never merged (SYS-003).'),
-    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15).'),
+    channels: z
+      .array(AudioChannelStatusSchema)
+      .max(2)
+      .describe('The mic inputs of the capture, one entry per meter channel that has an input: two on a complete selector (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), fewer while a microphone slot is not assigned. Never merged (SYS-003).'),
+    activeInputId: z
+      .string()
+      .regex(MIC_INPUT_ID_PATTERN)
+      .nullable()
+      .describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15). Null: the selector holds no PRIMARY microphone.'),
   })
   .describe('Per-input audio snapshot with the active/standby pair. Meters use it as their initial value; live levels run at 20 Hz in-process.');
 export type AudioStatusResponse = z.output<typeof AudioStatusResponseSchema>;
@@ -498,8 +518,18 @@ export const DeviceHealthResponseSchema = z
       .array(z.object({ id: z.string().min(1), severity: z.enum(Severity), message: z.string().min(1) }))
       .describe('What makes the state ATTENTION or CRITICAL.'),
     cameras: z.array(VideoTrackStatusSchema).length(2).describe('Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22).'),
-    audio: z.array(AudioChannelStatusSchema).length(2).describe('Schema v2: keyed by the two mic inputs (`MIC-NN`) with their roles.'),
-    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now.'),
+    // Task 4 row 28 (DRIVER DECISION, see implementation/028): the two audio members of the health
+    // answer are built by the same functions as operation 45 (`audioChannelsOf`, `activeInputOf`),
+    // so they take the same widening as `AudioStatusResponseSchema` (register E40).
+    audio: z
+      .array(AudioChannelStatusSchema)
+      .max(2)
+      .describe('Schema v2: keyed by the mic inputs (`MIC-NN`) with their roles; two on a complete selector, fewer while a microphone slot is not assigned.'),
+    activeInputId: z
+      .string()
+      .regex(MIC_INPUT_ID_PATTERN)
+      .nullable()
+      .describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now. Null: the selector holds no PRIMARY microphone.'),
     storage: StorageStatusResponseSchema,
     time: z.object({
       source: z.enum(TimeSource).describe('Active source, priority GNSS → NTP → RTC.'),

@@ -135,6 +135,8 @@ const OFFLINE_SCHEMA_NAMES = [
   // Task 3 M6 (row 113; C3 §2.5): the six STT configuration schemas (39 -> 45 components).
   'SttLastTest', 'SttConfig', 'SttCredentialWrite', 'SttConfigUpdateRequest', 'SttConfigUpdateResult', 'SttConnectionTest',
   // Task 3 R-9..R-11 (row 132, D106; C3 §2.6): the eight schemas of operations 93-97 (45 -> 53 components).
+  // Task 4 row 94 (WP-12; AM-3): + the optional body of operation 93, first of the block (56 -> 57 components).
+  'CaptureDiscoveryStartRequest',
   'CaptureDiscoverySearch', 'CaptureCandidate', 'CaptureDiscoveryState', 'CaptureConnectionTestRequest', 'CaptureConnectionTest',
   'CaptureCandidateAdoptRequest', 'CaptureCandidateAdoption', 'CaptureInputScan',
   // Task 4 row 63 (design addendum 4.2): three of the four schemas of operations 98-99 (53 -> 56
@@ -203,7 +205,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     }
   });
 
-  it('holds the 56 offline components (39 of OD-17, 6 of STT 90-92, 8 of the camera search 93-97 and 3 of the sound cards 98-99); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
+  it('holds the 57 offline components (39 of OD-17, 6 of STT 90-92, 9 of the camera search 93-97 and 3 of the sound cards 98-99); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
     expect(Object.keys(offline.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
     for (const [name, hash] of Object.entries(BASELINE.schemas)) {
       const now = sha256(offline.components.schemas[name]);
@@ -550,7 +552,7 @@ describe('scope all: every operation of the registry, as the Core server answers
 
   it('holds one component per registry schema, and the ten existing operations with the schemas of the offline scope', () => {
     expect(Object.keys(all.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
-    expect(Object.keys(all.components.schemas)).toHaveLength(171); // + the four of ops 98-99 (task 4 row 63); 167 = 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132) + the optional body of op 88 (pass D1b, D140)
+    expect(Object.keys(all.components.schemas)).toHaveLength(172); // + the optional body of op 93 (task 4 row 94); 171 = + the four of ops 98-99 (task 4 row 63); 167 = 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132) + the optional body of op 88 (pass D1b, D140)
     const offline = createOpenApiDocument();
     for (const [name, schema] of Object.entries(offline.components.schemas)) expect(all.components.schemas[name], name).toEqual(schema);
     // Changed by design (W27; 01_specs §7.19): in this scope the ten are described as the Core

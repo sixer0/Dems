@@ -282,7 +282,7 @@ export const RELEASE_WORKER_VERSION = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4
  * an additive member, so a worker of an earlier tree (no fragment size bound, no stated sync level)
  * speaks the same protocol and has the release FORM - only its version tells it apart.
  */
-export const CAPTURE_WORKER_VERSION = 'capture-worker/0.5.0';
+export const CAPTURE_WORKER_VERSION = 'capture-worker/0.6.0';
 
 /** True when a worker version carries the proof-build mark, in any case and at any place. */
 export function isProofWorkerVersion(workerVersion: string): boolean {

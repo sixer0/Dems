@@ -77,7 +77,12 @@ export function InputsPanel({ paused }: { paused: boolean }) {
                 </p>
                 <CameraState cameraId={camera.id} ready={camera.ready} online={camera.online} />
                 {/* Fix wave K (C-2, ruling D222 (2)): "1080p • 25 fps" is the dataset's camera record, not the stream of the source behind the track on a Core in real capture. */}
-                {realCapture || camera.fps === null ? null : <p className="sm-input-meta">{t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}</p>}
+                {/* A stream that states no rate (`fps` null) reads its picture without one (task 4 row 54 / I-3, P12-F08). */}
+                {realCapture ? null : (
+                  <p className="sm-input-meta">
+                    {camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+                  </p>
+                )}
               </div>
             </Card>
           </motion.div>

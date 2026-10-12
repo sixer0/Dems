@@ -34,13 +34,15 @@ import {
   CaptureConnectionTestRequestSchema,
   CaptureDiscoveryReason,
   CaptureDiscoveryScope,
+  CaptureDiscoveryStartRequestSchema,
   CaptureDiscoveryTrigger,
-  SIM_ADOPTED_DEVICE_ID,
   captureCandidateAdoptedDetails,
   captureConnectionTestedDetails,
   captureDiscoverySearchedDetails,
   simCaptureCandidates,
   simCaptureDiscoverySearch,
+  simTypedAddressAllowed,
+  simTypedAddressCandidate,
   type CaptureCandidate,
   type CaptureCandidateAdoption,
   type CaptureConnectionTest,
@@ -1320,19 +1322,44 @@ const DISCOVERY_ROUTES: readonly Route[] = [
     // 93 startCaptureDiscovery
     method: 'POST',
     pattern: /^\/api\/v1\/capture\/discovery$/,
-    handle: ({ store, clock }) => {
+    handle: (target, _params, body) => {
+      const { store, clock } = target;
       const state = store.getState();
       const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED);
       if (refused) return refused;
+      // Task 4 row 94 (AM-3; decision C10): the optional typed address. A body without the member
+      // passes every line of this block untouched: the search below is the search as it was.
+      // The typed address is web console only, and a 403 wins over the body: it is decided on the
+      // presence of the member, before its value is read. The search itself stays open to a device.
+      if ('address' in body) {
+        const webOnly = webConsoleOnlyRefusal(target);
+        if (webOnly) return webOnly;
+      }
+      const parsed = CaptureDiscoveryStartRequestSchema.safeParse(body);
+      // The refusal names where, never what: the input is not quoted.
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const typedAddress = parsed.data.address;
+      // The stand-in of the Core's destination rule. Nothing was stored, counted or audited before it.
+      if (typedAddress !== undefined && !simTypedAddressAllowed(typedAddress)) {
+        return failWith(422, 'INVALID_INPUT', 'A camera search cannot use this address.', { in: 'body', reason: CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED });
+      }
       const now = clock.now();
       const holder = simDiscoveryHolder(store);
-      const registered = new Set(state.captureDevices.devices.map((device) => device.id));
       // A candidate reads REGISTERED when the registry holds its device: the built-in camera always,
-      // the new one once it was adopted (until a demo reset takes the device away again).
-      const candidates = simCaptureCandidates().map((candidate): CaptureCandidate => {
+      // the new one once it was adopted (until a demo reset takes the device away again). "Its
+      // device" is the camera of the registry with the candidate's whole address: the adopted fixture
+      // (`CAM-03` in a store that adopted nothing else) keeps the address of its candidate. Row 94
+      // made this a match by address, where it was the fixed id: a typed-address candidate that was
+      // adopted first takes `CAM-03`, and the fixture candidate must not read REGISTERED for it.
+      const adoptedAt = (host: string) => state.captureDevices.devices.find((device) => device.kind === 'CAMERA' && device.host === host);
+      const asRegistryReadsIt = (candidate: CaptureCandidate): CaptureCandidate => {
         if (candidate.status === CaptureCandidateStatus.REGISTERED) return candidate;
-        return registered.has(SIM_ADOPTED_DEVICE_ID) ? { ...candidate, status: CaptureCandidateStatus.REGISTERED, deviceId: SIM_ADOPTED_DEVICE_ID } : candidate;
-      });
+        const known = adoptedAt(candidate.host);
+        return known === undefined ? candidate : { ...candidate, status: CaptureCandidateStatus.REGISTERED, deviceId: known.id };
+      };
+      const candidates = simCaptureCandidates().map(asRegistryReadsIt);
+      // One synthetic candidate, last in the list: nothing was probed.
+      if (typedAddress !== undefined) candidates.push(asRegistryReadsIt(simTypedAddressCandidate(typedAddress)));
       const registeredCount = candidates.filter((candidate) => candidate.status === CaptureCandidateStatus.REGISTERED).length;
       const search: CaptureDiscoverySearch = {
         ...simCaptureDiscoverySearch(nextSearchId(holder), now, now + CAPTURE_DISCOVERY_RESULT_TTL_MS, true),

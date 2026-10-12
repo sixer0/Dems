@@ -30,6 +30,7 @@ import {
   UpdateStep,
   UpdateStepLabel,
 } from '../src/domain/enums';
+import { CAPTURE_SELECTOR_SLOTS } from '../src/api/devices';
 import {
   DEFAULT_LANGUAGE,
   SHARED_NAMESPACES,
@@ -229,6 +230,30 @@ describe('shared i18n resources: language and copy rules', () => {
     expect(en.login.notices.consoleLocked).toBe('Console locked — sign in to continue');
     expect(en.login.notices.consoleLocked).not.toBe(en.login.notices.signedOut);
     expect(allText.filter((text) => /console locked/i.test(text))).toEqual([en.login.notices.consoleLocked]);
+  });
+
+  // Task 4 row 28 (WP-13a; decision C18 (3); names register N13, N14): the words of an unassigned
+  // selector slot. Both clients read these keys; their tests pin the key, this test pins the words.
+  it('names the four selector slots and an empty one (`common.captureSlot`), and the pre-check sentence of an unassigned slot', () => {
+    // Keyed by the values of `CAPTURE_SELECTOR_SLOTS`, in their order, then the three words.
+    expect(Object.keys(en.common.captureSlot)).toEqual([...CAPTURE_SELECTOR_SLOTS, 'notAssigned', 'assign', 'assignLabel']);
+    expect(en.common.captureSlot).toEqual({
+      'VIDEO-01': 'Camera 1',
+      'VIDEO-02': 'Camera 2',
+      PRIMARY: 'Primary microphone',
+      STANDBY: 'Standby microphone',
+      notAssigned: 'Not assigned',
+      assign: 'Assign',
+      assignLabel: 'Assign a source to {{slot}}',
+    });
+    // One sentence for BLOCK and WARN: it names the slot and promises nothing about the start.
+    expect(en.common.captureNotice.start.sourceNotAssigned).toBe('{{slot}} has no source assigned. Assign one on Devices.');
+    expect(en.common.captureNotice.start.sourceNotAssigned).not.toMatch(/cannot start|will record|recorded/i);
+    // The item of an unassigned slot is not the "not recordable" sentence, which names a device.
+    expect(en.common.captureNotice.start.notRecordable).toContain('{{device}}');
+    expect(en.common.captureNotice.start.sourceNotAssigned).not.toContain('{{device}}');
+    // The same words as the two workspace-local keys of an empty line (register E33).
+    expect(en.common.captureSlot.notAssigned).toBe(en.devices.selector.notAssigned);
   });
 });
 

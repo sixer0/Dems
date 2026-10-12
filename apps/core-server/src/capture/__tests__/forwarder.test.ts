@@ -14,7 +14,7 @@ import { buildApp } from '../../app';
 import { ConfigError, createConfig, parseCaptureMode, parseCapturePath, Secret } from '../../config';
 import { STUB_WORKER, capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
-import { CAPTURE_WARNING_CLEAR_HOLD_MS, CAPTURE_WORKER_PROCESS_SETTINGS, CapturePhase, CaptureRefusal, ForwarderReportCode, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureEngine, type CaptureReport } from '../index';
+import { CAPTURE_WARNING_CLEAR_HOLD_MS, CAPTURE_WORKER_PROCESS_SETTINGS, CAPTURE_WORKER_PRODUCTION_SETTINGS, CapturePhase, CaptureRefusal, ForwarderReportCode, PRODUCTION_INGEST_OPEN_WINDOW_MS, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, type CaptureEngine, type CaptureReport } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const scratch: string[] = [];
@@ -430,10 +430,29 @@ describe('which launcher the capture unit is built with', () => {
     expect(app.capture.status().workerPid).toBeGreaterThan(0);
     await vi.waitFor(() => expect(existsSync(argsFile)).toBe(true));
     // Nothing of the session is an argument: where the worker logs, and how often it beats.
-    expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['--log', `${dataDir}/capture-worker.jsonl`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PROCESS_SETTINGS)]);
+    // Mode real with the development-sources flag unset IS the production operation: its worker gets
+    // the ingest window of that operation (AD-11; task 4 row 47, integration pass I-3 item 2).
+    const words = readFileSync(argsFile, 'utf8').trim().split('\n');
+    expect(words).toEqual(['--log', `${dataDir}/capture-worker.jsonl`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PRODUCTION_SETTINGS)]);
+    expect(words[words.indexOf('--ingest-open-window-ms') + 1]).toBe(String(PRODUCTION_INGEST_OPEN_WINDOW_MS));
     // The server's environment did not reach it (the shell itself adds PWD, SHLVL and _).
     expect(readFileSync(`${argsFile}.env`, 'utf8').split('\n').map((line) => line.split('=')[0]).filter((name) => name !== '' && !['PWD', 'SHLVL', '_', 'OLDPWD'].includes(name ?? ''))).toEqual([]);
     expect(log.lines().find((line) => line['code'] === 'CAPTURE_SUPERVISOR_BOOTED')).toMatchObject({ mode: 'real', worker: 'configured' });
+    await app.capture.stop(SESSION, 'STOPPED');
+    await app.close();
+  });
+
+  it('mode real with the development-sources flag set: the worker of the development operation keeps the window every other operation has (AD-11)', async () => {
+    const { command, argsFile, dataDir } = workerProgram();
+    const app = buildApp({ config: unitTestConfig({ dataDir, captureMode: 'real', captureDevSources: true, captureWorkerPath: command }) });
+    await app.ready();
+    await app.capture.boot();
+    await app.capture.start(SESSION, capturePlan(SESSION));
+    await vi.waitFor(() => expect(existsSync(argsFile)).toBe(true));
+    const words = readFileSync(argsFile, 'utf8').trim().split('\n');
+    expect(words).toEqual(['--log', `${dataDir}/capture-worker.jsonl`, '--heartbeat-ms', String(CAPTURE_IPC_DEFAULTS.heartbeatIntervalMs), ...captureWorkerSettingArguments(CAPTURE_WORKER_PROCESS_SETTINGS)]);
+    expect(words[words.indexOf('--ingest-open-window-ms') + 1]).toBe(String(CAPTURE_WORKER_PROCESS_SETTINGS.ingestOpenWindowMs));
+    expect(CAPTURE_WORKER_PROCESS_SETTINGS.ingestOpenWindowMs).not.toBe(PRODUCTION_INGEST_OPEN_WINDOW_MS);
     await app.capture.stop(SESSION, 'STOPPED');
     await app.close();
   });

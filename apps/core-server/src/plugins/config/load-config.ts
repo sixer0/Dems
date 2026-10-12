@@ -18,8 +18,10 @@ import {
   ConfigError,
   ENV_CAPTURE_DEV_FAKE_MIC,
   ENV_CAPTURE_DEV_SOURCES,
+  ENV_CAPTURE_GUARD,
   ENV_CAPTURE_HELPER_FFMPEG,
   ENV_CAPTURE_MODE,
+  ENV_CAPTURE_RELAY,
   ENV_CAPTURE_WORKER,
   ENV_DEMO_CONTROLS,
   ENV_INSTALLATION_DEVICE_ID,
@@ -80,6 +82,11 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, options.env[ENV_CAPTURE_HELPER_FFMPEG]);
   // What the first generated test microphone plays (fix wave H, ruling D198). Parsed here; refused or not by the capture fence.
   const captureDevFakeMic = parseCaptureDevFakeMic(options.env[ENV_CAPTURE_DEV_FAKE_MIC]);
+  // The two programs of production capture (task 4 row 21; read here by integration pass I-3): the relay of a camera
+  // and the guard of a microphone. Unset means null. The same rule as every program path above (absolute, no NUL);
+  // whether production capture may boot without them is the boot checks', not this file's.
+  const captureRelayPath = parseCapturePath(ENV_CAPTURE_RELAY, options.env[ENV_CAPTURE_RELAY]);
+  const captureGuardPath = parseCapturePath(ENV_CAPTURE_GUARD, options.env[ENV_CAPTURE_GUARD]);
   // The installation identity (fix wave H closing pass Z1, decision D207). Parsed here; whether a start without it is refused is the sealing host's.
   const installationDeviceId = parseInstallationDeviceId(options.env[ENV_INSTALLATION_DEVICE_ID]);
   const installationName = parseInstallationName(options.env[ENV_INSTALLATION_NAME]);
@@ -116,6 +123,8 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
     captureDevSources,
     captureHelperFfmpegPath,
     captureDevFakeMic,
+    captureRelayPath,
+    captureGuardPath,
     installationDeviceId,
     installationName,
   });

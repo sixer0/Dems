@@ -29,6 +29,10 @@
  * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`
  * (a display name) are what the signed manifest of a sealed recording states as its device. Read
  * once, at start. Whether a start without them is refused is the sealing host's decision.
+ * WAIVED EDIT (task 4 row 21, work package WP-02; the category of OD-14): the two program paths of
+ * production capture. `DEMS_CAPTURE_RELAY` (the relay of a camera) and `DEMS_CAPTURE_GUARD` (the
+ * guard of a helper) are absolute paths, started by the production door only. Whether a start
+ * without them is refused is the decision of the boot checks of production capture, not this file's.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -59,6 +63,8 @@ export const ENV_CAPTURE_HELPER_FFMPEG = 'DEMS_CAPTURE_HELPER_FFMPEG';
 export const ENV_CAPTURE_DEV_FAKE_MIC = 'DEMS_CAPTURE_DEV_FAKE_MIC';
 export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';
 export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';
+export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';
+export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -207,6 +213,10 @@ export interface CoreServerConfig {
   readonly installationDeviceId: string | null;
   /** The display name of this installation, or null when none is configured. */
   readonly installationName: string | null;
+  /** Absolute path of the relay program of production capture, or null when none is configured. Started by the production door only. */
+  readonly captureRelayPath: string | null;
+  /** Absolute path of the guard program of production capture, or null when none is configured. Started by the production door only. */
+  readonly captureGuardPath: string | null;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -332,6 +342,10 @@ export interface ConfigInput {
   readonly installationDeviceId?: string | null;
   /** Default: null. */
   readonly installationName?: string | null;
+  /** Default: null (no relay program of production capture). */
+  readonly captureRelayPath?: string | null;
+  /** Default: null (no guard program of production capture). */
+  readonly captureGuardPath?: string | null;
 }
 
 /**
@@ -385,5 +399,7 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     captureDevFakeMic: input.captureDevFakeMic ?? 'tone',
     installationDeviceId: parseInstallationDeviceId(input.installationDeviceId ?? undefined),
     installationName: parseInstallationName(input.installationName ?? undefined),
+    captureRelayPath: parseCapturePath(ENV_CAPTURE_RELAY, input.captureRelayPath ?? undefined),
+    captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),
   });
 }

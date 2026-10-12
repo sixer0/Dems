@@ -274,10 +274,16 @@ describe('M5-LOCAL-E2E-1 (Core half, scripted helpers): a development session on
     const starts = of.fake.last().commands('START');
     expect(starts).toHaveLength(1);
     expect(starts[0]).toMatchObject({ v: CAPTURE_PROTOCOL_VERSION, sessionId: id, attempt: 1 });
-    expect(starts[0]?.plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.ingestUrl])).toEqual([
+    // Task 4 row 47 (BR-07 (1)): an ingest address ends in one element that is new at every start. The stated part is
+    // the prefix `<session>/<track>`; the element is held by its length and alphabet, never by a value.
+    expect(starts[0]?.plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.ingestUrl.slice(0, camera.ingestUrl.lastIndexOf('/'))])).toEqual([
       ['CAM-03', 'VIDEO-01', `rtsp://127.0.0.1:8554/${id}/video-01`],
       ['CAM-02', 'VIDEO-02', `rtsp://127.0.0.1:8556/${id}/video-02`],
     ]);
+    const ingest = (starts[0]?.plan.cameras ?? []).map((camera) => camera.ingestUrl);
+    const elements = ingest.map((address) => address.slice(address.lastIndexOf('/') + 1));
+    expect(elements.map((element) => /^[A-Za-z0-9_-]{22}$/.test(element))).toEqual([true, true]);
+    expect(new Set(elements).size).toBe(2);
     // The microphone lines keep the selector's input order (ascending input ID); the role is a member of the line.
     expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.role, mic.input.kind])).toEqual([['MIC-02', 'STANDBY', 'PCM_FIFO'], ['MIC-03', 'PRIMARY', 'PCM_FIFO']]);
     const pipes = (starts[0]?.plan.mics ?? []).map((mic) => (mic.input as { path?: string }).path ?? '');
@@ -290,12 +296,19 @@ describe('M5-LOCAL-E2E-1 (Core half, scripted helpers): a development session on
     const pushes = of.scripted.pushes();
     const cameraPushes = pushes.filter((call) => call.args.some((arg) => arg.startsWith('rtsp://127.0.0.1:')));
     expect(cameraPushes).toHaveLength(2);
-    const [local, generated] = cameraPushes;
+    // Since task 4 row 47 the cameras of a start are opened in the same turn: which helper is started first is no
+    // statement of the product. Each helper is named by the listener it pushes to (8554: VIDEO-01, 8556: VIDEO-02).
+    const pushTo = (port: number) => cameraPushes.filter((call) => call.args.some((arg) => arg.startsWith(`rtsp://127.0.0.1:${String(port)}/`)));
+    expect([pushTo(8554).length, pushTo(8556).length]).toEqual([1, 1]);
+    const [local, generated] = [pushTo(8554)[0], pushTo(8556)[0]];
     expect(local?.args).toContain('MacBook Air Camera:none');
-    expect(local?.args).toContain(`rtsp://127.0.0.1:8554/${id}/video-01`);
+    // Each helper is given the address of the worker's own START frame, byte for byte (the worker compares what is announced with it).
+    expect(local?.args).toContain(ingest[0]);
+    expect(local?.args.filter((arg) => arg.startsWith('rtsp://127.0.0.1:8554/'))).toHaveLength(1);
     expect(local?.args.join(' ')).not.toMatch(/testsrc2/);
     expect(generated?.args).toContain('testsrc2=size=1280x720:rate=30,realtime,settb=1/1000000');
-    expect(generated?.args).toContain(`rtsp://127.0.0.1:8556/${id}/video-02`);
+    expect(generated?.args).toContain(ingest[1]);
+    expect(generated?.args.filter((arg) => arg.startsWith('rtsp://127.0.0.1:8556/'))).toHaveLength(1);
     expect(generated?.args.join(' ')).not.toMatch(/avfoundation|MacBook/);
     // Every helper call carries an empty environment and nothing but loopback.
     expect(pushes.every((call) => Object.keys(call.env ?? {}).length === 0)).toBe(true);

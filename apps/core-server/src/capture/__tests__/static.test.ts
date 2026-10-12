@@ -73,6 +73,10 @@ const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
 const LOCAL_PIPE_FILES = 'src/capture/adapters/local/pipe-files.ts';
 /** Row 61: the ONE file of the boot checks that touches the file system, the probe of the evidence store (pinned; G-R2, CS-22, CS-09). */
 const BOOT_EVIDENCE_VOLUME = 'src/capture/boot/evidence-volume.ts';
+/** Task 4 row 21 (WP-02; amended by row 3's decision text SR-1, entry 1): the ONE door of the production programs, the third file that may start a process (pinned; G-R2, G-R8). */
+const PRODUCTION_DOOR = 'src/capture/adapters/production-door.ts';
+/** Task 4 row 64 (WP-07a; amended by row 3's decision text SR-1, entry 3): the ONE file of the card listing that touches the file system, FOR READING ONLY (pinned; G-R2). */
+const CARD_LISTING_READER = 'src/capture/adapters/audio/card-listing-reader.ts';
 
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
@@ -147,17 +151,31 @@ describe('G-R1: the host units open no door of their own', () => {
 
 describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   /** The files that own the spawn and the handshake (spec §G G-R2). */
-  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME];
+  const ALLOWLIST = ['src/capture/supervisor.ts', 'src/capture/ipc.ts', SIGNER_HOST_KEY, LOCAL_HELPER_DOOR, LOCAL_PIPE_FILES, BOOT_EVIDENCE_VOLUME, PRODUCTION_DOOR, CARD_LISTING_READER];
 
   it('the process module and the file system are imported by files of the allowlist only', () => {
     const importers = [...new Set([...places(capture, PROCESS_MODULE), ...places(capture, FILE_SYSTEM)])];
     expect(importers.filter((path) => !ALLOWLIST.includes(path))).toEqual([]);
     // What is there today: the worker's process channel and (rows 134 to 136, decision D95) the pinned door of the local-device helpers.
-    expect(places(capture, PROCESS_MODULE).sort()).toEqual([LOCAL_HELPER_DOOR, 'src/capture/ipc.ts']);
+    // Task 4 row 21 (SR-1, entry 1): the production door is the third. It imports the process module and NOT the file system.
+    expect(places(capture, PROCESS_MODULE).sort()).toEqual([LOCAL_HELPER_DOOR, PRODUCTION_DOOR, 'src/capture/ipc.ts']);
     // Row 83: the software signer's key at rest (evidence package spec §C.3, SEC35-07). Rows 134 / 135: the facts of a program path
     // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else).
     // Row 61: the probe of the evidence store (`boot/evidence-volume.ts`: one exclusive create, a sync, a link and the removal of its own two names).
-    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY].sort());
+    // Task 4 row 64 (SR-1, entry 3): the reader of the card listing (`audio/card-listing-reader.ts`: open for reading, read, close and nothing else).
+    expect(places(capture, FILE_SYSTEM).sort()).toEqual([LOCAL_PIPE_FILES, LOCAL_HELPER_DOOR, BOOT_EVIDENCE_VOLUME, SIGNER_HOST_KEY, CARD_LISTING_READER].sort());
+  });
+
+  // Task 4 row 64 (SR-1, entry 3: "for reading only"). The parser beside it imports no module of the host at all.
+  it('the card listing reader: one import of the file system, one open and that for reading; it writes, removes and starts nothing', () => {
+    const reader = capture.find((file) => file.path === CARD_LISTING_READER)?.text ?? '';
+    expect(reader.match(FILE_SYSTEM)).toEqual([`'node:${'fs'}/promises'`]);
+    expect(reader).toMatch(new RegExp(`^import \\{ open \\} from 'node:${'fs'}/promises';$`, 'm'));
+    expect(reader.match(/\bopen\([^)]*\)/g)).toEqual(["open(path, 'r')"]);
+    expect(reader.match(/\b(?:write|writeFile|appendFile|mkdir|mkdtemp|rm|rmdir|unlink|rename|truncate|chmod|chown|copyFile|link|symlink|utimes)\s*\(/g)).toBeNull();
+    expect([...reader.matchAll(PROCESS_MODULE), ...reader.matchAll(PROCESS_START)]).toEqual([]);
+    const parser = capture.find((file) => file.path === 'src/capture/adapters/audio/card-listing.ts')?.text ?? '';
+    expect(parser.match(/from\s+'[^']+'/g)).toEqual(["from '@dems/shared/api'", "from '../types'"]);
   });
 
   it('no file of the folder opens a socket or starts a worker thread', () => {
@@ -217,8 +235,25 @@ describe('G-R7: the simulator is used through its public barrel only', () => {
 });
 
 describe('G-R8: process, timer, time and chance go through one named place each', () => {
-  it('only ipc.ts and the pinned door of the local-device helpers start a process', () => {
-    expect(places(capture, PROCESS_START).sort()).toEqual([LOCAL_HELPER_DOOR, 'src/capture/ipc.ts']);
+  it('only ipc.ts, the pinned door of the local-device helpers and the pinned door of the production programs start a process', () => {
+    expect(places(capture, PROCESS_START).sort()).toEqual([LOCAL_HELPER_DOOR, PRODUCTION_DOOR, 'src/capture/ipc.ts']);
+  });
+
+  // Task 4 row 21 (SR-1, entry 1; the twin of the local door's start line in G-R12). The local door is not edited:
+  // its line still closes standard input. This one keeps it open, as the channel of the start message and of liveness.
+  it('the production door: one spawn, no shell, an environment it built itself from its closed list, standard input a pipe; no file system', () => {
+    const door = capture.find((file) => file.path === PRODUCTION_DOOR)?.text ?? '';
+    expect([...door.matchAll(PROCESS_START)]).toHaveLength(1);
+    expect(door).toMatch(/shell: false,/);
+    expect(door).toMatch(/detached: false,/);
+    expect(door).toMatch(/env: environment,/);
+    expect(door).toMatch(/stdio: \['pipe', 'pipe', 'pipe'\],/);
+    // Never the caller's object and never the server's own environment: the one `env:` of the file is the line above.
+    expect(door.match(/\benv:/g)).toHaveLength(1);
+    expect(door).toMatch(/PRODUCTION_ENVIRONMENT_KEYS = Object\.freeze\(\['ALSA_CONFIG_PATH'\] as const\);/);
+    expect([...door.matchAll(FILE_SYSTEM)]).toEqual([]);
+    // The local door keeps its own line (G-R12 pins it): the two doors are two files, neither a variant of the other.
+    expect(capture.find((file) => file.path === LOCAL_HELPER_DOOR)?.text).not.toMatch(/'pipe', 'pipe', 'pipe'/);
   });
 
   it('only timers.ts names a global timer', () => {
@@ -576,6 +611,11 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`',
       ' * (a display name) are what the signed manifest of a sealed recording states as its device. Read',
       " * once, at start. Whether a start without them is refused is the sealing host's decision.",
+      // Task 4 row 21 (WP-02; addendum 8.2 "Configuration keys"): the relay and guard paths, two keys, in the same four places.
+      ' * WAIVED EDIT (task 4 row 21, work package WP-02; the category of OD-14): the two program paths of',
+      ' * production capture. `DEMS_CAPTURE_RELAY` (the relay of a camera) and `DEMS_CAPTURE_GUARD` (the',
+      ' * guard of a helper) are absolute paths, started by the production door only. Whether a start',
+      " * without them is refused is the decision of the boot checks of production capture, not this file's.",
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -584,6 +624,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "export const ENV_CAPTURE_DEV_FAKE_MIC = 'DEMS_CAPTURE_DEV_FAKE_MIC';",
       "export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';",
       "export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';",
+      "export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';",
+      "export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';",
       "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
       'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
       "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
@@ -608,6 +650,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly installationDeviceId: string | null;',
       '  /** The display name of this installation, or null when none is configured. */',
       '  readonly installationName: string | null;',
+      '  /** Absolute path of the relay program of production capture, or null when none is configured. Started by the production door only. */',
+      '  readonly captureRelayPath: string | null;',
+      '  /** Absolute path of the guard program of production capture, or null when none is configured. Started by the production door only. */',
+      '  readonly captureGuardPath: string | null;',
       '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
       'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
       "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
@@ -668,6 +714,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly installationDeviceId?: string | null;',
       '  /** Default: null. */',
       '  readonly installationName?: string | null;',
+      '  /** Default: null (no relay program of production capture). */',
+      '  readonly captureRelayPath?: string | null;',
+      '  /** Default: null (no guard program of production capture). */',
+      '  readonly captureGuardPath?: string | null;',
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
       '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
@@ -679,6 +729,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "    captureDevFakeMic: input.captureDevFakeMic ?? 'tone',",
       '    installationDeviceId: parseInstallationDeviceId(input.installationDeviceId ?? undefined),',
       '    installationName: parseInstallationName(input.installationName ?? undefined),',
+      '    captureRelayPath: parseCapturePath(ENV_CAPTURE_RELAY, input.captureRelayPath ?? undefined),',
+      '    captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),',
     ];
     const withoutWaived = (lines: readonly string[]): string | null => {
       const rest = [...lines];
@@ -697,7 +749,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
     expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
     // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
-    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-8)).toEqual([
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-10)).toEqual([
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -707,6 +759,9 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       // Wave H closing pass Z1 (decision D207): the two keys of the installation identity (pin 6 -> 8).
       "export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';",
       "export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';",
+      // Task 4 row 21 (WP-02): the relay and guard paths of production capture (pin 8 -> 10).
+      "export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';",
+      "export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';",
     ]);
     expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir|captureDevSources|captureHelperFfmpegPath): /.test(line))).toHaveLength(5);
     // The development flag has NO default but "off": a line that turned it on by default is not a waived one.

@@ -50,6 +50,8 @@ import {
   CAPTURE_DISCOVERY_OPERATIONS,
   CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CAPTURE_DISCOVERY_SCHEMAS,
+  CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH,
+  CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN,
   CAPTURE_DISCOVERY_WINDOW_MS,
   CAPTURE_HOST_LITERAL_PATTERN,
   CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS,
@@ -71,12 +73,15 @@ import {
   CaptureDiscoveryReason,
   CaptureDiscoveryScope,
   CaptureDiscoverySearchSchema,
+  CaptureDiscoveryStartRequestSchema,
   CaptureDiscoveryStateSchema,
   CaptureSourceClass,
   CoreApiAccessCondition,
   CoreApiAuditNone,
   CoreApiScope,
   SIM_CAPTURE_AUDIO_CARD_IDS,
+  SIM_TYPED_ADDRESS_CANDIDATE_ID,
+  SIM_TYPED_ADDRESS_EXAMPLE,
   WEB_CONSOLE_ONLY_REASON,
   captureAudioInputChangedDetails,
   captureCandidateAdoptedDetails,
@@ -92,6 +97,8 @@ import {
   simCaptureAudioCards,
   simCaptureCandidates,
   simCaptureDiscoverySearch,
+  simTypedAddressAllowed,
+  simTypedAddressCandidate,
   validateCoreApiResponse,
 } from '../src/api';
 import { AUDIT_TYPE_CATEGORY, AuditType, OperatorRole, Permission, ROLE_PERMISSIONS } from '../src/sim';
@@ -143,7 +150,8 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
     const statuses = Object.fromEntries(CAPTURE_DISCOVERY_OPERATIONS.map((operation) => [operation.operationId, listCoreApiResponseStatuses(operation)]));
     expect(statuses).toEqual({
-      startCaptureDiscovery: [200, 202, 401, 403, 409],
+      // Task 4 row 94: the optional body brings 400 (no JSON object) and 422 (outside the schema, or an address the Core may not dial).
+      startCaptureDiscovery: [200, 202, 400, 401, 403, 409, 422],
       getCaptureDiscovery: [200, 401, 403],
       testCaptureCandidateConnection: [200, 400, 401, 403, 404, 409, 422],
       adoptCaptureCandidate: [201, 400, 401, 403, 404, 409, 422],
@@ -151,7 +159,8 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     });
     // What the in-app simulator never sends (C3 §2.6 "Simulator"): the 200 of a search that is still
     // RUNNING and the 409 of another session's search or of a recording.
-    expect(listCoreApiResponseStatuses(findCoreApiOperation('startCaptureDiscovery')!, CoreApiScope.OFFLINE)).toEqual([202, 401, 403]);
+    // Task 4 row 94: the simulator reads the optional body, so it sends the 400 and the 422 as well.
+    expect(listCoreApiResponseStatuses(findCoreApiOperation('startCaptureDiscovery')!, CoreApiScope.OFFLINE)).toEqual([202, 400, 401, 403, 422]);
     for (const status of [429, 503]) expect(CORE_API_ENVELOPE_RESPONSES.some((entry) => entry.status === status)).toBe(true);
     const text = (operationId: string): string => findCoreApiOperation(operationId)?.description ?? '';
     expect(text('startCaptureDiscovery')).toContain('DISCOVERY_RATE_LIMITED');
@@ -222,10 +231,21 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
 describe('no caller-supplied target (R-9 AC-10; SEC35-32)', () => {
   const TARGET_MEMBERS = ['address', 'host', 'port', 'url', 'uri', 'path', 'subnet', 'interface', 'timeout', 'windowMs', 'filter', 'profile', 'endpointRef', 'xaddr'];
 
-  it('operations 93, 94 and 97 take no body and no query; 95 and 96 take the optional credential and nothing else', () => {
-    for (const id of ['startCaptureDiscovery', 'getCaptureDiscovery', 'rescanCaptureInputs']) {
+  it('operations 94 and 97 take no body and no query; 93 takes the optional typed address and nothing else; 95 and 96 take the optional credential and nothing else', () => {
+    for (const id of ['getCaptureDiscovery', 'rescanCaptureInputs']) {
       const operation = findCoreApiOperation(id)!;
       expect([operation.requestBody, operation.query, operation.pathParam], id).toEqual([undefined, undefined, undefined]);
+    }
+    // Task 4 row 94 (AM-3): the one exception. An optional body with ONE optional member; every other
+    // member a caller could try to steer the Core with is refused, as before.
+    const search = findCoreApiOperation('startCaptureDiscovery')!;
+    expect([search.requestBody, search.query, search.pathParam]).toEqual([{ schema: 'CaptureDiscoveryStartRequest', required: false }, undefined, undefined]);
+    expect(CAPTURE_DISCOVERY_SCHEMAS.CaptureDiscoveryStartRequest).toBe(CaptureDiscoveryStartRequestSchema);
+    expect(Object.keys(CaptureDiscoveryStartRequestSchema.shape)).toEqual(['address']);
+    expect(CaptureDiscoveryStartRequestSchema.safeParse({}).success).toBe(true);
+    for (const member of TARGET_MEMBERS.filter((name) => name !== 'address')) {
+      expect(CaptureDiscoveryStartRequestSchema.safeParse({ [member]: '192.168.10.20' }).success, member).toBe(false);
+      expect(CaptureDiscoveryStartRequestSchema.safeParse({ address: '192.168.10.20', [member]: '192.168.10.20' }).success, member).toBe(false);
     }
     for (const schema of [CaptureConnectionTestRequestSchema, CaptureCandidateAdoptRequestSchema]) {
       expect(Object.keys(schema.shape)).toEqual(['credential']);
@@ -233,6 +253,80 @@ describe('no caller-supplied target (R-9 AC-10; SEC35-32)', () => {
       // A strict object: every member a caller could try to steer the Core with is refused.
       for (const member of TARGET_MEMBERS) expect(schema.safeParse({ [member]: '192.0.2.1' }).success, member).toBe(false);
     }
+  });
+
+  it('task 4 row 94 (AM-3; S13-11): the typed address of operation 93 is ONE strict dotted quad - the form of the Core\'s destination rule, and no looser', () => {
+    const accepts = (address: unknown): boolean => CaptureDiscoveryStartRequestSchema.safeParse({ address }).success;
+    // The strict literal: four decimal parts from 0 to 255, no leading zero.
+    for (const address of ['192.168.10.20', '10.0.0.1', '172.16.0.9', '172.31.255.254', '192.168.50.101', '0.0.0.0', '255.255.255.255', '1.2.3.4']) {
+      expect(accepts(address), address).toBe(true);
+      expect(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(address), address).toBe(true);
+    }
+    expect(CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH).toBe('255.255.255.255'.length);
+    // The cases the rule's own table calls "not a strict dotted quad" (destination-rule.test.ts), one by one ...
+    const malformed = [
+      '192.168.050.101', '0xC0.168.50.101', '3232248421', '0x7f000001', '192.168.50', '127.1', '192.168.50.101.1', '192.168.50.256',
+      '192.168.50.101.', '192.168.50.101:80', '192.168.50.101/24', ' 192.168.50.101', '192.168.50.101\n', '192.168.50.101 127.0.0.1',
+      '192.168.50.0103', '00.0.0.1', '192.168.50.999', '300.1.1.1', '1.2.3.-4', '1,2,3,4', '１９２.168.50.101',
+    ];
+    // ... a name, a locator, a credential-bearing text, and every way of writing an address as IPv6.
+    const names = ['camera-1.local', 'localhost', 'gateway', 'camera:80', 'http://192.168.50.101/', 'rtsp://192.168.50.101/stream', 'admin:pass@192.168.50.101', ''];
+    const ipv6 = ['::1', '::', '::ffff:127.0.0.1', '::ffff:192.168.50.101', '::ffff:7f00:1', '[::ffff:192.168.50.101]', '::192.168.50.101', '64:ff9b::c0a8:3265', 'fe80::1%en0', 'fd00::10', '2001:db8::1'];
+    for (const address of [...malformed, ...names, ...ipv6]) expect(accepts(address), JSON.stringify(address)).toBe(false);
+    // Not a text.
+    for (const address of [3_232_248_421, null, ['192.168.50.101'], { address: '192.168.50.101' }, true]) expect(accepts(address), JSON.stringify(address)).toBe(false);
+    // Must FAIL if the pattern were the loose one of a candidate's `host`: that one lets a leading zero and a part above 255 pass.
+    for (const loose of ['192.168.050.101', '192.168.50.999']) expect(CAPTURE_HOST_LITERAL_PATTERN.test(loose), loose).toBe(true);
+
+    // A FORM ONLY: these match, and the Core's rule refuses each (loopback, public, multicast, broadcast).
+    for (const address of ['127.0.0.1', '8.8.8.8', '224.0.0.1', '255.255.255.255', '169.254.1.1']) {
+      expect(accepts(address), address).toBe(true);
+      expect(simTypedAddressAllowed(address), address).toBe(false);
+    }
+    // The simulator's stand-in: the three private ranges, without the first and the last address of a /24.
+    for (const address of ['10.0.0.1', '172.16.0.9', '172.31.255.254', '192.168.10.20', SIM_TYPED_ADDRESS_EXAMPLE]) expect(simTypedAddressAllowed(address), address).toBe(true);
+    for (const address of ['172.15.0.9', '172.32.0.9', '192.169.1.1', '11.0.0.1', '192.168.10.0', '192.168.10.255', '192.168.050.101', 'localhost', '']) expect(simTypedAddressAllowed(address), address).toBe(false);
+  });
+
+  it('task 4 row 94: the generated description of operation 93 states the member, the rule, the refusal and the web-console bound; a search without it is documented as unchanged', () => {
+    const operation = findCoreApiOperation('startCaptureDiscovery')!;
+    for (const part of ['The body is optional', '`address`', 'one** unicast WS-Discovery probe', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'DISCOVERY_ADDRESS_NOT_ALLOWED', 'never quotes the address', 'probe answer only', 'web console only', 'WEB_CONSOLE_ONLY']) {
+      expect(operation.description, part).toContain(part);
+    }
+    expect(operation.description).not.toContain('**No body.**');
+    // The access of the operation is what it was (decision C10: the permission of today's search): no condition on the operation itself.
+    expect(describeCoreApiAccess(operation.access)).toBe('CAPTURE_CONFIG');
+    expect('conditions' in operation.access).toBe(false);
+    expect(operation.responses[403]?.description).toContain('WEB_CONSOLE_ONLY');
+    expect(operation.responses[422]?.description).toContain('DISCOVERY_ADDRESS_NOT_ALLOWED');
+    expect(CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED).toBe('DISCOVERY_ADDRESS_NOT_ALLOWED');
+
+    // The examples: the FIRST request example is the search without an address (what the Core's
+    // acceptance suites send), and no example text carries a refused address.
+    const examples = CORE_API_EXAMPLES['startCaptureDiscovery']!;
+    expect(Object.entries(examples.request ?? {}).map(([name, example]) => [name, example.value])).toEqual([
+      ['search', {}],
+      ['typedAddress', { address: SIM_TYPED_ADDRESS_EXAMPLE }],
+    ]);
+    for (const example of Object.values(examples.request ?? {})) expect(CaptureDiscoveryStartRequestSchema.safeParse(example.value).success).toBe(true);
+    expect(Object.keys(examples.responses[202] ?? {})).toEqual(['started', 'typedAddress']);
+    expect(Object.keys(examples.responses[403] ?? {})).toContain('webConsoleOnly');
+    expect(Object.keys(examples.responses[422] ?? {})).toEqual(['invalidInput', 'addressNotAllowed']);
+    expect(JSON.stringify(examples.responses[422])).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
+
+    // The document: an optional body, the pattern of the schema, the member not required.
+    const document = createOpenApiDocument({ scope: 'all' });
+    const component = document.components.schemas['CaptureDiscoveryStartRequest'] as { properties: { address: { pattern: string; maxLength: number } }; required?: string[]; additionalProperties?: boolean };
+    expect(component.properties.address.pattern).toBe(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.source);
+    expect(component.properties.address.maxLength).toBe(15);
+    expect(component.required ?? []).toEqual([]);
+    expect(component.additionalProperties).toBe(false);
+
+    // The synthetic candidate of the simulator parses as a candidate, and says by itself what it is.
+    const typed = simTypedAddressCandidate(SIM_TYPED_ADDRESS_EXAMPLE);
+    expect(CaptureCandidateSchema.safeParse(typed).success).toBe(true);
+    expect([typed.candidateId, typed.adapter, typed.sourceClass, typed.host, typed.vendor, typed.status]).toEqual([SIM_TYPED_ADDRESS_CANDIDATE_ID, 'FAKE', CaptureSourceClass.DEVELOPMENT, SIM_TYPED_ADDRESS_EXAMPLE, 'DEMS', 'NEW']);
+    expect(simCaptureCandidates().map((candidate) => candidate.candidateId)).not.toContain(SIM_TYPED_ADDRESS_CANDIDATE_ID);
   });
 
   it('the one path parameter is a candidate id: an address, a URL and a capture device id do not match it', () => {

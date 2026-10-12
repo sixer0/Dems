@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
-import { fireEvent, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { FaultKind } from '@dems/shared/sim';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
@@ -96,6 +96,23 @@ describe('phone portrait (MB 7)', () => {
     fireEvent.press(screen.getByTestId('device-detail-back'));
     await settle();
     expect(h.app.getPathname()).toBe('/devices');
+  });
+
+  // Row 55 (P12-F08): the Overview's format is the camera slice's statement - no codec and no rate of the screen's own.
+  it('row 55: the camera detail states HEVC for an HEVC slice, with the stated rate, and with no rate when the slice states none', async () => {
+    const h = renderDevicesApp();
+    await settle();
+    await openDetail(h, 'CAM-01');
+    expect(within(screen.getByTestId('device-fact-format')).getByText('1080p • 25 fps • H.264')).toBeTruthy();
+
+    act(() => h.sim.store.setState((s) => ({ cameras: s.cameras.map((camera) => ({ ...camera, resolution: '2160p', fps: 30, codec: 'HEVC' as const })) })));
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('2160p • 30 fps • HEVC')).toBeTruthy();
+
+    act(() => h.sim.store.setState((s) => ({ cameras: s.cameras.map((camera) => ({ ...camera, resolution: '1080p', fps: null, codec: 'HEVC' as const })) })));
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('1080p • HEVC')).toBeTruthy();
+    expect(screen.queryByText(/fps|H\.264/)).toBeNull();
   });
 
   it('Test signal goes through a Dialog and writes the audit row; the Log shows it from codes', async () => {

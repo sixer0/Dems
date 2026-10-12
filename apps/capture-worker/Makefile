@@ -22,6 +22,9 @@
 #                                                            review R63-12: the negative control of the floor's wiring in the ingest)
 #                     build/capture-worker-nobound           no fragment size bound: neither the cut nor the writer's refusal
 #                                                            (review R63-02: the negative control "with the rule off")
+#                     build/capture-worker-noannounce        the log callback sees no message of the library (task 4 row 58,
+#                                                            BR-01: "the library no longer says the ANNOUNCE line"): the gate is
+#                                                            NOT off - it must refuse every push, the right path too
 #   make fixtures   the NM-14 fixture set from test-fixtures/ (fake camera, fake mics, the vendored
 #                   row-111 skeleton used as the negative control of the socket check)
 #   make e2e        THE capture end-to-end series with one aggregate exit code (test/e2e.py; sandbox
@@ -34,7 +37,8 @@
 #                   log quota (test/log_test.c; its red run: -DLOG_SHARED_QUOTA), the clock floor of row 71
 #                   (anchor_test.c check (2e); red runs -DFIRST_LIVE_ONLY and -DNO_FLOOR) and the microphone
 #                   warning raiser on a sample-count clock (test/micwatch_test.c = M5-WARN-1; red run
-#                   -DMICWATCH_PROOF_NO_DEBOUNCE)
+#                   -DMICWATCH_PROOF_NO_DEBOUNCE), and the announced address of an ingest (test/announce_test.c,
+#                   task 4 row 58: the right message passes, seven near misses and every other case do not)
 CC         := clang
 PKG_CONFIG ?= pkg-config
 LIBS_PC    := libavformat libavcodec libavfilter libswresample libavutil
@@ -46,8 +50,8 @@ LDLIBS     := $(shell $(PKG_CONFIG) --libs $(LIBS_PC)) -lm -lpthread
 
 BUILD := build
 BIN   := $(BUILD)/capture-worker
-SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c src/micwatch.c
-HDR   := src/worker.h src/anchor.h src/micwatch.h
+SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c src/micwatch.c src/announce.c
+HDR   := src/worker.h src/anchor.h src/micwatch.h src/announce.h
 
 FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic
 
@@ -83,6 +87,7 @@ proof: check
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_INTERVAL_SKEW=480 -o $(BUILD)/capture-worker-intervalskew $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_CLOCK_FLOOR -o $(BUILD)/capture-worker-nofloor $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_FRAGMENT_BOUND -o $(BUILD)/capture-worker-nobound $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_ANNOUNCE_UNSEEN -o $(BUILD)/capture-worker-noannounce $(SRC) $(LDLIBS)
 
 unit:
 	@mkdir -p $(BUILD)
@@ -93,6 +98,7 @@ unit:
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DNO_FLOOR -o $(BUILD)/anchor_test_nofloor test/anchor_test.c src/anchor.c -lm && { $(BUILD)/anchor_test_nofloor >/dev/null && { echo "anchor_test: without the clock floor the test passes: the check of a clock behind cannot fail"; exit 1; } || echo "anchor_test: without the clock floor a clock 2.6 s behind is kept, as required (negative control, row 71 clock floor)"; }
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -o $(BUILD)/micwatch_test test/micwatch_test.c src/micwatch.c -lm && $(BUILD)/micwatch_test
 	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -DMICWATCH_PROOF_NO_DEBOUNCE -o $(BUILD)/micwatch_test_nodebounce test/micwatch_test.c src/micwatch.c -lm && { $(BUILD)/micwatch_test_nodebounce >/dev/null && { echo "micwatch_test: a raiser without its durations passes: M5-WARN-1 cannot fail"; exit 1; } || echo "micwatch_test: a raiser that warns at once fails it, as required (negative control, M5-WARN-1)"; }
+	@$(CC) -std=c11 -O1 -Wall -Wextra -Werror -o $(BUILD)/announce_test test/announce_test.c src/announce.c && $(BUILD)/announce_test
 	@$(CC) $(CFLAGS) -o $(BUILD)/sink_kill_test test/sink_kill_test.c src/sink.c $(LDLIBS) && $(BUILD)/sink_kill_test $(BUILD)/sink_kill 200
 	@$(CC) $(CFLAGS) -o $(BUILD)/writer_test test/writer_test.c src/sink.c $(LDLIBS) && $(BUILD)/writer_test $(BUILD)/writer_scratch
 	@$(CC) $(CFLAGS) -DDEMS_PROOF_KEEP_TORN_TAIL -o $(BUILD)/writer_test_notrunc test/writer_test.c src/sink.c $(LDLIBS) && { $(BUILD)/writer_test_notrunc $(BUILD)/writer_scratch_notrunc > $(BUILD)/writer_test_notrunc.out; rc=$$?; \

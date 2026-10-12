@@ -662,11 +662,34 @@ export interface AudioSlice {
    * The newest frame of each of the two mic inputs, keyed by input ID `MIC-NN` (D133 (1)). The
    * simulator meters the built-in pair `MIC-01` / `MIC-02`; a Core whose selector holds another
    * registered microphone keys the frames by that pair.
+   *
+   * Task 4 row 28 (WP-13a; decision C25, register E41): one frame per microphone line of the
+   * selector and no other key, so AT MOST two. A selector slot may be unassigned: a selector with
+   * one microphone line has one frame, a selector with none has none.
    */
   inputs: Record<CaptureMicInputId, AudioFrame>;
-  /** Which input currently feeds `AUDIO-01` (op 81 updates it with the switch). */
-  activeInputId: CaptureMicInputId;
+  /**
+   * Which input currently feeds `AUDIO-01` (op 81 updates it with the switch). `null` when the
+   * selector holds no PRIMARY line and no session states a source (task 4 row 28; register E41):
+   * no input stands in for it.
+   */
+  activeInputId: CaptureMicInputId | null;
 }
+
+/**
+ * SEAM of task 4 row 28 (WP-13a), to be REMOVED by the rows that make the readers follow the
+ * nullable `activeInputId` (162 and 164 write it; 163, 165, 168, 170, 171 read it).
+ *
+ * The wire form (`AudioSliceSchema`), the meter frame of the Core and `AudioSlice` above state the
+ * truth: `activeInputId` may be `null`. The slice as the STATE holds it (`SimState['audio']`) still
+ * types the member as an input, because nine readers of `state.audio.activeInputId` take a string
+ * and belong to those rows (the list is in `file_requests.md`, row 28). Nothing writes `null`
+ * into the state today: the seeded selector is complete and no action clears a slot yet.
+ *
+ * To remove it: `SimState['audio']` becomes `AudioSlice`, this type is deleted, and the compiler
+ * names every reader that is left.
+ */
+export type AudioSliceInState = Omit<AudioSlice, 'activeInputId'> & { activeInputId: CaptureMicInputId };
 
 /** One camera row of the `captureConfig` slice (`C3 §6` slice 29). */
 export interface CaptureConfigCamera {
@@ -873,21 +896,40 @@ export interface CaptureConfigMicChange {
   deviceId: string;
   transport?: string | undefined;
   /**
-   * PAIR REPLACEMENT (D133 (1)): present on BOTH lines of a two-line change, the lines are the new
-   * pair of inputs (one PRIMARY, one STANDBY, `deviceId == inputId`). Absent on every line: the
-   * line edits the input it names.
+   * BY ROLE (D133 (1); task 4 rule MIC-ASSIGN, decision C21 (8)): present on EVERY line of the
+   * change (one line or two, no role twice, `deviceId == inputId`), each line puts its input on
+   * the slot of its role; the slot of a role the change does not name keeps what it holds. Two
+   * lines are the pair replacement of D133 (1). Absent on every line: the line edits the input it
+   * names.
    */
   role?: MicRole | undefined;
 }
+
+/**
+ * One slot of the device selector (task 4 row 28; WP-13a; names register N3): a video track or a
+ * microphone role. It is what the member `unassign` of operation 78 names. Stated structurally, so
+ * that this file imports nothing of `api/`; a type test holds it equal to the members of
+ * `CAPTURE_SELECTOR_SLOTS` (`api/devices.ts`).
+ */
+export type CaptureSelectorSlot = VideoTrackId | MicRole;
 
 /**
  * The input of the hosted action `setCaptureConfig` (register SH-18; C3 §2.4): one edit of the
  * device selector. Each kind is one operation of the contract: `UPDATE` is operation 78 (the whole
  * selector, every member optional), `CAMERA_SOURCE` operation 79 (a camera device to a video
  * track), `PRIMARY_MIC` operation 80 (a mic input becomes PRIMARY, the other STANDBY).
+ *
+ * `unassign` (task 4 row 28; decision C14; AD-10): the slots the edit CLEARS. An unassigned slot is
+ * an absent line of the selector, never a line with an empty device. It is the only writer of an
+ * empty slot; a slot is never in `unassign` and assigned by the same change.
  */
 export type CaptureConfigChange =
-  | { kind: 'UPDATE'; cameras?: readonly CaptureConfigCameraChange[] | undefined; mics?: readonly CaptureConfigMicChange[] | undefined }
+  | {
+      kind: 'UPDATE';
+      cameras?: readonly CaptureConfigCameraChange[] | undefined;
+      mics?: readonly CaptureConfigMicChange[] | undefined;
+      unassign?: readonly CaptureSelectorSlot[] | undefined;
+    }
   | { kind: 'CAMERA_SOURCE'; deviceId: string; trackId: VideoTrackId }
   | { kind: 'PRIMARY_MIC'; inputId: string };
 
@@ -1444,7 +1486,8 @@ export interface SimState {
   activeCameraId: VideoTrackId;
   cameras: CameraStatus[];
   mics: MicStatus[];
-  audio: AudioSlice;
+  /** The meters slice as the state holds it: `AudioSlice` behind the seam of task 4 row 28 (`AudioSliceInState`), which later rows of WP-13a remove. */
+  audio: AudioSliceInState;
   storage: StorageSlice;
   storagePolicy: StoragePolicy;
   time: TimeSlice;

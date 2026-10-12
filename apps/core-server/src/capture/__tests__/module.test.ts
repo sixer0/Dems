@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, SEAM_PROVIDERS } from '../../app';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
-import { CapturePhase, CaptureRefusal, WorkerDownCode, createCaptureSupervisor, forwardCaptureEvents, writeSupervisorFaults } from '../index';
+import { CAPTURE_WORKER_SETTINGS } from '@dems/capture-protocol';
+import { CaptureOperation } from '../adapters';
+import { CAPTURE_WORKER_PRODUCTION_SETTINGS, CapturePhase, CaptureRefusal, PRODUCTION_INGEST_OPEN_WINDOW_MS, WorkerDownCode, captureWorkerArguments, createCaptureSupervisor, forwardCaptureEvents, writeSupervisorFaults } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const scratch: string[] = [];
@@ -171,5 +173,26 @@ describe('the capture seam', () => {
     stopWriting();
     await supervisor.shutdown();
     await app.close();
+  });
+
+  // Task 4, integration pass I-3 (request of row 47; AD-11): the session worker of REAL_PRODUCTION gets that operation's ingest window.
+  it('the session worker is started with the ingest window of its operation: 30,000 ms for REAL_PRODUCTION and for no other operation', () => {
+    const index = readFileSync(new URL('../index.ts', import.meta.url), 'utf8');
+    // The unit asks the one function for the operation ONCE, and the launcher of session workers is told whether it is production.
+    expect(index.match(/captureOperationOf\(app\.config\)/g)).toHaveLength(1);
+    expect(index).toContain('const operation = captureOperationOf(app.config);');
+    expect(index.split('\n').filter((line) => line.includes('createProcessLauncher({')).map((line) => line.trim())).toEqual([
+      'createProcessLauncher({ command: captureWorkerPath, args: captureWorkerArguments(`${dataDir}/${WORKER_LOG_NAME}`, operation === CaptureOperation.REAL_PRODUCTION) })',
+    ]);
+    // What that comparison gives the worker, operation by operation: the window is the one word that differs.
+    const at = (list: readonly string[]): string | undefined => list[list.indexOf(CAPTURE_WORKER_SETTINGS.ingestOpenWindowMs.argument) + 1];
+    const windows = Object.values(CaptureOperation).map((operation) => [operation, at(captureWorkerArguments('/x/worker.jsonl', operation === CaptureOperation.REAL_PRODUCTION))]);
+    expect(windows).toEqual([
+      ['SIMULATED', String(CAPTURE_WORKER_SETTINGS.ingestOpenWindowMs.default)],
+      ['REAL_PRODUCTION', String(PRODUCTION_INGEST_OPEN_WINDOW_MS)],
+      ['REAL_DEVELOPMENT', String(CAPTURE_WORKER_SETTINGS.ingestOpenWindowMs.default)],
+    ]);
+    expect(PRODUCTION_INGEST_OPEN_WINDOW_MS).toBe(30_000);
+    expect(CAPTURE_WORKER_PRODUCTION_SETTINGS.ingestOpenWindowMs).toBe(PRODUCTION_INGEST_OPEN_WINDOW_MS);
   });
 });

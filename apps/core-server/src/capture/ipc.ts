@@ -66,15 +66,21 @@ export function createProcessLauncher(options: ProcessLauncherOptions): WorkerLa
     }
     const { stdin, stdout } = child;
     if (stdin === null || stdout === null) {
-      child.kill('SIGKILL');
+      // A start that failed has no process ID: a signal through its handle would go to process ID 0, the server's whole process group.
+      if (child.pid !== undefined) child.kill('SIGKILL');
       throw new WorkerLaunchError(WorkerDownCode.SPAWN_FAILED, 'the capture worker process has no standard streams', true);
     }
 
     let ended = false;
     let spawnFailed = false;
-    const killAtExit = (): void => {
-      child.kill('SIGKILL');
+    /**
+     * The ONE place that signals the child from here on. A start that failed has no process ID, and a signal sent
+     * through its handle would go to process ID 0, which is the server's whole process group: never.
+     */
+    const signalChild = (signal: 'SIGTERM' | 'SIGKILL'): void => {
+      if (!ended && child.pid !== undefined) child.kill(signal);
     };
+    const killAtExit = (): void => signalChild('SIGKILL');
     process.once('exit', killAtExit);
 
     const end = (exitCode: number | null, signal: string | null): void => {
@@ -133,9 +139,7 @@ export function createProcessLauncher(options: ProcessLauncherOptions): WorkerLa
       closeInput() {
         if (!stdin.writableEnded) stdin.end();
       },
-      kill(signal) {
-        if (!ended) child.kill(signal);
-      },
+      kill: signalChild,
     };
     return channel;
   };

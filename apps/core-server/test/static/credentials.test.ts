@@ -110,8 +110,12 @@ describe('T-CR-2 (b), AC-B-86: no secret outside the connection file', () => {
     // A SECOND pinned file (task 3 row 134; decision D95; capture spec §A.6.4 HL-2): the door of the
     // local-device helpers. Same rules, held by `src/capture/adapters/local/__tests__/camera-helper.test.ts`.
     const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
-    expect(occurrences(server, childProcess, (path) => runtime(path) && path !== CAPTURE_PROCESS_CHANNEL && path !== LOCAL_HELPER_DOOR)).toEqual([]);
-    expect([...new Set(occurrences(server, childProcess, runtime).map((place) => place.replace(/:\d+$/, '')))].sort()).toEqual([LOCAL_HELPER_DOOR, CAPTURE_PROCESS_CHANNEL]);
+    // A THIRD pinned file (task 4 row 21, WP-02; decision text SR-1 entry 1): the door of the production
+    // programs. It is the one place a secret goes to a child, and it goes to standard input: never an
+    // argument. Held by `src/capture/adapters/__tests__/static.test.ts` (A-8) and `production-door.test.ts`.
+    const PRODUCTION_DOOR = 'src/capture/adapters/production-door.ts';
+    expect(occurrences(server, childProcess, (path) => runtime(path) && path !== CAPTURE_PROCESS_CHANNEL && path !== LOCAL_HELPER_DOOR && path !== PRODUCTION_DOOR)).toEqual([]);
+    expect([...new Set(occurrences(server, childProcess, runtime).map((place) => place.replace(/:\d+$/, '')))].sort()).toEqual([LOCAL_HELPER_DOOR, PRODUCTION_DOOR, CAPTURE_PROCESS_CHANNEL]);
   });
 });
 

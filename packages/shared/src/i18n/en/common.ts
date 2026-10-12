@@ -523,6 +523,9 @@ export const common = {
     mic2: 'MIC 2',
     cameraFormat: '{{resolution}} • {{fps}} fps',
     cameraFormatCodec: '{{resolution}} • {{fps}} fps • {{codec}}',
+    // The same two lines for a stream that states no rate (the slice's `fps` is null): no rate is printed.
+    cameraFormatNoRate: '{{resolution}}',
+    cameraFormatCodecNoRate: '{{resolution}} • {{codec}}',
   },
   deviceMenu: {
     label: 'Device actions',
@@ -866,7 +869,22 @@ export const common = {
       noStandby: '{{device}} is not reachable. The session will record with no standby microphone.',
       oneMicrophone: '{{device}} is not reachable. The session will record with one microphone and no standby.',
       notRecordable: '{{device}} cannot be recorded by this version of the system.',
+      // Task 4 row 28 (WP-13a; names register N13): the pre-check item of an unassigned selector
+      // slot. One sentence for BLOCK and WARN; it promises nothing about the start.
+      sourceNotAssigned: '{{slot}} has no source assigned. Assign one on Devices.',
     },
+  },
+
+  // Task 4 row 28 (WP-13a; decision C18 (3); names register N14): the four slots of the device
+  // selector and the words of an empty one. Keyed by the values of `CAPTURE_SELECTOR_SLOTS`.
+  captureSlot: {
+    'VIDEO-01': 'Camera 1',
+    'VIDEO-02': 'Camera 2',
+    PRIMARY: 'Primary microphone',
+    STANDBY: 'Standby microphone',
+    notAssigned: 'Not assigned',
+    assign: 'Assign',
+    assignLabel: 'Assign a source to {{slot}}',
   },
 
   sourceClass: {

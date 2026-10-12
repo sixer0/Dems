@@ -71,11 +71,16 @@ export function runSeedHelper(program: string, args: readonly string[], timeoutM
     const started = child;
     let over = false;
     let timedOut = false;
-    const killAtExit = (): void => void started.kill('SIGKILL');
+    // The ONE place that signals the helper (task 4 rows 21 and 180, integration pass I-3). A start that failed has no
+    // process ID, and a signal sent through its handle would go to process ID 0, this process's whole group: never.
+    const signalChild = (): void => {
+      if (!over && started.pid !== undefined) started.kill('SIGKILL');
+    };
+    const killAtExit = (): void => signalChild();
     process.once('exit', killAtExit);
     const timer = setTimeout(() => {
       timedOut = true;
-      started.kill('SIGKILL');
+      signalChild();
     }, timeoutMs);
     // Read and dropped: a full pipe would stop the helper, and nothing of it is kept.
     started.stderr?.on('data', () => {});

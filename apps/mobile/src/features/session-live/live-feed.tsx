@@ -213,7 +213,10 @@ export function LiveFeed({
               {camera && !ownCapture ? (
                 <Chip size="sm" variant="secondary" style={styles.darkChip} testID="monitor-feed-format">
                   <Chip.Label style={styles.chipMono}>
-                    {t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+                    {/* Task 4 row 55 / I-3 (P12-F08): a stream that states no rate (`fps` null) reads without one, never with an empty rate. */}
+                    {camera.fps === null
+                      ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution })
+                      : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
                   </Chip.Label>
                 </Chip>
               ) : null}

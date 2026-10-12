@@ -8,7 +8,10 @@ import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
   AudioSliceSchema,
+  AudioStatusResponseSchema,
+  CORE_API_EXAMPLES,
   CORE_API_SCHEMAS,
+  DeviceHealthResponseSchema,
   OPENAPI_EXAMPLE_INSTANT,
   OperatorSchema,
   REPLICATED_SLICE_NAMES,
@@ -20,6 +23,7 @@ import {
   STATE_SLICE_DELIVERY,
   StateSliceDelivery,
   UNREPLICATED_SLICE_NAMES,
+  VideoStatusResponseSchema,
   createOpenApiDocument,
   isWellFormedText,
   pickReplicatedState,
@@ -49,6 +53,7 @@ import {
   createSim,
   verifyAuditChain,
   type ActiveSession,
+  type AudioSlice,
   type AuditRow,
   type EvidenceItem,
   type ScenarioName,
@@ -158,7 +163,15 @@ const pathsSeeOptionalMembers: Exact<MemberPaths<{ a?: { b?: number }[]; c: stri
 const pathsTellTypesApart: Exact<MemberPaths<{ a: number }>, MemberPaths<{ a: number; b?: number }>> = false;
 const evidenceNamesItsOptionalMembers: 'tamperedTrackId' | 'markers.label' | 'notes.authorId' | 'signature.keyId' extends MemberPaths<SimState['evidence']> ? true : false = true;
 const stateIsThe28Slices: PendingM2W9<Exact<ReplicatedState, Pick<SimState, ReplicatedSliceName>>> = 'PENDING-M2W9'; // via the evidence slice
-const audioIsTheSlice: Exact<AudioSliceBody, SimState['audio']> = true;
+const audioIsTheSlice: Exact<AudioSliceBody, AudioSlice> = true;
+/**
+ * Task 4 row 28 (WP-13a): the wire form and `AudioSlice` state a nullable `activeInputId`; the
+ * slice as the STATE holds it is still behind the seam `AudioSliceInState` (`sim/types.ts`). The
+ * marker compiles while the seam stands and stops compiling when a later row of WP-13a removes it,
+ * forcing the flip to `true`.
+ */
+type PendingRow28Seam<T extends boolean> = T extends true ? true : 'PENDING-ROW-28-SEAM';
+const audioStateIsTheSlice: PendingRow28Seam<Exact<AudioSliceBody, SimState['audio']>> = 'PENDING-ROW-28-SEAM';
 // Every slice of `SimState` is classified, and nothing else is.
 const deliveryCoversTheState: Exact<keyof typeof STATE_SLICE_DELIVERY, keyof SimState> = true;
 const unreplicatedAreTheOtherFive: Exact<Exclude<keyof SimState, ReplicatedSliceName>, 'clock' | 'auth' | 'authLockout' | 'pairing' | 'audio'> = true;
@@ -179,6 +192,7 @@ void [
   evidenceNamesItsOptionalMembers,
   stateIsThe28Slices,
   audioIsTheSlice,
+  audioStateIsTheSlice,
   deliveryCoversTheState,
   unreplicatedAreTheOtherFive,
   operatorIsSimOperator,
@@ -820,13 +834,73 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     for (const dbfs of [0.1, -90.5, null]) {
       expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs } } }).success, String(dbfs)).toBe(false);
     }
-    // Schema v2 keys the meters by input and names the active one (SH-17): one input, or a third
-    // input, or the v1 `channels` shape, or a missing `activeInputId`, are all refused.
-    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame }, activeInputId: 'MIC-01' }).success).toBe(false);
+    // Schema v2 keys the meters by input and names the active one (SH-17): a third input, or the
+    // v1 `channels` shape, or a missing `activeInputId`, are all refused.
     expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-03': frame } }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ inputs: audio.inputs }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ channels: audio.inputs, activeInputId: 'MIC-01' }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs: -90, peak: 0 } } }).success).toBe(true);
+  });
+
+  // Task 4 row 28 (WP-13a; decision C25; names register E41): a selector slot may be unassigned,
+  // so the meters slice holds AT MOST two frames and may name no active input. Each acceptance has
+  // its refusal beside it.
+  it('row 28: the audio slice admits an absent selector value - one frame or none, and a null active input; a complete slice reads as before', () => {
+    const audio = state.audio;
+    const frame = audio.inputs['MIC-01'];
+    // A complete selector: the slice of today parses to itself, member for member.
+    expect(Object.keys(audio.inputs)).toEqual(['MIC-01', 'MIC-02']);
+    expect(AudioSliceSchema.parse(audio)).toStrictEqual(audio);
+    // One microphone line: one frame (this body was refused before the widening).
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame }, activeInputId: 'MIC-01' }).success).toBe(true);
+    // A lone STANDBY line: its frame, and no active input.
+    expect(AudioSliceSchema.parse({ inputs: { 'MIC-02': frame }, activeInputId: null })).toStrictEqual({ inputs: { 'MIC-02': frame }, activeInputId: null });
+    // No microphone line at all.
+    expect(AudioSliceSchema.safeParse({ inputs: {}, activeInputId: null }).success).toBe(true);
+    // Absent is `null`, never a missing member, an empty text or a word.
+    expect(AudioSliceSchema.safeParse({ inputs: {} }).success).toBe(false);
+    for (const bad of ['', 'NONE', 'AUDIO-01', 0, false]) expect(AudioSliceSchema.safeParse({ inputs: {}, activeInputId: bad }).success, String(bad)).toBe(false);
+    // Still at most two, and still keyed by `MIC-NN`.
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame }, activeInputId: null }).success).toBe(false);
+    expect(AudioSliceSchema.safeParse({ inputs: { 'AUDIO-01': frame }, activeInputId: null }).success).toBe(false);
+  });
+
+  it('row 28: the audio and video status answers admit an absent selector value (operations 44, 45, 46); the examples of a complete selector still pass', () => {
+    const exampleOf = (operationId: string, name: string): unknown => CORE_API_EXAMPLES[operationId]?.responses[200]?.[name]?.value;
+    const audioExample = AudioStatusResponseSchema.parse(exampleOf('getAudioStatus', 'recording'));
+    const videoExample = VideoStatusResponseSchema.parse(exampleOf('getVideoStatus', 'recording'));
+    const healthExample = DeviceHealthResponseSchema.parse(exampleOf('getDeviceHealth', 'idle'));
+    // Complete selector: two entries, an active input, a source device behind each track.
+    expect([audioExample.channels.length, typeof audioExample.activeInputId]).toEqual([2, 'string']);
+    expect(videoExample.tracks.map((track) => typeof track.sourceDeviceId)).toEqual(['string', 'string']);
+    expect([healthExample.audio.length, typeof healthExample.activeInputId, healthExample.cameras.length]).toEqual([2, 'string', 2]);
+
+    const [first, second] = audioExample.channels;
+    // Operation 45: one entry per meter channel that has an input, so two, one or none.
+    expect(AudioStatusResponseSchema.safeParse({ channels: [first], activeInputId: first?.inputId }).success).toBe(true);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [], activeInputId: null }).success).toBe(true);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second], activeInputId: null }).success).toBe(true);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second, first], activeInputId: null }).success).toBe(false);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [] }).success).toBe(false);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [], activeInputId: '' }).success).toBe(false);
+    // An entry IS an input: its own members did not become nullable.
+    expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, inputId: null }], activeInputId: null }).success).toBe(false);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, role: null }], activeInputId: null }).success).toBe(false);
+
+    const [trackOne, trackTwo] = videoExample.tracks;
+    // Operation 46: `tracks` stays two; a track without a line states `sourceDeviceId: null`.
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }, trackTwo] }).success).toBe(true);
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }, { ...trackTwo, sourceDeviceId: null }] }).success).toBe(true);
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }] }).success).toBe(false);
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: '' }, trackTwo] }).success).toBe(false);
+    const { sourceDeviceId: _dropped, ...withoutSource } = trackOne as NonNullable<typeof trackOne>;
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [withoutSource, trackTwo] }).success).toBe(false);
+
+    // Operation 44 carries the same audio members and the same tracks.
+    expect(DeviceHealthResponseSchema.safeParse({ ...healthExample, audio: [], activeInputId: null }).success).toBe(true);
+    expect(DeviceHealthResponseSchema.safeParse({ ...healthExample, cameras: healthExample.cameras.map((camera) => ({ ...camera, sourceDeviceId: null })) }).success).toBe(true);
+    expect(DeviceHealthResponseSchema.safeParse({ ...healthExample, audio: [...healthExample.audio, ...healthExample.audio] }).success).toBe(false);
+    expect(DeviceHealthResponseSchema.safeParse({ ...healthExample, cameras: [] }).success).toBe(false);
   });
 
   it('text carries the text rule API-13: what well-formed input leaves in the state is well-formed, and a slice with ill-formed text is refused', () => {

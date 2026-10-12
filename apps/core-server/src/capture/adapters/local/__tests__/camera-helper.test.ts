@@ -4,11 +4,12 @@
 // NOTHING HERE OPENS A CAMERA. The helper program is never started: the lifecycle runs on a door
 // that starts nothing, the real door is exercised with the Node binary, and the device list is a
 // recorded text. The camera itself is check M4-LOCAL-CAM-1, run by the user.
+import { ChildProcess } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LOOPBACK_RTSP_URL } from '@dems/capture-protocol';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { flush, manualCaptureTimers } from '../../../../../test/support/capture';
 import { WORKSPACE, codeOnly, isProductionSource, occurrences, readTree } from '../../../../../test/static/scan';
 import { CaptureAdapterError } from '../../errors';
@@ -566,6 +567,38 @@ describe('the process door (HL-2, HL-4, HL-7)', () => {
       const child = startHelperProcess({ command, args: [] });
       const exit = await child.ended;
       expect([command, exit.spawnFailed]).toEqual([command, true]);
+    }
+  });
+
+  // Task 4 row 180 (the finding of row 21). A child whose start FAILED has no process ID; a signal through its handle
+  // in the same turn goes to process ID 0, the caller's whole process group. THE REPRODUCTION IS SAFE: the signal call
+  // of every child handle and the signal call of the process are replaced for this case, so nothing real is ever sent.
+  it('a program that could not be started is never signalled: not by kill, not by the exit handler; the door still reports spawnFailed', async () => {
+    const handleSignal = vi.spyOn(ChildProcess.prototype, 'kill').mockImplementation(() => true);
+    const processSignal = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const before = new Set(process.listeners('exit'));
+    const ownExitHandlers = () => process.listeners('exit').filter((listener) => !before.has(listener));
+    try {
+      const child = startHelperProcess({ command: '/nonexistent/dems/ffmpeg', args: [] });
+      // The same turn as the start: the failure has not been reported yet, the door still holds the child.
+      expect([child.pid, child.alive()]).toEqual([null, true]);
+      child.kill('SIGKILL');
+      child.kill('SIGTERM');
+      const atExit = ownExitHandlers();
+      expect(atExit).toHaveLength(1);
+      for (const handler of atExit) (handler as () => void)();
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+      // The door's existing answer for a program that was not started, and this process is still here to read it.
+      expect(await child.ended).toEqual({ exitCode: null, signal: null, spawnFailed: true, diagnostics: '', output: '' });
+      expect(child.alive()).toBe(false);
+      child.kill('SIGKILL');
+      expect(ownExitHandlers()).toEqual([]);
+      expect(handleSignal.mock.calls).toEqual([]);
+      expect(processSignal.mock.calls).toEqual([]);
+    } finally {
+      handleSignal.mockRestore();
+      processSignal.mockRestore();
     }
   });
 

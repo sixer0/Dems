@@ -911,6 +911,9 @@ export function createLiveSim<Client extends LiveClient>(options: CreateLiveSimO
       audio: {
         // The two frames as the Core keyed them: `MIC-NN`, the built-in pair or the selector's (D133 (1)).
         inputs: { ...audio.inputs },
+        // Task 4 row 28 (WP-13a; register E41): the wire may state `null` (no PRIMARY microphone).
+        // The state cannot hold it yet (seam `AudioSliceInState`), so such a frame keeps the
+        // store's current input. When the seam is removed this line is `audio.activeInputId`.
         activeInputId: audio.activeInputId ?? store.getState().audio.activeInputId,
       },
     });

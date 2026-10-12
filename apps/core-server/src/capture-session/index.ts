@@ -83,6 +83,33 @@
  * closed one. The arrival instant of the command is not a stored member (erratum proposal in
  * `implementation/112_fix_m5_review.md`).
  *
+ * THE CAMERAS OF A START (task 4 row 47; design addendum sections 2.3, 3 and 5.3; security checks
+ * AD-05 (1), AD-11 and BR-07 (1), (3), (4)):
+ *   the address  each camera track of a start pushes to an address that ONE function builds
+ *                (`captureIngestAddress`, of the capture unit): the worker's loopback listener of that track, and a last
+ *                path element of 128 bits from the system's random source. The worker records a
+ *                push only when the client announced that address byte for byte. The address has
+ *                exactly two receivers: the plan of `START` (the worker's standard input) and the
+ *                target of the camera's `openSource` (an adapter of production hands it to its
+ *                relay in the start message, on standard input). This unit writes it to no log, no
+ *                error-log entry, no audit detail, no row, no event and no file. ONE EXCEPTION,
+ *                limited to the development operation: the local camera helper takes its target
+ *                as the last word of its arguments (`adapters/local/camera-helper-args.ts`);
+ *   the profile  the open is told the profile of the plan's camera line: one device may fill both
+ *                tracks with two profiles;
+ *   together     every camera of the plan is opened IN THE SAME TURN: a camera that is slow to
+ *                answer costs the other nothing. In `REAL_PRODUCTION` each open is given up at
+ *                `PRODUCTION_CAMERA_OPEN_BOUND_MS` (the worker's window minus 5 s): its signal is
+ *                aborted, the camera is reported not opened, and a source that comes up later is
+ *                closed at once. An adapter is asked to open a camera ONCE per start, also when
+ *                that open is given up (one credential read per camera per attempt);
+ *   outside      a camera is opened only in `begin`, after the unit of the start committed and
+ *                outside every unit of work: an adapter of production reads the stored credential
+ *                in a unit of its own, and a unit cannot submit a unit.
+ * What is NOT here: a worker that is started again inside a session gets the plan it was first
+ * given (the supervisor re-sends it; a new element per attempt is row 179's), and the pairing of
+ * the relay's report with the worker's connect report is row 48's.
+ *
  * IN CAPTURE MODE `simulated` NOTHING HERE RUNS: `recordingStartedIn` and the two `after...` calls
  * return at once, and operation 81 is the simulator's own hosted action.
  *
@@ -93,6 +120,7 @@
  * goes wrong after the answer was sent is written to the log AND to the persistent error log with
  * a code, the session ID and the device ID it concerns: never a path, an address or a credential.
  */
+import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { AudioSourceIntervalReason, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningReason, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
@@ -100,8 +128,8 @@ import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateB
 import { SessionState } from '@dems/shared/domain';
 import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
-import { CapturePhase, CaptureSupervisorError, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
-import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
+import { CapturePhase, CaptureSupervisorError, captureIngestAddress, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
+import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { assertSessionSourcesOfOperation, buildSessionCaptureSources, captureFenceControl, captureOperationOf, type CaptureSourceSlot, type SessionCaptureSource } from '../capture/fence';
 import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
 import { CapturePlanError, assertRecordableSelector, buildCapturePlan, type CapturePlanSelector, type RecordableSelector } from '../modules/capture-config';
@@ -149,8 +177,23 @@ export const STOP_NOT_CLEAN = 'CAPTURE_STOP_NOT_CLEAN';
 /** The fault-row key `reason` of a start at which no camera connected (C3 §5.3, erratum PE-121-09). */
 export const NO_CAMERA_CONNECTED = 'NO_CAMERA_CONNECTED';
 
-/** The loopback port of each track's ingest: inside the protocol's media range, one per camera. */
-export const CAPTURE_INGEST_PORT: Readonly<Record<VideoTrackId, number>> = Object.freeze({ 'VIDEO-01': 8554, 'VIDEO-02': 8556 });
+// The ingest address of a camera track is built by `captureIngestAddress` of the capture unit
+// (`src/capture/ingest-address.ts`, moved there by integration pass I-3 so that the supervisor can
+// reach the same function). That unit may draw no random number (static rule G-R8): THIS file
+// names the source, `randomBytes` of the runtime's cryptography module, and hands it in at the
+// one call.
+
+/**
+ * How long ONE camera open of a `REAL_PRODUCTION` start is waited for, in ms (design addendum
+ * section 3): the production ingest window (30,000 ms, a constant of the capture unit) minus
+ * 5,000 ms, so that a relay has reported before the worker's window ends. A test of this unit
+ * holds the two figures 5,000 ms apart. Default of the port `cameraOpenBoundMs`; the development
+ * operation has no such bound, as before.
+ */
+export const PRODUCTION_CAMERA_OPEN_BOUND_MS = 25_000;
+
+/** The `cause` of a camera that was not opened because its open was given up at the bound. */
+export const CAMERA_OPEN_BOUND = 'CAMERA_OPEN_BOUND';
 
 /** The folder of a session below the media root, and its camera files (evidence spec §A: `SESSION-<id>/VIDEO-0n.mp4`). */
 export const sessionMediaFolder = (sessionId: string): string => `SESSION-${sessionId}`;
@@ -255,6 +298,8 @@ export interface SessionCapturePorts {
   ensureDir(path: string): Promise<void>;
   /** How long the start of one microphone helper is waited for: the no-delivery bound (`MIC_START_BOUND_MS`). */
   micStartBoundMs: number;
+  /** How long one camera open of a `REAL_PRODUCTION` start is waited for (`PRODUCTION_CAMERA_OPEN_BOUND_MS`). Not applied in another operation. */
+  cameraOpenBoundMs: number;
   /** Above this size of the clock offset the worker measured (ms) a camera gets the advisory alert (`CAMERA_CLOCK_OFFSET_ADVISORY_MS`). */
   clockOffsetAdvisoryMs: number;
   /**
@@ -462,6 +507,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       await mkdir(path, { recursive: true, mode: 0o700 });
     },
     micStartBoundMs: MIC_START_BOUND_MS,
+    cameraOpenBoundMs: PRODUCTION_CAMERA_OPEN_BOUND_MS,
     clockOffsetAdvisoryMs: CAMERA_CLOCK_OFFSET_ADVISORY_MS,
     operationOf: (registry) => registry.operation,
     fileExists: (path) =>
@@ -981,6 +1027,91 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     return Promise.all(starts).then(() => undefined);
   }
 
+  /**
+   * Opens the source of every camera of the plan toward the worker's listeners, ALL IN THE SAME
+   * TURN (task 4 row 47; design addendum section 3), and resolves when each has an outcome. Never
+   * rejects. Each adapter is asked ONCE. `opened` and `notOpened` are filled as the outcomes come.
+   *
+   * In `REAL_PRODUCTION` an open that has no outcome within `ports.cameraOpenBoundMs` is given up:
+   * its own signal is aborted (what stops a relay that is still being started), the camera is
+   * reported with the cause `CAMERA_OPEN_BOUND`, and a source that comes up afterwards is closed at
+   * once and never held. In another operation the open gets the session's signal and no bound,
+   * as before.
+   *
+   * The target of an open holds the ingest address: nothing here reports it. A failed open is
+   * said by its device and a cause; the error-log entry of a failure holds the error's name, its
+   * code and its stack frames, never its text (`describeError`).
+   */
+  function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, opened: string[], notOpened: string[]): Promise<void> {
+    const { sessionId } = current;
+    const opens: Promise<void>[] = [];
+    for (const camera of plan.cameras) {
+      if (current.ended || current.leaving) break;
+      const { deviceId } = camera;
+      const failed = (err: unknown, cause: string | null): void => {
+        // One camera of two is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
+        notOpened.push(deviceId);
+        persist('warn', 'CAPTURE_CAMERA_NOT_OPENED', 'a camera of the session could not be opened', err, { sessionId, deviceId, ...(cause === null ? {} : { cause }) });
+      };
+      // The signal of THIS open: the session's own, and in production one that the bound can abort without ending the session.
+      const own = current.production ? new AbortController() : null;
+      const forward = (): void => own?.abort();
+      if (own !== null) {
+        if (current.abort.signal.aborted) own.abort();
+        else current.abort.signal.addEventListener('abort', forward, { once: true });
+      }
+      const unlink = (): void => current.abort.signal.removeEventListener('abort', forward);
+      const target: CameraSourceTarget = { ingestUrl: camera.ingestUrl, ...(camera.profile === null ? {} : { profile: camera.profile }) };
+      let asked: Promise<SourceHandle>;
+      try {
+        asked = Promise.resolve(registry.resolve('CAMERA', deviceId).openSource(deviceId, target, own?.signal ?? current.abort.signal));
+      } catch (err) {
+        asked = Promise.reject(err);
+      }
+      let givenUp = false;
+      const settled = asked.then(
+        async (handle) => {
+          if (givenUp) {
+            // It came up after its bound: the camera was reported not opened, so its source feeds nothing and is closed.
+            try {
+              await handle.close();
+            } catch (err) {
+              persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', err, { sessionId, deviceId });
+            }
+            return;
+          }
+          current.handles.push(handle);
+          // A source that came up although the session's signal was aborted meanwhile (a shutdown) is closed at once.
+          if (current.abort.signal.aborted) await release(current);
+          opened.push(deviceId);
+        },
+        (err: unknown) => {
+          if (!givenUp) failed(err, null);
+        },
+      );
+      if (own === null) {
+        opens.push(settled);
+        continue;
+      }
+      let bound: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<'BOUND'>((resolve) => {
+        bound = setTimeout(() => resolve('BOUND'), ports.cameraOpenBoundMs);
+        bound.unref?.();
+      });
+      opens.push(
+        Promise.race([settled.then(() => 'SETTLED' as const), late]).then((outcome) => {
+          clearTimeout(bound);
+          unlink();
+          if (outcome !== 'BOUND') return;
+          givenUp = true;
+          own.abort();
+          failed(null, CAMERA_OPEN_BOUND);
+        }),
+      );
+    }
+    return Promise.all(opens).then(() => undefined);
+  }
+
   async function begin(ready: Prepared): Promise<void> {
     const { sessionId } = ready;
     const supervisor = app.capture;
@@ -1053,7 +1184,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         const trackId = TRACKS.find((track) => track === camera.trackId);
         if (trackId === undefined) continue;
         const outputPath = `${folder}/${cameraFileName(trackId)}`;
-        cameras[trackId] = { ingestUrl: `rtsp://127.0.0.1:${CAPTURE_INGEST_PORT[trackId]}/${sessionId}/${trackId.toLowerCase()}`, outputPath };
+        // BR-07: a new address per track at every start, from the one function that builds it. Its receivers are the plan and the open below.
+        cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };
         current.files.push({ trackId, deviceId: camera.deviceId, path: outputPath });
       }
       let pcmTapPath: string | null = null;
@@ -1123,22 +1255,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         );
       }
 
-      // The worker listens now: the cameras are opened toward its listeners.
-      const opened: string[] = [];
-      const notOpened: string[] = [];
-      for (const camera of plan.cameras) {
-        if (current.ended || current.leaving) break;
-        try {
-          current.handles.push(await registry.resolve('CAMERA', camera.deviceId).openSource(camera.deviceId, { ingestUrl: camera.ingestUrl }, current.abort.signal));
-          // A source that came up although the session's signal was aborted meanwhile (a shutdown) is closed at once.
-          if (current.abort.signal.aborted) await release(current);
-          opened.push(camera.deviceId);
-        } catch (err) {
-          // One camera of two is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
-          notOpened.push(camera.deviceId);
-          persist('warn', 'CAPTURE_CAMERA_NOT_OPENED', 'a camera of the session could not be opened', err, { sessionId, deviceId: camera.deviceId });
-        }
-      }
+      // The worker listens now: the cameras are opened toward its listeners, BOTH IN THE SAME TURN
+      // (row 47): a camera that is slow to answer does not cost the other its window. Waited for until
+      // each has an outcome ... unless the end of the capture was asked meanwhile (R74-08): an open
+      // that is still in flight then ends by the session's signal, and a source it brings is closed.
+      const cameraOutcomes: { opened: string[]; notOpened: string[] } = { opened: [], notOpened: [] };
+      await Promise.race([openCameras(current, registry, plan, cameraOutcomes.opened, cameraOutcomes.notOpened), current.left]);
+      // Said in the order of the plan, whichever camera answered first.
+      const inPlanOrder = (ids: readonly string[]): string[] => plan.cameras.map((camera) => camera.deviceId).filter((deviceId) => ids.includes(deviceId));
       // Field 40: the clock of each camera against the Core's, as its adapter reports it. A read; never a reason to end a capture.
       for (const camera of plan.cameras) {
         if (current.leaving) break;
@@ -1155,7 +1279,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // ... unless the end of the capture was asked meanwhile (R74-08): the step queued behind this one stops the worker NOW.
       await Promise.race([micStarts, current.left]);
       await writeFacts(current);
-      if (!current.ended) tell({ type: 'STARTED', sessionId, cameras: opened, camerasNotOpened: notOpened });
+      if (!current.ended) tell({ type: 'STARTED', sessionId, cameras: inPlanOrder(cameraOutcomes.opened), camerasNotOpened: inPlanOrder(cameraOutcomes.notOpened) });
     } catch (err) {
       const cause = err instanceof CaptureSupervisorError ? (err.detail ?? err.code) : err instanceof CapturePlanError ? err.reason : err instanceof CaptureAdapterError ? err.code : 'CAPTURE_START_FAILED';
       if (!(err instanceof CaptureSupervisorError)) persist('error', 'CAPTURE_START_NOT_MADE', 'the capture of a session could not be started', err, { sessionId, cause });

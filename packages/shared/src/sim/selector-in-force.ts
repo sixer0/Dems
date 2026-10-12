@@ -114,13 +114,15 @@ export function openSessionAudioSource<A>(session: { readonly state?: string | n
 
 /**
  * The pair a selector gives: its PRIMARY line is the active input, its STANDBY line the standby.
- * Where a role is not assigned the line of that position stands in (the first line; the first line
- * that is not the active one) - the rule of the pair a recording starts with (`audioSourceAtStart`).
+ * BY ROLE ONLY (task 4 WP-13a, site C18; decisions C18 (2), AD-04): where no line holds a role that
+ * member is `null`. No line stands in by position - a lone STANDBY line is never the active input,
+ * and a list of lines without roles names no pair. It is the rule of `micInputOfRole` (`audio.ts`),
+ * spelled here because this file imports nothing; `test/audio.test.ts` holds the two equal.
  */
 export function audioPairOfSelector<I extends string>(mics: readonly PairMicLine<I>[] | null | undefined): AudioPairInForce<I> {
   const lines = mics ?? [];
-  const active = lines.find((line) => line.role === 'PRIMARY')?.inputId ?? lines[0]?.inputId ?? null;
-  const standby = lines.find((line) => line.role === 'STANDBY' && line.inputId !== active)?.inputId ?? lines.find((line) => line.inputId !== active)?.inputId ?? null;
+  const active = lines.find((line) => line.role === 'PRIMARY')?.inputId ?? null;
+  const standby = lines.find((line) => line.role === 'STANDBY')?.inputId ?? null;
   return { activeInputId: active, standbyInputId: standby };
 }
 

@@ -17,8 +17,9 @@ import {
   type RowContext,
   type SealedEvidenceItem,
 } from '..';
+import { captureConfigToRow, selectorDeviceIds } from '../rows';
 
-const idle = (): SimState => createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
+const idle =(): SimState => createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
 const context: RowContext = { at: FIXED_NOW, seededAt: FIXED_NOW, lastResetAt: null };
 const HASH = 'cd'.repeat(32);
 
@@ -321,5 +322,130 @@ describe('capture_devices: the device-list rule of the reader (R69-03)', () => {
     const named = [...slices.captureConfig.cameras.map((line) => line.deviceId), ...slices.captureConfig.mics.map((line) => line.deviceId)].sort();
     expect(ids(slices)).toEqual(named);
     expect(named).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+  });
+});
+
+// Task 4 row 166 (WP-13a; AD-04 (2); decisions C18, C21, C25; names register E13, E17; row 27 sites
+// A3, A4, A5): a selector slot may be UNASSIGNED - a NULL in the six nullable columns of schema set
+// A, an ABSENT line in the slice. The mapping goes by the NAME of a line (its track, its role),
+// never by its position. Pure: the row images are written by hand, no database; the seeded selector
+// stays complete and no fixture of another suite holds a NULL.
+describe('capture_config: an unassigned slot is NULL in the row and an absent line in the slice (task 4 row 166)', () => {
+  type Selector = SimState['captureConfig'];
+  const SLOT_COLUMNS = ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'micPrimaryId', 'micStandbyId'] as const;
+  const seeded = (): Selector => idle().captureConfig;
+  /** The seeded selector with only the lines of the slots named. */
+  const holding = (slots: readonly string[]): Selector => {
+    const selector = seeded();
+    return { ...selector, cameras: selector.cameras.filter((camera) => slots.includes(camera.trackId)), mics: selector.mics.filter((mic) => slots.includes(mic.role)) };
+  };
+  const withSelector = (captureConfig: Selector): SimState => ({ ...idle(), captureConfig });
+  const slotsOf = (selector: Selector): Record<string, unknown> => {
+    const row: Record<string, unknown> = captureConfigToRow(selector);
+    return Object.fromEntries(SLOT_COLUMNS.map((column) => [column, row[column]]));
+  };
+  /** The stored rows of the idle state with a selector row written by hand. */
+  const storedWith = (columns: Partial<Record<(typeof SLOT_COLUMNS)[number], string | null>>) => {
+    const rows = asStored(toRows(idle(), context));
+    return { ...rows, captureConfig: rows.captureConfig.map((row) => ({ ...row, ...columns })) } as typeof rows;
+  };
+  const SIX_NULLS = Object.fromEntries(SLOT_COLUMNS.map((column) => [column, null]));
+  const PROFILE = seeded().cameras[0]?.profile ?? '';
+
+  it('GATE AD-04 (2): only VIDEO-02 and only a STANDBY microphone - written with video_01_* and mic_primary_id NULL, and read back as the same two lines', () => {
+    const selector = holding(['VIDEO-02', 'STANDBY']);
+    expect(selector.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02']);
+    expect(selector.mics.map((line) => line.role)).toEqual(['STANDBY']);
+    expect(slotsOf(selector)).toEqual({ video01DeviceId: null, video01Profile: null, video02DeviceId: 'CAM-02', video02Profile: PROFILE, micPrimaryId: null, micStandbyId: 'MIC-02' });
+
+    const back = fromRows(asStored(toRows(withSelector(selector), context))).captureConfig;
+    expect(back).toStrictEqual(selector);
+    // The mirror image, so that neither half passes by the place of a line.
+    expect(slotsOf(holding(['VIDEO-01', 'PRIMARY']))).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: null, video02Profile: null, micPrimaryId: 'MIC-01', micStandbyId: null });
+    // Control: the seeded selector is written whole, as before.
+    expect(slotsOf(seeded())).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: 'CAM-02', video02Profile: PROFILE, micPrimaryId: 'MIC-01', micStandbyId: 'MIC-02' });
+  });
+
+  it('GATE AD-04 (2): a row of six NULLs rehydrates to two empty lists without a throw, and names no device', () => {
+    const slices = fromRows(storedWith(SIX_NULLS));
+    expect(slices.captureConfig.cameras).toEqual([]);
+    expect(slices.captureConfig.mics).toEqual([]);
+    expect(slices.captureConfig.locked).toBe(false);
+    // The registry is still read whole; with a rule that lists nothing, no slot keeps a device in.
+    expect(slices.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(fromRows(storedWith(SIX_NULLS), { captureDeviceListing: () => false }).captureDevices.devices).toEqual([]);
+    expect([...selectorDeviceIds({ video01DeviceId: null, video02DeviceId: null, micPrimaryId: null, micStandbyId: null } as never)]).toEqual([]);
+    // And the way there: a selector without a line is six NULLs.
+    expect(slotsOf(holding([]))).toEqual(SIX_NULLS);
+  });
+
+  it('each of the 16 selectors of four slots goes to its own columns and comes back equal; a NULL slot names no device', () => {
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+    const DEVICE_COLUMN = { 'VIDEO-01': 'video01DeviceId', 'VIDEO-02': 'video02DeviceId', PRIMARY: 'micPrimaryId', STANDBY: 'micStandbyId' } as const;
+    const DEVICE = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
+    let checked = 0;
+    for (let mask = 0; mask < 16; mask += 1) {
+      const held = SLOTS.filter((_slot, index) => (mask & (1 << index)) !== 0);
+      const selector = holding(held);
+      const row = slotsOf(selector);
+      for (const slot of SLOTS) expect(row[DEVICE_COLUMN[slot]], `${held.join('+')} ${slot}`).toBe(held.includes(slot) ? DEVICE[slot] : null);
+      // The pair rule of a video slot: device and profile NULL together.
+      expect(row.video01Profile === null, held.join('+')).toBe(row.video01DeviceId === null);
+      expect(row.video02Profile === null, held.join('+')).toBe(row.video02DeviceId === null);
+      const stored = asStored(toRows(withSelector(selector), context));
+      expect(fromRows(stored).captureConfig, held.join('+')).toStrictEqual(selector);
+      expect([...selectorDeviceIds(stored.captureConfig[0] as never)].sort(), held.join('+')).toEqual(held.map((slot) => DEVICE[slot]).sort());
+      checked += 1;
+    }
+    expect(checked).toBe(16);
+  });
+
+  it('nothing goes by position: lines listed in the other order reach the same columns', () => {
+    const selector = seeded();
+    const reversed: Selector = { ...selector, cameras: [...selector.cameras].reverse(), mics: [...selector.mics].reverse() };
+    expect(reversed.cameras[0]?.trackId).toBe('VIDEO-02');
+    expect(reversed.mics[0]?.role).toBe('STANDBY');
+    expect(slotsOf(reversed)).toEqual(slotsOf(selector));
+    // A lone PRIMARY that is the SECOND input (MIC-02) is the primary column, not the standby one.
+    const lone: Selector = { ...selector, mics: selector.mics.filter((mic) => mic.inputId === 'MIC-02').map((mic) => ({ ...mic, role: 'PRIMARY' as const })) };
+    expect(slotsOf(lone)).toMatchObject({ micPrimaryId: 'MIC-02', micStandbyId: null });
+    expect(fromRows(asStored(toRows(withSelector(lone), context))).captureConfig.mics).toStrictEqual(lone.mics);
+  });
+
+  it('the engine write of a cleared slot names the NULL columns of that slot and no other', () => {
+    const before = withSelector(seeded());
+    const after = withSelector(holding(['VIDEO-02', 'STANDBY']));
+    expect(diffSlices(before, after, FIXED_NOW).filter((change) => change.table === 'captureConfig')).toEqual([
+      { op: 'update', table: 'captureConfig', key: { singleton: true }, set: { video01DeviceId: null, video01Profile: null, micPrimaryId: null } },
+    ]);
+  });
+
+  it('a slice the columns cannot hold is refused, never trimmed: a track or a role twice, a line of neither', () => {
+    const selector = seeded();
+    const [camera01, camera02] = selector.cameras;
+    const [primary, standby] = selector.mics;
+    if (camera01 === undefined || camera02 === undefined || primary === undefined || standby === undefined) throw new Error('the seeded selector is complete');
+    const refusals: Selector[] = [
+      { ...selector, cameras: [camera01, { ...camera02, trackId: 'VIDEO-01' }] },
+      { ...selector, cameras: [camera01, camera02, { ...camera02, deviceId: 'CAM-03' }] },
+      { ...selector, cameras: [{ ...camera01, trackId: 'VIDEO-03' as never }] },
+      { ...selector, mics: [primary, { ...standby, role: 'PRIMARY' }] },
+      { ...selector, mics: [primary, standby, { ...standby, inputId: 'MIC-03', deviceId: 'MIC-03' }] },
+      { ...selector, mics: [{ ...primary, role: undefined as never }, standby] },
+    ];
+    for (const [index, refused] of refusals.entries()) {
+      expect(() => captureConfigToRow(refused), `refusal ${index}`).toThrowError(MappingError);
+      expect(() => captureConfigToRow(refused), `refusal ${index}`).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE' }));
+    }
+  });
+
+  it('a row the pair CHECK cannot hold, and a slot that names an unknown device, are refused as before; a NULL slot beside them is not', () => {
+    const half = (columns: Parameters<typeof storedWith>[0]) => () => fromRows(storedWith(columns));
+    expect(half({ video01DeviceId: null })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.video_01_device_id' }));
+    expect(half({ video02Profile: null })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.video_02_profile' }));
+    expect(half({ micPrimaryId: null, micStandbyId: 'MIC-09' })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.mic_standby_id' }));
+    expect(half({ video01DeviceId: null, video01Profile: null, video02Profile: 'h264-1080p25' })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.video_02_profile' }));
+    // Control: the same hand-written form with a whole NULL slot is read.
+    expect(half({ video01DeviceId: null, video01Profile: null })().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02']);
   });
 });

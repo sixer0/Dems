@@ -103,9 +103,14 @@ export const startHelperProcess: HelperDoor = (options) => {
   const output = boundedText();
   let over = false;
   let spawnFailed = false;
-  const killAtExit = (): void => {
-    started.kill('SIGKILL');
+  /**
+   * The ONE place that signals the child. A start that failed has no process ID, and a signal sent
+   * through its handle would go to process ID 0, which is the server's whole process group: never.
+   */
+  const signalChild = (signal: 'SIGTERM' | 'SIGKILL'): void => {
+    if (!over && started.pid !== undefined) started.kill(signal);
   };
+  const killAtExit = (): void => signalChild('SIGKILL');
   process.once('exit', killAtExit);
 
   // The streams are read as fast as they come and never paused: a full pipe would stop the helper.
@@ -145,9 +150,7 @@ export const startHelperProcess: HelperDoor = (options) => {
     },
     ended,
     alive: () => !over,
-    kill(signal) {
-      if (!over) started.kill(signal);
-    },
+    kill: signalChild,
   };
 };
 

@@ -21,7 +21,7 @@ import {
 } from '@dems/shared/sim'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
-import { selectBanner } from '../model'
+import { selectBanner, selectFeed } from '../model'
 import { audioPeakLevel, autosaveSegment, bytesAt } from '../sim-adapter'
 
 // Full-router renders with a lazy route chunk: generous per-test time on a shared, busy host (P9/P11).
@@ -175,6 +175,39 @@ describe('Session Monitor: recording scenario (row 44 render test)', () => {
     await waitFor(() => expect(within(feed).getAllByTestId('camera-feed-video')).toHaveLength(1))
     expect(within(feed).getByTestId('camera-feed-video').getAttribute('src')).toMatch(/demo-media\/live\/VIDEO-02\.loop\.mp4$/)
     expect(within(feed).getByTestId('camera-feed-label')).toHaveTextContent('Camera 2 - Interview Room 1')
+  })
+
+  // Row 54 (P12-F08): the overlay's format chip is the slice's statement.
+  it('row 54: the live overlay states the simulated format as before, and HEVC without a rate for an HEVC slice that states none', async () => {
+    const { sim } = mountSession()
+    await findPage()
+    const feed = within(screen.getByTestId('panel-L')).getAllByTestId('camera-feed')[0]
+    expect(within(feed).getByText('1080p • 25 fps • H.264')).toBeInTheDocument()
+    act(() =>
+      sim.store.setState((state) => ({
+        cameras: state.cameras.map((camera) => ({ ...camera, fps: null, codec: 'HEVC' as const })),
+      })),
+    )
+    await waitFor(() => expect(within(feed).getByText('1080p • HEVC')).toBeInTheDocument())
+    expect(feed).not.toHaveTextContent(/fps|H\.264/)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  // Task 4 row 54 / integration pass I-3 (P12-F08): the Inputs panel keeps the format line of a slice that states no rate.
+  it('I-3: the Inputs panel states the picture without a rate for a camera slice that states none, never nothing and never an empty rate', async () => {
+    const { sim } = mountSession()
+    await findPage()
+    const inputs = screen.getByTestId('sm-inputs')
+    const formats = (): (string | null)[] => [...inputs.querySelectorAll('[data-device^="VIDEO-"] .sm-input-meta')].map((line) => line.textContent)
+    // CONTROL: the rate the slice states is printed as stated, one line per camera.
+    expect(formats()).toEqual(['1080p • 25 fps', '1080p • 25 fps'])
+    act(() =>
+      sim.store.setState((state) => ({
+        cameras: state.cameras.map((camera) => ({ ...camera, resolution: '2160p', fps: null, codec: 'HEVC' as const })),
+      })),
+    )
+    await waitFor(() => expect(formats()).toEqual(['2160p', '2160p']))
+    expect(getMissingI18nKeys()).toEqual([])
   })
 })
 
@@ -458,6 +491,18 @@ describe('Session Monitor: view models and simulator reads', () => {
     expect(selectBanner(idle.store.getState()).kind).toBe('NO_SESSION')
     const finalizing = createSim({ scenario: 'finalizing', storage: null, authStorage: null, scheduler: () => () => undefined })
     expect(selectBanner(finalizing.store.getState())).toMatchObject({ kind: 'FINALIZING', total: 6 })
+  })
+
+  // Row 54 (P12-F08): the feed model repeats the camera slice; it holds no rate and no codec of its own.
+  it('row 54: the feed states the slice\'s picture, rate and codec; a null rate stays null; no camera states nothing', () => {
+    const sim = createSim({ scenario: 'recording', storage: null, authStorage: null, scheduler: () => () => undefined })
+    expect(selectFeed(sim.store.getState())).toMatchObject({ resolution: '1080p', fps: 25, codec: 'H.264' })
+    sim.store.setState((state) => ({
+      cameras: state.cameras.map((camera) => ({ ...camera, fps: null, codec: 'HEVC' as const })),
+    }))
+    expect(selectFeed(sim.store.getState())).toMatchObject({ resolution: '1080p', fps: null, codec: 'HEVC' })
+    sim.store.setState({ cameras: [] })
+    expect(selectFeed(sim.store.getState())).toMatchObject({ resolution: null, fps: null, codec: null })
   })
 
   it('W44-2: reads peak levels and autosave sizes from the timeline params, with the label rule as fallback', () => {

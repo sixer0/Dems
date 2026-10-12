@@ -607,14 +607,23 @@ const AudioFrameSchema = z
  *
  * It is **not** one of the 30 replicated slices: it travels only in `meters` frames, to connections
  * that subscribed, and is never stored (class X).
+ *
+ * Task 4 row 28 (WP-13a; decision C25; names register E41): a selector slot may be unassigned, so
+ * `inputs` holds one frame per microphone line of the selector - AT MOST two, not exactly two -
+ * and `activeInputId` is `null` when no PRIMARY line stands behind `AUDIO-01`. On a complete
+ * selector the slice is what it was: two frames and an input.
  */
 export const AudioSliceSchema = z
   .strictObject({
     inputs: z
       .record(z.string().regex(MIC_INPUT_ID_PATTERN), AudioFrameSchema)
-      .refine((inputs) => Object.keys(inputs).length === 2, { message: 'Expected the frames of exactly two mic inputs.' })
-      .describe('The newest frame of each of the two mic inputs of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)).'),
-    activeInputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The input whose level is the one inside AUDIO-01 right now (op 81 moves it).'),
+      .refine((inputs) => Object.keys(inputs).length <= 2, { message: 'Expected the frames of at most two mic inputs.' })
+      .describe('The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)). One frame per microphone line of the selector, so at most two; fewer while a microphone slot is not assigned.'),
+    activeInputId: z
+      .string()
+      .regex(MIC_INPUT_ID_PATTERN)
+      .nullable()
+      .describe('The input whose level is the one inside AUDIO-01 right now (op 81 moves it). Null: the selector holds no PRIMARY microphone.'),
   })
   .describe('Slice `audio`: the newest frame of each mic input plus the active one. Streamed in `meters` messages only; not part of a snapshot.');
 export type AudioSliceBody = z.output<typeof AudioSliceSchema>;

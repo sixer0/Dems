@@ -6,8 +6,10 @@
 // changed, with the key list of C3 §5.2 and nothing else; an edit that changes nothing sets nothing;
 // a refused edit sets nothing; the mic rows stay in input order (AC-B-70); the selector never
 // reaches a state its stored row would refuse.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  CAPTURE_SELECTOR_SLOTS,
+  type CaptureConfigUpdateRequest,
   CaptureConfigSliceSchema,
   DeltaMessageSchema,
   CaptureConfigMicUpdateSchema,
@@ -34,6 +36,7 @@ import {
   createSim,
   type AuditRow,
   type CaptureConfigChange,
+  type CaptureSelectorSlot,
   type OperatorRole,
   type ScenarioName,
   CAPTURE_CONNECT_MS,
@@ -693,9 +696,11 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       const frame = audio.inputs['MIC-01'];
       const replaced = { inputs: { 'MIC-02': frame, 'MIC-03': frame }, activeInputId: 'MIC-03' };
       expect(AudioSliceSchema.safeParse(replaced).success).toBe(true);
-      // Exactly two inputs, each keyed by an input id, each a whole frame.
+      // No more than two inputs, each keyed by an input id, each a whole frame.
       expect(AudioSliceSchema.safeParse({ ...replaced, inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame } }).success).toBe(false);
-      expect(AudioSliceSchema.safeParse({ ...replaced, inputs: { 'MIC-03': frame } }).success).toBe(false);
+      // Task 4 row 28 (register E41): AT MOST two - one frame per microphone line of the selector,
+      // so a selector with one microphone line has one frame (this body was refused before).
+      expect(AudioSliceSchema.safeParse({ ...replaced, inputs: { 'MIC-03': frame } }).success).toBe(true);
       expect(AudioSliceSchema.safeParse({ ...replaced, inputs: { 'MIC-02': frame, 'AUDIO-01': frame } }).success).toBe(false);
       expect(AudioSliceSchema.safeParse({ ...replaced, inputs: { 'MIC-02': frame, 'MIC-03': { ...frame, dbfs: 'loud' } } }).success).toBe(false);
       for (const bad of BAD_IDS) expect(AudioSliceSchema.safeParse({ ...replaced, activeInputId: bad }).success, bad).toBe(false);
@@ -738,7 +743,9 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       expect([micInputOfChannel(builtIn, 'AUDIO-01'), micInputOfChannel(builtIn, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
       const replaced = [line('MIC-01'), line('MIC-03')];
       expect([micInputOfChannel(replaced, 'AUDIO-01'), micInputOfChannel(replaced, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-03']);
-      expect([channelOfMicLine(replaced, 'MIC-01'), channelOfMicLine(replaced, 'MIC-03'), channelOfMicLine(replaced, 'MIC-02')]).toEqual(['AUDIO-01', 'AUDIO-02', null]);
+      // The inverse reads lines WITH their role since task 4 row 164 (a complete pair; register 161 section 3.2).
+      const replacedPair = [{ ...replaced[0]!, role: 'PRIMARY' as const }, { ...replaced[1]!, role: 'STANDBY' as const }];
+      expect([channelOfMicLine(replacedPair, 'MIC-01'), channelOfMicLine(replacedPair, 'MIC-03'), channelOfMicLine(replacedPair, 'MIC-02')]).toEqual(['AUDIO-01', 'AUDIO-02', null]);
       const beyond = [line('MIC-02'), line('MIC-03')];
       expect([micInputOfChannel(beyond, 'AUDIO-01'), micInputOfChannel(beyond, 'AUDIO-02')]).toEqual(['MIC-02', 'MIC-03']);
       // No line at all (a hand-built state): the built-in pair.
@@ -813,5 +820,77 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       expect(h.state().audio.activeInputId).toBe('MIC-01');
       expect(activeMeterChannel(h.state())).toBe('AUDIO-01');
     });
+  });
+});
+
+// Task 4 row 28 (WP-13a; decisions C14, C18, C21 (8), C25; security requirement AD-10 (3); names
+// register of row 161, N1 to N3 and section 4.3): a selector slot may be UNASSIGNED. This block
+// holds the CONTRACT of the body of operation 78 - the schema and the types. What the hosted action
+// does with the member is row 162, the in-app body check row 165, the Core's route row 29.
+describe('operation 78: the member `unassign` of the body (task 4 row 28; the contract only)', () => {
+  const accepts = (body: unknown): boolean => CaptureConfigUpdateRequestSchema.safeParse(body).success;
+  /** The paths of the issues of a refused body, joined: where the schema says the body is wrong. */
+  const refusedAt = (body: unknown): string[] => {
+    const result = CaptureConfigUpdateRequestSchema.safeParse(body);
+    return result.success ? [] : result.error.issues.map((issue) => issue.path.join('.'));
+  };
+
+  it('the four slots are the two video tracks and the two microphone roles, in that order; the type of the change is the type of the list', () => {
+    expect(CAPTURE_SELECTOR_SLOTS).toEqual(['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']);
+    // `sim/types.ts` states the slot structurally (it imports nothing of `api/`): the two are one type.
+    expectTypeOf<CaptureSelectorSlot>().toEqualTypeOf<(typeof CAPTURE_SELECTOR_SLOTS)[number]>();
+    // The body and the `UPDATE` kind of the hosted action carry the member with the same element type.
+    expectTypeOf<NonNullable<CaptureConfigUpdateRequest['unassign']>[number]>().toEqualTypeOf<CaptureSelectorSlot>();
+    expectTypeOf<NonNullable<Extract<CaptureConfigChange, { kind: 'UPDATE' }>['unassign']>[number]>().toEqualTypeOf<CaptureSelectorSlot>();
+    // No new kind of change: the three of operations 78, 79, 80.
+    expectTypeOf<CaptureConfigChange['kind']>().toEqualTypeOf<'UPDATE' | 'CAMERA_SOURCE' | 'PRIMARY_MIC'>();
+    expect(CAPTURE_CONFIG_CHANGE_OPERATION_ID).toEqual({ UPDATE: 'updateCaptureConfig', CAMERA_SOURCE: 'setCaptureCameraSource', PRIMARY_MIC: 'setPrimaryMic' });
+  });
+
+  it('`unassign` is optional and takes one to four slots, each at most once; a body without it reads as before', () => {
+    // Without the member: the bodies of today, unchanged.
+    expect(accepts({})).toBe(true);
+    expect(accepts({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] })).toBe(true);
+    expect(CaptureConfigUpdateRequestSchema.parse({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] })).toStrictEqual({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] });
+    // Each slot alone, and all four.
+    for (const slot of CAPTURE_SELECTOR_SLOTS) expect(CaptureConfigUpdateRequestSchema.parse({ unassign: [slot] }), slot).toStrictEqual({ unassign: [slot] });
+    expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] })).toBe(true);
+    expect(accepts({ unassign: ['STANDBY', 'VIDEO-02'] })).toBe(true);
+    // Refused: an empty list, a slot twice, more than four, an unknown slot, a stored slot word, another type.
+    expect(refusedAt({ unassign: [] })).toEqual(['unassign']);
+    expect(refusedAt({ unassign: ['VIDEO-01', 'VIDEO-01'] })).toEqual(['unassign']);
+    expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY', 'VIDEO-01'] })).toBe(false);
+    for (const bad of ['VIDEO-03', 'AUDIO-01', 'MIC-PRIMARY', 'MIC-01', 'CAM-01', 'primary', '', null, 1]) expect(accepts({ unassign: [bad] }), String(bad)).toBe(false);
+    for (const bad of ['VIDEO-01', null, {}, 4]) expect(accepts({ unassign: bad }), String(bad)).toBe(false);
+    // The body stays strict: no other member came with it.
+    expect(accepts({ unassign: ['VIDEO-01'], assign: ['VIDEO-02'] })).toBe(false);
+  });
+
+  it('AD-10 (3): a body that clears a slot and assigns the same slot is refused by the schema, on the path `unassign`', () => {
+    const camera = (trackId: string) => ({ trackId, deviceId: 'CAM-01' });
+    const byRole = (inputId: string, role: string) => ({ inputId, deviceId: inputId, role });
+    // A video slot: cleared and the track of a camera line.
+    expect(refusedAt({ unassign: ['VIDEO-01'], cameras: [camera('VIDEO-01')] })).toEqual(['unassign']);
+    expect(refusedAt({ unassign: ['VIDEO-02', 'PRIMARY'], cameras: [camera('VIDEO-01'), camera('VIDEO-02')] })).toEqual(['unassign']);
+    // A microphone slot: cleared and the role of a mic line.
+    expect(refusedAt({ unassign: ['PRIMARY'], mics: [byRole('MIC-03', 'PRIMARY')] })).toEqual(['unassign']);
+    expect(refusedAt({ unassign: ['STANDBY'], mics: [byRole('MIC-01', 'PRIMARY'), byRole('MIC-02', 'STANDBY')] })).toEqual(['unassign']);
+    // The control beside each refusal: another slot of the same body is assigned.
+    expect(accepts({ unassign: ['VIDEO-01'], cameras: [camera('VIDEO-02')] })).toBe(true);
+    expect(accepts({ unassign: ['STANDBY'], mics: [byRole('MIC-03', 'PRIMARY')] })).toBe(true);
+    expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02'], mics: [byRole('MIC-01', 'PRIMARY'), byRole('MIC-02', 'STANDBY')] })).toBe(true);
+    // A mic line WITHOUT `role` names an input, not a slot: the schema cannot know which role holds
+    // it, so this body passes here and the hosted action decides (register 4.3, second line; row 162).
+    expect(accepts({ unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] })).toBe(true);
+  });
+
+  it('the rule MIC-ASSIGN is in the words of the contract: a role is assignable alone (the mic line schema itself did not change)', () => {
+    const role = CaptureConfigMicUpdateSchema.shape.role.description ?? '';
+    expect(role).toContain('a role is assignable alone');
+    expect(role).toContain('one line or two');
+    expect(Object.keys(CaptureConfigMicUpdateSchema.shape)).toEqual(['inputId', 'deviceId', 'transport', 'role']);
+    expect(CaptureConfigUpdateRequestSchema.description).toContain('{ cameras?[], mics?[], unassign?[] }');
+    // One line by role is a body the schema has always taken (the 422 of today is the hosted action's).
+    expect(accepts({ mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] })).toBe(true);
   });
 });

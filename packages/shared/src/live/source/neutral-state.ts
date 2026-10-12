@@ -45,7 +45,7 @@ export function noSignalFrame(at: EpochMs): AudioFrame {
  * since schema v2). A frame the client synthesises has no switch to report, so it names the default
  * primary input; a frame from the server carries the real `activeInputId`.
  */
-export function silentAudio(at: EpochMs): AudioSlice {
+export function silentAudio(at: EpochMs): SimState['audio'] {
   return { inputs: { 'MIC-01': noSignalFrame(at), 'MIC-02': noSignalFrame(at) }, activeInputId: 'MIC-01' };
 }
 

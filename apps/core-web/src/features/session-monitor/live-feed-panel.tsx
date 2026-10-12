@@ -84,11 +84,14 @@ export function LiveFeedPanel({
   // Row 139 (D84; ux §8e.2): before the first durable fragment nothing is presented as live.
   const live = (phase === 'RECORDING' && !feed.connecting) || phase === 'FINALIZING'
   const label = t('session.feed.cameraLabel', { camera: feed.cameraName, room: feed.room })
-  const formatLabel = t('common.devices.cameraFormatCodec', {
-    resolution: feed.resolution,
-    fps: feed.fps,
-    codec: feed.codec,
-  })
+  // Row 54 (P12-F08): the overlay repeats the slice. No rate is printed for a stream that states none; no
+  // format chip at all when the slice carries no camera for the active track.
+  const formatLabel =
+    feed.resolution === null || feed.codec === null
+      ? null
+      : feed.fps === null
+        ? t('common.devices.cameraFormatCodecNoRate', { resolution: feed.resolution, codec: feed.codec })
+        : t('common.devices.cameraFormatCodec', { resolution: feed.resolution, fps: feed.fps, codec: feed.codec })
 
   const switchCamera = (keys: Set<string | number> | 'all') => {
     if (keys === 'all') return

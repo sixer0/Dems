@@ -88,3 +88,7 @@ Controller: C7-C13 recorded. No verification row FAILED; under U12 B1/B2 and U14
 | 147 | coder-execution / opus | complete | opaque injection result, startMessageBytes; 11/11 |
 | 160 | data-analyst / sonnet | complete | release packager cannot reach apps/input-av |
 | I-1 | coder-execution / opus | running | integration pass over the seams of rows 19, 20, 38, 52, 147 |
+
+## Track D - state at 2026-10-13 01:15 (batches 3 to 5)
+Commits on task4/input-av-core-port: 2307e9dc (plan), 7969f0fa (contracts, vocabulary), b7ed4c60 (schema set A, ONVIF profiles, microphone operations, helper, E-11). Uncommitted, landed: rows 11, 21, 28, 45, 47, 54, 55, 58, 64, 77, 94, 125, 126, 127, 144, 164, 166, 174, 176, 180. In flight: I-3, 175+177, 39, 128+129.
+Blueprint: 181 rows (179 + rows 180 kill guard, 181 procedure consistency pass - both added by the controller from findings). Landed or committed: 48. Branch B selected (C27, provisional until the container repeat, row 141). Gates passed: RC-1 (row 8). Overrides this period: suite runs c01, c02 by coder-execution/sonnet (mechanical run-and-report); rows 5+24, 174+166, 164+144, 54+55, 128+129, 175+177 paired in one agent each to limit host load (independent areas, sequential inside the agent).

@@ -306,10 +306,20 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       const built = mounted({ captureWorkerPath: fixture.workerSaying('worker-built', CAPTURE_WORKER_VERSION) });
       await built.boot();
       expect(built.control.outcome()).toMatchObject({ workerVersion: CAPTURE_WORKER_VERSION });
-      expect((await mounted({ captureWorkerPath: fixture.workerSaying('worker-newer', 'capture-worker/0.6.0') }).refusal()).code).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+      expect((await mounted({ captureWorkerPath: fixture.workerSaying('worker-newer', 'capture-worker/0.7.0') }).refusal()).code).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
     });
 
-    it('the order of the version rule: protocol, proof mark, release form, then THE version - a proof build of the built version stays a proof build', async () => {
+    it('BR-06: a worker that states exactly capture-worker/0.5.0 (the version before the rise to 0.6.0) is refused at boot by name, with expected and found; nothing passes', async () => {
+      const app = mounted({ captureWorkerPath: fixture.workerSaying('worker-0-5-0', 'capture-worker/0.5.0') });
+      const failure = await app.refusal();
+      // A word of the release form that is not the built one: the rule refuses it as another version, not as an unknown word.
+      expect(failure.code).toBe('CAPTURE_WORKER_VERSION_MISMATCH');
+      expect(failure.reason).toBe(`expected ${CAPTURE_WORKER_VERSION}, found capture-worker/0.5.0`);
+      expect(CAPTURE_WORKER_VERSION).not.toBe('capture-worker/0.5.0');
+      expect(app.control.outcome()).toBeNull();
+    });
+
+    it('the order of the version rule: protocol, proof mark, release form, then THE version -a proof build of the built version stays a proof build', async () => {
       const answer = (hello: WorkerHandshake) => {
         const sinks = recordedSinks().sinks;
         return runCaptureBootChecks({

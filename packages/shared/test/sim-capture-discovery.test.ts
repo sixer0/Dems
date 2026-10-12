@@ -15,7 +15,10 @@ import {
   SIM_ADOPTED_DEVICE_ID,
   SIM_CAPTURE_AUDIO_CARD_IDS,
   SIM_CAPTURE_CANDIDATE_IDS,
+  SIM_TYPED_ADDRESS_CANDIDATE_ID,
+  SIM_TYPED_ADDRESS_EXAMPLE,
   simCaptureAudioCards,
+  simCaptureCandidates,
   validateCoreApiResponse,
   type CaptureAudioCardSearch,
   type CaptureCandidateAdoption,
@@ -172,6 +175,133 @@ describe('operations 93 and 94: the search and its candidates', () => {
     expect(codeOf(h.call('POST', `${FRESH}/test`, {}).body)).toBe('CAPTURE_CONFIG_LOCKED');
     expect(codeOf(h.call('POST', `${FRESH}/adopt`, {}).body)).toBe('CAPTURE_CONFIG_LOCKED');
     expect(h.state().audit.rows).toHaveLength(before);
+  });
+
+  // ── Task 4 row 94 (WP-12; AM-3): the optional typed address ──────────────────────────────────
+
+  it('row 94: a search without the member answers exactly as before - no body, `{}` and a body without `address` give the same search, list and audit row', () => {
+    const answers = [undefined, {}, '{}'].map((body) => {
+      const h = harness();
+      signIn(h, 'rina.wijaya');
+      const started = h.call<CaptureDiscoverySearch>('POST', DISCOVERY, body);
+      return { started, list: h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body, rows: h.rows('CAPTURE_DISCOVERY_SEARCHED').map((row) => row.details), devices: h.state().captureDevices };
+    });
+    // The values of the first case of this block, which this row did not touch: two responders, one new.
+    expect(answers[0]?.started.status).toBe(202);
+    expect(answers[0]?.started.body).toMatchObject({ searchId: 'DSC-000001', responderCount: 2, newCount: 1, registeredCount: 1, state: 'COMPLETE' });
+    expect(answers[0]?.list.candidates.map((candidate) => candidate.candidateId)).toEqual(['CND-000000000001', 'CND-000000000002']);
+    for (const answer of answers.slice(1)) expect(answer).toEqual(answers[0]);
+  });
+
+  it('row 94: with a typed address the simulator adds ONE synthetic candidate whose host is that address; it probes nothing, and the audit row holds counts only', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const started = h.call<CaptureDiscoverySearch>('POST', DISCOVERY, { address: SIM_TYPED_ADDRESS_EXAMPLE });
+    expect(started.status).toBe(202);
+    expect(started.body).toMatchObject({ searchId: 'DSC-000001', state: 'COMPLETE', windowMs: 0, interfaceCount: 0, responderCount: 3, newCount: 2, registeredCount: 1, created: true });
+    expect(validateCoreApiResponse('startCaptureDiscovery', 202, started.body)).toEqual({ ok: true });
+
+    const read = h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY);
+    expect(validateCoreApiResponse('getCaptureDiscovery', 200, read.body)).toEqual({ ok: true });
+    // The two fixed candidates are what they were; the third is last and says what it is.
+    expect(read.body.candidates.slice(0, 2)).toEqual(simCaptureCandidates());
+    expect(read.body.candidates.map((candidate) => [candidate.candidateId, candidate.status, candidate.deviceId, candidate.adapter, candidate.sourceClass, candidate.host, candidate.vendor, candidate.name])).toEqual([
+      ['CND-000000000001', 'NEW', null, 'FAKE', 'DEVELOPMENT', '127.0.0.1', 'DEMS', 'Test camera 3'],
+      ['CND-000000000002', 'REGISTERED', 'CAM-01', 'FAKE', 'DEVELOPMENT', '127.0.0.1', 'DEMS', 'Test camera 1'],
+      [SIM_TYPED_ADDRESS_CANDIDATE_ID, 'NEW', null, 'FAKE', 'DEVELOPMENT', SIM_TYPED_ADDRESS_EXAMPLE, 'DEMS', 'Test camera at the typed address'],
+    ]);
+
+    // One row, the same ten keys, counts and codes: the typed address is in no audit row, and nothing was registered.
+    const rows = h.rows('CAPTURE_DISCOVERY_SEARCHED');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.details).toEqual({
+      searchId: 'DSC-000001',
+      scope: 'CAMERA_NETWORK',
+      trigger: 'MANUAL',
+      outcome: 'COMPLETE',
+      responderCount: 3,
+      newCount: 2,
+      registeredCount: 1,
+      interfaceCount: 0,
+      operationId: 'startCaptureDiscovery',
+      permission: 'CAPTURE_CONFIG',
+    });
+    expect(JSON.stringify(h.state().audit.rows)).not.toContain(SIM_TYPED_ADDRESS_EXAMPLE);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+
+    // The next search without the member is the old search again: the synthetic candidate is gone.
+    const plain = h.call<CaptureDiscoverySearch>('POST', DISCOVERY);
+    expect(plain.body).toMatchObject({ searchId: 'DSC-000002', responderCount: 2, newCount: 1 });
+    expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates).toEqual(simCaptureCandidates());
+  });
+
+  it('row 94: a candidate like any other - it is tested and adopted by the unchanged operations 95 and 96, and a later search for its address reads REGISTERED', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const address = '10.20.30.40';
+    h.call('POST', DISCOVERY, { address });
+    const typed = `${DISCOVERY}/candidates/${SIM_TYPED_ADDRESS_CANDIDATE_ID}`;
+    expect(h.call<CaptureConnectionTest>('POST', `${typed}/test`, {}).body).toMatchObject({ candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID, outcome: 'REACHABLE' });
+    const adopted = h.call<CaptureCandidateAdoption>('POST', `${typed}/adopt`, {});
+    expect([adopted.status, adopted.body.deviceId, adopted.body.device.host, adopted.body.device.adapter]).toEqual([201, 'CAM-03', address, 'FAKE']);
+
+    const again = h.call<CaptureDiscoverySearch>('POST', DISCOVERY, { address });
+    expect(again.body).toMatchObject({ responderCount: 3, newCount: 1, registeredCount: 2 });
+    expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.at(-1)).toMatchObject({ candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID, status: 'REGISTERED', deviceId: 'CAM-03', host: address });
+    // Another address is another, new candidate: no address is followed or re-pointed by a search.
+    h.call('POST', DISCOVERY, { address: '10.20.30.41' });
+    expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.at(-1)).toMatchObject({ status: 'NEW', deviceId: null, host: '10.20.30.41' });
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-03')?.host).toBe(address);
+  });
+
+  it('row 94: the refusals - outside the form 422, a form the stand-in rule refuses 422 DISCOVERY_ADDRESS_NOT_ALLOWED; each quotes nothing, starts no search and writes no row', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const before = h.state().audit.rows.length;
+    const outsideTheForm: unknown[] = ['camera-1.local', 'localhost', '192.168.050.101', '192.168.50.256', '192.168.50.101:80', '192.168.50.101/24', 'http://192.168.50.101/', '::ffff:192.168.50.101', ' 192.168.50.101', '', 3_232_248_421, null, ['192.168.50.101']];
+    for (const address of outsideTheForm) {
+      const refused = h.call('POST', DISCOVERY, { address });
+      expect([refused.status, codeOf(refused.body), reasonOf(refused.body)], JSON.stringify(address)).toEqual([422, 'INVALID_INPUT', undefined]);
+      expect(validateCoreApiResponse('startCaptureDiscovery', 422, refused.body)).toEqual({ ok: true });
+      if (typeof address === 'string' && address.trim() !== '') expect(JSON.stringify(refused.body)).not.toContain(address.trim());
+    }
+    // A member the contract does not have is refused as before: a strict object.
+    for (const stray of [{ host: '192.168.10.20' }, { address: SIM_TYPED_ADDRESS_EXAMPLE, port: 3702 }, { subnet: '192.168.10.0/24' }, { timeout: 1 }]) {
+      expect(h.call('POST', DISCOVERY, stray).status, JSON.stringify(stray)).toBe(422);
+    }
+    for (const address of ['127.0.0.1', '8.8.8.8', '224.0.0.1', '169.254.1.1', '255.255.255.255', '0.0.0.0', '192.168.10.0', '192.168.10.255', '172.32.0.1']) {
+      const refused = h.call('POST', DISCOVERY, { address });
+      expect([refused.status, codeOf(refused.body), reasonOf(refused.body)], address).toEqual([422, 'INVALID_INPUT', 'DISCOVERY_ADDRESS_NOT_ALLOWED']);
+      expect(validateCoreApiResponse('startCaptureDiscovery', 422, refused.body)).toEqual({ ok: true });
+      expect(JSON.stringify(refused.body)).not.toContain(address);
+    }
+    // Nothing happened: no search, no id spent, no row.
+    expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
+    expect(h.state().audit.rows).toHaveLength(before);
+    expect(h.call<CaptureDiscoverySearch>('POST', DISCOVERY).body.searchId).toBe('DSC-000001');
+  });
+
+  it('row 94 (decision C10): the typed address is web console only - a tablet or phone session is refused 403 WEB_CONSOLE_ONLY for it and still searches without it; a role without CAPTURE_CONFIG is refused for the role first', () => {
+    const tablet = harness({ deviceConsole: true });
+    signIn(tablet, 'rina.wijaya');
+    const before = tablet.state().audit.rows.length;
+    // Whatever the value is: the presence of the member decides, before its value is read.
+    for (const address of [SIM_TYPED_ADDRESS_EXAMPLE, '127.0.0.1', 'camera-1.local', 7]) {
+      const refused = tablet.call('POST', DISCOVERY, { address });
+      expect([refused.status, codeOf(refused.body), reasonOf(refused.body)], String(address)).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
+      expect(validateCoreApiResponse('startCaptureDiscovery', 403, refused.body)).toEqual({ ok: true });
+      expect(JSON.stringify(refused.body)).not.toContain(String(address));
+    }
+    expect(tablet.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
+    expect(tablet.state().audit.rows).toHaveLength(before);
+    // The search itself stays open to the device console.
+    expect(tablet.call<CaptureDiscoverySearch>('POST', DISCOVERY).body).toMatchObject({ searchId: 'DSC-000001', responderCount: 2 });
+    expect(tablet.call<CaptureDiscoverySearch>('POST', DISCOVERY, {}).status).toBe(202);
+
+    const investigator = harness();
+    signIn(investigator, 'budi.santoso');
+    const denied = investigator.call('POST', DISCOVERY, { address: SIM_TYPED_ADDRESS_EXAMPLE });
+    expect([denied.status, codeOf(denied.body), reasonOf(denied.body)]).toEqual([403, 'NOT_PERMITTED', undefined]);
   });
 });
 
