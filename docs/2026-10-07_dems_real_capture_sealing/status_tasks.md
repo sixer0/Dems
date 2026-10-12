@@ -166,6 +166,13 @@ Row 56 = satisfied by D61 + D62. Stale rows 50a/51a above are closed (scope done
 | 60 | coder-execution | verifier | launched |
 | 77 | coder-execution | verifier | driver launched early (D79) |
 
+## CLOSED 2026-10-14 — task 3 at "DONE ON THIS MAC WITH FAKE DEVICES" (decision D249)
+
+Final code commit `64a4858` (main, local). Final regression GREEN (`test/19_final_regression.md`). Final report: `report/report.md`.
+Since the table below: batch N `035150b`; UI judging (four reports under `report/`); fix wave J `b4b0c25`; confirmation in the normal launch form (three reports); fix wave Q `64a4858` incl. the react-native-reanimated patch.
+Not met: composite export. Stated limits and the user's open decisions: `report/report.md` sections 4-6.
+Next, only on the user's word: the release / installation build session (report section 7).
+
 ## STATE ON 2026-10-12 — after the final chain (controller; supersedes "PAUSE POINT"; source of truth for detail: decisions D132..D241)
 
 HEAD `713d83f` (main, local, no remote). Completion line "DONE ON THIS MAC WITH FAKE DEVICES": rows through 101 have reported; batch N (the final chain's small fixes), the report, and the UI judging session D150 are still to do.

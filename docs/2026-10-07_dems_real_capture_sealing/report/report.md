@@ -1,4 +1,92 @@
-# Handoff to Kilo — DEMS task 3: real capture, sealing v2 and transcript
+# DEMS task 3 — real capture, sealing v2, transcript: FINAL REPORT
+
+**Prepared by:** the Claude Code master controller, 2026-10-14 · **Completion line:** "DONE ON THIS MAC WITH FAKE DEVICES" (blueprint rows through 101; rows 102-105 are outside the line) · **Final commit:** `64a4858` on `main` (the code; this report and the closing notes follow in one documentation commit) (local; no remote, nothing pushed) · **Source of detail:** `decisions/decisions.md` D1-D248, `status_tasks.md`, the reports named below.
+
+## 1. Highlight
+
+Real capture on generated test sources works end to end on this Mac — record on two cameras with one switchable microphone, seal an encrypted, signed package with the transcript inside, verify it, play it, revise its transcript, export it and check the export as a receiver — from the web console, the tablet and the phone. All milestone gates stand at PASS WITH CONDITIONS, the final chain reported (verification PASS WITH CONDITIONS, security CAUTION with 0 critical, tests GREEN, code review YES WITH CONDITIONS), the UI was judged by four judges and re-judged by three in the normal launch form ("yes, with reservations" on every surface), and the last whole regression is green: 16 steps, 17,993 tests, kill matrix 35 of 35, capture-worker series 122 as expected / 0 unexpected.
+
+It is NOT a product ready for a real installation: one requirement is not met (composite export), real cameras and microphones were never driven by an agent, a production Core cannot be brought up from the seed, and several decisions are the user's and still open (section 6).
+
+## 2. What was built (and where it is proven)
+
+| Area | Built | Proven by |
+|---|---|---|
+| Capture | capture worker 0.5.0 (C + FFmpeg), protocol 4, supervisor, fragmented MP4 per camera with hash chains, one active microphone with a manual switch and standby, modes SIMULATED / REAL_DEVELOPMENT / REAL_PRODUCTION with a fence | gates `08` (M3), `10e` (M5); kill matrix; worker e2e series |
+| Selector, discovery, connect | capture selector on web / tablet / phone; camera search; the credential workflow (credentials typed only on the web console, never stored in the clear); adoption; no-device notifications A and B; local-device privacy notices | `09d` (M4), `14`; notification B driven with the source rig on web, tablet (camera and microphone), phone |
+| Sealing v2 | encryption at seal time (AES-256-GCM per fragment), signed manifest stating only facts, bounded retry, blocked seal with "Retry sealing" on web and devices, unsealable -> quarantine with a notice closed by a reviewer's acknowledgement, session keys bound to session and store | `10e`, `12d` (M7); seal rig; seal e2e |
+| Transcript | STT configuration in the database with a menu, snapshot at start, cpu-local engine through a real sealed session (synthetic speech), transcript inside the package, revisions (signed, `from` must be the current text) | `11b` + `10d` (M6) |
+| Evidence consumption | verify V-01..V-15 with notices, sealed player on three surfaces (indexed view for seeking on Android), tamper stop, export archive with signed download, receiver's check command | `13d` (M8), `14`, `report/confirm_c*.md` |
+| Truth of the surfaces | one statement of system state per surface; "not reported" instead of simulator constants on a real-capture Core; DEMO marks on the simulated lane; an unsealed item never shows sealed values | `report/judging_*.md` -> `report/confirm_c*.md` |
+| Dev tools | lanes (`scripts/lane/lane.sh`), camera stub, speech microphone, seal rig, source rig, `npm run test:regression` and five more scripts | README; `test/19_final_regression.md` |
+
+Contract and schema at the end: 97 operations (36 GET / 61 POST), 67 audit types, schema 6 / `dbc-7` — unchanged since the milestone reviews; every later member is additive and optional.
+
+## 3. Verification evidence
+
+| Check | Result | Report |
+|---|---|---|
+| Milestone gates M3..M8 | PASS WITH CONDITIONS each (first round: 2 pass, 4 fail; five fix waves) | `gateway_check/08`, `09d`, `10e`, `11b` + `10d`, `12d`, `13d`, `14` |
+| Row 98 final verification | PASS WITH CONDITIONS — 32 requirements: 20 met, 11 met with a limit, 1 not met | `verification/01_verification.md` |
+| Row 99 security review | CAUTION — 0 critical, 1 high (fixed: production refuses the demo operator password), 3 medium (open, section 6) | `verification/02_security.md` |
+| Row 100 final test report | YES WITH LISTED GAPS — 235 check ids: 140 by suite, 53 live at a gate, 5 by test only, 3 not proven, 5 user-attended, 1 hardware | `test/17_row100_final_test_report.md` |
+| Row 101 senior code review | YES WITH CONDITIONS — 0 blocker, 5 major (2 fixed, 3 carried as structural debt) | `gateway_check/22_final_code_review.md` |
+| UI judging (D150), four judges | 3 BLOCKER, 21 MAJOR, about 76 MINOR found | `report/judging_a1_tablet.md`, `judging_a2_phone.md`, `judging_b1_web.md`, `judging_b2_motion_on.md` |
+| Confirmation, three judges, normal launch form | every BLOCKER and MAJOR confirmed fixed; "yes, with reservations" x3; 2 new MAJOR, fixed in wave Q | `report/confirm_c1_tablet.md`, `confirm_c2_phone.md`, `confirm_c3_web.md` |
+| Final regression | GREEN, 16 steps, one run: shared 2685, capture-protocol 31, core unit 6732, core db 2429 (+7 skipped), web 2367, mobile 3166, transcriber 564 (+3 skipped), mock-core 19, pg-scripts 57, worker checks, seal e2e 3, development e2e 2, kill matrix 35 of 35, worker e2e series 122 as expected | `test/19_final_regression.md` |
+
+Wave Q (the last fixes) was proven by its drivers on the devices and in the browser and by the final regression; it was NOT re-judged by an independent judge (the user closed the task: "selesaikan dulu task ini").
+
+## 4. Not met, not proven, skipped
+
+- **NOT MET:** composite export (`M8-CMP-1`) — refused with its reason; blocked on the FFmpeg licence decision.
+- **Not proven:** `M5-SEC-SRC-1` (live part needs a production Core that cannot boot today); `M4-LOCAL-MIC-1` (the user's only run failed on sample rate); the user-attended local-device checks; class-C hardware (real ONVIF / RTSP cameras, real external microphones); the server STT backend live; a release build of the mobile app.
+- **Skipped by the user's instruction:** biometric scenarios (D151) — skipped, not passed.
+- **Not built by decision:** the phone is not locked to portrait (D17).
+
+## 5. Known limits (stated, not hidden)
+
+1. Recorded media is plaintext on the media root until the seal completes (D147).
+2. The audit extract inside a package is not covered by the package signature (notice `AUDIT_EXTRACT_NOT_SIGNED`); note text and the session form's note are in the item's row, not under the signature.
+3. The manifest has no member for delivered / dropped frames; its profile is the stream's declared format.
+4. An acknowledgement that closes nothing writes no audit row (needs a 68th audit type).
+5. Mobile, debug build on the emulator: the recording timer can stand still for 5-8 s in the first 45 s of a recording; the Audio Monitor sheet can take about 7 s. Cause not established. The hour-old-process slowdown (CT-01) was traced to react-native-reanimated 4.5.1 and patched (`apps/mobile/patches/`), but that aged state was not reproduced after the patch. Advice: start a demonstration from a freshly launched app.
+6. Every gate before the judging session launched the mobile apps with the test switch `motion=off`; the normal launch form was first judged in `judging_b2_motion_on.md` and is the form of record since.
+7. A production Core cannot be brought up from the seed (it refuses the demo operator password; there is no operator provisioning or password change yet).
+8. Structural debt named by the code review: the Core does not state its capture operation to every role (clients infer it); the real Core's engine state is the simulator's; the players' stall watch is not an explicit state machine.
+9. About 12 mobile MINOR findings and 10 web NOTES of the judging are not fixed, each with its reason in `implementation/171`, `173`, `176`, `177`.
+10. The test suite (about 18,000 tests after consolidation: `test/13`..`15`) did not catch the defects found on devices and in the browser; `test/17` Part C lists the cheapest automated checks that would.
+
+## 6. Decisions that are the user's (none taken by the controller)
+
+| Decision | Why it matters | Source |
+|---|---|---|
+| FFmpeg licence for a distributed Core (the worker links the host's GPL Homebrew build) | blocks composite export and any installation package of the real-capture Core | D139, `verification/02_security.md` |
+| Server-side confirmation before a local camera / microphone opens (S99-02) | today the confirmation is client-only | `verification/02_security.md` |
+| Retention of decrypted export archives (S99-03) | they stay on disk until a reset | same |
+| SEC35-26: legal basis, retention, erasure, DPIA | open — the README no longer calls it accepted | same |
+| Key escrow (SEC35-09) | losing the credential store makes sealed footage unreadable | same |
+| Quarantine policy; a tool for unsealed LOCAL_DEVICE recordings | there is no path back from quarantine | D216, D217 |
+| Sealing note text; narrowing markers / notes by case scope | evidence-format rulings | `implementation/172` |
+| Portrait lock on the phone (overrules D17) | landscape works but is flawed | `report/confirm_c2_phone.md` |
+| Data clean-up: `.cache/gates` and `.cache/judging` (several GB), `.data/test-row61-row140e2e-*` 1.3 GB, lane 2 quarantine folders, `.data/capture-local/runs` 10 MB | nothing was deleted | `implementation/162` |
+| Microphone `--diagnose` run on this Mac | the local microphone delivers 8/9 of 48 kHz | D128 |
+
+## 7. What comes next (not part of this task)
+
+1. The release-build session the user asked about: an APK release build and refreshed Simulated web packages from the final commit; a JS / UI profile of the recording start; the Reanimated patch through a real `npm install`.
+2. Operator provisioning and a password change path, so that a production Core can start.
+3. The structural cuts of section 5 item 8 (the Core states its capture operation; simulator separated from the real Core).
+4. Real cameras and microphones on the LAN (blueprint row 105's activation).
+
+## 8. How this task was run
+
+Orchestrated by one controller with delegated agents (coder-execution drivers, verifier gates and judges, test-expert runners, security-review, senior-code-reviewer, git-specialist). Controller lapses are recorded where they happened: D219 (a fixture account quoted in a note, redacted before commit), D240 (a hygiene brief that ignored the blueprint's own list; overlapping suites), D241 (the letter of the local-device rule D163 broken by "select only" in three gate briefs; stale trackers), D243 (gating with `motion=off`), D247 (a limit ruled harmless that was a real defect). The user's standing instructions that shaped the run: maximum parallelism with mediation, pair programming off, autonomy with a decision log, one-run proof depth with a separate test runner, gates kept separate, the UI judging session, biometrics skipped, the test-suite consolidation.
+
+---
+
+# (History) Handoff to Kilo — DEMS task 3: real capture, sealing v2 and transcript
+
 
 **Prepared by:** Claude Code master-controller session, 2026-10-07 · **Receiver:** the Kilo agentic workflow (`~/.config/kilo`, agent `master-controller` and the same worker roster) · **Repository:** `/Users/gsp-budi/Documents/DEMS`, branch `main`, HEAD `85c0fb5` (no git remote) · **Task folder:** `docs/2026-10-07_dems_real_capture_sealing/`
 
