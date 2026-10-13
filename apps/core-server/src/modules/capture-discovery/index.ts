@@ -42,10 +42,20 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED, CaptureDiscoveryState, CaptureDiscoveryTrigger } from '@dems/shared/api';
 import type { FastifyPluginAsync } from 'fastify';
-import { createSystemTimers } from '../../capture';
-import { createOnvifConnectionTester, createOnvifDiscoveryAdapter, type CaptureAdapterKind, type OnvifDiscoveryAdapter, type RegisteredLookup } from '../../capture/adapters';
+import { avcDeclaredFrameRate, createSystemTimers } from '../../capture';
+import {
+  createOnvifConnectionTester,
+  createOnvifDiscoveryAdapter,
+  createOnvifStreamLocator,
+  createStreamConnectionTester,
+  startProductionProcess,
+  type CaptureAdapterKind,
+  type OnvifDiscoveryAdapter,
+  type RegisteredLookup,
+} from '../../capture/adapters';
 import { captureFenceControl } from '../../capture/fence';
 import { captureNotices, type PrecheckSearchSeam } from '../../capture-notices';
+import { streamProfileOf } from '../../sealing-host';
 import { registerAdoptedCamera, type AdoptedCamera } from './adoption';
 import { candidateDirectoryOf, registerCaptureConnectRoutes } from './connect';
 import { createSearchLimiter, type SearchLimiter } from './limits';
@@ -56,7 +66,19 @@ import { createSearchRunner, openSessionOf, type SearchClosed, type SearchRunner
 import { createSessionExpiryWatch, readEndedSessions } from './session-expiry';
 import { createCandidateStore, type CandidateStore, type HeldCandidate, type TestRecord } from './store';
 
-export { ADOPTED_CAMERA_TRANSPORT, AdoptionRowMissing, SET_ADOPTED_CAMERA_COLUMNS, registerAdoptedCamera, type AdoptedCamera } from './adoption';
+export {
+  ADOPTED_CAMERA_TRANSPORT,
+  ADOPTED_STREAM_ROLE,
+  AdoptionProfileInvalid,
+  AdoptionRowMissing,
+  INSERT_ADOPTED_CAMERA_STREAM,
+  SET_ADOPTED_CAMERA_COLUMNS,
+  assertAdoptedProfiles,
+  registerAdoptedCamera,
+  writeAdoptedCameraStreams,
+  type AdoptedCamera,
+  type AdoptedCameraStream,
+} from './adoption';
 export { SearchBound, createSearchLimiter, type SearchAllowance, type SearchLimiter } from './limits';
 export { READ_REGISTERED_CAMERAS, adoptionAddressOf, readRegisteredCameras, registeredIndexOf, type RegisteredCamera, type RegisteredIndex } from './registered';
 export { CAPTURE_DISCOVERY_MODULE_OPERATIONS, captureDiscoveryOperation, searchRefused, type CaptureDiscoveryModuleOperation } from './routes';
@@ -122,7 +144,8 @@ const SOURCE = 'captureDiscovery';
 const AUDIT_UNIT_LABEL = 'captureDiscovery.searched';
 const SIGN_OUT_OPERATION = 'signOut';
 const ADMIT_FAILED = 'an adopted camera could not be handed to the adapter registry: it is assignable after the next start of the Core';
-const EXPIRY_CHECK_FAILED = 'the check for expired owner sessions of the candidate lists failed: a list goes at its own expiry';
+const STREAM_TEST_FAULT = 'the stream half of a camera connection test failed on this host: the relay could not judge the stream';
+const EXPIRY_CHECK_FAILED ='the check for expired owner sessions of the candidate lists failed: a list goes at its own expiry';
 
 export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   const store = createCandidateStore({ randomBytes: (size) => randomBytes(size) });
@@ -245,7 +268,28 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   // credential sealer is the connect flow's own (the one Core credential store, at `onReady`).
   const connect = registerCaptureConnectRoutes(app);
   connect.provideCandidates(candidateDirectoryOf(store, now));
-  connect.provideTester(createOnvifConnectionTester({ timers }));
+  // THE CONNECTION TEST HAS TWO HALVES (task 4 row 50; amendment AM-2; AD-06). The ONVIF half says the
+  // camera answers, takes the credential and names its streams. The STREAM half lets the capture relay
+  // probe each named stream (through the production door) and the Core judge it: the codec from the
+  // bytes of the parameter sets, the code by the SEAL'S OWN two functions, handed in here - so a tested
+  // camera is stated exactly as its sealed recording will be. It runs only for a test with a credential
+  // on a Core that has a relay program (`captureRelayPath`); without either the answer is the ONVIF
+  // half's own and no code exists. A failure of the relay itself is a fault of the HOST: said in the
+  // log and the persistent error log by its code, while the operator gets the outcome of the contract.
+  connect.provideTester(
+    createStreamConnectionTester({
+      onvif: createOnvifConnectionTester({ timers }),
+      locator: createOnvifStreamLocator({ timers }),
+      door: startProductionProcess,
+      relayProgram: app.config.captureRelayPath,
+      timers,
+      statement: { profileOf: streamProfileOf, declaredRate: avcDeclaredFrameRate },
+      tell: (note) => {
+        app.log.error({ source: `${SOURCE}.streamTest`, code: note.code, relayWord: note.reason }, STREAM_TEST_FAULT);
+        app.errorLog.append({ level: 'error', source: `${SOURCE}.streamTest`, message: STREAM_TEST_FAULT, code: note.code, context: { relayWord: note.reason } });
+      },
+    }),
+  );
   // Fix wave I (re-gate 70, finding G70b-01): the adapter registry of the running operation is built
   // at boot from the stored devices of that moment. A camera adopted afterwards is handed to it WHEN
   // THE ADOPTION COMMITTED (never for a unit that rolled back), before the next unit starts: the

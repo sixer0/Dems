@@ -68,7 +68,15 @@
  * TASK 4 ROW 174 (decision C24). The locator `locate` answers MAY CARRY A QUERY, under the closed
  * rule stated at `queryAllowed`: bounded, of a closed character set, and with no parameter named
  * like a credential. A user part stays refused wherever an `@` stands, a fragment stays refused,
- * and the locator is still written to no log and stored nowhere by this file.
+ * and the locator is still written to no log and stored nowhere by this file. Since row 46 the
+ * rule itself stands in `../credential.ts`, inside `credentialFreeLocator`: the read of a locator
+ * and the injection point judge a query by that ONE function.
+ *
+ * TASK 4 INTEGRATION PASS I-7 (row 49's request). A third facade, `createOnvifTimeReader`, has one
+ * call, `read`: the clock read ALONE, without a credential, answering whether the device answered
+ * and the instant it names. It is one of the five reads (no sixth call exists), it runs through
+ * the same exchange, and it is wired nowhere by this file: the composition hands it to the camera
+ * watch (row 85).
  */
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
@@ -150,7 +158,9 @@ export interface OnvifSessionResult extends ConnectionTestResult {
   /**
    * One entry per video source, the profile with the largest announced pixel area of that source,
    * the larger picture first (equal areas: the device's order). Read from EVERY usable profile,
-   * whatever encoding the device announces; empty unless `REACHABLE`.
+   * whatever encoding the device announces; empty unless `REACHABLE`, or `NOT_H264` by the
+   * announcement (`NO_H264_PROFILE`): the announced encoding is advice, and the stream test of
+   * task 4 row 50 judges these streams whichever of the two the device said.
    */
   readonly profiles: readonly OnvifStreamProfile[];
   /** Null for `REACHABLE`. */
@@ -359,62 +369,25 @@ function streamAddressFault(answer: unknown, host: string): OnvifTestReason | nu
   return parsed.hostname === host ? null : OnvifTestReason.STREAM_HOST_MISMATCH;
 }
 
-/**
- * THE QUERY RULE of a stream locator (task 4 row 174; decision C24). Common cameras name their
- * stream with a query (a channel, a sub-stream, a transport word), so a query is admitted - under
- * a CLOSED rule, judged on the device's own text with no decoding and no parser:
- *
- *   length      the whole locator at most `LOCATOR_MAX_CHARS`, the query (after its `?`) 1 to
- *               `QUERY_MAX_CHARS` characters, at most `QUERY_MAX_PARAMETERS` parameters;
- *   characters  a parameter is `name` or `name=value`, parameters are joined by `&`; a name is 1
- *               to 32 and a value 0 to 64 characters of `A-Z a-z 0-9 . _ ~ -`. Nothing else: no
- *               `%` (so no name can hide behind an encoding), no `+`, no `;`, no second `?`, no
- *               second `=` in a parameter, no empty parameter;
- *   names       no parameter may be named, in any letter case, by a word of
- *               `CREDENTIAL_LIKE_PARAMETERS`; and no name may appear twice (two readers could
- *               disagree on which one counts).
- *
- * A VALUE is not judged: `mode=password` names a mode. The list is closed and compared with the
- * whole name: `sessiontimeout` is not `session`.
- */
+/** The length bound of a locator, as the injection point holds it (`../credential.ts`). */
 const LOCATOR_MAX_CHARS = 256;
-const QUERY_MAX_CHARS = 128;
-const QUERY_MAX_PARAMETERS = 8;
-const QUERY_PARAMETER = /^([A-Za-z0-9._~-]{1,32})(?:=[A-Za-z0-9._~-]{0,64})?$/;
-// One text, split: these are names to REFUSE, not accounts (static rule G-R14 reads a quoted account word as a default account).
-const CREDENTIAL_LIKE_PARAMETERS: ReadonlySet<string> = new Set('user username pass password pwd auth token key secret session'.split(' '));
-
-/** True when the text after the `?` of a stream address is inside the query rule. It answers yes or no: no part of the text is kept. */
-function queryAllowed(query: string): boolean {
-  if (query.length === 0 || query.length > QUERY_MAX_CHARS) return false;
-  const parameters = query.split('&');
-  if (parameters.length > QUERY_MAX_PARAMETERS) return false;
-  const seen = new Set<string>();
-  for (const parameter of parameters) {
-    const name = QUERY_PARAMETER.exec(parameter)?.[1]?.toLowerCase();
-    if (name === undefined || CREDENTIAL_LIKE_PARAMETERS.has(name) || seen.has(name)) return false;
-    seen.add(name);
-  }
-  return true;
-}
 
 /**
  * The stream address of a profile as a locator that may leave this file (task 4 row 26; H-05):
  * first the comparison of the test (scheme, NO USER PART anywhere in the text, the candidate's own
- * host), then visible ASCII only, no fragment mark and the length bound; the part before a `?` is
- * held to the rule of the injection point (`credentialFreeLocator`: host and path) and the part
- * after it to the query rule above (row 174). The text is the device's, unchanged; a refusal names
- * no part of it, and nothing here writes it anywhere.
+ * host), then visible ASCII only, no fragment mark and the length bound; then the WHOLE text is
+ * held to the rule of the injection point (`credentialFreeLocator`: host and path, and a query
+ * only inside the query rule of row 174, which stands there since row 46 - one function for the
+ * read and for the injection). The text is the device's, unchanged; a refusal names no part of
+ * it, and nothing here writes it anywhere.
  */
 function locatorOf(answer: unknown, host: string): { readonly locator: string } | { readonly reason: OnvifTestReason } {
   const fault = streamAddressFault(answer, host);
   if (fault !== null) return { reason: fault };
   const address = member(answer, 'uri');
   if (typeof address !== 'string' || address.length > LOCATOR_MAX_CHARS || !LOCATOR_CHARS.test(address) || address.includes('#')) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
-  const mark = address.indexOf('?');
-  if (mark !== -1 && !queryAllowed(address.slice(mark + 1))) return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
   try {
-    credentialFreeLocator(mark === -1 ? address : address.slice(0, mark));
+    credentialFreeLocator(address);
   } catch {
     return { reason: OnvifTestReason.STREAM_LOCATOR_FORM };
   }
@@ -722,7 +695,8 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
       outcome,
       authenticated: session.authenticated,
       usableProfiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE ? usable.map((profile) => profile.token) : []),
-      profiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE ? [...main] : []),
+      // Task 4 row 50: named for the announcement verdict too. The announced encoding is ADVICE, and the stream test judges those streams.
+      profiles: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE || reason === OnvifTestReason.NO_H264_PROFILE ? [...main] : []),
       reason,
       warnings: Object.freeze(outcome === ConnectionTestOutcome.REACHABLE && usable.some((profile) => profile.gopMs !== null && profile.gopMs > limits.gopBoundMs) ? [OnvifTestWarning.GOP_ABOVE_BOUND] : []),
       reads: Object.freeze([...session.reads]),
@@ -761,8 +735,11 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
         const fault = streamAddressFault(stream.value, session.target.host);
         if (fault !== null) return ended(session, ConnectionTestOutcome.WRONG_PROFILE, fault);
 
-        // The codec verdict below is the one of task 3 and is not this row's: it moves to the stream (task 4 row 50).
-        if (h264.length === 0) return ended(session, ConnectionTestOutcome.NOT_H264, OnvifTestReason.NO_H264_PROFILE);
+        // THE ANNOUNCEMENT VERDICT (task 3), now ADVICE ONLY (task 4 row 50; amendment AM-2; AD-06 (1)): the bench
+        // cameras announce H264 and deliver HEVC, so the codec of a camera is judged from its STREAM, by
+        // `stream-probe.ts`, which takes the streams named here for either answer. This verdict stands
+        // only for a test that has no stream half (no credential, or no relay program: a development Core).
+        if (h264.length === 0) return ended(session, ConnectionTestOutcome.NOT_H264, OnvifTestReason.NO_H264_PROFILE, [], mainProfilesOf(usable));
         // Task 4 row 26: the stream of each video source, from every usable profile, the larger picture first.
         return ended(session, ConnectionTestOutcome.REACHABLE, null, h264, mainProfilesOf(usable));
       },
@@ -809,4 +786,72 @@ export function createOnvifStreamLocator(options: OnvifConnectionTesterOptions):
   };
 
   return Object.freeze({ locate });
+}
+
+/**
+ * THE THIRD FACADE (task 4 integration pass I-7, on the request of row 49): one call, ONE read,
+ * no credential. It is the production value of the seam `CameraTimeReader` of `camera-watch.ts`
+ * (presence and clock offset of a camera); the answer has that seam's shape, restated here
+ * because this file imports nothing of the watch.
+ */
+export interface OnvifTimeReader {
+  /**
+   * Asks the device its clock (`GetSystemDateAndTime`), once. Rejects before any request, as
+   * `test` does: `CAPTURE_ADAPTER_ABORTED` for a signal already aborted, `CAPTURE_LOCATOR_INVALID`
+   * for a candidate that may not be contacted. Otherwise it RESOLVES, whatever the device does.
+   *
+   * `answered`: the device answered the ONVIF read itself - with its clock, or by keeping the
+   * clock behind authentication. No answer, a cut (deadline, byte cap) and an answer that is no
+   * ONVIF answer are `false`.
+   * `cameraUtcMs`: the instant the answer names as UTC, in milliseconds, or null. The ONVIF
+   * answer carries whole seconds, so the value is exact to one second and no finer.
+   */
+  read(candidate: CameraCandidate, signal: AbortSignal): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;
+}
+
+/** The element of the answer that states the instant as UTC, with whatever namespace prefix the device writes. */
+const UTC_INSTANT_ELEMENT = /<(?:[A-Za-z_][A-Za-z0-9_.-]{0,31}:)?UTCDateTime[\s/>]/;
+const TIME_NOT_ANSWERED = Object.freeze({ answered: false, cameraUtcMs: null });
+
+/**
+ * The time read of a camera (row 49: presence and clock offset; design addendum WP-06c). The same
+ * exchange as the test - the same agent, bounds and address rule (`targetOf`: the candidate's own
+ * address only) - with the shortest course: the clock read and nothing after it. The credential
+ * of the exchange is `null` by a literal: no parameter, no option and no dependency of this
+ * function can carry one, so a time read reveals nothing and counts 0 credential requests by
+ * construction. A device that refuses the read is asked no second time (the package's own repeat
+ * of a refused clock read goes out on a client that holds no credential, as in the test).
+ *
+ * WHAT THE DEVICE SAYS IS UNTRUSTED. The package answers the Core's OWN clock for an answer that
+ * names no instant, and reads a local time as if it were UTC when no UTC element stands in the
+ * answer: either would state a false offset. So an instant is handed out only when the raw answer
+ * holds a `UTCDateTime` element AND the package read a valid date from it; the raw answer is
+ * tested for that one element name and dropped - no part of it is returned, logged or kept.
+ */
+export function createOnvifTimeReader(options: OnvifConnectionTesterOptions): OnvifTimeReader {
+  const limits: OnvifSessionLimits = { ...ONVIF_SESSION_LIMITS, ...options.limits };
+  const { timers } = options;
+
+  const read = (candidate: CameraCandidate, signal: AbortSignal): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }> =>
+    exchange<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>(limits, timers, candidate, null, signal, {
+      cut: () => TIME_NOT_ANSWERED,
+      steps: async ({ client, ask }) => {
+        const clock = await ask('GetSystemDateAndTime', (callback) =>
+          client.getSystemDateAndTime((error: unknown, instant?: unknown, raw?: unknown) => {
+            const text = typeof raw === 'string' ? raw : '';
+            const failed = error !== null && error !== undefined && error !== false;
+            // The package asks a refused clock read once more by itself and then reports an error of its own, in which the
+            // device's refusal is lost: the refusal is read from the answer, by the fixed words `failureOf` reads a fault by.
+            if (failed && NOT_AUTHORIZED.test(text)) callback(new Stop('NOT_AUTHORIZED_FAULT'));
+            else callback(error, { instant, statesUtc: UTC_INSTANT_ELEMENT.test(text) });
+          }),
+        );
+        if (!clock.ok) return isAuthFailure(clock.failure) ? Object.freeze({ answered: true, cameraUtcMs: null }) : TIME_NOT_ANSWERED;
+        const instant = member(clock.value, 'instant');
+        const utcMs = member(clock.value, 'statesUtc') === true && instant instanceof Date ? instant.getTime() : Number.NaN;
+        return Object.freeze({ answered: true, cameraUtcMs: Number.isSafeInteger(utcMs) ? utcMs : null });
+      },
+    });
+
+  return Object.freeze({ read });
 }

@@ -9,6 +9,8 @@
  * `registerCaptureDevice`): hosted, but no client may call them; the host has a function of its own
  * for each (`registerCaptureDevice`: inside a module's unit, `internal-actions.ts`). The other ten are never called on the engine (the
  * sign-in actions, `signOut`, `touch`, `pair`, `unpair`, `loadScenario`, `resetDemo`).
+ * Task 4 row 185 added one more INTERNAL member, `registerCaptureMicrophone` (inside the unit of
+ * operation 99, `internal-actions.ts`): the hosted 33 are unchanged.
  */
 import { SIM_ACTION_OPERATIONS, SimActionExecution, type SimActionName } from '@dems/shared/api';
 import type { SimActions } from '@dems/shared/sim';

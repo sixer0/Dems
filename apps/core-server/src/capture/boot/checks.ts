@@ -32,6 +32,19 @@
  *                          ruling D241). The count of such operators is said; operators that cannot
  *                          be read are a refusal too (fail closed). Provisioning operators is a task
  *                          of its own: until it exists, a seeded database is not a production one
+ *                       4d. REAL_PRODUCTION only, and only when the composition hands the host facts in
+ *                          (`deps.host`; task 4 row 80, WP-20): THE HOST CHECKS of `host-checks.ts` -
+ *                          the core-file limit, the start switches, the relay and guard programs under
+ *                          the path rule of check 2, then on Linux the questions of the host profile
+ *                          (the loopback owner rule first: BR-12). The first prerequisite that is
+ *                          missing is refused by ITS OWN code, with a reason of fixed words; on another
+ *                          platform the questions are not asked and that is SAID (a warning)
+ *                       4e. REAL_PRODUCTION only, and only when the composition hands them in (`deps.programs`;
+ *                          task 4 row 81, WP-20): THE DELIVERED PROGRAMS of `program-checks.ts` - the relay's
+ *                          stated media library, the file of the address helper, its grant (the socket's
+ *                          directory and the two unit files), and the interface file against the stored row.
+ *                          Each is refused by its own code; a file that names another interface than the
+ *                          row is `CAPTURE_HOST_INTERFACE_FILE_MISMATCH`
  *                       5. the worker - started with the SAME arguments a session start passes -
  *                          answers `HELLO` with this protocol, NO proof-build mark (F-10) and THE
  *                          version this Core was built to drive (`CAPTURE_WORKER_VERSION`; gate 64
@@ -49,6 +62,8 @@ import { CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
 import { CaptureOperation } from '../adapters/kinds';
 import { HelperProgramRefusal, helperProgramRefusal, type ProgramFacts, type ProgramInspector } from '../adapters/local';
 import type { CaptureOperationDecision } from '../fence/operation';
+import { CaptureHostRefusal, HOST_REFUSAL_TEXT, hostCheckOutcomeOf, type CaptureHostDeps } from './host-checks';
+import { CaptureProgramRefusal, PROGRAM_REFUSAL_TEXT, deliveredProgramOutcomeOf, type DeliveredProgramDeps } from './program-checks';
 
 /** ID of the boot step. It appears in the log line of a boot that stops at it. */
 export const CAPTURE_BOOT_STEP = 'capture.boot';
@@ -79,6 +94,10 @@ export const CaptureBootRefusal = {
   WORKER_VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
   /** The worker is a release build of ANOTHER version than this Core drives (wave H driver F; gate 64 C7, ruling D194). */
   WORKER_VERSION_MISMATCH: 'CAPTURE_WORKER_VERSION_MISMATCH',
+  /** The prerequisites of the production host, one code each (task 4 row 80; `host-checks.ts`). REAL_PRODUCTION only. */
+  ...CaptureHostRefusal,
+  /** The delivered programs of the production host, one code each (task 4 row 81; `program-checks.ts`). REAL_PRODUCTION only. */
+  ...CaptureProgramRefusal,
 } as const;
 export type CaptureBootRefusal = (typeof CaptureBootRefusal)[keyof typeof CaptureBootRefusal];
 
@@ -102,6 +121,8 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_VERSION_UNKNOWN: 'The capture worker names a version this server does not know as a release build. Only capture-worker/<major>.<minor>.<patch> is started.',
   CAPTURE_WORKER_VERSION_MISMATCH:
     'The program in DEMS_CAPTURE_WORKER is a capture worker of another version than the one this server was built to drive: the two are released together and neither is used with another. Build the worker of this repository state (make -C apps/capture-worker) and set the key to it.',
+  ...HOST_REFUSAL_TEXT,
+  ...PROGRAM_REFUSAL_TEXT,
 });
 
 /** The reason of `DEMO_PASSWORD_IN_PRODUCTION` when the operators could not be read at all: the check fails closed. */
@@ -341,6 +362,18 @@ export interface CaptureBootDeps {
   demoPasswordOperators(): Promise<number | null>;
   /** Starts the worker once and reads its first frame. Called in a real operation only, after every file check passed. */
   handshake(): Promise<WorkerHandshake>;
+  /**
+   * The facts of the host and the injected command runner (task 4 row 80). Asked in REAL_PRODUCTION only, after
+   * the key and operator checks and before the worker is started. ABSENT: no host check runs (a composition
+   * that has not wired them, and every test from before them).
+   */
+  readonly host?: CaptureHostDeps;
+  /**
+   * What the checks of the DELIVERED PROGRAMS need (task 4 row 81): the platform, the relay program, the runner
+   * and the reader of the stored camera interface. Asked in REAL_PRODUCTION only, after the host checks and
+   * before the worker is started. ABSENT: no such check runs (the same rule as `host`).
+   */
+  readonly programs?: DeliveredProgramDeps;
   readonly sinks: CaptureBootSinks;
 }
 
@@ -361,6 +394,9 @@ const SOURCE = 'capture.boot';
 const PASSED = 'capture boot checks passed';
 const REFUSED = 'the capture boot checks refuse this start: the server does not start';
 const WORKER_IGNORED = 'a capture worker program is configured and capture mode is simulated: it is never started';
+const HOST_PASSED = 'the host checks of a production Core passed';
+const PROGRAMS_PASSED = 'the checks of the delivered programs of a production Core passed';
+const HOST_NOT_LINUX ='the questions of the Linux host profile were not asked: this host is not Linux, so the loopback rule and the other host prerequisites are unchecked';
 
 /**
  * Runs the checks. Throws `CaptureBootError` after logging and persisting it: the readiness runner
@@ -413,6 +449,26 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
     const operators = await deps.demoPasswordOperators().catch(() => null);
     if (operators === null || !Number.isSafeInteger(operators) || operators < 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, OPERATORS_UNREADABLE);
     if (operators > 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, `operators=${operators}`, { operators });
+  }
+
+  // 4d: the host of a production Core (task 4 row 80; BR-12, AD-09 (1), C19). REAL_DEVELOPMENT and SIMULATED never ask,
+  // and neither does a composition that hands no host facts in. The relay and the guard are held to the rule of check 2.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.host !== undefined) {
+    const host = await hostCheckOutcomeOf(deps.host, (candidate) => workerProgramProblemOf(candidate, deps.inspect));
+    if (host.failure !== null) return refuse(host.failure.code, host.failure.reason);
+    if (host.commands === 'NOT_LINUX') {
+      const context = { code: 'CAPTURE_HOST_PROFILE_NOT_ASKED', operation, hostChecks: host.inPlace };
+      sinks.warn(context, HOST_NOT_LINUX);
+      sinks.persist({ level: 'warn', source: SOURCE, message: HOST_NOT_LINUX, code: context.code, context });
+    } else sinks.info({ code: 'CAPTURE_HOST_CHECKS_PASSED', operation, hostChecks: host.inPlace }, HOST_PASSED);
+  }
+
+  // 4e: the delivered programs of a production Core (task 4 row 81; F10 (d), C19, HOST-44 to HOST-46). Asked like 4d:
+  // REAL_PRODUCTION only, and only when the composition hands them in. The relay is started once, with no start message.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.programs !== undefined) {
+    const programs = await deliveredProgramOutcomeOf(deps.programs, (candidate) => workerProgramProblemOf(candidate, deps.inspect));
+    if (programs.failure !== null) return refuse(programs.failure.code, programs.failure.reason);
+    sinks.info({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation, programChecks: programs.inPlace, notAsked: programs.notAsked }, PROGRAMS_PASSED);
   }
 
   // 5: the worker itself, started once. Only now: nothing is started from a path that failed a rule above.

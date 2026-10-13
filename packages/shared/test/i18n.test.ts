@@ -255,6 +255,21 @@ describe('shared i18n resources: language and copy rules', () => {
     // The same words as the two workspace-local keys of an empty line (register E33).
     expect(en.common.captureSlot.notAssigned).toBe(en.devices.selector.notAssigned);
   });
+
+  // Task 4 row 187 (ruling C36 (1); integration pass I-7): the two words a Core in real capture puts in
+  // `details.reason` when it refuses to assign a production camera (`CaptureProfileRefusal` of the
+  // server's capture-config module: words of that module, no shared member, so they are literals here).
+  it('words the two refusals of a production camera without a profile of its own (`common.captureSlotRefusal`): nothing was assigned, and no default is promised', () => {
+    expect(Object.keys(en.common.captureSlotRefusal)).toEqual(['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE']);
+    for (const sentence of Object.values(en.common.captureSlotRefusal)) {
+      expect(sentence).toMatch(/^This camera was not assigned: /);
+      // No placeholder: the screen that shows it already names the camera and the slot.
+      expect(sentence).not.toContain('{{');
+      // It never says the Core chose or will choose a profile (ruling C36 (1): no default stands in).
+      expect(sentence).not.toMatch(/default|H\.?264|HEVC|1080|720/i);
+    }
+    expect(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED).not.toBe(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE);
+  });
 });
 
 describe('shared i18n resources: i18next syntax', () => {

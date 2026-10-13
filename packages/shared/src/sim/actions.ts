@@ -25,7 +25,7 @@ import {
   type AuthTransition,
 } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
-import { registerCaptureDeviceTransition } from './capture-registry';
+import { registerCaptureDeviceTransition, registerCaptureMicrophoneTransition } from './capture-registry';
 import { applyStorageVolumeTransition } from './core-facts';
 import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
@@ -267,5 +267,7 @@ export function createActions(context: ActionContext): SimActions {
     // parameter type still names the built-in pair (`session-machine.ts`, request filed by pass D1b).
     switchAudioSource: (inputId) => commit((state, now) => switchAudioSourceTransition(state, now, inputId as MicInputId, sendingDeviceOf(state, context.deviceConsole === true))),
     registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
+    // Task 4 row 185: INTERNAL. A `USB_AUDIO` microphone joins the registry, or a registered one is enabled again.
+    registerCaptureMicrophone: (microphone) => commit((state) => registerCaptureMicrophoneTransition(state, microphone).state),
   };
 }

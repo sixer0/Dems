@@ -72,6 +72,8 @@ export interface HeldCandidate {
   readonly camera: CameraCandidate;
   /** The registered device this candidate matches, or null (`status: NEW`). */
   readonly registeredDeviceId: string | null;
+  /** REGISTERED by endpoint reference while it answers from another address than the stored one (task 4 row 97: what an operator-confirmed re-address reads). */
+  readonly addressChanged: boolean;
   readonly lastTest: TestRecord | null;
 }
 
@@ -249,6 +251,7 @@ export function createCandidateStore(options: CandidateStoreOptions): CandidateS
         searchId: found.owned.search.searchId,
         camera,
         registeredDeviceId: candidate.status === CaptureCandidateStatus.REGISTERED ? candidate.deviceId : null,
+        addressChanged: candidate.status === CaptureCandidateStatus.REGISTERED && candidate.addressChanged === true,
         lastTest: candidate.lastTest === null ? null : { ...candidate.lastTest, profiles },
       };
     },

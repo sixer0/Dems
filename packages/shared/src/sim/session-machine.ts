@@ -1038,9 +1038,8 @@ export function applyAudioSourceSwitch(state: SimState, now: EpochMs, session: A
   // pair says which input is active. Where the session states none (it was started in Simulated
   // mode on a selector without a complete pair), the meters' active input stands - but only while
   // it is a line of the session: an input the session does not hold is nothing to switch from.
-  // `held` is typed as the meters slice will hold it once the seam `AudioSliceInState` is out (row
-  // 149 removes it): `null` when the selector holds no PRIMARY.
-  const held: CaptureMicInputId | null = state.audio.activeInputId;
+  // `held` is `null` when the selector holds no PRIMARY (the meters slice, task 4 row 149).
+  const held = state.audio.activeInputId;
   const fromInputId: CaptureMicInputId | null = source !== null ? source.activeInputId : held !== null && lines.some((entry) => entry.inputId === held) ? held : null;
   if (fromInputId === toInputId) return { state, switched: null };
   // NO ACTIVE INPUT, NO SWITCH. A switch moves the source FROM one input TO another: its interval,

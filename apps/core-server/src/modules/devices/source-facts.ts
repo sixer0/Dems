@@ -147,3 +147,13 @@ export function mountCaptureSourceFacts(app: FastifyInstance): CaptureSourceFact
   });
   return feed;
 }
+
+/**
+ * Whether this Core runs a REAL capture operation (task 4 row 53): asked of the one function that
+ * relates the capture flags (`captureOperationOf`), from the configuration alone. The routes of
+ * this module take it from HERE - this file is the folder's one reader of the fence - to decide
+ * whether a video track states the stored facts of its stream or the slice's own.
+ */
+export function inRealCaptureOperation(app: Pick<FastifyInstance, 'config'>): boolean {
+  return captureOperationOf(app.config) !== SIMULATED;
+}

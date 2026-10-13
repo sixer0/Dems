@@ -14,7 +14,7 @@ import { CAPTURE_CONNECTION_TEST_TIMEOUT_MS, CAPTURE_CONNECTION_TEST_VALIDITY_MS
 import type { AuditRow } from '@dems/shared/sim';
 import { afterAll, describe, expect, it } from 'vitest';
 import { codeOnly } from '../../../../../test/static/scan';
-import { CaptureAdapterError, CaptureAdapterKind, CaptureAdapterRefusal, sealCredential, usingCredential, type CameraCandidate, type SealedCredential } from '../../../../capture/adapters';
+import { CaptureAdapterError, CaptureAdapterKind, CaptureAdapterRefusal, sealCredential, usingCredential, type CameraCandidate, type JudgedStream, type SealedCredential } from '../../../../capture/adapters';
 import type { AuditEntry, UnitContext } from '../../../../core';
 import type { EngineUnit } from '../../../../engine';
 import type { Principal } from '../../../../plugins/authenticate';
@@ -29,12 +29,14 @@ import {
   operatorCredential,
   setCredential,
   testCandidate,
+  type AdoptedDevice,
   type CandidateTestRecord,
   type ConnectCaller,
   type ConnectCandidate,
   type ConnectSeams,
   type ConnectionAttempt,
 } from '../service';
+import { AdoptionProfileInvalid, INSERT_ADOPTED_CAMERA_STREAM, assertAdoptedProfiles, writeAdoptedCameraStreams } from '../../adoption';
 import { READ_REGISTERED_CAMERAS } from '../../registered';
 import { createCredentialStore, isStoreSealedSecret } from '../../../../credential-store';
 
@@ -512,5 +514,125 @@ describe('M4-CONN-ORDER-1: the flow has one order', () => {
     expect(nextCameraId([])).toBe('CAM-01');
     expect(nextCameraId([{ id: 'CAM-01' }, { id: 'MIC-07' }, { id: 'CAM-09' }])).toBe('CAM-10');
     expect(nextCameraId([{ id: 'CAM-99' }, { id: 'CAM-100' }])).toBe('CAM-101');
+  });
+});
+
+// Task 4 rows 50 and 51 (amendment AM-2; security AD-06 (2), (4); decision C36): what a test JUDGED FROM THE
+// STREAM travels from the tester to the registrar as codes of the Core with the ONVIF tokens beside them; what
+// the ONVIF half alone read (tokens) is compared and stored nowhere.
+describe('task 4 rows 50 and 51: the judged streams of an attempt, and the code rule at the write', () => {
+  const HEVC: JudgedStream = { code: 'HEVC_1080P', codec: 'HEVC', width: 1920, height: 1080, onvifProfileToken: 'profile_1', videoSourceToken: 'vs_1', lens: 1 };
+  const AVC: JudgedStream = { code: 'H264_720P30', codec: 'H264', width: 1280, height: 720, onvifProfileToken: 'main.stream:1-b', videoSourceToken: null, lens: 2 };
+  /** A world whose registrar keeps what it was handed. */
+  const registering = (): { w: World; seams: ConnectSeams; handed: AdoptedDevice[] } => {
+    const w = world();
+    const handed: AdoptedDevice[] = [];
+    const seams: ConnectSeams = {
+      host: w.seams.host,
+      limits: w.seams.limits,
+      candidates: w.seams.candidates,
+      tester: w.seams.tester,
+      sealer: w.seams.sealer,
+      storeSealed: w.seams.storeSealed,
+      registrar: () => async (_scope, _principal, device) => {
+        handed.push(device);
+        return { id: device.id, kind: 'CAMERA', model: device.model, firmware: null, host: device.address, poePort: null, online: true, streamState: null, capabilities: ['VIDEO'] };
+      },
+    };
+    return { w, seams, handed };
+  };
+
+  it('the registrar is handed the CODES of the streams the re-verification judged, and the streams; the test record keeps the codes; the log line says how many and why not', async () => {
+    const { w, seams, handed } = registering();
+    w.add('CND-000000000001', camera());
+    w.answer = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['HEVC_1080P', 'H264_720P30'], rejectedCredentialRequests: 0, reason: null, streams: [HEVC, AVC] };
+    expect(await testCandidate(seams, CALLER, 'CND-000000000001', typed())).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 2 });
+    expect(w.candidates.get('CND-000000000001')?.candidate.lastTest?.profiles).toEqual(['HEVC_1080P', 'H264_720P30']);
+    expect(w.notes.at(-1)).toMatchObject({ outcome: 'REACHABLE', judgedStreams: 2, testReason: null });
+    later(w);
+    await adoptCandidate(seams, CALLER, 'CND-000000000001', typed());
+    expect(handed).toHaveLength(1);
+    expect(handed[0]).toMatchObject({ profiles: ['HEVC_1080P', 'H264_720P30'], streams: [HEVC, AVC] });
+    // No audit detail of the test or of the adoption holds a token or a code.
+    expect(JSON.stringify(w.audit.map((entry) => entry.details))).not.toMatch(/profile_1|main\.stream|HEVC_1080P|H264_720P30/);
+
+    // A test that did not pass: its reason is a code word in the log line; a reason that is no code word is left out.
+    const failed = registering();
+    failed.w.add('CND-000000000002', camera());
+    failed.w.answer = { outcome: CaptureConnectionOutcome.NOT_H264, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, reason: 'STREAM_CODEC_NOT_USABLE', streams: [HEVC] };
+    expect(await testCandidate(failed.seams, CALLER, 'CND-000000000002', typed())).toMatchObject({ outcome: 'NOT_H264', usableProfileCount: 0 });
+    expect(failed.w.notes.at(-1)).toMatchObject({ outcome: 'NOT_H264', judgedStreams: 0, testReason: 'STREAM_CODEC_NOT_USABLE' });
+    later(failed.w);
+    failed.w.answer = { outcome: CaptureConnectionOutcome.UNREACHABLE, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, reason: 'h265<script>' };
+    await testCandidate(failed.seams, CALLER, 'CND-000000000002', typed());
+    expect(failed.w.notes.at(-1)).toMatchObject({ testReason: null });
+  });
+
+  it('a test without a stream half hands the registrar NO code: the tokens it read served the comparison only (C36)', async () => {
+    const { w, seams, handed } = registering();
+    w.add('CND-000000000001', development());
+    w.answer = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: false, usableProfiles: ['profile_1'], rejectedCredentialRequests: 0 };
+    await testCandidate(seams, CALLER, 'CND-000000000001', null);
+    later(w);
+    await adoptCandidate(seams, CALLER, 'CND-000000000001', null);
+    expect(handed[0]).toMatchObject({ profiles: [], streams: [] });
+    // A stream set that changed between the two attempts is the changed device of the contract.
+    const changed = registering();
+    changed.w.add('CND-000000000002', camera());
+    changed.w.answer = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['H264_720P30'], rejectedCredentialRequests: 0, streams: [AVC] };
+    await testCandidate(changed.seams, CALLER, 'CND-000000000002', typed());
+    later(changed.w);
+    changed.w.answer = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['HEVC_1080P'], rejectedCredentialRequests: 0, streams: [HEVC] };
+    expect(await refusal(adoptCandidate(changed.seams, CALLER, 'CND-000000000002', typed()))).toEqual([409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED']);
+    expect(changed.handed).toEqual([]);
+  });
+
+  it('AD-06 (4) in code: a profile list is the codes of its streams, each of the code pattern; an ONVIF token, a lower-case or over-long text, a list that is not the streams and a stream outside its bounds are refused before any statement', async () => {
+    const accepted: Parameters<typeof assertAdoptedProfiles>[0][] = [
+      { profiles: [], streams: [] },
+      { profiles: ['HEVC_1080P'], streams: [HEVC] },
+      { profiles: ['H264_720P30', 'HEVC_1080P'], streams: [HEVC, AVC] },
+    ];
+    for (const device of accepted) expect(() => assertAdoptedProfiles(device)).not.toThrow();
+    const refused: Parameters<typeof assertAdoptedProfiles>[0][] = [
+      { profiles: ['profile_1'], streams: [] },
+      { profiles: ['profile_1'], streams: [{ ...HEVC, code: 'profile_1' }] },
+      { profiles: ['HEVC_1080P'], streams: [] },
+      { profiles: [], streams: [HEVC] },
+      { profiles: ['HEVC_1080P', 'HEVC_1080P'], streams: [HEVC, HEVC] },
+      { profiles: ['HEVC_1080P', 'H264_720P30'], streams: [HEVC, { ...AVC, code: 'HEVC_1080P' }] },
+      { profiles: ['hevc_1080p'], streams: [{ ...HEVC, code: 'hevc_1080p' }] },
+      { profiles: [`HEVC_${'9'.repeat(64)}`], streams: [{ ...HEVC, code: `HEVC_${'9'.repeat(64)}` }] },
+      { profiles: ['HEVC_1080P<script>'], streams: [{ ...HEVC, code: 'HEVC_1080P<script>' }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, onvifProfileToken: 'profile 1' }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, onvifProfileToken: 'x'.repeat(65) }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, videoSourceToken: '<vs>' }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, codec: 'OTHER' }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, codec: 'H264' }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, lens: 0 }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, lens: 5 }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, width: 0 }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, height: 16_385 }] },
+      { profiles: ['HEVC_1080P'], streams: [{ ...HEVC, width: 1920.5 }] },
+      { profiles: [7 as unknown as string], streams: [] },
+    ];
+    for (const device of refused) expect(() => assertAdoptedProfiles(device), JSON.stringify(device)).toThrow(AdoptionProfileInvalid);
+    // The refusal names the rule, never the value.
+    const thrown = (() => {
+      try {
+        assertAdoptedProfiles({ profiles: ['HEVC_1080P<script>'], streams: [] });
+      } catch (error) {
+        return error as Error & { code?: string };
+      }
+      return null;
+    })();
+    expect(thrown?.code).toBe('CAPTURE_ADOPTION_PROFILE_INVALID');
+    expect(`${String(thrown?.message)} ${String(thrown?.stack)}`).not.toMatch(/script|HEVC_1080P/);
+    // The writer sends no statement for a refused device.
+    const sent: string[] = [];
+    await expect(writeAdoptedCameraStreams({ query: async (text: string) => (sent.push(text), { rows: [], rowCount: 1 }) } as never, { id: 'CAM-03', profiles: ['profile_1'], streams: [{ ...HEVC, code: 'profile_1' }], at: 1 })).rejects.toBeInstanceOf(AdoptionProfileInvalid);
+    expect(sent).toEqual([]);
+    await writeAdoptedCameraStreams({ query: async (text: string) => (sent.push(text), { rows: [], rowCount: 1 }) } as never, { id: 'CAM-03', profiles: ['HEVC_1080P', 'H264_720P30'], streams: [HEVC, AVC], at: 1 });
+    expect(sent).toEqual([INSERT_ADOPTED_CAMERA_STREAM, INSERT_ADOPTED_CAMERA_STREAM]);
   });
 });

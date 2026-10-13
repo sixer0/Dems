@@ -21,12 +21,15 @@
  */
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import { CaptureAdapterKind } from '../kinds';
-import type { CameraAdapter, DiscoverySearch } from '../types';
-import { createWsDiscovery, type WsDiscoveryOptions, type WsDiscoveryResult } from './ws-discovery';
+import type { CameraAdapter } from '../types';
+import { createWsDiscovery, type WsDiscoveryOptions, type WsDiscoveryResult, type WsDiscoverySearch } from './ws-discovery';
 
 export interface OnvifDiscoveryAdapter extends CameraAdapter {
-  /** Probe only. Rejects with `DiscoveryNotRunError` when the search could not run: that is never an empty result (DS-13). */
-  discover(search: DiscoverySearch): Promise<WsDiscoveryResult>;
+  /**
+   * Probe only. Rejects with `DiscoveryNotRunError` when the search could not run: that is never an empty result (DS-13).
+   * Task 4 row 96: the search may carry `unicast`, the destination rule's answer for ONE typed address (`WsDiscoverySearch`).
+   */
+  discover(search: WsDiscoverySearch): Promise<WsDiscoveryResult>;
 }
 
 export function createOnvifDiscoveryAdapter(options: WsDiscoveryOptions): OnvifDiscoveryAdapter {

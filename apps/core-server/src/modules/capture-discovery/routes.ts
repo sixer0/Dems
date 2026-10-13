@@ -11,12 +11,24 @@
  * operations are open to a tablet and a phone (no condition) and are NOT locked by an open session
  * (D80(4)): operation 93 never answers `CAPTURE_CONFIG_LOCKED`.
  *
- * OPERATION 93 takes no body: there is nothing a caller could steer a search with (no address,
- * subnet, interface, port, timeout or filter exists). It answers as soon as the search is RUNNING:
- * `202` for a new search, `200` with `created: false` while the caller's own search still runs.
- * The refusals of `search.ts`, in its order: 503 `DISCOVERY_NOT_READY`, 409
- * `DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`, 409 `DISCOVERY_IN_PROGRESS`, 429
- * `DISCOVERY_RATE_LIMITED` with `retry-after`. None of them sends a datagram or writes a row.
+ * OPERATION 93 takes an OPTIONAL body with ONE optional member, `address` (task 4 rows 94 and 96;
+ * amended ruling AM-3): nothing else exists a caller could steer a search with (no subnet,
+ * interface, port, timeout or filter). Without the member the operation is what it always was. It
+ * answers as soon as the search is RUNNING: `202` for a new search, `200` with `created: false`
+ * while the caller's own search still runs. The refusals of `search.ts`, in its order: 503
+ * `DISCOVERY_NOT_READY`, 409 `DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`, 409 `DISCOVERY_IN_PROGRESS`,
+ * 429 `DISCOVERY_RATE_LIMITED` with `retry-after`. None of them sends a datagram or writes a row.
+ *
+ * THE TYPED ADDRESS, in this order and before the search is asked for:
+ *   1. the body does not match its schema (a name, a port, a prefix, a URL, IPv6, a member too
+ *      many)                                         422 INVALID_INPUT (stage 7)
+ *   2. the session is bound to a tablet or a phone    403 NOT_PERMITTED, `WEB_CONSOLE_ONLY`, one
+ *                                                     ACCESS_DENIED row (the guard's own refusal)
+ *   3. the destination rule refuses the address,      422 INVALID_INPUT,
+ *      or this Core was handed no rule                `DISCOVERY_ADDRESS_NOT_ALLOWED`
+ * A refusal of 3 never quotes the address and never says which rule refused; no datagram is built,
+ * no search is started, no row is written. An address the rule admits goes to the search as THE
+ * RULE'S ANSWER (`typed`), never as the text of the body.
  *
  * OPERATION 94 answers the CALLER'S OWN search from the store, by the ID of its authenticated
  * session. It takes no search ID, sends nothing to the network and writes nothing. Another
@@ -25,7 +37,9 @@
 import {
   ApiErrorCode,
   CAPTURE_DISCOVERY_OPERATIONS,
+  CaptureDiscoveryReason,
   CaptureDiscoverySearchSchema,
+  CaptureDiscoveryStartRequestSchema,
   CaptureDiscoveryStateSchema,
   CaptureDiscoveryTrigger,
   RETRY_AFTER_HEADER_NAME,
@@ -37,9 +51,10 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { notSignedIn } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
-import { routeOfOperation } from '../../plugins/permission-guard';
-import type { SearchRefusal, SearchRunner } from './search';
+import { permissionGuard, routeOfOperation } from '../../plugins/permission-guard';
+import type { SearchRefusal, SearchRunner, TypedDestination } from './search';
 import type { CandidateStore } from './store';
+import { typedAddressControl } from './typed-address';
 
 /** The operations this module answers itself, in registry order (operations 93 and 94). */
 export const CAPTURE_DISCOVERY_MODULE_OPERATIONS = ['startCaptureDiscovery', 'getCaptureDiscovery'] as const;
@@ -49,6 +64,12 @@ const NOT_READY_TEXT = 'Camera search is not available on this Core.';
 const RECORDING_TEXT = 'A camera search cannot run while a session is recording.';
 const IN_PROGRESS_TEXT = 'Another camera search is running. Try again shortly.';
 const RATE_LIMITED_TEXT = 'Too many camera searches. Try again shortly.';
+const ADDRESS_NOT_ALLOWED_TEXT = 'A camera search cannot use this address.';
+
+/** The one answer for a typed address the Core may not dial (C3 §2.6 op 93): a fixed sentence and reason, never the address, never the rule's own code. */
+export function addressNotAllowed(): ApiFailure {
+  return new ApiFailure(422, ApiErrorCode.INVALID_INPUT, ADDRESS_NOT_ALLOWED_TEXT, { details: { in: 'body', reason: CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED } });
+}
 
 /** The registry entry of one of this module's operations. Throws at load for a name the registry does not hold. */
 export function captureDiscoveryOperation(operationId: CaptureDiscoveryModuleOperation): CoreApiRegistryOperation {
@@ -91,13 +112,27 @@ export interface CaptureDiscoveryRouteSeams {
 /** Registers operations 93 and 94 on the app. Called once, by the module's plugin. */
 export function registerCaptureDiscoveryRoutes(app: FastifyInstance, seams: CaptureDiscoveryRouteSeams): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
+  /** Task 4 row 96: the destination rule of a typed address, handed in by the composition; until then every typed address is refused. */
+  const typedAddress = typedAddressControl(app);
 
   // 93 startCaptureDiscovery
   routes.route({
     ...routeOfOperation(captureDiscoveryOperation('startCaptureDiscovery')),
-    schema: { response: { 200: CaptureDiscoverySearchSchema, 202: CaptureDiscoverySearchSchema } },
+    // The body is optional (C3 §2.6): no body and `{}` are the search without a typed address.
+    schema: { body: CaptureDiscoveryStartRequestSchema.optional(), response: { 200: CaptureDiscoverySearchSchema, 202: CaptureDiscoverySearchSchema } },
     handler: async (request, reply): Promise<CaptureDiscoverySearch> => {
-      const outcome = await seams.runner.start({ ...ownerOf(request), trigger: CaptureDiscoveryTrigger.MANUAL });
+      const owner = ownerOf(request);
+      let typed: TypedDestination | undefined;
+      const address = request.body?.address;
+      if (address !== undefined) {
+        // Web console only, decided once the body is known to hold the member and before it is used (the guard's own refusal and row).
+        await permissionGuard(app).requireWebConsoleSession(request);
+        // The destination rule, before anything is built for the address. Its answer is what the search gets.
+        const decision = typedAddress.decide(address);
+        if (!decision.allowed) throw addressNotAllowed();
+        typed = decision.destination;
+      }
+      const outcome = await seams.runner.start({ ...owner, trigger: CaptureDiscoveryTrigger.MANUAL, ...(typed === undefined ? {} : { typed }) });
       if (!outcome.started) throw searchRefused(outcome.refusal);
       // The window closes after this answer: its row, its log line and its alert are the runner's.
       void reply.code(outcome.created ? 202 : 200);

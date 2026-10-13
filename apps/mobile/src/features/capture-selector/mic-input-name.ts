@@ -48,11 +48,3 @@ export function micInputName(t: MicNameTranslate, inputId: string, source?: Deve
   if (number === 2) return t('common.devices.mic2');
   return t('common.captureDeviceName.microphone', { number });
 }
-
-/**
- * The microphone that is not `inputId` among the selector's lines, in the Core's order: the hot
- * standby of a pair. Null when the selector holds no other line.
- */
-export function otherMicInput(inputs: readonly { readonly inputId: string }[], inputId: string): string | null {
-  return inputs.find((line) => line.inputId !== inputId)?.inputId ?? null;
-}

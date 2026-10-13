@@ -24,6 +24,9 @@ import {
   type WorkerHandshake,
   CAPTURE_WORKER_VERSION,
 } from '../checks';
+import { CaptureHostRefusal, HOST_COMMAND_CHECKS, type HostCommand } from '../host-checks';
+import { CANARY, HOST_ANSWERS, PREPARED_INTERFACE, PROGRAM_ANSWERS, fakeHost, fakeProductionHost, type FakeHostOptions } from './host-support';
+import { INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, type DeliveredProgramDeps } from '../program-checks';
 import { recordedSinks } from './support';
 
 const SERVER_UID = 501;
@@ -391,5 +394,207 @@ describe('D188 (a): a worker whose media library is not the verified one is a NA
   it('CONTROL: every other handshake failure is still CAPTURE_WORKER_NO_HANDSHAKE with its reason', async () => {
     const { deps } = scene({ hello: { outcome: 'NONE', failure: HandshakeFailure.EXITED } });
     expect(await refusalOf(deps)).toMatchObject({ code: 'CAPTURE_WORKER_NO_HANDSHAKE', reason: 'EXITED' });
+  });
+});
+
+// ── Task 4 row 80 (WP-20): the host checks of a production Core, as step 4d of the boot ───────────
+describe('row 80: the host checks run in REAL_PRODUCTION only, after the operators and before the worker; a missing prerequisite is refused by its own code', () => {
+  const codeOf = (command: HostCommand): string | undefined => HOST_COMMAND_CHECKS.find((check) => check.command.program === command.program && check.command.args.join(' ') === command.args.join(' '))?.code;
+  const host = (options: Omit<FakeHostOptions, 'codeOf'> = {}): ReturnType<typeof fakeHost> => fakeHost({ ...options, codeOf });
+  const said = (failure: CaptureBootError | null, recorded: ReturnType<typeof recordedSinks>): string => JSON.stringify([failure?.message ?? null, failure?.reason ?? null, recorded.lines, recorded.persisted]);
+
+  it('a prepared Linux host passes: one line for the host, then the unchanged line of the boot; the worker is started last', async () => {
+    const prepared = host();
+    const { deps, calls, recorded } = scene({ host: prepared.deps });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', workerVersion: CAPTURE_WORKER_VERSION });
+    // The worker's path rule, the store, the key; then the relay and the guard under the SAME rule; the worker itself last.
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'inspect', 'inspect', 'handshake']);
+    expect(prepared.asked).toHaveLength(HOST_COMMAND_CHECKS.length);
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['info', 'CAPTURE_HOST_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(recorded.lines[0]?.fields).toEqual({ code: 'CAPTURE_HOST_CHECKS_PASSED', operation: 'REAL_PRODUCTION', hostChecks: 4 + HOST_COMMAND_CHECKS.length });
+    expect(recorded.lines[1]?.fields).toEqual({ code: 'CAPTURE_BOOT_CHECKS_PASSED', operation: 'REAL_PRODUCTION', checks: 'real', workerVersion: CAPTURE_WORKER_VERSION, volumeTotalBytes: 1_000_000_000_000, volumeFreeBytes: 400_000_000_000 });
+    expect(recorded.persisted).toEqual([]);
+  });
+
+  it('BR-12: with the loopback rule missing the boot names exactly that prerequisite, asks nothing further and does not start the worker', async () => {
+    const answer = HOST_ANSWERS[CaptureHostRefusal.HOST_LOOPBACK_RULE]?.absent[0]?.answer;
+    if (answer === undefined) throw new Error('no answer');
+    const unprepared = host({ answers: { [CaptureHostRefusal.HOST_LOOPBACK_RULE]: answer } });
+    const { deps, calls, recorded } = scene({ host: unprepared.deps });
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_HOST_LOOPBACK_RULE_MISSING', reason: 'RULE_UNIT_NOT_ACTIVE' });
+    expect(failure.message).toMatch(/HOST-25/);
+    expect(failure.message).toMatch(/ Reason: RULE_UNIT_NOT_ACTIVE\.$/);
+    expect(unprepared.asked).toEqual(['/usr/bin/systemctl is-active dems-loopback-rule.service']);
+    expect(calls).not.toContain('handshake');
+    expect(recorded.lines).toEqual([{ level: 'error', fields: { code: 'CAPTURE_HOST_LOOPBACK_RULE_MISSING', operation: 'REAL_PRODUCTION', reason: 'RULE_UNIT_NOT_ACTIVE' }, message: 'the capture boot checks refuse this start: the server does not start' }]);
+    expect(recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_LOOPBACK_RULE_MISSING' }]);
+  });
+
+  it('every prerequisite, removed one at a time, is the one the boot names; nothing of an output reaches the message, the log or the error log', async () => {
+    for (const check of HOST_COMMAND_CHECKS) {
+      const answers = HOST_ANSWERS[check.code];
+      for (const answer of [...(answers?.absent.map((entry) => entry.answer) ?? []), ...(answers?.malformed ?? []), { outcome: 'NOT_STARTED' } as const, { outcome: 'TIMED_OUT' } as const]) {
+        const { deps, calls, recorded } = scene({ host: host({ answers: { [check.code]: answer } }).deps });
+        const failure = await refusalOf(deps);
+        expect(failure.code, JSON.stringify(answer)).toBe(check.code);
+        expect(failure.reason, JSON.stringify(answer)).toMatch(/^[A-Z][A-Z_]+$/);
+        expect(calls).not.toContain('handshake');
+        expect(said(failure, recorded)).not.toMatch(/CANARY|hunter2|\/home\/|apport|\/usr\/|\/run\/|\/proc\//);
+        expect(recorded.lines.at(-1)?.fields).toEqual({ code: check.code, operation: 'REAL_PRODUCTION', reason: failure.reason });
+      }
+    }
+    expect(CANARY).toMatch(/hunter2/);
+  });
+
+  it('AD-09 (1): a core-file limit above 0 is refused in REAL_PRODUCTION before any question is asked; the relay and the guard are held to the path rule', async () => {
+    const limited = host({ coreFileLimit: () => Infinity });
+    const first = scene({ host: limited.deps });
+    expect(await refusalOf(first.deps)).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_ABOVE_ZERO' });
+    expect(limited.asked).toEqual([]);
+    expect(await refusalOf(scene({ host: host({ relayProgram: null }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE', reason: 'NOT_SET' });
+    expect(await refusalOf(scene({ host: host({ guardProgram: null }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_GUARD_PROGRAM_UNUSABLE', reason: 'NOT_SET' });
+    // The second and third program asked are refused by the rule of check 2: the worker (first) passes, the relay does not.
+    let asked = 0;
+    const writable = scene({ host: host().deps, inspect: () => ((asked += 1), asked === 1 ? goodProgram() : goodProgram({ file: { ownerUid: SERVER_UID, mode: 0o777 } })) });
+    expect(await refusalOf(writable.deps)).toMatchObject({ code: 'CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE', reason: WorkerProgramProblem.FILE_WRITABLE });
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED never ask the host, however unprepared it is; a composition without host facts asks nothing either', async () => {
+    const broken = (): ReturnType<typeof fakeHost> => host({ coreFileLimit: () => Infinity, relayProgram: null, guardProgram: null, startArguments: ['--inspect'], answers: Object.fromEntries(HOST_COMMAND_CHECKS.map((check) => [check.code, { outcome: 'NOT_STARTED' } as const])) });
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated' as const, demoControls: true }, { captureMode: 'simulated' as const }]) {
+      const unprepared = broken();
+      const { deps, recorded } = scene({ config, host: unprepared.deps });
+      const outcome = await runCaptureBootChecks(deps);
+      expect(outcome.operation).not.toBe(CaptureOperation.REAL_PRODUCTION);
+      expect(unprepared.asked).toEqual([]);
+      expect(recorded.lines.filter((line) => String(line.fields.code).includes('HOST'))).toEqual([]);
+    }
+    const without = scene();
+    await expect(runCaptureBootChecks(without.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(without.calls).toEqual(['inspect', 'volume', 'key', 'handshake']);
+    expect(without.recorded.lines.map((line) => line.fields.code)).toEqual(['CAPTURE_BOOT_CHECKS_PASSED']);
+  });
+
+  it('REAL_PRODUCTION on a host that is not Linux: no question is asked and that is SAID as a warning, not passed over; the own-process checks still refuse', async () => {
+    const mac = host({ platform: 'darwin' });
+    const { deps, recorded } = scene({ host: mac.deps });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(mac.asked).toEqual([]);
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(recorded.persisted).toEqual([{ level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_PROFILE_NOT_ASKED' }]);
+    expect(await refusalOf(scene({ host: host({ platform: 'darwin', startArguments: ['--heapsnapshot-signal=SIGUSR2'] }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_DIAGNOSTIC_SWITCH', reason: 'DIAGNOSTIC_SWITCH_SET' });
+  });
+
+  it('an earlier refusal stays the one that is said: the host is not asked when the operators already refuse the start', async () => {
+    const prepared = host({ coreFileLimit: () => Infinity });
+    const { deps } = scene({ host: prepared.deps, demoPasswordOperators: async () => 2 });
+    expect(await refusalOf(deps)).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION' });
+    expect(prepared.asked).toEqual([]);
+  });
+});
+
+// ── Task 4 row 81 (WP-20): the delivered programs, as step 4e of the boot ─────────────────────────
+describe('row 81: the checks of the delivered programs run in REAL_PRODUCTION only, after the host checks and before the worker; each is refused by its own code', () => {
+  const hostCodeOf = (command: HostCommand): string | undefined => HOST_COMMAND_CHECKS.find((check) => check.command.program === command.program && check.command.args.join(' ') === command.args.join(' '))?.code;
+  const same = (a: HostCommand, b: HostCommand): boolean => a.program === b.program && a.args.join(' ') === b.args.join(' ');
+  const RELAY = '/srv/dems/relay';
+  const programKeyOf = (command: HostCommand): string | undefined => (command.program === RELAY && command.args.length === 0 ? 'RELAY' : same(command, INTERFACE_FILE_COMMAND) ? 'INTERFACE' : PROGRAM_OWNERSHIP_CHECKS.find((check) => same(check.command, command))?.code);
+  /** One prepared production host for both steps: the host facts of 4d and what 4e needs, over ONE runner. */
+  const production = (options: { readonly platform?: string; readonly programAnswers?: Parameters<typeof fakeProductionHost>[0]['programAnswers']; readonly stored?: () => Promise<string | null> } = {}) => {
+    const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf, ...(options.platform === undefined ? {} : { platform: options.platform }), ...(options.programAnswers === undefined ? {} : { programAnswers: options.programAnswers }) });
+    const programs: DeliveredProgramDeps = { platform: host.deps.platform, relayProgram: host.deps.relayProgram, run: host.deps.run, storedInterface: options.stored ?? (async () => PREPARED_INTERFACE) };
+    return { host, programs };
+  };
+  const failing = (key: string, index = 0) => {
+    const answer = PROGRAM_ANSWERS[key]?.absent[index]?.answer;
+    if (answer === undefined) throw new Error('no answer');
+    return answer;
+  };
+
+  it('a prepared Linux host passes: the host line, the line of the programs, then the unchanged line of the boot; the relay is asked after the host and the worker is started last', async () => {
+    const prepared = production();
+    const { deps, calls, recorded } = scene({ host: prepared.host.deps, programs: prepared.programs });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', workerVersion: CAPTURE_WORKER_VERSION });
+    // The worker's path rule, the store, the key; relay and guard under the rule (4d); the relay under the rule once more (4e); the worker last.
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'inspect', 'inspect', 'inspect', 'handshake']);
+    expect(prepared.host.asked).toHaveLength(HOST_COMMAND_CHECKS.length + 4);
+    expect(prepared.host.asked.slice(HOST_COMMAND_CHECKS.length)).toEqual([
+      RELAY,
+      '/usr/bin/stat -c %F %U %G %a /usr/local/sbin/dems-core-netalias /usr/local/sbin',
+      '/usr/bin/stat -c %F %U %G %a /run/dems-core-netalias /etc/systemd/system/dems-core-netalias.socket /etc/systemd/system/dems-core-netalias@.service',
+      '/usr/bin/cat /etc/dems/netalias-interface',
+    ]);
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['info', 'CAPTURE_HOST_CHECKS_PASSED'], ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(recorded.lines[1]?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 4, notAsked: 0 });
+    // The two lines of before are what they were.
+    expect(recorded.lines[0]?.fields).toEqual({ code: 'CAPTURE_HOST_CHECKS_PASSED', operation: 'REAL_PRODUCTION', hostChecks: 4 + HOST_COMMAND_CHECKS.length });
+    expect(recorded.lines[2]?.fields).toEqual({ code: 'CAPTURE_BOOT_CHECKS_PASSED', operation: 'REAL_PRODUCTION', checks: 'real', workerVersion: CAPTURE_WORKER_VERSION, volumeTotalBytes: 1_000_000_000_000, volumeFreeBytes: 400_000_000_000 });
+    expect(recorded.persisted).toEqual([]);
+    expect(JSON.stringify(recorded.lines)).not.toContain(PREPARED_INTERFACE);
+  });
+
+  it('A MISMATCH OF FILE AND ROW IS A NAMED REFUSAL of the boot: the code, the reason, one error line, one error-log row; the worker is not started and no interface name is said', async () => {
+    const unprepared = production({ programAnswers: { INTERFACE: failing('INTERFACE', 1) } });
+    const { deps, calls, recorded } = scene({ host: unprepared.host.deps, programs: unprepared.programs });
+    const failure = await refusalOf(deps);
+    expect(failure).toMatchObject({ code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH', reason: 'INTERFACE_FILE_DIFFERS_FROM_ROW' });
+    expect(failure.code).toBe(CaptureBootRefusal.PROGRAM_INTERFACE_FILE);
+    expect(failure.message).toMatch(/HOST-46/);
+    expect(failure.message).toMatch(/ Reason: INTERFACE_FILE_DIFFERS_FROM_ROW\.$/);
+    expect(calls).not.toContain('handshake');
+    expect(recorded.lines.at(-1)).toEqual({ level: 'error', fields: { code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH', operation: 'REAL_PRODUCTION', reason: 'INTERFACE_FILE_DIFFERS_FROM_ROW' }, message: 'the capture boot checks refuse this start: the server does not start' });
+    expect(recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH' }]);
+    expect(JSON.stringify([failure.message, recorded.lines])).not.toMatch(/enp[0-9]s0/);
+  });
+
+  it('each of the four, failing one at a time, is the one the boot names; nothing of an output reaches the message, the log or the error log', async () => {
+    const codes: Readonly<Record<string, string>> = { RELAY: 'CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', INTERFACE: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH' };
+    for (const [key, answers] of Object.entries(PROGRAM_ANSWERS)) {
+      for (const answer of [...answers.absent.map((entry) => entry.answer), ...answers.malformed, { outcome: 'NOT_STARTED' } as const, { outcome: 'TIMED_OUT' } as const]) {
+        const unprepared = production({ programAnswers: { [key]: answer } });
+        const { deps, calls, recorded } = scene({ host: unprepared.host.deps, programs: unprepared.programs });
+        const failure = await refusalOf(deps);
+        expect(failure.code, JSON.stringify(answer)).toBe(codes[key] ?? key);
+        expect(failure.reason, JSON.stringify(answer)).toMatch(/^[A-Z][A-Z_]+$/);
+        expect(calls).not.toContain('handshake');
+        expect(JSON.stringify([failure.message, failure.reason, recorded.lines, recorded.persisted])).not.toMatch(/CANARY|hunter2|\/home\/|\/usr\/|\/run\/|\/etc\/|enp[0-9]s0/);
+        expect(recorded.lines.at(-1)?.fields).toEqual({ code: failure.code, operation: 'REAL_PRODUCTION', reason: failure.reason });
+      }
+    }
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED never ask, however wrong the programs are; and without `programs` step 4d is exactly what it was', async () => {
+    const wrong = () => production({ programAnswers: Object.fromEntries(Object.keys(PROGRAM_ANSWERS).map((key) => [key, { outcome: 'NOT_STARTED' } as const])), stored: async () => Promise.reject(new Error('unreadable')) });
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated' as const, demoControls: true }, { captureMode: 'simulated' as const }]) {
+      const unprepared = wrong();
+      const { deps, recorded } = scene({ config, host: unprepared.host.deps, programs: unprepared.programs });
+      const outcome = await runCaptureBootChecks(deps);
+      expect(outcome.operation).not.toBe(CaptureOperation.REAL_PRODUCTION);
+      expect(unprepared.host.asked).toEqual([]);
+      expect(recorded.lines.filter((line) => /HOST|PROGRAM/.test(String(line.fields.code)))).toEqual([]);
+    }
+    // The host facts alone (a composition of before this row): the questions of row 80 and nothing more.
+    const hostOnly = production();
+    const only = scene({ host: hostOnly.host.deps });
+    await expect(runCaptureBootChecks(only.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(hostOnly.host.asked).toHaveLength(HOST_COMMAND_CHECKS.length);
+    expect(only.recorded.lines.map((line) => line.fields.code)).toEqual(['CAPTURE_HOST_CHECKS_PASSED', 'CAPTURE_BOOT_CHECKS_PASSED']);
+  });
+
+  it('a host check that is missing is said first: the programs are not asked after it; off Linux the relay alone is asked and the count says what was not', async () => {
+    const answer = HOST_ANSWERS[CaptureHostRefusal.HOST_ALIAS_SOCKET]?.absent[0]?.answer;
+    if (answer === undefined) throw new Error('no answer');
+    const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf, answers: { [CaptureHostRefusal.HOST_ALIAS_SOCKET]: answer } });
+    const first = scene({ host: host.deps, programs: { platform: 'linux', relayProgram: RELAY, run: host.deps.run, storedInterface: async () => PREPARED_INTERFACE } });
+    expect(await refusalOf(first.deps)).toMatchObject({ code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' });
+    expect(host.asked.some((question) => question === RELAY)).toBe(false);
+
+    const mac = production({ platform: 'darwin' });
+    const { deps, recorded } = scene({ host: mac.host.deps, programs: mac.programs });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(mac.host.asked).toEqual([RELAY]);
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(recorded.lines[1]?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 1, notAsked: 3 });
   });
 });

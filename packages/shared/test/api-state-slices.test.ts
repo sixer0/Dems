@@ -165,13 +165,11 @@ const evidenceNamesItsOptionalMembers: 'tamperedTrackId' | 'markers.label' | 'no
 const stateIsThe28Slices: PendingM2W9<Exact<ReplicatedState, Pick<SimState, ReplicatedSliceName>>> = 'PENDING-M2W9'; // via the evidence slice
 const audioIsTheSlice: Exact<AudioSliceBody, AudioSlice> = true;
 /**
- * Task 4 row 28 (WP-13a): the wire form and `AudioSlice` state a nullable `activeInputId`; the
- * slice as the STATE holds it is still behind the seam `AudioSliceInState` (`sim/types.ts`). The
- * marker compiles while the seam stands and stops compiling when a later row of WP-13a removes it,
- * forcing the flip to `true`.
+ * Task 4 rows 28 and 149 (WP-13a): the wire form, `AudioSlice` and the slice as the STATE holds it
+ * are one type - `activeInputId` is nullable in all three. The seam that kept the state's member an
+ * input is removed (row 149); a type that narrows it again stops this line compiling.
  */
-type PendingRow28Seam<T extends boolean> = T extends true ? true : 'PENDING-ROW-28-SEAM';
-const audioStateIsTheSlice: PendingRow28Seam<Exact<AudioSliceBody, SimState['audio']>> = 'PENDING-ROW-28-SEAM';
+const audioStateIsTheSlice: Exact<AudioSliceBody, SimState['audio']> = true;
 // Every slice of `SimState` is classified, and nothing else is.
 const deliveryCoversTheState: Exact<keyof typeof STATE_SLICE_DELIVERY, keyof SimState> = true;
 const unreplicatedAreTheOtherFive: Exact<Exclude<keyof SimState, ReplicatedSliceName>, 'clock' | 'auth' | 'authLockout' | 'pairing' | 'audio'> = true;

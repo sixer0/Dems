@@ -23,6 +23,8 @@ import { CAPTURE_PROTOCOL_VERSION, CAPTURE_WORKER_SETTINGS, LIBAVFORMAT_VERSION_
 import { captureWorkerArguments } from '../../worker-arguments';
 import { EVIDENCE_STORE_PRIVATE_FOLDERS, evidenceStoreProblemOf, runCaptureBootChecks, type WorkerHandshake } from '../checks';
 import { probeEvidenceVolume } from '../evidence-volume';
+import { HOST_COMMAND_CHECKS, INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, SELECT_STORED_CAMERA_INTERFACE, storedCameraInterface, type CaptureBootHostFacts, type CaptureBootMount, type HostCommand } from '../index';
+import { HOST_ANSWERS, PREPARED_INTERFACE, PROGRAM_ANSWERS, fakeProductionHost } from './host-support';
 
 const fixture = realBootFixture('boot');
 /** The operators of these database-free apps: none has the published demo password. The S99-01 cases replace or drop it. */
@@ -416,5 +418,177 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       expect(failure.reason).toBe('SEALING_STAGING_READABLE_BY_OTHERS');
       expect(failure.message).toContain('.sealing');
     });
+  });
+});
+
+// Task 4 row 81 (WP-20): THE WIRING row 80 left. The mount hands the host facts it is given to steps 4d
+// and 4e, with the two program paths of the configuration and the stored camera interface. Everything
+// but the host is real here, as in the cases above: the path inspector, the media root, the key store,
+// the stand-in worker. The host is the double of `host-support.ts`: its runner starts nothing.
+describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRODUCTION start runs the host checks and the checks of the delivered programs', () => {
+  const keyThere = (): void => {
+    try {
+      fixture.provisionKey();
+    } catch {
+      // KEY_EXISTS: it is there.
+    }
+  };
+  const same = (a: HostCommand, b: HostCommand): boolean => a.program === b.program && a.args.join(' ') === b.args.join(' ');
+  const hostCodeOf = (command: HostCommand): string | undefined => HOST_COMMAND_CHECKS.find((check) => same(check.command, command))?.code;
+
+  interface OnHost {
+    readonly app: Mounted;
+    /** Every question the runner was asked. */
+    readonly asked: string[];
+    readonly relay: string;
+    readonly reads: () => number;
+  }
+  /** A mounted app on a prepared Linux production host: relay and guard are stand-in files of the fixture (they pass the REAL path rule). */
+  function onHost(overrides: Partial<ConfigInput>, options: { readonly platform?: string; readonly hostAnswers?: Parameters<typeof fakeProductionHost>[0]['answers']; readonly programAnswers?: Parameters<typeof fakeProductionHost>[0]['programAnswers']; readonly stored?: string | null; readonly coreFileLimit?: () => number | null; readonly relay?: string | null } = {}): OnHost {
+    keyThere();
+    const relay = options.relay === undefined ? fixture.worker('relay-stand-in') : options.relay;
+    const guard = fixture.worker('guard-stand-in');
+    const programKeyOf = (command: HostCommand): string | undefined => (command.program === relay && command.args.length === 0 ? 'RELAY' : same(command, INTERFACE_FILE_COMMAND) ? 'INTERFACE' : PROGRAM_OWNERSHIP_CHECKS.find((check) => same(check.command, command))?.code);
+    const host = fakeProductionHost({
+      codeOf: hostCodeOf,
+      programKeyOf,
+      ...(options.platform === undefined ? {} : { platform: options.platform }),
+      ...(options.hostAnswers === undefined ? {} : { answers: options.hostAnswers }),
+      ...(options.programAnswers === undefined ? {} : { programAnswers: options.programAnswers }),
+      ...(options.coreFileLimit === undefined ? {} : { coreFileLimit: options.coreFileLimit }),
+    });
+    // What the entry point hands in: the facts of the process and the runner. NO program path: the mount adds the configuration's.
+    const facts: CaptureBootHostFacts = { platform: host.deps.platform, coreFileLimit: host.deps.coreFileLimit, startArguments: host.deps.startArguments, nodeOptionsSet: host.deps.nodeOptionsSet, run: host.deps.run };
+    let reads = 0;
+    const recorded = recordedSinks();
+    const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', captureRelayPath: relay, captureGuardPath: guard, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    const mount: CaptureBootMount = {
+      sinks: recorded.sinks,
+      timers: createSystemTimers(),
+      helloTimeoutMs: 3_000,
+      ...NO_DEMO_PASSWORD,
+      host: facts,
+      storedCameraInterface: async () => ((reads += 1), options.stored === undefined ? PREPARED_INTERFACE : options.stored),
+    };
+    const control = mountCaptureBootChecks(app, mount);
+    const boot = (): Promise<void> => app.readiness.boot();
+    const mountedApp: Mounted = {
+      control,
+      recorded,
+      boot,
+      async refusal() {
+        const failure = await boot().then(
+          () => null,
+          (error: unknown) => error,
+        );
+        if (!(failure instanceof BootError) || !(failure.cause instanceof CaptureBootError)) throw new Error('the boot was not refused by the capture boot checks');
+        return failure.cause;
+      },
+    };
+    return { app: mountedApp, asked: host.asked, relay: relay ?? '', reads: () => reads };
+  }
+
+  it('REAL_PRODUCTION on a prepared host boots: every question of both tables was asked, the relay was asked by the path of the configuration, and the three lines are said', async () => {
+    const prepared = onHost({ captureWorkerPath: fixture.worker('worker-host-1') });
+    await prepared.app.boot();
+    expect(prepared.app.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION, workerVersion: CAPTURE_WORKER_VERSION });
+    expect(prepared.asked).toHaveLength(HOST_COMMAND_CHECKS.length + 4);
+    expect(prepared.asked[HOST_COMMAND_CHECKS.length]).toBe(prepared.relay);
+    expect(prepared.reads()).toBe(1);
+    expect(prepared.app.recorded.lines.map((line) => line.fields['code'])).toEqual(['CAPTURE_HOST_CHECKS_PASSED', 'CAPTURE_PROGRAM_CHECKS_PASSED', 'CAPTURE_BOOT_CHECKS_PASSED']);
+  });
+
+  it('a prerequisite of the host that is missing stops the REAL_PRODUCTION start by its own code (BR-12: the loopback rule), and so does a relay that is not configured', async () => {
+    const answer = HOST_ANSWERS['CAPTURE_HOST_LOOPBACK_RULE_MISSING']?.absent[0]?.answer;
+    if (answer === undefined) throw new Error('no answer');
+    const unprepared = onHost({ captureWorkerPath: fixture.worker('worker-host-2') }, { hostAnswers: { CAPTURE_HOST_LOOPBACK_RULE_MISSING: answer } });
+    const failure = await unprepared.app.refusal();
+    expect([failure.code, failure.reason]).toEqual(['CAPTURE_HOST_LOOPBACK_RULE_MISSING', 'RULE_UNIT_NOT_ACTIVE']);
+    expect(unprepared.app.control.outcome()).toBeNull();
+    // The configuration's own path is what the mount hands on: no relay configured is refused by name, before any question.
+    const noRelay = onHost({ captureWorkerPath: fixture.worker('worker-host-3') }, { relay: null });
+    expect([(await noRelay.app.refusal()).code, noRelay.asked]).toEqual(['CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE', []]);
+    const limited = onHost({ captureWorkerPath: fixture.worker('worker-host-4') }, { coreFileLimit: () => 8_192 });
+    expect([(await limited.app.refusal()).code, (await onHost({ captureWorkerPath: fixture.worker('worker-host-5') }, { coreFileLimit: () => 8_192 }).app.refusal()).reason]).toEqual(['CAPTURE_HOST_CORE_FILE_LIMIT', 'LIMIT_ABOVE_ZERO']);
+  });
+
+  it('a delivered program that fails stops the start by its own code: a relay on another media library, and the interface file against the stored row (the named mismatch)', async () => {
+    const library = PROGRAM_ANSWERS['RELAY']?.absent[0]?.answer;
+    const other = PROGRAM_ANSWERS['INTERFACE']?.absent[1]?.answer;
+    if (library === undefined || other === undefined) throw new Error('no answer');
+    const relay = await onHost({ captureWorkerPath: fixture.worker('worker-host-6') }, { programAnswers: { RELAY: library } }).app.refusal();
+    expect([relay.code, relay.reason]).toEqual(['CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', 'RELAY_LIBRARY_VERSION_MISMATCH']);
+    const file = onHost({ captureWorkerPath: fixture.worker('worker-host-7') }, { programAnswers: { INTERFACE: other } });
+    const mismatch = await file.app.refusal();
+    expect([mismatch.code, mismatch.reason]).toEqual(['CAPTURE_HOST_INTERFACE_FILE_MISMATCH', 'INTERFACE_FILE_DIFFERS_FROM_ROW']);
+    expect(file.app.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH' }]);
+    // The row names another interface than the file: the same refusal from the stored side.
+    const row = await onHost({ captureWorkerPath: fixture.worker('worker-host-8') }, { stored: 'enp9s0' }).app.refusal();
+    expect([row.code, row.reason]).toEqual(['CAPTURE_HOST_INTERFACE_FILE_MISMATCH', 'INTERFACE_FILE_DIFFERS_FROM_ROW']);
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED run none of it on the SAME unprepared host: no question, no read of the stored row, the outcome and the lines of before', async () => {
+    const wrong = { coreFileLimit: () => Infinity, hostAnswers: Object.fromEntries(HOST_COMMAND_CHECKS.map((check) => [check.code, { outcome: 'NOT_STARTED' } as const])), programAnswers: Object.fromEntries(Object.keys(PROGRAM_ANSWERS).map((key) => [key, { outcome: 'NOT_STARTED' } as const])), relay: null } as const;
+    const development = onHost({ captureDevSources: true, captureWorkerPath: fixture.worker('worker-host-9') }, wrong);
+    await development.app.boot();
+    expect(development.app.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_DEVELOPMENT, workerVersion: CAPTURE_WORKER_VERSION });
+    expect([development.asked, development.reads()]).toEqual([[], 0]);
+    expect(development.app.recorded.lines.map((line) => line.fields['code'])).toEqual(['CAPTURE_BOOT_CHECKS_PASSED']);
+    const simulated = onHost({ captureMode: 'simulated' }, wrong);
+    await simulated.app.boot();
+    expect(simulated.app.control.outcome()).toEqual({ operation: CaptureOperation.SIMULATED, label: SIMULATED_WITHOUT_DEMO_CONTROLS, workerVersion: null, evidenceVolume: null });
+    expect([simulated.asked, simulated.reads()]).toEqual([[], 0]);
+    expect(simulated.app.recorded.lines.filter((line) => /HOST|PROGRAM/.test(String(line.fields['code'])))).toEqual([]);
+  });
+
+  it('a mount that is handed NO host facts runs neither step in REAL_PRODUCTION: the start is what it was before the wiring (the control of every case above this block)', async () => {
+    keyThere();
+    const plain = mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-10') });
+    await plain.boot();
+    expect(plain.recorded.lines.map((line) => line.fields['code'])).toEqual(['CAPTURE_BOOT_CHECKS_PASSED']);
+    expect(plain.control.outcome()?.operation).toBe(CaptureOperation.REAL_PRODUCTION);
+  });
+
+  it('the default reader of the stored camera interface: ONE statement on the pool, the name of the one row; no row and no name are null; a read that fails REJECTS (the check then refuses)', async () => {
+    const database = (rows: readonly object[] | Error) => {
+      const asked: string[] = [];
+      const db = {
+        read: async (source: string, work: (pool: { query(text: string): Promise<{ rows: readonly object[] }> }) => Promise<unknown>) =>
+          work({
+            query: async (text) => {
+              asked.push(`${source}: ${text}`);
+              if (rows instanceof Error) throw rows;
+              return { rows };
+            },
+          }),
+      };
+      return { asked, app: { db } as unknown as Parameters<typeof storedCameraInterface>[0] };
+    };
+    const stored = database([{ interface_name: 'enp3s0' }]);
+    expect(await storedCameraInterface(stored.app)).toBe('enp3s0');
+    expect(stored.asked).toEqual([`capture.boot.camera-interface: ${SELECT_STORED_CAMERA_INTERFACE}`]);
+    expect(SELECT_STORED_CAMERA_INTERFACE).toBe('SELECT interface_name FROM public.capture_network_config');
+    expect(await storedCameraInterface(database([]).app)).toBeNull();
+    expect(await storedCameraInterface(database([{ interface_name: null }]).app)).toBeNull();
+    await expect(storedCameraInterface(database(new Error('connection refused')).app)).rejects.toThrow();
+    await expect(storedCameraInterface(database([{ interface_name: 'a' }, { interface_name: 'b' }]).app)).rejects.toThrow();
+    await expect(storedCameraInterface({} as never)).rejects.toThrow();
+  });
+
+  it('with NOTHING replaced and no database, the stored interface cannot be read: a REAL_PRODUCTION start on a prepared Linux host is refused INTERFACE_ROW_UNREADABLE (fail closed)', async () => {
+    keyThere();
+    const relay = fixture.worker('relay-stand-in-nodb');
+    const programKeyOf = (command: HostCommand): string | undefined => (command.program === relay && command.args.length === 0 ? 'RELAY' : same(command, INTERFACE_FILE_COMMAND) ? 'INTERFACE' : PROGRAM_OWNERSHIP_CHECKS.find((check) => same(check.command, command))?.code);
+    const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf });
+    const recorded = recordedSinks();
+    const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-11'), captureRelayPath: relay, captureGuardPath: fixture.worker('guard-stand-in-nodb') }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...NO_DEMO_PASSWORD, host: { platform: 'linux', coreFileLimit: () => 0, startArguments: [], nodeOptionsSet: false, run: host.deps.run } });
+    const failure = await app.readiness.boot().then(
+      () => null,
+      (error: unknown) => (error instanceof BootError ? error.cause : error),
+    );
+    expect(failure).toMatchObject({ code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH', reason: 'INTERFACE_ROW_UNREADABLE' });
   });
 });

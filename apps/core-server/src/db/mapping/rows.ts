@@ -896,7 +896,7 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
     poePort: row.poePort,
     online: row.enabled,
     streamState: row.kind === 'CAMERA' ? (BUILT_IN_CAPABILITIES.has(row.id) ? (row.enabled ? 'LIVE' : 'LOST') : null) : null,
-    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? (row.kind === 'CAMERA' ? ADOPTED_CAMERA_CAPABILITIES : []))],
+    capabilities: [...(BUILT_IN_CAPABILITIES.get(row.id) ?? (row.kind === 'CAMERA' ? ADOPTED_CAMERA_CAPABILITIES : row.kind === 'MIC' && row.adapterKind === REGISTERED_MICROPHONE_ADAPTER_KIND ? REGISTERED_MICROPHONE_CAPABILITIES : []))],
     // A device that operation 96 registered (the INTERNAL action `registerCaptureDevice`, row 132)
     // carries its adapter and the class derived from it, and reads back exactly as it was
     // registered: no stream until a track is assigned, the one capability of a camera. The
@@ -908,6 +908,14 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
 
 /** What `registerCaptureDevice` gives a camera it registers (`packages/shared/src/sim/capture-registry.ts`). */
 const ADOPTED_CAMERA_CAPABILITIES: readonly string[] = ['VIDEO'];
+/**
+ * What `registerCaptureMicrophone` gives a microphone it registers (the same file; decision C43 (3),
+ * integration pass I-7): the capability of the built-in pair. Read back for the adapter kind that
+ * action fixes, so that a restart states what the registration stated; a local-device microphone
+ * keeps `[]`.
+ */
+const REGISTERED_MICROPHONE_ADAPTER_KIND = 'USB_AUDIO';
+const REGISTERED_MICROPHONE_CAPABILITIES: readonly string[] = ['AUDIO'];
 /** The adapter kinds of a source that is not a production device (dbc-4 §N.2). */
 const DEVELOPMENT_ADAPTER_KINDS: ReadonlySet<string> = new Set(['FAKE', 'LOCAL_DEVICE']);
 

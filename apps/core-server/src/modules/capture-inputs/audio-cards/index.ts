@@ -32,9 +32,11 @@
  *
  * THE REGISTRAR. No statement of this module writes `capture_devices` (static rule SEC35-41 (c)).
  * The registry row is written by the registrar handed in (`provideRegistrar`), inside the unit of
- * the registration, as the camera adoption's is. The engine has no action that adds a microphone
- * yet (request filed): until its registrar is handed in, operation 99 answers `503` and stores
- * nothing, and this module's database test uses a stand-in with the unit's own connection.
+ * the registration, as the camera adoption's is. Since task 4 rows 185 and 190 the product HAS
+ * one: `registrar.ts` runs the engine's INTERNAL action `registerCaptureMicrophone` in the unit
+ * (the replicated `captureDevices` slice learns of the microphone with the commit), and this
+ * plugin hands it in itself, on every Core. Operation 99 answers `503` only where no enumerator
+ * was handed in; a module without a registrar (a test takes it away) still answers `503`.
  *
  * THIS MODULE IS NO WIRING UNIT of the adapter layer (static rule A-5): it imports nothing of
  * `capture/adapters`. What it reads of a listing is stated in `service.ts`.
@@ -47,6 +49,7 @@ import { isSessionActive } from '@dems/shared/sim';
 import type { FastifyPluginAsync } from 'fastify';
 import { captureFenceControl, captureOperationOf } from '../../../capture/fence';
 import { describeError } from '../../../plugins/logger';
+import { createEngineMicrophoneRegistrar } from './registrar';
 import { registerCaptureAudioCardsRoutes } from './routes';
 import { createListingGate, type AudioCardEnumerator, type AudioCardsHost, type AudioCardsSeams, type ListingGate, type MicrophoneRegistrar, type RegisteredMicrophone } from './service';
 import { createMicrophoneStore, type MicrophoneStore } from './store';
@@ -72,6 +75,7 @@ export {
   type MicrophoneRegistrar,
   type RegisteredMicrophone,
 } from './service';
+export { MicrophoneRegistryRowMissing, REGISTERED_MICROPHONE_TRANSPORT, SET_REGISTERED_MICROPHONE_COLUMNS, createEngineMicrophoneRegistrar } from './registrar';
 export { CAPTURE_AUDIO_CARD_WRITES, INSERT_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_REGISTERED_AUDIO_INPUTS, REFRESH_AUDIO_INPUT } from './statements';
 export { MicrophoneRowMissing, createMicrophoneStore, type AudioInputFacts, type AudioInputKey, type MicrophoneStore, type Queryable, type RegisteredAudioInput, type StoredAudioInput } from './store';
 
@@ -94,8 +98,8 @@ export interface CaptureAudioCardsTestParts {
   /** The enumerator, whatever the capture operation of the test Core is; null takes it away again. */
   readonly enumerator?: AudioCardEnumerator | null;
   readonly admission?: MicrophoneAdmission;
-  /** The writer of the registry row (a stand-in with the unit's own connection, until the engine has the action). */
-  readonly registrar?: MicrophoneRegistrar;
+  /** Another writer of the registry row in the place of the module's own (`registrar.ts`); null takes it away: operation 99 then answers `503`. */
+  readonly registrar?: MicrophoneRegistrar | null;
   readonly store?: MicrophoneStore;
   readonly gate?: ListingGate;
 }
@@ -107,7 +111,7 @@ export interface CaptureAudioCardsControl {
    * every other capture operation is refused with `AudioCardEnumeratorRefusedError`.
    */
   provideEnumerator(enumerator: AudioCardEnumerator): void;
-  /** Hands in the writer of the registry row of a microphone. Once per app. Without it operation 99 answers `503`. */
+  /** Hands in the writer of the registry row of a microphone. Once per app: this plugin does it itself, with the registrar of `registrar.ts`. Without one operation 99 answers `503`. */
   provideRegistrar(registrar: MicrophoneRegistrar): void;
   /** Hands in the adapter registry's admission in the place of the capture fence's. Once per app. */
   provideAdmission(admission: MicrophoneAdmission): void;
@@ -197,6 +201,9 @@ export const captureAudioCardsModule: FastifyPluginAsync = async (app) => {
     },
   };
   controls.set(app.stages, control);
+  // THE COMPOSITION (task 4 row 190): the registrar of the product, on every Core. It runs the
+  // engine's INTERNAL action inside the unit `host.unit` opens below; it opens nothing itself.
+  control.provideRegistrar(createEngineMicrophoneRegistrar());
 
   /** The capture fence's registry of the running operation: what a boot would give the stored row. */
   const fenceAdmission: MicrophoneAdmission = (device) => captureFenceControl(app).admitDevice(device);

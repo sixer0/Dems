@@ -103,6 +103,9 @@ export const SIM_ACTION_OPERATIONS = {
   switchAudioSource: hosted('switchAudioSource'),
   // The adoption of a camera (task 3 R-9; C3 §2.6): run by the server inside operation 96's unit, never by a client.
   registerCaptureDevice: { operations: [], execution: SimActionExecution.INTERNAL },
+  // The registration of a `USB_AUDIO` microphone (task 4 row 185; design addendum 04 section 4.2): run by the
+  // server inside operation 99's unit, never by a client. One more member and one more `internal` than the header counts.
+  registerCaptureMicrophone: { operations: [], execution: SimActionExecution.INTERNAL },
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;

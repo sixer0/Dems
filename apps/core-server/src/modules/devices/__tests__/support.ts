@@ -187,10 +187,11 @@ export function operatorOf(role: OperatorRole, permissions: readonly Permission[
  * test chose; stage 6 is the REAL access rule; the engine is the double. Close it with
  * `app.close()`.
  */
-export async function unitApp(state: CommittedState = committedOf(scenarioState('idle'))): Promise<UnitApp> {
+export async function unitApp(state: CommittedState = committedOf(scenarioState('idle')), config: Parameters<typeof unitTestConfig>[0] = {}): Promise<UnitApp> {
   const log = captureLog();
   const fake = createFakePool();
-  const app = buildApp({ config: unitTestConfig({ logLevel: 'info' }), createPool: () => fake.pool, logStream: log.stream });
+  // `config` (task 4 row 53): a case that needs the routes of a Core in another capture mode hands the members in; nothing is booted either way.
+  const app = buildApp({ config: unitTestConfig({ logLevel: 'info', ...config }), createPool: () => fake.pool, logStream: log.stream });
   const registered: RouteOptions[] = [];
   // Before the units load: every route they add is seen.
   app.addHook('onRoute', (route) => void registered.push(route));

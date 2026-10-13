@@ -66,7 +66,7 @@ export const emptySlotsOf = (lines: SelectorLines): CaptureSelectorSlot[] =>
  * The slices of a state that holds these lines: the registry above, the selector, and meters that
  * agree with it (one frame per microphone line, as a state the hosted action produced has; a camera
  * edit never touches the meters, so it would not repair them). `activeInputId` is the PRIMARY line's
- * input, else the input the state held (the seam `AudioSliceInState`: the state holds no null yet).
+ * input, else `null`: without a PRIMARY line the state holds no active input (task 4 row 149).
  */
 export function selectorPatch(state: SimState, lines: SelectorLines): Pick<SimState, 'captureDevices' | 'captureConfig' | 'audio'> {
   const frame = state.audio.inputs['MIC-01'];
@@ -74,6 +74,6 @@ export function selectorPatch(state: SimState, lines: SelectorLines): Pick<SimSt
   return {
     captureDevices: { devices: REGISTRY },
     captureConfig: { ...state.captureConfig, cameras: lines.cameras, mics: lines.mics },
-    audio: { inputs: Object.fromEntries(lines.mics.map((line) => [line.inputId, frame])), activeInputId: lines.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? state.audio.activeInputId },
+    audio: { inputs: Object.fromEntries(lines.mics.map((line) => [line.inputId, frame])), activeInputId: lines.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? null },
   };
 }

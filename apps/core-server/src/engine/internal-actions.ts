@@ -18,13 +18,15 @@
  * The host binds what the function does when it builds a unit's scope (`bindInternalActions`).
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
-import type { CaptureDeviceStatus, RegisterCaptureDeviceInput } from '@dems/shared/sim';
+import type { CaptureDeviceStatus, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput } from '@dems/shared/sim';
 import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
 
 export interface InternalActions {
   registerCaptureDevice(device: RegisterCaptureDeviceInput): Promise<CaptureDeviceStatus>;
+  /** Task 4 rows 185 / 190 (operation 99): see `registerCaptureMicrophoneIn`. */
+  registerCaptureMicrophone(microphone: RegisterCaptureMicrophoneInput): Promise<CaptureDeviceStatus>;
   /** Blueprint row 71 (capture session): see `markCaptureConnectingIn`. */
   markCaptureConnecting(sessionId: string): Promise<boolean>;
   /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
@@ -55,6 +57,22 @@ export function registerCaptureDeviceIn(unit: EngineUnit, device: RegisterCaptur
 }
 
 const NOT_A_HOST_UNIT = 'this unit was not opened by the engine host: an INTERNAL action runs in a unit of `app.engine.run` only';
+
+/**
+ * Task 4 rows 185 / 190 (design addendum 04 section 4.2; operation 99): runs the INTERNAL action
+ * `registerCaptureMicrophone` in `unit` and writes its effect through it. With `deviceId: null`
+ * the new row of `capture_devices` - class `MIC`, adapter kind `USB_AUDIO`, the next free
+ * `MIC-NN`, all three the action's own - and the publication of slice `captureDevices` commit
+ * with the unit; with an id that registered microphone is enabled again and no row is added.
+ * Resolves with the registry entry. It checks no permission and writes no audit row: operation 99
+ * has passed stage 6 and writes `CAPTURE_AUDIO_INPUT_CHANGED` in the same unit. Rejects with the
+ * mapped `ApiFailure` when the simulator refuses the input.
+ */
+export function registerCaptureMicrophoneIn(unit: EngineUnit, microphone: RegisterCaptureMicrophoneInput): Promise<CaptureDeviceStatus> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.registerCaptureMicrophone(microphone);
+}
 
 /**
  * Blueprint row 71 (D84, D91 R-1 option A; `dbc-4` MR-S1): in the unit that persists RECORDING of

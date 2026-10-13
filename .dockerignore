@@ -1,0 +1,35 @@
+# Build context of the ONE container definition of this repository:
+#   scripts/host/container/Dockerfile.ubuntu-24.04   (task 4 blueprint row 78; README beside it)
+# The context is the repository root, so this file has to lie here: the docker client installed on the
+# development Mac has no buildx plugin, and its builder reads no ignore file beside a Dockerfile.
+#
+# FORM: an allow list. Everything is excluded, then three folders are let in, then the exclusions that
+# must hold INSIDE and BESIDE them are stated again by name, so that widening the allow list later cannot
+# let them in by accident. The last matching line wins.
+*
+!apps
+apps/*
+!apps/capture-worker
+!scripts
+scripts/*
+!scripts/host
+!scripts/hardware-acceptance
+
+# Never sent, whatever the allow list above becomes:
+apps/input-av
+apps/input-av/**
+**/node_modules
+.data
+**/.data
+.cache
+**/.cache
+docs
+.git
+.locks
+**/.env
+**/.env.*
+
+# This Mac's build output (Mach-O binaries, scratch files of the unit checks): the container builds its own.
+apps/capture-worker/build
+**/__pycache__
+**/.DS_Store

@@ -22,7 +22,7 @@ last_updated: 2026-10-13 05:40 (host clock)
 
 | File | Lines | Content |
 |---|--:|---|
-| `hw-collect-lib.sh` | 866 | the shared part: closed option forms, the Ubuntu 24.04 guard, the closed list of reading tools (`hw_reader_allowed`), the mask every printed line passes, the one output file per invocation, `--dry` |
+| `hw-collect-lib.sh` | 917 | the shared part: closed option forms, the Ubuntu 24.04 guard, the closed list of reading tools (`hw_reader_allowed`), the mask every printed line passes, the one output file per invocation, `--dry` |
 | `collect-h27.sh` | 56 | `9A/H-27.6`: processes, listeners on 8000 / 8554 / 9997, the account `dems` |
 | `collect-h01.sh` | 579 | `9A/H-01.2` `--profile` (HOST-01 to HOST-42), `.10` `--announce` (builds and runs the E-11b probe), `.11` `--series` |
 | `collect-h02.sh` | 103 | `9A/H-02.2` `--before`, `.4` `--after --at 10|60 --before-file` |
@@ -65,7 +65,7 @@ SKIPPED shellcheck is not installed on this machine: not run
 
 Doubles: every reading tool is a script that records its name and arguments and prints canned text; `/etc/os-release`, `/proc`, `/run/dems-core-netalias`, `/etc/passwd` are canned files under a seam folder (`HWA_TEST_DIR`; an output taken this way carries the line `TEST DOUBLES IN USE`). For `--announce` the compiler double writes a probe double that prints the probe output of `test/007`; the pusher is a double. Also checked once, outside the test: the carried `probe.c` compiles on this Mac with the host build line (exit 0) and prints its usage; it was not run against a listener.
 
-One defect the test found and that was fixed: the first mask marker held a colon, so a masked database locator still matched the scan's `database-locator` form; the marker is now `[masked-...]`.
+One defect the test found and that was fixed: the first mask marker held a colon, so a masked database locator still matched the scan's `database-locator` form; the marker is now `[masked-...]`.  A second one, found by the test of row 129: the mask replaced the number in the count lines of the scan itself (`camera-credential: 0`); those lines are now left as they are. Both tests were run again after it: 637 passed, 0 failed.
 
 Unproven, all of it for the hardware package: every command on Ubuntu (option spellings of `ss`, `ps`, `namei`, `findmnt`, `dpkg`, the layout of `/proc/asound`), the build of the probe with the host's compiler, the `mpeg4` pusher, the field names of log lines of parts that were not built.
 

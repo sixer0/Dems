@@ -74,7 +74,7 @@ import { delay, installLoopbackGuard, type LoopbackGuard } from '../../src/captu
 import { engineControl } from '../../src/engine';
 import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
 import { captureAudioCardsControl } from '../../src/modules/capture-inputs/audio-cards';
-import { DUO, SIX, TWO_CARDS, fakeHost, standInRegistrar } from '../../src/modules/capture-inputs/audio-cards/__tests__/fixtures';
+import { DUO, SIX, TWO_CARDS, fakeHost } from '../../src/modules/capture-inputs/audio-cards/__tests__/fixtures';
 import { testRoutine, useRoutine } from '../../src/modules/demo/__tests__/support';
 import { identityControl } from '../../src/modules/identity';
 import { pairingControl } from '../../src/modules/pairing';
@@ -876,6 +876,18 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // 94 before any search: nothing, for every holder of CAPTURE_CONFIG.
       for (const caller of [supervisor, technician]) expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', caller, 'no search was started', {}, 200))).toMatchObject({ search: null, candidates: [] });
 
+      // 93 with a typed address (task 4 row 96; the 422 the contract documents since row 94). A body outside its
+      // schema, then an address of the form that the Core may not dial: refused before anything is built - no
+      // datagram, no search, no place taken in a bound, so the search below still starts with 202.
+      const notAnAddress = await expectCall(main, 'startCaptureDiscovery', technician, 'a typed address that is a name', { payload: { address: 'camera.example' } }, 422, 'INVALID_INPUT');
+      expect(detailsOf(notAnAddress)['reason']).toBeUndefined();
+      const notAllowed = await expectCall(main, 'startCaptureDiscovery', technician, 'a typed address the Core may not dial', { payload: { address: '127.0.0.1' } }, 422, 'INVALID_INPUT');
+      expect(detailsOf(notAllowed)).toEqual({ in: 'body', reason: 'DISCOVERY_ADDRESS_NOT_ALLOWED' });
+      expect(JSON.stringify(notAllowed.body)).not.toContain('127.0.0.1');
+      expect(guard.datagrams()).toEqual([]);
+      expect(captureDiscoveryControl(main.app).searchesStarted()).toBe(0);
+      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'no search was started by a refused typed address', {}, 200))).toMatchObject({ search: null, candidates: [] });
+
       // 93: a new search (202); the caller's own running search again (200, no second probe); another session meanwhile (409).
       const started = await expectCall(main, 'startCaptureDiscovery', technician, 'a TECHNICIAN starts a search', {}, 202);
       const searchId = bodyOf<{ searchId: string; created: boolean }>(started).searchId;
@@ -981,11 +993,16 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const technician = web.TECHNICIAN;
     // THIS CORE IS SIMULATED: of itself the module has no enumerator and answers the envelope's 503.
     // Its place is taken, once, by the real enumerator of row 64 over a table of fixed texts (no
-    // host is read, no process starts), and by the stand-in registrar of the module's own tests
-    // (the registry row with the unit's own connection; the engine has no action that adds a
-    // microphone yet). The 503, the roles, the rollback and the audit keys are the module's tests.
+    // host is read, no process starts). The 503, the roles, the rollback and the audit keys are the
+    // module's tests.
+    //
+    // THE REGISTRAR IS THE PRODUCT'S (task 4 rows 185 and 190; decision C43 (2); integration pass
+    // I-7): the plugin hands it in itself and nothing replaces it here. The microphone it registers
+    // enters the replicated registry and stays there for the rest of this file, so operation 77
+    // lists MIC-01, MIC-02 AND the registered microphone - rule AC-B-70 at the end of this file
+    // says so for the device registry and keeps the pair rule for every other list of audio.
     const host = fakeHost(TWO_CARDS);
-    captureAudioCardsControl(main.app).replaceForTest({ enumerator: host.enumerator, registrar: standInRegistrar });
+    captureAudioCardsControl(main.app).replaceForTest({ enumerator: host.enumerator });
     /** Past the spacing of the search (the server clock decides): this file produces no 429 of the operation. */
     const spaced = (): void => main.clock.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
     interface Search { cards: { cardId: string; channelCount: number; registered: { inputNumber: number; deviceId: string }[] }[]; truncated: boolean }
@@ -1021,6 +1038,13 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     spaced();
     const after = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input', {}, 200));
     expect(after.cards.map((card) => card.registered)).toEqual([[], [{ inputNumber: 3, deviceId: registered.deviceId }]]);
+    // 77 (decision C43 (2), (3)): the registered microphone is in the registry every role reads, once
+    // (the repeat made no second device), after the built-in pair and with the capability they state.
+    const registry = bodyOf<{ devices: { id: string; kind: string; capabilities: string[]; adapter?: string }[] }>(await expectCall(main, 'getCaptureDevices', web.INVESTIGATOR, 'the registry lists the registered microphone', {}, 200));
+    const microphones = registry.devices.filter((device) => device.kind === 'MIC');
+    expect(microphones.map((device) => device.id)).toEqual(['MIC-01', 'MIC-02', registered.deviceId]);
+    expect(microphones.map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO'], ['AUDIO']]);
+    expect(microphones.at(-1)?.adapter).toBe('USB_AUDIO');
 
     // Without a session: both.
     await expectCall(main, 'searchCaptureAudioCards', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
@@ -2013,10 +2037,11 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
 // row 96 builds the typed-address probe. Row 96 produces the 422 in this file and takes the entry out:
 // the coverage block names the exact list, fails on an unproduced status that is not on it, and fails
 // when a listed one is produced, so no entry outlives its row silently.
-//   93 startCaptureDiscovery 422      task 4 row 96
-const LANDED_UNANSWERED: Readonly<Record<string, string>> = {
-  'startCaptureDiscovery 422': 'the Core ignores `address` until task 4 row 96 (LANDED_UNANSWERED)',
-};
+// Task 4 (blueprint row 96): the list is EMPTY. Row 96 built the typed-address probe; the Core answers
+// operation 93's 422 for a body outside its schema and for an address its destination rule refuses, and
+// the camera-search area of this file produces both with real requests. The entry
+// `'startCaptureDiscovery 422'` was taken out with that row, as this comment announced.
+const LANDED_UNANSWERED: Readonly<Record<string, string>> = {};
 const NOT_PRODUCED: Readonly<Record<string, string>> = {
   ...Object.fromEntries(
     UNROUTED_OPERATIONS.flatMap((operation) => listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, 'no route until task 4 row 70 (LANDED_UNROUTED)'])),
@@ -2034,10 +2059,23 @@ const NOT_PRODUCED: Readonly<Record<string, string>> = {
 const KNOWN_CODE_GAPS: Readonly<Record<string, string>> = {};
 
 describe('SC6: what the whole file received', () => {
-  it('AC-B-70: every answer that lists audio lists exactly the two session tracks or the two mic inputs (SH-17)', () => {
+  it('AC-B-70: every answer that lists audio lists exactly the two session tracks or the two mic inputs (SH-17); the device registry of operation 77 lists the pair first and then every registered microphone', () => {
     // Schema v2 re-keys the audio READS by the physical inputs (C3 §3, ops 44/45: `audio[]` and
     // `channels[]` carry `inputId` MIC-01/MIC-02, never merged), while the session tracks stay
     // AUDIO-01/AUDIO-02. A list of either kind must carry both members in order and nothing else.
+    //
+    // CORRECTED BY DECISION C43 (2) (task 4 rows 185 / 190; integration pass I-7). The device
+    // REGISTRY (operation 77, `devices`) is no list of the two inputs of a recording: it is every
+    // device the Core holds, and a microphone registered through operation 99 is one of them. Its
+    // microphones are held to their own rule - the built-in pair first, in order, then registered
+    // microphones `MIC-NN` in rising number, none twice - and this file must have seen the
+    // registry WITH a registered microphone, so that the rule is not met by an empty case.
+    const REGISTRY_PLACE = 'getCaptureDevices devices';
+    const registryRule = (ids: readonly string[]): boolean => {
+      const numbers = ids.map((id) => /^MIC-(\d{2,})$/.exec(id)?.[1]).map((digits) => (digits === undefined ? Number.NaN : Number(digits)));
+      return ids[0] === 'MIC-01' && ids[1] === 'MIC-02' && numbers.every((number, index) => Number.isInteger(number) && (index === 0 || number > (numbers[index - 1] ?? Number.NaN)));
+    };
+    const registries: string[] = [];
     const lists: Array<{ operationId: string; path: string; ids: string[] }> = [];
     const walk = (value: unknown, path: string, answer: Answer): void => {
       if (Array.isArray(value)) {
@@ -2064,8 +2102,19 @@ describe('SC6: what the whole file received', () => {
       const place = `${list.operationId} ${list.path.replace(/\[\d+\]/g, '[]')}`;
       byPlace.set(place, (byPlace.get(place) ?? 0) + 1);
       const pair = JSON.stringify(list.ids);
+      if (place === REGISTRY_PLACE) {
+        registries.push(pair);
+        expect(registryRule(list.ids), `${list.operationId} ${list.path}: ${pair}`).toBe(true);
+        continue;
+      }
       expect(pair === '["AUDIO-01","AUDIO-02"]' || pair === '["MIC-01","MIC-02"]', `${list.operationId} ${list.path}: ${pair}`).toBe(true);
     }
+    // The registry was read before any registration (the pair alone) and after one (the pair and the registered microphone).
+    expect(registries).toContain('["MIC-01","MIC-02"]');
+    expect(registries).toContain('["MIC-01","MIC-02","MIC-03"]');
+    // CONTROL of the registry rule: the pair alone and the pair with later microphones pass; a missing or swapped member of the pair, a repeat, a falling number and an id of another form do not.
+    expect([['MIC-01', 'MIC-02'], ['MIC-01', 'MIC-02', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-11']].map(registryRule)).toEqual([true, true, true]);
+    expect([['MIC-01'], ['MIC-02', 'MIC-01'], ['MIC-01', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-03'], ['MIC-01', 'MIC-02', 'MIC-04', 'MIC-03'], ['MIC-01', 'MIC-02', 'AUDIO-01'], []].map(registryRule)).toEqual([false, false, false, false, false, false, false]);
     console.info(`[w52] AC-B-70: ${lists.length} lists of audio (tracks or inputs) in the answers of this file, each the ordered pair:\n${[...byPlace].map(([place, count]) => `[w52]   ${place}: ${count}`).join('\n')}`);
     // The reads that list audio were all among them: the input-keyed reads and the track-keyed one.
     for (const operationId of ['getAudioStatus', 'getDeviceHealth', 'getEvidence']) expect([...byPlace.keys()].some((place) => place.startsWith(`${operationId} `)), operationId).toBe(true);
@@ -2149,7 +2198,8 @@ describe('SC6: what the whole file received', () => {
     // or one of an unrouted operation moves this equality; a listed entry that IS produced is `stale` above.
     const deferred = cells.filter((cell) => cell.codes === null && Object.hasOwn(LANDED_UNANSWERED, `${cell.operationId} ${cell.status}`)).map((cell) => `${cell.operationId} ${cell.status}`);
     console.info(`[w52] documented responses deferred to a named row (LANDED_UNANSWERED): ${JSON.stringify(deferred.map((entry) => `${entry}: ${LANDED_UNANSWERED[entry]}`))}`);
-    expect(deferred).toEqual(['startCaptureDiscovery 422']);
+    // Task 4 row 96: none is deferred any more (the literal stays, so that a new entry needs this second, visible edit).
+    expect(deferred).toEqual([]);
     expect(Object.keys(LANDED_UNANSWERED)).toEqual(deferred);
     expect(UNROUTED_OPERATIONS.filter((operation) => deferred.some((entry) => entry.startsWith(`${operation.operationId} `))).map((operation) => operation.operationId)).toEqual([]);
     // The primary success status of each of the 97 routed operations (99 less the two of LANDED_UNROUTED).

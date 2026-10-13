@@ -162,6 +162,33 @@ export async function readMicTransports(reader: CaptureStoreReader): Promise<Rea
   return new Map(recordsOf(rows[0]?.devices ?? null).filter((device) => device.kind === 'MIC').map((device) => [device.id, device.transport]));
 }
 
+/**
+ * THE PROFILE CODES A CAMERA'S STORED ROW LISTS (`capture_devices.profiles`; task 4 row 187, ruling
+ * C36 (1)): for a production camera they are the statements of its own streams, minted when it was
+ * adopted (rows 50 / 51). The replicated device slice carries no profile list, so the edit that
+ * assigns a production camera reads them here. No parameter, no credential table, cameras only.
+ */
+export const READ_CAMERA_PROFILES = "SELECT d.id, d.profiles FROM public.capture_devices d WHERE d.kind = 'CAMERA'";
+
+interface CameraProfilesRow {
+  readonly id: unknown;
+  readonly profiles: unknown;
+}
+
+/**
+ * By camera, the profile codes its stored row lists. A row whose list is no list, or an element
+ * that is no text, states nothing: FAIL CLOSED - the caller then finds no code to accept.
+ */
+export async function readCameraProfiles(reader: CaptureStoreReader): Promise<ReadonlyMap<string, readonly string[]>> {
+  const { rows } = await reader.query<CameraProfilesRow>(READ_CAMERA_PROFILES);
+  const byCamera = new Map<string, readonly string[]>();
+  for (const row of rows) {
+    if (typeof row.id !== 'string') continue;
+    byCamera.set(row.id, Array.isArray(row.profiles) && row.profiles.every((code) => typeof code === 'string') ? Object.freeze([...(row.profiles as string[])]) : Object.freeze([]));
+  }
+  return byCamera;
+}
+
 /** Creates the store. One instance per app; the boot step of the module loads it. */
 export function createCaptureConfigStore(): CaptureConfigStore {
   let current: CaptureSnapshot | null = null;

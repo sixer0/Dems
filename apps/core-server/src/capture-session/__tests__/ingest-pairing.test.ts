@@ -157,7 +157,9 @@ describe('row 48, SA-3: a camera counts as open only when both reports of its at
     expect([wasOpen.said(), wasOpen.pairing.open()]).toEqual([['CAM-01@1 WORKER_REFUSED'], []]);
   });
 
-  it('a report for another attempt (C35 (b)): a RELAY report that names an earlier or a later attempt than the one in force is a fault and completes nothing; a worker-side report stamped with another attempt is dropped (the stamp is the caller\'s, not a claim)', () => {
+  // Since task 4 row 188 (ruling C37) the EARLIER attempt is no fault any more: the Core itself superseded it. The rule of
+  // the later attempt, and that nothing of another attempt completes a pair, is what this case still holds; the block of row 188 below holds the rest.
+  it('a report for another attempt (C35 (b)): a RELAY report that names a LATER attempt than the one in force is a fault; one of an earlier attempt completes nothing (C37: dropped); a worker-side report stamped with another attempt is dropped (the stamp is the caller\'s, not a claim)', () => {
     const of = rig();
     of.pairing.relayReported('CAM-01', 1);
     of.pairing.begin(2);
@@ -167,10 +169,10 @@ describe('row 48, SA-3: a camera counts as open only when both reports of its at
     of.pairing.workerRefused('CAM-01', 1);
     of.advance(60_000);
     expect([of.pairing.open(), of.faults]).toEqual([[], []]);
-    // A relay report of attempt 1 does not complete the worker's connect report of attempt 2: it is the fault.
+    // A relay report of attempt 1 does not complete the worker's connect report of attempt 2: nothing opens, and the half pair of attempt 2 keeps its timer.
     of.pairing.workerConnected('CAM-01', 2);
     of.pairing.relayReported('CAM-01', 1);
-    expect([of.said(), of.pairing.open(), of.timers()]).toEqual([['CAM-01@1 ATTEMPT_MISMATCH'], [], 0]);
+    expect([of.said(), of.pairing.open(), of.timers()]).toEqual([[], [], 1]);
 
     const later = rig();
     later.pairing.relayReported('CAM-02', 2);
@@ -216,5 +218,124 @@ describe('row 48, SA-3: a camera counts as open only when both reports of its at
     const text = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../ingest-pairing.ts'), 'utf8');
     const code = text.split('\n').filter((line) => !/^\s*(\/\*\*|\*|\/\/)/.test(line));
     expect(code.filter((line) => /^import\b|\brequire\(|\bimport\(|setTimeout|setInterval|Date\.now|performance\.|console\.|ingestUrl|rtsp/.test(line))).toEqual([]);
+  });
+});
+
+// Task 4 row 188 (controller ruling C37): the attempts of a session are the supervisor's count of its workers, so every
+// attempt below the one in force was issued by the Core itself and then superseded. What a relay of such an attempt still
+// says is dropped and counted; `ATTEMPT_MISMATCH` stays for an attempt the Core never issued.
+describe('row 188, C37: a relay report for an attempt the Core itself superseded is dropped and counted - never a fault', () => {
+  /** The rig of above, with the listener of dropped reports. */
+  function withListener() {
+    const dropped: string[] = [];
+    const opened: string[] = [];
+    const faults: IngestPairingFailure[] = [];
+    let now = 0;
+    const armed: Array<{ at: number; run: () => void; live: boolean }> = [];
+    const pairing = createIngestPairing({
+      cameras: ['CAM-01', 'CAM-02'],
+      after(delayMs, callback) {
+        const entry = { at: now + delayMs, run: callback, live: true };
+        armed.push(entry);
+        return () => void (entry.live = false);
+      },
+      opened: (deviceId, attempt) => void opened.push(`${deviceId}@${attempt}`),
+      fault: (failure) => void faults.push(failure),
+      superseded: (report) => void dropped.push(`${report.deviceId}@${report.attempt} inForce=${report.inForce} count=${report.count}`),
+    });
+    const advance = (ms: number): void => {
+      now += ms;
+      for (const entry of armed) {
+        if (!entry.live || entry.at > now) continue;
+        entry.live = false;
+        entry.run();
+      }
+    };
+    return { pairing, dropped, opened, faults, advance, said: () => faults.map((failure) => `${failure.deviceId}@${failure.attempt} ${failure.reason}`) };
+  }
+
+  it('the worker of attempt 1 was replaced: the report of its relay arrives during attempt 2 - 0 faults, 1 counted report, and THE CURRENT ATTEMPT STILL PAIRS', () => {
+    const of = withListener();
+    of.pairing.begin(1);
+    of.pairing.begin(2);
+    of.pairing.relayReported('CAM-01', 1);
+    expect([of.faults, of.dropped, of.pairing.supersededReports(), of.pairing.failure()]).toEqual([[], ['CAM-01@1 inForce=2 count=1'], 1, null]);
+    // The pairing of attempt 2 is untouched: both cameras pair, in either order, around a second stale report.
+    of.pairing.relayReported('CAM-01', 2);
+    of.pairing.relayReported('CAM-02', 1);
+    of.pairing.workerConnected('CAM-01', 2);
+    of.pairing.workerConnected('CAM-02', 2);
+    of.pairing.relayReported('CAM-02', 2);
+    expect([of.pairing.open(), of.opened, of.faults]).toEqual([['CAM-01', 'CAM-02'], ['CAM-01@2', 'CAM-02@2'], []]);
+    expect(of.dropped).toEqual(['CAM-01@1 inForce=2 count=1', 'CAM-02@1 inForce=2 count=2']);
+    of.advance(60_000);
+    expect([of.faults, of.pairing.supersededReports()]).toEqual([[], 2]);
+  });
+
+  it('a stale report is NOT the second report of the relay of the attempt in force, and it arms no timer: nothing fires for it at the bound', () => {
+    const of = withListener();
+    of.pairing.begin(1);
+    of.pairing.begin(2);
+    of.pairing.relayReported('CAM-01', 2);
+    of.pairing.relayReported('CAM-01', 1);
+    of.pairing.relayReported('CAM-01', 1);
+    of.pairing.workerConnected('CAM-01', 2);
+    of.advance(60_000);
+    expect([of.said(), of.pairing.open(), of.pairing.supersededReports()]).toEqual([[], ['CAM-01'], 2]);
+  });
+
+  it('every attempt below the one in force was issued by the Core - also one whose worker never came to listen (the pairing was never told to begin it)', () => {
+    const of = withListener();
+    // The first worker never listened: the session begins the pairing with the attempt of the second (`RESTARTING` says attempt + 1).
+    of.pairing.begin(3);
+    of.pairing.relayReported('CAM-01', 1);
+    of.pairing.relayReported('CAM-02', 2);
+    expect([of.said(), of.dropped]).toEqual([[], ['CAM-01@1 inForce=3 count=1', 'CAM-02@2 inForce=3 count=2']]);
+  });
+
+  it.each([
+    ['a later attempt than the one in force', 3],
+    ['the attempt after that', 4],
+    ['attempt 0 (a relay that was told none)', 0],
+    ['a negative number', -1],
+    ['a number that is no whole number', 1.5],
+    ['a number that is no number', Number.NaN],
+  ])('NEVER ISSUED stays the fault: %s is ATTEMPT_MISMATCH, said once, and it is not counted as superseded', (_name, attempt) => {
+    const of = withListener();
+    of.pairing.begin(1);
+    of.pairing.begin(2);
+    of.pairing.relayReported('CAM-02', attempt);
+    expect(of.faults).toEqual([{ deviceId: 'CAM-02', attempt, reason: IngestPairingFault.ATTEMPT_MISMATCH }]);
+    expect([of.dropped, of.pairing.supersededReports()]).toEqual([[], 0]);
+    // The fault ended the pairing: what a stale relay says afterwards is neither counted nor told.
+    of.pairing.relayReported('CAM-01', 1);
+    expect([of.dropped, of.faults.length]).toEqual([[], 1]);
+  });
+
+  it('before any attempt is superseded nothing is: with attempt 1 in force a report of attempt 1 pairs and no other number is "earlier"', () => {
+    const of = withListener();
+    of.pairing.begin(1);
+    of.pairing.relayReported('CAM-01', 1);
+    of.pairing.workerConnected('CAM-01', 1);
+    expect([of.pairing.open(), of.dropped, of.pairing.supersededReports()]).toEqual([['CAM-01'], [], 0]);
+  });
+
+  it('a camera that is no camera of the plan is dropped without a count; a listener that throws changes nothing; without a listener the count is still kept', () => {
+    const of = withListener();
+    of.pairing.begin(1);
+    of.pairing.begin(2);
+    of.pairing.relayReported('CAM-09', 1);
+    expect([of.dropped, of.pairing.supersededReports()]).toEqual([[], 0]);
+
+    const faults: IngestPairingFailure[] = [];
+    const throwing = createIngestPairing({ cameras: ['CAM-01'], after: () => () => undefined, opened: () => undefined, fault: (failure) => void faults.push(failure), superseded: () => { throw new Error('a listener that fails'); } });
+    throwing.begin(2);
+    expect(() => throwing.relayReported('CAM-01', 1)).not.toThrow();
+    expect([faults, throwing.supersededReports()]).toEqual([[], 1]);
+
+    const silent = rig();
+    silent.pairing.begin(2);
+    silent.pairing.relayReported('CAM-01', 1);
+    expect([silent.faults, silent.pairing.supersededReports()]).toEqual([[], 1]);
   });
 });

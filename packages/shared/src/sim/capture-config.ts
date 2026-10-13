@@ -359,10 +359,9 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
     return state.audio.inputs[inputId];
   };
   const inputs = Object.fromEntries(mics.map((mic) => [mic.inputId, heldFrameOf(mic.inputId) ?? noInputFrame(now)]));
-  // PENDING-ROW-28-SEAM (`AudioSliceInState`; row 149 removes it): the state cannot hold `null`
-  // yet. Without a PRIMARY line the member keeps the input it held - never a line by its place,
-  // never a built-in input. With the seam out this is `micInputOfRole(mics, 'PRIMARY')` alone.
-  const activeInputId = micInputOfRole(mics, MicRole.PRIMARY) ?? state.audio.activeInputId;
+  // Without a PRIMARY line the state holds NO active input (task 4 row 149): `null` - never the
+  // input it held, never a line by its place, never a built-in input.
+  const activeInputId = micInputOfRole(mics, MicRole.PRIMARY);
   let next: SimState = {
     ...state,
     captureConfig: { ...state.captureConfig, cameras, mics, updatedAt: now },

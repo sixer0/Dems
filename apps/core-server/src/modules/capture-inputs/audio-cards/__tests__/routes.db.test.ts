@@ -15,14 +15,14 @@
 //                          REAL_PRODUCTION Core with an enumerator handed in by row 85.
 //   the host               a table of fixed listing texts (`fixtures.ts`). No Linux host, no
 //                          sound card, no process. Proven on hardware: `9A/H-07`.
-//   the registrar          the engine has no action that adds a microphone to the replicated
-//                          registry (request filed), and no statement of the module may insert
-//                          into `capture_devices` (static rule SEC35-41 (c)). The stand-in INSERTs
-//                          the registry row with the unit's own connection, as `dems_app`: the
-//                          TRANSACTION of the registration is the real one (registry row, input
-//                          row, audit row), the replicated slice does not learn of the device.
-//                          Not proven here: `publishes captureDevices`. Without a registrar the
-//                          module answers 503, which the first block measures.
+//   the registrar          NO LONGER A STAND-IN (task 4 rows 185 and 190): every registration of
+//                          this file runs the registrar of the product (`registrar.ts`), that is
+//                          the engine's INTERNAL action `registerCaptureMicrophone` in the unit of
+//                          the registration - the registry row comes from the engine's typed
+//                          writer and the replicated `captureDevices` slice of the RUNNING engine
+//                          holds the microphone with the commit. The plugin hands it in itself
+//                          (measured in the first block, before this file touches it); the first
+//                          block also takes it away once: a module without one answers 503.
 //   the adapter            a class-C stand-in of kind USB_AUDIO with no opener, registered in a
 //                          REAL production registry of this file (the stub of `usb-audio.ts` is
 //                          loaded by `adapters/real.ts` only).
@@ -31,7 +31,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, validateCoreApiResponse } from '@dems/shared/api';
+import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_DISCOVERY_MAX_PER_MINUTE, validateCoreApiResponse } from '@dems/shared/api';
 import { OPERATORS, type AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
@@ -48,8 +48,8 @@ import { engineControl } from '../../../../engine';
 import type { Principal } from '../../../../plugins/authenticate';
 import { throttleControl } from '../../../../plugins/throttle';
 import { identityControl } from '../../../identity';
-import { AudioCardEnumeratorRefusedError, captureAudioCardsControl, createListingGate, createMicrophoneStore, type MicrophoneStore, type RegisteredMicrophone } from '../index';
-import { DUO, INTERFACE_REPLACED, NO_CARD, SIX, TWO_CARDS, fakeHost, standInRegistrar as registrar, type FakeHost } from './fixtures';
+import { AudioCardEnumeratorRefusedError, captureAudioCardsControl, createEngineMicrophoneRegistrar, createListingGate, createMicrophoneStore, type MicrophoneStore, type RegisteredMicrophone } from '../index';
+import { DUO, INTERFACE_REPLACED, NO_CARD, SIX, TWO_CARDS, fakeHost, type FakeHost } from './fixtures';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row070' });
 const dataDir = mkdtempSync(join(tmpdir(), 'dems-row070-db-'));
@@ -74,6 +74,8 @@ let investigator: Headers;
 let technicianOnTablet: Headers;
 /** The clock of the listing gate alone: moving it expires no operator session. */
 let gateClock = CLOCK_START;
+/** One step of that clock: the spacing, and long enough that no minute holds more searches than its bound. */
+const GATE_STEP_MS = Math.max(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, Math.ceil(60_000 / CAPTURE_DISCOVERY_MAX_PER_MINUTE));
 /** The registry handed in: a REAL production registry, with what this file's admission registered. */
 let registry: CaptureDeviceRegistry;
 const admitted: RegisteredMicrophone[] = [];
@@ -93,7 +95,7 @@ function usbAudioStandIn(device: RegisteredMicrophone, hasOpener = false): Audio
   return {
     seam: 'AUDIO',
     kind: CaptureAdapterKind.USB_AUDIO,
-    devices: [{ id: device.id, deviceClass: 'MIC', label: device.model ?? device.id, capabilities: [], profiles: [] }],
+    devices: [{ id: device.id, deviceClass: 'MIC', label: device.model ?? device.id, capabilities: ['AUDIO'], profiles: [] }],
     hasOpener,
     enumerate: async () => [],
     open: async () => {
@@ -104,8 +106,8 @@ function usbAudioStandIn(device: RegisteredMicrophone, hasOpener = false): Audio
 }
 
 async function post(session: Headers | null, url: string, payload?: unknown): Promise<LightMyRequestResponse> {
-  // Past the spacing of the search for every call: only the bound a test is about can refuse.
-  gateClock += CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS;
+  // Past BOTH bounds of the search for every call (the spacing, and six in a minute: task 4 row 156): only the bound a test is about can refuse.
+  gateClock += GATE_STEP_MS;
   const headers = session === null ? { origin: WEB_ORIGIN } : { ...session, ...('cookie' in session ? { origin: WEB_ORIGIN } : {}) };
   const response = await guard.app.inject({ method: 'POST', url, headers: { ...headers, ...(typeof payload === 'string' ? { 'content-type': 'application/json' } : {}) }, ...(payload === undefined ? {} : { payload: payload as object }) });
   await guard.app.pipeline.drain();
@@ -152,9 +154,9 @@ beforeEach(() => {
 });
 
 describe('the database and the Core this file runs on', () => {
-  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [7, 'dbc-8'], read as dems_app; the capture operation is SIMULATED`, async () => {
+  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [8, 'dbc-9'], read as dems_app; the capture operation is SIMULATED`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([7, 'dbc-8']);
+    expect([row.schema_version, row.contract_revision]).toEqual([8, 'dbc-9']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
     expect(captureFenceControl(guard.app).operation).toBe('SIMULATED');
   });
@@ -176,16 +178,21 @@ describe('the database and the Core this file runs on', () => {
 
     // From here on: this file's parts in the place of the module's (the enumerator over fixed texts,
     // a production registry of this file, the store with one write that can fail, a gate on its own clock).
-    // With an enumerator and NO registrar of the registry row (the product's state until the engine's
-    // action lands): operation 99 still answers 503 before the host is read; operation 98 would list.
+    // THE COMPOSITION (task 4 row 190): the plugin handed the product's registrar in itself. With an
+    // enumerator and nothing else of this file, operation 99 can store: no 503 for want of a registrar.
     control.replaceForTest({ enumerator: host.enumerator });
+    expect([control.ready(), control.registrable()]).toEqual([true, true]);
+    expect(() => control.provideRegistrar(createEngineMicrophoneRegistrar())).toThrow(/provided twice/);
+    // CONTROL: a module WITHOUT a registrar (taken away here) answers 503 before the host is read.
+    control.replaceForTest({ registrar: null });
     expect([control.ready(), control.registrable()]).toEqual([true, false]);
     expect(reasonOf(await post(technician, REGISTER, body(DUO.cardId, 1)))).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
     expect(host.listings()).toBe(0);
     expect(await stored()).toEqual(before);
     control.replaceForTest({
       enumerator: host.enumerator,
-      registrar,
+      // The registrar of the product again, built as the plugin builds it: no stand-in from here on.
+      registrar: createEngineMicrophoneRegistrar(),
       store,
       gate: createListingGate(() => gateClock),
       admission: (device) => {
@@ -281,16 +288,17 @@ describe('operation 98 searchCaptureAudioCards', () => {
     expect((await since(from)).map((row) => row.type)).toEqual(['CAPTURE_DISCOVERY_SEARCHED']);
     expect(await usbMicrophones()).toEqual([]);
 
-    // The spacing: `post` moves the gate's clock one whole interval before each call; taken back by 2 s, the search is refused.
+    // The spacing: `post` moves the gate's clock one step before each call; taken back to 2 s short of the interval, the search is refused.
     expect((await post(supervisor, SEARCH)).statusCode).toBe(200);
     const rows = (await trail()).length;
-    gateClock -= 2_000;
+    const back = GATE_STEP_MS - CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS + 2_000;
+    gateClock -= back;
     const limited = await post(technician, SEARCH);
     expect(reasonOf(limited)).toEqual([429, 'RATE_LIMITED', 'AUDIO_CARD_SEARCH_RATE_LIMITED']);
     expect(limited.headers['retry-after']).toBe('2');
     expect((await trail()).length).toBe(rows);
     expect(host.listings()).toBe(listings + 2);
-    gateClock += 2_000;
+    gateClock += back;
   });
 });
 
@@ -317,6 +325,12 @@ describe('operation 99 registerCaptureAudioInput', () => {
     expect(rows[0]?.details).toEqual({ deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 4, channelCount: 6, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' });
     // The selector is not touched (decision C25: a role is assigned in the selector, not here).
     expect((await owner.query('SELECT mic_primary_id, mic_standby_id FROM public.capture_config')).rows).toEqual([{ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' }]);
+    // Task 4 rows 185 / 190: the RUNNING engine holds the microphone, as the action registered it
+    // (class, adapter and id are the action's), and its selector slice is what it was.
+    const state = guard.app.engine.state();
+    expect(state.captureDevices.devices.find((device) => device.id === 'MIC-03')).toEqual({ id: 'MIC-03', kind: 'MIC', model: SIX.product, firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: ['AUDIO'], adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' });
+    expect(state.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03']);
+    expect(state.captureConfig.mics.map((mic) => mic.deviceId)).toEqual(['MIC-01', 'MIC-02']);
   });
 
   it('200 REENABLED: the same input again is ONE device; a microphone that was off is on again; operation 98 names the input as registered', async () => {
@@ -329,6 +343,8 @@ describe('operation 99 registerCaptureAudioInput', () => {
     expect(response.json()).toEqual({ deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6 });
     expect(await stored()).toEqual(before);
     expect(await usbMicrophones()).toEqual(['MIC-03']);
+    // ONE device in the engine too: the action enabled the registered one and appended none.
+    expect(guard.app.engine.state().captureDevices.devices.filter((device) => device.adapter === 'USB_AUDIO').map((device) => [device.id, device.online])).toEqual([['MIC-03', true]]);
     expect((await owner.query("SELECT d.enabled, i.updated_by FROM public.capture_devices d JOIN public.capture_audio_inputs i ON i.device_id = d.id WHERE d.id = 'MIC-03'")).rows).toEqual([{ enabled: true, updated_by: SUPERVISOR.id }]);
     expect((await since(from)).map((row) => [row.type, row.details])).toEqual([['CAPTURE_AUDIO_INPUT_CHANGED', { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' }]]);
 
@@ -393,6 +409,8 @@ describe('operation 99 registerCaptureAudioInput', () => {
     expect(await usbMicrophones()).toEqual(['MIC-03']);
     expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED')).toEqual([]);
     expect(admitted.length).toBe(admissions);
+    // The registry row of the ENGINE went back with it: the action had appended MIC-04 in the unit that failed.
+    expect(guard.app.engine.state().captureDevices.devices.filter((device) => device.adapter === 'USB_AUDIO').map((device) => device.id)).toEqual(['MIC-03']);
     // CONTROL: the same call without the injected failure writes both rows, as MIC-04.
     failSecondWrite = false;
     const stored4 = await post(technician, REGISTER, body(DUO.cardId, 1));
@@ -457,11 +475,18 @@ describe('admission to the registry handed in: a DEVICE ROW, not a recordable so
     expect(await usbMicrophones()).toEqual(['MIC-03', 'MIC-04']);
   });
 
-  it('STATED GAP (request filed): the engine has no action that adds a microphone; with the stand-in registrar the replicated captureDevices slice of the RUNNING engine does not hold the new rows', () => {
-    const ids = guard.app.engine.state().captureDevices.devices.map((device) => device.id);
-    expect(ids).toContain('MIC-01');
-    // When the engine's action lands this line turns and the registrar of the module uses it.
-    expect(ids.filter((id) => id === 'MIC-03' || id === 'MIC-04')).toEqual([]);
+  it('THE GAP OF ROW 70 IS CLOSED (task 4 rows 185 and 190): the replicated captureDevices slice of the RUNNING engine holds both new microphones, and what it holds is what the registry rows read back as', async () => {
+    const devices = guard.app.engine.state().captureDevices.devices;
+    expect(devices.map((device) => device.id)).toContain('MIC-01');
+    expect(devices.filter((device) => device.id === 'MIC-03' || device.id === 'MIC-04').map((device) => [device.id, device.kind, device.adapter, device.sourceClass, device.online, device.capabilities])).toEqual([
+      // Decision C43 (3), integration pass I-7: the capability of the built-in pair, not an empty list.
+      ['MIC-03', 'MIC', 'USB_AUDIO', 'PRODUCTION', true, ['AUDIO']],
+      ['MIC-04', 'MIC', 'USB_AUDIO', 'PRODUCTION', true, ['AUDIO']],
+    ]);
+    // The stored rows: the adapter kind and the class of the action, the transport of the registrar's statement.
+    expect((await owner.query("SELECT id, kind, transport, enabled, adapter_kind, model FROM public.capture_devices WHERE adapter_kind = 'USB_AUDIO' ORDER BY id")).rows).toEqual(
+      devices.filter((device) => device.adapter === 'USB_AUDIO').map((device) => ({ id: device.id, kind: 'MIC', transport: 'USB', enabled: true, adapter_kind: 'USB_AUDIO', model: device.model })),
+    );
   });
 });
 

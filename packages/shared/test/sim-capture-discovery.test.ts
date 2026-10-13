@@ -30,7 +30,19 @@ import {
   captureCandidateAdoptedDetails,
   captureConnectionTestedDetails,
 } from '../src/api';
-import { DEMO_OPERATOR_PASSWORD, createManualClock, createSim, nextCaptureCameraId, setSimConnectionTestOutcome, type AuditRow } from '../src/sim';
+import {
+  DEMO_OPERATOR_PASSWORD,
+  REGISTERED_MICROPHONE_MODEL_PATTERN,
+  createManualClock,
+  createSim,
+  nextCaptureCameraId,
+  nextCaptureMicrophoneId,
+  registerCaptureMicrophoneTransition,
+  setSimConnectionTestOutcome,
+  type AuditRow,
+} from '../src/sim';
+import { CAPTURE_AUDIO_CARD_TEXT_PATTERN, SIM_ACTION_OPERATIONS, SimActionExecution } from '../src/api';
+import { LIVE_BINDINGS, LiveActionFlow } from '../src/live/source/bindings';
 
 const AT = Date.UTC(2026, 9, 1, 3, 0, 0);
 const DISCOVERY = '/api/v1/capture/discovery';
@@ -645,6 +657,98 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       expect(() => h.sim.actions.registerCaptureDevice(device), JSON.stringify(device)).toThrow(/Illegal session transition/);
     }
     expect(h.state()).toBe(before);
+  });
+});
+
+// Task 4 row 185 (design addendum 04 section 4.2; AD-07; RG-4): the microphone's equivalent.
+describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it inside operation 99)', () => {
+  const MODEL = 'USB Audio CODEC';
+
+  it('a first registration appends ONE `MIC-NN` device of class MIC and adapter USB_AUDIO, and nothing else changes', () => {
+    const h = harness();
+    const before = h.state();
+    h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
+    const after = h.state();
+    expect(after.captureDevices.devices).toHaveLength(before.captureDevices.devices.length + 1);
+    expect(after.captureDevices.devices.slice(0, -1)).toEqual(before.captureDevices.devices);
+    // Decision C43 (3), integration pass I-7: the capability of the built-in pair, not an empty list.
+    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'MIC-03', kind: 'MIC', model: MODEL, firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: ['AUDIO'], adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' });
+    expect(after.captureDevices.devices.at(-1)?.capabilities).toEqual(before.captureDevices.devices.find((device) => device.id === 'MIC-01')?.capabilities);
+    // Every other slice is the SAME object: no audit row, no event, the selector alone (decision C25).
+    for (const slice of Object.keys(before) as (keyof typeof before)[]) {
+      if (slice !== 'captureDevices') expect(after[slice], slice).toBe(before[slice]);
+    }
+    // The next id is the highest number plus 1, never a reused one, and a camera id does not count.
+    expect(nextCaptureMicrophoneId(after.captureDevices.devices)).toBe('MIC-04');
+    expect(nextCaptureMicrophoneId([{ id: 'MIC-09' }, { id: 'MIC-120' }, { id: 'CAM-200' }])).toBe('MIC-121');
+    expect(nextCaptureMicrophoneId([])).toBe('MIC-01');
+    // A second NEW microphone is another device; the seeded pair and the first one are untouched.
+    h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03', 'MIC-04']);
+  });
+
+  it('a second registration of the same device enables it again with the model of the new listing and appends none', () => {
+    const h = harness();
+    h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
+    const registered = h.state();
+    // Online with the same model: the SAME state object, so the engine writes nothing.
+    h.sim.actions.registerCaptureMicrophone({ deviceId: 'MIC-03', model: MODEL });
+    expect(h.state()).toBe(registered);
+    // Offline (the telemetry of a lost card), then registered again under another product name.
+    const offline = { ...registered, captureDevices: { devices: registered.captureDevices.devices.map((device) => (device.id === 'MIC-03' ? { ...device, online: false } : device)) } };
+    const again = registerCaptureMicrophoneTransition(offline, { deviceId: 'MIC-03', model: 'Other card' });
+    expect(again.state.captureDevices.devices).toHaveLength(registered.captureDevices.devices.length);
+    expect(again.result).toEqual({ ...registered.captureDevices.devices.at(-1), online: true, model: 'Other card' });
+    expect(again.state.captureDevices.devices.at(-1)).toBe(again.result);
+    expect(again.state.captureDevices.devices.slice(0, -1)).toEqual(registered.captureDevices.devices.slice(0, -1));
+    for (const slice of Object.keys(offline) as (keyof typeof offline)[]) {
+      if (slice !== 'captureDevices') expect(again.state[slice], slice).toBe(offline[slice]);
+    }
+  });
+
+  it('refuses a model that is no product name of a card listing, and an id that is no registered USB audio microphone: nothing changes', () => {
+    const h = harness();
+    h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' });
+    const before = h.state();
+    for (const microphone of [
+      { deviceId: null, model: '' },
+      { deviceId: null, model: 'x'.repeat(65) },
+      { deviceId: null, model: 'USB\u0007Audio' },
+      { deviceId: null, model: 'USB\nAudio' },
+      { deviceId: null, model: 'USB ‮ Audio' },
+      { deviceId: null, model: 'Mikrofon ä' },
+      // A built-in microphone (no adapter member), a camera, an id the registry does not hold, an id of another form.
+      { deviceId: 'MIC-01', model: MODEL },
+      { deviceId: 'CAM-03', model: MODEL },
+      { deviceId: 'MIC-07', model: MODEL },
+      { deviceId: 'MIC-3', model: MODEL },
+      { deviceId: '', model: MODEL },
+    ]) {
+      expect(() => h.sim.actions.registerCaptureMicrophone(microphone), JSON.stringify(microphone)).toThrow(/Illegal session transition/);
+    }
+    expect(h.state()).toBe(before);
+    // A local-device microphone is not this action's either: the adapter is not USB_AUDIO.
+    const local = { ...before, captureDevices: { devices: [...before.captureDevices.devices, { id: 'MIC-03', kind: 'MIC' as const, model: 'Core microphone', firmware: null, host: null, poePort: null, online: false, streamState: null, capabilities: [], adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' as const }] } };
+    expect(() => registerCaptureMicrophoneTransition(local, { deviceId: 'MIC-03', model: MODEL })).toThrow(/Illegal session transition/);
+    // The model rule IS the rule of a product name of the card listing (AD-07 (1)).
+    expect(REGISTERED_MICROPHONE_MODEL_PATTERN.source).toBe(CAPTURE_AUDIO_CARD_TEXT_PATTERN.source);
+    expect(REGISTERED_MICROPHONE_MODEL_PATTERN.flags).toBe(CAPTURE_AUDIO_CARD_TEXT_PATTERN.flags);
+  });
+
+  it('no client may call it: it is INTERNAL with no operation and bound LOCAL, exactly as `registerCaptureDevice`', () => {
+    expect(SIM_ACTION_OPERATIONS.registerCaptureMicrophone).toEqual({ operations: [], execution: SimActionExecution.INTERNAL });
+    expect(SIM_ACTION_OPERATIONS.registerCaptureMicrophone).toEqual(SIM_ACTION_OPERATIONS.registerCaptureDevice);
+    expect(LIVE_BINDINGS.registerCaptureMicrophone.flow).toBe(LiveActionFlow.LOCAL);
+    expect(LIVE_BINDINGS.registerCaptureMicrophone.flow).toBe(LIVE_BINDINGS.registerCaptureDevice.flow);
+  });
+
+  it('the simulated operation 99 answers as before and does not run it: the simulator registry gains no device', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const before = h.state().captureDevices;
+    const answer = h.call('POST', AUDIO_INPUTS, { cardId: SIM_CAPTURE_AUDIO_CARD_IDS.four, cardDevice: 0, inputNumber: 1 });
+    expect(answer.status).toBeGreaterThanOrEqual(400);
+    expect(h.state().captureDevices).toBe(before);
   });
 });
 

@@ -32,17 +32,23 @@
  * A REGISTRATION DECIDES NO ROLE (decision C25): making the microphone primary or standby is the
  * selector's (operation 80). `capture_config` is not read and not written here.
  *
- * WHAT IS NOT HERE (stated, with its row). The match of a stored input to a live card by USB id
- * and port path is row 156: this row re-enables an input by its exact stored key (card id, device
- * index, input number) and says CARD_CHANGED when the card behind that key announces another USB
- * id, so that no other card is ever taken silently. THE REGISTRY ROW (`capture_devices`) is
+ * THE MATCH OF A STORED INPUT TO A LIVE CARD (row 156, AD-07 (4)): an input is found by its exact
+ * stored key (card id, device index, input number) and the card behind that key is then held to
+ * the identity rule `matchStoredCard` - the USB id and, where the system offers one and the store
+ * holds one, the USB port path. Anything but the same card is said as CARD_CHANGED, so that no
+ * other card is ever taken silently. `capture_audio_inputs` has NO port column today: the store of
+ * this module answers no port, and the rule then matches by the USB id and says NOT_TELLABLE when
+ * the host holds two cards of it (the request for the column is filed).
+ *
+ * WHAT IS NOT HERE (stated, with its row). THE REGISTRY ROW (`capture_devices`) is
  * written by the registrar handed in (`MicrophoneRegistrar`), never by a statement of this module
- * (static rule SEC35-41 (c)); the engine has no action that adds a microphone yet (the request is
- * filed), so no registrar exists in the product and operation 99 answers `503` there.
+ * (static rule SEC35-41 (c)). The product's registrar is `registrar.ts` (task 4 rows 185 and 190):
+ * the engine's INTERNAL action `registerCaptureMicrophone` in the unit of the registration.
  */
 import {
   ApiErrorCode,
   CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS,
+  CAPTURE_DISCOVERY_MAX_PER_MINUTE,
   CaptureAudioCardReason,
   CaptureAudioInputChange,
   CaptureDiscoveryReason,
@@ -77,6 +83,8 @@ export interface ListedAudioCard {
   readonly cardId: string;
   readonly deviceIndex: number;
   readonly usbId: string | null;
+  /** The USB port path of the card (`usb-<port>` of its stream file), where the system offers one; passed the listing's text rule like every string. */
+  readonly usbPort?: string | null;
   readonly product: string;
   /** The native channel count: inputs are numbered 1 to this value. */
   readonly channelCount: number;
@@ -203,9 +211,20 @@ export interface ListingGate {
   started(): number;
 }
 
-export function createListingGate(now: () => number, minIntervalMs: number = CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS): ListingGate {
+const MINUTE_MS = 60_000;
+
+/**
+ * THE BOUNDS OF A CARD SEARCH ARE THE CAMERA SEARCH'S PER-CORE BOUNDS (AD-07 (3); task 4 row 156;
+ * `capture-discovery/limits.ts`): one RUNNING listing per Core (single flight: a second call starts
+ * NO process), 5 s between two accepted searches, and at most `CAPTURE_DISCOVERY_MAX_PER_MINUTE`
+ * accepted searches in a minute. As there: a search that was started counts whatever became of it,
+ * and a refused call counts nothing and changes nothing.
+ */
+export function createListingGate(now: () => number, minIntervalMs: number = CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, maxPerMinute: number = CAPTURE_DISCOVERY_MAX_PER_MINUTE): ListingGate {
   let running = false;
   let lastSearchAt: number | null = null;
+  /** The instants of the accepted searches of the last minute, oldest first. */
+  let searches: number[] = [];
   let started = 0;
   return {
     async run(purpose, work) {
@@ -214,7 +233,11 @@ export function createListingGate(now: () => number, minIntervalMs: number = CAP
       if (purpose === 'SEARCH') {
         // A clock that went back never locks the search out: the bound is asked only for a later instant.
         if (lastSearchAt !== null && at >= lastSearchAt && at - lastSearchAt < minIntervalMs) throw rateLimited(minIntervalMs - (at - lastSearchAt));
+        // The same for the minute: instants of the future (a clock that went back) are dropped, not waited for.
+        searches = searches.filter((earlier) => earlier <= at && at - earlier < MINUTE_MS);
+        if (searches.length >= maxPerMinute) throw rateLimited(Math.max(1, (searches[searches.length - maxPerMinute] ?? at) + MINUTE_MS - at));
         lastSearchAt = at;
+        searches.push(at);
       }
       running = true;
       started += 1;
@@ -308,6 +331,48 @@ const DEFAULT_SAMPLE_BITS = 24;
 /** The sample size stored with an input: the largest the card offers by the listing, a member of the closed set. */
 const sampleBitsOf = (card: ListedAudioCard): 16 | 24 | 32 => card.sampleBits.reduce<16 | 24 | 32 | null>((max, bits) => (max === null || bits > max ? bits : max), null) ?? DEFAULT_SAMPLE_BITS;
 
+// ── The identity of the card behind a stored input (AD-07 (4); task 4 row 156) ─────────────────
+
+/**
+ * What the Core can say of the live card behind the key of a stored input. Only `SAME_CARD` is a
+ * match; every other answer is SAID (`CARD_CHANGED`, one audit entry) and never taken silently.
+ */
+export const StoredCardMatch = {
+  /** The USB id is the stored one and, where both sides state a port path, the port is the stored one. */
+  SAME_CARD: 'SAME_CARD',
+  /** Another USB id behind the key: another product took the place. */
+  USB_ID_DIFFERS: 'USB_ID_DIFFERS',
+  /** The stored USB id on ANOTHER port: a card of the same product, not the card that was registered. */
+  PORT_DIFFERS: 'PORT_DIFFERS',
+  /** No port to compare on one side, and the host holds a second card of that USB id: the USB id alone cannot tell them apart. */
+  NOT_TELLABLE: 'NOT_TELLABLE',
+} as const;
+export type StoredCardMatch = (typeof StoredCardMatch)[keyof typeof StoredCardMatch];
+
+const portOf = (value: string | null | undefined): string | null => (typeof value === 'string' && value !== '' ? value : null);
+
+/**
+ * THE IDENTITY RULE. A stored input is matched to a live card by its USB id AND its USB port path
+ * where the system offers one (the listing's `usbPort`, row 64) and the store holds one. Never by
+ * the product text, and never by the card id alone: the kernel derives that id from the product,
+ * so a second card of the same product can sit behind the stored key.
+ *
+ *   USB id differs                              USB_ID_DIFFERS
+ *   both ports stated, they differ              PORT_DIFFERS
+ *   both ports stated, they are equal           SAME_CARD
+ *   a port is missing on one side               SAME_CARD by the USB id - unless the listing holds
+ *                                               ANOTHER card of that USB id: NOT_TELLABLE
+ *   no USB id on either side (not a USB card)   SAME_CARD: the key is all such a card has
+ */
+export function matchStoredCard(stored: { readonly usbId: string | null; readonly usbPort?: string | null }, card: ListedAudioCard, listing: readonly ListedAudioCard[]): StoredCardMatch {
+  if (stored.usbId !== card.usbId) return StoredCardMatch.USB_ID_DIFFERS;
+  const storedPort = portOf(stored.usbPort);
+  const livePort = portOf(card.usbPort);
+  if (storedPort !== null && livePort !== null) return storedPort === livePort ? StoredCardMatch.SAME_CARD : StoredCardMatch.PORT_DIFFERS;
+  if (card.usbId !== null && listing.some((other) => other.cardId !== card.cardId && other.usbId === card.usbId)) return StoredCardMatch.NOT_TELLABLE;
+  return StoredCardMatch.SAME_CARD;
+}
+
 export interface AudioInputRegistrationOutcome {
   /** True for a new microphone (`201`); false when the input already had one (`200`). */
   readonly created: boolean;
@@ -349,17 +414,22 @@ export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCa
     const existing = await store.inputOf(unit.db, key);
     let deviceId: string;
     let change: CaptureAudioInputChange;
+    let match: StoredCardMatch | null = null;
+    const usbPort = portOf(card.usbPort);
     if (existing === null) {
       deviceId = await registrar.register(unit, { model: card.product, at });
-      await store.insertInput(unit.db, { ...key, deviceId, usbId: card.usbId, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
+      await store.insertInput(unit.db, { ...key, deviceId, usbId: card.usbId, usbPort, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
       change = CaptureAudioInputChange.REGISTERED;
     } else {
-      // The input has its microphone: re-enabled, never duplicated. A card that announces another
-      // USB id behind the same key is SAID (AD-07 (4)), never taken silently.
+      // The input has its microphone: re-enabled, never duplicated. A card behind the same key
+      // that is not the registered one by the identity rule - another USB id, the same product on
+      // another port, or a card the USB id alone cannot tell apart - is SAID (AD-07 (4)), never
+      // taken silently.
       deviceId = existing.deviceId;
-      change = existing.usbId === card.usbId ? CaptureAudioInputChange.REENABLED : CaptureAudioInputChange.CARD_CHANGED;
+      match = matchStoredCard(existing, card, listing.cards);
+      change = match === StoredCardMatch.SAME_CARD ? CaptureAudioInputChange.REENABLED : CaptureAudioInputChange.CARD_CHANGED;
       await registrar.reenable(unit, { deviceId, model: card.product, at });
-      await store.refreshInput(unit.db, { deviceId, usbId: card.usbId, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
+      await store.refreshInput(unit.db, { deviceId, usbId: card.usbId, usbPort, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
     }
     await unit.audit({
       type: AuditType.CAPTURE_AUDIO_INPUT_CHANGED,
@@ -370,10 +440,14 @@ export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCa
     });
     // The adapter registry of the running operation is told when the unit COMMITTED, never for one that rolled back.
     unit.afterCommit(() => seams.admit({ id: deviceId, kind: 'MIC', adapterKind: 'USB_AUDIO', model: card.product }));
-    return { deviceId, change };
+    return { deviceId, change, match };
   });
 
-  host.note({ code: AuditType.CAPTURE_AUDIO_INPUT_CHANGED, source: SOURCE, deviceId: outcome.deviceId, change: outcome.change, inputNumber: body.inputNumber, channelCount: card.channelCount }, 'sound-card input registered');
+  // Codes, ids and counts: the match is a code of the identity rule, never a port or a USB id.
+  host.note(
+    { code: AuditType.CAPTURE_AUDIO_INPUT_CHANGED, source: SOURCE, deviceId: outcome.deviceId, change: outcome.change, ...(outcome.match === null ? {} : { match: outcome.match }), inputNumber: body.inputNumber, channelCount: card.channelCount },
+    'sound-card input registered',
+  );
   return {
     created: outcome.change === CaptureAudioInputChange.REGISTERED,
     registration: { deviceId: outcome.deviceId, change: outcome.change, inputNumber: body.inputNumber, channelCount: card.channelCount },

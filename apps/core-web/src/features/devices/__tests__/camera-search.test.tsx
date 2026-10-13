@@ -8,6 +8,8 @@
 // | M4-DISC-RBAC-W (component half): a role without CAPTURE_CONFIG sees the control disabled with the role sentence and NO list is requested | "Simulated mode: gates" |
 // | M4-CONN-LOCK-W (component half): with a session open Connect is disabled with its sentence, 0 toasts, and the search still works | "Simulated mode: gates" |
 // | S9, S10, S11, S14: what a refused search is | "the model" |
+// | Task 4 row 98 (WP-12): the typed address - an address outside the allowed form is refused in the form and nothing is sent; the Core's refusal has its sentence; no address is asked while a search runs; a search without the member is sent as before | "the typed address" |
+// | Task 4 row 98: a registered camera that answers from another address is said, never followed; NO control re-addresses it (the confirmation waits for its operation, `implementation/097`) | "the typed address" |
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { CaptureCandidate, CaptureDiscoverySearch, CaptureDiscoveryStateBody } from '@dems/shared/api'
@@ -25,6 +27,7 @@ import {
   searchProgress,
   searchRead,
   startRefusal,
+  typedAddressOf,
 } from '../camera-search'
 import { installDevicesBed, mountDevices, toastTexts } from './search-bed'
 
@@ -237,5 +240,165 @@ describe('Simulated mode: gates', { timeout: 30_000 }, () => {
     fireEvent.click(connect)
     expect(screen.queryByTestId('camera-connect-body')).not.toBeInTheDocument()
     expect(toastTexts()).toEqual([])
+  })
+})
+
+// Task 4, blueprint row 98 (WP-12; contract `implementation/094_typed_address_contract.md`): the optional `address` of operation 93.
+describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout: 30_000 }, () => {
+  const T = S.typedAddress
+  const DISCOVERY = '/api/v1/capture/discovery'
+  type Call = { method: string; path: string; body?: unknown }
+  const starts = (spy: { mock: { calls: unknown[][] } }) => (spy.mock.calls as [Call][]).filter(([call]) => call.method === 'POST' && call.path === DISCOVERY)
+  const field = () => screen.getByTestId('camera-search-address-input') as HTMLInputElement
+  const section = () => screen.getByTestId('camera-search-address')
+  const ask = (text: string) => {
+    fireEvent.change(field(), { target: { value: text } })
+    fireEvent.click(screen.getByTestId('camera-search-address-button'))
+  }
+  const idle = async () => {
+    const panel = await screen.findByTestId('camera-search')
+    await waitFor(() => expect(panel).toHaveAttribute('data-state', 'IDLE'))
+    await waitFor(() => expect(screen.getByTestId('camera-search-address-button')).toBeEnabled())
+    return panel
+  }
+
+  it('the form rule is the contract\'s: ONE dotted IPv4 literal; a name, a port, a link, an IPv6 text or a number out of range is no address', () => {
+    expect(typedAddressOf('192.168.10.20')).toBe('192.168.10.20')
+    expect(typedAddressOf('0.0.0.0')).toBe('0.0.0.0')
+    expect(typedAddressOf('255.255.255.255')).toBe('255.255.255.255')
+    // Blanks around a pasted address are not part of it.
+    expect(typedAddressOf('  10.0.0.5 ')).toBe('10.0.0.5')
+    for (const text of ['', ' ', '256.1.1.1', '1.2.3', '1.2.3.4.5', '01.2.3.4', '1.2.3.4.', '192.168.1.1:554', '192.168.1.1/24', 'camera.local', 'http://192.168.1.1', 'rtsp://192.168.1.1/stream', '::1', '::ffff:192.168.1.1', '192.168.1.1 192.168.1.2', '1.2.3.4\n5.6.7.8', '192.168.1.٣', '0x7f.0.0.1', '3232238100']) {
+      expect(typedAddressOf(text), JSON.stringify(text)).toBeNull()
+    }
+    // 422 with the reason of the address is its own refusal; any other 422 is not worded as one.
+    expect(startRefusal({ status: 422, code: 'INVALID_INPUT', reason: 'DISCOVERY_ADDRESS_NOT_ALLOWED' })).toBe('ADDRESS_NOT_ALLOWED')
+    expect(startRefusal({ status: 422, code: 'INVALID_INPUT', reason: null })).toBe('OTHER')
+  })
+
+  it('an address outside the allowed form is refused in the form and nothing is sent; an address of the form is sent as the one member and its answer is a candidate like any other', async () => {
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const spy = vi.spyOn(sim, 'request')
+    const panel = await idle()
+    expect(screen.getByTestId('camera-search-address-intro')).toHaveTextContent(T.intro)
+    expect(within(section()).getByText(T.hint)).toBeInTheDocument()
+    expect(field()).toHaveAccessibleName(T.label)
+    expect(screen.getByTestId('camera-search-address-button')).toHaveTextContent(T.action)
+
+    for (const text of ['camera.local', '192.168.1.1:554', '192.168.1.300', 'http://192.168.1.1', '']) {
+      ask(text)
+      await waitFor(() => expect(section()).toHaveAttribute('data-problem', 'FORM'))
+      expect(within(section()).getByText(T.form)).toBeInTheDocument()
+      expect(field()).toHaveAttribute('aria-invalid', 'true')
+      // Typing again takes the refusal away; the next press decides anew.
+      fireEvent.change(field(), { target: { value: `${text}x` } })
+      expect(section()).not.toHaveAttribute('data-problem')
+    }
+    expect(starts(spy)).toHaveLength(0)
+    expect(panel).toHaveAttribute('data-state', 'IDLE')
+    expect(sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_DISCOVERY_SEARCHED')).toHaveLength(0)
+
+    ask(' 192.168.10.20 ')
+    await waitFor(() => expect(panel).toHaveAttribute('data-state', 'RESULTS'))
+    expect(starts(spy)).toHaveLength(1)
+    expect(starts(spy)[0]?.[0].body).toEqual({ address: '192.168.10.20' })
+    expect(section()).not.toHaveAttribute('data-problem')
+    // What answered at the typed address is a row of the same list, with the same Connect.
+    const typed = await screen.findByTestId('camera-search-row-CND-000000000003')
+    expect(screen.getByTestId('camera-search-host-CND-000000000003')).toHaveTextContent('192.168.10.20')
+    expect(typed).toHaveAttribute('data-kind', 'NEW')
+    expect(within(typed).getByTestId('camera-search-connect-CND-000000000003')).toBeEnabled()
+    expect(screen.getByTestId('camera-search-summary')).toHaveTextContent('3 found · 2 new · 1 already registered')
+
+    // "Search for cameras" / "Search again" is sent exactly as before: no body, no address.
+    fireEvent.click(screen.getByTestId('search-cameras-button-panel'))
+    await waitFor(() => expect(starts(spy)).toHaveLength(2))
+    expect(starts(spy)[1]?.[0].body).toBeUndefined()
+    await waitFor(() => expect(screen.getByTestId('camera-search-summary')).toHaveTextContent('2 found · 1 new · 1 already registered'))
+    expect(screen.queryByTestId('camera-search-row-CND-000000000003')).not.toBeInTheDocument()
+    expect(toastTexts()).toEqual([])
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('422 DISCOVERY_ADDRESS_NOT_ALLOWED: the Core\'s refusal has its sentence beside the field; the list and its notices stay as they are', async () => {
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const spy = vi.spyOn(sim, 'request')
+    const panel = await idle()
+    // Of the form, and outside the simulator's stand-in of the Core's rule.
+    ask('8.8.8.8')
+    await waitFor(() => expect(section()).toHaveAttribute('data-problem', 'NOT_ALLOWED'))
+    expect(within(section()).getByText(T.notAllowed)).toBeInTheDocument()
+    expect(starts(spy)).toHaveLength(1)
+    expect(panel).toHaveAttribute('data-state', 'IDLE')
+    expect(screen.queryByTestId('camera-search-request-failed')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('camera-search-results')).not.toBeInTheDocument()
+    expect(sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_DISCOVERY_SEARCHED')).toHaveLength(0)
+    expect(toastTexts()).toEqual([])
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('no address is asked while a search runs: disabled with its reason; and a 200 that says "not a new search" is said, never drawn as a search of the address', async () => {
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const real = sim.request.bind(sim)
+    let running = false
+    const runningSearch: CaptureDiscoverySearch = { ...SEARCH, state: 'RUNNING', startedAt: Date.now(), windowMs: 3_000, responderCount: 0, newCount: 0, registeredCount: 0, created: false }
+    const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
+      if (call.path !== DISCOVERY) return real(call)
+      // The caller's own search is still RUNNING: the Core answers 200 with `created: false` and asks no address.
+      if (call.method === 'POST') {
+        running = true
+        return { ...real({ method: 'GET', path: DISCOVERY }), status: 200, body: runningSearch }
+      }
+      return running ? { ...real(call), body: stateOf(runningSearch) } : real(call)
+    })
+    const panel = await idle()
+    ask('192.168.10.20')
+    expect(await screen.findByTestId('camera-search-address-not-probed')).toHaveTextContent(T.notProbed)
+    expect(starts(spy)).toHaveLength(1)
+    // The search runs: the control is disabled with its reason, and a press sends nothing.
+    await waitFor(() => expect(panel).toHaveAttribute('data-state', 'SEARCHING'))
+    expect(screen.getByTestId('camera-search-address-button')).toBeDisabled()
+    expect(screen.getByTestId('camera-search-address-reason')).toHaveTextContent(T.searching)
+    fireEvent.click(screen.getByTestId('camera-search-address-button'))
+    fireEvent.submit(screen.getByTestId('camera-search-address-form'))
+    expect(starts(spy)).toHaveLength(1)
+  })
+
+  it('without CAPTURE_CONFIG the form is drawn disabled with the role sentence, and nothing is sent', async () => {
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.BUDI)
+    const spy = vi.spyOn(sim, 'request')
+    const panel = await screen.findByTestId('camera-search')
+    await waitFor(() => expect(panel).toHaveAttribute('data-state', 'FORBIDDEN'))
+    expect(field()).toBeDisabled()
+    expect(screen.getByTestId('camera-search-address-button')).toBeDisabled()
+    expect(screen.getByTestId('camera-search-address-reason')).toHaveTextContent(ROLE_SENTENCE)
+    fireEvent.submit(screen.getByTestId('camera-search-address-form'))
+    expect(spy.mock.calls.filter(([call]) => call.path.startsWith(DISCOVERY))).toHaveLength(0)
+  })
+
+  it('a registered camera that answers from another address is SAID, never followed: the row has no control that re-addresses it, and nothing but the search is sent', async () => {
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const real = sim.request.bind(sim)
+    const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
+      const response = real(call)
+      if (call.method !== 'GET' || call.path !== DISCOVERY) return response
+      const body = response.body as CaptureDiscoveryStateBody
+      return { ...response, body: { ...body, candidates: body.candidates.map((entry) => (entry.status === 'REGISTERED' ? { ...entry, addressChanged: true, host: '192.168.10.77' } : entry)) } }
+    })
+    fireEvent.click(await screen.findByTestId('search-cameras-button-panel'))
+    const row = await screen.findByTestId('camera-search-row-CND-000000000002')
+    expect(row).toHaveTextContent(S.addressChanged)
+    expect(row).toHaveTextContent('CAM-01 · Camera 1')
+    // The one action of a registered row is "View device". No confirmation dialog exists: the contract has no operation for a re-address yet.
+    const actions = within(row).getAllByRole('button')
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toHaveTextContent(S.viewDevice)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    // The registry still holds the address it held: the search changed nothing.
+    const before = sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')
+    fireEvent.click(actions[0]!)
+    expect(sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')).toEqual(before)
+    const sent = (spy.mock.calls as [Call][]).filter(([call]) => call.method === 'POST' && call.path.startsWith('/api/v1/capture/'))
+    expect(sent.map(([call]) => call.path)).toEqual([DISCOVERY])
   })
 })

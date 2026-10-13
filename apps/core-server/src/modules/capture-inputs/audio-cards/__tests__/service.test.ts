@@ -5,15 +5,41 @@
 // of work that keeps a copy of the stored rows and puts it back when the work throws), the store
 // and the registrar (two maps in the place of `capture_devices` and `capture_audio_inputs`) and the source of the
 // listing text (`fixtures.ts`). The statements and the real unit are `routes.db.test.ts`.
-import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CaptureAudioCardSearchSchema, CaptureAudioInputRegistrationSchema } from '@dems/shared/api';
+import {
+  CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS,
+  CAPTURE_DISCOVERY_MAX_PER_MINUTE,
+  CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS,
+  CaptureAudioCardSearchSchema,
+  CaptureAudioInputRegistrationSchema,
+} from '@dems/shared/api';
 import { describe, expect, it } from 'vitest';
 import type { AuditEntry } from '../../../../core';
 import { ApiFailure } from '../../../../plugins/error-envelope';
 import { createAudioCardSearchIds } from '../index';
 import type { EngineUnit } from '../../../../engine';
-import { createListingGate, registerAudioInput, searchAudioCards, type AudioCardsCaller, type AudioCardsSeams, type MicrophoneRegistrar, type RegisteredMicrophone } from '../service';
+import { createListingGate, matchStoredCard, registerAudioInput, searchAudioCards, type AudioCardsCaller, type AudioCardsSeams, type MicrophoneRegistrar, type RegisteredMicrophone } from '../service';
 import type { MicrophoneStore } from '../store';
-import { DUO, INTERFACE_REPLACED, MALFORMED, NO_CARD, ONBOARD, ONBOARD_ONLY, ONE_INTERFACE, SIX, TWO_CARDS, fakeHost, type FakeHost, type HostTexts } from './fixtures';
+import {
+  DUO,
+  INTERFACE_ON_ANOTHER_PORT,
+  INTERFACE_REPLACED,
+  INTERFACE_WITHOUT_PORT,
+  MALFORMED,
+  NO_CARD,
+  ONBOARD,
+  ONBOARD_ONLY,
+  ONE_INTERFACE,
+  OTHER_PORT,
+  SIX,
+  SIX_PORT,
+  SIX_SECOND_CARD_ID,
+  TWO_CARDS,
+  TWO_OF_ONE_PRODUCT,
+  TWO_OF_ONE_PRODUCT_SWAPPED,
+  fakeHost,
+  type FakeHost,
+  type HostTexts,
+} from './fixtures';
 
 const CALLER: AudioCardsCaller = { operatorId: 'OP-0003', deviceId: null };
 const START = Date.UTC(2031, 0, 1);
@@ -58,7 +84,14 @@ interface Rig {
   withoutEnumerator(): void;
 }
 
-function rig(texts: HostTexts): Rig {
+/**
+ * `storesPort: false` is the store of the product TODAY (task 4 row 156): `capture_audio_inputs`
+ * has no port column, so a stored input answers no port. The default is a store that holds one.
+ */
+function rig(texts: HostTexts, options: { readonly storesPort?: boolean } = {}): Rig {
+  const storesPort = options.storesPort !== false;
+  /** The port path stored with an input, by microphone: beside `inputs`, whose rows keep the columns of the table. */
+  const ports = new Map<string, string | null>();
   const host = fakeHost(texts);
   let now = START;
   let open = false;
@@ -89,17 +122,20 @@ function rig(texts: HostTexts): Rig {
     async inputOf(_db, key) {
       trip('inputOf');
       const found = inputs.find((input) => input.cardId === key.cardId && input.cardDevice === key.cardDevice && input.inputNumber === key.inputNumber);
-      return found === undefined ? null : { deviceId: found.deviceId, usbId: found.usbId, enabled: devices.get(found.deviceId)?.enabled === true };
+      return found === undefined ? null : { deviceId: found.deviceId, usbId: found.usbId, ...(storesPort ? { usbPort: ports.get(found.deviceId) ?? null } : {}), enabled: devices.get(found.deviceId)?.enabled === true };
     },
     async insertInput(_db, input) {
       trip('insertInput');
-      inputs.push({ ...input });
+      const { usbPort, ...row } = input;
+      inputs.push({ ...row });
+      ports.set(input.deviceId, usbPort ?? null);
     },
     async refreshInput(_db, input) {
       trip('refreshInput');
       const held = inputs.find((entry) => entry.deviceId === input.deviceId);
       if (held === undefined) throw new Error('row070: no such input');
       Object.assign(held, { usbId: input.usbId, nativeChannels: input.nativeChannels, sampleBits: input.sampleBits, operatorId: input.operatorId, at: input.at });
+      ports.set(input.deviceId, input.usbPort ?? null);
     },
   };
   const registrar: MicrophoneRegistrar = {
@@ -342,6 +378,106 @@ describe('operation 99: the registration unit', () => {
   });
 });
 
+// Task 4 row 156 (AD-07 (4)): the match of a stored input to a live card follows the identity
+// rule - the USB id and the USB port path where the system offers one. The double: the real
+// enumerator over fixed host texts that differ in the port path only.
+describe('row 156: the identity of the card behind a stored input (USB id and port path)', () => {
+  const KEY = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 } as const;
+  const changes = (r: Rig) => r.audits.filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => row.details?.['change']);
+  const matchNotes = (r: Rig) => (r.notes as Array<Record<string, unknown>>).filter((note) => note['code'] === 'CAPTURE_AUDIO_INPUT_CHANGED').map((note) => note['match'] ?? null);
+
+  it('a card of the same product on ANOTHER PORT is CARD_CHANGED with ONE audit entry - no silent match, no second device, no device text written', async () => {
+    const r = rig(ONE_INTERFACE);
+    await registerAudioInput(r.seams, CALLER, KEY);
+    // The same card id, device index, USB id and product; another port path.
+    r.host.use(INTERFACE_ON_ANOTHER_PORT);
+    const moved = await registerAudioInput(r.seams, CALLER, KEY);
+    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6 } });
+    expect(changes(r)).toEqual(['REGISTERED', 'CARD_CHANGED']);
+    expect(matchNotes(r)).toEqual([null, 'PORT_DIFFERS']);
+    expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
+    expect(r.inputs).toHaveLength(1);
+    // The six closed keys of the entry, and no port, USB id or product anywhere it is written.
+    expect(Object.keys(r.audits.at(-1)?.details ?? {}).sort()).toEqual(['change', 'channelCount', 'deviceId', 'inputNumber', 'operationId', 'permission']);
+    for (const text of [SIX_PORT, OTHER_PORT, ...DEVICE_TEXT]) expect(written(r)).not.toContain(text);
+    // The stored port FOLLOWS the change (it was said once): the same card again is a plain re-enable.
+    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    expect(changes(r)).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED']);
+    expect(matchNotes(r).at(-1)).toBe('SAME_CARD');
+  });
+
+  it('CONTROL: the same card on the same port is REENABLED; a second card of the product beside it changes nothing, because the port says which is which', async () => {
+    const r = rig(ONE_INTERFACE);
+    await registerAudioInput(r.seams, CALLER, KEY);
+    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    r.host.use(TWO_OF_ONE_PRODUCT);
+    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    expect(matchNotes(r)).toEqual([null, 'SAME_CARD', 'SAME_CARD']);
+    // The two cards of one product exchanged their ports: behind the stored key sits the OTHER card.
+    r.host.use(TWO_OF_ONE_PRODUCT_SWAPPED);
+    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
+    expect(matchNotes(r).at(-1)).toBe('PORT_DIFFERS');
+    expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
+  });
+
+  it('the second card of the product, under its own key, is a NEW microphone - never the registered one', async () => {
+    const r = rig(TWO_OF_ONE_PRODUCT);
+    await registerAudioInput(r.seams, CALLER, KEY);
+    const second = await registerAudioInput(r.seams, CALLER, { ...KEY, cardId: SIX_SECOND_CARD_ID });
+    expect(second).toMatchObject({ created: true, registration: { deviceId: 'MIC-04', change: 'REGISTERED' } });
+    expect(usbMicrophones(r.devices)).toEqual(['MIC-03', 'MIC-04']);
+    const search = await searchAudioCards(r.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.registered])).toEqual([
+      [SIX.cardId, [{ inputNumber: 2, deviceId: 'MIC-03' }]],
+      [SIX_SECOND_CARD_ID, [{ inputNumber: 2, deviceId: 'MIC-04' }]],
+    ]);
+  });
+
+  it('where NO port is on one side: one card of the USB id matches by the USB id; two cards of it are NOT TELLABLE and that is said (the store of today holds no port)', async () => {
+    // The product's store today: no port column.
+    const today = rig(ONE_INTERFACE, { storesPort: false });
+    await registerAudioInput(today.seams, CALLER, KEY);
+    expect((await registerAudioInput(today.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    // STATED GAP of that store: the same product on another port, alone on the host, cannot be told.
+    today.host.use(INTERFACE_ON_ANOTHER_PORT);
+    expect((await registerAudioInput(today.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    // With a second card of the product on the host the match is a guess: said, not taken.
+    today.host.use(TWO_OF_ONE_PRODUCT);
+    expect((await registerAudioInput(today.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
+    expect(matchNotes(today)).toEqual([null, 'SAME_CARD', 'SAME_CARD', 'NOT_TELLABLE']);
+    expect(usbMicrophones(today.devices)).toEqual(['MIC-03']);
+    // A store WITH a port, a system that offers none for the live card: the USB id decides in the same way.
+    const offered = rig(ONE_INTERFACE);
+    await registerAudioInput(offered.seams, CALLER, KEY);
+    offered.host.use(INTERFACE_WITHOUT_PORT);
+    expect((await registerAudioInput(offered.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
+    expect(matchNotes(offered).at(-1)).toBe('SAME_CARD');
+  });
+
+  it('the rule itself, as a table: the USB id first, then the port, then what cannot be told; never the product, never the card id alone', () => {
+    const live = (over: Partial<Parameters<typeof matchStoredCard>[1]> = {}): Parameters<typeof matchStoredCard>[1] => ({ cardId: 'Card', deviceIndex: 0, usbId: 'fff0:0006', usbPort: 'p-1', product: 'P', channelCount: 2, factsSource: 'STREAM', sampleBits: [24], ...over });
+    const card = live();
+    const twin = live({ cardId: 'Card_1', usbPort: 'p-2' });
+    const table: Array<[string, Parameters<typeof matchStoredCard>[0], Parameters<typeof matchStoredCard>[1], Parameters<typeof matchStoredCard>[2], string]> = [
+      ['same id, same port', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card], 'SAME_CARD'],
+      ['same id, same port, a twin beside it', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card, twin], 'SAME_CARD'],
+      ['same id, another port', { usbId: 'fff0:0006', usbPort: 'p-9' }, card, [card], 'PORT_DIFFERS'],
+      ['another id, same port', { usbId: 'fff0:0099', usbPort: 'p-1' }, card, [card], 'USB_ID_DIFFERS'],
+      ['a stored id, a live card without one', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbId: null, usbPort: null }), [card], 'USB_ID_DIFFERS'],
+      ['no stored port, one card of the id', { usbId: 'fff0:0006' }, card, [card], 'SAME_CARD'],
+      ['a null stored port, one card of the id', { usbId: 'fff0:0006', usbPort: null }, card, [card], 'SAME_CARD'],
+      ['an empty stored port is no port', { usbId: 'fff0:0006', usbPort: '' }, card, [card, twin], 'NOT_TELLABLE'],
+      ['no stored port, two cards of the id', { usbId: 'fff0:0006' }, card, [card, twin], 'NOT_TELLABLE'],
+      ['no live port, two cards of the id', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbPort: null }), [card, twin], 'NOT_TELLABLE'],
+      ['two capture devices of ONE card are not two cards', { usbId: 'fff0:0006' }, card, [card, live({ deviceIndex: 1 })], 'SAME_CARD'],
+      ['not a USB card on either side: the key is all it has', { usbId: null }, live({ usbId: null, usbPort: null }), [live({ usbId: null, usbPort: null }), live({ cardId: 'Other', usbId: null, usbPort: null })], 'SAME_CARD'],
+    ];
+    for (const [name, stored, liveCard, listing, expected] of table) expect(matchStoredCard(stored, liveCard, listing), name).toBe(expected);
+    // The product is no part of the rule: another product text on the same id and port is the same card.
+    expect(matchStoredCard({ usbId: 'fff0:0006', usbPort: 'p-1' }, live({ product: 'Another name' }), [card])).toBe('SAME_CARD');
+  });
+});
+
 describe('the refusals before any listing, and the listing gate', () => {
   it('no enumerator (a Core outside production capture): 503 NOT_READY / DISCOVERY_NOT_READY for both, nothing listed, stored or written', async () => {
     const r = rig(TWO_CARDS);
@@ -394,6 +530,64 @@ describe('the refusals before any listing, and the listing gate', () => {
     r.advance(1_500);
     expect((await searchAudioCards(r.seams, CALLER)).cards).toHaveLength(2);
     expect(r.audits.map((row) => row.type)).toEqual(['CAPTURE_DISCOVERY_SEARCHED', 'CAPTURE_AUDIO_INPUT_CHANGED', 'CAPTURE_DISCOVERY_SEARCHED']);
+  });
+
+  it('row 156, AD-07 (3): concurrent searches start ONE process - of two, and of five, begun in the same turn, one lists and the others are refused 409 without reading the host', async () => {
+    const r = rig(TWO_CARDS);
+    const release = r.host.holdOnce();
+    const [first, second] = [searchAudioCards(r.seams, CALLER), searchAudioCards(r.seams, CALLER)];
+    expect(await refusal(second)).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
+    expect([r.host.listings(), r.seams.gate.started()]).toEqual([1, 1]);
+    release();
+    expect((await first).cards).toHaveLength(2);
+    // Five at once, a minute later: still one process, one audit row.
+    r.advance(60_000);
+    const releaseFive = r.host.holdOnce();
+    const five = Array.from({ length: 5 }, () => searchAudioCards(r.seams, CALLER));
+    const refusals = await Promise.all(five.slice(1).map((pending) => refusal(pending)));
+    expect(refusals).toEqual(Array.from({ length: 4 }, () => [409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']));
+    releaseFive();
+    await five[0];
+    expect([r.host.listings(), r.seams.gate.started()]).toEqual([2, 2]);
+    expect(r.audits.map((row) => row.type)).toEqual(['CAPTURE_DISCOVERY_SEARCHED', 'CAPTURE_DISCOVERY_SEARCHED']);
+    // A refused call counted nothing: the next search after the spacing is let through.
+    r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
+    expect((await searchAudioCards(r.seams, CALLER)).cards).toHaveLength(2);
+  });
+
+  it('row 156, AD-07 (3): spaced like the camera search per Core - 5 s between two searches AND at most six accepted searches in a minute; the seventh waits for the first to leave the minute', async () => {
+    expect([CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_DISCOVERY_MAX_PER_MINUTE]).toEqual([CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS, 6]);
+    const r = rig(TWO_CARDS);
+    // Six searches, 5 s apart: t = 0, 5, ..., 25 s.
+    for (let index = 0; index < CAPTURE_DISCOVERY_MAX_PER_MINUTE; index += 1) {
+      if (index > 0) r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
+      expect((await searchAudioCards(r.seams, CALLER)).cards).toHaveLength(2);
+    }
+    // t = 30 s: the spacing is kept, the minute is full. Refused with the time until the first search is a minute old.
+    r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
+    const limited = await searchAudioCards(r.seams, CALLER).catch((error: unknown) => error as ApiFailure);
+    expect(limited).toBeInstanceOf(ApiFailure);
+    expect([(limited as ApiFailure).statusCode, (limited as ApiFailure).code, (limited as ApiFailure).details, (limited as ApiFailure).headers]).toEqual([429, 'RATE_LIMITED', { reason: 'AUDIO_CARD_SEARCH_RATE_LIMITED', retryInMs: 30_000 }, { 'retry-after': '30' }]);
+    expect([r.host.listings(), r.audits.length]).toEqual([6, 6]);
+    // The refusal counted nothing: one millisecond before the minute it is still refused, at the minute it lists.
+    r.advance(29_999);
+    expect(await refusal(searchAudioCards(r.seams, CALLER))).toEqual([429, 'RATE_LIMITED', 'AUDIO_CARD_SEARCH_RATE_LIMITED']);
+    r.advance(1);
+    expect((await searchAudioCards(r.seams, CALLER)).cards).toHaveLength(2);
+    expect(r.host.listings()).toBe(7);
+    // A registration is the Core's own second listing: not spaced and not counted (row 70, decision DD-3).
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 })).created).toBe(true);
+    // CONTROL: a gate with a bound of two refuses the third.
+    let at = 0;
+    const two = createListingGate(() => at, 1_000, 2);
+    await two.run('SEARCH', async () => null);
+    at += 1_000;
+    await two.run('SEARCH', async () => null);
+    at += 1_000;
+    await expect(two.run('SEARCH', async () => null)).rejects.toMatchObject({ statusCode: 429 });
+    // A clock that went back locks nothing out.
+    at = -5_000;
+    await expect(two.run('SEARCH', async () => 'listed')).resolves.toBe('listed');
   });
 
   it('the id of a listing: DSC- and thirteen digits of the clock; two listings of one millisecond never share one', () => {

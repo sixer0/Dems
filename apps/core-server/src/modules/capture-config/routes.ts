@@ -38,7 +38,30 @@
  *        A body of operation 78 that clears a slot (`unassign`) and fills the same slot: by the
  *        schema where it can see it (path `unassign`), by the action otherwise
  *        (`details.reason: SLOT_UNASSIGNED_AND_ASSIGNED`).
+ *        A PRODUCTION camera (adapter kind `ONVIF_RTSP`) on a Core in real capture, assigned by
+ *        operation 78 or 79 with no profile for an empty slot (`details.reason:
+ *        CAMERA_PROFILE_NOT_STATED`) or with a profile its stored row does not list
+ *        (`CAMERA_PROFILE_NOT_OF_DEVICE`) - see "A production camera has a profile of its own".
  *   503  the engine is not running, or the unit did not commit.
+ *
+ * A PRODUCTION CAMERA HAS A PROFILE OF ITS OWN (task 4 row 187; controller ruling C36 (1); design
+ * addendum 7, AD-06). The profile of a selector line says what the recorded stream IS; for a
+ * production camera that is the statement of its own stream, minted when the camera was adopted and
+ * listed in its stored row (`capture_devices.profiles`). The hosted action gives a camera that is
+ * assigned into an empty slot without a profile a constant of the SIMULATOR
+ * (`CAPTURE_CONFIG_EMPTY_SLOT_PROFILE`); that default is the simulator's and never stands in for a
+ * production camera here: this file does not import it (no file of the Core does: a static rule of
+ * this module), and the edit is REFUSED BEFORE THE ACTION instead. The rule, for every camera line
+ * of operation 78 and for operation 79, when a device registry is provided (a real capture
+ * operation) and the committed registry slice says the device's adapter is `ONVIF_RTSP`:
+ *   - the profile in force after the edit is the line's own, or - for a slot that holds a line -
+ *     the profile that slot keeps (operation 79 names none);
+ *   - none (an empty slot, no profile named): `422 INVALID_INPUT`, `CAMERA_PROFILE_NOT_STATED`;
+ *   - one that is no element of the device's stored list: `422 INVALID_INPUT`,
+ *     `CAMERA_PROFILE_NOT_OF_DEVICE`.
+ * Nothing changes on a refusal: no state, no audit row, the slot as it was. NOT touched: Simulated
+ * mode (no registry is provided), a development or fake source, a built-in device (their adapter
+ * is another kind or none), a microphone.
  *
  * `unassign` OF OPERATION 78 (task 4 row 29; decisions C14, C18, C25; security requirement AD-10).
  * The member names the slots the edit CLEARS (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`); the
@@ -75,11 +98,11 @@ import { isSessionActive, type CaptureConfigChange } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CaptureAdapterError, CaptureAdapterRefusal, sourceClassOfOperation, type CaptureDeviceRegistry, type CaptureOperation } from '../../capture/adapters';
+import { CaptureAdapterError, CaptureAdapterKind, CaptureAdapterRefusal, sourceClassOfOperation, type CaptureDeviceRegistry, type CaptureOperation } from '../../capture/adapters';
 import type { DurableSlices } from '../../db/mapping';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
-import { readMicTransports } from './store';
+import { readCameraProfiles, readMicTransports } from './store';
 
 /** The operations this module answers, in registry order (operations 76 to 80). */
 export const CAPTURE_CONFIG_MODULE_OPERATIONS = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic'] as const;
@@ -134,7 +157,21 @@ export function captureAssignmentRefusalOf(code: CaptureAdapterRefusal, stored: 
   return code;
 }
 
+/**
+ * `details.reason` of a PRODUCTION camera assigned without a profile of its own (task 4 row 187;
+ * ruling C36 (1)). Words of this module, as the assignment refusals above are: the wire code is
+ * the contract's `INVALID_INPUT`.
+ */
+export const CaptureProfileRefusal = {
+  /** An empty slot, and the edit names no profile: the Core has no default for a production camera. */
+  CAMERA_PROFILE_NOT_STATED: 'CAMERA_PROFILE_NOT_STATED',
+  /** The profile in force after the edit is no element of the profiles the camera's stored row lists. */
+  CAMERA_PROFILE_NOT_OF_DEVICE: 'CAMERA_PROFILE_NOT_OF_DEVICE',
+} as const;
+export type CaptureProfileRefusal = (typeof CaptureProfileRefusal)[keyof typeof CaptureProfileRefusal];
+
 const LOCKED_TEXT = 'The capture configuration cannot be changed while a session is open.';
+const OWN_PROFILE_TEXT = 'A production camera is assigned with a profile of its own: one of the profiles it was registered with.';
 const UNKNOWN_DEVICE_TEXT = 'The capture registry has no such device.';
 const NOT_ASSIGNABLE_TEXT = 'This device cannot be assigned in the running capture operation.';
 const MIC_SLOT_TEXT = 'A microphone input holds the microphone of the same ID.';
@@ -230,6 +267,38 @@ function assertAssignable(registry: AssignmentRegistry | null, state: DurableSli
   }
 }
 
+/** The camera lines an edit assigns, each with the profile it names (operation 79 names none). */
+function cameraLinesOf(change: CaptureConfigChange): readonly { readonly trackId: string; readonly deviceId: string; readonly profile?: string | undefined }[] {
+  if (change.kind === 'CAMERA_SOURCE') return [{ trackId: change.trackId, deviceId: change.deviceId }];
+  return change.kind === 'UPDATE' ? (change.cameras ?? []) : [];
+}
+
+/** True for a camera of the committed registry slice whose adapter is the production camera kind. */
+const isProductionCamera = (state: Pick<DurableSlices, 'captureDevices'>, deviceId: string): boolean =>
+  state.captureDevices.devices.some((device) => device.id === deviceId && device.kind === 'CAMERA' && device.adapter === CaptureAdapterKind.ONVIF_RTSP);
+
+/**
+ * A PRODUCTION CAMERA HAS A PROFILE OF ITS OWN (see the header): refuses, before the hosted action,
+ * a camera line that would leave a production camera with no profile or with one its stored row
+ * does not list. `ownProfiles` is the stored list by camera, read for this edit; a production
+ * camera it does not hold states nothing, so every profile is refused for it (fail closed).
+ */
+function assertOwnProfile(registry: AssignmentRegistry | null, state: DurableSlices, change: CaptureConfigChange, ownProfiles: ReadonlyMap<string, readonly string[]> | null): void {
+  if (registry === null) return;
+  for (const line of cameraLinesOf(change)) {
+    if (!isProductionCamera(state, line.deviceId)) continue;
+    // What the action would store: the line's own profile, else the one a held slot keeps. An empty slot has none.
+    const inForce = line.profile ?? state.captureConfig.cameras.find((camera) => camera.trackId === line.trackId)?.profile;
+    const reason =
+      inForce === undefined
+        ? CaptureProfileRefusal.CAMERA_PROFILE_NOT_STATED
+        : (ownProfiles?.get(line.deviceId) ?? []).includes(inForce)
+          ? null
+          : CaptureProfileRefusal.CAMERA_PROFILE_NOT_OF_DEVICE;
+    if (reason !== null) throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, OWN_PROFILE_TEXT, { details: { in: 'body', reason, deviceId: line.deviceId, trackId: line.trackId } });
+  }
+}
+
 /**
  * PAIR REPLACEMENT (operation 78 with `role` on its mic lines; decision D133 (1)): a line that
  * names no transport, for an input the selector does not hold yet, takes the transport of its
@@ -255,10 +324,29 @@ async function withRegisteredTransports(app: FastifyInstance, change: CaptureCon
 export function registerCaptureConfigRoutes(app: FastifyInstance, seams: CaptureConfigRouteSeams): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
 
+  /**
+   * True when the edit assigns a production camera on a Core in real capture, by the committed state. An engine that
+   * cannot say (not running) is "no": the unit below then answers as it always did, and reads nothing first.
+   */
+  const assignsProductionCamera = (change: CaptureConfigChange): boolean => {
+    if (seams.deviceRegistry() === null) return false;
+    const lines = cameraLinesOf(change);
+    if (lines.length === 0) return false;
+    try {
+      const committed = { captureDevices: app.engine.slice('captureDevices') };
+      return lines.some((line) => isProductionCamera(committed, line.deviceId));
+    } catch {
+      return false;
+    }
+  };
+
   /** One edit as one unit of the engine. Resolves, after the commit, with the selector as it is stored. */
   const edit = async (request: FastifyRequest, operationId: CaptureConfigModuleOperation, requested: CaptureConfigChange): Promise<CaptureConfigSliceBody> => {
     assertStorable(requested);
     const change = await withRegisteredTransports(app, requested);
+    // Row 187 (C36 (1)): the stored profile lists, read ONCE and only for an edit that assigns a production camera on a Core in real
+    // capture (a registry is provided). Simulated mode and every development, fake or built-in camera make no read.
+    const ownProfiles = assignsProductionCamera(change) ? await readCameraProfiles(app.db.pool) : null;
     const outcome = await app.engine.run(`captureConfig.${operationId}`, async (scope) => {
       const before = scope.pending();
       // The simulator's order: an unknown path ID is 404 also while the selector is locked.
@@ -267,6 +355,8 @@ export function registerCaptureConfigRoutes(app: FastifyInstance, seams: Capture
       // OD-10 / M4-LOCK-1: left BEFORE the action - no state change, no CAPTURE_CONFIG_CHANGED row.
       if (isSessionActive(before.session)) throw captureConfigLocked();
       assertAssignable(seams.deviceRegistry(), before, change);
+      // Row 187 (C36 (1)): after the registry's own refusals (each keeps its reason), BEFORE the action - no default profile stands in.
+      assertOwnProfile(seams.deviceRegistry(), before, change, ownProfiles);
       await scope.command(request.principal, 'setCaptureConfig', change);
       const after = scope.pending();
       return { captureConfig: after.captureConfig, changed: after.captureConfig !== before.captureConfig };

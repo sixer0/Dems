@@ -16,6 +16,8 @@
 //        the typed schema, compared with each other directly (row 97; A-6 is the codec word).
 //   A-8  the start message is made into bytes by the production door only, which makes no text of
 //        them and hands them to nothing but the write and the zero-fill (task 4 row 21; AD-03 (6)).
+//   A-9  the production adapters built beside the class-C stubs are named by no production source
+//        before the lift (task 4 row 46; addendum 6.2). A-2 names the one caller of the injection point.
 //
 // Each rule has a control on a planted source that must be found.
 import { existsSync, readFileSync } from 'node:fs';
@@ -120,10 +122,23 @@ describe('A-2: a credential is read in one file, and no locator is composed with
     expect(occurrences(capture, USER_PART_COMPOSED)).toEqual([]);
   });
 
-  it('the injection point has no caller in the product yet: recording a real camera is class C-2', () => {
+  // Task 4 row 46 (addendum 2.3 step 3 and 2.6 "callers of `credentialAtInjection` outside `credential.ts`: 1 file";
+  // the request of row 45): until row 46 this case read "no caller in the product yet". The one caller is the relay
+  // start of the production camera adapter, once; that adapter is registered nowhere before the lift (A-9).
+  it('the injection point has exactly one caller in the product, the relay start of the production camera adapter, at one line', () => {
     const production = tree.filter((file) => isProductionSource(file.path));
-    const callers = occurrences(production, /\bcredentialAtInjection\s*\(/g).map((place) => place.replace(/:\d+$/, ''));
-    expect([...new Set(callers)]).toEqual([`${ADAPTERS}credential.ts`]);
+    const INJECTION = /\bcredentialAtInjection\s*\(/g;
+    const RELAY_START = `${ADAPTERS}camera/relay-start.ts`;
+    const callers = occurrences(production, INJECTION).map((place) => place.replace(/:\d+$/, ''));
+    expect([...new Set(callers)].sort()).toEqual([RELAY_START, `${ADAPTERS}credential.ts`]);
+    // In `credential.ts` the one place is the declaration; in the relay start it is one call, whose result is a member of the start message.
+    expect(callers.filter((path) => path === RELAY_START)).toHaveLength(1);
+    const relayStart = tree.find((file) => file.path === RELAY_START)?.text ?? '';
+    expect(relayStart).toMatch(/^ {4}access: credentialAtInjection\(start\.locator, start\.sealed\),$/m);
+    // The relay is started with no argument and an empty environment: the message is the one carrier.
+    expect(relayStart).toMatch(/return start\.door\(\{ command: start\.program, args: \[\], env: \{\}, message, timers: start\.timers, onOutput: start\.onOutput \}\);/);
+    // Control: a second caller would be seen.
+    expect(occurrences([{ path: 'x.ts', text: 'const access = credentialAtInjection(locator, sealed);' }], INJECTION)).toEqual(['x.ts:1']);
   });
 });
 
@@ -388,5 +403,59 @@ describe('A-8: the bytes of a start message are made by the production door only
     expect(door.match(/new ProductionDoorError\([^)]*\)/g)?.every((call) => /^new ProductionDoorError\((?:code|spawnFailed \? ProductionDoorRefusal\.PROGRAM_NOT_STARTED : refusal)\)$/.test(call))).toBe(true);
     // The door logs nothing and names no log sink.
     expect(door).not.toMatch(/\bconsole\b|\blog\s*\.|\.(?:warn|info|error|debug)\s*\(/);
+  });
+});
+
+// Task 4 row 46 (design addendum 6.2: "new files, stubs untouched"; blueprint 9.2 L-5). The production adapters
+// are BUILT in new files beside the class-C stubs and REGISTERED NOWHERE until the lift (WP-13, rows 85 and 88):
+// no production source names them, so no boot path can load one. Rule A-1 is unchanged: the three stubs stay the
+// files the loader names. The row that lifts class C rewrites this block together with A-1.
+describe('A-9: the built production adapters are named by no production source before the lift', () => {
+  /** Each built file, without extension, with the built files that may name it (its own unit). */
+  const BUILT: Readonly<Record<string, readonly string[]>> = {
+    [`${ADAPTERS}camera/onvif-relay`]: [],
+    // Task 4 row 50 (amendment AM-2): the stream half of the CONNECTION TEST starts the relay in probe mode through the
+    // same relay start (the one caller of the injection point, rule A-2). It is no adapter and is registered nowhere:
+    // the connect flow hands it its door, and no stream is opened without a credential and a configured relay program.
+    [`${ADAPTERS}camera/relay-start`]: [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}camera/stream-probe.ts`],
+    // Task 4 row 67 (its request, served by row 46): the production microphone adapter beside the stub `audio/usb-audio`.
+    [`${ADAPTERS}audio/usb-audio-production`]: [],
+    // Task 4 row 68 (its request, served by integration pass I-7): the microphone loss watch, built beside that
+    // adapter and wired by no production source until the composition (row 85). It imports no adapter: the match is handed in.
+    [`${ADAPTERS}audio/mic-loss`]: [],
+  };
+  const violations = (files: readonly SourceFile[]): string[] =>
+    relativeImports(files.filter((file) => isProductionSource(file.path)))
+      .filter((entry) => Object.hasOwn(BUILT, entry.target) && !(BUILT[entry.target] ?? []).includes(entry.file))
+      .map((entry) => `${entry.file}:${entry.line} names a built production adapter`);
+
+  it('finds a planted import by the loader, by the layer index and by the fence (control)', () => {
+    const planted: SourceFile[] = [
+      { path: `${LOADER}.ts`, text: "await import('./camera/onvif-relay');\n" },
+      { path: `${ADAPTERS}index.ts`, text: "export { createOnvifRelayCameraAdapter } from './camera/onvif-relay';\n" },
+      { path: 'src/capture/fence/index.ts', text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
+      { path: `${LOADER}.ts`, text: "\nawait import('./audio/usb-audio-production');\n" },
+      { path: 'src/capture/index.ts', text: "import { createMicLossWatch } from './adapters/audio/mic-loss';\n" },
+      // Allowed: the adapter names its own relay start; a test names the adapter.
+      { path: `${ADAPTERS}camera/onvif-relay.ts`, text: "import { startCameraRelay } from './relay-start';\n" },
+      { path: `${ADAPTERS}camera/__tests__/onvif-relay.test.ts`, text: "import { createOnvifRelayCameraAdapter } from '../onvif-relay';\n" },
+    ];
+    expect(violations(planted)).toEqual([
+      `${LOADER}.ts:1 names a built production adapter`,
+      `${ADAPTERS}index.ts:1 names a built production adapter`,
+      'src/capture/fence/index.ts:1 names a built production adapter',
+      `${LOADER}.ts:2 names a built production adapter`,
+      'src/capture/index.ts:1 names a built production adapter',
+    ]);
+  });
+
+  it('no production source names a built production adapter; each exists, and the camera adapter states its opener', () => {
+    expect(violations(tree)).toEqual([]);
+    for (const path of Object.keys(BUILT)) expect(tree.some((file) => file.path === `${path}.ts`), path).toBe(true);
+    const camera = tree.find((file) => file.path === `${ADAPTERS}camera/onvif-relay.ts`)?.text ?? '';
+    expect(camera).toMatch(/^ {4}hasOpener: true,$/m);
+    expect(camera).toMatch(/^ {4}kind: CaptureAdapterKind\.ONVIF_RTSP,$/m);
+    // The stub beside it is not edited: it is still what the loader names (A-1), without an opener.
+    expect(tree.find((file) => file.path === `${ADAPTERS}camera/onvif-rtsp.ts`)?.text).toMatch(/hasOpener: false,/);
   });
 });

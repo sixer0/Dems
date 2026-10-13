@@ -4,7 +4,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { i18n } from '@/i18n';
 import { deviceLabel } from './capture-notices-model';
-import { isMicInputId, micInputName, micInputNumber, otherMicInput } from './mic-input-name';
+import { isMicInputId, micInputName, micInputNumber } from './mic-input-name';
 
 const t = (key: string, options?: Record<string, unknown>): string => i18n.t(key, options ?? {});
 
@@ -45,14 +45,5 @@ describe('the name of a microphone input', () => {
     expect(deviceLabel(t, 'MIC-03')).toBe('MIC 3 (MIC-03)');
     expect(deviceLabel(t, 'MIC-02')).toBe('MIC 2 (MIC-02)');
     expect(deviceLabel(t, 'CAM-07')).toBe('CAM-07');
-  });
-});
-
-describe('the other microphone of a pair is read from the selector lines', () => {
-  it('whatever the numbers; null when there is no other line', () => {
-    expect(otherMicInput([{ inputId: 'MIC-01' }, { inputId: 'MIC-03' }], 'MIC-01')).toBe('MIC-03');
-    expect(otherMicInput([{ inputId: 'MIC-01' }, { inputId: 'MIC-03' }], 'MIC-03')).toBe('MIC-01');
-    expect(otherMicInput([{ inputId: 'MIC-03' }], 'MIC-03')).toBeNull();
-    expect(otherMicInput([], 'MIC-01')).toBeNull();
   });
 });

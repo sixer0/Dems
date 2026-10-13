@@ -12,13 +12,14 @@ import { createSocket } from 'node:dgram';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { manualCaptureTimers } from '../../../../../test/support/capture';
 import type { FakeOnvifDiscoveryMode, FakeOnvifStub } from '../../../../../test/support/fake-onvif-stub';
+import { DestinationPurpose, decideDestination, type AllowedDestination, type DestinationContext } from '../../../destination-rule';
 import { createSystemTimers } from '../../../timers';
 import { CaptureAdapterError } from '../../errors';
 import { createCaptureDeviceRegistry } from '../../registry';
 import type { InterfaceTable } from '../discovery-collector';
 import { createOnvifDiscoveryAdapter } from '../onvif-discovery';
 import { DiscoveryNotRunError, WS_DISCOVERY_GROUP, WS_DISCOVERY_REPEAT_MS, type WsDiscoveryOptions, type WsDiscoveryResult } from '../ws-discovery';
-import { LAN_A, LAN_B, LOOPBACK, datagramSockets, delay, installLoopbackGuard, interfaceTable, startFakeOnvif, until, type LoopbackGuard } from './support';
+import { LAN_A, LAN_B, LOOPBACK, answerFrom, datagramSockets, delay, installLoopbackGuard, interfaceTable, startFakeOnvif, until, type LoopbackGuard } from './support';
 
 const WINDOW_MS = 400;
 let guard: LoopbackGuard;
@@ -434,6 +435,133 @@ describe('the seam', () => {
     const fixed = randomUUID();
     expect(await refusal(search(stub, { newMessageId: () => fixed }))).toBe('CaptureAdapterError/CAPTURE_ADAPTER_INVALID');
     expect(await refusal(search(stub, { newMessageId: () => 'not-a-uuid' }))).toBe('CaptureAdapterError/CAPTURE_ADAPTER_INVALID');
+    expect(probes(stub)).toBe(0);
+    expect(datagramSockets() - before).toBe(0);
+  });
+});
+
+// Task 4 blueprint row 96 (WP-12; amended ruling AM-3 of D80(10); rule G-R9 as amended by SR-2): the
+// probe to ONE typed address. The destination is the answer of the PRODUCT'S destination rule for an
+// address of a synthetic camera subnet; under the loopback fixture the datagram goes to the fixture's
+// target, so that nothing of these tests can reach the address the rule answered.
+describe('task 4 row 96: the typed-address probe - one more datagram, from the same socket, to the destination rule\'s answer', () => {
+  const HOST_FACTS: DestinationContext = {
+    cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
+    cameraAddresses: [{ address: '192.168.50.1', alias: false }],
+    otherInterfaceSubnets: [],
+    hostAddresses: ['192.168.50.1'],
+  };
+  const TYPED = '192.168.50.20';
+  const ruled = (address: string): AllowedDestination => {
+    const decision = decideDestination({ purpose: DestinationPurpose.TYPED_PROBE, address }, HOST_FACTS);
+    if (!decision.allowed) throw new Error(`the rule refused the address of this test: ${decision.refusal}`);
+    return decision.destination;
+  };
+
+  /** A device on loopback that answers ONLY a probe whose message ID `answers` admits, and keeps every datagram it received. */
+  async function responder(answers: (messageId: string) => boolean): Promise<{ readonly port: number; readonly received: string[]; close(): Promise<void> }> {
+    const socket = createSocket({ type: 'udp4' });
+    const received: string[] = [];
+    socket.on('message', (bytes, remote) => {
+      const text = bytes.toString('utf8');
+      received.push(text);
+      const messageId = /<a:MessageID>([^<]+)<\/a:MessageID>/.exec(text)?.[1] ?? '';
+      if (answers(messageId)) socket.send(answerFrom(messageId, LOOPBACK), remote.port, LOOPBACK);
+    });
+    await new Promise<void>((resolveBound) => socket.bind({ address: LOOPBACK, port: 0 }, resolveBound));
+    return { port: socket.address().port, received, close: () => new Promise<void>((resolveClosed) => socket.close(() => resolveClosed())) };
+  }
+  /** A message-ID source that remembers what it handed out, in order: the third of a typed search is the typed probe's. */
+  const idSource = (): { readonly next: () => string; readonly given: string[] } => {
+    const given: string[] = [];
+    return {
+      given,
+      next: () => {
+        const id = randomUUID();
+        given.push(id);
+        return id;
+      },
+    };
+  };
+
+  it('a typed address yields 1 candidate from the probe answer alone: a device that answers ONLY the typed probe is listed, and without the typed address it is not found', async () => {
+    const ids = idSource();
+    const device = await responder((messageId) => messageId === `urn:uuid:${ids.given[2] ?? ''}`);
+    try {
+      guard.reset();
+      const adapter = createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: ids.next, loopbackFixture: { address: LOOPBACK, port: device.port } });
+      const found = await adapter.discover({ windowMs: WINDOW_MS, signal: new AbortController().signal, unicast: ruled(TYPED) });
+      expect(ids.given).toHaveLength(3);
+      expect(found.candidates).toHaveLength(1);
+      // Built from the probe answer alone: the host is where the answer came from (the fixture), never the typed text.
+      expect(found.candidates[0]).toMatchObject({ adapterKind: 'FAKE', host: LOOPBACK, testable: true, conflict: false, registered: false });
+      expect(found).toMatchObject({ responderCount: 1, truncated: false });
+      expect(found.counts).toMatchObject({ datagramsSent: 4, typedProbesSent: 1, sendErrors: 0, handlerErrors: 0, datagramsReceived: 1, datagramsAccepted: 1, repeats: 0, dropped: {} });
+      // Five datagrams reached the device: the two probes twice, and ONE typed probe of the camera type with its own message ID.
+      expect(device.received).toHaveLength(5);
+      const typedProbes = device.received.filter((text) => text.includes(`urn:uuid:${ids.given[2] ?? ''}`));
+      expect(typedProbes).toHaveLength(1);
+      expect(typedProbes[0]).toContain('<d:Types>dn:NetworkVideoTransmitter</d:Types>');
+      // Nothing of the typed address is in a datagram, and none went anywhere but to the fixture's target.
+      expect(device.received.some((text) => text.includes(TYPED))).toBe(false);
+      expect(new Set(guard.datagrams())).toEqual(new Set([LOOPBACK]));
+      expect(guard.refused()).toEqual([]);
+      expect(guard.connections()).toEqual([]);
+
+      // The same device, the search WITHOUT a typed address: four probes, no answer, nothing listed, and no typed count in the result.
+      const plainIds = idSource();
+      const quiet = await responder(() => false);
+      try {
+        const plain = await createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: plainIds.next, loopbackFixture: { address: LOOPBACK, port: quiet.port } }).discover({ windowMs: WINDOW_MS, signal: new AbortController().signal });
+        expect(plainIds.given).toHaveLength(2);
+        expect(plain.candidates).toEqual([]);
+        expect(quiet.received).toHaveLength(4);
+        expect(Object.keys(plain.counts)).not.toContain('typedProbesSent');
+        expect(plain.counts).toMatchObject({ datagramsSent: 4, sendErrors: 0, datagramsReceived: 0 });
+      } finally {
+        await quiet.close();
+      }
+    } finally {
+      await device.close();
+    }
+  });
+
+  it('on the fake ONVIF stub: the stub answers the typed probe as it answers the others - one candidate, five probes in its log, no device request', async () => {
+    const stub = await stubWith(1);
+    guard.reset();
+    const found = await adapterOn(stub).discover({ windowMs: WINDOW_MS, signal: new AbortController().signal, unicast: ruled(TYPED) });
+    expect(found.candidates).toHaveLength(1);
+    expect(found.counts).toMatchObject({ datagramsSent: 4, typedProbesSent: 1, datagramsReceived: 5, datagramsAccepted: 5, repeats: 4 });
+    expect(stub.requestLog().map((entry) => `${entry.channel}/${entry.operation}/${entry.authPresent}`)).toEqual(Array.from({ length: 5 }, () => 'discovery/Probe/false'));
+    expect(stub.violations()).toEqual([]);
+    expect(guard.connections()).toEqual([]);
+    expect(guard.refused()).toEqual([]);
+  });
+
+  it('the host does not hold the source the rule named: the search could not run and 0 packets are sent - no socket is opened', async () => {
+    guard.reset();
+    const before = datagramSockets();
+    // The product path (no fixture) on a host whose only interface is another segment than the camera's.
+    const product = createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, interfaces: () => interfaceTable(LAN_A) });
+    expect(await refusal(product.discover({ windowMs: WINDOW_MS, signal: new AbortController().signal, unicast: ruled(TYPED) }))).toBe('DiscoveryNotRunError/NO_ELIGIBLE_INTERFACE');
+    expect(guard.datagrams()).toEqual([]);
+    expect(guard.refused()).toEqual([]);
+    expect(datagramSockets() - before).toBe(0);
+  });
+
+  it('a refused address makes no answer of the rule, so there is nothing to probe with: loopback, a public address, the host\'s own, another segment, a name', () => {
+    for (const address of ['127.0.0.1', '8.8.8.8', '192.168.50.1', '192.168.51.20', '192.168.50.0', '192.168.50.255', 'camera.example', '192.168.50.20:80', '']) {
+      expect(decideDestination({ purpose: DestinationPurpose.TYPED_PROBE, address }, HOST_FACTS).allowed, address).toBe(false);
+    }
+    expect(ruled(TYPED)).toEqual({ address: TYPED, port: 80, sourceAddress: '192.168.50.1', viaAlias: false });
+  });
+
+  it('the typed probe has a message ID of its own: one that repeats an ID of the search is refused before a socket is opened', async () => {
+    const stub = await stubWith(1);
+    const before = datagramSockets();
+    const [first, second] = [randomUUID(), randomUUID()];
+    const repeating = [first, second, first];
+    expect(await refusal(adapterOn(stub, { newMessageId: () => repeating.shift() ?? first }).discover({ windowMs: WINDOW_MS, signal: new AbortController().signal, unicast: ruled(TYPED) }))).toBe('CaptureAdapterError/CAPTURE_ADAPTER_INVALID');
     expect(probes(stub)).toBe(0);
     expect(datagramSockets() - before).toBe(0);
   });

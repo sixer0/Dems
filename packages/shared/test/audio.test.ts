@@ -2,6 +2,9 @@
 // levels in [−90, 0], peak hold 1.5 s then 20 dB/s decay, CLIP latched until reset,
 // NO SIGNAL flat at −90, frames of plain numbers and booleans (SCR-01).
 import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AudioTrackId } from '../src/domain';
 import {
   AUDIO_FRAME_MS,
@@ -14,7 +17,6 @@ import {
   createSim,
   meterAt,
   meterInputOfChannel,
-  micInputOfChannel,
   micInputOfRole,
   stepMeter,
   type AudioFrame,
@@ -281,10 +283,11 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     for (const [inputId, channel] of Object.entries(answers.channelOf)) expect(channelOfMicLine(lines, inputId)).toBe(channel);
     // The pair of `selector-in-force.ts` is the same rule (it imports nothing, so it spells it itself).
     expect(audioPairOfSelector(lines)).toEqual({ activeInputId: answers.primary, standbyInputId: answers.standby });
-    // D137 is kept for a complete pair: the answer is the positional function's, in both arrangements.
+    // D137 is kept for a complete pair: channel 1 is the first line as held, channel 2 the second,
+    // in both arrangements (the positional function itself is gone, task 4 row 172).
     if (complete) {
-      expect(meterInputOfChannel(lines, 'AUDIO-01')).toBe(micInputOfChannel(lines, 'AUDIO-01'));
-      expect(meterInputOfChannel(lines, 'AUDIO-02')).toBe(micInputOfChannel(lines, 'AUDIO-02'));
+      expect(meterInputOfChannel(lines, 'AUDIO-01')).toBe(lines[0]!.inputId);
+      expect(meterInputOfChannel(lines, 'AUDIO-02')).toBe(lines[1]!.inputId);
     }
   });
 
@@ -302,11 +305,12 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     ];
     // Absent is `null`: never undefined, an empty text or a built-in input.
     expect(answers).toEqual([null, null, null, null, null, null]);
-    // The parameter seam of `channelOfMicLine` (PENDING-ROW-171): lines that state no role are no
-    // pair, so they have no channel - not channel 1 and 2 by their position.
-    expect([channelOfMicLine([{ inputId: 'MIC-01' }, { inputId: 'MIC-02' }], 'MIC-01'), channelOfMicLine([], 'MIC-01')]).toEqual([null, null]);
-    // CONTROL: the positional function, unchanged until row 172, still answers the constants.
-    expect([micInputOfChannel([], 'AUDIO-01'), micInputOfChannel([], 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
+    // `channelOfMicLine` takes lines that STATE their role (register E20; the parameter seam of
+    // row 164 is out, task 4 row 149): a list without roles is a compile error, not an answer by position.
+    // @ts-expect-error a line without a role is not a `RoleMicLine`
+    const unstated: readonly RoleMicLine[] = [{ inputId: 'MIC-01' }, { inputId: 'MIC-02' }];
+    // Whatever reaches it untyped: no complete pair, hence no channel - not channel 1 and 2 by place.
+    expect([channelOfMicLine(unstated, 'MIC-01'), channelOfMicLine([], 'MIC-01')]).toEqual([null, null]);
   });
 
   const withSelector = (h: ReturnType<typeof harness>, mics: SimState['captureConfig']['mics']) =>
@@ -317,8 +321,8 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     const h = harness('idle');
     expect(activeMeterChannel(h.state())).toBe('AUDIO-01');
     expect(activeMeterChannel({ ...h.state(), audio: { ...h.state().audio, activeInputId: 'MIC-02' } })).toBe('AUDIO-02');
-    // No active input (what the slice holds once the seam of row 28 is out): no lookup, the label.
-    const noneActive = { ...h.state(), audio: { ...h.state().audio, activeInputId: null } } as unknown as SimState;
+    // No active input (what the slice holds without a PRIMARY line): no lookup, the label.
+    const noneActive: SimState = { ...h.state(), audio: { ...h.state().audio, activeInputId: null } };
     expect(activeMeterChannel(noneActive)).toBe('AUDIO-01');
     // A lone line has no channel: the label, and no input behind it.
     const lone = { ...h.state(), captureConfig: { ...h.state().captureConfig, mics: seeded(h).slice(1) }, audio: { ...h.state().audio, activeInputId: 'MIC-02' } };
@@ -336,10 +340,9 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     withSelector(h, seeded(h).filter((mic) => mic.role === 'STANDBY'));
     h.run(200);
     expect(h.state().audio.inputs).toEqual({});
-    // PENDING-ROW-28-SEAM: the register's answer is `null` (no PRIMARY line). While the state's
-    // member is typed as an input the subsystem keeps what it held; it is NOT moved to the lone
-    // STANDBY line and not to a line by position. Flip to `toBeNull()` with the seam's removal.
-    expect(h.state().audio.activeInputId).toBe('MIC-01');
+    // The register's answer (no PRIMARY line): the state holds NO active input. It is not the
+    // input it held, not the lone STANDBY line and not a line by position (task 4 row 149).
+    expect(h.state().audio.activeInputId).toBeNull();
 
     // No microphone line: no frame either.
     withSelector(h, []);
@@ -360,17 +363,86 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     expect(h.state().audio.activeInputId).toBe('MIC-03');
   });
 
-  it('Simulated mode on the seeded selector: both lookups answer what the positional function answers', () => {
+  it('Simulated mode on the seeded selector: the lookup answers the table of the built-in pair, as before', () => {
     const h = harness('recording');
     const lines = seeded(h);
     expect(lines.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-01', 'PRIMARY'], ['MIC-02', 'STANDBY']]);
     for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
-      expect(meterInputOfChannel(lines, channel)).toBe(micInputOfChannel(lines, channel));
       expect(meterInputOfChannel(lines, channel)).toBe(DEFAULT_MIC_INPUT_OF_CHANNEL[channel]);
     }
     h.run(1_000);
     expect(h.frames['AUDIO-01']).toHaveLength(20);
     expect(h.frames['AUDIO-02']).toHaveLength(20);
     expect(h.state().audio.activeInputId).toBe(micInputOfRole(lines, 'PRIMARY'));
+  });
+});
+
+// Task 4 row 172 (WP-13a; decisions C18 (2); row 27 site C15): the positional function - "the input
+// of a meter channel is the line at that place, else a built-in input" - is DELETED and stays out.
+// The scan reads every source and test file of the four workspaces that resolved a microphone
+// through it (24 non-test files at row 27's measurement) and holds them to 0 names of it, comments
+// included: a name in a comment is how it comes back.
+describe('the positional microphone function stays deleted (static; task 4 row 172)', () => {
+  /** Built from parts, so that this file is not itself an occurrence. */
+  const DELETED_NAME = ['mic', 'Input', 'Of', 'Channel'].join('');
+  const REPOSITORY = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  /** The four source trees of row 27: each workspace's sources AND its tests. */
+  const TREES = ['apps/core-server', 'apps/core-web', 'apps/mobile', 'packages/shared'] as const;
+  const SKIPPED = new Set(['node_modules', 'dist', 'build', 'coverage', '.expo', '.turbo', '.cache', 'android', 'ios']);
+
+  const sourcesOf = (tree: string): string[] => {
+    const found: string[] = [];
+    const walk = (dir: string): void => {
+      for (const name of readdirSync(dir)) {
+        if (SKIPPED.has(name)) continue;
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.(?:[cm]?[jt]sx?)$/.test(name)) found.push(path);
+      }
+    };
+    walk(join(REPOSITORY, tree));
+    return found;
+  };
+  /** `file:line` of every place a text names the function as an identifier. */
+  const namesIn = (file: string, text: string): string[] =>
+    text
+      .split('\n')
+      .flatMap((line, index) => (new RegExp(`\\b${DELETED_NAME}\\b`).test(line) ? [`${file}:${index + 1}`] : []));
+
+  const scanned = TREES.map((tree) => ({ tree, files: sourcesOf(tree) }));
+
+  it('the scan reads the four trees: hundreds of files each, the definition\'s old home and its three client readers among them', () => {
+    for (const { tree, files } of scanned) expect(files.length, tree).toBeGreaterThan(200);
+    for (const path of [
+      'packages/shared/src/sim/audio.ts',
+      'apps/core-server/src/modules/devices/status.ts',
+      'apps/core-web/src/features/session-monitor/audio-source.ts',
+      'apps/mobile/src/features/session-live/mic-source-model.ts',
+    ]) {
+      expect(existsSync(join(REPOSITORY, path)), path).toBe(true);
+      expect(scanned.some(({ files }) => files.includes(join(REPOSITORY, path))), path).toBe(true);
+    }
+  });
+
+  it('0 files of the four source trees name it (24 non-test files went through it at row 27)', () => {
+    const places = scanned.flatMap(({ files }) => files.flatMap((path) => namesIn(relative(REPOSITORY, path), readFileSync(path, 'utf8'))));
+    expect(places).toEqual([]);
+  });
+
+  it('the shared sim barrel exports no such member, and the lookups by role and by channel are there', async () => {
+    const sim: Record<string, unknown> = await import('../src/sim');
+    expect(Object.keys(sim)).not.toContain(DELETED_NAME);
+    expect(typeof sim['micInputOfRole']).toBe('function');
+    expect(typeof sim['meterInputOfChannel']).toBe('function');
+  });
+
+  it('CONTROL: a planted call, a planted import and a planted comment are each found; a longer identifier is not', () => {
+    const planted = [
+      `const input = ${DELETED_NAME}(lines, 'AUDIO-01');`,
+      `import { ${DELETED_NAME} } from '@dems/shared/sim';`,
+      `// the input is what ${DELETED_NAME} answers`,
+      `const other = ${DELETED_NAME}Legacy(lines);`,
+    ].join('\n');
+    expect(namesIn('planted.ts', planted)).toEqual(['planted.ts:1', 'planted.ts:2', 'planted.ts:3']);
   });
 });

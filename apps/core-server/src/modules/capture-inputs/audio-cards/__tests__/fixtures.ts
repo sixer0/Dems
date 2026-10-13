@@ -40,6 +40,29 @@ export const TWO_CARDS: HostTexts = {
 export const ONE_INTERFACE: HostTexts = { list: HEADING + listed(2, SIX.cardId, SIX.product), usbId: { 2: `${SIX.usbId}\n` }, streams: { '2:0': TWO_CARDS.streams?.['2:0'] ?? '' } };
 /** The same card id and device index, and another USB id behind them: another card took the place. */
 export const INTERFACE_REPLACED: HostTexts = { ...ONE_INTERFACE, usbId: { 2: 'fff0:0099\n' } };
+/** The port paths of the texts above and of the two below (task 4 row 156: the identity rule reads them). */
+export const SIX_PORT = '0000:00:14.0-3.1';
+export const OTHER_PORT = '0000:00:14.0-4';
+/**
+ * A CARD OF THE SAME PRODUCT ON ANOTHER PORT: the same card id, device index, USB id and product
+ * as `ONE_INTERFACE`, and another port path. Nothing but the port tells it from the registered card.
+ */
+export const INTERFACE_ON_ANOTHER_PORT: HostTexts = { ...ONE_INTERFACE, streams: { '2:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)) } };
+/** The same card with a stream file that states NO port (the system offers none). */
+export const INTERFACE_WITHOUT_PORT: HostTexts = { ...ONE_INTERFACE, streams: { '2:0': `${SIX.product} : USB Audio\n\n${capture('S32_LE', SIX.channels, 24)}` } };
+/** The kernel's id of a second card of one product. */
+export const SIX_SECOND_CARD_ID = `${SIX.cardId}_1`;
+/** TWO CARDS OF ONE PRODUCT: the registered one on its port, and a second (card 3) on another port with the same USB id. */
+export const TWO_OF_ONE_PRODUCT: HostTexts = {
+  list: HEADING + listed(2, SIX.cardId, SIX.product) + listed(3, SIX_SECOND_CARD_ID, SIX.product),
+  usbId: { 2: `${SIX.usbId}\n`, 3: `${SIX.usbId}\n` },
+  streams: { '2:0': usbStream(SIX.product, SIX_PORT, capture('S32_LE', SIX.channels, 24)), '3:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)) },
+};
+/** The same two with their ports EXCHANGED: behind the registered key now sits the other card. */
+export const TWO_OF_ONE_PRODUCT_SWAPPED: HostTexts = {
+  ...TWO_OF_ONE_PRODUCT,
+  streams: { '2:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)), '3:0': usbStream(SIX.product, SIX_PORT, capture('S32_LE', SIX.channels, 24)) },
+};
 /** A host without a sound card: the listing program prints its heading and nothing else. */
 export const NO_CARD: HostTexts = { list: HEADING };
 /** Text that is no listing at all, with a hostile entry line among it. */

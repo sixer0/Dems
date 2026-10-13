@@ -80,17 +80,26 @@ export { LOCAL_DEVICE_ROWS, readStoredDevices, registerLocalDevices, type FenceE
 export {
   CAPTURE_SOURCE_SLOTS,
   DevelopmentSourceLabel,
+  MIC_SOURCE_FACT_KEYS,
+  NO_SOURCE_FACTS,
+  SOURCE_FACTS_MAX_BYTES,
   assertOperationRecordable,
   assertSessionSourcesOfOperation,
+  audioCardStatementOf,
   buildSessionCaptureSources,
   developmentSourceLabelOf,
   deviceSourceFieldsOf,
+  micSourceFactsOf,
   storedDeviceListingOf,
+  type AudioCardFactsSource,
+  type AudioCardStatement,
   type CaptureSourceSlot,
   type DeviceSourceFields,
+  type MicSourceFactKey,
   type RecordedSlot,
   type SessionCaptureSource,
   type SessionCaptureSourcesInput,
+  type SessionSourceFacts,
 } from './sources';
 export { CAPTURE_FENCE_WRITES, READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from './statements';
 

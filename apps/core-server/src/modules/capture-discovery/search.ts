@@ -35,8 +35,23 @@
  *   - tells the listeners (the no-device notifier of row 133 raises or resolves its alert).
  * "The search could not run" (`DiscoveryNotRunError`, or the registry read failed) is state
  * FAILED with a reason code and a row with `outcome: FAILED`. It is never an empty COMPLETE.
+ *
+ * THE TYPED ADDRESS (task 4 blueprint row 96, WP-12; contract of row 94; amended ruling AM-3). A
+ * MANUAL request may carry `typed`: THE DESTINATION RULE'S ANSWER for one address the technician
+ * typed (`routes.ts` asks the rule; this file never sees the typed text and builds no destination
+ * of its own). Then the search that is STARTED also sends one unicast probe to it, through the
+ * adapter's one socket. Three things hold for it:
+ *   - it is probed only by a search this call started. While the caller's own search runs the
+ *     answer is that search (`created: false`) and the typed address is NOT probed (decision 3);
+ *   - it has a spacing of its own per Core, beside the bounds of `limits.ts`: a typed probe sooner
+ *     than `CAPTURE_DISCOVERY_MIN_INTERVAL_MS` after the last one, of any session, is refused
+ *     `DISCOVERY_RATE_LIMITED` before anything is sent (the destination rule's point 4);
+ *   - nothing of it is written or logged: the audit row and the log line carry counts only (the
+ *     adapter's `typedProbesSent` among them), never the address.
+ * A request without `typed` takes none of these steps.
  */
 import {
+  CAPTURE_DISCOVERY_MIN_INTERVAL_MS,
   CAPTURE_DISCOVERY_WINDOW_MS,
   CaptureCandidateStatus,
   CaptureDiscoveryReason,
@@ -77,6 +92,16 @@ export function openSessionOf(session: { readonly id: string; readonly state: st
   return session === null || session.state === SessionState.SEALED ? null : { id: session.id, state: session.state };
 }
 
+/**
+ * The destination of a typed-address probe, as the discovery adapter takes it: the answer of the
+ * destination rule of the capture unit (`AllowedDestination`), named here through the adapter's
+ * own signature because that rule's file lies inside the closed capture unit.
+ */
+export type TypedDestination = NonNullable<Parameters<OnvifDiscoveryAdapter['discover']>[0]['unicast']>;
+
+/** What the destination rule answers for a typed address (the shape of the capture unit's decision). The refusal is a code word and never leaves the Core. */
+export type TypedAddressDecision = { readonly allowed: true; readonly destination: TypedDestination } | { readonly allowed: false; readonly refusal: string };
+
 export interface SearchRequest {
   /** The auth session that owns the search (the caller's, or the operator's who started the pre-check). */
   readonly sessionId: string;
@@ -84,6 +109,8 @@ export interface SearchRequest {
   /** The paired device of that session, or null on the web console: the row's `deviceId`. */
   readonly deviceId: string | null;
   readonly trigger: CaptureDiscoveryTrigger;
+  /** Task 4 row 96: the destination rule's answer for ONE typed address (MANUAL only). Absent: the search as it always was. */
+  readonly typed?: TypedDestination;
 }
 
 /** What the window's end tells a listener: counts and ids, never a candidate. */
@@ -179,6 +206,8 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
   const listeners: Array<(closed: SearchClosed) => void | Promise<void>> = [];
   let sequence = 0;
   let running: AbortController | null = null;
+  /** Row 96: when the last search that carried a typed address STARTED, of any session; null for none. */
+  let lastTypedAt: number | null = null;
   /** The highest number of the stored chain, once it was read (G70b-07); null until then. */
   let storedBase: number | null = options.lastStoredSearchNumber === undefined ? 0 : null;
   let baseRead: Promise<void> | null = null;
@@ -290,12 +319,22 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
           return refuse({ kind: 'RATE_LIMITED', reason: CaptureDiscoveryReason.DISCOVERY_RATE_LIMITED, bound: allowance.bound, retryAfterMs: allowance.retryAfterMs });
         }
       }
+      // Row 96: a typed address is a MANUAL search's only; its own spacing per Core. A clock that went back is refused for the whole interval.
+      const typed = request.trigger === CaptureDiscoveryTrigger.MANUAL ? request.typed : undefined;
+      if (typed !== undefined && lastTypedAt !== null) {
+        const elapsed = startedAt - lastTypedAt;
+        if (!(elapsed >= CAPTURE_DISCOVERY_MIN_INTERVAL_MS)) {
+          const retryAfterMs = elapsed >= 0 ? CAPTURE_DISCOVERY_MIN_INTERVAL_MS - elapsed : CAPTURE_DISCOVERY_MIN_INTERVAL_MS;
+          return refuse({ kind: 'RATE_LIMITED', reason: CaptureDiscoveryReason.DISCOVERY_RATE_LIMITED, bound: SearchBound.CORE_SPACING, retryAfterMs: Math.max(1, retryAfterMs) });
+        }
+      }
 
       // From here on a search IS started: it takes its ID, its place in the bounds and its row.
       sequence += 1;
       const searchId = searchIdOf((storedBase ?? 0) + sequence);
       // The pre-check's search is outside the four bounds: it takes no place in them (SEC35-39 (3)).
       if (request.trigger === CaptureDiscoveryTrigger.MANUAL) limiter.record(request.sessionId, startedAt);
+      if (typed !== undefined) lastTypedAt = startedAt;
       const search = store.begin({ sessionId: request.sessionId, searchId, trigger: request.trigger, startedAt, windowMs, interfaceCount: 0 });
       const abort = new AbortController();
       running = abort;
@@ -308,7 +347,8 @@ export function createSearchRunner(options: SearchRunnerOptions): SearchRunner {
           const index = registeredIndexOf(await options.registeredCameras());
           const adapter = options.adapter(index.lookup);
           if (adapter === null) throw new DiscoveryUnavailable();
-          const found = await adapter.discover({ windowMs, signal: abort.signal });
+          // Row 96: the rule's answer goes to the adapter as it came; nothing here reads or changes a member of it.
+          const found = await adapter.discover({ windowMs, signal: abort.signal, ...(typed === undefined ? {} : { unicast: typed }) });
           counts = { ...found.counts };
           result = store.complete(searchId, foundOf(found, index), { responderCount: found.responderCount, interfaceCount: found.interfaceCount, truncated: found.truncated, completedAt: now() });
         } catch (error) {

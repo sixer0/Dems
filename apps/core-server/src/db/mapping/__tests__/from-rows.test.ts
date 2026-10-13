@@ -293,6 +293,19 @@ describe('capture_devices: a device the state holds no transport for keeps the r
     const changes = deviceChanges(base, withLocalMic(base));
     expect(changes.map((change) => (change.op === 'insert' ? change.rows.map((row) => [(row as { id: string }).id, (row as { transport: string }).transport]) : null))).toEqual([[['MIC-03', 'UNKNOWN']]]);
   });
+
+  // Task 4 integration pass I-7 (decision C43 (3)): the registry stores no capability, so what the
+  // registration stated must be what a restart reads back - `AUDIO` for the adapter kind the action
+  // `registerCaptureMicrophone` fixes, as `VIDEO` is for an adopted camera.
+  it('a microphone registered by `registerCaptureMicrophone` reads back with the capability AUDIO; CONTROL: a local-device microphone keeps none', () => {
+    const REGISTERED_MIC = { id: 'MIC-04', kind: 'MIC', model: 'Fixture interface', firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: ['AUDIO'], adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' };
+    const state = { ...base, captureDevices: { devices: [...base.captureDevices.devices, LOCAL_MIC, REGISTERED_MIC] } } as unknown as SimState;
+    const back = fromRows(asStored(toRows(state, context))).captureDevices.devices;
+    expect(back.find((device) => device.id === 'MIC-04')).toEqual(REGISTERED_MIC);
+    expect(back.find((device) => device.id === 'MIC-03')).toEqual(LOCAL_MIC);
+    // The built-in pair is what the seed states, unchanged.
+    expect(back.filter((device) => device.id === 'MIC-01' || device.id === 'MIC-02').map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO']]);
+  });
 });
 
 // Fix F-M4 (review row 69, finding R69-03): the stored registry becomes the device list through the

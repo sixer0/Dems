@@ -68,6 +68,8 @@ const WS_DISCOVERY = 'src/capture/adapters/camera/ws-discovery.ts';
 const SIGNER_HOST_KEY = 'src/capture/signer/host-key.ts';
 /** Row 142: the ONE file of the server that imports the `onvif` package and an HTTP agent (pinned; G-R10, G-R11, SEC35-27). */
 const ONVIF_SESSION = 'src/capture/adapters/camera/onvif-session.ts';
+/** Task 4 row 110 (WP-22a; amended by row 3's decision text SR-3, entry 1): the SECOND file of the server that imports the `onvif` package, the set-network file; it imports ONE HTTP agent for the same purpose (pinned; G-R10, G-R11, G-R2). */
+const ONVIF_NETWORK = 'src/capture/adapters/camera/onvif-network.ts';
 /** Rows 134 to 136 (decision D95): the ONE door of the local-device helpers, the second file that may start a process (pinned; G-R2, G-R8, G-R12). */
 const LOCAL_HELPER_DOOR = 'src/capture/adapters/local/process-door.ts';
 /** Row 135: the ONE file that touches the named pipe of a microphone (pinned; G-R2, G-R6). */
@@ -206,9 +208,12 @@ describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
   it('no file of the folder opens a socket or starts a worker thread', () => {
     // Row 131 (G-R9): the ONE datagram socket of the Core is the WS-Discovery probe; its file is pinned by name, for that one module.
     // Row 142 (G-R10): the ONE importer of an HTTP agent is the connection test; its file is pinned by name, for those two modules.
-    expect(occurrences(capture, SOCKET_OR_THREAD, (path) => path !== WS_DISCOVERY && path !== ONVIF_SESSION)).toEqual([]);
+    // Task 4 row 110 (SR-3: "unless row 110 needs the same two for the same purpose, which it then pins by exact string in the same way"):
+    // the set-network file needs ONE of the two, the plain HTTP agent; it speaks no TLS, so the certificate exception is not widened.
+    expect(occurrences(capture, SOCKET_OR_THREAD, (path) => path !== WS_DISCOVERY && path !== ONVIF_SESSION && path !== ONVIF_NETWORK)).toEqual([]);
     expect((capture.find((file) => file.path === WS_DISCOVERY)?.text.match(SOCKET_OR_THREAD) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([join('node:', 'dg', 'ram')]);
     expect((capture.find((file) => file.path === ONVIF_SESSION)?.text.match(SOCKET_OR_THREAD) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([join('node:', 'ht', 'tp'), join('node:', 'ht', 'tps')]);
+    expect((capture.find((file) => file.path === ONVIF_NETWORK)?.text.match(SOCKET_OR_THREAD) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([join('node:', 'ht', 'tp')]);
   });
 
   it('no file of the folder names a credential file, a key file or the oMLX settings', () => {
@@ -355,13 +360,78 @@ describe('G-R9: one datagram socket, in one file, closed on every way out, to on
     expect(discovery).toContain('export const WS_DISCOVERY_TTL = 1;');
     expect(discovery).toContain('open.setMulticastTTL(WS_DISCOVERY_TTL);');
     // One send call site; its destination is the group constant or the injected target, which is refused unless it is the loopback literal.
+    // Task 4 row 96 (G-R9 amended by row 3's decision text SR-2, in its destination clause only): the one call site stands in ONE function,
+    // `transmit`, with two callers - the round (the group or the injected target, as before) and the typed probe (next test).
     expect([...discovery.matchAll(/\.send\s*\(/g)]).toHaveLength(1);
-    expect(discovery).toContain('open.send(probe, destination.port, destination.address, sent);');
+    expect(discovery).toContain('open.send(probe, to.port, to.address, sent);');
+    expect(discovery.match(/\btransmit\([^)]*\)/g)).toEqual([
+      'transmit(open: Socket, probe: Buffer, to: { readonly address: string; readonly port: number }, sent: (error: Error | null)',
+      'transmit(open, probe, destination, sent)',
+      'transmit(open, typedProbe, typed, typedSent)',
+    ]);
     expect(discovery).toContain('const destination = fixture ?? WS_DISCOVERY_GROUP;');
     expect(discovery).toContain("const LOOPBACK = '127.0.0.1';");
     expect(discovery).toMatch(/if \(fixture !== null && \(fixture\.address !== LOOPBACK \|\|[^\n]*\n\s*throw new CaptureAdapterError/);
     // Every address literal of the file: the group and the loopback literal, and one documentation address for the fixture's synthetic interface.
     expect([...new Set(discovery.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) ?? [])].sort()).toEqual(['127.0.0.1', '192.0.2.1', '239.255.255.250', '255.255.255.0']);
+  });
+
+  // Task 4 row 96 (WP-12; SR-2: "a third destination is admitted, ONE unicast address that has passed the destination rule function of row 95
+  // before any packet is built ... the static test must show that the unicast destination can only be a value returned by the rule function
+  // (a typed or stored address never reaches the send call directly)"). Unchanged and still pinned above and below: one importer, one socket,
+  // `udp4`, TTL 1, no group joined, one place that closes, the handler as one try / catch, the loopback target named in this one file.
+  it('SR-2: the third destination is the destination rule\'s own answer - made in the rule\'s file only, handed on unchanged, and replaced by the loopback target under the fixture', () => {
+    const DESTINATION_RULE = 'src/capture/destination-rule.ts';
+    const ROUTES = 'src/modules/capture-discovery/routes.ts';
+    const SEARCH = 'src/modules/capture-discovery/search.ts';
+    const TYPED_RULE = 'src/modules/capture-discovery/typed-address.ts';
+    const textOf = (path: string): string => production.find((file) => file.path === path)?.text ?? '';
+    // (1) In the datagram file the member is typed as the rule's answer, and the typed target is that answer's address on the group's port - or the fixture.
+    expect(discovery).toContain("import type { AllowedDestination } from '../../destination-rule';");
+    expect(discovery).toContain('readonly unicast?: AllowedDestination;');
+    expect(discovery).toContain('const unicast = search.unicast ?? null;');
+    expect(discovery).toContain('const typed = unicast === null ? null : (fixture ?? { address: unicast.address, port: WS_DISCOVERY_GROUP.port });');
+    // `typed` and `unicast` are assigned once each, and no other value of the file is an address of a send: the two callers of `transmit` name `destination` and `typed`.
+    expect(discovery.match(/\b(?:typed|unicast|destination) = /g)).toEqual(['destination = ', 'unicast = ', 'typed = ']);
+    // The typed probe stays on the segment: TTL 1 for it too, and one datagram, sent once, after a first round that left.
+    expect(discovery).toContain('if (typed !== null) open.setTTL(WS_DISCOVERY_TTL);');
+    expect(discovery.match(/\bsendTyped\(\)/g)).toHaveLength(1);
+    // The source the rule named must be held by a probed interface, else nothing is sent at all (the refusal stands before the socket).
+    expect(discovery).toContain('const sourceHeld = unicast === null || fixture !== null || interfaces.some((probed) => probed.address === unicast.sourceAddress);');
+    expect(discovery.indexOf('if (interfaces.length === 0 || !sourceHeld) {')).toBeGreaterThan(0);
+    expect(discovery.indexOf('if (interfaces.length === 0 || !sourceHeld) {')).toBeLessThan(discovery.indexOf('let socket: Socket | null = null;'));
+
+    // (2) An answer of the rule is MADE in the rule's file and nowhere else: no other production file writes its two source members.
+    const MAKES_AN_ANSWER = /\b(?:sourceAddress|viaAlias)\s*:\s*(?!string\b|boolean\b)/g;
+    expect(places(production, MAKES_AN_ANSWER)).toEqual([DESTINATION_RULE]);
+    // (3) The one writer of `unicast` hands on what it was given; the one writer of `typed` hands on the rule's decision. No address text is in either.
+    const WRITES_UNICAST = /\bunicast\s*:\s*(?!AllowedDestination\b)[^,;}]+/g;
+    expect(places(production, WRITES_UNICAST)).toEqual([SEARCH]);
+    expect(textOf(SEARCH).match(WRITES_UNICAST)).toEqual(['unicast: typed ']);
+    expect(textOf(SEARCH)).toContain('const typed = request.trigger === CaptureDiscoveryTrigger.MANUAL ? request.typed : undefined;');
+    expect(textOf(ROUTES).match(/\btyped = [^;]*;/g)).toEqual(['typed = decision.destination;']);
+    expect(textOf(ROUTES)).toContain('const decision = typedAddress.decide(address);');
+    expect(textOf(ROUTES)).toContain('if (!decision.allowed) throw addressNotAllowed();');
+    // C10 (web console only): the guard's own refusal is asked for once the body is known to hold the member, BEFORE the rule is asked.
+    expect(textOf(ROUTES).match(/\brequireWebConsoleSession\(/g)).toHaveLength(1);
+    expect(textOf(ROUTES).indexOf('await permissionGuard(app).requireWebConsoleSession(request);')).toBeGreaterThan(textOf(ROUTES).indexOf('if (address !== undefined) {'));
+    expect(textOf(ROUTES).indexOf('await permissionGuard(app).requireWebConsoleSession(request);')).toBeLessThan(textOf(ROUTES).indexOf('typedAddress.decide(address)'));
+    // The text of the body is read at ONE place of the route and goes to the rule only.
+    expect(textOf(ROUTES).match(/\brequest\s*\.\s*body\b[^;\n]*/g)).toEqual(['request.body?.address']);
+    expect(textOf(ROUTES).match(/\([^()]*\baddress\b[^()]*\)/g)).toEqual(['(address !== undefined)', '(address)']);
+    // (4) The module's own rule holder has no rule: without one handed in, every typed address is refused; a rule's answer is returned as it came.
+    expect(textOf(TYPED_RULE)).toContain('if (provided === null) return refused(TYPED_ADDRESS_NOT_CONFIGURED);');
+    expect(textOf(TYPED_RULE).match(/\ballowed: true\b/g)).toBeNull();
+    expect(textOf(TYPED_RULE)).not.toMatch(/\b\d{1,3}(?:\.\d{1,3}){3}\b|\bdestination\s*:/);
+
+    // CONTROL: a typed text that reaches the search, an answer composed outside the rule's file, and a second assignment in the datagram file are each seen.
+    const planted: SourceFile[] = [
+      { path: ROUTES, text: "const found = await adapter.discover({ windowMs, signal, unicast: { address: request.body.address, port: 3702, sourceAddress: own, viaAlias: false } });" },
+      { path: SEARCH, text: 'const found = await adapter.discover({ windowMs, signal, unicast: typed });' },
+    ];
+    expect(places(planted, MAKES_AN_ANSWER)).toEqual([ROUTES]);
+    expect(places(planted, WRITES_UNICAST)).toEqual([ROUTES, SEARCH]);
+    expect('const typed = unicast === null ? null : fixture;\ntyped = { address: stored, port: 3702 };'.match(/\b(?:typed|unicast|destination) = /g)).toEqual(['typed = ', 'typed = ']);
   });
 
   it('that file: one place closes the socket, and the search settles only through it once a socket exists', () => {
@@ -430,16 +500,21 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
   const NO_CERTIFICATE_CHECK = new RegExp(`${join('reject', 'Unauthorized')}\\s*:\\s*false`, 'g');
   /** The reads of rule CT-1, as the package names them. */
   const READS = ['getCapabilities', 'getProfiles', 'getServices', 'getStreamUri', 'getSystemDateAndTime'];
+  /** Task 4 row 110 (SR-3, entry 1): the four calls of the set-camera-network operation, as the package names them. The exact list of the set-network file. */
+  const NETWORK_CALLS = ['getNetworkInterfaces', 'setNetworkDefaultGateway', 'setNetworkInterfaces', 'systemReboot'];
   const session = capture.find((file) => file.path === ONVIF_SESSION)?.text ?? '';
+  const network = capture.find((file) => file.path === ONVIF_NETWORK)?.text ?? '';
   const types = capture.find((file) => file.path === PACKAGE_TYPES)?.text ?? '';
   const callsOf = (text: string): string[] => [...new Set([...text.matchAll(CLIENT_CALL)].map((match) => match[1] ?? ''))].sort();
 
   /** The rule as a function of a tree, so that the control can run it on planted files. */
   const violations = (files: readonly SourceFile[]): string[] => [
-    ...occurrences(files, PACKAGE, (path) => path !== ONVIF_SESSION && path !== PACKAGE_TYPES).map((place) => `${place} imports the ONVIF client`),
+    ...occurrences(files, PACKAGE, (path) => path !== ONVIF_SESSION && path !== PACKAGE_TYPES && path !== ONVIF_NETWORK).map((place) => `${place} imports the ONVIF client`),
     ...occurrences(files, STREAM_OR_SOCKET, (path) => path.startsWith('src/capture/')).map((place) => `${place} imports a socket, TLS or HTTP/2 module`),
     ...occurrences(files, NO_CERTIFICATE_CHECK, (path) => path !== ONVIF_SESSION).map((place) => `${place} switches the certificate check off`),
     ...files.filter((file) => file.path === ONVIF_SESSION).flatMap((file) => callsOf(file.text).filter((name) => !READS.includes(name)).map((name) => `${file.path} calls ${name} on the client`)),
+    // Row 110: each importer has its own exact list. A read in the set-network file fails as a network call in the connection file does.
+    ...files.filter((file) => file.path === ONVIF_NETWORK).flatMap((file) => callsOf(file.text).filter((name) => !NETWORK_CALLS.includes(name)).map((name) => `${file.path} calls ${name} on the client`)),
   ];
 
   it('finds a second importer, the package\'s main entry, a write call, a listener and a second place without a certificate check (control)', () => {
@@ -458,21 +533,67 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
       `${ONVIF_SESSION} calls setSystemDateAndTime on the client`,
       `${ONVIF_SESSION} calls systemReboot on the client`,
     ]);
+    // Task 4 row 110 (SR-3): the second importer is held to ITS four calls - a read of the connection file, a clock set, a factory default,
+    // the DHCP-era calls and a listener fail there; and the connection file still fails on each of the four (the lines above).
+    const plantedNetwork: SourceFile[] = [
+      { path: ONVIF_NETWORK, text: `client.getNetworkInterfaces(done);\nclient.setNetworkInterfaces(options, done);\nclient.setNetworkDefaultGateway(options, done);\nclient.systemReboot(done);\nclient.getProfiles(done);\nclient.setSystemFactoryDefault(done);\nclient.setNTP(options, done);\nclient.on('rawResponse', keep);\nconst agent = new Agent({ ${join('reject', 'Unauthorized')}: false });` },
+      { path: 'src/capture/adapters/camera/onvif-third.ts', text: `import cam from '${join('on', 'vif')}/lib/cam.js';` },
+    ];
+    expect(violations(plantedNetwork)).toEqual([
+      'src/capture/adapters/camera/onvif-third.ts:1 imports the ONVIF client',
+      `${ONVIF_NETWORK}:9 switches the certificate check off`,
+      `${ONVIF_NETWORK} calls getProfiles on the client`,
+      `${ONVIF_NETWORK} calls on on the client`,
+      `${ONVIF_NETWORK} calls setNTP on the client`,
+      `${ONVIF_NETWORK} calls setSystemFactoryDefault on the client`,
+    ]);
   });
 
-  it('the package is imported by exactly one file of the server, by the file of the client and never by its main entry', () => {
+  it('the package is imported by exactly two files of the server (SR-3), each by the file of the client and never by its main entry', () => {
     expect(violations(production)).toEqual([]);
-    expect(places(production, PACKAGE)).toEqual([PACKAGE_TYPES, ONVIF_SESSION]);
+    // Task 4 row 110 (SR-3, entry 1): + the set-network file. The list stays exact: a third importer fails until a further decision row admits it.
+    expect(places(production, PACKAGE).sort()).toEqual([PACKAGE_TYPES, ONVIF_NETWORK, ONVIF_SESSION].sort());
     // The main entry would load the package's datagram code (capture spec §A.6.1a O-8): the client's own file is named.
     expect((session.match(PACKAGE) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([FILE_OF_THE_CLIENT]);
+    expect((network.match(PACKAGE) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([FILE_OF_THE_CLIENT]);
     expect((types.match(PACKAGE) ?? []).map((text) => text.replace(/['"]/g, ''))).toEqual([FILE_OF_THE_CLIENT]);
     expect(session).not.toMatch(/\bDiscovery\b/);
+    expect(network).not.toMatch(/\bDiscovery\b/);
   });
 
-  it('the calls on the client are the five reads, and the declaration of the client has no other member', () => {
+  it('the calls on the client are the five reads in the connection file and the four network calls in the set-network file; the declaration of the client has those nine and no other member', () => {
     expect(callsOf(session)).toEqual(READS);
+    expect(callsOf(network)).toEqual(NETWORK_CALLS);
     const declared = [...types.matchAll(/^\s{4}(\w+)\(/gm)].map((match) => match[1] ?? '').filter((name) => name !== 'constructor');
-    expect(declared.sort()).toEqual(READS);
+    expect(declared.sort()).toEqual([...READS, ...NETWORK_CALLS].sort());
+    // No DHCP mode (the destination rule carries none): the one declared form of an interface set says `DHCP: false`, and the one request of the file says it by a literal.
+    expect(types.match(/\bDHCP\s*:\s*\w+/g)).toEqual(['DHCP: false']);
+    expect(network.match(/\bDHCP\s*:\s*\w+/g)).toEqual(['DHCP: false']);
+    expect(network).not.toMatch(/\bIPv6\b|\bfromDHCP\b/);
+  });
+
+  // Task 4 row 110 (SR-3: "one constructor rule holds for each importer; the client never leaves either file; the set-network file imports neither the credential reader nor the reveal module").
+  it('the set-network file: one constructor call under the same rule, the facade as its only way out, no credential reader and no reveal module, every destination a value the destination rule returned', () => {
+    expect([...network.matchAll(/\bnew\s+cam\s*\.\s*Cam\s*\(/g)]).toHaveLength(1);
+    const built = network.slice(network.indexOf('new cam.Cam('), network.indexOf('new cam.Cam(') + 600);
+    for (const option of ['autoconnect: false,', 'preserveAddress: true,', 'timeout: limits.requestMs,', 'agent,', 'useSecure: false,']) expect(built, option).toContain(option);
+    expect(network).not.toMatch(/rawRequest|rawResponse|\.\s*(?:on|once|addListener)\s*\(\s*['"]warning['"]/);
+    const exported = [...network.matchAll(/^export\s+(?:const|function|interface|type|class)\s+(\w+)/gm)].map((match) => match[1] ?? '');
+    expect([...new Set(exported)].sort()).toEqual(['ONVIF_NETWORK_CALLS', 'ONVIF_NETWORK_LIMITS', 'OnvifGatewayState', 'OnvifNetworkCall', 'OnvifNetworkLimits', 'OnvifNetworkOutcome', 'OnvifNetworkReason', 'OnvifNetworkSetResult', 'OnvifNetworkSetter', 'OnvifNetworkSetterOptions', 'OnvifRebootState', 'createOnvifNetworkSetter']);
+    expect(network).not.toMatch(/\breturn\s+client\b|\bexport\s+default\b|\bexport\s*\{/);
+    expect(network).toContain('return Object.freeze({ setAddress });');
+    // What it imports, exactly: the agent, the client's file, the destination rule's types, the timer seam, the opaque credential, the layer's errors and types, the target function.
+    expect(network.match(/from\s+'[^']+'/g)).toEqual(["from 'node:http'", `from '${FILE_OF_THE_CLIENT}'`, "from '../../destination-rule'", "from '../../types'", "from '../credential'", "from '../errors'", "from '../types'", "from './connection-target'"]);
+    expect(network).toMatch(/^import \{ usingCredential, type SealedCredential \} from '\.\.\/credential';$/m);
+    expect(network).not.toMatch(/credential-reader|credential-holders|\breveal\w*\s*\(|\bsessionOpen\b|\bconnectionTest\b|\brelayRestart\b/);
+    expect(network.match(AGENT_IMPORT)).toEqual([`import { Agent as HttpAgent } from 'node:${join('ht', 'tp')}';`]);
+    // S13-11: the client is built with, and every connection forced to, the address and port of the rule's own answer; the typed or stored text never reaches either.
+    expect(network).toContain('decision = options.destination(target.host, target.port);');
+    expect(network).toContain('const destination = decision.destination;');
+    expect(built).toContain('hostname: destination.address,');
+    expect(built).toContain('port: destination.port,');
+    expect(network).toContain('host: destination.address, port: destination.port, localAddress: destination.sourceAddress, family: 4 }');
+    expect(network.match(/\bhost(?:name)?\s*:\s*[\w.]+/g)).toEqual(['host: destination.address', 'hostname: destination.address', 'hostname: destination.address']);
   });
 
   it('one constructor call: no automatic connect, the address of the constructor kept, an explicit request limit; no listener on the client', () => {
@@ -485,9 +606,14 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
   it('the client never leaves the file: what the file exports is the facade and its vocabulary', () => {
     const exported = [...session.matchAll(/^export\s+(?:const|function|interface|type|class)\s+(\w+)/gm)].map((match) => match[1] ?? '');
     // Task 4 row 26 (G-R10 / G-R11 amended by row 3's decision text: "the connection file keeps no configuration call"): + the locator facade, its answer and the stream of a video source - four names, no client.
-    expect([...new Set(exported)].sort()).toEqual(['ONVIF_SESSION_LIMITS', 'ONVIF_SESSION_READS', 'OnvifConnectionTester', 'OnvifConnectionTesterOptions', 'OnvifLocatorResult', 'OnvifSessionLimits', 'OnvifSessionRead', 'OnvifSessionResult', 'OnvifStreamLocator', 'OnvifStreamProfile', 'OnvifTestReason', 'OnvifTestWarning', 'createOnvifConnectionTester', 'createOnvifStreamLocator']);
+    // Task 4 integration pass I-7 (row 49's request; the same amendment: a read, no configuration call): + the time-read facade - two names, no client, and no credential in its reach.
+    expect([...new Set(exported)].sort()).toEqual(['ONVIF_SESSION_LIMITS', 'ONVIF_SESSION_READS', 'OnvifConnectionTester', 'OnvifConnectionTesterOptions', 'OnvifLocatorResult', 'OnvifSessionLimits', 'OnvifSessionRead', 'OnvifSessionResult', 'OnvifStreamLocator', 'OnvifStreamProfile', 'OnvifTestReason', 'OnvifTestWarning', 'OnvifTimeReader', 'createOnvifConnectionTester', 'createOnvifStreamLocator', 'createOnvifTimeReader']);
     expect(session).not.toMatch(/\breturn\s+client\b|\bexport\s+default\b|\bexport\s*\{/);
     expect(session).toContain('return Object.freeze({ test });');
+    // The time read: its exchange is built with the literal `null` where the other two facades hand a credential on, and its `read` takes none.
+    expect(session).toContain('return Object.freeze({ read });');
+    expect(session.match(/\bexchange<[^(]*\(limits, timers, candidate, (\w+), signal, \{/g)?.map((call) => /candidate, (\w+), signal/.exec(call)?.[1])).toEqual(['credential', 'credential', 'null']);
+    expect(session).toMatch(/^ {2}read\(candidate: CameraCandidate, signal: AbortSignal\): Promise</m);
   });
 
   it('G-R10: an HTTP agent is imported in that one file, for the name Agent only; no socket, TLS or HTTP/2 module anywhere in the folder', () => {
@@ -920,6 +1046,34 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     expect(places(capture, /'alsa'/g)).toEqual([`${LOCAL}mic-helper-args.ts`]);
   });
 
+  // Task 4 row 67 (its request of batch 7, served in batch 8): G-R12 as amended by SR-4, place 3 with AD-07 (2), held at the ONE caller of the
+  // Linux table - "the two integers are read from the live listing; no text of it is passed on". Additive: no rule above is changed.
+  it('SR-4 at the production microphone adapter: each table function is called once, with integers of the live listing and the stored input number only; the guard\'s vector is the helper path and a list of the table, unchanged', () => {
+    const PRODUCTION_MIC = 'src/capture/adapters/audio/usb-audio-production.ts';
+    const adapter = (capture.find((file) => file.path === PRODUCTION_MIC)?.text ?? '').replace(/\s+/g, ' ');
+    const membersOf = (call: string): string[] => (new RegExp(`\\b${call}\\(\\{([^}]*)\\}\\)`).exec(adapter)?.[1] ?? '').split(',').map((part) => part.trim()).filter((part) => part !== '');
+    // (a) One call each; the members are numbers of the located card, the stored input NUMBER, the pipe the adapter made and the registry id. No name, no USB id, no descriptor.
+    expect(adapter.match(/\blinuxMicPushArguments\s*\(/g)).toHaveLength(1);
+    expect(adapter.match(/\blinuxMicPrecheckArguments\s*\(/g)).toHaveLength(1);
+    expect(membersOf('linuxMicPushArguments')).toEqual(['cardIndex: located.card.cardIndex', 'deviceIndex: located.card.deviceIndex', 'channelCount: located.card.channelCount', 'inputNumber: located.stored.inputNumber', 'pipePath', 'deviceId: inputId']);
+    expect(membersOf('linuxMicPrecheckArguments')).toEqual(['cardIndex: located.card.cardIndex', 'deviceIndex: located.card.deviceIndex', 'channelCount: located.card.channelCount']);
+    // (b) The door is called at three places: the pipe maker's own short list, the guarded push list, the guarded pre-check list.
+    expect(adapter.match(/\bdoor\(\{[^}]*\}\)/g)).toEqual([
+      'door({ command: asked.command, args: asked.args, env: environment, message: null, timers })',
+      'door({ command: guardProgram, args: guardedArguments(helperProgram, helperArguments), env: environment, message: null, timers, onOutput: (chunk) => watch.push(chunk) })',
+      'door({ command: guardProgram, args, env: environment, message: null, timers })',
+    ]);
+    expect(adapter.match(/\bawait runShort\([^;]*;/g)).toEqual(['await runShort(inputId, guardedArguments(helperProgram, args), config.environment, signal);']);
+    expect(adapter.match(/\b(?:helperArguments|args) = [^;]*;/g)?.map((text) => text.slice(0, text.indexOf('(')))).toEqual(['helperArguments = linuxMicPushArguments', 'args = linuxMicPrecheckArguments']);
+    // (c) The guard's vector: the configured helper path, then a list of the Linux table UNCHANGED. Nothing is added, joined or rewritten on the way.
+    expect(adapter).toContain('export function guardedArguments(helperProgram: string, helperArguments: readonly string[]): readonly string[] { return Object.freeze([helperProgram, ...helperArguments]); }');
+    expect(adapter.match(/\bguardedArguments\([^)]*\)/g)).toEqual(['guardedArguments(helperProgram: string, helperArguments: readonly string[])', 'guardedArguments(helperProgram, helperArguments)', 'guardedArguments(helperProgram, args)']);
+    // Control: a descriptor string or a card id in a member, and a list that was touched, are seen by the same patterns.
+    const planted = 'helperArguments = linuxMicPushArguments({ cardIndex: located.card.cardIndex, deviceIndex: located.card.deviceIndex, channelCount: located.card.channelCount, inputNumber: located.stored.inputNumber, pipePath, deviceId: located.card.cardId, }); door({ command: guardProgram, args: [helperProgram, ...helperArguments, located.card.name], env: environment, message: null, timers })';
+    expect(/\blinuxMicPushArguments\(\{([^}]*)\}\)/.exec(planted)?.[1]).toContain('deviceId: located.card.cardId');
+    expect(planted.match(/\bdoor\(\{[^}]*\}\)/g)).toEqual(['door({ command: guardProgram, args: [helperProgram, ...helperArguments, located.card.name], env: environment, message: null, timers })']);
+  });
+
   it('the door is the one file under adapters/local that starts a process: one spawn, no shell, the caller\'s environment only, nothing inherited', () => {
     const door = capture.find((file) => file.path === LOCAL_HELPER_DOOR)?.text ?? '';
     expect([...door.matchAll(PROCESS_START)]).toHaveLength(1);
@@ -1147,5 +1301,45 @@ describe('G-R16: the capture mode and the demo flag are related in one function;
     // The boot folder starts no process and names no timer itself: the channel and the timers are handed in (G-R8).
     expect(places(capture.filter((file) => file.path.startsWith(BOOT)), PROCESS_START)).toEqual([]);
     expect(places(capture.filter((file) => file.path.startsWith(BOOT)), GLOBAL_TIMER)).toEqual([]);
+  });
+});
+
+// Task 4 row 80 (WP-20). Decision C17 left open whether SR-1 must also cover the process-starting file of row 80.
+// DECIDED FOR ROW 80: it must not. SR-1 admits exactly three files and its own open point 4 names the route - the
+// runner is INJECTED. So no list above gained an entry for the host checks; this block holds the route instead.
+describe('row 80: the host checks ask the host through an injected runner; no list of G-R2 or G-R8 grew for them', () => {
+  const HOST_CHECKS = 'src/capture/boot/host-checks.ts';
+  const CHECKS = 'src/capture/boot/checks.ts';
+  const text = (path: string): string => capture.find((file) => file.path === path)?.text ?? '';
+
+  it('the file imports types only, names no process module, no file system, no socket, no timer and no environment; it logs nothing', () => {
+    const file = text(HOST_CHECKS);
+    expect(file.match(/^import .*$/gm)).toEqual(["import type { HelperDoor } from '../adapters/local';", "import type { CaptureTimers } from '../types';"]);
+    const own = capture.filter((entry) => entry.path === HOST_CHECKS);
+    for (const pattern of [PROCESS_MODULE, PROCESS_START, FILE_SYSTEM, SOCKET_OR_THREAD, GLOBAL_TIMER, ENVIRONMENT, SYSTEM_TIME, RANDOM]) expect(occurrences(own, pattern), String(pattern)).toEqual([]);
+    expect(logCalls(file)).toEqual([]);
+  });
+
+  it('every question is a row of the one table: an absolute program as a literal, and the runner is called in one place with a row of it', () => {
+    const file = text(HOST_CHECKS);
+    expect([...file.matchAll(/\brun\(([^)]*)\)/g)].map((match) => match[1])).toEqual(['check.command']);
+    expect([...new Set(file.match(/'\/(?:usr|bin|sbin)\/[^']*'/g) ?? [])].sort()).toEqual(["'/usr/bin/arping'", "'/usr/bin/dpkg'", "'/usr/bin/grep'", "'/usr/bin/id'", "'/usr/bin/stat'", "'/usr/bin/systemctl'", "'/usr/bin/timedatectl'", "'/usr/sbin/sysctl'"]);
+    // No program that changes the host, and no shell.
+    expect(file.match(/'(?:\/usr)?\/s?bin\/(?:sh|bash|env|sudo|nft|ufw|ip|usermod|install|tee)'|\bdaemon-reload\b|'(?:enable|disable|start|stop|restart|mask|-w|--write)'/g)).toBeNull();
+    // The door of the runner is a parameter: the file calls it and builds none.
+    expect(file).toContain('const child = door({ command: command.program, args: command.args });');
+  });
+
+  it('the boot asks the host in REAL_PRODUCTION only, once, after the operators and before the worker; the runner over a door has no caller in the product yet', () => {
+    const checks = text(CHECKS);
+    const asked = 'if (operation === CaptureOperation.REAL_PRODUCTION && deps.host !== undefined) {';
+    expect(checks.split(asked)).toHaveLength(2);
+    expect([...checks.matchAll(/\bhostCheckOutcomeOf\s*\(/g)]).toHaveLength(1);
+    expect(checks.indexOf(asked)).toBeGreaterThan(checks.indexOf('const operators = await deps.demoPasswordOperators().catch(() => null);'));
+    expect(checks.indexOf('hostCheckOutcomeOf(deps.host', checks.indexOf(asked))).toBeGreaterThan(checks.indexOf(asked));
+    expect(checks.lastIndexOf('await deps.handshake()')).toBeGreaterThan(checks.indexOf('hostCheckOutcomeOf(deps.host'));
+    // Who hands a door to the host runner is a decision of the composition (the local door, as the process listing uses it):
+    // when it is wired, this list becomes exactly that one file.
+    expect(places(production, /\bhostCommandRunnerOver\s*\(/g)).toEqual([HOST_CHECKS]);
   });
 });

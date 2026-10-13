@@ -20,7 +20,7 @@ import {
   DEFAULT_SEED,
   FaultKind,
   isSessionActive,
-  micInputOfChannel,
+  meterInputOfChannel,
   micLinesInForce,
   openSessionAudioSource,
   openSessionSnapshot,
@@ -109,11 +109,11 @@ describe('the shared readers, sealed session THEN the selector changed (L-Z item
     const sealed = afterSelectorChange(SessionState.SEALED);
     expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-04', 'MIC-02']);
     // What `useAudioChannel('AUDIO-01')` subscribes to: the frame of the input that channel is NOW.
-    expect(micInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04');
+    expect(meterInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04');
     // CONTROL: the same state with the session still open keeps the session's lines.
     const open = afterSelectorChange(SessionState.RECORDING);
     expect(captureMicLines(open).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02']);
-    expect(micInputOfChannel(captureMicLines(open), 'AUDIO-01')).toBe('MIC-01');
+    expect(meterInputOfChannel(captureMicLines(open), 'AUDIO-01')).toBe('MIC-01');
   });
 
   it('`activeMeterChannel`: the active input is looked up among the lines in force', () => {

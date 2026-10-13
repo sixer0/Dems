@@ -660,6 +660,14 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+  registerCaptureMicrophone: {
+    flow: LiveActionFlow.LOCAL,
+    // Task 4 row 185: no client registers a microphone through an action. The Core does it inside
+    // operation 99 (`registerCaptureAudioInput`), which a client calls as a request; the device
+    // then arrives in the replicated `captureDevices` slice. One more `local` than the header counts.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
 /** The names of the 47 bindings, in the order of `SimActions`. */

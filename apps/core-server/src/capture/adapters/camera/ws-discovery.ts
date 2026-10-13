@@ -31,9 +31,24 @@
  * must be exactly 127.0.0.1: the socket is then bound to 127.0.0.1 and no datagram can leave the
  * host. Only test support sets it (no file under `src/` does; no configuration key, no environment
  * variable). Without it the destination is the constant group below.
+ *
+ * THE TYPED ADDRESS (task 4 blueprint row 96, WP-12; amended ruling AM-3 of D80(10); rule G-R9 as
+ * amended by decision text SR-2). A search may carry ONE more destination, `unicast`: the answer
+ * of the destination rule (`capture/destination-rule.ts`, `AllowedDestination`) for an address the
+ * technician typed. This file never sees the typed text: the member's type is the rule's own
+ * answer, and only the rule's file makes one. For it the search sends ONE more datagram, from the
+ * SAME socket and through the SAME send call: one Probe of the camera type with a message ID of
+ * its own, to that address on the group's port, once, after the first round, with TTL 1. Nothing
+ * else changes: no second socket, no group joined, no connection, no read of the device (D80(1)
+ * stands - the candidate is built from the probe answer, by the same collector and its same rules
+ * of where an answer may come from). The host must hold the source address the rule named on an
+ * interface the search probes; when it does not, the search "could not run" and nothing is sent.
+ * Under the loopback fixture the typed probe goes to the fixture's target too: no test datagram
+ * can leave the host. A search without `unicast` is what it was, datagram for datagram.
  */
 import { createSocket, type RemoteInfo, type Socket } from 'node:dgram';
 import { networkInterfaces } from 'node:os';
+import type { AllowedDestination } from '../../destination-rule';
 import type { CaptureTimers } from '../../types';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import type { DiscoveryResult, DiscoverySearch } from '../types';
@@ -58,6 +73,8 @@ export const WS_DISCOVERY_REPEAT_MS = 250;
 export const WS_DISCOVERY_TTL = 1;
 /** The two device types a search asks for (DS-6). */
 export const WS_DISCOVERY_PROBE_TYPES = Object.freeze(['tds:Device', 'dn:NetworkVideoTransmitter'] as const);
+/** Row 96: the type of the ONE probe a typed address is asked with - the camera type. */
+export const WS_DISCOVERY_TYPED_PROBE_TYPE = 'dn:NetworkVideoTransmitter';
 const LOOPBACK = '127.0.0.1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,6 +106,17 @@ export interface WsDiscoveryCounts extends DiscoveryCounts {
   readonly sendErrors: number;
   /** Datagrams whose handling threw: caught, counted, dropped (SEC35-29 (1)). */
   readonly handlerErrors: number;
+  /** Row 96: probes the operating system accepted for the typed address, 0 or 1. Present only in a search that carried one. */
+  readonly typedProbesSent?: number;
+}
+
+/**
+ * A search of this adapter (task 4 row 96). `unicast` is THE DESTINATION RULE'S ANSWER for an
+ * address the technician typed: never the typed text, never a stored address, never a value this
+ * file or its caller composed. Absent: the search as it always was.
+ */
+export interface WsDiscoverySearch extends DiscoverySearch {
+  readonly unicast?: AllowedDestination;
 }
 
 /** The seam's result (`DiscoveryResult`) with this adapter's candidates and the counts of DS-12. */
@@ -113,7 +141,15 @@ export interface WsDiscoveryOptions {
 }
 
 export interface WsDiscovery {
-  search(search: DiscoverySearch): Promise<WsDiscoveryResult>;
+  search(search: WsDiscoverySearch): Promise<WsDiscoveryResult>;
+}
+
+/**
+ * THE ONE SEND CALL of the Core's datagram socket (rule G-R9). `to` is the group constant, the
+ * injected loopback target, or - since row 96 - the typed destination the rule answered.
+ */
+function transmit(open: Socket, probe: Buffer, to: { readonly address: string; readonly port: number }, sent: (error: Error | null) => void): void {
+  open.send(probe, to.port, to.address, sent);
 }
 
 function probeXml(messageId: string, type: string): Buffer {
@@ -150,25 +186,35 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
         }
         const selection = selectInterfaces(readInterfaces());
         const interfaces: readonly ProbedInterface[] = selection.probed;
-        if (interfaces.length === 0) {
+        // Row 96: the rule's answer for a typed address, or none. The host must hold the source the rule named on a probed interface.
+        const unicast = search.unicast ?? null;
+        const sourceHeld = unicast === null || fixture !== null || interfaces.some((probed) => probed.address === unicast.sourceAddress);
+        if (interfaces.length === 0 || !sourceHeld) {
           rejectSearch(new DiscoveryNotRunError(DiscoveryNotRun.NO_ELIGIBLE_INTERFACE));
           return;
         }
+        /** Where the typed probe goes: the rule's address on the group's port; under the fixture, the fixture's target. */
+        const typed = unicast === null ? null : (fixture ?? { address: unicast.address, port: WS_DISCOVERY_GROUP.port });
         const messageIds = WS_DISCOVERY_PROBE_TYPES.map(() => options.newMessageId());
-        if (messageIds.some((id) => !UUID.test(id)) || new Set(messageIds).size !== messageIds.length) {
+        const typedId = typed === null ? null : options.newMessageId();
+        const askedIds = typedId === null ? messageIds : [...messageIds, typedId];
+        if (askedIds.some((id) => !UUID.test(id)) || new Set(askedIds).size !== askedIds.length) {
           rejectSearch(new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID));
           return;
         }
         const urns = messageIds.map((id) => `urn:uuid:${id}`);
         const probes = WS_DISCOVERY_PROBE_TYPES.map((type, index) => probeXml(urns[index] ?? '', type));
+        const typedUrn = typedId === null ? null : `urn:uuid:${typedId}`;
+        const typedProbe = typedUrn === null ? null : probeXml(typedUrn, WS_DISCOVERY_TYPED_PROBE_TYPE);
         const network: DiscoveryNetwork = fixture === null ? { kind: 'LAN', probed: interfaces, ownAddresses: selection.ownAddresses } : { kind: 'LOOPBACK_FIXTURE', address: fixture.address };
-        const collector = createDiscoveryCollector({ messageIds: urns, network, registered: options.registered, read: options.read });
+        const collector = createDiscoveryCollector({ messageIds: typedUrn === null ? urns : [...urns, typedUrn], network, registered: options.registered, read: options.read });
 
         let socket: Socket | null = null;
         let finished = false;
         let datagramsSent = 0;
         let sendErrors = 0;
         let handlerErrors = 0;
+        let typedProbesSent = 0;
         const interfacesReached = new Set<number>();
         const cancels: (() => void)[] = [];
 
@@ -198,7 +244,7 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
             responderCount: collected.responderCount,
             interfaceCount: interfacesReached.size,
             truncated: collected.truncated,
-            counts: Object.freeze({ ...collected.counts, datagramsSent, sendErrors, handlerErrors }),
+            counts: Object.freeze({ ...collected.counts, datagramsSent, sendErrors, handlerErrors, ...(typed === null ? {} : { typedProbesSent }) }),
           });
         };
         const done = (): void => finish(() => resolveSearch(result()));
@@ -236,7 +282,7 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
             };
             try {
               if (fixture === null) open.setMulticastInterface(probed.address);
-              for (const probe of probes) open.send(probe, destination.port, destination.address, sent);
+              for (const probe of probes) transmit(open, probe, destination, sent);
             } catch {
               // This interface refused the option or the send: it is counted, the next one is tried.
               sendErrors += pending;
@@ -245,6 +291,21 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
             }
           };
           sendOn(0);
+        };
+
+        /** Row 96: ONE probe to the typed destination, once. A refused send is counted; the search goes on. */
+        const sendTyped = (): void => {
+          const open = socket;
+          if (finished || open === null || typed === null || typedProbe === null) return;
+          const typedSent = (error: Error | null): void => {
+            if (error === null) typedProbesSent += 1;
+            else sendErrors += 1;
+          };
+          try {
+            transmit(open, typedProbe, typed, typedSent);
+          } catch {
+            sendErrors += 1;
+          }
         };
 
         const onDatagram = (bytes: Buffer, remote: RemoteInfo): void => {
@@ -274,12 +335,17 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
                 open.setMulticastTTL(WS_DISCOVERY_TTL);
                 open.setMulticastLoopback(false);
               }
+              // Row 96: the typed probe does not leave the local segment either.
+              if (typed !== null) open.setTTL(WS_DISCOVERY_TTL);
               // DS-7: the window runs from the first datagram.
               cancels.push(options.timers.after(search.windowMs, guarded(done)));
               sendRound(() => {
                 // DS-13: a first round in which nothing could be sent is "could not run", at once.
                 if (datagramsSent === 0) notRun();
-                else cancels.push(options.timers.after(WS_DISCOVERY_REPEAT_MS, guarded(() => sendRound(() => undefined))));
+                else {
+                  sendTyped();
+                  cancels.push(options.timers.after(WS_DISCOVERY_REPEAT_MS, guarded(() => sendRound(() => undefined))));
+                }
               });
             }),
           );

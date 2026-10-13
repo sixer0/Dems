@@ -567,8 +567,12 @@ const PARAMETER_SET_READ_LIMIT = 4096;
  * The frame rate an H.264 sequence parameter set states (`vui_parameters`, `timing_info_present_flag`),
  * or null when it states none or cannot be read to that point. `nal` is the NAL unit as `avcC`
  * holds it (header byte first, emulation prevention bytes still in).
+ *
+ * Exported for the stream half of the connection test (task 4 row 50; AD-06 (1)): the profile code
+ * minted from a probed stream reads the rate with THIS function, so that it states what the seal
+ * will state of the recorded file.
  */
-function avcDeclaredFrameRate(nal: Uint8Array): number | null {
+export function avcDeclaredFrameRate(nal: Uint8Array): number | null {
   if (nal.length < 4 || nal.length > PARAMETER_SET_READ_LIMIT || ((nal[0] ?? 0) & 0x1f) !== 7) return null;
   // The payload without the emulation prevention bytes (00 00 03 -> 00 00).
   const rbsp: number[] = [];

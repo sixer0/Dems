@@ -15,7 +15,17 @@
  *   - the worker reports that it refused or gave up the listener of a camera WHOSE RELAY REPORTED
  *     (BR-08: the two sides contradict each other; the worker's own comparison does not relax the
  *     pairing);
- *   - a relay report for another attempt than the one in force, earlier or later.
+ *   - a relay report for an attempt THE CORE NEVER ISSUED: a later one than the attempt in force, or
+ *     a number that is no attempt at all (0, a negative or a broken number).
+ *
+ * A REPORT OF A SUPERSEDED ATTEMPT IS NOT A FAULT (task 4 row 188; controller ruling C37). The
+ * attempts of a session are the supervisor's count of its workers: 1 for the first, one more for
+ * each later one. Every attempt BELOW the one in force was issued by the Core itself and then
+ * superseded - its worker went down, the session got fresh ingest addresses (row 179), and its relay
+ * is being ended. What such a relay still says is dropped: no fault, no audit entry, nothing paired.
+ * It is COUNTED and told to `superseded`, so that the caller can say it in one log line. Otherwise
+ * the restart of a worker inside a session would end the capture it is trying to save. The pairing
+ * of the attempt in force is untouched by it.
  *
  * WHAT IS NOT A FAULT (controller ruling C35 (a), which keeps ruling D72(k) of task 3): A CAMERA THAT
  * IS SIMPLY ABSENT. Nothing arrives from either side - or the worker says it gave the listener up
@@ -52,7 +62,7 @@ export const IngestPairingFault = {
   RELAY_REPORTED_TWICE: 'RELAY_REPORTED_TWICE',
   /** The relay of the camera reported success and the worker says it refused, or gave up, that listener. */
   WORKER_REFUSED: 'WORKER_REFUSED',
-  /** A relay report names another attempt than the one in force. */
+  /** A relay report names an attempt the Core never issued (a later one than the attempt in force, or no attempt at all). A superseded attempt is NOT this fault (C37). */
   ATTEMPT_MISMATCH: 'ATTEMPT_MISMATCH',
 } as const;
 export type IngestPairingFault = (typeof IngestPairingFault)[keyof typeof IngestPairingFault];
@@ -92,6 +102,23 @@ export interface IngestPairingOptions {
   opened(deviceId: string, attempt: number): void;
   /** The one fault. Said once. */
   fault(failure: IngestPairingFailure): void;
+  /**
+   * A relay report of a SUPERSEDED attempt was dropped (C37). Called for every such report, with the
+   * running count of this pairing. Optional: a caller that does not listen still gets the count
+   * (`supersededReports`). It must not throw; a throw is dropped, as the report is.
+   */
+  superseded?(dropped: SupersededRelayReport): void;
+}
+
+/** A relay report that was dropped because the Core itself had superseded its attempt. Three numbers and a device: no address, no text. */
+export interface SupersededRelayReport {
+  readonly deviceId: string;
+  /** The attempt the relay named. */
+  readonly attempt: number;
+  /** The attempt in force when it arrived. */
+  readonly inForce: number;
+  /** How many reports of superseded attempts this pairing has dropped, this one included. */
+  readonly count: number;
 }
 
 export interface IngestPairing {
@@ -104,6 +131,8 @@ export interface IngestPairing {
   open(): readonly string[];
   /** The fault, once there is one. */
   failure(): IngestPairingFailure | null;
+  /** How many relay reports of superseded attempts were dropped (C37). */
+  supersededReports(): number;
   /** The capture ends: every timer is cancelled and nothing more is said. */
   end(): void;
 }
@@ -124,6 +153,14 @@ export function createIngestPairing(options: IngestPairingOptions): IngestPairin
   let inForce = 0;
   let failed: IngestPairingFailure | null = null;
   let ended = false;
+  let supersededCount = 0;
+
+  /**
+   * C37: true for an attempt the Core issued and then superseded - a whole number from 1 up to, and not
+   * including, the attempt in force. The supervisor counts its workers from 1, one by one, so every such
+   * number was an attempt of this session (also one whose worker never came to listen).
+   */
+  const wasSuperseded = (attempt: number): boolean => Number.isSafeInteger(attempt) && attempt >= 1 && attempt < inForce;
 
   const drop = (): void => {
     for (const pair of pairs.values()) pair.cancel();
@@ -139,13 +176,24 @@ export function createIngestPairing(options: IngestPairingOptions): IngestPairin
 
   /**
    * The pair of a camera for a report of `attempt`, or null when the report is not to be counted.
-   * `claimed`: the attempt is the reporter's own word (a relay), so another attempt than the one in
-   * force is a fault; otherwise (the caller's stamp on a worker-side report) it is dropped.
+   * `claimed`: the attempt is the reporter's own word (a relay), so an attempt the Core never issued
+   * is a fault and a superseded one is dropped and counted (C37); otherwise (the caller's stamp on a
+   * worker-side report) another attempt than the one in force is dropped.
    */
   function pairOf(deviceId: string, attempt: number, claimed: boolean): Pair | null {
     if (failed !== null || ended || !cameras.has(deviceId)) return null;
     if (attempt !== inForce) {
-      if (claimed) fault(deviceId, attempt, IngestPairingFault.ATTEMPT_MISMATCH);
+      if (!claimed) return null;
+      if (!wasSuperseded(attempt)) {
+        fault(deviceId, attempt, IngestPairingFault.ATTEMPT_MISMATCH);
+        return null;
+      }
+      supersededCount += 1;
+      try {
+        options.superseded?.(Object.freeze({ deviceId, attempt, inForce, count: supersededCount }));
+      } catch {
+        // A listener never turns a dropped report into something else.
+      }
       return null;
     }
     let pair = pairs.get(deviceId);
@@ -198,6 +246,7 @@ export function createIngestPairing(options: IngestPairingOptions): IngestPairin
     },
     open: () => options.cameras.filter((deviceId) => pairs.get(deviceId)?.open === true),
     failure: () => failed,
+    supersededReports: () => supersededCount,
     end() {
       ended = true;
       drop();

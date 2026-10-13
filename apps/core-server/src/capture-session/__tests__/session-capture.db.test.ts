@@ -34,8 +34,8 @@ import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_M
 const db = useTestDatabase({ template: 'seed' });
 /** The rigs of the running case: closed by the `afterEach` below (see `fixRig`). */
 const openRigs: Rig[] = [];
-/** The database of a rig: its pools are ended with the rig (`closeResources`); the database itself is dropped when the file ends, as before. */
-const rigDatabases = new WeakMap<Rig, { closeResources(): Promise<string[]> }>();
+/** The database of a rig: its pools are ended with the rig (`closeResources`), and since fix I-7b the database itself is DROPPED with it, after the case (the `afterEach` below). */
+const rigDatabases = new WeakMap<Rig, { closeResources(): Promise<string[]>; drop(): Promise<void> }>();
 const fixture = realBootFixture('row71b');
 fixture.provisionKey();
 afterAll(() => fixture.remove());
@@ -1020,6 +1020,11 @@ afterEach(async () => {
     await of.app.close();
     // Closing pass J: the rig's owner pool too - 49 idle owner connections were the other half of the count.
     expect(await rigDatabases.get(of)?.closeResources()).toEqual([]);
+    // Fix I-7b: and the rig's database. Every rig is a clone of its own and no case reads another's; until here
+    // each lived to the end of the file (one per rig, more than eighty at once), and with a second file of many
+    // clones beside it the run met the helper's bound of 99 live clones (`test/helpers/db/names.ts`). A rig whose
+    // closing failed above is still dropped with the file (`useTestDatabase`: the drop is idempotent).
+    await rigDatabases.get(of)?.drop();
   }
 });
 
@@ -1942,8 +1947,10 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
   });
 
   // Task 4 row 182: since the worker NAMES its gate's refusal in the frame, the same contradiction arrives under one of two new words.
+  // Task 4 row 188 (ruling C40 (2)): ONE arrival, ONE critical notice - the one of the ended capture. The camera's own notice, which the
+  // forwarder raised for the gate's refusal, is resolved by the session unit once the capture's fault stands.
   it.each(['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN'] as const)(
-    'BR-08 with the frame member %s: the pairing still ends the capture ONCE (WORKER_REFUSED, one audit entry of the pairing); the camera\'s own fault states the member beside it',
+    'BR-08 with the frame member %s: the pairing still ends the capture ONCE (WORKER_REFUSED, one audit entry of the pairing) and the operator has ONE critical notice, with the stronger cause',
     async (reason) => {
       const { of, id, relay } = await production(`r182_refused_${reason === 'CAMERA_ANNOUNCE_NOT_SEEN' ? 'not_seen' : 'not_matched'}`);
       relay.report(id, 'CAM-01');
@@ -1956,11 +1963,99 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
       expect(of.events.at(-1)).toMatchObject({ type: 'FAILED_START', sessionId: id, cause: 'CAMERA_INGEST_NOT_PAIRED' });
       expect(of.events.some((event) => event.type === 'CAMERA_NOT_CONNECTED')).toBe(false);
       expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'FAULT', fault: { kind: 'CAPTURE_FAULT' } });
-      // TWO facts, two critical notices: the capture's (the pairing) and the camera's (the worker's own word). Never the generic word.
-      const said = of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active).map((alert) => `${alert.severity} ${String(alert.params?.['reason'])}`).sort();
-      expect(said).toEqual([`CRITICAL ${reason}`, 'CRITICAL CAMERA_INGEST_NOT_PAIRED'].sort());
+      // ONE critical notice is active: the capture's (the pairing ended it). The camera's own notice was raised and is resolved.
+      await vi.waitFor(() => expect(linesOf(of, 'CAPTURE_GATE_NOTICE_FOLDED')).toHaveLength(1), { timeout: 5_000 });
+      await of.settled();
+      const notices = of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT');
+      expect(notices.filter((alert) => alert.active).map((alert) => `${alert.severity} ${String(alert.params?.['reason'])} ${String(alert.target)}`)).toEqual(['CRITICAL CAMERA_INGEST_NOT_PAIRED null']);
+      expect(notices.filter((alert) => !alert.active).map((alert) => `${String(alert.params?.['reason'])} ${String(alert.target)}`)).toEqual([`${reason} CAM-01`]);
+      expect(linesOf(of, 'CAPTURE_GATE_NOTICE_FOLDED')).toMatchObject([{ sessionId: id, deviceId: 'CAM-01', attempt: 1, gateReason: reason, cause: 'CAMERA_INGEST_NOT_PAIRED' }]);
+      // The error-log entry of the pairing names the gate's own word beside its reason: nothing of the refusal is lost.
+      expect(linesOf(of, 'CAPTURE_INGEST_NOT_PAIRED')).toMatchObject([{ deviceId: 'CAM-01', attempt: 1, reason: 'WORKER_REFUSED', gateReason: reason }]);
+      // THE AUDIT TRAIL, measured: ONE entry of the pairing's fault; the gate's refusal keeps its own two (raised by the forwarder, resolved here).
+      expect(await auditOfTheFault(of)).toBe(1);
+      expect(await faultRows(of)).toEqual(['FAULT_RAISED CAPTURE_FAULT@CAM-01', 'FAULT_RAISED CAPTURE_FAULT@null', 'FAULT_CLEARED CAPTURE_FAULT@CAM-01']);
+      expect(linesOf(of, 'CAPTURE_GATE_NOTICE_NOT_FOLDED')).toEqual([]);
     },
   );
+
+  it('row 188, C40 (2) - the OTHER order of the same arrival: the gate\'s refusal is said first and the relay\'s report after it; the pairing ends the capture at the bound and the operator still has ONE critical notice', async () => {
+    const { of, id, relay } = await production('r188_gate_then_relay');
+    of.fake.last().say({ type: 'WARNING', code: 'CAPTURE_FAULT', reason: 'CAMERA_ANNOUNCE_NOT_MATCHED', state: 'ACTIVE', subject: 'CAM-02' });
+    await flush();
+    relay.report(id, 'CAM-02');
+    await vi.waitFor(() => expect(notPaired(of)).toEqual(['CAM-02@1 WORKER_REPORT_MISSING']), { timeout: 5_000 });
+    await vi.waitFor(() => expect(linesOf(of, 'CAPTURE_GATE_NOTICE_FOLDED')).toHaveLength(1), { timeout: 5_000 });
+    await of.settled();
+    expect(of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active).map((alert) => `${alert.severity} ${String(alert.params?.['reason'])}`)).toEqual(['CRITICAL CAMERA_INGEST_NOT_PAIRED']);
+    expect(await auditOfTheFault(of)).toBe(1);
+  });
+
+  it('row 188, C40 (2), CONTROL - a refusal of the gate WITHOUT a pairing end is not touched: no relay reported, so the capture goes on with the other camera and the camera keeps its own critical notice; and a pairing end for ANOTHER camera folds nothing', async () => {
+    const { of, id, relay } = await production('r188_gate_alone');
+    relay.report(id, 'CAM-02');
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-02@1']), { timeout: 5_000 });
+    of.fake.last().say({ type: 'WARNING', code: 'CAPTURE_FAULT', reason: 'CAMERA_ANNOUNCE_NOT_MATCHED', state: 'ACTIVE', subject: 'CAM-01' });
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    const active = (): string[] => of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active).map((alert) => `${alert.severity} ${String(alert.params?.['reason'])} ${String(alert.target)}`).sort();
+    expect([notPaired(of), sessionCapture(of.app).liveSessionId(), of.fake.last().commands('STOP').length, linesOf(of, 'CAPTURE_GATE_NOTICE_FOLDED')]).toEqual([[], id, 0, []]);
+    expect(active()).toEqual(['CRITICAL CAMERA_ANNOUNCE_NOT_MATCHED CAM-01']);
+    expect(await faultRows(of)).toEqual(['FAULT_RAISED CAPTURE_FAULT@CAM-01']);
+    // The pairing now ends the capture for the OTHER camera (a second connect report): the notice of CAM-01 is another fact and stays.
+    ingest(of, 'CAM-02', 'WAITING');
+    await flush();
+    ingest(of, 'CAM-02', 'CONNECTED');
+    await vi.waitFor(() => expect(notPaired(of)).toEqual(['CAM-02@1 WORKER_CONNECTED_TWICE']), { timeout: 5_000 });
+    await of.settled();
+    await wait(BOUND_MS);
+    expect(linesOf(of, 'CAPTURE_GATE_NOTICE_FOLDED')).toEqual([]);
+    expect(active()).toEqual(['CRITICAL CAMERA_ANNOUNCE_NOT_MATCHED CAM-01', 'CRITICAL CAMERA_INGEST_NOT_PAIRED null']);
+  });
+
+  it('row 188, C37: the worker of the session is replaced and the relay of the SUPERSEDED attempt still reports - 0 faults, 0 audit entries, 1 counted log line; the capture lives and THE CURRENT ATTEMPT STILL PAIRS; a later attempt is still the fault', async () => {
+    const relay = relays();
+    const of = await rig('r188_superseded', { limits: { backoffBaseMs: 20, backoffMaxMs: 40 } });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, ingestPairingBoundMs: BOUND_MS, relayReports: relay.source });
+    const id = await of.arm();
+    await of.start(id);
+    relay.report(id, 'CAM-01');
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-01@1']), { timeout: 5_000 });
+    // The worker goes down before anything is durable: the supervisor starts the second, and the Core issues attempt 2.
+    of.fake.last().exit(1);
+    await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]), { timeout: 5_000 });
+    await of.settled();
+    const before = await faultRows(of);
+    // The relay of attempt 1 is being ended and still says its line - twice, for two cameras.
+    relay.report(id, 'CAM-01', 1);
+    relay.report(id, 'CAM-02', 1);
+    await flush();
+    expect(linesOf(of, 'CAPTURE_RELAY_REPORT_SUPERSEDED')).toMatchObject([
+      { sessionId: id, deviceId: 'CAM-01', attempt: 1, attemptInForce: 2, dropped: 1 },
+      { sessionId: id, deviceId: 'CAM-02', attempt: 1, attemptInForce: 2, dropped: 2 },
+    ]);
+    // A log line and nothing else: it is no entry of the error log.
+    expect(linesOf(of, 'CAPTURE_INGEST_NOT_PAIRED')).toEqual([]);
+    // The current attempt pairs around them.
+    relay.report(id, 'CAM-01', 2);
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-01@1', 'CAM-01@2']), { timeout: 5_000 });
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    expect([notPaired(of), await auditOfTheFault(of), await faultRows(of), sessionCapture(of.app).liveSessionId(), of.fake.last().commands('STOP').length]).toEqual([[], 0, before, id, 0]);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
+    expect(of.app.engine.slice('alerts').filter((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active)).toEqual([]);
+    // NEVER ISSUED stays the fault: attempt 3 does not exist yet.
+    relay.report(id, 'CAM-02', 3);
+    await vi.waitFor(() => expect(notPaired(of)).toEqual(['CAM-02@3 ATTEMPT_MISMATCH']), { timeout: 5_000 });
+    await of.settled();
+    expect([sessionCapture(of.app).liveSessionId(), await auditOfTheFault(of)]).toEqual([null, 1]);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'FAULT', fault: { kind: 'CAPTURE_FAULT' } });
+    expect(linesOf(of, 'CAPTURE_RELAY_REPORT_SUPERSEDED')).toHaveLength(2);
+  });
 
   it('C35 (b), a relay report for another attempt than the one in force - a later one, and an earlier one - is a capture fault', async () => {
     const later = await production('r48_later_attempt');
@@ -2041,6 +2136,100 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
     await of.settled();
     expect([notPaired(of), paired(of), sessionCapture(of.app).liveSessionId(), await auditOfTheFault(of)]).toEqual([[], [], id, 0]);
     expect(of.events.some((event) => event.type === 'CAMERA_NOT_CONNECTED')).toBe(true);
+    await sessionCapture(of.app).shutdown();
+  });
+});
+
+describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card facts of the session\'s microphones are written to source_facts at the start', () => {
+  // THE DOUBLES: the fake microphone adapters of the rig, each with the member a sound-card adapter states its card
+  // through (`sourceFacts`, read by its name). No card is listed, no process is started; the production microphone
+  // adapter (row 67) is not in this file. The statement runs on PostgreSQL as the runtime role, CHECKs included.
+  type Statement = Record<string, unknown>;
+  const CARD: Statement = { product: 'Scarlett 18i20 USB', usbId: '1235:8215', cardId: 'USB', cardDevice: 0, inputNumber: 1, nativeChannels: 18, sampleRateHz: 48_000, sampleBits: 24 };
+  const stating =
+    (of: (inputId: string) => Statement | null) =>
+    (built: CaptureDeviceRegistry): CaptureDeviceRegistry => ({
+      ...built,
+      resolve: ((deviceClass: 'CAMERA' | 'MIC', deviceId: string) => (deviceClass === 'MIC' ? { ...built.resolve('MIC', deviceId), sourceFacts: of } : built.resolve('CAMERA', deviceId))) as CaptureDeviceRegistry['resolve'],
+    });
+  const factsOf = async (of: Rig, sessionId: string): Promise<Record<string, unknown>> =>
+    Object.fromEntries((await of.rows<{ slot: string; source_facts: unknown }>('SELECT slot, source_facts FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [sessionId])).map((row) => [row.slot, row.source_facts]));
+  const warned = (of: Rig): string[] => of.log.lines().map((line) => String(line.code)).filter((code) => code.startsWith('CAPTURE_SOURCE_FACTS_'));
+
+  it('a start with doubles writes the card facts of BOTH microphones - which card, which input, rate and format - and nothing for the cameras; they are in the rows of the start, not written afterwards', async () => {
+    const of = await rig('r71_facts', { registry: stating((inputId) => (inputId === 'MIC-01' ? CARD : { ...CARD, product: '  UMC1820  ', usbId: null, cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleBits: 16 })) });
+    const id = await of.arm();
+    await of.start(id);
+    expect(await factsOf(of, id)).toEqual({
+      'MIC-PRIMARY': { model: 'Scarlett 18i20 USB', usbId: '1235:8215', cardId: 'USB', cardDevice: 0, inputNumber: 1, nativeChannels: 18, sampleRate: 48_000, sampleBits: 24 },
+      // A card that is not USB has no USB id: the key is absent, never a made-up id. The spaces at both ends of a name are dropped by the card text rule.
+      'MIC-STANDBY': { model: 'UMC1820', cardId: 'U192k', cardDevice: 1, inputNumber: 2, nativeChannels: 2, sampleRate: 48_000, sampleBits: 16 },
+      'VIDEO-01': {},
+      'VIDEO-02': {},
+    });
+    // One instant and one statement for the four rows (MR-S1), and the session records.
+    expect(await of.rows('SELECT DISTINCT recorded_at FROM public.session_capture_sources WHERE session_id = $1', [id])).toHaveLength(1);
+    expect([of.app.engine.slice('session')?.state, sessionCapture(of.app).liveSessionId(), warned(of)]).toEqual(['RECORDING', id, []]);
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('device text never reaches the row unpassed: an oversized product name, a control character, a bidirectional mark, a tag, a malformed USB id and card id, numbers out of bound and a key that is none', async () => {
+    const hostile: Record<string, Statement> = {
+      // 300 characters: not cut to fit - a cut name is a name the device did not announce - but replaced by the fixed word.
+      'MIC-01': { ...CARD, product: 'A'.repeat(300), usbId: '1235:8215; DROP', cardId: '../../etc', cardDevice: 99, inputNumber: 0, nativeChannels: 4096, sampleRateHz: 44_100.5, sampleBits: 20, password: 'x', mediaUrl: 'rtsp://camera/1', note: 'free text' },
+      'MIC-02': { ...CARD, product: 'Mic\u0000\u001b[31m‮evil<script>', usbId: 'ZZZZ:0001', cardId: 'USB_2', inputNumber: '1', sampleBits: null },
+    };
+    const of = await rig('r71_hostile', { registry: stating((inputId) => hostile[inputId] ?? null) });
+    const id = await of.arm();
+    await of.start(id);
+    const facts = await factsOf(of, id);
+    expect(facts).toEqual({
+      'MIC-PRIMARY': { model: 'UNKNOWN', usbId: '0000:0000' },
+      'MIC-STANDBY': { model: 'UNKNOWN', usbId: '0000:0000', cardId: 'USB_2', cardDevice: 0, nativeChannels: 18, sampleRate: 48_000 },
+      'VIDEO-01': {},
+      'VIDEO-02': {},
+    });
+    // The bound of the column, measured on what is stored: the whole map and every text of it.
+    const stored = await of.rows<{ bytes: number; longest: number }>(
+      "SELECT octet_length(source_facts::text)::int AS bytes, coalesce((SELECT max(char_length(value)) FROM jsonb_each_text(source_facts)), 0)::int AS longest FROM public.session_capture_sources WHERE session_id = $1",
+      [id],
+    );
+    expect(Math.max(...stored.map((row) => row.bytes))).toBeLessThanOrEqual(2_048);
+    expect(Math.max(...stored.map((row) => row.longest))).toBeLessThanOrEqual(120);
+    // Nothing of the hostile text is anywhere in the rows of the start or in a log line.
+    for (const piece of ['AAAA', 'evil', 'script', 'DROP', 'etc', 'rtsp://', 'free text', 'password', '‮']) expect(JSON.stringify(facts)).not.toContain(piece);
+    for (const piece of ['AAAA', 'evil<', '../../', 'rtsp://camera', 'free text', '‮']) expect(JSON.stringify(of.log.lines())).not.toContain(piece);
+    expect(of.app.engine.slice('session')?.state).toBe('RECORDING');
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('CONTROL - adapters that state nothing (the fakes as they are): four rows with {} and no entry in the log; an adapter that THROWS does not refuse the start - {} for that microphone, ONE warning with the session and the device, the other microphone keeps its facts', async () => {
+    const plain = await rig('r71_plain');
+    const plainId = await plain.arm();
+    await plain.start(plainId);
+    expect(await factsOf(plain, plainId)).toEqual({ 'MIC-PRIMARY': {}, 'MIC-STANDBY': {}, 'VIDEO-01': {}, 'VIDEO-02': {} });
+    expect(warned(plain)).toEqual([]);
+    await sessionCapture(plain.app).shutdown();
+
+    const of = await rig('r71_throws', {
+      registry: stating((inputId) => {
+        if (inputId === 'MIC-02') throw new Error('the card of Scarlett-SECRET-NAME is gone');
+        return CARD;
+      }),
+    });
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    await of.start(id);
+    const facts = await factsOf(of, id);
+    expect(facts['MIC-STANDBY']).toEqual({});
+    expect(facts['MIC-PRIMARY']).toMatchObject({ model: 'Scarlett 18i20 USB', inputNumber: 1 });
+    expect(warned(of)).toEqual(['CAPTURE_SOURCE_FACTS_NOT_READ']);
+    const entries = appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_SOURCE_FACTS_NOT_READ');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ level: 'warn', context: { sessionId: id, deviceId: 'MIC-02', slot: 'MIC-STANDBY', cause: 'UNEXPECTED' } });
+    // What the adapter threw may carry device text: its message is in no entry and in no log line.
+    expect(JSON.stringify(entries) + JSON.stringify(of.log.lines())).not.toContain('SECRET');
+    expect(of.app.engine.slice('session')?.state).toBe('RECORDING');
     await sessionCapture(of.app).shutdown();
   });
 });

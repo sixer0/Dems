@@ -104,6 +104,40 @@ describe('a locator never carries a user part', () => {
     expect(leaks(everything(await thrownBy(() => streamLocator({ host: `${CANARY.username}:${CANARY.secret}@192.0.2.10`, path: 'stream' }))))).toEqual([]);
   });
 
+  // Task 4 row 46 (decision C24; the request of row 174): the injection point admits exactly what the locator read
+  // admits, by ONE function. The cases of the rule itself are in `camera/__tests__/onvif-session.test.ts` (row 174).
+  it('a query inside the closed rule passes the injection point unchanged; outside it, a bare mark and a credential-like name are refused', async () => {
+    const admitted = [`${PLAIN}?channel=1&subtype=0`, `${PLAIN}?transportmode=unicast&profile=Profile_1`, `${PLAIN}?tcp`, `${PLAIN}?mode=`];
+    for (const locator of admitted) {
+      expect(credentialFreeLocator(locator)).toBe(locator);
+      // The injection takes it, and the serialiser writes it byte for byte as the relay's `locator`.
+      const bytes = startMessageBytes({ access: credentialAtInjection(locator, sealCredential(CANARY)) });
+      expect(bytes.includes(Buffer.from(`"locator":"${locator}"`, 'utf8'))).toBe(true);
+      bytes.fill(0);
+    }
+    const refused = [
+      `${PLAIN}?`,
+      `${PLAIN}#`,
+      `${PLAIN}?channel=1#x`,
+      `${PLAIN}?a=1&a=2`,
+      `${PLAIN}?a=1&&b=2`,
+      `${PLAIN}?a=b=c`,
+      `${PLAIN}?a=%31`,
+      `${PLAIN}?a=1;b=2`,
+      `${PLAIN}?a=1?b=2`,
+      `${PLAIN}?PassWord=${CANARY.secret}`,
+      `${PLAIN}?user=${CANARY.username}`,
+      `${PLAIN}?Session=1`,
+      `${PLAIN}?${'p=1&'.repeat(8)}q=1`,
+      `${PLAIN}?v=${'x'.repeat(65)}`,
+    ];
+    for (const locator of refused) {
+      const error = await thrownBy(() => credentialAtInjection(locator, sealCredential(CANARY)));
+      expect(error, String(refused.indexOf(locator))).toMatchObject({ code: 'CAPTURE_LOCATOR_INVALID' });
+      expect(leaks(everything(error))).toEqual([]);
+    }
+  });
+
   it('the injection point is where the two meet, and its result shows the mark in every print form (AD-03 point 6)', async () => {
     const injected = credentialAtInjection(PLAIN, sealCredential(CANARY));
     expect(injected).toBeInstanceOf(InjectedStreamAccess);

@@ -28,7 +28,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DURABLE_SLICE_KEYS, UNMAPPED_SLICES } from '../../../db/mapping';
 import { SCENARIOS, createHost } from '../../../../test/support/seed';
-import { activeInputOf, audioStatusOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, type CommittedState } from '../index';
+import { streamProfileOf } from '../../../sealing-host';
+import { activeInputOf, audioStatusOf, cameraStreamFactsOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, withCameraStreamFacts, type CommittedState } from '../index';
 import { AUDIO, FIXED_NOW, HEALTH, VIDEO, committedOf, scenarioState } from './support';
 
 /** The read is a little later than the state: `serverTime` is the clock's, not the state's. */
@@ -592,5 +593,93 @@ describe('row 150: a selector line that is not there is answered "absent", never
     // POSITIVE CONTROL: the same search finds each of them in the text this row replaced.
     const before = "sourceDeviceId: slot?.deviceId ?? camera.deviceId, deviceId: slotDeviceOf.get(inputId) ?? mic.deviceId, const mic = mics.find((candidate) => candidate.micRole === 'PRIMARY') ?? mics[0];";
     expect(before.match(/\bmic\.deviceId\b|\bmicRole\b|\bmics\[0\]|\?\?\s*camera\.deviceId/g)).toHaveLength(4);
+  });
+});
+
+// Task 4 row 53 (WP-10b; design addendum 7.2; AD-06 (1), (2); decision C36): in a REAL capture operation the
+// picture, the rate and the codec of a video track are the STORED statement of the stream in its selector slot -
+// the Core's own code, minted from the stream by the function the seal uses (rows 50, 51). Read back, it is that
+// function's inverse. No device, no relay, no database: the double is the committed state of the seed.
+describe('row 53: the camera facts of a real capture operation are the stored statement of the stream', () => {
+  const state = committedOf(scenarioState(SCENARIOS[0]!));
+  /** The committed state with other profile codes on the two video slots. */
+  const slotted = (video01: string, video02: string): CommittedState => ({
+    ...state,
+    captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((camera) => ({ ...camera, profile: camera.trackId === 'VIDEO-01' ? video01 : video02 })) },
+  });
+  const factsOf = (answer: { readonly tracks: readonly { readonly trackId: string; readonly resolution: string; readonly fps: number | null; readonly codec: string }[] }): unknown[] =>
+    answer.tracks.map((track) => [track.trackId, track.resolution, track.fps, track.codec]);
+
+  it('an HEVC camera is stated HEVC with NO rate; an H.264 one as before - on the three reads that name a camera, valid against the contract', () => {
+    const real = slotted('HEVC_1080P', 'H264_1080P25');
+    const video = videoStatusOf(real, undefined, true);
+    expect(factsOf(video)).toEqual([
+      ['VIDEO-01', '1080p', null, 'HEVC'],
+      ['VIDEO-02', '1080p', 25, 'H.264'],
+    ]);
+    expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+    expect(validateCoreApiResponse('getVideoStatus', 200, video)).toMatchObject({ ok: true });
+    const health = deviceHealthOf(real, NOW, null, undefined, true);
+    expect(health.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['1080p', 25, 'H.264']]);
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+    const inventory = deviceInventoryOf(real, undefined, true);
+    expect(inventory.cameras.map((camera) => [camera.id, camera.resolution, camera.fps, camera.codec])).toEqual([['VIDEO-01', '1080p', null, 'HEVC'], ['VIDEO-02', '1080p', 25, 'H.264']]);
+    expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
+    // Every other member of a track is as it was: only the three facts are the stream's.
+    const plain = videoStatusOf(real);
+    expect(video.tracks.map(({ resolution: _r, fps: _f, codec: _c, ...rest }) => rest)).toEqual(plain.tracks.map(({ resolution: _r, fps: _f, codec: _c, ...rest }) => rest));
+  });
+
+  it('the H.264 baseline is unchanged, member for member, and the state is not touched: the same slice object when nothing differs', () => {
+    expect(videoStatusOf(state, undefined, true)).toEqual(videoStatusOf(state));
+    expect(deviceHealthOf(state, NOW, null, undefined, true)).toEqual(deviceHealthOf(state, NOW));
+    expect(deviceInventoryOf(state, undefined, true).cameras).toBe(state.cameras);
+    expect(withCameraStreamFacts(state.cameras, state.captureConfig)).toBe(state.cameras);
+    const frozen = deepFreeze(slotted('HEVC_1080P', 'HEVC_2560X1920P'));
+    expect(withCameraStreamFacts(frozen.cameras, frozen.captureConfig).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['2560x1920', null, 'HEVC']]);
+    expect(frozen.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]));
+  });
+
+  it('CONTROL: without the flag (a SIMULATED Core) the answer is the slice\'s own, whatever the slot says - the simulator\'s answer on the same state', () => {
+    const simulated = slotted('HEVC_1080P', 'H264_720P30');
+    expect(factsOf(videoStatusOf(simulated))).toEqual(factsOf(videoStatusOf(state)));
+    expect(deviceInventoryOf(simulated).cameras).toBe(simulated.cameras);
+  });
+
+  it('the reading is the inverse of the seal\'s own function: every code it makes is read back to the picture, the whole-number rate or none, and the codec', () => {
+    const cases: readonly (readonly [string, number, number, number | null, string, number | null, string])[] = [
+      ['H264', 1920, 1080, 25, '1080p', 25, 'H.264'],
+      ['H264', 1280, 720, 30, '720p', 30, 'H.264'],
+      ['H264', 1280, 720, 30000 / 1001, '720p', 30, 'H.264'],
+      ['H264', 1920, 1080, null, '1080p', null, 'H.264'],
+      // A rate with no whole-number name is not stated by the seal: none is stated here.
+      ['H264', 1920, 1080, 27.67, '1080p', null, 'H.264'],
+      ['HEVC', 1920, 1080, null, '1080p', null, 'HEVC'],
+      ['HEVC', 3840, 2160, null, '2160p', null, 'HEVC'],
+      ['HEVC', 2560, 1920, null, '2560x1920', null, 'HEVC'],
+      ['H264', 1280, 960, 15, '1280x960', 15, 'H.264'],
+      ['H264', 640, 360, 240, '360p', 240, 'H.264'],
+    ];
+    for (const [codec, width, height, frameRate, resolution, fps, shown] of cases) {
+      const code = streamProfileOf(codec, { width, height, frameRate });
+      expect([code, cameraStreamFactsOf(code)]).toEqual([code, { resolution, fps, codec: shown }]);
+    }
+  });
+
+  it('a code that is no stream statement says nothing: a development profile name, an ONVIF token, a codec outside the set, numbers the slice cannot carry - the track keeps what it had, and nothing of the text is repeated', () => {
+    const silent: readonly unknown[] = ['MAIN', 'STANDARD_1080P25', 'profile_1', 'h264_1080p25', 'OTHER_1080P25', 'AV1_1080P', 'H265_1080P', 'H264_1080', 'H264_1080P25X', 'H264_1080P0', 'H264_1080P241', 'H264_50P25', 'H264_10000P25', 'HEVC_99X99P', 'H264_1920X1080P25', 'H264_1080P25<script>', '', null, undefined, 7, ['HEVC_1080P']];
+    expect(silent.map(cameraStreamFactsOf)).toEqual(silent.map(() => null));
+    const kept = videoStatusOf(slotted('profile_1', 'H264_1080P25<script>'), undefined, true);
+    expect(factsOf(kept)).toEqual(factsOf(videoStatusOf(state)));
+    expect(JSON.stringify(kept.tracks.map(({ resolution, fps, codec }) => [resolution, fps, codec]))).not.toMatch(/script|profile_1/);
+  });
+
+  it('a track whose slot is not assigned has no stream statement: it keeps the slice\'s facts and names no source', () => {
+    const only02: CommittedState = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((camera) => camera.trackId === 'VIDEO-02').map((camera) => ({ ...camera, profile: 'HEVC_1080P' })) } };
+    const answer = videoStatusOf(only02, undefined, true);
+    expect(answer.tracks.map((track) => [track.trackId, track.sourceDeviceId === null, track.resolution, track.fps, track.codec])).toEqual([
+      ['VIDEO-01', true, state.cameras[0]?.resolution, state.cameras[0]?.fps, state.cameras[0]?.codec],
+      ['VIDEO-02', false, '1080p', null, 'HEVC'],
+    ]);
   });
 });

@@ -28,7 +28,7 @@
  * the class the Core derives from it (`DEVELOPMENT` for `FAKE` and `LOCAL_DEVICE`).
  */
 import { SimErrorCode, SimTransitionError } from './errors';
-import type { CaptureDeviceStatus, RegisterCaptureDeviceInput, SimState } from './types';
+import type { CaptureDeviceStatus, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState } from './types';
 
 /** The name the action carries in a refusal. */
 export const REGISTER_CAPTURE_DEVICE_ACTION = 'registerCaptureDevice';
@@ -78,4 +78,95 @@ export function captureDeviceOf(state: SimState, input: RegisterCaptureDeviceInp
 export function registerCaptureDeviceTransition(state: SimState, input: RegisterCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
   const device = captureDeviceOf(state, input);
   return { state: { ...state, captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, device] } }, result: device };
+}
+
+// ── A microphone joins the registry (task 4 row 185; design addendum 04 section 4.2 "Where it is
+// stored"; security addendum AD-07; ruling RG-4) ──────────────────────────────────────────────
+//
+// The INTERNAL action `registerCaptureMicrophone` of `SimActions` is built from the functions
+// below. It is the one way a `USB_AUDIO` microphone is added to the replicated `captureDevices`
+// slice, and the one way a registered one is enabled again:
+//
+//   - on the Core server, inside the unit of work of operation 99 (`registerCaptureAudioInput`),
+//     after that operation's access rule, idle lock and its own second card listing. No client can
+//     call it: it has no operation of its own (`sim-actions.ts`);
+//   - the in-app simulator does not run it: its operation 99 answers as before (`sim/api.ts`).
+//
+// As the camera's action, it checks no permission and no session state, writes NO audit row and
+// no event (the caller writes `CAPTURE_AUDIO_INPUT_CHANGED` in the same unit) and leaves
+// `captureConfig` alone: a registration decides no role (decision C25). RG-4 holds as for a
+// camera: a listed card is no descriptor and never enters the registry; only this action, run by
+// operation 99 after the Core's own listing, creates one.
+//
+// What it holds itself, so that no stored row can break a CHECK of `capture_devices`:
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The class `MIC` and the adapter `USB_AUDIO` are literals of this file: no input names them | - |
+// | A new microphone takes the next free `MIC-NN`, minted here: the caller names no id | - |
+// | The model is the product name of a card listing: printable ASCII, 1 to 64 characters (AD-07 (1)) | anything else |
+// | Re-enabling names a microphone the registry holds, of adapter `USB_AUDIO` | another id, another class, another adapter (a built-in or a local microphone) |
+
+/** The name the microphone action carries in a refusal. */
+export const REGISTER_CAPTURE_MICROPHONE_ACTION = 'registerCaptureMicrophone';
+
+/** The adapter kind of every microphone this file registers. A literal: no input can name another. */
+export const REGISTERED_MICROPHONE_ADAPTER = 'USB_AUDIO';
+
+/** A registered microphone: `MIC-` and two or more digits. */
+export const REGISTERED_MICROPHONE_ID_PATTERN = /^MIC-\d{2,}$/;
+
+/**
+ * The character rule of a microphone's model: the closed rule of a product name of the card
+ * listing (`CAPTURE_AUDIO_CARD_TEXT_PATTERN` of the API contract, AD-07 (1)), stated here because
+ * this file imports nothing of the contract; `sim-capture-discovery.test.ts` holds the two equal.
+ */
+export const REGISTERED_MICROPHONE_MODEL_PATTERN = /^[ -~]{1,64}$/;
+
+const invalidMicrophone = (detail: string): SimTransitionError => new SimTransitionError(null, REGISTER_CAPTURE_MICROPHONE_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/** The next free microphone id: the highest number of the registry plus 1, two digits at least. Never a reused one. */
+export function nextCaptureMicrophoneId(devices: readonly { readonly id: string }[]): string {
+  const highest = devices.reduce((max, device) => {
+    const number = /^MIC-(\d+)$/.exec(device.id)?.[1];
+    return number === undefined ? max : Math.max(max, Number(number));
+  }, 0);
+  return `MIC-${String(highest + 1).padStart(2, '0')}`;
+}
+
+/**
+ * `registerCaptureMicrophone`. With `deviceId: null` the state with ONE device appended to slice
+ * 30, under the next free `MIC-NN`; with an id, the state in which that `USB_AUDIO` microphone is
+ * online again and carries the model of the new listing - no device is appended, and a microphone
+ * that already is so gives the SAME state object. Nothing else changes. Throws as the table says.
+ */
+export function registerCaptureMicrophoneTransition(state: SimState, input: RegisterCaptureMicrophoneInput): { state: SimState; result: CaptureDeviceStatus } {
+  if (typeof input.model !== 'string' || !REGISTERED_MICROPHONE_MODEL_PATTERN.test(input.model)) throw invalidMicrophone('the model of a microphone is a product name of 1 to 64 printable characters');
+  const devices = state.captureDevices.devices;
+  if (input.deviceId === null) {
+    const device: CaptureDeviceStatus = {
+      id: nextCaptureMicrophoneId(devices),
+      kind: 'MIC',
+      model: input.model,
+      firmware: null,
+      host: null,
+      poePort: null,
+      online: true,
+      // A microphone carries no stream state.
+      streamState: null,
+      // The one capability of a microphone, as the built-in pair states it (decision C43 (3);
+      // integration pass I-7). The registry stores no capability: the Core's row mapping reads this
+      // same value back for a `USB_AUDIO` microphone, as it does `VIDEO` for an adopted camera.
+      capabilities: ['AUDIO'],
+      adapter: REGISTERED_MICROPHONE_ADAPTER,
+      sourceClass: 'PRODUCTION',
+    };
+    return { state: { ...state, captureDevices: { ...state.captureDevices, devices: [...devices, device] } }, result: device };
+  }
+  if (typeof input.deviceId !== 'string' || !REGISTERED_MICROPHONE_ID_PATTERN.test(input.deviceId)) throw invalidMicrophone('a registered microphone has an id of the form MIC-NN');
+  const found = devices.find((device) => device.id === input.deviceId);
+  if (found === undefined || found.kind !== 'MIC' || found.adapter !== REGISTERED_MICROPHONE_ADAPTER) throw invalidMicrophone('the registry holds no USB audio microphone with this id');
+  if (found.online && found.model === input.model) return { state, result: found };
+  const enabled: CaptureDeviceStatus = { ...found, online: true, model: input.model };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? enabled : device)) } }, result: enabled };
 }

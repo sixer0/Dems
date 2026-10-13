@@ -214,6 +214,34 @@ describe('which device command each of the three operations runs (the contract t
   });
 });
 
+// Task 4 row 53 (WP-10b): the ROUTES of a Core in real capture hand the flag on - the three reads that name a camera
+// state the stored stream statement of each track's slot. The pure mapping is held in `status.test.ts`; this is the wiring.
+describe('row 53: operations 44, 46 and 47 of a Core in REAL capture state the stream facts of the selector slots', () => {
+  it('an HEVC slot is answered HEVC with no rate, an H.264 one as before, valid against the contract; a SIMULATED Core on the same state answers its slice', async () => {
+    const seeded = committedOf(scenarioState('idle'));
+    const state = { ...seeded, captureConfig: { ...seeded.captureConfig, cameras: seeded.captureConfig.cameras.map((camera) => ({ ...camera, profile: camera.trackId === 'VIDEO-01' ? 'HEVC_1080P' : 'H264_1080P25' })) } };
+    const facts = (cameras: readonly { readonly resolution: string; readonly fps: number | null; readonly codec: string }[]): unknown[] => cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]);
+    const STREAM = [['1080p', null, 'HEVC'], ['1080p', 25, 'H.264']];
+    const SLICE = facts(seeded.cameras);
+    // A real capture operation (the demo controls off, as the one function of the flags requires); then a SIMULATED Core.
+    for (const [config, expected] of [[{ captureMode: 'real', demoControls: false }, STREAM], [{}, SLICE]] as const) {
+      const built = await build(state, config);
+      built.actAs(operatorOf('SUPERVISOR'));
+      const video = await get(built, VIDEO);
+      expect(video.statusCode, video.body).toBe(200);
+      expect(facts((video.json() as { tracks: Parameters<typeof facts>[0] }).tracks)).toEqual(expected);
+      expect(validateCoreApiResponse('getVideoStatus', 200, video.json())).toEqual({ ok: true });
+      const health = await get(built, HEALTH);
+      expect(facts((health.json() as { cameras: Parameters<typeof facts>[0] }).cameras)).toEqual(expected);
+      expect(validateCoreApiResponse('getDeviceHealth', 200, health.json())).toEqual({ ok: true });
+      const inventory = await get(built, INVENTORY);
+      expect(facts((inventory.json() as { cameras: Parameters<typeof facts>[0] }).cameras)).toEqual(expected);
+      expect(validateCoreApiResponse('getDeviceInventory', 200, inventory.json())).toEqual({ ok: true });
+      expect(built.engine.commands).toEqual([]);
+    }
+  });
+});
+
 describe('operations 44 to 47: a read answers from the committed state of the engine', () => {
   it.each(ROLES)('%s reads all four: 200, the pure mapping of the committed state, valid against the contract; no command, no statement', async (role) => {
     const state = committedOf(scenarioState('recording'));

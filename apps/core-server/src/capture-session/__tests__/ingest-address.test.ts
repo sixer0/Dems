@@ -156,8 +156,11 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
    * the proof that it hands the address to the start message on standard input and nowhere else.
    * Row 179: the supervisor, which writes the member into the plan of a LATER attempt (the proof is
    * the case below: three lines, none of them an event, a report, a status or a message).
+   * Row 46: the production camera adapter, `capture/adapters/camera/onvif-relay.ts`. Its proof is the
+   * source case of `capture/adapters/camera/__tests__/onvif-relay.test.ts`: ONE line names the member,
+   * as an argument of the relay start, whose message goes to the relay's standard input and nowhere else.
    */
-  const READERS = ['capture-session/index.ts', 'capture/adapters/types.ts', 'capture/supervisor.ts', 'modules/capture-config/plan.ts', ...DEVELOPMENT_EXCEPTION].sort();
+  const READERS = ['capture-session/index.ts', 'capture/adapters/camera/onvif-relay.ts', 'capture/adapters/types.ts', 'capture/supervisor.ts', 'modules/capture-config/plan.ts', ...DEVELOPMENT_EXCEPTION].sort();
 
   it('ONE function builds an ingest address: one source of the server composes a loopback RTSP address, once, and that function is called at one place', () => {
     // No source writes an RTSP address as a text (the capture folder may not hold one at all: static rule G-R4).
@@ -201,8 +204,9 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
     expect(productionSources().filter((path) => /\bingestUrl\b/.test(codeLines(read(path)).join('\n')))).toEqual(READERS);
     const lines = codeLines(read(SESSION_FILE)).filter((line) => /\bingestUrl\b/.test(line)).map((line) => line.trim());
     // Row 179 moved the target from the plan's member to the address of the worker IN FORCE, and added the line that fills it from the plan of the start.
+    // Integration pass I-7 (row 46's request): the target also names the session the plan was built for and the attempt of the worker in force.
     expect(lines).toEqual([
-      "const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
+      "const target: CameraSourceTarget = { ingestUrl: address, sessionId, attempt: current.supervisor.status().attempt, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
       "const cameras: Partial<Record<VideoTrackId, { ingestUrl: string; outputPath: string }>> = {};",
       'cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };',
       'addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));',
@@ -230,7 +234,7 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
     ]);
     // The target: made at one line, used at one line.
     expect(lines.filter((line) => /\btarget\b/.test(line))).toEqual([
-      "const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
+      "const target: CameraSourceTarget = { ingestUrl: address, sessionId, attempt: current.supervisor.status().attempt, ...(camera.profile === null ? {} : { profile: camera.profile }) };",
       "asked = Promise.resolve(registry.resolve('CAMERA', deviceId).openSource(deviceId, target, own?.signal ?? current.abort.signal));",
     ]);
     // The map the plan builder is given: filled at one line, handed to the builder, nothing else.

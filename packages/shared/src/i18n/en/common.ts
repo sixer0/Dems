@@ -762,6 +762,23 @@ export const common = {
     networksSearched_one: 'Searched {{count}} network.',
     networksSearched_other: 'Searched {{count}} networks.',
     recordingLocked: 'Camera search is not available while a session is recording.',
+    /**
+     * Task 4, blueprint row 98 (WP-12): the optional `address` of operation 93, web console only. The
+     * explicit fallback for a camera that does not answer the search. `form` is the rule of the form
+     * (a dotted IPv4 literal); `notAllowed` is `422` with `DISCOVERY_ADDRESS_NOT_ALLOWED`; `notProbed`
+     * is the `200` with `created: false` (the caller's own search was still running).
+     */
+    typedAddress: {
+      title: 'A camera that does not answer the search',
+      intro: 'If a camera is connected but not in the list, type its address. The Core asks that one address and lists the camera if it answers.',
+      label: 'Camera address',
+      hint: 'An IPv4 address, for example 192.168.10.20. No name, port or link.',
+      action: 'Search this address',
+      form: 'Type an IPv4 address: four numbers from 0 to 255, separated by dots.',
+      notAllowed: 'The Core does not ask this address. It asks only addresses on the network the cameras are connected to. Nothing was sent.',
+      searching: 'A search is running. An address can be asked when it has finished.',
+      notProbed: 'Your search was still running, so this address was not asked. Search this address again when the search has finished.',
+    },
     a11y: {
       progress: 'Camera search in progress',
       done: 'Search finished: {{count}} found, {{newCount}} new.',
@@ -801,14 +818,15 @@ export const common = {
       AUTHENTICATION_FAILED: 'The camera refused this user name or password.',
       WRONG_PROFILE:
         'The camera answered, but it offers no video profile this system can use. Change the video settings on the camera, then test again.',
-      NOT_H264: 'The camera answered, but none of its video profiles is H.264. Set the camera to H.264, then test again.',
+      // Task 4 (row 38's request; AM-2): the outcome means "no usable profile: the stream is neither H.264 nor HEVC". The key is unchanged.
+      NOT_H264: 'The camera answered, but none of its video profiles delivers H.264 or HEVC. Set the camera to one of them, then test again.',
     },
     outcomeShort: {
       REACHABLE: 'Connection works',
       UNREACHABLE: 'No answer',
       AUTHENTICATION_FAILED: 'Password refused',
       WRONG_PROFILE: 'No usable profile',
-      NOT_H264: 'Not H.264',
+      NOT_H264: 'Neither H.264 nor HEVC',
     },
     profiles_one: '{{count}} usable video profile',
     profiles_other: '{{count}} usable video profiles',
@@ -887,6 +905,14 @@ export const common = {
     assignLabel: 'Assign a source to {{slot}}',
   },
 
+  // Task 4 row 187 (ruling C36 (1); integration pass I-7): why a Core in real capture refused to
+  // assign a production camera to a slot (operations 78 and 79, `422 INVALID_INPUT`). Keyed by the
+  // word of `details.reason`, as `captureAudioCards.refusal` is. Both are refusals: nothing changed.
+  captureSlotRefusal: {
+    CAMERA_PROFILE_NOT_STATED: 'This camera was not assigned: no stream profile was chosen for it, and the Core does not pick one for a camera. Choose one of the profiles stored for this camera, then assign it again.',
+    CAMERA_PROFILE_NOT_OF_DEVICE: 'This camera was not assigned: the chosen stream profile is not one of the profiles stored for this camera. Choose one of them, then assign it again.',
+  },
+
   sourceClass: {
     badge: 'Development source',
     kind: {
@@ -940,6 +966,52 @@ export const common = {
     checkedAt: 'Checked at {{time}}',
     unregistered_one: '{{count}} other microphone is connected to the Core but not registered.',
     unregistered_other: '{{count}} other microphones are connected to the Core but not registered.',
+  },
+
+  /**
+   * Task 4, blueprint row 72 (WP-07d): the list of sound cards and the registration of one input as a
+   * microphone (operations 98 and 99; web console only). Every sentence says what an answer of the
+   * Core states: a listing, a registration (`result`, by its change code) or a refusal (`refusal`, by
+   * its reason). A product name is device text and is never part of a sentence here.
+   */
+  captureAudioCards: {
+    title: 'Sound cards',
+    action: 'List sound cards',
+    again: 'List again',
+    description: 'Lists the sound cards connected to the Core. Listing opens no card and registers nothing.',
+    listedAt: 'Listed at {{time}}',
+    empty: 'The Core found no sound card.',
+    truncated: 'The Core has more sound cards than it lists. The first {{max}} are listed.',
+    trustNote: 'Product names are what each sound card announced. They are not checked.',
+    card: {
+      inputs_one: '{{count}} input',
+      inputs_other: '{{count}} inputs',
+      sampleBits: 'Sample sizes: {{bits}} bit',
+      usbId: 'USB ID {{id}}',
+      notUsb: 'Not a USB card',
+      device: 'Capture device {{index}}',
+    },
+    inputsLabel: 'Inputs of sound card {{position}}',
+    input: 'Input {{number}}',
+    registeredAs: 'Registered as {{device}}',
+    pickHint: 'Choose one input of one sound card. A microphone is one input; inputs are never mixed.',
+    pickFirst: 'Choose an input first.',
+    register: 'Register as microphone',
+    locked: 'Sound cards cannot be listed and no input can be registered while a session is open.',
+    busy: 'The Core is listing the sound cards right now. Try again when it has finished.',
+    notReady: 'This Core cannot list sound cards or register an input now. Nothing was changed.',
+    listFailed: 'The sound cards could not be listed. Nothing was changed.',
+    result: {
+      REGISTERED: 'Input {{number}} is registered as {{device}}. It is not used until it is assigned as a microphone.',
+      REENABLED: 'Input {{number}} already has a microphone, {{device}}. It is enabled again; no second microphone was made.',
+      CARD_CHANGED: 'Input {{number}} is {{device}}, which was stored for a sound card at another place. It now names this sound card.',
+    },
+    refusal: {
+      NOT_FOUND: 'The Core no longer finds this sound card. List the sound cards again.',
+      AUDIO_INPUT_BEYOND_CARD: 'This sound card has no input of that number. List the sound cards again.',
+      AUDIO_INPUT_NOT_REGISTRABLE: 'This Core cannot capture from this sound card, so the input was not registered. Nothing was saved.',
+      FAILED: 'The input could not be registered. Nothing was saved.',
+    },
   },
 
   /**

@@ -8,11 +8,12 @@ import type { StoredCaptureDevice } from '../registration';
 import { CORRECT_GENERATED_SOURCE_PROFILES } from '../fake-profile';
 import { READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from '../statements';
 
+/** One member per slot. `null` is an UNASSIGNED slot (task 4 row 33; schema set A made the columns nullable): the statement's JOIN yields no row for it. */
 export interface Selector {
-  readonly video01: string;
-  readonly video02: string;
-  readonly primary: string;
-  readonly standby: string;
+  readonly video01: string | null;
+  readonly video02: string | null;
+  readonly primary: string | null;
+  readonly standby: string | null;
 }
 
 const device = (id: string, kind: StoredCaptureDevice['kind'], adapterKind: CaptureAdapterKind, model: string | null = null): StoredCaptureDevice => ({ id, kind, adapterKind, model });
@@ -53,7 +54,7 @@ export function fakeTables(devices: readonly StoredCaptureDevice[], selector: Se
         if (text === READ_STORED_DEVICES) return { rows: sorted.map((row) => ({ ...row })) as unknown as Row[] };
         if (text === READ_ASSIGNED_SOURCES) {
           if (tables.selector === null) return { rows: [] };
-          const slots: readonly (readonly [string, string])[] = [['MIC-PRIMARY', tables.selector.primary], ['MIC-STANDBY', tables.selector.standby], ['VIDEO-01', tables.selector.video01], ['VIDEO-02', tables.selector.video02]];
+          const slots: readonly (readonly [string, string | null])[] = [['MIC-PRIMARY', tables.selector.primary], ['MIC-STANDBY', tables.selector.standby], ['VIDEO-01', tables.selector.video01], ['VIDEO-02', tables.selector.video02]];
           return { rows: slots.flatMap(([slot, id]) => sorted.filter((row) => row.id === id).map((row) => ({ slot, id, kind: row.kind, adapterKind: row.adapterKind }))) as unknown as Row[] };
         }
         if (text === REGISTER_LOCAL_DEVICE) {

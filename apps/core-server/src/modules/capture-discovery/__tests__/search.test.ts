@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { SessionState } from '@dems/shared/domain';
 import { isSessionActive, type ActiveSession } from '@dems/shared/sim';
 import { READ_CAPTURE_STATE } from '../../capture-config/store';
-import { openSessionOf } from '../search';
+import { addressNotAllowed } from '../routes';
+import { openSessionOf, type TypedDestination } from '../search';
+import { typedAddressControl } from '../typed-address';
 
 const T0 = 1_760_000_000_000;
 const MANUAL = (sessionId: string, operatorId = 'OPR-003'): SearchRequest => ({ sessionId, operatorId, deviceId: null, trigger: 'MANUAL' });
@@ -52,7 +54,8 @@ function rig(options: { duringRecordingEnabled?: boolean; ready?: boolean; regis
   let now = T0;
   let session: { id: string; state: string } | null = null;
   let ready = options.ready ?? true;
-  const calls: Array<{ windowMs: number; lookup: RegisteredLookup; settle: (outcome: WsDiscoveryResult | Error) => void; signal: AbortSignal }> = [];
+  // Task 4 row 96: `unicast` is what the search handed the adapter for a typed address (undefined: the member was absent).
+  const calls: Array<{ windowMs: number; lookup: RegisteredLookup; settle: (outcome: WsDiscoveryResult | Error) => void; signal: AbortSignal; unicast: unknown; members: string[] }> = [];
   const audits: AuditEntry[] = [];
   const logs: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
   const persisted: Array<Record<string, unknown>> = [];
@@ -61,9 +64,9 @@ function rig(options: { duringRecordingEnabled?: boolean; ready?: boolean; regis
   const store = createCandidateStore({ randomBytes: (() => { let next = 0; return (size: number) => Uint8Array.from({ length: size }, (_u, index) => (index === size - 1 ? ++next : 7)); })() });
   const adapterOf = (lookup: RegisteredLookup): OnvifDiscoveryAdapter =>
     ({
-      discover: (search: { windowMs: number; signal: AbortSignal }) =>
+      discover: (search: { windowMs: number; signal: AbortSignal; unicast?: unknown }) =>
         new Promise<WsDiscoveryResult>((resolve, reject) => {
-          calls.push({ windowMs: search.windowMs, lookup, signal: search.signal, settle: (outcome) => (outcome instanceof Error ? reject(outcome) : resolve(outcome)) });
+          calls.push({ windowMs: search.windowMs, lookup, signal: search.signal, unicast: search.unicast, members: Object.keys(search).sort(), settle: (outcome) => (outcome instanceof Error ? reject(outcome) : resolve(outcome)) });
         }),
     }) as unknown as OnvifDiscoveryAdapter;
   const runner = createSearchRunner({
@@ -437,5 +440,123 @@ describe('G70c-04 and G70c-05: one rule for "a session is open" (wave L, driver 
       expect(READ_CAPTURE_STATE).not.toContain('EXISTS (SELECT 1 FROM public.active_session) AS session_open');
       expect(SessionState.SEALED).toBe('SEALED');
     });
+  });
+});
+
+// Task 4 blueprint row 96 (WP-12; contract of row 94; amended ruling AM-3): the typed address at the
+// search runner and at the module's rule holder. The destination below stands for the destination
+// rule's answer; the runner must hand it on as it came and read nothing of it.
+describe('task 4 row 96: the typed address of a MANUAL search', () => {
+  const RULED: TypedDestination = Object.freeze({ address: '192.168.50.20', port: 80, sourceAddress: '192.168.50.1', viaAlias: false });
+  const TYPED = (sessionId: string): SearchRequest => ({ ...MANUAL(sessionId), typed: RULED });
+
+  it('the search that is started hands the rule\'s answer to the adapter, the SAME object; the row and the log line hold no address', async () => {
+    const r = rig();
+    await runSearch(r, TYPED('S-A'), resultOf([answer('192.168.50.20')], { counts: { ...resultOf([]).counts, typedProbesSent: 1 } }));
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]?.unicast).toBe(RULED);
+    expect(r.calls[0]?.members).toEqual(['signal', 'unicast', 'windowMs']);
+    expect(r.audits).toHaveLength(1);
+    const written = JSON.stringify([r.audits, r.logs, r.persisted, r.closed]);
+    expect(written.includes('192.168.50')).toBe(false);
+    // The adapter's count of the typed probe is in the log line, as a number.
+    expect(r.logs.find((line) => line.message === 'camera search closed')?.fields['counts']).toMatchObject({ typedProbesSent: 1 });
+  });
+
+  it('the search without a typed address shows 0 changed results: the adapter is asked with the two members it always was', async () => {
+    const r = rig();
+    const plain = await runSearch(r, MANUAL('S-A'), resultOf([answer('192.168.50.20')]));
+    expect(r.calls[0]?.members).toEqual(['signal', 'windowMs']);
+    expect(r.calls[0]?.unicast).toBeUndefined();
+    const typedRig = rig();
+    const typed = await runSearch(typedRig, TYPED('S-A'), resultOf([answer('192.168.50.20')]));
+    // The answer of the start, the stored list and the audit row are the same with and without the member.
+    expect(typed.started && plain.started ? [typed.search, typed.created] : null).toEqual(plain.started ? [plain.search, plain.created] : undefined);
+    expect(typedRig.store.stateOf('S-A', typedRig.now())).toEqual(r.store.stateOf('S-A', r.now()));
+    expect(typedRig.audits).toEqual(r.audits);
+  });
+
+  it('no probe while the caller\'s own search runs: the answer is that search, and the typed address of the second request reaches no adapter', async () => {
+    const r = rig();
+    const first = await r.runner.start(MANUAL('S-A'));
+    await r.settle();
+    const again = await r.runner.start(TYPED('S-A'));
+    expect(again).toMatchObject({ started: true, created: false, search: { searchId: 'DSC-000001', created: false } });
+    // Another session's typed search while that one runs: refused, nothing sent.
+    expect(await r.runner.start(TYPED('S-B'))).toEqual({ started: false, refusal: { kind: 'IN_PROGRESS', reason: 'DISCOVERY_IN_PROGRESS' } });
+    await r.settle();
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]?.unicast).toBeUndefined();
+    r.calls[0]?.settle(resultOf([]));
+    if (first.started) await first.closed;
+    // A typed address that was not probed took no place in the typed spacing: the next typed search of another session starts.
+    r.advance(5_000);
+    const next = await r.runner.start(TYPED('S-B'));
+    expect(next.started).toBe(true);
+    await r.settle();
+    expect(r.calls[1]?.unicast).toBe(RULED);
+  });
+
+  it('the spacing of a typed probe is per Core: a second one of ANOTHER session sooner than 10 s is refused with the wait and sends nothing; a search without the member still starts', async () => {
+    const r = rig();
+    await runSearch(r, TYPED('S-A'), resultOf([]));
+    // 5 s after the first typed search started: the Core's own 5 s between searches are over, the typed 10 s are not.
+    r.advance(2_000);
+    expect(await r.runner.start(TYPED('S-B'))).toEqual({ started: false, refusal: { kind: 'RATE_LIMITED', reason: 'DISCOVERY_RATE_LIMITED', bound: 'CORE_SPACING', retryAfterMs: 5_000 } });
+    await r.settle();
+    expect([r.calls.length, r.audits.length, r.runner.started()]).toEqual([1, 1, 1]);
+    // The refusal took no place anywhere: the same session searches without the member at once.
+    await runSearch(r, MANUAL('S-B'), resultOf([]));
+    expect(r.calls[1]?.unicast).toBeUndefined();
+    // 10 s after the first typed search a third session's typed search starts.
+    r.advance(2_000);
+    const later = await r.runner.start(TYPED('S-C'));
+    expect(later.started).toBe(true);
+    await r.settle();
+    expect(r.calls[2]?.unicast).toBe(RULED);
+  });
+
+  it('a clock that went back never reads as "long ago" (the bounds of the limiter stand in front and refuse it); the pre-check\'s search never carries a typed address', async () => {
+    const r = rig();
+    await runSearch(r, TYPED('S-A'), resultOf([]));
+    r.advance(-60_000);
+    expect(await r.runner.start(TYPED('S-B'))).toMatchObject({ started: false, refusal: { kind: 'RATE_LIMITED', reason: 'DISCOVERY_RATE_LIMITED' } });
+    expect(r.calls).toHaveLength(1);
+    r.advance(60_000 + 10_000);
+    await runSearch(r, { ...PRECHECK('S-P'), typed: RULED }, resultOf([]));
+    expect(r.calls.at(-1)?.unicast).toBeUndefined();
+    expect(r.calls.at(-1)?.members).toEqual(['signal', 'windowMs']);
+  });
+
+  it('the module\'s rule holder: with no rule every address is refused; a rule\'s answer is returned as it came; a rule that throws or answers nonsense is a refusal; a second rule is not taken', () => {
+    const control = typedAddressControl({ stages: {} });
+    expect(control.ruled()).toBe(false);
+    for (const address of ['192.168.50.20', '10.0.0.5', '127.0.0.1']) expect(control.decide(address)).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
+    const asked: string[] = [];
+    control.provideRule((address) => {
+      asked.push(address);
+      if (address === '192.168.50.20') return { allowed: true, destination: RULED };
+      if (address === '192.168.50.66') throw new Error('rule');
+      if (address === '192.168.50.67') return null as never;
+      if (address === '192.168.50.68') return { allowed: false, refusal: 'not a code word; 192.168.50.68' };
+      if (address === '192.168.50.69') return { allowed: true, destination: null as never };
+      return { allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' };
+    });
+    expect(control.ruled()).toBe(true);
+    const allowed = control.decide('192.168.50.20');
+    expect(allowed.allowed && allowed.destination).toBe(RULED);
+    expect(control.decide('10.0.0.5')).toEqual({ allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
+    for (const address of ['192.168.50.66', '192.168.50.67', '192.168.50.68', '192.168.50.69']) expect(control.decide(address)).toEqual({ allowed: false, refusal: 'RULE_FAILED' });
+    expect(asked).toHaveLength(6);
+    expect(() => control.provideRule(() => ({ allowed: true, destination: RULED }))).toThrow('handed in already');
+    // One holder per app: the same object from every scope of it.
+    const app = { stages: {} };
+    expect(typedAddressControl(app)).toBe(typedAddressControl(app));
+  });
+
+  it('the one answer of a refused address: 422 INVALID_INPUT with the contract\'s reason, the same whatever the rule refused, and no address in it', () => {
+    const failure = addressNotAllowed();
+    expect(failure).toMatchObject({ statusCode: 422, code: 'INVALID_INPUT' });
+    expect(JSON.stringify([failure.message, failure.details])).toBe(JSON.stringify(['A camera search cannot use this address.', { in: 'body', reason: CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED }]));
   });
 });

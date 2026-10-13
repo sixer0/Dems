@@ -57,7 +57,7 @@ import {
   type CaptureConnectionTest,
 } from '@dems/shared/api';
 import { AuditType, Permission, isSessionActive } from '@dems/shared/sim';
-import { CaptureAdapterError, CaptureAdapterKind, sourceClassOf, usingCredential, type CameraCandidate, type ConnectionTestResult, type SealedCredential } from '../../../capture/adapters';
+import { CaptureAdapterError, CaptureAdapterKind, sourceClassOf, usingCredential, type CameraCandidate, type ConnectionTestResult, type JudgedStream, type SealedCredential } from '../../../capture/adapters';
 import { SERVER_AUDIT_DETAIL_RULES, type AuditEntry, type UnitContext } from '../../../core';
 import type { DurableSlices } from '../../../db/mapping';
 import type { EngineOutcome, EngineUnit } from '../../../engine';
@@ -76,7 +76,12 @@ export interface CandidateTestRecord {
   readonly testedAt: number;
   /** Present only for an `AUTHENTICATION_FAILED` test in which the credential was NOT sent (finding R69-13). */
   readonly reason?: CaptureConnectionTestReason;
-  /** The usable profile codes the test read; empty unless `REACHABLE`. */
+  /**
+   * What the test read as usable, for the comparison of operation 96; empty unless `REACHABLE`.
+   * Task 4 row 50: the Core's own CODES of the judged streams (`HEVC_1080P`), H.264 or HEVC, when
+   * the stream half of the test ran; the ONVIF half's own answer when it did not (a test without
+   * a credential, a Core without a relay program).
+   */
   readonly profiles: readonly string[];
 }
 
@@ -104,7 +109,16 @@ export type ConnectionAttempt = ConnectionTestResult & {
   readonly rejectedCredentialRequests?: number;
   /** The adapter's own reason code of the attempt (`OnvifTestReason`), when it gives one. Read for ONE value only: `reasonOf`. */
   readonly reason?: string | null;
+  /**
+   * Task 4 row 50 (amendment AM-2; AD-06): the streams the test JUDGED FROM THE STREAM ITSELF - the
+   * Core's code, the closed codec, the bounded picture, and the ONVIF tokens the stream is found
+   * by. Absent or empty when no stream half ran: then nothing was judged and NO code exists (C36).
+   */
+  readonly streams?: readonly JudgedStream[];
 };
+
+/** A reason code of an adapter as a log line may carry it: an upper-case code word, never a value. */
+const REASON_WORD = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 /**
  * The reason a client is told (fix F-M4; review row 69, finding R69-13; decision D178). `cap`
@@ -146,7 +160,10 @@ export interface AdoptedDevice {
   /** Host, or host and port: never a locator with a user part. */
   readonly address: string;
   readonly endpointRef: string | null;
+  /** The profile CODES of the camera (task 4 row 51; AD-06 (4)): exactly the codes of `streams`. Never an ONVIF token. */
   readonly profiles: readonly string[];
+  /** The streams the RE-VERIFICATION judged from the stream itself: each becomes a stream row of the device. Empty: no stream half ran, and no code exists (C36). */
+  readonly streams: readonly JudgedStream[];
   readonly at: number;
 }
 
@@ -282,6 +299,8 @@ function permitFor(candidate: ConnectCandidate, credential: OperatorCredential |
 interface Attempt {
   readonly record: CandidateTestRecord;
   readonly verdict: GuardVerdict;
+  /** The streams this attempt judged from the stream itself (task 4 row 50); empty unless `REACHABLE` by a stream half. Never kept past the operation. */
+  readonly streams: readonly JudgedStream[];
 }
 
 /**
@@ -353,8 +372,11 @@ async function contact(
   await host.nativeUnit(`${SOURCE}.tested`, async (unit) => {
     await unit.audit.append(entry);
   });
-  host.note({ code: AuditType.CAPTURE_CONNECTION_TESTED, source: SOURCE, operationId, outcome: record.outcome, authenticated, sourceClass, guardTripped: verdict.guardTripped }, 'camera connection tested');
-  return { record, verdict };
+  // The adapter's own reason of a test that did not pass, as a code word (never device text): what tells a refused stream from an absent one in the log.
+  const testReason = typeof attempt.reason === 'string' && REASON_WORD.test(attempt.reason) ? attempt.reason : null;
+  const streams = record.outcome === CaptureConnectionOutcome.REACHABLE ? [...(attempt.streams ?? [])] : [];
+  host.note({ code: AuditType.CAPTURE_CONNECTION_TESTED, source: SOURCE, operationId, outcome: record.outcome, authenticated, sourceClass, guardTripped: verdict.guardTripped, testReason, judgedStreams: streams.length }, 'camera connection tested');
+  return { record, verdict, streams };
 }
 
 /**
@@ -476,7 +498,7 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
   if (registrar === null) throw discoveryNotReady();
 
   // The re-verification: one more read-only attempt, with the credential of THIS request.
-  const { record } = await contact(seams, caller, resolved, permit, 'adoptCaptureCandidate');
+  const { record, streams } = await contact(seams, caller, resolved, permit, 'adoptCaptureCandidate');
   if (record.outcome !== CaptureConnectionOutcome.REACHABLE) throw invalidState(CaptureDiscoveryReason.CONNECTION_TEST_FAILED, 'The camera did not pass the connection test again.', { outcome: record.outcome });
   if (!sameSet(record.profiles, tested.profiles)) {
     throw invalidState(CaptureDiscoveryReason.CONNECTION_TEST_FAILED, 'The camera changed since it was tested. Test it again.', { cause: CAPTURE_DEVICE_CHANGED_CAUSE });
@@ -502,7 +524,11 @@ export async function adoptCandidate(seams: ConnectSeams, caller: ConnectCaller,
       model: candidate.camera.model,
       address,
       endpointRef: candidate.camera.endpointRef,
-      profiles: record.profiles,
+      // Task 4 row 51 (AD-06 (4)): what is stored is the Core's CODE of each stream the re-verification judged, with the
+      // ONVIF tokens beside it in the stream row. `record.profiles` of a test WITHOUT a stream half are ONVIF tokens:
+      // they served the comparison above and are stored nowhere.
+      profiles: streams.map((stream) => stream.code),
+      streams,
       at,
     });
     if (credential !== null && sealer !== null) {

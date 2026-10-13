@@ -215,3 +215,36 @@ describe('R-4: the two files log nothing, read no secret member and do not make 
     expect(relativeImports(reader).map((entry) => entry.target).sort()).toEqual(['src/capture/adapters', 'src/core', 'src/modules/capture-config/credential-reveal', 'src/plugins/logger']);
   });
 });
+
+// Task 4 row 187 (controller ruling C36 (1)). The hosted action gives a camera that is assigned into an empty slot without
+// a profile a constant of the SIMULATOR (`packages/shared/src/sim/capture-config.ts`). In the Core the profile of a
+// production camera is the statement of its own stream and no default stands in for it: operation 78 / 79 refuse the edit
+// before the action (`routes.ts`). This rule holds the other half: NO FILE UNDER `apps/core-server/src` - production or
+// test - names that constant in its code, so no later row can read the default into the Core.
+describe('R-7: no file of the Core names the simulator\'s empty-slot profile constant (C36 (1))', () => {
+  /** Built from parts, so that this file is not itself an occurrence. */
+  const EMPTY_SLOT_CONSTANT = ['CAPTURE', 'CONFIG', 'EMPTY', 'SLOT', 'PROFILE'].join('_');
+  const NAMED = new RegExp(`\\b${EMPTY_SLOT_CONSTANT}\\b`, 'g');
+  const underSrc = codeOnly(tree.filter((file) => file.path.startsWith('src/') && !file.path.endsWith('.sql')));
+
+  it('importers under apps/core-server/src: 0 - in production sources and in tests alike', () => {
+    expect(underSrc.length).toBeGreaterThan(200);
+    expect(underSrc.some((file) => file.path === `${FOLDER}routes.ts`)).toBe(true);
+    expect(occurrences(underSrc, NAMED)).toEqual([]);
+  });
+
+  it('finds a planted import, a planted re-export and a planted use (positive control); a comment that names it is no import', () => {
+    const planted: SourceFile[] = [
+      { path: `${FOLDER}routes.ts`, text: `import { ${EMPTY_SLOT_CONSTANT} } from '@dems/shared/sim';\n` },
+      { path: 'src/capture/adapters/camera/onvif-relay.ts', text: `\nexport { ${EMPTY_SLOT_CONSTANT} as DEFAULT_PROFILE } from '@dems/shared/sim';\n` },
+      { path: 'src/capture-session/index.ts', text: `const profile = line.profile ?? sim.${EMPTY_SLOT_CONSTANT};\n` },
+      { path: `${FOLDER}plan.ts`, text: `// the simulator's ${EMPTY_SLOT_CONSTANT} is not read here\nconst nothing = 0;\n` },
+    ];
+    expect(occurrences(codeOnly(planted), NAMED)).toEqual([`${FOLDER}routes.ts:1`, 'src/capture/adapters/camera/onvif-relay.ts:2', 'src/capture-session/index.ts:1']);
+  });
+
+  it('the constant is still the simulator\'s: defined once in the shared package, used there by the hosted action', () => {
+    const shared = readTree(`${WORKSPACE}/../../packages/shared/src`).filter((file) => /\.tsx?$/.test(file.path));
+    expect(occurrences(codeOnly(shared), NAMED).map((place) => place.replace(/:\d+$/, ''))).toEqual(['sim/capture-config.ts', 'sim/capture-config.ts']);
+  });
+});

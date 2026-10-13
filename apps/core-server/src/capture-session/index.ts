@@ -122,12 +122,17 @@
  *                when the report of its relay and the worker's connect report for the same camera
  *                and attempt have both arrived within `INGEST_PAIRING_BOUND_MS`, in either order
  *                (`ingest-pairing.ts`). An unpaired or contradictory arrival - one without the
- *                other, a second connect report, a relay report for another attempt, a listener
- *                the worker refused although its relay reported - ends the capture with the cause
- *                `CAMERA_INGEST_NOT_PAIRED` (ruling C35 (b)). A camera that is simply absent is no
- *                such fault: the degraded start of D72(k) stays (C35 (a)). The relay's side is an
- *                injected source; without one a `REAL_PRODUCTION` start is refused
- *                (`RELAY_REPORTS_NOT_WIRED`, ruling C34) and the development operation pairs nothing.
+ *                other, a second connect report, a relay report for an attempt the Core never
+ *                issued, a listener the worker refused although its relay reported - ends the
+ *                capture with the cause `CAMERA_INGEST_NOT_PAIRED` (ruling C35 (b)). A camera that
+ *                is simply absent is no such fault: the degraded start of D72(k) stays (C35 (a)).
+ *                The relay's side is an injected source; without one a `REAL_PRODUCTION` start is
+ *                refused (`RELAY_REPORTS_NOT_WIRED`, ruling C34) and the development operation
+ *                pairs nothing. Since task 4 row 188: a relay report for an attempt the Core itself
+ *                SUPERSEDED (its worker was replaced) is dropped, counted and said in a log line -
+ *                never a fault (ruling C37); and where the worker's gate refused a camera AND the
+ *                pairing ends the capture for it, the operator keeps ONE critical notice, the one
+ *                of the ended capture (ruling C40 (2); `foldGateNotice`).
  *
  * IN CAPTURE MODE `simulated` NOTHING HERE RUNS: `recordingStartedIn` and the two `after...` calls
  * return at once, and operation 81 is the simulator's own hosted action.
@@ -150,8 +155,8 @@ import { SessionState } from '@dems/shared/domain';
 import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, CaptureSupervisorError, captureIngestAddress, isCameraAbsentReason, isCameraIntegrityReason, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
-import { CaptureAdapterError, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
-import { assertSessionSourcesOfOperation, buildSessionCaptureSources, captureFenceControl, captureOperationOf, type CaptureSourceSlot, type SessionCaptureSource } from '../capture/fence';
+import { CaptureAdapterError, CaptureAdapterKind, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
+import { NO_SOURCE_FACTS, assertSessionSourcesOfOperation, audioCardStatementOf, buildSessionCaptureSources, captureFenceControl, captureOperationOf, micSourceFactsOf, type CaptureSourceSlot, type SessionCaptureSource, type SessionSourceFacts } from '../capture/fence';
 import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
 import { CapturePlanError, assertRecordableSelector, buildCapturePlan, type CapturePlanSelector, type RecordableSelector } from '../modules/capture-config';
 import { createFragmentRecorder, createRecordingFragmentStore, type FragmentRecorder, type VideoTrackId } from '../modules/recording-fragments';
@@ -224,6 +229,12 @@ export const RELAY_REPORTS_NOT_WIRED = 'RELAY_REPORTS_NOT_WIRED';
 
 /** The cause of a capture that was ended because a camera did not count as open by SA-3 (row 48; `ingest-pairing.ts`). */
 export const CAMERA_INGEST_NOT_PAIRED = 'CAMERA_INGEST_NOT_PAIRED';
+
+/**
+ * How many dropped relay reports of superseded attempts a capture says with a log line of their own (task 4 row 188;
+ * ruling C37). Every one is counted; beyond this number the count is said once, at the end of the capture.
+ */
+export const SUPERSEDED_REPORT_LINES = 8;
 
 /** The `cause` of a camera that was not opened because the session holds no address for it (row 179: a camera is never opened toward a guessed or an earlier address). */
 export const INGEST_ADDRESS_UNKNOWN = 'INGEST_ADDRESS_UNKNOWN';
@@ -482,6 +493,13 @@ interface Live {
   pairing: IngestPairing | null;
   /** SA-3: by camera, the attempt and the ingest state the worker last reported: a connect report is a CHANGE to `CONNECTED`. */
   readonly ingestSaid: Map<string, string>;
+  /**
+   * Row 188 (C40 (2)): by camera, the refusal of the worker's gate this capture was told - the worker's own word
+   * (`CAMERA_ANNOUNCE_NOT_MATCHED` / `_NOT_SEEN`) and the attempt it was said in. Read when the pairing ends the capture.
+   */
+  readonly gateRefusals: Map<string, { readonly reason: string; readonly attempt: number }>;
+  /** Row 188 (C37): true once the total of the dropped relay reports of superseded attempts was said at the end of the capture. */
+  supersededSummed: boolean;
   /** True once the tap path of the session was asked of the transcription unit: from then on its scratch folder may exist. */
   tapAsked: boolean;
   /** True once the transcriber session was asked for; true again once it was told the end. */
@@ -668,6 +686,12 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
   /** Closes every source handle of a capture and ends its subscriptions. Safe to call twice. */
   async function release(of: Live): Promise<void> {
     of.abort.abort();
+    // Row 188 (C37): the reports of superseded attempts beyond the lines that were said, as one count at the end of the capture.
+    const dropped = of.pairing?.supersededReports() ?? 0;
+    if (dropped > SUPERSEDED_REPORT_LINES && !of.supersededSummed) {
+      of.supersededSummed = true;
+      app.log.info({ code: 'CAPTURE_RELAY_REPORTS_SUPERSEDED_TOTAL', sessionId: of.sessionId, dropped, said: SUPERSEDED_REPORT_LINES }, 'relay reports for superseded attempts were dropped during this capture: the total');
+    }
     of.pairing?.end();
     for (const off of of.offs.splice(0)) off();
     for (const handle of of.handles.splice(0)) {
@@ -741,6 +765,31 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     return refusal(409, ApiErrorCode.INVALID_STATE, TEXT.NOT_RECORDABLE, { reason: SOURCE_KIND_NOT_RECORDABLE, cause: why, deviceId }, cause);
   }
 
+  /**
+   * The source facts of one row of a start (task 4 row 71; schema design 2.3; AD-07 (1), S13-13): for a microphone slot,
+   * what its adapter states of the card behind the input - which physical device records - as the fence's builder admits
+   * it (closed keys; every text through the card text rule; bounded). `{}` for a camera slot and for an adapter that
+   * states nothing (the fakes, the generated and the local sources).
+   *
+   * NEVER REFUSES A START: an adapter that throws, and a `USB_AUDIO` input whose adapter states nothing, are written to
+   * the error log with the session and the device, and the row stores `{}`. No text of a device is put into that entry.
+   */
+  function sourceFactsOf(registry: CaptureDeviceRegistry, row: SessionCaptureSource): SessionSourceFacts {
+    if (row.slot !== 'MIC-PRIMARY' && row.slot !== 'MIC-STANDBY') return NO_SOURCE_FACTS;
+    try {
+      const facts = micSourceFactsOf(audioCardStatementOf(registry.resolve('MIC', row.deviceId), row.deviceId));
+      if (row.adapterKind === CaptureAdapterKind.USB_AUDIO && Object.keys(facts).length === 0) {
+        persist('warn', 'CAPTURE_SOURCE_FACTS_NOT_STATED', 'the adapter of a sound-card input stated no card facts at the session start: the source row holds none', null, { sessionId: row.sessionId, deviceId: row.deviceId, slot: row.slot });
+      }
+      return facts;
+    } catch (err) {
+      // The CODE of a refusal of the adapter layer (a closed vocabulary), never the message of what was thrown: an
+      // unexpected error of an adapter may quote the card, and the log is a store as well (AD-07 (1)).
+      persist('warn', 'CAPTURE_SOURCE_FACTS_NOT_READ', 'the card facts of a microphone could not be read at the session start: the source row holds none', null, { sessionId: row.sessionId, deviceId: row.deviceId, slot: row.slot, cause: err instanceof CaptureAdapterError ? err.code : 'UNEXPECTED' });
+      return NO_SOURCE_FACTS;
+    }
+  }
+
   async function recordingStartedIn(scope: EngineUnit, sessionId: string): Promise<void> {
     if (!real) return;
     const state = scope.pending();
@@ -768,8 +817,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     await markCaptureConnectingIn(scope, sessionId);
     const first = sources[0];
     if (first === undefined) throw notRecordable(undefined, null, 'SELECTOR_SHAPE');
-    // MR-S1: four rows, one statement, in the transaction that persists RECORDING.
-    await scope.unit.query(INSERT_SESSION_CAPTURE_SOURCES, [sessionId, first.recordedAt, ...sources.flatMap((row) => [row.slot, row.deviceId, row.adapterKind])]);
+    // MR-S1: four rows, one statement, in the transaction that persists RECORDING. Each row carries its source facts
+    // (task 4 row 71): they are written here or never, the runtime role cannot update the column.
+    await scope.unit.query(INSERT_SESSION_CAPTURE_SOURCES, [sessionId, first.recordedAt, ...sources.flatMap((row) => [row.slot, row.deviceId, row.adapterKind, JSON.stringify(sourceFactsOf(registry, row))])]);
     // MR-S6: what was written is read back and held against the running operation again.
     const stored = (await scope.unit.query<{ slot: CaptureSourceSlot; device_id: string; adapter_kind: SessionCaptureSource['adapterKind'] }>(READ_SESSION_CAPTURE_SOURCES, [sessionId])).rows;
     try {
@@ -990,7 +1040,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
    */
   function pairingFailed(of: Live, failure: IngestPairingFailure): void {
     if (of.ended) return;
-    persist('error', 'CAPTURE_INGEST_NOT_PAIRED', 'a camera of the session did not count as open: the report of its relay and the connect report of the capture worker did not pair, and the capture is ended', null, { sessionId: of.sessionId, deviceId: failure.deviceId, attempt: failure.attempt, reason: failure.reason });
+    // Row 188 (C40 (2)): when the worker's gate refused this camera for this attempt, the entry names the gate's own word beside the pairing's.
+    const gate = of.gateRefusals.get(failure.deviceId);
+    const gateReason: Record<string, string> = gate !== undefined && gate.attempt === failure.attempt ? { gateReason: gate.reason } : {};
+    persist('error', 'CAPTURE_INGEST_NOT_PAIRED', 'a camera of the session did not count as open: the report of its relay and the connect report of the capture worker did not pair, and the capture is ended', null, { sessionId: of.sessionId, deviceId: failure.deviceId, attempt: failure.attempt, reason: failure.reason, ...gateReason });
     let durable = false;
     try {
       const status = of.supervisor.status();
@@ -999,7 +1052,38 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // A supervisor that cannot say: the file on the disk decides in `captureEnded`.
     }
     of.leave();
-    inBackground(of.sessionId, 'captureEnded', () => captureEnded(of, CAMERA_INGEST_NOT_PAIRED, durable));
+    inBackground(of.sessionId, 'captureEnded', () => captureEnded(of, CAMERA_INGEST_NOT_PAIRED, durable).then(() => foldGateNotice(of, failure)));
+  }
+
+  /**
+   * ONE NOTICE, WITH THE STRONGER CAUSE (task 4 row 188; controller ruling C40 (2)). One arrival can
+   * be said twice: the worker's gate refuses a push (`CAMERA_ANNOUNCE_NOT_MATCHED` / `_NOT_SEEN`: the
+   * capture forwarder raises it as a critical fault of THAT CAMERA, at once and by itself), and the
+   * pairing ends the capture for the same camera and attempt because its relay reported
+   * (`CAMERA_INGEST_NOT_PAIRED`: the critical fault of the capture as a whole, raised by the door of
+   * `captureEnded`). The end of the capture is the stronger of the two: it says that nothing is
+   * being recorded any more. So, once that fault STANDS, the camera's own notice is resolved here -
+   * the operator has one critical notice, not two. The refusal of the gate is not lost: its audit
+   * entry stays, and the error-log entry of the pairing names the gate's reason beside it.
+   *
+   * A gate refusal WITHOUT a pairing end is not touched (C40 (2): it is the critical fault of that
+   * camera and the capture goes on), and neither is the notice of another camera or another attempt.
+   * Never throws.
+   */
+  async function foldGateNotice(of: Live, failure: IngestPairingFailure): Promise<void> {
+    const gate = of.gateRefusals.get(failure.deviceId);
+    if (gate === undefined || gate.attempt !== failure.attempt) return;
+    const context = { sessionId: of.sessionId, deviceId: failure.deviceId, attempt: failure.attempt, gateReason: gate.reason, cause: CAMERA_INGEST_NOT_PAIRED };
+    try {
+      // Only when the stronger notice is really there - the session is in FAULT by its capture: a capture end the engine did not
+      // record leaves the camera's notice as the one that is.
+      const session = app.engine.slice('session');
+      if (session === null || session.id !== of.sessionId || session.fault?.kind !== 'CAPTURE_FAULT') return;
+      await app.engine.clearCaptureWarning({ code: 'CAPTURE_FAULT', subject: failure.deviceId, reason: gate.reason } as Parameters<typeof app.engine.clearCaptureWarning>[0]);
+      app.log.info({ code: 'CAPTURE_GATE_NOTICE_FOLDED', ...context }, 'the refusal of the capture worker\'s gate and the end of the capture by the pairing are one arrival: the camera\'s own notice is resolved, the notice of the ended capture stands');
+    } catch (err) {
+      persist('error', 'CAPTURE_GATE_NOTICE_NOT_FOLDED', 'the notice of a camera the capture worker\'s gate refused could not be resolved after the pairing ended the capture: two notices stand for one arrival', err, context);
+    }
   }
 
   /**
@@ -1207,7 +1291,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         failed(null, INGEST_ADDRESS_UNKNOWN);
         continue;
       }
-      const target: CameraSourceTarget = { ingestUrl: address, ...(camera.profile === null ? {} : { profile: camera.profile }) };
+      const target: CameraSourceTarget = { ingestUrl: address, sessionId, attempt: current.supervisor.status().attempt, ...(camera.profile === null ? {} : { profile: camera.profile }) };
       let asked: Promise<SourceHandle>;
       try {
         asked = Promise.resolve(registry.resolve('CAMERA', deviceId).openSource(deviceId, target, own?.signal ?? current.abort.signal));
@@ -1339,6 +1423,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       cameras: null,
       pairing: null,
       ingestSaid: new Map(),
+      gateRefusals: new Map(),
+      supersededSummed: false,
       tapAsked: false,
       transcriberBegun: false,
       transcriberEnded: false,
@@ -1425,8 +1511,12 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           // "the worker refused, or gave up, this listener" for the pairing; which of them is a MISSING camera is ruling C35 (`../capture`).
           const absent = isCameraAbsentReason(event.reason);
           if (event.sessionId !== sessionId || event.source !== 'worker' || !(absent || isCameraIntegrityReason(event.reason)) || event.state !== CaptureWarningState.ACTIVE || event.subject === null) return;
+          const attempt = supervisor.status().attempt;
+          // Row 188 (C40 (2)): a refusal of the worker's GATE is kept by camera BEFORE the pairing judges it, so that an end of the
+          // capture by the pairing for the same camera and attempt is said as ONE notice (`foldGateNotice`).
+          if (!absent && event.reason !== null) current.gateRefusals.set(event.subject, { reason: event.reason, attempt });
           // SA-3 / BR-08 (row 48): the worker refused, or gave up, the listener of this camera - with the pairing applied, a fault of the capture.
-          current.pairing?.workerRefused(event.subject, supervisor.status().attempt);
+          current.pairing?.workerRefused(event.subject, attempt);
           // C35 (a): only a missing camera is the degraded start the notices unit words as a WARNING. C35 (b): a refusal of the worker's
           // gate is an integrity fault - the capture forwarder raises it as a critical fault of the camera under its own reason, so it is
           // not ALSO said as "did not connect".
@@ -1464,6 +1554,15 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           },
           opened: (deviceId, attempt) => app.log.info({ code: 'CAPTURE_CAMERA_INGEST_PAIRED', sessionId, deviceId, attempt }, 'a camera of the session counts as open: the report of its relay and the connect report of the capture worker are paired'),
           fault: (failure) => pairingFailed(current, failure),
+          // Row 188 (C37): a relay of an attempt the Core itself superseded still spoke. Dropped by the pairing; said here in ONE
+          // line per report with the running count - the first `SUPERSEDED_REPORT_LINES` of a capture, the rest are counted only.
+          superseded: (dropped) => {
+            if (dropped.count > SUPERSEDED_REPORT_LINES) return;
+            app.log.info(
+              { code: 'CAPTURE_RELAY_REPORT_SUPERSEDED', sessionId, deviceId: dropped.deviceId, attempt: dropped.attempt, attemptInForce: dropped.inForce, dropped: dropped.count },
+              'a relay report for an attempt this Core has superseded was dropped: its worker was replaced and its relay is being ended; no fault',
+            );
+          },
         });
         current.offs.push(
           relayReports.subscribe((report) => {

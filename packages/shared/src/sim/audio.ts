@@ -47,16 +47,14 @@ import { FaultKind } from './vocabulary';
 export const AUDIO_CHANNELS = ['AUDIO-01', 'AUDIO-02'] as const satisfies readonly AudioTrackId[];
 
 /**
- * The pairing of the two meter channels with the BUILT-IN microphone inputs: what the rule below
- * gives for the seeded selector (`MIC-01`, `MIC-02`), and its answer where no microphone line exists.
+ * The pairing of the two meter channels with the BUILT-IN microphone inputs: what
+ * `meterInputOfChannel` gives for the seeded selector (`MIC-01`, `MIC-02`). A table of the seeded
+ * pair only - no lookup answers from it where a line is missing (task 4 row 172, C18 (2)).
  */
 export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = {
   'AUDIO-01': 'MIC-01',
   'AUDIO-02': 'MIC-02',
 };
-
-/** One microphone line, as far as the POSITIONAL rule `micInputOfChannel` reads it. It states no role; it goes with that function (task 4 row 172). */
-type MicLine = Pick<CaptureConfigMic, 'inputId'>;
 
 /**
  * One microphone line, as far as the lookups BY ROLE read it: the input and the role it holds
@@ -71,18 +69,6 @@ export type RoleMicLine = Pick<CaptureConfigMic, 'inputId' | 'role'>;
  */
 export function captureMicLines(state: Pick<SimState, 'session' | 'captureConfig'>): readonly CaptureConfigMic[] {
   return micLinesInForce(state);
-}
-
-/**
- * Which microphone **input** a meter channel is (OD-01 T1; register SH-17; RULING D137): the
- * channel order is the order of the microphone lines of the capture configuration, which is
- * input order (D106 (1)) - channel 1 (`AUDIO-01`) is the first line, channel 2 (`AUDIO-02`) the
- * second, whatever their IDs. The meters slice is keyed by input; the demo controls, the CLIP
- * fault target and the timeline still name a channel, so this function is the single place the
- * two vocabularies meet. `audio.activeInputId` says which of the two feeds the session track now.
- */
-export function micInputOfChannel(mics: readonly MicLine[], channel: AudioTrackId): CaptureMicInputId {
-  return mics[AUDIO_CHANNELS.indexOf(channel)]?.inputId ?? DEFAULT_MIC_INPUT_OF_CHANNEL[channel];
 }
 
 /**
@@ -104,8 +90,11 @@ function isCompleteMicPair(mics: readonly RoleMicLine[]): boolean {
 
 /**
  * Which microphone input a meter channel is, or `null` (names register N5, section 3.2; RULING D137
- * kept by C21 (7)). For a COMPLETE pair the answer is the one `micInputOfChannel` gives: the line at
- * the channel's place in the list as held (input order, D106 (1)). For anything else - no line, one
+ * kept by C21 (7); OD-01 T1, register SH-17). For a COMPLETE pair the channel order is the order of
+ * the microphone lines as held, which is input order (D106 (1)): channel 1 (`AUDIO-01`) is the first
+ * line, channel 2 (`AUDIO-02`) the second, whatever their IDs. The meters slice is keyed by input;
+ * the demo controls, the CLIP fault target and the timeline still name a channel, so this function
+ * is the single place the two vocabularies meet. For anything else - no line, one
  * line, two lines that are not one of each role - no channel has an input: a lone line has a role
  * (`micInputOfRole` finds it) and no meter channel until the pair is complete. Never a constant of
  * `DEFAULT_MIC_INPUT_OF_CHANNEL`.
@@ -116,23 +105,12 @@ export function meterInputOfChannel(mics: readonly RoleMicLine[], channel: Audio
 }
 
 /**
- * PENDING-ROW-171 seam on the parameter of `channelOfMicLine`: a line whose type does not STATE its
- * role. The register gives the function `RoleMicLine` (N6); one caller outside this workspace
- * (`apps/mobile/src/features/devices/sim-adapter.ts`, `channelOf`, row 171's file) still declares
- * its lines as `{ inputId }`. Until it states the role, such a list is accepted by the type and
- * answered as what it is: lines without a role are no complete pair, hence no channel.
+ * The inverse of `meterInputOfChannel`: the meter channel of an input of these lines; null for an
+ * input that has none. The lines STATE their role (names register E20, N6): a list without roles
+ * does not type-check here.
  */
-type MicLineRoleUnstated = Pick<CaptureConfigMic, 'inputId'> & { readonly role?: MicRole };
-
-function statesRole(line: MicLineRoleUnstated): line is RoleMicLine {
-  return line.role !== undefined;
-}
-
-/** The inverse of `meterInputOfChannel`: the meter channel of an input of these lines; null for an input that has none. */
-export function channelOfMicLine(mics: readonly MicLineRoleUnstated[], inputId: string): AudioTrackId | null {
-  const lines = mics.filter(statesRole);
-  if (lines.length !== mics.length) return null;
-  for (const channel of AUDIO_CHANNELS) if (meterInputOfChannel(lines, channel) === inputId) return channel;
+export function channelOfMicLine(mics: readonly RoleMicLine[], inputId: string): AudioTrackId | null {
+  for (const channel of AUDIO_CHANNELS) if (meterInputOfChannel(mics, channel) === inputId) return channel;
   return null;
 }
 
@@ -142,8 +120,7 @@ export function channelOfMicLine(mics: readonly MicLineRoleUnstated[], inputId: 
  * register E21): with no line behind it `meterInputOfChannel` answers null and the caller has no frame.
  */
 export function activeMeterChannel(state: Pick<SimState, 'session' | 'captureConfig' | 'audio'>): AudioTrackId {
-  // Typed as the slice will hold it once the seam `AudioSliceInState` is out (row 28; row 149 removes it).
-  const active: CaptureMicInputId | null = state.audio.activeInputId;
+  const active = state.audio.activeInputId;
   if (active === null) return 'AUDIO-01';
   return channelOfMicLine(captureMicLines(state), active) ?? 'AUDIO-01';
 }
@@ -436,10 +413,9 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
         ...next,
         audio: {
           inputs: frames,
-          // PENDING-ROW-28-SEAM: the state cannot hold a null active input yet (`AudioSliceInState`,
-          // `sim/types.ts`), so with no PRIMARY line the member keeps what it held. The row that
-          // removes the seam writes `active` alone here. Not reached on a selector with a PRIMARY line.
-          activeInputId: active ?? state.audio.activeInputId,
+          // Without a PRIMARY line the state holds NO active input (task 4 row 149): `null`, never
+          // the input it held before and never a line by its place.
+          activeInputId: active,
         },
         ...(mics !== state.mics ? { mics } : {}),
       };

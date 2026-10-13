@@ -13,6 +13,7 @@ import { captureLog, unitTestConfig, type CapturedLog } from '../../../test/supp
 import { buildApp } from '../../app';
 import { CAPTURE_CONFIG_BOOT_STEP, READ_CAPTURE_STATE, captureConfigControl } from '../../modules/capture-config';
 import { CapturePhase } from '../index';
+import { SELECT_STORED_CAMERA_INTERFACE, storedCameraInterface } from '../boot';
 import { existsSync, readFileSync } from 'node:fs';
 import { realBootFixture } from '../boot/__tests__/support';
 import { BOOT_RESOLVED_NOTICE_REASONS, staleCaptureNoticesOf } from '../stale-notices';
@@ -171,5 +172,20 @@ describe('gate 64 C4: the notices of a capture that a dead Core left active, at 
       expect(again.map((alert) => alert.active)).toEqual([false, true]);
       expect(new Set(again.map((alert) => alert.id)).size).toBe(2);
     });
+  });
+});
+
+// Task 4 row 81 (WP-20): the ONE read the boot checks of the delivered programs make on the database - the camera
+// interface of the stored network configuration (set B, `capture_network_config`) - as the runtime role, on the clone.
+describe('row 81: the stored camera interface is read by the runtime role from the one row of capture_network_config', () => {
+  it('no row: null; a row that names none: null; a row that names one: that name', async () => {
+    await owner.query('DELETE FROM public.capture_network_config');
+    expect(await storedCameraInterface(core.app)).toBeNull();
+    await owner.query('INSERT INTO public.capture_network_config (updated_at) VALUES ($1)', [1_760_000_000_000]);
+    expect(await storedCameraInterface(core.app)).toBeNull();
+    await owner.query("UPDATE public.capture_network_config SET interface_name = 'enp3s0'");
+    expect(await storedCameraInterface(core.app)).toBe('enp3s0');
+    expect(SELECT_STORED_CAMERA_INTERFACE).toBe('SELECT interface_name FROM public.capture_network_config');
+    await owner.query('DELETE FROM public.capture_network_config');
   });
 });

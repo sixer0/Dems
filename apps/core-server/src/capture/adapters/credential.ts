@@ -79,9 +79,50 @@ const STREAM_SCHEME = 'rtsp:';
 const LOCATOR_MAX_CHARS = 256;
 
 /**
+ * THE QUERY RULE of a stream locator (task 4 row 174, decision C24; moved here from
+ * `camera/onvif-session.ts` by row 46, so that the read of a locator and the injection point judge
+ * a query by ONE function). Common cameras name their stream with a query (a channel, a
+ * sub-stream, a transport word), so a query is admitted - under a CLOSED rule, judged on the
+ * device's own text with no decoding and no parser:
+ *
+ *   length      the whole locator at most `LOCATOR_MAX_CHARS`, the query (after its `?`) 1 to
+ *               `QUERY_MAX_CHARS` characters, at most `QUERY_MAX_PARAMETERS` parameters;
+ *   characters  a parameter is `name` or `name=value`, parameters are joined by `&`; a name is 1
+ *               to 32 and a value 0 to 64 characters of `A-Z a-z 0-9 . _ ~ -`. Nothing else: no
+ *               `%` (so no name can hide behind an encoding), no `+`, no `;`, no second `?`, no
+ *               second `=` in a parameter, no empty parameter;
+ *   names       no parameter may be named, in any letter case, by a word of
+ *               `CREDENTIAL_LIKE_PARAMETERS`; and no name may appear twice (two readers could
+ *               disagree on which one counts).
+ *
+ * A VALUE is not judged: `mode=password` names a mode. The list is closed and compared with the
+ * whole name: `sessiontimeout` is not `session`.
+ */
+const QUERY_MAX_CHARS = 128;
+const QUERY_MAX_PARAMETERS = 8;
+const QUERY_PARAMETER = /^([A-Za-z0-9._~-]{1,32})(?:=[A-Za-z0-9._~-]{0,64})?$/;
+// One text, split: these are names to REFUSE, not accounts (static rule G-R14 reads a quoted account word as a default account).
+const CREDENTIAL_LIKE_PARAMETERS: ReadonlySet<string> = new Set('user username pass password pwd auth token key secret session'.split(' '));
+
+/** True when the text after the `?` of a stream locator is inside the query rule. It answers yes or no: no part of the text is kept. */
+function queryAllowed(query: string): boolean {
+  if (query.length === 0 || query.length > QUERY_MAX_CHARS) return false;
+  const parameters = query.split('&');
+  if (parameters.length > QUERY_MAX_PARAMETERS) return false;
+  const seen = new Set<string>();
+  for (const parameter of parameters) {
+    const name = QUERY_PARAMETER.exec(parameter)?.[1]?.toLowerCase();
+    if (name === undefined || CREDENTIAL_LIKE_PARAMETERS.has(name) || seen.has(name)) return false;
+    seen.add(name);
+  }
+  return true;
+}
+
+/**
  * Checks that a stream locator is the host-and-path form and returns it unchanged: the stream
- * scheme, a host, an optional port, a path without a trailing slash (S1 SP-1), and NO user part,
- * query or fragment. The refusal names no part of the input.
+ * scheme, a host, an optional port, a path without a trailing slash (S1 SP-1), NO user part and
+ * NO fragment; a query only inside the query rule above (a bare `?` is refused with the rest).
+ * The refusal names no part of the input.
  */
 export function credentialFreeLocator(locator: string, deviceId: string | null = null): string {
   const refuse = (): never => {
@@ -90,6 +131,10 @@ export function credentialFreeLocator(locator: string, deviceId: string | null =
   if (typeof locator !== 'string' || locator.length === 0 || locator.length > LOCATOR_MAX_CHARS) return refuse();
   // A user part is refused on the raw text as well as on the parsed form: no parser quirk decides it.
   if (locator.includes('@') || /[\s\\]/.test(locator)) return refuse();
+  // So are a fragment mark and a query outside its rule: the parser reports a bare trailing mark of either kind as empty.
+  if (locator.includes('#')) return refuse();
+  const mark = locator.indexOf('?');
+  if (mark !== -1 && !queryAllowed(locator.slice(mark + 1))) return refuse();
   let parsed: URL;
   try {
     parsed = new URL(locator);
@@ -97,7 +142,7 @@ export function credentialFreeLocator(locator: string, deviceId: string | null =
     return refuse();
   }
   if (parsed.protocol !== STREAM_SCHEME || parsed.hostname === '') return refuse();
-  if (parsed.username !== '' || parsed.password !== '' || parsed.search !== '' || parsed.hash !== '') return refuse();
+  if (parsed.username !== '' || parsed.password !== '' || parsed.hash !== '') return refuse();
   if (parsed.pathname.length < 2 || parsed.pathname.endsWith('/')) return refuse();
   return locator;
 }

@@ -672,9 +672,10 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     expect(start(h)).toBeNull();
     const before = h.state();
     expect(before.session?.audioSource ?? null).toBeNull();
-    // The meters' active input (`MIC-01`, kept behind the seam `AudioSliceInState`) is no line of
-    // this session: it is not an input to switch from, and it is not written as the new standby.
+    // The meters hold NO active input (no PRIMARY line; task 4 row 149): there is no input to
+    // switch from, and none is written as the new standby.
     expect(before.captureConfig.mics.map((line) => line.inputId)).toEqual(['MIC-04']);
+    expect(before.audio.activeInputId).toBeNull();
     let refused: unknown = null;
     try {
       h.sim.actions.switchAudioSource('MIC-04');
@@ -684,11 +685,12 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     expect(refused).toBeInstanceOf(SimTransitionError);
     expect(refused).toMatchObject({ code: 'ILLEGAL_STATE', event: 'switchAudioSource' });
     expect(h.state()).toBe(before);
-    // The same with the meters holding NO active input (the state once the seam is out; PENDING-ROW-28-SEAM: the cast goes with it).
+    // The same for meters whose active input is NOT a line of this session (a state put in place
+    // otherwise): an input the session does not hold is nothing to switch from either.
     const session = before.session;
     if (session === null) throw new Error('no session');
-    const noActive = { ...before, audio: { ...before.audio, activeInputId: null } } as unknown as SimState;
-    expect(() => applyAudioSourceSwitch(noActive, START, session, 'MIC-04', 1_000)).toThrow(SimTransitionError);
+    const strayActive: SimState = { ...before, audio: { ...before.audio, activeInputId: 'MIC-01' } };
+    expect(() => applyAudioSourceSwitch(strayActive, START, session, 'MIC-04', 1_000)).toThrow(SimTransitionError);
     // CONTROL: a session with its pair switches as before.
     const complete = armedOn('simulated', seeded);
     expect(start(complete)).toBeNull();

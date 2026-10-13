@@ -31,6 +31,12 @@ export interface RegisteredAudioInput extends AudioInputKey {
 export interface StoredAudioInput {
   readonly deviceId: string;
   readonly usbId: string | null;
+  /**
+   * The USB port path the input was registered on, where the store holds one (task 4 row 156,
+   * AD-07 (4)). Absent or null: NOT STORED - `capture_audio_inputs` has no port column (schema set
+   * A), so the store of this file answers none; the identity rule then says what it cannot tell.
+   */
+  readonly usbPort?: string | null;
   readonly enabled: boolean;
 }
 
@@ -38,6 +44,8 @@ export interface StoredAudioInput {
 export interface AudioInputFacts {
   readonly deviceId: string;
   readonly usbId: string | null;
+  /** The USB port path of the listing, or null when the system offers none. Handed to every store; written by one that has a column for it (row 156). */
+  readonly usbPort?: string | null;
   readonly nativeChannels: number;
   readonly sampleBits: 16 | 24 | 32;
   readonly operatorId: string;
@@ -63,8 +71,20 @@ export class MicrophoneRowMissing extends Error {
   }
 }
 
+/**
+ * THE CARD IDENTITY VALUES OF AN INPUT ROW, in the order both write statements bind them from
+ * `$2` on (task 4 row 190). TODAY one value, the USB id: the committed table (schema set A) has no
+ * other identity column. When the serial and the port-path columns of row 192 are committed, the
+ * two values are added HERE, in this one line (`input.usbPort ?? null` and the serial member the
+ * facts then carry), with their two columns in `INSERT_AUDIO_INPUT` and `REFRESH_AUDIO_INPUT` of
+ * `statements.ts`; no other line of the store binds an identity value.
+ */
+export function cardIdentityValuesOf(input: AudioInputFacts): readonly (string | null)[] {
+  return [input.usbId];
+}
+
 export function createMicrophoneStore(): MicrophoneStore {
-  const one = (rowCount: number | null, statement: MicrophoneRowMissing['statement']): void => {
+  const one =(rowCount: number | null, statement: MicrophoneRowMissing['statement']): void => {
     if (rowCount !== 1) throw new MicrophoneRowMissing(statement);
   };
   return {
@@ -78,11 +98,11 @@ export function createMicrophoneStore(): MicrophoneStore {
       return row === undefined ? null : { deviceId: row.deviceId, usbId: row.usbId, enabled: row.enabled === true };
     },
     async insertInput(db, input) {
-      const { rowCount } = await db.query(INSERT_AUDIO_INPUT, [input.deviceId, input.usbId, input.cardId, input.cardDevice, input.inputNumber, input.nativeChannels, input.sampleBits, input.operatorId, input.at]);
+      const { rowCount } = await db.query(INSERT_AUDIO_INPUT, [input.deviceId, ...cardIdentityValuesOf(input), input.cardId, input.cardDevice, input.inputNumber, input.nativeChannels, input.sampleBits, input.operatorId, input.at]);
       one(rowCount, 'INSERT_INPUT');
     },
     async refreshInput(db, input) {
-      const { rowCount } = await db.query(REFRESH_AUDIO_INPUT, [input.deviceId, input.usbId, input.nativeChannels, input.sampleBits, input.operatorId, input.at]);
+      const { rowCount } = await db.query(REFRESH_AUDIO_INPUT, [input.deviceId, ...cardIdentityValuesOf(input), input.nativeChannels, input.sampleBits, input.operatorId, input.at]);
       one(rowCount, 'REFRESH_INPUT');
     },
   };

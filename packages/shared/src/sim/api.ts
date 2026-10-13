@@ -422,12 +422,11 @@ function audioInputs(state: SimState): ApiAudioChannel[] {
 /**
  * The input feeding `AUDIO-01`, as operations 44 and 45 answer it (task 4 row 165; seam readers 5
  * and 6 of row 28): the meters' active input while it IS a microphone line in force, else `null`.
- * An input no line holds is not answered as active - behind the seam `AudioSliceInState` the state
- * keeps the input it held when the selector lost its PRIMARY line (row 149 removes the seam; the
- * answer is then null from the state itself, and this reader is correct either way).
+ * An input no line holds is not answered as active; the state itself holds `null` once the
+ * selector has lost its PRIMARY line (task 4 row 149).
  */
 function activeInputOf(state: SimState): CaptureMicInputId | null {
-  const active: CaptureMicInputId | null = state.audio.activeInputId;
+  const active = state.audio.activeInputId;
   if (active === null) return null;
   return captureMicLines(state).some((line) => line.inputId === active) ? active : null;
 }
@@ -881,8 +880,11 @@ export function audioSourceIntervalsOf(state: Pick<SimState, 'audit'> & { readon
   // The input of the FIRST interval: what the first switch left; before any switch the active input
   // of the session. A hand-built session without a pair falls back to the selector snapshot's
   // PRIMARY, then to the meters' active input (the Core's durable state holds no meters).
+  // Decision C36 (2), task 4 row 149: where none of them names an input, NO input is in force and
+  // the answer is absent - no built-in input is invented for an interval (AD-04, C18 (2)).
   const lines = session.captureConfig?.mics ?? [];
-  const initialInputId: CaptureMicInputId = boundaries[0]?.from ?? source?.activeInputId ?? lines.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? 'MIC-01';
+  const initialInputId: CaptureMicInputId | null = boundaries[0]?.from ?? source?.activeInputId ?? lines.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? null;
+  if (initialInputId === null) return [];
   // The role is the one of the input's selector line (the Core's rows say STANDBY for the standby).
   const roleOf = (inputId: CaptureMicInputId): MicRole => lines.find((mic) => mic.inputId === inputId)?.role ?? MicRole.PRIMARY;
   const switchRows = state.audit.rows.filter((row) => row.type === AuditType.AUDIO_SOURCE_SWITCHED && row.sessionId === session.id);

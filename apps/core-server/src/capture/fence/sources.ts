@@ -25,6 +25,7 @@
  * (a class that is not the running operation's). This unit imports nothing of a module: the
  * capture-config module imports the adapter layer, never the other way round.
  */
+import { CARD_ASSUMED_RATE_RANGE, CARD_LISTING_LIMITS, CardStringKind, cardListingText } from '../adapters/audio/card-listing';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../adapters/errors';
 import { CaptureAdapterKind, CaptureOperation, CaptureSourceClass, sourceClassOf, sourceClassOfOperation, type CaptureDeviceClass } from '../adapters/kinds';
 import { OPENER_CAPABLE_KINDS } from '../adapters/registry';
@@ -126,6 +127,93 @@ export function assertSessionSourcesOfOperation(rows: readonly Pick<SessionCaptu
   const wanted = sourceClassOfOperation(operation) ?? CaptureSourceClass.DEVELOPMENT;
   const stray = rows.find((row) => sourceClassOf(row.adapterKind) !== wanted || (operation === CaptureOperation.SIMULATED && row.adapterKind !== CaptureAdapterKind.FAKE));
   if (stray !== undefined) throw new CaptureAdapterError(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED, stray.deviceId);
+}
+
+// ── The source facts of a session start (task 4 row 71; schema design 2.3; AD-07 (1), S13-13) ────
+// `session_capture_sources.source_facts`: a point-in-time copy of WHICH physical device fed a
+// slot when the session started (input-av kept it per session as `audio_devices`). Written once,
+// in the INSERT of the four rows; the runtime role cannot update it (`0016`).
+//
+// NO FREE JSON (S13-13). The keys are the closed list below and nothing else is ever a key. Every
+// TEXT value has passed `cardListingText` of the card listing (row 155) HERE, whatever the adapter
+// did before: a text that fails is the rule's fixed word, or the key is left out where the rule
+// has no word. A text is never cut to fit (a cut name is a name the device did not announce), so
+// an over-long product name is stored as the fixed word. Every NUMBER is an integer inside the
+// bound of its column of `capture_audio_inputs`, or the key is left out. The builder never throws:
+// a session start is not refused for a fact.
+
+/** The keys of a microphone slot's facts (schema design 2.3, plus the rate the card was registered at). CLOSED. */
+export const MIC_SOURCE_FACT_KEYS = ['model', 'usbId', 'cardId', 'cardDevice', 'inputNumber', 'nativeChannels', 'sampleRate', 'sampleBits'] as const;
+export type MicSourceFactKey = (typeof MIC_SOURCE_FACT_KEYS)[number];
+
+/** THE TYPE of `source_facts` as the Core writes it (asked for by row 17): a flat map of the closed keys; `{}` says "nothing stated". */
+export type SessionSourceFacts = Readonly<Partial<Record<MicSourceFactKey, string | number>>>;
+export const NO_SOURCE_FACTS: SessionSourceFacts = Object.freeze({});
+/** The bound of the column (`session_capture_sources_source_facts_bound_check`): the whole map, in bytes. */
+export const SOURCE_FACTS_MAX_BYTES = 2_048;
+
+/**
+ * What an audio adapter states of the card behind ONE registered input: the stored identity of
+ * the card and the input, rate and format it is opened with. Every member is read as untrusted.
+ */
+export interface AudioCardStatement {
+  /** The product name of the card: device text. */
+  readonly product: unknown;
+  /** Vendor and product id of a USB card; null for a card that is not USB. */
+  readonly usbId: unknown;
+  /** The card's short name, in the kernel's own form. */
+  readonly cardId: unknown;
+  readonly cardDevice: unknown;
+  /** The selected input of the card, numbered from 1. */
+  readonly inputNumber: unknown;
+  readonly nativeChannels: unknown;
+  readonly sampleRateHz: unknown;
+  readonly sampleBits: unknown;
+}
+
+/**
+ * The member of an audio adapter the session start reads the statement through. OPTIONAL on an
+ * adapter and found by its name, as `start` of a handle was before row 20 declared it: the fakes,
+ * the generated and the local sources have none and their slots store `{}`. It answers from what
+ * the adapter already holds - it opens no device, starts no process and reads no file, because it
+ * is called inside the unit of work of the start. (Requested for `adapters/types.ts` by row 71.)
+ */
+export interface AudioCardFactsSource {
+  sourceFacts(inputId: string): AudioCardStatement | null;
+}
+
+/** The statement of an adapter for one input, or null when the adapter has no such member or states nothing. Throws what the adapter throws. */
+export function audioCardStatementOf(adapter: unknown, inputId: string): AudioCardStatement | null {
+  if (typeof adapter !== 'object' || adapter === null) return null;
+  const member = (adapter as Partial<AudioCardFactsSource>).sourceFacts;
+  if (typeof member !== 'function') return null;
+  const stated: unknown = member.call(adapter, inputId);
+  return typeof stated === 'object' && stated !== null ? (stated as AudioCardStatement) : null;
+}
+
+const SAMPLE_BITS: readonly number[] = [16, 24, 32];
+const integerOf = (value: unknown, min: number, max: number): number | null => (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null);
+
+/** The facts of a microphone slot from an adapter's statement. Pure; never throws; `{}` for no statement. */
+export function micSourceFactsOf(statement: AudioCardStatement | null | undefined): SessionSourceFacts {
+  if (typeof statement !== 'object' || statement === null) return NO_SOURCE_FACTS;
+  const facts: Partial<Record<MicSourceFactKey, string | number>> = {};
+  const put = (key: MicSourceFactKey, value: string | number | null): void => {
+    if (value !== null) facts[key] = value;
+  };
+  // The three texts, each through the one function with the kind of its member.
+  put('model', cardListingText(CardStringKind.NAME, statement.product));
+  put('usbId', statement.usbId === null || statement.usbId === undefined ? null : cardListingText(CardStringKind.USB_ID, statement.usbId));
+  put('cardId', cardListingText(CardStringKind.CARD_ID, statement.cardId));
+  // The numbers, each inside the bound its column has in `capture_audio_inputs`.
+  put('cardDevice', integerOf(statement.cardDevice, 0, CARD_LISTING_LIMITS.deviceIndexMax));
+  put('inputNumber', integerOf(statement.inputNumber, 1, CARD_LISTING_LIMITS.channels));
+  put('nativeChannels', integerOf(statement.nativeChannels, 1, CARD_LISTING_LIMITS.channels));
+  put('sampleRate', integerOf(statement.sampleRateHz, CARD_ASSUMED_RATE_RANGE.minHz, CARD_ASSUMED_RATE_RANGE.maxHz));
+  put('sampleBits', typeof statement.sampleBits === 'number' && SAMPLE_BITS.includes(statement.sampleBits) ? statement.sampleBits : null);
+  // Unreachable with the bounds above (the largest map is under 200 bytes); held all the same, so the column's CHECK is never what refuses a start.
+  if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > SOURCE_FACTS_MAX_BYTES) return NO_SOURCE_FACTS;
+  return Object.freeze(facts);
 }
 
 // ── What a client is told about a source (C3 §2.6 "Device shapes"; UX flow 12) ────────────────────

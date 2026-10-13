@@ -140,6 +140,23 @@ describe('M4-DISC-LIFE-1 (store): a candidate list is data of one operator sessi
     expect(store.running()).toBeNull();
   });
 
+  it('task 4 row 97: `find` hands on whether a REGISTERED candidate answers from another address than the stored one - a fact, read by the operator-confirmed re-address only', () => {
+    const store = createCandidateStore({ randomBytes: counting() });
+    begin(store, 'S-A', 'DSC-000001');
+    complete(store, 'DSC-000001', [
+      found('192.0.2.11', { status: 'REGISTERED', deviceId: 'CAM-01', addressChanged: true }),
+      found('192.0.2.12', { status: 'REGISTERED', deviceId: 'CAM-02' }),
+      // A state the search never builds: a NEW candidate is registered as nothing, so nothing of it changed.
+      found('192.0.2.13', { addressChanged: true }),
+    ]);
+    const held = store.stateOf('S-A', T0 + 3_000).candidates.map((candidate) => store.find('S-A', candidate.candidateId, T0 + 3_000));
+    expect(held.map((candidate) => [candidate?.camera.host, candidate?.registeredDeviceId, candidate?.addressChanged])).toEqual([
+      ['192.0.2.11', 'CAM-01', true],
+      ['192.0.2.12', 'CAM-02', false],
+      ['192.0.2.13', null, false],
+    ]);
+  });
+
   it('owner only: another session reads `search: null`, and gets null for the first session\'s candidate ID - the answer of an unknown and of an expired one', () => {
     const store = createCandidateStore({ randomBytes: counting() });
     begin(store, 'S-A', 'DSC-000001');

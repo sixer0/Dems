@@ -54,7 +54,7 @@ import {
   channelOfMicLine,
   createAudioRuntime,
   feedCaptureLevels,
-  micInputOfChannel,
+  meterInputOfChannel,
   CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS,
   CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS,
   CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED,
@@ -409,6 +409,26 @@ describe('the intervals of operation 82 and the keys of the switch row', () => {
       expect(expected).toHaveLength(3);
       expect(expected.map((entry) => entry.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-01']);
     });
+
+    it('decision C36 (2), task 4 row 149: a session in which NO input is in force answers no interval - no built-in input is invented', () => {
+      const { h } = recording();
+      const session = h.state().session;
+      if (session === null) throw new Error('no session');
+      // The session as started on a selector without a PRIMARY line (Simulated mode starts it, C21 (6)):
+      // it states no pair, its snapshot holds a lone STANDBY line, the meters hold no active input.
+      const lone = (session.captureConfig?.mics ?? []).filter((mic) => mic.role === 'STANDBY');
+      expect(lone).toHaveLength(1);
+      const noPair = { ...session, audioSource: null, captureConfig: session.captureConfig === null || session.captureConfig === undefined ? session.captureConfig : { ...session.captureConfig, mics: lone } };
+      const noActive: SimState = { ...h.state(), session: noPair, audio: { inputs: {}, activeInputId: null } };
+      expect(audioSourceIntervalsOf(noActive, noPair)).toEqual([]);
+      // Nor without the meters at all (the Core's durable state holds none).
+      expect(audioSourceIntervalsOf({ audit: noActive.audit }, noPair)).toEqual([]);
+      // CONTROL: the same session WITH its pair answers its one interval, as before.
+      expect(list(h.state())).toEqual(['1:MIC-01:PRIMARY:0-null:START']);
+      // CONTROL: the snapshot's PRIMARY line alone still names the input (a hand-built session without a pair).
+      const primaryOnly = { ...session, audioSource: null };
+      expect(audioSourceIntervalsOf({ audit: noActive.audit }, primaryOnly).map((entry) => entry.inputId)).toEqual(['MIC-01']);
+    });
   });
 
   describe('R74-05: the AUDIO_SOURCE_SWITCHED row of the simulator', () => {
@@ -743,20 +763,23 @@ describe('the microphone pair: assignment, the session audio source, the meter c
   });
 
   describe('meter channel -> microphone input: the order of the microphone lines, whatever their ids (ruling D137; pass D1b, seam 10)', () => {
-    const line = (inputId: string) => ({ inputId });
+    // The lines STATE their role (a complete pair; register 161 section 3.2): the lookup that read a
+    // line by its place alone, with a built-in input where none was, is deleted (task 4 row 172).
+    const roleLines = (first: string, second: string) => [
+      { inputId: first, role: 'PRIMARY' as const },
+      { inputId: second, role: 'STANDBY' as const },
+    ];
 
     it('the rule: channel 1 is the first line, channel 2 the second; the built-in pair gives the old table', () => {
-      const builtIn = [line('MIC-01'), line('MIC-02')];
-      expect([micInputOfChannel(builtIn, 'AUDIO-01'), micInputOfChannel(builtIn, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
-      const replaced = [line('MIC-01'), line('MIC-03')];
-      expect([micInputOfChannel(replaced, 'AUDIO-01'), micInputOfChannel(replaced, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-03']);
-      // The inverse reads lines WITH their role since task 4 row 164 (a complete pair; register 161 section 3.2).
-      const replacedPair = [{ ...replaced[0]!, role: 'PRIMARY' as const }, { ...replaced[1]!, role: 'STANDBY' as const }];
+      const builtIn = roleLines('MIC-01', 'MIC-02');
+      expect([meterInputOfChannel(builtIn, 'AUDIO-01'), meterInputOfChannel(builtIn, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
+      const replacedPair = roleLines('MIC-01', 'MIC-03');
+      expect([meterInputOfChannel(replacedPair, 'AUDIO-01'), meterInputOfChannel(replacedPair, 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-03']);
       expect([channelOfMicLine(replacedPair, 'MIC-01'), channelOfMicLine(replacedPair, 'MIC-03'), channelOfMicLine(replacedPair, 'MIC-02')]).toEqual(['AUDIO-01', 'AUDIO-02', null]);
-      const beyond = [line('MIC-02'), line('MIC-03')];
-      expect([micInputOfChannel(beyond, 'AUDIO-01'), micInputOfChannel(beyond, 'AUDIO-02')]).toEqual(['MIC-02', 'MIC-03']);
-      // No line at all (a hand-built state): the built-in pair.
-      expect([micInputOfChannel([], 'AUDIO-01'), micInputOfChannel([], 'AUDIO-02')]).toEqual(['MIC-01', 'MIC-02']);
+      const beyond = roleLines('MIC-02', 'MIC-03');
+      expect([meterInputOfChannel(beyond, 'AUDIO-01'), meterInputOfChannel(beyond, 'AUDIO-02')]).toEqual(['MIC-02', 'MIC-03']);
+      // No line at all (a hand-built state): no channel has an input - never the built-in pair.
+      expect([meterInputOfChannel([], 'AUDIO-01'), meterInputOfChannel([], 'AUDIO-02')]).toEqual([null, null]);
     });
 
     it('with the pair MIC-03 (primary) / MIC-01 (standby) both meters read, and the active / standby roles resolve', () => {
@@ -1015,10 +1038,9 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
     ]);
     expect(linesOf(rest)).toEqual({ cameras: [], mics: [] });
     expect(rest.audio.inputs).toEqual({});
-    // PENDING-ROW-28-SEAM (`AudioSliceInState`, row 149): the state cannot hold `null` yet, so the
-    // member keeps the input it held. It is NOT a line by its place and no meter is keyed by it.
-    // With the seam out this line reads `toBeNull()`.
-    expect(rest.audio.activeInputId).toBe('MIC-01');
+    // No PRIMARY line: the state holds NO active input (task 4 row 149) - not the input it held,
+    // not a line by its place, and no meter is keyed by one.
+    expect(rest.audio.activeInputId).toBeNull();
     // All four on the empty selector: the SAME state - no row, no new `updatedAt`.
     expect(update(rest, { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] }, START + 3)).toBe(rest);
     expect(rowsOf(rest)).toHaveLength(rowsOf(seeded).length + 4);

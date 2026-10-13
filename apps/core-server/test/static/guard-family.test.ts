@@ -62,7 +62,8 @@ describe('the guard family', () => {
   it('the worker\'s guard keeps every rule tag, row 58\'s exclusive-create pins among them, and its planted violations', () => {
     const check = read('apps/capture-worker/check.sh');
     const tags = [...new Set([...check.matchAll(/\bsay "([^:"]+):/g)].map((match) => match[1] ?? ''))].sort();
-    expect(tags).toEqual(['AU2-07', 'B.2', 'C.2 (W-2)', 'C.4', 'D58-1', 'D58-2', 'D59-2', 'D59-3', 'D59-4', 'F-2', 'H-4', 'N-10', 'R-6', 'R63-06', 'R63-09', 'SEC35-23', 'SEC35-23 (fixtures)', 'SR-3', 'W-1', 'W-4', 'W1-C1'].sort());
+    // Task 4 row 142 (by delta, as the header rules): + BR-01, BR-03, BR-04 - the announce gate in its place, the per-camera interrupt, no log level set.
+    expect(tags).toEqual(['AU2-07', 'B.2', 'BR-01', 'BR-03', 'BR-04', 'C.2 (W-2)', 'C.4', 'D58-1', 'D58-2', 'D59-2', 'D59-3', 'D59-4', 'F-2', 'H-4', 'N-10', 'R-6', 'R63-06', 'R63-09', 'SEC35-23', 'SEC35-23 (fixtures)', 'SR-3', 'W-1', 'W-4', 'W1-C1'].sort());
     // Row 58's pin (decision D72(a), pair-58 A-9): no O_TRUNC, every create exclusive. Still two rules of the file.
     expect(check).toContain(`[ "$(count 'O_TRUN[C]')" = "0" ] || say "D58-1: O_TRUNC in the worker"`);
     expect(check).toContain(`[ "$(count 'O_CREA[T]')" = "$(count 'O_CREAT | O_EXC[L]')" ] || say "D58-1: a create without O_EXCL"`);

@@ -632,7 +632,12 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
       await settled();
       const stored = await server.owner.query<Record<string, unknown>>("SELECT id, kind, transport, adapter_kind, onvif_uuid, address, enabled, jsonb_array_length(profiles) AS profiles FROM capture_devices WHERE id = 'CAM-03'");
       expect(stored.rows).toEqual([{ id: 'CAM-03', kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', onvif_uuid: candidate.endpointRef, address: adoption.device['host'], enabled: true, profiles: expect.any(Number) }]);
-      expect(Number(stored.rows[0]?.['profiles'])).toBeGreaterThan(0);
+      // Task 4 row 51 (AD-06 (4); C36). Until row 51 this line read "greater than 0": the list held the ONVIF tokens the
+      // test read. This Core has no relay program, so its connection test has no stream half and judges no stream: NO
+      // code exists, the list is empty and no stream row is written - an ONVIF token is stored nowhere, and no default
+      // stands in. The adoption that stores a minted code is `connect/__tests__/connect.db.test.ts` (rows 50 and 51).
+      expect(Number(stored.rows[0]?.['profiles'])).toBe(0);
+      expect((await server.owner.query("SELECT count(*)::int AS rows FROM capture_device_streams WHERE device_id = 'CAM-03'")).rows).toEqual([{ rows: 0 }]);
       const after = await server.owner.query<{ devices: number; credentials: number }>('SELECT (SELECT count(*)::int FROM capture_devices) AS devices, (SELECT count(*)::int FROM capture_device_credentials) AS credentials');
       expect([after.rows[0]?.devices, after.rows[0]?.credentials]).toEqual([(registry.rows[0]?.devices ?? 0) + 1, (registry.rows[0]?.credentials ?? 0) + 1]);
       // The replicated slice and operation 77 hold the device; the candidate reads REGISTERED; a repeat is refused.

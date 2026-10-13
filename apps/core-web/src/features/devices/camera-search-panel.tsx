@@ -23,6 +23,7 @@ import {
   type DiscoverySearch,
   type DiscoveryState,
 } from './camera-search'
+import { CameraSearchAddress } from './camera-search-address'
 import { SearchCamerasButton } from './camera-search-context'
 import { CAPTURE_SELECTOR_ANCHOR } from './capture-selector'
 import { useDeviceLabels } from './labels'
@@ -69,7 +70,7 @@ function Searching({ search }: { search: DiscoverySearch }) {
 }
 
 /** Untrusted device text (ux §8c.3): a text node, one line with an ellipsis, isolated, the whole text in the accessible name. */
-function DeviceText({ text, className }: { text: string; className?: string }) {
+export function DeviceText({ text, className }: { text: string; className?: string }) {
   return (
     <bdi className={className ?? 'dev-search-device-text'} title={text} aria-label={text}>
       {text}
@@ -454,6 +455,8 @@ export function CameraSearchPanel({ onViewDevice }: CameraSearchPanelProps) {
         <div className="dev-search" data-testid="camera-search" data-state={search.panel}>
           <SearchNotices search={search} />
           <SearchBody search={search} shared={shared} />
+          {/* Task 4 row 98 (WP-12): the typed address, the explicit fallback for a camera that does not answer the search. Not drawn while the role is being checked. */}
+          {search.panel === 'CHECKING' || search.panel === 'LOADING' ? null : <CameraSearchAddress />}
           <span className="sr-only" role="status" aria-live="polite" data-testid="camera-search-announcement">
             {announcement}
           </span>

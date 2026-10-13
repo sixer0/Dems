@@ -106,6 +106,8 @@ export { sessionKeyIdOf, sessionKeyStartRefusal, type SessionKeyStartRefusal } f
 // Row 82c: the seed-time generator of the v2 demo packages (called by the seed hook, never by a session).
 export * from './demo-seed';
 export { NO_STT_SNAPSHOT_RECORDED, SEAL_NOTICE, STAND_INS, STT_SNAPSHOT_NOT_RECORDED_MODEL, isSttSnapshotNotRecorded } from './session-reader';
+// Task 4 row 50 (AD-06 (1)): the seal's own statement of a stream, for the code the connection test mints from a probed stream.
+export { streamProfileOf, type SealVideoFormat } from './session-reader';
 export { NO_TRANSCRIPT_LIMITS, SealTranscriptCode, createSealTranscriptStep, type SealTranscriptRuns, type SealTranscriptStepOptions } from './transcript-step';
 
 const SOURCE = 'sealingHost';

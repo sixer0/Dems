@@ -5,8 +5,9 @@
 // it: nothing of the request pipeline is replaced. The engine is booted on a manual clock and a
 // manual timer. The three seeded operators are signed in on the web console. What is stored is
 // read as `dems_owner`. Every count is relative to the trail after the boot and the sign-ins.
-import { validateCoreApiResponse, CaptureConfigSliceSchema } from '@dems/shared/api';
-import type { AuditRow, OperatorRole } from '@dems/shared/sim';
+import { validateCoreApiResponse, CaptureConfigSliceSchema, CoreApiAccessKind } from '@dems/shared/api';
+import { SessionState } from '@dems/shared/domain';
+import { ROLE_PERMISSIONS, type AuditRow, type OperatorRole } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import { beforeAll, describe, expect, it, afterAll } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
@@ -15,8 +16,10 @@ import { storedSlices, FIXED_NOW, engineApp, manualTimer, stateChanges } from '.
 import { forgetCounters, WEB_ORIGIN, cookieValue, webSignIn } from '../../../../test/support/identity';
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { bodyOf, devicesApp, errorOf, outcome, type DevicesApp } from '../../devices/__tests__/support';
-import { createCaptureConfigStore, captureConfigControl } from '../index';
+import { createCaptureConfigStore, captureConfigControl, captureConfigOperation } from '../index';
 import { CONFIG, DEVICES, cameraSource, primaryMic } from './support';
+import { detailRulesOf, type DetailRule } from '../../../core/audit-details';
+import type { Principal } from '../../../plugins/authenticate';
 import type { Pool } from 'pg';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
@@ -1035,6 +1038,470 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       await core.engine.command(investigator, 'startRecording');
       expect(core.engine.slice('session')?.state).toBe('RECORDING');
       await expectLocked('RECORDING');
+    });
+  });
+
+  // Task 4 row 158 (AD-10 of verification/04_security_addendum.md): what row 29 left of the `unassign` rules, on
+  // PostgreSQL as the runtime role. Row 29 holds, and this block does not repeat: the cleared slot and its row per slot
+  // through a web console session; 0 rows for an empty slot; the lock in a unit table of eight states and on PostgreSQL
+  // for CREATE and RECORDING; the 422 of a body that clears and fills one slot against the simulator double;
+  // `SELECTOR_SHAPE` for every incomplete selector, S-5 (three slots assigned, the STANDBY not) by name (`plan.test.ts`).
+  describe('4. task 4 row 158 (AD-10): who may unassign, the lock in every session state, the stored row per slot, an unassign against a session that is being opened', () => {
+    const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0158', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
+    const BODIES = [...SLOTS.map((slot) => ({ unassign: [slot] })), { unassign: [...SLOTS] }];
+    /** Every key of a stored row is a key of the closed list of its type, in the form the list holds it to; every required key is there. */
+    const expectClosedKeys = (details: Record<string, unknown>): void => {
+      const rules = detailRulesOf('CAPTURE_CONFIG_CHANGED') ?? {};
+      for (const [key, value] of Object.entries(details)) {
+        expect(Object.hasOwn(rules, key), key).toBe(true);
+        expect(rules[key]?.accepts(value as Parameters<DetailRule['accepts']>[0]), `${key}=${String(value)}`).toBe(true);
+      }
+      for (const [key, rule] of Object.entries(rules)) if (rule.required) expect(Object.hasOwn(details, key), key).toBe(true);
+    };
+    /** A Simulated Core on a clone, on a manual clock, with the TECHNICIAN signed in on the web console. */
+    async function consoleCore(slug: string) {
+      const target = await clone(slug);
+      const owner = target.ownerPool();
+      const core = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000, logLevel: 'info', config: SIMULATED });
+      await core.app.readiness.boot();
+      await core.engine.idle();
+      const signedIn = await webSignIn(core.app, 'rina.wijaya');
+      expect(signedIn.statusCode, signedIn.body).toBe(200);
+      const token = cookieValue(signedIn, core.app.config.sessionCookieName);
+      if (token === null) throw new Error('the web sign-in set no session cookie');
+      const headers = { cookie: `${core.app.config.sessionCookieName}=${token}`, origin: WEB_ORIGIN };
+      const post = (payload: object) => core.app.inject({ method: 'POST', url: CONFIG, headers, payload });
+      const trailLength = async (): Promise<number> => {
+        await core.app.pipeline.drain();
+        return (await readTrail(owner)).length;
+      };
+      return { owner, core, post, trailLength, investigator: core.principal('INVESTIGATOR'), supervisor: core.principal('SUPERVISOR') };
+    }
+    type ConsoleCore = Awaited<ReturnType<typeof consoleCore>>;
+    const stateOf = (of: ConsoleCore): string => of.core.engine.slice('session')?.state ?? 'NONE';
+    /** A session of the Core, from nothing to ARMED (the pre-check item CORE needs the tablet link, as the session tests give it). */
+    async function armed(of: ConsoleCore, onState: () => Promise<void> = async () => {}): Promise<void> {
+      const created = await of.core.engine.command(of.investigator, 'createSession', { ...SESSION_INPUT, investigatorId: of.investigator.operatorId });
+      expect(created.value).toMatchObject({ ok: true, created: true });
+      await onState();
+      await of.core.engine.setTabletLink('CONNECTED');
+      await of.core.engine.command(of.investigator, 'beginPrecheck');
+      await onState();
+      await of.core.drive(5_000);
+      if (stateOf(of) === 'PRECHECK') await of.core.engine.command(of.investigator, 'acknowledgePrecheckWarnings');
+      expect(stateOf(of)).toBe('ARMED');
+      await onState();
+    }
+
+    it('AD-10 (5), every client kind and role against the access members of the contract: the permission decides and nothing else - a web console session and a session of a paired device alike; a device credential alone, no credential and a retired device never reach the handler; each cleared slot is ONE stored row with the closed keys, by its caller, from its device', async () => {
+      const target = await clone('r158-access');
+      const owner = target.ownerPool();
+      // The REAL app with every stage but stage 4, which hands out the principal the test names - as stage 4 resolves it
+      // for that client kind. Stage 6 (the access rule), the handler, the engine and the trail are the product's.
+      let current: Principal = { kind: 'ANONYMOUS', retiredDeviceId: null };
+      const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...SIMULATED }), logStream: captureLog().stream });
+      app.stages.replace('authenticate', (request) => {
+        request.principal = current;
+      });
+      target.onCleanup(() => app.close());
+      await app.ready();
+      engineControl(app).useTimer(manualTimer().timer);
+      await app.readiness.boot();
+      const post = async (principal: Principal, payload: object) => {
+        current = principal;
+        const answer = await app.inject({ method: 'POST', url: CONFIG, headers: { origin: WEB_ORIGIN }, payload });
+        await app.pipeline.drain();
+        return answer;
+      };
+      const rowsFrom = async (from: number) => (await readTrail(owner)).slice(from);
+
+      // THE CONTRACT'S ACCESS MEMBERS of operation 78: one permission, and NO condition on the kind of client (AD-10 (5):
+      // `unassign` is not web-console only; that would be the condition WEB_CONSOLE_SESSION, and it is not there).
+      const access = captureConfigOperation('updateCaptureConfig').access;
+      expect(access).toEqual({ kind: CoreApiAccessKind.PERMISSION, permission: 'CAPTURE_CONFIG' });
+      expect(Object.hasOwn(access, 'conditions')).toBe(false);
+      const permission = 'CAPTURE_CONFIG' as const;
+
+      const operatorIdOf = (role: OperatorRole): string => {
+        const found = app.engine.slice('operators').find((candidate) => candidate.role === role);
+        if (found === undefined) throw new Error(`no operator with role ${role}`);
+        return found.id;
+      };
+      const CLIENTS = [
+        ['a web console session', null],
+        ['a session of a paired device (tablet or phone)', 'DEV-0001'],
+      ] as const;
+      const ROLES = ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const satisfies readonly OperatorRole[];
+      expect([...ROLES].sort()).toEqual(Object.keys(ROLE_PERMISSIONS).sort());
+
+      const free: Slot[] = [...SLOTS];
+      const cleared: Slot[] = [];
+      const table: string[] = [];
+      for (const [client, deviceId] of CLIENTS) {
+        for (const role of ROLES) {
+          const label = `${role} on ${client}`;
+          const principal: Principal = { kind: 'OPERATOR', operatorId: operatorIdOf(role), sessionId: 'row158-session', deviceId, role, permissions: ROLE_PERMISSIONS[role] };
+          const before = (await readTrail(owner)).length;
+          // WHAT THE CONTRACT SAYS, computed from its access members and the role table - not from a list in this test.
+          const allowed = (ROLE_PERMISSIONS[role] as readonly string[]).includes(access.kind === CoreApiAccessKind.PERMISSION ? access.permission : '');
+          const slot = free[0] as Slot;
+          const answer = await post(principal, { unassign: [slot] });
+          const rows = await rowsFrom(before);
+          if (allowed) {
+            free.shift();
+            cleared.push(slot);
+            expect(answer.statusCode, `${label} ${answer.body}`).toBe(200);
+            expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(answer)), label).toEqual({ ok: true });
+            // AD-10 (1): ONE row, of the one type, by the caller, from the device that sent it (none for the web console),
+            // with the track or the input and `from` - and no `to`, no `deviceId` in the details: nothing was assigned.
+            expect(rows.map((row) => [row.type, row.actorId, row.deviceId ?? null, row.details]), label).toEqual([['CAPTURE_CONFIG_CHANGED', principal.operatorId, deviceId, clearedRow(slot)]]);
+            expectClosedKeys(rows[0]?.details ?? {});
+            expect(Object.keys(rows[0]?.details ?? {}).sort(), label).toEqual(['field', 'from', slot.startsWith('VIDEO') ? 'trackId' : 'inputId', 'operationId', 'permission', 'scope'].sort());
+          } else {
+            expect(outcome(answer), label).toEqual([403, 'NOT_PERMITTED']);
+            expect(validateCoreApiResponse('updateCaptureConfig', 403, answer.json()), label).toEqual({ ok: true });
+            expect(errorOf(answer).details, label).toMatchObject({ operationId: 'updateCaptureConfig', permission, role });
+            // RB-4: the refusal of the access rule is ONE ACCESS_DENIED row; never a CAPTURE_CONFIG_CHANGED row.
+            expect(rows.map((row) => [row.type, row.actorId, row.deviceId ?? null, row.details]), label).toEqual([['ACCESS_DENIED', principal.operatorId, deviceId, { operationId: 'updateCaptureConfig', permission, role }]]);
+          }
+          table.push(`${role} ${deviceId ?? 'WEB'} ${answer.statusCode}`);
+          // The stored selector follows the allowed calls only.
+          expect(await storedSlots(owner), label).toEqual(rowWithout(cleared));
+        }
+      }
+      // The role table of the contract (OD-10): SUPERVISOR and TECHNICIAN hold the permission, INVESTIGATOR does not - on either kind of client.
+      expect(table).toEqual(['INVESTIGATOR WEB 403', 'SUPERVISOR WEB 200', 'TECHNICIAN WEB 200', 'INVESTIGATOR DEV-0001 403', 'SUPERVISOR DEV-0001 200', 'TECHNICIAN DEV-0001 200']);
+      // Four allowed calls cleared the four slots, one each: every slot has its stored row (the closed keys were held per row above).
+      expect(cleared).toEqual([...SLOTS]);
+      expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
+
+      // THE CALLERS THAT ARE NO OPERATOR, asked for a slot that holds a source again (assigned by the last allowed caller).
+      // None reaches the handler; nothing is stored.
+      expect((await post({ kind: 'OPERATOR', operatorId: operatorIdOf('TECHNICIAN'), sessionId: 'row158-session', deviceId: null, role: 'TECHNICIAN', permissions: ROLE_PERMISSIONS.TECHNICIAN }, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
+      const rowsBefore = (await changedRows(owner)).length;
+      const held = await storedSlots(owner);
+      expect(held).toEqual(rowWithout(['VIDEO-02', 'PRIMARY', 'STANDBY']));
+      let before = (await readTrail(owner)).length;
+      const anonymous = await post({ kind: 'ANONYMOUS', retiredDeviceId: null }, { unassign: ['VIDEO-01'] });
+      expect(outcome(anonymous)).toEqual([401, 'NOT_SIGNED_IN']);
+      expect(validateCoreApiResponse('updateCaptureConfig', 401, anonymous.json())).toEqual({ ok: true });
+      // The credential of a paired device WITHOUT an operator session: the operation needs an operator.
+      const deviceOnly = await post({ kind: 'DEVICE', deviceId: 'DEV-0001' }, { unassign: ['VIDEO-01'] });
+      expect(outcome(deviceOnly)).toEqual([401, 'NOT_SIGNED_IN']);
+      expect(await rowsFrom(before)).toEqual([]);
+      // A retired device: refused and audited as that, by the rule every operation shares.
+      before = (await readTrail(owner)).length;
+      const retired = await post({ kind: 'ANONYMOUS', retiredDeviceId: 'DEV-0002' }, { unassign: ['VIDEO-01'] });
+      expect(outcome(retired)).toEqual([403, 'DEVICE_REVOKED']);
+      expect((await rowsFrom(before)).map((row) => [row.type, row.actorId ?? null, row.deviceId ?? null, row.details])).toEqual([['ACCESS_DENIED', null, 'DEV-0002', { operationId: 'updateCaptureConfig', reason: 'DEVICE_REVOKED' }]]);
+      expect(await storedSlots(owner)).toEqual(held);
+      expect(await changedRows(owner)).toHaveLength(rowsBefore);
+      // The chain of everything this case wrote links and verifies.
+      const trail = await readTrail(owner);
+      expect(linkProblems(trail)).toEqual([]);
+      expect(verifyTrail(trail, await readHead(owner))).toMatchObject({ ok: true });
+    });
+
+    it('AD-10 (2), the lock table ON POSTGRESQL: a real session is taken through EVERY state that holds the lock - CREATE, PRECHECK, ARMED, RECORDING, STOPPING, FINALIZING on the clean path, FAULT and RECOVERY on the other - and in each one every unassign is 409 CAPTURE_CONFIG_LOCKED with 0 rows and nothing stored; SEALED and no session accept it', async () => {
+      const table: [string, number, string | null][] = [];
+      /** The lock, checked ONCE in every state the session is first seen in. */
+      const watch = (of: ConsoleCore) => {
+        const seen: string[] = [];
+        const check = async (): Promise<void> => {
+          const state = stateOf(of);
+          if (state === 'NONE' || state === SessionState.SEALED || seen.includes(state)) return;
+          seen.push(state);
+          const trail = await of.trailLength();
+          const held = of.core.engine.slice('captureConfig');
+          for (const body of BODIES) {
+            const refused = await of.post(body);
+            table.push([state, refused.statusCode, (refused.json() as { error?: { code?: string } }).error?.code ?? null]);
+            expect(validateCoreApiResponse('updateCaptureConfig', 409, refused.json()), state).toEqual({ ok: true });
+          }
+          // SEC35-19: a state refusal - no row of any type, the selector and its stored row as they were; the session did not move.
+          expect(await of.trailLength(), state).toBe(trail);
+          expect(of.core.engine.slice('captureConfig'), state).toBe(held);
+          expect(await storedSlots(of.owner), state).toEqual(SEEDED);
+          expect(stateOf(of), state).toBe(state);
+        };
+        /** Drives the engine tick by tick until the session is SEALED (or gone), checking every state it passes. */
+        const untilSealed = async (): Promise<void> => {
+          for (let tick = 0; tick < 2_000 && stateOf(of) !== SessionState.SEALED && stateOf(of) !== 'NONE'; tick += 1) {
+            await of.core.drive(50);
+            await check();
+          }
+        };
+        return { seen, check, untilSealed };
+      };
+
+      // THE CLEAN PATH.
+      const clean = await consoleCore('r158-lock-clean');
+      const cleanWatch = watch(clean);
+      // CONTROL, no session: accepted (and put back, so that the session below starts on the seeded selector).
+      expect(stateOf(clean)).toBe('NONE');
+      expect((await clean.post({ unassign: ['STANDBY'] })).statusCode).toBe(200);
+      expect((await clean.post({ mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] })).statusCode).toBe(200);
+      await clean.core.app.pipeline.drain();
+      expect(await storedSlots(clean.owner)).toEqual(SEEDED);
+      await armed(clean, cleanWatch.check);
+      await clean.core.engine.command(clean.investigator, 'startRecording');
+      await cleanWatch.check();
+      await clean.core.drive(2_000);
+      await clean.core.engine.command(clean.investigator, 'stopRecording', 'End of the interview');
+      await cleanWatch.check();
+      await cleanWatch.untilSealed();
+      expect(cleanWatch.seen).toEqual(['CREATE', 'PRECHECK', 'ARMED', 'RECORDING', 'STOPPING', 'FINALIZING']);
+      // CONTROL, SEALED: the session is still the Core's session, and the same call is accepted - one row.
+      expect(stateOf(clean)).toBe(SessionState.SEALED);
+      const rowsBefore = (await changedRows(clean.owner)).length;
+      const sealed = await clean.post({ unassign: ['STANDBY'] });
+      expect(sealed.statusCode, sealed.body).toBe(200);
+      await clean.core.app.pipeline.drain();
+      expect((await changedRows(clean.owner)).slice(rowsBefore)).toEqual([clearedRow('STANDBY')]);
+      expect(await storedSlots(clean.owner)).toEqual(rowWithout(['STANDBY']));
+
+      // THE OTHER PATH: a critical fault while recording, then the recovery.
+      const faulted = await consoleCore('r158-lock-fault');
+      const faultWatch = watch(faulted);
+      await armed(faulted);
+      await faulted.core.engine.command(faulted.investigator, 'startRecording');
+      await faulted.core.drive(2_000);
+      await faulted.core.engine.command(faulted.supervisor, 'inject', 'POWER_FAIL');
+      expect(stateOf(faulted)).toBe(SessionState.FAULT);
+      await faultWatch.check();
+      await faulted.core.engine.command(faulted.investigator, 'recover');
+      expect(stateOf(faulted)).toBe(SessionState.RECOVERY);
+      await faultWatch.check();
+      await faultWatch.untilSealed();
+      expect(faultWatch.seen.slice(0, 2)).toEqual(['FAULT', 'RECOVERY']);
+
+      // THE TABLE: every state of the session machine but SEALED was reached by a real session, five bodies each, all refused the same way.
+      const reached = [...new Set(table.map(([state]) => state))].sort();
+      expect(reached).toEqual(Object.values(SessionState).filter((state) => state !== SessionState.SEALED).sort());
+      expect(table.filter(([, status, code]) => status !== 409 || code !== 'CAPTURE_CONFIG_LOCKED')).toEqual([]);
+      // (FINALIZING is passed on both paths and so is in the table twice.)
+      for (const state of reached) expect(table.filter(([of]) => of === state).length, state).toBeGreaterThanOrEqual(BODIES.length);
+    });
+
+    it('AD-10 (3) on PostgreSQL: a body that clears and fills ONE slot is 422 in both forms, with 0 rows and nothing stored; the same clear and the same assignment in TWO calls are accepted', async () => {
+      const of = await consoleCore('r158-both');
+      const trail = await of.trailLength();
+      const refused: [object, string | null][] = [
+        // The schema sees it: the slot is the track of a camera line, or the role of a mic line.
+        [{ unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }] }, null],
+        [{ unassign: ['STANDBY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] }, null],
+        // The schema cannot see it: a mic line without `role` edits the input the cleared role holds. The action refuses, and its unit is rolled back.
+        [{ unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] }, 'SLOT_UNASSIGNED_AND_ASSIGNED'],
+      ];
+      for (const [body, reason] of refused) {
+        const answer = await of.post(body);
+        expect(outcome(answer), JSON.stringify(body)).toEqual([422, 'INVALID_INPUT']);
+        expect(validateCoreApiResponse('updateCaptureConfig', 422, answer.json()), JSON.stringify(body)).toEqual({ ok: true });
+        if (reason !== null) expect(errorOf(answer).details).toMatchObject({ reason });
+      }
+      expect(await of.trailLength()).toBe(trail);
+      expect(await storedSlots(of.owner)).toEqual(SEEDED);
+      expect(await storedSlices(of.owner)).toStrictEqual(withoutNegativeZeros(of.core.engine.state()));
+      // CONTROL: the two halves of the first body as two calls.
+      expect((await of.post({ unassign: ['VIDEO-01'] })).statusCode).toBe(200);
+      expect((await of.post({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
+      expect(await of.trailLength()).toBe(trail + 2);
+      expect(await storedSlots(of.owner)).toEqual(SEEDED);
+    });
+
+    it('an unassign AGAINST a session that is being opened: whichever unit of the engine commits first wins - the loser unassign is 409 with 0 rows, the loser session is opened on the selector WITHOUT the slot; never a session whose sources were taken from under it; an unassign against the START of an armed session always loses', async () => {
+      const of = await consoleCore('r158-race');
+      const SLOT = 'VIDEO-02';
+      const create = () => of.core.engine.command(of.investigator, 'createSession', { ...SESSION_INPUT, investigatorId: of.investigator.operatorId });
+      /** `turns` turns of the event loop: how far the request is ahead of the session. */
+      const after = async (turns: number): Promise<void> => {
+        for (let turn = 0; turn < turns; turn += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+      };
+      const winners: string[] = [];
+      // The request is sent FIRST in every round; the session is created 0, 1, 2 ... turns later, and in the last round
+      // only when the request was answered. The lock is read inside the unit of the edit, so what decides is the order
+      // of the two units, not the order of the two calls.
+      for (const turns of [0, 1, 2, 4, 8, 16, 32, null] as const) {
+        const label = `session ${turns === null ? 'after the answer' : `${turns} turn(s) after the request`}`;
+        expect(stateOf(of), label).toBe('NONE');
+        expect(await storedSlots(of.owner), label).toEqual(SEEDED);
+        const trail = await of.trailLength();
+        const requested = of.post({ unassign: [SLOT] });
+        if (turns === null) await requested;
+        else await after(turns);
+        const [answer, created] = await Promise.all([requested, create()]);
+        await of.core.app.pipeline.drain();
+        // THE SESSION IS ALWAYS OPENED: an edit of the selector never refuses a session.
+        expect(created.value, label).toMatchObject({ ok: true, created: true });
+        const session = of.core.engine.slice('session');
+        const snapshot = (session?.captureConfig ?? of.core.engine.slice('captureConfig')).cameras.map((camera) => camera.trackId as string);
+        const rows = (await readTrail(of.owner)).slice(trail).map((row) => row.type as string);
+        if (answer.statusCode === 200) {
+          // THE UNASSIGN WON: one row, written BEFORE the row of the session; the slot is NULL; the session was opened on
+          // the selector without the slot - in real capture its pre-check then says BLOCK for it (row 30) and its start is
+          // refused (row 163); in Simulated mode it starts as today (C21 (6)).
+          winners.push('UNASSIGN');
+          expect(rows.filter((type) => type === 'CAPTURE_CONFIG_CHANGED'), label).toHaveLength(1);
+          expect(rows.indexOf('CAPTURE_CONFIG_CHANGED'), label).toBeLessThan(rows.indexOf('SESSION_CREATED'));
+          expect(await storedSlots(of.owner), label).toEqual(rowWithout([SLOT]));
+          expect(snapshot, label).toEqual(['VIDEO-01']);
+        } else {
+          // THE SESSION WON: the unassign is the state refusal - no row, nothing stored - and the session holds both cameras.
+          winners.push('SESSION');
+          expect(outcome(answer), label).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
+          expect(rows.filter((type) => type === 'CAPTURE_CONFIG_CHANGED' || type === 'ACCESS_DENIED'), label).toEqual([]);
+          expect(await storedSlots(of.owner), label).toEqual(SEEDED);
+          expect(snapshot, label).toEqual(['VIDEO-01', 'VIDEO-02']);
+        }
+        // Whoever won, what is stored is what the engine holds.
+        expect(await storedSlices(of.owner), label).toStrictEqual(withoutNegativeZeros(of.core.engine.state()));
+        // Back to the start of a round: the session is cancelled and the slot assigned again.
+        await of.core.engine.command(of.investigator, 'cancel');
+        if (answer.statusCode === 200) expect((await of.post({ cameras: [{ trackId: SLOT, deviceId: 'CAM-02', profile: 'H264_1080P25' }] })).statusCode, label).toBe(200);
+        await of.core.app.pipeline.drain();
+      }
+      // Both outcomes are in the table: a session created in the same turn as the request is opened first (the request
+      // still passes the stages before its unit), and a session created after the answer finds the slot cleared.
+      expect([winners[0], winners.at(-1)]).toEqual(['SESSION', 'UNASSIGN']);
+      // The rounds between the two are decided by how long the stages of the request took (a read of the session in
+      // PostgreSQL): either may win there, and every round held the rules of its winner above.
+      expect(winners).toHaveLength(8);
+    });
+
+    it.each(['UNASSIGN', 'START'] as const)('an unassign against the START of an armed session, %s called first: the session holds the lock already, so the unassign is 409 with 0 rows and the session records from the four sources it was opened with', async (first) => {
+      const of = await consoleCore(`r158-start-${first.toLowerCase()}`);
+      await armed(of);
+      const trail = await of.trailLength();
+      const start = () => of.core.engine.command(of.investigator, 'startRecording');
+      const unassign = () => of.post({ unassign: [...SLOTS] });
+      // Both are in flight together; only the order in which they were called differs.
+      const calls = first === 'UNASSIGN' ? [unassign(), start()] as const : ((started) => [unassign(), started] as const)(start());
+      const [answer] = await Promise.all(calls);
+      expect(outcome(answer)).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
+      expect(stateOf(of)).toBe('RECORDING');
+      await of.core.app.pipeline.drain();
+      expect((await readTrail(of.owner)).slice(trail).map((row) => row.type as string).filter((type) => type === 'CAPTURE_CONFIG_CHANGED' || type === 'ACCESS_DENIED')).toEqual([]);
+      expect(await storedSlots(of.owner)).toEqual(SEEDED);
+      const recording = of.core.engine.slice('session');
+      expect([recording?.captureConfig?.cameras.length, recording?.captureConfig?.mics.length]).toEqual([2, 2]);
+    });
+  });
+
+  // Task 4 row 187 (controller ruling C36 (1); design addendum 7, AD-06): in the Core no default profile stands in for the
+  // statement of a production camera's own stream. On PostgreSQL as the runtime role, on throw-away clones.
+  //
+  // THE DOUBLE: the device registry. A REAL_PRODUCTION Core of this phase serves no production camera yet (class C; the
+  // builder is row 85), so its own registry would refuse the camera as "not served" before the rule is reached. The case
+  // provides a registry that serves the one production camera of the fixture - what the registry is after the lift - through
+  // the module's own seam (`provideDeviceRegistry`), before the boot. Everything else is the product: the route, the unit of
+  // the engine, the hosted action, the stored rows. The camera's stored profile list is written by the owner (the adoption
+  // that mints it is rows 50 / 51).
+  describe('5. task 4 row 187 (C36 (1)): a production camera is assigned with a profile of its own, or not at all', () => {
+    /** The one profile the stored row of the fixture's production camera lists: a code no seeded line and no constant of the simulator holds. */
+    const OWN = 'HEVC_2160P25_MAIN';
+    const reasonOf = (response: LightMyRequestResponse): unknown[] => {
+      const error = (response.json() as { error: { code: string; details?: Record<string, unknown> } }).error;
+      return [response.statusCode, error.code, error.details?.['reason'], error.details?.['deviceId'], error.details?.['trackId']];
+    };
+
+    async function productionCore(slug: string, operation: 'REAL_PRODUCTION' | 'SIMULATED' = 'REAL_PRODUCTION') {
+      const target = await clone(slug, async (owner) => {
+        await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind, profiles) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP', $1::jsonb)", [JSON.stringify([OWN])]);
+        await unassignStored(owner, SLOTS);
+        if (operation === 'REAL_PRODUCTION') await ownCredentials(owner);
+      });
+      const owner = target.ownerPool();
+      const log = captureLog();
+      const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...(operation === 'REAL_PRODUCTION' ? PRODUCTION : SIMULATED) }), logStream: log.stream });
+      target.onCleanup(() => app.close());
+      await app.ready();
+      engineControl(app).useTimer(manualTimer().timer);
+      const asked: string[] = [];
+      if (operation === 'REAL_PRODUCTION') {
+        captureConfigControl(app).provideDeviceRegistry({
+          operation: 'REAL_PRODUCTION',
+          assertAssignable(deviceClass, deviceId) {
+            asked.push(`${deviceClass} ${deviceId}`);
+            // The registry after the lift: it serves the production camera; anything else is its own refusal, as before.
+            if (deviceClass !== 'CAMERA' || deviceId !== 'CAM-11') return captureFenceControl(app).registry()?.assertAssignable(deviceClass, deviceId) as never;
+            return { id: deviceId } as never;
+          },
+        });
+      }
+      await app.readiness.boot();
+      const signedIn = operation === 'REAL_PRODUCTION' ? await webSignIn(app, 'rina.wijaya', OWN_PASSWORD) : await webSignIn(app, 'rina.wijaya');
+      expect(signedIn.statusCode, signedIn.body).toBe(200);
+      const token = cookieValue(signedIn, app.config.sessionCookieName);
+      if (token === null) throw new Error('the web sign-in set no session cookie');
+      const headers = { cookie: `${app.config.sessionCookieName}=${token}`, origin: WEB_ORIGIN };
+      const post = (url: string, payload: object) => app.inject({ method: 'POST', url, headers, payload });
+      const stored = async (): Promise<[Record<string, unknown> | undefined, number]> => {
+        await app.pipeline.drain();
+        return [await storedSlots(owner), (await changedRows(owner)).length];
+      };
+      return { app, owner, post, stored, asked };
+    }
+
+    it('REAL_PRODUCTION: into an EMPTY slot, a production camera WITHOUT a profile and one with a profile that is not its own are refused by a named code - 0 audit rows, the slot still NULL; its OWN code is stored as given', async () => {
+      const core = await productionCore('r187-own-profile');
+      expect(captureFenceControl(core.app).operation).toBe('REAL_PRODUCTION');
+      expect(core.app.engine.slice('captureDevices').devices.find((device) => device.id === 'CAM-11')).toMatchObject({ adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' });
+      const [slots, rows] = await core.stored();
+      expect(slots).toEqual(rowWithout(SLOTS));
+
+      // 1. No profile: the action would have stored the simulator's default. Refused by operation 78 and by operation 79 (which names none).
+      const none = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11' }] });
+      expect(reasonOf(none)).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_NOT_STATED', 'CAM-11', 'VIDEO-01']);
+      const bySource = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-02' });
+      expect(reasonOf(bySource)).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_NOT_STATED', 'CAM-11', 'VIDEO-02']);
+      // 2. A profile that is not an element of the device's stored profiles: the default's own code, and any other code.
+      for (const profile of ['H264_1080P25', 'HEVC_2160P25', 'HEVC_2160P25_MAIN_X']) {
+        const foreign = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile }] });
+        expect(reasonOf(foreign), profile).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAM-11', 'VIDEO-01']);
+      }
+      // Nothing changed: no row of the edit, no denial row, both video slots NULL - and the default profile is nowhere in the stored row.
+      expect(await core.stored()).toEqual([rowWithout(SLOTS), rows]);
+      expect(JSON.stringify(await storedSlots(core.owner))).not.toContain('H264_1080P25');
+      // The registry was asked first each time (its own refusals keep their reasons): five edits, five questions.
+      expect(core.asked).toEqual(['CAMERA CAM-11', 'CAMERA CAM-11', 'CAMERA CAM-11', 'CAMERA CAM-11', 'CAMERA CAM-11']);
+
+      // 3. The device's OWN code is stored as given, with ONE row.
+      const own = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: OWN }] });
+      expect(own.statusCode, own.body).toBe(200);
+      expect(selectorOf(own).cameras).toEqual([expect.objectContaining({ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: OWN })]);
+      const [after, afterRows] = await core.stored();
+      expect(after).toEqual({ ...rowWithout(SLOTS), video_01_device_id: 'CAM-11', video_01_profile: OWN });
+      expect(afterRows).toBe(rows + 1);
+
+      // 4. A HELD slot keeps its profile: operation 79 on the slot that holds the camera's own code changes nothing and is no refusal;
+      //    a foreign profile for the held slot is still refused, and the slot keeps what it held.
+      const same = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-01' });
+      expect(same.statusCode, same.body).toBe(200);
+      const held = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: 'H264_1080P25' }] });
+      expect(reasonOf(held)).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAM-11', 'VIDEO-01']);
+      expect(await core.stored()).toEqual([after, rows + 1]);
+    });
+
+    it('REAL_PRODUCTION, the other refusals keep their own reason and come first: a development source is refused by the registry as before, and no profile rule is said for it', async () => {
+      const core = await productionCore('r187-registry-first');
+      const development = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }] });
+      const error = (development.json() as { error: { code: string; details?: Record<string, unknown> } }).error;
+      expect([development.statusCode, error.code]).toEqual([422, 'INVALID_INPUT']);
+      expect(String(error.details?.['reason'])).not.toMatch(/CAMERA_PROFILE/);
+      expect((await core.stored())[0]).toEqual(rowWithout(SLOTS));
+    });
+
+    it('CONTROL, SIMULATED - as today: the same production camera row is assigned into an empty slot without a profile, and the simulator\'s hosted action gives it the simulator\'s default', async () => {
+      const core = await productionCore('r187-simulated', 'SIMULATED');
+      expect(captureConfigControl(core.app).hasDeviceRegistry()).toBe(false);
+      const assigned = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11' }] });
+      expect(assigned.statusCode, assigned.body).toBe(200);
+      expect((await core.stored())[0]).toEqual({ ...rowWithout(SLOTS), video_01_device_id: 'CAM-11', video_01_profile: 'H264_1080P25' });
+      // Operation 79 as well, into the other empty slot (the first is cleared: one camera on both tracks needs two profiles).
+      expect((await core.post(CONFIG, { unassign: ['VIDEO-01'] })).statusCode).toBe(200);
+      const bySource = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-02' });
+      expect(bySource.statusCode, bySource.body).toBe(200);
+      expect((await core.stored())[0]).toEqual({ ...rowWithout(SLOTS), video_02_device_id: 'CAM-11', video_02_profile: 'H264_1080P25' });
     });
   });
 });

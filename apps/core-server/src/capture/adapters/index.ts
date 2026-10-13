@@ -143,3 +143,21 @@ export type { OnvifCandidate, RegisteredLookup, RegisteredMatch } from './camera
 // no connection is opened before `test()` is called.
 export { connectionTargetOf } from './camera/connection-target';
 export { ONVIF_SESSION_LIMITS, OnvifTestReason, createOnvifConnectionTester, type OnvifConnectionTester, type OnvifConnectionTesterOptions, type OnvifSessionResult } from './camera/onvif-session';
+// The stream-level half of the connection test (task 4 row 50; amendment AM-2): the ONVIF half, then the
+// relay's probe of each named stream and the Core's own judgement of it. The locator read is the second
+// facade of the session file. No process is started before `test()` is called with a credential.
+export { createOnvifStreamLocator, type OnvifStreamLocator } from './camera/onvif-session';
+export {
+  STREAM_CODECS,
+  STREAM_PROBE_BOUND_MS,
+  STREAM_PROFILE_CODE,
+  StreamTestReason,
+  createStreamConnectionTester,
+  type JudgedStream,
+  type StreamCodec,
+  type StreamConnectionTester,
+  type StreamConnectionTesterOptions,
+  type StreamStatement,
+  type StreamTestNote,
+  type StreamTestResult,
+} from './camera/stream-probe';

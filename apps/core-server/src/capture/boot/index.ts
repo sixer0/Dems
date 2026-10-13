@@ -31,6 +31,17 @@
  * the identity module - the hashes are salted, so nothing is compared as text). The read hands back
  * a COUNT: no operator ID, no hash, no salt and no password leaves that function, and its failure is
  * "could not be read" (the check then refuses the start: fail closed).
+ *
+ * THE HOST CHECKS (task 4 rows 80 and 81; WP-20) ARE WIRED HERE. What a production host must be, and
+ * what its delivered programs must be, is asked in steps 4d and 4e of `checks.ts` when - and only
+ * when - the mount is handed THE HOST FACTS (`CaptureBootMount.host`): the facts of the Core's own
+ * process and the command runner. This folder reads neither (it reads no environment and starts no
+ * process for a question: static rules G-R2 and SR-1): the ENTRY POINT of the server knows its own
+ * process and hands the facts in, as it hands in the file of the error log. The two program paths
+ * come from the configuration, the stored camera interface from the database (one read on the pool,
+ * `storedCameraInterface`). A mount WITHOUT the facts runs neither step: that is every test of before
+ * and every Core that is not started by the entry point. SIMULATED and REAL_DEVELOPMENT never ask,
+ * whatever is handed in.
  */
 import type { FastifyInstance } from 'fastify';
 import type { QueryResultRow } from 'pg';
@@ -46,6 +57,7 @@ import type { CaptureTimers, WorkerLauncher } from '../types';
 import { BOOT_PROBE_LOG_NAME, captureWorkerArguments } from '../worker-arguments';
 import { CAPTURE_BOOT_STEP, SIGNING_STORE_SUBPATH, runCaptureBootChecks, type CaptureBootOutcome, type CaptureBootSinks, type EvidenceVolumeFacts, type WorkerHandshake } from './checks';
 import { probeEvidenceVolume } from './evidence-volume';
+import type { CaptureHostDeps } from './host-checks';
 import { probeWorkerHandshake } from './worker-probe';
 
 export {
@@ -74,7 +86,39 @@ export {
   type WorkerHandshake,
 } from './checks';
 export { probeEvidenceVolume } from './evidence-volume';
+export {
+  CaptureHostRefusal,
+  HOST_COMMAND_BOUND_MS,
+  HOST_COMMAND_CHECKS,
+  HostCheckReason,
+  HostCheckStatus,
+  hostCheckResults,
+  hostCommandRunnerOver,
+  type CaptureHostDeps,
+  type HostCheckResult,
+  type HostCommand,
+  type HostCommandResult,
+  type HostCommandRunner,
+} from './host-checks';
+export {
+  CaptureProgramRefusal,
+  INTERFACE_FILE_COMMAND,
+  PROGRAM_OWNERSHIP_CHECKS,
+  ProgramCheckReason,
+  ProgramCheckStatus,
+  RELAY_EXIT,
+  deliveredProgramResults,
+  type DeliveredProgramDeps,
+  type ProgramCheckResult,
+} from './program-checks';
 export { BOOT_PROBE_SESSION, probeWorkerHandshake, type WorkerProbeOptions } from './worker-probe';
+
+/**
+ * THE HOST FACTS the entry point hands in (task 4 rows 80, 81): what only the Core's own process
+ * knows, and the runner of the questions. The two program paths are NOT here: they are the
+ * configuration's (`captureRelayPath`, `captureGuardPath`) and the mount adds them.
+ */
+export type CaptureBootHostFacts = Omit<CaptureHostDeps, 'relayProgram' | 'guardProgram'>;
 
 export interface CaptureBootControl {
   /** The decision of the one function for this app's configuration. */
@@ -111,6 +155,18 @@ export interface CaptureBootMount {
   readonly helloTimeoutMs?: number;
   /** Where the measured figures go (CS-09). Default: the engine's fact door `applyStorageVolume`, when an engine runs behind the seam. */
   readonly applyStorageVolume?: (volume: { readonly totalBytes: number; readonly freeBytes: number }) => Promise<unknown>;
+  /**
+   * THE HOST FACTS (task 4 rows 80, 81): handed on to steps 4d and 4e, which ask them in REAL_PRODUCTION
+   * only. ABSENT: neither step runs (see the file header). The entry point hands in the real ones; a test
+   * hands in a double of a host.
+   */
+  readonly host?: CaptureBootHostFacts;
+  /**
+   * Another reader of the camera interface the stored network configuration names (step 4e, check 4), for
+   * tests and for an app without a database. Default: the stored row, read on the pool
+   * (`storedCameraInterface`). Asked only when `host` is handed in, in REAL_PRODUCTION, on Linux.
+   */
+  readonly storedCameraInterface?: () => Promise<string | null>;
 }
 
 /** The code of a hand-over of the volume figures that failed (error log, never a refusal of the start). */
@@ -197,6 +253,25 @@ export async function storedDemoPasswordOperators(
   }
 }
 
+/** The camera interface of the stored network configuration: the ONE row of the table, one column. Read at boot of a production Core only (row 81). */
+export const SELECT_STORED_CAMERA_INTERFACE = 'SELECT interface_name FROM public.capture_network_config';
+
+interface StoredInterfaceRow extends QueryResultRow {
+  readonly interface_name: string | null;
+}
+
+/**
+ * Check 4 of step 4e: the interface the stored network configuration names, or null when the table has
+ * no row or the row names none (nothing was configured: there is nothing for the interface file to agree
+ * with). A read that fails REJECTS - the check then refuses the start (fail closed) - and so does a table
+ * with more than one row, which its own constraint forbids.
+ */
+export async function storedCameraInterface(app: Pick<FastifyInstance, 'db'>): Promise<string | null> {
+  const rows = await app.db.read('capture.boot.camera-interface', async (pool) => (await pool.query<StoredInterfaceRow>(SELECT_STORED_CAMERA_INTERFACE)).rows);
+  if (rows.length > 1) throw new Error('the stored network configuration is not one row');
+  return rows[0]?.interface_name ?? null;
+}
+
 /** Mounts the boot checks on the app: the control and the boot step. Called once, by the capture unit, after the fence. */
 export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootMount): CaptureBootControl {
   const decision = captureOperationDecisionOf(app.config);
@@ -204,7 +279,22 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
   const control: CaptureBootControl = { decision, outcome: () => outcome };
   controls.set(app.stages, control);
 
-  const { captureWorkerPath, mediaStoreDir, dataDir } = app.config;
+  const { captureWorkerPath, mediaStoreDir, dataDir, captureRelayPath, captureGuardPath } = app.config;
+  // Steps 4d and 4e (rows 80, 81): the facts the mount was handed, with the two program paths of the configuration.
+  // Nothing is built when no fact was handed in: `checks.ts` then runs neither step.
+  const facts = mount.host;
+  const hostChecks =
+    facts === undefined
+      ? {}
+      : {
+          host: { ...facts, coreFileLimit: () => facts.coreFileLimit(), relayProgram: captureRelayPath, guardProgram: captureGuardPath },
+          programs: {
+            platform: facts.platform,
+            relayProgram: captureRelayPath,
+            run: facts.run,
+            storedInterface: () => (mount.storedCameraInterface ?? (() => storedCameraInterface(app)))(),
+          },
+        };
   const handshake = (): Promise<WorkerHandshake> => {
     // Reached only after the path rule passed, so the program is set. THE SAME ARGUMENTS AS A SESSION START (gate 64 C7):
     // a worker that does not accept one of them ends with its usage text HERE and the start is refused, not the first session.
@@ -224,6 +314,7 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
         signingKeyIsDevelopment: () => (mount.signingKeyIsDevelopment ?? storedSigningKeyIsDevelopment)(`${dataDir}/${SIGNING_STORE_SUBPATH}`, app.clock.now()),
         demoPasswordOperators: () => (mount.demoPasswordOperators ?? (() => storedDemoPasswordOperators(app)))(),
         handshake,
+        ...hostChecks,
         sinks: mount.sinks,
       });
       await publishEvidenceVolume(app, outcome, mount);

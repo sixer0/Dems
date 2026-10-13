@@ -676,21 +676,6 @@ export interface AudioSlice {
   activeInputId: CaptureMicInputId | null;
 }
 
-/**
- * SEAM of task 4 row 28 (WP-13a), to be REMOVED by the rows that make the readers follow the
- * nullable `activeInputId` (162 and 164 write it; 163, 165, 168, 170, 171 read it).
- *
- * The wire form (`AudioSliceSchema`), the meter frame of the Core and `AudioSlice` above state the
- * truth: `activeInputId` may be `null`. The slice as the STATE holds it (`SimState['audio']`) still
- * types the member as an input, because nine readers of `state.audio.activeInputId` take a string
- * and belong to those rows (the list is in `file_requests.md`, row 28). Nothing writes `null`
- * into the state today: the seeded selector is complete and no action clears a slot yet.
- *
- * To remove it: `SimState['audio']` becomes `AudioSlice`, this type is deleted, and the compiler
- * names every reader that is left.
- */
-export type AudioSliceInState = Omit<AudioSlice, 'activeInputId'> & { activeInputId: CaptureMicInputId };
-
 /** One camera row of the `captureConfig` slice (`C3 §6` slice 29). */
 export interface CaptureConfigCamera {
   trackId: VideoTrackId;
@@ -785,6 +770,18 @@ export interface RegisterCaptureDeviceInput {
   host: string;
   /** The adapter kind, e.g. `ONVIF_RTSP` or `FAKE`. */
   adapter: string;
+}
+
+/**
+ * The input of the INTERNAL action `registerCaptureMicrophone` (task 4 row 185; design addendum 04
+ * section 4.2): a sound-card input that operation 99 registers. It names NO class and NO adapter:
+ * the action writes `MIC` and `USB_AUDIO` itself.
+ */
+export interface RegisterCaptureMicrophoneInput {
+  /** Null: a new microphone, the action takes the next free `MIC-NN`. An id: the registered `USB_AUDIO` microphone to enable again. */
+  deviceId: string | null;
+  /** The product name as the Core's card listing returned it: printable ASCII, 1 to 64 characters (AD-07 (1)). */
+  model: string;
 }
 
 /**
@@ -1486,8 +1483,8 @@ export interface SimState {
   activeCameraId: VideoTrackId;
   cameras: CameraStatus[];
   mics: MicStatus[];
-  /** The meters slice as the state holds it: `AudioSlice` behind the seam of task 4 row 28 (`AudioSliceInState`), which later rows of WP-13a remove. */
-  audio: AudioSliceInState;
+  /** The meters slice, as the wire states it: its active input is `null` while no PRIMARY line is in force (task 4 rows 28 and 149). */
+  audio: AudioSlice;
   storage: StorageSlice;
   storagePolicy: StoragePolicy;
   time: TimeSlice;
@@ -1805,6 +1802,17 @@ export interface SimActions {
    * that is no host, or an adapter that is no code.
    */
   registerCaptureDevice(device: RegisterCaptureDeviceInput): void;
+  /**
+   * INTERNAL (task 4 row 185; design addendum 04 section 4.2): a `USB_AUDIO` microphone that
+   * operation 99 registers joins the `captureDevices` slice under the next free `MIC-NN`
+   * (`deviceId: null`), or a registered one is online again with the model of the new listing
+   * (`deviceId`). No client calls it: on the Core server it runs inside the unit of work of
+   * operation 99, which has checked the access rule, the idle lock and the card, and writes the
+   * audit row itself. Checks no permission, writes no audit row and no event, and leaves
+   * `captureConfig` alone. Throws `SimTransitionError` with code INVALID_INPUT for a model that
+   * is no product name of a card listing, or an id that is no registered `USB_AUDIO` microphone.
+   */
+  registerCaptureMicrophone(microphone: RegisterCaptureMicrophoneInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

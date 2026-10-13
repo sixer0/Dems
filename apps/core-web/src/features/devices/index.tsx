@@ -45,6 +45,7 @@ import { PageHeader } from '@/components/shell/page-header'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { useMotionPolicy } from '@/motion'
 import { useWebLive } from '@/runtime'
+import { AudioCards } from './audio-cards-panel'
 import { AudioInputCard } from './audio-input-card'
 import { CameraSearchProvider, SearchCamerasButton } from './camera-search-context'
 import { CameraSearchPanel } from './camera-search-panel'
@@ -275,6 +276,8 @@ export function DevicesPage() {
                 <RegisteredDevices kind="MIC" onView={setRegisteredId} />
                 {/* Flow 13 (R-10 AC-2): "Search again" re-reads the microphones connected to the Core (operation 97). */}
                 <MicRescan />
+                {/* Task 4 row 72 (WP-07d): the sound cards of the Core's host and the registration of ONE input as a microphone (operations 98, 99). */}
+                <AudioCards />
               </DevicesPanel>
 
               <DevicesPanel id="other" icon={Cpu} title={t('devices.other.title')}>

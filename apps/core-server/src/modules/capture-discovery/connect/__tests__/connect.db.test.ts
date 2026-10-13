@@ -17,6 +17,12 @@
 //                         adoption is the real one (device row, credential row, audit rows), the
 //                         replicated slice does not learn of the device. Not proven here:
 //                         `publishes captureDevices`.
+//   the relay (task 4     the cases of an adoption that stores a MINTED code run the connect flow's
+//   rows 50, 51)          real tester - the ONVIF half, the locator read, the stream half - with a
+//                         DOOR DOUBLE in the place of the relay process: it reports the probe line
+//                         of the relay's contract and ends. The fake stub's own stream responder is
+//                         no camera; the real relay binary against the test camera is
+//                         `stream-test.db.test.ts`. Every other case keeps the ONVIF-only tester.
 //
 // Fixture credentials are canaries drawn at run time. EVERY RULE HAS ITS CONTROL.
 import { randomUUID } from 'node:crypto';
@@ -34,9 +40,12 @@ import { manualTimer } from '../../../../../test/support/engine';
 import { FAKE_ONVIF_HOST, createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifStub } from '../../../../../test/support/fake-onvif-stub';
 import { buildGuardApp, deviceOperator, webOperator, type GuardApp } from '../../../../../test/support/guard';
 import { CLOCK_START, WEB_ORIGIN, insertPairedDevice, type Headers } from '../../../../../test/support/identity';
-import { createSystemTimers } from '../../../../capture';
-import { CaptureAdapterKind, type CameraCandidate } from '../../../../capture/adapters';
-import { createOnvifConnectionTester } from '../../../../capture/adapters/camera/onvif-session';
+import { avcDeclaredFrameRate, createSystemTimers } from '../../../../capture';
+import { CaptureAdapterKind, createStreamConnectionTester, type CameraCandidate, type ProductionDoor, type ProductionExit } from '../../../../capture/adapters';
+import { createOnvifConnectionTester, createOnvifStreamLocator } from '../../../../capture/adapters/camera/onvif-session';
+import { streamProfileOf } from '../../../../sealing-host';
+import { spsNal } from '../../../../sealing-host/__tests__/real-init-segments';
+import { registerAdoptedCamera, writeAdoptedCameraStreams } from '../../adoption';
 import { coreCredentialStore, type CoreCredentialStore } from '../../../../credential-store';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../../../../db/schema';
 import { engineControl } from '../../../../engine';
@@ -130,8 +139,61 @@ const registrar: DeviceRegistrar = async (scope, _principal, device) => {
     "INSERT INTO public.capture_devices (id, kind, transport, model, address, onvif_uuid, profiles, enabled, last_seen_at, adapter_kind) VALUES ($1, 'CAMERA', 'RTSP', $2, $3, $4, $5::jsonb, true, $6, $7)",
     [device.id, device.model, device.address, device.endpointRef, JSON.stringify(device.profiles), device.at, device.adapterKind],
   );
+  // Task 4 row 51: the stream rows of the adoption, by the registrar's OWN function and statement, in the same unit.
+  await writeAdoptedCameraStreams(scope.unit, device);
   if (failAfterDeviceInsert) throw new Error('row142: a failure injected after the device INSERT');
   return { id: device.id, kind: 'CAMERA', model: device.model, firmware: null, host: device.address, poePort: null, online: true, streamState: null, capabilities: ['VIDEO'] };
+};
+
+// ── Task 4 rows 50 and 51: the connect flow's tester with a DOOR DOUBLE in the place of the relay ──
+/** What the next probes report: the stream the "camera" sends, whatever its ONVIF answer announces. */
+let streamSent: 'H264' | 'HEVC' = 'H264';
+/** How many relays the door double was asked to start, and with which program. */
+const relayStarts: string[] = [];
+const hexOf = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
+/** An H.264 sequence set that states 25 pictures a second, by the seal test's own builder; HEVC sets by their header bytes. */
+const AVC_SETS = { vps: '', sps: hexOf(spsNal({ width: 1920, height: 1088, timing: { unitsInTick: 1, timeScale: 50 } })), pps: '68ce3c80' };
+const HEVC_SETS = { vps: '40010c01ffff0160', sps: '4201010160000003', pps: '4401c172b462' };
+/** The door of the production programs, doubled: it takes the start message, says the relay's ONE probe line and ends with code 0. No process. */
+const relayDouble: ProductionDoor = (options) => {
+  relayStarts.push(options.command);
+  const attempt = Number((options.message as Readonly<Record<string, unknown>> | null)?.['attempt']);
+  const sets = streamSent === 'HEVC' ? HEVC_SETS : AVC_SETS;
+  const line = `{"report":"probe","v":1,"attempt":${attempt},"codec":"${streamSent}","width":1920,"height":1080,"rate_milli":25000,"sets_in_description":true,"sets_in_stream":false,"vps":"${sets.vps}","sps":"${sets.sps}","pps":"${sets.pps}"}\n`;
+  const ended = new Promise<ProductionExit>((done) => {
+    setImmediate(() => {
+      options.onOutput?.(Buffer.from(line, 'latin1'));
+      done({ exitCode: 0, signal: null, spawnFailed: false, diagnostics: '', output: '' });
+    });
+  });
+  return { pid: null, started: Promise.resolve(), ended, alive: () => false, endInput: () => {}, kill: () => {} };
+};
+/** The module's own composition of the tester (`capture-discovery/index.ts`), with the door double and a relay program that is never started. */
+const streamTester = () => {
+  const timers = createSystemTimers();
+  return createStreamConnectionTester({
+    onvif: createOnvifConnectionTester({ timers }),
+    locator: createOnvifStreamLocator({ timers }),
+    door: relayDouble,
+    relayProgram: '/opt/dems/bin/capture-relay',
+    timers,
+    statement: { profileOf: streamProfileOf, declaredRate: avcDeclaredFrameRate },
+  });
+};
+/** Puts the two-half tester in for the REST OF ONE CASE (and, when asked, the module's REAL registrar); `beforeEach` puts this file's parts back. */
+function useStreamTester(sent: 'H264' | 'HEVC', realRegistrar = false): void {
+  streamSent = sent;
+  captureConnectControl(guard.app).replaceForTest({ tester: streamTester(), ...(realRegistrar ? { registrar: (scope, _principal, device) => registerAdoptedCamera(scope, device) } : {}) });
+}
+/** The parts every other case runs with: the ONVIF-only tester (no stream half: no credentialed relay exists for it) and the stand-in registrar. */
+const useOnvifOnlyTester = (): void => captureConnectControl(guard.app).replaceForTest({ tester: createOnvifConnectionTester({ timers: createSystemTimers() }), registrar });
+const streamRows = async (deviceId: string): Promise<Record<string, unknown>[]> =>
+  (await owner.query('SELECT profile, onvif_profile_token, video_source_token, lens, stream_role, codec, width, height FROM public.capture_device_streams WHERE device_id = $1 ORDER BY lens', [deviceId])).rows as Record<string, unknown>[];
+
+/** A case that starts from a registry without the camera an earlier case adopted: as the owner, its stream rows first (the foreign key restricts). */
+const dropCamera03 = async (): Promise<void> => {
+  await owner.query("DELETE FROM public.capture_device_streams WHERE device_id = 'CAM-03'");
+  await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-03'");
 };
 
 const testPath = (id: string): string => `/api/v1/capture/discovery/candidates/${id}/test`;
@@ -207,13 +269,14 @@ beforeEach(() => {
   stub.resetLog();
   failAfterDeviceInsert = false;
   forgetGuard();
+  useOnvifOnlyTester();
 });
 
 describe('the database this file runs on', () => {
-  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [7, 'dbc-8'], read as dems_app`, async () => {
+  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [8, 'dbc-9'], read as dems_app`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([7, 'dbc-8']);
-    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([7, 'dbc-8']);
+    expect([row.schema_version, row.contract_revision]).toEqual([8, 'dbc-9']);
+    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([8, 'dbc-9']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
   });
 });
@@ -378,8 +441,12 @@ describe('M4-SEC-CRED-2: a credential outside the accepted characters is refused
 
 describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_app', () => {
   it('a credentialed adoption: 201, credentialSet true; the device row, the credential row and the two audit rows are there together; the secret is stored ENCRYPTED and opens', async () => {
+    // Task 4 rows 50 and 51: the two-half test. The stub ANNOUNCES H264 with the lower-case token `profile_1`; the stream is H.264.
+    useStreamTester('H264');
     const id = candidate();
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
+    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    // What the candidate keeps of the test is the Core's CODE, never the token.
+    expect(held.get(id)?.candidate.lastTest?.profiles).toEqual(['H264_1080P25']);
     const before = await rowCounts();
     const from = (await trail()).length;
     const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
@@ -397,7 +464,12 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     expect(rows[2]?.details).toEqual({ deviceId: 'CAM-03', candidateId: id, searchId: 'DSC-000142', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: true, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' });
 
     const device = (await owner.query('SELECT kind, transport, adapter_kind, address, onvif_uuid, profiles, enabled FROM public.capture_devices WHERE id = $1', ['CAM-03'])).rows[0] as Record<string, unknown>;
-    expect(device).toMatchObject({ kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', profiles: ['profile_1'], enabled: true });
+    // Task 4 row 51 (AD-06 (4)): the profile list holds the MINTED CODE - until row 51 it held the ONVIF token `profile_1`.
+    expect(device).toMatchObject({ kind: 'CAMERA', transport: 'RTSP', adapter_kind: 'FAKE', profiles: ['H264_1080P25'], enabled: true });
+    // The token stands in the stream row, beside the code, with the facts the Core read from the stream.
+    expect(await streamRows('CAM-03')).toEqual([{ profile: 'H264_1080P25', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'H264', width: 1920, height: 1080 }]);
+    // No audit detail of the adoption or of its test holds the token or the code: the rows say what they said before.
+    expect(JSON.stringify(rows.map((row) => row.details))).not.toMatch(/profile_1|H264_1080P25/);
     expect(String(device['address'])).toMatch(/^127\.0\.0\.1:\d+$/);
     const stored = (await owner.query('SELECT username, encryption, secret_ciphertext, nonce, key_ref FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-03'])).rows[0] as { username: string; encryption: string; secret_ciphertext: Buffer; nonce: Buffer; key_ref: string };
     expect(stored.encryption).toBe('AES-256-GCM');
@@ -423,7 +495,7 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
       // Another address than the adopted camera's, so that only the injected failure can stop the unit.
       held.get(id)!.candidate.camera = { ...held.get(id)!.candidate.camera, serviceAddress: stub.addresses().deviceServiceUrl };
       await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-      await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-03'");
+      await dropCamera03();
       expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json(), `round ${round}`).toMatchObject({ outcome: 'REACHABLE' });
       const before = await rowCounts();
       const from = (await trail()).length;
@@ -445,14 +517,14 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
 
   it('a credential row that cannot be written rolls the device row back too (a sealer whose envelope the table refuses)', async () => {
     await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-    await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-03'");
+    await dropCamera03();
     const id = candidate();
     await post(supervisor, testPath(id), { credential: ACCOUNT });
     const before = await rowCounts();
     // The statement itself, as dems_app, with a nonce the CHECK refuses: 23514, and the unit is gone.
     const outcome = await sqlstate(
       guard.app.engine.run('row142.badEnvelope', async (scope) => {
-        await registrar(scope, { kind: 'ANONYMOUS', retiredDeviceId: null }, { id: 'CAM-03', adapterKind: CaptureAdapterKind.FAKE, model: null, address: '127.0.0.1:1', endpointRef: null, profiles: [], at: 1 });
+        await registrar(scope, { kind: 'ANONYMOUS', retiredDeviceId: null }, { id: 'CAM-03', adapterKind: CaptureAdapterKind.FAKE, model: null, address: '127.0.0.1:1', endpointRef: null, profiles: [], streams: [], at: 1 });
         await scope.unit.query(UPSERT_CAPTURE_CREDENTIAL, ['CAM-03', 'x', Buffer.alloc(48), Buffer.alloc(11), 'CAPTURE_DEVICE_K_00000000000000000000', 1]);
       }),
     );
@@ -463,7 +535,7 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
 
   it('M4-CONN-ORDER-1: no adoption without a fresh REACHABLE test; the credential is present exactly when the test was authenticated; each refusal stores nothing', async () => {
     await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
-    await owner.query("DELETE FROM public.capture_devices WHERE id = 'CAM-03'");
+    await dropCamera03();
     const before = await rowCounts();
     const untested = candidate();
     expect(reasonOf(await post(supervisor, adoptPath(untested), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);
@@ -576,6 +648,111 @@ describe('409 CAPTURE_CONFIG_LOCKED while a session is open, for every connect s
   });
 });
 
+describe('task 4 rows 50 and 51: the codec is judged from the stream, and an adoption stores the minted code with the ONVIF token', () => {
+  it('a camera that ANNOUNCES H264 and SENDS HEVC: tested REACHABLE, adopted with the code HEVC_1080P; the lower-case token stands in the stream row only', async () => {
+    useStreamTester('HEVC');
+    const id = candidate();
+    const starts = relayStarts.length;
+    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', authenticated: true, usableProfileCount: 1 });
+    expect(held.get(id)?.candidate.lastTest).toMatchObject({ outcome: 'REACHABLE', profiles: ['HEVC_1080P'] });
+    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    expect(response.statusCode, response.body).toBe(201);
+    const { deviceId } = response.json() as { deviceId: string };
+    // One relay per probed stream: the test and the re-verification of the adoption.
+    expect(relayStarts.slice(starts)).toEqual(['/opt/dems/bin/capture-relay', '/opt/dems/bin/capture-relay']);
+    expect((await owner.query('SELECT profiles FROM public.capture_devices WHERE id = $1', [deviceId])).rows).toEqual([{ profiles: ['HEVC_1080P'] }]);
+    expect(await streamRows(deviceId)).toEqual([{ profile: 'HEVC_1080P', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'HEVC', width: 1920, height: 1080 }]);
+    // The answer of the adoption and its log lines hold neither the token nor a text of the camera's announcement.
+    expect(response.body).not.toMatch(/profile_1/);
+  });
+
+  it('the announcement is advice in the other direction too: a device that announces H265 only is NOT_H264 without a stream half, and REACHABLE with one', async () => {
+    stub.setDeviceMode('H265_ONLY');
+    const plain = candidate();
+    expect((await post(supervisor, testPath(plain), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'NOT_H264', usableProfileCount: 0 });
+    useStreamTester('HEVC');
+    const judged = candidate();
+    expect((await post(supervisor, testPath(judged), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    expect(held.get(judged)?.candidate.lastTest?.profiles).toEqual(['HEVC_1080P']);
+  });
+
+  it('a stream that changed between the test and the adoption (H.264 then HEVC): 409 CONNECTION_TEST_FAILED (DEVICE_CHANGED), nothing stored', async () => {
+    useStreamTester('H264');
+    const id = candidate();
+    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
+    streamSent = 'HEVC';
+    const before = [...(await rowCounts()), await count('capture_device_streams')];
+    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    expect(reasonOf(response)).toEqual([409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED']);
+    expect(errorOf(response).details).toMatchObject({ cause: 'DEVICE_CHANGED' });
+    expect([...(await rowCounts()), await count('capture_device_streams')]).toEqual(before);
+  });
+
+  it('an adoption whose test had NO stream half stores no code and no stream row: no default profile stands in, and the ONVIF token is stored nowhere (C36)', async () => {
+    const id = candidate();
+    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    const streams = await count('capture_device_streams');
+    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    expect(response.statusCode, response.body).toBe(201);
+    const { deviceId } = response.json() as { deviceId: string };
+    expect((await owner.query('SELECT profiles FROM public.capture_devices WHERE id = $1', [deviceId])).rows).toEqual([{ profiles: [] }]);
+    expect(await count('capture_device_streams')).toBe(streams);
+    expect(await count('capture_devices', "profiles::text LIKE '%profile_1%'")).toBe(0);
+  });
+
+  it('a failure after the stream rows were written rolls them back with the device row', async () => {
+    useStreamTester('HEVC');
+    const id = candidate();
+    await post(supervisor, testPath(id), { credential: ACCOUNT });
+    const before = [...(await rowCounts()), await count('capture_device_streams')];
+    failAfterDeviceInsert = true;
+    expect((await post(supervisor, adoptPath(id), { credential: ACCOUNT })).statusCode).toBe(500);
+    expect([...(await rowCounts()), await count('capture_device_streams')]).toEqual(before);
+  });
+
+  it('every stored profile element is a code of the Core: 0 rows of capture_devices hold another form (what the CHECK of AD-06 (4) will hold)', async () => {
+    const offending = await owner.query("SELECT id FROM public.capture_devices d WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(d.profiles) e WHERE jsonb_typeof(e) <> 'string' OR NOT ((e #>> '{}') ~ '^[A-Z][A-Z0-9_]{0,63}$'))");
+    expect(offending.rows).toEqual([]);
+    // THE PREDICATE OF THE CHECK ITSELF, as it is handed to the schema writer (`file_requests.md`, row 51): a CHECK takes no
+    // subquery, so it is the JSON path form the schema already uses for `source_facts`. Every stored row passes it, and
+    // the controls show what it refuses: an ONVIF token, a lower-case text, a number, an over-long code.
+    const HOLDS = `NOT jsonb_path_exists($1::jsonb, 'strict $[*] ? (@.type() != "string" || !(@ like_regex "^[A-Z][A-Z0-9_]{0,63}$"))')`;
+    const holds = async (profiles: unknown): Promise<boolean> => ((await owner.query(`SELECT ${HOLDS} AS holds`, [JSON.stringify(profiles)])).rows[0] as { holds: boolean }).holds;
+    expect((await owner.query(`SELECT count(*)::int AS rows FROM public.capture_devices WHERE NOT (${HOLDS.replace('$1::jsonb', 'profiles')})`)).rows).toEqual([{ rows: 0 }]);
+    expect(await Promise.all([[], ['HEVC_1080P'], ['H264_1080P25', 'HEVC_2560X1920P'], [`H${'9'.repeat(63)}`]].map(holds))).toEqual([true, true, true, true]);
+    const refused: readonly unknown[][] = [['profile_1'], ['HEVC_1080P', 'profile_1'], ['hevc_1080p'], [7], [null], [{ code: 'HEVC_1080P' }], [`H${'9'.repeat(64)}`], ['HEVC_1080P '], ['']];
+    expect(Object.fromEntries(await Promise.all(refused.map(async (profiles) => [JSON.stringify(profiles), await holds(profiles)] as const)))).toEqual(Object.fromEntries(refused.map((profiles) => [JSON.stringify(profiles), false])));
+    // WHY THE PATH IS `strict`: in the default (lax) mode a NESTED array is unwrapped, and `[["HEVC_1080P"]]` would read
+    // as its inner code and pass. Strict mode takes an element as it stands: a nested list is no string and is refused.
+    expect(await holds([['HEVC_1080P']])).toBe(false);
+    const lax = ((await owner.query(`SELECT ${HOLDS.replace('strict ', '')} AS holds`, [JSON.stringify([['HEVC_1080P']])])).rows[0] as { holds: boolean }).holds;
+    expect(lax).toBe(true);
+  });
+
+  it('with the module\'s REAL registrar: the camera whose token is lower-case is in the registry, and its minted code is assigned to a video slot (operation 78)', async () => {
+    useStreamTester('HEVC', true);
+    const id = candidate();
+    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
+    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    expect(response.statusCode, response.body).toBe(201);
+    const { deviceId } = response.json() as { deviceId: string };
+    await guard.app.pipeline.drain();
+    expect(guard.app.engine.state().captureDevices.devices.map((device) => device.id)).toContain(deviceId);
+    expect((await owner.query('SELECT profiles FROM public.capture_devices WHERE id = $1', [deviceId])).rows).toEqual([{ profiles: ['HEVC_1080P'] }]);
+    expect(await streamRows(deviceId)).toEqual([{ profile: 'HEVC_1080P', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'HEVC', width: 1920, height: 1080 }]);
+    // The selector takes the camera with the Core's code. The token would be refused by the selector's own form.
+    const assigned = await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'HEVC_1080P' }] });
+    expect(assigned.statusCode, assigned.body).toBe(200);
+    await guard.app.pipeline.drain();
+    expect((await owner.query('SELECT video_02_device_id, video_02_profile FROM public.capture_config')).rows).toEqual([{ video_02_device_id: deviceId, video_02_profile: 'HEVC_1080P' }]);
+    const refused = await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'profile_1' }] });
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+    // Back to the built-in camera: the blocks after this one read the selector as it was.
+    expect((await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
+    await guard.app.pipeline.drain();
+  });
+});
+
 describe('M4-SEC-CRED-1: the two canaries through every channel (this block runs last)', () => {
   const hits = (haystack: string, canaries: readonly string[] = CANARIES): string[] => canaries.flatMap((canary) => formsOf(canary).filter((form) => haystack.includes(form)));
 
@@ -594,7 +771,7 @@ describe('M4-SEC-CRED-1: the two canaries through every channel (this block runs
     expect(hits(JSON.stringify([...held.values()].map((entry) => entry.candidate)))).toEqual([]);
 
     const tables = ((await owner.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1")).rows as { table_name: string }[]).map((row) => row.table_name);
-    expect(tables).toHaveLength(45);
+    expect(tables).toHaveLength(47);
     const found: string[] = [];
     for (const table of tables) {
       const dump = ((await owner.query(`SELECT row_to_json(t)::text AS row FROM public.${table} t`)).rows as { row: string }[]).map((row) => row.row).join('\n');

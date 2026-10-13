@@ -53,6 +53,7 @@ import {
   type CaptureTelemetryInput,
   type CaptureWarningInput,
   type RegisterCaptureDeviceInput,
+  type RegisterCaptureMicrophoneInput,
   type Sim,
   type SimClock,
   type SimErrorReport,
@@ -70,7 +71,7 @@ import {
 } from '@dems/shared/sim';
 import type { EngineSealDoors } from './types';
 // Fact block (integration pass D6): the measured evidence volume (CS-09) and the head of a transcript's revisions.
-import { applyStorageVolumeTransition, noteTranscriptRevisionTransition, type StorageVolumeInput, type TranscriptRevisionNote } from '@dems/shared/sim';
+import { applyStorageVolumeTransition, nextCaptureMicrophoneId, noteTranscriptRevisionTransition, type StorageVolumeInput, type TranscriptRevisionNote } from '@dems/shared/sim';
 import { FACT_DOOR_LABEL, type EngineFactDoors } from './fact-doors';
 // Source-fact block (integration pass D11): the class and the "is on" of the sources of a real capture operation.
 import { applyCaptureSourceFactsTransition, type CaptureSourceFact } from '@dems/shared/sim';
@@ -759,6 +760,38 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return registered;
   }
 
+  /**
+   * The INTERNAL action `registerCaptureMicrophone` in a module's own unit (task 4 rows 185 / 190;
+   * design addendum 04 section 4.2; `internal-actions.ts`): the same steps as the camera's. The id
+   * of a NEW microphone is the action's: it is read here from the state the action is about to see
+   * (one synchronous turn, inside the unit's lock), by the action's own function.
+   */
+  async function registerCaptureMicrophoneInScope(scope: Scope, microphone: RegisterCaptureMicrophoneInput): Promise<CaptureDeviceStatus> {
+    const where = { unit: scope.unit.id, label: scope.unit.label, action: 'registerCaptureMicrophone' };
+    syncNative(scope);
+    await checkHead(scope);
+    const { sim } = scope.live;
+    counters.commands += 1;
+    const deviceId = microphone.deviceId ?? nextCaptureMicrophoneId(sim.store.getState().captureDevices.devices);
+    try {
+      sim.actions.registerCaptureMicrophone(microphone);
+    } catch (error) {
+      const refusal = simRefusal(error);
+      if (refusal !== null) {
+        counters.commandsRefused += 1;
+        log.debug({ ...where, code: refusal.code, simCode: simCodeOf(refusal) }, 'internal action refused');
+        throw refusal;
+      }
+      log.error({ ...where, code: codeOf(error) }, 'internal action failed');
+      persist('error', 'an internal action failed', error, where);
+      throw error;
+    }
+    await flush(scope);
+    const registered = sim.store.getState().captureDevices.devices.find((entry) => entry.id === deviceId);
+    if (registered === undefined) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the registered microphone is not in the state after its action');
+    return registered;
+  }
+
   function engineUnitOf(scope: Scope): EngineUnit {
     return bindInternalActions(
       {
@@ -768,6 +801,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
       },
       {
         registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device),
+        registerCaptureMicrophone: (microphone) => registerCaptureMicrophoneInScope(scope, microphone),
         // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
         markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
         switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),

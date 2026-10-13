@@ -40,7 +40,7 @@ import { sealCredential } from '../../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../../errors';
 import { CaptureAdapterKind } from '../../kinds';
 import { ConnectionTestOutcome, type CameraCandidate } from '../../types';
-import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, createOnvifStreamLocator, type OnvifLocatorResult, type OnvifSessionResult } from '../onvif-session';
+import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, createOnvifStreamLocator, createOnvifTimeReader, type OnvifLocatorResult, type OnvifSessionResult } from '../onvif-session';
 import { connectionTargetOf } from '../connection-target';
 
 // Two canaries, as the credential of the fixture account: neither is a word of any message.
@@ -172,6 +172,10 @@ describe('M4-CONN-OUT-1 (adapter half): the five outcomes on the fake stub, thro
     stub.setDeviceMode('H265_ONLY');
     const result = await tester().test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), never());
     expect(result).toMatchObject({ outcome: ConnectionTestOutcome.NOT_H264, authenticated: true, usableProfiles: [], reason: OnvifTestReason.NO_H264_PROFILE });
+    // Task 4 row 50 (amendment AM-2): the announcement is advice. The streams are named all the same - one per
+    // video source, by its bounded tokens - so that the stream test can judge them; no code is formed here.
+    expect(result.profiles).toHaveLength(1);
+    expect(result.profiles[0]).toMatchObject({ token: expect.stringMatching(/^[A-Za-z0-9_.:-]{1,64}$/), width: expect.any(Number), height: expect.any(Number) });
   });
 
   it('UNREACHABLE: a refused connection, and a device that never answers until the deadline', async () => {
@@ -619,8 +623,13 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
     // Control: one video source gives ONE profile, however many it lists; no source named is one source too.
     expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, source: 'vs_A' })))).profiles.map((profile) => profile.token)).toEqual(['b.main']);
     expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, source: null })))).profiles).toEqual([{ token: 'b.main', videoSourceToken: null, width: 2560, height: 1440 }]);
-    // Control: a result that is not REACHABLE names none.
-    expect((await tested(TWO_LENSES.map((profile) => ({ ...profile, encoding: 'H265' })))).profiles).toEqual([]);
+    // Task 4 row 50 (amendment AM-2): a device that announces no H264 encoder is NOT_H264 BY THE ANNOUNCEMENT, which is
+    // advice - its streams are named exactly as before, for the stream test to judge. (Until row 50 this line read
+    // "a result that is not REACHABLE names none".) Every OTHER result that is not REACHABLE still names none.
+    const announcedOther = await tested(TWO_LENSES.map((profile) => ({ ...profile, encoding: 'H265' })));
+    expect([announcedOther.outcome, announcedOther.reason, announcedOther.usableProfiles]).toEqual([ConnectionTestOutcome.NOT_H264, OnvifTestReason.NO_H264_PROFILE, []]);
+    expect(announcedOther.profiles.map((profile) => profile.token)).toEqual(['b.main', 'a.main']);
+    expect((await tested([])).profiles).toEqual([]);
   });
 
   it('a token with lower-case letters, a dot, a colon and a hyphen is returned unchanged, and asked for unchanged', async () => {
@@ -946,5 +955,130 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
       await expectRefused([`${STREAM}${ODD_DEVICE_FOREIGN_HOST}/main?channel=1`], OnvifTestReason.STREAM_HOST_MISMATCH);
       await expectRefused([`http://${ODD_DEVICE_HOST}/main?channel=1`], OnvifTestReason.STREAM_SCHEME);
     });
+  });
+});
+
+// Task 4 integration pass I-7 (the request of row 49; blueprint section 8.4): the time read the camera
+// watch asks through its seam `CameraTimeReader`. One read, no credential, the device's words untrusted.
+describe('task 4 integration pass I-7: the time read of a camera, without a credential', () => {
+  const reader = (timers: CaptureTimers = manualTimers(), limits: Partial<typeof ONVIF_SESSION_LIMITS> = {}) => createOnvifTimeReader({ timers, limits });
+  /** The clock element of an answer, written by the test: the device's own text. */
+  const clockBody = (inner: string): OddDeviceReply => ok(`<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime><tt:DateTimeType>NTP</tt:DateTimeType>${inner}</tds:SystemDateAndTime></tds:GetSystemDateAndTimeResponse>`);
+  const instant = (name: string, at: Date, hour: string = String(at.getUTCHours())): string =>
+    `<tt:${name}><tt:Time><tt:Hour>${hour}</tt:Hour><tt:Minute>${at.getUTCMinutes()}</tt:Minute><tt:Second>${at.getUTCSeconds()}</tt:Second></tt:Time>` +
+    `<tt:Date><tt:Year>${at.getUTCFullYear()}</tt:Year><tt:Month>${at.getUTCMonth() + 1}</tt:Month><tt:Day>${at.getUTCDate()}</tt:Day></tt:Date></tt:${name}>`;
+
+  it('on the fake stub: ONE unauthenticated GetSystemDateAndTime, the instant the device names in whole seconds (control: a device whose clock is 90 s ahead)', async () => {
+    for (const clockOffsetMs of [0, 90_000]) {
+      const stub = await startStub({ clockOffsetMs });
+      const before = Date.now();
+      const answer = await reader().read(candidateAt(stub.addresses().deviceServiceUrl), never());
+      const after = Date.now();
+      expect(Object.keys(answer).sort()).toEqual(['answered', 'cameraUtcMs']);
+      expect(answer.answered).toBe(true);
+      const cameraUtcMs = answer.cameraUtcMs ?? Number.NaN;
+      // The answer carries whole seconds: the device's instant, cut to its second.
+      expect(cameraUtcMs % 1_000).toBe(0);
+      expect(cameraUtcMs).toBeGreaterThan(before + clockOffsetMs - 1_000);
+      expect(cameraUtcMs).toBeLessThanOrEqual(after + clockOffsetMs);
+      // What reached the device: the one read, nothing offered with it, no other channel.
+      expect(stub.requestLog().map((request) => `${request.channel}:${request.operation}:${request.authPresent}`)).toEqual(['device:GetSystemDateAndTime:false']);
+      expect(stub.violations()).toEqual([]);
+    }
+  });
+
+  it('a device that keeps its clock behind authentication ANSWERED and names no instant; no request carried anything, and no other read was made', async () => {
+    const digest = { 'WWW-Authenticate': 'Digest realm="odd", nonce="00112233445566778899aabbccddeeff", qop="auth"' };
+    for (const refusal of [notAuthorizedFault(401, digest), notAuthorizedFault(400)]) {
+      const device = await startOdd(() => refusal);
+      expect(await reader().read(candidateAt(device.serviceUrl), never())).toEqual({ answered: true, cameraUtcMs: null });
+      expect(device.requests().length).toBeGreaterThanOrEqual(1);
+      expect([...new Set(device.requests().map((request) => request.operation))]).toEqual(['GetSystemDateAndTime']);
+      expect(device.requests().filter((request) => request.authorization !== '' || request.token)).toEqual([]);
+      await device.stop();
+    }
+  });
+
+  it('device text is untrusted: an answer without a UTC instant, with a local time only, or with a date that is none hands out NO instant (never the Core\'s own clock, never a local time read as UTC)', async () => {
+    const at = new Date(Date.UTC(2031, 4, 17, 9, 30, 15));
+    // CONTROL: the same script with a UTC instant is read, exactly.
+    const stated = await startOdd(() => clockBody(instant('UTCDateTime', at)));
+    expect(await reader().read(candidateAt(stated.serviceUrl), never())).toEqual({ answered: true, cameraUtcMs: at.getTime() });
+    await stated.stop();
+    // A UTC instant beside a local one: the UTC one.
+    const both = await startOdd(() => clockBody(instant('UTCDateTime', at) + instant('LocalDateTime', new Date(at.getTime() + 7 * 3_600_000))));
+    expect(await reader().read(candidateAt(both.serviceUrl), never())).toEqual({ answered: true, cameraUtcMs: at.getTime() });
+    await both.stop();
+
+    const noInstant: readonly OddDeviceReply[] = [
+      // No instant at all: the package would answer the clock of the Core itself.
+      clockBody(''),
+      // A local time only: the package would read it as UTC.
+      clockBody(instant('LocalDateTime', at)),
+      // A UTC element whose hour is no number.
+      clockBody(instant('UTCDateTime', at, 'noon')),
+      // A UTC element with nothing in it.
+      clockBody('<tt:UTCDateTime></tt:UTCDateTime>'),
+      // The element name inside a text, not as an element.
+      clockBody(`<tt:TimeZone><tt:TZ>UTCDateTime</tt:TZ></tt:TimeZone>${instant('LocalDateTime', at)}`),
+    ];
+    for (const [index, reply] of noInstant.entries()) {
+      const device = await startOdd(() => reply);
+      const answer = await reader().read(candidateAt(device.serviceUrl), never());
+      expect(answer.cameraUtcMs, `answer ${index}`).toBeNull();
+      expect(device.requests().map((request) => request.operation), `answer ${index}`).toEqual(['GetSystemDateAndTime']);
+      await device.stop();
+    }
+  });
+
+  it('whatever the device does, the read resolves: no ONVIF answer, a closed port, silence until the deadline and an endless body are "not answered"', async () => {
+    const html = await startOdd(() => ({ kind: 'ANSWER', status: 200, body: '<html><body>hello</body></html>' }));
+    expect(await reader().read(candidateAt(html.serviceUrl), never())).toEqual({ answered: false, cameraUtcMs: null });
+
+    const stub = await startStub();
+    const address = stub.addresses().deviceServiceUrl;
+    await stub.closeDeviceListener();
+    expect(await reader().read(candidateAt(address), never())).toEqual({ answered: false, cameraUtcMs: null });
+
+    const silent = await startOdd(() => ({ kind: 'HANG' }));
+    const deadline = new AbortController();
+    const timers = manualTimers();
+    const pending = reader(timers).read(candidateAt(silent.serviceUrl), deadline.signal);
+    await expect.poll(() => silent.requests().length).toBe(1);
+    deadline.abort();
+    expect(await pending).toEqual({ answered: false, cameraUtcMs: null });
+    expect(timers.pending()).toBe(0);
+
+    const flood = await startOdd(() => ({ kind: 'FLOOD', chunkBytes: 16 * 1024 }));
+    expect(await reader(manualTimers(), { maxReceivedBytes: 64 * 1024 }).read(candidateAt(flood.serviceUrl), never())).toEqual({ answered: false, cameraUtcMs: null });
+  });
+
+  it('refused before any request: a signal already aborted, and a candidate that may not be contacted (the address rule of the test)', async () => {
+    const stub = await startStub();
+    const address = stub.addresses().deviceServiceUrl;
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(reader().read(candidateAt(address), aborted.signal)).rejects.toMatchObject({ code: CaptureAdapterRefusal.ABORTED });
+    const refused: readonly CameraCandidate[] = [
+      candidateAt(address, { testable: false }),
+      candidateAt(address, { conflict: true }),
+      candidateAt(null),
+      candidateAt(address, { host: ODD_DEVICE_FOREIGN_HOST }),
+      candidateAt(`http://${ODD_DEVICE_FOREIGN_HOST}/onvif/device_service`),
+      candidateAt(address.replace('http://', 'http://someone:something@')),
+      candidateAt(`${address}?next=1`),
+    ];
+    for (const candidate of refused) await expect(reader().read(candidate, never())).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+    expect(stub.requestLog()).toEqual([]);
+    // Control: the same stub does log a candidate that may be contacted.
+    await reader().read(candidateAt(address), never());
+    expect(stub.requestLog()).toHaveLength(1);
+  });
+
+  it('no credential is in its reach: the call takes a candidate and a signal, and the facade is the one frozen call', () => {
+    const facade = reader();
+    expect(Object.keys(facade)).toEqual(['read']);
+    expect(Object.isFrozen(facade)).toBe(true);
+    expect(facade.read).toHaveLength(2);
   });
 });

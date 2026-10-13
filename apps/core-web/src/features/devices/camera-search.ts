@@ -32,6 +32,8 @@ import { queryOptions, useQuery, useQueryClient, type QueryKey } from '@tanstack
 import { useTranslation } from 'react-i18next'
 import {
   CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,
+  CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH,
+  CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN,
   CaptureCandidateStatus,
   CaptureDiscoveryReason,
   CaptureDiscoveryState,
@@ -312,12 +314,26 @@ export interface SearchFailure {
 
 export type SearchAnswer = { readonly ok: true; readonly search: DiscoverySearch } | SearchFailure
 
-/** What the panel does with a refused search (ux §8c.2 S9 to S11, S14); pure. */
-export type SearchRefusal = 'UNAVAILABLE' | 'BUSY' | 'LIMITED' | 'RECORDING' | 'ROLE' | 'OTHER'
+/**
+ * The typed address of operation 93 (task 4, blueprint row 98; contract row 94): ONE dotted IPv4
+ * literal, the form the contract's schema holds (`CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN`, at most
+ * 15 characters). Returns the literal to send (surrounding blanks are not part of it), or `null`
+ * for a text of any other form - a name, a port, a link, an IPv6 text - which is refused in the
+ * form and never sent. The form is all a client can judge: whether the Core may ask the address
+ * needs the Core's own interfaces (`422 DISCOVERY_ADDRESS_NOT_ALLOWED`).
+ */
+export function typedAddressOf(text: string): string | null {
+  const literal = text.trim()
+  return literal.length <= CAPTURE_DISCOVERY_TYPED_ADDRESS_MAX_LENGTH && CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(literal) ? literal : null
+}
+
+/** What the panel does with a refused search (ux §8c.2 S9 to S11, S14; row 98: the typed address the Core does not ask); pure. */
+export type SearchRefusal = 'UNAVAILABLE' | 'BUSY' | 'LIMITED' | 'RECORDING' | 'ROLE' | 'ADDRESS_NOT_ALLOWED' | 'OTHER'
 
 export function startRefusal(failure: Pick<SearchFailure, 'status' | 'code' | 'reason'>): SearchRefusal {
   if (failure.status === 503) return 'UNAVAILABLE'
   if (failure.status === 429) return 'LIMITED'
+  if (failure.status === 422 && failure.reason === CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED) return 'ADDRESS_NOT_ALLOWED'
   if (failure.status === 409 && failure.reason === CaptureDiscoveryReason.DISCOVERY_NOT_ALLOWED_WHILE_RECORDING) return 'RECORDING'
   if (failure.status === 409 && failure.reason === CaptureDiscoveryReason.DISCOVERY_IN_PROGRESS) return 'BUSY'
   if (failure.status === 403) return 'ROLE'
@@ -330,9 +346,13 @@ export type SearchNotice = 'UNAVAILABLE' | 'BUSY' | 'FAILED' | null
 const SEARCH_THREW_RECORD = 'A camera search could not be sent.'
 const SEARCH_FAILED_RECORD = 'A camera search was not carried out.'
 
-async function startSearch(gate: Pick<CaptureDiscoveryGate, 'live' | 'sim'>): Promise<SearchAnswer> {
+/**
+ * One operation 93. Without `address` the request is exactly what it was before row 98: no body.
+ * With it the body is the one member `address`, a literal `typedAddressOf` passed.
+ */
+async function startSearch(gate: Pick<CaptureDiscoveryGate, 'live' | 'sim'>, address: string | null): Promise<SearchAnswer> {
   if (gate.live !== null) {
-    const answer = await gate.live.client.call('startCaptureDiscovery')
+    const answer = address === null ? await gate.live.client.call('startCaptureDiscovery') : await gate.live.client.call('startCaptureDiscovery', { body: { address } })
     if (answer.ok) return { ok: true, search: answer.data }
     return {
       ok: false,
@@ -343,7 +363,7 @@ async function startSearch(gate: Pick<CaptureDiscoveryGate, 'live' | 'sim'>): Pr
       failure: answer,
     }
   }
-  const response = gate.sim.request({ method: 'POST', path: CAPTURE_DISCOVERY_PATH })
+  const response = gate.sim.request(address === null ? { method: 'POST', path: CAPTURE_DISCOVERY_PATH } : { method: 'POST', path: CAPTURE_DISCOVERY_PATH, body: { address } })
   if (response.status === 200 || response.status === 202) return { ok: true, search: response.body as DiscoverySearch }
   const error = (response.body as SimErrorBody | null)?.error
   return {
@@ -368,8 +388,11 @@ export interface CameraSearchController {
   readonly notice: SearchNotice
   /** The failed call of the last refused search the page must hand to the presenter; consumed by the panel. */
   readonly lastFailure: SearchFailure | null
-  /** Starts a search (operation 93). One at a time; resolves when the Core answered. Never rejects. */
-  readonly start: () => Promise<SearchAnswer | null>
+  /**
+   * Starts a search (operation 93). One at a time; resolves when the Core answered. Never rejects.
+   * `address` (row 98) is a literal `typedAddressOf` passed; any other text is not sent (`null`).
+   */
+  readonly start: (address?: string) => Promise<SearchAnswer | null>
   /** Reads operation 94 again (before the connect dialog opens; after a test or an adoption). Respects the gate. */
   readonly refresh: () => Promise<void>
   /** Asks again after a failed read. */
@@ -438,12 +461,15 @@ export function useCameraSearch(): CameraSearchController {
     void queryClient.invalidateQueries({ queryKey, exact: true })
   }, [queryClient, queryKey])
 
-  const start = useCallback(async (): Promise<SearchAnswer | null> => {
+  const start = useCallback(async (address?: string): Promise<SearchAnswer | null> => {
     if (inFlight.current || !gate.enabled) return null
+    // Row 98: the form rule holds here too, so no caller can send a text of another form.
+    const typed = address === undefined ? null : typedAddressOf(address)
+    if (address !== undefined && typed === null) return null
     inFlight.current = true
     setStarting(true)
     try {
-      const answer = await startSearch(gate)
+      const answer = await startSearch(gate, typed)
       if (answer.ok) {
         setNotice(null)
         setLastFailure(null)
@@ -468,6 +494,9 @@ export function useCameraSearch(): CameraSearchController {
           setLimitedSeconds(Math.max(1, answer.retryAfterSeconds ?? 1))
           break
         case 'ROLE':
+          break
+        case 'ADDRESS_NOT_ALLOWED':
+          // Worded in the typed-address form, beside the field it is about; the list and its notices stay as they are.
           break
         case 'OTHER':
           setNotice('FAILED')

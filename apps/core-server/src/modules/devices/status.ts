@@ -29,7 +29,7 @@ import type {
   VideoStatusResponse,
   VideoTrackStatus,
 } from '@dems/shared/api';
-import type { CaptureConfigSliceBody } from '@dems/shared/api';
+import { CAMERA_FPS_MAX, CAMERA_RESOLUTION_PATTERN, type CaptureConfigSliceBody } from '@dems/shared/api';
 import { MicState } from '@dems/shared/domain';
 import {
   AUDIO_CLIP_BURST_DBFS,
@@ -115,8 +115,69 @@ export function captureSlotsOf(state: { readonly captureConfig?: CaptureSlots | 
   return stored === undefined || stored === null ? BUILTIN_SLOTS : stored;
 }
 
+/** The picture, the rate and the codec of a camera's stream, as the `cameras` slice and the video track status state them (`CameraStreamFactSchemas`). */
+export type CameraStreamFacts = Pick<CommittedState['cameras'][number], 'resolution' | 'fps' | 'codec'>;
+
+/**
+ * A profile code that is a STREAM STATEMENT: the form the seal's `streamProfileOf` makes and the
+ * connection test mints (task 4 rows 50, 51) - `<codec>_<height>P<rate>` for a 16:9 picture, else
+ * `<codec>_<width>X<height>P<rate>`, the rate absent when the stream states none. The codec is of
+ * the closed set of two.
+ */
+const STREAM_STATEMENT = /^(H264|HEVC)_(?:([1-9][0-9]{0,4})X)?([1-9][0-9]{0,4})P([1-9][0-9]{0,2})?$/;
+
+/**
+ * WHAT A STORED PROFILE CODE STATES OF ITS STREAM (task 4 row 53, WP-10b; design addendum 7.2;
+ * security AD-06 (1), (2)). The code of a video slot is the key of the camera's stored stream row
+ * (`capture_device_streams.profile`) and was minted by the Core from the stream itself, by the
+ * function the seal uses; it is held to the code pattern at every write. Reading it back is that
+ * function's inverse, so these three facts are the stored ones, with no read of a table:
+ *
+ *   resolution   `<height>p` for a 16:9 picture, else `<width>x<height>` - lower case, as the slice has it;
+ *   fps          the whole-number rate the code states, or NULL when it states none. An HEVC code
+ *                states none (the seal's reader reads no rate from an HEVC parameter set,
+ *                `test/011_e8_reader.md`): the rate is then null, NEVER a default;
+ *   codec        `H.264` or `HEVC`: the screen words of the closed set.
+ *
+ * Null for a code that is no stream statement (the name of a development profile, an empty slot)
+ * or whose numbers the slice cannot carry (a side outside 100 to 9999, a rate above 240): then
+ * nothing is said in its place - the caller keeps what it had.
+ */
+export function cameraStreamFactsOf(profile: unknown): CameraStreamFacts | null {
+  const stated = typeof profile === 'string' ? STREAM_STATEMENT.exec(profile) : null;
+  if (stated === null) return null;
+  const [, codec, width, height, rate] = stated;
+  const resolution = width === undefined ? `${String(height)}p` : `${width}x${String(height)}`;
+  // A code without a width states a 16:9 picture: one WITH a width that is 16:9 is not a code the mint makes.
+  if (width !== undefined && Number(width) * 9 === Number(height) * 16) return null;
+  const fps = rate === undefined ? null : Number(rate);
+  if (!CAMERA_RESOLUTION_PATTERN.test(resolution) || (fps !== null && fps > CAMERA_FPS_MAX)) return null;
+  return { resolution, fps, codec: codec === 'HEVC' ? 'HEVC' : 'H.264' };
+}
+
+/**
+ * The `cameras` slice with the stream facts of each track's selector slot (task 4 row 53): a track
+ * whose slot holds a stream statement states that picture, rate and codec; every other track, and
+ * every other member, is as it was. The SAME array when nothing differs, so that a caller can tell
+ * "nothing to say" by identity (the shape a pure transition of the engine needs).
+ */
+export function withCameraStreamFacts(cameras: CommittedState['cameras'], slots: Pick<CaptureSlots, 'cameras'>): CommittedState['cameras'] {
+  let changed = false;
+  const next = cameras.map((camera) => {
+    const facts = cameraStreamFactsOf(slots.cameras.find((entry) => entry.trackId === camera.id)?.profile);
+    if (facts === null || (facts.resolution === camera.resolution && facts.fps === camera.fps && facts.codec === camera.codec)) return camera;
+    changed = true;
+    return { ...camera, ...facts };
+  });
+  return changed ? next : cameras;
+}
+
 /**
  * Operation 46, and `cameras` of operation 44: one entry per video track.
+ *
+ * Task 4 row 53: `streamFacts` (true in a real capture operation, handed in by the routes) makes
+ * `resolution`, `fps` and `codec` the stored statement of the stream that feeds the track
+ * (`withCameraStreamFacts`). Without it the three are the slice's own, as the simulator answers.
  *
  * Schema v2 (C3 §3 ops 44/46; SH-05; OD-22): each track carries the capture-config device feeding
  * it (`sourceDeviceId`, equal to `deviceId` on the built-in topology, moved by op 79) and its
@@ -129,8 +190,9 @@ export function captureSlotsOf(state: { readonly captureConfig?: CaptureSlots | 
  * built-in camera of the hardware slice (`deviceId`, a fact of the unit's own port) never stands
  * in for it. `tracks` stays one entry per track.
  */
-export function videoTracksOf(cameras: CommittedState['cameras'], slots: CaptureSlots = BUILTIN_SLOTS): VideoTrackStatus[] {
-  return cameras.map((camera) => {
+export function videoTracksOf(cameras: CommittedState['cameras'], slots: CaptureSlots = BUILTIN_SLOTS, streamFacts = false): VideoTrackStatus[] {
+  // Task 4 row 53: in a real capture operation the picture, the rate and the codec of a track are the STORED statement of its stream.
+  return (streamFacts ? withCameraStreamFacts(cameras, slots) : cameras).map((camera) => {
     const slot = slots.cameras.find((entry) => entry.trackId === camera.id);
     return {
       trackId: camera.id,
@@ -253,8 +315,8 @@ export function audioStatusOf(state: Pick<CommittedState, 'mics'> & Partial<Pick
 }
 
 /** Operation 46. */
-export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<Pick<CommittedState, 'captureConfig'>>, slots: CaptureSlots = captureSlotsOf(state)): VideoStatusResponse {
-  return { tracks: videoTracksOf(state.cameras, slots) };
+export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<Pick<CommittedState, 'captureConfig'>>, slots: CaptureSlots = captureSlotsOf(state), streamFacts = false): VideoStatusResponse {
+  return { tracks: videoTracksOf(state.cameras, slots, streamFacts) };
 }
 
 /**
@@ -262,7 +324,7 @@ export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<P
  * Schema v2 (C3 §3 op 44): the cameras carry their stream state, the audio is keyed by the mic
  * inputs with their roles, and `activeInputId` names the input feeding `AUDIO-01` right now.
  */
-export function deviceHealthOf(state: CommittedState, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = captureSlotsOf(state)): DeviceHealthResponse {
+export function deviceHealthOf(state: CommittedState, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = captureSlotsOf(state), streamFacts = false): DeviceHealthResponse {
   // The shared rule of the Dashboard ring. It is typed for the whole simulator state and reads
   // nine slices of it, all of them durable (a test calls it on a state that holds no other).
   const system = systemStatus(state as SimState);
@@ -270,7 +332,7 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
     device: { id: state.device.id, name: state.device.name, softwareVersion: state.device.softwareVersion },
     systemState: system.state,
     flags: system.flags.map((flag) => ({ id: flag.id, severity: flag.severity, message: flag.message })),
-    cameras: videoTracksOf(state.cameras, slots),
+    cameras: videoTracksOf(state.cameras, slots, streamFacts),
     audio: audioChannelsOf(state.mics, now, frame, slots),
     activeInputId: activeInputOf(frame, slots),
     storage: storageStatusOf(state),
@@ -303,10 +365,15 @@ export function deviceHealthOf(state: CommittedState, now: number, frame: Engine
  * seven others (it holds the lines of an adopted or local device); a state without one (a partial
  * state of a test) answers the built-in baseline, which is what an unedited seed holds.
  */
-export function deviceInventoryOf(state: CommittedState, captureConfig: CaptureConfigSliceBody = (state as { readonly captureConfig?: CaptureConfigSliceBody }).captureConfig ?? DEFAULT_CAPTURE_CONFIG): DeviceInventory {
+export function deviceInventoryOf(
+  state: CommittedState,
+  captureConfig: CaptureConfigSliceBody = (state as { readonly captureConfig?: CaptureConfigSliceBody }).captureConfig ?? DEFAULT_CAPTURE_CONFIG,
+  streamFacts = false,
+): DeviceInventory {
   return {
     device: state.device,
-    cameras: state.cameras,
+    // Task 4 row 53: in a real capture operation the `cameras` of this answer state the stored stream facts of each track's slot; else the slice by reference.
+    cameras: streamFacts ? withCameraStreamFacts(state.cameras, captureConfig) : state.cameras,
     mics: state.mics,
     otherDevices: state.otherDevices,
     ports: state.ports,

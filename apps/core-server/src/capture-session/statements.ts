@@ -14,14 +14,18 @@
 
 /**
  * MR-S1: the four source rows of a session IN ONE STATEMENT. Parameters: the session ID, the
- * instant, then (slot, device ID, adapter kind) four times. A session that already has a row is a
- * primary-key violation: the unit that persists RECORDING fails and nothing is stored.
+ * instant, then (slot, device ID, adapter kind, source facts) four times. A session that already
+ * has a row is a primary-key violation: the unit that persists RECORDING fails and nothing is stored.
+ *
+ * The source facts (task 4 row 71; schema v7) are the text of a flat JSON map, `{}` for a slot
+ * that states none. They are written HERE and never again: the runtime role has no UPDATE on the
+ * table (0009) and `0016` pins `REVOKE UPDATE (source_facts)`.
  */
-export const INSERT_SESSION_CAPTURE_SOURCES = `INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at)
-VALUES ($1::text, $3::text, $4::text, $5::text, $2::bigint),
-       ($1::text, $6::text, $7::text, $8::text, $2::bigint),
-       ($1::text, $9::text, $10::text, $11::text, $2::bigint),
-       ($1::text, $12::text, $13::text, $14::text, $2::bigint)`;
+export const INSERT_SESSION_CAPTURE_SOURCES = `INSERT INTO public.session_capture_sources (session_id, slot, device_id, adapter_kind, recorded_at, source_facts)
+VALUES ($1::text, $3::text, $4::text, $5::text, $2::bigint, $6::jsonb),
+       ($1::text, $7::text, $8::text, $9::text, $2::bigint, $10::jsonb),
+       ($1::text, $11::text, $12::text, $13::text, $2::bigint, $14::jsonb),
+       ($1::text, $15::text, $16::text, $17::text, $2::bigint, $18::jsonb)`;
 
 /** MR-S6: the rows a session start wrote, read back in the same transaction. */
 export const READ_SESSION_CAPTURE_SOURCES = 'SELECT slot, device_id, adapter_kind FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot';

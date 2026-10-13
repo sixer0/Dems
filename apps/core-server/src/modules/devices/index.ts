@@ -70,8 +70,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation } from './operations';
-import { mountCaptureSourceFacts } from './source-facts';
-import { audioStatusOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from './status';
+import { inRealCaptureOperation, mountCaptureSourceFacts } from './source-facts';
+import { audioStatusOf, captureSlotsOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from './status';
 
 export { SOURCE_FACTS_BOOT_STEP, SOURCE_FACTS_NOT_APPLIED, captureSourceFacts, mountCaptureSourceFacts, sourceFactsOf, type CaptureSourceFactsFeed, type RegisteredSource, type SourceFactsPorts } from './source-facts';
 export { DEVICES_OPERATIONS, DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation, type DevicesOperation } from './operations';
@@ -79,6 +79,7 @@ export {
   activeInputOf,
   audioChannelsOf,
   audioStatusOf,
+  cameraStreamFactsOf,
   captureSlotsOf,
   deviceHealthOf,
   deviceInventoryOf,
@@ -86,6 +87,8 @@ export {
   storageStatusOf,
   videoStatusOf,
   videoTracksOf,
+  withCameraStreamFacts,
+  type CameraStreamFacts,
   type CaptureSlots,
   type ChannelLevels,
   type CommittedState,
@@ -110,11 +113,21 @@ export const devicesModule: FastifyPluginAsync = async (app) => {
   // into slice `captureDevices` through the engine's fact door (`source-facts.ts`). Nothing in SIMULATED.
   mountCaptureSourceFacts(app);
 
+  // Task 4 row 53 (WP-10b): a Core in REAL capture states the picture, the rate and the codec of a video track from the
+  // STORED statement of the stream in its selector slot (`cameraStreamFactsOf`) - HEVC with no rate, never a default.
+  // A Core in capture operation SIMULATED answers its slice, as the simulator does. The three camera-bearing reads below
+  // take the flag. The operation is asked of the one function that relates the flags (static rule G-R16), through the
+  // feed file, the folder's one reader of the fence (static rule M8 of this folder).
+  const streamFacts = inRealCaptureOperation(app);
+
   // 44 getDeviceHealth
   routes.route({
     ...routeOfOperation(operationOf('getDeviceHealth')),
     schema: { response: { 200: DeviceHealthResponseSchema } },
-    handler: async (): Promise<DeviceHealthResponse> => deviceHealthOf(app.engine.state(), app.clock.now(), app.engine.meters()),
+    handler: async (): Promise<DeviceHealthResponse> => {
+      const state = app.engine.state();
+      return deviceHealthOf(state, app.clock.now(), app.engine.meters(), captureSlotsOf(state), streamFacts);
+    },
   });
 
   // 45 getAudioStatus
@@ -128,14 +141,17 @@ export const devicesModule: FastifyPluginAsync = async (app) => {
   routes.route({
     ...routeOfOperation(operationOf('getVideoStatus')),
     schema: { response: { 200: VideoStatusResponseSchema } },
-    handler: async (): Promise<VideoStatusResponse> => videoStatusOf(app.engine.state()),
+    handler: async (): Promise<VideoStatusResponse> => {
+      const state = app.engine.state();
+      return videoStatusOf(state, captureSlotsOf(state), streamFacts);
+    },
   });
 
   // 47 getDeviceInventory
   routes.route({
     ...routeOfOperation(operationOf('getDeviceInventory')),
     schema: { response: { 200: DeviceInventorySchema } },
-    handler: async (): Promise<DeviceInventory> => deviceInventoryOf(app.engine.state()),
+    handler: async (): Promise<DeviceInventory> => deviceInventoryOf(app.engine.state(), undefined, streamFacts),
   });
 
   // 48 restartDevice, 49 testDeviceSignal, 50 identifyDevice: one hosted action, one command each.

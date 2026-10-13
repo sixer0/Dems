@@ -131,6 +131,22 @@ export interface CameraSourceTarget {
    * one by a named code (`CaptureAdapterRefusal.PROFILE_UNKNOWN`); it never chooses one itself.
    */
   readonly profile?: string;
+  /**
+   * The session the open is for: the session the PLAN was built for, never a request field (task
+   * 4 row 46, on the request of row 145). The production camera adapter names it to its
+   * credential reader, which writes it into the audit row of the reveal (AD-03 (3)), and in the
+   * report of its relay (`RelayIngestReport.sessionId`). Optional, as `profile` is: the fake,
+   * generated and local adapters ignore it; the production adapter refuses an open without it.
+   */
+  readonly sessionId?: string;
+  /**
+   * The attempt of the worker the open is for (`supervisor.status().attempt`; task 4 row 46, on
+   * the request of rows 179 and 48). The production adapter hands it to its relay, and the
+   * relay's report names it (`RelayIngestReport.attempt`), so that a report of a superseded
+   * attempt can be told from one of the attempt in force (C37). Optional and refused when absent,
+   * as `sessionId` is.
+   */
+  readonly attempt?: number;
 }
 
 export interface CameraAdapter {
@@ -244,6 +260,33 @@ export class AudioInputBeyondCardError extends Error {
   }
 }
 
+/**
+ * What an audio adapter states of the card behind ONE registered input (task 4 row 71, declared
+ * here by integration pass I-7): the identity of the card and the input, rate and format it is
+ * opened with. Every member is `unknown`: the reader - the session start, through the capture
+ * fence - holds each to its own rule again and trusts none of them (device text, AD-07 (1)).
+ *
+ * The capture fence states the SAME shape as `AudioCardStatement` (`capture/fence/sources.ts`)
+ * and still finds the member by its name; the fence imports this layer, never the other way
+ * round, so the one declaration belongs here. Its move (the fence's interface becoming a
+ * re-export of this one, `audioCardStatementOf` a plain call) is left to a pass that may edit the
+ * fence's source files.
+ */
+export interface AudioSourceStatement {
+  /** The product name of the card: device text. */
+  readonly product: unknown;
+  /** Vendor and product id of a USB card; null for a card that is not USB. */
+  readonly usbId: unknown;
+  /** The card's short name, in the kernel's own form. */
+  readonly cardId: unknown;
+  readonly cardDevice: unknown;
+  /** The selected input of the card, numbered from 1. */
+  readonly inputNumber: unknown;
+  readonly nativeChannels: unknown;
+  readonly sampleRateHz: unknown;
+  readonly sampleBits: unknown;
+}
+
 export interface AudioInputAdapter {
   readonly seam: 'AUDIO';
   readonly kind: CaptureAdapterKind;
@@ -255,6 +298,15 @@ export interface AudioInputAdapter {
   open(inputId: string, target: AudioOpenTarget): Promise<AudioStreamHandle>;
   /** dBFS at most 0, or null when the input delivers nothing (NO SIGNAL; D72(i)). */
   level(inputId: string): Promise<number | null>;
+  /**
+   * The card behind an input the adapter holds OPEN, or null when it states nothing for that
+   * input (task 4 row 71; the production adapter `audio/usb-audio-production.ts` implements it
+   * since row 67). OPTIONAL, as `start` of a handle is: the fakes, the generated and the local
+   * sources have none, and their session rows store `{}`. It answers from what the adapter
+   * already holds - no listing, no process, no file - because the session start calls it inside
+   * its unit of work.
+   */
+  sourceFacts?(inputId: string): AudioSourceStatement | null;
 }
 
 export type CaptureAdapter = CameraAdapter | AudioInputAdapter | PoeController;
